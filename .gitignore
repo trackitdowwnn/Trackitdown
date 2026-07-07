@@ -1,43 +1,68 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Learn more: https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# dependencies
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
 node_modules/
 
+# ---------------------------------------------------------------------------
+# Environment / secrets
+# Real secrets live in .env (gitignored). The .env.example template IS
+# tracked — see docs/SECURITY_AND_TRUST.md.
+# ---------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+
+# ---------------------------------------------------------------------------
 # Expo
+# ---------------------------------------------------------------------------
 .expo/
 dist/
 web-build/
 expo-env.d.ts
 
-# Native
+# Generated native projects (created by prebuild / EAS)
+/ios
+/android
+
+# ---------------------------------------------------------------------------
+# Metro bundler
+# ---------------------------------------------------------------------------
+.metro-health-check*
+
+# ---------------------------------------------------------------------------
+# Testing
+# ---------------------------------------------------------------------------
+coverage/
+
+# ---------------------------------------------------------------------------
+# Native signing / credentials — never commit these
+# ---------------------------------------------------------------------------
 .kotlin/
 *.orig.*
 *.jks
 *.p8
 *.p12
 *.key
+*.pem
 *.mobileprovision
 
-# Metro
-.metro-health-check*
-
-# debug
+# ---------------------------------------------------------------------------
+# Logs & debug output
+# ---------------------------------------------------------------------------
+*.log
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# ---------------------------------------------------------------------------
+# OS files
+# ---------------------------------------------------------------------------
 .DS_Store
-*.pem
+Thumbs.db
 
-# local env files
-.env*.local
-
-# typescript
+# ---------------------------------------------------------------------------
+# TypeScript
+# ---------------------------------------------------------------------------
 *.tsbuildinfo
-
-example
-
-# generated native folders
-/ios
-/android
