@@ -52,6 +52,18 @@ should be, some are optional.
   `.github/workflows/ci.yml`). A red Tier 1 test is never skipped or
   `.todo`'d to get a merge through.
 
+## Stack gotchas (this project's versions)
+
+- **`render()` is async.** React Native Testing Library 14 on React 19
+  returns a Promise from `render` — you MUST `await` it:
+  `const { getByText } = await render(<Foo />);` (and make the test `async`).
+  A synchronous `render(...)` silently yields an empty object and every
+  query throws `is not a function` / "render function has not been called".
+  Prefer the queries returned by `render` over the global `screen`.
+- **Jest globals need types.** `describe`/`it`/`expect` are typed via
+  `@types/jest`, opted in through `"types": ["jest", "react"]` in
+  `tsconfig.json`. `tsc` will error on test files if that's missing.
+
 ## For Claude Code specifically
 
 When the test-writer subagent (or anyone) adds tests: run the suite,
