@@ -112,20 +112,29 @@ export function TextField({
   const [floatAnim] = useState(() => new Animated.Value(floated ? 1 : 0));
   const [focusAnim] = useState(() => new Animated.Value(focused ? 1 : 0));
 
-  const animate = (v: Animated.Value, toValue: number) =>
-    Animated.timing(v, {
-      toValue,
+  // Start each 200ms transition and stop it on cleanup, so a pending timer never
+  // outlives the component (prevents animation leaks in the app and Jest
+  // "environment torn down" errors when a field unmounts mid-animation).
+  useEffect(() => {
+    const animation = Animated.timing(floatAnim, {
+      toValue: floated ? 1 : 0,
       duration: 200,
       easing: Easing.out(Easing.ease),
       useNativeDriver: false,
-    }).start();
-
-  useEffect(() => {
-    animate(floatAnim, floated ? 1 : 0);
+    });
+    animation.start();
+    return () => animation.stop();
   }, [floated, floatAnim]);
 
   useEffect(() => {
-    animate(focusAnim, focused ? 1 : 0);
+    const animation = Animated.timing(focusAnim, {
+      toValue: focused ? 1 : 0,
+      duration: 200,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
   }, [focused, focusAnim]);
 
   // iOS has no accessibilityLiveRegion; announce errors explicitly so VoiceOver
