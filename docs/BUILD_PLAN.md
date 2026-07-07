@@ -12,6 +12,11 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
 - [ ] Git repo created on GitHub, first push, CI green
 - [ ] Supabase dev + prod projects created; dev linked; `.env` from
       `.env.example`
+      - [x] Supabase CLI installed (dev-dependency); `supabase init` done
+      - [x] Dev project (`lbbbxelbembseohxjhkv`, eu-west-1) linked
+      - [ ] Prod project — deferred to pre-launch. Schema is
+            migrations-as-code, so `supabase db push` stands it up later.
+      - [ ] `.env` created from `.env.example` (public Supabase URL + anon key)
 - [ ] Stripe account in test mode; keys in `.env` / Edge Function secrets
 - [ ] Claude Code first prompts run: folder scaffold, theme + core
       components, initial migration
