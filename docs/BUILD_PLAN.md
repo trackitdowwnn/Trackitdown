@@ -18,6 +18,11 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
             migrations-as-code, so `supabase db push` stands it up later.
       - [ ] `.env` created from `.env.example` (public Supabase URL + anon key)
 - [ ] Stripe account in test mode; keys in `.env` / Edge Function secrets
+      - [x] Stripe CLI installed; `.env` scaffolded (public keys only)
+      - [ ] Stripe account (test mode) + Connect **Express** enabled — you
+      - [ ] `pk_test` in `.env`; `sk_test` in Supabase secrets — you
+      - [ ] Webhook endpoint + `whsec` — deferred until the `stripe-webhook`
+            Edge Function exists (local testing uses `stripe listen`)
 - [ ] Claude Code first prompts run: folder scaffold, theme + core
       components, initial migration
 - [ ] Import-boundary ESLint rules configured (prompt in CLAUDE.md notes)

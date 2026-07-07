@@ -56,8 +56,10 @@ draft → pending_verification → active → recovery_claimed → recovered (pa
 - **Single winner.** Exactly one sighting can be credited per recovery.
   No splitting in v1. If several spotters contributed, the owner picks the
   decisive one. (Splitting is a known v2 candidate; do not build it early.)
-- The 5% platform fee is taken as a Stripe Connect application fee at
-  payout, never calculated in the app client.
+- The 5% platform fee is retained via **transfer math** — on recovery the
+  platform transfers 95% of the bounty to the winning spotter under separate
+  charges and transfers, keeping 5% — never calculated in the app client.
+  (Not a Stripe `application_fee_amount`; see ADR-0002 for why.)
 - Spotters must complete Stripe Connect onboarding (KYC) before a payout
   can be released. Prompt for this when their first sighting is credited,
   not at signup.
