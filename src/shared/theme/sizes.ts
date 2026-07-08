@@ -16,6 +16,9 @@ export const sizes = {
   input: 56,
   /** Minimum height for a multiline input (~3 lines). */
   multilineMin: 96,
+  /** Drag-handle grabber bar on sheets (BottomSheet). */
+  grabberWidth: 32,
+  grabberHeight: 4,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

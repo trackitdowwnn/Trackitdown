@@ -5,4 +5,5 @@
  * LINKS: docs/DESIGN_SYSTEM.md (Core components).
  */
 
+export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
 export { TextField, type TextFieldProps, type TextFieldVariant } from './TextField';
