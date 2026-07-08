@@ -41,17 +41,16 @@ import {
 } from '@gorhom/bottom-sheet';
 import {
   useCallback,
-  useEffect,
   useImperativeHandle,
   useRef,
-  useState,
   type ReactNode,
   type Ref,
 } from 'react';
-import { Keyboard, Platform, StyleSheet, Text, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAndroidKeyboardHeight } from '../hooks';
 import { colors, radii, sizes, spacing, typography } from '../theme';
 import { TextInputHostContext } from './TextInputHost';
 
@@ -85,7 +84,16 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
   const modalRef = useRef<BottomSheetModal>(null);
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const keyboardLift = useAndroidKeyboardLift();
+  // Height to lift the sheet content clear of the software keyboard, Android
+  // only. On iOS the library's keyboardBehavior="interactive" translates the
+  // sheet natively; on Android that mechanism is broken under edge-to-edge
+  // (always on in Expo SDK 57+), so the keyboard height is added to the
+  // content's bottom padding — enableDynamicSizing re-measures the taller
+  // content and raises the sheet. Do NOT feed this into the modal's
+  // `bottomInset` instead: the library never re-applies that prop's runtime
+  // changes (verified against @gorhom/bottom-sheet 5.2.14), so the sheet
+  // would not move.
+  const keyboardLift = useAndroidKeyboardHeight();
 
   useImperativeHandle(ref, () => ({
     open: () => modalRef.current?.present(),
@@ -156,42 +164,6 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
       </BottomSheetScrollView>
     </BottomSheetModal>
   );
-}
-
-/**
- * Height to lift the sheet content clear of the software keyboard, Android only.
- *
- * On iOS the library's keyboardBehavior="interactive" translates the sheet
- * natively. On Android that mechanism is broken under edge-to-edge (always on
- * in Expo SDK 57+): the window no longer resizes, so
- * android_keyboardInputMode="adjustResize" is a no-op and the keyboard just
- * covers the sheet (gorhom/react-native-bottom-sheet#2674). So we watch the
- * keyboard ourselves and add its height to the content's bottom padding —
- * enableDynamicSizing re-measures the taller content and raises the sheet.
- *
- * Do NOT feed this into the modal's `bottomInset` instead: the library reads
- * that prop's runtime changes but never re-applies them (its useAnimatedLayout
- * reactions early-exit when the container height itself is unchanged), so the
- * sheet never moves. Verified against @gorhom/bottom-sheet 5.2.14.
- */
-function useAndroidKeyboardLift(): number {
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  useEffect(() => {
-    if (Platform.OS !== 'android') {
-      return;
-    }
-    const show = Keyboard.addListener('keyboardDidShow', (event) =>
-      setKeyboardHeight(event.endCoordinates.height),
-    );
-    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
-  return keyboardHeight;
 }
 
 const styles = StyleSheet.create({

@@ -15,15 +15,18 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `background` | `#FAF7F2` | app background — warm off-white |
 | `surface` | `#FFFFFF` | cards, sheets, inputs |
 | `surfaceSubtle` | `#F3EEE6` | secondary surfaces, chips |
-| `primary` | `#5F7A61` | sage green — primary buttons, links, active states |
+| `primary` | `#5B755D` | sage green — primary buttons, links, active states (AA at label size on `background`) |
 | `primaryPressed` | `#4C634E` | pressed/hover state of primary |
 | `accent` | `#C97B5D` | terracotta — bounty amounts, highlights, badges |
 | `textPrimary` | `#2B2926` | warm near-black for headings/body |
 | `textSecondary` | `#6F6A62` | captions, metadata |
 | `border` | `#E7E0D6` | hairlines, input borders |
+| `borderStrong` | `#B8AE9E` | small elements that must stay visible (progress tracks) |
 | `success` | `#4F8A5B` | recovery confirmed, payout complete |
 | `warning` | `#C9973B` | pending verification, expiring posts |
 | `danger` | `#B4553F` | destructive actions, errors (muted, not alarm-red) |
+| `dangerPressed` | `#96462F` | pressed state of danger |
+| `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
 | `overlay` | `rgba(43,41,38,0.45)` | modal scrim |
 
 Rules: the accent terracotta is reserved for bounty/value moments so it

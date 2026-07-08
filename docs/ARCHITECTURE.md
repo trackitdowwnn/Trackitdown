@@ -27,7 +27,9 @@ trackitdown/
 │       ├── api/              # Supabase client, typed query helpers
 │       ├── hooks/            # generic hooks (useDebounce, useLocation, …)
 │       ├── lib/              # pure utilities (plate validation, dates, …)
-│       └── types/            # cross-feature domain types
+│       ├── types/            # cross-feature domain types
+│       └── wizard/           # config-driven full-screen wizard framework
+│                             #   (phases → steps; powers stepper flows)
 ├── supabase/
 │   ├── migrations/           # SQL migrations (source of truth for schema)
 │   └── functions/            # Edge Functions (stripe-webhook, notify-spotters,

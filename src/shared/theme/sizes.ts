@@ -19,6 +19,11 @@ export const sizes = {
   /** Drag-handle grabber bar on sheets (BottomSheet). */
   grabberWidth: 32,
   grabberHeight: 4,
+  /** Wizard header progress: resting dot and the stretched current-step pill. */
+  progressDot: 8,
+  progressPill: 24,
+  /** Minimum touch target (DESIGN_SYSTEM Accessibility). */
+  touchTarget: 44,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

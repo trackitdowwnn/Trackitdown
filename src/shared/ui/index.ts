@@ -6,4 +6,5 @@
  */
 
 export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
+export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { TextField, type TextFieldProps, type TextFieldVariant } from './TextField';

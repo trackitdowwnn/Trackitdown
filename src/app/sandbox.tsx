@@ -9,20 +9,16 @@
  * LINKS: src/shared/ui, src/shared/theme, docs/DESIGN_SYSTEM.md.
  */
 
+import { useRouter } from 'expo-router';
 import { type ReactNode, useRef, useState } from 'react';
-import {
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
-import { BottomSheet, TextField, type BottomSheetRef } from '@/shared/ui';
+import { colors, spacing, typography } from '@/shared/theme';
+import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
 export default function SandboxScreen() {
+  const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [plate, setPlate] = useState('');
@@ -101,7 +97,7 @@ export default function SandboxScreen() {
         </Section>
 
         <Section title="BottomSheet · basic">
-          <SandboxButton label="Open basic sheet" onPress={() => basicSheetRef.current?.open()} />
+          <Button label="Open basic sheet" onPress={() => basicSheetRef.current?.open()} />
           <Text style={styles.sectionNote}>
             Dismissed {dismissCount} {dismissCount === 1 ? 'time' : 'times'} (swipe down or tap
             the scrim)
@@ -109,11 +105,15 @@ export default function SandboxScreen() {
         </Section>
 
         <Section title="BottomSheet · tall content (scrolls)">
-          <SandboxButton label="Open tall sheet" onPress={() => tallSheetRef.current?.open()} />
+          <Button label="Open tall sheet" onPress={() => tallSheetRef.current?.open()} />
         </Section>
 
         <Section title="BottomSheet · with TextField (keyboard)">
-          <SandboxButton label="Open form sheet" onPress={() => formSheetRef.current?.open()} />
+          <Button label="Open form sheet" onPress={() => formSheetRef.current?.open()} />
+        </Section>
+
+        <Section title="Wizard · full demo flow">
+          <Button label="Start demo wizard" onPress={() => router.push('/wizard-demo')} />
         </Section>
       </ScrollView>
 
@@ -126,7 +126,7 @@ export default function SandboxScreen() {
           A content-fit modal sheet. It sizes to this text, dims the screen behind it, and closes
           on swipe-down, scrim tap, or the button below.
         </Text>
-        <SandboxButton label="Close" onPress={() => basicSheetRef.current?.close()} />
+        <Button label="Close" onPress={() => basicSheetRef.current?.close()} />
       </BottomSheet>
 
       <BottomSheet ref={tallSheetRef} title="Tall sheet">
@@ -150,19 +150,6 @@ export default function SandboxScreen() {
         />
       </BottomSheet>
     </SafeAreaView>
-  );
-}
-
-function SandboxButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-    >
-      <Text style={styles.buttonLabel}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -209,19 +196,5 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     marginBottom: spacing.lg,
-  },
-  button: {
-    height: sizes.control,
-    borderRadius: radii.md,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonPressed: {
-    backgroundColor: colors.primaryPressed,
-  },
-  buttonLabel: {
-    ...typography.label,
-    color: colors.surface,
   },
 });
