@@ -14,8 +14,43 @@ import { type ReactNode, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, spacing, typography } from '@/shared/theme';
-import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
+import { colors, radii, spacing, typography } from '@/shared/theme';
+import {
+  BottomSheet,
+  Button,
+  SelectField,
+  TextField,
+  type BottomSheetRef,
+  type SelectOption,
+} from '@/shared/ui';
+
+/** ~45 UK-market makes, sectioned A–Z, to exercise search + sticky headers. */
+const CAR_MAKES: SelectOption[] = [
+  'Alfa Romeo', 'Aston Martin', 'Audi', 'Bentley', 'BMW', 'Citroën', 'Cupra',
+  'Dacia', 'DS', 'Ferrari', 'Fiat', 'Ford', 'Genesis', 'Honda', 'Hyundai',
+  'Jaguar', 'Jeep', 'Kia', 'Lamborghini', 'Land Rover', 'Lexus', 'Lotus',
+  'Maserati', 'Mazda', 'McLaren', 'Mercedes-Benz', 'MG', 'MINI', 'Mitsubishi',
+  'Nissan', 'Peugeot', 'Polestar', 'Porsche', 'Renault', 'Rolls-Royce',
+  'SEAT', 'Škoda', 'Smart', 'Subaru', 'Suzuki', 'Tesla', 'Toyota',
+  'Vauxhall', 'Volkswagen', 'Volvo',
+].map((label) => ({
+  value: label.toLowerCase().replace(/[^a-z]+/g, '-'),
+  label,
+  section: label[0].toUpperCase(),
+}));
+
+function ColourDot({ colour }: { colour: string }) {
+  return <View style={[styles.colourDot, { backgroundColor: colour }]} />;
+}
+
+/** Simple flat select with leading colour dots (theme-token colours). */
+const COLOUR_OPTIONS: SelectOption[] = [
+  { value: 'sage', label: 'Sage', icon: <ColourDot colour={colors.primary} /> },
+  { value: 'terracotta', label: 'Terracotta', icon: <ColourDot colour={colors.accent} /> },
+  { value: 'sand', label: 'Sand', icon: <ColourDot colour={colors.borderStrong} /> },
+  { value: 'charcoal', label: 'Charcoal', icon: <ColourDot colour={colors.textPrimary} /> },
+  { value: 'gold', label: 'Gold', icon: <ColourDot colour={colors.warning} /> },
+];
 
 export default function SandboxScreen() {
   const router = useRouter();
@@ -26,6 +61,8 @@ export default function SandboxScreen() {
   const [badEmail, setBadEmail] = useState('not an email');
   const [sheetName, setSheetName] = useState('');
   const [dismissCount, setDismissCount] = useState(0);
+  const [make, setMake] = useState<string | null>(null);
+  const [carColour, setCarColour] = useState<string | null>(null);
 
   const basicSheetRef = useRef<BottomSheetRef>(null);
   const tallSheetRef = useRef<BottomSheetRef>(null);
@@ -115,6 +152,26 @@ export default function SandboxScreen() {
         <Section title="Wizard · full demo flow">
           <Button label="Start demo wizard" onPress={() => router.push('/wizard-demo')} />
         </Section>
+
+        <Section title="SelectField · sectioned + search (car make)">
+          <SelectField
+            label="Car make"
+            placeholder="Choose a make"
+            options={CAR_MAKES}
+            value={make}
+            onChange={setMake}
+            helperText="A–Z sections, sticky headers, debounced search"
+          />
+        </Section>
+
+        <Section title="SelectField · flat with icons (colour)">
+          <SelectField
+            label="Colour"
+            options={COLOUR_OPTIONS}
+            value={carColour}
+            onChange={setCarColour}
+          />
+        </Section>
       </ScrollView>
 
       <BottomSheet
@@ -196,5 +253,12 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     marginBottom: spacing.lg,
+  },
+  colourDot: {
+    width: spacing.lg,
+    height: spacing.lg,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 });
