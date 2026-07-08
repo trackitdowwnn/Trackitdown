@@ -15,14 +15,100 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing, typography } from '@/shared/theme';
+import type { PostSummary } from '@/shared/types';
 import {
   BottomSheet,
   Button,
   SelectField,
+  SkeletonVehicleCard,
   TextField,
+  VehicleCard,
   type BottomSheetRef,
   type SelectOption,
 } from '@/shared/ui';
+
+/** Mock feed exercising the card's states; picsum photos are dev-only. */
+const photo = (seed: number) => ({ uri: `https://picsum.photos/seed/car${seed}/800/600` });
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+
+const MOCK_FEED: PostSummary[] = [
+  {
+    id: 'mock-1',
+    photos: [photo(1), photo(2), photo(3)],
+    make: 'BMW',
+    model: '3 Series',
+    colour: 'Blue',
+    plate: 'AB12 CDE',
+    status: 'active',
+    lastSeenAt: hoursAgo(2),
+    lastSeenArea: 'Camden',
+    distanceMiles: 2.3,
+    bountyPence: 50000,
+  },
+  {
+    id: 'mock-2',
+    photos: [photo(4)],
+    make: 'Ford',
+    model: 'Fiesta',
+    colour: 'Red',
+    plate: 'CX68 PLR',
+    status: 'active',
+    lastSeenAt: hoursAgo(26),
+    lastSeenArea: 'Peckham',
+    distanceMiles: 0.8,
+    bountyPence: 25000,
+  },
+  {
+    id: 'mock-3',
+    photos: [photo(5), photo(6)],
+    make: 'Land Rover',
+    model: 'Range Rover Autobiography LWB',
+    colour: 'Santorini Black',
+    plate: 'RR70 LUX',
+    status: 'recovered',
+    lastSeenAt: hoursAgo(96),
+    lastSeenArea: 'Hampstead Garden Suburb',
+    distanceMiles: 11.4,
+    bountyPence: 500000,
+  },
+  {
+    id: 'mock-4',
+    photos: [],
+    make: 'Vauxhall',
+    model: 'Corsa',
+    colour: 'Silver',
+    plate: 'VK19 HJD',
+    status: 'pending_verification',
+    lastSeenAt: hoursAgo(1),
+    distanceMiles: 4.1,
+    bountyPence: 7550,
+  },
+  {
+    id: 'mock-5',
+    photos: [photo(7), photo(8), photo(9), photo(10), photo(11)],
+    make: 'Mercedes-Benz',
+    model: 'A-Class',
+    colour: 'White',
+    plate: 'MB21 AMG',
+    status: 'active',
+    lastSeenAt: hoursAgo(0.01),
+    lastSeenArea: 'Shoreditch',
+    bountyPence: 120000,
+  },
+  {
+    id: 'mock-6',
+    photos: [photo(12)],
+    make: 'Toyota',
+    model: 'Yaris',
+    colour: 'Green',
+    plate: 'TY65 ECO',
+    status: 'expired',
+    lastSeenAt: hoursAgo(24 * 30),
+    lastSeenArea: 'Brixton',
+    distanceMiles: 6,
+    bountyPence: 15000,
+  },
+];
 
 /** ~45 UK-market makes, sectioned A–Z, to exercise search + sticky headers. */
 const CAR_MAKES: SelectOption[] = [
@@ -63,6 +149,7 @@ export default function SandboxScreen() {
   const [dismissCount, setDismissCount] = useState(0);
   const [make, setMake] = useState<string | null>(null);
   const [carColour, setCarColour] = useState<string | null>(null);
+  const [lastTappedPost, setLastTappedPost] = useState<string | null>(null);
 
   const basicSheetRef = useRef<BottomSheetRef>(null);
   const tallSheetRef = useRef<BottomSheetRef>(null);
@@ -172,6 +259,32 @@ export default function SandboxScreen() {
             onChange={setCarColour}
           />
         </Section>
+
+        <Section title="VehicleCard · mock feed (tap vs swipe, badges, fallback)">
+          <View style={styles.feed}>
+            {MOCK_FEED.map((post) => (
+              <VehicleCard
+                key={post.id}
+                post={post}
+                onPress={() => setLastTappedPost(`${post.make} ${post.model}`)}
+              />
+            ))}
+          </View>
+          <Text style={styles.sectionNote}>
+            Last tapped: {lastTappedPost ?? '—'} (swiping photos must not count as a tap)
+          </Text>
+        </Section>
+
+        <Section title="VehicleCard · skeleton + compact">
+          <View style={styles.feed}>
+            <SkeletonVehicleCard />
+            <VehicleCard
+              post={MOCK_FEED[0]}
+              variant="compact"
+              onPress={() => setLastTappedPost('compact card')}
+            />
+          </View>
+        </Section>
       </ScrollView>
 
       <BottomSheet
@@ -260,5 +373,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  feed: {
+    gap: spacing.xxl,
   },
 });
