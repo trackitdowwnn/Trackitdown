@@ -1,12 +1,12 @@
 /**
- * WHAT:  Motion tokens — the design system's animation durations and the
- *        card press scale, as named values.
+ * WHAT:  Motion tokens — the design system's animation durations, the card
+ *        press scale, and the FullscreenLoader's choreography values.
  * WHY:   The 200–250ms ease-out rule (docs/DESIGN_SYSTEM.md, Motion) was
- *        living as per-file magic numbers; naming the two sanctioned
- *        durations and the 0.98 press scale keeps every animation on the
- *        same clock. Easing functions stay per-library (RN Animated and
- *        Reanimated export incompatible types) — the RULE is ease-out;
- *        these tokens carry the numbers.
+ *        living as per-file magic numbers; naming the sanctioned durations
+ *        and scales keeps every animation on the same clock. Easing
+ *        functions stay per-library (RN Animated and Reanimated export
+ *        incompatible types) — the RULE is ease-out; these tokens carry
+ *        the numbers.
  * LINKS: docs/DESIGN_SYSTEM.md (Motion); consumers across src/shared/ui.
  */
 
@@ -17,6 +17,12 @@ export const motion = {
   standard: 250,
   /** "Subtle scale on card press" (DESIGN_SYSTEM Motion). */
   pressScale: 0.98,
+  /** FullscreenLoader: minimum time shown, so instant ops don't flash. */
+  loaderMinVisible: 600,
+  /** FullscreenLoader: one cycle of the calm three-dot wave. */
+  loaderLoop: 1200,
+  /** FullscreenLoader: how far a dot swells at the top of its wave. */
+  loaderWaveScale: 1.4,
 } as const;
 
 export type MotionToken = keyof typeof motion;

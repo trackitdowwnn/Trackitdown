@@ -10,6 +10,7 @@ export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './Botto
 export { BountyTag, type BountyTagProps } from './BountyTag';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
+export { FullscreenLoader, type FullscreenLoaderProps } from './FullscreenLoader';
 export { PlateChip, type PlateChipProps } from './PlateChip';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';
