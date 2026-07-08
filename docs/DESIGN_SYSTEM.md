@@ -17,7 +17,8 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `surfaceSubtle` | `#F3EEE6` | secondary surfaces, chips |
 | `primary` | `#5B755D` | sage green — primary buttons, links, active states (AA at label size on `background`) |
 | `primaryPressed` | `#4C634E` | pressed/hover state of primary |
-| `accent` | `#C97B5D` | terracotta — bounty amounts, highlights, badges |
+| `accent` | `#C97B5D` | terracotta — bounty fills, highlights, badges, large type |
+| `accentText` | `#A05A3B` | terracotta for label/body-size text (AA on `background`) |
 | `textPrimary` | `#2B2926` | warm near-black for headings/body |
 | `textSecondary` | `#6F6A62` | captions, metadata |
 | `border` | `#E7E0D6` | hairlines, input borders |

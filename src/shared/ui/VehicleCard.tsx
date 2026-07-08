@@ -1,0 +1,448 @@
+/**
+ * WHAT:  VehicleCard — the app's signature feed card for a stolen car, plus
+ *        SkeletonVehicleCard matching its exact geometry. A 4:3 rounded
+ *        photo carousel with paging dots and a status badge, over a
+ *        borderless text stack: "Make Model" + distance, colour + PlateChip,
+ *        last-seen line, and the terracotta bounty anchor.
+ * WHY:   Modelled on Airbnb's listing card, and like it deliberately
+ *        BORDERLESS — no card surface, border, or shadow; the photo carries
+ *        the card directly on the screen background (this is the Airbnb-
+ *        style variant, intentionally unlike a boxed Card primitive).
+ *        Swiping the carousel cycles photos without firing the card press
+ *        (the horizontal ScrollView claims the gesture); tapping anywhere
+ *        opens the post with the design system's 0.98 press scale. Badges
+ *        only appear when the status isn't plain `active`, so the public
+ *        feed stays calm and the owner's list stays informative. `compact`
+ *        drops to image + title row + bounty for the map's floating card.
+ *        Memoised for recycled list rows. The top-right image corner is
+ *        reserved for a future save/watch toggle — layout leaves it clear.
+ * LINKS: docs/DESIGN_SYSTEM.md (Card, Colour rules, Motion, Accessibility);
+ *        docs/DOMAIN.md (lifecycle, money); src/shared/types/posts.ts;
+ *        src/shared/ui/{AppImage,PlateChip,BountyTag}.tsx;
+ *        src/shared/lib/money.ts; src/shared/hooks/useTimeAgo.ts.
+ *
+ * Usage:
+ *   <VehicleCard post={summary} onPress={() => router.push(`/post/${summary.id}`)} />
+ *   <SkeletonVehicleCard />            // while the feed loads
+ */
+
+import { Feather } from '@expo/vector-icons';
+import { memo, useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useAnimatedValue,
+} from 'react-native';
+// RNGH's Pressable, NOT react-native's: the card wraps a horizontal
+// ScrollView, and the core Pressable races the native scroll for the
+// gesture — on many Android devices a swipe lands as a press (and scrolls
+// can misfire presses). The gesture-handler Pressable waits for scrolls.
+import { Pressable } from 'react-native-gesture-handler';
+
+import { useTimeAgo } from '../hooks';
+import { formatPounds } from '../lib';
+import { colors, motion, opacity, radii, sizes, spacing, typography } from '../theme';
+import type { PostStatus, PostSummary } from '../types';
+import { AppImage } from './AppImage';
+import { BountyTag } from './BountyTag';
+import { PlateChip, spellPlate } from './PlateChip';
+
+/** Cars are landscape subjects; every card photo is 4:3. */
+const PHOTO_ASPECT_RATIO = 4 / 3;
+/** Carousel cap — enough to show the car, not a gallery. */
+const MAX_PHOTOS = 5;
+
+export interface VehicleCardProps {
+  post: PostSummary;
+  /** Opens the post detail. Swipes inside the carousel do NOT fire this. */
+  onPress: () => void;
+  /** feed = full stack; compact = image + title row + bounty (map card). */
+  variant?: 'feed' | 'compact';
+}
+
+/** Badge copy + colour per non-active status (active renders no badge). */
+const STATUS_BADGES: Partial<Record<PostStatus, { label: string; color: string }>> = {
+  draft: { label: 'Draft', color: colors.textSecondary },
+  pending_verification: { label: 'Pending', color: colors.warning },
+  recovery_claimed: { label: 'Recovery claimed', color: colors.warning },
+  recovered: { label: 'Recovered', color: colors.success },
+  recovered_no_spotter: { label: 'Recovered', color: colors.success },
+  cancelled: { label: 'Cancelled', color: colors.textSecondary },
+  expired: { label: 'Expired', color: colors.textSecondary },
+  rejected: { label: 'Rejected', color: colors.textSecondary },
+};
+
+function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps) {
+  const compact = variant === 'compact';
+  const badge = STATUS_BADGES[post.status];
+  // Live-updating recency: the memoised card re-renders itself each minute,
+  // so a feed left open never shows a stale "2m ago".
+  const lastSeen = useTimeAgo(post.lastSeenAt);
+
+  // Press feedback: 0.98 scale ANIMATED per the motion rules, not snapped.
+  // Native-driven — transform animations stay smooth off the JS thread.
+  const pressScale = useAnimatedValue(1);
+  const animatePress = (pressed: boolean) =>
+    Animated.timing(pressScale, {
+      toValue: pressed ? motion.pressScale : 1,
+      duration: motion.fast,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+
+  // Recycled/unmounted cards must not keep a dead animation ticking.
+  useEffect(() => () => pressScale.stopAnimation(), [pressScale]);
+
+  const label = [
+    `${post.colour} ${post.make} ${post.model}`,
+    `plate ${spellPlate(post.plate)}`,
+    `${formatPounds(post.bountyPence)} bounty`,
+    badge ? badge.label.toLowerCase() : null,
+    `last seen ${lastSeen}`,
+    post.distanceMiles !== undefined ? `${formatDistance(post.distanceMiles)} away` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      onPressIn={() => animatePress(true)}
+      onPressOut={() => animatePress(false)}
+      // Belt-and-braces: if a swipe cancels an in-flight press without an
+      // onPressOut, the touch-end/cancel still resets the scale.
+      onTouchEnd={() => animatePress(false)}
+      onTouchCancel={() => animatePress(false)}
+      style={styles.card}
+    >
+      <Animated.View style={{ transform: [{ scale: pressScale }] }}>
+      {/* accessible Pressable = one screen-reader node; the combined label
+          above carries everything, and children (incl. dots) aren't visited. */}
+      <View>
+        <View style={[styles.photoArea, compact && styles.photoAreaCompact]}>
+          <PhotoCarousel post={post} />
+          {badge ? (
+            <View style={styles.badge}>
+              <View style={[styles.badgeDot, { backgroundColor: badge.color }]} />
+              <Text style={styles.badgeLabel}>{badge.label}</Text>
+            </View>
+          ) : null}
+          {/* Top-right corner intentionally clear: future save/watch toggle. */}
+        </View>
+
+        <View style={styles.textStack}>
+          <View style={styles.titleRow}>
+            <Text numberOfLines={1} style={styles.title}>
+              {post.make} {post.model}
+            </Text>
+            {post.distanceMiles !== undefined ? (
+              <Text style={styles.distance}>{formatDistance(post.distanceMiles)}</Text>
+            ) : null}
+          </View>
+
+          {!compact ? (
+            <>
+              <View style={styles.identityRow}>
+                <Text numberOfLines={1} style={styles.colour}>
+                  {post.colour} ·
+                </Text>
+                <PlateChip plate={post.plate} />
+              </View>
+              <Text numberOfLines={1} style={styles.lastSeen}>
+                Last seen {lastSeen}
+                {post.lastSeenArea ? ` near ${post.lastSeenArea}` : ''}
+              </Text>
+            </>
+          ) : null}
+
+          <BountyTag bountyPence={post.bountyPence} size={compact ? 'md' : 'lg'} />
+        </View>
+      </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+/** Memoised for FlashList row recycling — PostSummary rows are stable. */
+export const VehicleCard = memo(VehicleCardInner);
+
+/** "2.3 mi", trailing zeros dropped ("3 mi"). */
+function formatDistance(miles: number): string {
+  const rounded = Math.round(miles * 10) / 10;
+  return `${rounded} mi`;
+}
+
+function PhotoCarousel({ post }: { post: PostSummary }) {
+  const photos = post.photos.slice(0, MAX_PHOTOS);
+  const [activeIndex, setActiveIndex] = useState(0);
+  // Measured, not assumed: compact map cards and future layouts won't share
+  // the feed's width, and paging maths must match the real card width.
+  const [photoWidth, setPhotoWidth] = useState(0);
+
+  // Recycled list rows reuse this component for a NEW post; snap the
+  // carousel back to the first photo instead of inheriting the old offset.
+  const [prevPostId, setPrevPostId] = useState(post.id);
+  if (post.id !== prevPostId) {
+    setPrevPostId(post.id);
+    setActiveIndex(0);
+  }
+
+  const scrollRef = useRef<ScrollView>(null);
+  // Mirror of activeIndex for the width-change effect (reading state there
+  // would make the effect fire on every swipe and fight the user's gesture).
+  const activeIndexRef = useRef(0);
+  useEffect(() => {
+    activeIndexRef.current = 0; // keyed ScrollView remounts at offset 0
+  }, [post.id]);
+
+  // If the measured width changes (rotation, split-screen), re-align the
+  // scroll offset to the active photo so the dot never points at the wrong one.
+  const previousWidthRef = useRef(0);
+  useEffect(() => {
+    if (previousWidthRef.current > 0 && photoWidth > 0 && previousWidthRef.current !== photoWidth) {
+      scrollRef.current?.scrollTo({
+        x: activeIndexRef.current * photoWidth,
+        animated: false,
+      });
+    }
+    previousWidthRef.current = photoWidth;
+  }, [photoWidth]);
+
+  if (photos.length === 0) {
+    return (
+      <View style={styles.photoFallback}>
+        <Feather name="image" size={typography.display.fontSize} color={colors.textSecondary} />
+      </View>
+    );
+  }
+
+  if (photos.length === 1) {
+    return (
+      <AppImage
+        uri={photos[0].uri}
+        thumbhash={photos[0].thumbhash}
+        recyclingKey={post.id}
+        style={styles.photo}
+      />
+    );
+  }
+
+  return (
+    <View
+      testID="vehicle-card-carousel-frame"
+      style={styles.carouselFrame}
+      onLayout={(event) => setPhotoWidth(event.nativeEvent.layout.width)}
+    >
+      {/* Horizontal paging claims swipe gestures, so the wrapping Pressable
+          only ever sees taps — swiping photos never opens the post. */}
+      <ScrollView
+        ref={scrollRef}
+        key={post.id} // recycled rows restart at the first photo
+        testID="vehicle-card-carousel"
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(event) => {
+          if (photoWidth > 0) {
+            // Clamped: iOS overscroll can land the offset past either end.
+            const index = Math.min(
+              photos.length - 1,
+              Math.max(0, Math.round(event.nativeEvent.contentOffset.x / photoWidth)),
+            );
+            activeIndexRef.current = index;
+            setActiveIndex(index);
+          }
+        }}
+      >
+        {photos.map((photo, index) => (
+          <AppImage
+            key={`${post.id}-${index}`} // not photo.uri: duplicate photos may share one
+            uri={photo.uri}
+            thumbhash={photo.thumbhash}
+            recyclingKey={`${post.id}-${index}`}
+            style={[styles.photo, { width: photoWidth || undefined }]}
+          />
+        ))}
+      </ScrollView>
+      <View style={styles.dots} pointerEvents="none">
+        {photos.map((photo, index) => (
+          <View
+            key={`${post.id}-${index}`}
+            testID={`carousel-dot-${index}`}
+            style={[styles.dot, index === activeIndex && styles.dotActive]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+/** Loading placeholder mirroring VehicleCard's geometry, so feeds don't jump. */
+export function SkeletonVehicleCard({ variant = 'feed' }: { variant?: 'feed' | 'compact' }) {
+  const compact = variant === 'compact';
+  return (
+    <View
+      accessible
+      accessibilityLabel="Loading post"
+      accessibilityState={{ busy: true }}
+      style={styles.card}
+    >
+      <View style={[styles.photoArea, compact && styles.photoAreaCompact, styles.skeletonBlock]} />
+      <View style={styles.textStack}>
+        <View style={[styles.skeletonLine, styles.skeletonTitle]} />
+        {!compact ? (
+          <>
+            {/* Heights mirror the real rows exactly (PlateChip row, caption
+                line) so content swap-in causes zero layout jump. */}
+            <View style={[styles.skeletonLine, styles.skeletonIdentity]} />
+            <View style={[styles.skeletonLine, styles.skeletonLastSeen]} />
+          </>
+        ) : null}
+        <View
+          style={[
+            styles.skeletonLine,
+            compact ? styles.skeletonBountyCompact : styles.skeletonBounty,
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  // Borderless by design: no surface, border, or shadow — the photo IS the card.
+  card: {
+    width: '100%',
+  },
+  photoArea: {
+    aspectRatio: PHOTO_ASPECT_RATIO,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceSubtle,
+  },
+  photoAreaCompact: {
+    aspectRatio: PHOTO_ASPECT_RATIO * 1.5, // shorter image for the map card
+  },
+  photo: {
+    width: '100%',
+    height: '100%',
+  },
+  photoFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: spacing.md,
+    left: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  badgeDot: {
+    width: sizes.progressDot,
+    height: sizes.progressDot,
+    borderRadius: radii.sm,
+  },
+  badgeLabel: {
+    ...typography.label,
+    color: colors.textPrimary,
+  },
+  dots: {
+    position: 'absolute',
+    bottom: spacing.md,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  dot: {
+    width: sizes.progressDot,
+    height: sizes.progressDot,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    opacity: opacity.inactive,
+  },
+  dotActive: {
+    opacity: 1,
+  },
+  textStack: {
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  title: {
+    ...typography.heading,
+    color: colors.textPrimary,
+    flexShrink: 1,
+  },
+  // caption, not body: the type scale assigns metadata/timestamps to caption,
+  // keeping the title and bounty loud and the metadata quiet (Airbnb hierarchy).
+  distance: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  colour: {
+    ...typography.body,
+    color: colors.textPrimary,
+    // Long colour names ("Santorini Black") shrink; the PlateChip stays rigid.
+    flexShrink: 1,
+  },
+  carouselFrame: {
+    flex: 1,
+  },
+  lastSeen: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  skeletonBlock: {
+    backgroundColor: colors.surfaceSubtle,
+  },
+  skeletonLine: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.sm,
+  },
+  skeletonTitle: {
+    height: typography.heading.lineHeight,
+    width: '60%',
+  },
+  // The identity row's height is set by the PlateChip: plate line + chip padding.
+  skeletonIdentity: {
+    height: typography.plate.lineHeight + spacing.xs * 2,
+    width: '80%',
+  },
+  skeletonLastSeen: {
+    height: typography.caption.lineHeight,
+    width: '70%',
+  },
+  skeletonBounty: {
+    height: typography.heading.lineHeight,
+    width: '40%',
+  },
+  skeletonBountyCompact: {
+    height: typography.label.lineHeight,
+    width: '40%',
+  },
+});

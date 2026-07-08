@@ -15,6 +15,9 @@ export const colors = {
   primary: '#5B755D',
   primaryPressed: '#4C634E',
   accent: '#C97B5D',
+  // Darkened terracotta for TEXT at label/body sizes — accent itself is only
+  // ~3:1 on the warm background (fine for fills/large type, fails AA for text).
+  accentText: '#A05A3B',
   textPrimary: '#2B2926',
   textSecondary: '#6F6A62',
   border: '#E7E0D6',

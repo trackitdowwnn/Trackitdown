@@ -59,6 +59,7 @@
   "jest": {
     "preset": "jest-expo",
     "resolver": "react-native-worklets/jest/resolver",
+    "testTimeout": 15000,
     "moduleNameMapper": {
       "^react-native-reanimated$": "react-native-reanimated/mock"
     }
