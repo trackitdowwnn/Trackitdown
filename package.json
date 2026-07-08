@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.4",
+    "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.110.0",
     "expo": "~57.0.3",
@@ -54,6 +55,10 @@
   },
   "private": true,
   "jest": {
-    "preset": "jest-expo"
+    "preset": "jest-expo",
+    "resolver": "react-native-worklets/jest/resolver",
+    "moduleNameMapper": {
+      "^react-native-reanimated$": "react-native-reanimated/mock"
+    }
   }
 }

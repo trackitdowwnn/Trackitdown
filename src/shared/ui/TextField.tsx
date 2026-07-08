@@ -1,6 +1,7 @@
 /**
  * WHAT:  TextField — the app's controlled text-input primitive. A themed
- *        wrapper around React Native's TextInput with a FLOATING label,
+ *        wrapper around the host-provided TextInput (plain React Native
+ *        everywhere, sheet-aware inside a BottomSheet) with a FLOATING label,
  *        helper/error text, focus states, and keyboard/format variants (text,
  *        multiline, email, plate).
  * WHY:   Forms are everywhere (posting stepper, auth, chat, bounty entry) and
@@ -15,7 +16,7 @@
  *        *formats* input (uppercase + letter-spacing); plate validation lives at
  *        the form layer.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour, Typography, Forms, Accessibility);
- *        src/shared/theme.
+ *        src/shared/theme; src/shared/ui/TextInputHost.ts (input host).
  *
  * Usage:
  *   <TextField
@@ -36,12 +37,12 @@ import {
   Easing,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type TextInputProps,
 } from 'react-native';
 
 import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
+import { HostTextInput } from './TextInputHost';
 
 // Derive the focus/blur event types from TextInput itself so we stay correct
 // across React Native versions (RN split these into FocusEvent/BlurEvent).
@@ -222,7 +223,9 @@ export function TextField({
           </Animated.Text>
         ) : null}
 
-        <TextInput
+        {/* Plain TextInput everywhere, swapped for the sheet-aware input inside
+            a BottomSheet so the sheet rises with the keyboard (TextInputHost). */}
+        <HostTextInput
           value={value}
           onChangeText={handleChangeText}
           onFocus={handleFocus}
