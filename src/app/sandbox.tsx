@@ -14,11 +14,13 @@ import { type ReactNode, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useFullscreenLoader } from '@/shared/hooks';
 import { colors, radii, spacing, typography } from '@/shared/theme';
 import type { PostSummary } from '@/shared/types';
 import {
   BottomSheet,
   Button,
+  FullscreenLoader,
   SelectField,
   SkeletonVehicleCard,
   TextField,
@@ -26,6 +28,8 @@ import {
   type BottomSheetRef,
   type SelectOption,
 } from '@/shared/ui';
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Mock feed exercising the card's states; picsum photos are dev-only. */
 const photo = (seed: number) => ({ uri: `https://picsum.photos/seed/car${seed}/800/600` });
@@ -150,6 +154,18 @@ export default function SandboxScreen() {
   const [make, setMake] = useState<string | null>(null);
   const [carColour, setCarColour] = useState<string | null>(null);
   const [lastTappedPost, setLastTappedPost] = useState<string | null>(null);
+  const { loaderProps, run, update } = useFullscreenLoader();
+  const [loaderOutcome, setLoaderOutcome] = useState('—');
+
+  const runLoaderDemo = async (operation: () => Promise<void>, initialMessage?: string) => {
+    try {
+      await run(operation, initialMessage);
+      setLoaderOutcome('resolved');
+    } catch (error) {
+      // The loader has ALREADY hidden itself by the time we get here.
+      setLoaderOutcome(`failed: ${(error as Error).message}`);
+    }
+  };
 
   const basicSheetRef = useRef<BottomSheetRef>(null);
   const tallSheetRef = useRef<BottomSheetRef>(null);
@@ -275,6 +291,33 @@ export default function SandboxScreen() {
           </Text>
         </Section>
 
+        <Section title="FullscreenLoader · blocking waits only">
+          <Button
+            label="3s operation, two messages"
+            onPress={() =>
+              runLoaderDemo(async () => {
+                await wait(1500);
+                update('Processing payment…');
+                await wait(1500);
+              }, 'Uploading photos…')
+            }
+          />
+          <Button
+            label="Instant operation (600ms minimum)"
+            onPress={() => runLoaderDemo(async () => {})}
+          />
+          <Button
+            label="Failing operation (always hides)"
+            onPress={() =>
+              runLoaderDemo(async () => {
+                await wait(1200);
+                throw new Error('card declined');
+              }, 'Processing payment…')
+            }
+          />
+          <Text style={styles.sectionNote}>Last outcome: {loaderOutcome}</Text>
+        </Section>
+
         <Section title="VehicleCard · skeleton + compact">
           <View style={styles.feed}>
             <SkeletonVehicleCard />
@@ -307,6 +350,8 @@ export default function SandboxScreen() {
           </Text>
         ))}
       </BottomSheet>
+
+      <FullscreenLoader {...loaderProps} testID="sandbox-loader" />
 
       <BottomSheet ref={formSheetRef} title="Form sheet">
         <Text style={styles.sheetBody}>

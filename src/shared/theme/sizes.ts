@@ -24,6 +24,8 @@ export const sizes = {
   progressPill: 24,
   /** Minimum touch target (DESIGN_SYSTEM Accessibility). */
   touchTarget: 44,
+  /** FullscreenLoader wave dot. */
+  loaderDot: 12,
 } as const;
 
 export type SizeToken = keyof typeof sizes;
