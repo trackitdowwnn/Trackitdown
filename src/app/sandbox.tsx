@@ -20,6 +20,7 @@ import type { PostSummary } from '@/shared/types';
 import {
   BottomSheet,
   Button,
+  DateTimeField,
   FullscreenLoader,
   SelectField,
   SkeletonVehicleCard,
@@ -30,6 +31,9 @@ import {
 } from '@/shared/ui';
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Module-level (render must stay pure): the plain demo field allows a year ahead.
+const A_YEAR_AHEAD = new Date(Date.now() + 365 * 24 * 3600_000);
 
 /** Mock feed exercising the card's states; picsum photos are dev-only. */
 const photo = (seed: number) => ({ uri: `https://picsum.photos/seed/car${seed}/800/600` });
@@ -156,6 +160,8 @@ export default function SandboxScreen() {
   const [lastTappedPost, setLastTappedPost] = useState<string | null>(null);
   const { loaderProps, run, update } = useFullscreenLoader();
   const [loaderOutcome, setLoaderOutcome] = useState('—');
+  const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
+  const [anyTime, setAnyTime] = useState<string | null>(null);
 
   const runLoaderDemo = async (operation: () => Promise<void>, initialMessage?: string) => {
     try {
@@ -289,6 +295,27 @@ export default function SandboxScreen() {
           <Text style={styles.sectionNote}>
             Last tapped: {lastTappedPost ?? '—'} (swiping photos must not count as a tap)
           </Text>
+        </Section>
+
+        <Section title="DateTimeField · last-seen presets (max = now)">
+          <DateTimeField
+            label="When did you last see it?"
+            value={lastSeenAt}
+            onChange={setLastSeenAt}
+            helperText="Roughly is fine"
+          />
+          <Text style={styles.sectionNote}>ISO: {lastSeenAt ?? '—'}</Text>
+        </Section>
+
+        <Section title="DateTimeField · plain, no presets">
+          <DateTimeField
+            label="Pick any date & time"
+            value={anyTime}
+            onChange={setAnyTime}
+            presets={[]}
+            maxDate={A_YEAR_AHEAD}
+          />
+          <Text style={styles.sectionNote}>ISO: {anyTime ?? '—'}</Text>
         </Section>
 
         <Section title="FullscreenLoader · blocking waits only">

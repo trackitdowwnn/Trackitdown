@@ -5,6 +5,7 @@
  * LINKS: docs/ARCHITECTURE.md (shared/lib).
  */
 
+export { formatDateTimeLabel } from './dateTimeLabel';
 export { createLogger, type LogEntry, type LogSink } from './logger';
 export { formatPounds } from './money';
 export { timeAgo } from './timeAgo';

@@ -20,7 +20,10 @@ jest.mock('react-native-safe-area-context', () =>
 );
 
 // Mock at the boundary: SelectScreen needs Animated.View, the slide/fade
-// builders (chainable no-ops here), Easing, and ReduceMotion.
+// builders (chainable no-ops here), Easing, and ReduceMotion. withCallback
+// callbacks are CAPTURED so tests can fire them late, the way Reanimated
+// fires a stale exit callback on-device after a fast close→reopen.
+const mockExitCallbacks: ((finished: boolean) => void)[] = [];
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const { View } = require('react-native');
@@ -29,7 +32,10 @@ jest.mock('react-native-reanimated', () => {
     chain.duration = () => chain;
     chain.easing = () => chain;
     chain.reduceMotion = () => chain;
-    chain.withCallback = () => chain;
+    chain.withCallback = (callback: (finished: boolean) => void) => {
+      mockExitCallbacks.push(callback);
+      return chain;
+    };
     return chain;
   };
   return {
@@ -144,6 +150,43 @@ describe('SelectScreen', () => {
       jest.advanceTimersByTime(300); // past MOTION_MS
     });
     expect(view.toJSON()).toBeNull();
+  });
+
+  it('survives a stale exit callback landing after a fast close→reopen (regression)', async () => {
+    const { view } = await renderScreen();
+    const rerenderWith = (visible: boolean) =>
+      view.rerender(
+        <SelectScreen
+          visible={visible}
+          title="Car make"
+          options={MAKES}
+          value={null}
+          onSelect={jest.fn()}
+          onClose={jest.fn()}
+        />,
+      );
+
+    // Close, then reopen before the exit animation would have finished.
+    await act(async () => {
+      rerenderWith(false);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(100);
+      rerenderWith(true);
+    });
+
+    // On-device, Reanimated now fires the OLD exit animation's callback.
+    // It must NOT unmount the reopened screen…
+    await act(async () => {
+      mockExitCallbacks.forEach((callback) => callback(true));
+    });
+    expect(view.getByText('BMW')).toBeTruthy();
+
+    // …and the screen must still be recoverable/usable afterwards.
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(view.getByText('BMW')).toBeTruthy();
   });
 
   it('cancels the pending unmount when reopened within the exit window', async () => {

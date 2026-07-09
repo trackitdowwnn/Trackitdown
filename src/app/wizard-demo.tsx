@@ -6,18 +6,17 @@
  * WHY:   The framework is shared infrastructure with no user-facing flow
  *        yet; this route is its playground until the posting stepper
  *        consumes it. Like sandbox.tsx it is a dev screen — remove or gate
- *        before launch. (Sandbox precedent: dev screens keep their demo
- *        content in the route file.)
+ *        before launch. Steps compose shared components (TextField,
+ *        ChoiceChips) exactly as a real flow would.
  * LINKS: src/shared/wizard (the framework under demo); src/app/sandbox.tsx
  *        (entry link).
  */
 
 import { useRouter } from 'expo-router';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert } from 'react-native';
 import { z } from 'zod';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
-import { TextField } from '@/shared/ui';
+import { ChoiceChips, TextField } from '@/shared/ui';
 import { WizardScreen, type WizardFlow, type WizardStepProps } from '@/shared/wizard';
 
 interface DemoAnswers {
@@ -43,8 +42,8 @@ function NameStep({ answers, setAnswers }: WizardStepProps<DemoAnswers>) {
 function ColourStep({ answers, setAnswers }: WizardStepProps<DemoAnswers>) {
   return (
     <ChoiceChips
-      options={COLOURS}
-      value={answers.colour}
+      options={COLOURS.map((label) => ({ value: label, label }))}
+      value={answers.colour ?? null}
       onSelect={(colour) => setAnswers({ colour })}
     />
   );
@@ -53,8 +52,8 @@ function ColourStep({ answers, setAnswers }: WizardStepProps<DemoAnswers>) {
 function ContactStep({ answers, setAnswers }: WizardStepProps<DemoAnswers>) {
   return (
     <ChoiceChips
-      options={CONTACT_OPTIONS}
-      value={answers.contact}
+      options={CONTACT_OPTIONS.map((label) => ({ value: label, label }))}
+      value={answers.contact ?? null}
       onSelect={(contact) => setAnswers({ contact })}
     />
   );
@@ -129,61 +128,3 @@ export default function WizardDemoScreen() {
   );
 }
 
-/** Single-select chips — demo-local; promote to shared/ui when a real flow needs it. */
-function ChoiceChips({
-  options,
-  value,
-  onSelect,
-}: {
-  options: string[];
-  value: string | undefined;
-  onSelect: (option: string) => void;
-}) {
-  return (
-    <View style={styles.chips} accessibilityRole="radiogroup">
-      {options.map((option) => {
-        const selected = option === value;
-        return (
-          <Pressable
-            key={option}
-            accessibilityRole="radio"
-            accessibilityLabel={option}
-            accessibilityState={{ checked: selected }}
-            onPress={() => onSelect(option)}
-            style={[styles.chip, selected && styles.chipSelected]}
-          >
-            <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>
-              {option}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chip: {
-    minHeight: sizes.touchTarget,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipSelected: {
-    backgroundColor: colors.primary,
-  },
-  chipLabel: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  chipLabelSelected: {
-    color: colors.textOnPrimary,
-  },
-});

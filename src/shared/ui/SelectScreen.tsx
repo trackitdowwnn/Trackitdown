@@ -112,6 +112,14 @@ export function SelectScreen<V extends string | number>({
       setDebouncedQuery('');
     }
   }
+  // Reanimated can deliver a close's exit callback AFTER a fast reopen;
+  // letting it knock `mounted` false while `visible` is true would blank the
+  // reopened screen for good (the parent has no reason to flip `visible`
+  // again). Re-assert during render — React discards this pass and retries —
+  // so a stale unmount never commits.
+  if (visible && !mounted) {
+    setMounted(true);
+  }
   // Fallback unmount for the close animation; the exit callback below
   // normally lands first (see exiting= on the sheet).
   useEffect(() => {

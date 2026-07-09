@@ -95,9 +95,30 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
   // would not move.
   const keyboardLift = useAndroidKeyboardHeight();
 
+  // Whether the sheet is presented (or presenting/dismissing). Calling the
+  // library's dismiss() on a NON-presented modal wedges it permanently: its
+  // internal status becomes DISMISSING with no animation to complete it, and
+  // every later present() is silently skipped. close() must therefore be a
+  // no-op unless the sheet was actually opened (verified against
+  // @gorhom/bottom-sheet 5.2.14, BottomSheetModal handleDismiss/
+  // handlePortalRender).
+  const presentedRef = useRef(false);
+
+  const handleModalDismiss = useCallback(() => {
+    presentedRef.current = false;
+    onDismiss?.();
+  }, [onDismiss]);
+
   useImperativeHandle(ref, () => ({
-    open: () => modalRef.current?.present(),
-    close: () => modalRef.current?.dismiss(),
+    open: () => {
+      presentedRef.current = true;
+      modalRef.current?.present();
+    },
+    close: () => {
+      if (presentedRef.current) {
+        modalRef.current?.dismiss();
+      }
+    },
   }));
 
   const animationConfigs = useBottomSheetTimingConfigs({
@@ -125,7 +146,7 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
   return (
     <BottomSheetModal
       ref={modalRef}
-      onDismiss={onDismiss}
+      onDismiss={handleModalDismiss}
       enablePanDownToClose
       enableDynamicSizing
       maxDynamicContentSize={windowHeight * MAX_HEIGHT_RATIO}

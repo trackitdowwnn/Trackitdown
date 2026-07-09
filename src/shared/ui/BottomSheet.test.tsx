@@ -38,12 +38,21 @@ jest.mock('@gorhom/bottom-sheet', () => {
   class VisibilityAwareBottomSheetModal extends React.Component {
     state = { visible: false };
 
+    // Faithful to @gorhom/bottom-sheet 5.2.14: dismiss() on a NON-presented
+    // modal wedges its status machine (DISMISSING with no animation to
+    // finish), after which present() is silently ignored forever.
+    wedged = false;
+
     present = () => {
+      if (this.wedged) return;
       this.setState({ visible: true });
     };
 
     dismiss = () => {
-      if (!this.state.visible) return;
+      if (!this.state.visible) {
+        this.wedged = true;
+        return;
+      }
       this.setState({ visible: false });
       this.props.onDismiss?.();
     };
@@ -149,6 +158,25 @@ describe('BottomSheet', () => {
     await act(async () => sheetRef.current?.close());
 
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('close() while not presented must not wedge the modal (regression)', async () => {
+    // The real library permanently ignores present() after a dismiss() on a
+    // non-presented modal — this froze DateTimeField after its Android
+    // dialog flow committed. close() must be a no-op unless open.
+    const { sheetRef, view } = renderSheet({ title: 'Filters' });
+    const { findByText } = await view;
+
+    await act(async () => sheetRef.current?.close()); // never opened
+    await act(async () => sheetRef.current?.open());
+    expect(await findByText('Sheet body')).toBeTruthy();
+
+    // And again after a legitimate open/close cycle: a second close() once
+    // already dismissed must not wedge the next open.
+    await act(async () => sheetRef.current?.close());
+    await act(async () => sheetRef.current?.close());
+    await act(async () => sheetRef.current?.open());
+    expect(await findByText('Sheet body')).toBeTruthy();
   });
 });
 
