@@ -26,6 +26,10 @@ export const sizes = {
   touchTarget: 44,
   /** FullscreenLoader wave dot. */
   loaderDot: 12,
+  /** MoneySlider: thumb diameter and rail thickness (the touchable row is
+   *  padded to touchTarget; these are the drawn sizes). */
+  sliderThumb: 28,
+  sliderTrack: 6,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

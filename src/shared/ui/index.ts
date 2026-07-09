@@ -35,6 +35,14 @@ export {
   type LocationPickerProps,
   type MapComponentProps,
 } from './LocationPicker';
+export {
+  MoneySlider,
+  defaultBountyPanelCopy,
+  penceAmountSchema,
+  type MoneySliderPanelCopy,
+  type MoneySliderProps,
+  type SnapStep,
+} from './MoneySlider';
 export { PlateChip, type PlateChipProps } from './PlateChip';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';

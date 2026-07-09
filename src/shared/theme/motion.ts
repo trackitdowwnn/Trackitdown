@@ -21,6 +21,8 @@ export const motion = {
   mapFly: 500,
   /** "Subtle scale on card press" (DESIGN_SYSTEM Motion). */
   pressScale: 0.98,
+  /** MoneySlider: thumb scale-up while grabbed. */
+  grabScale: 1.15,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */
   loaderMinVisible: 600,
   /** FullscreenLoader: one cycle of the calm three-dot wave. */

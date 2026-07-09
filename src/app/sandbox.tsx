@@ -22,9 +22,11 @@ import {
   BottomSheet,
   Button,
   DateTimeField,
+  defaultBountyPanelCopy,
   FullscreenLoader,
   LocationPicker,
   LocationPickerModal,
+  MoneySlider,
   SelectField,
   SkeletonVehicleCard,
   TextField,
@@ -173,6 +175,8 @@ export default function SandboxScreen() {
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
   const [anyTime, setAnyTime] = useState<string | null>(null);
   const [lastSeenLoc, setLastSeenLoc] = useState<LocationValue | null>(null);
+  const [bountyPence, setBountyPence] = useState(20000);
+  const [bareAmountPence, setBareAmountPence] = useState(10000);
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [approxOnly, setApproxOnly] = useState(true);
   const [confirmedAlertLoc, setConfirmedAlertLoc] = useState<LocationValue | null>(null);
@@ -333,6 +337,35 @@ export default function SandboxScreen() {
             maxDate={A_YEAR_AHEAD}
           />
           <Text style={styles.sectionNote}>ISO: {anyTime ?? '—'}</Text>
+        </Section>
+
+        <Section title="MoneySlider · bounty step (£50–£5,000, panel)">
+          <Text style={styles.wizardHeadline}>Set your bounty</Text>
+          <MoneySlider
+            label="Bounty"
+            valuePence={bountyPence}
+            onChangePence={setBountyPence}
+            minPence={5000}
+            maxPence={500000}
+            snapSteps={[{ upToPence: 50000, stepPence: 2500 }, { stepPence: 5000 }]}
+            panel={defaultBountyPanelCopy}
+            accessibilityLabel="Bounty amount"
+            testID="sandbox-bounty-slider"
+          />
+          <Text style={styles.sectionNote}>Raw pence: {bountyPence}</Text>
+        </Section>
+
+        <Section title="MoneySlider · bare (£0–£1,000, no panel)">
+          <MoneySlider
+            valuePence={bareAmountPence}
+            onChangePence={setBareAmountPence}
+            minPence={0}
+            maxPence={100000}
+            snapSteps={[{ stepPence: 1000 }]}
+            accessibilityLabel="Amount"
+            testID="sandbox-bare-slider"
+          />
+          <Text style={styles.sectionNote}>Raw pence: {bareAmountPence}</Text>
         </Section>
 
         <Section title="LocationPicker · embedded wizard step (last seen)">
