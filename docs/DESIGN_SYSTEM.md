@@ -15,6 +15,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `background` | `#FAF7F2` | app background — warm off-white |
 | `surface` | `#FFFFFF` | cards, sheets, inputs |
 | `surfaceSubtle` | `#F3EEE6` | secondary surfaces, chips |
+| `surfaceSubtlePressed` | `#E9E2D5` | pressed state of subtle-surface fills |
 | `primary` | `#5B755D` | sage green — primary buttons, links, active states (AA at label size on `background`) |
 | `primaryPressed` | `#4C634E` | pressed/hover state of primary |
 | `accent` | `#C97B5D` | terracotta — bounty fills, highlights, badges, large type |

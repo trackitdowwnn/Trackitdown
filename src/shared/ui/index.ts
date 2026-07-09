@@ -9,6 +9,17 @@ export { AppImage, type AppImageProps } from './AppImage';
 export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
 export { BountyTag, type BountyTagProps } from './BountyTag';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
+export {
+  ChoiceChips,
+  type ChoiceChipOption,
+  type ChoiceChipsProps,
+} from './ChoiceChips';
+export {
+  DEFAULT_DATE_TIME_PRESETS,
+  DateTimeField,
+  type DateTimeFieldProps,
+  type DateTimePreset,
+} from './DateTimeField';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { FullscreenLoader, type FullscreenLoaderProps } from './FullscreenLoader';
 export { PlateChip, type PlateChipProps } from './PlateChip';

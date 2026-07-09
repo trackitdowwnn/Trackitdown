@@ -10,6 +10,8 @@ export const colors = {
   background: '#FAF7F2',
   surface: '#FFFFFF',
   surfaceSubtle: '#F3EEE6',
+  // Pressed state of surfaceSubtle fills (chips) — border stays for hairlines.
+  surfaceSubtlePressed: '#E9E2D5',
   // One shade darker than the original #5F7A61 so label-size sage text passes
   // WCAG AA (4.5:1) on the warm background; white on it stays ~5.1:1.
   primary: '#5B755D',
