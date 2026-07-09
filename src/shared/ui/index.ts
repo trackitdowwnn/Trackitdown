@@ -43,6 +43,15 @@ export {
   type MoneySliderProps,
   type SnapStep,
 } from './MoneySlider';
+export {
+  PhotoGridPicker,
+  defaultOwnerPhotoCopy,
+  photoListSchema,
+  type PhotoGridCopy,
+  type PhotoGridPickerProps,
+  type PhotoTileStatus,
+  type PickedPhoto,
+} from './PhotoGridPicker';
 export { PlateChip, type PlateChipProps } from './PlateChip';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';
