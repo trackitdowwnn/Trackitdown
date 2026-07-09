@@ -27,11 +27,14 @@ import {
   LocationPicker,
   LocationPickerModal,
   MoneySlider,
+  PhotoGridPicker,
+  photoListSchema,
   SelectField,
   SkeletonVehicleCard,
   TextField,
   VehicleCard,
   type BottomSheetRef,
+  type PickedPhoto,
   type SelectOption,
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
@@ -177,6 +180,9 @@ export default function SandboxScreen() {
   const [lastSeenLoc, setLastSeenLoc] = useState<LocationValue | null>(null);
   const [bountyPence, setBountyPence] = useState(20000);
   const [bareAmountPence, setBareAmountPence] = useState(10000);
+  const [ownerPhotos, setOwnerPhotos] = useState<PickedPhoto[]>([]);
+  const [photoTipsDismissed, setPhotoTipsDismissed] = useState(false);
+  const [v5cPhotos, setV5cPhotos] = useState<PickedPhoto[]>([]);
   const [alertModalOpen, setAlertModalOpen] = useState(false);
   const [approxOnly, setApproxOnly] = useState(true);
   const [confirmedAlertLoc, setConfirmedAlertLoc] = useState<LocationValue | null>(null);
@@ -366,6 +372,47 @@ export default function SandboxScreen() {
             testID="sandbox-bare-slider"
           />
           <Text style={styles.sectionNote}>Raw pence: {bareAmountPence}</Text>
+        </Section>
+
+        <Section title="PhotoGridPicker · wizard photo step (min 3 / max 6)">
+          <Text style={styles.wizardHeadline}>Add photos of your car</Text>
+          <PhotoGridPicker
+            photos={ownerPhotos}
+            onChangePhotos={setOwnerPhotos}
+            minPhotos={3}
+            maxPhotos={6}
+            tipsVisible={!photoTipsDismissed}
+            onDismissTips={() => setPhotoTipsDismissed(true)}
+            testID="sandbox-owner-photos"
+          />
+          <Text style={styles.sectionNote}>
+            Valid (wizard Next): {photoListSchema(3, 6).safeParse(ownerPhotos).success ? 'yes' : 'no'}
+          </Text>
+          <Text style={styles.sectionNote}>
+            {ownerPhotos.length > 0
+              ? ownerPhotos.map((p, i) => `${i}: ${p.uri.slice(-24)}`).join('\n')
+              : 'No photos yet'}
+          </Text>
+        </Section>
+
+        <Section title="PhotoGridPicker · V5C upload (min 1 / max 1)">
+          <PhotoGridPicker
+            photos={v5cPhotos}
+            onChangePhotos={setV5cPhotos}
+            minPhotos={1}
+            maxPhotos={1}
+            allowCamera
+            copy={{
+              tips: undefined,
+              addLabel: 'Add your V5C photo',
+              addMore: () => 'A clear photo of the whole logbook page',
+              cameraLabel: 'Photograph it now',
+              permissionBody:
+                'To add a photo of your V5C logbook we need access to your photo library. You can allow this in Settings.',
+            }}
+            testID="sandbox-v5c-photo"
+          />
+          <Text style={styles.sectionNote}>URI: {v5cPhotos[0]?.uri.slice(-24) ?? '—'}</Text>
         </Section>
 
         <Section title="LocationPicker · embedded wizard step (last seen)">

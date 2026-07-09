@@ -23,6 +23,10 @@ export const motion = {
   pressScale: 0.98,
   /** MoneySlider: thumb scale-up while grabbed. */
   grabScale: 1.15,
+  /** PhotoGridPicker: tile scale-up while lifted for drag-to-reorder. */
+  liftScale: 1.05,
+  /** Hold duration (ms) before a long-press lifts an element into a drag. */
+  longPress: 350,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */
   loaderMinVisible: 600,
   /** FullscreenLoader: one cycle of the calm three-dot wave. */
