@@ -5,4 +5,11 @@
  * LINKS: docs/ARCHITECTURE.md (shared/types).
  */
 
+export type {
+  ForwardGeocodeResult,
+  GeoCoord,
+  GeoRegion,
+  LocationServices,
+  LocationValue,
+} from './location';
 export type { PostPhoto, PostStatus, PostSummary } from './posts';

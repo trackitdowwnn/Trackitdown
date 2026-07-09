@@ -15,6 +15,10 @@ export const motion = {
   fast: 200,
   /** Screen-scale moves: modals, sheets, wizard slides. */
   standard: 250,
+  /** Map fly-to (LocationPicker search pick / locate). A geographic camera
+   *  move legitimately runs longer than UI motion — a sanctioned exception to
+   *  the 200–250ms rule, named so it doesn't read as a magic number. */
+  mapFly: 500,
   /** "Subtle scale on card press" (DESIGN_SYSTEM Motion). */
   pressScale: 0.98,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */

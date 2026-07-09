@@ -15,13 +15,16 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useFullscreenLoader } from '@/shared/hooks';
+import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { colors, radii, spacing, typography } from '@/shared/theme';
-import type { PostSummary } from '@/shared/types';
+import type { LocationValue, PostSummary } from '@/shared/types';
 import {
   BottomSheet,
   Button,
   DateTimeField,
   FullscreenLoader,
+  LocationPicker,
+  LocationPickerModal,
   SelectField,
   SkeletonVehicleCard,
   TextField,
@@ -29,6 +32,7 @@ import {
   type BottomSheetRef,
   type SelectOption,
 } from '@/shared/ui';
+import { AppMap } from '@/shared/ui/AppMap';
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -146,6 +150,12 @@ const COLOUR_OPTIONS: SelectOption[] = [
   { value: 'gold', label: 'Gold', icon: <ColourDot colour={colors.warning} /> },
 ];
 
+// LocationPicker is driven by the real react-native-maps adapter (AppMap) and
+// the real expo-location geocoding (expoLocationServices). On Android the map
+// ONLY renders in a dev build (`npx expo run:android`) — Expo Go shows grey
+// tiles because its bundled Maps key is dead (expo/expo#39301). Web falls
+// back to AppMap.web (search-only).
+
 export default function SandboxScreen() {
   const router = useRouter();
   const [name, setName] = useState('');
@@ -162,6 +172,13 @@ export default function SandboxScreen() {
   const [loaderOutcome, setLoaderOutcome] = useState('—');
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
   const [anyTime, setAnyTime] = useState<string | null>(null);
+  const [lastSeenLoc, setLastSeenLoc] = useState<LocationValue | null>(null);
+  const [alertModalOpen, setAlertModalOpen] = useState(false);
+  const [approxOnly, setApproxOnly] = useState(true);
+  const [confirmedAlertLoc, setConfirmedAlertLoc] = useState<LocationValue | null>(null);
+
+  const formatLoc = (loc: LocationValue) =>
+    `${loc.latitude.toFixed(4)}, ${loc.longitude.toFixed(4)} · ${loc.addressLabel || '(pin location)'}`;
 
   const runLoaderDemo = async (operation: () => Promise<void>, initialMessage?: string) => {
     try {
@@ -318,6 +335,34 @@ export default function SandboxScreen() {
           <Text style={styles.sectionNote}>ISO: {anyTime ?? '—'}</Text>
         </Section>
 
+        <Section title="LocationPicker · embedded wizard step (last seen)">
+          <Text style={styles.wizardHeadline}>Where did you last see it?</Text>
+          <View style={styles.mapFrame}>
+            <LocationPicker
+              MapComponent={AppMap}
+              locationServices={expoLocationServices}
+              onLocationChange={setLastSeenLoc}
+            />
+          </View>
+          <View style={styles.fakeFooter}>
+            <Text style={styles.sectionNote}>
+              {lastSeenLoc?.isSettled
+                ? `Confirmed: ${formatLoc(lastSeenLoc)}`
+                : 'Move the map to enable Next'}
+            </Text>
+            <Button label="Next" onPress={() => {}} disabled={!lastSeenLoc?.isSettled} />
+          </View>
+        </Section>
+
+        <Section title="LocationPicker · full-screen modal (alert location)">
+          <Button label="Open alert-location picker" onPress={() => setAlertModalOpen(true)} />
+          <Text style={styles.sectionNote}>
+            {confirmedAlertLoc
+              ? `Confirmed: ${formatLoc(confirmedAlertLoc)} · approx area: ${approxOnly ? 'on' : 'off'}`
+              : '—'}
+          </Text>
+        </Section>
+
         <Section title="FullscreenLoader · blocking waits only">
           <Button
             label="3s operation, two messages"
@@ -391,6 +436,25 @@ export default function SandboxScreen() {
           onChangeText={setSheetName}
         />
       </BottomSheet>
+
+      <LocationPickerModal
+        visible={alertModalOpen}
+        title="Alert location"
+        MapComponent={AppMap}
+        locationServices={expoLocationServices}
+        initialLocation={{ latitude: 51.5074, longitude: -0.1278 }}
+        optionSlot={{
+          title: 'Use approximate area only',
+          caption: 'alerts still work, your exact home stays private',
+          value: approxOnly,
+          onValueChange: setApproxOnly,
+        }}
+        onConfirm={(value) => {
+          setConfirmedAlertLoc(value);
+          setAlertModalOpen(false);
+        }}
+        onCancel={() => setAlertModalOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -448,5 +512,16 @@ const styles = StyleSheet.create({
   },
   feed: {
     gap: spacing.xxl,
+  },
+  wizardHeadline: {
+    ...typography.heading,
+    color: colors.textPrimary,
+  },
+  mapFrame: {
+    height: 360,
+  },
+  fakeFooter: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
 });

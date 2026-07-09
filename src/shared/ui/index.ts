@@ -22,6 +22,19 @@ export {
 } from './DateTimeField';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { FullscreenLoader, type FullscreenLoaderProps } from './FullscreenLoader';
+export {
+  LocationPicker,
+  LocationPickerModal,
+  UK_DEFAULT_REGION,
+  locationValueSchema,
+  noopLocationServices,
+  settledLocationSchema,
+  type LocationOptionSlot,
+  type LocationPickerMap,
+  type LocationPickerModalProps,
+  type LocationPickerProps,
+  type MapComponentProps,
+} from './LocationPicker';
 export { PlateChip, type PlateChipProps } from './PlateChip';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';
