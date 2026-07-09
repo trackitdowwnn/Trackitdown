@@ -22,3 +22,7 @@ export const typography = {
 } as const satisfies Record<string, TextStyle>;
 
 export type TypographyToken = keyof typeof typography;
+
+/** Dynamic-type cap for display-size hero text (MoneySlider's amount readout):
+ *  it may grow with the user's setting, but never so far the row bursts. */
+export const displayFontScaleCap = 1.3;
