@@ -30,6 +30,13 @@ export const sizes = {
    *  padded to touchTarget; these are the drawn sizes). */
   sliderThumb: 28,
   sliderTrack: 6,
+  /** Standard icon size (tab bar, action rows). */
+  icon: 24,
+  /** AppTabBar content height, above the safe-area inset. */
+  tabBar: 56,
+  /** AppTabBar badge: dot diameter and count-pill height. */
+  badgeDot: 8,
+  badgePill: 16,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

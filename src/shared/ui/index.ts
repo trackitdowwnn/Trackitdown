@@ -6,6 +6,14 @@
  */
 
 export { AppImage, type AppImageProps } from './AppImage';
+export {
+  AppTabBar,
+  TabBadgeProvider,
+  useTabBadges,
+  type AppTabBarProps,
+  type AppTabConfig,
+} from './AppTabBar';
+export { badgeDisplay, type BadgeValue } from './appTabBarModel';
 export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
 export { BountyTag, type BountyTagProps } from './BountyTag';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';

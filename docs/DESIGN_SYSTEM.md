@@ -45,6 +45,8 @@ as decoration on "stolen" content.
   - `body` 16/24, Regular — default text
   - `caption` 13/18, Regular — metadata, timestamps
   - `label` 14/18, Medium — buttons, form labels
+  - `tabLabel` 11/14, Medium — **tab-bar item labels only**; the single
+    sanctioned size below `caption` (matches platform tab conventions)
 - Sentence case everywhere. No ALL CAPS except number plates, which render
   in a plate-style chip (bold, letter-spaced, `surfaceSubtle` background).
 
@@ -72,6 +74,11 @@ as decoration on "stolen" content.
 - **SafetyNotice** — reusable banner with the "report, don't approach"
   copy; required on sighting flows (see SECURITY_AND_TRUST.md).
 - **EmptyState** — friendly illustration + one-line explanation + action.
+- **AppTabBar** — bottom navigation: `surface` bar, hairline `border` top
+  edge, no shadow; 24pt icons (`sizes.icon`) over always-visible `tabLabel`
+  text; active `primary`, inactive `textSecondary`; badges in `accentText`
+  terracotta (dot or 1–9/"9+" pill). Bar body is `sizes.tabBar` (56) tall
+  plus safe area; press feedback is a subtle scale (`motion.tabPressScale`).
 
 ## Screen conventions
 

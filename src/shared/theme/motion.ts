@@ -25,6 +25,8 @@ export const motion = {
   grabScale: 1.15,
   /** PhotoGridPicker: tile scale-up while lifted for drag-to-reorder. */
   liftScale: 1.05,
+  /** AppTabBar: peak of the gentle icon spring on tab press. */
+  tabPressScale: 1.15,
   /** Hold duration (ms) before a long-press lifts an element into a drag. */
   longPress: 350,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */
