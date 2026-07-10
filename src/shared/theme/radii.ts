@@ -10,6 +10,8 @@ export const radii = {
   md: 12,
   lg: 16,
   xl: 24,
+  /** Fully round (circles, pills): RN has no 50% radius, so "big enough". */
+  full: 9999,
 } as const;
 
 export type RadiusToken = keyof typeof radii;
