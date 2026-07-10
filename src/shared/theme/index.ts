@@ -12,4 +12,9 @@ export { radii, type RadiusToken } from './radii';
 export { shadows, type ShadowToken } from './shadows';
 export { sizes, type SizeToken } from './sizes';
 export { opacity, type OpacityToken } from './opacity';
-export { displayFontScaleCap, typography, type TypographyToken } from './typography';
+export {
+  displayFontScaleCap,
+  tabLabelFontScaleCap,
+  typography,
+  type TypographyToken,
+} from './typography';
