@@ -14,6 +14,14 @@ export {
   type AppTabConfig,
 } from './AppTabBar';
 export { badgeDisplay, type BadgeValue } from './appTabBarModel';
+export { Avatar, type AvatarProps, type AvatarSize } from './Avatar';
+export {
+  ConfirmDialog,
+  type ConfirmDialogProps,
+  type ConfirmDialogRef,
+} from './ConfirmDialog';
+export { ListRow, type ListRowProps } from './ListRow';
+export { ToastProvider, useToast, type ToastKind } from './Toast';
 export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
 export { BountyTag, type BountyTagProps } from './BountyTag';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';

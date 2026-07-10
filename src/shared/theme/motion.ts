@@ -27,6 +27,8 @@ export const motion = {
   liftScale: 1.05,
   /** AppTabBar: peak of the gentle icon spring on tab press. */
   tabPressScale: 1.15,
+  /** Toast: how long a toast stays before auto-dismissing. */
+  toastVisible: 2500,
   /** Hold duration (ms) before a long-press lifts an element into a drag. */
   longPress: 350,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */

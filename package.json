@@ -10,6 +10,7 @@
     "@react-native-community/datetimepicker": "9.1.0",
     "@supabase/supabase-js": "^2.110.0",
     "expo": "~57.0.3",
+    "expo-clipboard": "~57.0.0",
     "expo-constants": "~57.0.3",
     "expo-device": "~57.0.0",
     "expo-font": "~57.0.0",
@@ -68,7 +69,8 @@
     "resolver": "react-native-worklets/jest/resolver",
     "testTimeout": 15000,
     "moduleNameMapper": {
-      "^react-native-reanimated$": "react-native-reanimated/mock"
+      "^react-native-reanimated$": "react-native-reanimated/mock",
+      "^lucide-react-native$": "<rootDir>/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js"
     }
   }
 }

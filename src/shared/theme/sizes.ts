@@ -32,6 +32,10 @@ export const sizes = {
   sliderTrack: 6,
   /** Standard icon size (tab bar, action rows). */
   icon: 24,
+  /** Avatar diameters: list rows / sheets / profile header. */
+  avatarSm: 32,
+  avatarMd: 48,
+  avatarLg: 72,
   /** AppTabBar content height, above the safe-area inset. */
   tabBar: 56,
   /** AppTabBar badge: dot diameter and count-pill height. */
