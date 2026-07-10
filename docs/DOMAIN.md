@@ -99,6 +99,22 @@ draft → pending_verification → active → recovery_claimed → recovered (pa
 - Counters on the profile: sightings reported, sightings marked helpful,
   recoveries credited. Badges at simple thresholds (1 / 5 / 25).
 - Reputation never affects payouts in v1. It is social proof only.
+- **Trusted spotter** (the headline trust marker, shown beside the name on
+  own and public profiles): at least 1 recovery credited AND at least 5
+  sightings marked helpful. Derived from the server-maintained counters —
+  never stored or set directly, so it cannot be forged client-side.
+- What an owner may see about a spotter: first name, avatar, reputation
+  counters/badges, trusted-spotter status, member-since. Nothing else — no
+  surname, location, or contact details (see SECURITY_AND_TRUST.md §1).
+
+## Account deletion
+
+- Users can delete their account in-app (App Store requirement). Deletion
+  is server-side (Edge Function) per SECURITY_AND_TRUST.md retention rules.
+- Deletion is BLOCKED while any of the user's posts has money in escrow —
+  status `active`, `pending_verification`, or `recovery_claimed`. The user
+  must cancel the post or complete its recovery first. The client may
+  pre-check to explain this kindly; the server check is the enforcement.
 
 ## Disputes
 

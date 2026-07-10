@@ -1,7 +1,7 @@
 /**
  * WHAT:  Root layout for the app — sets up the Expo Router navigation stack,
  *        applies the light/dark navigation theme, and mounts the app-wide
- *        gesture + bottom-sheet providers.
+ *        gesture, bottom-sheet, and toast providers.
  * WHY:   Every screen renders inside this layout; it is the single entry
  *        point Expo Router mounts. GestureHandlerRootView is required once at
  *        the root for react-native-gesture-handler, and
@@ -17,6 +17,8 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { ToastProvider } from '@/shared/ui';
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
@@ -24,8 +26,11 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <BottomSheetModalProvider>
-          <Stack screenOptions={{ headerShown: false }} />
-          <StatusBar style="auto" />
+          {/* ToastProvider hosts the single app-wide toast above all screens. */}
+          <ToastProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+            <StatusBar style="auto" />
+          </ToastProvider>
         </BottomSheetModalProvider>
       </ThemeProvider>
     </GestureHandlerRootView>

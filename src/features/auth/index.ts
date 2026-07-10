@@ -9,5 +9,6 @@
 // Storage helpers and slide data stay internal until a real consumer
 // (settings' "How Trackitdown works") needs them — no dead-end surface.
 export { useOnboardingGate, type OnboardingGateState } from './hooks/useOnboardingGate';
+export { useSession, type SessionState } from './hooks/useSession';
 export { AuthPlaceholderScreen } from './screens/AuthPlaceholderScreen';
 export { OnboardingScreen } from './screens/OnboardingScreen';
