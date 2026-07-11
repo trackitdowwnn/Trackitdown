@@ -117,7 +117,8 @@ describe('VehicleCard', () => {
   it('shows no badge on active posts and the mapped badge otherwise', async () => {
     const active = await render(<VehicleCard post={BASE_POST} onPress={() => {}} />);
     expect(active.queryByText('Recovered')).toBeNull();
-    expect(active.getByText(/Last seen 2h ago near Camden/)).toBeTruthy();
+    // Meta line merges identity + recency (Airbnb-reference anatomy).
+    expect(active.getByText(/Blue · last seen 2h ago near Camden/)).toBeTruthy();
 
     const recovered = await render(
       <VehicleCard post={{ ...BASE_POST, status: 'recovered' }} onPress={() => {}} />,
@@ -137,15 +138,30 @@ describe('VehicleCard', () => {
     expect(getByText('2.3 mi')).toBeTruthy();
   });
 
-  it('compact variant keeps title + bounty, drops plate and last-seen', async () => {
+  it('compact rail variant: full-line title, distance-led meta, bounty, no plate chip', async () => {
     const { getByText, queryByText } = await render(
       <VehicleCard post={BASE_POST} onPress={() => {}} variant="compact" />,
     );
 
     expect(getByText('BMW 3 Series')).toBeTruthy();
+    // Distance moves into the meta line (no standalone distance on the title
+    // row) and colour drops off rails.
+    expect(getByText('2.3 mi · last seen 2h ago')).toBeTruthy();
+    expect(queryByText('2.3 mi')).toBeNull();
+    expect(queryByText(/Blue ·/)).toBeNull();
     expect(getByText('£500 bounty')).toBeTruthy();
     expect(queryByText('AB12 CDE')).toBeNull();
-    expect(queryByText(/Last seen/)).toBeNull();
+  });
+
+  it('compact rail variant renders a static photo — no inner carousel or dots', async () => {
+    const { queryByTestId } = await render(
+      <VehicleCard post={BASE_POST} onPress={() => {}} variant="compact" />,
+    );
+
+    // BASE_POST has multiple photos, but rails must not nest a swipeable
+    // carousel inside the rail's own horizontal scroll.
+    expect(queryByTestId('vehicle-card-carousel')).toBeNull();
+    expect(queryByTestId('carousel-dot-0')).toBeNull();
   });
 
   it('degrades gracefully without distance, area, or photos', async () => {
@@ -159,7 +175,7 @@ describe('VehicleCard', () => {
       <VehicleCard post={bare} onPress={() => {}} />,
     );
 
-    expect(getByText('Last seen 2h ago')).toBeTruthy();
+    expect(getByText('Blue · last seen 2h ago')).toBeTruthy();
     expect(queryByText(/mi$/)).toBeNull();
     expect(getByRole('button').props.accessibilityLabel).not.toMatch(/away/);
   });

@@ -32,6 +32,11 @@ export const sizes = {
   sliderTrack: 6,
   /** Standard icon size (tab bar, action rows). */
   icon: 24,
+  /** Small inline icon (inside pills/chips, beside label-size text). */
+  iconSm: 18,
+  /** Small circled icon button (feed see-all chevron, future photo-corner
+   *  buttons). Drawn size only — pad the pressable up to touchTarget. */
+  circleButtonSm: 28,
   /** Avatar diameters: list rows / sheets / profile header. */
   avatarSm: 32,
   avatarMd: 48,

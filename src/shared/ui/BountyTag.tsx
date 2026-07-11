@@ -32,6 +32,9 @@ export function BountyTag({ bountyPence, size = 'md' }: BountyTagProps) {
   return (
     <Text
       accessibilityLabel={`${amount} bounty`}
+      // One line always: at narrow carousel widths + large dynamic type a
+      // wrapped bounty would make card heights uneven vs their skeletons.
+      numberOfLines={1}
       style={[styles.base, size === 'lg' ? styles.lg : styles.md]}
     >
       {amount} bounty

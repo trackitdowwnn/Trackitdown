@@ -31,6 +31,11 @@ export const colors = {
   danger: '#B4553F',
   dangerPressed: '#96462F',
   textOnPrimary: '#FFFFFF',
+  // The rare dark floating surface (the feed's map pill). Same ink value as
+  // textPrimary but named as a SURFACE so a text-colour tweak never silently
+  // restyles a fill.
+  surfaceInverse: '#2B2926',
+  surfaceInversePressed: '#403D39',
   overlay: 'rgba(43,41,38,0.45)',
 } as const;
 
