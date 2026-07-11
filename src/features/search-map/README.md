@@ -74,6 +74,52 @@ size 10, recovered window 30 days (mirrors the RPC), max 3 area carousels.
 `feed_section_impression` (once per section per load),
 `feed_location_change`. Coordinates pass through `redactLocation`.
 
-**Out of scope (v1)** — realtime updates (pull-to-refresh only),
+**Out of scope (home feed)** — realtime updates (pull-to-refresh only),
 personalised ranking, saved-cars section, category chips, ads/featured
-slots, the real map search itself, alert-settings storage.
+slots, alert-settings storage.
+
+---
+
+## Map search (replaces the MapSearchScreen stub)
+
+WHAT: The full-screen map + list search of ACTIVE stolen-car posts — the
+app's centrepiece. Route `/search-map` accepting `{ area?, query? }`
+(query reserved; text search is a follow-up). Actor: spotter. Read-only.
+
+**Anatomy (Airbnb map mechanics, our brand)**
+1. Full-bleed `AppMap` under everything; floating back button top-left.
+2. BOUNTY PINS — markers are terracotta pill tags (the amount), not dots;
+   the selected pin inverts to `surfaceInverse` (`components/MapPins.tsx`).
+3. CLUSTERING — supercluster (`lib/mapClustering.ts`) over the current
+   result set; clusters render as sage count bubbles; tapping zooms to fit.
+4. PIN ↔ CARD SYNC — tapping a pin raises the floating card pager (the map
+   VehicleCard variant); swiping it moves the selection and pans the camera
+   (`components/MapCardPager.tsx`, `hooks/useMapSelection.ts`).
+5. LIST-AS-SHEET — a persistent (non-modal) gorhom sheet at peek/half/full;
+   handle reads "N cars in this area" (server total); body is the full
+   VehicleCard list (`components/MapListSheet.tsx`).
+6. "SEARCH THIS AREA" — panning never auto-refreshes; a floating pill offers
+   to re-search the moved viewport (`hooks/useViewportPosts.ts`,
+   `lib/regionMath.ts` `movedEnough`).
+
+**Entry** — the Map/search pill frames the feed's resolved location at its
+radius; "See all → <Area>" forward-geocodes the town and centres there.
+
+**Data** — RPC `get_posts_in_viewport(min_lat, min_lng, max_lat, max_lng,
+limit)` → `{ total, posts }` with exact per-post `lat`/`lng`. SECURITY
+DEFINER, **status = 'active' ONLY** (SAFETY: exact coordinates are exposed,
+which is safe ONLY because active locations are already public under RLS —
+NEVER widen to other statuses; contrast the coarsened recovered section).
+Server LIMIT cap 100; bbox served by the GiST index. Client zod
+(`api/mapApi.ts`) hard-rejects any non-active status carrying coordinates.
+
+**States** — resolving: FullscreenLoader; loading: skeleton rows in the
+sheet; empty: "No stolen cars in this area" good-news EmptyState; error:
+`ErrorState` + retry in the sheet.
+
+**Logging** — `map_search_area` (bbox SPANS only, never corners),
+`map_pin_select` (postId), `map_cluster_zoom` (clusterId).
+
+**Out of scope (map search)** — working text search (the pill is a stub),
+recovered pins (locations coarsened), realtime, saved searches, drawing
+custom areas, heatmaps.

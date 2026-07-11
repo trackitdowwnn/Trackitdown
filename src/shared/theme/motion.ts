@@ -19,6 +19,9 @@ export const motion = {
    *  move legitimately runs longer than UI motion — a sanctioned exception to
    *  the 200–250ms rule, named so it doesn't read as a magic number. */
   mapFly: 500,
+  /** Shorter map follow-pan (search map: card swipe nudges the camera to the
+   *  next pin without a full fly-to). Also a sanctioned camera-move exception. */
+  mapPan: 350,
   /** "Subtle scale on card press" (DESIGN_SYSTEM Motion). */
   pressScale: 0.98,
   /** MoneySlider: thumb scale-up while grabbed. */

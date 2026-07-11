@@ -1,11 +1,13 @@
 /**
  * WHAT:  VehicleCard — the app's signature card for a stolen car, plus
- *        SkeletonVehicleCard matching its exact geometry. Two variants:
+ *        SkeletonVehicleCard matching its exact geometry. Three variants:
  *        `feed` (full-width: 4:3 swipeable photo carousel + dots, title +
- *        distance, muted identity meta line, PlateChip + bounty anchor row)
- *        and `compact` (rail card: SQUARE static photo — no inner carousel,
+ *        distance, muted identity meta line, PlateChip + bounty anchor row);
+ *        `compact` (rail card: SQUARE static photo — no inner carousel,
  *        it would fight the rail's scroll — full-line title, muted
- *        "distance · last seen …" meta, bounty line).
+ *        "distance · last seen …" meta, bounty line); `map` (the floating
+ *        card over the search map: photo-left row on a real surface with
+ *        the lifted shadow — the one variant that isn't borderless).
  * WHY:   Modelled on Airbnb's listing card, and like it deliberately
  *        BORDERLESS — no card surface, border, or shadow; the photo carries
  *        the card directly on the screen background (this is the Airbnb-
@@ -47,7 +49,7 @@ import { Pressable } from 'react-native-gesture-handler';
 
 import { useTimeAgo } from '../hooks';
 import { formatPounds } from '../lib';
-import { colors, motion, opacity, radii, sizes, spacing, typography } from '../theme';
+import { colors, motion, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
 import type { PostStatus, PostSummary } from '../types';
 import { AppImage } from './AppImage';
 import { BountyTag } from './BountyTag';
@@ -62,8 +64,9 @@ export interface VehicleCardProps {
   post: PostSummary;
   /** Opens the post detail. Swipes inside the carousel do NOT fire this. */
   onPress: () => void;
-  /** feed = full-width stack; compact = square-photo rail card. */
-  variant?: 'feed' | 'compact';
+  /** feed = full-width stack; compact = square-photo rail card;
+   *  map = the wide photo-left floating card over the search map. */
+  variant?: 'feed' | 'compact' | 'map';
 }
 
 /** Badge copy + colour per non-active status (active renders no badge). */
@@ -80,6 +83,7 @@ const STATUS_BADGES: Partial<Record<PostStatus, { label: string; color: string }
 
 function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps) {
   const compact = variant === 'compact';
+  const mapCard = variant === 'map';
   const badge = STATUS_BADGES[post.status];
   // Live-updating recency: the memoised card re-renders itself each minute,
   // so a feed left open never shows a stale "2m ago".
@@ -109,6 +113,50 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
   ]
     .filter(Boolean)
     .join(', ');
+
+  // Muted meta line shared by every variant: rails/map lead with distance
+  // (what a spotter scans for); the full-width card leads with identity.
+  const metaText =
+    compact || mapCard
+      ? [
+          post.distanceMiles !== undefined ? formatDistance(post.distanceMiles) : null,
+          `last seen ${lastSeen}`,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : `${post.colour} · last seen ${lastSeen}${post.lastSeenArea ? ` near ${post.lastSeenArea}` : ''}`;
+
+  if (mapCard) {
+    // Photo-left floating card: unlike the borderless feed cards this one
+    // rides OVER the map, so it needs a real surface and shadow.
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        onPress={onPress}
+        onPressIn={() => animatePress(true)}
+        onPressOut={() => animatePress(false)}
+        onTouchEnd={() => animatePress(false)}
+        onTouchCancel={() => animatePress(false)}
+        style={styles.card}
+      >
+        <Animated.View style={[styles.mapCard, { transform: [{ scale: pressScale }] }]}>
+          <View style={styles.mapPhoto}>
+            <PhotoCarousel post={post} staticOnly />
+          </View>
+          <View style={styles.mapText}>
+            <Text numberOfLines={1} style={styles.title}>
+              {post.make} {post.model}
+            </Text>
+            <Text numberOfLines={1} style={styles.metaLine}>
+              {metaText}
+            </Text>
+            <BountyTag bountyPence={post.bountyPence} size="md" />
+          </View>
+        </Animated.View>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -153,17 +201,9 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
           </View>
 
           {/* One muted meta line (Airbnb-reference anatomy), quiet under the
-              semibold title. Rails lead with distance (what a spotter scans
-              for); full-width cards lead with identity. */}
+              semibold title — content varies by variant via metaText. */}
           <Text numberOfLines={1} style={styles.metaLine}>
-            {compact
-              ? [
-                  post.distanceMiles !== undefined ? formatDistance(post.distanceMiles) : null,
-                  `last seen ${lastSeen}`,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')
-              : `${post.colour} · last seen ${lastSeen}${post.lastSeenArea ? ` near ${post.lastSeenArea}` : ''}`}
+            {metaText}
           </Text>
           {!compact ? (
             /* Anchor row: rigid PlateChip left, terracotta bounty right —
@@ -297,8 +337,29 @@ function PhotoCarousel({ post, staticOnly = false }: { post: PostSummary; static
 }
 
 /** Loading placeholder mirroring VehicleCard's geometry, so feeds don't jump. */
-export function SkeletonVehicleCard({ variant = 'feed' }: { variant?: 'feed' | 'compact' }) {
+export function SkeletonVehicleCard({
+  variant = 'feed',
+}: {
+  variant?: 'feed' | 'compact' | 'map';
+}) {
   const compact = variant === 'compact';
+  if (variant === 'map') {
+    return (
+      <View
+        accessible
+        accessibilityLabel="Loading post"
+        accessibilityState={{ busy: true }}
+        style={[styles.card, styles.mapCard]}
+      >
+        <View style={[styles.mapPhoto, styles.skeletonBlock]} />
+        <View style={styles.mapText}>
+          <View style={[styles.skeletonLine, styles.skeletonTitle]} />
+          <View style={[styles.skeletonLine, styles.skeletonMeta]} />
+          <View style={[styles.skeletonLine, styles.skeletonBountyCompact]} />
+        </View>
+      </View>
+    );
+  }
   return (
     <View
       accessible
@@ -334,9 +395,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSubtle,
   },
   photoAreaCompact: {
-    // Square-ish, photo-led rail card (reference feed anatomy). The future
-    // map floating card wants a WIDE image — that gets its own variant.
+    // Square-ish, photo-led rail card (reference feed anatomy).
     aspectRatio: 1,
+  },
+  // The floating map card: photo left, text right, on a real surface —
+  // it rides over the map, so it needs elevation the feed cards refuse.
+  mapCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    ...shadows.lifted,
+  },
+  mapPhoto: {
+    width: '38%',
+    aspectRatio: 1,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  mapText: {
+    flex: 1,
+    padding: spacing.md,
+    justifyContent: 'center',
+    gap: spacing.xs,
   },
   photo: {
     width: '100%',

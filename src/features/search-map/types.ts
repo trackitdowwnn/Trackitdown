@@ -1,12 +1,13 @@
 /**
- * WHAT:  Types owned by the search-map feature — feed sections as the
- *        get_home_feed RPC returns them, the flattened FlashList item union,
- *        and the resolved feed location.
+ * WHAT:  Types owned by the search-map feature — the home feed (sections as
+ *        get_home_feed returns them, the flattened FlashList item union, the
+ *        resolved feed location) AND the map search (MapPost with exact pin
+ *        coordinates, the viewport result, and the pin/cluster draw union).
  * WHY:   The feed renders ONE vertical FlashList, so sections must flatten
  *        into a discriminated item union whose `type` doubles as the
- *        FlashList getItemType (recycling pools per row shape). Keeping the
- *        section/location shapes here (not shared/) until a second feature
- *        needs them, per ARCHITECTURE.md.
+ *        FlashList getItemType (recycling pools per row shape). The map
+ *        shapes live here too since both surfaces are one feature. Kept out
+ *        of shared/ until a second feature needs them, per ARCHITECTURE.md.
  * LINKS: supabase/migrations/20260711130000_home_feed_location_and_rpcs.sql
  *        (RPC JSON shape); src/shared/types/posts.ts (PostSummary);
  *        src/features/search-map/lib/feedSections.ts (flattening).
@@ -52,3 +53,29 @@ export type FeedItem =
   | { type: 'carouselRow'; key: string; section: FeedSection };
 
 export type FeedItemType = FeedItem['type'];
+
+/** A post with its exact pin location — only ever ACTIVE posts (the
+ *  viewport RPC's safety predicate; active locations are public by design). */
+export interface MapPost extends PostSummary {
+  latitude: number;
+  longitude: number;
+}
+
+/** What get_posts_in_viewport returns: the sheet-handle total + one page. */
+export interface ViewportResult {
+  /** ALL matching active posts in the bbox ("23 cars in this area"). */
+  total: number;
+  posts: MapPost[];
+}
+
+/** One thing to draw on the map: a bounty pin or a cluster bubble. */
+export type MapPinItem =
+  | { type: 'post'; key: string; post: MapPost }
+  | {
+      type: 'cluster';
+      key: string;
+      clusterId: number;
+      count: number;
+      latitude: number;
+      longitude: number;
+    };
