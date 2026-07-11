@@ -50,6 +50,13 @@ draft → pending_verification → active → recovery_claimed → recovered (pa
 8. **rejected** — verification failed. Bounty refunded in full where
    possible. Post never went public.
 
+**Recovered-post visibility (social proof).** A post that reaches
+`recovered` or `recovered_no_spotter` stays publicly visible for **30 days
+after recovery** (e.g. the home feed's "Recently recovered" section), then
+drops off all public surfaces. Enforced server-side by the feed RPCs via
+`recovered_at`; ordinary public reads remain active-only under RLS.
+(Approved 2026-07-11 with the home-feed feature.)
+
 ## Bounty rules (v1 — deliberately simple)
 
 - Minimum bounty: £50. Maximum: £5,000 (fraud ceiling — revisit later).
