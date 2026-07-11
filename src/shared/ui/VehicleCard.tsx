@@ -1,9 +1,11 @@
 /**
- * WHAT:  VehicleCard — the app's signature feed card for a stolen car, plus
- *        SkeletonVehicleCard matching its exact geometry. A 4:3 rounded
- *        photo carousel with paging dots and a status badge, over a
- *        borderless text stack: "Make Model" + distance, colour + PlateChip,
- *        last-seen line, and the terracotta bounty anchor.
+ * WHAT:  VehicleCard — the app's signature card for a stolen car, plus
+ *        SkeletonVehicleCard matching its exact geometry. Two variants:
+ *        `feed` (full-width: 4:3 swipeable photo carousel + dots, title +
+ *        distance, muted identity meta line, PlateChip + bounty anchor row)
+ *        and `compact` (rail card: SQUARE static photo — no inner carousel,
+ *        it would fight the rail's scroll — full-line title, muted
+ *        "distance · last seen …" meta, bounty line).
  * WHY:   Modelled on Airbnb's listing card, and like it deliberately
  *        BORDERLESS — no card surface, border, or shadow; the photo carries
  *        the card directly on the screen background (this is the Airbnb-
@@ -13,7 +15,7 @@
  *        opens the post with the design system's 0.98 press scale. Badges
  *        only appear when the status isn't plain `active`, so the public
  *        feed stays calm and the owner's list stays informative. `compact`
- *        drops to image + title row + bounty for the map's floating card.
+ *        is the rail card (a future map floating card gets its own variant).
  *        Memoised for recycled list rows. The top-right image corner is
  *        reserved for a future save/watch toggle — layout leaves it clear.
  * LINKS: docs/DESIGN_SYSTEM.md (Card, Colour rules, Motion, Accessibility);
@@ -60,7 +62,7 @@ export interface VehicleCardProps {
   post: PostSummary;
   /** Opens the post detail. Swipes inside the carousel do NOT fire this. */
   onPress: () => void;
-  /** feed = full stack; compact = image + title row + bounty (map card). */
+  /** feed = full-width stack; compact = square-photo rail card. */
   variant?: 'feed' | 'compact';
 }
 
@@ -126,7 +128,9 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
           above carries everything, and children (incl. dots) aren't visited. */}
       <View>
         <View style={[styles.photoArea, compact && styles.photoAreaCompact]}>
-          <PhotoCarousel post={post} />
+          {/* Rail cards show ONE static photo: a swipeable carousel inside a
+              horizontal rail fights the rail's own scroll gesture. */}
+          <PhotoCarousel post={post} staticOnly={compact} />
           {badge ? (
             <View style={styles.badge}>
               <View style={[styles.badgeDot, { backgroundColor: badge.color }]} />
@@ -141,27 +145,36 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
             <Text numberOfLines={1} style={styles.title}>
               {post.make} {post.model}
             </Text>
-            {post.distanceMiles !== undefined ? (
+            {/* Rail cards give the title the full line; distance moves into
+                the meta line below (reference-card hierarchy). */}
+            {!compact && post.distanceMiles !== undefined ? (
               <Text style={styles.distance}>{formatDistance(post.distanceMiles)}</Text>
             ) : null}
           </View>
 
+          {/* One muted meta line (Airbnb-reference anatomy), quiet under the
+              semibold title. Rails lead with distance (what a spotter scans
+              for); full-width cards lead with identity. */}
+          <Text numberOfLines={1} style={styles.metaLine}>
+            {compact
+              ? [
+                  post.distanceMiles !== undefined ? formatDistance(post.distanceMiles) : null,
+                  `last seen ${lastSeen}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : `${post.colour} · last seen ${lastSeen}${post.lastSeenArea ? ` near ${post.lastSeenArea}` : ''}`}
+          </Text>
           {!compact ? (
-            <>
-              <View style={styles.identityRow}>
-                <Text numberOfLines={1} style={styles.colour}>
-                  {post.colour} ·
-                </Text>
-                <PlateChip plate={post.plate} />
-              </View>
-              <Text numberOfLines={1} style={styles.lastSeen}>
-                Last seen {lastSeen}
-                {post.lastSeenArea ? ` near ${post.lastSeenArea}` : ''}
-              </Text>
-            </>
-          ) : null}
-
-          <BountyTag bountyPence={post.bountyPence} size={compact ? 'md' : 'lg'} />
+            /* Anchor row: rigid PlateChip left, terracotta bounty right —
+               our equivalent of the reference card's price line. */
+            <View style={styles.plateBountyRow}>
+              <PlateChip plate={post.plate} />
+              <BountyTag bountyPence={post.bountyPence} size="lg" />
+            </View>
+          ) : (
+            <BountyTag bountyPence={post.bountyPence} size="md" />
+          )}
         </View>
       </View>
       </Animated.View>
@@ -178,8 +191,8 @@ function formatDistance(miles: number): string {
   return `${rounded} mi`;
 }
 
-function PhotoCarousel({ post }: { post: PostSummary }) {
-  const photos = post.photos.slice(0, MAX_PHOTOS);
+function PhotoCarousel({ post, staticOnly = false }: { post: PostSummary; staticOnly?: boolean }) {
+  const photos = post.photos.slice(0, staticOnly ? 1 : MAX_PHOTOS);
   const [activeIndex, setActiveIndex] = useState(0);
   // Measured, not assumed: compact map cards and future layouts won't share
   // the feed's width, and paging maths must match the real card width.
@@ -295,21 +308,15 @@ export function SkeletonVehicleCard({ variant = 'feed' }: { variant?: 'feed' | '
     >
       <View style={[styles.photoArea, compact && styles.photoAreaCompact, styles.skeletonBlock]} />
       <View style={styles.textStack}>
+        {/* Heights mirror the real rows exactly (title, meta caption line,
+            then the anchor row) so content swap-in never jumps. */}
         <View style={[styles.skeletonLine, styles.skeletonTitle]} />
+        <View style={[styles.skeletonLine, styles.skeletonMeta]} />
         {!compact ? (
-          <>
-            {/* Heights mirror the real rows exactly (PlateChip row, caption
-                line) so content swap-in causes zero layout jump. */}
-            <View style={[styles.skeletonLine, styles.skeletonIdentity]} />
-            <View style={[styles.skeletonLine, styles.skeletonLastSeen]} />
-          </>
-        ) : null}
-        <View
-          style={[
-            styles.skeletonLine,
-            compact ? styles.skeletonBountyCompact : styles.skeletonBounty,
-          ]}
-        />
+          <View style={[styles.skeletonLine, styles.skeletonPlateBounty]} />
+        ) : (
+          <View style={[styles.skeletonLine, styles.skeletonBountyCompact]} />
+        )}
       </View>
     </View>
   );
@@ -327,7 +334,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSubtle,
   },
   photoAreaCompact: {
-    aspectRatio: PHOTO_ASPECT_RATIO * 1.5, // shorter image for the map card
+    // Square-ish, photo-led rail card (reference feed anatomy). The future
+    // map floating card wants a WIDE image — that gets its own variant.
+    aspectRatio: 1,
   },
   photo: {
     width: '100%',
@@ -379,8 +388,10 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
   textStack: {
-    paddingTop: spacing.md,
-    gap: spacing.sm,
+    // Tight image→text gap and leading, per the Airbnb-reference anatomy:
+    // the photo is the hero, the text block hugs it.
+    paddingTop: spacing.sm,
+    gap: spacing.xs,
   },
   titleRow: {
     flexDirection: 'row',
@@ -389,7 +400,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   title: {
-    ...typography.heading,
+    ...typography.cardTitle,
     color: colors.textPrimary,
     flexShrink: 1,
   },
@@ -399,23 +410,19 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
-  identityRow: {
+  metaLine: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  plateBountyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-  },
-  colour: {
-    ...typography.body,
-    color: colors.textPrimary,
-    // Long colour names ("Santorini Black") shrink; the PlateChip stays rigid.
-    flexShrink: 1,
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    marginTop: spacing.xs, // a touch more air before the anchor row
   },
   carouselFrame: {
     flex: 1,
-  },
-  lastSeen: {
-    ...typography.caption,
-    color: colors.textSecondary,
   },
   skeletonBlock: {
     backgroundColor: colors.surfaceSubtle,
@@ -425,21 +432,19 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
   },
   skeletonTitle: {
-    height: typography.heading.lineHeight,
+    height: typography.cardTitle.lineHeight,
     width: '60%',
   },
-  // The identity row's height is set by the PlateChip: plate line + chip padding.
-  skeletonIdentity: {
-    height: typography.plate.lineHeight + spacing.xs * 2,
-    width: '80%',
-  },
-  skeletonLastSeen: {
+  skeletonMeta: {
     height: typography.caption.lineHeight,
     width: '70%',
   },
-  skeletonBounty: {
-    height: typography.heading.lineHeight,
-    width: '40%',
+  // The anchor row's height is set by the PlateChip: plate line + chip
+  // padding (taller than the bounty tag beside it), plus its top margin.
+  skeletonPlateBounty: {
+    height: typography.plate.lineHeight + spacing.xs * 2,
+    width: '100%',
+    marginTop: spacing.xs,
   },
   skeletonBountyCompact: {
     height: typography.label.lineHeight,

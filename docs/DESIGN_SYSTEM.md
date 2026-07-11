@@ -29,6 +29,8 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `danger` | `#B4553F` | destructive actions, errors (muted, not alarm-red) |
 | `dangerPressed` | `#96462F` | pressed state of danger |
 | `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
+| `surfaceInverse` | `#2B2926` | the rare dark floating surface (map pill) — same ink as `textPrimary`, named separately so text tweaks never restyle fills |
+| `surfaceInversePressed` | `#403D39` | pressed state of `surfaceInverse` |
 | `overlay` | `rgba(43,41,38,0.45)` | modal scrim |
 
 Rules: the accent terracotta is reserved for bounty/value moments so it
@@ -41,7 +43,11 @@ as decoration on "stolen" content.
 - Scale (size / line height / weight):
   - `display` 32/38, Bold — big moments ("Car recovered 🎉")
   - `title` 24/30, SemiBold — screen titles
-  - `heading` 18/24, SemiBold — card titles, section heads
+  - `sectionTitle` 20/26, SemiBold — feed section headers (added 2026-07-11;
+    sits between heading and title so scrolling feeds read in clear bands)
+  - `heading` 18/24, SemiBold — in-screen headings
+  - `cardTitle` 16/22, SemiBold — feed-card titles (added 2026-07-11; body
+    size at semibold weight, so photos stay the hero of a card)
   - `body` 16/24, Regular — default text
   - `caption` 13/18, Regular — metadata, timestamps
   - `label` 14/18, Medium — buttons, form labels
@@ -54,6 +60,10 @@ as decoration on "stolen" content.
 
 - Spacing scale (4pt base): `4, 8, 12, 16, 24, 32, 48`. Screens use 24px
   horizontal padding. Be generous — when in doubt, add space.
+  **Exception (approved 2026-07-11): image-led feed surfaces** (the Explore
+  home feed and future card grids) use a 16px gutter (`spacing.lg`) so
+  photo cards get the width — matching the reference feed pattern. Forms,
+  text screens, and settings keep 24px.
 - Radii: `sm` 8 (chips), `md` 12 (inputs, buttons), `lg` 16 (cards),
   `xl` 24 (sheets, modals).
 - Elevation: soft and subtle only —
