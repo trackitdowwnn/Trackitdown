@@ -113,7 +113,8 @@ function MapSearchBody({
 
   // Camera: uncontrolled map + this prop drives programmatic fly-tos only.
   const [camera, setCamera] = useState<GeoRegion>(entryRegion);
-  // The region the user last settled on (for cluster-zoom fallback framing).
+  // The current VIEW — the last user settle or programmatic fly-to target.
+  // Drives pin slicing and cluster-zoom fallback framing.
   const [settledRegion, setSettledRegion] = useState<GeoRegion>(entryRegion);
 
   const clusterIndex = useMemo(() => buildClusterIndex(result.posts), [result.posts]);
@@ -130,6 +131,21 @@ function MapSearchBody({
     [onRegionChange],
   );
 
+  // Programmatic fly-tos: AppMap deliberately does NOT report its own
+  // animations as settles (isGesture filter), so treat the TARGET as the
+  // settled view — pins re-slice for the new region and useViewportPosts'
+  // current-region ref stays honest ("Search this area" would otherwise
+  // compare against a pre-fly-to viewport). A later user gesture corrects
+  // any aspect-fit drift between target and actual.
+  const flyTo = useCallback(
+    (region: GeoRegion) => {
+      setCamera(region);
+      setSettledRegion(region);
+      onRegionChange(region);
+    },
+    [onRegionChange],
+  );
+
   const handlePressPost = useCallback(
     (id: string) => {
       selectPost(id);
@@ -140,10 +156,10 @@ function MapSearchBody({
 
   const handlePressCluster = useCallback(
     (clusterId: number) => {
-      setCamera(frameCoords(clusterMemberCoords(clusterIndex, clusterId), settledRegion));
+      flyTo(frameCoords(clusterMemberCoords(clusterIndex, clusterId), settledRegion));
       log.info('map_cluster_zoom', { clusterId });
     },
-    [clusterIndex, settledRegion],
+    [clusterIndex, settledRegion, flyTo],
   );
 
   const handlePagerSettle = useCallback(
@@ -151,10 +167,9 @@ function MapSearchBody({
       selectByIndex(index);
       const post = result.posts[index];
       if (post) {
-        // Follow the card: pan to the pin at the user's CURRENT zoom.
-        // `camera.latitudeDelta` is stale (only cluster-zoom/entry write it);
-        // the live span lives in settledRegion.
-        setCamera({
+        // Follow the card: pan to the pin at the user's CURRENT zoom
+        // (settledRegion holds the live span).
+        flyTo({
           latitude: post.latitude,
           longitude: post.longitude,
           latitudeDelta: settledRegion.latitudeDelta,
@@ -162,7 +177,7 @@ function MapSearchBody({
         });
       }
     },
-    [selectByIndex, result.posts, settledRegion],
+    [selectByIndex, result.posts, settledRegion, flyTo],
   );
 
   const openPost = useCallback((post: MapPost) => {
