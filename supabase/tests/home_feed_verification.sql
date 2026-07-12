@@ -12,7 +12,8 @@
 --     psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/tests/home_feed_verification.sql
 --
 -- (ON_ERROR_STOP=1 makes psql exit non-zero on the first RAISE.) Origin used
--- below: central Manchester (53.4808, -2.2426).
+-- below: central Manchester (53.4808, -2.2426). Checks 10–13 cover the
+-- map-viewport RPC (20260711190000_map_viewport_rpc.sql).
 -- =============================================================================
 
 
@@ -182,8 +183,8 @@ end $$;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 7 (belt-and-braces) — direct status-leak scan across BOTH RPCs at four
--- origins. Zero forbidden-status posts may appear.
+-- CHECK 7 (belt-and-braces) — direct status-leak scan across BOTH home-feed
+-- RPCs at four origins. Zero forbidden-status posts may appear.
 -- -----------------------------------------------------------------------------
 do $$
 declare
@@ -295,4 +296,108 @@ begin
     raise exception 'CHECK 9 FAILED: % recovered post(s) had non-whole-mile distance_miles', v_bad;
   end if;
   raise notice 'CHECK 9 passed: % recovered post(s), all whole-mile distances', v_total;
+end $$;
+
+
+-- =============================================================================
+-- Map-viewport RPC checks (get_posts_in_viewport).
+-- Manchester-only bbox: lat 53.47..53.49, lng -2.26..-2.23. It contains every
+-- Manchester seed row (7 active + the recovered + all 7 trap posts) but none of
+-- Salford/Stockport/Bury — so it exercises the active-only predicate directly.
+-- =============================================================================
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 10 — get_posts_in_viewport never returns a non-active post, even though
+-- the Manchester bbox physically contains the trap + recovered rows.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_nonactive integer;
+begin
+  with vp as (
+    select public.get_posts_in_viewport(53.47, -2.26, 53.49, -2.23, 100) as doc
+  ),
+  returned as (
+    select (post ->> 'id')::uuid as id
+    from vp, lateral jsonb_array_elements(doc -> 'posts') as post
+  )
+  select count(*) filter (where p.status <> 'active')
+    into v_nonactive
+  from returned r
+  join public.posts p on p.id = r.id;
+
+  if v_nonactive > 0 then
+    raise exception 'CHECK 10 FAILED: % non-active post(s) returned by get_posts_in_viewport', v_nonactive;
+  end if;
+  raise notice 'CHECK 10 passed: get_posts_in_viewport returned active posts only';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 11 — total counts ALL active posts in the bbox while posts respects the
+-- cap. Call with p_limit 2: total must exceed 2, and the array length is 2.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_doc jsonb;
+  v_total integer;
+  v_len   integer;
+begin
+  v_doc   := public.get_posts_in_viewport(53.47, -2.26, 53.49, -2.23, 2);
+  v_total := (v_doc ->> 'total')::integer;
+  v_len   := jsonb_array_length(v_doc -> 'posts');
+
+  if v_total <= 2 then
+    raise exception 'CHECK 11 FAILED: expected total > 2 active posts in the Manchester bbox, got %', v_total;
+  end if;
+  if v_len <> 2 then
+    raise exception 'CHECK 11 FAILED: p_limit 2 should return exactly 2 posts, got %', v_len;
+  end if;
+  raise notice 'CHECK 11 passed: total % counts all actives, posts capped to % by p_limit', v_total, v_len;
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 12 — degenerate bbox (min_lat > max_lat) returns an empty result.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_doc   jsonb;
+  v_total integer;
+  v_len   integer;
+begin
+  v_doc   := public.get_posts_in_viewport(53.49, -2.26, 53.47, -2.23, 100);  -- lat inverted
+  v_total := (v_doc ->> 'total')::integer;
+  v_len   := jsonb_array_length(v_doc -> 'posts');
+
+  if v_total <> 0 or v_len <> 0 then
+    raise exception 'CHECK 12 FAILED: degenerate bbox returned total %, % post(s); expected 0/0', v_total, v_len;
+  end if;
+  raise notice 'CHECK 12 passed: inverted bbox returns an empty result';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 13 — the bbox (&&) query uses the GiST index posts_last_seen_location_gix.
+-- Same forced-index-plan technique as CHECK 6.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_plan json;
+begin
+  set local enable_seqscan = off;
+  execute $q$
+    explain (format json)
+    select id
+    from public.posts
+    where status = 'active'
+      and last_seen_location is not null
+      and last_seen_location && ST_MakeEnvelope(-2.26, 53.47, -2.23, 53.49, 4326)::geography
+  $q$ into v_plan;
+
+  if position('posts_last_seen_location_gix' in v_plan::text) = 0 then
+    raise exception 'CHECK 13 FAILED: bbox && plan did not use posts_last_seen_location_gix. Plan: %', v_plan::text;
+  end if;
+  raise notice 'CHECK 13 passed: viewport bbox query uses the GiST index posts_last_seen_location_gix';
 end $$;

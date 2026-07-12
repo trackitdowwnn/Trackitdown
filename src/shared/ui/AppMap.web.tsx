@@ -8,12 +8,23 @@
  * LINKS: src/shared/ui/AppMap.tsx (native), src/shared/ui/LocationPicker.tsx.
  */
 
+import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, spacing, typography } from '../theme';
 import type { MapComponentProps } from './LocationPicker';
 
-export function AppMap(_props: MapComponentProps) {
+export interface AppMapExtraProps {
+  children?: ReactNode;
+  onPress?: () => void;
+}
+
+/** Web stub matching the native re-export — renders nothing. */
+export function AppMapMarker(_props: Record<string, unknown>) {
+  return null;
+}
+
+export function AppMap(_props: MapComponentProps & AppMapExtraProps) {
   return (
     <View style={styles.fallback}>
       <Text style={styles.text}>

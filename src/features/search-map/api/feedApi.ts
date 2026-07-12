@@ -29,7 +29,8 @@ const log = createLogger('search-map');
 // silently rendering).
 const visibleStatusSchema = z.enum(['active', 'recovered', 'recovered_no_spotter']);
 
-const rpcPostSchema = z.object({
+// Shared with mapApi (same post JSON shape from home_feed_post_json).
+export const rpcPostSchema = z.object({
   // guid, NOT uuid: Postgres's uuid type doesn't enforce RFC-4122
   // version/variant nibbles (fixed dev/seed ids legitimately fail z.uuid()).
   id: z.guid(),
@@ -57,7 +58,7 @@ const rpcFeedSchema = z.object({ sections: z.array(rpcSectionSchema) });
 
 type RpcPost = z.infer<typeof rpcPostSchema>;
 
-function toPostSummary(row: RpcPost): PostSummary {
+export function toPostSummary(row: RpcPost): PostSummary {
   return {
     id: row.id,
     photos: [], // no photo schema yet — cards render their placeholder

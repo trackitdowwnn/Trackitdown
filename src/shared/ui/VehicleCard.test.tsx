@@ -153,6 +153,25 @@ describe('VehicleCard', () => {
     expect(queryByText('AB12 CDE')).toBeNull();
   });
 
+  it('map variant: photo-left card with title, distance-led meta, bounty — static photo, no plate', async () => {
+    const { getByText, queryByText, queryByTestId, getByRole } = await render(
+      <VehicleCard post={BASE_POST} onPress={() => {}} variant="map" />,
+    );
+
+    expect(getByText('BMW 3 Series')).toBeTruthy();
+    expect(getByText('2.3 mi · last seen 2h ago')).toBeTruthy();
+    expect(getByText('£500 bounty')).toBeTruthy();
+    expect(queryByText('AB12 CDE')).toBeNull();
+    expect(queryByTestId('vehicle-card-carousel')).toBeNull();
+    // The combined a11y label still carries the plate for screen readers.
+    expect(getByRole('button').props.accessibilityLabel).toMatch(/plate/);
+  });
+
+  it('map skeleton renders without crashing (geometry twin)', async () => {
+    const { getByLabelText } = await render(<SkeletonVehicleCard variant="map" />);
+    expect(getByLabelText('Loading post')).toBeTruthy();
+  });
+
   it('compact rail variant renders a static photo — no inner carousel or dots', async () => {
     const { queryByTestId } = await render(
       <VehicleCard post={BASE_POST} onPress={() => {}} variant="compact" />,

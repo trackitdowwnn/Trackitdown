@@ -23,22 +23,37 @@
  *   <LocationPicker MapComponent={AppMap} locationServices={expoLocationServices} />
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 import type { MapComponentProps } from './LocationPicker';
 
-/** Below this degree delta we treat two regions as the same point (so a prop
- *  update that merely echoes where the user already panned starts no fly-to). */
+// The search map renders markers; re-exporting keeps react-native-maps
+// imported in exactly one native module (this file). Web resolves the
+// AppMap.web.tsx stub instead.
+export { Marker as AppMapMarker } from 'react-native-maps';
+
+/** Below this degree delta we treat two regions as the same VIEW (point and
+ *  zoom) — a prop update merely echoing where the user already is starts no
+ *  fly-to, but a zoom change at the same centre (cluster tap) still animates. */
 const SAME_POINT_EPSILON = 1e-6;
+
+export interface AppMapExtraProps {
+  /** Markers/overlays (the search map's pins). */
+  children?: ReactNode;
+  /** Tap on the map background (not a marker) — deselect, close cards. */
+  onPress?: () => void;
+}
 
 export function AppMap({
   region,
   animateDurationMs,
   onRegionChangeStart,
   onRegionChangeComplete,
-}: MapComponentProps) {
+  children,
+  onPress,
+}: MapComponentProps & AppMapExtraProps) {
   const mapRef = useRef<MapView>(null);
   // The region the map currently shows — lets us tell a prop-driven fly-to
   // apart from where the user already is.
@@ -53,8 +68,9 @@ export function AppMap({
     }
     const dLat = Math.abs(region.latitude - shownRef.current.latitude);
     const dLng = Math.abs(region.longitude - shownRef.current.longitude);
-    if (dLat < SAME_POINT_EPSILON && dLng < SAME_POINT_EPSILON) {
-      return; // already here (e.g. the map echoing back a user settle)
+    const dSpan = Math.abs(region.latitudeDelta - shownRef.current.latitudeDelta);
+    if (dLat < SAME_POINT_EPSILON && dLng < SAME_POINT_EPSILON && dSpan < SAME_POINT_EPSILON) {
+      return; // already showing this view (e.g. the map echoing a user settle)
     }
     shownRef.current = region;
     mapRef.current.animateToRegion(region, Math.max(animateDurationMs, 1));
@@ -68,6 +84,7 @@ export function AppMap({
       initialRegion={region}
       showsMyLocationButton={false}
       toolbarEnabled={false}
+      onPress={onPress}
       onRegionChange={(_next, details) => {
         if (!details.isGesture) {
           return; // frames from our own fly-to aren't a user pan
@@ -90,6 +107,8 @@ export function AppMap({
           longitudeDelta: next.longitudeDelta,
         });
       }}
-    />
+    >
+      {children}
+    </MapView>
   );
 }
