@@ -10,8 +10,8 @@
  * LINKS: src/shared/ui/AppTabBar.tsx; docs/DESIGN_SYSTEM.md.
  */
 
-import { Tabs } from 'expo-router';
-import { Car, Compass, MessageCircle, User } from 'lucide-react-native';
+import { Tabs, useRouter } from 'expo-router';
+import { Car, Compass, MessageCircle, Plus, User } from 'lucide-react-native';
 
 import {
   AppTabBar,
@@ -35,10 +35,24 @@ const APP_TABS: AppTabConfig[] = [
 
 function BadgedTabs() {
   const { badges } = useTabBadges();
+  const router = useRouter();
   return (
     <Tabs
       screenOptions={{ headerShown: false }}
-      tabBar={(props) => <AppTabBar {...props} tabs={APP_TABS} badges={badges} />}
+      tabBar={(props) => (
+        <AppTabBar
+          {...props}
+          tabs={APP_TABS}
+          badges={badges}
+          action={{
+            icon: Plus,
+            accessibilityLabel: 'Report a stolen car',
+            // Full-screen flow OUTSIDE the (tabs) group, so the tab bar is gone
+            // for the wizard (AppTabBar's hide contract isn't even needed here).
+            onPress: () => router.push('/post-a-car'),
+          }}
+        />
+      )}
     >
       <Tabs.Screen name="explore" />
       <Tabs.Screen name="my-cars" />

@@ -19,6 +19,7 @@ export {
   useTabBadges,
   type AppTabBarProps,
   type AppTabConfig,
+  type TabBarAction,
 } from './AppTabBar';
 export { badgeDisplay, type BadgeValue } from './appTabBarModel';
 export { Avatar, type AvatarProps, type AvatarSize } from './Avatar';
@@ -37,6 +38,11 @@ export {
   type ChoiceChipOption,
   type ChoiceChipsProps,
 } from './ChoiceChips';
+export {
+  ChoiceChipsMulti,
+  type ChoiceChipMultiOption,
+  type ChoiceChipsMultiProps,
+} from './ChoiceChipsMulti';
 export {
   DEFAULT_DATE_TIME_PRESETS,
   DateTimeField,

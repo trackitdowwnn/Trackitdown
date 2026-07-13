@@ -68,17 +68,39 @@ export interface AppTabConfig {
   badgeLabel?: (count: number) => string;
 }
 
+/**
+ * The prominent centre action (e.g. "Report a stolen car"). Not a tab — a
+ * one-tap ACTION that launches a full-screen flow, so it's a filled circle
+ * between the two halves of tabs, announced as a button, not a tab.
+ */
+export interface TabBarAction {
+  icon: LucideIcon;
+  accessibilityLabel: string;
+  onPress: () => void;
+  testID?: string;
+}
+
 export interface AppTabBarProps extends BottomTabBarProps {
   tabs: AppTabConfig[];
   /** Badge values keyed by AppTabConfig.badgeKey (from useTabBadges). */
   badges?: Record<string, BadgeValue>;
+  /** Optional centre action button, rendered between the two tab halves. */
+  action?: TabBarAction;
 }
 
 /** Icon stroke weights: lucide's outline look, weighted when active. */
 const STROKE_INACTIVE = 2;
 const STROKE_ACTIVE = 2.5;
 
-export function AppTabBar({ state, descriptors, navigation, insets, tabs, badges }: AppTabBarProps) {
+export function AppTabBar({
+  state,
+  descriptors,
+  navigation,
+  insets,
+  tabs,
+  badges,
+  action,
+}: AppTabBarProps) {
   // React Compiler opt-out: shared values are mutated from press handlers.
   'use no memo';
   const reduceMotion = useReducedMotion();
@@ -110,14 +132,19 @@ export function AppTabBar({ state, descriptors, navigation, insets, tabs, badges
       <View style={[styles.row, { paddingBottom: insets.bottom }]}>
         {/* Filter FIRST so "tab 2 of 4" counts visible tabs, not navigator
             routes — hidden utility screens must not skew spoken positions. */}
-        {state.routes
-          .map((route, navIndex) => ({
-            route,
-            navIndex,
-            config: tabs.find((tab) => tab.route === route.name),
-          }))
-          .filter((item) => item.config !== undefined)
-          .map(({ route, navIndex, config }, visibleIndex, visible) => {
+        {(() => {
+          const visible = state.routes
+            .map((route, navIndex) => ({
+              route,
+              navIndex,
+              config: tabs.find((tab) => tab.route === route.name),
+            }))
+            .filter((item) => item.config !== undefined);
+
+          const renderTab = (
+            { route, navIndex, config }: (typeof visible)[number],
+            visibleIndex: number,
+          ) => {
             const tabConfig = config as AppTabConfig;
             const badge = tabConfig.badgeKey ? badges?.[tabConfig.badgeKey] : undefined;
             return (
@@ -148,7 +175,21 @@ export function AppTabBar({ state, descriptors, navigation, insets, tabs, badges
                 }}
               />
             );
-          })}
+          };
+
+          if (!action) {
+            return visible.map((item, index) => renderTab(item, index));
+          }
+          // Split the tabs evenly around the centre action button.
+          const mid = Math.ceil(visible.length / 2);
+          return (
+            <>
+              {visible.slice(0, mid).map((item, index) => renderTab(item, index))}
+              <ActionButton action={action} reduceMotion={reduceMotion} />
+              {visible.slice(mid).map((item, index) => renderTab(item, mid + index))}
+            </>
+          );
+        })()}
       </View>
     </Animated.View>
   );
@@ -250,6 +291,40 @@ function TabItem({
   );
 }
 
+/** The prominent centre action — a filled primary circle with the same gentle
+ *  press spring as a tab, but announced as a button (an action, not a tab). */
+function ActionButton({ action, reduceMotion }: { action: TabBarAction; reduceMotion: boolean }) {
+  'use no memo';
+  const Icon = action.icon;
+  const pressScale = useSharedValue(1);
+
+  const handlePress = () => {
+    if (!reduceMotion) {
+      pressScale.value = withSequence(
+        withTiming(motion.tabPressScale, { duration: motion.fast / 2 }),
+        withTiming(1, { duration: motion.fast / 2, easing: Easing.out(Easing.cubic) }),
+      );
+    }
+    action.onPress();
+  };
+
+  const circleStyle = useAnimatedStyle(() => ({ transform: [{ scale: pressScale.value }] }));
+
+  return (
+    <Pressable
+      style={styles.action}
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={action.accessibilityLabel}
+      testID={action.testID ?? 'app-tab-action'}
+    >
+      <Animated.View style={[styles.actionCircle, circleStyle]}>
+        <Icon size={sizes.icon} color={colors.textOnPrimary} strokeWidth={STROKE_ACTIVE} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 // ---- Badge context ---------------------------------------------------------
 
 interface TabBadgesValue {
@@ -294,6 +369,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
+  },
+  // Same column share as a tab so the row stays balanced; the circle is the
+  // visible affordance, the whole column is the touch target.
+  action: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionCircle: {
+    width: sizes.control,
+    height: sizes.control,
+    borderRadius: sizes.control / 2,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconStack: {
     width: sizes.icon,
