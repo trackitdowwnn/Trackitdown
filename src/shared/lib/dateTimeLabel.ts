@@ -52,3 +52,23 @@ export function formatDateTimeLabel(iso: string, now: Date = new Date()): string
   });
   return `${day}, ${time}`;
 }
+
+/** Date only, no time: "8 Jul 2026" — for record-style labels (post detail's
+ *  "Posted" / "Active until"). @throws on an unparseable timestamp. */
+export function formatDateLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`formatDateLabel got an unparseable timestamp: ${iso}`);
+  }
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Month + year: "July 2026" — for "member since" style labels. @throws on
+ *  an unparseable timestamp. */
+export function formatMonthYear(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`formatMonthYear got an unparseable timestamp: ${iso}`);
+  }
+  return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}

@@ -52,10 +52,11 @@ import { Pressable } from 'react-native-gesture-handler';
 import { useTimeAgo } from '../hooks';
 import { formatPounds } from '../lib';
 import { colors, motion, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
-import type { PostStatus, PostSummary } from '../types';
+import type { PostSummary } from '../types';
 import { AppImage } from './AppImage';
 import { BountyTag } from './BountyTag';
 import { PlateChip, spellPlate } from './PlateChip';
+import { StatusBadge, statusBadgeLabel } from './StatusBadge';
 
 /** Cars are landscape subjects; every card photo is 4:3. */
 const PHOTO_ASPECT_RATIO = 4 / 3;
@@ -71,22 +72,10 @@ export interface VehicleCardProps {
   variant?: 'feed' | 'compact' | 'map';
 }
 
-/** Badge copy + colour per non-active status (active renders no badge). */
-const STATUS_BADGES: Partial<Record<PostStatus, { label: string; color: string }>> = {
-  draft: { label: 'Draft', color: colors.textSecondary },
-  pending_verification: { label: 'Pending', color: colors.warning },
-  recovery_claimed: { label: 'Recovery claimed', color: colors.warning },
-  recovered: { label: 'Recovered', color: colors.success },
-  recovered_no_spotter: { label: 'Recovered', color: colors.success },
-  cancelled: { label: 'Cancelled', color: colors.textSecondary },
-  expired: { label: 'Expired', color: colors.textSecondary },
-  rejected: { label: 'Rejected', color: colors.textSecondary },
-};
-
 function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps) {
   const compact = variant === 'compact';
   const mapCard = variant === 'map';
-  const badge = STATUS_BADGES[post.status];
+  const badgeLabel = statusBadgeLabel(post.status);
   // Live-updating recency: the memoised card re-renders itself each minute,
   // so a feed left open never shows a stale "2m ago".
   const lastSeen = useTimeAgo(post.lastSeenAt);
@@ -109,7 +98,7 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
     `${post.colour} ${post.make} ${post.model}`,
     `plate ${spellPlate(post.plate)}`,
     `${formatPounds(post.bountyPence)} bounty`,
-    badge ? badge.label.toLowerCase() : null,
+    badgeLabel ? badgeLabel.toLowerCase() : null,
     `last seen ${lastSeen}`,
     post.distanceMiles !== undefined ? `${formatDistance(post.distanceMiles)} away` : null,
   ]
@@ -188,10 +177,9 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
           {/* Rail cards show ONE static photo: a swipeable carousel inside a
               horizontal rail fights the rail's own scroll gesture. */}
           <PhotoCarousel post={post} staticOnly={compact} />
-          {badge ? (
-            <View style={styles.badge}>
-              <View style={[styles.badgeDot, { backgroundColor: badge.color }]} />
-              <Text style={styles.badgeLabel}>{badge.label}</Text>
+          {badgeLabel ? (
+            <View style={styles.badgePosition} pointerEvents="none">
+              <StatusBadge status={post.status} />
             </View>
           ) : null}
           {/* Top-right corner intentionally clear: future save/watch toggle. */}
@@ -438,26 +426,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badge: {
+  badgePosition: {
     position: 'absolute',
     top: spacing.md,
     left: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.surface,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  badgeDot: {
-    width: sizes.progressDot,
-    height: sizes.progressDot,
-    borderRadius: radii.sm,
-  },
-  badgeLabel: {
-    ...typography.label,
-    color: colors.textPrimary,
   },
   dots: {
     position: 'absolute',

@@ -18,6 +18,7 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 import { supabase } from '@/shared/api';
+import { avatarUrlFromPath } from '@/shared/lib/avatarUrl';
 import { createLogger } from '@/shared/lib/logger';
 
 import type { MyProfile, PublicProfile, ReputationCounters } from '../types';
@@ -45,17 +46,6 @@ interface ProfileRow {
   sightings_reported: number;
   sightings_helpful: number;
   recoveries_credited: number;
-}
-
-/** Build the display URL from the stored PATH (the DB pins the path to the
- *  user's own folder — see the migration's CHECK), cache-busted by
- *  updated_at so a replaced photo isn't served stale. */
-function avatarUrlFromPath(path: string | null, updatedAt: string): string | null {
-  if (!path) {
-    return null;
-  }
-  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-  return `${data.publicUrl}?v=${Date.parse(updatedAt) || 0}`;
 }
 
 const countersFromRow = (row: {

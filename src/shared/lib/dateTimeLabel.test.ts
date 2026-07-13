@@ -9,7 +9,7 @@
  * LINKS: src/shared/lib/dateTimeLabel.ts.
  */
 
-import { formatDateTimeLabel } from './dateTimeLabel';
+import { formatDateLabel, formatDateTimeLabel, formatMonthYear } from './dateTimeLabel';
 
 // A fixed local "now": Wednesday 8 July 2026, 15:00 local time.
 const NOW = new Date(2026, 6, 8, 15, 0);
@@ -35,5 +35,26 @@ describe('formatDateTimeLabel', () => {
 
   it('throws on unparseable input', () => {
     expect(() => formatDateTimeLabel('not a date', NOW)).toThrow(/unparseable/);
+  });
+});
+
+describe('formatDateLabel', () => {
+  it('renders a date-only label with day, short month, and year', () => {
+    // Noon UTC never crosses a day boundary in UK time zones.
+    expect(formatDateLabel('2026-07-08T12:00:00Z')).toBe('8 Jul 2026');
+  });
+
+  it('throws on unparseable input', () => {
+    expect(() => formatDateLabel('nope')).toThrow(/unparseable/);
+  });
+});
+
+describe('formatMonthYear', () => {
+  it('renders month and year only', () => {
+    expect(formatMonthYear('2025-01-05T00:00:00Z')).toBe('January 2025');
+  });
+
+  it('throws on unparseable input', () => {
+    expect(() => formatMonthYear('nope')).toThrow(/unparseable/);
   });
 });

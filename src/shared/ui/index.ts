@@ -5,6 +5,13 @@
  * LINKS: docs/DESIGN_SYSTEM.md (Core components).
  */
 
+export {
+  AppHeader,
+  AppHeaderButton,
+  HEADER_BAR_HEIGHT,
+  type AppHeaderButtonProps,
+  type AppHeaderProps,
+} from './AppHeader';
 export { AppImage, type AppImageProps } from './AppImage';
 export {
   AppTabBar,
@@ -70,10 +77,13 @@ export {
   type PickedPhoto,
 } from './PhotoGridPicker';
 export { PlateChip, type PlateChipProps } from './PlateChip';
+export { ReadMore, type ReadMoreProps } from './ReadMore';
+export { SafetyNotice } from './SafetyNotice';
 export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';
 export { type SelectOption } from './selectOptions';
+export { StatusBadge, statusBadgeLabel, type StatusBadgeProps } from './StatusBadge';
 export { TextField, type TextFieldProps, type TextFieldVariant } from './TextField';
 export {
   SkeletonVehicleCard,

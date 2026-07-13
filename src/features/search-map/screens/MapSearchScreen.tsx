@@ -60,18 +60,41 @@ const AREA_ENTRY_RADIUS_MILES = 5;
 
 export function MapSearchScreen() {
   const router = useRouter();
-  const { area } = useLocalSearchParams<{ area?: string; query?: string }>();
+  const { area, lat, lng } = useLocalSearchParams<{
+    area?: string;
+    query?: string;
+    lat?: string;
+    lng?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const { location } = useFeedLocation();
 
-  // Resolve the entry region ONCE: area geocode → feed location → UK.
+  // Resolve the entry region ONCE: exact lat/lng → area geocode → feed → UK.
   const [entryRegion, setEntryRegion] = useState<GeoRegion | null>(null);
   useEffect(() => {
-    if (entryRegion || !location) {
-      return; // resolved already, or the feed location is still resolving
+    if (entryRegion) {
+      return; // resolved already
+    }
+    // Precise-point entry ("Last seen here" on a post) resolves without the
+    // feed location; everything else waits for it.
+    const latNum = Number(lat);
+    const lngNum = Number(lng);
+    const hasCoords = Boolean(lat && lng && Number.isFinite(latNum) && Number.isFinite(lngNum));
+    if (!hasCoords && !location) {
+      return; // the feed location is still resolving
     }
     let cancelled = false;
+    // All setState lives inside the async body so the effect never sets state
+    // synchronously (which would risk cascading renders).
     (async () => {
+      if (hasCoords) {
+        if (!cancelled) {
+          setEntryRegion(
+            regionAround({ latitude: latNum, longitude: lngNum }, AREA_ENTRY_RADIUS_MILES),
+          );
+        }
+        return;
+      }
       if (area) {
         const hits = await expoLocationServices.forwardGeocode(area);
         if (!cancelled && hits.length > 0) {
@@ -79,7 +102,7 @@ export function MapSearchScreen() {
           return;
         }
       }
-      if (!cancelled) {
+      if (!cancelled && location) {
         setEntryRegion(
           location.mode === 'local'
             ? regionAround(location, location.radiusMiles || FEED_RADIUS_DEFAULT_MILES)
@@ -90,7 +113,7 @@ export function MapSearchScreen() {
     return () => {
       cancelled = true;
     };
-  }, [area, location, entryRegion]);
+  }, [area, lat, lng, location, entryRegion]);
 
   if (!entryRegion) {
     return (
@@ -120,6 +143,7 @@ function MapSearchBody({
   inset: number;
   insetBottom: number;
 }) {
+  const router = useRouter();
   const {
     status,
     result,
@@ -233,10 +257,13 @@ function MapSearchBody({
     return () => subscription.remove();
   }, [hasSelection, clear]);
 
-  const openPost = useCallback((post: MapPost) => {
-    // TODO(vehicles feature): route to the post detail once it exists.
-    log.debug('map_card_press', { postId: post.id });
-  }, []);
+  const openPost = useCallback(
+    (post: MapPost) => {
+      log.debug('map_card_press', { postId: post.id });
+      router.push(`/post/${post.id}`);
+    },
+    [router],
+  );
 
   return (
     <View style={styles.container}>
