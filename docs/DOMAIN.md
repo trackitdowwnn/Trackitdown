@@ -114,6 +114,49 @@ drops off all public surfaces. Enforced server-side by the feed RPCs via
   counters/badges, trusted-spotter status, member-since. Nothing else — no
   surname, location, or contact details (see SECURITY_AND_TRUST.md §1).
 
+## Owner identity on a post
+
+- A stolen-car post shows a limited owner-identity block (the trust anchor).
+  The owner is a theft **victim**, not a public host, so it is gated:
+  - **Signed-in viewers** see the owner's first name and member-since (an
+    initial-letter avatar, no photo).
+  - **Anonymous viewers** (logged-out browse of an active post) see a
+    de-identified "Verified owner" — member-since only, no name.
+- Never exposed to anyone: surname / `display_name`, email, the owner's other
+  posts, precise location, `owner_id`, or any contact path (chat opens only
+  after a sighting — see Chat). **No avatar photo**: the avatar path is pinned
+  to `<owner_id>/…`, so serving it would leak `owner_id` (and, via the
+  permissive `profiles` read policy, the surname) — restoring the photo needs
+  the profiles read path hardened first. Member-since is coarsened to the
+  month. Enforced server-side in `get_post_detail` (SECURITY_AND_TRUST.md §6).
+  (Approved 2026-07-13 with the post-detail content-density pass.)
+
+## Post content — structured fields (v1)
+
+A post carries structured, spotter-useful data beyond make/model/plate:
+
+- **Distinguishing features** — a curated, checkable taxonomy ("amenities"):
+  dents, roof rack, tow bar, tinted windows, aftermarket alloys, private plate,
+  dashcam, modified exhaust, etc. The canonical list is the `vehicle_feature`
+  table (key + label + category + icon); a post's selections live in
+  `post_feature`. Keyed so the same taxonomy powers **search filters** later.
+  Free-text `distinguishing_features` stays for posts that predate the taxonomy.
+- **Theft context** — `stolen_from` (driveway / street / car_park / other) and
+  `keys_taken` (yes / no / unknown). "Keys taken" is a real signal (a car with
+  its keys is likely being driven, not stripped). **SAFETY**: a `driveway`
+  theft's last-seen point IS the victim's **home**, so `get_post_detail`
+  coarsens that point to a ~1km grid for non-owners (the owner sees exact). The
+  map/feed RPCs (`get_posts_in_viewport`, `get_home_feed`, `get_nearby_posts`)
+  MUST apply the same coarsening before any real driveway-theft post goes live,
+  or the home leaks there — a hard blocker tracked with the posting flow.
+- **Guided descriptions** — structured prompts ("how you'd recognise it",
+  "how it drives / anything odd") replace the single free-text note for new
+  posts; the legacy `owner_note` still renders for older posts.
+
+All fields are nullable and captured by the posting wizard (not yet built);
+the detail screen renders each only when present, so old posts never break.
+(Approved 2026-07-13 with the post-detail content-density pass.)
+
 ## Account deletion
 
 - Users can delete their account in-app (App Store requirement). Deletion

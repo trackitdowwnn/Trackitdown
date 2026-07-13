@@ -17,6 +17,8 @@ import type { MapComponentProps } from './LocationPicker';
 export interface AppMapExtraProps {
   children?: ReactNode;
   onPress?: () => void;
+  /** Ignored on web (kept for prop parity with the native map). */
+  interactive?: boolean;
 }
 
 /** Web stub matching the native re-export — renders nothing. */

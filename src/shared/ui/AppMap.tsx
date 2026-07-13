@@ -44,6 +44,10 @@ export interface AppMapExtraProps {
   children?: ReactNode;
   /** Tap on the map background (not a marker) — deselect, close cards. */
   onPress?: () => void;
+  /** false = a static preview: all gestures off (pan/zoom/rotate/pitch), so
+   *  the map can't be dragged and doesn't fight a parent ScrollView. Default
+   *  true (the fully interactive picker/search map). */
+  interactive?: boolean;
 }
 
 export function AppMap({
@@ -53,6 +57,7 @@ export function AppMap({
   onRegionChangeComplete,
   children,
   onPress,
+  interactive = true,
 }: MapComponentProps & AppMapExtraProps) {
   const mapRef = useRef<MapView>(null);
   // The region the map currently shows — lets us tell a prop-driven fly-to
@@ -84,6 +89,12 @@ export function AppMap({
       initialRegion={region}
       showsMyLocationButton={false}
       toolbarEnabled={false}
+      // Static-preview mode (post-detail "Last seen here"): every gesture off
+      // so the card can't be panned and doesn't steal the page's scroll.
+      scrollEnabled={interactive}
+      zoomEnabled={interactive}
+      rotateEnabled={interactive}
+      pitchEnabled={interactive}
       // Android quirk pair: marker taps ALSO fire the map's onPress (tagged
       // 'marker-press'), which would instantly clear the selection the
       // marker tap just made — and the default marker-press camera recentre

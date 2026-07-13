@@ -108,10 +108,13 @@ export function HomeFeedScreen() {
     [router],
   );
 
-  const onPressPost = useCallback((post: PostSummary) => {
-    // TODO(vehicles feature): route to the post detail screen once it exists.
-    log.debug('feed_post_press', { postId: post.id });
-  }, []);
+  const onPressPost = useCallback(
+    (post: PostSummary) => {
+      log.debug('feed_post_press', { postId: post.id });
+      router.push(`/post/${post.id}`);
+    },
+    [router],
+  );
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const y = event.nativeEvent.contentOffset.y;
