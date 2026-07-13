@@ -27,6 +27,10 @@ export type MapSearchStatus = 'loading' | 'ready' | 'error';
 export interface UseViewportPostsResult {
   status: MapSearchStatus;
   result: ViewportResult;
+  /** The region the current results were searched in — updates only when
+   *  a search SUCCEEDS (drives peek-card distance ordering, so the order
+   *  must never shift under the user mid-browse from a mere pan). */
+  searchedRegion: GeoRegion;
   /** A re-search (the button) is in flight — results stay on screen. */
   searching: boolean;
   /** The viewport moved enough that "Search this area" should show. */
@@ -51,6 +55,9 @@ export function useViewportPosts(initialRegion: GeoRegion): UseViewportPostsResu
 
   const [status, setStatus] = useState<MapSearchStatus>('loading');
   const [result, setResult] = useState<ViewportResult>({ total: 0, posts: [] });
+  // State mirror of searchedRegionRef: consumers re-render (and re-sort)
+  // when a search lands; the ref stays for the region-compare callbacks.
+  const [searchedRegion, setSearchedRegion] = useState<GeoRegion>(initialRegion);
   const [searching, setSearching] = useState(false);
   const [showSearchArea, setShowSearchArea] = useState(false);
 
@@ -76,6 +83,7 @@ export function useViewportPosts(initialRegion: GeoRegion): UseViewportPostsResu
             return; // superseded — drop, never render stale
           }
           searchedRegionRef.current = region;
+          setSearchedRegion(region);
           setResult(fresh);
           setStatus('ready');
           setShowSearchArea(false);
@@ -121,5 +129,14 @@ export function useViewportPosts(initialRegion: GeoRegion): UseViewportPostsResu
     void runSearch(currentRegionRef.current, 'initial');
   }, [runSearch]);
 
-  return { status, result, searching, showSearchArea, onRegionChange, searchThisArea, retry };
+  return {
+    status,
+    result,
+    searchedRegion,
+    searching,
+    showSearchArea,
+    onRegionChange,
+    searchThisArea,
+    retry,
+  };
 }

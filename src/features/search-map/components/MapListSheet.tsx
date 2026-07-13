@@ -13,18 +13,21 @@
  *        docs/DESIGN_SYSTEM.md (feed-surface exception, radii, grabber).
  */
 
-import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
-import { memo, useMemo } from 'react';
+import BottomSheet, {
+  BottomSheetFlatList,
+  useBottomSheetTimingConfigs,
+} from '@gorhom/bottom-sheet';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { Easing } from 'react-native-reanimated';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
 import { EmptyState, ErrorState, SkeletonVehicleCard, VehicleCard } from '@/shared/ui';
 
 import type { MapPost } from '../types';
 
-/** Peek height as a fraction of the screen — the pager offsets from this so
- *  the two can't drift (exported for MapSearchScreen). */
-export const MAP_SHEET_PEEK_PERCENT = 12;
+/** Peek height as a fraction of the screen: shows the handle + label. */
+const MAP_SHEET_PEEK_PERCENT = 12;
 /** Peek shows the handle + label; half is browsing; full is list mode. */
 const SNAP_POINTS = [`${MAP_SHEET_PEEK_PERCENT}%`, '48%', '88%'];
 /** Skeleton rows shown while a search runs (no spinners on the list). */
@@ -34,6 +37,9 @@ export interface MapListSheetProps {
   total: number;
   posts: MapPost[];
   status: 'loading' | 'ready' | 'error';
+  /** True while a peek card is up: the sheet slides away so the card owns
+   *  the bottom of the screen, and returns to peek when the card dismisses. */
+  hidden?: boolean;
   onRetry: () => void;
   onPressPost: (post: MapPost) => void;
 }
@@ -42,10 +48,31 @@ export const MapListSheet = memo(function MapListSheet({
   total,
   posts,
   status,
+  hidden = false,
   onRetry,
   onPressPost,
 }: MapListSheetProps) {
   const snapPoints = useMemo(() => SNAP_POINTS, []);
+  const sheetRef = useRef<BottomSheet>(null);
+  // Match the sheet's slide to the design clock (250ms ease-out) so it and
+  // the peek card's spring read as one handoff, not two different curves.
+  const animationConfigs = useBottomSheetTimingConfigs({
+    duration: motion.standard,
+    easing: Easing.out(Easing.cubic),
+  });
+
+  // Hide/show imperatively via the ref (NOT the `index` prop). gorhom's
+  // `index` IS reactive, but with enablePanDownToClose={false} toggling it
+  // to -1 does not close a non-dismissable sheet — observed on-device, the
+  // sheet stayed at peek. close() forces the off-screen state regardless;
+  // snapToIndex(0) brings it home to peek when the card dismisses.
+  useEffect(() => {
+    if (hidden) {
+      sheetRef.current?.close();
+    } else {
+      sheetRef.current?.snapToIndex(0);
+    }
+  }, [hidden]);
 
   const handleLabel =
     status === 'ready'
@@ -56,12 +83,21 @@ export const MapListSheet = memo(function MapListSheet({
 
   return (
     <BottomSheet
+      ref={sheetRef}
       index={0}
       snapPoints={snapPoints}
+      animationConfigs={animationConfigs}
+      // Pan-down stays disabled for the USER — this is permanent chrome
+      // that only the peek card may displace (see the effect above).
       enablePanDownToClose={false}
       backgroundStyle={styles.sheetBackground}
       handleIndicatorStyle={styles.grabber}
       accessibilityLabel="Cars in this area"
+      // While hidden (a peek card is up) the sheet is off-screen but still
+      // mounted; drop it from the a11y tree so screen-reader focus can't
+      // land on the invisible list/header behind the card.
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? 'no-hide-descendants' : 'auto'}
     >
       <View style={styles.handleRow}>
         <Text accessibilityRole="header" style={styles.handleLabel}>

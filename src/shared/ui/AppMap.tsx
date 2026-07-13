@@ -84,7 +84,17 @@ export function AppMap({
       initialRegion={region}
       showsMyLocationButton={false}
       toolbarEnabled={false}
-      onPress={onPress}
+      // Android quirk pair: marker taps ALSO fire the map's onPress (tagged
+      // 'marker-press'), which would instantly clear the selection the
+      // marker tap just made — and the default marker-press camera recentre
+      // fights our own selection→camera logic.
+      moveOnMarkerPress={false}
+      onPress={(event) => {
+        if (event.nativeEvent.action === 'marker-press') {
+          return; // not a background tap — the marker handles it
+        }
+        onPress?.();
+      }}
       onRegionChange={(_next, details) => {
         if (!details.isGesture) {
           return; // frames from our own fly-to aren't a user pan

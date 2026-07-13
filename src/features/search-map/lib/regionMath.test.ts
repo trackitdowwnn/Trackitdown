@@ -11,7 +11,9 @@
 import type { GeoRegion } from '@/shared/types';
 
 import {
+  distanceMeters,
   frameCoords,
+  isComfortablyVisible,
   movedEnough,
   regionAround,
   regionToBbox,
@@ -95,5 +97,61 @@ describe('regionZoom', () => {
     expect(regionZoom({ ...HERTS, longitudeDelta: 45 })).toBe(3);
     expect(regionZoom({ ...HERTS, longitudeDelta: 0.35 })).toBe(10);
     expect(regionZoom({ ...HERTS, longitudeDelta: 0.01 })).toBe(15);
+  });
+});
+
+describe('distanceMeters', () => {
+  it('is zero for the same point', () => {
+    expect(distanceMeters(HERTS, HERTS)).toBe(0);
+  });
+
+  it('matches a known distance (St Albans → central London ≈ 30 km)', () => {
+    const stAlbans = { latitude: 51.752, longitude: -0.339 };
+    const london = { latitude: 51.5074, longitude: -0.1278 };
+    const d = distanceMeters(stAlbans, london);
+    expect(d).toBeGreaterThan(28_000);
+    expect(d).toBeLessThan(33_000);
+  });
+
+  it('is symmetric', () => {
+    const a = { latitude: 51.7, longitude: -0.4 };
+    const b = { latitude: 52.2, longitude: 0.1 };
+    expect(distanceMeters(a, b)).toBeCloseTo(distanceMeters(b, a), 6);
+  });
+
+  it('orders nearer points before farther ones', () => {
+    const centre = { latitude: 51.77, longitude: -0.34 };
+    const near = { latitude: 51.78, longitude: -0.34 };
+    const far = { latitude: 51.9, longitude: -0.34 };
+    expect(distanceMeters(centre, near)).toBeLessThan(distanceMeters(centre, far));
+  });
+});
+
+describe('isComfortablyVisible', () => {
+  it('is true at the centre', () => {
+    expect(isComfortablyVisible(HERTS, HERTS)).toBe(true);
+  });
+
+  it('is false outside the region entirely', () => {
+    const outside = { latitude: HERTS.latitude + 1, longitude: HERTS.longitude };
+    expect(isComfortablyVisible(outside, HERTS)).toBe(false);
+  });
+
+  it('is false inside the region but within the edge margin', () => {
+    // 0.24 above centre is inside the 0.25 half-span but past the 15%
+    // margin line at 0.25 * 0.7 = 0.175 — visible, yet not comfortably.
+    const nearEdge = { latitude: HERTS.latitude + 0.24, longitude: HERTS.longitude };
+    expect(isComfortablyVisible(nearEdge, HERTS)).toBe(false);
+  });
+
+  it('is true just inside the margin line', () => {
+    const comfortable = { latitude: HERTS.latitude + 0.17, longitude: HERTS.longitude };
+    expect(isComfortablyVisible(comfortable, HERTS)).toBe(true);
+  });
+
+  it('respects a custom margin', () => {
+    const point = { latitude: HERTS.latitude + 0.2, longitude: HERTS.longitude };
+    expect(isComfortablyVisible(point, HERTS, 0)).toBe(true); // any visible is fine
+    expect(isComfortablyVisible(point, HERTS, 0.3)).toBe(false); // strict centre band
   });
 });

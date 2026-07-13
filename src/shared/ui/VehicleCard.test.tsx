@@ -153,17 +153,18 @@ describe('VehicleCard', () => {
     expect(queryByText('AB12 CDE')).toBeNull();
   });
 
-  it('map variant: photo-left card with title, distance-led meta, bounty — static photo, no plate', async () => {
-    const { getByText, queryByText, queryByTestId, getByRole } = await render(
+  it('map variant: photo-left card with title, distance-led meta, plate, bounty — static photo', async () => {
+    const { getByText, queryByTestId, getByRole } = await render(
       <VehicleCard post={BASE_POST} onPress={() => {}} variant="map" />,
     );
 
     expect(getByText('BMW 3 Series')).toBeTruthy();
     expect(getByText('2.3 mi · last seen 2h ago')).toBeTruthy();
     expect(getByText('£500 bounty')).toBeTruthy();
-    expect(queryByText('AB12 CDE')).toBeNull();
+    // Definitive peek-card spec: the plate is VISIBLE (spotters confirm a
+    // match by plate), not only spoken in the a11y label.
+    expect(getByText('AB12 CDE')).toBeTruthy();
     expect(queryByTestId('vehicle-card-carousel')).toBeNull();
-    // The combined a11y label still carries the plate for screen readers.
     expect(getByRole('button').props.accessibilityLabel).toMatch(/plate/);
   });
 
