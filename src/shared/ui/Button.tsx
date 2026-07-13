@@ -6,8 +6,9 @@
  *        identically (docs/DESIGN_SYSTEM.md, Core components). Centralising
  *        the variants keeps pressed/disabled states and touch-target sizing
  *        consistent, and stops screens hand-rolling their own Pressables.
- *        Text-only by design — icons/loading states get added here when a
- *        real flow needs them, not speculatively.
+ *        Text-only plus an optional loading spinner (the post-a-car wizard's
+ *        DVLA lookup and submit need an in-button busy state) — icons still
+ *        get added only when a real flow needs them, not speculatively.
  * LINKS: docs/DESIGN_SYSTEM.md (Core components, Accessibility);
  *        src/shared/theme.
  *
@@ -16,7 +17,14 @@
  *   <Button label="Back" variant="ghost" onPress={goBack} />
  */
 
-import { Pressable, StyleSheet, Text, type TextStyle, type ViewStyle } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 
 import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
 
@@ -29,6 +37,12 @@ export interface ButtonProps {
   variant?: ButtonVariant;
   /** Disables presses and mutes the button. */
   disabled?: boolean;
+  /**
+   * Shows a spinner in place of the label and blocks presses — for async
+   * actions in flight (e.g. a plate lookup or a submit). The label stays
+   * mounted but hidden so the button keeps its width.
+   */
+  loading?: boolean;
   /** Buttons stretch full-width by default; set false to hug content. */
   fullWidth?: boolean;
 }
@@ -65,24 +79,40 @@ export function Button({
   onPress,
   variant = 'primary',
   disabled = false,
+  loading = false,
   fullWidth = true,
 }: ButtonProps) {
   const variantStyle = VARIANT_STYLES[variant];
+  // Loading blocks presses like disabled, but reads as "busy" not "unavailable"
+  // to assistive tech, and keeps the full-opacity fill (a spinner, not a mute).
+  const blocked = disabled || loading;
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+      accessibilityState={{ disabled, busy: loading }}
+      disabled={blocked}
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
         fullWidth ? styles.fullWidth : styles.hugContent,
-        pressed && !disabled ? variantStyle.pressed : variantStyle.rest,
+        pressed && !blocked ? variantStyle.pressed : variantStyle.rest,
         disabled && styles.disabled,
       ]}
     >
-      <Text style={[styles.label, variantStyle.label]}>{label}</Text>
+      {/* Keep the label mounted (hidden) under the spinner so the button holds
+          its width instead of collapsing to the indicator. */}
+      <Text
+        style={[styles.label, variantStyle.label, loading && styles.hiddenLabel]}
+      >
+        {label}
+      </Text>
+      {loading ? (
+        <ActivityIndicator
+          color={variantStyle.label.color}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
     </Pressable>
   );
 }
@@ -108,5 +138,8 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.label,
+  },
+  hiddenLabel: {
+    opacity: 0,
   },
 });

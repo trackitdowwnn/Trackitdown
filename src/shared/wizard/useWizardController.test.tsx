@@ -1,10 +1,16 @@
 /**
  * WHAT:  Tests for the wizard controller hook — answer merging, gating
- *        recomputation, and the dirty-exit confirmation path (clean exits
- *        leave silently; dirty exits confirm, and only Discard exits).
+ *        recomputation, the dirty-exit confirmation path (clean exits leave
+ *        silently; dirty exits confirm, and only Discard exits), and the
+ *        async primary-button behaviour: a step's onContinue (merge-then-
+ *        advance, error-then-stay) and the final onComplete (success holds the
+ *        spinner without navigating; failure keeps the wizard intact for retry).
  * WHY:   The exit path guards user-entered data across every flow built on
  *        the framework; silently discarding a half-finished post would be a
- *        trust failure. Navigation itself is covered in navigation.test.ts.
+ *        trust failure. The async path is the post-a-car wizard's spine —
+ *        losing a completed wizard to a network blip is the unforgivable
+ *        failure, so submit-failure-stays-intact is covered here explicitly.
+ *        Navigation itself is covered in navigation.test.ts.
  * LINKS: src/shared/wizard/useWizardController.ts, docs/TESTING.md.
  */
 
@@ -14,6 +20,17 @@ import { z } from 'zod';
 
 import type { WizardFlow } from './types';
 import { useWizardController } from './useWizardController';
+
+/** A promise whose resolve/reject we drive by hand, to freeze an action mid-flight. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 interface Answers {
   name: string;
@@ -129,5 +146,166 @@ describe('useWizardController', () => {
 
     expect(alertSpy).toHaveBeenCalledTimes(1);
     expect(onExit).not.toHaveBeenCalled();
+  });
+});
+
+// --- Async primary-button actions (onContinue + onComplete) ------------------
+
+interface AsyncAnswers {
+  plate: string;
+  make: string;
+}
+
+/**
+ * A flow whose single step carries an onContinue and whose review is the final
+ * screen (so onComplete fires there). The onContinue/onComplete behaviours are
+ * injected per test. Screens flatten to: 0 intro, 1 plate step, 2 review.
+ */
+function makeAsyncFlow(overrides: {
+  onContinue?: (answers: Partial<AsyncAnswers>) => Promise<Partial<AsyncAnswers> | void>;
+}): WizardFlow<AsyncAnswers> {
+  return {
+    id: 'async-test',
+    finalCtaLabel: 'Post',
+    review: { title: 'Check' },
+    phases: [
+      {
+        id: 'car',
+        title: 'Car',
+        intro: { headline: 'Your car', body: 'One question.' },
+        steps: [
+          {
+            id: 'plate',
+            question: "What's the plate?",
+            component: () => null,
+            schema: z.object({ plate: z.string().min(1) }),
+            reviewValue: (a) => a.plate ?? '',
+            onContinue: overrides.onContinue,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+async function renderAsyncController(
+  flow: WizardFlow<AsyncAnswers>,
+  onComplete?: (answers: Partial<AsyncAnswers>) => void | Promise<void>,
+) {
+  const rendered = await renderHook(() =>
+    useWizardController<AsyncAnswers>(flow, { onExit: jest.fn(), onComplete }),
+  );
+  // Walk intro → plate step and enter a valid plate so advance() is unblocked.
+  await act(async () => rendered.result.current.next());
+  await act(async () => rendered.result.current.setAnswers({ plate: 'AB12CDE' }));
+  return rendered;
+}
+
+describe('useWizardController — async actions', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('runs onContinue, merges its returned patch, then advances', async () => {
+    const onContinue = jest.fn(async () => ({ make: 'BMW' }));
+    const flow = makeAsyncFlow({ onContinue });
+    const { result } = await renderAsyncController(flow);
+
+    await act(async () => result.current.advance());
+
+    expect(onContinue).toHaveBeenCalledWith({ plate: 'AB12CDE' });
+    expect(result.current.answers).toEqual({ plate: 'AB12CDE', make: 'BMW' });
+    expect(result.current.screenIndex).toBe(2); // advanced to review
+    expect(result.current.busy).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('surfaces a thrown onContinue error and stays on the step', async () => {
+    const onContinue = jest.fn(async () => {
+      throw new Error('That plate already has an active post.');
+    });
+    const { result } = await renderAsyncController(makeAsyncFlow({ onContinue }));
+
+    await act(async () => result.current.advance());
+
+    expect(result.current.error).toBe('That plate already has an active post.');
+    expect(result.current.screenIndex).toBe(1); // did not advance
+    expect(result.current.busy).toBe(false);
+    expect(result.current.answers).toEqual({ plate: 'AB12CDE' }); // no patch merged
+  });
+
+  it('shows busy while onContinue is in flight and ignores a second press', async () => {
+    const gate = deferred<Partial<AsyncAnswers>>();
+    const onContinue = jest.fn(() => gate.promise);
+    const { result } = await renderAsyncController(makeAsyncFlow({ onContinue }));
+
+    let inFlight!: Promise<void>;
+    await act(async () => {
+      inFlight = result.current.advance();
+    });
+    expect(result.current.busy).toBe(true);
+
+    // A second press while busy must not fire a second lookup.
+    await act(async () => result.current.advance());
+    expect(onContinue).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      gate.resolve({ make: 'Audi' });
+      await inFlight;
+    });
+    expect(result.current.busy).toBe(false);
+    expect(result.current.screenIndex).toBe(2);
+  });
+
+  it('clears a stale onContinue error when the answer is edited', async () => {
+    const onContinue = jest.fn(async () => {
+      throw new Error('Plate in use.');
+    });
+    const { result } = await renderAsyncController(makeAsyncFlow({ onContinue }));
+
+    await act(async () => result.current.advance());
+    expect(result.current.error).toBe('Plate in use.');
+
+    await act(async () => result.current.setAnswers({ plate: 'XY99ZZZ' }));
+    expect(result.current.error).toBeNull();
+  });
+
+  it('runs onComplete on the final screen and holds the spinner on success', async () => {
+    const gate = deferred<void>();
+    const onComplete = jest.fn(() => gate.promise);
+    // No onContinue, so advancing the plate step just moves to review.
+    const { result } = await renderAsyncController(makeAsyncFlow({}), onComplete);
+
+    await act(async () => result.current.advance()); // plate → review
+    expect(result.current.screenIndex).toBe(2);
+
+    let submit!: Promise<void>;
+    await act(async () => {
+      submit = result.current.advance(); // review → submit
+    });
+    expect(onComplete).toHaveBeenCalledWith({ plate: 'AB12CDE' });
+    expect(result.current.busy).toBe(true);
+
+    await act(async () => {
+      gate.resolve();
+      await submit;
+    });
+    // Success does NOT navigate and keeps the spinner up (onComplete routes away).
+    expect(result.current.busy).toBe(true);
+    expect(result.current.screenIndex).toBe(2);
+  });
+
+  it('keeps the wizard intact and shows the error when onComplete fails', async () => {
+    const onComplete = jest.fn(async () => {
+      throw new Error('Payment could not be taken. Please try again.');
+    });
+    const { result } = await renderAsyncController(makeAsyncFlow({}), onComplete);
+
+    await act(async () => result.current.advance()); // plate → review
+    await act(async () => result.current.advance()); // submit (fails)
+
+    expect(result.current.error).toBe('Payment could not be taken. Please try again.');
+    expect(result.current.busy).toBe(false);
+    expect(result.current.screenIndex).toBe(2); // still on review, answers intact
+    expect(result.current.answers).toEqual({ plate: 'AB12CDE' });
+    expect(result.current.canGoNext).toBe(true); // can retry immediately
   });
 });

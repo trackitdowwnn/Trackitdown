@@ -55,19 +55,30 @@ export interface WizardScreenProps<TAnswers> {
   flow: WizardFlow<TAnswers>;
   /** Leave the flow (X with dirty-confirm). Usually router.back(). */
   onExit: () => void;
-  /** The final screen's primary action, with the flow's answers. */
-  onComplete: (answers: Partial<TAnswers>) => void;
+  /**
+   * The final screen's submit. May be async: while it runs the primary button
+   * spins; on rejection the wizard stays intact and the error is shown for
+   * retry; on success onComplete routes away (the flow does not auto-navigate).
+   */
+  onComplete: (answers: Partial<TAnswers>) => void | Promise<void>;
+  /** Pre-filled answers (sensible defaults, or a future saved draft). */
+  initialAnswers?: Partial<TAnswers>;
 }
 
-export function WizardScreen<TAnswers>({ flow, onExit, onComplete }: WizardScreenProps<TAnswers>) {
-  const controller = useWizardController(flow, { onExit });
+export function WizardScreen<TAnswers>({
+  flow,
+  onExit,
+  onComplete,
+  initialAnswers,
+}: WizardScreenProps<TAnswers>) {
+  const controller = useWizardController(flow, { onExit, onComplete, initialAnswers });
   const {
-    screens,
     screen,
     screenIndex,
-    isEditingFromReview,
     answers,
     direction,
+    busy,
+    error,
   } = controller;
   const keyboardHeight = useAndroidKeyboardHeight();
 
@@ -78,6 +89,9 @@ export function WizardScreen<TAnswers>({ flow, onExit, onComplete }: WizardScree
   const { isFirstScreen, back, requestExit } = controller;
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // Swallow the gesture while an async action is in flight so a submit or
+      // lookup can't be navigated out from under.
+      if (busy) return true;
       if (isFirstScreen) {
         requestExit();
       } else {
@@ -86,7 +100,7 @@ export function WizardScreen<TAnswers>({ flow, onExit, onComplete }: WizardScree
       return true;
     });
     return () => subscription.remove();
-  }, [isFirstScreen, back, requestExit]);
+  }, [isFirstScreen, back, requestExit, busy]);
 
   // Tell screen-reader users what screen they landed on after each move.
   useEffect(() => {
@@ -99,6 +113,15 @@ export function WizardScreen<TAnswers>({ flow, onExit, onComplete }: WizardScree
     AccessibilityInfo.announceForAccessibility(announcement);
   }, [flow, screen]);
 
+  // Announce async-action errors too. accessibilityLiveRegion (on the error
+  // Text below) covers Android; announceForAccessibility carries it to iOS
+  // VoiceOver, which ignores live regions.
+  useEffect(() => {
+    if (error) {
+      AccessibilityInfo.announceForAccessibility(error);
+    }
+  }, [error]);
+
   // Progress geometry: one dot per phase, plus a final dot for the review
   // screen when the flow opts in. The label names the dot the bubble is on.
   const dotCount = flow.phases.length + (flow.review ? 1 : 0);
@@ -109,14 +132,6 @@ export function WizardScreen<TAnswers>({ flow, onExit, onComplete }: WizardScree
     screen.kind === 'review'
       ? 'Review'
       : `Step ${screen.phaseIndex + 1} of ${flow.phases.length}`;
-
-  const handlePrimary = () => {
-    if (!isEditingFromReview && screenIndex === screens.length - 1) {
-      onComplete(answers);
-      return;
-    }
-    controller.next();
-  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -183,12 +198,19 @@ export function WizardScreen<TAnswers>({ flow, onExit, onComplete }: WizardScree
         </Animated.View>
 
         <View style={[styles.footer, { paddingBottom: spacing.sm + keyboardHeight }]}>
+          {error ? (
+            <Text accessibilityLiveRegion="polite" style={styles.error}>
+              {error}
+            </Text>
+          ) : null}
           <WizardFooter
             ctaLabel={controller.ctaLabel}
             canProceed={controller.canGoNext}
-            showBack={!controller.isFirstScreen && screen.kind !== 'intro'}
+            loading={busy}
+            // No Back while busy — can't abandon an in-flight lookup/submit.
+            showBack={!controller.isFirstScreen && screen.kind !== 'intro' && !busy}
             onBack={controller.back}
-            onNext={handlePrimary}
+            onNext={controller.advance}
           />
         </View>
       </KeyboardAvoidingView>
@@ -244,5 +266,12 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: spacing.xl,
+  },
+  // Sits just above the footer buttons; danger-toned, announced politely so a
+  // failed lookup/submit is read out without stealing focus.
+  error: {
+    ...typography.caption,
+    color: colors.danger,
+    marginBottom: spacing.sm,
   },
 });

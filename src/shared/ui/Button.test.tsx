@@ -33,6 +33,19 @@ describe('Button', () => {
     expect(button.props.accessibilityState).toMatchObject({ disabled: true });
   });
 
+  it('blocks presses and announces busy while loading', async () => {
+    const onPress = jest.fn();
+    const { getByRole } = await render(
+      <Button label="Post & pay" onPress={onPress} loading />,
+    );
+
+    const button = getByRole('button', { name: 'Post & pay' });
+    fireEvent.press(button);
+
+    expect(onPress).not.toHaveBeenCalled();
+    expect(button.props.accessibilityState).toMatchObject({ busy: true });
+  });
+
   it.each(['primary', 'secondary', 'ghost', 'danger'] as ButtonVariant[])(
     'renders the label for the %s variant',
     async (variant) => {
