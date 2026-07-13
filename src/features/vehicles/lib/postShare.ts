@@ -21,6 +21,9 @@ export interface SharePayload {
 export function buildSharePayload(post: PostDetail): SharePayload {
   const url = `${SHARE_BASE_URL}${post.id}`;
   const area = post.lastSeenArea ? ` Last seen near ${post.lastSeenArea}.` : '';
-  const message = `Stolen ${post.colour} ${post.make} ${post.model} (${post.plate}).${area} ${url}`;
+  // Plate is optional (a car can be reported without one) — omit the "(...)"
+  // rather than share a literal "(null)".
+  const plate = post.plate ? ` (${post.plate})` : '';
+  const message = `Stolen ${post.colour} ${post.make} ${post.model}${plate}.${area} ${url}`;
   return { message, url };
 }

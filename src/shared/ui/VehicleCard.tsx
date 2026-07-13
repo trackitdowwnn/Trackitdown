@@ -96,7 +96,7 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
 
   const label = [
     `${post.colour} ${post.make} ${post.model}`,
-    `plate ${spellPlate(post.plate)}`,
+    post.plate ? `plate ${spellPlate(post.plate)}` : null,
     `${formatPounds(post.bountyPence)} bounty`,
     badgeLabel ? badgeLabel.toLowerCase() : null,
     `last seen ${lastSeen}`,
@@ -147,7 +147,7 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
                 just speak it. Stacked, not side-by-side — the text column
                 is only ~62% of the card and money must never truncate. */}
             <View style={styles.mapPlateBounty}>
-              <PlateChip plate={post.plate} />
+              {post.plate ? <PlateChip plate={post.plate} /> : null}
               <BountyTag bountyPence={post.bountyPence} size="md" />
             </View>
           </View>
@@ -203,12 +203,21 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
             {metaText}
           </Text>
           {!compact ? (
-            /* Anchor row: rigid PlateChip left, terracotta bounty right —
-               our equivalent of the reference card's price line. */
-            <View style={styles.plateBountyRow}>
-              <PlateChip plate={post.plate} />
-              <BountyTag bountyPence={post.bountyPence} size="lg" />
-            </View>
+            post.plate ? (
+              /* Anchor row: rigid PlateChip left, terracotta bounty right —
+                 our equivalent of the reference card's price line. */
+              <View style={styles.plateBountyRow}>
+                <PlateChip plate={post.plate} />
+                <BountyTag bountyPence={post.bountyPence} size="lg" />
+              </View>
+            ) : (
+              /* No plate: left-anchor the bounty under the title so the card
+                 keeps a left column to read down (matches the compact variant),
+                 instead of stranding it far-right with a dead gap. */
+              <View style={[styles.plateBountyRow, styles.bountyOnlyRow]}>
+                <BountyTag bountyPence={post.bountyPence} size="lg" />
+              </View>
+            )
           ) : (
             <BountyTag bountyPence={post.bountyPence} size="md" />
           )}
@@ -483,6 +492,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
     marginTop: spacing.xs, // a touch more air before the anchor row
+  },
+  // Plate-less card: left-anchor the lone bounty (overrides space-between).
+  bountyOnlyRow: {
+    justifyContent: 'flex-start',
   },
   // Map-card anchor stack: plate over bounty, hugging the left edge —
   // the narrow text column can't fit them side by side without clipping.

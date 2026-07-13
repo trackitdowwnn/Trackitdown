@@ -80,7 +80,8 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
           {post.make} {post.model}
         </Text>
         <View style={styles.identityRow}>
-          <PlateChip plate={post.plate} />
+          {/* No plate → the make/model title above carries the identity. */}
+          {post.plate ? <PlateChip plate={post.plate} /> : null}
           {identityMeta ? <Text style={styles.identityMeta}>{identityMeta}</Text> : null}
         </View>
         <StatusBadge status={post.status} />

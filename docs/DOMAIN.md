@@ -23,9 +23,13 @@ draft → pending_verification → active → recovery_claimed → recovered (pa
                                  └─ expired (refund)
 ```
 
-1. **draft** — owner fills in car details: UK number plate, make/model/colour,
-   photos, last-seen location and time, distinguishing features, and the
-   crime happened. Plate is validated against UK formats.
+1. **draft** — owner fills in car details: make/model/colour (required — the
+   car's identity), an optional UK number plate, photos, last-seen location and
+   time, distinguishing features, and how the crime happened. **The plate is
+   optional**: some owners don't have it (e.g. the thief swapped it). When a
+   plate is given it's validated against UK formats and deduped (see below);
+   when it's absent, make/model/colour identify the car and the UI shows those
+   in place of a plate chip.
 2. **pending_verification** — owner uploads proof of ownership (V5C logbook
    photo or equivalent) AND pays the bounty, which is held in escrow via
    Stripe. A moderator reviews the proof. **A post is never publicly visible
