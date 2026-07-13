@@ -51,7 +51,8 @@ export interface PostDetail {
   make: string;
   model: string;
   colour: string;
-  plate: string;
+  /** Null for a plate-less post (make/model are the identity). */
+  plate: string | null;
   year?: number;
   bodyType?: string;
   distinguishingFeatures?: string;

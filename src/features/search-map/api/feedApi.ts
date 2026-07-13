@@ -34,7 +34,8 @@ export const rpcPostSchema = z.object({
   // guid, NOT uuid: Postgres's uuid type doesn't enforce RFC-4122
   // version/variant nibbles (fixed dev/seed ids legitimately fail z.uuid()).
   id: z.guid(),
-  plate: z.string(),
+  // Null for a plate-less post (make/model are then the identity).
+  plate: z.string().nullable(),
   make: z.string(),
   model: z.string(),
   colour: z.string(),

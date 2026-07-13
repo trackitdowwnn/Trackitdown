@@ -22,20 +22,29 @@ export interface WizardFooterProps {
   ctaLabel: string;
   /** Primary button disabled while the current step fails validation. */
   canProceed: boolean;
+  /** Primary button shows a spinner while an async action is in flight. */
+  loading?: boolean;
   /** Hide Back on the first screen and on phase intros. */
   showBack: boolean;
   onBack: () => void;
   onNext: () => void;
 }
 
-export function WizardFooter({ ctaLabel, canProceed, showBack, onBack, onNext }: WizardFooterProps) {
+export function WizardFooter({
+  ctaLabel,
+  canProceed,
+  loading = false,
+  showBack,
+  onBack,
+  onNext,
+}: WizardFooterProps) {
   return (
     <View style={styles.buttons}>
       {showBack ? (
         <Button label="Back" variant="ghost" fullWidth={false} onPress={onBack} />
       ) : null}
       <View style={styles.primary}>
-        <Button label={ctaLabel} onPress={onNext} disabled={!canProceed} />
+        <Button label={ctaLabel} onPress={onNext} disabled={!canProceed} loading={loading} />
       </View>
     </View>
   );

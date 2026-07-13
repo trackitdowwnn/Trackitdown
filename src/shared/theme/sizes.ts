@@ -46,6 +46,8 @@ export const sizes = {
   /** AppTabBar badge: dot diameter and count-pill height. */
   badgeDot: 8,
   badgePill: 16,
+  /** Embedded map picker height (e.g. the post-a-car "last seen where" step). */
+  mapPickerHeight: 340,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

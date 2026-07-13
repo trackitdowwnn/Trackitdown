@@ -51,7 +51,8 @@ const visibleSchema = z.object({
   visible: z.literal(true),
   id: z.guid(),
   is_owner: z.boolean(),
-  plate: z.string(),
+  // Null for a plate-less post (make/model are then the identity).
+  plate: z.string().nullable(),
   make: z.string(),
   model: z.string(),
   colour: z.string(),

@@ -39,8 +39,9 @@ export interface PostSummary {
   make: string;
   model: string;
   colour: string;
-  /** UK registration, formatted for display ("AB12 CDE"). */
-  plate: string;
+  /** UK registration, formatted for display ("AB12 CDE"); null if the car has
+   *  no plate (make/model are the identity then). */
+  plate: string | null;
   status: PostStatus;
   /** ISO timestamp of the last-seen report. */
   lastSeenAt: string;

@@ -86,6 +86,16 @@ describe('fetchPostDetail', () => {
     expect(JSON.stringify(result.post)).not.toContain('owner_id');
   });
 
+  it('maps a plate-less post (plate null) without failing the parse', async () => {
+    mockRpc.mockResolvedValue({ data: { ...VISIBLE, plate: null }, error: null });
+    const result = await fetchPostDetail('p1');
+
+    expect(result.kind).toBe('visible');
+    if (result.kind !== 'visible') throw new Error('expected visible');
+    expect(result.post.plate).toBeNull();
+    expect(result.post.make).toBe('BMW'); // make/model still identify it
+  });
+
   it('an OLD post (no Part-2 data) maps the nullable fields to undefined / []', async () => {
     mockRpc.mockResolvedValue({
       data: {

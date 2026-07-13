@@ -38,6 +38,22 @@ export interface WizardStep<TAnswers> {
    * step can never validate — cover each flow's steps with a smoke test.
    */
   schema: z.ZodType;
+  /**
+   * Optional async action run when the user advances from this step (after
+   * the schema passes). Use it for a server round-trip the answer depends on
+   * — a DVLA plate lookup, a uniqueness check. While it runs the primary
+   * button shows a spinner and the flow stays put.
+   *   • Resolve with a patch → it's merged into the answers, then the flow
+   *     advances (e.g. the lookup returns make/model/year to store).
+   *   • Resolve with nothing → the flow advances with the answers unchanged.
+   *   • Throw → the flow stays on this step and the thrown message is shown;
+   *     the user can edit and retry. Throw a plain Error whose message is
+   *     already user-facing (the framework surfaces it verbatim).
+   * Runs on review-edit spurs too, so re-editing a plate re-validates it.
+   */
+  onContinue?: (
+    answers: Partial<TAnswers>,
+  ) => Promise<Partial<TAnswers> | void>;
   /** Label for this answer on the review screen; defaults to `question`. */
   reviewLabel?: string;
   /** Renders this step's answer as review text; omit to hide from review. */

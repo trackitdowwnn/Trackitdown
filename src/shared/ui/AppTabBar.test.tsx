@@ -114,6 +114,42 @@ describe('config-driven rendering', () => {
   });
 });
 
+describe('centre action', () => {
+  it('renders the action button, fires its onPress, and keeps the tabs', async () => {
+    const { props } = makeProps(TABS);
+    const onPress = jest.fn();
+    const { getByTestId } = await render(
+      <AppTabBar
+        {...props}
+        tabs={TABS}
+        action={{ icon: StubIcon as never, accessibilityLabel: 'Report a stolen car', onPress }}
+      />,
+    );
+
+    const action = getByTestId('app-tab-action');
+    expect(action.props.accessibilityLabel).toBe('Report a stolen car');
+    fireEvent.press(action);
+    expect(onPress).toHaveBeenCalledTimes(1);
+    // All four tabs still render around the action.
+    for (const tab of TABS) {
+      expect(getByTestId(`app-tab-${tab.route}`)).toBeTruthy();
+    }
+  });
+
+  it('does not skew spoken tab positions (action is not a tab)', async () => {
+    const { props } = makeProps(TABS);
+    const { getByTestId } = await render(
+      <AppTabBar
+        {...props}
+        tabs={TABS}
+        action={{ icon: StubIcon as never, accessibilityLabel: 'Add', onPress: jest.fn() }}
+      />,
+    );
+    // Inbox is the 3rd tab of 4 even though the action sits before it.
+    expect(getByTestId('app-tab-inbox').props.accessibilityLabel).toContain('tab 3 of 4');
+  });
+});
+
 describe('active state', () => {
   it('marks exactly the focused route selected', async () => {
     const { props } = makeProps(TABS, { index: 2 });

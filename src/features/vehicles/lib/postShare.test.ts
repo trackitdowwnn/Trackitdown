@@ -43,4 +43,11 @@ describe('buildSharePayload', () => {
     const { message } = buildSharePayload({ ...base, lastSeenArea: undefined });
     expect(message).not.toContain('Last seen near');
   });
+
+  it('omits the plate parens for a plate-less car (never shares "(null)")', () => {
+    const { message } = buildSharePayload({ ...base, plate: null });
+    expect(message).not.toContain('null');
+    expect(message).not.toContain('()');
+    expect(message).toContain('Blue BMW 3 Series.');
+  });
 });

@@ -30,7 +30,10 @@ commenting standards.
   signed URLs. They are deleted (or anonymised) 30 days after the post
   closes.
 - One active post per plate. Re-posting a plate that was previously
-  rejected flags the account for moderator review.
+  rejected flags the account for moderator review. The plate is optional
+  (DOMAIN.md): this uniqueness rule applies only to posts that HAVE a plate —
+  plate-less posts can't be deduped this way, so mandatory moderation (the V5C
+  check) is the backstop against duplicate/abusive plate-less reports.
 
 ## 3. Data protection (UK GDPR)
 

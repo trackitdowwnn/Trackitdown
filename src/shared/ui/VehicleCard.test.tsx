@@ -59,6 +59,16 @@ describe('VehicleCard', () => {
     );
   });
 
+  it('renders a plate-less car with the plate omitted from the label', async () => {
+    const { getByRole } = await render(
+      <VehicleCard post={{ ...BASE_POST, plate: null }} onPress={() => {}} />,
+    );
+
+    const label = getByRole('button').props.accessibilityLabel;
+    expect(label).toBe('Blue BMW 3 Series, £500 bounty, last seen 2h ago, 2.3 mi away');
+    expect(label).not.toContain('plate');
+  });
+
   it('includes BOTH the badge and the last-seen info in the label when badged', async () => {
     const { getByRole } = await render(
       <VehicleCard post={{ ...BASE_POST, status: 'recovered' }} onPress={() => {}} />,
