@@ -1,17 +1,17 @@
 # search-map — Explore: home feed + map search
 
-WHAT: Owns the Explore tab. v1 of this feature ships the **home feed** — an
-Airbnb-style sectioned feed of stolen-car posts near the user — plus a stub
-map-search screen that the feed's search pill, Map pill, and "See all" links
-navigate to (real map/list search is this feature's next iteration).
+WHAT: Owns the Explore tab: the **home feed** — an Airbnb-style sectioned
+feed of stolen-car posts near the user — and the **map search** (full map +
+list of active posts) that the feed's search pill, Map pill, and "See all"
+links navigate to.
 Primary actor: **spotter** (any signed-in user browsing); owners see their
 own posts here like anyone else. Read-only feature: never writes posts,
 never touches status or money.
 
 **Screens**
 - `HomeFeedScreen` (route `src/app/(tabs)/explore.tsx`) — the feed.
-- `MapSearchScreen` (route `src/app/search-map.tsx`) — v1 STUB: placeholder
-  accepting `{ area?, query? }` params so feed links are wired for real.
+- `MapSearchScreen` (route `src/app/search-map.tsx`) — the full map search
+  (see the map-search section below); accepts `{ area?, query? }` params.
 
 **Home feed anatomy** (top → bottom)
 1. Location header: "Cars near <Area>" (title type). Area name tappable →
@@ -92,9 +92,36 @@ app's centrepiece. Route `/search-map` accepting `{ area?, query? }`
    the selected pin inverts to `surfaceInverse` (`components/MapPins.tsx`).
 3. CLUSTERING — supercluster (`lib/mapClustering.ts`) over the current
    result set; clusters render as sage count bubbles; tapping zooms to fit.
-4. PIN ↔ CARD SYNC — tapping a pin raises the floating card pager (the map
-   VehicleCard variant); swiping it moves the selection and pans the camera
-   (`components/MapCardPager.tsx`, `hooks/useMapSelection.ts`).
+4. PEEK CARD (pin ↔ card loop — definitive spec). Tapping a pin springs a
+   floating card up from the bottom (~250ms Reanimated spring, translateY +
+   fade); the card is a horizontal pager (snap paging, ~8px neighbour peek)
+   over ALL posts on the map **ordered by distance from the searched
+   region's centre** (`lib/regionMath.ts` haversine — stable while the user
+   pans; order changes only when a search lands). ONE source of truth in
+   `hooks/useMapSelection.ts`:
+
+   ```ts
+   selectedId: string | null   // THE truth; survives re-search
+   selectedIndex: number       // DERIVED: sortedPosts.findIndex (-1 = none)
+   selected: MapPost | null    // DERIVED from index
+   ```
+
+   Pin styles, pager position, and camera all derive from `selectedId`;
+   a re-search that drops the selected post derives index -1 → the card
+   slides away, no cleanup effects. Loop guards: the pager tracks the index
+   it last REPORTED (programmatic scroll echoes stay silent), and camera
+   moves never write selection (selection → camera only). Swiping pans the
+   camera ONLY when the pin isn't comfortably visible (region shrunk 15%
+   per edge — `isComfortablyVisible`); tapping another pin animates the
+   pager across. While a card is up the list sheet slides away (the card
+   owns the bottom of the screen); it returns at peek on dismiss.
+   Dismiss: map-background tap or Android back (back exits
+   the screen only when no card is up). Card tap → post detail (TODO until
+   the vehicles feature ships). The card is the shared VehicleCard `map`
+   variant: photo, make/model, VISIBLE PlateChip, terracotta bounty,
+   distance. Selection changes announce to screen readers ("Blue BMW
+   3 Series, £500 bounty — swipe for more results").
+   (`components/MapCardPager.tsx`, `hooks/useMapSelection.ts`.)
 5. LIST-AS-SHEET — a persistent (non-modal) gorhom sheet at peek/half/full;
    handle reads "N cars in this area" (server total); body is the full
    VehicleCard list (`components/MapListSheet.tsx`).
@@ -118,7 +145,9 @@ sheet; empty: "No stolen cars in this area" good-news EmptyState; error:
 `ErrorState` + retry in the sheet.
 
 **Logging** — `map_search_area` (bbox SPANS only, never corners),
-`map_pin_select` (postId), `map_cluster_zoom` (clusterId).
+`map_pin_select` (postId), `map_cluster_zoom` (clusterId),
+`map_card_view` (postId, index, trigger: pin | swipe),
+`map_card_swipe` (fromIndex, toIndex). No coordinates in logs.
 
 **Out of scope (map search)** — working text search (the pill is a stub),
 recovered pins (locations coarsened), realtime, saved searches, drawing

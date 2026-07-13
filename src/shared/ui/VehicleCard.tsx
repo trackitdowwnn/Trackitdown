@@ -17,7 +17,9 @@
  *        opens the post with the design system's 0.98 press scale. Badges
  *        only appear when the status isn't plain `active`, so the public
  *        feed stays calm and the owner's list stays informative. `compact`
- *        is the rail card (a future map floating card gets its own variant).
+ *        is the rail card; `map` is the search map's floating peek card
+ *        (title, distance-led meta, then plate + bounty — the plate is
+ *        VISIBLE, not just spoken: spotters confirm a match by plate).
  *        Memoised for recycled list rows. The top-right image corner is
  *        reserved for a future save/watch toggle — layout leaves it clear.
  * LINKS: docs/DESIGN_SYSTEM.md (Card, Colour rules, Motion, Accessibility);
@@ -151,7 +153,14 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
             <Text numberOfLines={1} style={styles.metaLine}>
               {metaText}
             </Text>
-            <BountyTag bountyPence={post.bountyPence} size="md" />
+            {/* Anchor stack, plate ABOVE bounty: a spotter beside the car
+                confirms by PLATE, so the floating card must show it, not
+                just speak it. Stacked, not side-by-side — the text column
+                is only ~62% of the card and money must never truncate. */}
+            <View style={styles.mapPlateBounty}>
+              <PlateChip plate={post.plate} />
+              <BountyTag bountyPence={post.bountyPence} size="md" />
+            </View>
           </View>
         </Animated.View>
       </Pressable>
@@ -355,6 +364,8 @@ export function SkeletonVehicleCard({
         <View style={styles.mapText}>
           <View style={[styles.skeletonLine, styles.skeletonTitle]} />
           <View style={[styles.skeletonLine, styles.skeletonMeta]} />
+          {/* Mirrors the plate-over-bounty anchor stack. */}
+          <View style={[styles.skeletonLine, styles.skeletonMapPlate]} />
           <View style={[styles.skeletonLine, styles.skeletonBountyCompact]} />
         </View>
       </View>
@@ -501,6 +512,12 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginTop: spacing.xs, // a touch more air before the anchor row
   },
+  // Map-card anchor stack: plate over bounty, hugging the left edge —
+  // the narrow text column can't fit them side by side without clipping.
+  mapPlateBounty: {
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+  },
   carouselFrame: {
     flex: 1,
   },
@@ -529,5 +546,10 @@ const styles = StyleSheet.create({
   skeletonBountyCompact: {
     height: typography.label.lineHeight,
     width: '40%',
+  },
+  // Mirrors the map card's PlateChip line (chip height, chip-ish width).
+  skeletonMapPlate: {
+    height: typography.plate.lineHeight + spacing.xs * 2,
+    width: '60%',
   },
 });

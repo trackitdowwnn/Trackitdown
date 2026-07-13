@@ -16,7 +16,7 @@
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,7 +28,7 @@ import { FullscreenLoader } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
 
 import { MapCardPager } from '../components/MapCardPager';
-import { MAP_SHEET_PEEK_PERCENT, MapListSheet } from '../components/MapListSheet';
+import { MapListSheet } from '../components/MapListSheet';
 import { MapPins } from '../components/MapPins';
 import { SearchThisAreaButton } from '../components/SearchThisAreaButton';
 import { useFeedLocation } from '../hooks/useFeedLocation';
@@ -36,7 +36,13 @@ import { useMapSelection } from '../hooks/useMapSelection';
 import { useViewportPosts } from '../hooks/useViewportPosts';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
 import { buildClusterIndex, clusterMemberCoords, pinsForRegion } from '../lib/mapClustering';
-import { frameCoords, regionAround } from '../lib/regionMath';
+import {
+  distanceMeters,
+  frameCoords,
+  isComfortablyVisible,
+  metersToMiles,
+  regionAround,
+} from '../lib/regionMath';
 import type { MapPost } from '../types';
 
 const log = createLogger('search-map');
@@ -93,23 +99,53 @@ export function MapSearchScreen() {
       </View>
     );
   }
-  return <MapSearchBody entryRegion={entryRegion} onBack={() => router.back()} inset={insets.top} />;
+  return (
+    <MapSearchBody
+      entryRegion={entryRegion}
+      onBack={() => router.back()}
+      inset={insets.top}
+      insetBottom={insets.bottom}
+    />
+  );
 }
 
 function MapSearchBody({
   entryRegion,
   onBack,
   inset,
+  insetBottom,
 }: {
   entryRegion: GeoRegion;
   onBack: () => void;
   inset: number;
+  insetBottom: number;
 }) {
-  const { status, result, searching, showSearchArea, onRegionChange, searchThisArea, retry } =
-    useViewportPosts(entryRegion);
-  const { selected, selectedIndex, selectPost, selectByIndex, clear } = useMapSelection(
-    result.posts,
-  );
+  const {
+    status,
+    result,
+    searchedRegion,
+    searching,
+    showSearchArea,
+    onRegionChange,
+    searchThisArea,
+    retry,
+  } = useViewportPosts(entryRegion);
+
+  // ONE distance-ordered list feeds the pager, the sheet, and selection-
+  // index derivation, so "index" means the same thing everywhere. Distance
+  // is from the SEARCHED region's centre (stable while browsing — a pan
+  // without a re-search never reshuffles the cards under the user).
+  const sortedPosts = useMemo(() => {
+    const centre = { latitude: searchedRegion.latitude, longitude: searchedRegion.longitude };
+    return result.posts
+      .map((post) => ({ ...post, distanceMiles: metersToMiles(distanceMeters(centre, post)) }))
+      // Id tie-break: server order varies between searches, and equal-
+      // distance cards must not swap places under the user on a re-search.
+      .sort((a, b) => a.distanceMiles - b.distanceMiles || a.id.localeCompare(b.id));
+  }, [result.posts, searchedRegion]);
+
+  const { selected, selectedIndex, selectPost, selectByIndex, clear } =
+    useMapSelection(sortedPosts);
 
   // Camera: uncontrolled map + this prop drives programmatic fly-tos only.
   const [camera, setCamera] = useState<GeoRegion>(entryRegion);
@@ -165,10 +201,12 @@ function MapSearchBody({
   const handlePagerSettle = useCallback(
     (index: number) => {
       selectByIndex(index);
-      const post = result.posts[index];
-      if (post) {
-        // Follow the card: pan to the pin at the user's CURRENT zoom
-        // (settledRegion holds the live span).
+      const post = sortedPosts[index];
+      // Follow the card ONLY when needed: a pin already comfortably on
+      // screen gets no camera move (never a jarring recentre); an edge or
+      // off-screen pin gets a gentle pan at the user's CURRENT zoom
+      // (settledRegion holds the live span).
+      if (post && !isComfortablyVisible(post, settledRegion)) {
         flyTo({
           latitude: post.latitude,
           longitude: post.longitude,
@@ -177,8 +215,23 @@ function MapSearchBody({
         });
       }
     },
-    [selectByIndex, result.posts, settledRegion, flyTo],
+    [selectByIndex, sortedPosts, settledRegion, flyTo],
   );
+
+  // Android back with a card up dismisses the card, not the screen.
+  // Keyed on a boolean, not the `selected` object — its identity changes
+  // per sortedPosts rebuild (this repo's identity-keyed-effect hazard).
+  const hasSelection = selectedIndex >= 0;
+  useEffect(() => {
+    if (!hasSelection) {
+      return;
+    }
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      clear();
+      return true; // consumed — the screen stays
+    });
+    return () => subscription.remove();
+  }, [hasSelection, clear]);
 
   const openPost = useCallback((post: MapPost) => {
     // TODO(vehicles feature): route to the post detail once it exists.
@@ -221,16 +274,21 @@ function MapSearchBody({
 
       <MapListSheet
         total={result.total}
-        posts={result.posts}
+        posts={sortedPosts}
         status={status}
+        hidden={hasSelection}
         onRetry={retry}
         onPressPost={openPost}
       />
 
-      {/* Floating card pager rides above the sheet's peek. */}
-      <View style={styles.pager} pointerEvents="box-none">
+      {/* Floating card pager anchors to the bottom safe area — the list
+          sheet hides while a card is up, so the card owns that space. */}
+      <View
+        style={[styles.pager, { bottom: insetBottom + spacing.lg }]}
+        pointerEvents="box-none"
+      >
         <MapCardPager
-          posts={result.posts}
+          posts={sortedPosts}
           selectedIndex={selectedIndex}
           onIndexSettled={handlePagerSettle}
           onPressPost={openPost}
@@ -272,8 +330,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    // Sits just above the sheet's peek — derived from the same constant so
-    // the two can never drift (+2% breathing room).
-    bottom: `${MAP_SHEET_PEEK_PERCENT + 2}%`,
+    // `bottom` set inline: bottom safe-area inset + spacing.lg.
   },
 });

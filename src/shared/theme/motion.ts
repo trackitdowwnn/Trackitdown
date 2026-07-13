@@ -22,6 +22,10 @@ export const motion = {
   /** Shorter map follow-pan (search map: card swipe nudges the camera to the
    *  next pin without a full fly-to). Also a sanctioned camera-move exception. */
   mapPan: 350,
+  /** Floating-surface entrance spring (the map peek card): a Reanimated
+   *  withSpring config tuned to land in ~`standard` (250ms) without wobble.
+   *  Named here so the next floating surface springs identically. */
+  cardEnterSpring: { damping: 18, stiffness: 220, mass: 0.7 },
   /** "Subtle scale on card press" (DESIGN_SYSTEM Motion). */
   pressScale: 0.98,
   /** MoneySlider: thumb scale-up while grabbed. */

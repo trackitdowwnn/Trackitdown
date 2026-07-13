@@ -1,8 +1,10 @@
 /**
  * WHAT:  Pure map-region geometry — region↔bbox conversion, the
  *        "moved enough to offer Search-this-area" test, framing a region
- *        around a point-at-radius or a set of posts, and the slippy-map
- *        zoom level a region corresponds to (for clustering).
+ *        around a point-at-radius or a set of posts, the slippy-map
+ *        zoom level a region corresponds to (for clustering), haversine
+ *        distance (peek-card ordering), and the "comfortably visible"
+ *        test (pan-only-when-needed camera rule).
  * WHY:   The map screen's calm-search model hinges on these numbers being
  *        testable without a map view: results only refresh when the user
  *        explicitly asks, and "has the viewport moved enough to ask?" is a
@@ -94,4 +96,46 @@ export function frameCoords(coords: GeoCoord[], fallback: GeoRegion): GeoRegion 
 /** Slippy-map zoom level for a region — what supercluster clusters by. */
 export function regionZoom(region: GeoRegion): number {
   return Math.round(Math.log2(360 / region.longitudeDelta));
+}
+
+/** Mean Earth radius (metres) for the haversine below. */
+const EARTH_RADIUS_M = 6_371_000;
+
+/** Great-circle distance in metres — orders the peek-card pager. */
+export function distanceMeters(a: GeoCoord, b: GeoCoord): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h =
+    sinLat * sinLat +
+    Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * sinLng * sinLng;
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h));
+}
+
+const METERS_PER_MILE = 1609.344;
+
+/** Metres → miles (the card's distance line speaks miles, UK-style). */
+export function metersToMiles(meters: number): number {
+  return meters / METERS_PER_MILE;
+}
+
+/**
+ * Is a coordinate "comfortably" inside a region — far enough from every
+ * edge that panning to it would be gratuitous? The region is shrunk by
+ * `margin` of its span per edge; a pin inside the shrunk box needs no
+ * camera move (the calm-map rule applied to the peek-card pager).
+ */
+export function isComfortablyVisible(
+  coord: GeoCoord,
+  region: GeoRegion,
+  margin = 0.15,
+): boolean {
+  const halfLat = (region.latitudeDelta / 2) * (1 - margin * 2);
+  const halfLng = (region.longitudeDelta / 2) * (1 - margin * 2);
+  return (
+    Math.abs(coord.latitude - region.latitude) <= halfLat &&
+    Math.abs(coord.longitude - region.longitude) <= halfLng
+  );
 }

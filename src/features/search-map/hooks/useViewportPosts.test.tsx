@@ -146,6 +146,33 @@ describe('useViewportPosts', () => {
     expect(result.current.result.total).toBe(9);
   });
 
+  it('updates searchedRegion only when a search succeeds', async () => {
+    mockFetch.mockResolvedValueOnce(RESULT);
+    const { result } = await renderHook(() => useViewportPosts(REGION));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.searchedRegion).toEqual(REGION);
+
+    // Panning alone must not move the searched region (ordering stability).
+    await act(async () => {
+      result.current.onRegionChange(FAR_REGION);
+    });
+    expect(result.current.searchedRegion).toEqual(REGION);
+
+    // A FAILED re-search must not move it either.
+    mockFetch.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => {
+      await result.current.searchThisArea();
+    });
+    expect(result.current.searchedRegion).toEqual(REGION);
+
+    // A successful re-search moves it to the searched viewport.
+    mockFetch.mockResolvedValueOnce({ total: 1, posts: [] });
+    await act(async () => {
+      await result.current.searchThisArea();
+    });
+    expect(result.current.searchedRegion).toEqual(FAR_REGION);
+  });
+
   it('errors on a failed entry search and recovers via retry', async () => {
     mockFetch.mockRejectedValueOnce(new Error('boom'));
     const { result } = await renderHook(() => useViewportPosts(REGION));
