@@ -2,10 +2,11 @@
  * WHAT:  ProfileScreen — the Profile tab root: identity header, Reputation
  *        v1 card, settings hub, support & legal links, account actions
  *        (sign out, delete account), and a __DEV__-only tools section.
- * WHY:   One calm hub for everything about "me". Auth doesn't exist yet, so
- *        signed-out is a first-class state with a sign-in prompt and a
- *        __DEV__ sample-data preview so every section is reviewable on
- *        device today. Deletion is honest, never guilt-trippy: it explains
+ * WHY:   One calm hub for everything about "me". Guests browse freely
+ *        (deferred auth), so signed-out is a first-class state: a friendly
+ *        invitation through the auth gate — never a wall — plus a __DEV__
+ *        sample-data preview. Sign-out and deletion land back in guest mode
+ *        in place (no auth screen exists to bounce to). Deletion is honest, never guilt-trippy: it explains
  *        the consequences, is blocked with a clear reason while any post has
  *        money in escrow (advisory client check — the delete-account Edge
  *        Function re-checks server-side), and degrades calmly while that
@@ -49,6 +50,7 @@ import {
   useToast,
 } from '@/shared/ui';
 import { formatRecentLogs } from '@/shared/lib/logger';
+import { useRequireAuth } from '@/features/auth';
 
 import {
   countDeletionBlockingPosts,
@@ -57,7 +59,9 @@ import {
 } from '../api/profileApi';
 import { ReputationCard } from '../components/ReputationCard';
 import { TrustedSpotterPill } from '../components/TrustedSpotterPill';
-import { LEGAL_URLS, PAYOUTS_ENABLED, SUPPORT_EMAIL } from '../config';
+import { LEGAL_URLS } from '@/shared/lib';
+
+import { PAYOUTS_ENABLED, SUPPORT_EMAIL } from '../config';
 import { useMyProfile } from '../hooks/useMyProfile';
 import { DEV_MOCK_PROFILE } from '../lib/devMockProfile';
 import { isTrustedSpotter, memberSinceLabel } from '../lib/reputation';
@@ -105,18 +109,25 @@ export function ProfileScreen() {
   }
 
   const profile: MyProfile = state.status === 'ready' ? state.profile : DEV_MOCK_PROFILE;
-  return <LoadedProfile profile={profile} devPreview={devPreview} />;
+  return (
+    <LoadedProfile
+      profile={profile}
+      devPreview={devPreview}
+      onExitPreview={() => setDevPreview(false)}
+    />
+  );
 }
 
 function SignedOutState({ onPreview }: { onPreview: () => void }) {
-  const router = useRouter();
+  const requireAuth = useRequireAuth();
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <EmptyState
         title="Your profile lives here"
-        body="Sign in to see your reputation, settings, and account."
-        actionLabel="Go to sign in"
-        onAction={() => router.push('/auth')}
+        body="Log in to see your reputation, settings, and account."
+        actionLabel="Log in"
+        // No continuation needed: the tab re-renders signed-in reactively.
+        onAction={() => requireAuth({ context: 'tab_profile' })}
       />
       {__DEV__ ? (
         <View style={styles.devPreviewRow}>
@@ -132,7 +143,15 @@ function SignedOutState({ onPreview }: { onPreview: () => void }) {
   );
 }
 
-function LoadedProfile({ profile, devPreview }: { profile: MyProfile; devPreview: boolean }) {
+function LoadedProfile({
+  profile,
+  devPreview,
+  onExitPreview,
+}: {
+  profile: MyProfile;
+  devPreview: boolean;
+  onExitPreview: () => void;
+}) {
   const router = useRouter();
   const toast = useToast();
   const { badges, setBadge } = useTabBadges();
@@ -142,12 +161,13 @@ function LoadedProfile({ profile, devPreview }: { profile: MyProfile; devPreview
 
   const handleSignOut = async () => {
     if (devPreview) {
-      router.replace('/auth'); // sample data — nothing real to sign out of
+      onExitPreview(); // sample data — nothing real to sign out of
       return;
     }
     try {
       await signOut();
-      router.replace('/auth');
+      // Guest mode, in place: the session flip re-renders this tab as the
+      // signed-out invitation — no auth wall to land on.
     } catch {
       toast.show("Couldn't sign out — try again.", 'error');
     }
@@ -173,7 +193,7 @@ function LoadedProfile({ profile, devPreview }: { profile: MyProfile; devPreview
   const confirmDelete = async () => {
     try {
       await requestAccountDeletion(); // also clears the local session
-      router.replace('/auth');
+      // The session flip lands the user in guest mode on this tab.
     } catch {
       // The Edge Function is outlined but not built yet (see migration).
       toast.show('Account deletion is not available in this build yet.', 'error');

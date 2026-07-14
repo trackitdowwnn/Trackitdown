@@ -8,9 +8,11 @@
     "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.1.0",
+    "@react-native-google-signin/google-signin": "^16.1.2",
     "@shopify/flash-list": "2.0.2",
     "@supabase/supabase-js": "^2.110.0",
-    "expo": "~57.0.3",
+    "expo": "~57.0.4",
+    "expo-apple-authentication": "~57.0.0",
     "expo-clipboard": "~57.0.0",
     "expo-constants": "~57.0.3",
     "expo-dev-client": "~57.0.5",
@@ -23,6 +25,7 @@
     "expo-linking": "~57.0.2",
     "expo-location": "~57.0.2",
     "expo-router": "~57.0.4",
+    "expo-secure-store": "~57.0.0",
     "expo-splash-screen": "~57.0.2",
     "expo-status-bar": "~57.0.0",
     "expo-symbols": "~57.0.0",
@@ -65,7 +68,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "test:db": "bash scripts/test-db.sh"
   },
   "private": true,
   "jest": {

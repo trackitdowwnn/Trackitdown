@@ -4,11 +4,14 @@
  *        gesture, bottom-sheet, and toast providers.
  * WHY:   Every screen renders inside this layout; it is the single entry
  *        point Expo Router mounts. GestureHandlerRootView is required once at
- *        the root for react-native-gesture-handler, and
+ *        the root for react-native-gesture-handler,
  *        BottomSheetModalProvider hosts every <BottomSheet> presented from
- *        any screen (see src/shared/ui/BottomSheet.tsx).
- * LINKS: Uses expo-router Stack + ThemeProvider. Feature screens are added
- *        as routes under src/app/ (see docs/ARCHITECTURE.md).
+ *        any screen (see src/shared/ui/BottomSheet.tsx), AuthGate wraps the
+ *        navigator (splash → onboarding / app — guests browse freely), and
+ *        AuthSheet is the single app-wide deferred-auth surface, opened by
+ *        gated actions via useRequireAuth.
+ * LINKS: Uses expo-router Stack + ThemeProvider; src/features/auth (AuthGate,
+ *        AuthSheet). Feature screens are routes under src/app/ (docs/ARCHITECTURE.md).
  */
 
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -17,6 +20,7 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { AuthGate, AuthSheet } from '@/features/auth';
 import { ToastProvider } from '@/shared/ui';
 
 export default function RootLayout() {
@@ -28,7 +32,12 @@ export default function RootLayout() {
         <BottomSheetModalProvider>
           {/* ToastProvider hosts the single app-wide toast above all screens. */}
           <ToastProvider>
-            <Stack screenOptions={{ headerShown: false }} />
+            <AuthGate>
+              <Stack screenOptions={{ headerShown: false }} />
+              {/* The one auth surface: opens over any screen when a gated
+                  action stores a pending intent (useRequireAuth). */}
+              <AuthSheet />
+            </AuthGate>
             <StatusBar style="auto" />
           </ToastProvider>
         </BottomSheetModalProvider>

@@ -1,7 +1,8 @@
 /**
  * WHAT:  Dynamic Expo config. Extends the static app.json to inject the
- *        react-native-maps and expo-location config plugins, with the Google
- *        Maps API keys read from the environment.
+ *        react-native-maps, expo-location, and auth (secure-store, Apple, and
+ *        Google sign-in) config plugins, with the Google Maps + Google OAuth
+ *        keys read from the environment.
  * WHY:   API keys must not be committed, and app.json is static JSON that can't
  *        read env vars — so the plugin config lives here. Expo Go ignores
  *        native config plugins AND can NOT render Google Maps on Android: it
@@ -18,12 +19,8 @@
 
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
-  ...config,
-  // name/slug are required by ExpoConfig; app.json supplies them.
-  name: config.name ?? 'trackitdown',
-  slug: config.slug ?? 'trackitdown',
-  plugins: [
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const plugins: NonNullable<ExpoConfig['plugins']> = [
     ...(config.plugins ?? []),
     [
       'react-native-maps',
@@ -39,5 +36,30 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           'Allow Trackitdown to use your location to set where a car was last seen.',
       },
     ],
-  ],
-});
+    // --- Auth (features/auth) -------------------------------------------------
+    // Session tokens live in the OS keychain, not AsyncStorage.
+    'expo-secure-store',
+    // Enables the iOS "Sign in with Apple" capability + entitlement.
+    'expo-apple-authentication',
+  ];
+
+  // Native Google Sign-In. iosUrlScheme is the REVERSED iOS OAuth client id
+  // (com.googleusercontent.apps.<id>) from Google Cloud. The plugin REJECTS an
+  // empty value, so it's only added once GOOGLE_IOS_URL_SCHEME is set (+ a new
+  // dev build). Until then the module still autolinks; only the iOS redirect
+  // scheme waits (see .env.example + features/auth/README.md).
+  if (process.env.GOOGLE_IOS_URL_SCHEME) {
+    plugins.push([
+      '@react-native-google-signin/google-signin',
+      { iosUrlScheme: process.env.GOOGLE_IOS_URL_SCHEME },
+    ]);
+  }
+
+  return {
+    ...config,
+    // name/slug are required by ExpoConfig; app.json supplies them.
+    name: config.name ?? 'trackitdown',
+    slug: config.slug ?? 'trackitdown',
+    plugins,
+  };
+};

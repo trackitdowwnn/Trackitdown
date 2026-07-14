@@ -40,6 +40,10 @@ commenting standards.
 - Number plates, locations, and V5C documents are personal data. Collect
   the minimum, state the purpose in the privacy policy, honour deletion
   requests.
+- Auth is passwordless (email OTP + Apple/Google — DOMAIN.md). Session tokens
+  (access + refresh) are stored in the OS keychain via expo-secure-store,
+  encrypted at rest — never in plaintext AsyncStorage. Emails are personal data:
+  never logged in full (redactEmail).
 - Spotter GPS is captured **only** at the moment of reporting a sighting —
   no background location tracking anywhere in the app.
 - Closed posts are hidden from search; their sighting location history is

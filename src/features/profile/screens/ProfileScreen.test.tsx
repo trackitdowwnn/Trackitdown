@@ -106,6 +106,11 @@ jest.mock('../api/profileApi', () => ({
   },
 }));
 
+const mockRequireAuth = jest.fn();
+jest.mock('@/features/auth', () => ({
+  useRequireAuth: () => mockRequireAuth,
+}));
+
 const profile = {
   id: 'user-1',
   firstName: 'Ollie',
@@ -128,10 +133,11 @@ describe('signed out', () => {
     mockProfileState = { status: 'signedOut', refresh: jest.fn() };
   });
 
-  it('shows the sign-in prompt and routes to /auth', async () => {
+  it('shows the log-in invitation and routes through the auth gate', async () => {
     const { getByText } = await render(<ProfileScreen />);
-    fireEvent.press(getByText('Go to sign in'));
-    expect(mockPush).toHaveBeenCalledWith('/auth');
+    fireEvent.press(getByText('Log in'));
+    expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'tab_profile' });
+    expect(mockPush).not.toHaveBeenCalled(); // no auth route exists anymore
   });
 
   it('dev preview renders the full profile with sample data', async () => {
@@ -187,7 +193,7 @@ describe('signed in', () => {
     expect(mockPush).toHaveBeenCalledWith('/onboarding?revisit=1');
   });
 
-  it('sign out: confirming signs out and lands on /auth', async () => {
+  it('sign out: confirming signs out and stays put (guest mode, no auth wall)', async () => {
     const { getByTestId, getAllByText } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-sign-out'));
@@ -198,7 +204,7 @@ describe('signed in', () => {
       fireEvent.press(getAllByText('Sign out').at(-1) as never);
     });
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
-    expect(mockReplace).toHaveBeenCalledWith('/auth');
+    expect(mockReplace).not.toHaveBeenCalled(); // the session flip re-renders in place
   });
 
   it('sign out: cancelling does nothing', async () => {
@@ -233,7 +239,7 @@ describe('signed in', () => {
       fireEvent.press(getAllByText('Delete account').at(-1) as never);
     });
     await waitFor(() => expect(mockRequestDeletion).toHaveBeenCalled());
-    expect(mockReplace).toHaveBeenCalledWith('/auth');
+    expect(mockReplace).not.toHaveBeenCalled(); // guest mode in place, no auth wall
   });
 
   it('delete: missing Edge Function degrades to a calm error toast', async () => {

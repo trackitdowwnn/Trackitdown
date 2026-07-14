@@ -24,6 +24,13 @@ jest.mock('../hooks/usePostDetail', () => ({
 // The map SDK and gorhom sheet can't render under jest — stub the leaves.
 jest.mock('@/shared/ui/AppMap', () => ({ AppMap: 'AppMap', AppMapMarker: 'AppMapMarker' }));
 
+// The auth gate: pass-through (member behaviour) so action handlers run.
+// Gate-deferral behaviour is covered by the gate's own tests.
+const mockRequireAuth = jest.fn((intent: { run?: () => void }) => intent.run?.());
+jest.mock('@/features/auth', () => ({
+  useRequireAuth: () => mockRequireAuth,
+}));
+
 jest.mock('@gorhom/bottom-sheet', () => jest.requireActual('@gorhom/bottom-sheet/mock'));
 
 jest.mock('react-native-reanimated', () => {

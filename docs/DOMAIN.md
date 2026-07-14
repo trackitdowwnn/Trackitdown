@@ -14,6 +14,28 @@ document wins — fix the code or update this doc deliberately.
 - **Platform** — us. Takes a 5% fee from each paid bounty via Stripe Connect
   application fees.
 
+## Accounts & sign-in
+
+- **Guest-first (deferred auth).** Browsing is open: the feed, map, and active
+  post details need no account (they read the anon-granted RPCs). Auth appears
+  only as a bottom sheet at the moment an action needs an account — "Log in to
+  report a sighting", never a generic wall — and the original action continues
+  after sign-in without re-tapping. Dismissing the sheet is a graceful cancel.
+  Sign-out lands in guest mode, not an auth wall.
+  (Approved 2026-07-14 with the deferred-auth rework.)
+- **Passwordless.** Sign-up and sign-in are one flow: a 6-digit email OTP, or
+  native Apple / Google. No passwords, ever. There is no separate "create
+  account" step — verifying the code (or completing a social sign-in) creates
+  the account when it's new.
+- **Profile on first sign-in.** A new user (no `profiles` row) completes a short
+  profile inside the auth sheet: **first name is required** — it is the public
+  identity shown to owners/spotters (see Reputation / Owner identity). A
+  full/display name is optional and stays private (never shown; may hold a
+  surname). Existing users go straight in.
+- Session tokens are stored in the device keychain (expo-secure-store), not
+  plaintext AsyncStorage (SECURITY_AND_TRUST.md §3).
+- (Approved 2026-07-13 with the auth feature.)
+
 ## The stolen-car post lifecycle
 
 ```

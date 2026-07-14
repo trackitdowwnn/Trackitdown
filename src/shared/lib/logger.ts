@@ -146,3 +146,15 @@ export function redactPlate(plate: string): string {
 export function redactLocation(lat: number, lng: number): string {
   return `~(${lat.toFixed(2)}, ${lng.toFixed(2)})`;
 }
+
+/**
+ * Masks an email for logging: "oliver.best3@gmail.com" → "o***@gmail.com".
+ * SAFETY: an email address is personal data (UK GDPR) and never appears in
+ * logs in full — keep only the first local char + the domain (enough to debug
+ * deliverability, not enough to identify the person). Non-emails → "***".
+ */
+export function redactEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at <= 0 || at === email.length - 1) return "***";
+  return `${email[0]}***@${email.slice(at + 1)}`;
+}

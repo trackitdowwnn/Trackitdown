@@ -19,6 +19,7 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
+import { useRequireAuth } from '@/features/auth';
 import { colors, spacing, typography } from '@/shared/theme';
 import { Avatar, Button, EmptyState, TextField, useToast } from '@/shared/ui';
 
@@ -37,17 +38,39 @@ export function EditProfileScreen() {
   if (state.status === 'loading') {
     return <SafeAreaView style={styles.container} />;
   }
-  if (state.status !== 'ready') {
+  if (state.status === 'error') {
+    // A signed-in member whose fetch blipped: retry — a "Log in" here would be
+    // a dead button (the gate sees a member and does nothing).
     return (
       <SafeAreaView style={styles.container}>
         <EmptyState
-          title="Sign in to edit your profile"
-          body="Your profile becomes editable once you're signed in."
+          title="Couldn't load your profile"
+          body="Check your connection and try again."
+          actionLabel="Try again"
+          onAction={state.refresh}
         />
       </SafeAreaView>
     );
   }
+  if (state.status === 'signedOut') {
+    return <SignedOutEditState />;
+  }
   return <EditForm profile={state.profile} onSaved={state.refresh} />;
+}
+
+function SignedOutEditState() {
+  const requireAuth = useRequireAuth();
+  return (
+    <SafeAreaView style={styles.container}>
+      <EmptyState
+        title="Log in to edit your profile"
+        body="Your profile becomes editable once you're logged in."
+        actionLabel="Log in"
+        // No continuation: on success this screen re-renders as the form.
+        onAction={() => requireAuth({ context: 'edit_profile' })}
+      />
+    </SafeAreaView>
+  );
 }
 
 function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => void }) {

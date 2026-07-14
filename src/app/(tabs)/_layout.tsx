@@ -13,6 +13,7 @@
 import { Tabs, useRouter } from 'expo-router';
 import { Car, Compass, MessageCircle, Plus, User } from 'lucide-react-native';
 
+import { useRequireAuth } from '@/features/auth';
 import {
   AppTabBar,
   type AppTabConfig,
@@ -36,6 +37,7 @@ const APP_TABS: AppTabConfig[] = [
 function BadgedTabs() {
   const { badges } = useTabBadges();
   const router = useRouter();
+  const requireAuth = useRequireAuth();
   return (
     <Tabs
       screenOptions={{ headerShown: false }}
@@ -47,9 +49,11 @@ function BadgedTabs() {
           action={{
             icon: Plus,
             accessibilityLabel: 'Report a stolen car',
-            // Full-screen flow OUTSIDE the (tabs) group, so the tab bar is gone
-            // for the wizard (AppTabBar's hide contract isn't even needed here).
-            onPress: () => router.push('/post-a-car'),
+            // Gated: a guest signs in first (sheet), then the wizard opens
+            // without re-tapping. Full-screen flow OUTSIDE the (tabs) group,
+            // so the tab bar is gone for the wizard.
+            onPress: () =>
+              requireAuth({ context: 'post_car', run: () => router.push('/post-a-car') }),
           }}
         />
       )}

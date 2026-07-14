@@ -91,6 +91,7 @@ export { SelectScreen, type SelectScreenProps } from './SelectScreen';
 export { type SelectOption } from './selectOptions';
 export { StatusBadge, statusBadgeLabel, type StatusBadgeProps } from './StatusBadge';
 export { TextField, type TextFieldProps, type TextFieldVariant } from './TextField';
+export { HostTextInput, TextInputHostContext } from './TextInputHost';
 export {
   SkeletonVehicleCard,
   VehicleCard,

@@ -60,6 +60,11 @@ jest.mock('../api/profileApi', () => ({
   },
 }));
 
+const mockRequireAuth = jest.fn();
+jest.mock('@/features/auth', () => ({
+  useRequireAuth: () => mockRequireAuth,
+}));
+
 const profile = {
   id: 'user-1',
   firstName: 'Ollie',
@@ -170,10 +175,13 @@ describe('saving', () => {
 });
 
 describe('signed out', () => {
-  it('shows the calm guard instead of the form', async () => {
+  it('shows the calm invitation instead of the form, gated with edit_profile', async () => {
     mockProfileState = { status: 'signedOut', refresh: jest.fn() };
     const { getByText, queryByTestId } = await render(<EditProfileScreen />);
-    expect(getByText('Sign in to edit your profile')).toBeTruthy();
+    expect(getByText('Log in to edit your profile')).toBeTruthy();
     expect(queryByTestId('field-first-name')).toBeNull();
+
+    fireEvent.press(getByText('Log in'));
+    expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'edit_profile' });
   });
 });
