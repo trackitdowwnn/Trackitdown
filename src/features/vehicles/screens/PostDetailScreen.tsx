@@ -1,9 +1,12 @@
 /**
  * WHAT:  PostDetailScreen — the full listing page for one stolen car. Loads
- *        the post, then renders: a full-bleed photo hero under a scroll-linked
- *        AppHeader, the detail sections, and a sticky bottom bar whose action
- *        is owner- or spotter-specific. Handles loading (skeleton), error, a
- *        graceful "no longer active / recovered" state, and share / flag.
+ *        the post, then renders: a full-bleed photo hero with the content
+ *        sheet's rounded top overlapping it (the reference's signature move),
+ *        a scroll-linked AppHeader, the detail sections, and a sticky bottom
+ *        bar whose action is owner- or spotter-specific. Handles loading
+ *        (skeleton), error, a graceful "no longer active / recovered" state,
+ *        and share; report lives at the page's end (in the body), not the
+ *        header.
  * WHY:   Route `/post/[id]`, reached from VehicleCard everywhere. Owner-vs-
  *        spotter mode comes from the server (is_owner); one decision drives the
  *        bottom bar. Read-only — no status or money writes. The header fade and
@@ -11,6 +14,7 @@
  *        the scroll never jank each other.
  * LINKS: src/app/post/[id].tsx (route); src/features/vehicles/hooks/
  *        usePostDetail.ts; src/features/vehicles/components/*;
+ *        docs/design-refs/post-detail/ (the redesign's reference + gaps);
  *        docs/SECURITY_AND_TRUST.md (§1 safety, §6 aggregate sightings).
  */
 
@@ -23,7 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequireAuth } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, sizes, spacing, typography } from '@/shared/theme';
+import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import {
   AppHeader,
   AppHeaderButton,
@@ -65,7 +69,12 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const { status, result, retry } = usePostDetail(postId);
 
   const heroHeight = Math.round(width * HERO_RATIO);
-  const fadeEnd = Math.max(FADE_TRAVEL, heroHeight - insets.top - HEADER_BAR_HEIGHT);
+  // The sheet's rounded top overlaps the hero, so the VISUAL hero bottom —
+  // where the header should finish solidifying — sits `radii.xl` higher.
+  const fadeEnd = Math.max(
+    FADE_TRAVEL,
+    heroHeight - radii.xl - insets.top - HEADER_BAR_HEIGHT,
+  );
   const fadeStart = fadeEnd - FADE_TRAVEL;
 
   const scrollY = useSharedValue(0);
@@ -93,6 +102,10 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     log.info('post_flag_stub', { postId });
     toast.show('Thanks — we’ll review this.');
   }, [postId, toast]);
+
+  const onReport = useCallback(() => {
+    flagRef.current?.open();
+  }, []);
 
   const onSeen = useCallback(() => {
     // Gated: a guest signs in first (sheet), then the continuation fires
@@ -149,7 +162,15 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
               height={heroHeight}
               alt={`${result.post.colour} ${result.post.make} ${result.post.model}`}
             />
-            <PostDetailBody post={result.post} onOpenMap={() => onOpenMap(result.post)} />
+            {/* The content sheet: rounded top corners riding up over the
+                hero's bottom edge (REFERENCE_SPEC §1). */}
+            <View style={styles.sheet}>
+              <PostDetailBody
+                post={result.post}
+                onOpenMap={() => onOpenMap(result.post)}
+                onReport={onReport}
+              />
+            </View>
           </>
         ) : (
           <View style={[styles.stateBlock, { paddingTop: insets.top + HEADER_BAR_HEIGHT }]}>
@@ -166,14 +187,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         onBack={() => router.back()}
         rightActions={
           visiblePost ? (
-            <>
-              <AppHeaderButton accessibilityLabel="Share" onPress={() => onShare(visiblePost)}>
-                <Feather name="share" size={sizes.iconSm} color={colors.textPrimary} />
-              </AppHeaderButton>
-              <AppHeaderButton accessibilityLabel="Report" onPress={() => flagRef.current?.open()}>
-                <Feather name="flag" size={sizes.iconSm} color={colors.textPrimary} />
-              </AppHeaderButton>
-            </>
+            <AppHeaderButton accessibilityLabel="Share" onPress={() => onShare(visiblePost)}>
+              <Feather name="share" size={sizes.iconSm} color={colors.textPrimary} />
+            </AppHeaderButton>
           ) : null
         }
       />
@@ -204,11 +220,22 @@ function PostDetailSkeleton({ heroHeight }: { heroHeight: number }) {
   return (
     <View>
       <View style={[styles.skeletonHero, { height: heroHeight }]} />
-      <View style={styles.skeletonBody}>
+      {/* Mirrors the real sheet so load → ready doesn't jump. */}
+      <View style={[styles.sheet, styles.skeletonBody]}>
         <View style={[styles.skeletonLine, styles.skeletonTitle]} />
         <View style={[styles.skeletonLine, styles.skeletonMeta]} />
         <View style={[styles.skeletonLine, styles.skeletonMeta]} />
         <View style={[styles.skeletonLine, styles.skeletonBounty]} />
+        <View style={[styles.skeletonLine, styles.skeletonMap]} />
+        {/* Two trust-highlight placeholders (tile + line). */}
+        <View style={styles.skeletonTileRow}>
+          <View style={styles.skeletonTile} />
+          <View style={[styles.skeletonLine, styles.skeletonTileLine]} />
+        </View>
+        <View style={styles.skeletonTileRow}>
+          <View style={styles.skeletonTile} />
+          <View style={[styles.skeletonLine, styles.skeletonTileLine]} />
+        </View>
       </View>
     </View>
   );
@@ -219,6 +246,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  sheet: {
+    marginTop: -radii.xl,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    backgroundColor: colors.background,
+    overflow: 'hidden',
+  },
   stateBlock: {
     // 24px gutter: post detail is a text/detail screen, not a feed surface.
     paddingHorizontal: spacing.xl,
@@ -228,12 +262,13 @@ const styles = StyleSheet.create({
   },
   skeletonBody: {
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    gap: spacing.md,
+    paddingTop: spacing.xxl,
+    // The real sections run a 16pt internal gap — mirror it.
+    gap: spacing.lg,
   },
   skeletonLine: {
     backgroundColor: colors.surfaceSubtle,
-    borderRadius: spacing.xs,
+    borderRadius: radii.sm,
   },
   skeletonTitle: {
     height: typography.title.lineHeight,
@@ -247,5 +282,27 @@ const styles = StyleSheet.create({
     height: typography.display.lineHeight,
     width: '40%',
     marginTop: spacing.md,
+  },
+  skeletonMap: {
+    height: sizes.mapPreview,
+    borderRadius: radii.xl,
+    marginTop: spacing.md,
+  },
+  skeletonTileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+    marginTop: spacing.md,
+  },
+  skeletonTile: {
+    width: sizes.avatarMd,
+    height: sizes.avatarMd,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  skeletonTileLine: {
+    height: typography.heading.lineHeight,
+    flex: 1,
+    maxWidth: '55%',
   },
 });

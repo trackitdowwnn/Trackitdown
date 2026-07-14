@@ -1,24 +1,27 @@
 /**
  * WHAT:  PostDetailBody — the scrollable content of a visible post, hairline-
- *        divided with generous rhythm: title, bounty, trust block, details
- *        grid, features grid, guided descriptions (How to spot it / How it
- *        drives) or the legacy owner's note, theft details, "last seen here"
- *        map, the owner block, the (dormant) sighting-activity line, and the
- *        SafetyNotice.
+ *        divided with the reference's generous rhythm (32pt sections, title-
+ *        scale headers): title, bounty, the last-seen map (promoted — spotters
+ *        act on WHERE first), "What to look for" (details + features + how to
+ *        spot it), "How it drives", the trust highlights, theft details, the
+ *        owner block, the (dormant) sighting-activity line, the SafetyNotice,
+ *        and an underlined report row.
  * WHY:   Splits the section rendering out of the screen so the screen file
- *        stays about orchestration (load → header → states). Every optional
- *        section is omitted entirely when its data is absent — so old posts
- *        (no features / theft context / guided descriptions) never render an
- *        empty shell, and the legacy owner's note only shows when there are no
- *        guided descriptions.
+ *        stays about orchestration (load → header → states). Section order is
+ *        the domain-reordered composition from the redesign session: location
+ *        and recognition above trust/meta, because a spotter's job is "where
+ *        + what to look for". Every optional section is omitted entirely when
+ *        its data is absent — old posts (no features / theft context / guided
+ *        descriptions) never render an empty shell; the legacy owner's note
+ *        only shows when there are no guided descriptions.
  * LINKS: src/features/vehicles/screens/PostDetailScreen.tsx;
  *        src/shared/ui (PlateChip, StatusBadge, ReadMore, SafetyNotice);
- *        src/features/vehicles/components/LastSeenMap.tsx.
+ *        docs/design-refs/post-detail/GAP_ANALYSIS.md (composition B).
  */
 
 import { Feather } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
 import { formatPounds } from '@/shared/lib';
@@ -38,13 +41,15 @@ export interface PostDetailBodyProps {
   post: PostDetail;
   /** Open the full search map centred on the last-seen point. */
   onOpenMap: () => void;
+  /** Open the report-post confirm (the underlined row at the page's end). */
+  onReport: () => void;
 }
 
 function Divider() {
   return <View style={styles.divider} />;
 }
 
-export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
+export function PostDetailBody({ post, onOpenMap, onReport }: PostDetailBodyProps) {
   // Hooks are unconditional; the "last seen" and sighting lines gate on data.
   const lastSeenAgo = useTimeAgo(post.lastSeenAt ?? post.createdAt);
   const postedAgo = useTimeAgo(post.createdAt);
@@ -60,8 +65,8 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
 
   const identityMeta = [post.colour, post.year].filter(Boolean).join(' · ');
 
-  // Colour already shows in the identity line above, so the grid carries only
-  // body type + features — and the whole section drops out when it has neither.
+  // Colour already shows in the identity line above, so the recognition rows
+  // carry only body type + prose distinguishing features.
   const detailRows: { icon: FeatherName; value: string }[] = [
     ...(post.bodyType ? [{ icon: 'truck' as FeatherName, value: post.bodyType }] : []),
     ...(post.distinguishingFeatures
@@ -71,6 +76,9 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
 
   const hasCoords = post.lat != null && post.lng != null;
   const theftLines = theftContextLines(post);
+  // "What to look for" = everything that helps a spotter RECOGNISE the car.
+  // Omitted entirely when an old post has none of its three pieces.
+  const hasLookFor = detailRows.length > 0 || post.features.length > 0 || !!post.descRecognise;
 
   return (
     <View style={styles.body}>
@@ -90,7 +98,8 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
 
       <Divider />
 
-      {/* 2 — Bounty block */}
+      {/* 2 — Bounty block. Emotional translation: a promise of help repaid,
+          never a price asking for money — plain statement, no urgency. */}
       <View style={styles.section}>
         <Text style={styles.bounty}>{formatPounds(post.bountyPence)}</Text>
         <Text style={styles.bountyCaption}>
@@ -98,57 +107,54 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
         </Text>
       </View>
 
-      {/* 3 — Trust & verification */}
-      <Divider />
-      <View style={styles.section}>
-        <TrustBlock status={post.status} createdAt={post.createdAt} expiresAt={post.expiresAt} />
-      </View>
-
-      {/* 4 — Details grid (omitted entirely when there's no data) */}
-      {detailRows.length > 0 ? (
+      {/* 3 — Last seen here (promoted: spotters act on WHERE first).
+          Reference order inside the section: title → place line → map. */}
+      {hasCoords ? (
         <>
           <Divider />
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Details</Text>
-            <View style={styles.detailGrid}>
-              {detailRows.map((row) => (
-                <View key={row.icon} style={styles.detailRow} accessible>
-                  <Feather
-                    name={row.icon}
-                    size={sizes.iconSm}
-                    color={colors.textSecondary}
-                    importantForAccessibility="no"
-                  />
-                  <Text style={styles.detailValue}>{row.value}</Text>
-                </View>
-              ))}
-            </View>
+            <Text style={styles.sectionTitle}>Last seen here</Text>
+            {post.lastSeenArea ? (
+              <Text style={styles.meta}>
+                {post.lastSeenArea}
+                {post.lastSeenAt ? ` · ${lastSeenAgo}` : ''}
+              </Text>
+            ) : null}
+            <LastSeenMap lat={post.lat as number} lng={post.lng as number} onOpenFull={onOpenMap} />
           </View>
         </>
       ) : null}
 
-      {/* 5 — Features (Part 2 taxonomy; empty on old posts → omitted). */}
-      {post.features.length > 0 ? (
+      {/* 4 — What to look for: body type, structured features, and the
+          owner's "how to spot it" prose — the spotter's recognition kit. */}
+      {hasLookFor ? (
         <>
           <Divider />
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Features</Text>
-            <FeaturesGrid features={post.features} />
+            <Text style={styles.sectionTitle}>What to look for</Text>
+            {detailRows.length > 0 ? (
+              <View style={styles.detailList}>
+                {detailRows.map((row) => (
+                  <View key={row.icon} style={styles.detailRow} accessible>
+                    <Feather
+                      name={row.icon}
+                      size={sizes.icon}
+                      color={colors.textPrimary}
+                      importantForAccessibility="no"
+                    />
+                    <Text style={styles.detailValue}>{row.value}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {post.features.length > 0 ? <FeaturesGrid features={post.features} /> : null}
+            {post.descRecognise ? <ReadMore>{post.descRecognise}</ReadMore> : null}
           </View>
         </>
       ) : null}
 
-      {/* 6 — Descriptions: guided prompts (new posts) and/or legacy note. Each
-          is independent so old and new posts both render whatever they have. */}
-      {post.descRecognise ? (
-        <>
-          <Divider />
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>How to spot it</Text>
-            <ReadMore>{post.descRecognise}</ReadMore>
-          </View>
-        </>
-      ) : null}
+      {/* 5 — How it drives (guided prompt; independent of the section above
+          so old and new posts both render whatever they have). */}
       {post.descDrives ? (
         <>
           <Divider />
@@ -158,6 +164,7 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
           </View>
         </>
       ) : null}
+
       {/* Legacy free-text note — only when there are NO guided descriptions
           (old posts), so new posts never show duplicated prose. */}
       {post.ownerNote && !post.descRecognise && !post.descDrives ? (
@@ -170,7 +177,14 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
         </>
       ) : null}
 
-      {/* 7 — Theft details (Part 2; coarse — never an address). */}
+      {/* 6 — Trust & verification (highlight rows; no section title — the
+          headline facts are the titles, per the reference's highlights). */}
+      <Divider />
+      <View style={styles.section}>
+        <TrustBlock status={post.status} createdAt={post.createdAt} expiresAt={post.expiresAt} />
+      </View>
+
+      {/* 7 — Theft details (coarse; never an address — SAFETY, DOMAIN.md). */}
       {theftLines.length > 0 ? (
         <>
           <Divider />
@@ -185,31 +199,14 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
         </>
       ) : null}
 
-      {/* 8 — Last seen here */}
-      {hasCoords ? (
-        <>
-          <Divider />
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Last seen here</Text>
-            <LastSeenMap lat={post.lat as number} lng={post.lng as number} onOpenFull={onOpenMap} />
-            {post.lastSeenArea ? (
-              <Text style={styles.meta}>
-                {post.lastSeenArea}
-                {post.lastSeenAt ? ` · ${lastSeenAgo}` : ''}
-              </Text>
-            ) : null}
-          </View>
-        </>
-      ) : null}
-
-      {/* 9 — Owner (Airbnb "meet the host" placement — low, after the listing). */}
+      {/* 8 — Owner (the "meet the host" placement — low, after the listing). */}
       <Divider />
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Owner</Text>
         <OwnerBlock owner={post.owner} />
       </View>
 
-      {/* 10 — Sighting activity — dormant until the sightings feature ships.
+      {/* 9 — Sighting activity — dormant until the sightings feature ships.
           SAFETY: aggregate count ONLY — never individual sightings or their
           locations to a non-owner (SECURITY_AND_TRUST §6). */}
       {post.sightingCount > 0 ? (
@@ -225,10 +222,32 @@ export function PostDetailBody({ post, onOpenMap }: PostDetailBodyProps) {
         </>
       ) : null}
 
-      {/* 11 — Safety */}
+      {/* 10 — Safety. Deliberately NOT the reference's quiet "things to know"
+          rows — the banner form stays unmissable (emotional translation). */}
       <Divider />
       <View style={styles.section}>
         <SafetyNotice />
+      </View>
+
+      {/* 11 — Report, the reference's trust-page grammar: an underlined text
+          row at the page's end (underline = tappable). */}
+      <Divider />
+      <View style={styles.section}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Report this post"
+          onPress={onReport}
+          style={styles.reportRow}
+          hitSlop={spacing.sm}
+        >
+          <Feather
+            name="flag"
+            size={sizes.iconSm}
+            color={colors.textPrimary}
+            importantForAccessibility="no"
+          />
+          <Text style={styles.reportLabel}>Report this post</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -240,8 +259,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   section: {
-    paddingVertical: spacing.xl,
-    gap: spacing.sm,
+    // The reference rhythm: 32pt each side of a divider, 16pt title→content.
+    paddingVertical: spacing.xxl,
+    gap: spacing.lg,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
@@ -274,20 +294,35 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   sectionTitle: {
-    ...typography.heading,
+    // Title-scale section headers — the reference's ~26pt tier (C1: two steps
+    // up from `heading`, deliberately bypassing `sectionTitle` 20).
+    ...typography.title,
     color: colors.textPrimary,
   },
-  detailGrid: {
-    gap: spacing.md,
+  detailList: {
+    gap: spacing.sm,
   },
   detailRow: {
+    minHeight: sizes.touchTarget,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.lg,
   },
   detailValue: {
     ...typography.body,
     color: colors.textPrimary,
     flex: 1,
+  },
+  reportRow: {
+    minHeight: sizes.touchTarget,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  reportLabel: {
+    ...typography.body,
+    color: colors.textPrimary,
+    textDecorationLine: 'underline',
   },
 });

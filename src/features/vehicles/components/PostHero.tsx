@@ -13,7 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, spacing, typography } from '@/shared/theme';
+import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import { AppImage } from '@/shared/ui';
 
 import type { PostDetailPhoto } from '../types';
@@ -32,7 +32,7 @@ export function PostHero({ photos, width, height, alt }: PostHeroProps) {
   if (photos.length === 0) {
     return (
       <View style={[styles.fallback, { width, height }]}>
-        <Feather name="image" size={typography.display.fontSize} color={colors.textSecondary} />
+        <Feather name="image" size={sizes.avatarSm} color={colors.textSecondary} />
       </View>
     );
   }
@@ -87,7 +87,9 @@ const styles = StyleSheet.create({
   counter: {
     position: 'absolute',
     right: spacing.md,
-    bottom: spacing.md,
+    // Clear of the content sheet's rounded top edge, which overlaps the
+    // hero's last `radii.xl` points (PostDetailScreen `sheet`).
+    bottom: spacing.md + radii.xl,
     // surfaceInverse = the sanctioned dark floating-pill surface.
     backgroundColor: colors.surfaceInverse,
     borderRadius: radii.full,

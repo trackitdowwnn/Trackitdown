@@ -104,4 +104,15 @@ describe('PostDetailScreen', () => {
     const { getByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
     expect(getByText('Try again')).toBeTruthy();
   });
+
+  it('report lives at the page end, not the header', async () => {
+    setResult('ready', { kind: 'visible', post });
+    const { getByText, queryByLabelText } = await render(<PostDetailScreen postId="p1" />, {
+      wrapper: ToastProvider,
+    });
+    expect(getByText('Report this post')).toBeTruthy();
+    // The header keeps share only (redesign B5 — the reference's trust-page grammar).
+    expect(queryByLabelText('Report')).toBeNull();
+    expect(queryByLabelText('Share')).toBeTruthy();
+  });
 });

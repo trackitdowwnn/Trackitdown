@@ -23,7 +23,9 @@ export const shadows = {
     elevation: 3,
   },
   /** The deeper shadow an element casts WHILE lifted toward the user (the pin
-   *  badge as the map pans beneath it). */
+   *  badge as the map pans beneath it) — ALSO sanctioned at rest for small
+   *  white circles floating over photography (header buttons, map expand
+   *  badge), which need the depth to stay legible on a busy image. */
   lifted: {
     shadowColor: colors.textPrimary,
     shadowOpacity: 0.18,

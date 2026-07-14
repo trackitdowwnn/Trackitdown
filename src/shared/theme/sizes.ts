@@ -48,6 +48,10 @@ export const sizes = {
   badgePill: 16,
   /** Embedded map picker height (e.g. the post-a-car "last seen where" step). */
   mapPickerHeight: 340,
+  /** Large in-page map preview (post detail "Last seen here") — the reference
+   *  treats location as a headline-size element, not a thumbnail
+   *  (docs/design-refs/post-detail/REFERENCE_SPEC.md §9). */
+  mapPreview: 340,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

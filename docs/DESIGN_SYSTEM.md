@@ -55,6 +55,9 @@ as decoration on "stolen" content.
     sanctioned size below `caption` (matches platform tab conventions)
 - Sentence case everywhere. No ALL CAPS except number plates, which render
   in a plate-style chip (bold, letter-spaced, `surfaceSubtle` background).
+- **Underline = tappable** (formalised 2026-07-14; was already the de facto
+  convention in ReadMore/PhotoGridPicker): inline text actions are underlined
+  `textPrimary` — no colour needed. Never underline non-tappable text.
 
 ## Spacing, radii, elevation
 

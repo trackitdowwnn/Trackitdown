@@ -9,44 +9,52 @@ post); mode is decided once from the server-computed `is_owner`.
 **Screens**
 - `PostDetailScreen` (route `src/app/post/[id].tsx` — thin wrapper).
 
-**Anatomy** (top → bottom)
+**Anatomy** (top → bottom; the 2026-07 redesign — composition "B",
+domain-reordered per docs/design-refs/post-detail/GAP_ANALYSIS.md: a
+spotter's job is WHERE + WHAT TO LOOK FOR, so those outrank trust/meta.
+Section rhythm 32pt / title-scale headers; the body is a `radii.xl`
+rounded-top sheet overlapping the hero.)
 1. **Hero** — edge-to-edge swipeable photo carousel (`PostHero`) bleeding
-   behind the status bar, dark "n / m" counter pill. The `AppHeader` floats
-   over it: back (left), share + flag (right), transparent → solid surface +
-   hairline + title as the hero scrolls away (Reanimated scroll value).
+   behind the status bar, dark "n / m" counter pill sitting above the sheet
+   curve. The `AppHeader` floats over it: back (left), share (right),
+   transparent → solid surface + hairline + title as the hero scrolls away;
+   the buttons' white circles fade out in the same range, leaving flat icons.
 2. **Title block** — "Make Model", `PlateChip` + colour + year, `StatusBadge`
    when not plain active, quiet meta "Last seen … near … · Posted …".
 3. **Bounty block** — large terracotta bounty + "Paid to the spotter whose
    sighting leads to recovery."
-4. **Trust & verification** (`TrustBlock`) — icon rows: "Ownership verified"
-   (derived from `status`; the owner's own unverified post reads "Pending
-   verification"), "Posted `<date>`", "Active until `<date>`" (while live).
-5. **Details grid** — body type / distinguishing features as icon+label rows
-   (colour shows in the title line); the whole section drops out with no data.
-6. **Features** (`FeaturesGrid`) — the checkable-taxonomy amenities grid
-   (`post_feature` → `vehicle_feature`); omitted when a post has none.
-7. **Descriptions** — guided prompts "How to spot it" (`desc_recognise`) and
-   "How it drives" (`desc_drives`), each `ReadMore`; the legacy `owner_note`
-   still renders under "Owner's note" for older posts.
+4. **Last seen here** (promoted) — area + time line, then a large
+   (`sizes.mapPreview`) non-interactive `AppMap` preview (`LastSeenMap`,
+   `interactive={false}`) with a single pin and a small expand badge; tap
+   opens the full search map centred there (`/search-map?lat&lng`).
+5. **What to look for** — the spotter's recognition kit in one section: body
+   type / distinguishing-features rows, the checkable-taxonomy feature list
+   (`FeaturesGrid`, one per row), and the guided "how to spot it" prose
+   (`desc_recognise`, `ReadMore`). Renders when ANY piece exists; omitted
+   entirely otherwise (old posts).
+6. **How it drives** (`desc_drives`, `ReadMore`); the legacy `owner_note`
+   still renders under "Owner's note" for older posts with no guided prose.
+7. **Trust & verification** (`TrustBlock`) — highlight rows (48pt tile,
+   headline + evidence line): "Ownership verified" (derived from `status`;
+   the owner's own unverified post reads "Pending verification") with its
+   V5C evidence line, "Posted `<date>`", "Active until `<date>`" (while live).
 8. **Theft details** — `stolen_from` + `keys_taken` (coarse; never an address).
    **SAFETY**: a driveway theft's last-seen point is coarsened to ~1km for
    non-owners in `get_post_detail` (the map/feed RPCs still need the same — see
    the migration's follow-up banner and DOMAIN.md).
-9. **Last seen here** — a non-interactive `AppMap` preview (`LastSeenMap`,
-   `interactive={false}`) with a single pin; tap opens the full search map
-   centred there (`/search-map?lat&lng`).
-8. **Owner** (`OwnerBlock`, Airbnb "meet the host" placement) — **SAFETY**:
+9. **Owner** (`OwnerBlock`, Airbnb "meet the host" placement) — **SAFETY**:
    signed-in viewers see an initial-letter avatar + "Posted by `<first name>`"
    + member-since; anonymous viewers see a de-identified "Verified owner"
    (member-since only). **No photo** — a `<owner_id>/…` avatar path would leak
    `owner_id` (→ surname). Never surname/`display_name`, `owner_id`, or contact.
    Gated server-side in `get_post_detail`; see DOMAIN.md "Owner identity on a
    post".
-9. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
-   the section renders only when count > 0 and lights up when the sightings
-   feature ships. **SAFETY** (SECURITY_AND_TRUST §6): aggregate count ONLY,
-   never individual sightings or their locations to a non-owner.
-8. **SafetyNotice** banner above the bottom bar.
+10. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
+    the section renders only when count > 0 and lights up when the sightings
+    feature ships. **SAFETY** (SECURITY_AND_TRUST §6): aggregate count ONLY,
+    never individual sightings or their locations to a non-owner.
+11. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
+    the underlined "Report this post" row (moved out of the header).
 
 **Sticky bottom bar** (`PostBottomBar`) — always visible, safe-area padded.
 - **Spotter:** bounty + "reward", primary "I've seen this car" → Toast

@@ -22,6 +22,8 @@ describe('TrustBlock', () => {
       />,
     );
     expect(getByText('Ownership verified')).toBeTruthy();
+    // The evidence line under the fact (redesign B1+F2): procedural, no selling.
+    expect(getByText(/V5C logbook was checked/)).toBeTruthy();
     expect(getByText(/^Posted /)).toBeTruthy();
     expect(getByText(/^Active until /)).toBeTruthy();
     expect(queryByText('Pending verification')).toBeNull();
@@ -32,6 +34,7 @@ describe('TrustBlock', () => {
       <TrustBlock status="pending_verification" createdAt="2026-07-08T12:00:00Z" />,
     );
     expect(getByText('Pending verification')).toBeTruthy();
+    expect(getByText(/checking the owner’s V5C logbook/)).toBeTruthy();
     expect(queryByText('Ownership verified')).toBeNull();
     expect(queryByText(/Active until/)).toBeNull();
   });
