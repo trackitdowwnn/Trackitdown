@@ -54,6 +54,9 @@ export interface WizardStep<TAnswers> {
   onContinue?: (
     answers: Partial<TAnswers>,
   ) => Promise<Partial<TAnswers> | void>;
+  /** Primary-button label while ON this step (not last, not an edit spur);
+   *  defaults to "Next". Speed flows use it for "Continue". */
+  ctaLabel?: string;
   /** Label for this answer on the review screen; defaults to `question`. */
   reviewLabel?: string;
   /** Renders this step's answer as review text; omit to hide from review. */
@@ -75,8 +78,10 @@ export interface WizardPhase<TAnswers> {
   id: string;
   /** Short phase name, shown on intros and review group headers. */
   title: string;
-  /** Full-screen Airbnb-style intro shown before the phase's first step. */
-  intro: WizardPhaseIntro;
+  /** Full-screen Airbnb-style intro shown before the phase's first step.
+   *  OPTIONAL: speed flows (e.g. report-sighting) omit it — the phase then
+   *  starts directly on its first step, with no intro screen emitted. */
+  intro?: WizardPhaseIntro;
   steps: WizardStep<TAnswers>[];
 }
 

@@ -213,3 +213,64 @@ describe('reviewGroups', () => {
     expect(groups[1].items.map((item) => item.flatIndex)).toEqual([4]);
   });
 });
+
+describe('intro-less phases (speed flows)', () => {
+  /** One phase, no intro, no review — the report-sighting shape. */
+  const speedFlow: WizardFlow<DemoAnswers> = {
+    id: 'speed-flow',
+    finalCtaLabel: 'Send report',
+    phases: [
+      {
+        id: 'report',
+        title: 'Report',
+        steps: [
+          {
+            id: 'name',
+            question: "What's your name?",
+            component: Noop,
+            schema: z.object({ name: z.string().min(1) }),
+          },
+          {
+            id: 'colour',
+            question: 'Favourite colour?',
+            component: Noop,
+            schema: z.object({ colour: z.string().min(1) }),
+          },
+        ],
+      },
+    ],
+  };
+
+  it('emits no intro screens: the flow starts on the first step', () => {
+    const speedScreens = flattenFlow(speedFlow);
+    expect(speedScreens.map((screen) => screen.kind)).toEqual(['step', 'step']);
+  });
+
+  it('progress counts only the steps', () => {
+    expect(phaseProgress(speedFlow, 0)).toEqual([0.5]);
+    expect(phaseProgress(speedFlow, 1)).toEqual([1]);
+  });
+
+  it('the last step carries the final CTA', () => {
+    const speedScreens = flattenFlow(speedFlow);
+    expect(
+      ctaLabel(speedFlow, speedScreens, { index: 1, returnToIndex: null, direction: 1 }),
+    ).toBe('Send report');
+  });
+
+  it('mixed flows still emit intros for phases that declare one', () => {
+    const mixed: WizardFlow<DemoAnswers> = {
+      ...speedFlow,
+      phases: [flow.phases[0], speedFlow.phases[0]],
+    };
+    expect(flattenFlow(mixed).map((screen) => screen.kind)).toEqual([
+      'intro',
+      'step',
+      'step',
+      'step',
+      'step',
+    ]);
+    // Phase 1: intro + 2 steps = 3 screens; phase 2: 2 steps.
+    expect(phaseProgress(mixed, 2)).toEqual([1, 0]);
+  });
+});

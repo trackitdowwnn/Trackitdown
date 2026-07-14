@@ -13,5 +13,8 @@ export type {
   WizardStep,
   WizardStepProps,
 } from './types';
+// flattenFlow is public for flow smoke tests (each flow pins its own shape —
+// see the WizardStep.schema LIMITATION note); the reducer/chrome stay private.
+export { flattenFlow } from './navigation';
 export { useWizardController } from './useWizardController';
 export { WizardScreen, type WizardScreenProps } from './WizardScreen';

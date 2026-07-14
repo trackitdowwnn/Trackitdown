@@ -34,7 +34,7 @@ import Animated, {
 import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { motion, spacing } from '@/shared/theme';
-import { VehicleCard } from '@/shared/ui';
+import { Button, VehicleCard } from '@/shared/ui';
 
 import type { MapPost } from '../types';
 
@@ -53,6 +53,9 @@ export interface MapCardPagerProps {
   selectedIndex: number;
   onIndexSettled: (index: number) => void;
   onPressPost: (post: MapPost) => void;
+  /** "I've seen this car" on the peek card — the map's direct entry into the
+   *  report-sighting flow (the screen supplies the auth-gated handler). */
+  onSeenPost?: (post: MapPost) => void;
 }
 
 export const MapCardPager = memo(function MapCardPager({
@@ -60,6 +63,7 @@ export const MapCardPager = memo(function MapCardPager({
   selectedIndex,
   onIndexSettled,
   onPressPost,
+  onSeenPost,
 }: MapCardPagerProps) {
   const { width: windowWidth } = useWindowDimensions();
   // Full-width-minus-gutters card; snap interval includes the gap.
@@ -175,8 +179,11 @@ export const MapCardPager = memo(function MapCardPager({
         data={posts}
         keyExtractor={(post) => post.id}
         renderItem={({ item }) => (
-          <View style={{ width: cardWidth }}>
+          <View style={[styles.cardColumn, { width: cardWidth }]}>
             <VehicleCard post={item} variant="map" onPress={() => onPressPost(item)} />
+            {onSeenPost ? (
+              <Button label="I’ve seen this car" onPress={() => onSeenPost(item)} />
+            ) : null}
           </View>
         )}
         style={styles.list}
@@ -204,5 +211,8 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
     gap: CARD_GAP,
+  },
+  cardColumn: {
+    gap: spacing.sm,
   },
 });

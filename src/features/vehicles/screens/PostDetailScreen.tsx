@@ -107,18 +107,26 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     flagRef.current?.open();
   }, []);
 
-  const onSeen = useCallback(() => {
-    // Gated: a guest signs in first (sheet), then the continuation fires
-    // without re-tapping. The sighting flow itself isn't built yet — the
-    // continuation acknowledges warmly and will become the real flow later.
-    requireAuth({
-      context: 'report_sighting',
-      run: () => {
-        toast.show('Reporting a sighting is coming soon.');
-        log.debug('post_seen_stub', { postId });
-      },
-    });
-  }, [postId, toast, requireAuth]);
+  const onSeen = useCallback(
+    (post: PostDetail) => {
+      // Gated: a guest signs in first (sheet), then the continuation fires
+      // without re-tapping — landing straight in the report wizard.
+      requireAuth({
+        context: 'report_sighting',
+        run: () => {
+          router.push({
+            pathname: '/report-sighting',
+            params: { postId, source: 'detail', bounty: String(post.bountyPence) },
+          });
+        },
+      });
+    },
+    [postId, requireAuth, router],
+  );
+
+  const onViewSightings = useCallback(() => {
+    router.push({ pathname: '/post-sightings', params: { postId } });
+  }, [postId, router]);
 
   const onManage = useCallback(() => {
     // my-cars is a tab stub today; the management screen lands there later.
@@ -169,6 +177,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 post={result.post}
                 onOpenMap={() => onOpenMap(result.post)}
                 onReport={onReport}
+                onViewSightings={result.post.isOwner ? onViewSightings : undefined}
               />
             </View>
           </>
@@ -195,7 +204,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
       />
 
       {visiblePost ? (
-        <PostBottomBar post={visiblePost} onSeen={onSeen} onManage={onManage} />
+        <PostBottomBar post={visiblePost} onSeen={() => onSeen(visiblePost)} onManage={onManage} />
       ) : null}
 
       <ConfirmDialog

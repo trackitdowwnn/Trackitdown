@@ -43,13 +43,21 @@ export interface PostDetailBodyProps {
   onOpenMap: () => void;
   /** Open the report-post confirm (the underlined row at the page's end). */
   onReport: () => void;
+  /** OWNER only: open their sighting list. Absent for spotters — the
+   *  aggregate line stays a plain, non-navigable fact (SECURITY_AND_TRUST §6). */
+  onViewSightings?: () => void;
 }
 
 function Divider() {
   return <View style={styles.divider} />;
 }
 
-export function PostDetailBody({ post, onOpenMap, onReport }: PostDetailBodyProps) {
+export function PostDetailBody({
+  post,
+  onOpenMap,
+  onReport,
+  onViewSightings,
+}: PostDetailBodyProps) {
   // Hooks are unconditional; the "last seen" and sighting lines gate on data.
   const lastSeenAgo = useTimeAgo(post.lastSeenAt ?? post.createdAt);
   const postedAgo = useTimeAgo(post.createdAt);
@@ -218,6 +226,18 @@ export function PostDetailBody({ post, onOpenMap, onReport }: PostDetailBodyProp
               {post.sightingCount} {post.sightingCount === 1 ? 'sighting' : 'sightings'} reported
               {post.latestSightingAt ? ` — most recent ${latestSightingAgo}` : ''}
             </Text>
+            {/* Owner only: the aggregate becomes a doorway to their list. */}
+            {onViewSightings ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="View sightings"
+                onPress={onViewSightings}
+                style={styles.reportRow}
+                hitSlop={spacing.sm}
+              >
+                <Text style={styles.reportLabel}>View sightings</Text>
+              </Pressable>
+            ) : null}
           </View>
         </>
       ) : null}

@@ -44,6 +44,14 @@ v1 scope, stop and flag it.
 - **Police/force integrations** — v2+; manual cooperation policy only in v1.
 - **Web app for consumers** — mobile only at launch (moderator page excepted).
 
+## Deferred from built v1 features (build next, not v2)
+
+- **notify-owner-of-sighting push** — the sightings feature shipped without
+  push (no notifications infra exists yet); the owner sees reports in-app.
+  Arrives with the notifications feature (Edge Function + token storage).
+- **Offline queueing for sighting reports** — v1 is retry-in-flow only; a
+  report drafted with no signal is not persisted across app restarts.
+
 ## v2 candidates (revisit after launch data)
 
 1. Bounty splitting with clear precedence rules

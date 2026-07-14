@@ -21,6 +21,7 @@ for suite in \
   supabase/tests/home_feed_verification.sql \
   supabase/tests/post_detail_verification.sql \
   supabase/tests/create_post_verification.sql \
+  supabase/tests/sightings_verification.sql \
   supabase/tests/anon_role_verification.sql
 do
   echo "== ${suite}"

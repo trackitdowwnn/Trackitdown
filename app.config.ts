@@ -36,6 +36,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           'Allow Trackitdown to use your location to set where a car was last seen.',
       },
     ],
+    // Sightings evidence camera (in-app capture only — DOMAIN.md sighting
+    // rules). No microphone: photos only in v1.
+    [
+      'expo-camera',
+      {
+        cameraPermission:
+          'Allow Trackitdown to use the camera to photograph a car you have sighted.',
+        microphonePermission: false,
+        recordAudioAndroid: false,
+      },
+    ],
     // --- Auth (features/auth) -------------------------------------------------
     // Session tokens live in the OS keychain, not AsyncStorage.
     'expo-secure-store',

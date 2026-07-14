@@ -106,7 +106,8 @@ export function WizardScreen<TAnswers>({
   useEffect(() => {
     const announcement =
       screen.kind === 'intro'
-        ? flow.phases[screen.phaseIndex].intro.headline
+        ? // Intro descriptors only exist for phases that declare an intro.
+          (flow.phases[screen.phaseIndex].intro?.headline ?? '')
         : screen.kind === 'step'
           ? screen.step.question
           : (flow.review?.title ?? 'Check your answers');
@@ -167,7 +168,9 @@ export function WizardScreen<TAnswers>({
             <View style={[styles.content, styles.introContent]}>
               <PhaseIntro
                 phaseNumber={screen.phaseIndex + 1}
-                intro={flow.phases[screen.phaseIndex].intro}
+                // Non-null: flattenFlow only emits intro descriptors for
+                // phases that declare an intro.
+                intro={flow.phases[screen.phaseIndex].intro!}
               />
             </View>
           ) : (

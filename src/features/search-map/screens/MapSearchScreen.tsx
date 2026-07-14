@@ -20,6 +20,7 @@ import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useRequireAuth } from '@/features/auth';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
 import { colors, motion, radii, shadows, sizes, spacing } from '@/shared/theme';
@@ -265,6 +266,24 @@ function MapSearchBody({
     [router],
   );
 
+  // The peek card's direct entry into report-sighting: gated (guests sign in
+  // via the sheet; the continuation lands them in the wizard, source=map).
+  const requireAuth = useRequireAuth();
+  const onSeenPost = useCallback(
+    (post: MapPost) => {
+      requireAuth({
+        context: 'report_sighting',
+        run: () => {
+          router.push({
+            pathname: '/report-sighting',
+            params: { postId: post.id, source: 'map', bounty: String(post.bountyPence) },
+          });
+        },
+      });
+    },
+    [requireAuth, router],
+  );
+
   return (
     <View style={styles.container}>
       <AppMap
@@ -319,6 +338,7 @@ function MapSearchBody({
           selectedIndex={selectedIndex}
           onIndexSettled={handlePagerSettle}
           onPressPost={openPost}
+          onSeenPost={onSeenPost}
         />
       </View>
     </View>

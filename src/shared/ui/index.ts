@@ -34,6 +34,11 @@ export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './Botto
 export { BountyTag, type BountyTagProps } from './BountyTag';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export {
+  CameraCapture,
+  type CameraCaptureProps,
+  type EvidencePhoto,
+} from './CameraCapture';
+export {
   ChoiceChips,
   type ChoiceChipOption,
   type ChoiceChipsProps,
@@ -82,6 +87,7 @@ export {
   type PhotoTileStatus,
   type PickedPhoto,
 } from './PhotoGridPicker';
+export { PermissionPrimer, type PermissionPrimerProps } from './PermissionPrimer';
 export { PlateChip, type PlateChipProps } from './PlateChip';
 export { ReadMore, type ReadMoreProps } from './ReadMore';
 export { SafetyNotice } from './SafetyNotice';

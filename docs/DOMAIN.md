@@ -104,9 +104,16 @@ drops off all public surfaces. Enforced server-side by the feed RPCs via
   note. Location and time come from the device at capture; the photo must
   be taken in-app (no gallery uploads in v1) to resist fake/fabricated
   sightings.
+- **GPS unavailable ≠ blocked.** If location permission is denied or a fix
+  fails at capture, the sighting still proceeds and is marked
+  `location_unavailable` (shown honestly to the owner) — a photo without GPS
+  is still valuable. Poor-accuracy fixes are recorded with their accuracy
+  value, never rejected. Each photo carries only its OWN capture-moment fix —
+  never a borrowed one. (Approved 2026-07-14 with the sightings feature.)
 - Sightings start as `unverified`. The owner can mark a sighting `helpful`
   (fed into reputation) — but only a credited sighting pays out.
-- Rate limit: a spotter can report at most 3 sightings per post per day.
+- Rate limit: a spotter can report at most 3 sightings per post per day
+  (a rolling 24-hour window, not a midnight reset).
 - Every sighting screen and notification carries the safety line: report
   from a distance — never approach the vehicle or confront anyone. Call
   999 if a crime is in progress.

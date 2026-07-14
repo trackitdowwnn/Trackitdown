@@ -19,14 +19,17 @@ import type {
 
 /**
  * Flatten phases into the ordered screens a user walks through:
- * intro(0), its steps…, intro(1), its steps…, [review].
+ * intro(0), its steps…, intro(1), its steps…, [review]. A phase without an
+ * `intro` contributes only its steps (speed flows skip the intro screen).
  */
 export function flattenFlow<TAnswers>(
   flow: WizardFlow<TAnswers>,
 ): WizardScreenDescriptor<TAnswers>[] {
   const screens: WizardScreenDescriptor<TAnswers>[] = [];
   flow.phases.forEach((phase, phaseIndex) => {
-    screens.push({ kind: 'intro', phaseIndex });
+    if (phase.intro) {
+      screens.push({ kind: 'intro', phaseIndex });
+    }
     phase.steps.forEach((step, stepIndexInPhase) => {
       screens.push({ kind: 'step', phaseIndex, stepIndexInPhase, step });
     });
@@ -107,7 +110,7 @@ export function phaseProgress<TAnswers>(
 ): number[] {
   let start = 0;
   return flow.phases.map((phase) => {
-    const count = 1 + phase.steps.length;
+    const count = (phase.intro ? 1 : 0) + phase.steps.length;
     const end = start + count - 1;
     let fill: number;
     if (currentIndex < start) {
@@ -160,8 +163,9 @@ export function ctaLabel<TAnswers>(
 ): string {
   const screen = screens[state.index];
   if (screen.kind === 'intro') {
+    // An intro descriptor only exists for phases that declare an intro.
     return (
-      flow.phases[screen.phaseIndex].intro.ctaLabel ??
+      flow.phases[screen.phaseIndex].intro?.ctaLabel ??
       (screen.phaseIndex === 0 ? 'Get started' : 'Continue')
     );
   }
@@ -171,7 +175,10 @@ export function ctaLabel<TAnswers>(
   if (state.returnToIndex !== null) {
     return 'Done';
   }
-  return state.index === screens.length - 1 ? flow.finalCtaLabel : 'Next';
+  if (state.index === screens.length - 1) {
+    return flow.finalCtaLabel;
+  }
+  return (screen.kind === 'step' && screen.step.ctaLabel) || 'Next';
 }
 
 /** Steps that appear on the review screen, grouped by phase. */
