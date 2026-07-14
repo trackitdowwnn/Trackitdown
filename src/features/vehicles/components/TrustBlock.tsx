@@ -1,13 +1,18 @@
 /**
- * WHAT:  TrustBlock — the quiet, factual verification/record rows on the post
- *        detail: ownership verified (or, for the owner's own unverified post,
- *        "Pending verification"), when it was posted, and when it expires.
- * WHY:   The trust anchor. "Ownership verified" is DERIVED, not stored: a
- *        visible non-owner post is 'active', which by the anti-stalking rule
- *        means it passed V5C verification. An owner viewing their own draft /
- *        pending post sees the pending state instead.
+ * WHAT:  TrustBlock — the verification/record rows on the post detail, in the
+ *        reference's highlight anatomy: a 48pt icon tile, a headline fact, and
+ *        (for verification rows) one calm evidence line. Ownership verified /
+ *        pending, when it was posted, and when it expires.
+ * WHY:   The trust anchor — the section that answers "is this real?", so it
+ *        carries the page's richest row treatment (GAP_ANALYSIS B1 + F2).
+ *        "Ownership verified" is DERIVED, not stored: a visible non-owner post
+ *        is 'active', which by the anti-stalking rule means it passed V5C
+ *        verification. An owner viewing their own draft / pending post sees
+ *        the pending state instead. Evidence copy is procedural fact, never
+ *        selling warmth (emotional translation, GAP_ANALYSIS).
  * LINKS: src/features/vehicles/components/PostDetailBody.tsx;
- *        docs/DOMAIN.md (lifecycle); docs/SECURITY_AND_TRUST.md §2 (verification).
+ *        docs/DOMAIN.md (lifecycle); docs/SECURITY_AND_TRUST.md §2;
+ *        docs/design-refs/post-detail/REFERENCE_SPEC.md §5.
  */
 
 import { Feather } from '@expo/vector-icons';
@@ -15,7 +20,7 @@ import type { ComponentProps } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { formatDateLabel } from '@/shared/lib';
-import { colors, sizes, spacing, typography } from '@/shared/theme';
+import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import type { PostStatus } from '@/shared/types';
 
 type FeatherName = ComponentProps<typeof Feather>['name'];
@@ -44,6 +49,9 @@ type Tone = 'verified' | 'pending' | 'neutral';
 interface Row {
   icon: FeatherName;
   label: string;
+  /** One calm, procedural evidence line — only where there is a real fact to
+   *  cite; never decorative filler. */
+  evidence?: string;
   tone: Tone;
 }
 
@@ -57,9 +65,19 @@ export function TrustBlock({ status, createdAt, expiresAt }: TrustBlockProps) {
   const rows: Row[] = [];
 
   if (PENDING.includes(status)) {
-    rows.push({ icon: 'clock', label: 'Pending verification', tone: 'pending' });
+    rows.push({
+      icon: 'clock',
+      label: 'Pending verification',
+      evidence: 'We’re checking the owner’s V5C logbook before this post goes live.',
+      tone: 'pending',
+    });
   } else if (VERIFIED.includes(status)) {
-    rows.push({ icon: 'check-circle', label: 'Ownership verified', tone: 'verified' });
+    rows.push({
+      icon: 'check-circle',
+      label: 'Ownership verified',
+      evidence: 'The owner’s V5C logbook was checked before this post went live.',
+      tone: 'verified',
+    });
   }
   // cancelled / rejected → no verification row.
 
@@ -77,14 +95,25 @@ export function TrustBlock({ status, createdAt, expiresAt }: TrustBlockProps) {
   return (
     <View style={styles.rows}>
       {rows.map((row) => (
-        <View key={row.label} style={styles.row} accessible>
-          <Feather
-            name={row.icon}
-            size={sizes.iconSm}
-            color={TONE_COLOR[row.tone]}
-            importantForAccessibility="no"
-          />
-          <Text style={styles.label}>{row.label}</Text>
+        // Evidence rows top-align text against the tile; single-line rows
+        // centre against it (a 24pt label reads 8pt high otherwise).
+        <View
+          key={row.label}
+          style={[styles.row, row.evidence ? styles.rowTop : styles.rowCentered]}
+          accessible
+        >
+          <View style={styles.tile}>
+            <Feather
+              name={row.icon}
+              size={sizes.icon}
+              color={TONE_COLOR[row.tone]}
+              importantForAccessibility="no"
+            />
+          </View>
+          <View style={[styles.text, row.evidence ? styles.textTopPad : null]}>
+            <Text style={styles.label}>{row.label}</Text>
+            {row.evidence ? <Text style={styles.evidence}>{row.evidence}</Text> : null}
+          </View>
         </View>
       ))}
     </View>
@@ -93,16 +122,42 @@ export function TrustBlock({ status, createdAt, expiresAt }: TrustBlockProps) {
 
 const styles = StyleSheet.create({
   rows: {
-    gap: spacing.sm,
+    gap: spacing.xl,
   },
   row: {
     flexDirection: 'row',
+    gap: spacing.lg,
+  },
+  // Two-line evidence rows keep the tile level with the headline …
+  rowTop: {
+    alignItems: 'flex-start',
+  },
+  // … single-line rows centre against the 48pt tile.
+  rowCentered: {
     alignItems: 'center',
-    gap: spacing.sm,
+  },
+  tile: {
+    width: sizes.avatarMd,
+    height: sizes.avatarMd,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  // Optical nudge for top-aligned evidence rows only.
+  textTopPad: {
+    paddingTop: spacing.xs,
   },
   label: {
-    ...typography.body,
+    ...typography.heading,
     color: colors.textPrimary,
-    flex: 1,
+  },
+  evidence: {
+    ...typography.body,
+    color: colors.textSecondary,
   },
 });

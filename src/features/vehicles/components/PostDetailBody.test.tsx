@@ -1,16 +1,17 @@
 /**
  * WHAT:  Tests for PostDetailBody — sections appear only when they have data
- *        (Details grid, features grid, theft details, guided descriptions,
- *        owner's note, last-seen map), the sighting-activity line stays HIDDEN
- *        while the aggregate is zero (dormant), and the SafetyNotice is always
- *        present.
+ *        ("What to look for" with any of its three pieces, theft details,
+ *        guided descriptions, owner's note, last-seen map), the sighting-
+ *        activity line stays HIDDEN while the aggregate is zero (dormant), the
+ *        SafetyNotice is always present, and the report row fires its callback.
  * WHY:   The conditional gating is the section's contract; the sighting gate
  *        is also SAFETY — the aggregate line must not appear (nor could leak)
- *        until the sightings feature lights it up.
+ *        until the sightings feature lights it up. Old posts missing newer
+ *        structured fields must render gracefully, never as empty shells.
  * LINKS: src/features/vehicles/components/PostDetailBody.tsx, docs/TESTING.md.
  */
 
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 
 import type { PostDetail } from '../types';
 import { PostDetailBody } from './PostDetailBody';
@@ -36,92 +37,94 @@ const base: PostDetail = {
   sightingCount: 0,
 };
 
+const renderBody = (post: PostDetail, onReport: () => void = () => {}) =>
+  render(<PostDetailBody post={post} onOpenMap={() => {}} onReport={onReport} />);
+
 describe('PostDetailBody', () => {
-  it('omits the Details section when there is no body type or features', async () => {
-    const { queryByText, getByText } = await render(
-      <PostDetailBody post={base} onOpenMap={() => {}} />,
-    );
-    expect(queryByText('Details')).toBeNull();
+  it('omits "What to look for" when there is no body type, features, or spot-it text', async () => {
+    const { queryByText, getByText } = await renderBody(base);
+    expect(queryByText('What to look for')).toBeNull();
     // The identity line still carries the colour.
     expect(getByText(/Blue/)).toBeTruthy();
   });
 
-  it('shows the Details section when body type / features are present', async () => {
-    const { getByText } = await render(
-      <PostDetailBody
-        post={{ ...base, bodyType: 'Saloon', distinguishingFeatures: 'Dented door' }}
-        onOpenMap={() => {}}
-      />,
-    );
-    expect(getByText('Details')).toBeTruthy();
+  it('shows "What to look for" with body type + distinguishing features', async () => {
+    const { getByText } = await renderBody({
+      ...base,
+      bodyType: 'Saloon',
+      distinguishingFeatures: 'Dented door',
+    });
+    expect(getByText('What to look for')).toBeTruthy();
     expect(getByText('Saloon')).toBeTruthy();
     expect(getByText('Dented door')).toBeTruthy();
   });
 
-  it('shows the owner note only when present', async () => {
-    const { queryByText } = await render(<PostDetailBody post={base} onOpenMap={() => {}} />);
+  it('shows "What to look for" with structured features alone (old-post grace)', async () => {
+    const { getByText } = await renderBody({
+      ...base,
+      features: [{ key: 'tow_bar', label: 'Tow bar', icon: 'link' }],
+    });
+    expect(getByText('What to look for')).toBeTruthy();
+    expect(getByText('Tow bar')).toBeTruthy();
+  });
+
+  it('shows "What to look for" with the spot-it prose alone', async () => {
+    const { getByText } = await renderBody({ ...base, descRecognise: 'A dent on the rear door.' });
+    expect(getByText('What to look for')).toBeTruthy();
+    expect(getByText('A dent on the rear door.')).toBeTruthy();
+  });
+
+  it('shows the owner note only when present (and no guided descriptions)', async () => {
+    const { queryByText } = await renderBody(base);
     expect(queryByText("Owner's note")).toBeNull();
 
-    const { getByText } = await render(
-      <PostDetailBody post={{ ...base, ownerNote: 'Please help find it.' }} onOpenMap={() => {}} />,
-    );
+    const { getByText } = await renderBody({ ...base, ownerNote: 'Please help find it.' });
     expect(getByText("Owner's note")).toBeTruthy();
     expect(getByText('Please help find it.')).toBeTruthy();
   });
 
   it('keeps the sighting-activity line HIDDEN while the aggregate is zero (dormant)', async () => {
-    const { queryByText } = await render(<PostDetailBody post={base} onOpenMap={() => {}} />);
+    const { queryByText } = await renderBody(base);
     expect(queryByText(/sightings? reported/)).toBeNull();
     expect(queryByText('Sighting activity')).toBeNull();
   });
 
   it('shows the aggregate line (count only) once sightings exist', async () => {
-    const { getByText } = await render(
-      <PostDetailBody
-        post={{ ...base, sightingCount: 3, latestSightingAt: '2026-07-11T09:00:00Z' }}
-        onOpenMap={() => {}}
-      />,
-    );
+    const { getByText, queryByText } = await renderBody({
+      ...base,
+      sightingCount: 3,
+      latestSightingAt: '2026-07-11T09:00:00Z',
+    });
     expect(getByText(/3 sightings reported/)).toBeTruthy();
+    // SAFETY: the aggregate is ALL a non-owner ever sees — no locations.
+    expect(queryByText(/Camden.*sighting/i)).toBeNull();
   });
 
   it('always renders the SafetyNotice', async () => {
-    const { getByText } = await render(<PostDetailBody post={base} onOpenMap={() => {}} />);
+    const { getByText } = await renderBody(base);
     expect(getByText(/Never approach the vehicle/)).toBeTruthy();
   });
 
-  it('omits the Features grid when the post has none', async () => {
-    const { queryByText } = await render(<PostDetailBody post={base} onOpenMap={() => {}} />);
-    expect(queryByText('Features')).toBeNull();
-  });
-
-  it('shows the Features grid when the post has features', async () => {
-    const { getByText } = await render(
-      <PostDetailBody
-        post={{ ...base, features: [{ key: 'tow_bar', label: 'Tow bar', icon: 'link' }] }}
-        onOpenMap={() => {}}
-      />,
-    );
-    expect(getByText('Features')).toBeTruthy();
-    expect(getByText('Tow bar')).toBeTruthy();
-  });
-
-  it('shows Theft details and guided descriptions when present', async () => {
-    const { getByText } = await render(
-      <PostDetailBody
-        post={{
-          ...base,
-          stolenFrom: 'driveway',
-          keysTaken: 'yes',
-          descRecognise: 'A dent on the rear door.',
-        }}
-        onOpenMap={() => {}}
-      />,
-    );
+  it('shows theft details, "How it drives", and the spot-it prose when present', async () => {
+    const { getByText } = await renderBody({
+      ...base,
+      stolenFrom: 'driveway',
+      keysTaken: 'yes',
+      descRecognise: 'A dent on the rear door.',
+      descDrives: 'Pulls left when braking.',
+    });
     expect(getByText('Theft details')).toBeTruthy();
     expect(getByText('Stolen from a driveway')).toBeTruthy();
     expect(getByText('Keys were taken with the car')).toBeTruthy();
-    expect(getByText('How to spot it')).toBeTruthy();
+    expect(getByText('How it drives')).toBeTruthy();
+    expect(getByText('Pulls left when braking.')).toBeTruthy();
     expect(getByText('A dent on the rear door.')).toBeTruthy();
+  });
+
+  it('renders the underlined report row and fires onReport', async () => {
+    const onReport = jest.fn();
+    const { getByText } = await renderBody(base, onReport);
+    fireEvent.press(getByText('Report this post'));
+    expect(onReport).toHaveBeenCalledTimes(1);
   });
 });
