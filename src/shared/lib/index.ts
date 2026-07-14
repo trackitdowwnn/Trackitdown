@@ -6,6 +6,8 @@
  */
 
 export { formatDateLabel, formatDateTimeLabel, formatMonthYear } from './dateTimeLabel';
+export { isValidEmail } from './email';
+export { LEGAL_URLS } from './legal';
 export { createLogger, type LogEntry, type LogSink } from './logger';
 export { formatPounds } from './money';
 export { timeAgo } from './timeAgo';

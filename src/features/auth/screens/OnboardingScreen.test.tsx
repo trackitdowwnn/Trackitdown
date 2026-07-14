@@ -161,10 +161,10 @@ describe('progress and the CTA', () => {
     await act(async () => {
       fireEvent.press(cta);
     });
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/auth'));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/(tabs)/explore'));
   });
 
-  it('Get started on the last slide persists the flag and goes to auth', async () => {
+  it('Get started on the last slide persists the flag and enters the app as a guest', async () => {
     const { getByTestId } = await render(<OnboardingScreen />);
     await settleOnPage(getByTestId('onboarding-pager'), 3);
     await act(async () => {
@@ -173,13 +173,13 @@ describe('progress and the CTA', () => {
     await waitFor(() =>
       expect(AsyncStorage.setItem).toHaveBeenCalledWith(ONBOARDING_STORAGE_KEY, 'true'),
     );
-    expect(mockReplace).toHaveBeenCalledWith('/auth');
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/explore');
     expect(mockLogInfo).toHaveBeenCalledWith('Onboarding completed', { atSlide: 4 });
   });
 });
 
 describe('skip', () => {
-  it('shows on early slides, persists the flag, and goes to auth', async () => {
+  it('shows on early slides, persists the flag, and enters the app as a guest', async () => {
     const { getByText } = await render(<OnboardingScreen />);
     await act(async () => {
       fireEvent.press(getByText('Skip'));
@@ -187,7 +187,7 @@ describe('skip', () => {
     await waitFor(() =>
       expect(AsyncStorage.setItem).toHaveBeenCalledWith(ONBOARDING_STORAGE_KEY, 'true'),
     );
-    expect(mockReplace).toHaveBeenCalledWith('/auth');
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/explore');
     expect(mockLogInfo).toHaveBeenCalledWith('Onboarding skipped', { atSlide: 1 });
   });
 

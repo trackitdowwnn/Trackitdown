@@ -21,6 +21,7 @@ import { Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useRequireAuth } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
 import { colors, sizes, spacing, typography } from '@/shared/theme';
 import {
@@ -58,6 +59,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const toast = useToast();
+  const requireAuth = useRequireAuth();
   const flagRef = useRef<ConfirmDialogRef>(null);
 
   const { status, result, retry } = usePostDetail(postId);
@@ -93,10 +95,17 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   }, [postId, toast]);
 
   const onSeen = useCallback(() => {
-    // The sightings feature isn't built yet — acknowledge warmly.
-    toast.show('Reporting a sighting is coming soon.');
-    log.debug('post_seen_stub', { postId });
-  }, [postId, toast]);
+    // Gated: a guest signs in first (sheet), then the continuation fires
+    // without re-tapping. The sighting flow itself isn't built yet — the
+    // continuation acknowledges warmly and will become the real flow later.
+    requireAuth({
+      context: 'report_sighting',
+      run: () => {
+        toast.show('Reporting a sighting is coming soon.');
+        log.debug('post_seen_stub', { postId });
+      },
+    });
+  }, [postId, toast, requireAuth]);
 
   const onManage = useCallback(() => {
     // my-cars is a tab stub today; the management screen lands there later.

@@ -41,6 +41,7 @@ import { Button } from '@/shared/ui/Button';
 
 import { OnboardingPagerDots } from '../components/OnboardingPagerDots';
 import { OnboardingSlide } from '../components/OnboardingSlide';
+import { markOnboardingSeenInGate } from '../hooks/useOnboardingGate';
 import { ONBOARDING_SLIDES } from '../lib/onboardingSlides';
 import { markOnboardingSeen } from '../lib/onboardingStorage';
 
@@ -120,7 +121,12 @@ export function OnboardingScreen() {
     }
     log.info(`Onboarding ${reason}`, { atSlide: page + 1 });
     await markOnboardingSeen();
-    router.replace('/auth');
+    // Flip the live gate NOW (before navigating) so the always-mounted AuthGate
+    // sees 'seen' and lets the redirect stick instead of bouncing back.
+    markOnboardingSeenInGate();
+    // Straight into the tabs as a GUEST — no auth wall. Sign-in happens later,
+    // in the AuthSheet, at the first action that needs an account.
+    router.replace('/(tabs)/explore');
   };
 
   const advance = () => {

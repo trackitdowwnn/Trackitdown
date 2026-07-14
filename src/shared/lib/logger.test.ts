@@ -1,12 +1,12 @@
 /**
  * WHAT:  Tests for the logger's privacy-redaction helpers.
- * WHY:   redactPlate and redactLocation enforce SECURITY_AND_TRUST privacy
- *        rules — full number plates and precise coordinates must never reach
- *        logs. This is safety-critical code, so it is tested.
+ * WHY:   redactPlate, redactLocation, and redactEmail enforce SECURITY_AND_TRUST
+ *        privacy rules — full number plates, precise coordinates, and email
+ *        addresses must never reach logs. This is safety-critical code, tested.
  * LINKS: src/shared/lib/logger.ts, docs/SECURITY_AND_TRUST.md §3.
  */
 
-import { redactLocation, redactPlate } from './logger';
+import { redactEmail, redactLocation, redactPlate } from './logger';
 
 describe('redactPlate', () => {
   it('keeps the first four characters and masks the rest', () => {
@@ -25,5 +25,21 @@ describe('redactPlate', () => {
 describe('redactLocation', () => {
   it('coarsens coordinates to ~1km (two decimal places)', () => {
     expect(redactLocation(51.507351, -0.127758)).toBe('~(51.51, -0.13)');
+  });
+});
+
+describe('redactEmail', () => {
+  it('keeps the first local char and the domain, masks the rest', () => {
+    expect(redactEmail('oliver.best3@gmail.com')).toBe('o***@gmail.com');
+  });
+
+  it('never leaks the full local part', () => {
+    expect(redactEmail('jane.doe@trackitdown.example')).not.toContain('jane');
+  });
+
+  it('fully masks a non-email', () => {
+    expect(redactEmail('not-an-email')).toBe('***');
+    expect(redactEmail('@nolocal.com')).toBe('***');
+    expect(redactEmail('trailing@')).toBe('***');
   });
 });
