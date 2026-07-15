@@ -128,6 +128,49 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     router.push({ pathname: '/post-sightings', params: { postId } });
   }, [postId, router]);
 
+  // Message the owner — sighting-gated (DOMAIN Chat). A viewer who has already
+  // reported opens the thread directly; everyone else is routed into the
+  // report flow, after which messaging opens (the report-success screen and
+  // the sightings list both continue to the thread). Guests sign in first.
+  const onMessageOwner = useCallback(
+    (post: PostDetail) => {
+      const goReport = () =>
+        router.push({
+          pathname: '/report-sighting',
+          params: { postId, source: 'detail', bounty: String(post.bountyPence) },
+        });
+      requireAuth({
+        context: post.viewerHasSighting ? 'message_owner' : 'report_sighting',
+        run: async () => {
+          if (!post.viewerHasSighting) {
+            goReport();
+            return;
+          }
+          try {
+            const { openThread } = await import('@/features/chat');
+            const { threadId } = await openThread(postId);
+            router.push(`/chat/${threadId}`);
+          } catch (err) {
+            // Stale "has sighting" (or a race) → fall back to reporting; any
+            // other failure surfaces its user-facing copy.
+            const code = err instanceof Error && 'code' in err ? (err as { code: string }).code : '';
+            if (code === 'NO_SIGHTING') {
+              goReport();
+            } else {
+              toast.show(
+                err instanceof Error && err.message
+                  ? err.message
+                  : 'We couldn’t open the conversation.',
+                'error',
+              );
+            }
+          }
+        },
+      });
+    },
+    [postId, requireAuth, router, toast],
+  );
+
   const onManage = useCallback(() => {
     // my-cars is a tab stub today; the management screen lands there later.
     router.push('/(tabs)/my-cars');
@@ -178,6 +221,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 onOpenMap={() => onOpenMap(result.post)}
                 onReport={onReport}
                 onViewSightings={result.post.isOwner ? onViewSightings : undefined}
+                onMessageOwner={
+                  result.post.isOwner ? undefined : () => onMessageOwner(result.post)
+                }
               />
             </View>
           </>

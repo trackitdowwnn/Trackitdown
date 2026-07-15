@@ -79,6 +79,10 @@ export interface PostDetail {
   /** Dormant until the sightings feature ships — 0 today, section hides. */
   sightingCount: number;
   latestSightingAt?: string;
+  /** Whether the CURRENT viewer already has a sighting on this post — gates
+   *  the "Message the owner" affordance (chat is sighting-gated; DOMAIN Chat).
+   *  false for anon and the owner. */
+  viewerHasSighting: boolean;
 }
 
 /** Why a post isn't shown: recovered (say so warmly) vs anything else. */

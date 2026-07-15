@@ -38,6 +38,14 @@ jest.mock('@/features/auth', () => ({
   useSession: () => mockSession,
 }));
 
+// The inbox route mounts the real chat inbox when signed in; this file tests
+// the GATING, so the chat feature is stubbed to a marker.
+jest.mock('@/features/chat', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const { Text } = require('react-native');
+  return { ChatInboxScreen: () => <Text>chat-inbox-content</Text> };
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockSession = { status: 'signedOut', userId: null };
@@ -77,10 +85,10 @@ describe('Inbox tab (guest)', () => {
     expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'tab_inbox' });
   });
 
-  it('signed in: shows the tab content, no invitation', async () => {
+  it('signed in: shows the chat inbox, no invitation', async () => {
     mockSession = { status: 'signedIn', userId: 'u1' };
     const { getByText, queryByText } = await render(<InboxScreen />);
-    expect(getByText('Owner ↔ spotter chat lands here.')).toBeTruthy();
+    expect(getByText('chat-inbox-content')).toBeTruthy();
     expect(queryByText('Log in')).toBeNull();
   });
 });

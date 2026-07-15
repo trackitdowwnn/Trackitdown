@@ -57,6 +57,7 @@ const VISIBLE = {
   desc_recognise: 'A dent on the rear door.',
   desc_drives: 'Slight rattle from the exhaust.',
   sighting_stats: { count: 0, latest_at: null },
+  viewer_has_sighting: false,
 };
 
 beforeEach(() => mockRpc.mockReset());
@@ -73,6 +74,7 @@ describe('fetchPostDetail', () => {
     expect(result.post.year).toBe(2019);
     expect(result.post.photos.map((p) => p.uri)).toEqual(['https://img/2', 'https://img/1']);
     expect(result.post.sightingCount).toBe(0);
+    expect(result.post.viewerHasSighting).toBe(false);
     expect(result.post.expiresAt).toBe('2026-10-08T12:00:00Z');
     // Owner block maps to first name + member-since (no avatar/owner_id).
     expect(result.post.owner.firstName).toBe('Alex');

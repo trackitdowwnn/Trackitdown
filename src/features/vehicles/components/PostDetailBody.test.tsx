@@ -35,10 +35,22 @@ const base: PostDetail = {
   owner: { memberSince: '2025-01-05T00:00:00Z', firstName: 'Alex' },
   features: [],
   sightingCount: 0,
+  viewerHasSighting: false,
 };
 
-const renderBody = (post: PostDetail, onReport: () => void = () => {}) =>
-  render(<PostDetailBody post={post} onOpenMap={() => {}} onReport={onReport} />);
+const renderBody = (
+  post: PostDetail,
+  onReport: () => void = () => {},
+  onMessageOwner: (() => void) | undefined = () => {},
+) =>
+  render(
+    <PostDetailBody
+      post={post}
+      onOpenMap={() => {}}
+      onReport={onReport}
+      onMessageOwner={post.isOwner ? undefined : onMessageOwner}
+    />,
+  );
 
 describe('PostDetailBody', () => {
   it('omits "What to look for" when there is no body type, features, or spot-it text', async () => {
@@ -126,5 +138,37 @@ describe('PostDetailBody', () => {
     const { getByText } = await renderBody(base, onReport);
     fireEvent.press(getByText('Report this post'));
     expect(onReport).toHaveBeenCalledTimes(1);
+  });
+
+  describe('message the owner (sighting-gated)', () => {
+    it('spotter WITHOUT a sighting: a quiet report link + honest gate copy (no 2nd button)', async () => {
+      const { getByText } = await renderBody(base);
+      expect(getByText(/Reporting a sighting opens a private/)).toBeTruthy();
+      expect(getByText('Report a sighting')).toBeTruthy();
+    });
+
+    it('spotter WITH a sighting: the CTA opens the conversation', async () => {
+      const { getByText, queryByText } = await renderBody({ ...base, viewerHasSighting: true });
+      expect(getByText('Message the owner')).toBeTruthy();
+      expect(getByText(/Chat privately with the owner/)).toBeTruthy();
+      expect(queryByText('Report a sighting')).toBeNull();
+    });
+
+    it('fires onMessageOwner when tapped', async () => {
+      const onMessageOwner = jest.fn();
+      const { getByText } = await renderBody(
+        { ...base, viewerHasSighting: true },
+        () => {},
+        onMessageOwner,
+      );
+      fireEvent.press(getByText('Message the owner'));
+      expect(onMessageOwner).toHaveBeenCalledTimes(1);
+    });
+
+    it('is HIDDEN for the owner (they reach spotters via their sightings list)', async () => {
+      const { queryByText } = await renderBody({ ...base, isOwner: true });
+      expect(queryByText('Message the owner')).toBeNull();
+      expect(queryByText(/Reporting a sighting opens/)).toBeNull();
+    });
   });
 });

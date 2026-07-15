@@ -8,7 +8,7 @@
  * LINKS: src/features/vehicles/screens/PostDetailScreen.tsx, docs/TESTING.md.
  */
 
-import { render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { ToastProvider } from '@/shared/ui';
 
@@ -29,6 +29,14 @@ jest.mock('@/shared/ui/AppMap', () => ({ AppMap: 'AppMap', AppMapMarker: 'AppMap
 const mockRequireAuth = jest.fn((intent: { run?: () => void }) => intent.run?.());
 jest.mock('@/features/auth', () => ({
   useRequireAuth: () => mockRequireAuth,
+}));
+
+// The chat feature is imported lazily (dynamic import) by the message-owner
+// handler — __esModule so `await import()` destructuring resolves the mock.
+const mockOpenThread = jest.fn();
+jest.mock('@/features/chat', () => ({
+  __esModule: true,
+  openThread: (...args: unknown[]) => mockOpenThread(...args),
 }));
 
 jest.mock('@gorhom/bottom-sheet', () => jest.requireActual('@gorhom/bottom-sheet/mock'));
@@ -71,6 +79,7 @@ const post: PostDetail = {
   owner: { memberSince: '2025-01-05T00:00:00Z', firstName: 'Alex' },
   features: [],
   sightingCount: 0,
+  viewerHasSighting: false,
 };
 
 const setResult = (status: string, result: PostDetailResult | null) =>
@@ -114,5 +123,49 @@ describe('PostDetailScreen', () => {
     // The header keeps share only (redesign B5 — the reference's trust-page grammar).
     expect(queryByLabelText('Report')).toBeNull();
     expect(queryByLabelText('Share')).toBeTruthy();
+  });
+
+  describe('message the owner (sighting-gated)', () => {
+    beforeEach(() => {
+      mockPush.mockClear();
+      mockOpenThread.mockClear();
+    });
+
+    it('WITHOUT a sighting: routes into the report flow (no cold DM)', async () => {
+      setResult('ready', { kind: 'visible', post });
+      const { getByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      await act(async () => {
+        fireEvent.press(getByText('Report a sighting'));
+      });
+      expect(mockOpenThread).not.toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.objectContaining({ pathname: '/report-sighting', params: expect.objectContaining({ postId: 'p1' }) }),
+      );
+    });
+
+    it('WITH a sighting: takes the message branch (not the report flow)', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, viewerHasSighting: true } });
+      const { getByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      await act(async () => {
+        fireEvent.press(getByText('Message the owner'));
+      });
+      // The screen's decision: the auth gate uses the message_owner context and
+      // it does NOT route into the report flow. (Opening the thread itself is
+      // covered by the chat API tests; the deferred import() bypasses jest
+      // module mocks, so we assert the branch, not the openThread call.)
+      expect(mockRequireAuth).toHaveBeenCalledWith(
+        expect.objectContaining({ context: 'message_owner' }),
+      );
+      expect(mockPush).not.toHaveBeenCalledWith(
+        expect.objectContaining({ pathname: '/report-sighting' }),
+      );
+    });
+
+    it('is HIDDEN for the owner', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
+      const { queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      expect(queryByText('Message the owner')).toBeNull();
+      expect(queryByText(/Reporting a sighting opens/)).toBeNull();
+    });
   });
 });

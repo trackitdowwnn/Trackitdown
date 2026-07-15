@@ -46,6 +46,8 @@ export const sizes = {
   /** AppTabBar badge: dot diameter and count-pill height. */
   badgeDot: 8,
   badgePill: 16,
+  /** Skeleton-placeholder line height — a drawn dimension, not a spacing gap. */
+  skeletonLine: 12,
   /** Embedded map picker height (e.g. the post-a-car "last seen where" step). */
   mapPickerHeight: 340,
   /** Large in-page map preview (post detail "Last seen here") — the reference

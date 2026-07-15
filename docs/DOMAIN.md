@@ -140,6 +140,10 @@ drops off all public surfaces. Enforced server-side by the feed RPCs via
 
 - A chat thread opens between owner and a spotter only after that spotter
   has reported a sighting on the owner's post. No cold DMs.
+- One thread per (post, spotter) pair. When the post leaves `active`
+  (recovered/expired/removed), its threads become READ-ONLY: history stays
+  visible to both participants, new sends are rejected server-side.
+  (Approved 2026-07-15 with the chat feature.)
 - Chat carries an automatic first message reminding both parties of the
   safety rules and that arranging meetups is discouraged.
 

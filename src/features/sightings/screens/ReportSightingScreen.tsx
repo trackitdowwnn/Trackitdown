@@ -9,8 +9,9 @@
  *        learn their reports are spent (the RPC still enforces it for real).
  *        Submission failure keeps the wizard fully intact for retry (the
  *        posting flow's standard); success owns the payoff moment — warmth
- *        allowed, but no messaging promise until chat ships and NO Stripe
- *        onboarding (DOMAIN: KYC at credit, not report).
+ *        allowed, "Message the owner" opens the sighting-gated chat thread
+ *        (chat shipped 2026-07-15), and NO Stripe onboarding (DOMAIN: KYC
+ *        at credit, not report).
  * LINKS: src/app/report-sighting.tsx (route);
  *        src/features/sightings/reportSightingFlow.tsx;
  *        src/features/sightings/api/sightingApi.ts; docs/DOMAIN.md.
@@ -25,7 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
-import { Button, EmptyState, FullscreenLoader } from '@/shared/ui';
+import { Button, EmptyState, FullscreenLoader, useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
 
 import { fetchSightingQuota, submitSighting } from '../api/sightingApi';
@@ -111,7 +112,13 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
   }
 
   if (phase.kind === 'sent') {
-    return <SightingSent bountyPence={bountyPence} onDone={() => router.back()} />;
+    return (
+      <SightingSent
+        postId={postId}
+        bountyPence={bountyPence}
+        onDone={() => router.back()}
+      />
+    );
   }
 
   return (
@@ -127,9 +134,43 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
 /** The payoff moment — warmth allowed here. Honest about what happens next:
  *  the owner can now see the report (push arrives with the notifications
  *  feature); the bounty line states the deal plainly. NO Stripe prompt —
- *  that belongs to the moment a sighting is CREDITED (DOMAIN). */
-function SightingSent({ bountyPence, onDone }: { bountyPence?: number; onDone: () => void }) {
+ *  that belongs to the moment a sighting is CREDITED (DOMAIN). "Message the
+ *  owner" opens the sighting-gated thread (DOMAIN Chat: the spotter's own
+ *  sighting IS the gate; open_thread re-validates server-side). */
+function SightingSent({
+  postId,
+  bountyPence,
+  onDone,
+}: {
+  postId: string;
+  bountyPence?: number;
+  onDone: () => void;
+}) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const toast = useToast();
+  const [opening, setOpening] = useState(false);
+
+  const messageOwner = async () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      // Deferred import keeps sightings' module graph off the chat feature
+      // for tests that stub navigation only.
+      const { openThread } = await import('@/features/chat');
+      const { threadId } = await openThread(postId);
+      router.push(`/chat/${threadId}`);
+    } catch (err) {
+      // ChatActionError (extends Error) carries user-facing copy; surface it.
+      toast.show(
+        err instanceof Error && err.message ? err.message : 'We couldn’t open the conversation.',
+        'error',
+      );
+    } finally {
+      setOpening(false);
+    }
+  };
+
   return (
     <View style={[styles.sent, { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xl }]}>
       <View style={styles.sentBody}>
@@ -148,7 +189,15 @@ function SightingSent({ bountyPence, onDone }: { bountyPence?: number; onDone: (
             : 'If your sighting leads to the recovery, you’ll receive the bounty.'}
         </Text>
       </View>
-      <Button label="Done" onPress={onDone} />
+      <View style={styles.sentActions}>
+        <Button
+          label="Message the owner"
+          variant="secondary"
+          loading={opening}
+          onPress={() => void messageOwner()}
+        />
+        <Button label="Done" onPress={onDone} />
+      </View>
     </View>
   );
 }
@@ -189,5 +238,8 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  sentActions: {
+    gap: spacing.sm,
   },
 });

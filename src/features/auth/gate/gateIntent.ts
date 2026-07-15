@@ -20,6 +20,7 @@ import { useSyncExternalStore } from 'react';
  *  so conversion can be read per action. Extend when a new action gets gated. */
 export type GateContext =
   | 'report_sighting'
+  | 'message_owner'
   | 'post_car'
   | 'edit_profile'
   | 'tab_my_cars'
@@ -30,6 +31,7 @@ export type GateContext =
  *  wall (DESIGN_SYSTEM tone). */
 export const GATE_TITLES: Record<GateContext, string> = {
   report_sighting: 'Log in to report a sighting',
+  message_owner: 'Log in to message the owner',
   post_car: 'Log in to post your car',
   edit_profile: 'Log in to edit your profile',
   tab_my_cars: 'Log in to see your cars',
