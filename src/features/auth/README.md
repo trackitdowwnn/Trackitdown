@@ -76,6 +76,17 @@ Dashboard (hosted): set the email OTP template + confirm the OTP length/expiry.
 
 ### Email OTP template (manual dashboard step)
 
+> **Status (2026-07-15): APPLIED to the hosted project** via the management
+> API (`PATCH /v1/projects/{ref}/config/auth`, fields
+> `mailer_templates_magic_link_content` + `mailer_subjects_magic_link`) —
+> the Magic Link slot now holds this template with `{{ .Token }}` and the
+> subject below; hosted `mailer_otp_length = 8` / expiry 3600 confirmed.
+> The **"Confirm signup" slot also carries the same template** (originally a
+> wrong-slot paste, kept deliberately as the step-5 belt-and-braces).
+> Gotcha that prompted this: pasting into "Confirm signup" INSTEAD of
+> "Magic Link" leaves OTP logins receiving the default magic-link email.
+> The steps below remain the recipe for re-applying or for a new project.
+
 The branded OTP email lives at `supabase/templates/otp-email.html` (table-based,
 inline-styled, image-free so it renders with images blocked; colours hard-coded
 from `docs/DESIGN_SYSTEM.md` with a token→hex map in the file header). It is
