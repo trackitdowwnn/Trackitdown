@@ -59,6 +59,13 @@ describe('reportSightingFlow shape', () => {
     expect(schema.safeParse({ photos: [photo, photo, photo, photo] }).success).toBe(false);
   });
 
+  it('rejects a half-located photo (lat/lng both-or-neither, like the DB CHECK)', () => {
+    const schema = schemaFor('photos');
+    expect(schema.safeParse({ photos: [{ ...photo, lat: 51.5 }] }).success).toBe(false);
+    expect(schema.safeParse({ photos: [{ ...photo, lng: -0.12 }] }).success).toBe(false);
+    expect(schema.safeParse({ photos: [{ ...photo, lat: 51.5, lng: -0.12 }] }).success).toBe(true);
+  });
+
   it('context step passes completely empty (skipping must cost nothing)', () => {
     const schema = schemaFor('context');
     expect(schema.safeParse({}).success).toBe(true);

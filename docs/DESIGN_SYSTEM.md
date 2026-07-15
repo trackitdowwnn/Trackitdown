@@ -29,7 +29,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `danger` | `#B4553F` | destructive actions, errors (muted, not alarm-red) |
 | `dangerPressed` | `#96462F` | pressed state of danger |
 | `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
-| `surfaceInverse` | `#2B2926` | the rare dark floating surface (map pill) — same ink as `textPrimary`, named separately so text tweaks never restyle fills |
+| `surfaceInverse` | `#2B2926` | the rare dark surface: floating (map pill) and the ONE full-bleed use, the photo-preview viewer backdrop — same ink as `textPrimary`, named separately so text tweaks never restyle fills |
 | `surfaceInversePressed` | `#403D39` | pressed state of `surfaceInverse` |
 | `overlay` | `rgba(43,41,38,0.45)` | modal scrim |
 

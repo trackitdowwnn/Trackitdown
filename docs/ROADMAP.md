@@ -34,7 +34,10 @@ v1 scope, stop and flag it.
 
 - **Bounty splitting** across multiple spotters — single winner only.
 - **Multi-region / multi-currency** — UK + GBP only. No i18n scaffolding.
-- **Gallery photo uploads for sightings** — in-app camera only (anti-fraud).
+- **Gallery-ONLY sightings** — every sighting requires ≥1 live in-app
+  capture, permanently (anti-fraud). Gallery photos as labelled
+  SUPPLEMENTARY evidence were approved 2026-07-15 (ADR-0003) but are not
+  built yet — see "Deferred from built v1 features".
 - **Live tracking / navigation toward a sighted car** — never, at any
   version. This is a safety rule, not a scope decision.
 - **Automatic ANPR / plate-recognition scanning** — big legal/privacy
@@ -51,6 +54,11 @@ v1 scope, stop and flag it.
   Arrives with the notifications feature (Edge Function + token storage).
 - **Offline queueing for sighting reports** — v1 is retry-in-flow only; a
   report drafted with no signal is not persisted across app restarts.
+- **Gallery photos as supplementary sighting evidence** (ADR-0003) —
+  migration adding `sighting_photos.source` + the ≥1-live-capture rule in
+  `create_sighting`, gallery pick/upload with EXIF stripped, owner-facing
+  "added from photo library" labels, tests, security review. Decision is
+  recorded; nothing is built.
 
 ## v2 candidates (revisit after launch data)
 

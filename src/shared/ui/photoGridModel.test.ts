@@ -155,6 +155,26 @@ describe('grid geometry', () => {
     // A point far below everything still lands on the last photo slot.
     expect(gridSlotForPoint(0, 9999, 4, WIDTH, GAP)).toBe(3);
   });
+
+  it('coverRow=false yields a uniform two-column grid — no hero slot', () => {
+    const tileHeight = half * (3 / 4);
+    // Slot 0 is an ordinary left-column tile, not a full-width row.
+    expect(gridCellForIndex(0, WIDTH, GAP, false)).toEqual({
+      x: 0,
+      y: 0,
+      width: half,
+      height: tileHeight,
+    });
+    expect(gridCellForIndex(1, WIDTH, GAP, false).x).toBe(half + GAP);
+    expect(gridCellForIndex(2, WIDTH, GAP, false)).toEqual({
+      x: 0,
+      y: tileHeight + GAP,
+      width: half,
+      height: tileHeight,
+    });
+    // Height: two rows of uniform tiles for 4 slots.
+    expect(gridHeightForSlots(4, WIDTH, GAP, false)).toBe(tileHeight * 2 + GAP);
+  });
 });
 
 describe('displayIndexDuringDrag', () => {

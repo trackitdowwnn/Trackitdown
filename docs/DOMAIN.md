@@ -101,9 +101,18 @@ drops off all public surfaces. Enforced server-side by the feed RPCs via
 ## Sighting rules
 
 - A sighting = photo(s) + auto-captured GPS location + timestamp + optional
-  note. Location and time come from the device at capture; the photo must
-  be taken in-app (no gallery uploads in v1) to resist fake/fabricated
-  sightings.
+  note. Location and time come from the device at capture; **at least one
+  photo must be a live in-app capture** — that capture is the evidence a
+  spotter was actually there, and the only photos that carry location/time
+  evidence weight.
+- **Gallery photos: supplementary only (ADR-0003, approved 2026-07-15;
+  build pending — the app is camera-only until it ships).** A spotter who
+  photographed the car before opening the app may attach gallery photos as
+  context, but: the ≥1-live-capture rule is enforced server-side in
+  `create_sighting`; every photo carries a `source` flag; gallery photos are
+  labelled "added from photo library" to the owner; and credit/payout
+  decisions lean on live evidence only. Gallery-ONLY sightings are rejected
+  — that is a permanent rule, not a v1 scope cut.
 - **GPS unavailable ≠ blocked.** If location permission is denied or a fix
   fails at capture, the sighting still proceeds and is marked
   `location_unavailable` (shown honestly to the owner) — a photo without GPS

@@ -3,7 +3,10 @@
  *        at max, V5C single-photo), the gallery/camera pick pipelines
  *        (selection-limit maths, processing shimmer, resize fallback), the
  *        permission-denied inline state, the ⋯ sheet actions with the
- *        cover-removal confirm, status overlays, and the disabled state.
+ *        cover-removal confirm, the full-screen preview (tap / sheet / a11y
+ *        action), capture mode (add tile → onRequestCapture, no gallery
+ *        path, evidence units survive removal intact), status overlays, and
+ *        the disabled state.
  * WHY:   The photo list becomes the post's public images; a wiring slip here
  *        publishes wrong photos or strands the wizard. The ordering maths are
  *        pinned in photoGridModel.test.ts — this file proves the component
@@ -504,6 +507,7 @@ describe('accessibility actions', () => {
     const { getByTestId } = await renderPicker({ photos: photos(3), onChangePhotos });
     const tile = getByTestId('pgp-photo-1');
     expect(tile.props.accessibilityActions.map((a: { name: string }) => a.name)).toEqual([
+      'previewPhoto',
       'makeCover',
       'moveUp',
       'moveDown',
@@ -520,7 +524,7 @@ describe('accessibility actions', () => {
     const names = getByTestId('pgp-photo-0').props.accessibilityActions.map(
       (a: { name: string }) => a.name,
     );
-    expect(names).toEqual(['moveDown', 'removePhoto']);
+    expect(names).toEqual(['previewPhoto', 'moveDown', 'removePhoto']);
   });
 
   it('removing the cover via an accessibility action still routes to the confirm', async () => {
@@ -534,6 +538,143 @@ describe('accessibility actions', () => {
     });
     expect(onChangePhotos).not.toHaveBeenCalled();
     expect(getByText(/next photo becomes your cover/)).toBeTruthy();
+  });
+});
+
+describe('full-screen preview', () => {
+  it('tapping a tile opens the preview with its position label; close dismisses', async () => {
+    const { getByTestId, getByText, queryByText } = await renderPicker({ photos: photos(3) });
+    await act(async () => {
+      fireEvent.press(getByTestId('pgp-photo-1-preview'));
+    });
+    expect(getByText('Photo 2 of 3')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByTestId('photo-preview-close'));
+    });
+    expect(queryByText('Photo 2 of 3')).toBeNull();
+  });
+
+  it('preview is reachable from the ⋯ sheet and the accessibility action', async () => {
+    const { getByTestId, getByText, queryByText } = await renderPicker({ photos: photos(2) });
+    await act(async () => {
+      fireEvent.press(getByTestId('pgp-photo-0-menu'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Preview'));
+    });
+    expect(getByText('Photo 1 of 2')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByTestId('photo-preview-close'));
+    });
+    expect(queryByText('Photo 1 of 2')).toBeNull();
+    await act(async () => {
+      fireEvent(getByTestId('pgp-photo-1'), 'accessibilityAction', {
+        nativeEvent: { actionName: 'previewPhoto' },
+      });
+    });
+    expect(getByText('Photo 2 of 2')).toBeTruthy();
+  });
+});
+
+describe('capture mode (evidence review)', () => {
+  /** EvidencePhoto-shaped: the capture-moment bundle the grid must never
+   *  strip (the sightings evidence-atomicity invariant). */
+  const evidence = (n: number) => ({
+    uri: `file:///evidence-${n}.jpg`,
+    capturedAt: `2026-07-15T10:0${n}:00Z`,
+    lat: 53.48 + n,
+    lng: -2.24 - n,
+    accuracyM: 12 + n,
+  });
+  const captureProps = {
+    source: 'capture' as const,
+    minPhotos: 1,
+    maxPhotos: 3,
+    tipsVisible: false,
+  };
+
+  it('the add tile fires onRequestCapture and NEVER opens the gallery', async () => {
+    const onRequestCapture = jest.fn();
+    const { getByTestId } = await renderPicker({
+      ...captureProps,
+      photos: [evidence(0)],
+      onRequestCapture,
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('pgp-add'));
+    });
+    expect(onRequestCapture).toHaveBeenCalledTimes(1);
+    expect(mockLaunchLibrary).not.toHaveBeenCalled();
+    expect(mockRequestLibraryPermission).not.toHaveBeenCalled();
+  });
+
+  it('hides every cover/gallery affordance: no pill, no hint, no camera row', async () => {
+    const { queryByText, queryByTestId, getByTestId } = await renderPicker({
+      ...captureProps,
+      photos: [evidence(0), evidence(1)],
+    });
+    expect(queryByText('Cover photo')).toBeNull();
+    expect(queryByText('This is the first photo spotters will see.')).toBeNull();
+    expect(queryByTestId('pgp-camera')).toBeNull();
+    // Uniform labels — no cover prefix on the first tile.
+    expect(getByTestId('pgp-photo-0').props.accessibilityLabel).toBe('Photo 1 of 2');
+  });
+
+  it('removing a tile removes the WHOLE evidence unit and keeps the rest intact', async () => {
+    const onChangePhotos = jest.fn();
+    const { getByTestId, getByText } = await renderPicker({
+      ...captureProps,
+      photos: [evidence(0), evidence(1)],
+      onChangePhotos,
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('pgp-photo-0-menu'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Remove'));
+    });
+    // No cover confirm in capture mode — removal is immediate.
+    expect(onChangePhotos).toHaveBeenCalledWith([evidence(1)]);
+  });
+
+  it('tiles expose only preview + remove actions (capture order is fixed)', async () => {
+    const { getByTestId } = await renderPicker({
+      ...captureProps,
+      photos: [evidence(0), evidence(1), evidence(2)],
+    });
+    const names = getByTestId('pgp-photo-1').props.accessibilityActions.map(
+      (a: { name: string }) => a.name,
+    );
+    expect(names).toEqual(['previewPhoto', 'removePhoto']);
+  });
+
+  it('ignores reorder actions even when invoked directly (structural guard)', async () => {
+    const onChangePhotos = jest.fn();
+    const { getByTestId } = await renderPicker({
+      ...captureProps,
+      photos: [evidence(0), evidence(1), evidence(2)],
+      onChangePhotos,
+    });
+    // A stray event with an UNDECLARED action name must be inert in capture
+    // mode — evidence order holds by construction, not UI filtering alone.
+    // (await act(async): sync-act fireEvent poisons the NEXT test's queries.)
+    for (const actionName of ['moveDown', 'moveUp', 'makeCover']) {
+      await act(async () => {
+        fireEvent(getByTestId('pgp-photo-1'), 'accessibilityAction', {
+          nativeEvent: { actionName },
+        });
+      });
+    }
+    expect(onChangePhotos).not.toHaveBeenCalled();
+  });
+
+  it('shows the remaining-count copy once the minimum is met', async () => {
+    const { getByText } = await renderPicker({
+      ...captureProps,
+      photos: [evidence(0)],
+      copy: { addLabel: 'Add another photo', addRemaining: (n: number) => `Up to ${n} more` },
+    });
+    expect(getByText('Up to 2 more')).toBeTruthy();
   });
 });
 

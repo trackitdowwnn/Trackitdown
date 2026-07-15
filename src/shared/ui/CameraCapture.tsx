@@ -7,7 +7,9 @@
  * WHY:   Sightings (and later recovery/dispute evidence) must be taken
  *        in-app. // SAFETY: no gallery path exists in this component BY
  *        DESIGN (DOMAIN.md sighting rules — gallery uploads enable
- *        fabricated sightings); do not add one. The GPS fix is captured at
+ *        fabricated sightings); do not add one. ADR-0003's supplementary
+ *        gallery photos, when built, live BESIDE this component in the
+ *        photo-step UI — never inside it. The GPS fix is captured at
  *        the shutter moment so photo/place/time cannot be mixed from
  *        different moments; a failed or missing fix produces an UN-located
  *        evidence photo (never a blocked shutter, never a fabricated point).

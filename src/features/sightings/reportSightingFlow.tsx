@@ -30,15 +30,28 @@ import {
 
 const log = createLogger('sightings');
 
-const evidenceShape = z.object({
-  uri: z.string().min(1),
-  capturedAt: z.string().min(1),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
-  accuracyM: z.number().optional(),
-  width: z.number().optional(),
-  height: z.number().optional(),
-});
+const evidenceShape = z
+  .object({
+    uri: z.string().min(1),
+    capturedAt: z.string().min(1),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+    accuracyM: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+  })
+  // A located photo is located by a complete fix: lat and lng arrive together
+  // or not at all (mirrors the sighting_photos both-or-neither CHECK).
+  // CameraCapture already spreads the fix atomically; this stops any future
+  // caller from half-locating a photo client-side.
+  .refine((photo) => (photo.lat === undefined) === (photo.lng === undefined), {
+    message: 'lat and lng must both be set or both be absent',
+  })
+  // ...and accuracy only makes sense ON a located photo (mirrors the
+  // sighting_photos accuracy-located CHECK; sightingApi re-checks at submit).
+  .refine((photo) => photo.accuracyM === undefined || photo.lat !== undefined, {
+    message: 'accuracyM is only allowed on a located photo',
+  });
 
 export const REPORT_SIGHTING_INITIAL_ANSWERS: Partial<ReportSightingAnswers> = {
   photos: [],

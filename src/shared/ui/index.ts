@@ -82,6 +82,7 @@ export {
   PhotoGridPicker,
   defaultOwnerPhotoCopy,
   photoListSchema,
+  type GridPhoto,
   type PhotoGridCopy,
   type PhotoGridPickerProps,
   type PhotoTileStatus,

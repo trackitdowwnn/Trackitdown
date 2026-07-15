@@ -23,10 +23,16 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
 1. **Safety gate** (not skippable, 3-second pass) — SafetyNotice as hero:
    report from a distance / never approach / 999 first. Primary **Continue**
    plus a distinct **Call 999** (`tel:` link). Shown every time.
-2. **Photos** — `CameraCapture` (shared/ui): in-app camera ONLY (`// SAFETY`
-   cites DOMAIN — no gallery, anti-fraud). Each capture atomically bundles
-   photo + GPS + timestamp. 1–3 photos, per-shot retake. Location permission
-   via `PermissionPrimer`; **denied/failed GPS never blocks** — the report
+2. **Photos** — camera-FIRST: with no evidence yet the full-screen
+   `CameraCapture` opens immediately (the car may drive off); once something
+   is captured the **`PhotoGridPicker` grid (source="capture") is the
+   resting state** — tap a tile for a full-screen preview, ⋯/a11y actions to
+   remove, the add tile reopening the camera ("Room for N more"), auto-close
+   at 3/3. In-app camera ONLY (`// SAFETY` cites DOMAIN + ADR-0003 — no
+   gallery path exists in capture mode; gallery-as-supplementary is decided
+   but NOT built). Each capture atomically bundles photo + GPS + timestamp;
+   removing a tile removes the WHOLE evidence unit. Location permission via
+   `PermissionPrimer`; **denied/failed GPS never blocks** — the report
    proceeds flagged `location_unavailable`. Poor accuracy (> ~100 m) is
    recorded with its value, never rejected.
 3. **Context** (all optional) — "Anything else that helps?": chips (parked /

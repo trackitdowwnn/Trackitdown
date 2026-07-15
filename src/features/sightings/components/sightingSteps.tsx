@@ -1,32 +1,43 @@
 /**
  * WHAT:  The four report-sighting wizard step components: the safety gate
- *        (SafetyNotice hero + Call 999), the evidence camera (CameraCapture
- *        with a location primer), the optional context step (chips + note),
- *        and the confirm step (photos, captured-point map, time, context).
+ *        (SafetyNotice hero + Call 999), the evidence step (camera-first
+ *        full-screen capture over a PhotoGridPicker review grid), the
+ *        optional context step (chips + note), and the confirm step
+ *        (photos, captured-point map, time, context).
  * WHY:   Speed-flow screens: big targets, minimal reading, nothing optional
- *        standing between the spotter and Send. SAFETY decisions live here:
- *        the camera is the ONLY photo source (no gallery — DOMAIN sighting
- *        rules), the confirm map is display-only (the CAPTURED point is the
- *        evidence — no manual editing, ever), and a missing GPS fix never
- *        blocks the flow (an un-located report is still valuable).
+ *        standing between the spotter and Send. The photo step lands
+ *        STRAIGHT in the viewfinder when there is no evidence yet (the car
+ *        may drive off); once something is captured the grid is the resting
+ *        state — per-tile preview/remove, add tile reopening the camera.
+ *        SAFETY decisions live here: the camera is the ONLY photo source
+ *        (grid runs source="capture" — no gallery; DOMAIN sighting rules /
+ *        ADR-0003), a removed tile removes its WHOLE evidence unit, the
+ *        confirm map is display-only (the CAPTURED point is the evidence —
+ *        no manual editing, ever), and a missing GPS fix never blocks the
+ *        flow (an un-located report is still valuable).
  * LINKS: src/features/sightings/reportSightingFlow.tsx (the config);
- *        src/shared/ui (CameraCapture, PermissionPrimer, SafetyNotice,
- *        ChoiceChipsMulti, TextField, AppMap); docs/DOMAIN.md.
+ *        src/shared/ui (CameraCapture, PhotoGridPicker, PermissionPrimer,
+ *        SafetyNotice, ChoiceChipsMulti, TextField, AppMap); docs/DOMAIN.md;
+ *        docs/decisions/ADR-0003-gallery-supplementary-evidence.md.
  */
 
 import { Feather } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTimeAgo } from '@/shared/hooks';
 import { createLogger } from '@/shared/lib/logger';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import {
   AppImage,
+  Button,
   CameraCapture,
   ChoiceChipsMulti,
+  type EvidencePhoto,
   PermissionPrimer,
+  PhotoGridPicker,
   SafetyNotice,
   TextField,
 } from '@/shared/ui';
@@ -37,6 +48,7 @@ import { firstLocatedPhoto } from '../lib/areaLabel';
 import {
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
+  MIN_SIGHTING_PHOTOS,
   type ReportSightingAnswers,
   type SightingContextFlag,
 } from '../types';
@@ -73,9 +85,24 @@ export function SafetyStep(_props: StepProps) {
 
 /** Location priming happens HERE (once, before the camera) so the first
  *  shutter press can carry a fix; a decline continues to the camera — the
- *  report is simply un-located. The camera itself owns camera permission. */
+ *  report is simply un-located. The camera itself owns camera permission.
+ *  Camera-FIRST: with no evidence yet the full-screen camera opens the
+ *  moment the primer clears (speed: the car may drive off); the grid is the
+ *  resting state once something is captured. */
 export function PhotosStep({ answers, setAnswers }: StepProps) {
   const [locationReady, setLocationReady] = useState<boolean | null>(null);
+  const insets = useSafeAreaInsets();
+  const photos = answers.photos ?? [];
+  // Initial value only: re-entering the step WITH photos rests on the grid.
+  const [cameraOpen, setCameraOpen] = useState(photos.length === 0);
+
+  const handleCameraChange = (next: EvidencePhoto[]) => {
+    setAnswers({ photos: next });
+    if (next.length >= MAX_SIGHTING_PHOTOS) {
+      // Full — nothing left to take; land on the grid for review.
+      setCameraOpen(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -116,13 +143,58 @@ export function PhotosStep({ answers, setAnswers }: StepProps) {
   }
 
   return (
-    <View style={styles.cameraWrap}>
-      <CameraCapture
-        photos={answers.photos ?? []}
-        onChange={(photos) => setAnswers({ photos })}
+    <View style={styles.stack}>
+      {/* The review grid — the step's resting state. source="capture": the
+          add tile reopens the camera; NO gallery path exists (DOMAIN
+          sighting rules / ADR-0003). Removing a tile removes the whole
+          evidence unit (photo + its GPS + timestamp together). */}
+      <PhotoGridPicker<EvidencePhoto>
+        source="capture"
+        onRequestCapture={() => setCameraOpen(true)}
+        photos={photos}
+        onChangePhotos={(next) => setAnswers({ photos: next })}
+        minPhotos={MIN_SIGHTING_PHOTOS}
         maxPhotos={MAX_SIGHTING_PHOTOS}
-        primerBody="Photos are taken here in the app so each one carries where and when it was taken — that’s what makes your report count."
+        tipsVisible={false}
+        copy={{
+          addLabel: photos.length === 0 ? 'Take photos' : 'Add another photo',
+          addMore: () => 'Add at least one photo',
+          addRemaining: (remaining) =>
+            remaining === 1 ? 'Room for 1 more' : `Room for ${remaining} more`,
+        }}
+        testID="sighting-photo-grid"
       />
+
+      {/* Full-screen evidence camera. Android back (onRequestClose) and Done
+          both land on the grid; at 3/3 handleCameraChange closes it itself. */}
+      <Modal
+        visible={cameraOpen}
+        animationType="slide"
+        onRequestClose={() => setCameraOpen(false)}
+        testID="sighting-camera-modal"
+      >
+        <View
+          style={[
+            styles.cameraModal,
+            {
+              paddingTop: insets.top + spacing.lg,
+              // Full-screen Modal runs under the home indicator — keep the
+              // Done button (the flow's only exit) clear of the swipe zone.
+              paddingBottom: Math.max(insets.bottom, spacing.xl),
+            },
+          ]}
+        >
+          <View style={styles.cameraBody}>
+            <CameraCapture
+              photos={photos}
+              onChange={handleCameraChange}
+              maxPhotos={MAX_SIGHTING_PHOTOS}
+              primerBody="Photos are taken here in the app so each one carries where and when it was taken — that’s what makes your report count."
+            />
+          </View>
+          <Button label="Done" onPress={() => setCameraOpen(false)} />
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -247,9 +319,17 @@ const styles = StyleSheet.create({
     ...typography.label,
     color: colors.textOnPrimary,
   },
-  cameraWrap: {
-    // The camera needs real height inside the wizard's scroll content.
-    height: 460,
+  cameraModal: {
+    flex: 1,
+    backgroundColor: colors.background,
+    // 24px screen padding (DESIGN_SYSTEM Spacing) — the 16px exception is
+    // scoped to image-led FEED surfaces, which this is not.
+    paddingHorizontal: spacing.xl,
+    gap: spacing.lg,
+  },
+  cameraBody: {
+    // The viewfinder takes every point the Done button doesn't need.
+    flex: 1,
   },
   confirmPhotos: {
     flexDirection: 'row',

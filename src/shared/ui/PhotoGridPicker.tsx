@@ -1,30 +1,39 @@
 /**
- * WHAT:  PhotoGridPicker — Airbnb-listing-style photo selection grid: a
- *        full-width cover tile over a two-column grid, gallery multi-select
- *        with a secondary camera add, long-press drag-to-reorder (plus a ⋯
- *        sheet with Make cover / Move / Remove for the no-drag path), a
- *        dismissible tips card, and a configurable min/max.
+ * WHAT:  PhotoGridPicker — Airbnb-listing-style photo grid: a full-width
+ *        cover tile over a two-column grid, gallery multi-select with a
+ *        secondary camera add, long-press drag-to-reorder (plus a ⋯ sheet
+ *        with Make cover / Move / Remove for the no-drag path), tap-to-
+ *        preview full screen, a dismissible tips card, and a configurable
+ *        min/max. A second SOURCE mode, `source="capture"`, turns it into
+ *        the evidence-review grid: a uniform two-column grid (no cover
+ *        concept, no reorder — capture order is the order), whose add tile
+ *        fires `onRequestCapture` (the consumer opens its camera) and whose
+ *        only gallery path is NONE.
  * WHY:   Owners add EXISTING photos of their stolen car — the car is gone, so
- *        gallery multi-select is deliberately the primary path (unlike
- *        sighting capture, which is in-app camera only; docs/DOMAIN.md). The
- *        ordered value is the post's public image list and index 0 becomes
- *        the VehicleCard cover, so ordering operations live in
- *        photoGridModel.ts where tests pin the cover-at-0 invariant. The
- *        component SELECTS only — it never uploads (the posting feature
- *        uploads on submit) — but each tile accepts a status overlay
- *        (uploading progress / error + retry) so the same grid can be reused
- *        during submission. Selected photos are resized to ~2000px longest
- *        edge (upload weight only — EXIF is stripped server-side per
- *        docs/SECURITY_AND_TRUST.md, client resize is size not privacy;
- *        resize failure keeps the original, never blocks). Consumers:
- *        posting wizard photo step (min 3 / max 6), V5C verification upload
- *        (min 1 / max 1 — cover chrome hides), future profile photos.
+ *        gallery multi-select is deliberately the primary path there. Spotter
+ *        EVIDENCE is the opposite: photos exist only via the in-app camera
+ *        (docs/DOMAIN.md sighting rules, ADR-0003), so capture mode contains
+ *        no gallery code path at all — the grid is generic over the photo
+ *        type (T extends GridPhoto) so evidence bundles (GPS + timestamp)
+ *        ride through add/remove untouched, and removing a tile removes the
+ *        WHOLE evidence unit. The ordered value is the post's public image
+ *        list and index 0 becomes the VehicleCard cover, so ordering
+ *        operations live in photoGridModel.ts where tests pin the
+ *        cover-at-0 invariant. The component SELECTS only — it never uploads
+ *        — but each tile accepts a status overlay (uploading / error +
+ *        retry) so the same grid can be reused during submission. Gallery
+ *        picks are resized to ~2000px longest edge (upload weight only —
+ *        EXIF is stripped server-side per docs/SECURITY_AND_TRUST.md).
+ *        Consumers: posting wizard photo step (min 3 / max 6), V5C upload
+ *        (min 1 / max 1 — cover chrome hides), sightings evidence review
+ *        (capture mode, max 3).
  * LINKS: src/shared/ui/photoGridModel.ts (ordering/geometry maths + schema);
- *        src/shared/ui/AppImage.tsx, BottomSheet.tsx (composed);
- *        src/shared/wizard/types.ts (photoListSchema gates Next);
- *        docs/DESIGN_SYSTEM.md; docs/DOMAIN.md; docs/SECURITY_AND_TRUST.md.
+ *        src/shared/ui/AppImage.tsx, BottomSheet.tsx, PhotoPreviewModal.tsx
+ *        (composed); src/shared/wizard/types.ts (photoListSchema gates Next);
+ *        src/features/sightings/components/sightingSteps.tsx (capture-mode
+ *        consumer); docs/DESIGN_SYSTEM.md; docs/DOMAIN.md.
  *
- * Usage:
+ * Usage (gallery, the default):
  *   <PhotoGridPicker
  *     photos={answers.photos ?? []}
  *     onChangePhotos={(photos) => setAnswers({ photos })}
@@ -32,6 +41,16 @@
  *     maxPhotos={6}
  *     tipsVisible={!tipsDismissed}
  *     onDismissTips={() => setTipsDismissed(true)}
+ *   />
+ *
+ * Usage (capture — evidence review):
+ *   <PhotoGridPicker<EvidencePhoto>
+ *     source="capture"
+ *     onRequestCapture={() => setCameraOpen(true)}
+ *     photos={answers.photos ?? []}
+ *     onChangePhotos={(photos) => setAnswers({ photos })}
+ *     minPhotos={1}
+ *     maxPhotos={3}
  *   />
  */
 
@@ -75,6 +94,7 @@ import {
   gridCellForIndex,
   gridHeightForSlots,
   gridSlotForPoint,
+  type GridPhoto,
   makeCover,
   mergePhotos,
   movePhoto,
@@ -86,8 +106,9 @@ import {
   resizeTargetFor,
   tileAccessibilityLabel,
 } from './photoGridModel';
+import { PhotoPreviewModal } from './PhotoPreviewModal';
 
-export { photoListSchema, type PickedPhoto } from './photoGridModel';
+export { type GridPhoto, photoListSchema, type PickedPhoto } from './photoGridModel';
 
 /** Overlay state a consumer can pin on a tile while it uploads the photo. */
 export type PhotoTileStatus =
@@ -105,6 +126,9 @@ export interface PhotoGridCopy {
   addLabel: string;
   /** Sub-line on the add tile while below the minimum. */
   addMore: (remaining: number) => string;
+  /** Optional sub-line once the minimum is met but slots remain ("Up to 2
+   *  more") — the capture flow's remaining-count copy. Hidden when unset. */
+  addRemaining?: (remaining: number) => string;
   cameraLabel: string;
   permissionTitle: string;
   permissionBody: string;
@@ -133,13 +157,22 @@ export const defaultOwnerPhotoCopy: PhotoGridCopy = {
   removeCoverConfirmCancel: 'Keep it',
 };
 
-export interface PhotoGridPickerProps {
-  /** Controlled, ordered list; index 0 is the cover. */
-  photos: PickedPhoto[];
+export interface PhotoGridPickerProps<T extends GridPhoto = PickedPhoto> {
+  /** Controlled, ordered list; index 0 is the cover (gallery mode). */
+  photos: T[];
   /** Fires once per completed operation (a picked batch arrives together). */
-  onChangePhotos: (photos: PickedPhoto[]) => void;
+  onChangePhotos: (photos: T[]) => void;
   minPhotos: number;
   maxPhotos: number;
+  /** Where photos come from. 'gallery' (default): the add tile multi-selects
+   *  from the photo library, with a secondary in-picker camera. 'capture':
+   *  the add tile fires onRequestCapture and the CONSUMER owns the camera —
+   *  // SAFETY: no gallery path exists in capture mode (DOMAIN.md sighting
+   *  rules / ADR-0003: evidence photos are live in-app captures only). The
+   *  grid is uniform (no cover) and order is fixed to capture order. */
+  source?: 'gallery' | 'capture';
+  /** Capture mode's add-tile action — open the consumer's camera. */
+  onRequestCapture?: () => void;
   /** Overrides merged over defaultOwnerPhotoCopy. */
   copy?: Partial<PhotoGridCopy>;
   /** Consumer-controlled tips dismissal; card shows while true (default). */
@@ -148,8 +181,9 @@ export interface PhotoGridPickerProps {
   /** Per-tile upload overlays, keyed by photo uri. Wiring is the consumer's. */
   status?: Record<string, PhotoTileStatus>;
   /** Retry tap on a tile whose status is an error. */
-  onRetry?: (photo: PickedPhoto) => void;
-  /** Secondary "take a photo" path (spare keys, documents). Default true. */
+  onRetry?: (photo: T) => void;
+  /** Secondary "take a photo" path (spare keys, documents). Default true;
+   *  gallery mode only. */
   allowCamera?: boolean;
   disabled?: boolean;
   testID?: string;
@@ -162,11 +196,13 @@ const PROCESS_MAX_EDGE = 2000;
 /** JPEG quality for processed photos. */
 const PROCESS_COMPRESS = 0.85;
 
-export function PhotoGridPicker({
+export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
   photos,
   onChangePhotos,
   minPhotos,
   maxPhotos,
+  source = 'gallery',
+  onRequestCapture,
   copy: copyOverrides,
   tipsVisible = true,
   onDismissTips,
@@ -175,7 +211,7 @@ export function PhotoGridPicker({
   allowCamera = true,
   disabled = false,
   testID,
-}: PhotoGridPickerProps) {
+}: PhotoGridPickerProps<T>) {
   // React Compiler opt-out: shared values are mutated from gesture worklets.
   'use no memo';
   const copy = useMemo(
@@ -183,6 +219,13 @@ export function PhotoGridPicker({
     [copyOverrides],
   );
   const reduceMotion = useReducedMotion();
+  // Capture mode: no cover concept (uniform grid), no reorder (capture order
+  // is the order), no gallery/camera-in-picker paths. coverRow is kept a
+  // SEPARATE flag (though today always !captureMode) because uniform-grid
+  // gallery consumers are plausible later; geometry keys off coverRow,
+  // policy keys off captureMode.
+  const captureMode = source === 'capture';
+  const coverRow = !captureMode;
 
   const [gridWidth, setGridWidth] = useState(0);
   const gridWidthSv = useSharedValue(0);
@@ -194,10 +237,12 @@ export function PhotoGridPicker({
 
   const [pendingCount, setPendingCount] = useState(0);
   const [permissionDenied, setPermissionDenied] = useState(false);
-  // The ⋯ sheet tracks its photo by URI, not index — photos can reorder or
-  // shrink while the sheet is open (e.g. upload status driving the consumer),
-  // and acting on a stale index would hit the wrong photo.
+  // The ⋯ sheet and the preview both track their photo by URI, not index —
+  // photos can reorder or shrink while either is open (e.g. upload status
+  // driving the consumer), and acting on a stale index would hit the wrong
+  // photo.
   const [menuUri, setMenuUri] = useState<string | null>(null);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const sheetRef = useRef<BottomSheetRef>(null);
   const menuIndex = menuUri === null ? null : photos.findIndex((p) => p.uri === menuUri);
@@ -267,6 +312,12 @@ export function PhotoGridPicker({
   };
 
   const ingest = async (assets: PickedPhoto[]) => {
+    // SAFETY: structural guard, not just call-site discipline — gallery
+    // ingestion must be unreachable in capture mode (evidence photos exist
+    // only via the consumer's camera; DOMAIN sighting rules / ADR-0003).
+    if (captureMode) {
+      return;
+    }
     const cap = remainingSlots(photosRef.current.length + pendingRef.current, maxPhotos);
     const capped = assets.slice(0, cap);
     if (capped.length === 0) {
@@ -274,7 +325,10 @@ export function PhotoGridPicker({
     }
     bumpPending(capped.length);
     try {
-      const processed = await Promise.all(capped.map(processAsset));
+      // Gallery ingestion runs ONLY in source='gallery', where T is
+      // PickedPhoto in practice (capture consumers add photos exclusively
+      // through onRequestCapture) — hence the cast.
+      const processed = (await Promise.all(capped.map(processAsset))) as unknown as T[];
       onChangePhotosRef.current(mergePhotos(photosRef.current, processed, maxPhotos));
     } finally {
       bumpPending(-capped.length);
@@ -282,8 +336,8 @@ export function PhotoGridPicker({
   };
 
   const addFromLibrary = async () => {
-    if (disabled) {
-      return;
+    if (disabled || captureMode) {
+      return; // SAFETY: no gallery path in capture mode, by construction
     }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -310,8 +364,8 @@ export function PhotoGridPicker({
   };
 
   const addFromCamera = async () => {
-    if (disabled) {
-      return;
+    if (disabled || captureMode) {
+      return; // SAFETY: capture mode's camera is the consumer's, never this
     }
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
@@ -349,7 +403,7 @@ export function PhotoGridPicker({
     sheetRef.current?.close();
   };
 
-  type TileAction = 'cover' | 'up' | 'down' | 'remove';
+  type TileAction = 'preview' | 'cover' | 'up' | 'down' | 'remove';
 
   /** Runs an action against the CURRENT position of a photo. Returns true
    *  when the action completed (false = a confirm step took over). */
@@ -357,8 +411,19 @@ export function PhotoGridPicker({
     if (index < 0 || index >= photos.length) {
       return true; // the photo is gone — nothing to act on
     }
+    // SAFETY: capture order is the evidence order — reordering/cover actions
+    // are structurally inert in capture mode even if invoked directly.
+    if (captureMode && action !== 'preview' && action !== 'remove') {
+      return true;
+    }
+    if (action === 'preview') {
+      setPreviewUri(photos[index].uri);
+      return true;
+    }
     if (action === 'remove') {
-      if (removalNeedsConfirm(index, count)) {
+      // The cover-removal confirm exists only where a cover exists — capture
+      // mode removes directly (the grid IS the review surface).
+      if (!captureMode && removalNeedsConfirm(index, count)) {
         setMenuUri(photos[index].uri);
         setConfirmingRemove(true); // sheet (re)opens on the confirm
         sheetRef.current?.open();
@@ -395,12 +460,13 @@ export function PhotoGridPicker({
   // ---- Static cells for the non-photo tiles (JS side, no animation) ------
 
   const cellFor = (slot: number) => {
-    const cell = gridCellForIndex(slot, gridWidth, GAP);
+    const cell = gridCellForIndex(slot, gridWidth, GAP, coverRow);
     return { left: cell.x, top: cell.y, width: cell.width, height: cell.height };
   };
 
-  const gridHeight = gridWidth > 0 ? gridHeightForSlots(slotCount, gridWidth, GAP) : 0;
+  const gridHeight = gridWidth > 0 ? gridHeightForSlots(slotCount, gridWidth, GAP, coverRow) : 0;
   const needMore = remainingToMin(count, minPhotos);
+  const previewIndex = previewUri === null ? -1 : photos.findIndex((p) => p.uri === previewUri);
 
   return (
     <View style={[styles.container, disabled && styles.disabled]} testID={testID}>
@@ -441,10 +507,15 @@ export function PhotoGridPicker({
                 dragY={dragY}
                 reduceMotion={reduceMotion}
                 disabled={disabled}
-                showCoverChrome={!singlePhotoMode}
+                captureMode={captureMode}
+                coverRow={coverRow}
+                showCoverChrome={!singlePhotoMode && !captureMode}
                 coverPill={copy.coverPill}
                 status={status?.[photo.uri]}
-                onRetry={onRetry}
+                // SAFETY(cast): GridTile only ever calls onRetry with an
+                // entry from THIS photos: T[] list (never a synthesized
+                // GridPhoto), so widening the parameter is runtime-safe.
+                onRetry={onRetry as ((photo: GridPhoto) => void) | undefined}
                 onCommitMove={commitMove}
                 onOpenMenu={openMenu}
                 onTileAction={performAction}
@@ -471,26 +542,37 @@ export function PhotoGridPicker({
         {gridWidth > 0 && showAddTile ? (
           <Pressable
             style={[styles.tile, styles.addTile, cellFor(count + pendingCount)]}
-            onPress={addFromLibrary}
+            // Capture mode NEVER opens the library — the consumer's camera is
+            // the only way in (DOMAIN.md sighting rules / ADR-0003).
+            onPress={captureMode ? onRequestCapture : addFromLibrary}
             disabled={disabled}
             accessibilityRole="button"
             accessibilityLabel={
-              needMore > 0 ? `${copy.addLabel}. ${copy.addMore(needMore)}` : copy.addLabel
+              needMore > 0
+                ? `${copy.addLabel}. ${copy.addMore(needMore)}`
+                : copy.addRemaining
+                  ? // Screen-reader users get the same remaining-capacity line
+                    // sighted users see on the tile.
+                    `${copy.addLabel}. ${copy.addRemaining(remaining)}`
+                  : copy.addLabel
             }
             testID={testID ? `${testID}-add` : undefined}
           >
             <Feather name="plus" size={typography.title.lineHeight} color={colors.textSecondary} />
             <Text style={styles.addLabel}>{copy.addLabel}</Text>
             {needMore > 0 ? <Text style={styles.addMore}>{copy.addMore(needMore)}</Text> : null}
+            {needMore === 0 && copy.addRemaining ? (
+              <Text style={styles.addMore}>{copy.addRemaining(remaining)}</Text>
+            ) : null}
           </Pressable>
         ) : null}
       </View>
 
-      {count > 0 && !singlePhotoMode ? (
+      {count > 0 && !singlePhotoMode && !captureMode ? (
         <Text style={styles.coverHint}>{copy.coverHint}</Text>
       ) : null}
 
-      {allowCamera && remaining > 0 && !permissionDenied ? (
+      {allowCamera && !captureMode && remaining > 0 && !permissionDenied ? (
         <Pressable
           style={({ pressed }) => [styles.cameraRow, pressed && styles.cameraRowPressed]}
           onPress={addFromCamera}
@@ -549,13 +631,14 @@ export function PhotoGridPicker({
           </View>
         ) : (
           <View>
-            {menuIndex !== null && menuIndex > 0 ? (
+            <SheetAction icon="maximize" label="Preview" onPress={() => menuAction('preview')} />
+            {!captureMode && menuIndex !== null && menuIndex > 0 ? (
               <SheetAction icon="star" label="Make cover photo" onPress={() => menuAction('cover')} />
             ) : null}
-            {menuIndex !== null && menuIndex > 0 ? (
+            {!captureMode && menuIndex !== null && menuIndex > 0 ? (
               <SheetAction icon="arrow-up" label="Move up" onPress={() => menuAction('up')} />
             ) : null}
-            {menuIndex !== null && menuIndex >= 0 && menuIndex < count - 1 ? (
+            {!captureMode && menuIndex !== null && menuIndex >= 0 && menuIndex < count - 1 ? (
               <SheetAction icon="arrow-down" label="Move down" onPress={() => menuAction('down')} />
             ) : null}
             <SheetAction
@@ -567,6 +650,14 @@ export function PhotoGridPicker({
           </View>
         )}
       </BottomSheet>
+
+      {/* previewIndex goes -1 if the photo vanishes while open (consumer
+          shrinks the list) — the modal closes itself via the null uri. */}
+      <PhotoPreviewModal
+        uri={previewIndex >= 0 ? previewUri : null}
+        label={previewIndex >= 0 ? `Photo ${previewIndex + 1} of ${count}` : undefined}
+        onClose={() => setPreviewUri(null)}
+      />
     </View>
   );
 }
@@ -574,7 +665,7 @@ export function PhotoGridPicker({
 // ---- Tiles ----------------------------------------------------------------
 
 interface GridTileProps {
-  photo: PickedPhoto;
+  photo: GridPhoto;
   index: number;
   count: number;
   gridWidthSv: SharedValue<number>;
@@ -584,13 +675,17 @@ interface GridTileProps {
   dragY: SharedValue<number>;
   reduceMotion: boolean;
   disabled: boolean;
+  /** Evidence-review mode: no drag reorder, uniform geometry. */
+  captureMode: boolean;
+  /** Whether slot 0 is the full-width cover row (gallery mode). */
+  coverRow: boolean;
   showCoverChrome: boolean;
   coverPill: string;
   status?: PhotoTileStatus;
-  onRetry?: (photo: PickedPhoto) => void;
+  onRetry?: (photo: GridPhoto) => void;
   onCommitMove: (from: number, to: number) => void;
   onOpenMenu: (index: number) => void;
-  onTileAction: (index: number, action: 'cover' | 'up' | 'down' | 'remove') => boolean;
+  onTileAction: (index: number, action: 'preview' | 'cover' | 'up' | 'down' | 'remove') => boolean;
   testID?: string;
 }
 
@@ -605,6 +700,8 @@ function GridTile({
   dragY,
   reduceMotion,
   disabled,
+  captureMode,
+  coverRow,
   showCoverChrome,
   coverPill,
   status,
@@ -626,7 +723,8 @@ function GridTile({
   const pan = useMemo(
     () =>
       Gesture.Pan()
-        .enabled(!disabled && count > 1)
+        // Capture mode never reorders: capture order IS the evidence order.
+        .enabled(!disabled && count > 1 && !captureMode)
         .activateAfterLongPress(motion.longPress)
         .onStart(() => {
           if (dragFrom.value !== -1) {
@@ -644,13 +742,14 @@ function GridTile({
           }
           dragX.value = event.translationX;
           dragY.value = event.translationY;
-          const cell = gridCellForIndex(index, gridWidthSv.value, GAP);
+          const cell = gridCellForIndex(index, gridWidthSv.value, GAP, coverRow);
           dragOver.value = gridSlotForPoint(
             cell.x + cell.width / 2 + event.translationX,
             cell.y + cell.height / 2 + event.translationY,
             count,
             gridWidthSv.value,
             GAP,
+            coverRow,
           );
         })
         .onEnd(() => {
@@ -666,7 +765,20 @@ function GridTile({
           dragFrom.value = -1;
           dragOver.value = -1;
         }),
-    [disabled, count, index, onCommitMove, ownsDrag, dragFrom, dragOver, dragX, dragY, gridWidthSv],
+    [
+      disabled,
+      count,
+      captureMode,
+      coverRow,
+      index,
+      onCommitMove,
+      ownsDrag,
+      dragFrom,
+      dragOver,
+      dragX,
+      dragY,
+      gridWidthSv,
+    ],
   );
 
   const animatedStyle = useAnimatedStyle(() => {
@@ -677,7 +789,7 @@ function GridTile({
     const timing = { duration: settleMs, easing: Easing.out(Easing.cubic) };
     if (dragFrom.value === index) {
       // The lifted tile rides the finger from its rest cell.
-      const cell = gridCellForIndex(index, width, GAP);
+      const cell = gridCellForIndex(index, width, GAP, coverRow);
       return {
         opacity: 1,
         left: cell.x + dragX.value,
@@ -691,7 +803,7 @@ function GridTile({
     }
     // Everyone else glides to wherever the in-flight order says they sit.
     const display = displayIndexDuringDrag(index, dragFrom.value, dragOver.value);
-    const cell = gridCellForIndex(display, width, GAP);
+    const cell = gridCellForIndex(display, width, GAP, coverRow);
     return {
       opacity: 1,
       left: withTiming(cell.x, timing),
@@ -704,25 +816,27 @@ function GridTile({
     };
   });
 
-  const canDrag = !disabled && count > 1;
+  const canDrag = !disabled && count > 1 && !captureMode;
   // The tile is one accessibility element (children are flattened), so every
   // per-photo operation is exposed as an accessibility action here — this is
   // ALSO the no-drag reorder path for switch/screen-reader users.
   const accessibilityActions = [
-    ...(index > 0
+    { name: 'previewPhoto', label: 'Preview' },
+    ...(!captureMode && index > 0
       ? [
           { name: 'makeCover', label: 'Make cover photo' },
           { name: 'moveUp', label: 'Move up' },
         ]
       : []),
-    ...(index < count - 1 ? [{ name: 'moveDown', label: 'Move down' }] : []),
+    ...(!captureMode && index < count - 1 ? [{ name: 'moveDown', label: 'Move down' }] : []),
     { name: 'removePhoto', label: 'Remove' },
   ];
   const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
     if (disabled) {
       return;
     }
-    const map: Record<string, 'cover' | 'up' | 'down' | 'remove'> = {
+    const map: Record<string, 'preview' | 'cover' | 'up' | 'down' | 'remove'> = {
+      previewPhoto: 'preview',
       makeCover: 'cover',
       moveUp: 'up',
       moveDown: 'down',
@@ -741,14 +855,22 @@ function GridTile({
         accessibilityLabel={tileAccessibilityLabel(index, count, showCoverChrome)}
         accessibilityHint={
           canDrag
-            ? 'Double-tap and hold, then drag to reorder. Reorder and remove are also available as actions.'
-            : 'Reorder and remove are available as actions.'
+            ? 'Double-tap to preview. Double-tap and hold, then drag to reorder. Reorder and remove are also available as actions.'
+            : 'Double-tap to preview. Remove is available as an action.'
         }
         accessibilityActions={accessibilityActions}
         onAccessibilityAction={handleAccessibilityAction}
         testID={testID}
       >
-        <View style={styles.tileContent}>
+        {/* Tap = preview (never destructive); the pan above needs a long
+            press first, so plain taps always reach this Pressable. */}
+        <Pressable
+          style={styles.tileContent}
+          onPress={() => onTileAction(index, 'preview')}
+          disabled={disabled}
+          accessible={false}
+          testID={testID ? `${testID}-preview` : undefined}
+        >
           <AppImage uri={photo.uri} style={styles.tileImage} />
 
           {index === 0 && showCoverChrome ? (
@@ -791,7 +913,7 @@ function GridTile({
               )}
             </View>
           ) : null}
-        </View>
+        </Pressable>
 
         <Pressable
           style={styles.menuButton}

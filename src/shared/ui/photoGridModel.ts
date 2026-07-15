@@ -16,14 +16,23 @@
 
 import { z } from 'zod';
 
-/** One selected local photo. The component never uploads — consumers do. */
-export interface PickedPhoto {
+/** The minimum a grid photo needs: a stable uri (the tile key). Ordering
+ *  operations below are generic over this so richer photo types (e.g. the
+ *  sightings EvidencePhoto with its capture-moment GPS/timestamp bundle)
+ *  survive every mutation intact — evidence fields are never stripped. */
+export interface GridPhoto {
   uri: string;
+}
+
+/** One selected local photo. The component never uploads — consumers do. */
+export interface PickedPhoto extends GridPhoto {
   width: number;
   height: number;
 }
 
-/** The grid's fixed shape: a full-width cover row, then two columns. */
+/** The grid's fixed shape: a full-width cover row, then two columns.
+ *  Capture-mode grids (no cover concept) pass coverRow=false for a uniform
+ *  two-column grid instead. */
 export const GRID_COLUMNS = 2;
 /** Tile shape matches the VehicleCard photo (width / height). */
 export const PHOTO_ASPECT_RATIO = 4 / 3;
@@ -37,9 +46,28 @@ export interface GridCell {
 }
 
 /** Rect for a slot index: slot 0 is the full-width cover row; the rest flow
- *  left-to-right in two columns beneath it. */
-export function gridCellForIndex(index: number, containerWidth: number, gap: number): GridCell {
+ *  left-to-right in two columns beneath it. With coverRow=false every slot
+ *  (including 0) sits in the uniform two-column flow — capture mode, where
+ *  no photo is "the cover". */
+export function gridCellForIndex(
+  index: number,
+  containerWidth: number,
+  gap: number,
+  coverRow = true,
+): GridCell {
   'worklet';
+  const width = (containerWidth - gap) / GRID_COLUMNS;
+  const height = width / PHOTO_ASPECT_RATIO;
+  if (!coverRow) {
+    const column = index % GRID_COLUMNS;
+    const row = Math.floor(index / GRID_COLUMNS);
+    return {
+      x: column * (width + gap),
+      y: row * (height + gap),
+      width,
+      height,
+    };
+  }
   const coverHeight = containerWidth / PHOTO_ASPECT_RATIO;
   if (index <= 0) {
     return { x: 0, y: 0, width: containerWidth, height: coverHeight };
@@ -47,8 +75,6 @@ export function gridCellForIndex(index: number, containerWidth: number, gap: num
   const n = index - 1;
   const column = n % GRID_COLUMNS;
   const row = Math.floor(n / GRID_COLUMNS);
-  const width = (containerWidth - gap) / GRID_COLUMNS;
-  const height = width / PHOTO_ASPECT_RATIO;
   return {
     x: column * (width + gap),
     y: coverHeight + gap + row * (height + gap),
@@ -59,12 +85,17 @@ export function gridCellForIndex(index: number, containerWidth: number, gap: num
 
 /** Total height the grid needs to show `slotCount` slots (photos + pending
  *  placeholders + the add tile). Zero slots need zero height. */
-export function gridHeightForSlots(slotCount: number, containerWidth: number, gap: number): number {
+export function gridHeightForSlots(
+  slotCount: number,
+  containerWidth: number,
+  gap: number,
+  coverRow = true,
+): number {
   'worklet';
   if (slotCount <= 0) {
     return 0;
   }
-  const last = gridCellForIndex(slotCount - 1, containerWidth, gap);
+  const last = gridCellForIndex(slotCount - 1, containerWidth, gap, coverRow);
   return last.y + last.height;
 }
 
@@ -76,12 +107,13 @@ export function gridSlotForPoint(
   photoCount: number,
   containerWidth: number,
   gap: number,
+  coverRow = true,
 ): number {
   'worklet';
   let best = 0;
   let bestDistance = Number.MAX_VALUE;
   for (let index = 0; index < photoCount; index += 1) {
-    const cell = gridCellForIndex(index, containerWidth, gap);
+    const cell = gridCellForIndex(index, containerWidth, gap, coverRow);
     const dx = cell.x + cell.width / 2 - x;
     const dy = cell.y + cell.height / 2 - y;
     const distance = dx * dx + dy * dy;
@@ -114,8 +146,9 @@ export function displayIndexDuringDrag(index: number, from: number, over: number
 }
 
 /** Move a photo between positions. Out-of-range indices clamp; the returned
- *  array is new and index 0 is always the cover. */
-export function movePhoto(photos: PickedPhoto[], from: number, to: number): PickedPhoto[] {
+ *  array is new and index 0 is always the cover. Generic: whatever fields a
+ *  photo carries (evidence bundles included) move with it untouched. */
+export function movePhoto<T extends GridPhoto>(photos: T[], from: number, to: number): T[] {
   const lastIndex = photos.length - 1;
   const fromIndex = Math.min(lastIndex, Math.max(0, from));
   const toIndex = Math.min(lastIndex, Math.max(0, to));
@@ -129,13 +162,13 @@ export function movePhoto(photos: PickedPhoto[], from: number, to: number): Pick
 }
 
 /** Promote a photo to cover (index 0). */
-export function makeCover(photos: PickedPhoto[], index: number): PickedPhoto[] {
+export function makeCover<T extends GridPhoto>(photos: T[], index: number): T[] {
   return movePhoto(photos, index, 0);
 }
 
 /** Remove a photo. When the cover is removed, the next photo becomes cover
  *  simply by taking index 0 — the invariant holds by construction. */
-export function removePhoto(photos: PickedPhoto[], index: number): PickedPhoto[] {
+export function removePhoto<T extends GridPhoto>(photos: T[], index: number): T[] {
   return photos.filter((_, photoIndex) => photoIndex !== index);
 }
 
@@ -143,11 +176,11 @@ export function removePhoto(photos: PickedPhoto[], index: number): PickedPhoto[]
  *  incoming selection is preserved, and the result never exceeds max. NOTE:
  *  this only catches unprocessed duplicates — a resized photo gets a fresh
  *  cache uri, so re-picking the same oversized gallery photo is NOT deduped. */
-export function mergePhotos(
-  existing: PickedPhoto[],
-  incoming: PickedPhoto[],
+export function mergePhotos<T extends GridPhoto>(
+  existing: T[],
+  incoming: T[],
   maxPhotos: number,
-): PickedPhoto[] {
+): T[] {
   const seen = new Set(existing.map((photo) => photo.uri));
   const fresh = incoming.filter((photo) => {
     if (seen.has(photo.uri)) {

@@ -66,7 +66,11 @@ commenting standards.
 
 ## 5. Fraud controls (v1)
 
-- In-app camera only for sighting photos (no gallery) + server timestamp.
+- No gallery-ONLY sightings: every sighting requires ≥1 live in-app capture
+  + server timestamp. Gallery photos are permitted ONLY as labelled
+  supplementary evidence per ADR-0003 (approved 2026-07-15, not yet built),
+  gated on the server-enforced ≥1-live-capture rule in `create_sighting`;
+  they carry no location/time evidence weight and never feed payout.
 - Rate limits: 3 sightings per spotter per post per day; posting requires
   a payment method, which itself deters throwaway abuse.
 - Collusion check before payout: flag for moderator review if the owner
