@@ -53,6 +53,14 @@ rounded-top sheet overlapping the hero.)
     the section renders only when count > 0 and lights up when the sightings
     feature ships. **SAFETY** (SECURITY_AND_TRUST §6): aggregate count ONLY,
     never individual sightings or their locations to a non-owner.
+    Non-owners also get a **"Message the owner"** affordance in this section
+    (sighting-gated — DOMAIN Chat): a viewer who has already reported gets a
+    secondary **"Message the owner"** button that opens the thread; everyone
+    else gets honest copy + a quiet **"Report a sighting"** link into the
+    report flow (a text link, not a second button — the sticky bar's "I've
+    seen this car" is the primary route). Hidden for the owner (they reach
+    spotters via their sightings list). Driven by
+    `get_post_detail.viewer_has_sighting`.
 11. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
     the underlined "Report this post" row (moved out of the header).
 
@@ -71,8 +79,16 @@ it gates visibility itself (RLS is bypassed) — active posts are public; the
 owner sees their own in any status via `auth.uid()`; anyone else hitting a
 non-active post gets `{ visible: false, closedReason }` and nothing more. It
 returns `is_owner` (never `owner_id`), exact last-seen coords for visible
-posts, `post_photos`, and a dormant `sighting_stats` scalar. Client hard-
-validates the three-variant payload with zod (`api/vehicleApi.ts`).
+posts, `post_photos`, a `sighting_stats` scalar, and `viewer_has_sighting`
+(caller-only: whether THIS viewer has a sighting here — gates the message
+affordance; never other users' data). Client hard-validates the
+three-variant payload with zod (`api/vehicleApi.ts`).
+
+**Message the owner** (migration `20260715130000`) — the section handler
+opens the thread via `openThread` (deferred `import('@/features/chat')`) when
+`viewerHasSighting`, else routes to `/report-sighting`; a stale-flag or
+`NO_SIGHTING` race falls back to reporting. Guests pass the `message_owner`
+auth gate first.
 
 **Schema** — migration `20260713140000_post_detail.sql`: `posts` += `year`,
 `body_type`, `distinguishing_features`, `owner_note` (read-path only — the

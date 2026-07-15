@@ -26,7 +26,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTimeAgo } from '@/shared/hooks';
 import { formatPounds } from '@/shared/lib';
 import { colors, sizes, spacing, typography } from '@/shared/theme';
-import { PlateChip, ReadMore, SafetyNotice, StatusBadge } from '@/shared/ui';
+import { Button, PlateChip, ReadMore, SafetyNotice, StatusBadge } from '@/shared/ui';
 
 import { theftContextLines } from '../lib/theftContext';
 import type { PostDetail } from '../types';
@@ -46,6 +46,10 @@ export interface PostDetailBodyProps {
   /** OWNER only: open their sighting list. Absent for spotters — the
    *  aggregate line stays a plain, non-navigable fact (SECURITY_AND_TRUST §6). */
   onViewSightings?: () => void;
+  /** SPOTTER only: message the owner. The handler opens the thread when the
+   *  viewer already has a sighting, else routes them to report one first
+   *  (chat is sighting-gated — DOMAIN Chat). Absent for the owner. */
+  onMessageOwner?: () => void;
 }
 
 function Divider() {
@@ -57,6 +61,7 @@ export function PostDetailBody({
   onOpenMap,
   onReport,
   onViewSightings,
+  onMessageOwner,
 }: PostDetailBodyProps) {
   // Hooks are unconditional; the "last seen" and sighting lines gate on data.
   const lastSeenAgo = useTimeAgo(post.lastSeenAt ?? post.createdAt);
@@ -212,6 +217,45 @@ export function PostDetailBody({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Owner</Text>
         <OwnerBlock owner={post.owner} />
+
+        {/* Message the owner — SPOTTER side only (the owner reaches spotters
+            through their sightings list). Chat is sighting-gated (DOMAIN
+            Chat: no cold DMs), so the affordance is honest about the gate:
+            a viewer who has reported opens the thread; everyone else is told
+            reporting is what opens the conversation, and the handler routes
+            them there. */}
+        {!post.isOwner && onMessageOwner ? (
+          <View style={styles.messageOwner}>
+            <Text style={styles.messageOwnerText}>
+              {post.viewerHasSighting
+                ? 'Chat privately with the owner about your sighting.'
+                : 'Spotted this car? Reporting a sighting opens a private, safe conversation with the owner.'}
+            </Text>
+            {post.viewerHasSighting ? (
+              // A real distinct action (opens the thread) → a button.
+              <Button
+                label="Message the owner"
+                variant="secondary"
+                fullWidth={false}
+                onPress={onMessageOwner}
+              />
+            ) : (
+              // No-sighting: a QUIET link, not a second button — the sticky
+              // bottom-bar "I've seen this car" is the primary route to the
+              // same report flow; this is just a contextual entry from the
+              // messaging framing (page's underlined-link grammar).
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Report a sighting to message the owner"
+                onPress={onMessageOwner}
+                style={styles.reportRow}
+                hitSlop={spacing.sm}
+              >
+                <Text style={styles.reportLabel}>Report a sighting</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : null}
       </View>
 
       {/* 9 — Sighting activity — dormant until the sightings feature ships.
@@ -332,6 +376,16 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
     flex: 1,
+  },
+  messageOwner: {
+    // The section's own gap governs rhythm — no extra top margin (which would
+    // compound to an off-rhythm 24px below the owner block).
+    gap: spacing.md,
+  },
+  messageOwnerText: {
+    // Instructional copy introducing an action = body, not caption/meta.
+    ...typography.body,
+    color: colors.textSecondary,
   },
   reportRow: {
     minHeight: sizes.touchTarget,

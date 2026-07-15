@@ -9,6 +9,9 @@
  *        PRIVACY: everything shown comes from get_post_sightings, whose
  *        payload is first-name + reputation only (never spotter_id or a
  *        surname) — enforced server-side AND re-validated by the api layer.
+ *        "Message" therefore opens chat by SIGHTING id — the server resolves
+ *        the spotter (open_thread_for_sighting); no spotter id ever reaches
+ *        this client.
  * LINKS: src/app/post-sightings.tsx (route);
  *        src/features/sightings/hooks/usePostSightings.ts;
  *        docs/SECURITY_AND_TRUST.md §1.
@@ -16,15 +19,17 @@
 
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { colors, radii, spacing, typography } from '@/shared/theme';
+import { colors, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
 import {
   AppImage,
+  Button,
   EmptyState,
   ErrorState,
-  FullscreenLoader,
   Screen,
+  useToast,
 } from '@/shared/ui';
 
 import { usePostSightings } from '../hooks/usePostSightings';
@@ -38,7 +43,29 @@ export function PostSightingsScreen({ postId }: PostSightingsScreenProps) {
   const router = useRouter();
   const { status, sightings, photoUrls, retry } = usePostSightings(postId);
 
-  if (status === 'loading') return <FullscreenLoader visible />;
+  if (status === 'loading') {
+    // Skeleton cards, not a spinner (design system: no spinners on lists).
+    return (
+      <Screen scroll contentContainerStyle={styles.content}>
+        <Text accessibilityRole="header" style={styles.title}>
+          Sightings
+        </Text>
+        <View
+          style={styles.skeletonSet}
+          accessibilityLabel="Loading sightings"
+          testID="sightings-skeleton"
+        >
+          {[0, 1].map((n) => (
+            <View key={n} style={styles.card}>
+              <View style={styles.skeletonPhoto} />
+              <View style={styles.skeletonLineWide} />
+              <View style={styles.skeletonLine} />
+            </View>
+          ))}
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen scroll contentContainerStyle={styles.content}>
@@ -77,9 +104,32 @@ function SightingCard({
   sighting: OwnerSighting;
   photoUrls: Record<string, string>;
 }) {
+  const router = useRouter();
+  const toast = useToast();
   const reportedAgo = useTimeAgo(sighting.createdAt);
   const flagLine = sighting.contextFlags.map((flag) => FLAG_LABELS[flag] ?? flag).join(' · ');
   const { spotter } = sighting;
+  const [opening, setOpening] = useState(false);
+
+  const messageSpotter = async () => {
+    if (opening) return;
+    setOpening(true);
+    try {
+      // Deferred import keeps this screen's test module-graph off the chat
+      // feature; the SIGHTING id is the handle — never a spotter id (§1).
+      const { openThreadForSighting } = await import('@/features/chat');
+      const { threadId } = await openThreadForSighting(sighting.id);
+      router.push(`/chat/${threadId}`);
+    } catch (err) {
+      // ChatActionError (extends Error) carries user-facing copy; surface it.
+      toast.show(
+        err instanceof Error && err.message ? err.message : 'We couldn’t open the conversation.',
+        'error',
+      );
+    } finally {
+      setOpening(false);
+    }
+  };
 
   return (
     <View style={styles.card}>
@@ -112,6 +162,12 @@ function SightingCard({
         {spotter.sightingsReported === 1 ? 'sighting' : 'sightings'} reported
         {spotter.recoveriesCredited > 0 ? ` · ${spotter.recoveriesCredited} recoveries` : ''}
       </Text>
+      <Button
+        label={`Message ${spotter.firstName}`}
+        variant="secondary"
+        loading={opening}
+        onPress={() => void messageSpotter()}
+      />
     </View>
   );
 }
@@ -131,6 +187,27 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     padding: spacing.lg,
     gap: spacing.sm,
+    ...shadows.soft,
+  },
+  skeletonSet: {
+    gap: spacing.lg,
+  },
+  skeletonPhoto: {
+    aspectRatio: 1,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  skeletonLineWide: {
+    height: sizes.skeletonLine,
+    width: '60%',
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceSubtle,
+  },
+  skeletonLine: {
+    height: sizes.skeletonLine,
+    width: '40%',
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceSubtle,
   },
   photoRow: {
     flexDirection: 'row',

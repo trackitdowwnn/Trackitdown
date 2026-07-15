@@ -80,6 +80,8 @@ const visibleSchema = z.object({
   desc_recognise: z.string().nullable(),
   desc_drives: z.string().nullable(),
   sighting_stats: z.object({ count: z.number().int(), latest_at: z.string().nullable() }),
+  // Whether THIS caller has a sighting on the post (gates "Message the owner").
+  viewer_has_sighting: z.boolean(),
 });
 
 type VisibleRow = z.infer<typeof visibleSchema>;
@@ -118,6 +120,7 @@ function toPostDetail(row: VisibleRow): PostDetail {
     descDrives: row.desc_drives ?? undefined,
     sightingCount: row.sighting_stats.count,
     latestSightingAt: row.sighting_stats.latest_at ?? undefined,
+    viewerHasSighting: row.viewer_has_sighting,
   };
 }
 

@@ -27,6 +27,7 @@ const base: PostDetail = {
   owner: { memberSince: '2025-01-05T00:00:00Z', firstName: 'Alex' },
   features: [],
   sightingCount: 0,
+  viewerHasSighting: false,
 };
 
 describe('buildSharePayload', () => {

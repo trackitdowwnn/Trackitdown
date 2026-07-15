@@ -52,6 +52,12 @@ v1 scope, stop and flag it.
 - **notify-owner-of-sighting push** — the sightings feature shipped without
   push (no notifications infra exists yet); the owner sees reports in-app.
   Arrives with the notifications feature (Edge Function + token storage).
+- **notify-message push** — chat shipped without push (same missing infra).
+  Contract is pinned in features/chat/README: payload = sender FIRST NAME +
+  post context ("New message about your Blue BMW") — message content NEVER
+  transits push (third-party infra; SECURITY_AND_TRUST §3). The deep route
+  `/chat/[threadId]` is already live and gate-aware. Unread state works
+  in-app today (tab badge + refetch-on-focus).
 - **Offline queueing for sighting reports** — v1 is retry-in-flow only; a
   report drafted with no signal is not persisted across app restarts.
 - **Gallery photos as supplementary sighting evidence** (ADR-0003) —
