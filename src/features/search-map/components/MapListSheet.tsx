@@ -19,9 +19,10 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Easing } from 'react-native-reanimated';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { EmptyState, ErrorState, SkeletonVehicleCard, VehicleCard } from '@/shared/ui';
 
 import type { MapPost } from '../types';
@@ -54,11 +55,12 @@ export const MapListSheet = memo(function MapListSheet({
 }: MapListSheetProps) {
   const snapPoints = useMemo(() => SNAP_POINTS, []);
   const sheetRef = useRef<BottomSheet>(null);
+  const reduceMotion = useReducedMotion();
   // Match the sheet's slide to the design clock (250ms ease-out) so it and
   // the peek card's spring read as one handoff, not two different curves.
   const animationConfigs = useBottomSheetTimingConfigs({
-    duration: motion.standard,
-    easing: Easing.out(Easing.cubic),
+    duration: reduceMotion ? 0 : motion.standard,
+    easing: easeOut,
   });
 
   // Hide/show imperatively via the ref (NOT the `index` prop). gorhom's

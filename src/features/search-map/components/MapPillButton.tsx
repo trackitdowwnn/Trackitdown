@@ -15,13 +15,14 @@ import { Feather } from '@expo/vector-icons';
 import { memo, useEffect } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
 
 import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 
 /** Travel to clear the screen edge when hidden: pill height + its bottom
  *  offset + one more gutter of slack. */
@@ -37,13 +38,14 @@ export const MapPillButton = memo(function MapPillButton({
   onPress,
 }: MapPillButtonProps) {
   const shown = useSharedValue(visible ? 1 : 0);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     shown.value = withTiming(visible ? 1 : 0, {
-      duration: motion.standard,
-      easing: Easing.out(Easing.quad),
+      duration: reduceMotion ? 0 : motion.standard,
+      easing: easeOut,
     });
-  }, [visible, shown]);
+  }, [visible, shown, reduceMotion]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: shown.value,

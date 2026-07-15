@@ -42,7 +42,6 @@ import {
   View,
 } from 'react-native';
 import Animated, {
-  Easing,
   FadeIn,
   FadeOut,
   ReduceMotion,
@@ -53,6 +52,7 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radii, sizes, spacing, typography } from '../theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { EmptyState } from './EmptyState';
 import {
   buildSelectList,
@@ -64,7 +64,7 @@ import {
 
 /** Open/close motion, at the design system's upper bound. */
 const MOTION_MS = 250;
-const motionEasing = Easing.out(Easing.quad);
+const motionEasing = easeOut;
 /** Debounce before a keystroke re-filters the list. */
 const FILTER_DEBOUNCE_MS = 150;
 

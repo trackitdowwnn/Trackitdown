@@ -20,9 +20,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { colors, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
 import {
   AppImage,
   Button,
@@ -82,8 +83,17 @@ export function PostSightingsScreen({ postId }: PostSightingsScreenProps) {
           onAction={() => router.back()}
         />
       ) : (
-        sightings.map((sighting) => (
-          <SightingCard key={sighting.id} sighting={sighting} photoUrls={photoUrls} />
+        sightings.map((sighting, index) => (
+          // Non-recycled ScrollView list — safe to stagger directly. FadeInDown
+          // auto-respects the OS reduce-motion flag (ReduceMotion.System).
+          <Animated.View
+            key={sighting.id}
+            entering={FadeInDown.duration(motion.standard)
+              .delay(Math.min(index, 6) * motion.listStagger)
+              .reduceMotion(ReduceMotion.System)}
+          >
+            <SightingCard sighting={sighting} photoUrls={photoUrls} />
+          </Animated.View>
         ))
       )}
     </Screen>

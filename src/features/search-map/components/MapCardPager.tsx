@@ -21,7 +21,6 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { AccessibilityInfo, FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
-  Easing,
   interpolate,
   runOnJS,
   useAnimatedStyle,
@@ -34,6 +33,7 @@ import Animated, {
 import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { motion, spacing } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { Button, VehicleCard } from '@/shared/ui';
 
 import type { MapPost } from '../types';
@@ -89,7 +89,7 @@ export const MapCardPager = memo(function MapCardPager({
   useEffect(() => {
     if (wantShown) {
       setShown(true);
-      visible.value = reduceMotion ? 1 : withSpring(1, motion.cardEnterSpring);
+      visible.value = reduceMotion ? 1 : withSpring(1, motion.springStandard);
       return;
     }
     if (reduceMotion) {
@@ -99,7 +99,7 @@ export const MapCardPager = memo(function MapCardPager({
     }
     visible.value = withTiming(
       0,
-      { duration: motion.fast, easing: Easing.out(Easing.cubic) },
+      { duration: motion.fast, easing: easeOut },
       (finished) => {
         // finished=false means a re-select interrupted the exit — the
         // enter branch above takes over; the card must stay mounted.

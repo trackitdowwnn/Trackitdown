@@ -47,11 +47,11 @@ import {
   type Ref,
 } from 'react';
 import { StyleSheet, Text, useWindowDimensions } from 'react-native';
-import { Easing } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '../hooks';
 import { colors, radii, sizes, spacing, typography } from '../theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { TextInputHostContext } from './TextInputHost';
 
 /** Open/close animation, per the design system's 200–250ms ease-out rule. */
@@ -123,7 +123,7 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
 
   const animationConfigs = useBottomSheetTimingConfigs({
     duration: ANIMATION_DURATION_MS,
-    easing: Easing.out(Easing.quad),
+    easing: easeOut,
   });
 
   // The scrim: fades with the sheet, closes it on tap. opacity={1} hands the

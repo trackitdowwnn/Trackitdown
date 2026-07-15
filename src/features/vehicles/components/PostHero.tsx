@@ -10,10 +10,17 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { AppImage } from '@/shared/ui';
 
 import type { PostDetailPhoto } from '../types';
@@ -29,16 +36,30 @@ export interface PostHeroProps {
 export function PostHero({ photos, width, height, alt }: PostHeroProps) {
   const [index, setIndex] = useState(0);
 
+  // Card→detail continuity: the hero fades + grows from 0.94 on mount, so the
+  // detail reads as a continuation of the tapped card (Airbnb's move, without a
+  // full shared element). Reduced motion → no scale/fade (starts settled).
+  const reduceMotion = useReducedMotion();
+  const enter = useSharedValue(reduceMotion ? 1 : 0);
+  useEffect(() => {
+    if (reduceMotion) return;
+    enter.value = withTiming(1, { duration: motion.slow, easing: easeOut });
+  }, [enter, reduceMotion]);
+  const enterStyle = useAnimatedStyle(() => ({
+    opacity: enter.value,
+    transform: [{ scale: 0.94 + enter.value * 0.06 }],
+  }));
+
   if (photos.length === 0) {
     return (
-      <View style={[styles.fallback, { width, height }]}>
+      <Animated.View style={[styles.fallback, { width, height }, enterStyle]}>
         <Feather name="image" size={sizes.avatarSm} color={colors.textSecondary} />
-      </View>
+      </Animated.View>
     );
   }
 
   return (
-    <View style={{ width, height }}>
+    <Animated.View style={[{ width, height }, enterStyle]}>
       <ScrollView
         horizontal
         pagingEnabled
@@ -74,7 +95,7 @@ export function PostHero({ photos, width, height, alt }: PostHeroProps) {
           </Text>
         </View>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 

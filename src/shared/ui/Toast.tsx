@@ -29,7 +29,6 @@ import {
 } from 'react';
 import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -38,6 +37,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, motion, radii, shadows, sizes, spacing, typography } from '../theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 
 export type ToastKind = 'success' | 'error';
 
@@ -86,7 +86,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     AccessibilityInfo.announceForAccessibility(toast.message);
     visible.value = withTiming(1, {
       duration: reduceMotion ? 0 : motion.fast,
-      easing: Easing.out(Easing.cubic),
+      easing: easeOut,
     });
     if (hideTimer.current) {
       clearTimeout(hideTimer.current);

@@ -17,11 +17,20 @@
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { Platform, StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthGate, AuthSheet } from '@/features/auth';
 import { ToastProvider } from '@/shared/ui';
+
+// Platform-native screen transitions (motion audit): iOS gets the horizontal
+// push + edge swipe-back users expect; Android gets Material's fade-through.
+// Was unset — every push used the bare default and read "flat".
+const pushAnimation = Platform.select({
+  ios: 'slide_from_right',
+  android: 'fade_from_bottom',
+  default: 'default',
+} as const);
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -33,7 +42,19 @@ export default function RootLayout() {
           {/* ToastProvider hosts the single app-wide toast above all screens. */}
           <ToastProvider>
             <AuthGate>
-              <Stack screenOptions={{ headerShown: false }} />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: pushAnimation,
+                  gestureEnabled: true, // iOS edge swipe-back (Android ignores)
+                }}
+              >
+                {/* Full-screen TASK flows present from the bottom (modal grammar)
+                    on both platforms, so they read as "a task over the app"
+                    rather than a lateral push. */}
+                <Stack.Screen name="report-sighting" options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="post-a-car" options={{ animation: 'slide_from_bottom' }} />
+              </Stack>
               {/* The one auth surface: opens over any screen when a gated
                   action stores a pending intent (useRequireAuth). */}
               <AuthSheet />

@@ -30,6 +30,8 @@ jest.mock('react-native-reanimated', () => {
       createAnimatedComponent: (component: unknown) => component,
     },
     ZoomIn: { duration: () => ({}) },
+    // motionEasing.ts evaluates Easing.out(Easing.cubic) at import time.
+    Easing: { out: (fn: unknown) => fn, cubic: () => 0 },
     interpolateColor: () => '#000000',
     useAnimatedStyle: () => ({}),
     useReducedMotion: () => true,

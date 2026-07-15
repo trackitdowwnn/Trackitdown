@@ -6,5 +6,6 @@
  */
 
 export { useAndroidKeyboardHeight } from './useAndroidKeyboardHeight';
+export { useEntranceGate } from './useEntranceGate';
 export { useFullscreenLoader } from './useFullscreenLoader';
 export { useTimeAgo } from './useTimeAgo';

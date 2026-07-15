@@ -131,10 +131,40 @@ is deliberately the opposite of a busy/alarming crime map.
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
-- Motion: 200–250ms ease-out; subtle scale on card press (0.98).
 - Accessibility: minimum 44pt touch targets, WCAG AA contrast against the
   warm background (check greens on `#FAF7F2`), labels on all interactive
   elements, support dynamic type.
+
+## Motion
+
+Calm and continuity-focused, never spectacle (Airbnb's restraint). Tokens
+live in `src/shared/theme/motion.ts` (durations + springs) and
+`src/shared/theme/motionEasing.ts` (easings — imported directly, not via the
+barrel, since it pulls in Reanimated).
+
+- **Durations:** `instant` 0 (reduced-motion fallback) · `fast` 200 (micro:
+  fades, press, label floats) · `standard` 250 (screen-scale: sheets, slides)
+  · `slow` 300 (hero continuity). Map camera moves are sanctioned exceptions
+  (`mapFly` 500 / `mapPan` 350).
+- **Easing:** one deceleration curve — `easeOut` — for enters and most timing
+  (from `motionEasing.ts`). `easeIn` (exits) / `easeInOut` (reversible moves)
+  are added there when a consumer needs one. No ad-hoc quad/cubic mix.
+- **Springs (three feels, one source):** `springGentle` (critically damped,
+  zero wobble) — the sanctioned default for calm owner-facing motion;
+  `springStandard` (a hair of life) for touch feedback and floating surfaces
+  (e.g. the map peek card); `springBouncy` (one soft overshoot) reserved for
+  **success/reward moments only** (report-sent, recovery) — the one place
+  warmth shows.
+- **Navigation:** platform-native — iOS horizontal push + swipe-back, Android
+  fade-through; the report-sighting wizard presents from the bottom; the
+  post-detail hero uses a subtle cross-fade + scale-from-0.94 for card→detail
+  continuity (not a full shared element).
+- **Lists:** on-screen rows enter with a small staggered `FadeInDown`
+  (≤~300ms total); recycled/off-screen cells don't animate.
+- **Reduced motion (part of the system, not a footnote):** every animated
+  component reads `useReducedMotion()`, and layout entrances pass
+  `ReduceMotion.System`. When reduced, large translations/scales collapse to a
+  fade or `instant`; state feedback is preserved. Satisfies WCAG 2.3.3.
 
 ## Tone of voice (microcopy)
 
