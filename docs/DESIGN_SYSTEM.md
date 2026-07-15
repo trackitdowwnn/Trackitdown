@@ -25,7 +25,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `border` | `#E7E0D6` | hairlines, input borders |
 | `borderStrong` | `#B8AE9E` | small elements that must stay visible (progress tracks) |
 | `success` | `#4F8A5B` | recovery confirmed, payout complete |
-| `warning` | `#C9973B` | pending verification, expiring posts |
+| `warning` | `#A9762A` | pending verification, expiring posts (dot/icon/border only — never body text; clears 3:1 as a graphic) |
 | `danger` | `#B4553F` | destructive actions, errors (muted, not alarm-red) |
 | `dangerPressed` | `#96462F` | pressed state of danger |
 | `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
@@ -36,6 +36,36 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 Rules: the accent terracotta is reserved for bounty/value moments so it
 keeps its meaning. Danger red appears only on destructive/error UI — never
 as decoration on "stolen" content.
+
+### Contrast (WCAG AA on the cream `#FAF7F2` background)
+
+Every token used as TEXT clears AA (4.5:1). `accent` and `success` are
+large-type/fill/dot only by design; `warning` is dot/icon/border only.
+(Audited 2026-07-15 — see `docs/decisions/ADR-0004-theme-audit.md`.)
+
+| Pairing | Ratio | Verdict |
+|---|---|---|
+| `textPrimary` on `background` | 13.6 | AA |
+| `textSecondary` on `background` | 5.0 | AA |
+| `primary` (as text) on `background` | 4.7 | AA |
+| `accentText` on `background` | 4.9 | AA |
+| `danger` (as text) on `background` | 4.6 | AA |
+| white on `primary` | 5.1 | AA |
+| white on `danger` | 4.9 | AA |
+| `accent` on `background` | 3.0 | large/fill only |
+| `success` on `background` | 3.8 | dot only |
+| `warning` on `background` | 3.7 | dot/icon only (≥3:1 graphic) |
+
+Never encode status by colour alone: `StatusBadge` always pairs its dot
+with a text label (colour-blind-safe).
+
+### Map style
+
+The Google Map uses a custom light style (`src/shared/theme/mapStyle.ts`),
+NOT stock Google colours: land = `surfaceSubtle` cream, water = a muted
+sage-grey, roads soft, labels quiet, POI/transit clutter removed — a calm,
+warm canvas under the on-brand pins (sage cluster, terracotta amount). This
+is deliberately the opposite of a busy/alarming crime map.
 
 ## Typography
 

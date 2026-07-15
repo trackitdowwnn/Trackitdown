@@ -6,6 +6,7 @@
  */
 
 export { colors, type ColorToken } from './colors';
+export { mapStyle } from './mapStyle';
 export { motion, type MotionToken } from './motion';
 export { spacing, type SpacingToken } from './spacing';
 export { radii, type RadiusToken } from './radii';

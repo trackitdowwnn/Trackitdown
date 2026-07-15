@@ -27,7 +27,11 @@ export const colors = {
   // wizard's empty progress track) while staying lighter than any fill.
   borderStrong: '#B8AE9E',
   success: '#4F8A5B',
-  warning: '#C9973B',
+  // Amber for pending/expiring. Deepened from #C9973B (theme audit 2026-07-15)
+  // so its DOT/icon usage clears WCAG 3:1 for a meaningful graphic (was 2.46 on
+  // the cream background; now 3.70). Still the same gold/amber semantic — and
+  // it is only ever a dot/icon/border, never body text.
+  warning: '#A9762A',
   danger: '#B4553F',
   dangerPressed: '#96462F',
   textOnPrimary: '#FFFFFF',
