@@ -49,7 +49,6 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  Easing,
   useAnimatedProps,
   useAnimatedStyle,
   useReducedMotion,
@@ -61,6 +60,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { z } from 'zod';
 
 import { type BountyBreakdown, bountyBreakdown, formatPounds } from '../lib/money';
+import { easeOut } from '@/shared/theme/motionEasing';
 import {
   colors,
   displayFontScaleCap,
@@ -203,7 +203,7 @@ export function MoneySlider({
       return;
     }
     lastSnapped.value = value;
-    const timing = { duration: settleMs, easing: Easing.out(Easing.cubic) };
+    const timing = { duration: settleMs, easing: easeOut };
     position.value = withTiming(penceToPosition(value, config), timing);
     displayPence.value = withTiming(value, timing);
   }, [value, dragGeneration, config, settleMs, dragging, lastSnapped, position, displayPence]);
@@ -263,7 +263,7 @@ export function MoneySlider({
         // Settle onto the last committed grid point. For a gesture cancelled
         // before activation (a parent scroll claimed the touch) nothing was
         // emitted, so this glides the thumb back to the old value.
-        const timing = { duration: grabMs, easing: Easing.out(Easing.cubic) };
+        const timing = { duration: grabMs, easing: easeOut };
         position.value = withTiming(penceToPosition(lastSnapped.value, config), timing);
         displayPence.value = withTiming(lastSnapped.value, timing);
         scheduleOnRN(endDrag); // force a reconcile render against the parent

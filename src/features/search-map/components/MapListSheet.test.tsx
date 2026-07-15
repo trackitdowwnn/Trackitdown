@@ -21,6 +21,13 @@ import type { MapPost } from '../types';
 const mockClose = jest.fn();
 const mockSnapToIndex = jest.fn();
 
+// The official reanimated mock lacks useReducedMotion, which the sheet now
+// reads (motion audit — reduce-motion guard); extend it.
+jest.mock('react-native-reanimated', () => ({
+  ...jest.requireActual('react-native-reanimated/mock'),
+  useReducedMotion: () => false,
+}));
+
 jest.mock('@gorhom/bottom-sheet', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const React = require('react');

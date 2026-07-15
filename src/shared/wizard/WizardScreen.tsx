@@ -28,7 +28,6 @@ import {
   View,
 } from 'react-native';
 import Animated, {
-  Easing,
   ReduceMotion,
   SlideInLeft,
   SlideInRight,
@@ -39,6 +38,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '../hooks';
 import { colors, spacing, typography } from '../theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { PhaseIntro } from './PhaseIntro';
 import { ReviewStep } from './ReviewStep';
 import { WizardFooter } from './WizardFooter';
@@ -49,7 +49,7 @@ import { useWizardController } from './useWizardController';
 
 /** Step transitions: 250ms ease-out per the design system's motion rules. */
 const SLIDE_MS = 250;
-const slideEasing = Easing.out(Easing.quad);
+const slideEasing = easeOut;
 
 export interface WizardScreenProps<TAnswers> {
   flow: WizardFlow<TAnswers>;

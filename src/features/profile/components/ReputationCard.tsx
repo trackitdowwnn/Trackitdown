@@ -20,7 +20,6 @@ import { Eye, KeyRound, type LucideIcon, Sparkles, ThumbsUp } from 'lucide-react
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -28,6 +27,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 
 import {
   type BadgeState,
@@ -78,7 +78,7 @@ export function ReputationCard({
   useEffect(() => {
     appear.value = withTiming(1, {
       duration: reduceMotion ? 0 : motion.standard,
-      easing: Easing.out(Easing.cubic),
+      easing: easeOut,
     });
   }, [appear, reduceMotion]);
   const appearStyle = useAnimatedStyle(() => ({
@@ -202,7 +202,7 @@ function ProgressBar({
   useEffect(() => {
     fill.value = withTiming(fraction, {
       duration: reduceMotion ? 0 : motion.standard,
-      easing: Easing.out(Easing.cubic),
+      easing: easeOut,
     });
   }, [fill, fraction, reduceMotion]);
   const fillStyle = useAnimatedStyle(() => ({ width: `${fill.value * 100}%` }));

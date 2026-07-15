@@ -43,7 +43,6 @@ import {
 } from 'react';
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import Animated, {
-  Easing,
   interpolateColor,
   useAnimatedStyle,
   useReducedMotion,
@@ -54,6 +53,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { colors, motion, sizes, spacing, tabLabelFontScaleCap, typography } from '../theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { type BadgeValue, badgeDisplay, tabAccessibilityLabel } from './appTabBarModel';
 
 /** One tab, as data. Adding a tab is adding an entry, not surgery. */
@@ -226,7 +226,7 @@ function TabItem({
       // would oscillate past the design system's motion window.
       pressScale.value = withSequence(
         withTiming(motion.tabPressScale, { duration: motion.fast / 2 }),
-        withTiming(1, { duration: motion.fast / 2, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: motion.fast / 2, easing: easeOut }),
       );
     }
     onPress();
@@ -302,7 +302,7 @@ function ActionButton({ action, reduceMotion }: { action: TabBarAction; reduceMo
     if (!reduceMotion) {
       pressScale.value = withSequence(
         withTiming(motion.tabPressScale, { duration: motion.fast / 2 }),
-        withTiming(1, { duration: motion.fast / 2, easing: Easing.out(Easing.cubic) }),
+        withTiming(1, { duration: motion.fast / 2, easing: easeOut }),
       );
     }
     action.onPress();

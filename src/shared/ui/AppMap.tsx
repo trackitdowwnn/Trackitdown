@@ -27,6 +27,8 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
+import { mapStyle } from '@/shared/theme';
+
 import type { MapComponentProps } from './LocationPicker';
 
 // The search map renders markers; re-exporting keeps react-native-maps
@@ -85,6 +87,8 @@ export function AppMap({
     <MapView
       ref={mapRef}
       provider={PROVIDER_GOOGLE}
+      // Custom light style harmonised with the warm palette (theme audit).
+      customMapStyle={mapStyle as unknown as MapView['props']['customMapStyle']}
       style={StyleSheet.absoluteFill}
       initialRegion={region}
       showsMyLocationButton={false}

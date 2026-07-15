@@ -11,10 +11,15 @@
  */
 
 export const motion = {
+  // --- Durations (the sanctioned clock; ease-out is the rule) ----------------
+  /** Immediate — the reduced-motion fallback for any timed animation. */
+  instant: 0,
   /** Micro-interactions: fades, label floats, press feedback. */
   fast: 200,
   /** Screen-scale moves: modals, sheets, wizard slides. */
   standard: 250,
+  /** Larger transitions: the post-detail hero continuity cross-fade. */
+  slow: 300,
   /** Map fly-to (LocationPicker search pick / locate). A geographic camera
    *  move legitimately runs longer than UI motion — a sanctioned exception to
    *  the 200–250ms rule, named so it doesn't read as a magic number. */
@@ -22,10 +27,23 @@ export const motion = {
   /** Shorter map follow-pan (search map: card swipe nudges the camera to the
    *  next pin without a full fly-to). Also a sanctioned camera-move exception. */
   mapPan: 350,
-  /** Floating-surface entrance spring (the map peek card): a Reanimated
-   *  withSpring config tuned to land in ~`standard` (250ms) without wobble.
-   *  Named here so the next floating surface springs identically. */
-  cardEnterSpring: { damping: 18, stiffness: 220, mass: 0.7 },
+
+  // --- Springs (Reanimated withSpring configs; duration + dampingRatio form
+  // gives a predictable settle time. Three feels, one source: calm by default,
+  // a hair of life for touch, one soft overshoot reserved for success) --------
+  /** Owner-facing default: critically damped, ZERO wobble (distressed users). */
+  springGentle: { duration: 350, dampingRatio: 1 },
+  /** Touch feedback / floating surfaces: a hair of life, settles clean. */
+  springStandard: { duration: 300, dampingRatio: 0.85 },
+  /** SUCCESS/reward moments ONLY (report-sent, recovery): one soft overshoot,
+   *  no visible oscillation — the one place warmth is allowed to show. */
+  springBouncy: { duration: 250, dampingRatio: 0.7 },
+
+  // --- Scales & timings (unchanged) ------------------------------------------
+
+  /** Per-row delay step for a staggered list entrance; capped at ~6 rows so
+   *  the last one lands within ~300ms (docs/DESIGN_SYSTEM.md Motion — lists). */
+  listStagger: 50,
   /** "Subtle scale on card press" (DESIGN_SYSTEM Motion). */
   pressScale: 0.98,
   /** MoneySlider: thumb scale-up while grabbed. */

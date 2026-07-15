@@ -75,7 +75,6 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  Easing,
   type SharedValue,
   useAnimatedStyle,
   useReducedMotion,
@@ -86,6 +85,7 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { colors, motion, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { AppImage } from './AppImage';
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
 import { Button } from './Button';
@@ -786,7 +786,7 @@ function GridTile({
     if (width <= 0) {
       return { opacity: 0 };
     }
-    const timing = { duration: settleMs, easing: Easing.out(Easing.cubic) };
+    const timing = { duration: settleMs, easing: easeOut };
     if (dragFrom.value === index) {
       // The lifted tile rides the finger from its rest cell.
       const cell = gridCellForIndex(index, width, GAP, coverRow);

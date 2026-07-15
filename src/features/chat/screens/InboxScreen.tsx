@@ -14,8 +14,10 @@
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { RefreshControl, StyleSheet, View } from 'react-native';
+import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
-import { colors, radii, sizes, spacing } from '@/shared/theme';
+import { useEntranceGate } from '@/shared/hooks';
+import { colors, motion, radii, sizes, spacing } from '@/shared/theme';
 import { EmptyState, ErrorState } from '@/shared/ui';
 
 import { ThreadRow } from '../components/ThreadRow';
@@ -25,6 +27,9 @@ import type { InboxThread } from '../types';
 export function ChatInboxScreen() {
   const router = useRouter();
   const { status, threads, refreshing, refresh, retry } = useInbox();
+  // Window opens when data is READY (not at mount, which is the skeleton
+  // phase) so a slow load still gets the entrance; recycled cells don't.
+  const entranceActive = useEntranceGate(status === 'ready');
 
   if (status === 'loading') {
     return (
@@ -73,11 +78,21 @@ export function ChatInboxScreen() {
     <FlashList
       data={threads}
       keyExtractor={(thread: InboxThread) => thread.threadId}
-      renderItem={({ item }) => (
-        <ThreadRow
-          thread={item}
-          onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
-        />
+      renderItem={({ item, index }) => (
+        <Animated.View
+          entering={
+            entranceActive
+              ? FadeInDown.duration(motion.standard)
+                  .delay(Math.min(index, 6) * motion.listStagger)
+                  .reduceMotion(ReduceMotion.System)
+              : undefined
+          }
+        >
+          <ThreadRow
+            thread={item}
+            onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
+          />
+        </Animated.View>
       )}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />

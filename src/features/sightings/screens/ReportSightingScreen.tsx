@@ -21,11 +21,17 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
 import { Button, EmptyState, FullscreenLoader, useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
 
@@ -151,6 +157,16 @@ function SightingSent({
   const toast = useToast();
   const [opening, setOpening] = useState(false);
 
+  // Success warmth (the one place a soft overshoot is allowed): the check badge
+  // springs in on the payoff screen. Reduced motion → it's simply already here.
+  const reduceMotion = useReducedMotion();
+  const badge = useSharedValue(reduceMotion ? 1 : 0);
+  useEffect(() => {
+    if (reduceMotion) return;
+    badge.value = withSpring(1, motion.springBouncy);
+  }, [badge, reduceMotion]);
+  const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: badge.value }] }));
+
   const messageOwner = async () => {
     if (opening) return;
     setOpening(true);
@@ -174,9 +190,9 @@ function SightingSent({
   return (
     <View style={[styles.sent, { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xl }]}>
       <View style={styles.sentBody}>
-        <View style={styles.sentBadge}>
+        <Animated.View style={[styles.sentBadge, badgeStyle]}>
           <Feather name="check" size={sizes.icon} color={colors.textOnPrimary} />
-        </View>
+        </Animated.View>
         <Text accessibilityRole="header" style={styles.sentTitle}>
           Report sent — thank you
         </Text>
