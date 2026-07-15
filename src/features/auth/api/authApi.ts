@@ -58,7 +58,7 @@ function isRateLimited(error: { status?: number; code?: string }): boolean {
 // --- Email OTP --------------------------------------------------------------
 
 /**
- * Send a 6-digit OTP to `email`. Sign-up and sign-in are the SAME call
+ * Send an 8-digit OTP to `email`. Sign-up and sign-in are the SAME call
  * (shouldCreateUser: true) — no account-exists fork, no password.
  */
 export async function requestEmailOtp(email: string): Promise<void> {

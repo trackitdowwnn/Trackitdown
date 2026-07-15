@@ -1,0 +1,128 @@
+<!--
+  Trackitdown — email OTP template (Supabase Auth "Magic Link" slot).
+  Sends the 8-digit login code via {{ .Token }}. Paste this whole file into
+  Dashboard → Authentication → Email Templates. Setup: features/auth/README.md.
+
+  COLOUR TOKENS (hard-coded here because email clients can't import our theme;
+  keep in sync with docs/DESIGN_SYSTEM.md + src/shared/theme/ by hand — a
+  /theme-audit change to any of these must be mirrored below):
+    #FAF7F2  background      — app background (warm off-white), behind the card
+    #FFFFFF  surface         — the white card
+    #F3EEE6  surfaceSubtle   — the code block fill
+    #2B2926  textPrimary     — headings, body, the code digits
+    #6F6A62  textSecondary   — security note, footer
+    #5B755D  primary (sage)  — the wordmark accent
+    #E7E0D6  border          — card + code-block hairline
+
+  EMAIL-SAFETY NOTES:
+    - Table-based layout, ALL styles inline, no external CSS, no JS, max 600px.
+    - Works with images blocked (there are no images — the wordmark is text).
+    - border-radius degrades gracefully to square corners in old clients.
+    - color-scheme meta hints below tell modern clients not to force-invert;
+      where a client inverts anyway, the code stays legible because both the
+      digits (#2B2926) and their block (#F3EEE6) carry explicit colours that
+      invert to a still-readable light-on-dark pair.
+-->
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>Your Trackitdown login code</title>
+</head>
+<body style="margin:0; padding:0; width:100%; background-color:#FAF7F2; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+
+  <!-- Preheader: hidden inbox-preview text. The zero-width spaces stop the
+       body copy from bleeding into the preview after this line. -->
+  <span style="display:none !important; visibility:hidden; opacity:0; color:transparent; height:0; width:0; overflow:hidden; mso-hide:all;">
+    Your login code is inside.&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
+  </span>
+
+  <!-- Full-width background wrapper -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAF7F2;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+
+        <!-- 600px centred column -->
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px; max-width:600px;">
+
+          <!-- Wordmark header (styled TEXT, not an image) -->
+          <tr>
+            <td align="center" style="padding:8px 0 24px 0;">
+              <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:20px; font-weight:700; letter-spacing:0.2px; color:#2B2926;">Track<span style="color:#5B755D;">itdown</span></span>
+            </td>
+          </tr>
+
+          <!-- White rounded card -->
+          <tr>
+            <td style="background-color:#FFFFFF; border:1px solid #E7E0D6; border-radius:16px; padding:40px 40px 32px 40px;">
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                <!-- Headline -->
+                <tr>
+                  <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:24px; line-height:30px; font-weight:600; color:#2B2926; padding-bottom:8px;">
+                    Your login code
+                  </td>
+                </tr>
+
+                <!-- Instruction -->
+                <tr>
+                  <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:16px; line-height:24px; color:#6F6A62; padding-bottom:24px;">
+                    Enter this code in the Trackitdown app to continue.
+                  </td>
+                </tr>
+
+                <!-- THE CODE — hero block -->
+                <tr>
+                  <td align="center" style="background-color:#F3EEE6; border:1px solid #E7E0D6; border-radius:12px; padding:24px 16px;">
+                    <div style="font-family:'SF Mono',SFMono-Regular,ui-monospace,'Courier New',Courier,monospace; font-size:36px; line-height:44px; font-weight:700; letter-spacing:8px; color:#2B2926;">{{ .Token }}</div>
+                  </td>
+                </tr>
+
+                <!-- Expiry -->
+                <tr>
+                  <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:14px; line-height:20px; color:#6F6A62; padding:20px 0 0 0;">
+                    This code expires in 60 minutes.
+                  </td>
+                </tr>
+
+                <!-- Security note -->
+                <tr>
+                  <td style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:18px; color:#6F6A62; padding:24px 0 0 0; border-top:1px solid #E7E0D6;">
+                    Didn't request this? You can safely ignore this email — your account is secure and no one can log in without this code.
+                  </td>
+                </tr>
+
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding:24px 16px 8px 16px;">
+              <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:13px; line-height:18px; color:#6F6A62;">
+                Sent by Trackitdown
+              </div>
+              <!-- TODO (before public launch): replace with the registered legal
+                   entity + postal address. A physical mailing address in
+                   transactional/marketing email is required by UK PECR / CAN-SPAM
+                   / CASL. -->
+              <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size:12px; line-height:16px; color:#6F6A62; padding-top:4px;">
+                [Company legal name], [postal address]
+              </div>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

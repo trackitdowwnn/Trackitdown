@@ -93,10 +93,10 @@ describe('requestEmailOtp', () => {
 describe('verifyEmailOtp', () => {
   it('returns the user id on success', async () => {
     mockVerifyOtp.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
-    await expect(verifyEmailOtp('jane@example.com', '123456')).resolves.toBe('u1');
+    await expect(verifyEmailOtp('jane@example.com', '12345678')).resolves.toBe('u1');
     expect(mockVerifyOtp).toHaveBeenCalledWith({
       email: 'jane@example.com',
-      token: '123456',
+      token: '12345678',
       type: 'email',
     });
   });

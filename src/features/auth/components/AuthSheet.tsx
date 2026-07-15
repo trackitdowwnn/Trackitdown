@@ -232,7 +232,7 @@ function EmailStep({
   return (
     <View style={styles.step}>
       <Text style={styles.body}>
-        Sign up and log in are the same — we’ll email you a 6-digit code. No password needed.
+        Sign up and log in are the same — we’ll email you an 8-digit code. No password needed.
       </Text>
       <TextField
         label="Email"

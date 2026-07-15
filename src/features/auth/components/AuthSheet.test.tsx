@@ -115,7 +115,7 @@ async function enterEmailAndCode(screen: Awaited<ReturnType<typeof render>>) {
   });
   await waitFor(() => expect(screen.getByText(/Enter the code we emailed/)).toBeTruthy());
   await act(async () => {
-    fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
+    fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345678');
   });
 }
 
@@ -150,7 +150,7 @@ describe('AuthSheet', () => {
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
 
     await enterEmailAndCode(screen);
-    expect(mockVerifyEmailOtp).toHaveBeenCalledWith('sam@example.com', '123456');
+    expect(mockVerifyEmailOtp).toHaveBeenCalledWith('sam@example.com', '12345678');
 
     // The session flips; the profile check finds a row → member.
     await act(async () => {

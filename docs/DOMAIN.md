@@ -23,7 +23,7 @@ document wins — fix the code or update this doc deliberately.
   after sign-in without re-tapping. Dismissing the sheet is a graceful cancel.
   Sign-out lands in guest mode, not an auth wall.
   (Approved 2026-07-14 with the deferred-auth rework.)
-- **Passwordless.** Sign-up and sign-in are one flow: a 6-digit email OTP, or
+- **Passwordless.** Sign-up and sign-in are one flow: an 8-digit email OTP, or
   native Apple / Google. No passwords, ever. There is no separate "create
   account" step — verifying the code (or completing a social sign-in) creates
   the account when it's new.

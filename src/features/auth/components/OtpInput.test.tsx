@@ -45,27 +45,27 @@ describe('OtpInput', () => {
     expect(onChangeText).toHaveBeenLastCalledWith('1234');
     expect(onComplete).not.toHaveBeenCalled();
 
-    await type('123456');
-    expect(onComplete).toHaveBeenCalledWith('123456');
+    await type('12345678');
+    expect(onComplete).toHaveBeenCalledWith('12345678');
   });
 
   it('accepts a full pasted code and strips non-digits', async () => {
     const { onChangeText, onComplete } = await renderOtp();
 
-    // A pasted "1 2-3.4 5 6" arrives as one change event.
-    await type('1 2-3.4 5 6');
-    expect(onChangeText).toHaveBeenLastCalledWith('123456');
-    expect(onComplete).toHaveBeenCalledWith('123456');
+    // A pasted "1 2-3.4 5 6 7 8" arrives as one change event.
+    await type('1 2-3.4 5 6 7 8');
+    expect(onChangeText).toHaveBeenLastCalledWith('12345678');
+    expect(onComplete).toHaveBeenCalledWith('12345678');
   });
 
   it('caps input at the code length', async () => {
     const { onComplete } = await renderOtp();
-    await type('12345678');
-    expect(onComplete).toHaveBeenCalledWith('123456');
+    await type('123456789');
+    expect(onComplete).toHaveBeenCalledWith('12345678');
   });
 
   it('is not editable while submitting', async () => {
-    await renderOtp({ value: '123456', submitting: true });
+    await renderOtp({ value: '12345678', submitting: true });
     expect(screen.getByTestId('otp-hidden-input').props.editable).toBe(false);
   });
 
