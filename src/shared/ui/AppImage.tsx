@@ -33,6 +33,10 @@ export interface AppImageProps {
   style?: StyleProp<ImageStyle>;
   /** Images are decorative by default; pass a label to expose one. */
   accessibilityLabel?: string;
+  /** Load failure — callers with a non-photo fallback (e.g. the tab-bar
+   *  avatar reverting to its icon) switch on this. */
+  onError?: () => void;
+  testID?: string;
 }
 
 /** expo-image with the app's placeholder/transition/recycling defaults. */
@@ -43,6 +47,8 @@ export function AppImage({
   contentFit = 'cover',
   style,
   accessibilityLabel,
+  onError,
+  testID,
 }: AppImageProps) {
   return (
     <Image
@@ -54,6 +60,8 @@ export function AppImage({
       accessible={Boolean(accessibilityLabel)}
       accessibilityLabel={accessibilityLabel}
       style={[styles.base, style]}
+      onError={onError}
+      testID={testID}
     />
   );
 }

@@ -3,11 +3,14 @@
  *        gets a friendly invitation whose "Log in" goes through the auth gate
  *        with the tab's context; a signed-in user gets the tab content; the
  *        sheet is never auto-fired by merely rendering the tab.
- * WHY:   "Tabs get invitations, actions get the sheet" is a hard rule of the
- *        deferred-auth pattern — a tab that walls or auto-fires the sheet
- *        reintroduces the auth wall.
+ * WHY:   "Tabs get invitations, actions get the sheet" holds for My Cars and
+ *        Inbox. The PROFILE tab is the one deliberate exception (recorded in
+ *        features/auth/README.md): its tap opens the sheet directly via the
+ *        tab-press gate — that behaviour is pinned in
+ *        src/features/profile/hooks/useProfileTab.test.tsx, while THIS file
+ *        pins that the other two tabs keep their invitation screens.
  * LINKS: src/app/(tabs)/{my-cars,inbox}.tsx; src/features/auth (useRequireAuth);
- *        docs/TESTING.md.
+ *        src/features/profile/hooks/useProfileTab.test.tsx; docs/TESTING.md.
  *
  * NOTE: This file lives here, NOT next to the route files — anything under
  * src/app/ becomes an Expo Router route, and a test there gets bundled into

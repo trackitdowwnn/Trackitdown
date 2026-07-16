@@ -131,6 +131,12 @@ busy/alarming crime map.
   accent rule (a terracotta badge stays distinct from the orange primary and
   needs no per-component override). Bar body is `sizes.tabBar` (56) tall
   plus safe area; press feedback is a subtle scale (`motion.tabPressScale`).
+  The Profile tab is the one sanctioned photo tab: a signed-in member's
+  avatar (`sizes.tabAvatar`, 26pt circle) replaces the icon, active state is
+  a 2pt `primary` ring (`sizes.tabAvatarRing`, photos can't tint) plus the
+  usual label tint, and the label reads "You"; every tab's glyph centres in
+  the shared `sizes.tabIconSlot` (34) so labels stay aligned. A failed
+  avatar load falls back to the person icon.
 
 ## Screen conventions
 

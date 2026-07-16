@@ -43,6 +43,18 @@ export const sizes = {
   avatarLg: 72,
   /** AppTabBar content height, above the safe-area inset. */
   tabBar: 56,
+  /** Profile-tab avatar diameter — slightly over `icon` (24) so the photo sits
+   *  optically level with the outline icons beside it. */
+  tabAvatar: 26,
+  /** Active ring around the tab avatar: stroke width and the breathing gap
+   *  between ring and photo. */
+  tabAvatarRing: 2,
+  tabAvatarRingGap: 2,
+  /** The slot EVERY tab centres its glyph in — sized to contain the ringed
+   *  avatar (tabAvatar + 2×(tabAvatarRingGap + tabAvatarRing) = 34) so the
+   *  ring never overflows into the bar's overflow-hidden clip and labels
+   *  align across icon and photo tabs. */
+  tabIconSlot: 34,
   /** AppTabBar badge: dot diameter and count-pill height. */
   badgeDot: 8,
   badgePill: 16,

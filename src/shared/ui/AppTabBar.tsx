@@ -1,10 +1,11 @@
 /**
  * WHAT:  AppTabBar — the app's bottom navigation bar: a custom `tabBar` for
  *        Expo Router's Tabs rendering from a config array (icon, label,
- *        route, badge), with per-tab terracotta badges, a gentle press
- *        spring, active-colour crossfade, and an animated hide for
- *        full-screen flows. Plus TabBadgeProvider/useTabBadges, the tiny
- *        context screens use to set badge counts.
+ *        route, badge, optional photo-as-icon), with per-tab terracotta
+ *        badges, a gentle press spring, active-colour crossfade (photo tabs
+ *        get a primary ring instead — photos don't tint), and an animated
+ *        hide for full-screen flows. Plus TabBadgeProvider/useTabBadges, the
+ *        tiny context screens use to set badge counts.
  * WHY:   Navigation chrome is furniture, not a show (Airbnb restraint):
  *        surface bar, hairline top border, no shadow, icons over ALWAYS
  *        visible labels — "My Cars" isn't guessable from a pictogram in a
@@ -54,6 +55,7 @@ import Animated, {
 
 import { colors, motion, sizes, spacing, tabLabelFontScaleCap, typography } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
+import { AppImage } from './AppImage';
 import { type BadgeValue, badgeDisplay, tabAccessibilityLabel } from './appTabBarModel';
 
 /** One tab, as data. Adding a tab is adding an entry, not surgery. */
@@ -62,6 +64,11 @@ export interface AppTabConfig {
   route: string;
   label: string;
   icon: LucideIcon;
+  /** A photo rendered as the tab's icon (the Profile tab's avatar). When set,
+   *  the circular image replaces `icon`, and the active state is a primary
+   *  ring around it (tint can't apply to a photo). `icon` stays the fallback
+   *  whenever this is null/undefined — e.g. no avatar uploaded. */
+  iconUri?: string | null;
   /** Key into the badges record; omit for tabs that never badge. */
   badgeKey?: string;
   /** Spoken wording for a numeric badge (default "N new"). */
@@ -212,6 +219,10 @@ function TabItem({
 }) {
   'use no memo';
   const Icon = config.icon;
+  // A photo that failed to load reverts to the icon; a NEW uri (≠ the failed
+  // one) retries automatically — no effect or reset needed.
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const avatarUri = config.iconUri && config.iconUri !== failedUri ? config.iconUri : null;
   // 0 → inactive, 1 → active; drives the icon crossfade and label colour.
   const activeSv = useSharedValue(active ? 1 : 0);
   const pressScale = useSharedValue(1);
@@ -242,6 +253,26 @@ function TabItem({
   }));
 
   const display = badgeDisplay(badge);
+  // Anchored to the inner glyph stack (not the 34pt slot) so badge geometry
+  // is identical whether the tab draws an icon or a photo.
+  const badgeNode =
+    display.kind !== 'none' ? (
+      <Animated.View
+        entering={reduceMotion ? undefined : ZoomIn.duration(motion.fast)}
+        style={[styles.badgeAnchor]}
+        testID={`app-tab-${config.route}-badge`}
+      >
+        {display.kind === 'dot' ? (
+          <View style={styles.badgeDot} />
+        ) : (
+          <View style={styles.badgePill}>
+            <Text style={styles.badgeText} maxFontSizeMultiplier={1}>
+              {display.text}
+            </Text>
+          </View>
+        )}
+      </Animated.View>
+    ) : null;
 
   return (
     <Pressable
@@ -252,32 +283,44 @@ function TabItem({
       accessibilityLabel={accessibilityLabel}
       testID={`app-tab-${config.route}`}
     >
-      <Animated.View style={[styles.iconStack, iconWrapStyle]}>
-        {/* SVG colours can't animate directly — two icons crossfade instead. */}
-        <Animated.View style={inactiveIconStyle}>
-          <Icon size={sizes.icon} color={colors.textSecondary} strokeWidth={STROKE_INACTIVE} />
-        </Animated.View>
-        <Animated.View style={[styles.iconOverlay, activeIconStyle]}>
-          <Icon size={sizes.icon} color={colors.primary} strokeWidth={STROKE_ACTIVE} />
-        </Animated.View>
-
-        {display.kind !== 'none' ? (
-          <Animated.View
-            entering={reduceMotion ? undefined : ZoomIn.duration(motion.fast)}
-            style={[styles.badgeAnchor]}
-            testID={`app-tab-${config.route}-badge`}
-          >
-            {display.kind === 'dot' ? (
-              <View style={styles.badgeDot} />
-            ) : (
-              <View style={styles.badgePill}>
-                <Text style={styles.badgeText} maxFontSizeMultiplier={1}>
-                  {display.text}
-                </Text>
-              </View>
-            )}
-          </Animated.View>
-        ) : null}
+      {/* Every tab centres its glyph in the same fixed slot, so labels align
+          across icon and photo tabs and the avatar ring stays inside the
+          bar's overflow-hidden clip at every sanctioned font scale. */}
+      <Animated.View style={[styles.iconSlot, iconWrapStyle]}>
+        {avatarUri ? (
+          <>
+            <View style={styles.avatarStack}>
+              <AppImage
+                uri={avatarUri}
+                style={styles.avatarPhoto}
+                onError={() => setFailedUri(avatarUri)}
+                testID={`app-tab-${config.route}-avatar`}
+              />
+              {badgeNode}
+            </View>
+            {/* A photo can't tint, so active is a ring — fading with the same
+                shared value that crossfades the icons on sibling tabs. */}
+            <Animated.View
+              style={[styles.avatarRing, activeIconStyle]}
+              testID={`app-tab-${config.route}-avatar-ring`}
+            />
+          </>
+        ) : (
+          <View style={styles.iconStack}>
+            {/* SVG colours can't animate directly — two icons crossfade instead. */}
+            <Animated.View style={inactiveIconStyle}>
+              <Icon
+                size={sizes.icon}
+                color={colors.textSecondary}
+                strokeWidth={STROKE_INACTIVE}
+              />
+            </Animated.View>
+            <Animated.View style={[styles.iconOverlay, activeIconStyle]}>
+              <Icon size={sizes.icon} color={colors.primary} strokeWidth={STROKE_ACTIVE} />
+            </Animated.View>
+            {badgeNode}
+          </View>
+        )}
       </Animated.View>
 
       <Animated.Text
@@ -385,12 +428,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // The shared glyph slot: icon or ringed avatar, centred; see render comment.
+  iconSlot: {
+    width: sizes.tabIconSlot,
+    height: sizes.tabIconSlot,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconStack: {
     width: sizes.icon,
     height: sizes.icon,
   },
   iconOverlay: {
     position: 'absolute',
+  },
+  // 26pt so the photo sits optically level with the 24pt outline icons.
+  avatarStack: {
+    width: sizes.tabAvatar,
+    height: sizes.tabAvatar,
+  },
+  avatarPhoto: {
+    width: '100%',
+    height: '100%',
+    borderRadius: sizes.tabAvatar / 2,
+  },
+  // Fills the slot: 2pt stroke at the slot edge leaves the 2pt breathing gap
+  // to the 26pt photo (34 − 2×2 stroke − 26 = 4 → 2pt per side).
+  avatarRing: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: sizes.tabIconSlot / 2,
+    borderWidth: sizes.tabAvatarRing,
+    borderColor: colors.primary,
   },
   badgeAnchor: {
     position: 'absolute',

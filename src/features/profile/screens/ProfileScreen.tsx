@@ -71,10 +71,11 @@ export function ProfileScreen() {
   const state = useMyProfile();
   const [devPreview, setDevPreview] = useState(false);
 
-  // Each useMyProfile instance has its own state, and this screen stays
-  // mounted beneath pushed routes (edit-profile) — re-fetch on every
-  // re-focus so a save over there is visible here. First focus is the
-  // mount fetch; skip the duplicate.
+  // Saves elsewhere (EditProfile) already reach this screen via useMyProfile's
+  // shared invalidation. This refocus refresh exists ONLY for data that moves
+  // server-side while the user is elsewhere (reputation counters); the
+  // stale-while-revalidate in useMyProfile keeps the refetch invisible.
+  // First focus is the mount fetch; skip the duplicate.
   const firstFocus = useRef(true);
   const { refresh } = state;
   useFocusEffect(
