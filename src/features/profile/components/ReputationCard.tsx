@@ -114,11 +114,7 @@ export function ReputationCard({
       {earned.length > 0 ? (
         <>
           <View style={styles.rule} />
-          <View style={styles.emblemRail}>
-            {earned.map((badge) => (
-              <Emblem key={badge.key} badge={badge} />
-            ))}
-          </View>
+          <EmblemRail badges={earned} />
         </>
       ) : null}
 
@@ -155,6 +151,18 @@ function FreshStory({ createdAt }: { createdAt: string }) {
         </View>
         <Text style={styles.highlightText}>{since}</Text>
       </View>
+    </View>
+  );
+}
+
+/** The earned-badge stamps as a wrapping rail — exported so the public
+ *  passport sheet can show earned trust without this card's chrome. */
+export function EmblemRail({ badges, testID }: { badges: BadgeState[]; testID?: string }) {
+  return (
+    <View style={styles.emblemRail} testID={testID}>
+      {badges.map((badge) => (
+        <Emblem key={badge.key} badge={badge} />
+      ))}
     </View>
   );
 }

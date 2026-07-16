@@ -22,6 +22,8 @@ interface CounterKind {
   statLabel: string;
   /** One word for the stat row — never wraps, keeps the 3-up tidy. */
   shortLabel: string;
+  /** Grammatical spoken phrase for a count ("1 recovery credited"). */
+  spoken: (count: number) => string;
   /** Compact chip label per threshold. */
   badgeLabels: Record<(typeof BADGE_THRESHOLDS)[number], string>;
 }
@@ -31,18 +33,21 @@ export const COUNTER_KINDS: CounterKind[] = [
     key: 'sightingsReported',
     statLabel: 'Sightings reported',
     shortLabel: 'Sightings',
+    spoken: (count) => `${count} ${count === 1 ? 'sighting' : 'sightings'} reported`,
     badgeLabels: { 1: 'First sighting', 5: '5 sightings', 25: '25 sightings' },
   },
   {
     key: 'sightingsHelpful',
     statLabel: 'Marked helpful',
     shortLabel: 'Helpful',
+    spoken: (count) => `${count} marked helpful`,
     badgeLabels: { 1: 'First helpful mark', 5: '5 helpful marks', 25: '25 helpful marks' },
   },
   {
     key: 'recoveriesCredited',
     statLabel: 'Recoveries credited',
     shortLabel: 'Recoveries',
+    spoken: (count) => `${count} ${count === 1 ? 'recovery' : 'recoveries'} credited`,
     badgeLabels: { 1: 'First recovery', 5: '5 recoveries', 25: '25 recoveries' },
   },
 ];
@@ -123,6 +128,30 @@ export function highlights(counters: ReputationCounters): HighlightItem[] {
     });
   }
   return items;
+}
+
+export interface StatRowItem {
+  key: keyof ReputationCounters;
+  value: number;
+  /** One-word row label (never wraps in the column). */
+  label: string;
+  /** Resolved grammatical phrase for screen readers ("1 recovery credited"). */
+  spoken: string;
+}
+
+/**
+ * Passport-card stat rows — nonzero counters only (degrade by omission,
+ * never a zero row; docs/design-refs/profile/REFERENCE_SPEC.md §2), in
+ * counter order: volume first, impact last, like the reference's
+ * Reviews → Rating → Years column.
+ */
+export function passportStats(counters: ReputationCounters): StatRowItem[] {
+  return COUNTER_KINDS.filter((kind) => counters[kind.key] > 0).map((kind) => ({
+    key: kind.key,
+    value: counters[kind.key],
+    label: kind.shortLabel,
+    spoken: kind.spoken(counters[kind.key]),
+  }));
 }
 
 export interface NextBadgeGoal {

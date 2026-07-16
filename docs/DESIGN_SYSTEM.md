@@ -146,6 +146,16 @@ busy/alarming crime map.
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
+- Profile surfaces (2026-07-16, docs/design-refs/profile/REFERENCE_SPEC.md):
+  the identity hero/passport card is the ONE elevated object on its screen
+  (`surface`, `radii.xl`, soft shadow, `sizes.avatarXl` avatar); counters
+  render as value-over-caption stat rows with hairlines between; settings
+  groups take `heading`-scale titles with hairline dividers between rows;
+  sign-out is underlined text (underline = tappable), account deletion stays
+  a findable-but-quiet muted-danger action on the root. The trusted-spotter
+  avatar chip fills with `primary` as a STATUS mark — a sanctioned exception
+  to the actions-only rule (it mirrors the reference's verification badge
+  and stays distinct from any nearby CTA).
 - Accessibility: minimum 44pt touch targets, WCAG AA contrast against the
   near-white background (check orange/terracotta on `#F7F7F7`), labels on all interactive
   elements, support dynamic type.

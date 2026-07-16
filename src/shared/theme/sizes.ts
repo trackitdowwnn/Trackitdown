@@ -37,10 +37,13 @@ export const sizes = {
   /** Small circled icon button (feed see-all chevron, future photo-corner
    *  buttons). Drawn size only — pad the pressable up to touchTarget. */
   circleButtonSm: 28,
-  /** Avatar diameters: list rows / sheets / profile header. */
+  /** Avatar diameters: list rows / sheets / compact headers / the profile
+   *  hero + passport card (the Airbnb passport avatar is 100–104pt;
+   *  docs/design-refs/profile/REFERENCE_SPEC.md). */
   avatarSm: 32,
   avatarMd: 48,
   avatarLg: 72,
+  avatarXl: 96,
   /** AppTabBar content height, above the safe-area inset. */
   tabBar: 56,
   /** Profile-tab avatar diameter — slightly over `icon` (24) so the photo sits

@@ -1,7 +1,8 @@
 /**
  * WHAT:  EditProfileScreen — change first name (required — it's what owners
- *        see next to sightings), display name, and avatar; inline button
- *        loading (not a blocking moment), success Toast, back on save.
+ *        see next to sightings), display name, and avatar (camera chip ON
+ *        the photo, per the profile reference spec); inline button loading
+ *        (not a blocking moment), success Toast, back on save.
  * WHY:   Plain state + zod (house pattern, no form library): two fields
  *        don't justify machinery. Avatar goes through expo-image-picker with
  *        square editing — a grid picker would be the wrong chrome for one
@@ -21,9 +22,10 @@ import { z } from 'zod';
 
 import { useRequireAuth } from '@/features/auth';
 import { colors, spacing, typography } from '@/shared/theme';
-import { Avatar, Button, EmptyState, TextField, useToast } from '@/shared/ui';
+import { Button, EmptyState, TextField, useToast } from '@/shared/ui';
 
 import { updateMyProfile, uploadAvatar } from '../api/profileApi';
+import { AvatarWithBadge } from '../components/AvatarWithBadge';
 import { useMyProfile } from '../hooks/useMyProfile';
 import type { MyProfile } from '../types';
 
@@ -143,8 +145,12 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Edit profile</Text>
+        <Text style={styles.title} accessibilityRole="header">
+          Edit profile
+        </Text>
 
+        {/* The edit affordance rides ON the photo (reference §3): a camera
+            chip, not a text hint — the label still says it for readers. */}
         <Pressable
           style={styles.avatarRow}
           onPress={() => void pickAvatar()}
@@ -152,8 +158,12 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
           accessibilityLabel="Change photo"
           testID="edit-avatar"
         >
-          <Avatar uri={pendingAvatarUri ?? profile.avatarUrl} name={firstName} size="lg" />
-          <Text style={styles.avatarHint}>Change photo</Text>
+          <AvatarWithBadge
+            uri={pendingAvatarUri ?? profile.avatarUrl}
+            name={firstName}
+            size="lg"
+            badge="camera"
+          />
         </Pressable>
 
         <TextField
@@ -199,10 +209,5 @@ const styles = StyleSheet.create({
   },
   avatarRow: {
     alignItems: 'center',
-    gap: spacing.sm,
-  },
-  avatarHint: {
-    ...typography.label,
-    color: colors.primary,
   },
 });

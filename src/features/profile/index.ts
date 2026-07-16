@@ -15,4 +15,5 @@ export {
 export { EditProfileScreen } from './screens/EditProfileScreen';
 export { useProfileTab } from './hooks/useProfileTab';
 export { ProfileScreen } from './screens/ProfileScreen';
+export { SpotterStoryScreen } from './screens/SpotterStoryScreen';
 export type { MyProfile, PublicProfile, ReputationCounters } from './types';

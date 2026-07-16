@@ -152,10 +152,11 @@ drops off all public surfaces. Enforced server-side by the feed RPCs via
 - Counters on the profile: sightings reported, sightings marked helpful,
   recoveries credited. Badges at simple thresholds (1 / 5 / 25).
 - Reputation never affects payouts in v1. It is social proof only.
-- **Trusted spotter** (the headline trust marker, shown beside the name on
-  own and public profiles): at least 1 recovery credited AND at least 5
-  sightings marked helpful. Derived from the server-maintained counters —
-  never stored or set directly, so it cannot be forged client-side.
+- **Trusted spotter** (the headline trust marker, shown with the identity on
+  own and public profiles — as the avatar-corner check on your own, as the
+  labelled pill on the public passport): at least 1 recovery credited AND at
+  least 5 sightings marked helpful. Derived from the server-maintained
+  counters — never stored or set directly, so it cannot be forged client-side.
 - What an owner may see about a spotter: first name, avatar, reputation
   counters/badges, trusted-spotter status, member-since. Nothing else — no
   surname, location, or contact details (see SECURITY_AND_TRUST.md §1).
