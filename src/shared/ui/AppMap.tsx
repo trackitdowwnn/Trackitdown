@@ -87,7 +87,7 @@ export function AppMap({
     <MapView
       ref={mapRef}
       provider={PROVIDER_GOOGLE}
-      // Custom light style harmonised with the warm palette (theme audit).
+      // Custom light style harmonised with the cool palette (ADR-0005).
       customMapStyle={mapStyle as unknown as MapView['props']['customMapStyle']}
       style={StyleSheet.absoluteFill}
       initialRegion={region}

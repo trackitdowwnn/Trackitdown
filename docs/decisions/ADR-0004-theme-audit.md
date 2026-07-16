@@ -1,6 +1,12 @@
 # ADR-0004 — Colour theme: refine the warm palette, don't redirect
 
-**Status:** accepted · **Date:** 2026-07-15
+**Status:** superseded by [ADR-0005](ADR-0005-airbnb-orange-theme.md) (2026-07-16) · **Date:** 2026-07-15
+
+> **Superseded by ADR-0005.** This ADR chose to keep the warm cream/sage/
+> terracotta palette. The owner later chose to redirect to Airbnb's cool
+> near-white structure with an **orange** accent (terracotta retained for
+> bounty) — exactly the "documented, deliberate departure" this ADR
+> anticipated. See ADR-0005 for the new palette and rationale.
 
 ## Context
 
