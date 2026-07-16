@@ -44,7 +44,7 @@ export function BountyTag({ bountyPence, size = 'md' }: BountyTagProps) {
 
 const styles = StyleSheet.create({
   // accentText, not accent: label-size terracotta needs the darker shade to
-  // pass AA on the warm background (accent itself is fill/large-type only).
+  // pass AA on the near-white background (accent itself is fill/large-type only).
   base: {
     color: colors.accentText,
   },

@@ -148,9 +148,9 @@ function ColourDot({ colour }: { colour: string }) {
 
 /** Simple flat select with leading colour dots (theme-token colours). */
 const COLOUR_OPTIONS: SelectOption[] = [
-  { value: 'sage', label: 'Sage', icon: <ColourDot colour={colors.primary} /> },
+  { value: 'orange', label: 'Orange', icon: <ColourDot colour={colors.primary} /> },
   { value: 'terracotta', label: 'Terracotta', icon: <ColourDot colour={colors.accent} /> },
-  { value: 'sand', label: 'Sand', icon: <ColourDot colour={colors.borderStrong} /> },
+  { value: 'grey', label: 'Grey', icon: <ColourDot colour={colors.borderStrong} /> },
   { value: 'charcoal', label: 'Charcoal', icon: <ColourDot colour={colors.textPrimary} /> },
   { value: 'gold', label: 'Gold', icon: <ColourDot colour={colors.warning} /> },
 ];

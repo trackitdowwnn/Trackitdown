@@ -1,9 +1,12 @@
-# Design System — Warm, Spacious, Trustworthy
+# Design System — Clean, Spacious, Trustworthy
 
 Visual direction: **Airbnb-inspired**. Spacious layouts, generous white
-space, soft rounded cards, warm light natural colours, friendly type.
-The subject matter (car theft) is stressful — the design's job is to feel
-calm, capable, and human. Never alarmist, never "police app" dark-and-red.
+space, soft rounded cards, cool near-white surfaces and grey ink with ONE
+vivid accent (orange) used sparingly, friendly type — photography carries
+the colour. The subject matter (car theft) is stressful — the design's job
+is to feel calm, capable, and human. Never alarmist, never "police app"
+dark-and-red. (Palette redirected to Airbnb's structure with an orange
+accent, 2026-07-16 — see `docs/decisions/ADR-0005-airbnb-orange-theme.md`.)
 
 All values below live as tokens in `src/shared/theme/`. UI code imports
 tokens; it never hard-codes hex values, pixel sizes, or font names.
@@ -12,46 +15,49 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 
 | Token | Hex | Use |
 |---|---|---|
-| `background` | `#FAF7F2` | app background — warm off-white |
+| `background` | `#F7F7F7` | app background — cool near-white (Airbnb page) |
 | `surface` | `#FFFFFF` | cards, sheets, inputs |
-| `surfaceSubtle` | `#F3EEE6` | secondary surfaces, chips |
-| `surfaceSubtlePressed` | `#E9E2D5` | pressed state of subtle-surface fills |
-| `primary` | `#5B755D` | sage green — primary buttons, links, active states (AA at label size on `background`) |
-| `primaryPressed` | `#4C634E` | pressed/hover state of primary |
-| `accent` | `#C97B5D` | terracotta — bounty fills, highlights, badges, large type |
-| `accentText` | `#A05A3B` | terracotta for label/body-size text (AA on `background`) |
-| `textPrimary` | `#2B2926` | warm near-black for headings/body |
-| `textSecondary` | `#6F6A62` | captions, metadata |
-| `border` | `#E7E0D6` | hairlines, input borders |
-| `borderStrong` | `#B8AE9E` | small elements that must stay visible (progress tracks) |
-| `success` | `#4F8A5B` | recovery confirmed, payout complete |
+| `surfaceSubtle` | `#EEEEEE` | secondary surfaces, chips |
+| `surfaceSubtlePressed` | `#E0E0E0` | pressed state of subtle-surface fills |
+| `primary` | `#C2410C` | deep Arches orange — primary buttons, links, active states (the ONE vivid accent; AA at label size on `background`) |
+| `primaryPressed` | `#A8380A` | pressed/hover state of primary |
+| `accent` | `#C97B5D` | terracotta — bounty fills, highlights, badges, large type (the sole warm colour; reserved for value) |
+| `accentText` | `#A05A3B` | terracotta for bounty label/body-size text (AA on `background`) |
+| `textPrimary` | `#222222` | ink for headings/body |
+| `textSecondary` | `#6A6A6A` | captions, metadata |
+| `border` | `#DDDDDD` | hairlines, input borders |
+| `borderStrong` | `#949494` | small elements that must stay visible (progress tracks) |
+| `success` | `#4F8A5B` | affirmative states — recovery confirmed, payout complete, ownership verified (fill/dot/icon, not body text) |
 | `warning` | `#A9762A` | pending verification, expiring posts (dot/icon/border only — never body text; clears 3:1 as a graphic) |
-| `danger` | `#B4553F` | destructive actions, errors (muted, not alarm-red) |
-| `dangerPressed` | `#96462F` | pressed state of danger |
+| `danger` | `#C0281E` | destructive actions, errors (clear red, kept distinct from the orange primary) |
+| `dangerPressed` | `#A21F16` | pressed state of danger |
 | `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
-| `surfaceInverse` | `#2B2926` | the rare dark surface: floating (map pill) and the ONE full-bleed use, the photo-preview viewer backdrop — same ink as `textPrimary`, named separately so text tweaks never restyle fills |
-| `surfaceInversePressed` | `#403D39` | pressed state of `surfaceInverse` |
-| `overlay` | `rgba(43,41,38,0.45)` | modal scrim |
+| `surfaceInverse` | `#222222` | the rare dark surface: floating (map pill) and the ONE full-bleed use, the photo-preview viewer backdrop — same ink as `textPrimary`, named separately so text tweaks never restyle fills |
+| `surfaceInversePressed` | `#3A3A3A` | pressed state of `surfaceInverse` |
+| `overlay` | `rgba(0,0,0,0.45)` | modal scrim |
 
-Rules: the accent terracotta is reserved for bounty/value moments so it
-keeps its meaning. Danger red appears only on destructive/error UI — never
-as decoration on "stolen" content.
+Rules: orange `primary` is the single vivid accent — actions only (buttons,
+links, active states). The terracotta accent is the sole warm colour and is
+reserved for bounty/value moments so it keeps its meaning and stands out
+against the orange. Danger red appears only on destructive/error UI (and is
+kept a distinct red so it never reads as the orange CTA) — never as
+decoration on "stolen" content.
 
-### Contrast (WCAG AA on the cream `#FAF7F2` background)
+### Contrast (WCAG AA on the near-white `#F7F7F7` background)
 
 Every token used as TEXT clears AA (4.5:1). `accent` and `success` are
 large-type/fill/dot only by design; `warning` is dot/icon/border only.
-(Audited 2026-07-15 — see `docs/decisions/ADR-0004-theme-audit.md`.)
+(Redirected 2026-07-16 — see `docs/decisions/ADR-0005-airbnb-orange-theme.md`.)
 
 | Pairing | Ratio | Verdict |
 |---|---|---|
-| `textPrimary` on `background` | 13.6 | AA |
-| `textSecondary` on `background` | 5.0 | AA |
-| `primary` (as text) on `background` | 4.7 | AA |
+| `textPrimary` on `background` | 14.9 | AA |
+| `textSecondary` on `background` | 5.1 | AA |
+| `primary` (as text) on `background` | 4.8 | AA |
 | `accentText` on `background` | 4.9 | AA |
-| `danger` (as text) on `background` | 4.6 | AA |
-| white on `primary` | 5.1 | AA |
-| white on `danger` | 4.9 | AA |
+| `danger` (as text) on `background` | 5.5 | AA |
+| white on `primary` | 5.2 | AA |
+| white on `danger` | 5.9 | AA |
 | `accent` on `background` | 3.0 | large/fill only |
 | `success` on `background` | 3.8 | dot only |
 | `warning` on `background` | 3.7 | dot/icon only (≥3:1 graphic) |
@@ -62,10 +68,11 @@ with a text label (colour-blind-safe).
 ### Map style
 
 The Google Map uses a custom light style (`src/shared/theme/mapStyle.ts`),
-NOT stock Google colours: land = `surfaceSubtle` cream, water = a muted
-sage-grey, roads soft, labels quiet, POI/transit clutter removed — a calm,
-warm canvas under the on-brand pins (sage cluster, terracotta amount). This
-is deliberately the opposite of a busy/alarming crime map.
+NOT stock Google colours: land = `surfaceSubtle` light grey, water = a cool
+blue-grey, parks a cool green-grey, roads soft, labels quiet, POI/transit
+clutter removed — a calm, cool canvas under the on-brand pins (orange
+cluster, terracotta amount). This is deliberately the opposite of a
+busy/alarming crime map.
 
 ## Typography
 
@@ -100,12 +107,12 @@ is deliberately the opposite of a busy/alarming crime map.
 - Radii: `sm` 8 (chips), `md` 12 (inputs, buttons), `lg` 16 (cards),
   `xl` 24 (sheets, modals).
 - Elevation: soft and subtle only —
-  `shadowColor #2B2926, opacity 0.06, radius 12, offset (0, 4)`.
+  `shadowColor #222222 (textPrimary), opacity 0.06, radius 12, offset (0, 4)`.
   No hard drop shadows.
 
 ## Core components (live in `src/shared/ui/`)
 
-- **Button** — variants: `primary` (sage fill), `secondary` (outline),
+- **Button** — variants: `primary` (orange fill), `secondary` (outline),
   `ghost`, `danger`. Height 52, radius `md`, full-width by default.
 - **Card** — white surface, radius `lg`, 16px padding, soft shadow. The
   vehicle card (photo, plate chip, make/model, bounty in terracotta,
@@ -120,19 +127,21 @@ is deliberately the opposite of a busy/alarming crime map.
 - **AppTabBar** — bottom navigation: `surface` bar, hairline `border` top
   edge, no shadow; 24pt icons (`sizes.icon`) over always-visible `tabLabel`
   text; active `primary`, inactive `textSecondary`; badges in `accentText`
-  terracotta (dot or 1–9/"9+" pill). Bar body is `sizes.tabBar` (56) tall
+  terracotta (dot or 1–9/"9+" pill) — a sanctioned exception to the value-only
+  accent rule (a terracotta badge stays distinct from the orange primary and
+  needs no per-component override). Bar body is `sizes.tabBar` (56) tall
   plus safe area; press feedback is a subtle scale (`motion.tabPressScale`).
 
 ## Screen conventions
 
-- Map screens: light map style (muted natural tones), custom sage pins;
+- Map screens: light map style (muted natural tones), custom orange pins;
   selected pin grows and shows a floating vehicle card, Airbnb-style.
 - Forms: one topic per screen step (the posting flow is a stepper —
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
 - Accessibility: minimum 44pt touch targets, WCAG AA contrast against the
-  warm background (check greens on `#FAF7F2`), labels on all interactive
+  near-white background (check orange/terracotta on `#F7F7F7`), labels on all interactive
   elements, support dynamic type.
 
 ## Motion
