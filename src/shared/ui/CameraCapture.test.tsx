@@ -63,12 +63,15 @@ describe('CameraCapture', () => {
     expect(request).toHaveBeenCalled();
   });
 
-  it('offers settings when the permission is blocked', async () => {
+  it('offers settings with acknowledging copy when the permission is blocked', async () => {
     mockUseCameraPermissions.mockReturnValue([{ granted: false, canAskAgain: false }, jest.fn()]);
-    const { getByText } = await render(
+    const { getByText, queryByText } = await render(
       <CameraCapture photos={[]} onChange={() => {}} maxPhotos={3} />,
     );
+    expect(getByText('Camera access is off')).toBeTruthy();
     expect(getByText('Open settings')).toBeTruthy();
+    // The ask-phase button is gone — no dead re-prompt.
+    expect(queryByText('Allow camera')).toBeNull();
   });
 
   it('bundles photo + timestamp + GPS fix atomically on capture', async () => {

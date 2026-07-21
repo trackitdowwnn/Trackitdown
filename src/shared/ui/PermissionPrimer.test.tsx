@@ -1,49 +1,91 @@
 /**
- * WHAT:  Tests for PermissionPrimer — renders title/body, fires the primary
- *        action, and shows the secondary path only when provided.
+ * WHAT:  Tests for PermissionPrimer — ask variant renders the content and
+ *        fires the primary action, the ghost opt-out appears only when
+ *        wired, the denied variant swaps to acknowledging copy with "Open
+ *        settings", and the illustration stays hidden from screen readers.
  * WHY:   The primer is the consent moment before an OS prompt; a dropped
- *        callback would dead-end a permission flow.
+ *        callback dead-ends a permission flow, and a denied state that
+ *        keeps the ask copy re-prompts into a wall.
  * LINKS: src/shared/ui/PermissionPrimer.tsx, docs/TESTING.md.
  */
 
 import { fireEvent, render } from '@testing-library/react-native';
 
-import { PermissionPrimer } from './PermissionPrimer';
+import { PermissionPrimer, type PermissionPrimerContent } from './PermissionPrimer';
+
+const content: PermissionPrimerContent = {
+  emoji: '📍',
+  headline: 'Pin it to the exact spot',
+  body: 'Your report carries the spot where you’re standing.',
+  allowLabel: 'Allow location',
+  secondaryLabel: 'Continue without location',
+  denied: {
+    headline: 'Location is off',
+    body: 'No problem — you can turn it on any time.',
+    secondaryLabel: 'Not now',
+  },
+};
 
 describe('PermissionPrimer', () => {
-  it('renders the copy and fires the primary action', async () => {
+  it('renders the ask content and fires the primary action', async () => {
     const onPrimary = jest.fn();
     const { getByText } = await render(
-      <PermissionPrimer
-        title="Add where you are"
-        body="Each photo carries where it was taken."
-        primaryLabel="Allow location"
-        onPrimary={onPrimary}
-      />,
+      <PermissionPrimer content={content} onPrimary={onPrimary} />,
     );
-    expect(getByText('Each photo carries where it was taken.')).toBeTruthy();
+    expect(getByText('Pin it to the exact spot')).toBeTruthy();
+    expect(getByText('Your report carries the spot where you’re standing.')).toBeTruthy();
     fireEvent.press(getByText('Allow location'));
     expect(onPrimary).toHaveBeenCalledTimes(1);
   });
 
-  it('offers the secondary path only when provided', async () => {
+  it('offers the opt-out only when the consumer wires it', async () => {
     const onSecondary = jest.fn();
-    const first = await render(
-      <PermissionPrimer title="Allow location" body="Why." primaryLabel="Allow" onPrimary={() => {}} />,
-    );
-    expect(first.queryByText('Continue without location')).toBeNull();
+    const without = await render(<PermissionPrimer content={content} onPrimary={() => {}} />);
+    expect(without.queryByText('Continue without location')).toBeNull();
 
-    const second = await render(
+    const withSecondary = await render(
+      <PermissionPrimer content={content} onPrimary={() => {}} onSecondary={onSecondary} />,
+    );
+    fireEvent.press(withSecondary.getByText('Continue without location'));
+    expect(onSecondary).toHaveBeenCalledTimes(1);
+  });
+
+  it('denied variant shows acknowledging copy with Open settings as primary', async () => {
+    const onPrimary = jest.fn();
+    const { getByText, queryByText } = await render(
       <PermissionPrimer
-        title="Allow location"
-        body="Why."
-        primaryLabel="Allow"
-        onPrimary={() => {}}
-        secondaryLabel="Continue without location"
-        onSecondary={onSecondary}
+        content={content}
+        variant="denied"
+        onPrimary={onPrimary}
+        onSecondary={() => {}}
       />,
     );
-    fireEvent.press(second.getByText('Continue without location'));
-    expect(onSecondary).toHaveBeenCalledTimes(1);
+    expect(getByText('Location is off')).toBeTruthy();
+    expect(getByText('No problem — you can turn it on any time.')).toBeTruthy();
+    // The ask copy and label are gone — no dead re-prompt.
+    expect(queryByText('Pin it to the exact spot')).toBeNull();
+    expect(queryByText('Allow location')).toBeNull();
+    fireEvent.press(getByText('Open settings'));
+    expect(onPrimary).toHaveBeenCalledTimes(1);
+    expect(getByText('Not now')).toBeTruthy();
+  });
+
+  it('headline is a header and the illustration is decorative', async () => {
+    const { getByRole, getByText, queryByText } = await render(
+      <PermissionPrimer content={content} onPrimary={() => {}} />,
+    );
+    expect(getByRole('header').props.children).toBe('Pin it to the exact spot');
+    // The emoji is rendered but invisible to assistive tech: absent from the
+    // accessibility tree, present when hidden elements are included.
+    expect(queryByText('📍')).toBeNull();
+    expect(getByText('📍', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('drops the header role when the host screen owns the header', async () => {
+    const { queryByRole, getByText } = await render(
+      <PermissionPrimer content={content} onPrimary={() => {}} announceAsHeader={false} />,
+    );
+    expect(queryByRole('header')).toBeNull();
+    expect(getByText('Pin it to the exact spot')).toBeTruthy();
   });
 });
