@@ -47,6 +47,18 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         recordAudioAndroid: false,
       },
     ],
+    // Photo library picking (posts, avatar) — explicit iOS usage string
+    // instead of the autolinked plugin default.
+    [
+      'expo-image-picker',
+      {
+        photosPermission:
+          'Allow Trackitdown to access your photos to add pictures of your car.',
+      },
+    ],
+    // Startup permissions gate (features/permissions) — permission requesting
+    // only for now, no push tokens; defaults are fine.
+    'expo-notifications',
     // --- Auth (features/auth) -------------------------------------------------
     // Session tokens live in the OS keychain, not AsyncStorage.
     'expo-secure-store',
