@@ -156,32 +156,16 @@ describe('signed out', () => {
 });
 
 describe('signed in', () => {
-  it('renders the hero card (identity + stats), story row, and the dev section', async () => {
-    const { getByText, getByTestId } = await render(<ProfileScreen />);
+  it('renders the hero card (identity only), story row, and the dev section', async () => {
+    const { getByText, getByTestId, queryByTestId } = await render(<ProfileScreen />);
     expect(getByText('Ollie')).toBeTruthy();
     expect(getByText('Member since May 2026')).toBeTruthy();
-    // Counters live INSIDE the hero as the stat column (composition B).
-    expect(getByTestId('hero-stats')).toBeTruthy();
-    expect(getByTestId('stat-sightingsReported')).toBeTruthy();
-    expect(getByText('7')).toBeTruthy();
-    // The narrative moved behind the push row.
+    // The counters moved to the spotter-story page — never on the root hero.
+    expect(queryByTestId('stat-sightingsReported')).toBeNull();
+    // The stats + narrative live behind the push row.
     expect(getByTestId('row-spotter-story')).toBeTruthy();
     expect(getByTestId('dev-section')).toBeTruthy();
     expect(getByTestId('row-copy-logs')).toBeTruthy();
-  });
-
-  it('zero counters render NO stat column — degrade by omission, never zeros', async () => {
-    mockProfileState = {
-      status: 'ready',
-      profile: {
-        ...profile,
-        counters: { sightingsReported: 0, sightingsHelpful: 0, recoveriesCredited: 0 },
-      },
-      refresh: jest.fn(),
-    };
-    const { queryByTestId, getByText } = await render(<ProfileScreen />);
-    expect(queryByTestId('hero-stats')).toBeNull();
-    expect(getByText('Member since May 2026')).toBeTruthy(); // identity carries the card
   });
 
   it('trusted spotters get the avatar badge and the spoken label', async () => {
@@ -196,10 +180,9 @@ describe('signed in', () => {
     const { getByTestId } = await render(<ProfileScreen />);
     expect(getByTestId('avatar-badge-trusted')).toBeTruthy();
     // The card is ONE a11y element — its label must speak everything a
-    // sighted user reads inside: name, trust, member-since, and the stats.
+    // sighted user reads inside: name, trust, and member-since.
     expect(getByTestId('profile-header').props.accessibilityLabel).toBe(
-      'Ollie, trusted spotter, Member since May 2026, 9 sightings reported, ' +
-        '5 marked helpful, 1 recovery credited. Edit profile',
+      'Ollie, trusted spotter, Member since May 2026. Edit profile',
     );
   });
 

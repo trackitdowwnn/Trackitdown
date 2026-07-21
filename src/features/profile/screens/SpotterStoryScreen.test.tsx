@@ -74,11 +74,29 @@ beforeEach(() => {
 });
 
 describe('SpotterStoryScreen', () => {
-  it('ready: renders the full narrative card with the goal bar', async () => {
+  it('ready: renders the stat strip then the full narrative card with the goal bar', async () => {
     const { getByTestId, getByText } = await render(<SpotterStoryScreen />);
     expect(getByText('Your spotter story')).toBeTruthy();
+    // The record (moved here from the root hero card): number-over-label stats.
+    expect(getByTestId('story-stats')).toBeTruthy();
+    expect(getByTestId('stat-sightingsReported')).toBeTruthy();
+    expect(getByText('7')).toBeTruthy();
     expect(getByTestId('reputation-card')).toBeTruthy();
     expect(getByTestId('next-badge')).toBeTruthy(); // own view keeps the goal
+  });
+
+  it('zero counters render NO stat strip — degrade by omission, never zeros', async () => {
+    mockProfileState = {
+      status: 'ready',
+      profile: {
+        ...profile,
+        counters: { sightingsReported: 0, sightingsHelpful: 0, recoveriesCredited: 0 },
+      },
+      refresh: jest.fn(),
+    };
+    const { queryByTestId, getByTestId } = await render(<SpotterStoryScreen />);
+    expect(queryByTestId('story-stats')).toBeNull();
+    expect(getByTestId('reputation-card')).toBeTruthy(); // the invitation carries the page
   });
 
   it('loading: shows the skeleton, never a blank page', async () => {

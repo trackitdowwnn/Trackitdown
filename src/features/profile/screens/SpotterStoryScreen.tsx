@@ -1,17 +1,17 @@
 /**
- * WHAT:  SpotterStoryScreen — the pushed "Your spotter story" page: the full
- *        narrative ReputationCard (highlight lines, earned badge emblems, the
- *        one next-goal progress bar) on its own calm screen, with an on-screen
- *        back affordance (headers are hidden app-wide) and a skeleton while
- *        the profile loads.
- * WHY:   Composition B of the profile redesign (docs/design-refs/profile/
- *        GAP_ANALYSIS.md L4): the root shows the counters INSIDE the identity
- *        hero card, reference-style, and the story lives one push away — the
- *        reference keeps its root shallow and its depth one level down. The
- *        goal/progress UI lives HERE (your own motivation), never on the
- *        public sheet owners see.
+ * WHAT:  SpotterStoryScreen — the pushed "Your spotter story" page: the
+ *        nonzero counters as a horizontal stat strip (the record), then the
+ *        full narrative ReputationCard (highlight lines, earned badge
+ *        emblems, the one next-goal progress bar) on its own calm screen,
+ *        with an on-screen back affordance (headers are hidden app-wide) and
+ *        a skeleton while the profile loads.
+ * WHY:   The root's hero card is identity ONLY — everything reputational
+ *        (counters AND narrative) lives together one push away, so the root
+ *        stays shallow and the hero uncrowded. The goal/progress UI lives
+ *        HERE (your own motivation), never on the public sheet owners see.
  * LINKS: src/app/spotter-story.tsx (route);
- *        components/ReputationCard.tsx; screens/ProfileScreen.tsx (the push);
+ *        components/ReputationCard.tsx; components/StatColumn.tsx;
+ *        screens/ProfileScreen.tsx (the push);
  *        src/shared/ui/Screen.tsx (page wrapper).
  */
 
@@ -20,11 +20,14 @@ import { ChevronLeft } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRequireAuth } from '@/features/auth';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { colors, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
 import { EmptyState, Screen } from '@/shared/ui';
 
 import { ReputationCard } from '../components/ReputationCard';
+import { StatColumn } from '../components/StatColumn';
 import { useMyProfile } from '../hooks/useMyProfile';
+import { passportStats } from '../lib/reputation';
+import type { MyProfile } from '../types';
 
 export function SpotterStoryScreen() {
   const state = useMyProfile();
@@ -62,13 +65,26 @@ export function SpotterStoryScreen() {
         />
       ) : null}
 
-      {state.status === 'ready' ? (
-        <ReputationCard
-          counters={state.profile.counters}
-          createdAt={state.profile.createdAt}
-        />
-      ) : null}
+      {state.status === 'ready' ? <StoryContent profile={state.profile} /> : null}
     </Screen>
+  );
+}
+
+/** The record then the story: the nonzero counters as a horizontal
+ *  number-over-label strip (degrade by omission — an all-zero account gets
+ *  no strip, the narrative card's warm invitation carries the page), then
+ *  the full narrative ReputationCard. */
+function StoryContent({ profile }: { profile: MyProfile }) {
+  const stats = passportStats(profile.counters);
+  return (
+    <>
+      {stats.length > 0 ? (
+        <View style={styles.statsCard}>
+          <StatColumn stats={stats} horizontal testID="story-stats" />
+        </View>
+      ) : null}
+      <ReputationCard counters={profile.counters} createdAt={profile.createdAt} />
+    </>
   );
 }
 
@@ -122,6 +138,15 @@ const styles = StyleSheet.create({
     ...typography.title,
     color: colors.textPrimary,
     flexShrink: 1,
+  },
+  // The record card matches the narrative card's chrome (surface, radii.lg,
+  // soft shadow) so the two read as one family.
+  statsCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    ...shadows.soft,
   },
   skeletonCard: {
     backgroundColor: colors.surface,

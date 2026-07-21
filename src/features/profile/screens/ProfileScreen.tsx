@@ -1,8 +1,8 @@
 /**
  * WHAT:  ProfileScreen — the Profile tab root, composed to the Airbnb profile
  *        reference (composition B): "Profile" title, the identity HERO card
- *        (avatar + trust badge + counters as a stat column, whole card →
- *        edit), a "Your spotter story" push row, settings groups with
+ *        (avatar + trust badge + member-since, whole card → edit), a "Your
+ *        spotter story" push row (stats + narrative), settings groups with
  *        heading-scale titles and hairline dividers, then a quiet ungrouped
  *        bottom cluster — underlined "Log out", muted "Delete account", app
  *        version — and a __DEV__-only tools section.
@@ -221,8 +221,8 @@ function LoadedProfile({
 
         <ProfileHeroCard profile={profile} onPress={() => router.push('/edit-profile')} />
 
-        {/* The narrative (highlights, badges, next goal) lives one push away —
-            the root stays shallow, reference-style. */}
+        {/* Everything reputational (stat strip, highlights, badges, next
+            goal) lives one push away — the root stays shallow. */}
         <ListRow
           icon={Sparkles}
           title="Your spotter story"
