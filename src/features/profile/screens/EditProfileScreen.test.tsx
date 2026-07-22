@@ -9,6 +9,7 @@
  */
 
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Linking } from 'react-native';
 
 import type { MyProfileState } from '../hooks/useMyProfile';
 import { EditProfileScreen } from './EditProfileScreen';
@@ -35,12 +36,36 @@ jest.mock('@/shared/ui', () => {
 });
 
 const mockLaunchLibrary = jest.fn();
+const mockGetPermission = jest.fn();
+const mockRequestPermission = jest.fn();
 jest.mock('expo-image-picker', () => ({
-  requestMediaLibraryPermissionsAsync: jest.fn(() =>
-    Promise.resolve({ granted: true, canAskAgain: true }),
-  ),
+  getMediaLibraryPermissionsAsync: () => mockGetPermission(),
+  requestMediaLibraryPermissionsAsync: () => mockRequestPermission(),
   launchImageLibraryAsync: (...args: unknown[]) => mockLaunchLibrary(...args),
 }));
+
+// The blocked-photo-access primer lives in a BottomSheet; same
+// visibility-aware mock as BottomSheet.test.tsx.
+jest.mock('@gorhom/bottom-sheet', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const mock = require('@gorhom/bottom-sheet/mock');
+
+  class VisibilityAwareBottomSheetModal extends React.Component {
+    state = { visible: false };
+    present = () => this.setState({ visible: true });
+    dismiss = () => {
+      this.setState({ visible: false });
+      (this.props as { onDismiss?: () => void }).onDismiss?.();
+    };
+    render() {
+      return this.state.visible ? (this.props as { children?: unknown }).children : null;
+    }
+  }
+
+  return { ...mock, BottomSheetModal: VisibilityAwareBottomSheetModal };
+});
 
 let mockProfileState: MyProfileState & { refresh: () => void };
 jest.mock('../hooks/useMyProfile', () => ({
@@ -80,6 +105,42 @@ beforeEach(() => {
   mockUpdate.mockResolvedValue(undefined);
   mockUploadAvatar.mockResolvedValue('https://example/avatar.jpg?v=1');
   mockLaunchLibrary.mockResolvedValue({ canceled: true, assets: null });
+  mockGetPermission.mockResolvedValue({ granted: true, canAskAgain: true });
+  mockRequestPermission.mockResolvedValue({ granted: true, canAskAgain: true });
+});
+
+describe('photo access permission', () => {
+  it('already-blocked access opens the denied primer sheet, never the OS dialog', async () => {
+    const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue();
+    mockGetPermission.mockResolvedValue({ granted: false, canAskAgain: false });
+
+    const { getByTestId, getByText } = await render(<EditProfileScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('edit-avatar'));
+    });
+
+    expect(getByText('Photo access is off')).toBeTruthy();
+    expect(mockRequestPermission).not.toHaveBeenCalled();
+    expect(mockLaunchLibrary).not.toHaveBeenCalled();
+    fireEvent.press(getByText('Open settings'));
+    expect(openSettings).toHaveBeenCalled();
+    openSettings.mockRestore();
+  });
+
+  it('a fresh deny is respected silently — even when iOS reports it as canAskAgain:false', async () => {
+    mockGetPermission.mockResolvedValue({ granted: false, canAskAgain: true });
+    // iOS: a first-time deny already comes back canAskAgain:false.
+    mockRequestPermission.mockResolvedValue({ granted: false, canAskAgain: false });
+
+    const { getByTestId, queryByText } = await render(<EditProfileScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('edit-avatar'));
+    });
+
+    expect(queryByText('Photo access is off')).toBeNull();
+    expect(mockShowToast).not.toHaveBeenCalled();
+    expect(mockLaunchLibrary).not.toHaveBeenCalled();
+  });
 });
 
 describe('validation', () => {

@@ -4,9 +4,10 @@
  *        sitting directly beside the title (the reference feed's "see all"
  *        affordance).
  * WHY:   Recycled FlashList row: derives everything from props, holds no
- *        state. The chevron hugs the title (not right-aligned) so the
- *        affordance reads as part of the heading — one glance, one tap
- *        target. Only area carousels get it; other headers stay calm.
+ *        state. The chevron sits right-aligned at the row's end (mobile-
+ *        reference pattern) — one glance, one tap target. Area carousels
+ *        and near_you get it (see-all / change-area); other headers stay
+ *        calm.
  * LINKS: src/features/search-map/lib/feedSections.ts (flattening);
  *        docs/DESIGN_SYSTEM.md (sectionTitle, touch targets).
  */
@@ -19,13 +20,18 @@ import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 
 export interface FeedSectionHeaderProps {
   title: string;
-  /** Present on area carousels — navigates to search-map filtered to it. */
+  /** Area carousels: navigates to search-map. Near you: opens the area
+   *  picker (same calm chevron — one affordance style for every section). */
   onSeeAll?: () => void;
+  /** Screen-reader label for the chevron; defaults to "See all — <title>".
+   *  Near you passes "Change area" — its chevron doesn't navigate away. */
+  seeAllAccessibilityLabel?: string;
 }
 
 export const FeedSectionHeader = memo(function FeedSectionHeader({
   title,
   onSeeAll,
+  seeAllAccessibilityLabel,
 }: FeedSectionHeaderProps) {
   return (
     <View style={styles.row}>
@@ -35,7 +41,7 @@ export const FeedSectionHeader = memo(function FeedSectionHeader({
       {onSeeAll ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`See all — ${title}`}
+          accessibilityLabel={seeAllAccessibilityLabel ?? `See all — ${title}`}
           onPress={onSeeAll}
           style={styles.seeAll}
           hitSlop={spacing.sm}

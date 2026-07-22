@@ -1,8 +1,9 @@
 /**
  * WHAT:  Wiring tests for ProfileScreen — signed-out state with the dev
- *        preview, sign-out flow through the confirm, delete-account blocked
- *        vs allowed vs function-unavailable paths, dev-section gating, and
- *        the settings links.
+ *        preview, the hero card (stats inside, degrade-by-omission, trust
+ *        badge), the spotter-story push row, log-out flow through the
+ *        confirm, delete-account blocked vs allowed vs function-unavailable
+ *        paths, dev-section gating, version caption, and the settings links.
  * WHY:   This screen holds the two account-destroying actions in the app; a
  *        confirm that fires on dismiss, or a deletion that skips the
  *        blocked-by-escrow check, is a Tier 1 failure. Hook and api are
@@ -83,6 +84,10 @@ jest.mock('@/shared/ui', () => {
 
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(() => Promise.resolve()) }));
 jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(() => Promise.resolve()) }));
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { expoConfig: { version: '1.2.3' } },
+}));
 
 let mockProfileState: MyProfileState & { refresh: () => void };
 jest.mock('../hooks/useMyProfile', () => ({
@@ -145,22 +150,25 @@ describe('signed out', () => {
     await act(async () => {
       fireEvent.press(getByText('Preview with sample data (dev)'));
     });
-    expect(getByTestId('reputation-card')).toBeTruthy();
+    expect(getByTestId('profile-header')).toBeTruthy(); // the hero card
     expect(getByText('Member since May 2026')).toBeTruthy();
   });
 });
 
 describe('signed in', () => {
-  it('renders identity, reputation, and the dev section (__DEV__ in tests)', async () => {
-    const { getByText, getByTestId } = await render(<ProfileScreen />);
+  it('renders the hero card (identity only), story row, and the dev section', async () => {
+    const { getByText, getByTestId, queryByTestId } = await render(<ProfileScreen />);
     expect(getByText('Ollie')).toBeTruthy();
     expect(getByText('Member since May 2026')).toBeTruthy();
-    expect(getByTestId('reputation-card')).toBeTruthy();
+    // The counters moved to the spotter-story page — never on the root hero.
+    expect(queryByTestId('stat-sightingsReported')).toBeNull();
+    // The stats + narrative live behind the push row.
+    expect(getByTestId('row-spotter-story')).toBeTruthy();
     expect(getByTestId('dev-section')).toBeTruthy();
     expect(getByTestId('row-copy-logs')).toBeTruthy();
   });
 
-  it('trusted spotter pill appears beside identity once thresholds are met', async () => {
+  it('trusted spotters get the avatar badge and the spoken label', async () => {
     mockProfileState = {
       status: 'ready',
       profile: {
@@ -170,21 +178,34 @@ describe('signed in', () => {
       refresh: jest.fn(),
     };
     const { getByTestId } = await render(<ProfileScreen />);
-    expect(getByTestId('trusted-spotter')).toBeTruthy();
+    expect(getByTestId('avatar-badge-trusted')).toBeTruthy();
+    // The card is ONE a11y element — its label must speak everything a
+    // sighted user reads inside: name, trust, and member-since.
     expect(getByTestId('profile-header').props.accessibilityLabel).toBe(
-      'Ollie, trusted spotter. Edit profile',
+      'Ollie, trusted spotter, Member since May 2026. Edit profile',
     );
   });
 
-  it('no trust pill below thresholds', async () => {
+  it('no trust badge below thresholds', async () => {
     const { queryByTestId } = await render(<ProfileScreen />); // 7/4/1 — helpful short
-    expect(queryByTestId('trusted-spotter')).toBeNull();
+    expect(queryByTestId('avatar-badge-trusted')).toBeNull();
   });
 
-  it('header tap opens edit profile', async () => {
+  it('hero card tap opens edit profile', async () => {
     const { getByTestId } = await render(<ProfileScreen />);
     fireEvent.press(getByTestId('profile-header'));
     expect(mockPush).toHaveBeenCalledWith('/edit-profile');
+  });
+
+  it('the spotter-story row pushes /spotter-story', async () => {
+    const { getByTestId } = await render(<ProfileScreen />);
+    fireEvent.press(getByTestId('row-spotter-story'));
+    expect(mockPush).toHaveBeenCalledWith('/spotter-story');
+  });
+
+  it('shows the app version caption in the account cluster', async () => {
+    const { getByText } = await render(<ProfileScreen />);
+    expect(getByText('Version 1.2.3')).toBeTruthy();
   });
 
   it('How Trackitdown works re-opens onboarding in revisit mode', async () => {
@@ -193,21 +214,21 @@ describe('signed in', () => {
     expect(mockPush).toHaveBeenCalledWith('/onboarding?revisit=1');
   });
 
-  it('sign out: confirming signs out and stays put (guest mode, no auth wall)', async () => {
+  it('log out: confirming signs out and stays put (guest mode, no auth wall)', async () => {
     const { getByTestId, getAllByText } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-sign-out'));
     });
     await act(async () => {
-      // The row title and the dialog button share the label — press the
+      // The row label and the dialog button share the wording — press the
       // dialog's (rendered last).
-      fireEvent.press(getAllByText('Sign out').at(-1) as never);
+      fireEvent.press(getAllByText('Log out').at(-1) as never);
     });
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
     expect(mockReplace).not.toHaveBeenCalled(); // the session flip re-renders in place
   });
 
-  it('sign out: cancelling does nothing', async () => {
+  it('log out: cancelling does nothing', async () => {
     const { getByTestId, getByText } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-sign-out'));

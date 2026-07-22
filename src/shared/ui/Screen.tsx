@@ -6,7 +6,7 @@
  *        own ScrollView.
  * WHY:   Every screen was hand-rolling SafeAreaView + background; pull-to-
  *        refresh needs one themed implementation so the spinner is always
- *        on-brand (sage on warm paper, never the platform default blue).
+ *        on-brand (primary orange on paper, never the platform default blue).
  *        List screens can't nest inside a ScrollView, so the refresh control
  *        is exported separately instead of forcing a scroll wrapper.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour palette);
@@ -26,7 +26,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors } from '../theme';
 
-/** RefreshControl in app colours — sage spinner on a paper card (Android). */
+/** RefreshControl in app colours — primary spinner on a paper card (Android). */
 export function ThemedRefreshControl(
   props: Pick<RefreshControlProps, 'refreshing' | 'onRefresh' | 'testID'>,
 ) {

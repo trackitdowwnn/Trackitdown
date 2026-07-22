@@ -84,4 +84,4 @@ in each candidate. I decide by looking, not by hex values in a report.
 - We adopt systems, not trade dress: no copying Airbnb's exact coral
   or another brand's signature colour.
 - If the audit concludes the current theme is genuinely right, say so
-  — "keep it, fix the violations" is a valid outcome.
+— "keep it, fix the violations" is a valid outcome.

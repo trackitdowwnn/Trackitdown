@@ -114,7 +114,15 @@ export async function uploadAvatar(userId: string, localUri: string): Promise<vo
     .from('avatars')
     .upload(path, body, { contentType: 'image/jpeg', upsert: true });
   if (uploadError) {
-    log.error('Avatar upload failed', { userId });
+    // name/statusCode/message identify WHY (RLS, size limit, network) —
+    // storage errors carry no user PII, unlike free-form row data.
+    log.error('Avatar upload failed', {
+      userId,
+      error: uploadError.name,
+      status: 'statusCode' in uploadError ? uploadError.statusCode : undefined,
+      message: uploadError.message,
+      bytes: body.byteLength, // 0 = the local file read failed, not storage
+    });
     throw uploadError;
   }
 
@@ -123,7 +131,7 @@ export async function uploadAvatar(userId: string, localUri: string): Promise<vo
     .update({ avatar_path: path })
     .eq('id', userId);
   if (updateError) {
-    log.error('Avatar path update failed after upload', { userId });
+    log.error('Avatar path update failed after upload', { userId, code: updateError.code });
     throw updateError;
   }
   log.info('Avatar updated', { userId });

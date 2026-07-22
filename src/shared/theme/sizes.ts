@@ -37,12 +37,27 @@ export const sizes = {
   /** Small circled icon button (feed see-all chevron, future photo-corner
    *  buttons). Drawn size only — pad the pressable up to touchTarget. */
   circleButtonSm: 28,
-  /** Avatar diameters: list rows / sheets / profile header. */
+  /** Avatar diameters: list rows / sheets / compact headers / the profile
+   *  hero + passport card (the Airbnb passport avatar is 100–104pt;
+   *  docs/design-refs/profile/REFERENCE_SPEC.md). */
   avatarSm: 32,
   avatarMd: 48,
   avatarLg: 72,
+  avatarXl: 96,
   /** AppTabBar content height, above the safe-area inset. */
   tabBar: 56,
+  /** Profile-tab avatar diameter — slightly over `icon` (24) so the photo sits
+   *  optically level with the outline icons beside it. */
+  tabAvatar: 26,
+  /** Active ring around the tab avatar: stroke width and the breathing gap
+   *  between ring and photo. */
+  tabAvatarRing: 2,
+  tabAvatarRingGap: 2,
+  /** The slot EVERY tab centres its glyph in — sized to contain the ringed
+   *  avatar (tabAvatar + 2×(tabAvatarRingGap + tabAvatarRing) = 34) so the
+   *  ring never overflows into the bar's overflow-hidden clip and labels
+   *  align across icon and photo tabs. */
+  tabIconSlot: 34,
   /** AppTabBar badge: dot diameter and count-pill height. */
   badgeDot: 8,
   badgePill: 16,

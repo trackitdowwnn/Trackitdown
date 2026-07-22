@@ -1,8 +1,10 @@
 /**
- * WHAT:  THE SAFETY TEST for PublicProfileSheet — the sheet shows first
- *        name, member-since, and reputation, and NOTHING else: even when
- *        handed an object smuggling extra fields (surname-bearing
- *        display_name, location, contact), none of them render.
+ * WHAT:  THE SAFETY TEST for PublicProfileSheet — the passport sheet shows
+ *        first name, member-since, and reputation (stat column + earned
+ *        emblems), and NOTHING else: even when handed an object smuggling
+ *        extra fields (surname-bearing display_name, location, contact),
+ *        none of them render — and the spotter's own next-badge progress
+ *        never shows to owners.
  * WHY:   Spotter identity shown to owners is a hard privacy boundary
  *        (docs/SECURITY_AND_TRUST §1: first name + reputation only). This
  *        test asserts ABSENCE — the part a visual check can't prove.
@@ -79,23 +81,56 @@ const leakyProfile = {
 describe('PublicProfileSheet (privacy boundary)', () => {
   it('shows exactly the permitted fields — and none of the smuggled ones', async () => {
     const ref = createRef<BottomSheetRef>();
-    const { getByText, queryByText } = await render(
+    const { getByText, getByTestId, queryByText, toJSON } = await render(
       <PublicProfileSheet ref={ref} profile={leakyProfile} />,
     );
     await act(async () => {
       ref.current?.open();
     });
 
-    // Permitted: first name, member-since, reputation (story + emblems).
+    // Permitted: first name, member-since, reputation (stat column + emblems).
     expect(getByText('Sam')).toBeTruthy();
     expect(getByText('Member since March 2026')).toBeTruthy();
-    expect(getByText('Helped recover 1 car')).toBeTruthy();
+    expect(getByText('Recoveries')).toBeTruthy(); // 1 recovery as a stat row
+    expect(getByTestId('stat-sightingsReported').props.accessibilityLabel).toBe(
+      '5 sightings reported',
+    );
 
     // SAFETY: assert ABSENCE of everything beyond the boundary.
     expect(queryByText(/Surnameworth/)).toBeNull();
     expect(queryByText(/sam@example\.com/)).toBeNull();
     expect(queryByText(/07700/)).toBeNull();
     expect(queryByText(/Camden/)).toBeNull();
+
+    // Passports show EARNED trust only: the spotter's own next-badge goal
+    // and progress never render for owners.
+    expect(queryByText(/Next badge/)).toBeNull();
+
+    // SAFETY: probe the WHOLE rendered tree, props included — a field
+    // smuggled through an accessibilityLabel is invisible to queryByText
+    // but must still fail this test.
+    const tree = JSON.stringify(toJSON());
+    expect(tree).not.toMatch(/Surnameworth|sam@example\.com|07700|Camden/);
+  });
+
+  it('zero counters show no stat column — degrade by omission, never zeros', async () => {
+    const ref = createRef<BottomSheetRef>();
+    const fresh: PublicProfile = {
+      firstName: 'Noor',
+      avatarUrl: null,
+      createdAt: '2026-06-01T00:00:00Z',
+      counters: { sightingsReported: 0, sightingsHelpful: 0, recoveriesCredited: 0 },
+    };
+    const { getByText, queryByTestId } = await render(
+      <PublicProfileSheet ref={ref} profile={fresh} />,
+    );
+    await act(async () => {
+      ref.current?.open();
+    });
+    expect(getByText('Noor')).toBeTruthy();
+    expect(getByText('Member since June 2026')).toBeTruthy();
+    expect(queryByTestId('public-stats')).toBeNull();
+    expect(queryByTestId('public-emblems')).toBeNull();
   });
 
   it('shows the trusted-spotter marker to owners once earned — derived, not leaked', async () => {

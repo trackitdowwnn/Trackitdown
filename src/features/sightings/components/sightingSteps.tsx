@@ -37,6 +37,7 @@ import {
   ChoiceChipsMulti,
   type EvidencePhoto,
   PermissionPrimer,
+  type PermissionPrimerContent,
   PhotoGridPicker,
   SafetyNotice,
   TextField,
@@ -83,6 +84,32 @@ export function SafetyStep(_props: StepProps) {
 
 // --- 2 · Photos (the evidence step) --------------------------------------------
 
+/** Primer copy for this flow — benefit-led headlines, reassurance lines
+ *  verified against docs/SECURITY_AND_TRUST.md ("GPS is captured only at the
+ *  moment of reporting a sighting — no background location tracking anywhere
+ *  in the app"; in-app capture with no gallery path). Exported so tests can
+ *  pin the copy word-for-word, like onboardingSlides. */
+export const SIGHTING_LOCATION_PRIMER: PermissionPrimerContent = {
+  emoji: '📍',
+  headline: 'Pin it to the exact spot',
+  body: 'Your report carries the spot where you’re standing — the strongest lead you can give the owner. Your location is used only at this moment, never in the background.',
+  allowLabel: 'Allow location',
+  secondaryLabel: 'Continue without location',
+  // No denied copy: when the OS is blocked this primer never shows — the
+  // report proceeds un-located (a settings detour must not stall a sighting).
+};
+
+export const SIGHTING_CAMERA_PRIMER: PermissionPrimerContent = {
+  emoji: '📸',
+  headline: 'Capture it in the moment',
+  body: 'Photos are taken here in the app, stamped with the moment — that’s what makes your report count. Nothing from your photo library is touched.',
+  allowLabel: 'Allow camera',
+  denied: {
+    headline: 'Camera access is off',
+    body: 'No problem — you can turn it on any time in Settings. A sighting needs an in-app photo, so this step waits for the camera.',
+  },
+};
+
 /** Location priming happens HERE (once, before the camera) so the first
  *  shutter press can carry a fix; a decline continues to the camera — the
  *  report is simply un-located. The camera itself owns camera permission.
@@ -123,17 +150,15 @@ export function PhotosStep({ answers, setAnswers }: StepProps) {
   if (!locationReady) {
     return (
       <PermissionPrimer
-        icon={<Feather name="map-pin" size={sizes.icon} color={colors.textPrimary} />}
-        title="Add where you are"
-        body="Each photo can carry the spot it was taken — the strongest lead you can give the owner."
-        primaryLabel="Allow location"
+        content={SIGHTING_LOCATION_PRIMER}
+        // The wizard already announces the step question as the header.
+        announceAsHeader={false}
         onPrimary={() => {
           void Location.requestForegroundPermissionsAsync().then(({ granted }) => {
             log.info('location_permission', { granted });
             setLocationReady(true);
           });
         }}
-        secondaryLabel="Continue without location"
         onSecondary={() => {
           log.info('location_permission', { granted: false, skipped: true });
           setLocationReady(true);
@@ -189,7 +214,7 @@ export function PhotosStep({ answers, setAnswers }: StepProps) {
               photos={photos}
               onChange={handleCameraChange}
               maxPhotos={MAX_SIGHTING_PHOTOS}
-              primerBody="Photos are taken here in the app so each one carries where and when it was taken — that’s what makes your report count."
+              primerContent={SIGHTING_CAMERA_PRIMER}
             />
           </View>
           <Button label="Done" onPress={() => setCameraOpen(false)} />

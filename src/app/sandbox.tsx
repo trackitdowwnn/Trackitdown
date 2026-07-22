@@ -27,6 +27,7 @@ import {
   LocationPicker,
   LocationPickerModal,
   MoneySlider,
+  PermissionPrimer,
   PhotoGridPicker,
   photoListSchema,
   SelectField,
@@ -38,6 +39,10 @@ import {
   type SelectOption,
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
+import {
+  SIGHTING_CAMERA_PRIMER,
+  SIGHTING_LOCATION_PRIMER,
+} from '@/features/sightings/components/sightingSteps';
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -480,6 +485,42 @@ export default function SandboxScreen() {
             />
           </View>
         </Section>
+
+        <Section title="PermissionPrimer · sighting location (ask, with opt-out)">
+          <View style={styles.primerFrame}>
+            <PermissionPrimer
+              content={SIGHTING_LOCATION_PRIMER}
+              onPrimary={() => {}}
+              onSecondary={() => {}}
+            />
+          </View>
+        </Section>
+
+        <Section title="PermissionPrimer · sighting camera (ask, no opt-out)">
+          <View style={styles.primerFrame}>
+            <PermissionPrimer content={SIGHTING_CAMERA_PRIMER} onPrimary={() => {}} />
+          </View>
+        </Section>
+
+        <Section title="PermissionPrimer · camera denied (OS-blocked → settings)">
+          <View style={styles.primerFrame}>
+            <PermissionPrimer
+              content={SIGHTING_CAMERA_PRIMER}
+              variant="denied"
+              onPrimary={() => {}}
+            />
+          </View>
+        </Section>
+
+        <Section title="PermissionPrimer · tight frame (460pt — scrolls, actions reachable)">
+          <View style={styles.primerFrameTight}>
+            <PermissionPrimer
+              content={SIGHTING_LOCATION_PRIMER}
+              onPrimary={() => {}}
+              onSecondary={() => {}}
+            />
+          </View>
+        </Section>
       </ScrollView>
 
       <BottomSheet
@@ -599,6 +640,28 @@ const styles = StyleSheet.create({
   },
   mapFrame: {
     height: 360,
+  },
+  // Bounded frame so the primer's flexGrow layout anchors its actions to the
+  // bottom, as it does in the camera modal / wizard step.
+  // The primer doesn't self-pad (hosts own the gutter) — these preview
+  // frames stand in for a host screen, so they provide it.
+  primerFrame: {
+    height: 560,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+  },
+  primerFrameTight: {
+    height: 460,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
   },
   fakeFooter: {
     gap: spacing.sm,

@@ -42,9 +42,19 @@ first-name step on the next gated action. "New user" == **no `profiles` row**
 
 **Gated today**: the tab-bar `+` (post a car), "I've seen this car" (post
 detail — continuation is the coming-soon acknowledgement until sightings land),
-profile edit, and the My Cars / Inbox / Profile guest-tab "Log in" invitations
+profile edit, and the My Cars / Inbox guest-tab "Log in" invitations
 (tabs never auto-fire the sheet; actions do). Chat and alert-radius gating
 adopt the same one-liner when those features are built.
+
+> **Profile-tab override (deliberate, Profile-only).** A guest tapping the
+> Profile TAB opens the AuthSheet directly (`tab_profile`, hold-and-sheet: the
+> press is prevented, the sheet appears over the current tab, dismissal moves
+> nothing; the continuation lands on Profile signed-in). Rationale: a guest's
+> profile tab has nothing behind it but the invitation itself, so the tap IS
+> the action. My Cars and Inbox keep their invitation screens — they show real
+> value behind the gate. Implemented in
+> `src/features/profile/hooks/useProfileTab.ts`; the guest ProfileScreen
+> invitation remains reachable (sign-out lands in guest mode in place).
 
 **Session & gating** — the Supabase client persists the session in the OS
 keychain (`expo-secure-store`). `AuthGate` (root layout) shows a brand-mark

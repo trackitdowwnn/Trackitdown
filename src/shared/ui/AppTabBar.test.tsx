@@ -2,8 +2,10 @@
  * WHAT:  Wiring tests for AppTabBar — config-driven rendering (adding a tab
  *        renders it), active mapping from navigation state, the tabPress
  *        emit/navigate contract (including preventDefault and re-tap),
- *        badge variants (dot / count / 9+), spoken labels with badges, and
- *        the hidden state driven by the focused screen's tabBarStyle.
+ *        badge variants (dot / count / 9+), spoken labels with badges,
+ *        photo tabs (iconUri renders an avatar + ring instead of the icon,
+ *        and a cache-busted URL swap reaches the image), and the hidden
+ *        state driven by the focused screen's tabBarStyle.
  * WHY:   This bar is the app's spine: a wrong active mapping or a swallowed
  *        press strands navigation everywhere at once. Badge/label rules are
  *        pinned in appTabBarModel.test.ts — this file proves the component
@@ -239,6 +241,85 @@ describe('badges', () => {
     );
     expect(queryByTestId('app-tab-inbox-badge')).toBeNull();
     expect(queryByTestId('app-tab-my-cars-badge')).toBeNull();
+  });
+});
+
+describe('photo tabs (avatar as icon)', () => {
+  const withAvatar = (uri: string) =>
+    TABS.map((tab) =>
+      tab.route === 'profile' ? { ...tab, label: 'You', iconUri: uri } : tab,
+    );
+
+  it('iconUri renders the avatar and its ring in place of the icon crossfade', async () => {
+    const tabs = withAvatar('https://cdn/avatars/u1.jpg?v=1');
+    const { props } = makeProps(tabs, { index: 3 });
+    const { getByTestId } = await render(<AppTabBar {...props} tabs={tabs} />);
+
+    expect(getByTestId('app-tab-profile-avatar')).toBeTruthy();
+    expect(getByTestId('app-tab-profile-avatar-ring')).toBeTruthy();
+    // The dynamic label flows into the spoken position label unchanged.
+    expect(getByTestId('app-tab-profile').props.accessibilityLabel).toBe('You, tab 4 of 4');
+    expect(getByTestId('app-tab-profile').props.accessibilityState).toEqual({
+      selected: true,
+    });
+  });
+
+  it('without iconUri no avatar elements render (the icon is the placeholder)', async () => {
+    const { props } = makeProps(TABS);
+    const { queryByTestId } = await render(<AppTabBar {...props} tabs={TABS} />);
+    expect(queryByTestId('app-tab-profile-avatar')).toBeNull();
+    expect(queryByTestId('app-tab-profile-avatar-ring')).toBeNull();
+  });
+
+  it('a cache-busted URL swap reaches the image (no stale avatar)', async () => {
+    const before = withAvatar('https://cdn/avatars/u1.jpg?v=1');
+    const { props } = makeProps(before);
+    const { getByTestId, rerender } = await render(<AppTabBar {...props} tabs={before} />);
+    expect(JSON.stringify(getByTestId('app-tab-profile-avatar').props.source)).toContain(
+      'v=1',
+    );
+
+    const after = withAvatar('https://cdn/avatars/u1.jpg?v=2');
+    await rerender(<AppTabBar {...props} tabs={after} />);
+    expect(JSON.stringify(getByTestId('app-tab-profile-avatar').props.source)).toContain(
+      'v=2',
+    );
+  });
+
+  it('a failed avatar load falls back to the person icon; a NEW url retries', async () => {
+    const before = withAvatar('https://cdn/avatars/u1.jpg?v=1');
+    const { props } = makeProps(before);
+    const { getByTestId, queryByTestId, rerender } = await render(
+      <AppTabBar {...props} tabs={before} />,
+    );
+
+    await act(async () => {
+      // expo-image unwraps nativeEvent before invoking our onError.
+      fireEvent(getByTestId('app-tab-profile-avatar'), 'error', {
+        nativeEvent: { error: 'load failed' },
+      });
+    });
+    // The broken photo never renders as a blank disc — the icon returns.
+    expect(queryByTestId('app-tab-profile-avatar')).toBeNull();
+    expect(queryByTestId('app-tab-profile-avatar-ring')).toBeNull();
+
+    // A replaced avatar (cache-busted → different URL) tries again.
+    const after = withAvatar('https://cdn/avatars/u1.jpg?v=2');
+    await rerender(<AppTabBar {...props} tabs={after} />);
+    expect(getByTestId('app-tab-profile-avatar')).toBeTruthy();
+  });
+
+  it('a photo tab still presses like a tab (emit then navigate)', async () => {
+    const tabs = withAvatar('https://cdn/avatars/u1.jpg?v=1');
+    const { props, emit, navigate } = makeProps(tabs);
+    const { getByTestId } = await render(<AppTabBar {...props} tabs={tabs} />);
+    await act(async () => {
+      fireEvent.press(getByTestId('app-tab-profile'));
+    });
+    expect(emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'tabPress', target: 'profile-key' }),
+    );
+    expect(navigate).toHaveBeenCalledWith('profile');
   });
 });
 
