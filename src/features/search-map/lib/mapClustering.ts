@@ -80,3 +80,9 @@ export function clusterMemberCoords(index: ClusterIndex, clusterId: number): Geo
       longitude: leaf.geometry.coordinates[0],
     }));
 }
+
+/** Member posts of a cluster — scopes the peek-card pager to exactly the
+ *  tapped cluster's posts (each leaf carries its full MapPost). */
+export function clusterMemberPosts(index: ClusterIndex, clusterId: number): MapPost[] {
+  return index.getLeaves(clusterId, Infinity).map((leaf) => leaf.properties.post);
+}

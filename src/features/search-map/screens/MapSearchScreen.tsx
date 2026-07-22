@@ -2,7 +2,8 @@
  * WHAT:  MapSearchScreen — the app's centrepiece: a full-bleed map of
  *        ACTIVE stolen-car posts as bounty-pill pins with clustering, the
  *        list riding over it as a persistent peek/half/full sheet, a
- *        floating card pager synced with pin selection, and the calm
+ *        floating card pager synced with pin selection (a cluster tap
+ *        scopes the pager to exactly that cluster's posts), and the calm
  *        "Search this area" model (results change only on explicit search).
  * WHY:   Replaces the v1 stub. Entry region: an `area` route param
  *        forward-geocodes to that town; otherwise the feed's resolved
@@ -36,7 +37,12 @@ import { useFeedLocation } from '../hooks/useFeedLocation';
 import { useMapSelection } from '../hooks/useMapSelection';
 import { useViewportPosts } from '../hooks/useViewportPosts';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
-import { buildClusterIndex, clusterMemberCoords, pinsForRegion } from '../lib/mapClustering';
+import {
+  buildClusterIndex,
+  clusterMemberCoords,
+  clusterMemberPosts,
+  pinsForRegion,
+} from '../lib/mapClustering';
 import {
   distanceMeters,
   frameCoords,
@@ -169,8 +175,27 @@ function MapSearchBody({
       .sort((a, b) => a.distanceMiles - b.distanceMiles || a.id.localeCompare(b.id));
   }, [result.posts, searchedRegion]);
 
+  // A tapped CLUSTER scopes the pager to its members (ids, not objects, so
+  // the scoped list is derived from sortedPosts — same ordering, same
+  // identities, and members that leave the result set simply drop out).
+  // null = unscoped: the pager pages the whole viewport.
+  const [scopedIds, setScopedIds] = useState<Set<string> | null>(null);
+  const pagerPosts = useMemo(
+    () => (scopedIds ? sortedPosts.filter((post) => scopedIds.has(post.id)) : sortedPosts),
+    [scopedIds, sortedPosts],
+  );
+
+  // Selection index and the pager MUST read the same list — an index into
+  // sortedPosts is meaningless against a cluster-scoped pager.
   const { selected, selectedIndex, selectPost, selectByIndex, clear } =
-    useMapSelection(sortedPosts);
+    useMapSelection(pagerPosts);
+
+  // Clearing selection (map tap, Android back, dismiss) always drops the
+  // cluster scope too — a closed card never leaves a stale scope behind.
+  const clearSelection = useCallback(() => {
+    setScopedIds(null);
+    clear();
+  }, [clear]);
 
   // Camera: uncontrolled map + this prop drives programmatic fly-tos only.
   const [camera, setCamera] = useState<GeoRegion>(entryRegion);
@@ -209,6 +234,8 @@ function MapSearchBody({
 
   const handlePressPost = useCallback(
     (id: string) => {
+      // A lone pin tap pages the whole viewport — scope belongs to clusters.
+      setScopedIds(null);
       selectPost(id);
       log.info('map_pin_select', { postId: id });
     },
@@ -217,16 +244,26 @@ function MapSearchBody({
 
   const handlePressCluster = useCallback(
     (clusterId: number) => {
+      // Scope the pager to exactly this cluster's posts and open it on the
+      // nearest member (sortedPosts order = distance order). The zoom-to-fit
+      // stays — the camera behaviour is unchanged.
+      const members = clusterMemberPosts(clusterIndex, clusterId);
+      const memberIds = new Set(members.map((member) => member.id));
+      const nearest = sortedPosts.find((post) => memberIds.has(post.id));
+      setScopedIds(memberIds);
+      if (nearest) {
+        selectPost(nearest.id);
+      }
       flyTo(frameCoords(clusterMemberCoords(clusterIndex, clusterId), settledRegion));
-      log.info('map_cluster_zoom', { clusterId });
+      log.info('map_cluster_zoom', { clusterId, count: members.length });
     },
-    [clusterIndex, settledRegion, flyTo],
+    [clusterIndex, sortedPosts, selectPost, settledRegion, flyTo],
   );
 
   const handlePagerSettle = useCallback(
     (index: number) => {
       selectByIndex(index);
-      const post = sortedPosts[index];
+      const post = pagerPosts[index];
       // Follow the card ONLY when needed: a pin already comfortably on
       // screen gets no camera move (never a jarring recentre); an edge or
       // off-screen pin gets a gentle pan at the user's CURRENT zoom
@@ -240,7 +277,7 @@ function MapSearchBody({
         });
       }
     },
-    [selectByIndex, sortedPosts, settledRegion, flyTo],
+    [selectByIndex, pagerPosts, settledRegion, flyTo],
   );
 
   // Android back with a card up dismisses the card, not the screen.
@@ -252,11 +289,11 @@ function MapSearchBody({
       return;
     }
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      clear();
+      clearSelection();
       return true; // consumed — the screen stays
     });
     return () => subscription.remove();
-  }, [hasSelection, clear]);
+  }, [hasSelection, clearSelection]);
 
   const openPost = useCallback(
     (post: MapPost) => {
@@ -291,7 +328,7 @@ function MapSearchBody({
         animateDurationMs={motion.mapPan}
         onRegionChangeStart={() => {}}
         onRegionChangeComplete={handleRegionChange}
-        onPress={clear}
+        onPress={clearSelection}
       >
         <MapPins
           pins={pins}
@@ -334,7 +371,7 @@ function MapSearchBody({
         pointerEvents="box-none"
       >
         <MapCardPager
-          posts={sortedPosts}
+          posts={pagerPosts}
           selectedIndex={selectedIndex}
           onIndexSettled={handlePagerSettle}
           onPressPost={openPost}

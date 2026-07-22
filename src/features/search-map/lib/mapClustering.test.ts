@@ -12,7 +12,12 @@
 import type { GeoRegion } from '@/shared/types';
 
 import type { MapPost } from '../types';
-import { buildClusterIndex, clusterMemberCoords, pinsForRegion } from './mapClustering';
+import {
+  buildClusterIndex,
+  clusterMemberCoords,
+  clusterMemberPosts,
+  pinsForRegion,
+} from './mapClustering';
 
 const post = (id: string, latitude: number, longitude: number): MapPost => ({
   id,
@@ -91,5 +96,29 @@ describe('clusterMemberCoords', () => {
       expect(c.latitude).toBeGreaterThan(51.7);
       expect(c.longitude).toBeLessThan(-0.3);
     }
+  });
+});
+
+describe('clusterMemberPosts', () => {
+  it('returns exactly the tapped cluster’s posts — the pager scope', () => {
+    const index = buildClusterIndex([...ST_ALBANS, ...LUTON]);
+    // Zoomed to St Albans' area only, but wide enough that its trio clusters.
+    const stAlbansArea: GeoRegion = {
+      latitude: 51.752,
+      longitude: -0.339,
+      latitudeDelta: 0.3,
+      longitudeDelta: 0.3,
+    };
+    // Luton's pair may cluster too — pick the St Albans trio by count.
+    const cluster = pinsForRegion(index, stAlbansArea).find(
+      (p) => p.type === 'cluster' && p.count === 3,
+    );
+    expect(cluster).toBeDefined();
+    if (cluster?.type !== 'cluster') throw new Error('unreachable');
+
+    const members = clusterMemberPosts(index, cluster.clusterId);
+    expect(members.map((m) => m.id).sort()).toEqual(['a1', 'a2', 'a3']);
+    // Full posts, not stubs — the pager renders these directly.
+    expect(members[0].plate).toBe('AB12 CDE');
   });
 });
