@@ -1,9 +1,11 @@
 /**
  * WHAT:  useFeedLocation — resolves where the Explore feed looks, through
  *        the chain: saved feed preference → device location (only if
- *        permission is ALREADY granted) → national mode ("the UK"). Exposes
- *        setArea (persists the "Set my area" pick) and requestMyLocation (the
- *        primer card's CTA — the one path allowed to trigger the OS prompt).
+ *        permission is ALREADY granted) → national mode ("the UK"), then
+ *        upgrades from national when the STARTUP permission prompts grant
+ *        location after the chain settled. Exposes setArea (persists the
+ *        "Set my area" pick) and requestMyLocation (the primer card's CTA —
+ *        the one path allowed to trigger the OS prompt).
  * WHY:   The feed must be useful with zero setup and zero permissions, and
  *        must never cold-fire the OS location dialog — asking is the primer
  *        card's job. The preference is client-only and deliberately separate
@@ -17,6 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useStartupPermissionGrant } from '@/features/permissions';
 import { createLogger, redactLocation } from '@/shared/lib/logger';
 
 import type { FeedLocation } from '../types';
@@ -126,6 +129,22 @@ export function useFeedLocation(
       cancelled = true;
     };
   }, [applyDeviceFix]);
+
+  // The startup permission prompts land AFTER the mount chain resolved: the
+  // feed settles national while the OS location dialog is still on screen.
+  // When that dialog is allowed, upgrade to the device fix — but only from
+  // ungoverned national mode (a saved area pick or an already-local feed is
+  // the user's choice and never overridden). Silent path only: permission is
+  // already granted, so no dialog can fire. Primitive dep (mode), not the
+  // location object — this repo's identity-keyed-effect hazard.
+  const grantedAtStartup = useStartupPermissionGrant('location');
+  const locationMode = location?.mode;
+  useEffect(() => {
+    if (!grantedAtStartup || locationMode !== 'national') {
+      return;
+    }
+    void applyDeviceFix(false);
+  }, [grantedAtStartup, locationMode, applyDeviceFix]);
 
   const setArea = useCallback(async (pref: FeedLocationPref) => {
     setLocation({

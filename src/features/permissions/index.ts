@@ -5,5 +5,10 @@
  * LINKS: src/features/permissions/README.md.
  */
 
-// AuthGate fires the startup prompts. The adapter stays internal.
-export { useStartupPermissionRequests } from './hooks/useStartupPermissionRequests';
+// AuthGate fires the startup prompts; screens that resolve permission-
+// derived state at mount (the Explore feed) react to grants landing after
+// the dialogs are answered. The adapter stays internal.
+export {
+  useStartupPermissionGrant,
+  useStartupPermissionRequests,
+} from './hooks/useStartupPermissionRequests';

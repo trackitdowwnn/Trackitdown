@@ -15,6 +15,7 @@ import { Platform } from 'react-native';
 import type { PermissionsSnapshot, PermissionStatus } from '../lib/devicePermissions';
 import {
   resetStartupPermissionRequestsForTests,
+  useStartupPermissionGrant,
   useStartupPermissionRequests,
 } from './useStartupPermissionRequests';
 
@@ -107,5 +108,25 @@ describe('useStartupPermissionRequests', () => {
     } finally {
       os.restore();
     }
+  });
+
+  it('broadcasts grants live — a location Allow flips the signal, a deny never does', async () => {
+    mockCheckAll.mockResolvedValue(snapshot({ location: undetermined, camera: undetermined }));
+    mockRequest.mockImplementation((kind: string) =>
+      Promise.resolve(
+        kind === 'location'
+          ? ({ state: 'granted', canAskAgain: true } as PermissionStatus)
+          : ({ state: 'denied', canAskAgain: true } as PermissionStatus),
+      ),
+    );
+
+    const locationGrant = await renderHook(() => useStartupPermissionGrant('location'));
+    const cameraGrant = await renderHook(() => useStartupPermissionGrant('camera'));
+    expect(locationGrant.result.current).toBe(false);
+
+    await renderHook(() => useStartupPermissionRequests(true));
+
+    await waitFor(() => expect(locationGrant.result.current).toBe(true));
+    expect(cameraGrant.result.current).toBe(false); // denied never signals
   });
 });

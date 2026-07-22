@@ -14,7 +14,7 @@
  *        route === 'app'); docs/LOGGING.md (this is a funnel).
  */
 
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 
 import { createLogger } from '@/shared/lib/logger';
@@ -35,9 +35,33 @@ const REQUEST_ORDER: PermissionKind[] = ['location', 'camera', 'photos', 'notifi
 // backgrounded/foregrounded app must not re-run the chain mid-session.
 let ranThisSession = false;
 
-/** Test-only reset for the module-level once-per-start flag. */
+// Kinds granted DURING the startup chain. Screens mount before the user has
+// answered the dialogs, so anything that resolved permission-derived state
+// at mount (the Explore feed's location chain) subscribes here to react to
+// the grant landing seconds later.
+const startupGrants = new Set<PermissionKind>();
+const grantSubscribers = new Set<() => void>();
+function subscribeToGrants(cb: () => void): () => void {
+  grantSubscribers.add(cb);
+  return () => grantSubscribers.delete(cb);
+}
+function recordGrant(kind: PermissionKind): void {
+  startupGrants.add(kind);
+  grantSubscribers.forEach((cb) => cb());
+}
+
+/** Live "did the startup prompts grant this?" — flips true the moment the
+ *  user allows that kind in the startup chain (this session only). */
+export function useStartupPermissionGrant(kind: PermissionKind): boolean {
+  return useSyncExternalStore(subscribeToGrants, () => startupGrants.has(kind));
+}
+
+/** Test-only reset for the module-level once-per-start state. */
 export function resetStartupPermissionRequestsForTests(): void {
   ranThisSession = false;
+  startupGrants.clear();
+  // Notify so a hook still mounted across a reset re-reads false.
+  grantSubscribers.forEach((cb) => cb());
 }
 
 export function useStartupPermissionRequests(enabled: boolean): void {
@@ -53,6 +77,9 @@ export function useStartupPermissionRequests(enabled: boolean): void {
         // askable. 'unavailable' and blocked kinds are silently skipped.
         if (!isUngranted(status) || !status.canAskAgain) continue;
         const result = await expoDevicePermissions.request(kind);
+        if (result.state === 'granted') {
+          recordGrant(kind);
+        }
         log.info('Startup permission prompt', {
           kind,
           state: result.state,
