@@ -1,7 +1,8 @@
 /**
  * WHAT:  EditProfileScreen — change first name (required — it's what owners
- *        see next to sightings), display name, and avatar; inline button
- *        loading (not a blocking moment), success Toast, back on save.
+ *        see next to sightings), display name, and avatar (camera chip ON
+ *        the photo, per the profile reference spec); inline button loading
+ *        (not a blocking moment), success Toast, back on save.
  * WHY:   Plain state + zod (house pattern, no form library): two fields
  *        don't justify machinery. Avatar goes through expo-image-picker with
  *        square editing — a grid picker would be the wrong chrome for one
@@ -14,16 +15,26 @@
 
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { useRef, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
 import { useRequireAuth } from '@/features/auth';
 import { colors, spacing, typography } from '@/shared/theme';
-import { Avatar, Button, EmptyState, TextField, useToast } from '@/shared/ui';
+import {
+  BottomSheet,
+  type BottomSheetRef,
+  Button,
+  EmptyState,
+  PermissionPrimer,
+  type PermissionPrimerContent,
+  TextField,
+  useToast,
+} from '@/shared/ui';
 
 import { updateMyProfile, uploadAvatar } from '../api/profileApi';
+import { AvatarWithBadge } from '../components/AvatarWithBadge';
 import { useMyProfile } from '../hooks/useMyProfile';
 import type { MyProfile } from '../types';
 
@@ -31,6 +42,21 @@ const editSchema = z.object({
   firstName: z.string().trim().min(1, 'First name is required — it’s what owners see.'),
   displayName: z.string().trim().min(1, 'Display name is required.'),
 });
+
+/** Shown ONLY when photo access is OS-blocked (canAskAgain=false) — a
+ *  first-time deny is respected silently, never nagged. Reassurance
+ *  verified: the picker returns only the chosen image (exif: false). */
+const AVATAR_PHOTOS_PRIMER: PermissionPrimerContent = {
+  emoji: '🖼️',
+  headline: 'Put a face to your name',
+  body: 'Pick a photo from your library — only the photo you choose is used, nothing else.',
+  allowLabel: 'Allow photo access',
+  denied: {
+    headline: 'Photo access is off',
+    body: 'No problem — everything else here works without it. To change your photo, allow photo access in Settings and come back.',
+    secondaryLabel: 'Not now',
+  },
+};
 
 export function EditProfileScreen() {
   const state = useMyProfile();
@@ -81,12 +107,22 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
   const [pendingAvatarUri, setPendingAvatarUri] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ firstName?: string; displayName?: string }>({});
   const [saving, setSaving] = useState(false);
+  const photoAccessSheetRef = useRef<BottomSheetRef>(null);
 
   const pickAvatar = async () => {
     try {
+      // Check BEFORE requesting: only an ALREADY-blocked state opens the
+      // settings sheet. A fresh deny of the OS dialog is an answer given
+      // seconds ago — respected silently, never re-prompted or scolded.
+      // (On iOS a first-time deny comes back canAskAgain:false, so deciding
+      // from the request's response would nag the instant they said no.)
+      const existing = await ImagePicker.getMediaLibraryPermissionsAsync();
+      if (!existing.granted && !existing.canAskAgain) {
+        photoAccessSheetRef.current?.open();
+        return;
+      }
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        toast.show('Allow photo access in Settings to change your photo.', 'error');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -143,8 +179,12 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Edit profile</Text>
+        <Text style={styles.title} accessibilityRole="header">
+          Edit profile
+        </Text>
 
+        {/* The edit affordance rides ON the photo (reference §3): a camera
+            chip, not a text hint — the label still says it for readers. */}
         <Pressable
           style={styles.avatarRow}
           onPress={() => void pickAvatar()}
@@ -152,8 +192,12 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
           accessibilityLabel="Change photo"
           testID="edit-avatar"
         >
-          <Avatar uri={pendingAvatarUri ?? profile.avatarUrl} name={firstName} size="lg" />
-          <Text style={styles.avatarHint}>Change photo</Text>
+          <AvatarWithBadge
+            uri={pendingAvatarUri ?? profile.avatarUrl}
+            name={firstName}
+            size="lg"
+            badge="camera"
+          />
         </Pressable>
 
         <TextField
@@ -180,6 +224,24 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
         />
         <Button label="Cancel" variant="ghost" onPress={() => router.back()} />
       </ScrollView>
+
+      {/* Blocked photo access: acknowledging primer with the settings path —
+          replaces the old dead-end toast. */}
+      <BottomSheet ref={photoAccessSheetRef}>
+        <PermissionPrimer
+          content={AVATAR_PHOTOS_PRIMER}
+          variant="denied"
+          scroll={false}
+          onPrimary={() => {
+            photoAccessSheetRef.current?.close();
+            Linking.openSettings().catch(() => {
+              // Nothing useful to do — the sheet is already closed.
+            });
+          }}
+          onSecondary={() => photoAccessSheetRef.current?.close()}
+          testID="photo-access-denied-primer"
+        />
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -199,10 +261,5 @@ const styles = StyleSheet.create({
   },
   avatarRow: {
     alignItems: 'center',
-    gap: spacing.sm,
-  },
-  avatarHint: {
-    ...typography.label,
-    color: colors.primary,
   },
 });

@@ -1,10 +1,11 @@
 /**
  * WHAT:  Avatar — a user's photo in a circle, with a calm initial-letter
- *        fallback when there is no photo. Three token sizes (sm/md/lg).
+ *        fallback when there is no photo. Four token sizes (sm/md/lg/xl).
  * WHY:   Faces build the trust this app runs on (spotter ↔ owner), so the
  *        avatar treatment must be identical everywhere: profile header,
- *        public spotter sheet, chat rows later. The fallback is a sage
- *        initial on surfaceSubtle — friendly, never a grey silhouette.
+ *        public spotter sheet, chat rows later. The fallback is a
+ *        primary-orange initial on surfaceSubtle — friendly, never a grey
+ *        silhouette.
  *        Decorative by default; pass accessibilityLabel where the avatar is
  *        the only identification on screen.
  * LINKS: src/shared/ui/AppImage.tsx (photo rendering);
@@ -19,7 +20,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, radii, sizes, typography } from '../theme';
 import { AppImage } from './AppImage';
 
-export type AvatarSize = 'sm' | 'md' | 'lg';
+export type AvatarSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export interface AvatarProps {
   /** Photo URL; falls back to the name initial when absent. */
@@ -36,6 +37,7 @@ const DIAMETER: Record<AvatarSize, number> = {
   sm: sizes.avatarSm,
   md: sizes.avatarMd,
   lg: sizes.avatarLg,
+  xl: sizes.avatarXl, // profile hero / passport card
 };
 
 /** Initial glyph scales with the circle: roughly half the diameter. */

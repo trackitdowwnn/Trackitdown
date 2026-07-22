@@ -8,8 +8,8 @@
  *        tokens and its rhythm mirrors the real rows' padding, keeping the
  *        content swap-in jump-free.
  * LINKS: src/shared/ui/VehicleCard.tsx (SkeletonVehicleCard);
- *        src/features/search-map/components/{FeedTopBar,FeedAreaHeader,
- *        FeedSectionHeader,FeedCarouselRow}.tsx (the geometry this mirrors).
+ *        src/features/search-map/components/{FeedTopBar,FeedSectionHeader,
+ *        FeedCarouselRow}.tsx (the geometry this mirrors).
  */
 
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -51,13 +51,14 @@ export function FeedSkeleton() {
       style={styles.container}
     >
       {/* Search pill placeholder first (the reference top layout), then the
-          area-header line — its row is stretched to the touch target by the
-          real header's area Pressable. */}
+          near_you section-header line — its row is stretched to the touch
+          target by the real header's chevron Pressable. */}
       <View style={styles.top}>
         <Block width="100%" height={sizes.control} radius={radii.full} />
       </View>
       <View style={styles.titleRow}>
-        <Block width="65%" height={typography.sectionTitle.lineHeight} />
+        {/* ~"Near you" width — the swap-in must not visibly shrink. */}
+        <Block width="35%" height={typography.sectionTitle.lineHeight} />
       </View>
 
       {/* First rail (near_you), then a second header + rail — the whole
@@ -103,11 +104,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   titleRow: {
-    // Total row = padding + the area Pressable's 44pt content height,
-    // matching FeedAreaHeader exactly (minHeight includes the padding box).
+    // Total row = padding + the chevron Pressable's 44pt content height,
+    // matching FeedSectionHeader exactly (minHeight includes the padding box).
     minHeight: sizes.touchTarget + spacing.xxl + spacing.md,
     justifyContent: 'center',
-    paddingTop: spacing.xxl, // FeedAreaHeader's section rhythm
+    paddingTop: spacing.xxl, // FeedSectionHeader's section rhythm
     paddingBottom: spacing.md,
   },
   sectionHeader: {

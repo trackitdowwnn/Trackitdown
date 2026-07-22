@@ -28,7 +28,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
 import { AppImage } from './AppImage';
-import { PermissionPrimer } from './PermissionPrimer';
+import { PermissionPrimer, type PermissionPrimerContent } from './PermissionPrimer';
 
 /** One captured evidence photo: the image plus its capture-moment facts.
  *  lat/lng/accuracyM are all present or all absent — a located photo is
@@ -53,9 +53,25 @@ export interface CameraCaptureProps {
   photos: EvidencePhoto[];
   onChange: (photos: EvidencePhoto[]) => void;
   maxPhotos: number;
-  /** Copy shown while the camera permission primer is up. */
-  primerBody?: string;
+  /** Per-flow primer content (ask + denied copy) — defaults to a generic
+   *  in-app-capture framing; flows with higher stakes pass their own. */
+  primerContent?: PermissionPrimerContent;
 }
+
+/** Default camera primer: truthful for any consumer — in-app capture with a
+ *  capture-moment timestamp (location is only claimed when granted, so the
+ *  copy doesn't promise it). Reassurance verified: no gallery path exists in
+ *  this component by design. */
+const DEFAULT_CAMERA_PRIMER: PermissionPrimerContent = {
+  emoji: '📸',
+  headline: 'Take photos right here',
+  body: 'Photos are captured in the app, stamped with the moment they were taken. Nothing from your photo library is touched.',
+  allowLabel: 'Allow camera',
+  denied: {
+    headline: 'Camera access is off',
+    body: 'No problem — you can turn it on any time in Settings. Photos here are taken in the app, so the camera is the one thing this step waits for.',
+  },
+};
 
 /** How long to wait for a GPS fix at the shutter before shipping the photo
  *  un-located (the shutter must stay fast — the spotter may be walking away). */
@@ -85,7 +101,12 @@ async function captureFix(): Promise<{ lat: number; lng: number; accuracyM?: num
   }
 }
 
-export function CameraCapture({ photos, onChange, maxPhotos, primerBody }: CameraCaptureProps) {
+export function CameraCapture({
+  photos,
+  onChange,
+  maxPhotos,
+  primerContent = DEFAULT_CAMERA_PRIMER,
+}: CameraCaptureProps) {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [capturing, setCapturing] = useState(false);
@@ -96,17 +117,14 @@ export function CameraCapture({ photos, onChange, maxPhotos, primerBody }: Camer
   }
 
   if (!permission.granted) {
+    // The primer stays mounted while the OS dialog is up (requestPermission
+    // resolves without unmounting this branch) — steady, no flicker.
     const blocked = !permission.canAskAgain;
     return (
       <View style={styles.root}>
         <PermissionPrimer
-          icon={<Feather name="camera" size={sizes.icon} color={colors.textPrimary} />}
-          title="Allow the camera"
-          body={
-            primerBody ??
-            'Photos are taken in the app so each one carries where and when it was taken.'
-          }
-          primaryLabel={blocked ? 'Open settings' : 'Allow camera'}
+          content={primerContent}
+          variant={blocked ? 'denied' : 'ask'}
           onPrimary={() => {
             if (blocked) {
               void Linking.openSettings();

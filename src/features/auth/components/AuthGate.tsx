@@ -1,7 +1,9 @@
 /**
  * WHAT:  AuthGate — the app's front door. Shows the brand splash while the
- *        session + onboarding flag restore, sends a first launch to onboarding,
- *        and lands everyone else — member or guest — in the tabs.
+ *        session + onboarding flag restore, sends a first launch to
+ *        onboarding, lands everyone else — member or guest — in the tabs,
+ *        and then fires the native startup permission prompts (no custom
+ *        permissions UI — the OS dialogs are the ask).
  * WHY:   Guest-first (Airbnb's deferred-auth pattern): browsing is open, so the
  *        gate no longer polices sign-in state or profile completeness — gated
  *        ACTIONS do, via useRequireAuth + AuthSheet. Rendering the splash over
@@ -15,6 +17,8 @@ import { useRouter, useSegments } from 'expo-router';
 import { type ReactNode, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { useStartupPermissionRequests } from '@/features/permissions';
+
 import { useAuthGate } from '../hooks/useAuthGate';
 import { BrandSplash } from './BrandSplash';
 
@@ -22,6 +26,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const route = useAuthGate();
   const router = useRouter();
   const segments = useSegments();
+
+  // Once the app has landed (new users: right after onboarding completes),
+  // fire the native OS permission dialogs for whatever is still askable.
+  useStartupPermissionRequests(route === 'app');
 
   useEffect(() => {
     if (route === 'loading') return;

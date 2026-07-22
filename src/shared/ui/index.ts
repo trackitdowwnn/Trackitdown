@@ -88,7 +88,11 @@ export {
   type PhotoTileStatus,
   type PickedPhoto,
 } from './PhotoGridPicker';
-export { PermissionPrimer, type PermissionPrimerProps } from './PermissionPrimer';
+export {
+  PermissionPrimer,
+  type PermissionPrimerContent,
+  type PermissionPrimerProps,
+} from './PermissionPrimer';
 export { PlateChip, type PlateChipProps } from './PlateChip';
 export { ReadMore, type ReadMoreProps } from './ReadMore';
 export { SafetyNotice } from './SafetyNotice';

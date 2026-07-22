@@ -1,46 +1,52 @@
 /**
- * WHAT:  ProfileScreen — the Profile tab root: identity header, Reputation
- *        v1 card, settings hub, support & legal links, account actions
- *        (sign out, delete account), and a __DEV__-only tools section.
- * WHY:   One calm hub for everything about "me". Guests browse freely
- *        (deferred auth), so signed-out is a first-class state: a friendly
- *        invitation through the auth gate — never a wall — plus a __DEV__
- *        sample-data preview. Sign-out and deletion land back in guest mode
- *        in place (no auth screen exists to bounce to). Deletion is honest, never guilt-trippy: it explains
- *        the consequences, is blocked with a clear reason while any post has
- *        money in escrow (advisory client check — the delete-account Edge
- *        Function re-checks server-side), and degrades calmly while that
- *        function doesn't exist. The payouts row ships dark behind
- *        PAYOUTS_ENABLED until Phase 3. The dev section closes the
- *        LOGGING.md loop (copy ring buffer) and hosts the tab-bar badge
- *        toggles the old placeholder carried.
+ * WHAT:  ProfileScreen — the Profile tab root, composed to the Airbnb profile
+ *        reference (composition B): "Profile" title, the identity HERO card
+ *        (avatar + trust badge + member-since, whole card → edit), a "Your
+ *        spotter story" push row (stats + narrative), settings groups with
+ *        heading-scale titles and hairline dividers, then a quiet ungrouped
+ *        bottom cluster — underlined "Log out", muted "Delete account", app
+ *        version — and a __DEV__-only tools section.
+ * WHY:   One calm hub for everything about "me"; the hero card is the one
+ *        deliberately-elevated object on the page (docs/design-refs/profile/
+ *        REFERENCE_SPEC.md). Guests browse freely (deferred auth), so
+ *        signed-out is a first-class state: a friendly invitation through
+ *        the auth gate — never a wall — plus a __DEV__ sample-data preview.
+ *        Sign-out and deletion land back in guest mode in place (no auth
+ *        screen exists to bounce to). Deletion stays findable-but-quiet on
+ *        this root (App Store rule) rather than buried a level deep like the
+ *        reference: honest, never guilt-trippy, blocked with a clear reason
+ *        while any post has money in escrow (advisory client check — the
+ *        delete-account Edge Function re-checks server-side), degrading
+ *        calmly while that function doesn't exist. The payouts row ships
+ *        dark behind PAYOUTS_ENABLED until Phase 3. The dev section closes
+ *        the LOGGING.md loop and hosts the tab-bar badge toggles, kept in
+ *        the old quiet-label style so it stays visually out of the way.
  * LINKS: src/features/profile/README.md; api/profileApi.ts;
- *        components/ReputationCard.tsx; config.ts; docs/DESIGN_SYSTEM.md;
+ *        components/ProfileHeroCard.tsx; screens/SpotterStoryScreen.tsx;
+ *        config.ts; docs/design-refs/profile/GAP_ANALYSIS.md;
  *        docs/SECURITY_AND_TRUST.md §3 (deletion).
  */
 
 import * as Clipboard from 'expo-clipboard';
+import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import {
   Banknote,
   Bell,
-  ChevronRight,
   FileText,
   Info,
   LifeBuoy,
-  LogOut,
   MapPin,
   Shield,
-  Trash2,
+  Sparkles,
 } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { Children, Fragment, useCallback, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, sizes, spacing, typography } from '@/shared/theme';
+import { colors, spacing, typography } from '@/shared/theme';
 import {
-  Avatar,
   Button,
   ConfirmDialog,
   type ConfirmDialogRef,
@@ -57,14 +63,12 @@ import {
   requestAccountDeletion,
   signOut,
 } from '../api/profileApi';
-import { ReputationCard } from '../components/ReputationCard';
-import { TrustedSpotterPill } from '../components/TrustedSpotterPill';
+import { ProfileHeroCard } from '../components/ProfileHeroCard';
 import { LEGAL_URLS } from '@/shared/lib';
 
 import { PAYOUTS_ENABLED, SUPPORT_EMAIL } from '../config';
 import { useMyProfile } from '../hooks/useMyProfile';
 import { DEV_MOCK_PROFILE } from '../lib/devMockProfile';
-import { isTrustedSpotter, memberSinceLabel } from '../lib/reputation';
 import type { MyProfile } from '../types';
 
 export function ProfileScreen() {
@@ -207,36 +211,24 @@ function LoadedProfile({
   };
 
   const inboxBadge = typeof badges.inbox === 'number' ? badges.inbox : 0;
-  const trusted = isTrustedSpotter(profile.counters);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Pressable
-          style={styles.header}
-          onPress={() => router.push('/edit-profile')}
-          accessibilityRole="button"
-          accessibilityLabel={`${profile.firstName}${trusted ? ', trusted spotter' : ''}. Edit profile`}
-          accessibilityHint="Change your name or photo"
-          testID="profile-header"
-        >
-          <Avatar uri={profile.avatarUrl} name={profile.firstName} size="lg" />
-          <View style={styles.identity}>
-            <View style={styles.nameRow}>
-              <Text style={styles.name}>{profile.firstName}</Text>
-              {profile.displayName ? (
-                <Text style={styles.displayName}>{profile.displayName}</Text>
-              ) : null}
-            </View>
-            {trusted ? <TrustedSpotterPill /> : null}
-            <Text style={styles.since}>{memberSinceLabel(profile.createdAt)}</Text>
-          </View>
-          <ChevronRight size={sizes.icon} color={colors.textSecondary} />
-        </Pressable>
+        <Text style={styles.screenTitle} accessibilityRole="header">
+          Profile
+        </Text>
 
-        <Section title="Reputation">
-          <ReputationCard counters={profile.counters} createdAt={profile.createdAt} />
-        </Section>
+        <ProfileHeroCard profile={profile} onPress={() => router.push('/edit-profile')} />
+
+        {/* Everything reputational (stat strip, highlights, badges, next
+            goal) lives one push away — the root stays shallow. */}
+        <ListRow
+          icon={Sparkles}
+          title="Your spotter story"
+          onPress={() => router.push('/spotter-story')}
+          testID="row-spotter-story"
+        />
 
         {PAYOUTS_ENABLED ? (
           // TODO(payments): derive the value from stripe_connected_accounts
@@ -288,24 +280,38 @@ function LoadedProfile({
           />
         </Section>
 
-        <Section title="Account">
-          <ListRow
-            icon={LogOut}
-            title="Sign out"
+        {/* The quiet ungrouped bottom cluster (reference §1d): sign-out as
+            underlined text (underline = tappable), deletion beside it in the
+            muted danger tone — on the ROOT per our App-Store rule, unlike
+            the reference's one-level-deep burial — then the version line. */}
+        <View style={styles.accountCluster}>
+          <Pressable
             onPress={() => signOutRef.current?.open()}
+            accessibilityRole="button"
+            style={styles.textAction}
             testID="row-sign-out"
-          />
-          <ListRow
-            icon={Trash2}
-            title="Delete account"
-            destructive
+          >
+            <Text style={styles.textActionLabel}>Log out</Text>
+          </Pressable>
+          <Pressable
             onPress={() => void startDelete()}
+            accessibilityRole="button"
+            style={styles.textAction}
             testID="row-delete-account"
-          />
-        </Section>
+          >
+            <Text style={[styles.textActionLabel, styles.textActionDestructive]}>
+              Delete account
+            </Text>
+          </Pressable>
+          {Constants.expoConfig?.version ? (
+            <Text style={styles.version} testID="app-version">
+              Version {Constants.expoConfig.version}
+            </Text>
+          ) : null}
+        </View>
 
         {__DEV__ ? (
-          <Section title="Developer" testID="dev-section">
+          <Section title="Developer" quiet testID="dev-section">
             <ListRow title="Copy recent logs" onPress={() => void copyLogs()} testID="row-copy-logs" />
             <ListRow title="Component sandbox" onPress={() => router.push('/sandbox')} />
             <ListRow
@@ -323,9 +329,9 @@ function LoadedProfile({
 
       <ConfirmDialog
         ref={signOutRef}
-        title="Sign out?"
-        body="You can sign back in any time."
-        confirmLabel="Sign out"
+        title="Log out?"
+        body="You can log back in any time."
+        confirmLabel="Log out"
         onConfirm={() => void handleSignOut()}
       />
       <ConfirmDialog
@@ -348,19 +354,33 @@ function LoadedProfile({
   );
 }
 
+/** A titled row group: heading-scale title + hairline dividers BETWEEN rows
+ *  (reference §1c) — never above the first or below the last. `quiet` keeps
+ *  the old small-grey-label look for the dev section, which must stay
+ *  visually out of the way. */
 function Section({
   title,
   children,
+  quiet = false,
   testID,
 }: {
   title: string;
   children: React.ReactNode;
+  quiet?: boolean;
   testID?: string;
 }) {
+  const rows = Children.toArray(children); // toArray already drops null/false
   return (
     <View style={styles.section} testID={testID}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
+      <Text style={quiet ? styles.sectionTitleQuiet : styles.sectionTitle}>{title}</Text>
+      <View>
+        {rows.map((row, index) => (
+          <Fragment key={index}>
+            {index > 0 && !quiet ? <View style={styles.divider} /> : null}
+            {row}
+          </Fragment>
+        ))}
+      </View>
     </View>
   );
 }
@@ -374,40 +394,54 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     gap: spacing.xl,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  identity: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: spacing.sm,
-    flexWrap: 'wrap',
-  },
-  name: {
+  screenTitle: {
     ...typography.title,
     color: colors.textPrimary,
   },
-  displayName: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  since: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
   section: {
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
+  // Heading-scale ink titles carry the page rhythm (reference §1c); the dev
+  // section keeps the old quiet label so it recedes.
   sectionTitle: {
+    ...typography.heading,
+    color: colors.textPrimary,
+    paddingHorizontal: spacing.md,
+  },
+  sectionTitleQuiet: {
     ...typography.label,
     color: colors.textSecondary,
     paddingHorizontal: spacing.md,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    // Inset = ListRow's pressed-pill radius (radii.md = 12): the hairline
+    // meets the flat edge of the pressed surfaceSubtle pill exactly. If
+    // either token moves, revisit both together.
+    marginHorizontal: spacing.md,
+  },
+  accountCluster: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  // Text actions, not icon rows (reference §1d) — but still full 44pt+
+  // touch targets via vertical padding.
+  textAction: {
+    alignSelf: 'flex-start',
+    paddingVertical: spacing.md,
+  },
+  textActionLabel: {
+    ...typography.body,
+    color: colors.textPrimary,
+    textDecorationLine: 'underline', // underline = tappable (DESIGN_SYSTEM)
+  },
+  textActionDestructive: {
+    color: colors.danger,
+  },
+  version: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   devPreviewRow: {
     alignItems: 'center',

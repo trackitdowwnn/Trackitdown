@@ -1,8 +1,10 @@
 /**
  * WHAT:  HomeFeedScreen — the Explore tab. One vertical FlashList renders
  *        the whole sectioned feed (typed items: sectionHeader / heroCard /
- *        carouselRow), headed by the "Cars near <Area>" bar + search pill,
- *        with the floating Map pill that hides on scroll-down. States:
+ *        carouselRow), headed by the search pill; every section (near_you
+ *        included) uses the standard FeedSectionHeader, near_you's chevron
+ *        opening the area picker. Floating Map pill hides on scroll-down.
+ *        States:
  *        skeleton (first load), pull-to-refresh, good-news empty (+ national
  *        fallback section), error with retry.
  * WHY:   One FlashList with getItemType recycling is the non-negotiable
@@ -35,7 +37,6 @@ import {
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
 
-import { FeedAreaHeader } from '../components/FeedAreaHeader';
 import { FeedCarouselRow } from '../components/FeedCarouselRow';
 import { FeedSectionHeader } from '../components/FeedSectionHeader';
 import { FeedSkeleton } from '../components/FeedSkeleton';
@@ -50,6 +51,7 @@ import {
   FEED_RADIUS_WIDEN_STEP_MILES,
 } from '../lib/feedConfig';
 import {
+  NEAR_YOU_FALLBACK_TITLE,
   NEAR_YOU_SECTION_ID,
   asCarousels,
   feedDisplay,
@@ -162,19 +164,28 @@ export function HomeFeedScreen() {
     }
   }, [location, setArea]);
 
-  const localAreaLabel = location?.mode === 'local' ? location.addressLabel : '';
+  // "Near <Area>" in the standard section-title style — the same pattern as
+  // the area carousels ("Recently stolen in <Area>"), so the current area
+  // stays visible without the old bespoke header sentence. Falls back to the
+  // server's plain title when no area label resolved.
+  const nearYouTitle =
+    location?.mode === 'local' && location.addressLabel
+      ? `Near ${location.addressLabel}`
+      : NEAR_YOU_FALLBACK_TITLE;
 
   const renderItem = useCallback(
     ({ item }: { item: FeedItem }) => {
       switch (item.type) {
         case 'sectionHeader':
-          // near_you's header carries the location context and the
-          // area-change control (the reference layout has no page title).
+          // near_you renders the SAME header style as every other section
+          // (product call 2026-07-22 — no special "Stolen cars near <Area>"
+          // sentence); its chevron opens the area picker instead of a map.
           if (item.section.id === NEAR_YOU_SECTION_ID) {
             return (
-              <FeedAreaHeader
-                areaLabel={localAreaLabel}
-                onPressArea={() => setPickerOpen(true)}
+              <FeedSectionHeader
+                title={nearYouTitle}
+                onSeeAll={() => setPickerOpen(true)}
+                seeAllAccessibilityLabel="Change area"
               />
             );
           }
@@ -209,7 +220,7 @@ export function HomeFeedScreen() {
           );
       }
     },
-    [openSearchMap, onPressPost, localAreaLabel, loadMore, loadingMore],
+    [openSearchMap, onPressPost, nearYouTitle, loadMore, loadingMore],
   );
 
   const areaLabel =
@@ -226,11 +237,13 @@ export function HomeFeedScreen() {
       ) : null}
       {display.kind === 'good-news-empty' && location?.mode === 'local' ? (
         <>
-          {/* With no page title, the area header must appear here too or
-              the good-news state loses its change-area control. */}
-          <FeedAreaHeader
-            areaLabel={localAreaLabel}
-            onPressArea={() => setPickerOpen(true)}
+          {/* With no page title, a header must appear here too or the
+              good-news state loses its change-area control. No server
+              section in this state — the near_you title is restated. */}
+          <FeedSectionHeader
+            title={nearYouTitle}
+            onSeeAll={() => setPickerOpen(true)}
+            seeAllAccessibilityLabel="Change area"
           />
           <EmptyState
             title={`No stolen cars reported near ${areaLabel} right now`}
@@ -260,9 +273,10 @@ export function HomeFeedScreen() {
         <View>
           <FeedTopBar onPressSearch={() => openSearchMap()} />
           {location?.mode === 'local' ? (
-            <FeedAreaHeader
-              areaLabel={localAreaLabel}
-              onPressArea={() => setPickerOpen(true)}
+            <FeedSectionHeader
+              title={nearYouTitle}
+              onSeeAll={() => setPickerOpen(true)}
+              seeAllAccessibilityLabel="Change area"
             />
           ) : null}
           <ErrorState body="We couldn't load the feed." onRetry={retry} />

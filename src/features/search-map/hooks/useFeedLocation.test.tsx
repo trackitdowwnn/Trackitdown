@@ -19,6 +19,11 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+const mockStartupGrant = jest.fn((_kind: string) => false);
+jest.mock('@/features/permissions', () => ({
+  useStartupPermissionGrant: (kind: string) => mockStartupGrant(kind),
+}));
+
 const device = (overrides: Partial<FeedDeviceLocation> = {}): FeedDeviceLocation => ({
   hasPermission: jest.fn(async () => false),
   getCurrentPosition: jest.fn(async () => null),
@@ -30,6 +35,7 @@ const SALFORD = { latitude: 53.49, longitude: -2.29 };
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  mockStartupGrant.mockReturnValue(false);
 });
 
 describe('useFeedLocation chain', () => {
@@ -91,6 +97,46 @@ describe('useFeedLocation chain', () => {
     const { result } = await renderHook(() => useFeedLocation(device()));
 
     await waitFor(() => expect(result.current.location).toEqual({ mode: 'national' }));
+  });
+
+  it('upgrades from national when the startup prompts grant location', async () => {
+    // Mount races the startup OS dialog: no permission yet → national.
+    const dev = device();
+    const { result, rerender } = await renderHook(() => useFeedLocation(dev));
+    await waitFor(() => expect(result.current.location).toEqual({ mode: 'national' }));
+    expect(result.current.showLocationPrimer).toBe(true);
+
+    // The user taps Allow on the startup dialog seconds later.
+    (dev.hasPermission as jest.Mock).mockResolvedValue(true);
+    (dev.getCurrentPosition as jest.Mock).mockResolvedValue(SALFORD);
+    (dev.reverseGeocodeArea as jest.Mock).mockResolvedValue('Salford');
+    mockStartupGrant.mockReturnValue(true);
+    await rerender(undefined);
+
+    await waitFor(() =>
+      expect(result.current.location).toEqual(
+        expect.objectContaining({ mode: 'local', addressLabel: 'Salford', fromPreference: false }),
+      ),
+    );
+    expect(result.current.showLocationPrimer).toBe(false);
+  });
+
+  it('a startup grant never overrides a saved area pick', async () => {
+    await AsyncStorage.setItem(
+      FEED_LOCATION_STORAGE_KEY,
+      JSON.stringify({ latitude: 53.48, longitude: -2.24, addressLabel: 'Manchester', radiusMiles: 25 }),
+    );
+    mockStartupGrant.mockReturnValue(true);
+    const dev = device({ hasPermission: jest.fn(async () => true) });
+
+    const { result } = await renderHook(() => useFeedLocation(dev));
+
+    await waitFor(() =>
+      expect(result.current.location).toEqual(
+        expect.objectContaining({ mode: 'local', addressLabel: 'Manchester', fromPreference: true }),
+      ),
+    );
+    expect(dev.getCurrentPosition).not.toHaveBeenCalled();
   });
 });
 

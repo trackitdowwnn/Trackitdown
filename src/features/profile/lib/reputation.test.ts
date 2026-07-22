@@ -15,6 +15,7 @@ import {
   isTrustedSpotter,
   memberSinceLabel,
   nextBadgeGoal,
+  passportStats,
 } from './reputation';
 
 const counters = (
@@ -106,6 +107,23 @@ describe('highlights', () => {
   it('zero counters produce NO lines — never a sad zero', () => {
     expect(highlights(counters(0, 0, 0))).toEqual([]);
     expect(highlights(counters(3, 0, 0)).map((h) => h.key)).toEqual(['reported']);
+  });
+});
+
+describe('passportStats', () => {
+  it('nonzero counters become stat rows in counter order (volume → impact)', () => {
+    const rows = passportStats(counters(7, 4, 1));
+    expect(rows.map((r) => r.key)).toEqual([
+      'sightingsReported',
+      'sightingsHelpful',
+      'recoveriesCredited',
+    ]);
+    expect(rows[0]).toMatchObject({ value: 7, label: 'Sightings' });
+  });
+
+  it('zero counters produce NO row — degrade by omission, never zeros', () => {
+    expect(passportStats(counters(0, 0, 0))).toEqual([]);
+    expect(passportStats(counters(3, 0, 0)).map((r) => r.key)).toEqual(['sightingsReported']);
   });
 });
 

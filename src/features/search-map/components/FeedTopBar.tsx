@@ -2,12 +2,13 @@
  * WHAT:  FeedTopBar — the feed's floating search pill, alone at the very
  *        top of the screen with its icon + label centred.
  * WHY:   The mobile-reference layout: the pill IS the top of the feed (no
- *        page title above it — location context lives in the first
- *        section's FeedAreaHeader). It's a fake input (a button) because
- *        v1 search lives on the search-map screen, not inline.
- * LINKS: src/features/search-map/components/FeedAreaHeader.tsx (where the
- *        area control went); src/features/search-map/README.md (anatomy);
- *        docs/DESIGN_SYSTEM.md (tokens).
+ *        page title above it — the area-change control lives in the
+ *        near_you FeedSectionHeader's chevron). It's a fake input (a
+ *        button) because v1 search lives on the search-map screen, not
+ *        inline.
+ * LINKS: src/features/search-map/components/FeedSectionHeader.tsx (where
+ *        the area control went); src/features/search-map/README.md
+ *        (anatomy); docs/DESIGN_SYSTEM.md (tokens).
  */
 
 import { Feather } from '@expo/vector-icons';
