@@ -19,6 +19,10 @@ import type { FeedItem, FeedItemType, FeedSection } from '../types';
 export const NEAR_YOU_SECTION_ID = 'near_you';
 export const RECENT_UK_SECTION_ID = 'recent_uk';
 
+/** The near_you title restated where no server section exists (good-news
+ *  empty / error states) — keep in step with the RPC's section title. */
+export const NEAR_YOU_FALLBACK_TITLE = 'Near you';
+
 /** Defensive guard — the RPC omits empty sections, but never trust it. */
 export function dropEmptySections(sections: FeedSection[]): FeedSection[] {
   return sections.filter((section) => section.posts.length > 0);
@@ -46,8 +50,8 @@ export function feedDisplay(sections: FeedSection[], mode: 'local' | 'national')
 
 /**
  * Flatten sections into FlashList items. EVERY section contributes a header
- * (near_you's renders as the tappable "Stolen cars near <Area>" — the
- * screen's renderItem special-cases it), then hero sections add one item
+ * (near_you's chevron opens the area picker — the screen's renderItem
+ * special-cases the handler, not the look), then hero sections add one item
  * PER post (full-width cards recycle individually) and carousel sections
  * add ONE row item (the horizontal list).
  */
