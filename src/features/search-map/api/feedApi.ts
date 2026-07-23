@@ -16,6 +16,7 @@
 import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
+import { samplePhotos } from '@/shared/lib';
 import { createLogger, redactLocation } from '@/shared/lib/logger';
 import type { PostStatus, PostSummary } from '@/shared/types';
 
@@ -62,7 +63,10 @@ type RpcPost = z.infer<typeof rpcPostSchema>;
 export function toPostSummary(row: RpcPost): PostSummary {
   return {
     id: row.id,
-    photos: [], // no photo schema yet — cards render their placeholder
+    // No photo schema in the feed RPC yet → cards render the placeholder in
+    // production; DEV fills sample car images so the feed can be seen with
+    // pictures (samplePhotos returns [] outside __DEV__).
+    photos: samplePhotos(row.id),
     make: row.make,
     model: row.model,
     colour: row.colour,

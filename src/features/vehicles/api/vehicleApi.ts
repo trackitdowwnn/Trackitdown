@@ -15,6 +15,7 @@
 import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
+import { samplePhotos } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import type { PostStatus } from '@/shared/types';
 
@@ -108,7 +109,12 @@ function toPostDetail(row: VisibleRow): PostDetail {
     lat: row.lat ?? undefined,
     lng: row.lng ?? undefined,
     // Photo order is the RPC's (by position); map url → uri for AppImage.
-    photos: row.photos.map((photo) => ({ uri: photo.url })),
+    // No real photos yet (upload pipeline unbuilt) → DEV shows sample car
+    // images so the hero can be seen (samplePhotos is [] in production).
+    photos:
+      row.photos.length > 0
+        ? row.photos.map((photo) => ({ uri: photo.url }))
+        : samplePhotos(row.id),
     owner: {
       memberSince: row.owner.member_since,
       firstName: row.owner.first_name ?? undefined,
