@@ -60,4 +60,12 @@ while ((Get-Date) -lt $deadline) {
 & $adb reverse tcp:8081 tcp:8081
 & $adb shell am start -a android.intent.action.VIEW -d 'trackitdown://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081'
 
-Write-Host 'Emulator ready: window centered, Metro tunnel up, app launched.'
+# 5. GPS: place the device in Hertfordshire (Hertford, 51.7959 N, 0.0780 W)
+#    so "Use my location" and the map centre on the seeded posts' region.
+#    `geo fix` takes LONGITUDE then LATITUDE. adb emu auto-auths from
+#    ~/.emulator_console_auth_token (must be a VALID token — a corrupt/all-zero
+#    file makes this fail with "missing authentication token"; delete it so the
+#    emulator regenerates one). Non-fatal if it can't send.
+try { & $adb emu geo fix -0.0780 51.7959 | Out-Null } catch {}
+
+Write-Host 'Emulator ready: window centered, Metro tunnel up, app launched, location = Hertfordshire.'
