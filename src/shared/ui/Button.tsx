@@ -1,7 +1,9 @@
 /**
  * WHAT:  Button — the app's pressable action primitive. Variants `primary`
- *        (sage fill), `secondary` (outline), `ghost` (bare), `danger`
- *        (muted red fill); 52pt tall, `md` radius, full-width by default.
+ *        (orange fill, ADR-0005), `secondary` (outline), `ghost` (bare),
+ *        `danger` (red fill), `subtle` (grey fill, ink label — the reference's
+ *        "Show all N" block button; docs/design-refs/post-detail/
+ *        REFERENCE_SPEC.md §7); 52pt tall, `md` radius, full-width by default.
  * WHY:   Buttons appear on nearly every screen and must look and behave
  *        identically (docs/DESIGN_SYSTEM.md, Core components). Centralising
  *        the variants keeps pressed/disabled states and touch-target sizing
@@ -28,7 +30,7 @@ import {
 
 import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle';
 
 export interface ButtonProps {
   /** Button text — sentence case per the design system's tone rules. */
@@ -71,6 +73,13 @@ const VARIANT_STYLES: Record<
     rest: { backgroundColor: colors.danger },
     pressed: { backgroundColor: colors.dangerPressed },
     label: { color: colors.textOnPrimary },
+  },
+  // The page's only non-CTA block button (the "show all/more" pattern):
+  // quiet grey fill, ink label — never competes with a primary action.
+  subtle: {
+    rest: { backgroundColor: colors.surfaceSubtle },
+    pressed: { backgroundColor: colors.surfaceSubtlePressed },
+    label: { color: colors.textPrimary },
   },
 };
 

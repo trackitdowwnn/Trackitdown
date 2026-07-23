@@ -17,6 +17,9 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import type { MapPost } from '../types';
 import { MapCardPager } from './MapCardPager';
 
+// The watch toggle drags in the supabase client + gate — out of scope here.
+jest.mock('@/features/watchlist', () => ({ WatchToggle: () => null }));
+
 // The official reanimated mock (the project-wide moduleNameMapper target)
 // lacks useReducedMotion; extend it rather than hand-rolling — the pager
 // renders the whole shared/ui barrel, which uses far more of the API.

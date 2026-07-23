@@ -2,7 +2,8 @@
  * WHAT:  ProfileScreen — the Profile tab root, composed to the Airbnb profile
  *        reference (composition B): "Profile" title, the identity HERO card
  *        (avatar + trust badge + member-since, whole card → edit), a "Your
- *        spotter story" push row (stats + narrative), settings groups with
+ *        spotter story" push row (stats + narrative), a "My cars" push row
+ *        (moved off the tab bar 2026-07-23), settings groups with
  *        heading-scale titles and hairline dividers, then a quiet ungrouped
  *        bottom cluster — underlined "Log out", muted "Delete account", app
  *        version — and a __DEV__-only tools section.
@@ -34,6 +35,7 @@ import * as WebBrowser from 'expo-web-browser';
 import {
   Banknote,
   Bell,
+  Car,
   FileText,
   Info,
   LifeBuoy,
@@ -230,6 +232,14 @@ function LoadedProfile({
           testID="row-spotter-story"
         />
 
+        {/* Your own posts — moved here from the tab bar (2026-07-23). */}
+        <ListRow
+          icon={Car}
+          title="My cars"
+          onPress={() => router.push('/my-cars')}
+          testID="row-my-cars"
+        />
+
         {PAYOUTS_ENABLED ? (
           // TODO(payments): derive the value from stripe_connected_accounts
           // (none → "Set up payouts", payouts_enabled → "Payouts ready",
@@ -319,10 +329,6 @@ function LoadedProfile({
               onPress={() => setBadge('inbox', inboxBadge + 1)}
             />
             <ListRow title="Clear inbox badge" onPress={() => setBadge('inbox', 0)} />
-            <ListRow
-              title={badges.myCars ? 'Clear My cars dot' : 'Show My cars dot'}
-              onPress={() => setBadge('myCars', !badges.myCars)}
-            />
           </Section>
         ) : null}
       </ScrollView>

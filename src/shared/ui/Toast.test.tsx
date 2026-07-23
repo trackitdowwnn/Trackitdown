@@ -1,7 +1,9 @@
 /**
  * WHAT:  Tests for Toast — show renders the message, error kind styles as
  *        error, a new toast replaces the current, auto-dismiss after the
- *        visible window, and useToast outside the provider throws.
+ *        visible window, useToast outside the provider throws, and the
+ *        optional inline action (renders, runs onPress, dismisses; a plain
+ *        toast stays non-pressable).
  * WHY:   The toast is the app's only lightweight confirmation channel; a
  *        toast that never dismisses (leaked timer) or silently swallows the
  *        second message loses user feedback everywhere at once.
@@ -12,7 +14,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 import { motion } from '../theme';
-import { ToastProvider, useToast } from './Toast';
+import { type ToastAction, ToastProvider, useToast } from './Toast';
 
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
@@ -38,15 +40,17 @@ jest.mock('react-native-safe-area-context', () =>
 function Trigger({
   message,
   kind,
+  action,
   testID = 'trigger',
 }: {
   message: string;
   kind?: 'success' | 'error';
+  action?: ToastAction;
   testID?: string;
 }) {
   const toast = useToast();
   return (
-    <Text testID={testID} onPress={() => toast.show(message, kind)}>
+    <Text testID={testID} onPress={() => toast.show(message, kind, action)}>
       show
     </Text>
   );
@@ -106,6 +110,47 @@ describe('Toast', () => {
     });
     expect(getByText('Second')).toBeTruthy();
     expect(queryByText('First')).toBeNull();
+  });
+
+  it('renders the action label; pressing it runs onPress and dismisses now', async () => {
+    const onPress = jest.fn();
+    const { getByTestId, getByRole, queryByText } = await render(
+      <ToastProvider>
+        <Trigger message="Added to your watchlist" action={{ label: 'View', onPress }} />
+      </ToastProvider>,
+    );
+    await act(async () => {
+      fireEvent.press(getByTestId('trigger'));
+    });
+
+    const action = getByRole('button');
+    expect(action.props.accessibilityLabel).toBe('View');
+
+    await act(async () => {
+      fireEvent.press(action);
+    });
+    expect(onPress).toHaveBeenCalledTimes(1);
+
+    // Dismisses after the fade — well before the full visible window.
+    await act(async () => {
+      jest.advanceTimersByTime(motion.fast + 1);
+    });
+    expect(queryByText('Added to your watchlist')).toBeNull();
+  });
+
+  it('a plain toast renders no action button and stays non-pressable', async () => {
+    const { getByTestId, queryByRole } = await render(
+      <ToastProvider>
+        <Trigger message="Profile saved" />
+      </ToastProvider>,
+    );
+    await act(async () => {
+      fireEvent.press(getByTestId('trigger'));
+    });
+
+    expect(queryByRole('button')).toBeNull();
+    // The host must never block taps on the screen beneath a plain toast.
+    expect(getByTestId('toast-host').props.pointerEvents).toBe('none');
   });
 
   it('useToast outside the provider throws a clear error', async () => {

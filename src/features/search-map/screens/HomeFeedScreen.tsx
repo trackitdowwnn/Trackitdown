@@ -25,6 +25,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
+import { WatchToggle } from '@/features/watchlist';
 import { spacing } from '@/shared/theme';
 import type { PostSummary } from '@/shared/types';
 import {
@@ -202,7 +203,11 @@ export function HomeFeedScreen() {
         case 'heroCard':
           return (
             <View style={styles.heroCard}>
-              <VehicleCard post={item.post} onPress={() => onPressPost(item.post)} />
+              <VehicleCard
+                post={item.post}
+                onPress={() => onPressPost(item.post)}
+                topRightAction={<WatchToggle postId={item.post.id} source="feed" />}
+              />
             </View>
           );
         case 'carouselRow':

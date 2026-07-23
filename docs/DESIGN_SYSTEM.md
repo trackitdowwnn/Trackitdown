@@ -76,22 +76,35 @@ busy/alarming crime map.
 
 ## Typography
 
-- Font: **Inter** (via `@expo-google-fonts/inter`); system fallback.
-- Scale (size / line height / weight):
-  - `display` 32/38, Bold — big moments ("Car recovered 🎉")
-  - `title` 24/30, SemiBold — screen titles
-  - `sectionTitle` 20/26, SemiBold — feed section headers (added 2026-07-11;
+- Font: **Satoshi** (Fontshare, FFL licence — `src/assets/fonts/`; loaded via
+  `expo-font` `useFonts` in `src/app/_layout.tsx`; system fallback on load
+  error). Adopted 2026-07-23, replacing Inter.
+- **Weight is expressed as a FAMILY, never `fontWeight`.** With statically
+  loaded faces Android synthesises fake bolds on top of an already-bold face,
+  so `typography` tokens set `fontFamily` (`typography.ts` `fontFamilies`).
+  Satoshi ships four faces: Regular (400), Medium (500), Bold (700), Black
+  (900) — **there is no SemiBold (600) face**, which is why the old 600 tier
+  (title/heading/cardTitle) collapses into Bold rather than by accident.
+- Scale (size / line height / family):
+  - `display` 32/38, Black — big moments ("Car recovered 🎉")
+  - `title` 24/30, Bold — screen titles
+  - `sectionTitle` 20/26, Bold — feed section headers (added 2026-07-11;
     sits between heading and title so scrolling feeds read in clear bands)
-  - `heading` 18/24, SemiBold — in-screen headings
-  - `cardTitle` 16/22, SemiBold — feed-card titles (added 2026-07-11; body
-    size at semibold weight, so photos stay the hero of a card)
+  - `heading` 18/24, Bold — in-screen headings
+  - `cardTitle` 16/22, Bold — feed-card titles (added 2026-07-11; body
+    size at heavier weight, so photos stay the hero of a card)
   - `body` 16/24, Regular — default text
   - `caption` 13/18, Regular — metadata, timestamps
   - `label` 14/18, Medium — buttons, form labels
   - `tabLabel` 11/14, Medium — **tab-bar item labels only**; the single
     sanctioned size below `caption` (matches platform tab conventions)
+  - `plate` 14/18, Black — number-plate chip (below)
+- On Android, strip `includeFontPadding` on any text a chip/badge sits beside
+  (Satoshi's font box is padded asymmetrically, throwing inline chips off
+  optical centre) — see PlateChip and the detail page's title cluster.
 - Sentence case everywhere. No ALL CAPS except number plates, which render
-  in a plate-style chip (bold, letter-spaced, `surfaceSubtle` background).
+  in a plate-style chip (Black weight, `surfaceSubtle` background; no letter
+  spacing since 2026-07-23 — Satoshi's tracking already reads plate-like).
 - **Underline = tappable** (formalised 2026-07-14; was already the de facto
   convention in ReadMore/PhotoGridPicker): inline text actions are underlined
   `textPrimary` — no colour needed. Never underline non-tappable text.

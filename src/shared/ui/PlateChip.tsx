@@ -1,7 +1,8 @@
 /**
- * WHAT:  PlateChip — a UK registration rendered in plate styling: bold,
- *        letter-spaced uppercase on a surfaceSubtle chip (the design
- *        system's one sanctioned ALL-CAPS moment).
+ * WHAT:  PlateChip — a UK registration rendered in plate styling: heavy
+ *        (Satoshi Black) uppercase on a surfaceSubtle chip (the design
+ *        system's one sanctioned ALL-CAPS moment). Compact since 2026-07-23
+ *        (14pt, no letter spacing) so it sits quietly beside titles.
  * WHY:   Plates are the app's core identifier and must be instantly
  *        recognisable everywhere they appear (cards, post detail, sightings,
  *        chat). Screen readers get the plate spelled character by character
@@ -56,5 +57,8 @@ const styles = StyleSheet.create({
   plate: {
     ...typography.plate,
     color: colors.textPrimary,
+    // Android's asymmetric font-box padding throws the chip off optical
+    // centre beside titles — strip it (matches the detail page's chips).
+    includeFontPadding: false,
   },
 });

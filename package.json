@@ -20,6 +20,7 @@
     "expo-device": "~57.0.0",
     "expo-font": "~57.0.0",
     "expo-glass-effect": "~57.0.0",
+    "expo-haptics": "~57.0.1",
     "expo-image": "~57.0.0",
     "expo-image-manipulator": "~57.0.2",
     "expo-image-picker": "~57.0.2",
@@ -71,7 +72,8 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
-    "test:db": "bash scripts/test-db.sh"
+    "test:db": "bash scripts/test-db.sh",
+    "emulator": "powershell -ExecutionPolicy Bypass -File scripts/start-emulator.ps1"
   },
   "private": true,
   "jest": {

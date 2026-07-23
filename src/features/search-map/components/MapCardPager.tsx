@@ -32,6 +32,7 @@ import Animated, {
 
 import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
+import { WatchToggle } from '@/features/watchlist';
 import { motion, spacing } from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { Button, VehicleCard } from '@/shared/ui';
@@ -180,7 +181,12 @@ export const MapCardPager = memo(function MapCardPager({
         keyExtractor={(post) => post.id}
         renderItem={({ item }) => (
           <View style={[styles.cardColumn, { width: cardWidth }]}>
-            <VehicleCard post={item} variant="map" onPress={() => onPressPost(item)} />
+            <VehicleCard
+              post={item}
+              variant="map"
+              onPress={() => onPressPost(item)}
+              topRightAction={<WatchToggle postId={item.id} source="map" />}
+            />
             {onSeenPost ? (
               <Button label="I’ve seen this car" onPress={() => onSeenPost(item)} />
             ) : null}

@@ -18,6 +18,9 @@ v1 scope, stop and flag it.
 - [ ] Recovery confirmation flow: owner credits one sighting (or none)
 - [ ] Payout: Stripe Connect onboarding for spotter, 95/5 release, refunds
 - [ ] Reputation counters + 1/5/25 badges on profiles
+- [x] Watchlist: bookmark posts to keep an eye out (one private list,
+      toggle on every card, 5th tab, 30-day resolved section with
+      tombstones — added to scope + built 2026-07-22)
 - [ ] Flagging (posts, sightings, photos, messages) + user blocking
 - [ ] Moderation queues: verification, flags, disputes, collusion checks
 - [ ] Legal: T&Cs, privacy policy, safety guidelines page
@@ -65,6 +68,13 @@ v1 scope, stop and flag it.
   `create_sighting`, gallery pick/upload with EXIF stripped, owner-facing
   "added from photo library" labels, tests, security review. Decision is
   recorded; nothing is built.
+- **watched-post-recovered push** — the watchlist shipped in-app-only (same
+  missing notifications infra). Payload contract pinned in DOMAIN.md's
+  watchlist carve-out: post context only ("Good news — the Blue BMW you
+  were watching was recovered"), never watcher counts or other watchers'
+  existence. Sighting-activity pushes for watchers are deliberately OUT
+  (noise risk) — revisit only with launch data. Named/multiple/shared
+  lists: not v1; single private list only.
 
 ## v2 candidates (revisit after launch data)
 

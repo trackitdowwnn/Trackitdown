@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
   },
   floatedLabel: {
     ...typography.caption,
-    fontWeight: typography.label.fontWeight,
+    fontFamily: typography.label.fontFamily,
     color: colors.textSecondary,
   },
   value: {

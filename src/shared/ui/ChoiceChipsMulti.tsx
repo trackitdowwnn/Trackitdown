@@ -8,10 +8,10 @@
  *        (checkbox role + checked state, 44pt targets, a non-colour selection
  *        cue) and pressed states consistent with the rest of the kit. Options
  *        may carry a Feather icon so the picker mirrors the detail page's
- *        FeaturesGrid.
+ *        Car details rows.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour, Accessibility, Forms);
  *        src/shared/ui/ChoiceChips.tsx (single-select sibling);
- *        src/features/vehicles/components/FeaturesGrid.tsx (icon convention).
+ *        src/features/vehicles/lib/carDetails.ts (icon convention).
  *
  * Usage:
  *   <ChoiceChipsMulti
@@ -32,7 +32,8 @@ type FeatherName = ComponentProps<typeof Feather>['name'];
 export interface ChoiceChipMultiOption<V extends string = string> {
   value: V;
   label: string;
-  /** Optional Feather icon shown left of the label (matches FeaturesGrid). */
+  /** Optional Feather icon shown left of the label (matches the detail
+   *  page's Car details rows — lib/carDetails.ts). */
   icon?: FeatherName;
 }
 

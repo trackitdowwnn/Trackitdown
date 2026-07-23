@@ -20,8 +20,9 @@
  *        is the rail card; `map` is the search map's floating peek card
  *        (title, distance-led meta, then plate + bounty — the plate is
  *        VISIBLE, not just spoken: spotters confirm a match by plate).
- *        Memoised for recycled list rows. The top-right image corner is
- *        reserved for a future save/watch toggle — layout leaves it clear.
+ *        Memoised for recycled list rows. The top-right image corner hosts
+ *        the optional `topRightAction` slot (the watchlist toggle) as a
+ *        SIBLING overlay so the card stays one screen-reader node.
  * LINKS: docs/DESIGN_SYSTEM.md (Card, Colour rules, Motion, Accessibility);
  *        docs/DOMAIN.md (lifecycle, money); src/shared/types/posts.ts;
  *        src/shared/ui/{AppImage,PlateChip,BountyTag}.tsx;
@@ -33,7 +34,7 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -70,9 +71,16 @@ export interface VehicleCardProps {
   /** feed = full-width stack; compact = square-photo rail card;
    *  map = the wide photo-left floating card over the search map. */
   variant?: 'feed' | 'compact' | 'map';
+  /**
+   * The reserved top-right slot (e.g. the watchlist toggle). Rendered as a
+   * SIBLING overlay, not a child of the card's Pressable — the card stays
+   * one screen-reader node and the action keeps its own. shared/ stays
+   * feature-agnostic: callers pass the element (ARCHITECTURE rule 2).
+   */
+  topRightAction?: ReactNode;
 }
 
-function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps) {
+function VehicleCardInner({ post, onPress, variant = 'feed', topRightAction }: VehicleCardProps) {
   const compact = variant === 'compact';
   const mapCard = variant === 'map';
   const badgeLabel = statusBadgeLabel(post.status);
@@ -121,42 +129,48 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
     // Photo-left floating card: unlike the borderless feed cards this one
     // rides OVER the map, so it needs a real surface and shadow.
     return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        onPress={onPress}
-        onPressIn={() => animatePress(true)}
-        onPressOut={() => animatePress(false)}
-        onTouchEnd={() => animatePress(false)}
-        onTouchCancel={() => animatePress(false)}
-        style={styles.card}
-      >
-        <Animated.View style={[styles.mapCard, { transform: [{ scale: pressScale }] }]}>
-          <View style={styles.mapPhoto}>
-            <PhotoCarousel post={post} staticOnly />
-          </View>
-          <View style={styles.mapText}>
-            <Text numberOfLines={1} style={styles.title}>
-              {post.make} {post.model}
-            </Text>
-            <Text numberOfLines={1} style={styles.metaLine}>
-              {metaText}
-            </Text>
-            {/* Anchor stack, plate ABOVE bounty: a spotter beside the car
-                confirms by PLATE, so the floating card must show it, not
-                just speak it. Stacked, not side-by-side — the text column
-                is only ~62% of the card and money must never truncate. */}
-            <View style={styles.mapPlateBounty}>
-              {post.plate ? <PlateChip plate={post.plate} /> : null}
-              <BountyTag bountyPence={post.bountyPence} size="md" />
+      <View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          onPress={onPress}
+          onPressIn={() => animatePress(true)}
+          onPressOut={() => animatePress(false)}
+          onTouchEnd={() => animatePress(false)}
+          onTouchCancel={() => animatePress(false)}
+          style={styles.card}
+        >
+          <Animated.View style={[styles.mapCard, { transform: [{ scale: pressScale }] }]}>
+            <View style={styles.mapPhoto}>
+              <PhotoCarousel post={post} staticOnly />
             </View>
-          </View>
-        </Animated.View>
-      </Pressable>
+            <View style={styles.mapText}>
+              <Text numberOfLines={1} style={styles.title}>
+                {post.make} {post.model}
+              </Text>
+              <Text numberOfLines={1} style={styles.metaLine}>
+                {metaText}
+              </Text>
+              {/* Anchor stack, plate ABOVE bounty: a spotter beside the car
+                  confirms by PLATE, so the floating card must show it, not
+                  just speak it. Stacked, not side-by-side — the text column
+                  is only ~62% of the card and money must never truncate. */}
+              <View style={styles.mapPlateBounty}>
+                {post.plate ? <PlateChip plate={post.plate} /> : null}
+                <BountyTag bountyPence={post.bountyPence} size="md" />
+              </View>
+            </View>
+          </Animated.View>
+        </Pressable>
+        {topRightAction ? (
+          <View style={styles.topRightAction}>{topRightAction}</View>
+        ) : null}
+      </View>
     );
   }
 
   return (
+    <View>
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -182,7 +196,8 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
               <StatusBadge status={post.status} />
             </View>
           ) : null}
-          {/* Top-right corner intentionally clear: future save/watch toggle. */}
+          {/* Top-right corner: the topRightAction overlay (watch toggle)
+              renders as a SIBLING after the Pressable — see below. */}
         </View>
 
         <View style={styles.textStack}>
@@ -225,11 +240,26 @@ function VehicleCardInner({ post, onPress, variant = 'feed' }: VehicleCardProps)
       </View>
       </Animated.View>
     </Pressable>
+    {/* The reserved corner, occupied at last — sits over the photo's
+        top-right, outside the accessible Pressable (its own a11y node). */}
+    {topRightAction ? <View style={styles.topRightAction}>{topRightAction}</View> : null}
+    </View>
   );
 }
 
-/** Memoised for FlashList row recycling — PostSummary rows are stable. */
-export const VehicleCard = memo(VehicleCardInner);
+/** Memoised for FlashList row recycling — PostSummary rows are stable.
+ *  Custom equality: every call site creates fresh `onPress` closures and
+ *  `topRightAction` elements per render, which would defeat memo entirely —
+ *  both derive purely from `post`, so identity changes are ignored (only
+ *  the action's PRESENCE matters). The toggle inside the slot updates
+ *  itself via its own store subscription regardless of card re-renders. */
+export const VehicleCard = memo(
+  VehicleCardInner,
+  (prev, next) =>
+    prev.post === next.post &&
+    prev.variant === next.variant &&
+    Boolean(prev.topRightAction) === Boolean(next.topRightAction),
+);
 
 /** "2.3 mi", trailing zeros dropped ("3 mi"). */
 function formatDistance(miles: number): string {
@@ -423,6 +453,9 @@ const styles = StyleSheet.create({
   mapText: {
     flex: 1,
     padding: spacing.md,
+    // The topRightAction overlay sits over this column's corner on the map
+    // variant — keep the title clear of the circle (ui review 2026-07-22).
+    paddingRight: sizes.circleButtonSm + spacing.md + spacing.sm,
     justifyContent: 'center',
     gap: spacing.xs,
   },
@@ -439,6 +472,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.md,
     left: spacing.md,
+  },
+  // The (formerly reserved) top-right corner — mirrors the badge's inset.
+  topRightAction: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
   },
   dots: {
     position: 'absolute',

@@ -15,10 +15,23 @@ import { ToastProvider } from '@/shared/ui';
 import type { PostDetail, PostDetailResult } from '../types';
 import { PostDetailScreen } from './PostDetailScreen';
 
+// The watch toggle drags in the supabase client + gate — out of scope here.
+jest.mock('@/features/watchlist', () => ({
+  WatchToggle: () => null,
+  useWatchToggle: () => ({ watched: false, toggle: jest.fn() }),
+}));
+
 // The hook is the single data source — drive the screen by mocking its return.
 const mockUsePostDetail = jest.fn();
 jest.mock('../hooks/usePostDetail', () => ({
   usePostDetail: () => mockUsePostDetail(),
+}));
+
+// The similar-posts rail has its own hook test; empty here so the screen
+// tests exercise the detail itself (also keeps supabase out of the import
+// graph via the search-map barrel).
+jest.mock('../hooks/useSimilarPosts', () => ({
+  useSimilarPosts: () => ({ status: 'ready', posts: [] }),
 }));
 
 // The map SDK and gorhom sheet can't render under jest — stub the leaves.
