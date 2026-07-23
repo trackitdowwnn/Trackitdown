@@ -83,6 +83,27 @@ drops off all public surfaces. Enforced server-side by the feed RPCs via
 `recovered_at`; ordinary public reads remain active-only under RLS.
 (Approved 2026-07-11 with the home-feed feature.)
 
+**Watchlist visibility carve-out.** A user who watched a post while it was
+public may learn its OUTCOME after it closes — watching a car and never
+hearing it was found is the failure mode the watchlist exists to prevent:
+
+- Recovered states: the watcher sees the normal public payload inside the
+  same 30-day window as everyone else — no carve-out needed.
+- `expired` / `cancelled` (not publicly readable): for 30 days after the
+  transition, `get_my_watchlist` returns that watcher a **tombstone** —
+  make, model, colour, status, transition date, first-photo thumbnail, and
+  nothing else (explicitly no plate, bounty, or location: less than the
+  post's own active-era public payload, so a tombstone can never be used to
+  keep tracking the car). Hidden in-flight states (`recovery_claimed` etc.)
+  are excluded entirely — a watched post passing through one briefly leaves
+  the list.
+- A watch is the watcher's business: **no owner-facing surface ever exposes
+  watcher rows, counts, or existence**, and any future watched-post
+  notification payload carries post context only — never other watchers.
+
+(Approved 2026-07-22 with the watchlist feature; enforced server-side in
+`get_my_watchlist`, SECURITY DEFINER.)
+
 ## Bounty rules (v1 — deliberately simple)
 
 - Minimum bounty: £50. Maximum: £5,000 (fraud ceiling — revisit later).

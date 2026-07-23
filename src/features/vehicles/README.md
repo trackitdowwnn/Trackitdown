@@ -19,50 +19,72 @@ rounded-top sheet overlapping the hero.)
    curve. The `AppHeader` floats over it: back (left), share (right),
    transparent → solid surface + hairline + title as the hero scrolls away;
    the buttons' white circles fade out in the same range, leaving flat icons.
-2. **Title block** — "Make Model", `PlateChip` + colour + year, `StatusBadge`
-   when not plain active, quiet meta "Last seen … near … · Posted …".
-3. **Bounty block** — large terracotta bounty + "Paid to the spotter whose
-   sighting leads to recovery."
-4. **Last seen here** (promoted) — area + time line, then a large
+2. **Title cluster** (redesigned 2026-07-23) — a right-aligned "Listed on
+   `<date>`" dateline hugging the sheet's curved top, then "Make Model" with
+   the `PlateChip` and a colour chip inline beside it (one chip grammar; the
+   colour chip reads at the plate's 14pt so the plate stays dominant),
+   `StatusBadge` when not plain active, then the **stat band**: three
+   hairline-divided cells — bounty (terracotta) / sightings / last-seen — the
+   reference's stat-module anatomy. The bounty label carries an ⓘ opening a
+   `ConfirmDialog` explainer ("How the bounty works"); the old solo
+   display-size bounty section was removed (it duplicated the sticky bar).
+3. **Last seen here** (promoted) — the title + a place/time fact chip
+   ("St Albans · 1w ago") inline, then a large
    (`sizes.mapPreview`) non-interactive `AppMap` preview (`LastSeenMap`,
    `interactive={false}`) with a single pin and a small expand badge; tap
    opens the full search map centred there (`/search-map?lat&lng`).
-5. **What to look for** — the spotter's recognition kit in one section: body
-   type / distinguishing-features rows, the checkable-taxonomy feature list
-   (`FeaturesGrid`, one per row), and the guided "how to spot it" prose
-   (`desc_recognise`, `ReadMore`). Renders when ANY piece exists; omitted
-   entirely otherwise (old posts).
-6. **How it drives** (`desc_drives`, `ReadMore`); the legacy `owner_note`
-   still renders under "Owner's note" for older posts with no guided prose.
-7. **Trust & verification** (`TrustBlock`) — highlight rows (48pt tile,
+4. **About this car** — the reference's clamped description: the guided
+   "how to spot it" prose (`desc_recognise`; older posts fall back to
+   `desc_drives` then `owner_note`) clamped at 6 lines, then a grey
+   `subtle` "Show more" button pushing **`/post-about`**
+   (`PostAboutScreen`) — the full prose under bold subheads ("How to spot
+   it", "How it drives", "Owner's note"). ALWAYS renders: a prose-less post
+   shows "The owner hasn't added a description yet." (honest absence, no
+   Show more).
+5. **Car details** — the reference's amenities anatomy with the FULL list
+   in-page (`lib/carDetails.ts`; no Show-all tap — product call
+   2026-07-23): identity facts, taxonomy features, distinguishing marks,
+   theft context, then muted struck-through **"Not provided"** rows naming
+   the gaps (stated, never omitted — report-completeness as a trust
+   device). **SAFETY**: theft context stays coarse (`stolen_from` +
+   `keys_taken`, never an address); a driveway theft's last-seen point is
+   coarsened to ~1km for non-owners in `get_post_detail` (the map/feed RPCs
+   still need the same — see the migration's follow-up banner and DOMAIN.md).
+6. **Trust & verification** (`TrustBlock`) — the highlight row (48pt tile,
    headline + evidence line): "Ownership verified" (derived from `status`;
    the owner's own unverified post reads "Pending verification") with its
-   V5C evidence line, "Posted `<date>`", "Active until `<date>`" (while live).
-8. **Theft details** — `stolen_from` + `keys_taken` (coarse; never an address).
-   **SAFETY**: a driveway theft's last-seen point is coarsened to ~1km for
-   non-owners in `get_post_detail` (the map/feed RPCs still need the same — see
-   the migration's follow-up banner and DOMAIN.md).
-9. **Owner** (`OwnerBlock`, Airbnb "meet the host" placement) — **SAFETY**:
-   signed-in viewers see an initial-letter avatar + "Posted by `<first name>`"
-   + member-since; anonymous viewers see a de-identified "Verified owner"
-   (member-since only). **No photo** — a `<owner_id>/…` avatar path would leak
-   `owner_id` (→ surname). Never surname/`display_name`, `owner_id`, or contact.
-   Gated server-side in `get_post_detail`; see DOMAIN.md "Owner identity on a
-   post".
-10. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
+   V5C evidence line, the shield in `colors.success` (verification is status,
+   not an action). Posted/active-until rows removed 2026-07-23; the section
+   is skipped entirely (`hasTrustRow`) for rejected/cancelled.
+7. **Owner** (`OwnerCard`, the reference's host-passport card — the page's
+   one elevated object): centred avatar + first name + "Owner" caption
+   beside a stat column (time on Trackitdown; sightings on this post).
+   Calm register — "Owner", never "Meet the owner". **SAFETY**: signed-in
+   viewers see an initial-letter avatar + first name; anonymous viewers a
+   de-identified "Verified owner" shield. **No photo** — a `<owner_id>/…`
+   avatar path would leak `owner_id` (→ surname). Never
+   surname/`display_name`, `owner_id`, or contact. Gated server-side in
+   `get_post_detail`; see DOMAIN.md "Owner identity on a post".
+   Non-owners also get a **"Message the owner"** affordance HERE (sighting-
+   gated — DOMAIN Chat): a viewer who has already reported gets a quiet grey
+   (`subtle`) **"Message the owner"** button that opens the thread (the
+   reference's "Message host" treatment); everyone else gets honest copy + a
+   quiet **"Report a sighting"** link into the report flow (a text link, not
+   a second button — the sticky bar's "I've seen this car" is the primary
+   route). Hidden for the owner. Driven by
+   `get_post_detail.viewer_has_sighting`.
+8. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
     the section renders only when count > 0 and lights up when the sightings
     feature ships. **SAFETY** (SECURITY_AND_TRUST §6): aggregate count ONLY,
     never individual sightings or their locations to a non-owner.
-    Non-owners also get a **"Message the owner"** affordance in this section
-    (sighting-gated — DOMAIN Chat): a viewer who has already reported gets a
-    secondary **"Message the owner"** button that opens the thread; everyone
-    else gets honest copy + a quiet **"Report a sighting"** link into the
-    report flow (a text link, not a second button — the sticky bar's "I've
-    seen this car" is the primary route). Hidden for the owner (they reach
-    spotters via their sightings list). Driven by
-    `get_post_detail.viewer_has_sighting`.
-11. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
+9. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
     the underlined "Report this post" row (moved out of the header).
+10. **More cars nearby** (`useSimilarPosts`) — the reference's "More stays
+    nearby" shelf at the page's end: a full-bleed compact-`VehicleCard` rail
+    from the public `get_home_feed` RPC centred on THIS car's last-seen point
+    (title drops the "nearby" and the coord centring when the post has no
+    coords). Reuses the feed pipeline, adds no server surface; excludes the
+    post itself, caps at 6, and is quietly absent (never an error) on failure.
 
 **Sticky bottom bar** (`PostBottomBar`) — always visible, safe-area padded.
 - **Spotter:** bounty + "reward", primary "I've seen this car" → Toast
@@ -101,8 +123,8 @@ graceful "recovered / no longer active" `EmptyState`; error: `ErrorState` +
 retry. **Logging** `createLogger('vehicles')`: `post_view` (postId, mode).
 
 **Shared UI built with this feature** — `AppHeader` (+ scroll fade),
-`StatusBadge` (extracted from VehicleCard), `SafetyNotice`, `ReadMore`, and an
-`interactive` prop on `AppMap`.
+`StatusBadge` (extracted from VehicleCard), `SafetyNotice`, the `subtle`
+`Button` variant, and an `interactive` prop on `AppMap`.
 
 **Out of scope** — chat entry (needs a sighting first, arrives with
 sightings), owner editing (my-cars), related-cars, comments, the photo upload

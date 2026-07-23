@@ -97,10 +97,10 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flexShrink: 1,
   },
-  // Weight only — keep body's 16/24 metrics so the row height doesn't jump
+  // Family only (Satoshi-Bold) — keep body's 16/24 metrics so the row height doesn't jump
   // between read and unread neighbours.
   nameUnread: {
-    fontWeight: typography.cardTitle.fontWeight,
+    fontFamily: typography.cardTitle.fontFamily,
   },
   time: {
     ...typography.caption,

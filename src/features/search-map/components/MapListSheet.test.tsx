@@ -21,6 +21,9 @@ import type { MapPost } from '../types';
 const mockClose = jest.fn();
 const mockSnapToIndex = jest.fn();
 
+// The watch toggle drags in the supabase client + gate — out of scope here.
+jest.mock('@/features/watchlist', () => ({ WatchToggle: () => null }));
+
 // The official reanimated mock lacks useReducedMotion, which the sheet now
 // reads (motion audit — reduce-motion guard); extend it.
 jest.mock('react-native-reanimated', () => ({

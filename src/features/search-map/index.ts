@@ -8,6 +8,9 @@
 
 export { HomeFeedScreen } from './screens/HomeFeedScreen';
 export { MapSearchScreen } from './screens/MapSearchScreen';
+// The one data export: the post-detail "More stolen cars nearby" rail reuses
+// the home-feed RPC centred on a post's last-seen point (vehicles feature).
+export { fetchHomeFeed } from './api/feedApi';
 export type {
   FeedItem,
   FeedItemType,

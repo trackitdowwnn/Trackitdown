@@ -15,6 +15,7 @@
  */
 
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, StyleSheet, useColorScheme } from 'react-native';
@@ -34,6 +35,21 @@ const pushAnimation = Platform.select({
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  // Satoshi (the app-wide family — typography tokens reference these exact
+  // names). Runtime-loaded so the existing dev client needs no rebuild.
+  const [fontsLoaded, fontError] = useFonts({
+    'Satoshi-Regular': require('../assets/fonts/Satoshi-Regular.otf'),
+    'Satoshi-Medium': require('../assets/fonts/Satoshi-Medium.otf'),
+    'Satoshi-Bold': require('../assets/fonts/Satoshi-Bold.otf'),
+    'Satoshi-Black': require('../assets/fonts/Satoshi-Black.otf'),
+  });
+
+  // Hold first paint the (few ms) the faces take — a load FAILURE renders
+  // anyway on the system font rather than blanking the app.
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
 
   return (
     <GestureHandlerRootView style={styles.root}>

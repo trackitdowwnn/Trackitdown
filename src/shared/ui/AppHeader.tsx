@@ -48,12 +48,20 @@ const HeaderFadeContext = createContext<HeaderFade | null>(null);
 export interface AppHeaderButtonProps {
   onPress: () => void;
   accessibilityLabel: string;
+  /** For toggle-style buttons (e.g. watchlist): screen readers announce the
+   *  on/off state alongside the label. */
+  accessibilityState?: { selected?: boolean };
   children: ReactNode;
 }
 
 /** Circular surface-white icon button — stays legible floating over a photo.
  *  Inside an AppHeader the circle fades out as the bar solidifies. */
-export function AppHeaderButton({ onPress, accessibilityLabel, children }: AppHeaderButtonProps) {
+export function AppHeaderButton({
+  onPress,
+  accessibilityLabel,
+  accessibilityState,
+  children,
+}: AppHeaderButtonProps) {
   const fade = useContext(HeaderFadeContext);
 
   // Circle + shadow fade 1 → 0 over the bar's own fade range; a plain solid
@@ -73,6 +81,7 @@ export function AppHeaderButton({ onPress, accessibilityLabel, children }: AppHe
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={accessibilityState}
       onPress={onPress}
       style={styles.buttonHit}
     >

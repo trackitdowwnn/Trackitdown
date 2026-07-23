@@ -21,6 +21,7 @@ import { memo, useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { WatchToggle } from '@/features/watchlist';
 import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { EmptyState, ErrorState, SkeletonVehicleCard, VehicleCard } from '@/shared/ui';
@@ -123,7 +124,11 @@ export const MapListSheet = memo(function MapListSheet({
           keyExtractor={(post: MapPost) => post.id}
           renderItem={({ item }: { item: MapPost }) => (
             <View style={styles.card}>
-              <VehicleCard post={item} onPress={() => onPressPost(item)} />
+              <VehicleCard
+                post={item}
+                onPress={() => onPressPost(item)}
+                topRightAction={<WatchToggle postId={item.id} source="map" />}
+              />
             </View>
           )}
           ListEmptyComponent={

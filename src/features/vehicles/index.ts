@@ -6,5 +6,7 @@
  * LINKS: src/features/vehicles/README.md.
  */
 
+export { MyCarsScreen } from './screens/MyCarsScreen';
+export { PostAboutScreen } from './screens/PostAboutScreen';
 export { PostDetailScreen, type PostDetailScreenProps } from './screens/PostDetailScreen';
 export type { PostDetail, PostDetailResult, ClosedReason } from './types';

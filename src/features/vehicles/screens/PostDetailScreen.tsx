@@ -25,7 +25,10 @@ import { Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Bookmark } from 'lucide-react-native';
+
 import { useRequireAuth } from '@/features/auth';
+import { useWatchToggle } from '@/features/watchlist';
 import { createLogger } from '@/shared/lib/logger';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import {
@@ -43,6 +46,7 @@ import { PostBottomBar } from '../components/PostBottomBar';
 import { PostDetailBody } from '../components/PostDetailBody';
 import { PostHero } from '../components/PostHero';
 import { usePostDetail } from '../hooks/usePostDetail';
+import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { closedStateCopy } from '../lib/closedState';
 import { buildSharePayload } from '../lib/postShare';
 import type { PostDetail, PostDetailResult } from '../types';
@@ -84,6 +88,15 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
 
   const visiblePost = status === 'ready' && result?.kind === 'visible' ? result.post : null;
 
+  // The "More stolen cars nearby" rail — waits for the post (its coords
+  // centre the query), quietly empty on failure.
+  const similar = useSimilarPosts(
+    postId,
+    visiblePost?.lat,
+    visiblePost?.lng,
+    visiblePost != null,
+  );
+
   // Log the view once per resolved visible post, with the viewer's mode.
   useEffect(() => {
     if (visiblePost) {
@@ -96,6 +109,10 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     // Share sheet cancel / no target rejects — nothing to recover from.
     void Share.share({ message, url }).catch(() => {});
   }, []);
+
+  // Header watch toggle: AppHeaderButton chrome (matches share, rides the
+  // header's scroll fade) with the shared toggle behaviour underneath.
+  const watch = useWatchToggle(postId, 'detail');
 
   const onFlagConfirm = useCallback(() => {
     // Phase-4 stub: no flags table yet — acknowledge and log only.
@@ -126,6 +143,10 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
 
   const onViewSightings = useCallback(() => {
     router.push({ pathname: '/post-sightings', params: { postId } });
+  }, [postId, router]);
+
+  const onShowAbout = useCallback(() => {
+    router.push({ pathname: '/post-about', params: { postId } });
   }, [postId, router]);
 
   // Message the owner — sighting-gated (DOMAIN Chat). A viewer who has already
@@ -172,8 +193,8 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   );
 
   const onManage = useCallback(() => {
-    // my-cars is a tab stub today; the management screen lands there later.
-    router.push('/(tabs)/my-cars');
+    // My cars is a stub today; the management screen lands there later.
+    router.push('/my-cars');
   }, [router]);
 
   const onOpenMap = useCallback(
@@ -224,6 +245,10 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 onMessageOwner={
                   result.post.isOwner ? undefined : () => onMessageOwner(result.post)
                 }
+                onShowAbout={onShowAbout}
+                similarPosts={similar.posts}
+                similarLoading={similar.status === 'loading'}
+                onOpenPost={(next) => router.push(`/post/${next.id}`)}
               />
             </View>
           </>
@@ -242,9 +267,27 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         onBack={() => router.back()}
         rightActions={
           visiblePost ? (
-            <AppHeaderButton accessibilityLabel="Share" onPress={() => onShare(visiblePost)}>
-              <Feather name="share" size={sizes.iconSm} color={colors.textPrimary} />
-            </AppHeaderButton>
+            <>
+              {/* Watching your own car is pointless — owners get share only. */}
+              {!visiblePost.isOwner ? (
+                <AppHeaderButton
+                  accessibilityLabel={
+                    watch.watched ? 'Remove from your watchlist' : 'Add to your watchlist'
+                  }
+                  accessibilityState={{ selected: watch.watched }}
+                  onPress={watch.toggle}
+                >
+                  <Bookmark
+                    size={sizes.iconSm}
+                    color={watch.watched ? colors.primary : colors.textPrimary}
+                    fill={watch.watched ? colors.primary : 'transparent'}
+                  />
+                </AppHeaderButton>
+              ) : null}
+              <AppHeaderButton accessibilityLabel="Share" onPress={() => onShare(visiblePost)}>
+                <Feather name="share" size={sizes.iconSm} color={colors.textPrimary} />
+              </AppHeaderButton>
+            </>
           ) : null
         }
       />

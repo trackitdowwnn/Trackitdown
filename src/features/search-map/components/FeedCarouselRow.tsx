@@ -18,6 +18,7 @@
 import { memo, useCallback } from 'react';
 import { FlatList, StyleSheet, View, useWindowDimensions } from 'react-native';
 
+import { WatchToggle } from '@/features/watchlist';
 import { spacing } from '@/shared/theme';
 import type { PostSummary } from '@/shared/types';
 import { SkeletonVehicleCard, VehicleCard } from '@/shared/ui';
@@ -54,7 +55,12 @@ export const FeedCarouselRow = memo(function FeedCarouselRow({
   const renderItem = useCallback(
     ({ item }: { item: PostSummary }) => (
       <View style={{ width: cardWidth }}>
-        <VehicleCard post={item} variant="compact" onPress={() => onPressPost(item)} />
+        <VehicleCard
+          post={item}
+          variant="compact"
+          onPress={() => onPressPost(item)}
+          topRightAction={<WatchToggle postId={item.id} source="feed" />}
+        />
       </View>
     ),
     [onPressPost, cardWidth],

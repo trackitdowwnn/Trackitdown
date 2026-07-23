@@ -27,7 +27,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -41,9 +41,15 @@ import { easeOut } from '@/shared/theme/motionEasing';
 
 export type ToastKind = 'success' | 'error';
 
+/** Optional inline action ("View") — pressing runs it and dismisses. */
+export interface ToastAction {
+  label: string;
+  onPress: () => void;
+}
+
 interface ToastValue {
   /** Show a toast; a new call replaces the current one. */
-  show: (message: string, kind?: ToastKind) => void;
+  show: (message: string, kind?: ToastKind, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastValue | null>(null);
@@ -59,6 +65,7 @@ export function useToast(): ToastValue {
 interface ActiveToast {
   message: string;
   kind: ToastKind;
+  action?: ToastAction;
   /** Distinguishes back-to-back toasts with identical text. */
   id: number;
 }
@@ -72,10 +79,24 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const visible = useSharedValue(0);
 
-  const show = useCallback((message: string, kind: ToastKind = 'success') => {
-    nextId.current += 1;
-    setToast({ message, kind, id: nextId.current });
-  }, []);
+  const show = useCallback(
+    (message: string, kind: ToastKind = 'success', action?: ToastAction) => {
+      nextId.current += 1;
+      setToast({ message, kind, action, id: nextId.current });
+    },
+    [],
+  );
+
+  // Action press: run, then dismiss NOW (instant unmount — the user acted;
+  // no shared-value writes here, the show effect owns the animation).
+  const runAction = useCallback(() => {
+    const action = toast?.action;
+    if (hideTimer.current) {
+      clearTimeout(hideTimer.current);
+    }
+    setToast(null);
+    action?.onPress();
+  }, [toast]);
 
   useEffect(() => {
     if (!toast) {
@@ -116,18 +137,41 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {toast ? (
         <View
           style={[styles.host, { bottom: insets.bottom + sizes.tabBar + spacing.lg }]}
-          pointerEvents="none"
+          // Only a toast WITH an action may receive taps; a plain toast must
+          // never block the screen beneath it.
+          pointerEvents={toast.action ? 'box-none' : 'none'}
+          testID="toast-host"
         >
           <Animated.View
             style={[styles.pill, toast.kind === 'error' && styles.pillError, animatedStyle]}
             accessibilityLiveRegion="polite"
-            accessible
+            accessible={!toast.action}
             accessibilityLabel={toast.message}
             testID={`toast-${toast.kind}`}
           >
-            <Text style={styles.message} numberOfLines={2}>
-              {toast.message}
-            </Text>
+            <View style={styles.pillRow}>
+              {/* With an action the pill isn't one accessible node — put the
+                  live region on the message itself so Android still
+                  announces (iOS is covered by announceForAccessibility). */}
+              <Text
+                style={styles.message}
+                numberOfLines={2}
+                accessibilityLiveRegion={toast.action ? 'polite' : 'none'}
+              >
+                {toast.message}
+              </Text>
+              {toast.action ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={toast.action.label}
+                  onPress={runAction}
+                  // Tops the label line up to the 44pt minimum target.
+                  hitSlop={spacing.lg}
+                >
+                  <Text style={styles.actionLabel}>{toast.action.label}</Text>
+                </Pressable>
+              ) : null}
+            </View>
           </Animated.View>
         </View>
       ) : null}
@@ -155,9 +199,21 @@ const styles = StyleSheet.create({
   pillError: {
     backgroundColor: colors.danger,
   },
+  pillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   message: {
     ...typography.label,
     color: colors.textOnPrimary,
     textAlign: 'center',
+    flexShrink: 1,
+  },
+  // Underline = tappable (design-system convention), on the pill's dark fill.
+  actionLabel: {
+    ...typography.label,
+    color: colors.textOnPrimary,
+    textDecorationLine: 'underline',
   },
 });

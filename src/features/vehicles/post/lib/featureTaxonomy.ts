@@ -10,7 +10,7 @@
  *        under-offer, never post an invalid key. KEEP IN SYNC with the seed.
  * LINKS: supabase/migrations/20260713180000_post_detail_structured_data.sql
  *          (the vehicle_feature seed — source of truth);
- *        src/features/vehicles/components/FeaturesGrid.tsx (renders the icons);
+ *        src/features/vehicles/lib/carDetails.ts (renders them as detail rows);
  *        src/shared/ui/ChoiceChipsMulti.tsx (the picker).
  */
 
