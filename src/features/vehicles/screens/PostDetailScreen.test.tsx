@@ -91,6 +91,7 @@ const post: PostDetail = {
   photos: [{ uri: 'https://img/1' }],
   owner: { memberSince: '2025-01-05T00:00:00Z', firstName: 'Alex' },
   features: [],
+  distinctiveFeatures: [],
   sightingCount: 0,
   viewerHasSighting: false,
 };

@@ -19,6 +19,7 @@
 
 import { useRouter } from 'expo-router';
 
+import { successHaptic } from '@/shared/lib/haptics';
 import { useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
 
@@ -35,7 +36,9 @@ export function PostACarScreen() {
     // stays intact and shows the message for retry (losing a completed wizard
     // to a blip is the failure this flow guards against).
     const result = await submitPost(answers);
-    // PAYMENT STUB: draft created, no charge taken yet.
+    // PAYMENT STUB: draft created, no charge taken yet. A gentle success buzz
+    // confirms the completion moment alongside the toast.
+    successHaptic();
     toast.show(
       'Your report is saved. Payment and verification are coming soon.',
       'success',

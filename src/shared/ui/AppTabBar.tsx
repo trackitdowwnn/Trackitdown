@@ -1,7 +1,7 @@
 /**
  * WHAT:  AppTabBar — the app's bottom navigation bar: a custom `tabBar` for
  *        Expo Router's Tabs rendering from a config array (icon, label,
- *        route, badge, optional photo-as-icon), with per-tab terracotta
+ *        route, badge, optional photo-as-icon), with per-tab accent (near-black)
  *        badges, a gentle press spring, active-colour crossfade (photo tabs
  *        get a primary ring instead — photos don't tint), and an animated
  *        hide for full-screen flows. Plus TabBadgeProvider/useTabBadges, the
@@ -469,9 +469,9 @@ const styles = StyleSheet.create({
     top: -spacing.xs,
     right: -spacing.sm,
   },
-  // accentText, not accent: white 11pt text on plain terracotta is ~3.2:1
-  // (below AA); on the darker text-grade terracotta it passes. The dot
-  // matches so both badge forms read as one colour.
+  // accentText: monochrome scheme, so accent and accentText are the same
+  // near-black — white 11pt text on it is ~16:1 (AAA). The dot matches so both
+  // badge forms read as one colour. (Token kept for intent / future re-theme.)
   badgeDot: {
     width: sizes.badgeDot,
     height: sizes.badgeDot,

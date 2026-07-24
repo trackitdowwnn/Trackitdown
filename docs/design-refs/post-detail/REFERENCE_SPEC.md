@@ -39,7 +39,7 @@ src/features/vehicles/README.md (our screen's anatomy).
 | **Section rhythm** | divider → ~32dp → section title → ~16dp → content → ~32dp → divider | `spacing.xxl` / `spacing.lg` (**ours is 24/8 — see gaps**) |
 | Content sheet | white sheet with **large rounded top corners (~24–28dp)** slides up over the hero's bottom edge | `radii.xl` (24) |
 | Canvas | pure white; depth via whitespace, near-zero shadows | our `background`/`surface` split is warmer — deliberate palette, keep |
-| Accent discipline | ONE high-chroma colour, only on the primary CTA; all else ink + greys | = our terracotta-reserved-for-bounty rule ✅ |
+| Accent discipline | ONE high-chroma colour, only on the primary CTA; all else ink + greys | = our accent-reserved-for-bounty rule; monochrome since ADR-0006 (accent is near-black) ✅ |
 
 ## 2 — Hero carousel + floating buttons
 

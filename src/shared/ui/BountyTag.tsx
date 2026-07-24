@@ -1,9 +1,10 @@
 /**
- * WHAT:  BountyTag — a bounty amount in the terracotta accent ("£500
+ * WHAT:  BountyTag — a bounty amount in the near-black accent ("£500
  *        bounty"), always formatted from integer pence via the shared
  *        money formatter.
  * WHY:   Bounty moments are the one place the accent colour appears
- *        (docs/DESIGN_SYSTEM.md — accent is reserved so it keeps meaning),
+ *        (docs/DESIGN_SYSTEM.md — accent is reserved so it keeps meaning;
+ *        monochrome scheme, so it's near-black, distinguished by weight),
  *        and the amount is the action driver on every card and detail
  *        screen. Centralising it guarantees no surface ever formats money
  *        its own way. `md` for inline rows, `lg` for card anchor lines.
@@ -26,7 +27,7 @@ export interface BountyTagProps {
   size?: 'md' | 'lg';
 }
 
-/** Terracotta bounty amount, always formatted from integer pence. */
+/** Near-black bounty amount, always formatted from integer pence. */
 export function BountyTag({ bountyPence, size = 'md' }: BountyTagProps) {
   const amount = formatPounds(bountyPence);
   return (
@@ -43,8 +44,9 @@ export function BountyTag({ bountyPence, size = 'md' }: BountyTagProps) {
 }
 
 const styles = StyleSheet.create({
-  // accentText, not accent: label-size terracotta needs the darker shade to
-  // pass AA on the near-white background (accent itself is fill/large-type only).
+  // accentText: in the monochrome scheme accent and accentText are the same
+  // near-black (~15:1 AAA as text); the token name is kept for intent and so a
+  // future re-theme that gives bounty its own hue is a one-line swap.
   base: {
     color: colors.accentText,
   },

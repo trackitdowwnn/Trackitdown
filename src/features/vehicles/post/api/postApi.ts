@@ -15,7 +15,9 @@
  *        surfaces verbatim while keeping every answer in place for retry.
  * LINKS: src/features/vehicles/post/types.ts (answers + params shapes);
  *        supabase/migrations/20260713190000_post_a_car.sql (create_post,
- *          buckets, error strings) + …191000 (deny-anon);
+ *          buckets, error strings) + …191000 (deny-anon)
+ *          + …20260724100000_post_distinctive_features.sql (the current 21-arg
+ *          create_post body + the DISTINCTIVE_* error codes translated here);
  *        src/features/profile/api/profileApi.ts (uploadAvatar — the pipeline
  *          this mirrors); docs/LOGGING.md ([vehicles] tag, ids not PII).
  */
@@ -27,6 +29,7 @@ import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 import type { PhotoTileStatus, PickedPhoto } from '@/shared/ui';
 
+import { distinctiveFeaturesSchema } from '../lib/distinctiveFeatures';
 import type { CreatePostParams, CreatePostResult, PostACarAnswers } from '../types';
 
 const log = createLogger('vehicles');
@@ -61,6 +64,10 @@ export const CREATE_POST_ERROR_MESSAGES: Record<string, string> = {
   // not something the user typed — keep the copy generic and retryable.
   INVALID_PHOTO_URL: 'We couldn’t attach one of your photos. Please try again.',
   INVALID_VERIFICATION_PATH: 'We couldn’t attach your proof of ownership. Please try again.',
+  DISTINCTIVE_FEATURES_COUNT: 'You can add up to 8 distinctive features.',
+  INVALID_DISTINCTIVE_FEATURE: 'Each feature description needs to be 3–80 characters.',
+  INVALID_DISTINCTIVE_PHOTO_URL:
+    'We couldn’t attach one of your feature photos. Please try again.',
 };
 
 const CREATE_POST_FALLBACK = 'We couldn’t create your post. Please try again.';
@@ -91,16 +98,18 @@ const photoShape = z.object({
 // `undefined` the controller leaves for steps a user never edits) or .default()
 // so an untouched optional field never blanket-fails as INCOMPLETE.
 const submitAnswersSchema = z.object({
-  // Optional — blank/absent means a plate-less post (make/model/colour identify it).
-  plate: z.string().optional(),
+  // Plate collection removed from the wizard (deferred) — every post is
+  // plate-less for now; make/model/colour identify it. p_plate → null below.
   make: z.string().min(1),
   model: z.string().min(1),
   colour: z.string().min(1),
+  // Free-text note for an escape colour (wrapped/other) → owner_note; '' otherwise.
+  colourNote: z.string().default(''),
   // Mirrors the posts.year CHECK (1900–2100) — defense in depth with the step.
   year: z.number().int().min(1900).max(2100).nullish(),
   bodyType: z.string().nullish(),
-  featureKeys: z.array(z.string()).default([]),
-  descRecognise: z.string().default(''),
+  // Owner evidence pairs (photo + description); re-checks the per-step model.
+  distinctiveFeatures: distinctiveFeaturesSchema,
   photos: z.array(photoShape).min(3).max(6),
   lastSeenAt: z.string().min(1),
   location: z.object({
@@ -132,29 +141,31 @@ function emptyToNull(value: string): string | null {
 }
 
 /**
- * Alphanumeric-only upper canon of a plate — mirrors create_post's server canon.
- * An empty canon (blank, punctuation-only like "--", or non-ASCII homoglyphs)
- * means "no plate", so the client agrees with the server that it's plate-less
- * (avoids the review screen showing junk the server will store as NULL).
- */
-export function plateCanon(plate: string | null | undefined): string {
-  return (plate ?? '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-}
-
-/**
  * Map validated answers + upload results onto the create_post RPC arguments.
- * Pure and mock-free so the mapping is unit-tested directly. NOTE: the legacy
- * `distinguishing_features`/`owner_note` free-text columns are intentionally
- * null — this flow collects the taxonomy (feature_keys) + guided prompts
- * (desc_recognise/desc_drives) instead.
+ * Pure and mock-free so the mapping is unit-tested directly. NOTE: plate
+ * collection is deferred (removed from the wizard), so p_plate is always null
+ * for now — a post is identified by make/model/colour. The legacy
+ * `distinguishing_features` / `desc_recognise` free-text columns and the
+ * `feature_keys` chip taxonomy are all null now — this flow collects the
+ * distinctive-features evidence pairs (photo + description) instead. `owner_note`
+ * carries the colour
+ * note (a wrapped/other colour's specifics), null when the colour is a plain
+ * swatch. `distinctiveFeatureUrls` are the just-uploaded photo URLs, zipped
+ * with each pair's description IN ORDER (uploaded in answers order).
  */
 export function buildCreatePostParams(
   answers: SubmitReadyAnswers,
-  uploads: { photoUrls: string[]; verificationPath: string | null },
+  uploads: {
+    photoUrls: string[];
+    verificationPath: string | null;
+    // The just-uploaded distinctive-feature photo URLs, in answers order.
+    // Optional so callers with no marks needn't pass it (defaults to []).
+    distinctiveFeatureUrls?: string[];
+  },
 ): CreatePostParams {
   return {
-    // Null when the canon is empty (blank / punctuation-only) → plate-less.
-    p_plate: plateCanon(answers.plate).length > 0 ? (answers.plate ?? '').trim() : null,
+    // Plate collection deferred — always plate-less for now.
+    p_plate: null,
     p_make: answers.make,
     p_model: answers.model,
     p_colour: answers.colour,
@@ -162,8 +173,8 @@ export function buildCreatePostParams(
     p_year: answers.year ?? null,
     p_body_type: answers.bodyType ?? null,
     p_distinguishing_features: null,
-    p_owner_note: null,
-    p_desc_recognise: emptyToNull(answers.descRecognise),
+    p_owner_note: emptyToNull(answers.colourNote),
+    p_desc_recognise: null,
     p_desc_drives: emptyToNull(answers.descDrives),
     p_stolen_from: answers.stolenFrom ?? null,
     p_keys_taken: answers.keysTaken ?? null,
@@ -176,7 +187,14 @@ export function buildCreatePostParams(
     p_last_seen_area: answers.lastSeenArea,
     p_bounty_amount_pence: answers.bountyAmountPence,
     p_photo_urls: uploads.photoUrls,
-    p_feature_keys: answers.featureKeys.length > 0 ? answers.featureKeys : null,
+    // The vehicle_feature chip step was removed (distinctive marks replaced it);
+    // the RPC param stays for old callers / the post_feature table, always null.
+    p_feature_keys: null,
+    // Zip each pair's description with its just-uploaded photo URL, in order.
+    p_distinctive_features: answers.distinctiveFeatures.map((feature, index) => ({
+      photo_url: (uploads.distinctiveFeatureUrls ?? [])[index],
+      description: feature.description.trim(),
+    })),
     p_verification_path: uploads.verificationPath,
   };
 }
@@ -227,11 +245,14 @@ export async function uploadPostPhoto(
   userId: string,
   photo: PickedPhoto,
   index = 0,
+  // Namespaces the object key so distinctive-feature photos ('mark-') never
+  // collide with the hero photos (default ''), each still retry-overwritable.
+  keyPrefix = '',
 ): Promise<string> {
   const startedAt = Date.now();
   log.debug('Uploading post photo', { userId, index });
   const body = await toJpegBytes(photo, PHOTO_MAX_EDGE, PHOTO_COMPRESS);
-  const path = `${userId}/${stableHash(photo.uri)}-${index}.jpg`;
+  const path = `${userId}/${keyPrefix}${stableHash(photo.uri)}-${index}.jpg`;
   const { error } = await supabase.storage
     .from(POST_PHOTOS_BUCKET)
     .upload(path, body, { contentType: 'image/jpeg', upsert: true });
@@ -266,31 +287,6 @@ export async function uploadVerificationDocument(
   }
   log.debug('Verification document uploaded', { userId, durationMs: Date.now() - startedAt });
   return path;
-}
-
-// --- Plate availability (early check for the plate step) ---------------------
-
-/**
- * Throw a user-facing error if the plate already has a live/in-flight post.
- * Used by the wizard's plate-step onContinue for early feedback; create_post
- * re-checks at submit (the real enforcement). A check failure (network) is
- * surfaced too so the step doesn't advance on an unverified plate.
- */
-export async function checkPlateAvailable(plate: string): Promise<void> {
-  const { data, error } = await supabase.rpc('plate_available', { p_plate: plate });
-  if (error) {
-    log.warn('plate_available check failed', { code: error.code });
-    throw new PostSubmissionError(
-      'We couldn’t check that number plate just now. Please try again.',
-      'PLATE_CHECK',
-    );
-  }
-  if (data === false) {
-    throw new PostSubmissionError(
-      CREATE_POST_ERROR_MESSAGES.PLATE_IN_USE,
-      'PLATE_IN_USE',
-    );
-  }
 }
 
 // --- RPC call ----------------------------------------------------------------
@@ -381,6 +377,25 @@ export async function submitPost(
     }
   }
 
+  // Distinctive-feature photos: uploaded IN ORDER so the URLs zip back onto
+  // their descriptions. Per-item overlay + retry; a failure throws and leaves
+  // the wizard (and every added pair) intact, so a retry re-uploads only what
+  // the stable per-uri path hasn't already stored.
+  const distinctiveFeatureUrls: string[] = [];
+  for (const [index, feature] of ready.distinctiveFeatures.entries()) {
+    onPhotoStatus?.(feature.photo.uri, { kind: 'uploading' });
+    try {
+      distinctiveFeatureUrls.push(await uploadPostPhoto(userId, feature.photo, index, 'mark-'));
+      onPhotoStatus?.(feature.photo.uri, null);
+    } catch {
+      onPhotoStatus?.(feature.photo.uri, { kind: 'error' });
+      throw new PostSubmissionError(
+        'One of your feature photos didn’t upload. Check your connection and try again.',
+        'FEATURE_PHOTO_UPLOAD',
+      );
+    }
+  }
+
   let verificationPath: string | null = null;
   if (ready.verification) {
     try {
@@ -393,5 +408,7 @@ export async function submitPost(
     }
   }
 
-  return createPost(buildCreatePostParams(ready, { photoUrls, verificationPath }));
+  return createPost(
+    buildCreatePostParams(ready, { photoUrls, verificationPath, distinctiveFeatureUrls }),
+  );
 }

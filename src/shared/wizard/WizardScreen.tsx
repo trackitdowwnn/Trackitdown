@@ -39,6 +39,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAndroidKeyboardHeight } from '../hooks';
 import { colors, spacing, typography } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
+import { resolveQuestion } from './navigation';
 import { PhaseIntro } from './PhaseIntro';
 import { ReviewStep } from './ReviewStep';
 import { WizardFooter } from './WizardFooter';
@@ -102,17 +103,24 @@ export function WizardScreen<TAnswers>({
     return () => subscription.remove();
   }, [isFirstScreen, back, requestExit, busy]);
 
+  // What a screen-reader user hears on landing here. A dynamic question reads
+  // the answers, but this is a plain string, so the announce effect below fires
+  // only when the TEXT changes (a move) — not on every keystroke that mutates
+  // `answers` while the wording stays put.
+  const announcement =
+    screen.kind === 'intro'
+      ? // Intro descriptors only exist for phases that declare an intro.
+        (flow.phases[screen.phaseIndex].intro?.headline ?? '')
+      : screen.kind === 'step'
+        ? resolveQuestion(screen.step.question, answers)
+        : (flow.review?.title ?? 'Check your answers');
   // Tell screen-reader users what screen they landed on after each move.
+  // INVARIANT: adjacent screens must have DISTINCT text — a move to a screen
+  // whose text equals the previous one won't re-announce (dep is the string).
+  // Holds today (every question/headline/review title differs); keep it so.
   useEffect(() => {
-    const announcement =
-      screen.kind === 'intro'
-        ? // Intro descriptors only exist for phases that declare an intro.
-          (flow.phases[screen.phaseIndex].intro?.headline ?? '')
-        : screen.kind === 'step'
-          ? screen.step.question
-          : (flow.review?.title ?? 'Check your answers');
     AccessibilityInfo.announceForAccessibility(announcement);
-  }, [flow, screen]);
+  }, [announcement]);
 
   // Announce async-action errors too. accessibilityLiveRegion (on the error
   // Text below) covers Android; announceForAccessibility carries it to iOS
@@ -181,7 +189,7 @@ export function WizardScreen<TAnswers>({
               {screen.kind === 'step' ? (
                 <>
                   <Text accessibilityRole="header" style={styles.question}>
-                    {screen.step.question}
+                    {resolveQuestion(screen.step.question, answers)}
                   </Text>
                   {screen.step.helper ? (
                     <Text style={styles.helper}>{screen.step.helper}</Text>
@@ -190,6 +198,9 @@ export function WizardScreen<TAnswers>({
                     <screen.step.component
                       answers={answers}
                       setAnswers={controller.setAnswers}
+                      // A step's own Skip affordance advances without the Next
+                      // gate/action (returns to review on an edit spur).
+                      onSkip={controller.next}
                     />
                   </View>
                 </>

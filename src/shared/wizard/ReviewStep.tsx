@@ -12,8 +12,8 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '../theme';
-import { reviewGroups } from './navigation';
+import { colors, opacity, spacing, typography } from '../theme';
+import { resolveQuestion, reviewGroups } from './navigation';
 import type { WizardFlow } from './types';
 
 export interface ReviewStepProps<TAnswers> {
@@ -37,7 +37,7 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
             {group.title}
           </Text>
           {group.items.map(({ step, flatIndex }) => {
-            const label = step.reviewLabel ?? step.question;
+            const label = step.reviewLabel ?? resolveQuestion(step.question, answers);
             return (
               <View key={step.id} style={styles.item}>
                 <View style={styles.itemText}>
@@ -49,6 +49,7 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
                   accessibilityLabel={`Edit ${label}`}
                   hitSlop={spacing.lg}
                   onPress={() => onEdit(flatIndex)}
+                  style={({ pressed }) => (pressed ? styles.editPressed : undefined)}
                 >
                   <Text style={styles.editLink}>Edit</Text>
                 </Pressable>
@@ -97,8 +98,14 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textPrimary,
   },
+  // Underlined so it still reads as a tappable control in the monochrome scheme
+  // (near-black link text no longer stands out by colour alone).
   editLink: {
     ...typography.label,
     color: colors.primary,
+    textDecorationLine: 'underline',
+  },
+  editPressed: {
+    opacity: opacity.pressed,
   },
 });

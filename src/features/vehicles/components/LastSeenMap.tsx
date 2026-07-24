@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
     width: PIN_DIAMETER,
     height: PIN_DIAMETER,
     borderRadius: radii.full,
-    // Sage (primary), not terracotta — terracotta is reserved for bounty/value.
+    // primary, not accent — accent is reserved for bounty/value (both near-black).
     backgroundColor: colors.primary,
     borderWidth: 2,
     borderColor: colors.surface,

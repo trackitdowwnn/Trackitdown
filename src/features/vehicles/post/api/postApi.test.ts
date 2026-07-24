@@ -17,7 +17,6 @@ import {
   CREATE_POST_ERROR_MESSAGES,
   PostSubmissionError,
   buildCreatePostParams,
-  checkPlateAvailable,
   createPost,
   submitPost,
   type SubmitReadyAnswers,
@@ -67,14 +66,13 @@ beforeEach(() => {
 
 function readyAnswers(overrides: Partial<SubmitReadyAnswers> = {}): SubmitReadyAnswers {
   return {
-    plate: 'AB12CDE',
     make: 'BMW',
     model: '320d',
     colour: 'Blue',
+    colourNote: '',
     year: 2019,
     bodyType: 'Saloon',
-    featureKeys: ['tow_bar', 'dashcam'],
-    descRecognise: 'A dent on the rear door.',
+    distinctiveFeatures: [],
     photos: [
       { uri: 'file://a.jpg', width: 4000, height: 3000 },
       { uri: 'file://b.jpg', width: 4000, height: 3000 },
@@ -100,57 +98,72 @@ describe('buildCreatePostParams', () => {
     });
 
     expect(params).toMatchObject({
-      p_plate: 'AB12CDE',
+      // Plate capture deferred — always plate-less for now.
+      p_plate: null,
       p_make: 'BMW',
       p_year: 2019,
       p_last_seen_lat: 53.48,
       p_last_seen_lng: -2.24,
       p_last_seen_area: 'Manchester',
       p_bounty_amount_pence: 30000,
-      p_feature_keys: ['tow_bar', 'dashcam'],
       p_photo_urls: ['https://cdn/p/0', 'https://cdn/p/1', 'https://cdn/p/2'],
       p_verification_path: 'user-1/v5c-abc.jpg',
-      // Legacy free-text columns are deliberately unused by this flow.
+      // Legacy free-text columns + the removed chip taxonomy are all null now.
       p_distinguishing_features: null,
       p_owner_note: null,
+      p_feature_keys: null,
     });
   });
 
-  it('nulls empty guided prompts and an empty feature list', () => {
-    const params = buildCreatePostParams(
-      readyAnswers({ descRecognise: '   ', descDrives: '', featureKeys: [] }),
-      { photoUrls: ['a', 'b', 'c'], verificationPath: null },
-    );
+  it('nulls the removed guided prompts and chip taxonomy', () => {
+    const params = buildCreatePostParams(readyAnswers({ descDrives: '' }), {
+      photoUrls: ['a', 'b', 'c'],
+      verificationPath: null,
+    });
 
-    expect(params.p_desc_recognise).toBeNull();
+    expect(params.p_desc_recognise).toBeNull(); // free-text prompt removed — always null
     expect(params.p_desc_drives).toBeNull();
-    expect(params.p_feature_keys).toBeNull();
+    expect(params.p_feature_keys).toBeNull(); // chip taxonomy step removed — always null
     expect(params.p_verification_path).toBeNull();
   });
 
-  it('sends p_plate null for a plate-less car (blank or absent)', () => {
+  it('zips distinctive-feature descriptions with their uploaded photo URLs, in order', () => {
+    const marks = [
+      { photo: { uri: 'file://m0.jpg', width: 100, height: 100 }, description: '  Cracked wing mirror  ' },
+      { photo: { uri: 'file://m1.jpg', width: 100, height: 100 }, description: 'Rear window sticker' },
+    ];
+    const params = buildCreatePostParams(readyAnswers({ distinctiveFeatures: marks }), {
+      photoUrls: ['a', 'b', 'c'],
+      verificationPath: null,
+      distinctiveFeatureUrls: ['https://cdn/mark/0', 'https://cdn/mark/1'],
+    });
+
+    expect(params.p_distinctive_features).toEqual([
+      { photo_url: 'https://cdn/mark/0', description: 'Cracked wing mirror' },
+      { photo_url: 'https://cdn/mark/1', description: 'Rear window sticker' },
+    ]);
+  });
+
+  it('sends an empty distinctive-features array when none were added', () => {
+    const params = buildCreatePostParams(readyAnswers(), {
+      photoUrls: ['a', 'b', 'c'],
+      verificationPath: null,
+    });
+    expect(params.p_distinctive_features).toEqual([]);
+  });
+
+  it('carries the colour note into owner_note (trimmed), null when blank', () => {
     const uploads = { photoUrls: ['a', 'b', 'c'], verificationPath: null };
-    expect(buildCreatePostParams(readyAnswers({ plate: '   ' }), uploads).p_plate).toBeNull();
-    expect(buildCreatePostParams(readyAnswers({ plate: undefined }), uploads).p_plate).toBeNull();
-  });
-});
-
-describe('checkPlateAvailable', () => {
-  it('resolves when the plate is available', async () => {
-    mockRpc.mockResolvedValue({ data: true, error: null });
-    await expect(checkPlateAvailable('AB12CDE')).resolves.toBeUndefined();
-    expect(mockRpc).toHaveBeenCalledWith('plate_available', { p_plate: 'AB12CDE' });
+    expect(
+      buildCreatePostParams(
+        readyAnswers({ colour: 'Multicolour / wrapped', colourNote: '  matte black wrap  ' }),
+        uploads,
+      ).p_owner_note,
+    ).toBe('matte black wrap');
+    // A plain colour leaves no note → owner_note stays null.
+    expect(buildCreatePostParams(readyAnswers({ colourNote: '   ' }), uploads).p_owner_note).toBeNull();
   });
 
-  it('throws PLATE_IN_USE when the plate is taken', async () => {
-    mockRpc.mockResolvedValue({ data: false, error: null });
-    await expect(checkPlateAvailable('AB12CDE')).rejects.toMatchObject({ code: 'PLATE_IN_USE' });
-  });
-
-  it('throws a retryable error when the check itself fails', async () => {
-    mockRpc.mockResolvedValue({ data: null, error: { code: 'XX000', message: 'boom' } });
-    await expect(checkPlateAvailable('AB12CDE')).rejects.toMatchObject({ code: 'PLATE_CHECK' });
-  });
 });
 
 describe('createPost', () => {
@@ -222,7 +235,6 @@ describe('submitPost', () => {
     // Only the genuinely-required answers — no year/bodyType/features/guided
     // prompts/theft-context/V5C, exactly as the controller leaves untouched steps.
     const minimal = {
-      plate: 'AB12CDE',
       make: 'BMW',
       model: '320d',
       colour: 'Blue',
@@ -242,14 +254,13 @@ describe('submitPost', () => {
     expect(params.p_verification_path).toBeNull();
   });
 
-  it('creates a plate-less post when no plate is given (p_plate null)', async () => {
+  it('always creates a plate-less post (p_plate null — plate capture deferred)', async () => {
     mockRpc.mockResolvedValue({
       data: { post_id: '44444444-4444-4444-4444-444444444444', status: 'draft' },
       error: null,
     });
-    const { plate: _plate, ...noPlate } = readyAnswers();
 
-    const result = await submitPost(noPlate);
+    const result = await submitPost(readyAnswers());
 
     expect(result.status).toBe('draft');
     expect((mockRpc.mock.calls[0][1] as Record<string, unknown>).p_plate).toBeNull();
@@ -270,10 +281,54 @@ describe('submitPost', () => {
   });
 
   it('rejects incomplete answers before touching storage or the RPC', async () => {
-    await expect(submitPost({ plate: 'AB12CDE' })).rejects.toMatchObject({ code: 'INCOMPLETE' });
+    await expect(submitPost({ make: 'BMW' })).rejects.toMatchObject({ code: 'INCOMPLETE' });
 
     expect(mockUpload).not.toHaveBeenCalled();
     expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('uploads distinctive-feature photos (mark- namespace) and zips them into the RPC, in order', async () => {
+    mockRpc.mockResolvedValue({
+      data: { post_id: '55555555-5555-5555-5555-555555555555', status: 'draft' },
+      error: null,
+    });
+    const marks = [
+      { photo: { uri: 'file://m0.jpg', width: 100, height: 100 }, description: 'Cracked wing mirror' },
+      { photo: { uri: 'file://m1.jpg', width: 100, height: 100 }, description: 'Rear window sticker' },
+    ];
+
+    await submitPost(readyAnswers({ distinctiveFeatures: marks }));
+
+    // Two extra post-photos uploads, under the owner's folder in the mark- namespace.
+    const markUploads = mockUpload.mock.calls.filter(
+      (call) => call[0] === 'post-photos' && /^user-1\/mark-/.test(call[1] as string),
+    );
+    expect(markUploads).toHaveLength(2);
+    // The RPC got the pairs in order, each description zipped to its public URL.
+    const params = mockRpc.mock.calls[0][1] as Record<string, unknown>;
+    const df = params.p_distinctive_features as { photo_url: string; description: string }[];
+    expect(df.map((d) => d.description)).toEqual(['Cracked wing mirror', 'Rear window sticker']);
+    expect(df.every((d) => /post-photos\/user-1\/mark-/.test(d.photo_url))).toBe(true);
+  });
+
+  it('stops before the RPC and flags the tile when a feature photo fails (answers kept for retry)', async () => {
+    // 3 hero photos ok, then the first mark photo fails.
+    mockUpload.mockResolvedValueOnce({ error: null });
+    mockUpload.mockResolvedValueOnce({ error: null });
+    mockUpload.mockResolvedValueOnce({ error: null });
+    mockUpload.mockResolvedValueOnce({ error: { message: 'network' } });
+    const onPhotoStatus = jest.fn();
+    const marks = [
+      { photo: { uri: 'file://m0.jpg', width: 100, height: 100 }, description: 'Cracked wing mirror' },
+    ];
+
+    await expect(
+      submitPost(readyAnswers({ distinctiveFeatures: marks }), { onPhotoStatus }),
+    ).rejects.toMatchObject({ code: 'FEATURE_PHOTO_UPLOAD' });
+
+    // No draft created — the wizard keeps every answer (incl. the marks) for retry.
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(onPhotoStatus).toHaveBeenCalledWith('file://m0.jpg', { kind: 'error' });
   });
 
   it('rejects when the caller is not signed in', async () => {

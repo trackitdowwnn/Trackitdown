@@ -16,6 +16,7 @@ import {
   ctaLabel,
   flattenFlow,
   phaseProgress,
+  resolveQuestion,
   reviewGroups,
   wizardReducer,
   type WizardNavState,
@@ -211,6 +212,19 @@ describe('reviewGroups', () => {
     expect(groups.map((group) => group.title)).toEqual(['About you', 'Preferences']);
     expect(groups[0].items.map((item) => item.flatIndex)).toEqual([1, 2]);
     expect(groups[1].items.map((item) => item.flatIndex)).toEqual([4]);
+  });
+});
+
+describe('resolveQuestion', () => {
+  it('passes a plain string through unchanged', () => {
+    expect(resolveQuestion('Which model?', {})).toBe('Which model?');
+  });
+
+  it('calls a function question with the answers so far', () => {
+    const question = (answers: Partial<DemoAnswers>) =>
+      answers.name ? `Hi ${answers.name}, what next?` : 'What next?';
+    expect(resolveQuestion(question, { name: 'Sam' })).toBe('Hi Sam, what next?');
+    expect(resolveQuestion(question, {})).toBe('What next?');
   });
 });
 

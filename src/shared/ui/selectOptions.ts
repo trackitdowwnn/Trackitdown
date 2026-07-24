@@ -50,18 +50,20 @@ export function matchesQuery(label: string, normalizedQuery: string): boolean {
 
 /**
  * Build the flat list for the screen:
- * - a non-empty query filters options by label and hides the Recent group
- *   (searching supersedes recency);
- * - with no query, consumer-fed `recentValues` render first under "Recent"
- *   (in the given order; values without a matching option are ignored) and
- *   also remain in their home section, matching the familiar pattern;
+ * - a non-empty query filters options by label and hides the pinned group
+ *   (searching supersedes it);
+ * - with no query, consumer-fed `pinnedValues` render first under
+ *   `pinnedTitle` (default "Recent"; e.g. "Popular makes") in the given order
+ *   (values without a matching option are ignored) and also remain in their
+ *   home section, matching the familiar recent/popular pattern;
  * - sections appear in first-appearance order; options without a section
  *   render last, without a header.
  */
 export function buildSelectList<V extends string | number>(
   options: SelectOption<V>[],
   query: string,
-  recentValues: V[] = [],
+  pinnedValues: V[] = [],
+  pinnedTitle: string = RECENT_SECTION_TITLE,
 ): SelectListItem<V>[] {
   const normalizedQuery = normalizeQuery(query);
   const visible = normalizedQuery
@@ -72,15 +74,15 @@ export function buildSelectList<V extends string | number>(
 
   // Keys are namespaced and joined with KEY_DELIMITER (NUL — cannot appear
   // in real labels/values) so consumer data can never collide with the
-  // Recent group or across section/value boundaries.
-  if (!normalizedQuery && recentValues.length > 0) {
-    const recentOptions = recentValues
+  // pinned group or across section/value boundaries.
+  if (!normalizedQuery && pinnedValues.length > 0) {
+    const pinnedOptions = pinnedValues
       .map((value) => options.find((option) => option.value === value))
       .filter((option): option is SelectOption<V> => option !== undefined);
-    if (recentOptions.length > 0) {
-      items.push({ kind: 'header', key: `h:${KEY_DELIMITER}recent`, title: RECENT_SECTION_TITLE });
-      for (const option of recentOptions) {
-        items.push({ kind: 'option', key: `r:${option.value}`, option });
+    if (pinnedOptions.length > 0) {
+      items.push({ kind: 'header', key: `h:${KEY_DELIMITER}pinned`, title: pinnedTitle });
+      for (const option of pinnedOptions) {
+        items.push({ kind: 'option', key: `p:${option.value}`, option });
       }
     }
   }
@@ -108,6 +110,22 @@ export function stickyHeaderIndices<V extends string | number>(
   items: SelectListItem<V>[],
 ): number[] {
   return items.flatMap((item, index) => (item.kind === 'header' ? [index] : []));
+}
+
+/** One entry per section header — its title and its index in the flat list —
+ *  so an A–Z index rail can jump-scroll to a section. */
+export interface SectionAnchor {
+  title: string;
+  index: number;
+}
+
+/** Section anchors (title + list index) for a jump-scroll index rail. */
+export function sectionAnchors<V extends string | number>(
+  items: SelectListItem<V>[],
+): SectionAnchor[] {
+  return items.flatMap((item, index) =>
+    item.kind === 'header' ? [{ title: item.title, index }] : [],
+  );
 }
 
 /** Count of pickable options in a built list (for screen-reader announcements). */

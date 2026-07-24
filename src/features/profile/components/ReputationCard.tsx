@@ -3,7 +3,7 @@
  *        (icon + narrative line: "Helped recover 1 car", "4 sightings
  *        helped owners"), earned badges as small emblem circles (family
  *        icon for first badges, the number for 5/25 tiers; recovery emblems
- *        in terracotta — the bounty family), and ONE next-goal line with an
+ *        in the accent (near-black) — the bounty family), and ONE next-goal line with an
  *        animated progress bar. A brand-new account gets a warm invitation
  *        and the first goal at 0 — never a row of zeros.
  * WHY:   Reputation is social proof (docs/DOMAIN.md: display-only, never
@@ -169,8 +169,8 @@ export function EmblemRail({ badges, testID }: { badges: BadgeState[]; testID?: 
 
 /** First badges: a family-icon circle. 5/25 tiers: a small stamp pairing
  *  the family icon with the number, so families stay tellable apart by
- *  sight, not just by spoken label. Recovery emblems carry terracotta —
- *  the one true bounty family. */
+ *  sight, not just by spoken label. Recovery emblems carry the accent
+ *  (near-black) — the one true bounty family. */
 function Emblem({ badge }: { badge: BadgeState }) {
   const tint = badge.counter === 'recoveriesCredited' ? colors.accentText : colors.primary;
   const Icon = FAMILY_ICONS[badge.counter];

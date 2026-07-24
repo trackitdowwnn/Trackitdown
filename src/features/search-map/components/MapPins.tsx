@@ -1,7 +1,7 @@
 /**
- * WHAT:  MapPins — the search map's markers: terracotta BOUNTY PILLS for
+ * WHAT:  MapPins — the search map's markers: near-black BOUNTY PILLS for
  *        posts (the reference's price-pin analogue; selected inverts to the
- *        dark surface) and sage COUNT BUBBLES for clusters.
+ *        dark surface) and primary (near-black) COUNT BUBBLES for clusters.
  * WHY:   Markers with custom views are the classic Android jank source. Each
  *        marker TRACKS view changes for a few frames after mount (so the
  *        custom view rasterises AFTER layout — setting tracksViewChanges
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
   },
   bountyText: {
     ...typography.label,
-    color: colors.accentText, // terracotta amount on the light pill
+    color: colors.accentText, // near-black bounty amount on the light pill
   },
   bountyTextSelected: {
     color: colors.textOnPrimary,

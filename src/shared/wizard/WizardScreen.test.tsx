@@ -55,11 +55,16 @@ interface Answers {
 }
 
 function makeStep(field: keyof Answers, fillValue: string) {
-  return function StepBody({ setAnswers }: WizardStepProps<Answers>) {
+  return function StepBody({ setAnswers, onSkip }: WizardStepProps<Answers>) {
     return (
-      <Pressable testID={`fill-${field}`} onPress={() => setAnswers({ [field]: fillValue })}>
-        <Text>fill {field}</Text>
-      </Pressable>
+      <>
+        <Pressable testID={`fill-${field}`} onPress={() => setAnswers({ [field]: fillValue })}>
+          <Text>fill {field}</Text>
+        </Pressable>
+        <Pressable testID={`skip-${field}`} onPress={() => onSkip?.()}>
+          <Text>skip {field}</Text>
+        </Pressable>
+      </>
     );
   };
 }
@@ -150,6 +155,22 @@ describe('WizardScreen wiring', () => {
     await press(view, 'Next');
     expect(view.getByText('Your preferences')).toBeTruthy();
     expect(view.getByLabelText('Step 2 of 2')).toBeTruthy();
+  });
+
+  it('a step can advance past its disabled Next via onSkip', async () => {
+    const { view } = await renderWizard();
+    await press(view, 'Get started');
+
+    // Unfilled step → Next is disabled…
+    expect(
+      view.getByRole('button', { name: 'Next' }).props.accessibilityState,
+    ).toMatchObject({ disabled: true });
+
+    // …but the step's own Skip affordance advances anyway.
+    await act(async () => {
+      fireEvent.press(view.getByTestId('skip-name'));
+    });
+    expect(view.getByText('Your preferences')).toBeTruthy();
   });
 
   it('review Edit jumps to the step and Done returns to review', async () => {

@@ -15,6 +15,8 @@
 
 import type { PickedPhoto } from '@/shared/ui';
 
+import type { DistinctiveFeature } from './lib/distinctiveFeatures';
+
 /** Where the car was taken from — mirrors the posts.stolen_from CHECK. */
 export type StolenFrom = 'driveway' | 'street' | 'car_park' | 'other';
 /** Whether the keys were taken — mirrors the posts.keys_taken CHECK. */
@@ -35,20 +37,25 @@ export interface LastSeenLocation {
  */
 export interface PostACarAnswers {
   // --- Phase 1: the car -----------------------------------------------------
-  /** UK number plate. OPTIONAL — blank means "no plate"; make/model/colour are
-   *  then the car's identity. When present, it's format+uniqueness checked. */
-  plate: string;
+  // NOTE: plate capture is deferred — no `plate` field for now. make/model/
+  // colour are the car's identity; buildCreatePostParams sends p_plate: null.
   make: string;
   model: string;
+  /** Canonical colour NAME from the swatch grid (a clean enum, not a hex). */
   colour: string;
+  /** Free-text specifics for an escape colour ("Multicolour / wrapped" / "Other"),
+   *  e.g. "matte black wrap over silver". Empty for a plain colour. Stored to
+   *  posts.owner_note so it never pollutes the colour enum. */
+  colourNote: string;
   /** DVLA-enrichable; null on the manual path when unknown. */
   year: number | null;
   /** DVLA-enrichable body style (e.g. "Hatchback"); null when unknown. */
   bodyType: string | null;
-  /** Taxonomy chips (vehicle_feature keys), many-select. */
-  featureKeys: string[];
-  /** Guided prompt: "How would someone recognise it at a glance?" */
-  descRecognise: string;
+  /** Owner-authored evidence pairs — one photo + a description of a specific
+   *  mark (e.g. "Cracked nearside wing mirror"). Optional; 0–8. Replaced BOTH
+   *  the old free-text `descRecognise` prompt and the `featureKeys` chip
+   *  taxonomy step (a photographed mark identifies a car better than a chip). */
+  distinctiveFeatures: DistinctiveFeature[];
   photos: PickedPhoto[];
 
   // --- Phase 2: when & where ------------------------------------------------
@@ -95,6 +102,9 @@ export interface CreatePostParams {
   p_bounty_amount_pence: number;
   p_photo_urls: string[];
   p_feature_keys: string[] | null;
+  /** Owner evidence pairs as a jsonb array; [] when none. Each photo is an
+   *  already-uploaded public URL (own-folder), paired with its description. */
+  p_distinctive_features: { photo_url: string; description: string }[];
   p_verification_path: string | null;
 }
 

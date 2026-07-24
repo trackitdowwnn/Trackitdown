@@ -4,7 +4,7 @@
  * WHY:   Faces build the trust this app runs on (spotter ↔ owner), so the
  *        avatar treatment must be identical everywhere: profile header,
  *        public spotter sheet, chat rows later. The fallback is a
- *        primary-orange initial on surfaceSubtle — friendly, never a grey
+ *        primary (near-black) initial on surfaceSubtle — friendly, never a grey
  *        silhouette.
  *        Decorative by default; pass accessibilityLabel where the avatar is
  *        the only identification on screen.

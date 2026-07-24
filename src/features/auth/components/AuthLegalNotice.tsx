@@ -46,7 +46,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.md,
   },
+  // Underlined so these inline links read as tappable in the monochrome scheme
+  // (near-black link text no longer stands out by colour alone).
   link: {
     color: colors.primary,
+    textDecorationLine: 'underline',
   },
 });

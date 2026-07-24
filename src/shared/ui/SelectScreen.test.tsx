@@ -30,6 +30,7 @@ jest.mock('react-native-reanimated', () => {
   const builder = () => {
     const chain: Record<string, unknown> = {};
     chain.duration = () => chain;
+    chain.delay = () => chain;
     chain.easing = () => chain;
     chain.reduceMotion = () => chain;
     chain.withCallback = (callback: (finished: boolean) => void) => {
@@ -44,6 +45,7 @@ jest.mock('react-native-reanimated', () => {
     Easing: { out: (fn: unknown) => fn, quad: () => 0 },
     ReduceMotion: { System: 'system' },
     FadeIn: builder(),
+    FadeInDown: builder(),
     FadeOut: builder(),
     SlideInDown: builder(),
     SlideOutDown: builder(),
@@ -122,6 +124,35 @@ describe('SelectScreen', () => {
     });
     expect(view.getByLabelText('BMW').props.accessibilityState).toMatchObject({
       checked: false,
+    });
+  });
+
+  describe('manual entry (free-text selects, e.g. car make)', () => {
+    it('offers "Use "<query>"" for an unmatched query and submits the trimmed text', async () => {
+      const onSubmit = jest.fn();
+      const { view, onClose } = await renderScreen({ manualEntry: { onSubmit } });
+      await typeSearch(view, '  Reliant ');
+
+      const useRow = view.getByText('Use “Reliant”');
+      await act(async () => {
+        fireEvent.press(useRow);
+      });
+      expect(onSubmit).toHaveBeenCalledWith('Reliant');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows no standing manual row until the user types (only "Use "<query>"")', async () => {
+      const { view } = await renderScreen({ manualEntry: { onSubmit: jest.fn() } });
+      // No always-present "isn't listed" row, and no "Use "<query>"" until typing.
+      expect(view.queryByText(/isn’t listed/)).toBeNull();
+      expect(view.queryByText(/^Use /)).toBeNull();
+    });
+
+    it('does NOT offer "Use "<query>"" when the query exactly matches a listed make', async () => {
+      const { view } = await renderScreen({ manualEntry: { onSubmit: jest.fn() } });
+      await typeSearch(view, 'audi');
+      expect(view.queryByText(/^Use /)).toBeNull();
+      expect(view.getByText('Audi')).toBeTruthy();
     });
   });
 
@@ -221,7 +252,7 @@ describe('SelectScreen', () => {
     const { view } = await renderScreen();
 
     await typeSearch(view, 'zonda');
-    expect(view.getByText("No matches for 'zonda'")).toBeTruthy();
+    expect(view.getByText('No matches for “zonda”')).toBeTruthy();
 
     // Two controls legitimately share this name (search-bar icon + empty-state
     // action, identical behaviour); exercise the empty-state one (last in tree).

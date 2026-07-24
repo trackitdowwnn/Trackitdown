@@ -8,6 +8,9 @@
 export const opacity = {
   /** Disabled interactive elements. */
   disabled: 0.6,
+  /** Momentary press feedback for bare text controls (links) that have no fill
+   *  to darken — dims briefly on touch. */
+  pressed: 0.6,
   /** Resting state of paired indicators (inactive carousel dots). */
   inactive: 0.5,
   /** Floor of the loader dots' wave/pulse — dimmer than inactive so the

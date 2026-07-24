@@ -76,6 +76,13 @@ const visibleSchema = z.object({
     first_name: z.string().nullable(),
   }),
   features: z.array(z.object({ key: z.string(), label: z.string(), icon: z.string() })),
+  // Deferred: get_post_detail does not return these yet, so this defaults to []
+  // on every post today. Kept in the schema so the detail render can consume it
+  // the moment the RPC starts sending it (graceful absence until then).
+  distinctive_features: z
+    .array(z.object({ photo_url: z.string(), description: z.string() }))
+    .optional()
+    .default([]),
   stolen_from: z.enum(['driveway', 'street', 'car_park', 'other']).nullable(),
   keys_taken: z.enum(['yes', 'no', 'unknown']).nullable(),
   desc_recognise: z.string().nullable(),
@@ -120,6 +127,10 @@ function toPostDetail(row: VisibleRow): PostDetail {
       firstName: row.owner.first_name ?? undefined,
     },
     features: row.features,
+    distinctiveFeatures: row.distinctive_features.map((feature) => ({
+      photoUrl: feature.photo_url,
+      description: feature.description,
+    })),
     stolenFrom: row.stolen_from ?? undefined,
     keysTaken: row.keys_taken ?? undefined,
     descRecognise: row.desc_recognise ?? undefined,

@@ -26,25 +26,12 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
+import { lightHaptic } from '@/shared/lib/haptics';
 import { colors, motion, radii, shadows, sizes } from '@/shared/theme';
 
 import { useWatchToggle } from '../hooks/useWatchToggle';
 import { consumeUserToggled } from '../lib/watchedStore';
 import type { WatchToggleSource } from '../types';
-
-/** Light impact, silently skipped when the native module isn't present. */
-function popHaptic(): void {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- intentional lazy load
-    const haptics = require('expo-haptics') as {
-      impactAsync(style: unknown): Promise<void>;
-      ImpactFeedbackStyle: { Light: unknown };
-    };
-    void haptics.impactAsync(haptics.ImpactFeedbackStyle.Light).catch(() => {});
-  } catch {
-    // Not in this binary yet — the pop animation still lands.
-  }
-}
 
 export interface WatchToggleProps {
   postId: string;
@@ -65,7 +52,7 @@ export function WatchToggle({ postId, source, testID }: WatchToggleProps) {
   useEffect(() => {
     const userDidThis = consumeUserToggled(postId);
     if (watched && userDidThis) {
-      popHaptic();
+      lightHaptic();
       if (!reduceMotion) {
         // springStandard, not springBouncy: the motion rules reserve bouncy
         // for reward moments (recovery); the 1.25 overshoot sequence still

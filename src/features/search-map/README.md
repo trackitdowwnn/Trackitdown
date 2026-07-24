@@ -88,7 +88,7 @@ app's centrepiece. Route `/search-map` accepting `{ area?, query? }`
 
 **Anatomy (Airbnb map mechanics, our brand)**
 1. Full-bleed `AppMap` under everything; floating back button top-left.
-2. BOUNTY PINS — markers are terracotta pill tags (the amount), not dots;
+2. BOUNTY PINS — markers are near-black pill tags (the amount), not dots;
    the selected pin inverts to `surfaceInverse` (`components/MapPins.tsx`).
 3. CLUSTERING — supercluster (`lib/mapClustering.ts`) over the current
    result set; clusters render as sage count bubbles; tapping zooms to fit.
@@ -118,7 +118,7 @@ app's centrepiece. Route `/search-map` accepting `{ area?, query? }`
    Dismiss: map-background tap or Android back (back exits
    the screen only when no card is up). Card tap → post detail (TODO until
    the vehicles feature ships). The card is the shared VehicleCard `map`
-   variant: photo, make/model, VISIBLE PlateChip, terracotta bounty,
+   variant: photo, make/model, VISIBLE PlateChip, near-black bounty,
    distance. Selection changes announce to screen readers ("Blue BMW
    3 Series, £500 bounty — swipe for more results").
    (`components/MapCardPager.tsx`, `hooks/useMapSelection.ts`.)

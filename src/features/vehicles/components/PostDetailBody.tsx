@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     includeFontPadding: false,
   },
-  // Terracotta stays bounty-only (DESIGN_SYSTEM colour rules).
+  // accent stays bounty-only (DESIGN_SYSTEM colour rules; near-black, monochrome).
   statValueBounty: {
     ...typography.heading,
     color: colors.accent,

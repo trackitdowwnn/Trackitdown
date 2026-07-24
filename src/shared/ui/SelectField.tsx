@@ -48,6 +48,18 @@ export interface SelectFieldProps<V extends string | number> {
   screenTitle?: string;
   searchPlaceholder?: string;
   recentValues?: V[];
+  /** Heading for the pinned group (e.g. "Popular makes"). */
+  pinnedTitle?: string;
+  /** Auto-focus the picker's search on open. Off ⇒ browse-first. */
+  autoFocusSearch?: boolean;
+  /** Show the picker's A–Z jump-scroll index rail (long lists). */
+  showIndex?: boolean;
+  /** Soft stagger-in of the picker's rows on first open. */
+  stagger?: boolean;
+  /** Free-text selects (e.g. car make): the picker offers a "Use "<query>""
+   *  row for unlisted values, and the field shows a chosen value even when it
+   *  isn't one of `options`. `onChange` receives the free text as `V`. */
+  allowManualEntry?: boolean;
 }
 
 export function SelectField<V extends string | number>({
@@ -62,10 +74,19 @@ export function SelectField<V extends string | number>({
   screenTitle,
   searchPlaceholder,
   recentValues,
+  pinnedTitle,
+  autoFocusSearch,
+  showIndex,
+  stagger,
+  allowManualEntry = false,
 }: SelectFieldProps<V>) {
   const [open, setOpen] = useState(false);
 
-  const selectedLabel = options.find((option) => option.value === value)?.label ?? null;
+  // A matched option's label; for free-text fields, fall back to the raw value
+  // so a manually-entered choice (not in `options`) still shows in the field.
+  const selectedLabel =
+    options.find((option) => option.value === value)?.label ??
+    (allowManualEntry && value != null ? String(value) : null);
   const message = error ?? helperText;
 
   // iOS has no accessibilityLiveRegion; announce errors explicitly so
@@ -132,6 +153,13 @@ export function SelectField<V extends string | number>({
         onClose={() => setOpen(false)}
         searchPlaceholder={searchPlaceholder}
         recentValues={recentValues}
+        pinnedTitle={pinnedTitle}
+        autoFocusSearch={autoFocusSearch}
+        showIndex={showIndex}
+        stagger={stagger}
+        // Free text is a valid value for these fields (V is string), so the
+        // "Use "<query>"" row feeds the typed make straight to onChange.
+        manualEntry={allowManualEntry ? { onSubmit: (text) => onChange(text as V) } : undefined}
       />
     </View>
   );

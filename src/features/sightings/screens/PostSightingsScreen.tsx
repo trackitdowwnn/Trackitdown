@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   },
   statusTag: {
     ...typography.caption,
-    // Sage: affirmative signal (success stays reserved for payout moments).
+    // The near-black primary ink (success stays reserved for payout moments).
     color: colors.primary,
   },
 });

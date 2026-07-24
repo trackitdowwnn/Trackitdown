@@ -24,7 +24,7 @@ rounded-top sheet overlapping the hero.)
    the `PlateChip` and a colour chip inline beside it (one chip grammar; the
    colour chip reads at the plate's 14pt so the plate stays dominant),
    `StatusBadge` when not plain active, then the **stat band**: three
-   hairline-divided cells — bounty (terracotta) / sightings / last-seen — the
+   hairline-divided cells — bounty (near-black) / sightings / last-seen — the
    reference's stat-module anatomy. The bounty label carries an ⓘ opening a
    `ConfirmDialog` explainer ("How the bounty works"); the old solo
    display-size bounty section was removed (it duplicated the sticky bar).

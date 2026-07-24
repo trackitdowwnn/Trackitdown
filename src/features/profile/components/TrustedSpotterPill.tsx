@@ -28,9 +28,9 @@ export function TrustedSpotterPill() {
       testID="trusted-spotter"
     >
       <BadgeCheck size={typography.caption.fontSize + spacing.xs} color={colors.primary} />
-      {/* textPrimary, not primary: primary-orange caption text on
-          surfaceSubtle sits just under AA — the icon carries the brand
-          colour instead. */}
+      {/* textPrimary for the caption ink; the icon carries `primary`. In the
+          monochrome scheme both are near-black, so this is now an intent
+          distinction (label ink vs brand mark), not a contrast one. */}
       <Text style={styles.text} maxFontSizeMultiplier={displayFontScaleCap}>
         Trusted spotter
       </Text>

@@ -40,6 +40,18 @@ export function flattenFlow<TAnswers>(
   return screens;
 }
 
+/**
+ * Resolve a step's question to a string — a plain string passes through; a
+ * function is called with the answers so far (for questions whose wording
+ * depends on an earlier step, e.g. "Which BMW model?" from the chosen make).
+ */
+export function resolveQuestion<TAnswers>(
+  question: WizardStep<TAnswers>['question'],
+  answers: Partial<TAnswers>,
+): string {
+  return typeof question === 'function' ? question(answers) : question;
+}
+
 export interface WizardNavState {
   /** Index into the flattened screen list. */
   index: number;

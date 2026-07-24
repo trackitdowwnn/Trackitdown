@@ -219,7 +219,7 @@ function VehicleCardInner({ post, onPress, variant = 'feed', topRightAction }: V
           </Text>
           {!compact ? (
             post.plate ? (
-              /* Anchor row: rigid PlateChip left, terracotta bounty right —
+              /* Anchor row: rigid PlateChip left, near-black bounty right —
                  our equivalent of the reference card's price line. */
               <View style={styles.plateBountyRow}>
                 <PlateChip plate={post.plate} />

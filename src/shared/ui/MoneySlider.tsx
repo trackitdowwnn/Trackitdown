@@ -4,7 +4,7 @@
  *        tap-to-type exact entry, and a configurable transparency panel.
  * WHY:   Choosing an amount is a value moment (bounty step of the posting
  *        wizard first; bounty-range search filters and top-ups later), so it
- *        gets the full treatment: display-scale terracotta amount that counts
+ *        gets the full treatment: display-scale near-black amount that counts
  *        with the thumb (UI-thread via Reanimated), a power-curve track that
  *        gives lower amounts more room, tiered snap steps (e.g. £25 below
  *        £500, £50 above), and typed entry that respects pence integrity but

@@ -40,8 +40,8 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
     key: 'recovered',
     emoji: '🎉',
     headline: 'Recovered —',
-    // The payoff phrase carries the terracotta value accent: onboarding is
-    // where the bounty ↔ terracotta association gets seeded.
+    // The payoff phrase carries the value accent (near-black): onboarding is
+    // where the bounty ↔ accent association gets seeded.
     headlineAccent: 'bounty paid.',
     body: 'When a sighting leads to recovery, the spotter earns the bounty.',
   },

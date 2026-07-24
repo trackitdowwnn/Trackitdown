@@ -31,6 +31,7 @@ const base: PostDetail = {
   photos: [],
   owner: { memberSince: '2025-01-05T00:00:00Z', firstName: 'Alex' },
   features: [],
+  distinctiveFeatures: [],
   sightingCount: 0,
   viewerHasSighting: false,
 };

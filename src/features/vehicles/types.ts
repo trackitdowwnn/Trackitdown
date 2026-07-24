@@ -37,6 +37,15 @@ export interface VehicleFeature {
   icon: string;
 }
 
+/** One owner-authored distinctive-feature evidence pair (photo + description),
+ *  as read back for the detail page. The RENDER is deferred — get_post_detail
+ *  does not yet return these, so `distinctiveFeatures` is `[]` on every post
+ *  today (graceful absence). See src/features/vehicles/post/README.md. */
+export interface DistinctiveFeatureView {
+  photoUrl: string;
+  description: string;
+}
+
 /** Where the car was stolen from (coarse category, never an address). */
 export type StolenFrom = 'driveway' | 'street' | 'car_park' | 'other';
 /** Whether the keys were taken with the car. */
@@ -70,6 +79,9 @@ export interface PostDetail {
   photos: PostDetailPhoto[];
   /** Checkable distinguishing features (Part 2 taxonomy); [] on old posts. */
   features: VehicleFeature[];
+  /** Owner-authored distinctive marks (photo + description); `[]` until
+   *  get_post_detail returns them (render deferred — see post/README). */
+  distinctiveFeatures: DistinctiveFeatureView[];
   /** Theft context (Part 2) — all optional; absent on posts predating them. */
   stolenFrom?: StolenFrom;
   keysTaken?: KeysTaken;

@@ -1,12 +1,15 @@
 /**
  * WHAT:  Colour tokens for the app, straight from docs/DESIGN_SYSTEM.md.
  * WHY:   UI code imports these names and never hard-codes hex values, so a
- *        palette change happens in one place and stays on-brand. Airbnb-style
- *        system (ADR-0005): cool near-white surfaces + grey ink, ONE vivid
- *        accent (orange) reserved for the primary action, terracotta kept for
- *        bounty/value only, photography carries the colour.
+ *        palette change happens in one place and stays on-brand. MONOCHROME
+ *        scheme (2026-07-24): cool near-white surfaces + grey ink, the primary
+ *        action + bounty/value both rendered in near-BLACK (the previous Arches
+ *        orange / terracotta warmth was dropped at the owner's request);
+ *        semantic status hues (success/warning/danger) stay distinct;
+ *        photography carries the colour.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour palette);
- *        docs/decisions/ADR-0005-airbnb-orange-theme.md (supersedes ADR-0004).
+ *        docs/decisions/ADR-0005-airbnb-orange-theme.md (the superseded
+ *          orange theme — this monochrome pass replaces its primary/accent).
  */
 
 export const colors = {
@@ -15,17 +18,19 @@ export const colors = {
   surfaceSubtle: '#EEEEEE',
   // Pressed state of surfaceSubtle fills (chips) — border stays for hairlines.
   surfaceSubtlePressed: '#E0E0E0',
-  // Deep Arches orange — the single primary accent (buttons, active states,
-  // links). Airbnb's vivid Arches #FC642D fails AA on white text (3:1), so this
-  // is deepened: white-on-primary = 5.18:1 and orange-as-text = 4.83:1, both AA.
-  primary: '#C2410C',
-  primaryPressed: '#A8380A',
-  // Terracotta — RESERVED for bounty/value moments (ADR-0005). Now the app's
-  // only warm colour, so "value" stands out. accent is fills/large type only.
-  accent: '#C97B5D',
-  // Darkened terracotta for bounty TEXT at label/body sizes (4.88:1 AA on the
-  // near-white background — accent itself is ~3:1, large/fill only).
-  accentText: '#A05A3B',
+  // Soft near-black — the single primary accent (buttons, active states, links,
+  // selection rings/checks). Monochrome scheme; white-on-primary is ~16:1 (AAA),
+  // and primary-as-text on the near-white background is far above AA.
+  primary: '#1A1A1A',
+  // Pressed lightens (can't go darker than near-black) so a tap still registers.
+  primaryPressed: '#333333',
+  // Bounty/value fill + large value type. Monochrome: shares the near-black, so
+  // the bounty reads as "value" via its bold black fill (white text) + weight,
+  // not hue. accent is fills/large type only.
+  accent: '#1A1A1A',
+  // Bounty TEXT at label/body sizes on the near-white background — near-black,
+  // far above AA. (Was a darkened terracotta; now monochrome.)
+  accentText: '#1A1A1A',
   textPrimary: '#222222',
   textSecondary: '#6A6A6A',
   border: '#DDDDDD',
@@ -35,9 +40,10 @@ export const colors = {
   success: '#4F8A5B',
   // Amber for pending/expiring — dot/icon/border only, never body text.
   warning: '#A9762A',
-  // Clearer muted red for destructive/error UI. Kept distinct from the orange
-  // primary on purpose: a brick-red would blur with the CTA colour, so
-  // destructive actions must not look like the primary action.
+  // Clearer muted red for destructive/error UI — the one hue that survived the
+  // monochrome swap for actions, so destructive actions stay unmistakably
+  // distinct from the near-black primary (a destructive tap must never read as
+  // the primary action).
   danger: '#C0281E',
   dangerPressed: '#A21F16',
   textOnPrimary: '#FFFFFF',

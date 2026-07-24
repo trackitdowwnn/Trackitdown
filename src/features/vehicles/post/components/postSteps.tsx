@@ -15,12 +15,11 @@
  */
 
 import { useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import {
   ChoiceChips,
-  ChoiceChipsMulti,
   DateTimeField,
   DEFAULT_DATE_TIME_PRESETS,
   defaultBountyPanelCopy,
@@ -30,90 +29,102 @@ import {
   TextField,
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
-import { sizes, spacing } from '@/shared/theme';
+import { colors, opacity, sizes, spacing, typography } from '@/shared/theme';
 import type { WizardStepProps } from '@/shared/wizard';
 
-import { VEHICLE_FEATURES } from '../lib/featureTaxonomy';
+import { colourChangePatch } from '../lib/carColours';
+import { makeChangePatch } from '../lib/carModels';
 import type { PostACarAnswers } from '../types';
+import { ColourField } from './ColourField';
+import { DistinctiveFeaturesField } from './DistinctiveFeaturesField';
+import { MakeField } from './MakeField';
+import { ModelField } from './ModelField';
+import { YearField } from './YearField';
 
 type StepProps = WizardStepProps<PostACarAnswers>;
-
-/** Taxonomy as chip options (key → value), computed once. */
-const FEATURE_OPTIONS = VEHICLE_FEATURES.map((feature) => ({
-  value: feature.key,
-  label: feature.label,
-  icon: feature.icon,
-}));
 
 /** Bounty range (pence) — mirrors create_post + the posts CHECK (£50–£5,000). */
 export const MIN_BOUNTY_PENCE = 5000;
 export const MAX_BOUNTY_PENCE = 500000;
 export const DEFAULT_BOUNTY_PENCE = 25000;
 
-export function PlateStep({ answers, setAnswers }: StepProps) {
+/** A centred, underlined text action to advance a step without its main input —
+ *  the marks step's "none to add". Uses the framework's onSkip (plain forward
+ *  move; returns to review on an edit spur, like Next). */
+function StepSkipButton({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <TextField
-      label="Number plate (optional)"
-      variant="plate"
-      placeholder="AB12 CDE"
-      value={answers.plate ?? ''}
-      onChangeText={(plate) => setAnswers({ plate })}
-      autoFocus
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={spacing.sm}
+      onPress={onPress}
+      style={({ pressed }) => [styles.skipLink, pressed && styles.skipLinkPressed]}
+    >
+      <Text style={styles.skipText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function MakeStep({ answers, setAnswers }: StepProps) {
+  // Its own step (2026-07-23): the make picker earns a screen. Changing the
+  // make clears any model chosen under the old make (the make→model
+  // dependency) — makeChangePatch keeps the model only when the same make is
+  // re-picked, so an Audi model never rides under a BMW.
+  return (
+    <MakeField
+      value={answers.make ?? null}
+      onChange={(make) => setAnswers(makeChangePatch(answers.make, make))}
     />
   );
 }
 
-export function CarDetailsStep({ answers, setAnswers }: StepProps) {
+export function ModelStep({ answers, setAnswers }: StepProps) {
+  // Dependent on the make: the picker lists the chosen make's models (free text
+  // for an unlisted/unseeded make). Empty make is guarded inside ModelField.
   return (
-    <View style={styles.stack}>
-      <TextField
-        label="Make"
-        placeholder="e.g. BMW"
-        value={answers.make ?? ''}
-        onChangeText={(make) => setAnswers({ make })}
-      />
-      <TextField
-        label="Model"
-        placeholder="e.g. 3 Series"
-        value={answers.model ?? ''}
-        onChangeText={(model) => setAnswers({ model })}
-      />
-      <TextField
-        label="Colour"
-        placeholder="e.g. Blue"
-        value={answers.colour ?? ''}
-        onChangeText={(colour) => setAnswers({ colour })}
-      />
-      <TextField
-        label="Year (optional)"
-        placeholder="e.g. 2019"
-        keyboardType="number-pad"
-        value={answers.year != null ? String(answers.year) : ''}
-        onChangeText={(text) => {
-          const digits = text.replace(/[^0-9]/g, '').slice(0, 4);
-          setAnswers({ year: digits ? Number(digits) : null });
-        }}
-      />
-    </View>
+    <ModelField
+      make={answers.make ?? ''}
+      value={answers.model ?? null}
+      onChange={(model) => setAnswers({ model })}
+    />
   );
 }
 
-export function FeaturesStep({ answers, setAnswers }: StepProps) {
+export function ColourStep({ answers, setAnswers }: StepProps) {
+  // Its own step (2026-07-23): the swatch grid earns a screen. Switching to a
+  // plain colour clears any wrapped/other note (colourChangePatch) so a note
+  // never rides under a colour it doesn't describe.
   return (
-    <View style={styles.stack}>
-      <ChoiceChipsMulti
-        options={FEATURE_OPTIONS}
-        value={answers.featureKeys ?? []}
-        onChange={(featureKeys) => setAnswers({ featureKeys })}
+    <ColourField
+      value={answers.colour ?? null}
+      note={answers.colourNote ?? ''}
+      onChange={(colour) => setAnswers(colourChangePatch(colour))}
+      onChangeNote={(colourNote) => setAnswers({ colourNote })}
+    />
+  );
+}
+
+export function YearStep({ answers, setAnswers }: StepProps) {
+  return (
+    <YearField value={answers.year ?? null} onChange={(year) => setAnswers({ year })} />
+  );
+}
+
+export function DistinctiveMarksStep({ answers, setAnswers, onSkip }: StepProps) {
+  // Owner-authored photo+description evidence pairs (the car is theirs, so
+  // gallery upload is offered — the sightings camera-only rule doesn't apply).
+  const marks = answers.distinctiveFeatures ?? [];
+  return (
+    <View>
+      <DistinctiveFeaturesField
+        value={marks}
+        onChange={(distinctiveFeatures) => setAnswers({ distinctiveFeatures })}
       />
-      <TextField
-        label="How would someone recognise it at a glance? (optional)"
-        variant="multiline"
-        placeholder="e.g. Dented rear door, sticker in the back window"
-        value={answers.descRecognise ?? ''}
-        onChangeText={(descRecognise) => setAnswers({ descRecognise })}
-        maxLength={1000}
-      />
+      {/* Optional step — a clear "move on with none" while the list is empty
+          (once a mark is added the owner uses Next, so it hides). */}
+      {marks.length === 0 ? (
+        <StepSkipButton label="None to add" onPress={() => onSkip?.()} />
+      ) : null}
     </View>
   );
 }
@@ -260,6 +271,20 @@ export function VerificationStep({ answers, setAnswers }: StepProps) {
 const styles = StyleSheet.create({
   stack: {
     gap: spacing.xl,
+  },
+  // The centred, underlined "advance without the main input" action (plate:
+  // enter manually; marks: none to add), spaced beneath the step's input.
+  skipLink: {
+    alignSelf: 'center',
+    marginTop: spacing.lg,
+  },
+  skipLinkPressed: {
+    opacity: opacity.pressed,
+  },
+  skipText: {
+    ...typography.label,
+    color: colors.primary,
+    textDecorationLine: 'underline',
   },
   // Embedded LocationPicker needs a bounded height to lay out the map.
   mapFrame: {

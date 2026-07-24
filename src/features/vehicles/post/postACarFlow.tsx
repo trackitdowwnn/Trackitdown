@@ -1,19 +1,18 @@
 /**
  * WHAT:  The post-a-car WizardFlow — the config table that turns the step
  *        components into the 3-phase / review flow: phase intros, per-step
- *        questions, zod gating, review labels/values, and the plate step's
- *        onContinue availability check. Plus the initial answers (a sensible
- *        starting bounty so the slider and its schema begin valid).
+ *        questions, zod gating, and review labels/values. Plus the initial
+ *        answers (a sensible starting bounty so the slider and its schema begin
+ *        valid).
  * WHY:   Flows are DATA, not code (the framework renders everything else). One
  *        readable table keeps the whole flow — order, gating, review copy — in
- *        one auditable place. DVLA lookup is stubbed this build, so the plate
- *        step's onContinue only re-checks availability (create_post re-validates
- *        everything at submit); the manual make/model/colour/year path is what
- *        ships. Copy follows DESIGN_SYSTEM tone — calm, practical, no dwelling.
+ *        one auditable place. Plate capture is deferred (removed for now), so
+ *        the manual make/model/colour/year path is what identifies the car;
+ *        create_post re-validates everything at submit. Copy follows
+ *        DESIGN_SYSTEM tone — calm, practical, no dwelling.
  * LINKS: src/features/vehicles/post/components/postSteps.tsx (the components);
  *        src/features/vehicles/post/screens/PostACarScreen.tsx (renders this);
- *        src/features/vehicles/post/lib/featureTaxonomy.ts (feature labels);
- *        src/features/vehicles/post/api/postApi.ts (checkPlateAvailable).
+ *        src/features/vehicles/post/api/postApi.ts (buildCreatePostParams).
  */
 
 import { z } from 'zod';
@@ -25,22 +24,22 @@ import { formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
 import { formatPounds } from '@/shared/lib/money';
 import type { WizardFlow } from '@/shared/wizard';
 
-import { checkPlateAvailable, plateCanon } from './api/postApi';
 import {
   BountyStep,
-  CarDetailsStep,
-  FeaturesStep,
+  ColourStep,
+  DistinctiveMarksStep,
   LastSeenWhenStep,
   LastSeenWhereStep,
+  MakeStep,
+  ModelStep,
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
   DEFAULT_BOUNTY_PENCE,
   PhotosStep,
-  PlateStep,
   TheftContextStep,
   VerificationStep,
+  YearStep,
 } from './components/postSteps';
-import { featureLabel } from './lib/featureTaxonomy';
 import type { PostACarAnswers } from './types';
 
 const photoShape = z.object({
@@ -51,7 +50,6 @@ const photoShape = z.object({
 
 /** Seed the slider mid-range so the bounty step starts valid and non-dirty. */
 export const POST_A_CAR_INITIAL_ANSWERS: Partial<PostACarAnswers> = {
-  featureKeys: [],
   bountyAmountPence: DEFAULT_BOUNTY_PENCE,
 };
 
@@ -70,79 +68,85 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
       },
       steps: [
         {
-          id: 'plate',
-          question: "What's the number plate?",
-          helper: "Optional — leave it blank if you don't have it, and we'll use the make and model instead.",
-          component: PlateStep,
-          // Optional: an empty canon (blank / punctuation-only) advances as
-          // plate-less; a real plate must be 2–8 alphanumerics, matching the
-          // server format gate. create_post re-validates + normalises at submit.
-          schema: z.object({
-            plate: z
-              .string()
-              .refine(
-                (value) => {
-                  const canon = plateCanon(value);
-                  if (canon.length === 0) return true; // blank / punctuation → plate-less
-                  // A real plate: 2–8 alphanumerics AND a bounded raw length
-                  // (rejects padded junk like "AB----…"; posts.plate CHECK ≤ 15).
-                  return canon.length >= 2 && canon.length <= 8 && value.trim().length <= 15;
-                },
-                { message: 'Enter a valid plate, or leave it blank' },
-              )
-              .optional(),
-          }),
-          // DVLA lookup is stubbed; onContinue re-checks availability ONLY when a
-          // real plate was entered, so the owner learns early about a duplicate.
-          onContinue: async (answers) => {
-            if (plateCanon(answers.plate).length > 0) {
-              await checkPlateAvailable((answers.plate ?? '').trim());
-            }
-          },
-          reviewLabel: 'Number plate',
-          reviewValue: (answers) =>
-            plateCanon(answers.plate).length > 0 ? (answers.plate ?? '').trim() : 'No plate',
+          // Make — the first step of the flow. The full-screen searchable
+          // picker (MakeField) earns a screen; make is always collected
+          // (create_post requires make/model/colour).
+          id: 'make',
+          question: 'What make is your car?',
+          component: MakeStep,
+          schema: z.object({ make: z.string().trim().min(1) }),
+          reviewLabel: 'Make',
+          reviewValue: (answers) => answers.make ?? '',
         },
         {
-          id: 'details',
-          question: 'Tell us about the car',
-          component: CarDetailsStep,
+          // Model — its own step (2026-07-23), dependent on the make: the
+          // picker lists that make's models (free text for an unlisted make).
+          // Changing the make clears the model (MakeStep/makeChangePatch), so
+          // this step re-gates as incomplete and the review blocks submit until
+          // a model under the new make is chosen. The title folds in the chosen
+          // make ("Which BMW model?") so the context lives in the question
+          // itself — no separate make chip in the body.
+          id: 'model',
+          question: (answers) =>
+            answers.make?.trim() ? `Which ${answers.make.trim()} model?` : 'Which model?',
+          component: ModelStep,
+          schema: z.object({ model: z.string().trim().min(1) }),
+          reviewLabel: 'Model',
+          reviewValue: (answers) => answers.model ?? '',
+        },
+        {
+          // Colour — its own step (2026-07-23): a named-swatch grid (ColourField)
+          // producing a canonical colour NAME (a clean enum). The escape colours
+          // ("Multicolour / wrapped" / "Other") capture a free-text note stored
+          // separately (colourNote → owner_note), so the colour value stays a
+          // clean enum for the card/detail text and future colour filters.
+          id: 'colour',
+          question: 'What colour is it?',
+          component: ColourStep,
+          schema: z.object({ colour: z.string().trim().min(1) }),
+          reviewLabel: 'Colour',
+          reviewValue: (answers) => {
+            const colour = answers.colour ?? '';
+            const noteText = answers.colourNote?.trim();
+            return noteText ? `${colour} — ${noteText}` : colour;
+          },
+        },
+        {
+          // Year — its own step, optional. Bounded to the posts.year CHECK
+          // (1900–2100) so an out-of-range year is caught here, not as a raw
+          // CHECK violation at submit.
+          id: 'year',
+          question: 'What year is it?',
+          component: YearStep,
           schema: z.object({
-            make: z.string().trim().min(1),
-            model: z.string().trim().min(1),
-            colour: z.string().trim().min(1),
-            // Bounded to the posts.year CHECK (1900–2100) so an out-of-range
-            // year is caught here, not as a raw CHECK violation at submit.
             year: z.number().int().min(1900).max(2100).nullish(),
           }),
-          reviewLabel: 'Car',
-          reviewValue: (answers) => {
-            const base = [answers.make, answers.model].filter(Boolean).join(' ');
-            const colour = answers.colour ? `, ${answers.colour}` : '';
-            const year = answers.year ? ` (${answers.year})` : '';
-            return `${base}${colour}${year}`;
-          },
+          reviewLabel: 'Year',
+          reviewValue: (answers) => (answers.year ? String(answers.year) : 'Not provided'),
         },
         {
-          id: 'features',
-          question: 'What makes it stand out?',
-          helper: 'Pick anything that helps identify it. Optional but useful.',
-          component: FeaturesStep,
-          // Optional step — no field is required to advance.
-          schema: z.object({}),
-          reviewLabel: 'Distinguishing features',
+          // Distinctive marks — owner photo+description evidence pairs (e.g.
+          // "Cracked nearside wing mirror"). Optional (many cars have none);
+          // each photo uploads on submit with the rest (atomic). Replaced BOTH
+          // the old free-text "recognise it?" prompt AND the vehicle_feature
+          // chip taxonomy step — a photographed mark identifies a car far better
+          // than a checkbox. (post_feature/vehicle_feature stay for old posts;
+          // create_post still accepts p_feature_keys, now always null here.)
+          id: 'distinctive-marks',
+          question: 'Any distinctive marks or features?',
+          component: DistinctiveMarksStep,
+          // Next requires at least one mark; a car with none uses the "None to
+          // add" link, which advances marks-less.
+          schema: z.object({ distinctiveFeatures: z.array(z.unknown()).min(1) }),
+          reviewLabel: 'Distinctive marks',
           reviewValue: (answers) => {
-            const keys = answers.featureKeys ?? [];
-            const bits: string[] = [];
-            if (keys.length > 0) bits.push(keys.map(featureLabel).join(', '));
-            if (answers.descRecognise?.trim()) bits.push(answers.descRecognise.trim());
-            return bits.length > 0 ? bits.join(' · ') : 'None added';
+            const count = answers.distinctiveFeatures?.length ?? 0;
+            return count > 0 ? `${count} added` : 'None added';
           },
         },
         {
           id: 'photos',
           question: 'Add photos of your car',
-          helper: 'The first photo is what spotters will see. 3 to 6 photos.',
           component: PhotosStep,
           schema: z.object({ photos: photoListSchema(3, 6) }),
           reviewLabel: 'Photos',
@@ -170,7 +174,6 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         {
           id: 'last-seen-where',
           question: 'Where did you last see it?',
-          helper: 'Move the map to the last place you saw it.',
           component: LastSeenWhereStep,
           schema: z.object({
             location: z.object({
@@ -185,7 +188,6 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         {
           id: 'theft-context',
           question: 'What else can you tell us?',
-          helper: 'Optional — "keys taken" tells spotters it\'s likely being driven, which helps them look.',
           component: TheftContextStep,
           schema: z.object({}),
           reviewLabel: 'Theft details',
@@ -219,7 +221,6 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         {
           id: 'bounty',
           question: 'Set a bounty',
-          helper: 'Held safely in escrow — only paid out when your car is recovered.',
           component: BountyStep,
           schema: z.object({
             bountyAmountPence: z.number().int().min(MIN_BOUNTY_PENCE).max(MAX_BOUNTY_PENCE),
@@ -231,7 +232,6 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         {
           id: 'verification',
           question: 'Confirm the car is yours',
-          helper: 'Upload your V5C logbook. A moderator checks it before your post goes live.',
           component: VerificationStep,
           schema: z.object({ verification: photoShape }),
           reviewLabel: 'Proof of ownership',

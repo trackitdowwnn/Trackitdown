@@ -1,6 +1,6 @@
 /**
  * WHAT:  Button — the app's pressable action primitive. Variants `primary`
- *        (orange fill, ADR-0005), `secondary` (outline), `ghost` (bare),
+ *        (near-black fill, ADR-0006), `secondary` (outline), `ghost` (bare),
  *        `danger` (red fill), `subtle` (grey fill, ink label — the reference's
  *        "Show all N" block button; docs/design-refs/post-detail/
  *        REFERENCE_SPEC.md §7); 52pt tall, `md` radius, full-width by default.

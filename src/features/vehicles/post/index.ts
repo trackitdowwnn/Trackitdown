@@ -15,7 +15,6 @@ export {
   CREATE_POST_ERROR_MESSAGES,
   PostSubmissionError,
   buildCreatePostParams,
-  checkPlateAvailable,
   createPost,
   submitPost,
   uploadPostPhoto,

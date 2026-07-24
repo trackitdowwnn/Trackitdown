@@ -31,16 +31,19 @@ public class Win { [DllImport("user32.dll")] public static extern bool MoveWindo
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h,int c);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); public struct RECT { public int L,T,R,B; } }
 '@
+$TargetX = 558; $TargetY = 13
 function Assert-EmulatorWindow {
   $p = Get-Process | Where-Object { $_.MainWindowTitle -match 'Pixel_10_Pro_XL' } | Select-Object -First 1
   if ($p) {
     $r = New-Object Win+RECT
     [Win]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null
-    # On-screen and roughly the target size is good enough — the emulator
-    # snaps width to the device aspect, so exact-match checks would loop.
-    if ($r.T -lt 0 -or $r.T -gt 200 -or $r.L -lt 0 -or ($r.B - $r.T) -gt 820) {
+    # Re-assert whenever the TOP-LEFT drifts from the target corner. Checking
+    # position (not size — the emulator snaps width to the device aspect)
+    # catches every off-screen case, including shoved-off-the-right/bottom,
+    # which the old "only if negative/too-tall" check missed.
+    if ([Math]::Abs($r.L - $TargetX) -gt 8 -or [Math]::Abs($r.T - $TargetY) -gt 8) {
       [Win]::ShowWindow($p.MainWindowHandle, 9) | Out-Null   # SW_RESTORE
-      [Win]::MoveWindow($p.MainWindowHandle, 558, 13, 420, 790, $true) | Out-Null
+      [Win]::MoveWindow($p.MainWindowHandle, $TargetX, $TargetY, 420, 790, $true) | Out-Null
     }
   }
 }
@@ -48,12 +51,7 @@ function Assert-EmulatorWindow {
 & $adb wait-for-device
 while ((& $adb shell getprop sys.boot_completed 2>$null) -notmatch '1') {
   Assert-EmulatorWindow
-  Start-Sleep -Seconds 2
-}
-$deadline = (Get-Date).AddSeconds(20)
-while ((Get-Date) -lt $deadline) {
-  Assert-EmulatorWindow
-  Start-Sleep -Seconds 2
+  Start-Sleep -Milliseconds 1200
 }
 
 # 4. Metro tunnel (dies with every emulator restart) + open the dev client.
@@ -69,3 +67,12 @@ while ((Get-Date) -lt $deadline) {
 try { & $adb emu geo fix -0.0780 51.7959 | Out-Null } catch {}
 
 Write-Host 'Emulator ready: window centered, Metro tunnel up, app launched, location = Hertfordshire.'
+
+# 6. Keep the window pinned for 40s AFTER launch — the emulator restores its
+#    saved (often off-screen) geometry late in startup; a tight re-assert
+#    corrects a late nudge within ~1s without delaying the app opening above.
+$deadline = (Get-Date).AddSeconds(40)
+while ((Get-Date) -lt $deadline) {
+  Assert-EmulatorWindow
+  Start-Sleep -Milliseconds 1200
+}

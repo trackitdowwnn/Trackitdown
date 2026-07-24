@@ -15,6 +15,7 @@ import {
   matchesQuery,
   normalizeQuery,
   optionCount,
+  sectionAnchors,
   stickyHeaderIndices,
   type SelectOption,
 } from './selectOptions';
@@ -117,5 +118,30 @@ describe('stickyHeaderIndices / optionCount', () => {
   it('counts only pickable options', () => {
     expect(optionCount(buildSelectList(MAKES, ''))).toBe(4);
     expect(optionCount(buildSelectList(MAKES, 'zonda'))).toBe(0);
+  });
+});
+
+describe('pinned group title', () => {
+  it('labels the pinned group with a custom title (e.g. Popular makes)', () => {
+    const items = buildSelectList(MAKES, '', ['bmw'], 'Popular makes');
+    expect(items[0]).toMatchObject({ kind: 'header', title: 'Popular makes' });
+    // The pinned option also stays in its home section (A/B), so the list has
+    // the pinned header + option, then the A and B section headers.
+    expect(items[1]).toMatchObject({ kind: 'option', option: { value: 'bmw' } });
+  });
+
+  it('defaults the pinned title to Recent when none is given', () => {
+    const items = buildSelectList(MAKES, '', ['bmw']);
+    expect(items[0]).toMatchObject({ kind: 'header', title: RECENT_SECTION_TITLE });
+  });
+});
+
+describe('sectionAnchors', () => {
+  it('returns each header title with its flat-list index for the index rail', () => {
+    const items = buildSelectList(MAKES, '');
+    expect(sectionAnchors(items)).toEqual([
+      { title: 'A', index: 0 },
+      { title: 'B', index: 3 },
+    ]);
   });
 });

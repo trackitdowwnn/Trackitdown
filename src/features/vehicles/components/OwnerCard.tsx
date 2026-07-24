@@ -73,7 +73,7 @@ export function OwnerCard({ owner, sightingCount }: OwnerCardProps) {
         ) : (
           <View style={styles.shieldCircle}>
             {/* `success`, not `primary`: verification is a passive status
-                marker, and orange is reserved for actions (ADR-0005). */}
+                marker, and primary (near-black) is reserved for actions (ADR-0006). */}
             <Feather name="shield" size={sizes.icon} color={colors.success} />
           </View>
         )}

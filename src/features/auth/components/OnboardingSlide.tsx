@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   headlineAccent: {
-    color: colors.accent, // display-size terracotta: the bounty value moment
+    color: colors.accent, // display-size near-black accent: the bounty value moment
   },
   body: {
     ...typography.body,

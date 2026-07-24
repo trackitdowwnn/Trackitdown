@@ -6,7 +6,7 @@
  *        own ScrollView.
  * WHY:   Every screen was hand-rolling SafeAreaView + background; pull-to-
  *        refresh needs one themed implementation so the spinner is always
- *        on-brand (primary orange on paper, never the platform default blue).
+ *        on-brand (primary near-black on paper, never the platform default blue).
  *        List screens can't nest inside a ScrollView, so the refresh control
  *        is exported separately instead of forcing a scroll wrapper.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour palette);

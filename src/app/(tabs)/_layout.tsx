@@ -80,8 +80,13 @@ function BadgedTabs() {
             // Gated: a guest signs in first (sheet), then the wizard opens
             // without re-tapping. Full-screen flow OUTSIDE the (tabs) group,
             // so the tab bar is gone for the wizard.
+            // TESTING (dev only): skip the auth gate so the wizard can be
+            // opened without logging in while the flow is being redesigned.
+            // Production still gates — delete this __DEV__ branch to restore.
             onPress: () =>
-              requireAuth({ context: 'post_car', run: () => router.push('/post-a-car') }),
+              __DEV__
+                ? router.push('/post-a-car')
+                : requireAuth({ context: 'post_car', run: () => router.push('/post-a-car') }),
           }}
         />
       )}

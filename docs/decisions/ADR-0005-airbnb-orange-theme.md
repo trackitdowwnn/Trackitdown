@@ -1,6 +1,6 @@
 # ADR-0005 — Colour theme: redirect to Airbnb's palette with an orange accent
 
-**Status:** accepted · **Date:** 2026-07-16 · **Supersedes:** [ADR-0004](ADR-0004-theme-audit.md)
+**Status:** superseded by [ADR-0006](ADR-0006-monochrome-theme.md) (2026-07-24) · **Date:** 2026-07-16 · **Supersedes:** [ADR-0004](ADR-0004-theme-audit.md)
 
 ## Context
 

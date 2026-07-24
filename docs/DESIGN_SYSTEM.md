@@ -1,12 +1,14 @@
 # Design System — Clean, Spacious, Trustworthy
 
-Visual direction: **Airbnb-inspired**. Spacious layouts, generous white
-space, soft rounded cards, cool near-white surfaces and grey ink with ONE
-vivid accent (orange) used sparingly, friendly type — photography carries
-the colour. The subject matter (car theft) is stressful — the design's job
-is to feel calm, capable, and human. Never alarmist, never "police app"
-dark-and-red. (Palette redirected to Airbnb's structure with an orange
-accent, 2026-07-16 — see `docs/decisions/ADR-0005-airbnb-orange-theme.md`.)
+Visual direction: **Airbnb-inspired, monochrome**. Spacious layouts, generous
+white space, soft rounded cards, cool near-white surfaces and grey ink with the
+primary action and bounty/value both rendered in **near-black** (no brand warm
+colour), friendly type — photography carries the colour. The subject matter (car
+theft) is stressful — the design's job is to feel calm, capable, and human.
+Never alarmist, never "police app" dark-and-red. (Structure follows Airbnb,
+2026-07-16, `docs/decisions/ADR-0005-airbnb-orange-theme.md`; the orange/
+terracotta accents were swapped to near-black on 2026-07-24 at the owner's
+request — semantic status hues kept.)
 
 All values below live as tokens in `src/shared/theme/`. UI code imports
 tokens; it never hard-codes hex values, pixel sizes, or font names.
@@ -19,10 +21,10 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `surface` | `#FFFFFF` | cards, sheets, inputs |
 | `surfaceSubtle` | `#EEEEEE` | secondary surfaces, chips |
 | `surfaceSubtlePressed` | `#E0E0E0` | pressed state of subtle-surface fills |
-| `primary` | `#C2410C` | deep Arches orange — primary buttons, links, active states (the ONE vivid accent; AA at label size on `background`) |
-| `primaryPressed` | `#A8380A` | pressed/hover state of primary |
-| `accent` | `#C97B5D` | terracotta — bounty fills, highlights, badges, large type (the sole warm colour; reserved for value) |
-| `accentText` | `#A05A3B` | terracotta for bounty label/body-size text (AA on `background`) |
+| `primary` | `#1A1A1A` | soft near-black — primary buttons, links, active states, selection rings/checks (AAA on `background`) |
+| `primaryPressed` | `#333333` | pressed/hover state of primary (lightens, since it can't go darker) |
+| `accent` | `#1A1A1A` | bounty fills, highlights, badges, large value type — monochrome (shares the near-black; value reads via bold fill + weight) |
+| `accentText` | `#1A1A1A` | near-black for bounty label/body-size text (AAA on `background`) |
 | `textPrimary` | `#222222` | ink for headings/body |
 | `textSecondary` | `#6A6A6A` | captions, metadata |
 | `border` | `#DDDDDD` | hairlines, input borders |
@@ -36,29 +38,30 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `surfaceInversePressed` | `#3A3A3A` | pressed state of `surfaceInverse` |
 | `overlay` | `rgba(0,0,0,0.45)` | modal scrim |
 
-Rules: orange `primary` is the single vivid accent — actions only (buttons,
-links, active states). The terracotta accent is the sole warm colour and is
-reserved for bounty/value moments so it keeps its meaning and stands out
-against the orange. Danger red appears only on destructive/error UI (and is
-kept a distinct red so it never reads as the orange CTA) — never as
-decoration on "stolen" content.
+Rules: near-black `primary` is the action colour — buttons, links, active
+states, selection. `accent` (also near-black) is reserved for bounty/value
+moments; in the monochrome scheme value stands out through a bold black fill,
+weight, and size rather than hue. Danger red appears only on destructive/error
+UI — never as decoration on "stolen" content. `success` green and `warning`
+amber remain the semantic status hues (not brand colour), so pending/verified
+states stay legible.
 
 ### Contrast (WCAG AA on the near-white `#F7F7F7` background)
 
-Every token used as TEXT clears AA (4.5:1). `accent` and `success` are
-large-type/fill/dot only by design; `warning` is dot/icon/border only.
-(Redirected 2026-07-16 — see `docs/decisions/ADR-0005-airbnb-orange-theme.md`.)
+Every token used as TEXT clears AA (4.5:1). `success` is dot/fill only by
+design; `warning` is dot/icon/border only. The near-black `primary`/`accent`
+clear AAA both as text and as a fill under white. (Monochrome swap 2026-07-24;
+structure per `docs/decisions/ADR-0005-airbnb-orange-theme.md`.)
 
 | Pairing | Ratio | Verdict |
 |---|---|---|
 | `textPrimary` on `background` | 14.9 | AA |
 | `textSecondary` on `background` | 5.1 | AA |
-| `primary` (as text) on `background` | 4.8 | AA |
-| `accentText` on `background` | 4.9 | AA |
+| `primary` (as text) on `background` | 15.3 | AAA |
+| `accentText` on `background` | 15.3 | AAA |
 | `danger` (as text) on `background` | 5.5 | AA |
-| white on `primary` | 5.2 | AA |
+| white on `primary` | 16.9 | AAA |
 | white on `danger` | 5.9 | AA |
-| `accent` on `background` | 3.0 | large/fill only |
 | `success` on `background` | 3.8 | dot only |
 | `warning` on `background` | 3.7 | dot/icon only (≥3:1 graphic) |
 

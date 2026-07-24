@@ -5,7 +5,7 @@
  * WHY:   DESIGN_SYSTEM.md calls for "a light map style (muted natural tones)",
  *        but the map rendered stock Google colours (bright greens/blues) that
  *        clashed with our surfaces under the on-brand pins. Re-derived to the
- *        Airbnb-orange cool neutrals (ADR-0005) so the canvas matches the rest
+ *        app's cool neutrals (ADR-0005 / ADR-0006) so the canvas matches the rest
  *        of the UI — land = surfaceSubtle, road borders = border, labels =
  *        textSecondary with a near-white halo — and strips POI/transit noise so
  *        the map reads calm (the anti-"Citizen" direction: never busy or alarming).

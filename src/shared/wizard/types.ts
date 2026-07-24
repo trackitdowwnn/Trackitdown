@@ -19,12 +19,24 @@ export interface WizardStepProps<TAnswers> {
   answers: Partial<TAnswers>;
   /** Merge a partial update into the answers (one step edits its slice). */
   setAnswers: (patch: Partial<TAnswers>) => void;
+  /**
+   * Advance past this step WITHOUT running its primary action or waiting on the
+   * Next gate — for a step that offers its own "Skip" affordance (e.g. the
+   * plate step, whose Next requires a valid plate but which can be skipped
+   * plate-less). Returns to the review screen on an edit spur, exactly like Next.
+   */
+  onSkip?: () => void;
 }
 
 export interface WizardStep<TAnswers> {
   id: string;
-  /** The ONE question/task this screen asks, display-scale typography. */
-  question: string;
+  /**
+   * The ONE question/task this screen asks, display-scale typography. Usually
+   * a static string; pass a function of the answers so far when the wording
+   * depends on an earlier step (e.g. the model step reads "Which BMW model?"
+   * from the chosen make). Resolve it with `resolveQuestion`.
+   */
+  question: string | ((answers: Partial<TAnswers>) => string);
   /** Optional supporting sentence under the question. */
   helper?: string;
   component: ComponentType<WizardStepProps<TAnswers>>;

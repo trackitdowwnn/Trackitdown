@@ -398,9 +398,12 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
   },
+  // Underlined so it reads as a tappable control in the monochrome scheme
+  // (near-black link text no longer stands out by colour alone).
   link: {
     ...typography.label,
     color: colors.primary,
+    textDecorationLine: 'underline',
   },
   linkDisabled: {
     color: colors.textSecondary,

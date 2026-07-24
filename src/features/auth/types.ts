@@ -14,8 +14,8 @@ export interface OnboardingSlideData {
   /** Placeholder illustration. TODO(art): replace with final artwork slot. */
   emoji: string;
   headline: string;
-  /** Optional trailing headline phrase set in terracotta — the bounty/value
-   *  accent (docs/DESIGN_SYSTEM.md: accent is reserved for value moments). */
+  /** Optional trailing headline phrase set in the accent (near-black) — the
+   *  bounty/value colour (docs/DESIGN_SYSTEM.md: accent is reserved for value). */
   headlineAccent?: string;
   body: string;
   /** Fixed safety wording rendered in SafetyNotice visual language

@@ -1,19 +1,25 @@
 /**
  * WHAT:  SelectScreen — the full-screen searchable option picker that opens
  *        from a SelectField (or standalone): header with close X and title,
- *        auto-focused pill search bar with debounced filtering, a sticky-
- *        sectioned option list with icons/subtitles and a sage checkmark on
- *        the selected row, and an EmptyState for no matches.
+ *        a pill search bar with debounced filtering, a sticky-sectioned
+ *        option list with icons/subtitles and a `primary` checkmark on the
+ *        selected row (active state), and an EmptyState for no matches. Opt-in extras
+ *        (default off, so existing selects are unchanged): `autoFocusSearch`
+ *        false for browse-first pickers; `pinnedTitle` to head the pinned
+ *        group ("Popular makes"); `manualEntry` for free-text selects (typing a
+ *        value with no exact match surfaces a "Use "<query>"" row);
+ *        `showIndex` for an A–Z jump-scroll rail; `stagger` for a restrained
+ *        first-load row cascade.
  * WHY:   Dropdown menus cramp on mobile; the Airbnb pattern gives every
  *        select in the app (car make, colour, future filters) room to
  *        search and generous touch targets. Presented as a self-contained
  *        RN Modal (slide-up + fade, 200–250ms ease-out, reversed on close,
  *        reduce-motion aware) so any screen can open one without route
- *        wiring. The list is a FLAT FlatList (headers as items +
- *        stickyHeaderIndices) so swapping to FlashList later is trivial.
- *        Single-select in v1; see the TODO(multi-select) in handleSelect
- *        for where checkboxes + a Done button plug in without breaking the
- *        API.
+ *        wiring. The list is a FlatList (headers as items +
+ *        stickyHeaderIndices) — FlashList was assessed but does not support
+ *        sticky section headers, a core requirement, and 40–50 rows need no
+ *        virtualization. Single-select in v1; see the TODO(multi-select) in
+ *        handleSelect for where checkboxes + a Done button plug in.
  * LINKS: src/shared/ui/SelectField.tsx (trigger); src/shared/ui/
  *        selectOptions.ts (filtering/grouping logic); src/shared/ui/
  *        EmptyState.tsx; docs/DESIGN_SYSTEM.md (Motion, Accessibility).
@@ -43,6 +49,7 @@ import {
 } from 'react-native';
 import Animated, {
   FadeIn,
+  FadeInDown,
   FadeOut,
   ReduceMotion,
   SlideInDown,
@@ -51,19 +58,22 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, radii, sizes, spacing, typography } from '../theme';
+import { lightHaptic } from '../lib/haptics';
+import { colors, motion, radii, sizes, spacing, typography } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { EmptyState } from './EmptyState';
 import {
   buildSelectList,
   optionCount,
+  sectionAnchors,
   stickyHeaderIndices,
+  type SectionAnchor,
   type SelectListItem,
   type SelectOption,
 } from './selectOptions';
 
 /** Open/close motion, at the design system's upper bound. */
-const MOTION_MS = 250;
+const MOTION_MS = motion.standard;
 const motionEasing = easeOut;
 /** Debounce before a keystroke re-filters the list. */
 const FILTER_DEBOUNCE_MS = 150;
@@ -80,8 +90,22 @@ export interface SelectScreenProps<V extends string | number> {
   /** Centred header title, e.g. "Car make". */
   title?: string;
   searchPlaceholder?: string;
-  /** Consumer-fed recent values, shown under "Recent" while not searching. */
+  /** Values pinned at the top under `pinnedTitle` while not searching (recent
+   *  selections, or a curated "popular" set). */
   recentValues?: V[];
+  /** Heading for the pinned group. Defaults to "Recent". */
+  pinnedTitle?: string;
+  /** Auto-focus the search on open (search-first). Off ⇒ browse-first: the
+   *  list leads and the keyboard only rises when the field is tapped. */
+  autoFocusSearch?: boolean;
+  /** Free-text escape hatch for non-enum selects (car make/model). When set, a
+   *  query with no exact match offers a "Use "<query>"" row that submits the
+   *  typed text via `onSubmit`. */
+  manualEntry?: { onSubmit: (text: string) => void };
+  /** Show an A–Z jump-scroll index rail down the right edge (long lists). */
+  showIndex?: boolean;
+  /** Soft stagger-in of rows on the first open (restrained motion). */
+  stagger?: boolean;
 }
 
 export function SelectScreen<V extends string | number>({
@@ -93,8 +117,14 @@ export function SelectScreen<V extends string | number>({
   title,
   searchPlaceholder = 'Search',
   recentValues,
+  pinnedTitle,
+  autoFocusSearch = true,
+  manualEntry,
+  showIndex = false,
+  stagger = false,
 }: SelectScreenProps<V>) {
   const searchRef = useRef<TextInput>(null);
+  const listRef = useRef<FlatList<SelectListItem<V>>>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -131,14 +161,15 @@ export function SelectScreen<V extends string | number>({
   }, [visible]);
 
   // Focus can't ride only on Modal onShow: a reopen within the exit window
-  // reuses the mounted Modal (no onShow), but the content remounted.
+  // reuses the mounted Modal (no onShow), but the content remounted. Skipped
+  // for browse-first pickers (autoFocusSearch=false) so the list leads.
   useEffect(() => {
-    if (!visible) {
+    if (!visible || !autoFocusSearch) {
       return;
     }
     const timer = setTimeout(() => searchRef.current?.focus(), 0);
     return () => clearTimeout(timer);
-  }, [visible]);
+  }, [visible, autoFocusSearch]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), FILTER_DEBOUNCE_MS);
@@ -146,9 +177,25 @@ export function SelectScreen<V extends string | number>({
   }, [query]);
 
   const items = useMemo(
-    () => buildSelectList(options, debouncedQuery, recentValues),
-    [options, debouncedQuery, recentValues],
+    () => buildSelectList(options, debouncedQuery, recentValues, pinnedTitle),
+    [options, debouncedQuery, recentValues, pinnedTitle],
   );
+
+  // An exact (case/space-insensitive) label match means the query is already a
+  // listed option — no need to offer "Use "<query>"".
+  const hasExactMatch = useMemo(
+    () =>
+      manualEntry != null &&
+      debouncedQuery.trim().length > 0 &&
+      options.some((option) => option.label.trim().toLowerCase() === debouncedQuery.trim().toLowerCase()),
+    [manualEntry, debouncedQuery, options],
+  );
+  const showUseQuery = manualEntry != null && debouncedQuery.trim().length > 0 && !hasExactMatch;
+
+  const submitManual = (text: string) => {
+    manualEntry?.onSubmit(text.trim());
+    onClose();
+  };
 
   // Tell screen-reader users how the result set changed as they type.
   useEffect(() => {
@@ -165,6 +212,7 @@ export function SelectScreen<V extends string | number>({
     // TODO(multi-select): when multi-select lands, toggle the value in a
     // draft set here and move the commit to a footer Done button instead
     // of closing immediately.
+    lightHaptic(); // a light tick confirms the pick
     onSelect(selected);
     onClose();
   };
@@ -180,8 +228,14 @@ export function SelectScreen<V extends string | number>({
       statusBarTranslucent
       animationType="none"
       onRequestClose={onClose}
-      onShow={() => searchRef.current?.focus()}
+      onShow={autoFocusSearch ? () => searchRef.current?.focus() : undefined}
     >
+      {/* Static opaque backdrop — covers the screen the WHOLE time the modal is
+          mounted (through both the enter and exit animations). The Modal is
+          `transparent`, so without this the sheet's slide/fade would reveal the
+          screen behind it (e.g. the wizard's Next button bleeding through and
+          flickering on Android). The sheet animates over this solid fill. */}
+      <View style={styles.backdrop}>
       {visible ? (
         <Animated.View
           style={styles.sheet}
@@ -267,44 +321,98 @@ export function SelectScreen<V extends string | number>({
               {items.length === 0 ? (
                 debouncedQuery ? (
                   <EmptyState
-                    title={`No matches for '${debouncedQuery}'`}
-                    body="Check the spelling or try a shorter search."
-                    actionLabel="Clear search"
-                    onAction={() => setQuery('')}
+                    title={`No matches for “${debouncedQuery}”`}
+                    body={
+                      manualEntry
+                        ? 'Not in the list? Add it as you typed it.'
+                        : 'Check the spelling or try a shorter search.'
+                    }
+                    actionLabel={manualEntry ? `Use “${debouncedQuery.trim()}”` : 'Clear search'}
+                    onAction={
+                      manualEntry ? () => submitManual(debouncedQuery) : () => setQuery('')
+                    }
                   />
                 ) : (
                   <EmptyState title="Nothing to choose from yet" />
                 )
               ) : (
-                <FlatList
-                  accessibilityRole="radiogroup"
-                  data={items}
-                  keyExtractor={(item) => item.key}
-                  stickyHeaderIndices={stickyHeaderIndices(items)}
-                  keyboardShouldPersistTaps="handled"
-                  keyboardDismissMode="on-drag"
-                  contentContainerStyle={styles.listContent}
-                  renderItem={({ item }) => (
-                    <SelectRow item={item} selectedValue={value} onSelect={handleSelect} />
-                  )}
-                />
+                <View style={styles.flex}>
+                  <FlatList
+                    ref={listRef}
+                    accessibilityRole="radiogroup"
+                    data={items}
+                    keyExtractor={(item) => item.key}
+                    stickyHeaderIndices={stickyHeaderIndices(items)}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    contentContainerStyle={[
+                      styles.listContent,
+                      // Clear the index rail so the last rows aren't hidden under it.
+                      showIndex && !debouncedQuery ? styles.listContentIndexed : null,
+                    ]}
+                    // Jump-scroll can target a header far down; approximate then settle.
+                    onScrollToIndexFailed={(info) => {
+                      listRef.current?.scrollToOffset({
+                        offset: info.averageItemLength * info.index,
+                        animated: true,
+                      });
+                    }}
+                    ListHeaderComponent={
+                      showUseQuery ? (
+                        <ManualRow
+                          label={`Use “${debouncedQuery.trim()}”`}
+                          onPress={() => submitManual(debouncedQuery)}
+                        />
+                      ) : null
+                    }
+                    renderItem={({ item, index }) => (
+                      <SelectRow
+                        item={item}
+                        selectedValue={value}
+                        onSelect={handleSelect}
+                        stagger={stagger && !debouncedQuery ? index : undefined}
+                      />
+                    )}
+                  />
+                  {showIndex && !debouncedQuery ? (
+                    <IndexRail
+                      // Only the A–Z letter sections — a multi-word pinned
+                      // header (e.g. "Popular makes") would put a stray letter
+                      // on the rail; that group sits at the top anyway.
+                      anchors={sectionAnchors(items).filter((anchor) => /^[A-Z]$/.test(anchor.title))}
+                      onJump={(index) =>
+                        listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0 })
+                      }
+                    />
+                  ) : null}
+                </View>
               )}
             </SafeAreaView>
           </Animated.View>
         </Animated.View>
       ) : null}
+      </View>
     </Modal>
   );
 }
+
+/** Per-row stagger delay + cap — the sanctioned list cadence: the LAST row
+ *  starts within the ≤300ms budget (5×50 = 250ms spread), matching the
+ *  motion.listStagger token; docs/DESIGN_SYSTEM.md Motion. */
+const STAGGER_STEP_MS = motion.listStagger;
+const STAGGER_MAX_STEPS = 5;
 
 function SelectRow<V extends string | number>({
   item,
   selectedValue,
   onSelect,
+  stagger,
 }: {
   item: SelectListItem<V>;
   selectedValue: V | null;
   onSelect: (value: V) => void;
+  /** Row index for the first-load stagger, or undefined to skip. */
+  stagger?: number;
 }) {
   if (item.kind === 'header') {
     return (
@@ -318,36 +426,100 @@ function SelectRow<V extends string | number>({
 
   const { option } = item;
   const selected = option.value === selectedValue;
+  const entering =
+    stagger !== undefined
+      ? FadeInDown.duration(motion.fast)
+          .delay(Math.min(stagger, STAGGER_MAX_STEPS) * STAGGER_STEP_MS)
+          .reduceMotion(ReduceMotion.System)
+      : undefined;
 
   return (
+    <Animated.View entering={entering}>
+      <Pressable
+        accessibilityRole="radio"
+        accessibilityLabel={option.subtitle ? `${option.label}, ${option.subtitle}` : option.label}
+        accessibilityState={{ checked: selected }}
+        onPress={() => onSelect(option.value)}
+        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      >
+        {option.icon ? <View style={styles.rowIcon}>{option.icon}</View> : null}
+        <View style={styles.rowText}>
+          <Text numberOfLines={1} style={styles.rowLabel}>
+            {option.label}
+          </Text>
+          {option.subtitle ? (
+            <Text numberOfLines={1} style={styles.rowSubtitle}>
+              {option.subtitle}
+            </Text>
+          ) : null}
+        </View>
+        {selected ? (
+          <Feather name="check" size={typography.heading.fontSize} color={colors.primary} />
+        ) : null}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+/** The type-to-add "Use "<query>"" free-text row (manual-entry escape hatch). */
+function ManualRow({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
     <Pressable
-      accessibilityRole="radio"
-      accessibilityLabel={option.subtitle ? `${option.label}, ${option.subtitle}` : option.label}
-      accessibilityState={{ checked: selected }}
-      onPress={() => onSelect(option.value)}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      {option.icon ? <View style={styles.rowIcon}>{option.icon}</View> : null}
-      <View style={styles.rowText}>
-        <Text numberOfLines={1} style={styles.rowLabel}>
-          {option.label}
-        </Text>
-        {option.subtitle ? (
-          <Text numberOfLines={1} style={styles.rowSubtitle}>
-            {option.subtitle}
-          </Text>
-        ) : null}
+      <View style={styles.rowIcon}>
+        <Feather name="plus" size={typography.body.fontSize} color={colors.primary} />
       </View>
-      {selected ? (
-        <Feather name="check" size={typography.heading.fontSize} color={colors.primary} />
-      ) : null}
+      <Text numberOfLines={1} style={[styles.rowLabel, styles.manualAction]}>
+        {label}
+      </Text>
     </Pressable>
+  );
+}
+
+/** A–Z jump-scroll rail down the right edge; each letter scrolls to its
+ *  section. The list itself remains the accessible primary navigation. */
+function IndexRail({
+  anchors,
+  onJump,
+}: {
+  anchors: SectionAnchor[];
+  onJump: (index: number) => void;
+}) {
+  return (
+    <View style={styles.indexRail} pointerEvents="box-none">
+      {anchors.map((anchor) => (
+        <Pressable
+          key={anchor.title}
+          accessibilityRole="button"
+          accessibilityLabel={`Jump to ${anchor.title}`}
+          onPress={() => onJump(anchor.index)}
+          hitSlop={spacing.sm}
+          style={styles.indexLetter}
+        >
+          {/* One-glyph anchors (letters); a longer pinned title collapses to its
+              first letter so the rail stays a tidy column. */}
+          <Text style={styles.indexLetterText}>{anchor.title.charAt(0)}</Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+  },
+  // Static opaque fill behind the animating sheet, so the transparent Modal
+  // never reveals the screen behind it during the slide/fade (Android bleed-
+  // through / footer flicker). Same colour as the sheet so the content appears
+  // to rise over one continuous surface.
+  backdrop: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
   sheet: {
     flex: 1,
@@ -405,6 +577,32 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: spacing.xl,
   },
+  // Extra right padding so rows clear the index rail when it's shown.
+  listContentIndexed: {
+    paddingRight: spacing.lg,
+  },
+  // The "Use "<query>"" free-text row reads in the accent ink (an action).
+  manualAction: {
+    color: colors.primary,
+  },
+  // The A–Z rail floats over the list's right edge, vertically centred.
+  indexRail: {
+    position: 'absolute',
+    right: spacing.xs,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  indexLetter: {
+    paddingVertical: sizes.indexRailLetterPad,
+    paddingHorizontal: spacing.xs,
+  },
+  indexLetterText: {
+    ...typography.caption,
+    fontFamily: typography.label.fontFamily,
+    color: colors.textSecondary,
+  },
   sectionHeader: {
     backgroundColor: colors.background,
     paddingHorizontal: spacing.xl,
@@ -427,7 +625,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSubtle,
   },
   rowIcon: {
-    width: spacing.xl,
+    // Fits a small make monogram / logo; smaller glyphs (colour dots) centre.
+    width: sizes.circleButtonSm,
     alignItems: 'center',
   },
   rowText: {

@@ -61,7 +61,7 @@ interface Row {
 
 const TONE_COLOR: Record<Tone, string> = {
   // Affirmative green — a passive trust marker, NOT an action, so it must not
-  // wear the orange `primary` CTA colour (ADR-0005: orange = actions only).
+  // wear the `primary` CTA colour (ADR-0006: primary near-black = actions only).
   verified: colors.success,
   pending: colors.warning,
   neutral: colors.textSecondary,

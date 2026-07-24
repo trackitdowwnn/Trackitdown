@@ -4,7 +4,7 @@
  *        (Reanimated), so it never sits over content mid-read.
  * WHY:   Airbnb's map toggle: the feed and the map are two views of the same
  *        search. surfaceInverse is the one sanctioned dark floating fill —
- *        it must read above any card photo without competing with terracotta
+ *        it must read above any card photo without competing with the near-black
  *        bounty tags. While hidden it leaves the accessibility tree too
  *        (opacity alone would keep it in the screen-reader focus order).
  * LINKS: src/features/search-map/screens/HomeFeedScreen.tsx (scroll wiring);

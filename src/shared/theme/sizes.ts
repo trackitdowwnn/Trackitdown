@@ -30,6 +30,19 @@ export const sizes = {
    *  padded to touchTarget; these are the drawn sizes). */
   sliderThumb: 28,
   sliderTrack: 6,
+  /** Colour-swatch diameter for the post-a-car colour grid (circular fill +
+   *  name label beneath; the pressable cell is padded well past touchTarget). */
+  colourSwatch: 56,
+  /** Colour-swatch selection chrome — the active ring stroke, its breathing gap
+   *  to the swatch, and the corner check badge (diameter + glyph). Mirrors the
+   *  tab-avatar ring tokens (tabAvatarRing / tabAvatarRingGap). */
+  colourSwatchRing: 2,
+  colourSwatchRingGap: 3,
+  colourSwatchBadge: 20,
+  colourSwatchBadgeIcon: 12,
+  /** A–Z index-rail letter vertical padding — iOS section-index rhythm,
+   *  deliberately below the 4pt scale so ~20 letters fit as one tidy column. */
+  indexRailLetterPad: 2,
   /** Standard icon size (tab bar, action rows). */
   icon: 24,
   /** Small inline icon (inside pills/chips, beside label-size text). */
