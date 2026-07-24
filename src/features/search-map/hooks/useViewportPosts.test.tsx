@@ -1,12 +1,13 @@
 /**
  * WHAT:  Tests for useViewportPosts — entry search, the calm Search-this-
- *        area offer/consume cycle, failed re-search keeping results AND
- *        the button, retry after an initial error, and the capture-once
- *        initial region.
+ *        area offer/consume cycle, applying a search + sticky criteria across
+ *        re-search, failed re-search keeping results AND the button, retry
+ *        after an initial error, and the capture-once initial region.
  * WHY:   This state machine IS the map's UX contract: results must never
- *        change without an explicit user action after entry.
+ *        change without an explicit user action after entry, and an applied
+ *        filter must survive a pan (a "Search this area" keeps it).
  * LINKS: src/features/search-map/hooks/useViewportPosts.ts,
- *        docs/TESTING.md.
+ *        src/features/search-map/lib/searchCriteria.ts, docs/TESTING.md.
  */
 
 import { act, renderHook, waitFor } from '@testing-library/react-native';
@@ -14,11 +15,12 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { GeoRegion } from '@/shared/types';
 
 import { useViewportPosts } from './useViewportPosts';
+import { emptyCriteria } from '../lib/searchCriteria';
 
 const mockFetch = jest.fn();
 
 jest.mock('../api/mapApi', () => ({
-  fetchViewportPosts: (...args: unknown[]) => mockFetch(...args),
+  fetchSearchPosts: (...args: unknown[]) => mockFetch(...args),
 }));
 
 const REGION: GeoRegion = {
@@ -82,6 +84,36 @@ describe('useViewportPosts', () => {
       result.current.onRegionChange(REGION);
     });
     expect(result.current.showSearchArea).toBe(true);
+  });
+
+  it('applies a search at the framed region and keeps the criteria sticky across a re-search', async () => {
+    mockFetch.mockResolvedValue(RESULT);
+    const { result } = await renderHook(() => useViewportPosts(REGION));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    // The entry search ran with empty (unfiltered) criteria.
+    expect(mockFetch.mock.calls[0][1]).toMatchObject({ text: '', make: null });
+
+    const bmw = { ...emptyCriteria(), make: 'BMW' };
+    mockFetch.mockResolvedValue({ total: 5, posts: [] });
+    await act(async () => {
+      await result.current.applySearch({ criteria: bmw, region: FAR_REGION });
+    });
+    expect(result.current.result.total).toBe(5);
+    // The apply searched with the BMW criteria at the framed region.
+    const applyCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+    expect(applyCall[1]).toMatchObject({ make: 'BMW' });
+    expect(result.current.searchedRegion).toEqual(FAR_REGION);
+
+    // Panning + "Search this area" must KEEP the BMW filter (sticky).
+    mockFetch.mockResolvedValue({ total: 2, posts: [] });
+    await act(async () => {
+      result.current.onRegionChange({ ...FAR_REGION, latitude: FAR_REGION.latitude + 1 });
+    });
+    await act(async () => {
+      await result.current.searchThisArea();
+    });
+    const lastCall = mockFetch.mock.calls[mockFetch.mock.calls.length - 1];
+    expect(lastCall[1]).toMatchObject({ make: 'BMW' });
   });
 
   it('keeps previous results and the button when a re-search fails', async () => {

@@ -31,11 +31,21 @@ import { AppMap } from '@/shared/ui/AppMap';
 import { MapCardPager } from '../components/MapCardPager';
 import { MapListSheet } from '../components/MapListSheet';
 import { MapPins } from '../components/MapPins';
+import { MapSearchPill } from '../components/MapSearchPill';
+import { SearchSheet } from '../components/SearchSheet';
 import { SearchThisAreaButton } from '../components/SearchThisAreaButton';
 import { useFeedLocation } from '../hooks/useFeedLocation';
 import { useMapSelection } from '../hooks/useMapSelection';
 import { useViewportPosts } from '../hooks/useViewportPosts';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
+import {
+  type SearchCriteria,
+  emptyCriteria,
+  isEmptyCriteria,
+  parseCriteria,
+  summarise,
+  toRpcCriteria,
+} from '../lib/searchCriteria';
 import { buildClusterIndex, clusterMemberCoords, pinsForRegion } from '../lib/mapClustering';
 import {
   distanceMeters,
@@ -61,26 +71,38 @@ const AREA_ENTRY_RADIUS_MILES = 5;
 
 export function MapSearchScreen() {
   const router = useRouter();
-  const { area, lat, lng } = useLocalSearchParams<{
+  const { area, lat, lng, latDelta, lngDelta, criteria } = useLocalSearchParams<{
     area?: string;
-    query?: string;
     lat?: string;
     lng?: string;
+    latDelta?: string;
+    lngDelta?: string;
+    /** JSON SearchCriteria from the feed's search surface — when present the
+     *  map searches with this filter immediately (no location resolution). */
+    criteria?: string;
   }>();
   const insets = useSafeAreaInsets();
   const { location } = useFeedLocation();
 
-  // Resolve the entry region ONCE: exact lat/lng → area geocode → feed → UK.
+  // The applied search carried from the feed (or empty for a plain browse).
+  const initialCriteria = useMemo(() => parseCriteria(criteria) ?? emptyCriteria(), [criteria]);
+
+  // Resolve the entry region ONCE: a fully-framed region from params (the feed
+  // search, or a precise point) → area geocode → feed → UK.
   const [entryRegion, setEntryRegion] = useState<GeoRegion | null>(null);
   useEffect(() => {
     if (entryRegion) {
       return; // resolved already
     }
-    // Precise-point entry ("Last seen here" on a post) resolves without the
-    // feed location; everything else waits for it.
     const latNum = Number(lat);
     const lngNum = Number(lng);
     const hasCoords = Boolean(lat && lng && Number.isFinite(latNum) && Number.isFinite(lngNum));
+    // A full span (latDelta/lngDelta) means the caller already framed the
+    // region (the feed's search apply) — use it verbatim, no resolution.
+    const latD = Number(latDelta);
+    const lngD = Number(lngDelta);
+    const hasSpan =
+      Boolean(latDelta && lngDelta) && Number.isFinite(latD) && Number.isFinite(lngD);
     if (!hasCoords && !location) {
       return; // the feed location is still resolving
     }
@@ -91,7 +113,9 @@ export function MapSearchScreen() {
       if (hasCoords) {
         if (!cancelled) {
           setEntryRegion(
-            regionAround({ latitude: latNum, longitude: lngNum }, AREA_ENTRY_RADIUS_MILES),
+            hasSpan
+              ? { latitude: latNum, longitude: lngNum, latitudeDelta: latD, longitudeDelta: lngD }
+              : regionAround({ latitude: latNum, longitude: lngNum }, AREA_ENTRY_RADIUS_MILES),
           );
         }
         return;
@@ -114,7 +138,7 @@ export function MapSearchScreen() {
     return () => {
       cancelled = true;
     };
-  }, [area, lat, lng, location, entryRegion]);
+  }, [area, lat, lng, latDelta, lngDelta, location, entryRegion]);
 
   if (!entryRegion) {
     return (
@@ -126,6 +150,7 @@ export function MapSearchScreen() {
   return (
     <MapSearchBody
       entryRegion={entryRegion}
+      initialCriteria={initialCriteria}
       onBack={() => router.back()}
       inset={insets.top}
       insetBottom={insets.bottom}
@@ -135,11 +160,13 @@ export function MapSearchScreen() {
 
 function MapSearchBody({
   entryRegion,
+  initialCriteria,
   onBack,
   inset,
   insetBottom,
 }: {
   entryRegion: GeoRegion;
+  initialCriteria: SearchCriteria;
   onBack: () => void;
   inset: number;
   insetBottom: number;
@@ -152,9 +179,18 @@ function MapSearchBody({
     searching,
     showSearchArea,
     onRegionChange,
+    applySearch,
     searchThisArea,
     retry,
-  } = useViewportPosts(entryRegion);
+  } = useViewportPosts(entryRegion, initialCriteria);
+
+  // The screen owns the APPLIED criteria (for the pill summary); the SearchSheet
+  // owns the draft while it's open. Seeded from the search carried in from the
+  // feed; the map pill re-opens the surface to refine.
+  const [appliedCriteria, setAppliedCriteria] = useState<SearchCriteria>(initialCriteria);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Stable so SearchSheet's back-handler effect doesn't re-register each render.
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
 
   // ONE distance-ordered list feeds the pager, the sheet, and selection-
   // index derivation, so "index" means the same thing everywhere. Distance
@@ -248,7 +284,9 @@ function MapSearchBody({
   // per sortedPosts rebuild (this repo's identity-keyed-effect hazard).
   const hasSelection = selectedIndex >= 0;
   useEffect(() => {
-    if (!hasSelection) {
+    // While the search surface is open, ITS back handler owns the gesture
+    // (closes the sheet); don't also register the card-clear one.
+    if (!hasSelection || searchOpen) {
       return;
     }
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -256,7 +294,7 @@ function MapSearchBody({
       return true; // consumed — the screen stays
     });
     return () => subscription.remove();
-  }, [hasSelection, clear]);
+  }, [hasSelection, searchOpen, clear]);
 
   const openPost = useCallback(
     (post: MapPost) => {
@@ -284,11 +322,44 @@ function MapSearchBody({
     [requireAuth, router],
   );
 
+  // Apply a search assembled in the surface: close the surface, fly the camera
+  // to the distance-framed region, and re-query.
+  const handleApplySearch = useCallback(
+    (criteria: SearchCriteria, region: GeoRegion) => {
+      setAppliedCriteria(criteria);
+      setSearchOpen(false);
+      flyTo(region);
+      void applySearch({ criteria, region });
+      // Which criteria the user searched by (KEY presence only) + the coarse
+      // distance band — no coordinates, no plate (there is no plate criterion).
+      log.info('search_apply', {
+        criteriaKeys: Object.keys(toRpcCriteria(criteria)),
+        distanceMiles: criteria.distanceMiles,
+      });
+    },
+    [flyTo, applySearch],
+  );
+
+  // The pill's × — drop the filter and re-query the current region unfiltered.
+  const handleClearSearch = useCallback(() => {
+    const empty = emptyCriteria();
+    setAppliedCriteria(empty);
+    void applySearch({ criteria: empty, region: searchedRegion });
+  }, [applySearch, searchedRegion]);
+
+  // (Android back while the search surface is open is owned by SearchSheet.)
+
   return (
     <View style={styles.container}>
-      <AppMap
-        region={camera}
-        animateDurationMs={motion.mapPan}
+      {/* The map + its controls. Hidden from assistive tech while the search
+          surface is open so AT focus can't reach pins/pill behind it. */}
+      <View
+        style={styles.container}
+        importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'}
+      >
+        <AppMap
+          region={camera}
+          animateDurationMs={motion.mapPan}
         onRegionChangeStart={() => {}}
         onRegionChangeComplete={handleRegionChange}
         onPress={clear}
@@ -301,16 +372,26 @@ function MapSearchBody({
         />
       </AppMap>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        onPress={onBack}
-        style={[styles.backButton, { top: inset + spacing.md }]}
-      >
-        <Feather name="chevron-left" size={sizes.icon} color={colors.textPrimary} />
-      </Pressable>
+      <View style={[styles.topBar, { top: inset + spacing.md }]} pointerEvents="box-none">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          onPress={onBack}
+          style={styles.backButton}
+        >
+          <Feather name="chevron-left" size={sizes.icon} color={colors.textPrimary} />
+        </Pressable>
+        <MapSearchPill
+          summary={isEmptyCriteria(appliedCriteria) ? null : summarise(appliedCriteria)}
+          onPress={() => setSearchOpen(true)}
+          onClear={handleClearSearch}
+        />
+      </View>
 
-      <View style={[styles.searchArea, { top: inset + spacing.md }]} pointerEvents="box-none">
+      <View
+        style={[styles.searchArea, { top: inset + spacing.md + sizes.control + spacing.sm }]}
+        pointerEvents="box-none"
+      >
         <SearchThisAreaButton
           visible={showSearchArea}
           searching={searching}
@@ -341,6 +422,16 @@ function MapSearchBody({
           onSeenPost={onSeenPost}
         />
       </View>
+      </View>
+
+      {searchOpen ? (
+        <SearchSheet
+          initialCriteria={appliedCriteria}
+          region={searchedRegion}
+          onApply={handleApplySearch}
+          onClose={closeSearch}
+        />
+      ) : null}
     </View>
   );
 }
@@ -354,9 +445,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  backButton: {
+  // Top row: back button + the search pill sharing the top inset.
+  topBar: {
     position: 'absolute',
     left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  backButton: {
     width: sizes.touchTarget,
     height: sizes.touchTarget,
     borderRadius: radii.full,

@@ -1,8 +1,8 @@
 /**
- * WHAT:  CAR_MODELS — a maintained, per-make list of common UK models for the
- *        post-a-car model step, plus `modelsForMake` (the data-source seam),
- *        `popularModelsForMake`, and `makeChangePatch` (the make→model
- *        dependency rule).
+ * WHAT:  CAR_MODELS — a maintained, per-make list of common UK models, plus
+ *        `modelsForMake` (the data-source seam), `popularModelsForMake`, and
+ *        `makeChangePatch` (the make→model dependency rule). Shared reference
+ *        data: the post-a-car model step and the search surface both use it.
  * WHY:   Models are stable reference data keyed by make label (matching
  *        carMakes), so a picked make instantly yields its models — no network,
  *        offline. It is NOT exhaustive: `modelsForMake` returns [] for an
@@ -12,10 +12,10 @@
  *        behind the same signature, with callers unchanged. NB DVLA returns
  *        ONE vehicle's model from a plate, not a per-make enumeration, so it
  *        does not replace this list. The stored value IS the model label.
- * LINKS: src/features/vehicles/post/lib/carMakes.ts (the makes, keys);
+ * LINKS: src/shared/lib/carMakes.ts (the makes, keys);
  *        src/features/vehicles/post/components/ModelField.tsx (renders these);
  *        src/features/vehicles/post/components/postSteps.tsx (MakeStep uses
- *        makeChangePatch); src/features/vehicles/post/lib/carModels.test.ts.
+ *        makeChangePatch); src/shared/lib/carModels.test.ts.
  */
 
 export interface CarModel {

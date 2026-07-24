@@ -214,9 +214,12 @@ A post carries structured, spotter-useful data beyond make/model/plate:
   its keys is likely being driven, not stripped). **SAFETY**: a `driveway`
   theft's last-seen point IS the victim's **home**, so `get_post_detail`
   coarsens that point to a ~1km grid for non-owners (the owner sees exact). The
-  map/feed RPCs (`get_posts_in_viewport`, `get_home_feed`, `get_nearby_posts`)
+  map/feed RPCs (`search_posts`, `get_home_feed`, `get_nearby_posts`)
   MUST apply the same coarsening before any real driveway-theft post goes live,
   or the home leaks there — a hard blocker tracked with the posting flow.
+  (`search_posts` — which replaced `get_posts_in_viewport` — carries this
+  obligation in its own SAFETY notes as the single coordinate-emitting search
+  RPC.)
 - **Guided descriptions** — structured prompts ("how you'd recognise it",
   "how it drives / anything odd") replace the single free-text note for new
   posts; the legacy `owner_note` still renders for older posts.

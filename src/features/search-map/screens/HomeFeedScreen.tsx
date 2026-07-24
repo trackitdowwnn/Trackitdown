@@ -18,8 +18,8 @@
  */
 
 import { FlashList } from '@shopify/flash-list';
-import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useNavigation, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { NativeScrollEvent, NativeSyntheticEvent, ViewToken } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 
@@ -27,13 +27,14 @@ import { expoLocationServices } from '@/shared/lib/location/expoLocationServices
 import { createLogger } from '@/shared/lib/logger';
 import { WatchToggle } from '@/features/watchlist';
 import { spacing } from '@/shared/theme';
-import type { PostSummary } from '@/shared/types';
+import type { GeoRegion, PostSummary } from '@/shared/types';
 import {
   EmptyState,
   ErrorState,
   LocationPickerModal,
   Screen,
   ThemedRefreshControl,
+  UK_DEFAULT_REGION,
   VehicleCard,
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
@@ -44,6 +45,7 @@ import { FeedSkeleton } from '../components/FeedSkeleton';
 import { FeedTopBar } from '../components/FeedTopBar';
 import { LocationPrimerCard } from '../components/LocationPrimerCard';
 import { MapPillButton } from '../components/MapPillButton';
+import { SearchSheet, type SourceRect } from '../components/SearchSheet';
 import { useFeedLocation } from '../hooks/useFeedLocation';
 import { useHomeFeed } from '../hooks/useHomeFeed';
 import {
@@ -51,6 +53,8 @@ import {
   FEED_RADIUS_MAX_MILES,
   FEED_RADIUS_WIDEN_STEP_MILES,
 } from '../lib/feedConfig';
+import { regionAround } from '../lib/regionMath';
+import { type SearchCriteria, emptyCriteria } from '../lib/searchCriteria';
 import {
   NEAR_YOU_FALLBACK_TITLE,
   NEAR_YOU_SECTION_ID,
@@ -86,7 +90,26 @@ export function HomeFeedScreen() {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mapPillVisible, setMapPillVisible] = useState(true);
+  // The search surface opens RIGHT HERE on the feed (instant — no navigation
+  // to the map first), morphing out of the pill's measured rect. Applying it
+  // navigates to the map with the results.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchSourceRect, setSearchSourceRect] = useState<SourceRect | null>(null);
   const lastOffsetY = useRef(0);
+
+  const openSearch = useCallback((rect: SourceRect) => {
+    setSearchSourceRect(rect);
+    setSearchOpen(true);
+  }, []);
+  // Stable so SearchSheet's back-handler effect doesn't re-register each render.
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
+
+  // Hide the bottom tab bar while the full-screen search filter is open (the
+  // standard tabBarStyle mechanism — AppTabBar animates it out/in).
+  const navigation = useNavigation();
+  useEffect(() => {
+    navigation.setOptions({ tabBarStyle: { display: searchOpen ? 'none' : 'flex' } });
+  }, [navigation, searchOpen]);
   // Section-impression dedup: one log per section per load (docs/LOGGING.md
   // — ids only). Reset when a load lands.
   const impressed = useRef(new Set<string>());
@@ -104,12 +127,51 @@ export function HomeFeedScreen() {
     [display],
   );
 
-  const openSearchMap = useCallback(
-    (params?: { area?: string }) => {
+  // Navigate to the map WITHOUT a search — the Map pill (browse) and
+  // "See all → <area>" links.
+  const openMap = useCallback(
+    (options?: { area?: string }) => {
+      const params: Record<string, string> = {};
+      if (options?.area) {
+        params.area = options.area;
+      }
       router.push({ pathname: '/search-map', params });
     },
     [router],
   );
+
+  // The region the search surface frames + counts against: the feed's current
+  // area (instantly known), or the national view when browsing nationally.
+  const searchRegion: GeoRegion =
+    location?.mode === 'local'
+      ? regionAround(
+          { latitude: location.latitude, longitude: location.longitude },
+          location.radiusMiles || FEED_RADIUS_DEFAULT_MILES,
+        )
+      : UK_DEFAULT_REGION;
+
+  // Apply the assembled search: remember it, then navigate to the map carrying
+  // the criteria + the distance-framed region as params, so the map skips its
+  // location-resolution loader and shows the filtered results immediately.
+  const handleApplySearch = useCallback(
+    (criteria: SearchCriteria, region: GeoRegion) => {
+      setSearchOpen(false);
+      router.push({
+        pathname: '/search-map',
+        params: {
+          lat: String(region.latitude),
+          lng: String(region.longitude),
+          latDelta: String(region.latitudeDelta),
+          lngDelta: String(region.longitudeDelta),
+          criteria: JSON.stringify(criteria),
+        },
+      });
+    },
+    [router],
+  );
+
+  // (Android back is owned by SearchSheet while it's open — it plays the
+  // reverse morph before unmounting.)
 
   const onPressPost = useCallback(
     (post: PostSummary) => {
@@ -194,9 +256,7 @@ export function HomeFeedScreen() {
             <FeedSectionHeader
               title={item.section.title}
               onSeeAll={
-                item.section.area
-                  ? () => openSearchMap({ area: item.section.area })
-                  : undefined
+                item.section.area ? () => openMap({ area: item.section.area }) : undefined
               }
             />
           );
@@ -225,7 +285,7 @@ export function HomeFeedScreen() {
           );
       }
     },
-    [openSearchMap, onPressPost, nearYouTitle, loadMore, loadingMore],
+    [openMap, onPressPost, nearYouTitle, loadMore, loadingMore],
   );
 
   const areaLabel =
@@ -233,7 +293,7 @@ export function HomeFeedScreen() {
 
   const listHeader = (
     <View>
-      <FeedTopBar onPressSearch={() => openSearchMap()} />
+      <FeedTopBar onPressSearch={openSearch} />
       {showLocationPrimer ? (
         <LocationPrimerCard
           onUseMyLocation={() => void requestMyLocation()}
@@ -270,13 +330,17 @@ export function HomeFeedScreen() {
 
   return (
     <Screen>
+      <View
+        style={styles.flex}
+        importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'}
+      >
       {!location || (status === 'loading' && !refreshing) ? (
         <FeedSkeleton />
       ) : status === 'error' ? (
         // Keep the pill and area control in the error state so search and
         // "change area" stay reachable — the failure may be area-specific.
         <View>
-          <FeedTopBar onPressSearch={() => openSearchMap()} />
+          <FeedTopBar onPressSearch={openSearch} />
           {location?.mode === 'local' ? (
             <FeedSectionHeader
               title={nearYouTitle}
@@ -306,7 +370,7 @@ export function HomeFeedScreen() {
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
           />
-          <MapPillButton visible={mapPillVisible} onPress={() => openSearchMap()} />
+          <MapPillButton visible={mapPillVisible} onPress={() => openMap()} />
         </>
       )}
 
@@ -333,11 +397,25 @@ export function HomeFeedScreen() {
         }}
         onCancel={() => setPickerOpen(false)}
       />
+      </View>
+
+      {searchOpen ? (
+        <SearchSheet
+          initialCriteria={emptyCriteria()}
+          region={searchRegion}
+          sourceRect={searchSourceRect}
+          onApply={handleApplySearch}
+          onClose={closeSearch}
+        />
+      ) : null}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   listContent: {
     paddingBottom: spacing.xxxl + spacing.xxl, // clear the floating Map pill
   },

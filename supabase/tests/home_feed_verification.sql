@@ -12,8 +12,10 @@
 --     psql -v ON_ERROR_STOP=1 "$DATABASE_URL" -f supabase/tests/home_feed_verification.sql
 --
 -- (ON_ERROR_STOP=1 makes psql exit non-zero on the first RAISE.) Origin used
--- below: central Manchester (53.4808, -2.2426). Checks 10–13 cover the
--- map-viewport RPC (20260711190000_map_viewport_rpc.sql).
+-- below: central Manchester (53.4808, -2.2426). Checks 10–16 cover the faceted
+-- search RPCs search_posts / search_posts_count
+-- (20260725100000_search_posts_rpc.sql), which supersede the retired
+-- get_posts_in_viewport (search_posts with '{}'::jsonb is a strict superset).
 -- =============================================================================
 
 
@@ -300,23 +302,26 @@ end $$;
 
 
 -- =============================================================================
--- Map-viewport RPC checks (get_posts_in_viewport).
+-- Faceted search RPC checks (search_posts / search_posts_count).
+-- These replace the old get_posts_in_viewport checks: search_posts(...,'{}',N)
+-- is a strict superset, so CHECKs 10–13 pass '{}'::jsonb (no criteria) to assert
+-- the SAME properties, and 14–16 exercise the new criteria.
 -- Manchester-only bbox: lat 53.47..53.49, lng -2.26..-2.23. It contains every
--- Manchester seed row (7 active + the recovered + all 7 trap posts) but none of
+-- Manchester seed row (7 active + the recovered + all trap posts) but none of
 -- Salford/Stockport/Bury — so it exercises the active-only predicate directly.
 -- =============================================================================
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 10 — get_posts_in_viewport never returns a non-active post, even though
--- the Manchester bbox physically contains the trap + recovered rows.
+-- CHECK 10 — search_posts (no criteria) never returns a non-active post, even
+-- though the Manchester bbox physically contains the trap + recovered rows.
 -- -----------------------------------------------------------------------------
 do $$
 declare
   v_nonactive integer;
 begin
   with vp as (
-    select public.get_posts_in_viewport(53.47, -2.26, 53.49, -2.23, 100) as doc
+    select public.search_posts(53.47, -2.26, 53.49, -2.23, '{}'::jsonb, 100) as doc
   ),
   returned as (
     select (post ->> 'id')::uuid as id
@@ -328,25 +333,29 @@ begin
   join public.posts p on p.id = r.id;
 
   if v_nonactive > 0 then
-    raise exception 'CHECK 10 FAILED: % non-active post(s) returned by get_posts_in_viewport', v_nonactive;
+    raise exception 'CHECK 10 FAILED: % non-active post(s) returned by search_posts', v_nonactive;
   end if;
-  raise notice 'CHECK 10 passed: get_posts_in_viewport returned active posts only';
+  raise notice 'CHECK 10 passed: search_posts returned active posts only';
 end $$;
 
 
 -- -----------------------------------------------------------------------------
 -- CHECK 11 — total counts ALL active posts in the bbox while posts respects the
 -- cap. Call with p_limit 2: total must exceed 2, and the array length is 2.
+-- Also assert search_posts_count agrees with search_posts's total (same
+-- predicate, computed by the cheap count RPC).
 -- -----------------------------------------------------------------------------
 do $$
 declare
-  v_doc jsonb;
+  v_doc   jsonb;
   v_total integer;
   v_len   integer;
+  v_count integer;
 begin
-  v_doc   := public.get_posts_in_viewport(53.47, -2.26, 53.49, -2.23, 2);
+  v_doc   := public.search_posts(53.47, -2.26, 53.49, -2.23, '{}'::jsonb, 2);
   v_total := (v_doc ->> 'total')::integer;
   v_len   := jsonb_array_length(v_doc -> 'posts');
+  v_count := public.search_posts_count(53.47, -2.26, 53.49, -2.23, '{}'::jsonb);
 
   if v_total <= 2 then
     raise exception 'CHECK 11 FAILED: expected total > 2 active posts in the Manchester bbox, got %', v_total;
@@ -354,33 +363,43 @@ begin
   if v_len <> 2 then
     raise exception 'CHECK 11 FAILED: p_limit 2 should return exactly 2 posts, got %', v_len;
   end if;
-  raise notice 'CHECK 11 passed: total % counts all actives, posts capped to % by p_limit', v_total, v_len;
+  if v_count <> v_total then
+    raise exception 'CHECK 11 FAILED: search_posts_count % disagrees with search_posts total %', v_count, v_total;
+  end if;
+  raise notice 'CHECK 11 passed: total % counts all actives, posts capped to % by p_limit, count RPC agrees', v_total, v_len;
 end $$;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 12 — degenerate bbox (min_lat > max_lat) returns an empty result.
+-- CHECK 12 — degenerate bbox (min_lat > max_lat) returns an empty result from
+-- search_posts AND 0 from search_posts_count.
 -- -----------------------------------------------------------------------------
 do $$
 declare
   v_doc   jsonb;
   v_total integer;
   v_len   integer;
+  v_count integer;
 begin
-  v_doc   := public.get_posts_in_viewport(53.49, -2.26, 53.47, -2.23, 100);  -- lat inverted
+  v_doc   := public.search_posts(53.49, -2.26, 53.47, -2.23, '{}'::jsonb, 100);  -- lat inverted
   v_total := (v_doc ->> 'total')::integer;
   v_len   := jsonb_array_length(v_doc -> 'posts');
+  v_count := public.search_posts_count(53.49, -2.26, 53.47, -2.23, '{}'::jsonb); -- lat inverted
 
   if v_total <> 0 or v_len <> 0 then
     raise exception 'CHECK 12 FAILED: degenerate bbox returned total %, % post(s); expected 0/0', v_total, v_len;
   end if;
-  raise notice 'CHECK 12 passed: inverted bbox returns an empty result';
+  if v_count <> 0 then
+    raise exception 'CHECK 12 FAILED: degenerate bbox search_posts_count returned %; expected 0', v_count;
+  end if;
+  raise notice 'CHECK 12 passed: inverted bbox returns an empty result / 0 count';
 end $$;
 
 
 -- -----------------------------------------------------------------------------
 -- CHECK 13 — the bbox (&&) query uses the GiST index posts_last_seen_location_gix.
--- Same forced-index-plan technique as CHECK 6.
+-- Same forced-index-plan technique as CHECK 6. (This is the same physical
+-- predicate search_posts / search_posts_count run inside their bbox filter.)
 -- -----------------------------------------------------------------------------
 do $$
 declare
@@ -399,5 +418,155 @@ begin
   if position('posts_last_seen_location_gix' in v_plan::text) = 0 then
     raise exception 'CHECK 13 FAILED: bbox && plan did not use posts_last_seen_location_gix. Plan: %', v_plan::text;
   end if;
-  raise notice 'CHECK 13 passed: viewport bbox query uses the GiST index posts_last_seen_location_gix';
+  raise notice 'CHECK 13 passed: search bbox query uses the GiST index posts_last_seen_location_gix';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 14 — text criterion ILIKEs make OR model ONLY (not plate/colour/area).
+-- Seeds one active Manchester post with a distinctive make/model, then asserts a
+-- partial-make term and a partial-model term both find it, while a non-matching
+-- term does not. Seeded in a transaction that is ROLLED BACK so the DB is left
+-- untouched (the seed row never persists).
+-- -----------------------------------------------------------------------------
+begin;
+insert into public.posts (
+  id, owner_id, status, bounty_amount_pence, plate, make, model, colour,
+  last_seen_at, last_seen_area, last_seen_location, expires_at
+) values (
+  'bbbbbbbb-0000-0000-0000-000000000014',
+  '11111111-1111-1111-1111-111111111111', 'active', 25000,
+  'KG73 TXT', 'Koenigsegg', 'Regera', 'Orange',
+  now() - interval '1 days', 'Manchester',
+  ST_SetSRID(ST_MakePoint(-2.2450, 53.4800), 4326)::geography,
+  now() + interval '88 days'
+);
+
+do $$
+declare
+  v_make_hit  integer;
+  v_model_hit integer;
+  v_miss      integer;
+begin
+  select count(*) into v_make_hit
+  from jsonb_array_elements(
+         public.search_posts(53.47, -2.26, 53.49, -2.23, '{"text":"koenig"}'::jsonb, 100) -> 'posts'
+       ) as post
+  where (post ->> 'id')::uuid = 'bbbbbbbb-0000-0000-0000-000000000014';
+
+  select count(*) into v_model_hit
+  from jsonb_array_elements(
+         public.search_posts(53.47, -2.26, 53.49, -2.23, '{"text":"rege"}'::jsonb, 100) -> 'posts'
+       ) as post
+  where (post ->> 'id')::uuid = 'bbbbbbbb-0000-0000-0000-000000000014';
+
+  select count(*) into v_miss
+  from jsonb_array_elements(
+         public.search_posts(53.47, -2.26, 53.49, -2.23, '{"text":"zznotathing"}'::jsonb, 100) -> 'posts'
+       ) as post
+  where (post ->> 'id')::uuid = 'bbbbbbbb-0000-0000-0000-000000000014';
+
+  if v_make_hit <> 1 then
+    raise exception 'CHECK 14 FAILED: text "koenig" did not ILIKE-match the seeded make';
+  end if;
+  if v_model_hit <> 1 then
+    raise exception 'CHECK 14 FAILED: text "rege" did not ILIKE-match the seeded model';
+  end if;
+  if v_miss <> 0 then
+    raise exception 'CHECK 14 FAILED: a non-matching text term returned the seeded post';
+  end if;
+  raise notice 'CHECK 14 passed: text criterion ILIKEs make/model and excludes non-matches';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 15 — recency_days window. Seeds three active Manchester posts sharing a
+-- distinctive make (to isolate them via a make filter): one seen 1 day ago
+-- (recent), one seen 30 days ago (old), one with a NULL last_seen_at (unknown).
+-- {"recency_days":7} must return ONLY the recent one — the old one is outside
+-- the window and the NULL one is dropped (an unknown last-seen date can't satisfy
+-- a "seen in the last N days" window). Rolled back so nothing persists.
+-- -----------------------------------------------------------------------------
+begin;
+insert into public.posts (
+  id, owner_id, status, bounty_amount_pence, plate, make, model, colour,
+  last_seen_at, last_seen_area, last_seen_location, expires_at
+) values
+  ('bbbbbbbb-0000-0000-0000-000000000015',   -- recent: 1 day ago
+   '11111111-1111-1111-1111-111111111111', 'active', 25000,
+   'RC73 NEW', 'Lancia', 'Delta', 'Red',
+   now() - interval '1 days', 'Manchester',
+   ST_SetSRID(ST_MakePoint(-2.2451, 53.4801), 4326)::geography,
+   now() + interval '88 days'),
+  ('bbbbbbbb-0000-0000-0000-000000000016',   -- old: 30 days ago (outside 7-day window)
+   '11111111-1111-1111-1111-111111111111', 'active', 25000,
+   'OL73 OLD', 'Lancia', 'Delta', 'Red',
+   now() - interval '30 days', 'Manchester',
+   ST_SetSRID(ST_MakePoint(-2.2452, 53.4802), 4326)::geography,
+   now() + interval '60 days'),
+  ('bbbbbbbb-0000-0000-0000-000000000017',   -- unknown: NULL last_seen_at
+   '11111111-1111-1111-1111-111111111111', 'active', 25000,
+   'NL73 NUL', 'Lancia', 'Delta', 'Red',
+   null, 'Manchester',
+   ST_SetSRID(ST_MakePoint(-2.2453, 53.4803), 4326)::geography,
+   now() + interval '88 days');
+
+do $$
+declare
+  v_doc        jsonb;
+  v_total      integer;
+  v_recent_hit integer;
+begin
+  -- Filter by the shared distinctive make so only the three seeded rows are in play.
+  v_doc   := public.search_posts(53.47, -2.26, 53.49, -2.23,
+                                 '{"make":"Lancia","recency_days":7}'::jsonb, 100);
+  v_total := (v_doc ->> 'total')::integer;
+
+  select count(*) into v_recent_hit
+  from jsonb_array_elements(v_doc -> 'posts') as post
+  where (post ->> 'id')::uuid = 'bbbbbbbb-0000-0000-0000-000000000015';
+
+  if v_total <> 1 then
+    raise exception 'CHECK 15 FAILED: recency_days 7 returned % Lancia post(s); expected exactly 1 (the recent one)', v_total;
+  end if;
+  if v_recent_hit <> 1 then
+    raise exception 'CHECK 15 FAILED: the recent (1-day-old) seeded post was not returned within recency_days 7';
+  end if;
+  raise notice 'CHECK 15 passed: recency_days keeps the recent post, drops the old and the NULL-last_seen posts';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 16 — plate guardrail + criteria-are-wired. A bogus {"plate":"AB12CDE"}
+-- key is IGNORED by construction (search_posts never reads a plate criterion —
+-- privacy: no plate enumeration), so it must yield the SAME result as '{}'. And
+-- a real criterion (make) must NARROW the count, proving criteria are wired.
+-- Uses existing seed only (no seeding needed).
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_plain      jsonb;
+  v_with_plate jsonb;
+  v_count_all  integer;
+  v_count_make integer;
+begin
+  v_plain      := public.search_posts(53.47, -2.26, 53.49, -2.23, '{}'::jsonb, 100);
+  v_with_plate := public.search_posts(53.47, -2.26, 53.49, -2.23, '{"plate":"AB12CDE"}'::jsonb, 100);
+
+  if v_plain is distinct from v_with_plate then
+    raise exception 'CHECK 16 FAILED: a bogus plate criterion changed the result — plate must never be a filter';
+  end if;
+
+  v_count_all  := public.search_posts_count(53.47, -2.26, 53.49, -2.23, '{}'::jsonb);
+  v_count_make := public.search_posts_count(53.47, -2.26, 53.49, -2.23, '{"make":"Ford"}'::jsonb);
+
+  if v_count_make >= v_count_all then
+    raise exception 'CHECK 16 FAILED: make=Ford (% ) did not narrow below the unfiltered count (%) — criteria not wired', v_count_make, v_count_all;
+  end if;
+  if v_count_make < 1 then
+    raise exception 'CHECK 16 FAILED: make=Ford returned no active Manchester posts (seed missing?)';
+  end if;
+  raise notice 'CHECK 16 passed: plate criterion ignored (== no criteria); make criterion narrows % -> %', v_count_all, v_count_make;
 end $$;

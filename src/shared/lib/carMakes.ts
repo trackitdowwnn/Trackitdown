@@ -1,7 +1,8 @@
 /**
- * WHAT:  CAR_MAKES — the maintained list of UK-common car makes the post-a-car
- *        make picker offers, each tagged with its A–Z section letter and a
- *        `popular` flag for the "Popular makes" pinned group.
+ * WHAT:  CAR_MAKES — the maintained list of UK-common car makes, each tagged
+ *        with its A–Z section letter and a `popular` flag for the "Popular
+ *        makes" pinned group. Shared reference data: the post-a-car make picker
+ *        offers these, and the search surface suggests from them.
  * WHY:   Makes are stable reference data (like an enum's options), so they live
  *        as a typed constant, not a network call — the picker opens instantly
  *        and offline. The stored value IS the display label (posts.make is free
@@ -11,8 +12,8 @@
  *        ASCII-folded (Škoda → "S", Citroën → "C") so the A–Z index and sticky
  *        headers read as a clean alphabet.
  * LINKS: src/features/vehicles/post/components/MakeField.tsx (renders these);
- *        src/features/vehicles/post/components/postSteps.tsx (MakeStep);
- *        src/features/vehicles/post/lib/carMakes.test.ts.
+ *        src/features/search-map/components/SearchSheet.tsx (the search make picker);
+ *        src/shared/lib/carMakes.test.ts.
  */
 
 export interface CarMake {

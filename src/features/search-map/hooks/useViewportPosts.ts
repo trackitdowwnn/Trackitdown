@@ -1,15 +1,18 @@
 /**
  * WHAT:  useViewportPosts — the search map's calm data machine: one search
- *        on entry, then results change ONLY when the user explicitly taps
- *        "Search this area" (or retries after an error). Panning just
- *        tracks whether the viewport has moved enough to OFFER the button.
+ *        on entry, then results change ONLY when the user explicitly applies a
+ *        search, taps "Search this area", or retries after an error. Panning
+ *        just tracks whether the viewport has moved enough to OFFER the button.
+ *        Applied criteria are STICKY: a "Search this area" re-search keeps the
+ *        active filter, so a pan never silently drops it.
  * WHY:   Auto-refreshing on every pan makes a map feel jumpy and floods
  *        the RPC; the explicit-search model (the reference behaviour)
  *        keeps it calm. Races use the request-token pattern; busy flags
- *        clear unconditionally; the initial region is captured once and
- *        region comparisons live in refs — all lessons from useHomeFeed
+ *        clear unconditionally; the initial region + criteria are captured in
+ *        refs and region comparisons live in refs — all lessons from useHomeFeed
  *        (see memory: identity-keyed effects loop silently).
- * LINKS: src/features/search-map/api/mapApi.ts;
+ * LINKS: src/features/search-map/api/mapApi.ts (fetchSearchPosts);
+ *        src/features/search-map/lib/searchCriteria.ts (SearchCriteria);
  *        src/features/search-map/lib/regionMath.ts (movedEnough);
  *        src/features/search-map/hooks/useHomeFeed.ts (patterns).
  */
@@ -19,8 +22,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GeoRegion } from '@/shared/types';
 
 import type { ViewportResult } from '../types';
-import { fetchViewportPosts } from '../api/mapApi';
+import { fetchSearchPosts } from '../api/mapApi';
 import { movedEnough, regionToBbox } from '../lib/regionMath';
+import { type SearchCriteria, emptyCriteria } from '../lib/searchCriteria';
 
 export type MapSearchStatus = 'loading' | 'ready' | 'error';
 
@@ -37,13 +41,19 @@ export interface UseViewportPostsResult {
   showSearchArea: boolean;
   /** Feed every map region change here (onRegionChangeComplete). */
   onRegionChange: (region: GeoRegion) => void;
-  /** The button's action: search the CURRENT viewport. */
+  /** Apply a new search: store the criteria and (re)search at `region` (the
+   *  distance-chip-framed bbox). Subsequent "Search this area" keeps it. */
+  applySearch: (next: { criteria: SearchCriteria; region: GeoRegion }) => Promise<void>;
+  /** The button's action: search the CURRENT viewport with the active criteria. */
   searchThisArea: () => Promise<void>;
   /** Full retry after an initial-load error (drops to loading). */
   retry: () => void;
 }
 
-export function useViewportPosts(initialRegion: GeoRegion): UseViewportPostsResult {
+export function useViewportPosts(
+  initialRegion: GeoRegion,
+  initialCriteria?: SearchCriteria,
+): UseViewportPostsResult {
   // Captured once — a parent passing a fresh-but-equal region per render
   // must never re-trigger the entry search.
   const initialRef = useRef(initialRegion);
@@ -51,6 +61,9 @@ export function useViewportPosts(initialRegion: GeoRegion): UseViewportPostsResu
   // compare against the LATEST searched region without re-creating itself.
   const searchedRegionRef = useRef(initialRegion);
   const currentRegionRef = useRef(initialRegion);
+  // The active criteria — every search (entry, apply, re-search, retry) reads
+  // this, so a filter stays sticky across pans until applySearch replaces it.
+  const criteriaRef = useRef<SearchCriteria>(initialCriteria ?? emptyCriteria());
   const requestToken = useRef(0);
 
   const [status, setStatus] = useState<MapSearchStatus>('loading');
@@ -66,7 +79,7 @@ export function useViewportPosts(initialRegion: GeoRegion): UseViewportPostsResu
       const token = ++requestToken.current;
       // Promise-chained, not async/await: every setState lives in a
       // callback so effect callers never set state synchronously.
-      const request = fetchViewportPosts(regionToBbox(region));
+      const request = fetchSearchPosts(regionToBbox(region), criteriaRef.current);
       void Promise.resolve().then(() => {
         if (token !== requestToken.current) {
           return;
@@ -120,6 +133,18 @@ export function useViewportPosts(initialRegion: GeoRegion): UseViewportPostsResu
     setShowSearchArea(movedEnough(searchedRegionRef.current, region));
   }, []);
 
+  const applySearch = useCallback(
+    (next: { criteria: SearchCriteria; region: GeoRegion }): Promise<void> => {
+      // Store the criteria first so runSearch (and any later "Search this area")
+      // picks it up, then search at the framed region as a fresh entry-style
+      // load (loading skeleton, not the keep-results re-search).
+      criteriaRef.current = next.criteria;
+      currentRegionRef.current = next.region;
+      return runSearch(next.region, 'initial');
+    },
+    [runSearch],
+  );
+
   const searchThisArea = useCallback(
     () => runSearch(currentRegionRef.current, 'research'),
     [runSearch],
@@ -136,6 +161,7 @@ export function useViewportPosts(initialRegion: GeoRegion): UseViewportPostsResu
     searching,
     showSearchArea,
     onRegionChange,
+    applySearch,
     searchThisArea,
     retry,
   };

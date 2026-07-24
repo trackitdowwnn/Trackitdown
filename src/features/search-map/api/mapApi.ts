@@ -1,15 +1,19 @@
 /**
- * WHAT:  Supabase read for the search map — get_posts_in_viewport, zod-
- *        validated and mapped to MapPost (PostSummary + exact pin
- *        coordinates). Returns { total, posts } for the sheet handle and
- *        the pins.
- * WHY:   Same client-side safety contract as the feed: only ACTIVE posts
- *        may carry exact coordinates, so the schema hard-rejects any other
- *        status — a server regression fails loudly here instead of
- *        rendering pins it shouldn't. Loads log [search-map] with bbox
- *        spans, never precise coordinates.
- * LINKS: supabase/migrations/20260711190000_map_viewport_rpc.sql (RPC +
- *        SAFETY notes); src/features/search-map/api/feedApi.ts (shared
+ * WHAT:  Supabase read for the search map — search_posts (results) and
+ *        search_posts_count (the live "Show N cars" count), zod-validated and
+ *        mapped to MapPost (PostSummary + exact pin coordinates). Results come
+ *        back as { total, posts } for the sheet handle and the pins.
+ * WHY:   Same client-side safety contract as the feed: only ACTIVE posts may
+ *        carry exact coordinates, so the schema hard-rejects any other status —
+ *        a server regression fails loudly here instead of rendering pins it
+ *        shouldn't. Criteria are mapped through the pure toRpcCriteria (which
+ *        drops empties and NEVER emits plate/distance), so the query the server
+ *        sees is exactly what the user chose. Loads log [search-map] with bbox
+ *        SPANS + which criteria KEYS were used, never precise coordinates or
+ *        values.
+ * LINKS: supabase/migrations/20260725100000_search_posts_rpc.sql (RPCs +
+ *        SAFETY notes); src/features/search-map/lib/searchCriteria.ts (the
+ *        client→server mapping); src/features/search-map/api/feedApi.ts (shared
  *        post schema); docs/LOGGING.md.
  */
 
@@ -20,6 +24,7 @@ import { createLogger } from '@/shared/lib/logger';
 
 import type { MapPost, ViewportResult } from '../types';
 import type { Bbox } from '../lib/regionMath';
+import { type SearchCriteria, toRpcCriteria } from '../lib/searchCriteria';
 import { rpcPostSchema, toPostSummary } from './feedApi';
 
 const log = createLogger('search-map');
@@ -41,6 +46,8 @@ const viewportSchema = z.object({
   posts: z.array(rpcMapPostSchema),
 });
 
+const countSchema = z.number().int().nonnegative();
+
 function toMapPost(row: z.infer<typeof rpcMapPostSchema>): MapPost {
   return {
     ...toPostSummary(row),
@@ -49,17 +56,24 @@ function toMapPost(row: z.infer<typeof rpcMapPostSchema>): MapPost {
   };
 }
 
-/** Fetch the active posts inside a viewport bbox, newest first. */
-export async function fetchViewportPosts(
+/**
+ * Fetch the active posts inside a viewport bbox that match the criteria,
+ * newest first, capped. `criteria` is mapped through toRpcCriteria, so an
+ * unfiltered search sends `{}` and behaves like the plain viewport query.
+ */
+export async function fetchSearchPosts(
   bbox: Bbox,
+  criteria: SearchCriteria,
   limit: number = VIEWPORT_POST_LIMIT,
 ): Promise<ViewportResult> {
   const startedAt = Date.now();
-  const { data, error } = await supabase.rpc('get_posts_in_viewport', {
+  const rpcCriteria = toRpcCriteria(criteria);
+  const { data, error } = await supabase.rpc('search_posts', {
     p_min_lat: bbox.minLat,
     p_min_lng: bbox.minLng,
     p_max_lat: bbox.maxLat,
     p_max_lng: bbox.maxLng,
+    p_criteria: rpcCriteria,
     p_limit: limit,
   });
   if (error) {
@@ -81,9 +95,38 @@ export async function fetchViewportPosts(
     // Spans only — bbox corners would be precise location data.
     latSpan: Number((bbox.maxLat - bbox.minLat).toFixed(3)),
     lngSpan: Number((bbox.maxLng - bbox.minLng).toFixed(3)),
+    // KEY NAMES only — never the values (make/model aren't sensitive, but stay
+    // conservative and log presence, not content).
+    criteriaKeys: Object.keys(rpcCriteria),
     total: parsed.data.total,
     returned: posts.length,
     durationMs: Date.now() - startedAt,
   });
   return { total: parsed.data.total, posts };
+}
+
+/**
+ * The cheap count for the live "Show N cars" button — the same predicate as
+ * fetchSearchPosts but count-only (no rows serialised), so it can fire on every
+ * debounced criteria change while the user assembles a search.
+ */
+export async function fetchSearchCount(bbox: Bbox, criteria: SearchCriteria): Promise<number> {
+  const rpcCriteria = toRpcCriteria(criteria);
+  const { data, error } = await supabase.rpc('search_posts_count', {
+    p_min_lat: bbox.minLat,
+    p_min_lng: bbox.minLng,
+    p_max_lat: bbox.maxLat,
+    p_max_lng: bbox.maxLng,
+    p_criteria: rpcCriteria,
+  });
+  if (error) {
+    log.error('map_search_count failed', { code: error.code });
+    throw error;
+  }
+  const parsed = countSchema.safeParse(data);
+  if (!parsed.success) {
+    log.error('map_search_count parse failed', { firstIssue: parsed.error.issues[0]?.message });
+    throw parsed.error;
+  }
+  return parsed.data;
 }

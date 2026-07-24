@@ -61,7 +61,7 @@ export interface MapPost extends PostSummary {
   longitude: number;
 }
 
-/** What get_posts_in_viewport returns: the sheet-handle total + one page. */
+/** What search_posts returns: the sheet-handle total + one page. */
 export interface ViewportResult {
   /** ALL matching active posts in the bbox ("23 cars in this area"). */
   total: number;

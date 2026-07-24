@@ -44,13 +44,15 @@
 -- CHECK 1 — anon CAN execute all four public read RPCs. Each must return
 -- without error and non-NULL (the RPCs are the entire logged-out browse
 -- surface; a missing grant here would blank the app for logged-out users).
--- Detail id a1a1a1a1-...0001 is the seeded ACTIVE 'MA19 XKL' post.
+-- Detail id a1a1a1a1-...0001 is the seeded ACTIVE 'MA19 XKL' post. The map
+-- search RPC is search_posts (20260725100000; '{}'::jsonb = no criteria =
+-- the strict superset that replaced get_posts_in_viewport).
 -- -----------------------------------------------------------------------------
 do $$
 declare
   v_home     jsonb;
   v_nearby   jsonb;
-  v_viewport jsonb;
+  v_search   jsonb;
   v_detail   jsonb;
 begin
   perform set_config('request.jwt.claims', null, true);
@@ -58,16 +60,16 @@ begin
 
   v_home     := public.get_home_feed(53.4808, -2.2426, 15000);
   v_nearby   := public.get_nearby_posts(53.4808, -2.2426, 15000, 0, 25);
-  v_viewport := public.get_posts_in_viewport(53.47, -2.26, 53.49, -2.23, 100);
+  v_search   := public.search_posts(53.47, -2.26, 53.49, -2.23, '{}'::jsonb, 100);
   v_detail   := public.get_post_detail('a1a1a1a1-0000-0000-0000-000000000001');
 
   reset role;
 
-  if v_home is null or v_nearby is null or v_viewport is null or v_detail is null then
-    raise exception 'CHECK 1 FAILED: a read RPC returned NULL for anon (home null=%, nearby null=%, viewport null=%, detail null=%)',
-      v_home is null, v_nearby is null, v_viewport is null, v_detail is null;
+  if v_home is null or v_nearby is null or v_search is null or v_detail is null then
+    raise exception 'CHECK 1 FAILED: a read RPC returned NULL for anon (home null=%, nearby null=%, search null=%, detail null=%)',
+      v_home is null, v_nearby is null, v_search is null, v_detail is null;
   end if;
-  raise notice 'CHECK 1 passed: anon can execute get_home_feed / get_nearby_posts / get_posts_in_viewport / get_post_detail';
+  raise notice 'CHECK 1 passed: anon can execute get_home_feed / get_nearby_posts / search_posts / get_post_detail';
 end $$;
 
 

@@ -13,7 +13,7 @@
  *        stored value IS the model label. A short model list uses a FLAT
  *        alphabetical list (no per-letter sections / index rail — those are
  *        long-list tools that would fragment ~15 rows into singletons).
- * LINKS: src/features/vehicles/post/lib/carModels.ts (data + dependency);
+ * LINKS: src/shared/lib/carModels.ts (data + dependency);
  *        src/features/vehicles/post/components/postSteps.tsx (ModelStep);
  *        src/features/vehicles/post/components/MakeField.tsx (sibling picker);
  *        src/shared/ui/SelectField.tsx (+ SelectScreen) — the picker.
@@ -21,7 +21,7 @@
 
 import { EmptyState, SelectField, TextField, type SelectOption } from '@/shared/ui';
 
-import { modelsForMake, popularModelsForMake } from '../lib/carModels';
+import { modelsForMake, popularModelsForMake } from '@/shared/lib/carModels';
 
 export interface ModelFieldProps {
   /** The make chosen in the previous step — drives which models are offered. */

@@ -5,7 +5,7 @@
  *        letters (Škoda must bucket under "S", not "Š"), and the popular set
  *        drives the pinned group — both are easy to break silently when the
  *        list is edited.
- * LINKS: src/features/vehicles/post/lib/carMakes.ts.
+ * LINKS: src/shared/lib/carMakes.ts.
  */
 
 import { CAR_MAKES, POPULAR_MAKES, makeSection } from './carMakes';

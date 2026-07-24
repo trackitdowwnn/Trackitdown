@@ -78,6 +78,7 @@ export {
   type MoneySliderProps,
   type SnapStep,
 } from './MoneySlider';
+export { MoneyRangeSlider, type MoneyRange, type MoneyRangeSliderProps } from './MoneyRangeSlider';
 export {
   PhotoGridPicker,
   defaultOwnerPhotoCopy,

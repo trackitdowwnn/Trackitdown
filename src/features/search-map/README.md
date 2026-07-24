@@ -17,8 +17,10 @@ never touches status or money.
 1. Location header: "Cars near <Area>" (title type). Area name tappable →
    `LocationPickerModal` (full-screen, "Set my area") which updates the
    feed-location preference ONLY — never alert settings.
-2. Search pill: floating, radius `xl`, `surfaceSubtle`, "Search make, model
-   or plate" → navigates to the MapSearchScreen stub.
+2. Search pill: floating, radius `xl`, `surfaceSubtle`, "Search make or
+   model" → opens the full search surface on the map (navigates to
+   `/search-map?search=1`, which auto-opens the surface). (Copy dropped
+   "plate" — plate capture is deferred, see the Search surface section.)
 3. Sectioned feed (below).
 4. Floating "Map" pill (dark, white text, map icon) bottom-centre → stub;
    hides on scroll-down, returns on scroll-up (Reanimated 4).
@@ -83,8 +85,8 @@ slots, alert-settings storage.
 ## Map search (replaces the MapSearchScreen stub)
 
 WHAT: The full-screen map + list search of ACTIVE stolen-car posts — the
-app's centrepiece. Route `/search-map` accepting `{ area?, query? }`
-(query reserved; text search is a follow-up). Actor: spotter. Read-only.
+app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
+(`search=1` auto-opens the search surface). Actor: spotter. Read-only.
 
 **Anatomy (Airbnb map mechanics, our brand)**
 1. Full-bleed `AppMap` under everything; floating back button top-left.
@@ -132,23 +134,62 @@ app's centrepiece. Route `/search-map` accepting `{ area?, query? }`
 **Entry** — the Map/search pill frames the feed's resolved location at its
 radius; "See all → <Area>" forward-geocodes the town and centres there.
 
-**Data** — RPC `get_posts_in_viewport(min_lat, min_lng, max_lat, max_lng,
-limit)` → `{ total, posts }` with exact per-post `lat`/`lng`. SECURITY
-DEFINER, **status = 'active' ONLY** (SAFETY: exact coordinates are exposed,
-which is safe ONLY because active locations are already public under RLS —
-NEVER widen to other statuses; contrast the coarsened recovered section).
-Server LIMIT cap 100; bbox served by the GiST index. Client zod
+**Data** — RPC `search_posts(min_lat, min_lng, max_lat, max_lng, criteria,
+limit)` → `{ total, posts }` with exact per-post `lat`/`lng`, and the cheap
+`search_posts_count(…, criteria)` → int for the live "Show N cars" button.
+Both SECURITY DEFINER, **status = 'active' ONLY** (SAFETY: exact coordinates
+are exposed, which is safe ONLY because active locations are already public
+under RLS — NEVER widen to other statuses; contrast the coarsened recovered
+section). `search_posts` with empty criteria is a strict superset of the old
+`get_posts_in_viewport` (dropped in `20260725100000_search_posts_rpc.sql`).
+Server LIMIT cap 100; bbox served by the GiST index; attribute filters are
+residual within the bbox (no new index — a `pg_trgm` GIN on make/model is a
+measured follow-up if national-zoom text search needs it). Client zod
 (`api/mapApi.ts`) hard-rejects any non-active status carrying coordinates.
+
+**Search surface** (`components/SearchSheet.tsx`) — the Airbnb "assemble
+everything in one place, apply once" filter page. A FULL-SCREEN overlay (NOT an
+RN Modal — a transparent Modal flickers and can't host gorhom sheets; it's an
+absolute overlay in the same screen) that MORPHS out of the search pill
+(measure-and-grow: `SearchSheet` measures the pill's window rect and springs the
+box from it to full screen, a ghost pill label fading early, content fading in;
+reduced-motion cross-fades). Header is a title + close. Body is collapsible
+accordion filter cards: **Vehicle** (make/model pickers reused from the posting
+flow + colour chips), **Bounty** (`MoneyRangeSlider` — the range consumer the
+slider's TODO anticipated — + quick chips), **Distance** chips, and **When**
+(recency) chips. A footer live-counts results (`hooks/useSearchCount.ts`,
+debounced) on the shared-`Button` "Show N cars" CTA.
+
+It opens INSTANTLY on the feed (`HomeFeedScreen` hosts it — no navigation);
+"Show N cars" then navigates to the map carrying the criteria + framed region as
+params, so the map skips its location-resolution loader (`MapSearchScreen`'s pill
+re-opens the surface to refine). Applied criteria are STICKY across pans ("Search
+this area" keeps the filter). The criteria model + its server mapping live in
+`lib/searchCriteria.ts` (`toRpcCriteria` drops defaults and NEVER emits plate or
+distance; `parseCriteria` validates a criteria route param fail-soft). Distance
+only FRAMES the initial bbox (`regionAround`) — the geo filter is always the
+bbox — so "Any" frames national. (Free-text make/model search is not exposed in
+the UI; `search_posts` still supports a `text` ILIKE if it's re-added.)
+
+**Plate search — DROPPED (deferred).** `posts.plate` is going dark (plate
+capture was removed from the posting flow).
+Two guardrails stay regardless: suggestions can never enumerate real plates
+(the corpus is the static datasets), and `search_posts` ignores any `plate`
+key in the criteria (a server test asserts this).
 
 **States** — resolving: FullscreenLoader; loading: skeleton rows in the
 sheet; empty: "No stolen cars in this area" good-news EmptyState; error:
 `ErrorState` + retry in the sheet.
 
-**Logging** — `map_search_area` (bbox SPANS only, never corners),
+**Logging** — `map_search_area` (bbox SPANS only, never corners, plus the
+criteria KEY names used — never their values), `search_apply` (criteria key
+presence + the coarse distance band, no coordinates, no plate),
 `map_pin_select` (postId), `map_cluster_zoom` (clusterId),
 `map_card_view` (postId, index, trigger: pin | swipe),
 `map_card_swipe` (fromIndex, toIndex). No coordinates in logs.
 
-**Out of scope (map search)** — working text search (the pill is a stub),
-recovered pins (locations coarsened), realtime, saved searches, drawing
-custom areas, heatmaps.
+**Out of scope (map search)** — recovered pins (locations coarsened),
+realtime, recent / named / server-saved searches,
+searching a different area from within the surface (an "Area" row →
+LocationPicker is a follow-up; distance frames around the current centre for
+now), drawing custom areas, heatmaps.

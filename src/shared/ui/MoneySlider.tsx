@@ -13,9 +13,9 @@
  *        maths come from lib/money's bountyBreakdown (the reference split).
  *        The typed path is the precise, fully-labelled accessible path; the
  *        slider announces as an adjustable moving one snap step.
- *        TODO(range): a future dual-thumb mode for search filters — the
- *        curve/snap maths already take min/max/config, so range mode adds a
- *        second thumb + value pair here without touching the maths.
+ *        Range mode (dual-thumb, for search filters) lives in the sibling
+ *        MoneyRangeSlider.tsx — it reuses moneySliderMath.ts unchanged rather
+ *        than co-tenanting a second thumb in this money-critical control.
  * LINKS: src/shared/ui/moneySliderMath.ts (curve/snap maths);
  *        src/shared/lib/money.ts (formatPounds, bountyBreakdown);
  *        docs/DOMAIN.md (Money & fees); docs/DESIGN_SYSTEM.md (accent rules).

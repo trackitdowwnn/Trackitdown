@@ -11,7 +11,7 @@
  *        pure function of two regions. Kept UK-simple on purpose — no
  *        antimeridian handling (matches the viewport RPC's stance).
  * LINKS: src/features/search-map/hooks/useViewportPosts.ts (consumer);
- *        supabase/migrations (get_posts_in_viewport bbox semantics);
+ *        supabase/migrations (search_posts bbox semantics);
  *        src/shared/types/location.ts (GeoRegion).
  */
 
@@ -27,7 +27,7 @@ export interface Bbox {
   maxLng: number;
 }
 
-/** The bbox a region covers — what get_posts_in_viewport takes. */
+/** The bbox a region covers — what search_posts takes. */
 export function regionToBbox(region: GeoRegion): Bbox {
   return {
     minLat: region.latitude - region.latitudeDelta / 2,

@@ -33,7 +33,7 @@ import { colors, opacity, sizes, spacing, typography } from '@/shared/theme';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { colourChangePatch } from '../lib/carColours';
-import { makeChangePatch } from '../lib/carModels';
+import { makeChangePatch } from '@/shared/lib/carModels';
 import type { PostACarAnswers } from '../types';
 import { ColourField } from './ColourField';
 import { DistinctiveFeaturesField } from './DistinctiveFeaturesField';

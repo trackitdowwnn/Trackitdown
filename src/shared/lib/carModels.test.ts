@@ -8,7 +8,7 @@
  *        model must NEVER carry across makes (an Audi model under a BMW), yet
  *        re-picking the same make must keep the chosen model. Both directions
  *        are pinned here.
- * LINKS: src/features/vehicles/post/lib/carModels.ts.
+ * LINKS: src/shared/lib/carModels.ts.
  */
 
 import { makeChangePatch, modelsForMake, popularModelsForMake } from './carModels';

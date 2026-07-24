@@ -10,7 +10,7 @@
  *        stored value IS the make label ("BMW"), so a pick or a typed entry both
  *        write exactly what the DB keeps. Real logos are a later swap — the
  *        monogram fills the slot now (icon convention).
- * LINKS: src/features/vehicles/post/lib/carMakes.ts (the list);
+ * LINKS: src/shared/lib/carMakes.ts (the list);
  *        src/features/vehicles/post/components/postSteps.tsx (MakeStep);
  *        src/shared/ui/SelectField.tsx (+ SelectScreen) — the picker.
  */
@@ -20,7 +20,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, radii, sizes, typography } from '@/shared/theme';
 import { SelectField, type SelectOption } from '@/shared/ui';
 
-import { CAR_MAKES, POPULAR_MAKES, makeSection } from '../lib/carMakes';
+import { CAR_MAKES, POPULAR_MAKES, makeSection } from '@/shared/lib/carMakes';
 
 /** Placeholder for a real make logo — a monogram of the make's first letter. */
 function Monogram({ letter }: { letter: string }) {
