@@ -187,7 +187,7 @@ export function useWizardController<TAnswers>(
     requestExit,
     canGoNext: canProceed(flow, screens[nav.index], answers),
     isFirstScreen: nav.index === 0,
-    ctaLabel: ctaLabel(flow, screens, nav),
+    ctaLabel: ctaLabel(flow, screens, nav, answers),
     /** Fill fraction (0–1) per phase segment. */
     progress: phaseProgress(flow, nav.index),
     /** +1 sliding forward, -1 sliding back — drives the transition. */

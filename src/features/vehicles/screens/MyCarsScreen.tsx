@@ -1,18 +1,15 @@
 /**
- * WHAT:  MyCarsScreen — the pushed "My cars" page (reached from Profile):
- *        guest-aware placeholder with an on-screen back affordance (headers
- *        are hidden app-wide). Guests get a friendly invitation through the
- *        auth gate; signed-in users get the stub that will become the owner's
- *        post list.
- * WHY:   Moved off the tab bar (product call 2026-07-23): your own posts are
- *        an occasional destination, so they live one push from Profile — the
- *        navbar keeps Explore · Watchlist · Inbox · Profile around the centre
- *        action. Guests browse freely (deferred auth), so the page never
- *        walls or auto-fires the auth sheet — it explains what lives here and
- *        offers "Log in" through the same gate as every action.
+ * WHAT:  MyCarsScreen — a placeholder for a future "garage" of the user's own
+ *        vehicles (make/model/plate profiles you own), reached from Profile.
+ *        Guests get the auth invitation; signed-in users see a "coming soon"
+ *        placeholder. NOT the stolen-car listings — those moved to "My Posts".
+ * WHY:   The listings that briefly lived here belong under "My Posts" (a post is
+ *        a listing, not a car you own). "My cars" is kept as the entry point for
+ *        the eventual garage concept; until that's built it's an honest stub, not
+ *        a dead screen.
  * LINKS: src/app/my-cars.tsx (route); src/features/profile/screens/
- *        ProfileScreen.tsx (the push); src/features/auth (useRequireAuth,
- *        useSession); docs/BUILD_PLAN.md (Post a car).
+ *        ProfileScreen.tsx (the push); src/features/vehicles/screens/
+ *        MyPostsScreen.tsx (where the listings now live).
  */
 
 import { useRouter } from 'expo-router';
@@ -29,8 +26,6 @@ export function MyCarsScreen() {
 
   return (
     <Screen scroll contentContainerStyle={styles.scroll}>
-      {/* Pushed page, headers hidden app-wide → an on-screen back control
-          (system back/swipe still work; this one is for eyes and rotors). */}
       <View style={styles.headerRow}>
         <BackButton />
         <Text style={styles.title} accessibilityRole="header">
@@ -41,14 +36,13 @@ export function MyCarsScreen() {
       {session.status === 'signedOut' ? (
         <EmptyState
           title="Your cars live here"
-          body="Post a stolen car and track its sightings, status, and bounty — all in one place."
+          body="Save your vehicles so reporting one stolen is a couple of taps."
           actionLabel="Log in"
-          // No continuation: the page re-renders signed-in reactively.
           onAction={() => requireAuth({ context: 'tab_my_cars' })}
         />
       ) : (
         <View style={styles.content}>
-          <Text style={styles.body}>Your posts and their status land here.</Text>
+          <Text style={styles.body}>A garage for your vehicles is coming soon.</Text>
         </View>
       )}
     </Screen>
@@ -80,8 +74,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
-  // Full 44pt+ target around the 24pt chevron; the negative margin keeps the
-  // glyph optically on the content gutter despite the padding.
   back: {
     width: sizes.touchTarget,
     height: sizes.touchTarget,

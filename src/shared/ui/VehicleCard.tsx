@@ -78,12 +78,24 @@ export interface VehicleCardProps {
    * feature-agnostic: callers pass the element (ARCHITECTURE rule 2).
    */
   topRightAction?: ReactNode;
+  /**
+   * Owner-only: show a green "Live" badge on an active post (My Posts / the
+   * owner's own list). Public surfaces (feed, map) leave this false so a live
+   * listing shows no badge and stays calm.
+   */
+  showLiveBadge?: boolean;
 }
 
-function VehicleCardInner({ post, onPress, variant = 'feed', topRightAction }: VehicleCardProps) {
+function VehicleCardInner({
+  post,
+  onPress,
+  variant = 'feed',
+  topRightAction,
+  showLiveBadge = false,
+}: VehicleCardProps) {
   const compact = variant === 'compact';
   const mapCard = variant === 'map';
-  const badgeLabel = statusBadgeLabel(post.status);
+  const badgeLabel = statusBadgeLabel(post.status, showLiveBadge);
   // Live-updating recency: the memoised card re-renders itself each minute,
   // so a feed left open never shows a stale "2m ago".
   const lastSeen = useTimeAgo(post.lastSeenAt);
@@ -193,7 +205,7 @@ function VehicleCardInner({ post, onPress, variant = 'feed', topRightAction }: V
           <PhotoCarousel post={post} staticOnly={compact} />
           {badgeLabel ? (
             <View style={styles.badgePosition} pointerEvents="none">
-              <StatusBadge status={post.status} />
+              <StatusBadge status={post.status} showLiveWhenActive={showLiveBadge} />
             </View>
           ) : null}
           {/* Top-right corner: the topRightAction overlay (watch toggle)
@@ -258,6 +270,7 @@ export const VehicleCard = memo(
   (prev, next) =>
     prev.post === next.post &&
     prev.variant === next.variant &&
+    prev.showLiveBadge === next.showLiveBadge &&
     Boolean(prev.topRightAction) === Boolean(next.topRightAction),
 );
 

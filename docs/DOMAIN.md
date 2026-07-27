@@ -9,8 +9,8 @@ document wins — fix the code or update this doc deliberately.
   confirms recovery.
 - **Spotter** — any user who has enabled alerts. Sets their own alert radius,
   receives notifications about active posts within it, reports sightings.
-- **Moderator** — internal admin. Reviews ownership verification, handles
-  flagged content and disputes.
+- **Moderator** — internal admin. Reviews new posts before they go public,
+  handles flagged content and disputes.
 - **Platform** — us. Takes a 5% fee from each paid bounty via Stripe Connect
   application fees.
 
@@ -39,11 +39,22 @@ document wins — fix the code or update this doc deliberately.
 ## The stolen-car post lifecycle
 
 ```
-draft → pending_verification → active → recovery_claimed → recovered (paid)
-            │                    │            │
-            └─ rejected          └─ cancelled └─ recovered_no_spotter (refund)
-                                 └─ expired (refund)
+draft → (pay) → active → recovery_claimed → recovered (paid)
+                 │            │
+                 ├─ cancelled └─ recovered_no_spotter (refund)
+                 └─ expired (refund)
 ```
+
+**LIVE-ON-PAYMENT.** A paid post goes straight to **`active`** (publicly live) —
+there is no pre-publish review gate. For a stolen car the first hours are what
+matter, so the crowd must be looking within minutes. The `pending_verification`
+enum value still exists (and the deactivate/refund path still tolerates it) but
+is **no longer entered** by the normal flow. See *Anti-abuse* below for what
+replaces the old verification gate.
+
+`cancelled` is reachable from a live (`active`) post — the owner can deactivate
+it; the bounty is refunded (minus the non-recoverable card fee). A `draft`
+(unpaid) is deleted/abandoned, not cancelled.
 
 1. **draft** — owner fills in car details: make/model/colour (required — the
    car's identity), an optional UK number plate, photos, last-seen location and
@@ -52,15 +63,16 @@ draft → pending_verification → active → recovery_claimed → recovered (pa
    plate is given it's validated against UK formats and deduped (see below);
    when it's absent, make/model/colour identify the car and the UI shows those
    in place of a plate chip.
-2. **pending_verification** — owner uploads proof of ownership (V5C logbook
-   photo or equivalent) AND pays the bounty, which is held in escrow via
-   Stripe. A moderator reviews the proof. **A post is never publicly visible
-   before verification passes.** This is the anti-stalking safeguard: it
-   prevents someone posting an ex-partner's or stranger's car to have the
-   crowd track it.
-3. **active** — post is live. Spotters whose alert radius covers the
-   last-seen location get a push notification. The post appears in map/list
-   search. Sightings can be reported.
+2. **pending_verification** — *retired state.* This was the pre-publish review
+   gate (owner uploaded a V5C, a moderator checked ownership before the post
+   went public). Both the V5C collection AND the gate were removed (product
+   decision — see LIVE-ON-PAYMENT above): a paid post now goes straight to
+   `active`. The enum value + the `verification-documents` bucket /
+   `verification_documents` table / `update_post_verification` RPC remain in the
+   schema but are dormant — nothing enters this state or writes those.
+3. **active** — post is live. Reached directly on payment. Spotters whose alert
+   radius covers the last-seen location get a push notification. The post
+   appears in map/list search. Sightings can be reported.
 4. **recovery_claimed** — the owner (or a moderator) marks the car as
    recovered. The owner is shown the list of verified sightings and selects
    the one that led to the recovery, or selects "none — recovered another
@@ -73,8 +85,29 @@ draft → pending_verification → active → recovery_claimed → recovered (pa
    which the UI must disclose at posting time).
 7. **cancelled / expired** — owner cancels, or the post hits its expiry
    (default 90 days, owner can renew). Bounty refunded as above.
-8. **rejected** — verification failed. Bounty refunded in full where
-   possible. Post never went public.
+8. **rejected** — *retired state* (was "pre-publish review failed"). With no
+   pre-publish gate, nothing enters it; a live post that turns out to be
+   abusive is **taken down** instead — set `cancelled` with the bounty refunded
+   (the deactivate/refund path), see *Anti-abuse*.
+
+### Anti-abuse (what replaces the verification gate)
+
+Publishing on payment means abuse is handled **reactively**, not by a blocking
+pre-check that would cost the critical first hours:
+
+- **Accountability, not anonymity.** Every post is a real account + a card on
+  file — posting is not free or anonymous, and it's traceable. That's the main
+  deterrent for casual abuse.
+- **Escrow forfeiture.** A post taken down is `cancelled` and its £50–£5,000
+  bounty refunded — so a bad-faith poster ties up real money and gains nothing.
+- **Report → flag → takedown.** The post detail's "Report this post" writes a
+  durable, attributable row to `post_flags` (`flag_post` RPC; auth-gated, one
+  per user/post). A moderator (tooling TBD) reviews flags and takes a post down
+  via the deactivate/refund path. **No auto-hide on N reports** — on a stolen-car
+  app that invites griefers to mass-report a *victim's* real post to bury it
+  during the window that matters; takedown stays a deliberate action.
+- **Deferred:** a moderator dashboard, per-account rate limits, and any
+  proof-of-ownership re-introduction for edge cases (e.g. very high bounties).
 
 **Recovered-post visibility (social proof).** A post that reaches
 `recovered` or `recovered_no_spotter` stays publicly visible for **30 days

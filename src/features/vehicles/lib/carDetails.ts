@@ -21,7 +21,6 @@ import type { Feather } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
 import type { PostDetail } from '../types';
-import { theftContextLines } from './theftContext';
 
 export type FeatherName = ComponentProps<typeof Feather>['name'];
 
@@ -35,13 +34,19 @@ export interface CarDetailRow {
 
 /** The in-page list: present facts in fixed order, then the named gaps. */
 export function buildCarDetailRows(post: PostDetail): CarDetailRow[] {
+  // "Not sure" is the wizard's escape for a required step — it's stored but is
+  // NOT a known fact, so treat it as absent here (a gap row, not "Body type:
+  // Not sure").
+  const knownBodyType =
+    post.bodyType && post.bodyType !== 'Not sure' ? post.bodyType : null;
+
   // Identity facts.
   const present: CarDetailRow[] = [
     { key: 'colour', icon: 'droplet', label: `Colour: ${post.colour}` },
     ...(post.year ? [{ key: 'year', icon: 'calendar' as const, label: `Year: ${post.year}` }] : []),
     ...(post.plate ? [{ key: 'plate', icon: 'hash' as const, label: `Plate: ${post.plate}` }] : []),
-    ...(post.bodyType
-      ? [{ key: 'bodyType', icon: 'truck' as const, label: `Body type: ${post.bodyType}` }]
+    ...(knownBodyType
+      ? [{ key: 'bodyType', icon: 'truck' as const, label: `Body type: ${knownBodyType}` }]
       : []),
   ];
 
@@ -61,22 +66,16 @@ export function buildCarDetailRows(post: PostDetail): CarDetailRow[] {
   ];
   present.push(...marks);
 
-  // Theft context — `info`, not an alert glyph: a column of warning icons
-  // reads alarmist (DESIGN_SYSTEM tone); these are calm facts.
-  present.push(
-    ...theftContextLines(post).map((line, index) => ({
-      key: `theft-${index}`,
-      icon: 'info' as const,
-      label: line,
-    })),
-  );
+  // Theft context (stolen-from / keys-taken / how-it-drives) has moved to its
+  // own "How it was taken" section on the detail screen — it's no longer folded
+  // into this fact list.
 
   // The gaps, named. Only facts the posting flow ASKS for — a gap means the
   // owner skipped it, so it reads as "unknown", never as an accusation.
   const missing: CarDetailRow[] = [
     ...(post.plate ? [] : [{ key: 'no-plate', icon: 'slash' as const, label: 'Plate', missing: true }]),
     ...(post.year ? [] : [{ key: 'no-year', icon: 'slash' as const, label: 'Year', missing: true }]),
-    ...(post.bodyType
+    ...(knownBodyType
       ? []
       : [{ key: 'no-body', icon: 'slash' as const, label: 'Body type', missing: true }]),
     ...(marks.length > 0

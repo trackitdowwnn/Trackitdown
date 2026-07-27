@@ -50,13 +50,7 @@ rounded-top sheet overlapping the hero.)
    `keys_taken`, never an address); a driveway theft's last-seen point is
    coarsened to ~1km for non-owners in `get_post_detail` (the map/feed RPCs
    still need the same — see the migration's follow-up banner and DOMAIN.md).
-6. **Trust & verification** (`TrustBlock`) — the highlight row (48pt tile,
-   headline + evidence line): "Ownership verified" (derived from `status`;
-   the owner's own unverified post reads "Pending verification") with its
-   V5C evidence line, the shield in `colors.success` (verification is status,
-   not an action). Posted/active-until rows removed 2026-07-23; the section
-   is skipped entirely (`hasTrustRow`) for rejected/cancelled.
-7. **Owner** (`OwnerCard`, the reference's host-passport card — the page's
+6. **Owner** (`OwnerCard`, the reference's host-passport card — the page's
    one elevated object): centred avatar + first name + "Owner" caption
    beside a stat column (time on Trackitdown; sightings on this post).
    Calm register — "Owner", never "Meet the owner". **SAFETY**: signed-in
@@ -73,13 +67,13 @@ rounded-top sheet overlapping the hero.)
    a second button — the sticky bar's "I've seen this car" is the primary
    route). Hidden for the owner. Driven by
    `get_post_detail.viewer_has_sighting`.
-8. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
+7. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
     the section renders only when count > 0 and lights up when the sightings
     feature ships. **SAFETY** (SECURITY_AND_TRUST §6): aggregate count ONLY,
     never individual sightings or their locations to a non-owner.
-9. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
+8. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
     the underlined "Report this post" row (moved out of the header).
-10. **More cars nearby** (`useSimilarPosts`) — the reference's "More stays
+9. **More cars nearby** (`useSimilarPosts`) — the reference's "More stays
     nearby" shelf at the page's end: a full-bleed compact-`VehicleCard` rail
     from the public `get_home_feed` RPC centred on THIS car's last-seen point
     (title drops the "nearby" and the coord centring when the post has no
@@ -87,14 +81,25 @@ rounded-top sheet overlapping the hero.)
     post itself, caps at 6, and is quietly absent (never an error) on failure.
 
 **Sticky bottom bar** (`PostBottomBar`) — always visible, safe-area padded.
-- **Spotter:** bounty + "reward", primary "I've seen this car" → Toast
-  "coming soon" (the sightings feature isn't built yet).
-- **Owner:** "Your listing" + `StatusBadge`, secondary "Manage post" → the
-  my-cars tab (a stub today).
+- **Spotter:** bounty + "reward", primary "I've seen this car" → the
+  report-sighting flow (auth-gated).
+- **Owner:** "Your listing" + `StatusBadge`, secondary "Manage post" →
+  **`PostManageSheet`**, a `BottomSheet` of `ListRow`s for THIS listing: view
+  sightings, one row per section currently editable, share, and (paid posts) the
+  destructive "Deactivate & refund". It used to push `/my-posts`, which bounced
+  the owner off the very post they were managing. Rows are built from the
+  handlers the screen passes — an absent handler means an absent row, so the
+  sheet can never offer an edit the server would reject.
+
+**Deactivate confirm** — owned by `PostDetailScreen`, not the body: the body's
+"Deactivate listing" section button and the manage sheet's row both open the same
+`ConfirmDialog`, so the destructive copy and the refund estimate
+(`lib/refundEstimate.ts`) exist exactly once. The quoted figure is an ESTIMATE;
+the post-refund toast shows the server's exact amount.
 
 **Share / flag** — share via React Native's `Share` (`lib/postShare.ts`,
-placeholder URL, `// TODO` deep links). Flag is a **Phase-4 stub**:
-`ConfirmDialog` → Toast, logs only (no flags table yet).
+placeholder URL, `// TODO` deep links). Flag is real: `ConfirmDialog` →
+`flag_post` RPC → `post_flags` (`20260730110000_post_flags.sql`).
 
 **Data** — one `get_post_detail(p_post_id)` RPC (SECURITY DEFINER). **SAFETY:**
 it gates visibility itself (RLS is bypassed) — active posts are public; the

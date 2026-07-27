@@ -49,6 +49,12 @@ describe('buildCarDetailRows', () => {
     expect(missing).toEqual(['Plate', 'Year', 'Body type', 'Distinguishing marks']);
   });
 
+  it('treats a "Not sure" body type as unknown — a gap row, not "Body type: Not sure"', async () => {
+    const rows = buildCarDetailRows({ ...base, bodyType: 'Not sure' });
+    expect(rows.map((row) => row.label)).not.toContain('Body type: Not sure');
+    expect(rows.filter((row) => row.missing).map((row) => row.label)).toContain('Body type');
+  });
+
   it('drops a gap once its fact is present, and never marks a present fact missing', async () => {
     const rows = buildCarDetailRows({
       ...base,
@@ -74,9 +80,10 @@ describe('buildCarDetailRows', () => {
     expect(labels).not.toContain('Distinguishing marks'); // gap dropped
   });
 
-  it('includes theft context as calm info rows when present', async () => {
+  it('no longer includes theft context (moved to its own "How it was taken" section)', async () => {
     const rows = buildCarDetailRows({ ...base, stolenFrom: 'driveway', keysTaken: 'yes' });
-    const theft = rows.filter((row) => row.icon === 'info').map((row) => row.label);
-    expect(theft).toEqual(['Stolen from a driveway', 'Keys were taken with the car']);
+    // Theft lines used the `info` icon; they now render in PostDetailBody's
+    // dedicated section, not this fact list.
+    expect(rows.filter((row) => row.icon === 'info')).toHaveLength(0);
   });
 });

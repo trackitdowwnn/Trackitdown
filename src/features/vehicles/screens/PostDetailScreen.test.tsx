@@ -21,6 +21,13 @@ jest.mock('@/features/watchlist', () => ({
   useWatchToggle: () => ({ watched: false, toggle: jest.fn() }),
 }));
 
+// The per-section editors reach the supabase-backed save API — stub the host +
+// pencil (edit-gating is covered in PostDetailBody.test).
+jest.mock('../components/editors', () => ({
+  PostSectionEditorHost: () => null,
+  SectionEditButton: () => null,
+}));
+
 // The hook is the single data source — drive the screen by mocking its return.
 const mockUsePostDetail = jest.fn();
 jest.mock('../hooks/usePostDetail', () => ({
@@ -42,6 +49,23 @@ jest.mock('@/shared/ui/AppMap', () => ({ AppMap: 'AppMap', AppMapMarker: 'AppMap
 const mockRequireAuth = jest.fn((intent: { run?: () => void }) => intent.run?.());
 jest.mock('@/features/auth', () => ({
   useRequireAuth: () => mockRequireAuth,
+}));
+
+// The payments barrel pulls the Stripe native module (BountyPaymentProvider) —
+// stub it. deactivate returns a 'done' outcome so the deactivate handler runs.
+const mockDeactivate = jest.fn(async () => ({
+  outcome: 'done' as const,
+  result: { refundedPence: 49230, feePence: 770 },
+  message: null,
+}));
+jest.mock('@/features/payments', () => ({
+  useDeactivatePost: () => ({ deactivate: mockDeactivate, pending: false }),
+}));
+
+// The report path calls the flag_post RPC via flagApi — stub it.
+const mockFlagPost = jest.fn((..._args: unknown[]) => Promise.resolve());
+jest.mock('../api/flagApi', () => ({
+  flagPost: (...args: unknown[]) => mockFlagPost(...args),
 }));
 
 // The chat feature is imported lazily (dynamic import) by the message-owner
@@ -139,6 +163,23 @@ describe('PostDetailScreen', () => {
     expect(queryByLabelText('Share')).toBeTruthy();
   });
 
+  it('report is auth-gated and a confirmed report flags the post', async () => {
+    mockRequireAuth.mockClear();
+    mockFlagPost.mockClear();
+    setResult('ready', { kind: 'visible', post });
+    const { getByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+    await act(async () => {
+      fireEvent.press(getByText('Report this post')); // opens the confirm (auth gate is pass-through)
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Report')); // the destructive confirm
+    });
+    expect(mockRequireAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ context: 'report_post' }),
+    );
+    expect(mockFlagPost).toHaveBeenCalledWith('p1');
+  });
+
   describe('message the owner (sighting-gated)', () => {
     beforeEach(() => {
       mockPush.mockClear();
@@ -180,6 +221,102 @@ describe('PostDetailScreen', () => {
       const { queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
       expect(queryByText('Message the owner')).toBeNull();
       expect(queryByText(/Reporting a sighting opens/)).toBeNull();
+    });
+  });
+
+  describe('deactivate + refund (owner, paid)', () => {
+    beforeEach(() => mockDeactivate.mockClear());
+
+    it('owner + paid: confirming deactivate calls the refund and toasts the exact amount', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'active' } });
+      const { getByText, getAllByText } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      await act(async () => {
+        // Two owner entry points share the label (the body's section button and
+        // the manage sheet's row); either must open the ONE confirm.
+        fireEvent.press(getAllByText('Deactivate & refund')[0]);
+      });
+      await act(async () => {
+        fireEvent.press(getByText('Yes, deactivate'));
+      });
+      expect(mockDeactivate).toHaveBeenCalledWith('p1');
+      // The toast shows the SERVER's exact refunded amount (£492.30), not the estimate.
+      expect(getByText(/£492\.30 refunded/)).toBeTruthy();
+    });
+
+    it('hides the deactivate control for a spotter', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, status: 'active' } });
+      const { queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      expect(queryByText('Deactivate & refund')).toBeNull();
+    });
+
+    it('hides the deactivate control on an unpaid draft (nothing to refund)', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'draft' } });
+      const { queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      expect(queryByText('Deactivate & refund')).toBeNull();
+    });
+  });
+
+  describe('owner editing + "Manage post"', () => {
+    beforeEach(() => mockPush.mockClear());
+
+    // Live-on-payment publishes on payment, so `active` is the state an owner
+    // actually lives in. The money-neutral sections MUST stay editable there (the
+    // server RPCs allow it) — this is the regression that made every pencil
+    // vanish the moment a listing went live.
+    it('owner + LIVE: the money-neutral sections stay editable, the frozen ones do not', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'active' } });
+      const { getByTestId, queryByTestId } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      expect(getByTestId('manage-edit-description')).toBeTruthy();
+      expect(getByTestId('manage-edit-theft_context')).toBeTruthy();
+      expect(getByTestId('manage-edit-distinctive_features')).toBeTruthy();
+      // A wrong colour or model actively harms the search, so identity is
+      // correctable on a live post (20260731110000). The plate is not in that RPC.
+      expect(getByTestId('manage-edit-car_details')).toBeTruthy();
+      // Photos, where-it-was-taken and the escrowed reward stay frozen.
+      expect(queryByTestId('manage-edit-photos')).toBeNull();
+      expect(queryByTestId('manage-edit-last_seen')).toBeNull();
+      expect(queryByTestId('manage-edit-bounty')).toBeNull();
+    });
+
+    it('owner + DRAFT: every section is editable (nothing is paid for yet)', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'draft' } });
+      const { getByTestId } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      expect(getByTestId('manage-edit-car_details')).toBeTruthy();
+      expect(getByTestId('manage-edit-bounty')).toBeTruthy();
+      expect(getByTestId('manage-edit-description')).toBeTruthy();
+    });
+
+    it('"Manage post" opens the sheet for THIS listing — it never navigates away', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'active' } });
+      const { getByText, getByTestId } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      await act(async () => {
+        fireEvent.press(getByText('Manage post'));
+      });
+      // The old behaviour pushed /my-posts, bouncing the owner off the post.
+      expect(mockPush).not.toHaveBeenCalledWith('/my-posts');
+      // Sightings are reachable from the sheet, scoped to this post.
+      await act(async () => {
+        fireEvent.press(getByTestId('manage-view-sightings'));
+      });
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.objectContaining({ pathname: '/post-sightings', params: { postId: 'p1' } }),
+      );
+    });
+
+    it('the manage sheet is owner-only', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, status: 'active' } });
+      const { queryByTestId } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      expect(queryByTestId('manage-view-sightings')).toBeNull();
     });
   });
 });

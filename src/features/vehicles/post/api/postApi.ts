@@ -35,14 +35,10 @@ import type { CreatePostParams, CreatePostResult, PostACarAnswers } from '../typ
 const log = createLogger('vehicles');
 
 const POST_PHOTOS_BUCKET = 'post-photos';
-const VERIFICATION_BUCKET = 'verification-documents';
 
 /** Public photos: bound the long edge but keep them sharp for the carousel. */
 const PHOTO_MAX_EDGE = 1600;
 const PHOTO_COMPRESS = 0.8;
-/** The V5C must stay legible for the moderator, so a larger edge / less squash. */
-const V5C_MAX_EDGE = 2000;
-const V5C_COMPRESS = 0.85;
 
 // --- Error translation -------------------------------------------------------
 
@@ -68,6 +64,10 @@ export const CREATE_POST_ERROR_MESSAGES: Record<string, string> = {
   INVALID_DISTINCTIVE_FEATURE: 'Each feature description needs to be 3–80 characters.',
   INVALID_DISTINCTIVE_PHOTO_URL:
     'We couldn’t attach one of your feature photos. Please try again.',
+  // Editing is draft-only (server-enforced). A post that has moved past draft
+  // (paid → pending_verification, etc.) can no longer be edited.
+  POST_NOT_EDITABLE: 'This post can no longer be edited — it’s already been submitted.',
+  NOT_FOUND: 'We couldn’t find that post.',
 };
 
 const CREATE_POST_FALLBACK = 'We couldn’t create your post. Please try again.';
@@ -121,8 +121,8 @@ const submitAnswersSchema = z.object({
   stolenFrom: z.enum(['driveway', 'street', 'car_park', 'other']).nullish(),
   keysTaken: z.enum(['yes', 'no', 'unknown']).nullish(),
   descDrives: z.string().default(''),
+  descRecognise: z.string().default(''),
   bountyAmountPence: z.number().int().min(5000).max(500000),
-  verification: photoShape.nullish(),
 });
 
 export type SubmitReadyAnswers = z.infer<typeof submitAnswersSchema>;
@@ -157,7 +157,6 @@ export function buildCreatePostParams(
   answers: SubmitReadyAnswers,
   uploads: {
     photoUrls: string[];
-    verificationPath: string | null;
     // The just-uploaded distinctive-feature photo URLs, in answers order.
     // Optional so callers with no marks needn't pass it (defaults to []).
     distinctiveFeatureUrls?: string[];
@@ -174,7 +173,7 @@ export function buildCreatePostParams(
     p_body_type: answers.bodyType ?? null,
     p_distinguishing_features: null,
     p_owner_note: emptyToNull(answers.colourNote),
-    p_desc_recognise: null,
+    p_desc_recognise: emptyToNull(answers.descRecognise),
     p_desc_drives: emptyToNull(answers.descDrives),
     p_stolen_from: answers.stolenFrom ?? null,
     p_keys_taken: answers.keysTaken ?? null,
@@ -187,7 +186,7 @@ export function buildCreatePostParams(
     p_last_seen_area: answers.lastSeenArea,
     p_bounty_amount_pence: answers.bountyAmountPence,
     p_photo_urls: uploads.photoUrls,
-    // The vehicle_feature chip step was removed (distinctive marks replaced it);
+    // The vehicle_feature chip step was removed (distinctive features replaced it);
     // the RPC param stays for old callers / the post_feature table, always null.
     p_feature_keys: null,
     // Zip each pair's description with its just-uploaded photo URL, in order.
@@ -195,7 +194,9 @@ export function buildCreatePostParams(
       photo_url: (uploads.distinctiveFeatureUrls ?? [])[index],
       description: feature.description.trim(),
     })),
-    p_verification_path: uploads.verificationPath,
+    // Proof-of-ownership (V5C) collection was removed from the app; create_post
+    // treats the path as optional, so it is always null now.
+    p_verification_path: null,
   };
 }
 
@@ -264,31 +265,6 @@ export async function uploadPostPhoto(
   return supabase.storage.from(POST_PHOTOS_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
-/**
- * Upload the V5C to the PRIVATE verification-documents/<userId>/v5c-<hash>.jpg
- * (own-folder RLS) and return its storage PATH (never a public URL — the bucket
- * has no public delivery). The RPC stores this path on the verification_documents
- * row; a moderator later reads it via a signed URL (service role).
- */
-export async function uploadVerificationDocument(
-  userId: string,
-  document: PickedPhoto,
-): Promise<string> {
-  const startedAt = Date.now();
-  log.debug('Uploading verification document', { userId });
-  const body = await toJpegBytes(document, V5C_MAX_EDGE, V5C_COMPRESS);
-  const path = `${userId}/v5c-${stableHash(document.uri)}.jpg`;
-  const { error } = await supabase.storage
-    .from(VERIFICATION_BUCKET)
-    .upload(path, body, { contentType: 'image/jpeg', upsert: true });
-  if (error) {
-    log.error('Verification document upload failed', { userId });
-    throw error;
-  }
-  log.debug('Verification document uploaded', { userId, durationMs: Date.now() - startedAt });
-  return path;
-}
-
 // --- RPC call ----------------------------------------------------------------
 
 /** Call create_post and translate its raised codes into user-facing errors. */
@@ -335,14 +311,18 @@ async function requireUserId(): Promise<string> {
 
 /**
  * The whole submit: validate completeness → upload photos (in cover order) →
- * upload the V5C → create the draft. Any failure throws a PostSubmissionError
- * and leaves nothing half-built that a retry can't safely overwrite. This is
- * what the wizard's async onComplete awaits; on success it returns the new
- * post's id for the flow to route to.
+ * create the draft. Any failure throws a PostSubmissionError and leaves nothing
+ * half-built that a retry can't safely overwrite. This is what the wizard's
+ * async onComplete awaits; on success it returns the new post's id for the flow
+ * to route to.
  *
- * PAYMENT STUB: this creates the draft only — no escrow charge is taken. When
- * the payments feature lands it wraps this call (charge → server-side
- * draft→pending_verification). See the README handoff contract.
+ * This creates the DRAFT only. The escrow charge is taken separately by the
+ * screen (PostACarScreen.handleComplete): after this resolves it opens the
+ * PaymentIntent (features/payments) and presents Stripe's PaymentSheet, and the
+ * authoritative draft→pending_verification transition is the Stripe webhook
+ * (supabase/functions/stripe-webhook). Keeping this as draft-only means a
+ * cancelled/declined payment leaves a re-payable draft (the screen reuses its
+ * id) rather than a half-built post. See the README handoff contract.
  */
 export async function submitPost(
   answers: Partial<PostACarAnswers>,
@@ -396,19 +376,5 @@ export async function submitPost(
     }
   }
 
-  let verificationPath: string | null = null;
-  if (ready.verification) {
-    try {
-      verificationPath = await uploadVerificationDocument(userId, ready.verification);
-    } catch {
-      throw new PostSubmissionError(
-        'Your proof of ownership didn’t upload. Check your connection and try again.',
-        'V5C_UPLOAD',
-      );
-    }
-  }
-
-  return createPost(
-    buildCreatePostParams(ready, { photoUrls, verificationPath, distinctiveFeatureUrls }),
-  );
+  return createPost(buildCreatePostParams(ready, { photoUrls, distinctiveFeatureUrls }));
 }

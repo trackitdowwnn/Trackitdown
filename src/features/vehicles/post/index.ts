@@ -18,7 +18,6 @@ export {
   createPost,
   submitPost,
   uploadPostPhoto,
-  uploadVerificationDocument,
   type SubmitPostOptions,
   type SubmitReadyAnswers,
 } from './api/postApi';

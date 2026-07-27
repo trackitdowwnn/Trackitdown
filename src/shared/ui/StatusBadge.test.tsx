@@ -17,14 +17,20 @@ describe('StatusBadge', () => {
     expect(getByText('Recovered')).toBeTruthy();
   });
 
-  it('renders nothing for an active post', async () => {
+  it('renders nothing for an active post by default (public stays calm)', async () => {
     const { toJSON } = await render(<StatusBadge status="active" />);
     expect(toJSON()).toBeNull();
   });
 
-  it('statusBadgeLabel returns the label or null', () => {
+  it('renders a green "Live" badge for an active post ONLY when opted in (owner)', async () => {
+    const { getByText } = await render(<StatusBadge status="active" showLiveWhenActive />);
+    expect(getByText('Live')).toBeTruthy();
+  });
+
+  it('statusBadgeLabel returns the label or null, honouring the Live opt-in', () => {
     expect(statusBadgeLabel('pending_verification')).toBe('Pending');
     expect(statusBadgeLabel('recovery_claimed')).toBe('Recovery claimed');
     expect(statusBadgeLabel('active')).toBeNull();
+    expect(statusBadgeLabel('active', true)).toBe('Live');
   });
 });

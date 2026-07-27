@@ -23,6 +23,10 @@ for suite in \
   supabase/tests/create_post_verification.sql \
   supabase/tests/sightings_verification.sql \
   supabase/tests/watchlist_verification.sql \
+  supabase/tests/post_payment_verification.sql \
+  supabase/tests/refund_cancel_verification.sql \
+  supabase/tests/post_flags_verification.sql \
+  supabase/tests/edit_post_sections_verification.sql \
   supabase/tests/anon_role_verification.sql
 do
   echo "== ${suite}"

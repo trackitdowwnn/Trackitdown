@@ -232,7 +232,15 @@ function LoadedProfile({
           testID="row-spotter-story"
         />
 
-        {/* Your own posts — moved here from the tab bar (2026-07-23). */}
+        {/* Your own stolen-car listings (view + open to edit per section). */}
+        <ListRow
+          icon={FileText}
+          title="My Posts"
+          onPress={() => router.push('/my-posts')}
+          testID="row-my-posts"
+        />
+
+        {/* My cars — a future garage of your vehicles (placeholder). */}
         <ListRow
           icon={Car}
           title="My cars"

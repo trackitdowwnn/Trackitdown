@@ -1,15 +1,15 @@
 /**
  * WHAT:  Tests for the post-a-car write path — the pure answers→RPC-args
  *        mapping, create_post error translation (raised code → user message),
- *        and the submit orchestrator: happy path (upload photos + V5C → RPC),
+ *        and the submit orchestrator: happy path (upload photos → RPC),
  *        a mid-submit photo-upload failure that stops before the RPC (so the
  *        wizard stays intact), and the incomplete-answers backstop.
  * WHY:   create_post is the money/safety write boundary; the mapping must not
  *        silently drop or mis-place a field, the error copy must be the plain
  *        strings the wizard shows, and a failed upload must NEVER create a
  *        half-post — losing a completed wizard to a blip is the failure this
- *        flow exists to avoid. MONEY: bounty range + SAFETY: private-bucket
- *        V5C path are asserted here.
+ *        flow exists to avoid. MONEY: bounty range is asserted here. (Proof-of-
+ *        ownership / V5C collection was removed from the app.)
  * LINKS: src/features/vehicles/post/api/postApi.ts, docs/TESTING.md.
  */
 
@@ -84,17 +84,16 @@ function readyAnswers(overrides: Partial<SubmitReadyAnswers> = {}): SubmitReadyA
     stolenFrom: 'driveway',
     keysTaken: 'yes',
     descDrives: 'Slight rattle from the exhaust.',
+    descRecognise: 'Blue with a dented nearside rear door.',
     bountyAmountPence: 30000,
-    verification: { uri: 'file://v5c.jpg', width: 2400, height: 1600 },
     ...overrides,
   };
 }
 
 describe('buildCreatePostParams', () => {
-  it('maps answers + uploads onto the RPC args (lat/lng, features, V5C path)', () => {
+  it('maps answers + uploads onto the RPC args (lat/lng, features)', () => {
     const params = buildCreatePostParams(readyAnswers(), {
       photoUrls: ['https://cdn/p/0', 'https://cdn/p/1', 'https://cdn/p/2'],
-      verificationPath: 'user-1/v5c-abc.jpg',
     });
 
     expect(params).toMatchObject({
@@ -107,24 +106,34 @@ describe('buildCreatePostParams', () => {
       p_last_seen_area: 'Manchester',
       p_bounty_amount_pence: 30000,
       p_photo_urls: ['https://cdn/p/0', 'https://cdn/p/1', 'https://cdn/p/2'],
-      p_verification_path: 'user-1/v5c-abc.jpg',
-      // Legacy free-text columns + the removed chip taxonomy are all null now.
+      // Legacy free-text columns, the removed chip taxonomy, and the removed V5C
+      // are all null now.
       p_distinguishing_features: null,
       p_owner_note: null,
       p_feature_keys: null,
+      p_verification_path: null,
     });
   });
 
-  it('nulls the removed guided prompts and chip taxonomy', () => {
+  it('nulls the removed guided prompts, chip taxonomy, and V5C', () => {
     const params = buildCreatePostParams(readyAnswers({ descDrives: '' }), {
       photoUrls: ['a', 'b', 'c'],
-      verificationPath: null,
     });
 
-    expect(params.p_desc_recognise).toBeNull(); // free-text prompt removed — always null
     expect(params.p_desc_drives).toBeNull();
     expect(params.p_feature_keys).toBeNull(); // chip taxonomy step removed — always null
-    expect(params.p_verification_path).toBeNull();
+    expect(params.p_verification_path).toBeNull(); // proof-of-ownership removed — always null
+  });
+
+  it('maps the description step to desc_recognise (blank → null)', () => {
+    const uploads = { photoUrls: ['a', 'b', 'c'] };
+    expect(
+      buildCreatePostParams(readyAnswers({ descRecognise: '  Matte black wrap.  ' }), uploads)
+        .p_desc_recognise,
+    ).toBe('Matte black wrap.');
+    expect(
+      buildCreatePostParams(readyAnswers({ descRecognise: '' }), uploads).p_desc_recognise,
+    ).toBeNull();
   });
 
   it('zips distinctive-feature descriptions with their uploaded photo URLs, in order', () => {
@@ -134,7 +143,6 @@ describe('buildCreatePostParams', () => {
     ];
     const params = buildCreatePostParams(readyAnswers({ distinctiveFeatures: marks }), {
       photoUrls: ['a', 'b', 'c'],
-      verificationPath: null,
       distinctiveFeatureUrls: ['https://cdn/mark/0', 'https://cdn/mark/1'],
     });
 
@@ -147,13 +155,12 @@ describe('buildCreatePostParams', () => {
   it('sends an empty distinctive-features array when none were added', () => {
     const params = buildCreatePostParams(readyAnswers(), {
       photoUrls: ['a', 'b', 'c'],
-      verificationPath: null,
     });
     expect(params.p_distinctive_features).toEqual([]);
   });
 
   it('carries the colour note into owner_note (trimmed), null when blank', () => {
-    const uploads = { photoUrls: ['a', 'b', 'c'], verificationPath: null };
+    const uploads = { photoUrls: ['a', 'b', 'c'] };
     expect(
       buildCreatePostParams(
         readyAnswers({ colour: 'Multicolour / wrapped', colourNote: '  matte black wrap  ' }),
@@ -174,7 +181,7 @@ describe('createPost', () => {
     });
 
     const result = await createPost(
-      buildCreatePostParams(readyAnswers(), { photoUrls: ['a', 'b', 'c'], verificationPath: null }),
+      buildCreatePostParams(readyAnswers(), { photoUrls: ['a', 'b', 'c'] }),
     );
 
     expect(result).toEqual({ postId: '11111111-1111-1111-1111-111111111111', status: 'draft' });
@@ -185,7 +192,7 @@ describe('createPost', () => {
 
     await expect(
       createPost(
-        buildCreatePostParams(readyAnswers(), { photoUrls: ['a', 'b', 'c'], verificationPath: null }),
+        buildCreatePostParams(readyAnswers(), { photoUrls: ['a', 'b', 'c'] }),
       ),
     ).rejects.toMatchObject({
       code: 'PLATE_IN_USE',
@@ -198,14 +205,14 @@ describe('createPost', () => {
 
     await expect(
       createPost(
-        buildCreatePostParams(readyAnswers(), { photoUrls: ['a', 'b', 'c'], verificationPath: null }),
+        buildCreatePostParams(readyAnswers(), { photoUrls: ['a', 'b', 'c'] }),
       ),
     ).rejects.toBeInstanceOf(PostSubmissionError);
   });
 });
 
 describe('submitPost', () => {
-  it('uploads photos + V5C then creates the draft, clearing each tile on success', async () => {
+  it('uploads photos then creates the draft, clearing each tile on success', async () => {
     mockRpc.mockResolvedValue({
       data: { post_id: '22222222-2222-2222-2222-222222222222', status: 'draft' },
       error: null,
@@ -215,13 +222,11 @@ describe('submitPost', () => {
     const result = await submitPost(readyAnswers(), { onPhotoStatus });
 
     expect(result.postId).toBe('22222222-2222-2222-2222-222222222222');
-    // 3 hero photos to the public bucket + 1 V5C to the private bucket.
+    // 3 hero photos to the public bucket; proof-of-ownership was removed, so
+    // NOTHING goes to the private verification-documents bucket.
     const buckets = mockUpload.mock.calls.map((call) => call[0]);
     expect(buckets.filter((b) => b === 'post-photos')).toHaveLength(3);
-    expect(buckets.filter((b) => b === 'verification-documents')).toHaveLength(1);
-    // SAFETY: the V5C uploads under the user's own folder in the private bucket.
-    const v5cCall = mockUpload.mock.calls.find((call) => call[0] === 'verification-documents');
-    expect(v5cCall?.[1]).toMatch(/^user-1\/v5c-/);
+    expect(buckets.filter((b) => b === 'verification-documents')).toHaveLength(0);
     // Each photo tile shows uploading, then clears (null) once done.
     expect(onPhotoStatus).toHaveBeenCalledWith('file://a.jpg', { kind: 'uploading' });
     expect(onPhotoStatus).toHaveBeenCalledWith('file://a.jpg', null);
@@ -233,7 +238,7 @@ describe('submitPost', () => {
       error: null,
     });
     // Only the genuinely-required answers — no year/bodyType/features/guided
-    // prompts/theft-context/V5C, exactly as the controller leaves untouched steps.
+    // prompts/description, exactly as the controller leaves untouched steps.
     const minimal = {
       make: 'BMW',
       model: '320d',

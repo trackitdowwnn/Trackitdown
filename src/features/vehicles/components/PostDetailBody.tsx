@@ -7,7 +7,7 @@
  *        (clamped prose + "Show more" →
  *        /post-about; an honest "no description yet" line when prose-less),
  *        "Car details" (the FULL fact list in-page, gaps struck through),
- *        the trust highlight (verification only), the owner passport card
+ *        the owner passport card
  *        (OwnerCard), the (dormant) sighting-activity line, the SafetyNotice,
  *        an underlined report row, and the "More cars nearby" compact-card
  *        rail (the reference's "More stays nearby" shelf; useSimilarPosts).
@@ -44,6 +44,7 @@ import { useTimeAgo } from '@/shared/hooks';
 import { formatDateLabel, formatPounds } from '@/shared/lib';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import {
+  AppImage,
   Button,
   ConfirmDialog,
   type ConfirmDialogRef,
@@ -55,10 +56,14 @@ import {
 } from '@/shared/ui';
 
 import { buildCarDetailRows } from '../lib/carDetails';
+import { estimateRefundPence } from '../lib/refundEstimate';
+import { theftContextLines } from '../lib/theftContext';
 import type { PostDetail } from '../types';
+// Direct import (not the ./editors barrel) so PostDetailBody doesn't pull the
+// editors + their supabase-backed save API into its module graph.
+import { SectionEditButton } from './editors/SectionEditButton';
 import { LastSeenMap } from './LastSeenMap';
 import { OwnerCard } from './OwnerCard';
-import { TrustBlock, hasTrustRow } from './TrustBlock';
 
 /** In-page description clamp before "Show more" (the reference's ~6 lines). */
 const ABOUT_CLAMP_LINES = 6;
@@ -84,6 +89,22 @@ export interface PostDetailBodyProps {
   similarLoading: boolean;
   /** Open another post's detail from the rail. */
   onOpenPost: (post: PostSummary) => void;
+  // OWNER-only per-section edit openers. Each is passed ONLY when that section
+  // is editable for the post's status (draft-only for the money/identity four;
+  // draft + live for the safe prose three — description, theft context, marks)
+  // — presence = the pencil shows. The parent gates + mounts the editor overlay.
+  onEditCarDetails?: () => void;
+  onEditPhotos?: () => void;
+  onEditLastSeen?: () => void;
+  onEditBounty?: () => void;
+  onEditDescription?: () => void;
+  onEditTheftContext?: () => void;
+  onEditDistinctiveFeatures?: () => void;
+  /** OWNER + PAID (active / pending_verification) only: REQUEST deactivation.
+   *  Presence = the deactivate control shows. The parent owns the confirm step
+   *  (shared with the "Manage post" sheet's row, so there is exactly one
+   *  confirm) and then runs the refund + toast. */
+  onDeactivate?: () => void;
 }
 
 function Divider() {
@@ -100,6 +121,14 @@ export function PostDetailBody({
   similarPosts,
   similarLoading,
   onOpenPost,
+  onEditCarDetails,
+  onEditPhotos,
+  onEditLastSeen,
+  onEditBounty,
+  onEditDescription,
+  onEditTheftContext,
+  onEditDistinctiveFeatures,
+  onDeactivate,
 }: PostDetailBodyProps) {
   const { width: windowWidth } = useWindowDimensions();
   // The reference's carousel geometry (FeedCarouselRow): ~2 cards + a peek.
@@ -112,16 +141,28 @@ export function PostDetailBody({
   const hasCoords = post.lat != null && post.lng != null;
 
   // The clamped in-page prose: the recognition text leads (it's the spotter's
-  // most useful paragraph); older posts fall back to whatever prose they have.
-  const aboutPreview = post.descRecognise ?? post.descDrives ?? post.ownerNote;
+  // most useful paragraph); older posts fall back to the legacy owner note.
+  // (descDrives now lives in its own "How it was taken" section.)
+  const aboutPreview = post.descRecognise ?? post.ownerNote;
 
   // The FULL inventory renders in-page (no "Show all" tap — product call
   // 2026-07-23): present facts first, then the muted "Not provided" gaps.
   const detailRows = buildCarDetailRows(post);
 
+  // Theft context (stolen-from / keys-taken) as calm fact lines + the free-text
+  // "how it drives" note — its own "How it was taken" section.
+  const theftLines = theftContextLines(post);
+  const hasTheftContent = theftLines.length > 0 || Boolean(post.descDrives);
+
   // The bounty explainer lives behind the ⓘ in the stat band (acknowledge
   // dialog), keeping the cluster to facts only.
   const bountyInfoRef = useRef<ConfirmDialogRef>(null);
+
+  // The refund quoted in the deactivate section is an ESTIMATE (bounty minus
+  // the ~card fee); the server computes and returns the exact figure. The
+  // confirm dialog itself lives on the screen — the "Manage post" sheet opens
+  // the same one, so the destructive copy exists exactly once.
+  const estimatedRefundPence = estimateRefundPence(post.bountyPence);
 
   return (
     <View style={styles.body}>
@@ -137,24 +178,34 @@ export function PostDetailBody({
       <Text style={styles.listedOn}>Listed on {formatDateLabel(post.createdAt)}</Text>
 
       <View style={[styles.section, styles.sectionAfterDateline]}>
-        {/* Title row: name, then the two strongest identity marks inline
-            beside it — the plate and the colour, both in the plate's chip
-            chrome (one identity grammar). Wraps on narrow screens. */}
+        {/* Title row: the centred name + the plate chip beside it (the colour is
+            carried by the "Car details" section, not a title chip). Wraps on
+            narrow screens. */}
         <View style={styles.titleRow}>
           <Text style={styles.title}>
             {post.make} {post.model}
           </Text>
           {/* No plate → the make/model title alone carries the identity. */}
           {post.plate ? <PlateChip plate={post.plate} /> : null}
-          <View style={styles.chip} accessible accessibilityLabel={`Colour ${post.colour}`}>
-            <Text style={styles.chipText}>{post.colour}</Text>
-          </View>
         </View>
-        <StatusBadge status={post.status} />
+        <View style={styles.badgeRow}>
+          {/* Owner sees "Live" (green) on their own active post; a spotter
+              viewing the same post sees no badge (public stays calm). */}
+          <StatusBadge status={post.status} showLiveWhenActive={post.isOwner} />
+          {/* Photos are the hero above — the owner edits them from here. */}
+          {onEditPhotos ? (
+            <SectionEditButton onPress={onEditPhotos} label="Edit photos" testID="edit-photos" />
+          ) : null}
+        </View>
 
         <View style={styles.statBand}>
           <View style={styles.statCell}>
-            <Text style={styles.statValueBounty}>{formatPounds(post.bountyPence)}</Text>
+            <View style={styles.bountyValueRow}>
+              <Text style={styles.statValueBounty}>{formatPounds(post.bountyPence)}</Text>
+              {onEditBounty ? (
+                <SectionEditButton onPress={onEditBounty} label="Edit bounty" testID="edit-bounty" />
+              ) : null}
+            </View>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="How the bounty works"
@@ -196,6 +247,9 @@ export function PostDetailBody({
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
               <Text style={styles.sectionTitle}>Last seen here</Text>
+              {onEditLastSeen ? (
+                <SectionEditButton onPress={onEditLastSeen} label="Edit last seen" testID="edit-last-seen" />
+              ) : null}
               {post.lastSeenArea ? (
                 <View
                   style={styles.chip}
@@ -220,7 +274,16 @@ export function PostDetailBody({
           instead of hiding the section (product call 2026-07-23). */}
       <Divider />
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About this car</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>About this car</Text>
+          {onEditDescription ? (
+            <SectionEditButton
+              onPress={onEditDescription}
+              label="Edit description"
+              testID="edit-description"
+            />
+          ) : null}
+        </View>
         {aboutPreview ? (
           <>
             <Text style={styles.prose} numberOfLines={ABOUT_CLAMP_LINES}>
@@ -245,7 +308,16 @@ export function PostDetailBody({
           provided" gaps (stated, never omitted). */}
       <Divider />
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Car details</Text>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>Car details</Text>
+          {onEditCarDetails ? (
+            <SectionEditButton
+              onPress={onEditCarDetails}
+              label="Edit car details"
+              testID="edit-car-details"
+            />
+          ) : null}
+        </View>
         <View style={styles.detailList}>
           {detailRows.map((row) => (
             <View
@@ -268,13 +340,82 @@ export function PostDetailBody({
         </View>
       </View>
 
-      {/* 6 — Trust & verification (highlight row; no section title — the
-          headline fact is the title, per the reference's highlights). */}
-      {hasTrustRow(post.status) ? (
+      {/* 5a — How it was taken: the theft context (stolen from / keys taken /
+          how it drives). Its own titled section (moved out of Car details).
+          Shows when there's data OR the owner can edit (draft or live). */}
+      {hasTheftContent || onEditTheftContext ? (
         <>
           <Divider />
           <View style={styles.section}>
-            <TrustBlock status={post.status} />
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionTitle}>How it was taken</Text>
+              {onEditTheftContext ? (
+                <SectionEditButton
+                  onPress={onEditTheftContext}
+                  label="Edit how it was taken"
+                  testID="edit-theft-context"
+                />
+              ) : null}
+            </View>
+            {hasTheftContent ? (
+              <>
+                {theftLines.length > 0 ? (
+                  <View style={styles.detailList}>
+                    {theftLines.map((line, index) => (
+                      <View key={`theft-${index}`} style={styles.detailRow}>
+                        <Feather
+                          name="info"
+                          size={sizes.icon}
+                          color={colors.textPrimary}
+                          importantForAccessibility="no"
+                        />
+                        <Text style={styles.detailValue}>{line}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {post.descDrives ? <Text style={styles.prose}>{post.descDrives}</Text> : null}
+              </>
+            ) : (
+              <Text style={styles.proseMissing}>No theft details added yet.</Text>
+            )}
+          </View>
+        </>
+      ) : null}
+
+      {/* 5b — Distinctive features: owner-photographed identifying features (a
+          cracked mirror, a sticker). Each is a photo + its description. Shows
+          when there are features OR the owner can edit (draft or live). */}
+      {post.distinctiveFeatures.length > 0 || onEditDistinctiveFeatures ? (
+        <>
+          <Divider />
+          <View style={styles.section}>
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionTitle}>Distinctive features</Text>
+              {onEditDistinctiveFeatures ? (
+                <SectionEditButton
+                  onPress={onEditDistinctiveFeatures}
+                  label="Edit distinctive features"
+                  testID="edit-distinctive-features"
+                />
+              ) : null}
+            </View>
+            {post.distinctiveFeatures.length > 0 ? (
+              <View style={styles.featureList}>
+                {post.distinctiveFeatures.map((feature, index) => (
+                  <View key={`${feature.photoUrl}-${index}`} style={styles.featureRow}>
+                    <AppImage
+                      uri={feature.photoUrl}
+                      style={styles.featurePhoto}
+                      accessibilityLabel={`Distinctive feature: ${feature.description}`}
+                    />
+                    <Text style={styles.featureDescription}>{feature.description}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.proseMissing}>No distinctive features added yet.</Text>
+            )}
           </View>
         </>
       ) : null}
@@ -328,6 +469,31 @@ export function PostDetailBody({
           </View>
         ) : null}
       </View>
+
+      {/* 7b — Deactivate listing — OWNER + PAID only. Takes the post down and
+          refunds the bounty (minus the non-recoverable card fee). Server-
+          enforced; the button is convenience. The confirm shows an estimate;
+          the parent runs the refund and toasts the exact figure. */}
+      {onDeactivate ? (
+        <>
+          <Divider />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Deactivate listing</Text>
+            <Text style={styles.deactivateBody}>
+              Take this listing down and get your bounty back. You’ll be refunded about{' '}
+              {formatPounds(estimatedRefundPence)} — the bounty minus the non-recoverable card fee.
+            </Text>
+            <View style={styles.deactivateAction} testID="deactivate-listing">
+              <Button
+                label="Deactivate & refund"
+                variant="secondary"
+                fullWidth={false}
+                onPress={onDeactivate}
+              />
+            </View>
+          </View>
+        </>
+      ) : null}
 
       {/* 8 — Sighting activity — dormant until the sightings feature ships.
           SAFETY: aggregate count ONLY — never individual sightings or their
@@ -481,6 +647,8 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Centred name (+ plate chip) — product call. Wraps on narrow screens.
+    justifyContent: 'center',
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
@@ -488,7 +656,7 @@ const styles = StyleSheet.create({
     ...typography.title,
     color: colors.textPrimary,
     flexShrink: 1,
-    marginRight: spacing.xs,
+    textAlign: 'center',
     // Android pads font boxes asymmetrically (worse with custom faces) —
     // strip it so the chips beside the title centre on the GLYPHS.
     includeFontPadding: false,
@@ -529,6 +697,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  // Status badge + (owner) an edit-photos pencil, on one line.
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  // Bounty value + (owner) its edit pencil, centred in the stat cell.
+  bountyValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   meta: {
     ...typography.caption,
@@ -613,10 +793,39 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textDecorationLine: 'line-through',
   },
+  // Distinctive features: a photo thumbnail beside its description, one per row.
+  featureList: {
+    gap: spacing.lg,
+  },
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg,
+  },
+  featurePhoto: {
+    width: 72,
+    height: 54, // 4:3, matching the photo grid aspect
+    borderRadius: radii.md,
+  },
+  featureDescription: {
+    ...typography.body,
+    color: colors.textPrimary,
+    flex: 1,
+  },
   messageOwner: {
     // The section's own gap governs rhythm — no extra top margin (which would
     // compound to an off-rhythm 24px below the owner block).
     gap: spacing.md,
+  },
+  deactivateBody: {
+    // Instructional copy introducing a money action = body, not caption/meta
+    // (mirrors messageOwnerText).
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  deactivateAction: {
+    // Sit the button under the explainer at the section's rhythm.
+    marginTop: spacing.md,
   },
   messageOwnerText: {
     // Instructional copy introducing an action = body, not caption/meta.

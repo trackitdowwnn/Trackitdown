@@ -25,9 +25,11 @@ import { formatPounds } from '@/shared/lib/money';
 import type { WizardFlow } from '@/shared/wizard';
 
 import {
+  BodyTypeStep,
   BountyStep,
   ColourStep,
-  DistinctiveMarksStep,
+  DescriptionStep,
+  DistinctiveFeaturesStep,
   LastSeenWhenStep,
   LastSeenWhereStep,
   MakeStep,
@@ -36,17 +38,9 @@ import {
   MIN_BOUNTY_PENCE,
   DEFAULT_BOUNTY_PENCE,
   PhotosStep,
-  TheftContextStep,
-  VerificationStep,
   YearStep,
 } from './components/postSteps';
 import type { PostACarAnswers } from './types';
-
-const photoShape = z.object({
-  uri: z.string().min(1),
-  width: z.number().positive(),
-  height: z.number().positive(),
-});
 
 /** Seed the slider mid-range so the bounty step starts valid and non-dirty. */
 export const POST_A_CAR_INITIAL_ANSWERS: Partial<PostACarAnswers> = {
@@ -55,7 +49,13 @@ export const POST_A_CAR_INITIAL_ANSWERS: Partial<PostACarAnswers> = {
 
 export const postACarFlow: WizardFlow<PostACarAnswers> = {
   id: 'post-a-car',
-  finalCtaLabel: 'Post my car',
+  // The final CTA takes the bounty into escrow, so it names the amount the
+  // owner is about to pay ("Post & pay £250") — a payment button must never be
+  // vague about the sum. Reads the current bounty answer (falls back to the
+  // seed so it's never blank). formatPounds here is DISPLAY ONLY; the charge
+  // amount is server-read from posts.bounty_amount_pence, never this label.
+  finalCtaLabel: (answers) =>
+    `Post & pay ${formatPounds(answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE)}`,
   review: { title: 'Check your report' },
   phases: [
     {
@@ -112,6 +112,17 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           },
         },
         {
+          // Body type — Airbnb-style icon cards (BodyTypeStep / CardSelect).
+          // REQUIRED: Next is gated on a pick; a "Not sure" card is the escape
+          // for an owner who doesn't know (stored, but suppressed on the detail).
+          id: 'body-type',
+          question: 'What type of car is it?',
+          component: BodyTypeStep,
+          schema: z.object({ bodyType: z.string().trim().min(1) }),
+          reviewLabel: 'Body type',
+          reviewValue: (answers) => answers.bodyType?.trim() || 'Not provided',
+        },
+        {
           // Year — its own step, optional. Bounded to the posts.year CHECK
           // (1900–2100) so an out-of-range year is caught here, not as a raw
           // CHECK violation at submit.
@@ -125,20 +136,23 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           reviewValue: (answers) => (answers.year ? String(answers.year) : 'Not provided'),
         },
         {
-          // Distinctive marks — owner photo+description evidence pairs (e.g.
+          // Distinctive features — owner photo+description evidence pairs (e.g.
           // "Cracked nearside wing mirror"). Optional (many cars have none);
           // each photo uploads on submit with the rest (atomic). Replaced BOTH
           // the old free-text "recognise it?" prompt AND the vehicle_feature
-          // chip taxonomy step — a photographed mark identifies a car far better
-          // than a checkbox. (post_feature/vehicle_feature stay for old posts;
-          // create_post still accepts p_feature_keys, now always null here.)
-          id: 'distinctive-marks',
-          question: 'Any distinctive marks or features?',
-          component: DistinctiveMarksStep,
-          // Next requires at least one mark; a car with none uses the "None to
-          // add" link, which advances marks-less.
+          // chip taxonomy step — a photographed feature identifies a car far
+          // better than a checkbox. (post_feature/vehicle_feature stay for old
+          // posts; create_post still accepts p_feature_keys, now always null here.)
+          id: 'distinctive-features',
+          question: 'Any distinctive features?',
+          component: DistinctiveFeaturesStep,
+          // Next requires at least one feature; a car with none uses the "None to
+          // add" link, which advances without any. `optional` so skipping (0
+          // features) never blocks the final Post & pay CTA — the schema below
+          // only gates THIS step's Next, not submission.
+          optional: true,
           schema: z.object({ distinctiveFeatures: z.array(z.unknown()).min(1) }),
-          reviewLabel: 'Distinctive marks',
+          reviewLabel: 'Distinctive features',
           reviewValue: (answers) => {
             const count = answers.distinctiveFeatures?.length ?? 0;
             return count > 0 ? `${count} added` : 'None added';
@@ -186,36 +200,25 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           reviewValue: (answers) => answers.location?.addressLabel ?? '',
         },
         {
-          id: 'theft-context',
-          question: 'What else can you tell us?',
-          component: TheftContextStep,
+          // Free-text description of the car (→ desc_recognise), shown in the
+          // post detail's "About this car" section. Optional; the wizard's old
+          // theft-context chips (stolen-from / keys-taken) moved off the flow —
+          // they stay editable post-hoc via the post's theft-context pencil.
+          id: 'description',
+          question: 'Describe your car',
+          component: DescriptionStep,
           schema: z.object({}),
-          reviewLabel: 'Theft details',
-          reviewValue: (answers) => {
-            const from = answers.stolenFrom
-              ? { driveway: 'Driveway', street: 'Street', car_park: 'Car park', other: 'Other' }[
-                  answers.stolenFrom
-                ]
-              : null;
-            const keys =
-              answers.keysTaken === 'yes'
-                ? 'keys taken'
-                : answers.keysTaken === 'no'
-                  ? 'keys not taken'
-                  : null;
-            const parts = [from, keys].filter(Boolean);
-            if (answers.descDrives?.trim()) parts.push(answers.descDrives.trim());
-            return parts.length > 0 ? parts.join(' · ') : 'Not added';
-          },
+          reviewLabel: 'Description',
+          reviewValue: (answers) => answers.descRecognise?.trim() || 'Not added',
         },
       ],
     },
     {
-      id: 'bounty-proof',
-      title: 'Bounty and proof',
+      id: 'bounty',
+      title: 'Bounty',
       intro: {
         headline: 'Set the reward',
-        body: 'Set a reward for the spotter who finds it, and confirm the car is yours.',
+        body: 'Set a reward for the spotter who finds it.',
       },
       steps: [
         {
@@ -228,14 +231,6 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           reviewLabel: 'Bounty',
           reviewValue: (answers) =>
             answers.bountyAmountPence ? formatPounds(answers.bountyAmountPence) : '',
-        },
-        {
-          id: 'verification',
-          question: 'Confirm the car is yours',
-          component: VerificationStep,
-          schema: z.object({ verification: photoShape }),
-          reviewLabel: 'Proof of ownership',
-          reviewValue: (answers) => (answers.verification ? 'V5C uploaded' : ''),
         },
       ],
     },

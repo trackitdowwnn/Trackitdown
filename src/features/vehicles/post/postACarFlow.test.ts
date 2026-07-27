@@ -20,14 +20,14 @@ jest.mock('./components/postSteps', () => ({
   MakeStep: () => null,
   ModelStep: () => null,
   ColourStep: () => null,
+  BodyTypeStep: () => null,
   YearStep: () => null,
-  DistinctiveMarksStep: () => null,
+  DistinctiveFeaturesStep: () => null,
   PhotosStep: () => null,
   LastSeenWhenStep: () => null,
   LastSeenWhereStep: () => null,
-  TheftContextStep: () => null,
+  DescriptionStep: () => null,
   BountyStep: () => null,
-  VerificationStep: () => null,
   MIN_BOUNTY_PENCE: 5000,
   MAX_BOUNTY_PENCE: 500000,
   DEFAULT_BOUNTY_PENCE: 25000,
@@ -45,9 +45,14 @@ const passes = (id: string, answers: Partial<PostACarAnswers>) =>
 describe('postACarFlow structure', () => {
   it('has three phases, a review, and a high-information final CTA', () => {
     expect(postACarFlow.phases).toHaveLength(3);
-    expect(postACarFlow.phases.map((p) => p.id)).toEqual(['car', 'when-where', 'bounty-proof']);
+    expect(postACarFlow.phases.map((p) => p.id)).toEqual(['car', 'when-where', 'bounty']);
     expect(postACarFlow.review).toBeDefined();
-    expect(postACarFlow.finalCtaLabel).toBe('Post my car');
+    // The final CTA is dynamic — it names the bounty the owner is about to pay.
+    expect(typeof postACarFlow.finalCtaLabel).toBe('function');
+    const label = postACarFlow.finalCtaLabel as (a: Partial<PostACarAnswers>) => string;
+    expect(label({ bountyAmountPence: 25000 })).toBe('Post & pay £250');
+    // Falls back to the seeded default when the bounty answer is absent.
+    expect(label({})).toMatch(/^Post & pay £/);
   });
 
   it('every step has an id, question, component, schema, and a review value', () => {
@@ -121,56 +126,65 @@ describe('step gating', () => {
     expect(passes('bounty', { bountyAmountPence: 500001 })).toBe(false);
   });
 
-  it('last-seen-where needs a settled location; verification needs an image', () => {
+  it('last-seen-where needs a settled location', () => {
     expect(passes('last-seen-where', {})).toBe(false);
     expect(
       passes('last-seen-where', {
         location: { latitude: 1, longitude: 2, addressLabel: 'Manchester' },
       }),
     ).toBe(true);
-    expect(passes('verification', {})).toBe(false);
-    expect(passes('verification', { verification: { uri: 'file://v', width: 10, height: 10 } })).toBe(
-      true,
-    );
   });
 
-  it('theft context is optional (always advanceable)', () => {
-    expect(passes('theft-context', {})).toBe(true);
+  it('the description step is optional (always advanceable)', () => {
+    expect(passes('description', {})).toBe(true);
   });
 
-  it('distinctive marks gates Next on ≥1 mark (empty disables Next — use None to add)', () => {
-    expect(passes('distinctive-marks', {})).toBe(false); // untouched — Next disabled
-    expect(passes('distinctive-marks', { distinctiveFeatures: [] })).toBe(false); // empty
+  it('the body-type step is REQUIRED (Next gated on a pick; "Not sure" satisfies it)', () => {
+    expect(passes('body-type', {})).toBe(false);
+    expect(passes('body-type', { bodyType: 'SUV' })).toBe(true);
+    expect(passes('body-type', { bodyType: 'Not sure' })).toBe(true);
+    expect(stepById('body-type').reviewValue?.({ bodyType: 'SUV' })).toBe('SUV');
+    expect(stepById('body-type').reviewValue?.({})).toBe('Not provided');
+  });
+
+  it('distinctive features gates Next on ≥1 mark (empty disables Next — use None to add)', () => {
+    expect(passes('distinctive-features', {})).toBe(false); // untouched — Next disabled
+    expect(passes('distinctive-features', { distinctiveFeatures: [] })).toBe(false); // empty
     expect(
-      passes('distinctive-marks', {
+      passes('distinctive-features', {
         distinctiveFeatures: [{ photo: { uri: 'a', width: 1, height: 1 }, description: 'Dent' }],
       }),
     ).toBe(true);
   });
+
+  it('distinctive features is OPTIONAL, so skipping it (0 marks) does not block Post & pay', () => {
+    // The step's Next needs ≥1 mark, but it must be skippable to submission —
+    // otherwise "None to add" is a dead end (the review CTA stays disabled).
+    expect(stepById('distinctive-features').optional).toBe(true);
+  });
 });
 
 describe('review values', () => {
-  it('formats the car, features, theft and bounty summaries', () => {
+  it('formats the car, description and bounty summaries', () => {
     const answers: Partial<PostACarAnswers> = {
       make: 'BMW',
       model: '320d',
       colour: 'Blue',
       year: 2019,
-      stolenFrom: 'driveway',
-      keysTaken: 'yes',
+      descRecognise: 'Dented rear door',
       bountyAmountPence: 30000,
     };
     expect(stepById('make').reviewValue?.(answers)).toBe('BMW');
     expect(stepById('model').reviewValue?.(answers)).toBe('320d');
     expect(stepById('colour').reviewValue?.(answers)).toBe('Blue');
     expect(stepById('year').reviewValue?.(answers)).toBe('2019');
-    expect(stepById('theft-context').reviewValue?.(answers)).toBe('Driveway · keys taken');
+    expect(stepById('description').reviewValue?.(answers)).toBe('Dented rear door');
     expect(stepById('bounty').reviewValue?.(answers)).toBe('£300');
   });
 
   it('shows friendly placeholders when optional fields are empty', () => {
-    expect(stepById('distinctive-marks').reviewValue?.({})).toBe('None added');
-    expect(stepById('theft-context').reviewValue?.({})).toBe('Not added');
+    expect(stepById('distinctive-features').reviewValue?.({})).toBe('None added');
+    expect(stepById('description').reviewValue?.({})).toBe('Not added');
     expect(stepById('year').reviewValue?.({})).toBe('Not provided');
   });
 
@@ -185,9 +199,9 @@ describe('review values', () => {
     expect(stepById('colour').reviewValue?.({ colour: 'Blue' })).toBe('Blue');
   });
 
-  it('reviews distinctive marks as a count', () => {
+  it('reviews distinctive features as a count', () => {
     expect(
-      stepById('distinctive-marks').reviewValue?.({
+      stepById('distinctive-features').reviewValue?.({
         distinctiveFeatures: [
           { photo: { uri: 'a', width: 1, height: 1 }, description: 'Dent' },
           { photo: { uri: 'b', width: 1, height: 1 }, description: 'Sticker' },
@@ -195,7 +209,9 @@ describe('review values', () => {
       }),
     ).toBe('2 added');
     expect(
-      stepById('theft-context').reviewValue?.({ keysTaken: 'no', descDrives: 'Rattles' }),
-    ).toBe('keys not taken · Rattles');
+      stepById('description').reviewValue?.({ descRecognise: 'Blue, dented rear door' }),
+    ).toBe('Blue, dented rear door');
+    // Blank description reviews as "Not added".
+    expect(stepById('description').reviewValue?.({})).toBe('Not added');
   });
 });

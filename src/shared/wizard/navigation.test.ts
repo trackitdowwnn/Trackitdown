@@ -188,21 +188,53 @@ describe('canProceed (validation gating)', () => {
     expect(canProceed(flow, screens[REVIEW_INDEX], { ...completeAnswers, name: '' })).toBe(false);
     expect(canProceed(flow, screens[REVIEW_INDEX], {})).toBe(false);
   });
+
+  it('an OPTIONAL step never blocks the review CTA even when its schema fails (skipped)', () => {
+    // Make the colour step optional; its schema still needs a colour, but a
+    // skipped optional step must not disable the final CTA (the marks-step bug).
+    const withOptional: WizardFlow<DemoAnswers> = {
+      ...flow,
+      phases: flow.phases.map((phase) => ({
+        ...phase,
+        steps: phase.steps.map((step) =>
+          step.id === 'colour' ? { ...step, optional: true } : step,
+        ),
+      })),
+    };
+    const reviewScreen = flattenFlow(withOptional).find((s) => s.kind === 'review')!;
+    // No colour → the required flow blocks, but the optional one submits.
+    expect(canProceed(flow, screens[REVIEW_INDEX], { name: 'Jane', newsletter: true })).toBe(false);
+    expect(canProceed(withOptional, reviewScreen, { name: 'Jane', newsletter: true })).toBe(true);
+    // A required step (name) still gates the optional-containing flow.
+    expect(canProceed(withOptional, reviewScreen, { newsletter: true })).toBe(false);
+  });
 });
 
 describe('ctaLabel', () => {
   it('says Get started on the first intro and Continue on later intros', () => {
-    expect(ctaLabel(flow, screens, navState(0))).toBe('Get started');
-    expect(ctaLabel(flow, screens, navState(3))).toBe('Continue');
+    expect(ctaLabel(flow, screens, navState(0), {})).toBe('Get started');
+    expect(ctaLabel(flow, screens, navState(3), {})).toBe('Continue');
   });
 
   it('says Next mid-flow and the flow’s own label on the last screen', () => {
-    expect(ctaLabel(flow, screens, navState(1))).toBe('Next');
-    expect(ctaLabel(flow, screens, navState(REVIEW_INDEX))).toBe('Publish');
+    expect(ctaLabel(flow, screens, navState(1), {})).toBe('Next');
+    expect(ctaLabel(flow, screens, navState(REVIEW_INDEX), {})).toBe('Publish');
   });
 
   it('says Done while editing from review', () => {
-    expect(ctaLabel(flow, screens, navState(1, REVIEW_INDEX))).toBe('Done');
+    expect(ctaLabel(flow, screens, navState(1, REVIEW_INDEX), {})).toBe('Done');
+  });
+
+  it('resolves a function finalCtaLabel with the answers on the last screen', () => {
+    const dynamicFlow: WizardFlow<DemoAnswers> = {
+      ...flow,
+      finalCtaLabel: (answers) => `Pay for ${answers.name ?? 'you'}`,
+    };
+    expect(ctaLabel(dynamicFlow, screens, navState(REVIEW_INDEX), { name: 'Sam' })).toBe(
+      'Pay for Sam',
+    );
+    // Not the last screen → the dynamic label is not used.
+    expect(ctaLabel(dynamicFlow, screens, navState(1), { name: 'Sam' })).toBe('Next');
   });
 });
 
@@ -268,7 +300,7 @@ describe('intro-less phases (speed flows)', () => {
   it('the last step carries the final CTA', () => {
     const speedScreens = flattenFlow(speedFlow);
     expect(
-      ctaLabel(speedFlow, speedScreens, { index: 1, returnToIndex: null, direction: 1 }),
+      ctaLabel(speedFlow, speedScreens, { index: 1, returnToIndex: null, direction: 1 }, {}),
     ).toBe('Send report');
   });
 

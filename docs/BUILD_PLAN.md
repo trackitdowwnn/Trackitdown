@@ -38,11 +38,16 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
 
 ## Phase 2 — Payments (deliberately early — highest-risk integration)
 
-- [ ] Stripe PaymentSheet: escrow charge at posting
-- [ ] stripe-webhook Edge Function (signature check, dedupe, idempotent)
+- [x] Stripe PaymentSheet: escrow charge at posting (`src/features/payments` +
+      `create-payment-intent` Edge Function; captures immediately, server-read
+      amount, idempotent per post; `draft → pending_verification` on success)
+- [x] stripe-webhook Edge Function (signature check, dedupe, idempotent)
 - [ ] Refund paths: cancelled / expired / rejected / recovered_no_spotter
-- [ ] Tier 1 money tests green (docs/TESTING.md)
+- [ ] Tier 1 money tests green (docs/TESTING.md) — charge slice green
+      (`post_payment_verification.sql` + client tests); payout/refund pending
 - [ ] Milestone: a test-mode pound goes in and comes back out correctly
+      — **goes in** works (gated on Stripe setup: `supabase/functions/README.md`);
+      **comes back out** waits on `release-payout`/refunds
 
 ## Phase 3 — Core loop (spotter side)
 
