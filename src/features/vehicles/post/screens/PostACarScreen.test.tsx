@@ -1,0 +1,141 @@
+/**
+ * WHAT:  Orchestration tests for PostACarScreen.handleComplete — the money path
+ *        the screen owns: create the draft ONCE, take the bounty via
+ *        PaymentSheet, and route on success. The load-bearing assertion is that
+ *        a retry after a cancelled/declined payment reuses the draft id and
+ *        never calls submitPost (create_post) a second time — no duplicate
+ *        draft, no double charge — and never routes away until 'paid'.
+ * WHY:   Losing a completed wizard to a payment blip, OR creating a second draft
+ *        (and a second charge) on retry, are the two failures this flow guards
+ *        against (SECURITY_AND_TRUST §4 money-safety). They live in
+ *        handleComplete and are pinned here. (Editing an existing post is NOT
+ *        here — it's per-section on the post detail screen.)
+ * LINKS: src/features/vehicles/post/screens/PostACarScreen.tsx, docs/TESTING.md.
+ */
+
+import { act, render } from '@testing-library/react-native';
+
+import { PostACarScreen } from './PostACarScreen';
+
+// Capture the onComplete the screen hands the wizard so we can drive it directly
+// (and call it twice to exercise the retry path) without rendering the flow.
+let capturedOnComplete: (answers: Record<string, unknown>) => Promise<void>;
+
+/** Mount the screen and flush the commit so capturedOnComplete is assigned. */
+async function mount() {
+  await act(async () => {
+    render(<PostACarScreen />);
+  });
+}
+jest.mock('@/shared/wizard', () => ({
+  WizardScreen: (props: { onComplete: (a: Record<string, unknown>) => Promise<void> }) => {
+    capturedOnComplete = props.onComplete;
+    return null;
+  },
+}));
+
+// Keep the flow config (and its heavy UI step imports) out of this unit.
+jest.mock('../postACarFlow', () => ({
+  postACarFlow: { id: 'post-a-car' },
+  POST_A_CAR_INITIAL_ANSWERS: {},
+}));
+
+const mockSubmitPost = jest.fn();
+jest.mock('../api/postApi', () => ({
+  submitPost: (...args: unknown[]) => mockSubmitPost(...args),
+}));
+
+const mockCreateIntent = jest.fn();
+const mockPayBounty = jest.fn();
+// PaymentError is the real class so `throw`/`instanceof` semantics match.
+jest.mock('@/features/payments', () => {
+  class PaymentError extends Error {
+    code: string;
+    constructor(message: string, code: string) {
+      super(message);
+      this.code = code;
+    }
+  }
+  return {
+    PaymentError,
+    createBountyPaymentIntent: (...args: unknown[]) => mockCreateIntent(...args),
+    useBountyPayment: () => ({ payBounty: (...args: unknown[]) => mockPayBounty(...args) }),
+  };
+});
+
+const mockReplace = jest.fn();
+const mockBack = jest.fn();
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ replace: mockReplace, back: mockBack }),
+}));
+
+const mockToastShow = jest.fn();
+jest.mock('@/shared/ui', () => ({
+  useToast: () => ({ show: mockToastShow }),
+}));
+
+const mockSuccessHaptic = jest.fn();
+jest.mock('@/shared/lib/haptics', () => ({
+  successHaptic: () => mockSuccessHaptic(),
+}));
+
+const ANSWERS = { bountyAmountPence: 50000 };
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockSubmitPost.mockResolvedValue({ postId: 'p1', status: 'draft' });
+  mockCreateIntent.mockResolvedValue('pi_secret_123');
+});
+
+describe('handleComplete', () => {
+  it('creates the draft, takes payment, and routes to the new post on success', async () => {
+    mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
+    await mount();
+
+    await capturedOnComplete(ANSWERS);
+
+    expect(mockSubmitPost).toHaveBeenCalledTimes(1);
+    expect(mockCreateIntent).toHaveBeenCalledWith('p1');
+    expect(mockPayBounty).toHaveBeenCalledWith('pi_secret_123');
+    expect(mockSuccessHaptic).toHaveBeenCalledTimes(1);
+    expect(mockToastShow).toHaveBeenCalledWith(expect.stringContaining('going live'), 'success');
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('MONEY: a retry after a cancelled payment reuses the draft — no second submitPost', async () => {
+    await mount();
+
+    // First attempt: the user cancels the sheet → rejects, no routing.
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'cancelled', message: null });
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    // Retry: pays this time. The draft must NOT be created again.
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'paid', message: null });
+    await capturedOnComplete(ANSWERS);
+
+    expect(mockSubmitPost).toHaveBeenCalledTimes(1); // ← created once, reused on retry
+    expect(mockCreateIntent).toHaveBeenCalledTimes(2); // ← intent reopened (server-idempotent)
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('surfaces a failed payment and does not route away', async () => {
+    mockPayBounty.mockResolvedValue({ outcome: 'failed', message: 'Card declined.' });
+    await mount();
+
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({
+      code: 'FAILED',
+      message: 'Card declined.',
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('does not attempt payment when the draft submit fails', async () => {
+    mockSubmitPost.mockRejectedValue(new Error('upload failed'));
+    await mount();
+
+    await expect(capturedOnComplete(ANSWERS)).rejects.toThrow('upload failed');
+    expect(mockCreateIntent).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+});

@@ -137,13 +137,16 @@ export function phaseProgress<TAnswers>(
   });
 }
 
-/** Whether every step's schema in the whole flow accepts the answers. */
+/** Whether every REQUIRED step's schema in the whole flow accepts the answers.
+ *  Steps flagged `optional` are skipped here — their schema still gates their
+ *  own Next button, but a skipped optional step must never block the final CTA
+ *  (e.g. distinctive features: Next needs ≥1, but "None to add" submits marks-less). */
 export function allStepsValid<TAnswers>(
   flow: WizardFlow<TAnswers>,
   answers: Partial<TAnswers>,
 ): boolean {
   return flow.phases.every((phase) =>
-    phase.steps.every((step) => step.schema.safeParse(answers).success),
+    phase.steps.every((step) => step.optional || step.schema.safeParse(answers).success),
   );
 }
 
@@ -167,11 +170,24 @@ export function canProceed<TAnswers>(
   return true;
 }
 
+/**
+ * Resolve the flow's final-CTA label to a string — a plain string passes
+ * through; a function is called with the answers (for a label that depends on
+ * them, e.g. "Post & pay £250" reading the bounty).
+ */
+export function resolveFinalCtaLabel<TAnswers>(
+  finalCtaLabel: WizardFlow<TAnswers>['finalCtaLabel'],
+  answers: Partial<TAnswers>,
+): string {
+  return typeof finalCtaLabel === 'function' ? finalCtaLabel(answers) : finalCtaLabel;
+}
+
 /** The primary footer label for a screen, per the flow's config. */
 export function ctaLabel<TAnswers>(
   flow: WizardFlow<TAnswers>,
   screens: WizardScreenDescriptor<TAnswers>[],
   state: WizardNavState,
+  answers: Partial<TAnswers>,
 ): string {
   const screen = screens[state.index];
   if (screen.kind === 'intro') {
@@ -188,7 +204,7 @@ export function ctaLabel<TAnswers>(
     return 'Done';
   }
   if (state.index === screens.length - 1) {
-    return flow.finalCtaLabel;
+    return resolveFinalCtaLabel(flow.finalCtaLabel, answers);
   }
   return (screen.kind === 'step' && screen.step.ctaLabel) || 'Next';
 }

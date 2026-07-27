@@ -66,14 +66,18 @@ export interface PostACarAnswers {
   lastSeenArea: string;
   stolenFrom: StolenFrom | null;
   keysTaken: KeysTaken | null;
-  /** Guided prompt: "Anything about how it drives or sounds?" */
+  /** Guided prompt: "Anything about how it drives or sounds?" — no longer a
+   *  wizard step (replaced by the description step); still edited post-hoc via
+   *  the theft-context editor. */
   descDrives: string;
+  /** Free-text "About this car" description → desc_recognise. Optional, ≤1000
+   *  chars. Collected in the wizard's description step; shown in the post
+   *  detail's About section. */
+  descRecognise: string;
 
-  // --- Phase 3: bounty & verification --------------------------------------
+  // --- Phase 3: bounty ------------------------------------------------------
   /** Integer GBP pence; £50–£5,000 (5000–500000). */
   bountyAmountPence: number;
-  /** The V5C / proof-of-ownership image (private bucket). */
-  verification: PickedPhoto | null;
 }
 
 /**

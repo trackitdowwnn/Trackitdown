@@ -39,6 +39,10 @@ export const sizes = {
   colourSwatchRing: 2,
   colourSwatchRingGap: 3,
   colourSwatchBadge: 20,
+
+  /** The selection-stroke width for a bordered selectable card (CardSelect):
+   *  constant, colour-only change on select. Matches the swatch/avatar rings. */
+  selectBorder: 2,
   colourSwatchBadgeIcon: 12,
   /** A–Z index-rail letter vertical padding — iOS section-index rhythm,
    *  deliberately below the 4pt scale so ~20 letters fit as one tidy column. */

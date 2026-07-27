@@ -38,7 +38,8 @@ export function PostBottomBar({ post, onSeen, onManage }: PostBottomBarProps) {
             <Text numberOfLines={1} style={styles.caption}>
               Your listing
             </Text>
-            <StatusBadge status={post.status} />
+            {/* Owner's own bar → a live post reads "Live" (green), not blank. */}
+            <StatusBadge status={post.status} showLiveWhenActive />
           </>
         ) : (
           <>

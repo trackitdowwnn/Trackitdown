@@ -48,6 +48,7 @@ jest.mock('@/features/auth', () => ({
   useSession: () => mockSession,
 }));
 
+
 // The inbox route mounts the real chat inbox when signed in; this file tests
 // the GATING, so the chat feature is stubbed to a marker.
 jest.mock('@/features/chat', () => {
@@ -74,10 +75,12 @@ describe('My Cars tab (guest)', () => {
     expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'tab_my_cars' });
   });
 
-  it('signed in: shows the tab content, no invitation', async () => {
+  it('signed in: shows the garage placeholder, no invitation', async () => {
     mockSession = { status: 'signedIn', userId: 'u1' };
     const { getByText, queryByText } = await render(<MyCarsScreen />);
-    expect(getByText('Your posts and their status land here.')).toBeTruthy();
+    // My cars is now a placeholder for a future garage; the stolen-car listings
+    // moved to My Posts (covered by MyPostsScreen.test).
+    expect(getByText('A garage for your vehicles is coming soon.')).toBeTruthy();
     expect(queryByText('Log in')).toBeNull();
   });
 });

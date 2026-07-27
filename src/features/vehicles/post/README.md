@@ -10,11 +10,14 @@ from the **bottom tab bar's centre "+" action** ("Report a stolen car") — a
 route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
 (A My Cars entry point can be added later; the route is `/post-a-car`.)
 
-> **Which world are we building?** The **draft + payment-stub** world.
-> `create_post` produces a post in status `draft`. The Stripe escrow charge and
-> the `draft → pending_verification` transition are the payments feature's job
-> (BUILD_PLAN Phase 2) and are **stubbed** here behind a clearly-marked handoff
-> contract — see *Handoff* below. No real money moves in this flow yet.
+> **Which world are we building?** The **draft → escrow-charge → pending_verification**
+> world. `create_post` produces a post in status `draft`; the final wizard CTA
+> then takes the bounty into escrow via Stripe PaymentSheet, and the Stripe
+> **webhook** performs the server-side `draft → pending_verification` transition.
+> The charge slice is built (`src/features/payments` + `supabase/functions/`); it
+> is **gated on the Stripe setup** (`supabase/functions/README.md`) — until those
+> secrets/functions are deployed, the charge step surfaces a retryable error but
+> the rest of the wizard runs. Payout/refunds are still a later slice.
 
 ## Phases & steps (Airbnb treatment — an intro screen before each phase)
 
@@ -25,7 +28,7 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
 > null`, so every post is plate-less for now and make/model/colour are the
 > car's identity. The `plate_available` RPC + migration remain in the backend
 > for when the step is re-added; nothing in the wizard calls them today.
-> Steps no longer show a helper sub-heading. The distinctive-marks step keeps
+> Steps no longer show a helper sub-heading. The distinctive-features step keeps
 > a **"None to add"** skip: Next requires ≥1 mark, and a centred, underlined
 > `StepSkipButton` (shown while the list is empty) advances marks-less.
 
@@ -53,9 +56,12 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
    alone). Light swatches (white/silver/gold) get a border. The escapes
    ("Multicolour / wrapped" / "Other") open a free-text note stored separately
    (`colourNote` → `owner_note`) so it never pollutes the colour enum.
-4. **Year** (`YearStep`) — optional, range-bound 1900–2100.
-5. **Distinctive marks** — its own step (2026-07-24): owner-authored photo +
-   description evidence pairs (`DistinctiveMarksStep` → `DistinctiveFeaturesField`
+4. **Body type** (`BodyTypeStep` → `CardSelect`) — optional Airbnb-style icon
+   cards (Hatchback/Saloon/Estate/SUV/… with a glyph + subtext; `lib/bodyTypes`).
+   Stored verbatim on `posts.body_type`. Also editable via the CarDetailsEditor.
+5. **Year** (`YearStep`) — optional, range-bound 1900–2100.
+6. **Distinctive features** — its own step (2026-07-24): owner-authored photo +
+   description evidence pairs (`DistinctiveFeaturesStep` → `DistinctiveFeaturesField`
    → the pure `distinctiveFeatures` model), e.g. "Cracked nearside wing mirror".
    A card list + a full-screen editor (pick photo → describe → Add); 0–8,
    optional, description required per photo (3–80, trimmed). **Gallery upload is
@@ -68,29 +74,37 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
    identifies a car far better than a checkbox. The `post_feature` /
    `vehicle_feature` tables + `PostDetail.features` rendering stay for OLD posts;
    `create_post` still accepts `p_feature_keys` but the wizard now sends null.
-6. **Photos** — `PhotoGridPicker`, min 3 / max 6, first photo = cover.
+7. **Photos** — `PhotoGridPicker`, min 3 / max 6, first photo = cover.
 
 **Phase 2 — When and where**
-7. **Last seen when** — `DateTimeField`, max = now.
-8. **Last seen where** — `LocationPicker` (embedded), storing point +
+8. **Last seen when** — `DateTimeField`, max = now.
+9. **Last seen where** — `LocationPicker` (embedded), storing point +
    `addressLabel`; the coarse grouping `lastSeenArea` is derived here.
-9. **Theft context** — `stolenFrom` / `keysTaken` (structured), `descDrives`.
+10. **Description** — free-text `descRecognise` ("About this car"), ≤1000 chars
+   (`DescriptionStep`). Replaced the old theft-context step; the theft-context
+   fields (`stolenFrom`/`keysTaken`/`descDrives`) are no longer collected in the
+   wizard but stay editable post-hoc via the detail's theft-context pencil.
 
-**Phase 3 — Bounty and verification**
-10. **Bounty** — `MoneySlider` with the 95/5 + escrow/refund transparency panel.
-11. **Ownership proof** — V5C via `PhotoGridPicker` single-photo mode → the
-    **private** `verification-documents` bucket only.
-13. **Review** — the framework's built-in review (edit-jump-return per step).
-14. **Submit** — the final CTA reads "Post & pay £<bounty> bounty". This build
-    calls `create_post` (draft) via the wizard's async `onComplete`; **payment
-    is stubbed** (see Handoff). On success the wizard routes away to the new
-    post; on failure the wizard stays fully intact for retry.
+**Phase 3 — Bounty**
+11. **Bounty** — `MoneySlider` with the 95/5 + escrow/refund transparency panel.
+    (Proof-of-ownership / V5C collection was REMOVED from the app — there is no
+    verification step.)
+12. **Review** — the framework's built-in review (edit-jump-return per step).
+13. **Submit** — the final CTA reads "Post & pay £<bounty>" (a dynamic
+    `finalCtaLabel` reading the bounty answer — a payment button names its sum).
+    `onComplete` (in `PostACarScreen`) calls `create_post` (draft), then opens
+    the escrow `PaymentIntent` (`createBountyPaymentIntent`) and presents Stripe's
+    PaymentSheet (`useBountyPayment`). On **paid** it routes to the new post (the
+    webhook advances it to `pending_verification`); on **cancel/decline** it
+    throws so the wizard stays intact — and it holds the draft's id
+    (`createdPostIdRef`) so a retry reuses the same draft + PaymentIntent (no
+    duplicate draft, no double charge). See *Handoff* below.
 
 ## Data & server rules
 
 - **One RPC, `create_post` (SECURITY DEFINER)** — the single write boundary.
-  Assembles the draft post + photos + feature tags + verification-doc row
-  atomically and **re-validates server-side** everything the client's zod
+  Assembles the draft post + photos + feature tags atomically and
+  **re-validates server-side** everything the client's zod
   checked: bounty £50–£5,000, 3–6 photos, required fields, and the
   `stolen_from`/`keys_taken` enums. (It still enforces plate format +
   one-active-post-per-plate when a plate is given, but the wizard now always
@@ -99,11 +113,13 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
   caller. Never advances the lifecycle (that's server-side, on escrow success).
   Migration: `20260713190000_post_a_car.sql` (+ `…191000` deny-anon).
 - **Photos upload on submit, not per step** — to the **public** `post-photos`
-  bucket under the owner's own folder; the V5C to the **private**
-  `verification-documents` bucket. The post is created only when uploads **and**
-  the (stubbed) payment succeed — no half-posts. Upload paths are stable per
-  source photo so a retry overwrites rather than orphaning.
-- **Distinctive marks (2026-07-24)** — owner photo+description pairs live in a
+  bucket under the owner's own folder. (Proof-of-ownership / V5C collection was
+  removed, so nothing is written to the private `verification-documents` bucket.)
+  The draft is created after uploads succeed,
+  then the escrow charge is taken — a cancelled/declined charge leaves a
+  re-payable draft (reused on retry), not a half-post. Upload paths are stable
+  per source photo so a retry overwrites rather than orphaning.
+- **Distinctive features (2026-07-24)** — owner photo+description pairs live in a
   new `post_distinctive_feature` table (`post_id, photo_url, description,
   position`), written only by `create_post` (SECURITY DEFINER), readable exactly
   when the post is (mirrors `post_photos` RLS). `create_post` gained a trailing
@@ -144,24 +160,35 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
 
 - Exit uses the framework's dirty-check confirm — copy acknowledges the
   situation ("Your details won't be saved yet — you can start again any time.").
-- Submission failure (upload or the stubbed payment) keeps the wizard alive with
-  every answer intact + an inline error/retry. **Losing a completed wizard to a
-  network blip is the unforgivable failure here.**
+- Submission failure (upload, `create_post`, opening the charge, or a
+  cancelled/declined PaymentSheet) keeps the wizard alive with every answer
+  intact + an inline error/retry, and the created draft's id is retained so the
+  retry never re-creates it. **Losing a completed wizard to a network blip — or
+  double-charging on retry — is the unforgivable failure here.**
 
-## Handoff contract (payments feature — NOT built here)
+## Payment handoff (escrow charge — BUILT; `src/features/payments`)
 
-The payments feature owns the escrow charge and the lifecycle advance. Its
-contract with this flow:
+The escrow-charge slice is built. The contract between this flow and payments:
 
 1. This flow calls `create_post(...)` → `{ post_id, status: 'draft' }`.
-2. Payments takes the escrow charge for `bountyAmountPence` against `post_id`.
-3. On escrow success, payments performs the **server-side** `draft →
-   pending_verification` transition (never the client).
-4. On escrow failure, the draft is left as-is (owner may retry / abandon); a
-   retention job reaps abandoned drafts.
+2. `createBountyPaymentIntent(post_id)` invokes the `create-payment-intent` Edge
+   Function, which verifies the caller **owns** the draft, reads the bounty
+   **from the DB** (the client never sends an amount), creates a Stripe
+   PaymentIntent (idempotency key = `post_id`), records a `requires_payment`
+   ledger row, and returns the client secret.
+3. `useBountyPayment` presents Stripe's PaymentSheet with that secret.
+4. The **`stripe-webhook`** function is the authoritative state change: on
+   `payment_intent.succeeded` it flips the ledger to `held` and the post
+   **`draft → pending_verification`** (server-side, idempotent); on
+   `payment_intent.payment_failed` it marks the ledger `failed` and leaves the
+   draft for retry. The client's "paid" result only routes away.
 
-Until payments lands, step 10's submit creates the draft and shows a
-clearly-marked "payment coming in Phase 2" stub — no charge is taken.
+DB functions: `supabase/migrations/20260726100000_post_payment.sql`
+(`record_post_payment_intent` / `mark_post_payment_held` /
+`mark_post_payment_failed` / `claim_stripe_event` — all service-role only).
+**Still deferred (later slices):** spotter Connect onboarding, the 95/5
+`release-payout`, refunds/cancellation, and the abandoned-draft reaper.
+**Setup + local testing:** `supabase/functions/README.md`.
 
 ## Known security residuals (tracked — media-hardening pass)
 
@@ -189,16 +216,102 @@ post is human-moderated before it can activate):
   limit on the RPC so it can't be scripted as a bulk oracle (no rate-limit infra
   exists yet — deferred). **No caller today** — the wizard's plate step was
   removed (2026-07-24); the RPC stays for when plate capture returns.
+- **Orphaned storage objects on edit** — `update_post` replaces the child ROWS
+  (post_photos / verification_documents) but never deletes the underlying storage
+  objects, so removing a hero photo, or **replacing the V5C** (a new hash → a new
+  private `verification-documents/<uid>/v5c-*.jpg` object), leaves the old object
+  orphaned. Hero-photo orphans are cost/clutter (public bucket); the replaced-V5C
+  orphan is a private ownership document that outlives its post row — the one
+  worth cleaning for the retention rules. Pre-existing in the create/retry path
+  (stable per-uri hash overwrites there), amplified by edit's photo-swapping.
+  Fix (media-hardening pass): after a successful `update_post`, delete the
+  now-unreferenced objects.
 
 ## Draft resume — NOT built (ROADMAP)
 
 This is the flow the framework's deferred *save & exit* was designed for. A
 prominent TODO + ROADMAP line track draft resume; it is **not** built now.
 
+## Editing a listing — PER SECTION on the post detail (BUILT)
+
+An owner opens their post from **Profile → My Posts** (`list_my_posts` →
+`MyPostsScreen`, route `/my-posts`) and edits it **one section at a time** on the
+detail screen. Two entry points reach the same editor: a pencil
+(`SectionEditButton`) beside each editable section, and the matching row in the
+sticky bar's "Manage post" sheet (`PostManageSheet`). Both go through
+`PostSectionEditorHost` → the section's editor in `components/editors/`.
+
+**Presentation.** The host picks it per section and passes it down as context
+(`editorPresentation.ts`), so the editors themselves don't know or care and the
+shared `PostSectionEditor` scaffold lays itself out accordingly:
+- **Bottom sheet** (six of seven) — the right weight for one section: the listing
+  stays visible behind it and swipe-down is a free cancel. The sheet auto-sizes
+  and scrolls internally, so even the taller editors fit. In sheet mode the
+  scaffold must render **bare** — no `Screen`, no `ScrollView` — because
+  `BottomSheetScrollView` already scrolls and nesting scrollers breaks both it
+  and the drag-to-close.
+- **Full screen** (`last_seen` only) — it embeds an interactive map whose pan
+  gestures would be read as dragging the sheet. Photo pickers need no exception:
+  they open as opaque native `Modal`s *above* the sheet.
+
+Each editor reuses the wizard's Field/Step components with a local answers slice,
+validates, and Saves via a section RPC, then the detail refetches
+(`usePostDetail.retry`). No payment step — a draft isn't charged until "Post &
+pay"; the bounty editor is draft-only anyway.
+
+- **Editable by status.** DRAFT → every section. The **money-neutral** sections —
+  *car details*, *theft context*, *distinctive features*, *description* — are
+  gated to `draft + pending_verification + active`, so they stay editable on a
+  **LIVE** listing (`20260731100000_edit_safe_sections_when_live.sql` for the
+  prose three, `20260731110000_edit_car_details_when_live.sql` for car details).
+  *Photos*, *last-seen* and the *bounty* stay **draft-only**: imagery and where
+  the car was taken from must not move once the crowd is matching against them,
+  and the bounty is frozen by escrow. This is a hard **server** gate, not just UI.
+  (The V5C / proof-of-ownership editor was removed with verification; its RPC
+  `update_post_verification` remains in the schema but is dormant/unused.)
+- **Why the money-neutral four are editable while live.** Live-on-payment
+  publishes on payment, so `active` is the state an owner actually lives in. A
+  WRONG detail actively harms the search — spotters scan for "silver Golf" and
+  skip the right car — and the only previous remedy was deactivate + refund +
+  repost, which burns the hours that matter most. The widening is money-neutral by
+  construction: each RPC names its own columns / child rows and never writes
+  `bounty_amount_pence`, `status`, `owner_id` or `expires_at`.
+- **The plate is immutable.** `plate` is in NO per-section RPC, so a live listing
+  can never be edited onto a different registration — the identifier police and
+  ANPR match on is fixed at posting. That is what keeps "editable identity" from
+  being identity laundering; bait-and-switch is otherwise handled reactively
+  (paid, card-on-file, non-anonymous accounts + `post_flags` + takedown).
+  Asserted by CHECK 2b in `supabase/tests/edit_post_sections_verification.sql`
+  (the four draft-only RPCs must still raise `POST_NOT_EDITABLE` on a live post,
+  the plate must survive an edit, and `cancelled` stays closed to everything).
+- **Backend — per-section RPCs** (`20260727130000_edit_post_sections.sql`
+  plus `_description` in `20260728100000_edit_post_description.sql`),
+  each SECURITY DEFINER, owner-pinned, status-gated (→ `POST_NOT_EDITABLE`),
+  `create_post`-parity validation of ITS fields, writing only ITS columns /
+  child rows, NEVER status/owner/expires: `update_post_car_details` / `_photos` /
+  `_last_seen` / `_bounty` (bounty column only, draft), and
+  `_theft_context` / `_distinctive_features` / `_description` (`desc_recognise`
+  only — draft + pending). (`update_post_verification` exists but is no longer
+  called — proof-of-ownership was removed.) Client:
+  `post/api/editSectionApi.ts` (keeps remote photos via `isRemotePhoto`, uploads
+  only new locals). Prefill comes from the already-loaded `PostDetail`
+  (`get_post_detail` now returns distinctive features —
+  `20260727120000_post_detail_distinctive_features.sql`).
+- **Retired:** the earlier "re-open the full wizard to edit a draft" approach
+  (`update_post` / `get_post_for_edit` RPCs — dropped in
+  `20260727140000_drop_whole_post_edit.sql`; `edit-post/[id]` route,
+  `EditPostScreen`, `usePostForEdit`, `editPostApi`, `postApi.updatePost` — all
+  removed). "My cars" is now a garage placeholder; listings live in "My Posts".
+
 ## Out of scope
 
-Draft resume · editing after posting · multiple vehicles per post ·
-bounty-free posting (all ROADMAP, not built).
+Editing photos / last-seen / bounty on a **paid** post — live or pending (a
+bounty change needs refund-or-top-up; photo and last-seen changes need the
+unbuilt re-moderation flow); today the owner deactivates + reposts. Changing the
+**plate** at all after posting — deliberately impossible, see above · draft
+resume · multiple vehicles per post · bounty-free posting (all ROADMAP, not
+built). *(The money-neutral four — car details, description, theft context,
+distinctive features — ARE editable while live; see "Editable by status".)*
 
 **Follow-up — surface the colour note on the detail page.** The wrapped/other
 colour note is stored (`owner_note`) and shown in the wizard review, but is NOT
@@ -207,7 +320,7 @@ selects `owner_note` → a `PostDetail` field → a `carDetails.ts` row appended
 the colour) is a small tracked follow-up so a spotter sees "matte black wrap
 over silver", not just "Multicolour / wrapped".
 
-**Follow-up — render the distinctive marks on the detail page + gallery.** The
+**Follow-up — render the distinctive features on the detail page + gallery.** The
 photo+description pairs are captured and stored (`post_distinctive_feature`) but
 the detail render is deferred: `get_post_detail` needs to select them (owner-vs-
 public visibility is the same active-or-owner gate as `post_photos`), then a

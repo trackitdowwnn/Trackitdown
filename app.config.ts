@@ -64,6 +64,21 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     'expo-secure-store',
     // Enables the iOS "Sign in with Apple" capability + entitlement.
     'expo-apple-authentication',
+    // Stripe bounty escrow (features/payments) — PaymentSheet native module.
+    // Requires a new dev build; the publishable key is public (safe to embed),
+    // it only opens the PaymentSheet. The secret + webhook keys are Edge
+    // Function secrets, never bundled. See supabase/functions/README.md.
+    // The plugin MUST be configured with props (a bare string makes withStripeIos
+    // throw on props.merchantIdentifier). merchantIdentifier matches
+    // BountyPaymentProvider's APPLE_PAY_MERCHANT_ID; both stay inert until Apple
+    // Pay / Google Pay are actually set up.
+    [
+      '@stripe/stripe-react-native',
+      {
+        merchantIdentifier: 'merchant.com.olliet97.trackitdown',
+        enableGooglePay: false,
+      },
+    ],
   ];
 
   // Native Google Sign-In. iosUrlScheme is the REVERSED iOS OAuth client id

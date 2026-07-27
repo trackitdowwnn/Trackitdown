@@ -3,10 +3,10 @@
  *        the post, then renders: a full-bleed photo hero with the content
  *        sheet's rounded top overlapping it (the reference's signature move),
  *        a scroll-linked AppHeader, the detail sections, and a sticky bottom
- *        bar whose action is owner- or spotter-specific. Handles loading
- *        (skeleton), error, a graceful "no longer active / recovered" state,
- *        and share; report lives at the page's end (in the body), not the
- *        header.
+ *        bar whose action is owner- or spotter-specific ("Manage post" opens the
+ *        owner's PostManageSheet for THIS listing). Handles loading (skeleton),
+ *        error, a graceful "no longer active / recovered" state, and share;
+ *        report lives at the page's end (in the body), not the header.
  * WHY:   Route `/post/[id]`, reached from VehicleCard everywhere. Owner-vs-
  *        spotter mode comes from the server (is_owner); one decision drives the
  *        bottom bar. Read-only — no status or money writes. The header fade and
@@ -20,7 +20,7 @@
 
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Share, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,7 +28,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bookmark } from 'lucide-react-native';
 
 import { useRequireAuth } from '@/features/auth';
+import { useDeactivatePost } from '@/features/payments';
 import { useWatchToggle } from '@/features/watchlist';
+import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import {
@@ -39,16 +41,21 @@ import {
   ErrorState,
   HEADER_BAR_HEIGHT,
   useToast,
+  type BottomSheetRef,
   type ConfirmDialogRef,
 } from '@/shared/ui';
 
+import { flagPost } from '../api/flagApi';
+import { PostSectionEditorHost, type EditableSection } from '../components/editors';
 import { PostBottomBar } from '../components/PostBottomBar';
 import { PostDetailBody } from '../components/PostDetailBody';
 import { PostHero } from '../components/PostHero';
+import { PostManageSheet } from '../components/PostManageSheet';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { closedStateCopy } from '../lib/closedState';
 import { buildSharePayload } from '../lib/postShare';
+import { estimateRefundPence } from '../lib/refundEstimate';
 import type { PostDetail, PostDetailResult } from '../types';
 
 const log = createLogger('vehicles');
@@ -62,6 +69,38 @@ export interface PostDetailScreenProps {
   postId: string;
 }
 
+/** Photos, last-seen and the bounty are editable ONLY while the post is a draft:
+ *  imagery and where the car was taken from must not move once the crowd is
+ *  matching against them, and the bounty is frozen by escrow. The server enforces
+ *  this too. */
+function canEditDraftSection(post: PostDetail): boolean {
+  return post.isOwner && post.status === 'draft';
+}
+/** The money-neutral sections — car details, theft context, distinctive features,
+ *  description — stay editable once the post is LIVE. A wrong colour or model
+ *  actively harms the search, and the details worth adding ("cracked nearside
+ *  mirror", "keys were taken") are exactly what an owner remembers after people
+ *  start looking; the alternative was deactivate + refund + repost, which costs
+ *  the hours that matter most. Mirrors the four RPCs' status array
+ *  (20260731100000_edit_safe_sections_when_live.sql,
+ *  20260731110000_edit_car_details_when_live.sql); `pending_verification` is kept
+ *  for posts predating live-on-payment. The PLATE is not editable by any of them.
+ *  Server-enforced — this only decides whether the pencil shows. */
+function canEditSafeSection(post: PostDetail): boolean {
+  return (
+    post.isOwner &&
+    (post.status === 'draft' ||
+      post.status === 'pending_verification' ||
+      post.status === 'active')
+  );
+}
+/** The owner can deactivate + refund any PAID post — one whose bounty is held in
+ *  escrow (active or pending_verification). A draft has nothing to refund. The
+ *  server re-enforces this; the button is only convenience. */
+function canDeactivate(post: PostDetail): boolean {
+  return post.isOwner && (post.status === 'active' || post.status === 'pending_verification');
+}
+
 export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -69,8 +108,17 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const toast = useToast();
   const requireAuth = useRequireAuth();
   const flagRef = useRef<ConfirmDialogRef>(null);
+  // The owner's "Manage post" sheet and the ONE deactivate confirm — both the
+  // sheet's row and the body's button open the latter, so the destructive copy
+  // and the refund estimate exist in a single place.
+  const manageRef = useRef<BottomSheetRef>(null);
+  const deactivateRef = useRef<ConfirmDialogRef>(null);
 
   const { status, result, retry } = usePostDetail(postId);
+
+  // Which section the owner is editing (a full-screen overlay), or null. Cleared
+  // on cancel; on save it also refetches the detail so the change shows.
+  const [editing, setEditing] = useState<EditableSection | null>(null);
 
   const heroHeight = Math.round(width * HERO_RATIO);
   // The sheet's rounded top overlaps the hero, so the VISUAL hero bottom —
@@ -114,15 +162,27 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // header's scroll fade) with the shared toggle behaviour underneath.
   const watch = useWatchToggle(postId, 'detail');
 
-  const onFlagConfirm = useCallback(() => {
-    // Phase-4 stub: no flags table yet — acknowledge and log only.
-    log.info('post_flag_stub', { postId });
-    toast.show('Thanks — we’ll review this.');
+  // Deactivate + refund (owner, paid posts). The hook wraps the Edge Function
+  // call; the confirm step lives in PostDetailBody.
+  const { deactivate, pending: deactivating } = useDeactivatePost();
+
+  const onFlagConfirm = useCallback(async () => {
+    // Records a durable, attributable flag (post_flags) for moderator review.
+    // Idempotent server-side, so a double-tap is harmless. The caller is already
+    // signed in (onReport gates), so this can't produce an anonymous report.
+    try {
+      await flagPost(postId);
+      toast.show('Thanks — we’ll take a look.');
+    } catch {
+      toast.show('We couldn’t submit your report. Please try again.', 'error');
+    }
   }, [postId, toast]);
 
   const onReport = useCallback(() => {
-    flagRef.current?.open();
-  }, []);
+    // Reporting is auth-gated (accountability): a guest signs in first, then the
+    // confirm dialog opens without re-tapping.
+    requireAuth({ context: 'report_post', run: () => flagRef.current?.open() });
+  }, [requireAuth]);
 
   const onSeen = useCallback(
     (post: PostDetail) => {
@@ -193,9 +253,33 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   );
 
   const onManage = useCallback(() => {
-    // My cars is a stub today; the management screen lands there later.
-    router.push('/my-cars');
-  }, [router]);
+    // "Manage post" opens the owner's action sheet for THIS listing. It used to
+    // push /my-posts, which bounced the owner off the very post they were
+    // managing onto a list containing it — a dead end.
+    manageRef.current?.open();
+  }, []);
+
+  // Deactivate + refund. The confirm already fired (the dialog below); this
+  // issues the server refund, toasts the EXACT refunded amount, and refetches so
+  // the post now reads "Cancelled" and drops off public surfaces.
+  const onDeactivate = useCallback(async () => {
+    if (deactivating) {
+      return; // guard a double-tap while the refund is in flight
+    }
+    const result = await deactivate(postId);
+    if (result.outcome === 'done') {
+      toast.show(`Listing deactivated — ${formatPounds(result.result.refundedPence)} refunded`);
+      retry();
+    } else {
+      toast.show(result.message, 'error');
+    }
+  }, [deactivate, deactivating, postId, retry, toast]);
+
+  // Both deactivate entry points (the body's button, the manage sheet's row)
+  // open the same confirm — never the refund itself.
+  const requestDeactivate = useCallback(() => {
+    deactivateRef.current?.open();
+  }, []);
 
   const onOpenMap = useCallback(
     (post: PostDetail) => {
@@ -249,6 +333,30 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 similarPosts={similar.posts}
                 similarLoading={similar.status === 'loading'}
                 onOpenPost={(next) => router.push(`/post/${next.id}`)}
+                onEditCarDetails={
+                  canEditSafeSection(result.post) ? () => setEditing('car_details') : undefined
+                }
+                onEditPhotos={
+                  canEditDraftSection(result.post) ? () => setEditing('photos') : undefined
+                }
+                onEditLastSeen={
+                  canEditDraftSection(result.post) ? () => setEditing('last_seen') : undefined
+                }
+                onEditBounty={
+                  canEditDraftSection(result.post) ? () => setEditing('bounty') : undefined
+                }
+                onEditDescription={
+                  canEditSafeSection(result.post) ? () => setEditing('description') : undefined
+                }
+                onEditTheftContext={
+                  canEditSafeSection(result.post) ? () => setEditing('theft_context') : undefined
+                }
+                onEditDistinctiveFeatures={
+                  canEditSafeSection(result.post)
+                    ? () => setEditing('distinctive_features')
+                    : undefined
+                }
+                onDeactivate={canDeactivate(result.post) ? requestDeactivate : undefined}
               />
             </View>
           </>
@@ -304,6 +412,66 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         destructive
         onConfirm={onFlagConfirm}
       />
+
+      {/* The owner's "Manage post" sheet — every action for THIS listing in one
+          place. Each edit row is passed only when its section is editable, so
+          the sheet can never offer something the server would reject. */}
+      {visiblePost?.isOwner ? (
+        <PostManageSheet
+          ref={manageRef}
+          sightingCount={visiblePost.sightingCount}
+          onViewSightings={onViewSightings}
+          onShare={() => onShare(visiblePost)}
+          onEditCarDetails={
+            canEditSafeSection(visiblePost) ? () => setEditing('car_details') : undefined
+          }
+          onEditPhotos={canEditDraftSection(visiblePost) ? () => setEditing('photos') : undefined}
+          onEditLastSeen={
+            canEditDraftSection(visiblePost) ? () => setEditing('last_seen') : undefined
+          }
+          onEditBounty={canEditDraftSection(visiblePost) ? () => setEditing('bounty') : undefined}
+          onEditDescription={
+            canEditSafeSection(visiblePost) ? () => setEditing('description') : undefined
+          }
+          onEditTheftContext={
+            canEditSafeSection(visiblePost) ? () => setEditing('theft_context') : undefined
+          }
+          onEditDistinctiveFeatures={
+            canEditSafeSection(visiblePost) ? () => setEditing('distinctive_features') : undefined
+          }
+          onDeactivate={canDeactivate(visiblePost) ? requestDeactivate : undefined}
+        />
+      ) : null}
+
+      {/* The ONE deactivate confirm — destructive, opened by the body's button
+          and the manage sheet's row alike. The refund figure is an estimate; the
+          exact amount is confirmed in the toast after the server refunds. */}
+      {visiblePost && canDeactivate(visiblePost) ? (
+        <ConfirmDialog
+          ref={deactivateRef}
+          title="Deactivate this listing?"
+          body={`We’ll take it down and refund about ${formatPounds(
+            estimateRefundPence(visiblePost.bountyPence),
+          )} to your card — the bounty minus the non-recoverable card fee. This can’t be undone.`}
+          confirmLabel="Yes, deactivate"
+          destructive
+          onConfirm={onDeactivate}
+        />
+      ) : null}
+
+      {/* Per-section edit overlay — mounts full-screen over the detail when the
+          owner taps a pencil; on save it refetches so the change shows. */}
+      {editing && visiblePost ? (
+        <PostSectionEditorHost
+          section={editing}
+          post={visiblePost}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            retry();
+          }}
+        />
+      ) : null}
     </View>
   );
 }

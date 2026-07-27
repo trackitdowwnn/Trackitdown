@@ -1,8 +1,10 @@
 /**
  * WHAT:  The step-body components for the post-a-car wizard — one per question
- *        screen (plate, car details, features, photos, last-seen when/where,
- *        theft context, bounty, V5C). Each is a thin adapter binding a shared
- *        UI component to its slice of PostACarAnswers via setAnswers.
+ *        screen (plate, car details, body type, features, photos, last-seen
+ *        when/where, description, bounty). Each is a thin adapter binding a
+ *        shared UI component to its slice of PostACarAnswers via setAnswers.
+ *        (TheftContextStep is no longer a wizard step — it's kept here because
+ *        the post-detail theft-context editor reuses it.)
  * WHY:   The framework renders the chrome (question, helper, footer, gating);
  *        these just render the input. Kept out of the flow config so the config
  *        stays a readable table of {question, schema, reviewValue}. The location
@@ -19,6 +21,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import {
+  CardSelect,
   ChoiceChips,
   DateTimeField,
   DEFAULT_DATE_TIME_PRESETS,
@@ -32,6 +35,7 @@ import { AppMap } from '@/shared/ui/AppMap';
 import { colors, opacity, sizes, spacing, typography } from '@/shared/theme';
 import type { WizardStepProps } from '@/shared/wizard';
 
+import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
 import { colourChangePatch } from '../lib/carColours';
 import { makeChangePatch } from '@/shared/lib/carModels';
 import type { PostACarAnswers } from '../types';
@@ -110,7 +114,7 @@ export function YearStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-export function DistinctiveMarksStep({ answers, setAnswers, onSkip }: StepProps) {
+export function DistinctiveFeaturesStep({ answers, setAnswers, onSkip }: StepProps) {
   // Owner-authored photo+description evidence pairs (the car is theirs, so
   // gallery upload is offered — the sightings camera-only rule doesn't apply).
   const marks = answers.distinctiveFeatures ?? [];
@@ -232,6 +236,29 @@ export function TheftContextStep({ answers, setAnswers }: StepProps) {
   );
 }
 
+export function BodyTypeStep({ answers, setAnswers }: StepProps) {
+  return (
+    <CardSelect
+      options={BODY_TYPE_OPTIONS}
+      value={answers.bodyType ?? null}
+      onSelect={(bodyType) => setAnswers({ bodyType })}
+    />
+  );
+}
+
+export function DescriptionStep({ answers, setAnswers }: StepProps) {
+  return (
+    <TextField
+      label="Description"
+      variant="multiline"
+      placeholder="Describe your car — anything that helps a spotter recognise it (marks, mods, wear, where it usually is)."
+      value={answers.descRecognise ?? ''}
+      onChangeText={(descRecognise) => setAnswers({ descRecognise })}
+      maxLength={1000}
+    />
+  );
+}
+
 export function BountyStep({ answers, setAnswers }: StepProps) {
   // MoneySlider re-registers its drag gesture if the handler identity changes.
   const onChangePence = useCallback(
@@ -246,24 +273,6 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
       minPence={MIN_BOUNTY_PENCE}
       maxPence={MAX_BOUNTY_PENCE}
       panel={defaultBountyPanelCopy}
-    />
-  );
-}
-
-export function VerificationStep({ answers, setAnswers }: StepProps) {
-  // Single-photo mode: store the one V5C image (or null when cleared).
-  const photos = answers.verification ? [answers.verification] : [];
-  return (
-    <PhotoGridPicker
-      photos={photos}
-      onChangePhotos={(next) => setAnswers({ verification: next[0] ?? null })}
-      minPhotos={1}
-      maxPhotos={1}
-      copy={{
-        tips:
-          'We verify every post to keep the platform safe — a moderator checks ' +
-          'your V5C before your post goes live. It’s never shown publicly.',
-      }}
     />
   );
 }

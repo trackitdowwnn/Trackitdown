@@ -38,9 +38,9 @@ export interface VehicleFeature {
 }
 
 /** One owner-authored distinctive-feature evidence pair (photo + description),
- *  as read back for the detail page. The RENDER is deferred — get_post_detail
- *  does not yet return these, so `distinctiveFeatures` is `[]` on every post
- *  today (graceful absence). See src/features/vehicles/post/README.md. */
+ *  as read back for the detail page. get_post_detail returns these (ordered by
+ *  position) as of 20260727120000; rendered in the "Distinctive features" section.
+ *  `[]` when the post has none. See src/features/vehicles/post/README.md. */
 export interface DistinctiveFeatureView {
   photoUrl: string;
   description: string;
@@ -79,8 +79,8 @@ export interface PostDetail {
   photos: PostDetailPhoto[];
   /** Checkable distinguishing features (Part 2 taxonomy); [] on old posts. */
   features: VehicleFeature[];
-  /** Owner-authored distinctive marks (photo + description); `[]` until
-   *  get_post_detail returns them (render deferred — see post/README). */
+  /** Owner-authored distinctive features (photo + description), ordered; `[]` when
+   *  the post has none (returned by get_post_detail since 20260727120000). */
   distinctiveFeatures: DistinctiveFeatureView[];
   /** Theft context (Part 2) — all optional; absent on posts predating them. */
   stolenFrom?: StolenFrom;

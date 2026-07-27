@@ -54,9 +54,16 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <BottomSheetModalProvider>
-          {/* ToastProvider hosts the single app-wide toast above all screens. */}
-          <ToastProvider>
+        {/* ToastProvider hosts the single app-wide toast above all screens, and
+            MUST stay OUTSIDE BottomSheetModalProvider. @gorhom/bottom-sheet
+            re-parents every presented sheet's content into the portal host that
+            BottomSheetModalProvider mounts, so sheet content only sees context
+            provided ABOVE that host — with the order reversed, anything inside a
+            sheet calling useToast() threw "must be used inside a ToastProvider".
+            The toast still paints on top: it renders after {children}, and the
+            portal host is inside those children. */}
+        <ToastProvider>
+          <BottomSheetModalProvider>
             <AuthGate>
               <Stack
                 screenOptions={{
@@ -76,8 +83,8 @@ export default function RootLayout() {
               <AuthSheet />
             </AuthGate>
             <StatusBar style="auto" />
-          </ToastProvider>
-        </BottomSheetModalProvider>
+          </BottomSheetModalProvider>
+        </ToastProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );

@@ -51,6 +51,15 @@ export interface WizardStep<TAnswers> {
    */
   schema: z.ZodType;
   /**
+   * Marks this step OPTIONAL for submission. Its schema still gates THIS step's
+   * own Next button (so an empty step can't advance via Next — pair it with a
+   * Skip / "None to add" affordance via onSkip), but the review screen's final
+   * CTA does NOT require it. Without this, a skippable step whose schema needs
+   * data (e.g. distinctive features: min 1 OR skip) can never be submitted once
+   * skipped, because the review gate re-checks every step's schema.
+   */
+  optional?: boolean;
+  /**
    * Optional async action run when the user advances from this step (after
    * the schema passes). Use it for a server round-trip the answer depends on
    * — a DVLA plate lookup, a uniqueness check. While it runs the primary
@@ -107,9 +116,11 @@ export interface WizardFlow<TAnswers> {
   };
   /**
    * Label of the very last screen's primary button — high-information per
-   * flow ("Publish", "Pay & submit"), never a vague "Finish".
+   * flow ("Publish", "Pay & submit"), never a vague "Finish". Usually a static
+   * string; pass a function of the answers when the label depends on them (e.g.
+   * "Post & pay £250" reading the bounty). Resolved with `resolveFinalCtaLabel`.
    */
-  finalCtaLabel: string;
+  finalCtaLabel: string | ((answers: Partial<TAnswers>) => string);
 }
 
 /** A flow flattened into the ordered screens the user walks through. */

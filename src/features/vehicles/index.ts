@@ -10,6 +10,7 @@
  */
 
 export { MyCarsScreen } from './screens/MyCarsScreen';
+export { MyPostsScreen } from './screens/MyPostsScreen';
 export { PostAboutScreen } from './screens/PostAboutScreen';
 export { PostDetailScreen, type PostDetailScreenProps } from './screens/PostDetailScreen';
 export { MakeField } from './post/components/MakeField';

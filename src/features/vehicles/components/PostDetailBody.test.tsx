@@ -58,6 +58,7 @@ const renderBody = (
     onMessageOwner?: () => void;
     onShowAbout?: () => void;
     onOpenPost?: (target: unknown) => void;
+    onDeactivate?: () => void;
     similarPosts?: import('@/shared/types').PostSummary[];
     similarLoading?: boolean;
   } = {},
@@ -72,6 +73,7 @@ const renderBody = (
       similarPosts={handlers.similarPosts ?? []}
       similarLoading={handlers.similarLoading ?? false}
       onOpenPost={handlers.onOpenPost ?? (() => {})}
+      onDeactivate={handlers.onDeactivate}
     />,
   );
 
@@ -99,6 +101,27 @@ describe('PostDetailBody', () => {
     const { getByText } = await renderBody({ ...base, ownerNote: 'Please help find it.' });
     expect(getByText('About this car')).toBeTruthy();
     expect(getByText('Please help find it.')).toBeTruthy();
+  });
+
+  it('shows the deactivate trigger and REQUESTS (never runs) deactivation', async () => {
+    const onDeactivate = jest.fn();
+    const { getByTestId, getByText, queryByText } = await renderBody(
+      { ...base, isOwner: true, status: 'active' },
+      { onDeactivate },
+    );
+    expect(getByTestId('deactivate-listing')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByText('Deactivate & refund'));
+    });
+    // The button asks the SCREEN to open its confirm — the destructive dialog
+    // is owned there (shared with the "Manage post" sheet), not here.
+    expect(onDeactivate).toHaveBeenCalled();
+    expect(queryByText('Yes, deactivate')).toBeNull();
+  });
+
+  it('hides the deactivate control when onDeactivate is absent (spotter / draft)', async () => {
+    const { queryByTestId } = await renderBody({ ...base, status: 'active' });
+    expect(queryByTestId('deactivate-listing')).toBeNull();
   });
 
   it('always shows "Car details" with the identity facts', async () => {
@@ -244,5 +267,38 @@ describe('PostDetailBody', () => {
       expect(queryByText('Message the owner')).toBeNull();
       expect(queryByText(/Reporting a sighting opens/)).toBeNull();
     });
+  });
+});
+
+describe('owner per-section edit pencils', () => {
+  it('shows no edit pencils when no edit callbacks are passed (spotter view)', async () => {
+    const { queryByTestId } = await renderBody(base);
+    expect(queryByTestId('edit-car-details')).toBeNull();
+    expect(queryByTestId('edit-bounty')).toBeNull();
+    expect(queryByTestId('edit-theft-context')).toBeNull();
+    expect(queryByTestId('edit-distinctive-features')).toBeNull();
+  });
+
+  it('shows a pencil per passed callback and renders the safe sections even when empty', async () => {
+    const { getByTestId } = await render(
+      <PostDetailBody
+        post={{ ...base, isOwner: true, status: 'draft' }}
+        onOpenMap={() => {}}
+        onReport={() => {}}
+        onShowAbout={() => {}}
+        similarPosts={[]}
+        similarLoading={false}
+        onOpenPost={() => {}}
+        onEditCarDetails={() => {}}
+        onEditBounty={() => {}}
+        onEditTheftContext={() => {}}
+        onEditDistinctiveFeatures={() => {}}
+      />,
+    );
+    expect(getByTestId('edit-car-details')).toBeTruthy();
+    expect(getByTestId('edit-bounty')).toBeTruthy();
+    // Theft + marks sections render for the owner even with no data yet.
+    expect(getByTestId('edit-theft-context')).toBeTruthy();
+    expect(getByTestId('edit-distinctive-features')).toBeTruthy();
   });
 });

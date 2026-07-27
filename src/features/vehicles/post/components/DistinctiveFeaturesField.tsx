@@ -1,5 +1,5 @@
 /**
- * WHAT:  DistinctiveFeaturesField — the post-a-car "distinctive marks" input: a
+ * WHAT:  DistinctiveFeaturesField — the post-a-car "distinctive features" input: a
  *        vertical list of evidence cards (photo thumbnail + its description +
  *        edit/remove) with an "Add a feature" tile, plus a full-screen editor
  *        (pick a photo, write what it shows, Add/Save). Owners add 0–8.
@@ -13,7 +13,7 @@
  *        would bleed the wizard through). Ordering/validation live in the pure
  *        distinctiveFeatures model; this file is the UI shell.
  * LINKS: src/features/vehicles/post/lib/distinctiveFeatures.ts (model + schema);
- *        src/features/vehicles/post/components/postSteps.tsx (DistinctiveMarksStep);
+ *        src/features/vehicles/post/components/postSteps.tsx (DistinctiveFeaturesStep);
  *        src/shared/ui/{AppImage,TextField,Button}.tsx; docs/DESIGN_SYSTEM.md.
  */
 

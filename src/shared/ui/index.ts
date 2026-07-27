@@ -39,6 +39,11 @@ export {
   type EvidencePhoto,
 } from './CameraCapture';
 export {
+  CardSelect,
+  type CardSelectOption,
+  type CardSelectProps,
+} from './CardSelect';
+export {
   ChoiceChips,
   type ChoiceChipOption,
   type ChoiceChipsProps,
