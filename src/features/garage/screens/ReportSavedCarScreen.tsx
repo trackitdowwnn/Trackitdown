@@ -33,6 +33,15 @@ import { buildPrefilledPostFlow } from '../lib/prefilledPostFlow';
 
 const log = createLogger('garage');
 
+/**
+ * Both failure exits land on the BLANK wizard, never back on the "which car?"
+ * chooser: whatever just went wrong (the car is gone, or the garage won't load)
+ * would go wrong again, and a chooser that bounces someone straight back here
+ * is a loop at the worst possible moment. One constant so a future edit cannot
+ * change one exit and leave the other.
+ */
+const BLANK_POST_AFTER_PREFILL_FAILURE = '/post-a-car' as const;
+
 export interface ReportSavedCarScreenProps {
   vehicleId: string;
 }
@@ -81,7 +90,7 @@ export function ReportSavedCarScreen({ vehicleId }: ReportSavedCarScreenProps) {
           <Button
             label="Report a stolen car from scratch"
             variant="ghost"
-            onPress={() => router.replace('/post-a-car')}
+            onPress={() => router.replace(BLANK_POST_AFTER_PREFILL_FAILURE)}
           />
         </View>
       </Screen>
@@ -97,7 +106,7 @@ export function ReportSavedCarScreen({ vehicleId }: ReportSavedCarScreenProps) {
             title="We couldn't find that car"
             body="It may have been removed from your garage. You can still report a car stolen from scratch."
             actionLabel="Report a stolen car"
-            onAction={() => router.replace('/post-a-car')}
+            onAction={() => router.replace(BLANK_POST_AFTER_PREFILL_FAILURE)}
           />
         </View>
       </Screen>

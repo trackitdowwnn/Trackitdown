@@ -63,6 +63,10 @@ saved answers, so the owner only completes when/where, bounty, review and pay.
 - **`AddVehicleScreen`** — `WizardScreen` over `buildAddVehicleFlow()`. Serves
   **both** add and edit (`/add-vehicle`, `/edit-vehicle/[vehicleId]`): the flow
   and the mapping are identical, only the RPC and the toast differ.
+- **`ChooseCarToReportScreen`** — `/report-stolen`. The "Which car?" fork the
+  tab bar's **+** lands on when there are saved cars: a `GarageCard` each
+  (overflow hidden) plus "It's a different car". See the Nudges section for why
+  this is not the on-entry interstitial that was rejected.
 - **`ReportSavedCarScreen`** — `/report-stolen/[vehicleId]`. Resolves the car,
   builds the prefilled flow, and renders `PostACarScreen` with it. Fails kindly
   when the car is gone or already has a live listing.
@@ -161,6 +165,59 @@ exploring. A real victim never sees it. This is the deliberate inverse of the
 "no offer *after* posting" rule in Out of scope below; both follow from the same
 principle, which is why neither should be deleted as contradicting the other.
 
+### "Which car?" is NOT one of these
+
+The tab bar's **+** routes someone with saved cars to `/report-stolen`
+(`ChooseCarToReportScreen`) instead of the blank wizard — which looks, at a
+glance, like the interstitial the rule above rejects. It isn't, and the
+difference is the whole of that rule's own reasoning:
+
+> *adding a car first is strictly slower than reporting*
+
+True for someone with **no** saved car, which is who that rule is about. They
+never see this screen: the **+** goes straight to the blank wizard unless the
+cached signal already says there are cars to choose between. For someone who
+**does** have one, choosing it is strictly **faster** than retyping it — the
+point of the entire feature, and this is the only way most people will find it.
+Same principle, opposite conclusion. **Do not delete this as contradicting the
+exit-sheet rule: they cover disjoint users and can never both fire.**
+
+| | Where | When | Interrupts? |
+|---|---|---|---|
+| **"Which car?"** | `ChooseCarToReportScreen` at `/report-stolen` | Tapping **+** with **≥ 1 saved, unposted car** | It IS the destination — no extra tap for anyone else |
+
+What keeps it honest:
+
+- **The decision happens before the tap.** `(tabs)/_layout.tsx` reads
+  `useHasSavedCar` and picks the route up front, so there is no spinner and no
+  chooser that turns out to be empty. `'unknown'` — guest, still loading, failed
+  fetch — means the blank wizard: the honest default is the one that always
+  works. This is the one place `enabled` is unconditional, because unlike the
+  nudges the answer is needed for *every* signed-in user; it is still one
+  `list_my_vehicles` per app session, not per mount.
+- **Never a dead end.** "It's a different car" is always present; a failed
+  garage load offers retry *and* a way onward; and if the garage turns out to be
+  empty (or every car is already reported) the screen redirects to the blank
+  wizard rather than stranding anyone.
+- **No once-per-install flag, and it must not read the shared one.** The three
+  nudges above are *asks* ("go and add a car"), which is why they are capped.
+  This is the *route itself* at the moment of need. A flag would mean a real
+  theft, months later, silently getting the slow path.
+- **`ReportSavedCarScreen`'s failure exits land on the BLANK wizard**, never
+  back on the chooser — whatever went wrong would go wrong again, and bouncing
+  someone between the two is a loop at the worst possible moment. One constant
+  (`BLANK_POST_AFTER_PREFILL_FAILURE`) so both exits cannot drift apart.
+- **`GarageCard`'s overflow is hidden here** (`onOpenActions` omitted): editing
+  or removing a car is the wrong offer to someone whose car was just stolen, and
+  each card should present exactly one thing to do.
+
+A car that is already reported is filtered out (a second listing would be
+refused as `PLATE_IN_USE`). That filter is **dormant** today — see gap 1 below.
+
+The **My Posts** empty state still goes straight to the blank wizard: it lives
+in `features/vehicles`, and the dependency is one-way (garage → vehicles, never
+back), so it cannot read the saved-car signal. A cold path, deliberately left.
+
 Two guards make that safe, and both are tested:
 - `PostACarScreen`'s `onAbandon` fires only when **no draft exists** — someone who
   got as far as creating one and hit a payment problem is not offered anything.
@@ -185,6 +242,12 @@ the app's hottest screen. `'unknown'` (guest, failed fetch, request in flight)
 `useMyVehicles` primes it for free.
 
 Logged as `garage_nudge_shown / _accepted / _dismissed { surface }`.
+
+The chooser logs `garage_choose_car_shown { vehicleCount }`, and on a choice
+reuses `garage_prefilled_post_launched { vehicleId }` — the same event the
+`/my-cars` card fires, so the add → post funnel stays ONE metric across both
+entry points. **Ids and counts only**: a plate or a nickname must never reach
+the logs (`docs/LOGGING.md`).
 
 ## Known gaps (found by review, NOT yet fixed)
 

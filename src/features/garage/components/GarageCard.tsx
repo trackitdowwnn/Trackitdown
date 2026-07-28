@@ -34,8 +34,12 @@ export interface GarageCardProps {
   onReportStolen: () => void;
   /** Open the live post this car is already reported on. */
   onOpenPost: () => void;
-  /** Open the overflow (Edit / Remove). */
-  onOpenActions: () => void;
+  /**
+   * Open the overflow (Edit / Remove). Omit to hide it: on the "which car?"
+   * chooser, tidying the garage is the wrong offer to someone who has just had
+   * a car stolen, and the card should present exactly one thing to do.
+   */
+  onOpenActions?: () => void;
 }
 
 export function GarageCard({
@@ -78,16 +82,18 @@ export function GarageCard({
           ) : null}
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`More options for ${name}`}
-          hitSlop={spacing.sm}
-          onPress={onOpenActions}
-          style={styles.overflow}
-          testID={`garage-card-actions-${vehicle.id}`}
-        >
-          <MoreHorizontal size={sizes.iconSm} color={colors.textPrimary} />
-        </Pressable>
+        {onOpenActions ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`More options for ${name}`}
+            hitSlop={spacing.sm}
+            onPress={onOpenActions}
+            style={styles.overflow}
+            testID={`garage-card-actions-${vehicle.id}`}
+          >
+            <MoreHorizontal size={sizes.iconSm} color={colors.textPrimary} />
+          </Pressable>
+        ) : null}
       </View>
 
       {vehicle.isCurrentlyPosted ? (
