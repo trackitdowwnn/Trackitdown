@@ -16,14 +16,35 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import type { SessionState } from '@/features/auth';
 
+import {
+  getMruCollection,
+  resetMruCollectionForTests,
+  setMruCollection,
+} from '../lib/mruCollection';
+import {
+  getCollectionPickerIntent,
+  resetCollectionPickerForTests,
+} from '../lib/pickerIntent';
 import { isWatchedNow, resetWatchedStoreForTests, setWatched } from '../lib/watchedStore';
+import type { CollectionId } from '../types';
 import { useWatchToggle } from './useWatchToggle';
 
-const mockAddWatch = jest.fn(async (_postId: string) => {});
+// Reached transitively: the hook reads and persists the target collection for
+// the next save (mruCollection).
+jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
+// Resolves with the collection the watch LANDED in — null (Saved) by default.
+// Tests that care about filing override it.
+const mockAddWatch = jest.fn(
+  async (_postId: string, collectionId: CollectionId = null): Promise<CollectionId> => collectionId,
+);
 const mockRemoveWatch = jest.fn(async (_postId: string) => {});
 const mockFetchWatchedPostIds = jest.fn(async (): Promise<string[]> => []);
 jest.mock('../api/watchlistApi', () => ({
-  addWatch: (postId: string) => mockAddWatch(postId),
+  addWatch: (postId: string, collectionId: CollectionId) => mockAddWatch(postId, collectionId),
   removeWatch: (postId: string) => mockRemoveWatch(postId),
   fetchWatchedPostIds: () => mockFetchWatchedPostIds(),
 }));
@@ -59,13 +80,16 @@ beforeEach(() => {
   resetWatchedStoreForTests();
   mockPendingIntent = null;
   mockSession = { status: 'signedIn', userId: 'user-1' };
-  mockAddWatch.mockResolvedValue(undefined);
+  // Default: the save lands exactly where it was aimed.
+  mockAddWatch.mockImplementation(async (_postId, collectionId = null) => collectionId);
   mockRemoveWatch.mockResolvedValue(undefined);
   mockFetchWatchedPostIds.mockResolvedValue([]);
+  resetMruCollectionForTests();
+  resetCollectionPickerForTests();
 });
 
 describe('member toggle', () => {
-  it('adds optimistically, persists, and shows the success toast with a View action', async () => {
+  it('adds optimistically, persists, and shows the success toast with a Change action', async () => {
     const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
     expect(result.current.watched).toBe(false);
 
@@ -74,17 +98,58 @@ describe('member toggle', () => {
     });
 
     expect(result.current.watched).toBe(true);
-    expect(mockAddWatch).toHaveBeenCalledWith('post-1');
+    expect(mockAddWatch).toHaveBeenCalledWith('post-1', null);
+    // No target set, so no list to name — the generic copy, never a placeholder.
     expect(mockToastShow).toHaveBeenCalledWith(
       'Added to your watchlist',
       'success',
-      expect.objectContaining({ label: 'View', onPress: expect.any(Function) }),
+      expect.objectContaining({ label: 'Change', onPress: expect.any(Function) }),
     );
 
-    // The View action navigates to the Watchlist tab.
+    // Change raises the picker intent for THIS post, pointed at where it
+    // currently sits (Saved).
     const action = mockToastShow.mock.calls[0][2] as { onPress: () => void };
     action.onPress();
-    expect(mockPush).toHaveBeenCalledWith('/(tabs)/watchlist');
+    expect(getCollectionPickerIntent()).toEqual({
+      postId: 'post-1',
+      currentCollectionId: null,
+      source: 'save_toast',
+    });
+    await unmount();
+  });
+
+  it('names the list when it knows it', async () => {
+    setMruCollection('user-1', 'cccccccc-0000-0000-0000-00000000000c', 'My commute');
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
+
+    await act(async () => {
+      result.current.toggle();
+    });
+
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'Saved to My commute',
+      'success',
+      expect.objectContaining({ label: 'Change' }),
+    );
+    await unmount();
+  });
+
+  it('falls back to generic copy when the target has no known name', async () => {
+    // Re-derived from the watchlist payload, which carries ids and no names.
+    // Inventing a placeholder here ("Saved to your list") would be worse than
+    // saying nothing.
+    setMruCollection('user-1', 'cccccccc-0000-0000-0000-00000000000c');
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
+
+    await act(async () => {
+      result.current.toggle();
+    });
+
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'Added to your watchlist',
+      'success',
+      expect.objectContaining({ label: 'Change' }),
+    );
     await unmount();
   });
 
@@ -160,7 +225,7 @@ describe('guest gate', () => {
     });
 
     expect(isWatchedNow('post-1')).toBe(true);
-    expect(mockAddWatch).toHaveBeenCalledWith('post-1');
+    expect(mockAddWatch).toHaveBeenCalledWith('post-1', null);
     await unmount();
   });
 
@@ -186,6 +251,82 @@ describe('guest gate', () => {
     expect(isWatchedNow('post-1')).toBe(false);
     expect(mockRemoveWatch).toHaveBeenCalledWith('post-1');
     expect(mockAddWatch).not.toHaveBeenCalled();
+    await unmount();
+  });
+});
+
+describe('collection targeting', () => {
+  const COMMUTE = 'cccccccc-0000-0000-0000-00000000000c';
+
+  it('files a save into the list the user is currently working in', async () => {
+    setMruCollection('user-1', COMMUTE);
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
+
+    await act(async () => {
+      result.current.toggle();
+    });
+
+    expect(mockAddWatch).toHaveBeenCalledWith('post-1', COMMUTE);
+    await unmount();
+  });
+
+  it('records where the save landed, not where it was aimed', async () => {
+    // The cached list was deleted on another device: addWatch falls back to
+    // Saved and says so. The target must follow, or every subsequent save
+    // would keep aiming at the dead list.
+    setMruCollection('user-1', COMMUTE);
+    mockAddWatch.mockResolvedValue(null);
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
+
+    await act(async () => {
+      result.current.toggle();
+    });
+
+    expect(mockAddWatch).toHaveBeenCalledWith('post-1', COMMUTE);
+    expect(getMruCollection('user-1')).toBeNull();
+    await unmount();
+  });
+
+  it('leaves the target alone when a save fails outright', async () => {
+    // A failed save is reverted, so it says nothing about where the user
+    // wants to file — clobbering the target here would lose their place.
+    setMruCollection('user-1', COMMUTE);
+    mockAddWatch.mockRejectedValue(new Error('offline'));
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
+
+    await act(async () => {
+      result.current.toggle();
+    });
+
+    expect(getMruCollection('user-1')).toBe(COMMUTE);
+    await unmount();
+  });
+
+  it('does not target another user’s list after a switch', async () => {
+    setMruCollection('user-2', COMMUTE);
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
+
+    await act(async () => {
+      result.current.toggle();
+    });
+
+    expect(mockAddWatch).toHaveBeenCalledWith('post-1', null);
+    await unmount();
+  });
+
+  it('a removal never touches the target', async () => {
+    setMruCollection('user-1', COMMUTE);
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
+    await act(async () => {
+      setWatched('post-1', true);
+    });
+
+    await act(async () => {
+      result.current.toggle();
+    });
+
+    expect(mockRemoveWatch).toHaveBeenCalledWith('post-1');
+    expect(getMruCollection('user-1')).toBe(COMMUTE);
     await unmount();
   });
 });

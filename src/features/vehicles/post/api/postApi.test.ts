@@ -26,7 +26,7 @@ const mockRpc = jest.fn();
 const mockUpload = jest.fn();
 const mockGetUser = jest.fn();
 
-jest.mock('@/shared/api', () => ({
+jest.mock('@/shared/api/supabase', () => ({
   supabase: {
     rpc: (...args: unknown[]) => mockRpc(...args),
     auth: { getUser: (...args: unknown[]) => mockGetUser(...args) },

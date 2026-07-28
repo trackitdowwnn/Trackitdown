@@ -139,6 +139,14 @@ busy/alarming crime map.
   pence via the shared money formatter.
 - **SafetyNotice** — reusable banner with the "report, don't approach"
   copy; required on sighting flows (see SECURITY_AND_TRUST.md).
+- **ListRow** — the settings-style row: optional icon, title, optional
+  value/subtitle, chevron when pressable, destructive variant. Passing
+  `selected` turns it into a **chooser** row: the chevron becomes a check (an
+  equal-sized spacer when unselected, so titles don't shift down the list) and
+  the role becomes `radio` rather than `button` — "radio, selected" reads as
+  one-of-several, where "button, selected" reads as a toggle that is on. Rows
+  in a group where nothing is chosen yet pass `selected={false}`, never
+  `undefined`, so the set stays a radio group to a screen reader.
 - **EmptyState** — friendly illustration + one-line explanation + action.
 - **AppTabBar** — bottom navigation: `surface` bar, hairline `border` top
   edge, no shadow; 24pt icons (`sizes.icon`) over always-visible `tabLabel`

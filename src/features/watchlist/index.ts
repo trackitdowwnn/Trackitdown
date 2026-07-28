@@ -7,6 +7,10 @@
  */
 
 export { WatchToggle } from './components/WatchToggle';
-export { WatchlistScreen } from './screens/WatchlistScreen';
+export { CollectionPickerSheet } from './components/CollectionPickerSheet';
+export { CollectionsGridScreen } from './screens/CollectionsGridScreen';
+export { CollectionScreen, type CollectionScreenProps } from './screens/CollectionScreen';
+// The route needs it to turn the `saved` sentinel back into null.
+export { collectionIdFromRoute, SAVED_ROUTE_ID } from './lib/collectionsModel';
 export { useWatchToggle } from './hooks/useWatchToggle';
-export type { WatchlistEntry, WatchToggleSource } from './types';
+export type { CollectionId, WatchlistEntry, WatchToggleSource } from './types';

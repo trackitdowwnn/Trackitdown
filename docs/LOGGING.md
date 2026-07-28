@@ -70,6 +70,10 @@ NEVER log, at any level, in any environment:
 - Full number plates — use the logger's `redactPlate()` → `AB12***`
 - Precise coordinates — use `redactLocation()` → 2-decimal rounding
   (~1km) or an area name. Exact locations live in the database, not logs.
+- **User-authored names.** A watchlist collection name ("Mum's street") and a
+  saved vehicle's nickname are free text the user wrote for themselves — log
+  the id, never the name. Both are private user metadata under DOMAIN.md; a
+  name in a log is the one place it could escape the owner's own session.
 
 The logger's data serialiser also auto-masks any key named `token`,
 `password`, `secret`, `authorization`, or `key` as a safety net — but
@@ -88,7 +92,12 @@ log.info("Sighting submitted", { postId, hasPhoto: true, durationMs });
 
 Tags match feature folder names (`auth`, `vehicles`, `sightings`,
 `search-map`, `notifications`, `payments`, `chat`, `profile`,
-`moderation`) plus `app` for app-level events.
+`moderation`, `watchlist`, `garage`) plus `app` for app-level events.
+
+Watchlist collections emit `collection_create` / `collection_rename` /
+`collection_delete` / `collection_view`, `watch_move { postId, toId }`, and
+`watch_collection_fallback` (a save aimed at a list that had been deleted, and
+landed in Saved instead). **Ids only** — see the name rule above.
 
 ## The ring buffer (device debugging)
 

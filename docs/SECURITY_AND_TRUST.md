@@ -19,27 +19,77 @@ commenting standards.
 - Terms of service must state that bounties reward information leading to
   recovery, and that recovery itself is for the owner and police.
 
-## 2. Anti-stalking / verification
+## 2. Anti-stalking
 
-- **No post is publicly visible before ownership verification passes**
-  (moderator reviews the V5C/proof upload). This is the primary control
-  against someone using the platform to track a person rather than recover
-  a car.
-- Verification documents are stored in a **private** Supabase Storage
-  bucket, accessible only to the uploading user and moderators via RLS +
-  signed URLs. They are deleted (or anonymised) 30 days after the post
-  closes.
-- One active post per plate. Re-posting a plate that was previously
-  rejected flags the account for moderator review. The plate is optional
-  (DOMAIN.md): this uniqueness rule applies only to posts that HAVE a plate —
-  plate-less posts can't be deduped this way, so mandatory moderation (the V5C
-  check) is the backstop against duplicate/abusive plate-less reports.
+> **CHANGED 2026-07-30 (live-on-payment).** This section previously read "No
+> post is publicly visible before ownership verification passes." That is no
+> longer true and had not been updated: the pre-publish review gate and the V5C
+> proof-of-ownership upload were both removed so a stolen-car post goes live
+> within minutes rather than after a moderator queue. What follows describes the
+> controls that actually exist. The **open gap** is named explicitly below —
+> it is not resolved, and it should not be lost again.
+
+- A paid post is **publicly visible immediately**, with no human pre-check
+  (`draft → active` on payment). Anti-stalking therefore rests on
+  accountability and reaction, not prevention:
+  - **Not anonymous, not free.** Every post is a real account with a card on
+    file and a £50–£5,000 bounty in escrow. Posting to track a person costs
+    money and is traceable to a payment instrument.
+  - **Report → flag → takedown.** `post_flags` captures durable, attributable
+    reports (`flag_post`); a moderator takes a post down via the
+    deactivate/refund path. No auto-hide on N reports — that would let griefers
+    bury a victim's real post during the hours that matter.
+  - **Location coarsening.** A `driveway` theft's last-seen point is the
+    victim's home, so it is coarsened to ~1km for non-owners (§6, DOMAIN.md).
+- **OPEN GAP — no ownership check exists anywhere.** Nothing verifies that the
+  poster owns the car. The `verification_documents` table, the private
+  `verification-documents` bucket and `update_post_verification` remain in the
+  schema but are dormant; no client writes them and there is **no moderator
+  tooling at all**. Re-introducing a check (for high bounties, repeat posters,
+  or in the garage at save time) is deferred and needs the moderation queue
+  first. Any future document storage keeps the original rule: private bucket,
+  uploader + moderators only, deleted 30 days after the post closes.
+- **OPEN GAP — one active post per plate is DORMANT on every path.**
+  `create_post` still raises `PLATE_IN_USE`, but it can never fire: plate
+  capture was removed from the posting wizard on 2026-07-24 and the client sends
+  `p_plate: null`. The garage collects a plate again and is *intended* to prefill
+  it, but that link is **not wired** — `create_post` takes no vehicle id and the
+  garage's plate is dropped on the way into the post (DOMAIN.md, "Garage"). So
+  nothing currently prevents the same car being posted repeatedly, and the V5C
+  check that was once the backstop for plate-less duplicates no longer exists
+  either. Closing this needs the `create_post` follow-up migration.
 
 ## 3. Data protection (UK GDPR)
 
 - Number plates, locations, and V5C documents are personal data. Collect
   the minimum, state the purpose in the privacy policy, honour deletion
   requests.
+- **Saved vehicles (the garage) — cars that were never stolen.** The garage
+  holds plates and photos for vehicles nobody has reported, which is a wider
+  collection than posts alone. Therefore:
+  - A saved vehicle is visible **only to its owner**. No RPC, feed, search or
+    post surface exposes another user's garage; `list_my_vehicles` gates on
+    `auth.uid()` and `anon` holds no grant on `vehicles` at all. Absence is
+    asserted for both anon and a different signed-in user
+    (`supabase/tests/garage_verification.sql` CHECK 6).
+  - Plate uniqueness in the garage is **per user**, never global — a global
+    index would answer "does anyone else have this plate saved?", which is an
+    oracle over other people's garages.
+  - Garage **rows** are deleted with the vehicle and cascade on account deletion
+    (`vehicles.user_id → profiles ON DELETE CASCADE`). They are NOT subject to
+    the 30-day post-closure rule, which governs post artefacts: a saved car has
+    no closure event.
+  - **OPEN GAP — storage objects are NOT deleted.** `delete_vehicle` removes
+    rows only; the JPEGs stay in the public `post-photos` bucket and remain
+    reachable by URL indefinitely. `update_vehicle` orphans replaced photos the
+    same way, and no account-deletion Edge Function exists to trigger the
+    cascade in the first place. This is a UK GDPR erasure gap on personal data,
+    not merely doc drift. Any fix must first check `post_photos.url` /
+    `post_distinctive_feature.photo_url` for the same object: the garage and
+    posts deliberately SHARE objects, so deleting one blindly would blank the
+    hero image of a live stolen-car listing.
+  - Deleting a saved car never touches a post made from it — posts hold their
+    own snapshot (DOMAIN.md, "Garage").
 - Auth is passwordless (email OTP + Apple/Google — DOMAIN.md). Session tokens
   (access + refresh) are stored in the OS keychain via expo-secure-store,
   encrypted at rest — never in plaintext AsyncStorage. Emails are personal data:

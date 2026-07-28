@@ -45,6 +45,45 @@ describe('ListRow', () => {
     expect(getByTestId('row').props.accessibilityState).toEqual({ disabled: true });
   });
 
+  describe('as a chooser row', () => {
+    it('announces itself as a radio, not a button', async () => {
+      // The distinction matters: "button, selected" reads as a toggle that is
+      // ON; "radio, selected" reads as this-one-of-several, which is what a
+      // collection picker actually is.
+      const { getByTestId } = await render(
+        <ListRow title="My commute" selected onPress={() => {}} testID="row" />,
+      );
+      expect(getByTestId('row').props.accessibilityRole).toBe('radio');
+      expect(getByTestId('row').props.accessibilityState).toEqual({
+        disabled: false,
+        selected: true,
+      });
+    });
+
+    it('an unchosen row still announces its selection state', async () => {
+      // `selected={false}` must reach the accessibility state, or a screen
+      // reader hears a group where nothing is ever the answer.
+      const { getByTestId } = await render(
+        <ListRow title="Near work" selected={false} onPress={() => {}} testID="row" />,
+      );
+      expect(getByTestId('row').props.accessibilityRole).toBe('radio');
+      expect(getByTestId('row').props.accessibilityState).toEqual({
+        disabled: false,
+        selected: false,
+      });
+    });
+
+    it('leaves ordinary rows as buttons with no selection state', async () => {
+      // Omitting the prop must not turn every settings row in the app into a
+      // radio that claims to be unselected.
+      const { getByTestId } = await render(
+        <ListRow title="Notifications" onPress={() => {}} testID="row" />,
+      );
+      expect(getByTestId('row').props.accessibilityRole).toBe('button');
+      expect(getByTestId('row').props.accessibilityState).toEqual({ disabled: false });
+    });
+  });
+
   it('speaks title, value, and subtitle together', async () => {
     const { getByTestId } = await render(
       <ListRow

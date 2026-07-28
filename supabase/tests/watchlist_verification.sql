@@ -5,7 +5,13 @@
 --        user — including the watched post's OWNER — may ever see watcher rows
 --        or counts, and closed posts must stop flowing to watchers per the
 --        closed_at 30-day / tombstone rules in 20260722100000_watchlist.sql.
--- LINKS: supabase/migrations/20260722100000_watchlist.sql, docs/DOMAIN.md,
+--        COLLECTIONS (2026-07-27) extended that: a collection NAME is private
+--        free text under the same rule, and the "move a car between lists"
+--        feature required granting UPDATE — which is only safe because the
+--        grant is a COLUMN LIST. CHECK 11 is what proves it still is.
+-- LINKS: supabase/migrations/20260722100000_watchlist.sql,
+--        supabase/migrations/20260801110000_watchlist_collections.sql,
+--        docs/DOMAIN.md (watchlist carve-out + collections clause),
 --        docs/SECURITY_AND_TRUST.md §2/§6, scripts/test-db.sh.
 --
 -- SELF-ASSERTING: every check is a DO block that RAISES EXCEPTION on failure,
@@ -36,8 +42,15 @@
 -- SET LOCAL ROLE authenticated / anon so the GRANT layer applies for real
 -- (the technique from anon_role_verification.sql).
 --
--- IDEMPOTENCY: all watchlist rows for the fixture users and the synthetic
--- post are deleted up-front AND at the end.
+-- IDEMPOTENCY: all watchlist rows AND collections for the fixture users, plus
+-- the synthetic post, are deleted up-front AND at the end.
+--
+-- CHECKS: 1 closed_at freeze · 2 own watch + unique pair · 2b one collection per
+-- post · 3 spoofed user_id · 4 see-before-watch · 5 RLS zero-row · 6 the
+-- get_my_watchlist visibility matrix · 7 isolation + anon · 8 ABSENCE (grants,
+-- policies, views, functions — for both tables) · 9 no cross-user filing ·
+-- 10 deleting a list keeps its cars · 11 the UPDATE grant is not a
+-- see-before-act bypass · 12 cap, per-user names, no existence oracle.
 -- =============================================================================
 
 
@@ -45,6 +58,11 @@
 -- Clean up any leftovers from a previous run of this file.
 -- -----------------------------------------------------------------------------
 delete from public.watchlist_items
+where user_id in ('22222222-2222-2222-2222-222222222222',
+                  '33333333-3333-3333-3333-333333333333');
+-- Collections too (CHECKs 2b/9/10/12 create them). Dropping them cannot orphan
+-- a watch — the FK is ON DELETE SET NULL — and the watches go above anyway.
+delete from public.watchlist_collections
 where user_id in ('22222222-2222-2222-2222-222222222222',
                   '33333333-3333-3333-3333-333333333333');
 delete from public.posts where id = 'b2b2b2b2-0000-0000-0000-000000000001';
@@ -143,6 +161,57 @@ begin
     raise exception 'CHECK 2 FAILED: duplicate insert did not raise unique_violation';
   end if;
   raise notice 'CHECK 2 passed: own watch inserted once; duplicate pair raises unique_violation';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 2b — ONE COLLECTION PER POST. The same post cannot be saved twice into
+-- different collections: the (user_id, post_id) primary key already forbids it,
+-- which is exactly why collections could be added without touching the key.
+-- This asserts the PRODUCT rule so nobody later "fixes" the PK and quietly turns
+-- collections into tags — which would also make unwatch ambiguous.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_a  uuid;
+  v_b  uuid;
+  v_ok boolean := false;
+begin
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}',
+    true);
+
+  v_a := (public.create_watchlist_collection('Rule list A') ->> 'collection_id')::uuid;
+  v_b := (public.create_watchlist_collection('Rule list B') ->> 'collection_id')::uuid;
+
+  set local role authenticated;
+  -- The post is already watched by CHECK 2; file it into A.
+  update public.watchlist_items set collection_id = v_a
+   where user_id = '22222222-2222-2222-2222-222222222222'
+     and post_id = 'a1a1a1a1-0000-0000-0000-000000000001';
+
+  begin
+    insert into public.watchlist_items (user_id, post_id, collection_id)
+    values ('22222222-2222-2222-2222-222222222222',
+            'a1a1a1a1-0000-0000-0000-000000000001', v_b);
+    raise exception 'CHECK 2b FAILED: the same post was saved into two collections';
+  exception when unique_violation then
+    v_ok := true;
+  end;
+  reset role;
+
+  if not v_ok then
+    raise exception 'CHECK 2b FAILED: one-collection-per-post is not enforced';
+  end if;
+
+  -- Tidy: return it to Saved so later checks see the original shape.
+  update public.watchlist_items set collection_id = null
+   where user_id = '22222222-2222-2222-2222-222222222222'
+     and post_id = 'a1a1a1a1-0000-0000-0000-000000000001';
+  delete from public.watchlist_collections where id in (v_a, v_b);
+
+  raise notice 'CHECK 2b passed: a post lives in at most ONE collection (enforced by the existing PK)';
 end $$;
 
 
@@ -441,7 +510,19 @@ begin
     raise exception 'CHECK 6 FAILED: cancelled tombstone leaks a sensitive field: %', v_item;
   end if;
 
-  raise notice 'CHECK 6 passed: 4 items — full active/recovered, NULLed expired+cancelled tombstones; past-window and hidden states absent; newest-first';
+  -- collection_id must be present on BOTH payload shapes (added 2026-07-27).
+  -- The client groups the single response into the grid, each list and the
+  -- most-recently-used target, so a missing key on either shape silently files
+  -- everything into "Saved" — and on the tombstone shape it would drop a closed
+  -- car out of the list it was filed in.
+  if not (v_doc -> 0 ? 'collection_id') then
+    raise exception 'CHECK 6 FAILED: full payload is missing collection_id';
+  end if;
+  if not (v_item ? 'collection_id') then
+    raise exception 'CHECK 6 FAILED: tombstone payload is missing collection_id';
+  end if;
+
+  raise notice 'CHECK 6 passed: 4 items — full active/recovered, NULLed expired+cancelled tombstones; collection_id on both shapes; past-window and hidden states absent; newest-first';
 end $$;
 
 
@@ -484,9 +565,9 @@ end $$;
 -- -----------------------------------------------------------------------------
 -- CHECK 8 — ABSENCE: no owner-facing query path to watcher rows/counts exists.
 -- Proven from the catalogs:
---   (a) anon holds NO privilege on watchlist_items; authenticated holds only
---       SELECT/INSERT/DELETE (no UPDATE);
---   (b) the table's ONLY policies are the three own-row policies, and every
+--   (a) anon holds NO privilege on watchlist_items; authenticated holds
+--       SELECT/INSERT/DELETE plus UPDATE on collection_id ONLY (see below);
+--   (b) the table's ONLY policies are the four own-row policies, and every
 --       one of them predicates on user_id (there is no owner-of-post policy);
 --   (c) no view and no function other than get_my_watchlist references
 --       watchlist_items anywhere in schema public — so the RPC (which filters
@@ -503,16 +584,31 @@ begin
      or has_table_privilege('anon', 'public.watchlist_items', 'DELETE') then
     raise exception 'CHECK 8 FAILED: anon holds a privilege on watchlist_items';
   end if;
-  if has_table_privilege('authenticated', 'public.watchlist_items', 'UPDATE') then
-    raise exception 'CHECK 8 FAILED: authenticated holds UPDATE on watchlist_items (nothing to update)';
+  -- UPDATE exists now (collections need a "move"), but ONLY on collection_id.
+  -- This replaced a blanket "no UPDATE at all" assertion when collections
+  -- shipped (2026-07-27), and is deliberately STRONGER than what it replaced:
+  -- the column list is a security control. A grant covering post_id would be a
+  -- complete see-before-act BYPASS — watch a visible post, then repoint the row
+  -- at a draft you cannot read, with the insert policy never consulted.
+  if not has_column_privilege('authenticated', 'public.watchlist_items', 'collection_id', 'UPDATE') then
+    raise exception 'CHECK 8 FAILED: authenticated cannot UPDATE collection_id — moving between collections is broken';
+  end if;
+  if has_column_privilege('authenticated', 'public.watchlist_items', 'post_id', 'UPDATE') then
+    raise exception 'CHECK 8 FAILED: authenticated holds UPDATE on post_id — SEE-BEFORE-ACT BYPASS';
+  end if;
+  if has_column_privilege('authenticated', 'public.watchlist_items', 'user_id', 'UPDATE') then
+    raise exception 'CHECK 8 FAILED: authenticated holds UPDATE on user_id — a watch could be handed to another user';
+  end if;
+  if has_column_privilege('authenticated', 'public.watchlist_items', 'created_at', 'UPDATE') then
+    raise exception 'CHECK 8 FAILED: authenticated holds UPDATE on created_at — the list sort key is client-writable';
   end if;
 
-  -- (b) policy surface: exactly 3 policies, all predicated on user_id.
+  -- (b) policy surface: exactly 4 policies, all predicated on user_id.
   select count(*) into v_n
   from pg_policies
   where schemaname = 'public' and tablename = 'watchlist_items';
-  if v_n <> 3 then
-    raise exception 'CHECK 8 FAILED: expected exactly 3 policies on watchlist_items, found %', v_n;
+  if v_n <> 4 then
+    raise exception 'CHECK 8 FAILED: expected exactly 4 policies on watchlist_items, found %', v_n;
   end if;
   select count(*) into v_n
   from pg_policies
@@ -540,7 +636,276 @@ begin
     raise exception 'CHECK 8 FAILED: % other function(s) reference watchlist_items — a second query path exists', v_n;
   end if;
 
-  raise notice 'CHECK 8 passed: no grant, policy, view, or function gives anyone but the watcher a path to watch rows/counts';
+  -- (d) the SAME absence proof for watchlist_collections. A collection name is
+  -- private free text; nobody but its owner may reach it by any path.
+  if has_table_privilege('anon', 'public.watchlist_collections', 'SELECT')
+     or has_table_privilege('anon', 'public.watchlist_collections', 'INSERT')
+     or has_table_privilege('anon', 'public.watchlist_collections', 'UPDATE')
+     or has_table_privilege('anon', 'public.watchlist_collections', 'DELETE') then
+    raise exception 'CHECK 8 FAILED: anon holds a privilege on watchlist_collections';
+  end if;
+  -- Clients read only; every write goes through a SECURITY DEFINER RPC so the
+  -- per-user cap can be enforced.
+  if has_table_privilege('authenticated', 'public.watchlist_collections', 'INSERT')
+     or has_table_privilege('authenticated', 'public.watchlist_collections', 'UPDATE')
+     or has_table_privilege('authenticated', 'public.watchlist_collections', 'DELETE') then
+    raise exception 'CHECK 8 FAILED: authenticated can write watchlist_collections directly — the 20-cap is bypassable';
+  end if;
+
+  select count(*) into v_n
+  from pg_policies
+  where schemaname = 'public' and tablename = 'watchlist_collections';
+  if v_n <> 1 then
+    raise exception 'CHECK 8 FAILED: expected exactly 1 policy on watchlist_collections, found %', v_n;
+  end if;
+  select count(*) into v_n
+  from pg_policies
+  where schemaname = 'public' and tablename = 'watchlist_collections'
+    and coalesce(qual, with_check) not like '%user_id%';
+  if v_n <> 0 then
+    raise exception 'CHECK 8 FAILED: a policy on watchlist_collections does not pin user_id';
+  end if;
+
+  select count(*) into v_n
+  from pg_views
+  where definition ilike '%watchlist_collections%';
+  if v_n <> 0 then
+    raise exception 'CHECK 8 FAILED: % view(s) reference watchlist_collections', v_n;
+  end if;
+
+  raise notice 'CHECK 8 passed: no grant, policy, view, or function gives anyone but the watcher a path to watch rows/counts or collection names';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 9 — a watch can never be filed into ANOTHER USER'S collection, on
+-- either write path. Beth owns the watch; Carl owns the collection.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_carl_collection uuid;
+  v_ok              boolean;
+begin
+  -- Carl makes a list.
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  v_carl_collection := (public.create_watchlist_collection('Carls private list') ->> 'collection_id')::uuid;
+
+  -- Beth tries to file a NEW watch into it.
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  v_ok := false;
+  begin
+    set local role authenticated;
+    insert into public.watchlist_items (user_id, post_id, collection_id)
+    values ('22222222-2222-2222-2222-222222222222',
+            'b2b2b2b2-0000-0000-0000-000000000001',
+            v_carl_collection);
+    reset role;
+  exception when insufficient_privilege or foreign_key_violation then v_ok := true;
+  end;
+  if not v_ok then
+    raise exception 'CHECK 9 FAILED: a watch was inserted into another user''s collection';
+  end if;
+
+  -- ...and to MOVE an existing watch into it.
+  insert into public.watchlist_items (user_id, post_id)
+  values ('22222222-2222-2222-2222-222222222222', 'b2b2b2b2-0000-0000-0000-000000000001')
+  on conflict do nothing;
+
+  v_ok := false;
+  begin
+    set local role authenticated;
+    update public.watchlist_items
+       set collection_id = v_carl_collection
+     where user_id = '22222222-2222-2222-2222-222222222222'
+       and post_id = 'b2b2b2b2-0000-0000-0000-000000000001';
+    reset role;
+  exception when insufficient_privilege or foreign_key_violation then v_ok := true;
+  end;
+  if not v_ok then
+    -- An UPDATE filtered out by RLS affects 0 rows rather than raising, so the
+    -- silent-no-op case has to be caught by reading the row back.
+    if exists (
+      select 1 from public.watchlist_items
+      where user_id = '22222222-2222-2222-2222-222222222222'
+        and post_id = 'b2b2b2b2-0000-0000-0000-000000000001'
+        and collection_id = v_carl_collection
+    ) then
+      raise exception 'CHECK 9 FAILED: a watch was MOVED into another user''s collection';
+    end if;
+  end if;
+
+  raise notice 'CHECK 9 passed: neither insert nor move can file a watch into someone else''s collection';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 10 — deleting a collection NEVER deletes the cars in it. They return to
+-- the implicit "Saved" bucket (collection_id IS NULL) via the FK's SET NULL.
+-- The delete dialog promises exactly this; if it ever stops being true the
+-- feature lies about destroying data.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_collection uuid;
+  v_n          int;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+
+  v_collection := (public.create_watchlist_collection('Doomed list') ->> 'collection_id')::uuid;
+
+  insert into public.watchlist_items (user_id, post_id, collection_id)
+  values ('22222222-2222-2222-2222-222222222222',
+          'b2b2b2b2-0000-0000-0000-000000000001', v_collection)
+  on conflict (user_id, post_id) do update set collection_id = excluded.collection_id;
+
+  perform public.delete_watchlist_collection(v_collection);
+
+  select count(*) into v_n
+  from public.watchlist_items
+  where user_id = '22222222-2222-2222-2222-222222222222'
+    and post_id = 'b2b2b2b2-0000-0000-0000-000000000001';
+  if v_n <> 1 then
+    raise exception 'CHECK 10 FAILED: deleting a collection DELETED the watch (expected it to survive)';
+  end if;
+
+  select count(*) into v_n
+  from public.watchlist_items
+  where user_id = '22222222-2222-2222-2222-222222222222'
+    and post_id = 'b2b2b2b2-0000-0000-0000-000000000001'
+    and collection_id is null;
+  if v_n <> 1 then
+    raise exception 'CHECK 10 FAILED: the watch did not fall back to Saved (collection_id should be NULL)';
+  end if;
+
+  raise notice 'CHECK 10 passed: deleting a collection returns its cars to Saved and destroys nothing';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 11 — THE UPDATE GRANT IS NOT A SEE-BEFORE-ACT BYPASS.
+-- The highest-value check in this file. `grant update (collection_id)` was added
+-- so a car can be moved between lists. If that grant ever widens to post_id, a
+-- user could watch any visible post and then repoint the row at a DRAFT they
+-- cannot read — watching a hidden post with the insert policy never consulted.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  -- The seed's DRAFT trap ('MA99 DRF') — the same post CHECK 4 proves is
+  -- unwatchable through the insert path. If the UPDATE path can reach it, the
+  -- insert gate is decorative.
+  v_draft uuid := 'a1a1a1a1-0000-0000-0000-00000000001b';
+  v_ok    boolean := false;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+
+  if not exists (select 1 from public.posts where id = v_draft and status = 'draft') then
+    raise exception 'CHECK 11 SETUP FAILED: the seeded draft trap is missing or no longer a draft';
+  end if;
+
+  insert into public.watchlist_items (user_id, post_id)
+  values ('22222222-2222-2222-2222-222222222222', 'b2b2b2b2-0000-0000-0000-000000000001')
+  on conflict do nothing;
+
+  begin
+    set local role authenticated;
+    update public.watchlist_items
+       set post_id = v_draft
+     where user_id = '22222222-2222-2222-2222-222222222222'
+       and post_id = 'b2b2b2b2-0000-0000-0000-000000000001';
+    reset role;
+  exception when insufficient_privilege then v_ok := true;
+  end;
+  if not v_ok then
+    raise exception 'CHECK 11 FAILED: authenticated repointed a watch at another post — SEE-BEFORE-ACT BYPASS';
+  end if;
+
+  if exists (
+    select 1 from public.watchlist_items
+    where user_id = '22222222-2222-2222-2222-222222222222' and post_id = v_draft
+  ) then
+    raise exception 'CHECK 11 FAILED: a watch now points at an unreadable draft';
+  end if;
+
+  raise notice 'CHECK 11 passed: the UPDATE grant reaches collection_id only — post_id is unreachable';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 12 — collection rules: the cap, per-user (never global) name
+-- uniqueness, and no existence oracle for someone else's collection.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_i       int;
+  v_ok      boolean;
+  v_carl_id uuid;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+
+  -- Clear the decks so the cap arithmetic is exact.
+  delete from public.watchlist_collections
+  where user_id = '22222222-2222-2222-2222-222222222222';
+
+  for v_i in 1..20 loop
+    perform public.create_watchlist_collection('Cap list ' || v_i);
+  end loop;
+
+  v_ok := false;
+  begin
+    perform public.create_watchlist_collection('One too many');
+  exception when others then
+    if sqlerrm like '%COLLECTION_LIMIT_REACHED%' then v_ok := true;
+    else raise exception 'CHECK 12 FAILED: wrong error on the 21st collection: %', sqlerrm; end if;
+  end;
+  if not v_ok then raise exception 'CHECK 12 FAILED: a 21st collection was created (cap not enforced)'; end if;
+
+  -- Case-insensitive clash within one user.
+  v_ok := false;
+  begin
+    perform public.create_watchlist_collection('cap LIST 1');
+  exception when others then
+    if sqlerrm like '%COLLECTION_NAME_TAKEN%' then v_ok := true;
+    else raise exception 'CHECK 12 FAILED: wrong error on a duplicate name: %', sqlerrm; end if;
+  end;
+  if not v_ok then raise exception 'CHECK 12 FAILED: one user holds the same collection name twice'; end if;
+
+  -- ...but a DIFFERENT user may hold that same name. A global unique index
+  -- would both be wrong and leak the existence of other people's lists.
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  v_carl_id := (public.create_watchlist_collection('Cap list 1') ->> 'collection_id')::uuid;
+  if v_carl_id is null then
+    raise exception 'CHECK 12 FAILED: a second user could not reuse a collection name';
+  end if;
+
+  -- No existence oracle: another user's real id is indistinguishable from a
+  -- made-up one.
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  v_ok := false;
+  begin
+    perform public.rename_watchlist_collection(v_carl_id, 'Mine now');
+  exception when others then
+    if sqlerrm like '%COLLECTION_NOT_FOUND%' then v_ok := true;
+    else raise exception 'CHECK 12 FAILED: wrong error renaming another user''s collection: %', sqlerrm; end if;
+  end;
+  if not v_ok then raise exception 'CHECK 12 FAILED: another user''s collection was renamed'; end if;
+
+  v_ok := false;
+  begin
+    perform public.delete_watchlist_collection(v_carl_id);
+  exception when others then
+    if sqlerrm like '%COLLECTION_NOT_FOUND%' then v_ok := true;
+    else raise exception 'CHECK 12 FAILED: wrong error deleting another user''s collection: %', sqlerrm; end if;
+  end;
+  if not v_ok then raise exception 'CHECK 12 FAILED: another user''s collection was deleted'; end if;
+
+  raise notice 'CHECK 12 passed: cap of 20, per-user case-insensitive names, no cross-user reach and no existence oracle';
 end $$;
 
 
@@ -549,6 +914,11 @@ end $$;
 -- state stays as-is for other test files and re-runs.
 -- -----------------------------------------------------------------------------
 delete from public.watchlist_items
+where user_id in ('22222222-2222-2222-2222-222222222222',
+                  '33333333-3333-3333-3333-333333333333');
+-- Collections too (CHECKs 2b/9/10/12 create them). Dropping them cannot orphan
+-- a watch — the FK is ON DELETE SET NULL — and the watches go above anyway.
+delete from public.watchlist_collections
 where user_id in ('22222222-2222-2222-2222-222222222222',
                   '33333333-3333-3333-3333-333333333333');
 delete from public.posts where id = 'b2b2b2b2-0000-0000-0000-000000000001';

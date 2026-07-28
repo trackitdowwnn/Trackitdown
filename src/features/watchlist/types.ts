@@ -13,11 +13,23 @@
 
 import type { PostSummary } from '@/shared/types';
 
+/**
+ * Which named list a saved post is filed in. `null` is the implicit "Saved"
+ * bucket — NOT a real collection: it has no row, no name of its own, and cannot
+ * be renamed or deleted. Every watch made before collections existed is null,
+ * which is why the column is nullable and why there was no backfill.
+ *
+ * A post is in AT MOST ONE collection (the (user_id, post_id) primary key
+ * enforces it). Collections are a filing system, not tags.
+ */
+export type CollectionId = string | null;
+
 /** A visible watched post: the standard card payload + watch metadata. */
 export interface WatchedPost {
   kind: 'post';
   /** When the user watched it — the list's sort key (desc). */
   watchedAt: string;
+  collectionId: CollectionId;
   post: PostSummary;
 }
 
@@ -25,6 +37,9 @@ export interface WatchedPost {
 export interface WatchedTombstone {
   kind: 'tombstone';
   watchedAt: string;
+  /** A closed car keeps its filing, so it still shows in its own list's
+   *  "No longer active" section rather than jumping back to Saved. */
+  collectionId: CollectionId;
   postId: string;
   status: PostSummary['status'];
   make: string;
@@ -36,6 +51,18 @@ export interface WatchedTombstone {
 }
 
 export type WatchlistEntry = WatchedPost | WatchedTombstone;
+
+/** One of the user's named lists. PRIVATE: the name is free text they wrote and
+ *  never leaves their own session — never logged, never shared (DOMAIN.md). */
+export interface WatchlistCollection {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+/** Server-enforced in create_watchlist_collection; mirrored here so the client
+ *  can explain the limit instead of failing on submit. */
+export const MAX_COLLECTIONS = 20;
 
 /** Where a toggle happened — the logging dimension. */
 export type WatchToggleSource = 'feed' | 'detail' | 'map' | 'watchlist';

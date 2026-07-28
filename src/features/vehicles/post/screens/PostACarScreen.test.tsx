@@ -20,16 +20,23 @@ import { PostACarScreen } from './PostACarScreen';
 // Capture the onComplete the screen hands the wizard so we can drive it directly
 // (and call it twice to exercise the retry path) without rendering the flow.
 let capturedOnComplete: (answers: Record<string, unknown>) => Promise<void>;
+// Captured too: onExit is the ONLY path the wizard uses to leave the flow, so
+// driving it is how the abandon signal gets asserted.
+let capturedOnExit: () => void;
 
-/** Mount the screen and flush the commit so capturedOnComplete is assigned. */
-async function mount() {
+/** Mount the screen and flush the commit so the captured props are assigned. */
+async function mount(props: React.ComponentProps<typeof PostACarScreen> = {}) {
   await act(async () => {
-    render(<PostACarScreen />);
+    render(<PostACarScreen {...props} />);
   });
 }
 jest.mock('@/shared/wizard', () => ({
-  WizardScreen: (props: { onComplete: (a: Record<string, unknown>) => Promise<void> }) => {
+  WizardScreen: (props: {
+    onComplete: (a: Record<string, unknown>) => Promise<void>;
+    onExit: () => void;
+  }) => {
     capturedOnComplete = props.onComplete;
+    capturedOnExit = props.onExit;
     return null;
   },
 }));
@@ -137,5 +144,53 @@ describe('handleComplete', () => {
     await expect(capturedOnComplete(ANSWERS)).rejects.toThrow('upload failed');
     expect(mockCreateIntent).not.toHaveBeenCalled();
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+});
+
+// The garage's exit nudge hangs off this callback, and its whole safety
+// argument is that a real theft victim never sees it. These are the tests that
+// keep that true.
+describe('onAbandon — the "they were only exploring" signal', () => {
+  it('fires when the wizard is left without creating anything', async () => {
+    const onAbandon = jest.fn();
+    await mount({ onAbandon });
+
+    await act(async () => {
+      capturedOnExit();
+    });
+
+    expect(onAbandon).toHaveBeenCalledTimes(1);
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  // The guard that matters. Someone who got as far as creating a draft and then
+  // hit a payment problem HAS had a car stolen — offering to "save a car for
+  // next time" would be tone-deaf, and their post already exists.
+  it('does NOT fire once a draft exists, even if payment failed', async () => {
+    const onAbandon = jest.fn();
+    mockPayBounty.mockResolvedValue({ outcome: 'cancelled' });
+    await mount({ onAbandon });
+
+    // Get far enough to create the draft, then cancel the payment...
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(mockSubmitPost).toHaveBeenCalledTimes(1);
+
+    // ...and now back out.
+    await act(async () => {
+      capturedOnExit();
+    });
+
+    expect(onAbandon).not.toHaveBeenCalled();
+    expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('still leaves cleanly when no handler is passed (the from-garage path)', async () => {
+    await mount();
+
+    await act(async () => {
+      capturedOnExit();
+    });
+
+    expect(mockBack).toHaveBeenCalledTimes(1);
   });
 });

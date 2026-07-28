@@ -59,6 +59,7 @@ import {
 } from '@/shared/ui';
 import { formatRecentLogs } from '@/shared/lib/logger';
 import { useRequireAuth } from '@/features/auth';
+import { useHasSavedCar } from '@/features/garage';
 
 import {
   countDeletionBlockingPosts,
@@ -162,6 +163,11 @@ function LoadedProfile({
   const router = useRouter();
   const toast = useToast();
   const { badges, setBadge } = useTabBadges();
+  // Drives the quiet "save your car" hint on the My cars row. Enabled
+  // unconditionally: this screen already fetches a profile, and after the first
+  // read the answer is served from the shared cache (a visit to /my-cars primes
+  // it for free).
+  const savedCar = useHasSavedCar({ enabled: true });
   const signOutRef = useRef<ConfirmDialogRef>(null);
   const deleteConfirmRef = useRef<ConfirmDialogRef>(null);
   const deleteBlockedRef = useRef<ConfirmDialogRef>(null);
@@ -240,10 +246,20 @@ function LoadedProfile({
           testID="row-my-posts"
         />
 
-        {/* My cars — a future garage of your vehicles (placeholder). */}
+        {/* My cars — the garage. The subtitle is the QUIET nudge: it shows only
+            when nothing is saved, never interrupts, and is the one prompt that
+            can't be dismissed — which is what lets the exit sheet and the
+            Explore card be so conservative about appearing at all. 'unknown'
+            (guest / failed load / fetch in flight) shows nothing rather than
+            guessing. */}
         <ListRow
           icon={Car}
           title="My cars"
+          subtitle={
+            savedCar === 'none'
+              ? 'Save your car — reporting it stolen later takes seconds'
+              : undefined
+          }
           onPress={() => router.push('/my-cars')}
           testID="row-my-cars"
         />

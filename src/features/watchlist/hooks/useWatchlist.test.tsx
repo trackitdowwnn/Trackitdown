@@ -16,8 +16,15 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { SessionState } from '@/features/auth';
 import type { PostSummary } from '@/shared/types';
 
-import type { WatchedPost, WatchedTombstone, WatchlistEntry } from '../types';
+import type { CollectionId, WatchedPost, WatchedTombstone, WatchlistEntry } from '../types';
 import { useWatchlist } from './useWatchlist';
+
+// Reached transitively: the hook records the newest watch's collection as the
+// target for the next save (mruCollection persists it).
+jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
 
 // useFocusEffect needs a navigation container in the real world; here it
 // behaves as a plain effect (fires on mount = the "first focus" the hook
@@ -51,15 +58,21 @@ const summary = (overrides: Partial<PostSummary>): PostSummary => ({
   ...overrides,
 });
 
-const postEntry = (id: string, status: PostSummary['status'] = 'active'): WatchedPost => ({
+const postEntry = (
+  id: string,
+  status: PostSummary['status'] = 'active',
+  collectionId: CollectionId = null,
+): WatchedPost => ({
   kind: 'post',
   watchedAt: '2026-07-21T10:00:00Z',
+  collectionId,
   post: summary({ id, status }),
 });
 
-const tombstone = (id: string): WatchedTombstone => ({
+const tombstone = (id: string, collectionId: CollectionId = null): WatchedTombstone => ({
   kind: 'tombstone',
   watchedAt: '2026-07-01T10:00:00Z',
+  collectionId,
   postId: id,
   status: 'expired',
   make: 'Ford',

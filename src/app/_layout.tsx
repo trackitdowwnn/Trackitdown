@@ -22,6 +22,8 @@ import { Platform, StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthGate, AuthSheet } from '@/features/auth';
+import { SaveYourCarSheet } from '@/features/garage';
+import { CollectionPickerSheet } from '@/features/watchlist';
 import { ToastProvider } from '@/shared/ui';
 
 // Platform-native screen transitions (motion audit): iOS gets the horizontal
@@ -81,6 +83,16 @@ export default function RootLayout() {
               {/* The one auth surface: opens over any screen when a gated
                   action stores a pending intent (useRequireAuth). */}
               <AuthSheet />
+              {/* Offers the garage to someone who opened the report wizard and
+                  left without posting. Mounted here for the same reason as
+                  AuthSheet: the wizard route unmounts on exit, so the sheet
+                  cannot live on the screen that triggers it. Inert until an
+                  intent is raised. */}
+              <SaveYourCarSheet />
+              {/* "Change" on the save toast lands here. Root-mounted for the
+                  same reason again: the toast outlives the feed cell whose
+                  bookmark raised it. Inert until an intent is raised. */}
+              <CollectionPickerSheet />
             </AuthGate>
             <StatusBar style="auto" />
           </BottomSheetModalProvider>

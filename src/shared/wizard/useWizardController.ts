@@ -13,7 +13,7 @@
  *        src/shared/wizard/WizardScreen.tsx (consumer).
  */
 
-import { useCallback, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 
 import {
@@ -60,6 +60,20 @@ export function useWizardController<TAnswers>(
 ) {
   const screens = useMemo(() => flattenFlow(flow), [flow]);
   const [nav, dispatch] = useReducer(wizardReducer, INITIAL_NAV_STATE);
+
+  // SAFETY: nav holds POSITIONS into `screens`. A flow that changes its screen
+  // list mid-run would leave them indexing a list that no longer exists. Reset
+  // navigation (never the answers) when that happens. Static flows — every flow
+  // except the garage's prefilled post, which expands its collapsed vehicle
+  // phase when the owner taps Edit — keep a stable `flow` identity, so this
+  // never fires for them and posting from scratch is unaffected.
+  const previousScreens = useRef(screens);
+  useEffect(() => {
+    if (previousScreens.current !== screens) {
+      previousScreens.current = screens;
+      dispatch({ type: 'reset' });
+    }
+  }, [screens]);
   const [answers, setAnswersState] = useState<Partial<TAnswers>>(
     initialAnswers ?? {},
   );

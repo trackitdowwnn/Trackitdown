@@ -22,23 +22,20 @@
  *          this mirrors); docs/LOGGING.md ([vehicles] tag, ids not PII).
  */
 
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { z } from 'zod';
 
-import { supabase } from '@/shared/api';
+import { supabase, uploadOwnFolderPhoto } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
-import type { PhotoTileStatus, PickedPhoto } from '@/shared/ui';
+import type { PhotoTileStatus } from '@/shared/ui';
 
 import { distinctiveFeaturesSchema } from '../lib/distinctiveFeatures';
 import type { CreatePostParams, CreatePostResult, PostACarAnswers } from '../types';
 
 const log = createLogger('vehicles');
 
-const POST_PHOTOS_BUCKET = 'post-photos';
-
-/** Public photos: bound the long edge but keep them sharp for the carousel. */
-const PHOTO_MAX_EDGE = 1600;
-const PHOTO_COMPRESS = 0.8;
+// The bucket name and the resize/compress settings moved to
+// src/shared/api/photoUpload.ts when the garage began performing the identical
+// upload — see uploadPostPhoto below.
 
 // --- Error translation -------------------------------------------------------
 
@@ -202,68 +199,16 @@ export function buildCreatePostParams(
 
 // --- Storage uploads ---------------------------------------------------------
 
-/** Stable, non-cryptographic hash (djb2) → base36. Used only to name a storage
- *  object deterministically from its source uri, so a retry overwrites. */
-function stableHash(input: string): string {
-  let hash = 5381;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = (hash * 33 + input.charCodeAt(index)) | 0;
-  }
-  return (hash >>> 0).toString(36);
-}
-
 /**
- * Resize (long edge → maxEdge, aspect preserved) + compress to JPEG bytes.
- * SAFETY: re-encoding to a fresh JPEG drops the source EXIF (incl. any GPS that
- * could pinpoint the owner's home). This is the current client-side control;
- * server-side EXIF stripping before public serving (SECURITY_AND_TRUST §3) is a
- * tracked cross-cutting gap for the media-hardening pass (avatars too).
+ * Upload one hero photo to post-photos/<userId>/... and return its public URL.
+ *
+ * Thin re-export of the SHARED uploader: the garage performs the identical
+ * upload (same bucket, same own-folder path) so that a saved photo URL is
+ * accepted by create_post with no re-upload. Kept exported under this name so
+ * existing posting call sites and their tests are unchanged.
  */
-async function toJpegBytes(
-  photo: PickedPhoto,
-  maxEdge: number,
-  compress: number,
-): Promise<ArrayBuffer> {
-  const context = ImageManipulator.manipulate(photo.uri);
-  if (photo.width >= photo.height) {
-    if (photo.width > maxEdge) context.resize({ width: maxEdge });
-  } else if (photo.height > maxEdge) {
-    context.resize({ height: maxEdge });
-  }
-  const rendered = await context.renderAsync();
-  const saved = await rendered.saveAsync({ compress, format: SaveFormat.JPEG });
-  const response = await fetch(saved.uri);
-  return response.arrayBuffer();
-}
+export const uploadPostPhoto = uploadOwnFolderPhoto;
 
-/**
- * Upload one hero photo to post-photos/<userId>/<hash>-<index>.jpg (own-folder
- * RLS) and return its public URL. The index disambiguates the (vanishingly
- * unlikely) case of two source uris hashing equal, so all 3–6 photos always get
- * distinct object names; upsert:true so a retry of the same photo overwrites.
- */
-export async function uploadPostPhoto(
-  userId: string,
-  photo: PickedPhoto,
-  index = 0,
-  // Namespaces the object key so distinctive-feature photos ('mark-') never
-  // collide with the hero photos (default ''), each still retry-overwritable.
-  keyPrefix = '',
-): Promise<string> {
-  const startedAt = Date.now();
-  log.debug('Uploading post photo', { userId, index });
-  const body = await toJpegBytes(photo, PHOTO_MAX_EDGE, PHOTO_COMPRESS);
-  const path = `${userId}/${keyPrefix}${stableHash(photo.uri)}-${index}.jpg`;
-  const { error } = await supabase.storage
-    .from(POST_PHOTOS_BUCKET)
-    .upload(path, body, { contentType: 'image/jpeg', upsert: true });
-  if (error) {
-    log.error('Post photo upload failed', { userId, index });
-    throw error;
-  }
-  log.debug('Post photo uploaded', { userId, index, durationMs: Date.now() - startedAt });
-  return supabase.storage.from(POST_PHOTOS_BUCKET).getPublicUrl(path).data.publicUrl;
-}
 
 // --- RPC call ----------------------------------------------------------------
 

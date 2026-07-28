@@ -13,9 +13,7 @@
  *        supabase/migrations/20260713190000_post_a_car.sql (create_post).
  */
 
-import type { PickedPhoto } from '@/shared/ui';
-
-import type { DistinctiveFeature } from './lib/distinctiveFeatures';
+import type { VehicleAnswers } from './lib/vehicleSteps';
 
 /** Where the car was taken from — mirrors the posts.stolen_from CHECK. */
 export type StolenFrom = 'driveway' | 'street' | 'car_park' | 'other';
@@ -35,28 +33,13 @@ export interface LastSeenLocation {
  * on `Partial<PostACarAnswers>` while the wizard is mid-flow; the per-step zod
  * schemas gate that each is present before its step can advance.
  */
-export interface PostACarAnswers {
+export interface PostACarAnswers extends VehicleAnswers {
   // --- Phase 1: the car -----------------------------------------------------
-  // NOTE: plate capture is deferred — no `plate` field for now. make/model/
-  // colour are the car's identity; buildCreatePostParams sends p_plate: null.
-  make: string;
-  model: string;
-  /** Canonical colour NAME from the swatch grid (a clean enum, not a hex). */
-  colour: string;
-  /** Free-text specifics for an escape colour ("Multicolour / wrapped" / "Other"),
-   *  e.g. "matte black wrap over silver". Empty for a plain colour. Stored to
-   *  posts.owner_note so it never pollutes the colour enum. */
-  colourNote: string;
-  /** DVLA-enrichable; null on the manual path when unknown. */
-  year: number | null;
-  /** DVLA-enrichable body style (e.g. "Hatchback"); null when unknown. */
-  bodyType: string | null;
-  /** Owner-authored evidence pairs — one photo + a description of a specific
-   *  mark (e.g. "Cracked nearside wing mirror"). Optional; 0–8. Replaced BOTH
-   *  the old free-text `descRecognise` prompt and the `featureKeys` chip
-   *  taxonomy step (a photographed mark identifies a car better than a chip). */
-  distinctiveFeatures: DistinctiveFeature[];
-  photos: PickedPhoto[];
+  // The vehicle-identity slice (make, model, colour, colourNote, year, bodyType,
+  // distinctiveFeatures, photos) is INHERITED from VehicleAnswers — the same
+  // fields the garage collects, so one shared step table serves both flows. See
+  // post/lib/vehicleSteps.tsx. Plate capture is deferred here (the garage does
+  // collect one); buildCreatePostParams sends p_plate: null.
 
   // --- Phase 2: when & where ------------------------------------------------
   /** ISO datetime; the step gates max = now. */
