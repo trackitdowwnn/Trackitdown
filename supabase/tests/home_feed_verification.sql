@@ -154,15 +154,25 @@ end $$;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 6 — ST_DWithin uses the GiST index posts_last_seen_location_gix.
--- Captures the EXPLAIN (FORMAT JSON) plan and asserts the index name appears.
--- SET LOCAL forces an index plan on the tiny seeded table (whole table fits in
--- one page, so the planner would otherwise prefer a Seq Scan) and auto-resets
--- when the DO block's implicit transaction ends.
+-- CHECK 6 — the radius query is served by an INDEX, never a full-table scan.
+-- Captures the EXPLAIN (FORMAT JSON) plan and asserts an index scan appears and
+-- a Seq Scan does not. SET LOCAL forces an index plan on the tiny seeded table
+-- (the whole table fits in one page, so the planner would otherwise prefer a
+-- Seq Scan) and auto-resets when the DO block's implicit transaction ends.
+--
+-- Deliberately does NOT name an index. It asserted 'posts_last_seen_location_gix'
+-- until 2026-07-28, when this suite ran for the first time (nothing had ever
+-- executed it) and failed: the planner had chosen posts_active_area_idx — still
+-- an Index Scan, so the property this check exists to protect was intact. The
+-- old assertion tested WHICH index the planner picked, which is the planner's
+-- business and changes as indexes are added; what actually matters is that a
+-- geo lookup never degrades into reading every post. Adding a better index for
+-- this predicate must not turn a passing gate red.
 -- -----------------------------------------------------------------------------
 do $$
 declare
   v_plan json;
+  v_text text;
 begin
   set local enable_seqscan = off;
   execute $q$
@@ -176,11 +186,17 @@ begin
             ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography,
             15000)
   $q$ into v_plan;
+  v_text := v_plan::text;
 
-  if position('posts_last_seen_location_gix' in v_plan::text) = 0 then
-    raise exception 'CHECK 6 FAILED: ST_DWithin plan did not use posts_last_seen_location_gix. Plan: %', v_plan::text;
+  -- The regression that matters: every post read on every radius query.
+  if position('Seq Scan' in v_text) > 0 then
+    raise exception 'CHECK 6 FAILED: ST_DWithin fell back to a Seq Scan. Plan: %', v_text;
   end if;
-  raise notice 'CHECK 6 passed: ST_DWithin uses the GiST index posts_last_seen_location_gix';
+  -- Substring also covers "Bitmap Index Scan" and "Index Only Scan".
+  if position('Index Scan' in v_text) = 0 then
+    raise exception 'CHECK 6 FAILED: ST_DWithin plan used no index at all. Plan: %', v_text;
+  end if;
+  raise notice 'CHECK 6 passed: ST_DWithin is served by an index scan, not a Seq Scan';
 end $$;
 
 

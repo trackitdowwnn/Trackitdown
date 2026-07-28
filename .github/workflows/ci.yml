@@ -54,9 +54,24 @@ jobs:
 
       # Fails the build if any committed file contains obvious secrets.
       # Lightweight guard — not a replacement for proper secret scanning.
+      #
+      # Matches secret VALUES, not the words. The original pattern was
+      # `(sk_live_|service_role|SUPABASE_SERVICE_ROLE)`, which fired on
+      # supabase/functions/_shared/clients.ts for two prose comments and a
+      # `requireEnv('SUPABASE_SERVICE_ROLE_KEY')` call — naming the variable you
+      # read a secret out of is the CORRECT way to handle one, so the check was
+      # failing the safe pattern, and it had left main red since 2026-07-27.
+      #
+      # A guard that cries wolf is worse than none: it teaches everyone to merge
+      # through red, which is how the SQL suites below came to never run at all.
+      # So each branch now requires something shaped like a real credential:
+      #   - a live Stripe key: sk_live_ followed by actual key characters
+      #   - a JWT: three base64url segments, which is what a leaked service-role
+      #     key actually looks like (they ARE JWTs)
+      # `requireEnv('SUPABASE_SERVICE_ROLE_KEY')` matches neither.
       - name: Basic secret scan
         run: |
-          if grep -rInE "(sk_live_|service_role|SUPABASE_SERVICE_ROLE)" \
+          if grep -rInE "(sk_live_[A-Za-z0-9]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})" \
             --include="*.ts" --include="*.tsx" --include="*.json" \
             --exclude-dir=node_modules . ; then
             echo "::error::Possible secret committed — see matches above."
