@@ -14,13 +14,19 @@
  */
 
 import { useRouter, useSegments } from 'expo-router';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { useStartupPermissionRequests } from '@/features/permissions';
+import { useContentReady } from '@/shared/lib/appReady';
 
 import { useAuthGate } from '../hooks/useAuthGate';
 import { BrandSplash } from './BrandSplash';
+
+/** Longest the splash will wait for content before showing the app regardless.
+ *  Generous enough to cover a slow first feed on mobile data, short enough that
+ *  a wedged request never reads as a broken app. */
+const MAX_CONTENT_WAIT_MS = 6000;
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const route = useAuthGate();
@@ -45,12 +51,34 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   }, [route, segments, router]);
 
+  // Keep the splash up past the routing decision, until the first screen has
+  // something on it — otherwise the feed assembles itself in public and the
+  // cold start reads as four transitions instead of one.
+  //
+  // ONLY for the 'app' route. Onboarding paints its own first slide instantly
+  // and never loads a feed, so waiting on content there would hang forever.
+  const contentReady = useContentReady();
+  const [waitedLongEnough, setWaitedLongEnough] = useState(false);
+  const waitingForContent = route === 'app' && !contentReady && !waitedLongEnough;
+
+  useEffect(() => {
+    if (!waitingForContent) {
+      return;
+    }
+    // The backstop. appReady is marked when the feed SETTLES, including on
+    // error, so this only fires if a request neither resolves nor rejects — a
+    // dead connection that never times out. Showing a half-loaded feed is bad;
+    // showing a splash forever is far worse, so the wait is always bounded.
+    const timer = setTimeout(() => setWaitedLongEnough(true), MAX_CONTENT_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [waitingForContent]);
+
   // Always render the navigator (Expo Router requires it mounted); cover it with
   // the splash while restoring, so the wrong screen never flashes underneath.
   return (
     <>
       {children}
-      {route === 'loading' ? (
+      {route === 'loading' || waitingForContent ? (
         <View style={StyleSheet.absoluteFill}>
           <BrandSplash />
         </View>

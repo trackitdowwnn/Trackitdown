@@ -15,6 +15,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { markContentReady } from '@/shared/lib/appReady';
+
 import type { FeedLocation, FeedSection } from '../types';
 import { fetchHomeFeed, fetchNearbyPosts } from '../api/feedApi';
 import { FEED_PAGE_SIZE } from '../lib/feedConfig';
@@ -95,7 +97,15 @@ export function useHomeFeed(location: FeedLocation | null): UseHomeFeedResult {
           }
         })
         .finally(() => {
-          if (token === requestToken.current && kind === 'refresh') {
+          if (token !== requestToken.current) {
+            return; // superseded — the newer load reports readiness instead
+          }
+          // The first screen has SETTLED (ready or error), so the brand splash
+          // can lift. Deliberately not gated on success: someone offline must
+          // reach the feed's error state rather than sit on a splash.
+          // Idempotent, so later refreshes are no-ops.
+          markContentReady();
+          if (kind === 'refresh') {
             setRefreshing(false);
           }
         });
