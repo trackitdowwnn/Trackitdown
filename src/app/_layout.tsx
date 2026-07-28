@@ -17,7 +17,9 @@
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { useCallback } from 'react';
 import { Platform, StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -35,6 +37,15 @@ const pushAnimation = Platform.select({
   default: 'default',
 } as const);
 
+// Keep the OS splash up until we have something to replace it with. Without
+// this it auto-hides the moment the root view mounts — which is BEFORE the
+// fonts resolve, and this component returns null until they do, so the user
+// saw the splash vanish onto a blank screen for a second or two.
+// Module scope on purpose: it must run before the first render, not in an
+// effect after it. A rejection is ignored — the only cause is the splash
+// already being gone, which is precisely the state we wanted.
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
@@ -47,14 +58,25 @@ export default function RootLayout() {
     'Satoshi-Black': require('../assets/fonts/Satoshi-Black.otf'),
   });
 
+  // Hand over from the OS splash only once this tree has actually painted, so
+  // BrandSplash is already on screen underneath it. onLayout, not an effect:
+  // an effect can fire a frame before the view is drawn, which is long enough
+  // to flash the background between the two.
+  const onLayoutRootView = useCallback(() => {
+    if (fontsLoaded || fontError) {
+      void SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, fontError]);
+
   // Hold first paint the (few ms) the faces take — a load FAILURE renders
-  // anyway on the system font rather than blanking the app.
+  // anyway on the system font rather than blanking the app. The OS splash is
+  // still covering the screen here, so this null is never seen.
   if (!fontsLoaded && !fontError) {
     return null;
   }
 
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView style={styles.root} onLayout={onLayoutRootView}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         {/* ToastProvider hosts the single app-wide toast above all screens, and
             MUST stay OUTSIDE BottomSheetModalProvider. @gorhom/bottom-sheet
