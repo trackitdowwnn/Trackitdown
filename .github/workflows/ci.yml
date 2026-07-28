@@ -1,8 +1,20 @@
-# WHAT:  CI pipeline — lint, typecheck, and test on every push and PR.
+# WHAT:  CI pipeline — two jobs. `checks` runs lint, typecheck and the Jest
+#        suite; `db` applies every migration to a throwaway Postgres and runs
+#        the SQL verification suites in supabase/tests/.
 # WHY:   An AI writes most of this code fast; CI is the deterministic
 #        backstop that keeps main green. Tier 1 tests (money/safety)
 #        must pass here — see docs/TESTING.md.
-# LINKS: docs/TESTING.md, package.json scripts (lint, typecheck, test).
+#
+#        The `db` job was added 2026-07-27 after we found that NOTHING had ever
+#        run the SQL suites. Several of those files say in their own headers
+#        that they gate CI — post_payment_verification and
+#        refund_cancel_verification cover MONEY paths — but they were only ever
+#        invoked by hand, which in practice meant almost never. A suite nobody
+#        runs is worse than no suite: it reads like a guarantee and isn't one.
+#        (The garage suite shipped with a signature mismatch that made the whole
+#        file abort on its first statement; only a real run surfaces that.)
+# LINKS: docs/TESTING.md, scripts/test-db.sh, supabase/tests/*.sql,
+#        package.json scripts (lint, typecheck, test, test:db).
 
 name: CI
 
@@ -42,11 +54,73 @@ jobs:
 
       # Fails the build if any committed file contains obvious secrets.
       # Lightweight guard — not a replacement for proper secret scanning.
+      #
+      # Matches secret VALUES, not the words. The original pattern was
+      # `(sk_live_|service_role|SUPABASE_SERVICE_ROLE)`, which fired on
+      # supabase/functions/_shared/clients.ts for two prose comments and a
+      # `requireEnv('SUPABASE_SERVICE_ROLE_KEY')` call — naming the variable you
+      # read a secret out of is the CORRECT way to handle one, so the check was
+      # failing the safe pattern, and it had left main red since 2026-07-27.
+      #
+      # A guard that cries wolf is worse than none: it teaches everyone to merge
+      # through red, which is how the SQL suites below came to never run at all.
+      # So each branch now requires something shaped like a real credential:
+      #   - a live Stripe key: sk_live_ followed by actual key characters
+      #   - a JWT: three base64url segments, which is what a leaked service-role
+      #     key actually looks like (they ARE JWTs)
+      # `requireEnv('SUPABASE_SERVICE_ROLE_KEY')` matches neither.
       - name: Basic secret scan
         run: |
-          if grep -rInE "(sk_live_|service_role|SUPABASE_SERVICE_ROLE)" \
+          if grep -rInE "(sk_live_[A-Za-z0-9]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})" \
             --include="*.ts" --include="*.tsx" --include="*.json" \
             --exclude-dir=node_modules . ; then
             echo "::error::Possible secret committed — see matches above."
             exit 1
           fi
+
+  # The SQL verification suites. These are the Tier 1 gates for RLS, the
+  # SECURITY DEFINER boundaries, refunds and escrow — properties that CANNOT be
+  # asserted from Jest, because they live in Postgres. Runs on a throwaway local
+  # stack, so it never touches a real project and needs no secrets.
+  #
+  # Separate job, not a step in `checks`: it needs Docker and takes minutes, and
+  # keeping it apart means a lint failure and an RLS failure are told apart at a
+  # glance.
+  db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The repo pins the CLI as a devDependency, so `npx supabase` in
+      # scripts/test-db.sh resolves to that exact version — no drift between
+      # what CI runs and what a developer runs locally.
+      - name: Show Supabase CLI version
+        run: npx supabase --version
+
+      # psql is what actually executes the suites (test-db.sh pipes each file
+      # through it with ON_ERROR_STOP=1). Present on the runner image, but
+      # asserted here so a base-image change fails loudly instead of skipping.
+      - name: Check psql is available
+        run: psql --version
+
+      # Boots Postgres + the API. `db reset` inside test-db.sh then applies
+      # every migration and supabase/seed.sql from scratch, which is also the
+      # only thing that proves the migrations apply cleanly in order.
+      - name: Start local Supabase stack
+        run: npx supabase start
+
+      - name: Run SQL verification suites
+        run: npm run test:db
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: npx supabase stop --no-backup

@@ -63,6 +63,14 @@ jest.mock('@gorhom/bottom-sheet', () => {
   };
 });
 
+// The garage barrel reaches the supabase client through garageApi. This screen
+// only needs the hook's ANSWER (it drives the My cars hint), so mock at the
+// feature boundary; `mockSavedCar` lets a test drive all three states.
+let mockSavedCar: 'unknown' | 'none' | 'some' = 'some';
+jest.mock('@/features/garage', () => ({
+  useHasSavedCar: () => mockSavedCar,
+}));
+
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
@@ -152,6 +160,39 @@ describe('signed out', () => {
     });
     expect(getByTestId('profile-header')).toBeTruthy(); // the hero card
     expect(getByText('Member since May 2026')).toBeTruthy();
+  });
+});
+
+// The quiet, undismissable garage nudge. It is the permanent safety net behind
+// the two pushy nudges — which is why it must be right in every state, and must
+// stay SILENT when we don't actually know the answer.
+describe('the My cars hint', () => {
+  afterEach(() => {
+    mockSavedCar = 'some';
+  });
+
+  it('invites someone with no saved car to add one', async () => {
+    mockSavedCar = 'none';
+    const { getByText } = await render(<ProfileScreen />);
+
+    expect(getByText('Save your car — reporting it stolen later takes seconds')).toBeTruthy();
+  });
+
+  it('says nothing once a car is saved', async () => {
+    mockSavedCar = 'some';
+    const { queryByText, getByTestId } = await render(<ProfileScreen />);
+
+    expect(queryByText(/Save your car/)).toBeNull();
+    expect(getByTestId('row-my-cars')).toBeTruthy(); // the row itself stays
+  });
+
+  // 'unknown' covers a guest, a failed fetch and a request in flight. Guessing
+  // would either nag someone who has a car or flash a hint that then vanishes.
+  it('says nothing while the answer is unknown', async () => {
+    mockSavedCar = 'unknown';
+    const { queryByText } = await render(<ProfileScreen />);
+
+    expect(queryByText(/Save your car/)).toBeNull();
   });
 });
 

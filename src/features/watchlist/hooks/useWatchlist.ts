@@ -20,14 +20,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from '@/features/auth';
 
 import { fetchWatchedPostIds, fetchWatchlist } from '../api/watchlistApi';
+import { noteWatchlistLoaded } from '../lib/mruCollection';
 import { ensureWatchedHydrated } from '../lib/watchedStore';
-import type { WatchlistEntry } from '../types';
+import type { CollectionId, WatchlistEntry } from '../types';
 
 export type WatchlistStatus = 'loading' | 'ready' | 'error';
 
+/**
+ * Which watches to group. A literal `'all'` rather than an optional
+ * collectionId: `null` is a REAL scope (the implicit "Saved" bucket), so an
+ * optional field would make "everything" and "the unfiled ones" the same call.
+ */
+export type WatchlistScope = 'all' | { collectionId: CollectionId };
+
 export interface UseWatchlistResult {
   status: WatchlistStatus;
-  /** Watches on still-active posts, newest watch first. */
+  /** Every loaded entry, unscoped — what the grid groups into tiles. */
+  entries: WatchlistEntry[];
+  /** Watches on still-active posts in scope, newest watch first. */
   active: WatchlistEntry[];
   /** Resolved within their 30-day window — the "No longer active" section. */
   resolved: WatchlistEntry[];
@@ -40,7 +50,7 @@ function isResolved(entry: WatchlistEntry): boolean {
   return entry.kind === 'tombstone' || entry.post.status !== 'active';
 }
 
-export function useWatchlist(): UseWatchlistResult {
+export function useWatchlist(scope: WatchlistScope = 'all'): UseWatchlistResult {
   const session = useSession();
   const userId = session.status === 'signedIn' ? session.userId : null;
 
@@ -73,6 +83,10 @@ export function useWatchlist(): UseWatchlistResult {
         .then((entries) => {
           setLoaded({ userId: uid, entries });
           setErrorFor(null);
+          // The payload is already ordered watched_at desc, so the newest
+          // entry tells us which list this user is currently working in —
+          // free, and right across devices in a way local storage can't be.
+          noteWatchlistLoaded(uid, entries);
         })
         .catch(() => {
           // fetchWatchlist already logged the failure.
@@ -133,11 +147,14 @@ export function useWatchlist(): UseWatchlistResult {
             ? 'ready'
             : 'loading';
   const entries = current ?? [];
+  const inScope =
+    scope === 'all' ? entries : entries.filter((e) => e.collectionId === scope.collectionId);
 
   return {
     status,
-    active: entries.filter((entry) => !isResolved(entry)),
-    resolved: entries.filter(isResolved),
+    entries,
+    active: inScope.filter((entry) => !isResolved(entry)),
+    resolved: inScope.filter(isResolved),
     refreshing,
     refresh,
     retry,

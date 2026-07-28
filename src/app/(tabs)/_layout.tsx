@@ -22,6 +22,7 @@ import { Bookmark, Compass, MessageCircle, Plus, User } from 'lucide-react-nativ
 import { useMemo } from 'react';
 
 import { useRequireAuth } from '@/features/auth';
+import { useHasSavedCar } from '@/features/garage';
 import { useProfileTab } from '@/features/profile';
 import {
   AppTabBar,
@@ -52,6 +53,21 @@ function BadgedTabs() {
   const router = useRouter();
   const requireAuth = useRequireAuth();
   const profileTab = useProfileTab();
+
+  // Where + goes: someone with cars in the garage picks one and gets the whole
+  // vehicle phase prefilled; everyone else goes straight to the blank wizard.
+  //
+  // Resolved HERE, before the tap, so the decision costs nothing at the moment
+  // of a theft — no spinner, no chooser that turns out to be empty. 'unknown'
+  // (guest, still loading, failed fetch) means the blank wizard: the honest
+  // default is the one that always works.
+  //
+  // `enabled` is true rather than gated on the nudge rules, because unlike
+  // those this answer is needed for EVERY signed-in user. It is one
+  // list_my_vehicles per app session (useHasSavedCar dedupes and caches it in
+  // savedCarSignal), not one per mount of this layout.
+  const savedCar = useHasSavedCar({ enabled: true });
+  const startPostRoute = savedCar === 'some' ? '/report-stolen' : '/post-a-car';
 
   // Session/avatar changes re-render this layout, so the tab bar reacts live:
   // sign-in flips "Profile" → "You", an EditProfile avatar save (shared
@@ -85,8 +101,8 @@ function BadgedTabs() {
             // Production still gates — delete this __DEV__ branch to restore.
             onPress: () =>
               __DEV__
-                ? router.push('/post-a-car')
-                : requireAuth({ context: 'post_car', run: () => router.push('/post-a-car') }),
+                ? router.push(startPostRoute)
+                : requireAuth({ context: 'post_car', run: () => router.push(startPostRoute) }),
           }}
         />
       )}

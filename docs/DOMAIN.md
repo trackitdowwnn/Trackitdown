@@ -137,6 +137,30 @@ hearing it was found is the failure mode the watchlist exists to prevent:
 (Approved 2026-07-22 with the watchlist feature; enforced server-side in
 `get_my_watchlist`, SECURITY DEFINER.)
 
+**Collections (named lists).** A watcher can file saved cars into their own named
+collections — "My commute", "Near work" — so the list matches where they actually
+travel. Airbnb's wishlist mechanics, translated:
+
+- **A saved post belongs to at most ONE collection.** Not a tagging system. Moving
+  it between collections is a move, never a copy.
+- Saving is **never blocked by a choice**: the bookmark saves instantly to the
+  collection last used, and the confirmation offers to change it afterwards.
+- Cars not filed anywhere sit in an implicit **"Saved"** bucket. That bucket is not
+  a real list: it cannot be renamed or deleted, and it is how every pre-existing
+  watch continues to appear.
+- **Deleting a collection never deletes the cars in it** — they return to "Saved".
+- Cap: 20 collections per user.
+- **A collection is private user metadata.** Its name is free text the user wrote
+  and is subject to the same rule as the watch itself: no surface outside the
+  owner's own session ever exposes a collection, its name, its contents or its
+  existence, and names never reach logs (same rule as `vehicles.nickname`).
+- **Sharing and collaborators are OUT — permanently, not deferred.** Airbnb's
+  wishlists can be shared; ours cannot. A shared list of stolen cars someone is
+  watching is a stalking surface, and it would collide head-on with the
+  no-watcher-exposure rule above.
+
+(Approved 2026-07-27 with the collections feature.)
+
 ## Bounty rules (v1 — deliberately simple)
 
 - Minimum bounty: £50. Maximum: £5,000 (fraud ceiling — revisit later).
@@ -260,6 +284,48 @@ A post carries structured, spotter-useful data beyond make/model/plate:
 All fields are nullable and captured by the posting wizard (not yet built);
 the detail screen renders each only when present, so old posts never break.
 (Approved 2026-07-13 with the post-detail content-density pass.)
+
+## Garage (saved vehicles)
+
+A user can pre-register their own cars so that reporting one stolen takes
+seconds instead of minutes. A saved vehicle is **not a post**: it is private,
+unpublished, unsearchable, and carries no money or lifecycle state.
+
+- **Cap: 5 vehicles per account.** Server-enforced (`VEHICLE_LIMIT_REACHED`);
+  the client explains rather than failing at submit.
+- **Everything except make/model/colour is optional** — including the plate and
+  the photos. Adding a car has to stay a 60-second job or nobody does it, and a
+  half-filled saved car is still worth more than none. Posting re-imposes its
+  own 3–6 photo minimum, so a sparse car is never posted short: the prefilled
+  wizard keeps the real photos step.
+- **A post SNAPSHOTS the vehicle; it never references it.** Posting from the
+  garage copies the car's details onto the post (posts already store make /
+  model / colour / year / body type / plate denormalised, with their own photo
+  and distinctive-feature rows). `posts.vehicle_id` is provenance only —
+  nothing reads it for display, and it is `ON DELETE SET NULL`. Editing or
+  deleting a saved car a year later therefore CANNOT alter or orphan a
+  historical recovery record. This is a hard rule, asserted by CHECK 4 of
+  `supabase/tests/garage_verification.sql`.
+- **NOT YET WIRED — the post↔vehicle link.** The intent is that a car with a
+  live post shows as "Currently reported stolen" in the garage, its report
+  action replaced by a link to the listing, and that it cannot be removed until
+  that listing closes. The server side exists (`posts.vehicle_id`,
+  `is_currently_posted`, `VEHICLE_HAS_ACTIVE_POST`) and the UI renders it, but
+  **nothing writes `posts.vehicle_id` yet**: `create_post` has no `p_vehicle_id`
+  parameter, and the posting client still sends `p_plate: null` (plate capture
+  was removed from the wizard on 2026-07-24). So today `is_currently_posted` is
+  always false, that UI never appears, and one-active-post-per-plate stays
+  dormant on every path. Closing this needs a `create_post` migration plus the
+  plate plumbed through `buildCreatePostParams` — tracked in
+  `src/features/garage/README.md`.
+- **No ownership verification.** The garage deliberately does NOT collect a V5C:
+  it would buy no time (a paid post is already live instantly) and would require
+  the moderator queue, which does not exist. `vehicles.verification_state` is a
+  reserved column that nothing writes. See SECURITY_AND_TRUST.md §2's open gap.
+- **Privacy:** a saved vehicle is owner-only and is deleted with the vehicle or
+  the account (SECURITY_AND_TRUST.md §3).
+
+(Approved 2026-07-27 with the garage feature.)
 
 ## Account deletion
 

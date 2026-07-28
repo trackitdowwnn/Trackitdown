@@ -77,7 +77,20 @@ export type WizardNavAction =
   /** Go back one screen; during a review edit, cancel back to review. */
   | { type: 'back' }
   /** Jump from the review screen to a step to edit it. */
-  | { type: 'editStep'; targetIndex: number; reviewIndex: number };
+  | { type: 'editStep'; targetIndex: number; reviewIndex: number }
+  /**
+   * Return to the first screen and drop any review-edit spur.
+   *
+   * SAFETY: nav.index and nav.returnToIndex are POSITIONS into the flattened
+   * screen list. A flow whose screens change identity mid-run (the garage's
+   * prefilled post expands its collapsed vehicle phase back to the full seven
+   * steps) would otherwise leave those positions pointing into a list that no
+   * longer exists — landing the user on an arbitrary screen, and, from a review
+   * edit spur, sending "next" to a random step instead of back to review. That
+   * path ends in a Stripe charge, so it resets deterministically instead.
+   * Answers live in separate state and are NOT touched.
+   */
+  | { type: 'reset' };
 
 export function wizardReducer(
   state: WizardNavState,
@@ -107,6 +120,8 @@ export function wizardReducer(
         returnToIndex: action.reviewIndex,
         direction: -1,
       };
+    case 'reset':
+      return { ...INITIAL_NAV_STATE, direction: 1 };
   }
 }
 

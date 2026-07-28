@@ -14,10 +14,11 @@
 import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
+import { samplePhotos } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import type { PostStatus } from '@/shared/types';
 
-import type { WatchlistEntry } from '../types';
+import type { CollectionId, WatchlistEntry } from '../types';
 
 const log = createLogger('watchlist');
 
@@ -33,6 +34,11 @@ const watchRowSchema = z.object({
   colour: z.string(),
   thumbnail_url: z.string().nullable(),
   resolved_at: z.string().nullable(),
+  // Which named list this watch is filed in; null = the implicit "Saved"
+  // bucket. Present on BOTH payload shapes (full row and tombstone) since
+  // migration 20260801110000 — a missing key here would silently file every
+  // saved car into Saved.
+  collection_id: z.guid().nullable(),
   // Nulled on tombstones by the RPC (SAFETY: a tombstone exposes less than
   // the post's active-era public payload).
   plate: z.string().nullable(),
@@ -50,6 +56,7 @@ function toEntry(row: WatchRow): WatchlistEntry {
     return {
       kind: 'tombstone',
       watchedAt: row.watched_at,
+      collectionId: row.collection_id,
       postId: row.id,
       status: row.status as PostStatus,
       make: row.make,
@@ -58,7 +65,9 @@ function toEntry(row: WatchRow): WatchlistEntry {
       // The RPC guarantees resolved_at on closed rows; watched_at is a
       // defensive fallback that can only move the drop-off EARLIER.
       resolvedAt: row.resolved_at ?? row.watched_at,
-      thumbnailUrl: row.thumbnail_url,
+      // Same DEV fallback as the full row below — a tombstone for a seeded
+      // post would otherwise be the only card in the app with no picture.
+      thumbnailUrl: row.thumbnail_url ?? samplePhotos(row.id)[0]?.uri ?? null,
     };
   }
   // Full rows come from home_feed_post_json, which always carries the post's
@@ -70,9 +79,16 @@ function toEntry(row: WatchRow): WatchlistEntry {
   return {
     kind: 'post',
     watchedAt: row.watched_at,
+    collectionId: row.collection_id,
     post: {
       id: row.id,
-      photos: row.thumbnail_url ? [{ uri: row.thumbnail_url }] : [],
+      // The RPC returns the post's REAL first photo. Seeded posts have none,
+      // and the feed RPC carries no photo field at all — so feedApi fills every
+      // dev card from samplePhotos(id). Without the same fallback here, keyed
+      // on the same id, a car with pictures in the feed loses them the moment
+      // it's saved, which reads as a broken watchlist rather than seed data.
+      // samplePhotos returns [] in production, where the real url wins anyway.
+      photos: row.thumbnail_url ? [{ uri: row.thumbnail_url }] : samplePhotos(row.id),
       make: row.make,
       model: row.model,
       colour: row.colour,
@@ -112,22 +128,54 @@ export async function fetchWatchedPostIds(): Promise<string[]> {
   return (data ?? []).map((row) => row.post_id as string);
 }
 
-/** Insert a watch. RLS pins user_id to the caller and requires the post to
- *  be visible (see-before-act) — a rejected insert throws. */
-export async function addWatch(postId: string): Promise<void> {
+/**
+ * Insert a watch, optionally filed into one of the caller's collections. RLS
+ * pins user_id to the caller and requires the post to be visible
+ * (see-before-act) — a rejected insert throws.
+ *
+ * Returns the collection the watch ACTUALLY landed in, which is not always the
+ * one asked for: see the fallback below.
+ */
+export async function addWatch(
+  postId: string,
+  collectionId: CollectionId = null,
+): Promise<CollectionId> {
   const { data: sessionData } = await supabase.auth.getSession();
   const userId = sessionData.session?.user.id;
   if (!userId) {
     throw new Error('addWatch requires a session (the gate guarantees one)');
   }
-  const { error } = await supabase
-    .from('watchlist_items')
-    .insert({ user_id: userId, post_id: postId });
+
+  const insert = (target: CollectionId) =>
+    supabase.from('watchlist_items').insert({
+      user_id: userId,
+      post_id: postId,
+      collection_id: target,
+    });
+
+  const { error } = await insert(collectionId);
   // A duplicate (unique-pair) insert means we're already watching — treat
   // as success so a double-tap can't surface a spurious error.
-  if (error && error.code !== '23505') {
-    throw error;
+  if (!error || error.code === '23505') {
+    return collectionId;
   }
+
+  // The target collection is gone — deleted on another device, or before our
+  // cached "most recently used" value caught up. The insert policy rejects it,
+  // but "a save is NEVER blocked by a filing problem" is the rule this feature
+  // is built on: fall back to Saved rather than surfacing an error the user
+  // can neither understand nor act on. Only for a non-null target; a rejection
+  // with no collection at all is a real failure (e.g. the post isn't visible).
+  if (collectionId !== null) {
+    const retry = await insert(null);
+    if (!retry.error || retry.error.code === '23505') {
+      log.warn('watch_collection_fallback', { postId });
+      return null;
+    }
+    throw retry.error;
+  }
+
+  throw error;
 }
 
 /** Delete a watch. RLS scopes the delete to the caller's own rows. */

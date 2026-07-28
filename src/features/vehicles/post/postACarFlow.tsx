@@ -17,7 +17,6 @@
 
 import { z } from 'zod';
 
-import { photoListSchema } from '@/shared/ui';
 import { formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
 // Direct path (not the '@/shared/lib' barrel) to keep this config's module graph
 // off the supabase client, mirroring the dateTimeLabel import above.
@@ -25,21 +24,15 @@ import { formatPounds } from '@/shared/lib/money';
 import type { WizardFlow } from '@/shared/wizard';
 
 import {
-  BodyTypeStep,
   BountyStep,
-  ColourStep,
   DescriptionStep,
-  DistinctiveFeaturesStep,
   LastSeenWhenStep,
   LastSeenWhereStep,
-  MakeStep,
-  ModelStep,
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
   DEFAULT_BOUNTY_PENCE,
-  PhotosStep,
-  YearStep,
 } from './components/postSteps';
+import { buildVehicleSteps } from './lib/vehicleSteps';
 import type { PostACarAnswers } from './types';
 
 /** Seed the slider mid-range so the bounty step starts valid and non-dirty. */
@@ -66,107 +59,10 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         body: "Let's get the details spotters need — it takes about five minutes.",
         ctaLabel: 'Get started',
       },
-      steps: [
-        {
-          // Make — the first step of the flow. The full-screen searchable
-          // picker (MakeField) earns a screen; make is always collected
-          // (create_post requires make/model/colour).
-          id: 'make',
-          question: 'What make is your car?',
-          component: MakeStep,
-          schema: z.object({ make: z.string().trim().min(1) }),
-          reviewLabel: 'Make',
-          reviewValue: (answers) => answers.make ?? '',
-        },
-        {
-          // Model — its own step (2026-07-23), dependent on the make: the
-          // picker lists that make's models (free text for an unlisted make).
-          // Changing the make clears the model (MakeStep/makeChangePatch), so
-          // this step re-gates as incomplete and the review blocks submit until
-          // a model under the new make is chosen. The title folds in the chosen
-          // make ("Which BMW model?") so the context lives in the question
-          // itself — no separate make chip in the body.
-          id: 'model',
-          question: (answers) =>
-            answers.make?.trim() ? `Which ${answers.make.trim()} model?` : 'Which model?',
-          component: ModelStep,
-          schema: z.object({ model: z.string().trim().min(1) }),
-          reviewLabel: 'Model',
-          reviewValue: (answers) => answers.model ?? '',
-        },
-        {
-          // Colour — its own step (2026-07-23): a named-swatch grid (ColourField)
-          // producing a canonical colour NAME (a clean enum). The escape colours
-          // ("Multicolour / wrapped" / "Other") capture a free-text note stored
-          // separately (colourNote → owner_note), so the colour value stays a
-          // clean enum for the card/detail text and future colour filters.
-          id: 'colour',
-          question: 'What colour is it?',
-          component: ColourStep,
-          schema: z.object({ colour: z.string().trim().min(1) }),
-          reviewLabel: 'Colour',
-          reviewValue: (answers) => {
-            const colour = answers.colour ?? '';
-            const noteText = answers.colourNote?.trim();
-            return noteText ? `${colour} — ${noteText}` : colour;
-          },
-        },
-        {
-          // Body type — Airbnb-style icon cards (BodyTypeStep / CardSelect).
-          // REQUIRED: Next is gated on a pick; a "Not sure" card is the escape
-          // for an owner who doesn't know (stored, but suppressed on the detail).
-          id: 'body-type',
-          question: 'What type of car is it?',
-          component: BodyTypeStep,
-          schema: z.object({ bodyType: z.string().trim().min(1) }),
-          reviewLabel: 'Body type',
-          reviewValue: (answers) => answers.bodyType?.trim() || 'Not provided',
-        },
-        {
-          // Year — its own step, optional. Bounded to the posts.year CHECK
-          // (1900–2100) so an out-of-range year is caught here, not as a raw
-          // CHECK violation at submit.
-          id: 'year',
-          question: 'What year is it?',
-          component: YearStep,
-          schema: z.object({
-            year: z.number().int().min(1900).max(2100).nullish(),
-          }),
-          reviewLabel: 'Year',
-          reviewValue: (answers) => (answers.year ? String(answers.year) : 'Not provided'),
-        },
-        {
-          // Distinctive features — owner photo+description evidence pairs (e.g.
-          // "Cracked nearside wing mirror"). Optional (many cars have none);
-          // each photo uploads on submit with the rest (atomic). Replaced BOTH
-          // the old free-text "recognise it?" prompt AND the vehicle_feature
-          // chip taxonomy step — a photographed feature identifies a car far
-          // better than a checkbox. (post_feature/vehicle_feature stay for old
-          // posts; create_post still accepts p_feature_keys, now always null here.)
-          id: 'distinctive-features',
-          question: 'Any distinctive features?',
-          component: DistinctiveFeaturesStep,
-          // Next requires at least one feature; a car with none uses the "None to
-          // add" link, which advances without any. `optional` so skipping (0
-          // features) never blocks the final Post & pay CTA — the schema below
-          // only gates THIS step's Next, not submission.
-          optional: true,
-          schema: z.object({ distinctiveFeatures: z.array(z.unknown()).min(1) }),
-          reviewLabel: 'Distinctive features',
-          reviewValue: (answers) => {
-            const count = answers.distinctiveFeatures?.length ?? 0;
-            return count > 0 ? `${count} added` : 'None added';
-          },
-        },
-        {
-          id: 'photos',
-          question: 'Add photos of your car',
-          component: PhotosStep,
-          schema: z.object({ photos: photoListSchema(3, 6) }),
-          reviewLabel: 'Photos',
-          reviewValue: (answers) => `${answers.photos?.length ?? 0} added`,
-        },
-      ],
+      // The SHARED vehicle-identity slice — the same seven steps the garage
+      // collects (lib/vehicleSteps.tsx). Posting demands 3–6 photos: a spotter
+      // needs several angles to recognise a car.
+      steps: buildVehicleSteps<PostACarAnswers>({ minPhotos: 3 }),
     },
     {
       id: 'when-where',

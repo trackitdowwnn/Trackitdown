@@ -25,6 +25,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
+import { SaveYourCarCard, useGarageNudgeCard } from '@/features/garage';
+import { useMyProfile } from '@/features/profile';
 import { WatchToggle } from '@/features/watchlist';
 import { spacing } from '@/shared/theme';
 import type { GeoRegion, PostSummary } from '@/shared/types';
@@ -87,6 +89,15 @@ export function HomeFeedScreen() {
   const { location, showLocationPrimer, setArea, requestMyLocation } = useFeedLocation();
   const { status, sections, refresh, refreshing, loadMore, loadingMore, retry } =
     useHomeFeed(location);
+
+  // The garage nudge. Account age is read here and INJECTED — the garage must
+  // never import features/profile, since profile already imports the garage
+  // (the My cars hint) and that would close a cycle. The hook keeps its own
+  // fetch behind cheap checks, so a new or already-offered user costs nothing.
+  const myProfile = useMyProfile();
+  const garageNudge = useGarageNudgeCard({
+    accountCreatedAt: myProfile.status === 'ready' ? myProfile.profile.createdAt : null,
+  });
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mapPillVisible, setMapPillVisible] = useState(true);
@@ -298,6 +309,19 @@ export function HomeFeedScreen() {
         <LocationPrimerCard
           onUseMyLocation={() => void requestMyLocation()}
           onSetArea={() => setPickerOpen(true)}
+        />
+      ) : null}
+      {/* The garage nudge — the one reaching surface for a feature whose whole
+          value is being set up BEFORE anything goes wrong. Deliberately UNDER
+          the location primer: getting the feed pointed at the right area is the
+          more urgent setup step, and two stacked cards would be a wall. */}
+      {garageNudge.visible ? (
+        <SaveYourCarCard
+          onAdd={() => {
+            garageNudge.accept();
+            router.push('/add-vehicle');
+          }}
+          onDismiss={garageNudge.dismiss}
         />
       ) : null}
       {display.kind === 'good-news-empty' && location?.mode === 'local' ? (

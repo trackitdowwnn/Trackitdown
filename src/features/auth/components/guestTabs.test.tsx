@@ -22,15 +22,43 @@
 
 import { fireEvent, render } from '@testing-library/react-native';
 
+import { ToastProvider } from '@/shared/ui';
+
 import InboxScreen from '../../../app/(tabs)/inbox';
-// The screen file, not the route/barrel: the vehicles index also exports
-// PostDetailScreen, whose import chain reaches the real supabase client.
-import { MyCarsScreen } from '../../../features/vehicles/screens/MyCarsScreen';
+// The screen file, not the route/barrel: the garage index also exports the add
+// flow, whose import chain reaches the real supabase client.
+import { MyCarsScreen } from '../../../features/garage/screens/MyCarsScreen';
 
 jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   require('react-native-safe-area-context/jest/mock').default,
 );
+
+// MyCarsScreen now has a real data layer (the garage), so its module graph
+// reaches the supabase client, which throws without env config. This test only
+// cares about the SIGNED-OUT branch — it never loads a vehicle — so stub the
+// client and the garage hook rather than configure a real one.
+jest.mock('@/shared/api', () => ({ supabase: { rpc: jest.fn(), auth: {} } }));
+
+// The garage screen carries an overflow sheet + a remove confirm, both gorhom
+// sheets, which need a modal provider the app root supplies at runtime.
+jest.mock('@gorhom/bottom-sheet', () => jest.requireActual('@gorhom/bottom-sheet/mock'));
+
+// ToastProvider (which the garage screen needs) calls useReducedMotion, absent
+// from reanimated's stock mock — the same shim PostDetailScreen.test uses.
+jest.mock('react-native-reanimated', () => {
+  const actual = jest.requireActual('react-native-reanimated/mock');
+  return { __esModule: true, ...actual, default: actual.default, useReducedMotion: () => true };
+});
+jest.mock('../../../features/garage/hooks/useMyVehicles', () => ({
+  useMyVehicles: () => ({
+    status: 'ready',
+    vehicles: [],
+    refreshing: false,
+    refresh: jest.fn(),
+    retry: jest.fn(),
+  }),
+}));
 
 jest.mock('expo-router', () => ({
   useNavigation: () => ({ setOptions: jest.fn() }),
@@ -63,25 +91,38 @@ beforeEach(() => {
 });
 
 describe('My Cars tab (guest)', () => {
+  // The garage screen toasts (e.g. the vehicle cap), so it needs the provider.
+  const renderGarage = () =>
+    render(
+      <ToastProvider>
+        <MyCarsScreen />
+      </ToastProvider>,
+    );
+
   it('renders the invitation — and does NOT auto-fire the auth sheet', async () => {
-    const { getByText } = await render(<MyCarsScreen />);
+    const { getByText } = await renderGarage();
     expect(getByText('Your cars live here')).toBeTruthy();
     expect(mockRequireAuth).not.toHaveBeenCalled(); // rendering never gates
   });
 
   it('"Log in" goes through the gate with the tab context', async () => {
-    const { getByText } = await render(<MyCarsScreen />);
+    const { getByText } = await renderGarage();
     fireEvent.press(getByText('Log in'));
     expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'tab_my_cars' });
   });
 
-  it('signed in: shows the garage placeholder, no invitation', async () => {
+  it('signed in with an empty garage: one CTA, nothing competing with it', async () => {
     mockSession = { status: 'signedIn', userId: 'u1' };
-    const { getByText, queryByText } = await render(<MyCarsScreen />);
-    // My cars is now a placeholder for a future garage; the stolen-car listings
-    // moved to My Posts (covered by MyPostsScreen.test).
-    expect(getByText('A garage for your vehicles is coming soon.')).toBeTruthy();
+    const { getByText, queryByText } = await renderGarage();
+    // The empty garage has to SELL the reason to fill it — the whole feature is
+    // a bet someone makes before anything has gone wrong...
+    expect(getByText('No cars saved yet')).toBeTruthy();
+    expect(getByText('Add your car')).toBeTruthy();
     expect(queryByText('Log in')).toBeNull();
+    // ...so it gets exactly ONE action. The My-posts link and the secondary add
+    // row appear only once there is a car to manage.
+    expect(queryByText('My posts')).toBeNull();
+    expect(queryByText('Add a car')).toBeNull();
   });
 });
 

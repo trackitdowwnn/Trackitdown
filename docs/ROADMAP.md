@@ -8,9 +8,18 @@ v1 scope, stop and flag it.
 
 **Core loop**
 - [ ] Auth: email + Apple/Google sign-in, onboarding with alert radius setup
-- [ ] Post a stolen car: stepper flow (details → photos → last seen →
-      bounty → V5C verification upload → escrow payment)
-- [ ] Moderator verification queue (simple internal web page)
+- [x] Post a stolen car: stepper flow (details → photos → last seen →
+      bounty → escrow payment). **The V5C verification upload was REMOVED**
+      with live-on-payment (2026-07-30) — a paid post goes straight to
+      `active`. See DOMAIN.md and SECURITY_AND_TRUST.md §2's open gap.
+- [ ] Moderator queue (simple internal web page) — flags, disputes and
+      collusion checks. The *ownership-verification* queue is no longer part
+      of the posting path; re-introducing any ownership check depends on this
+      queue existing first. **Nothing moderator-facing is built.**
+- [x] Garage / "My cars": pre-register your vehicles so reporting one stolen
+      prefills the wizard (5 per account, plate optional, no V5C; posts
+      snapshot rather than reference the saved car — added to scope + built
+      2026-07-27)
 - [ ] Search: map + list of active posts, distance sorting
 - [ ] Spotter alerts: push notification on new active post within radius
 - [ ] Report a sighting: in-app camera, auto GPS, note; SafetyNotice
@@ -18,9 +27,12 @@ v1 scope, stop and flag it.
 - [ ] Recovery confirmation flow: owner credits one sighting (or none)
 - [ ] Payout: Stripe Connect onboarding for spotter, 95/5 release, refunds
 - [ ] Reputation counters + 1/5/25 badges on profiles
-- [x] Watchlist: bookmark posts to keep an eye out (one private list,
-      toggle on every card, 5th tab, 30-day resolved section with
-      tombstones — added to scope + built 2026-07-22)
+- [x] Watchlist: bookmark posts to keep an eye out (toggle on every card, own
+      tab, 30-day resolved section with tombstones — added to scope + built
+      2026-07-22)
+- [x] Watchlist **collections**: user-named private lists, one collection per
+      saved post, save-then-change (added to scope + built 2026-07-27).
+      Sharing/collaborators are permanently OUT — see DOMAIN.md.
 - [ ] Flagging (posts, sightings, photos, messages) + user blocking
 - [ ] Moderation queues: verification, flags, disputes, collusion checks
 - [ ] Legal: T&Cs, privacy policy, safety guidelines page
@@ -73,8 +85,9 @@ v1 scope, stop and flag it.
   watchlist carve-out: post context only ("Good news — the Blue BMW you
   were watching was recovered"), never watcher counts or other watchers'
   existence. Sighting-activity pushes for watchers are deliberately OUT
-  (noise risk) — revisit only with launch data. Named/multiple/shared
-  lists: not v1; single private list only.
+  (noise risk) — revisit only with launch data. **Named collections SHIPPED
+  2026-07-27** (they were listed here as not-v1); shared/collaborative lists
+  remain out permanently — see DOMAIN.md's collections clause.
 
 ## v2 candidates (revisit after launch data)
 
@@ -89,5 +102,5 @@ v1 scope, stop and flag it.
 
 Big decisions get a short ADR in `docs/decisions/` (see the template
 there). Existing decisions: Supabase over Firebase (PostGIS), Stripe
-Connect escrow at posting, single-winner bounty, verification-before-
-visibility.
+Connect escrow at posting, single-winner bounty, and — **superseding
+verification-before-visibility** — live-on-payment (ADR-0007).

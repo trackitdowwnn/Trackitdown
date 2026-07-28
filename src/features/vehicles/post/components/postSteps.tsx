@@ -17,7 +17,7 @@
  */
 
 import { useCallback } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import {
@@ -29,6 +29,7 @@ import {
   LocationPicker,
   MoneySlider,
   PhotoGridPicker,
+  StepSkipButton,
   TextField,
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
@@ -38,6 +39,7 @@ import type { WizardStepProps } from '@/shared/wizard';
 import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
 import { colourChangePatch } from '../lib/carColours';
 import { makeChangePatch } from '@/shared/lib/carModels';
+import type { VehicleAnswers } from '../lib/vehicleSteps';
 import type { PostACarAnswers } from '../types';
 import { ColourField } from './ColourField';
 import { DistinctiveFeaturesField } from './DistinctiveFeaturesField';
@@ -47,29 +49,25 @@ import { YearField } from './YearField';
 
 type StepProps = WizardStepProps<PostACarAnswers>;
 
+/**
+ * Props for the seven VEHICLE-IDENTITY steps, which the garage reuses. Typed
+ * against the narrow VehicleAnswers slice rather than the whole posting answers
+ * object, so the compiler ENFORCES that they read and write only vehicle fields.
+ * That is what makes the single widening cast in buildVehicleSteps sound, and it
+ * is why these components can serve a flow (add-a-car) which has no last-seen,
+ * theft-context or bounty fields at all.
+ */
+type VehicleStepProps = WizardStepProps<VehicleAnswers>;
+
 /** Bounty range (pence) — mirrors create_post + the posts CHECK (£50–£5,000). */
 export const MIN_BOUNTY_PENCE = 5000;
 export const MAX_BOUNTY_PENCE = 500000;
 export const DEFAULT_BOUNTY_PENCE = 25000;
 
-/** A centred, underlined text action to advance a step without its main input —
- *  the marks step's "none to add". Uses the framework's onSkip (plain forward
- *  move; returns to review on an edit spur, like Next). */
-function StepSkipButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      hitSlop={spacing.sm}
-      onPress={onPress}
-      style={({ pressed }) => [styles.skipLink, pressed && styles.skipLinkPressed]}
-    >
-      <Text style={styles.skipText}>{label}</Text>
-    </Pressable>
-  );
-}
+// StepSkipButton moved to shared/ui when the garage's plate and nickname steps
+// needed the identical affordance — an optional step without one is a dead end.
 
-export function MakeStep({ answers, setAnswers }: StepProps) {
+export function MakeStep({ answers, setAnswers }: VehicleStepProps) {
   // Its own step (2026-07-23): the make picker earns a screen. Changing the
   // make clears any model chosen under the old make (the make→model
   // dependency) — makeChangePatch keeps the model only when the same make is
@@ -82,7 +80,7 @@ export function MakeStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-export function ModelStep({ answers, setAnswers }: StepProps) {
+export function ModelStep({ answers, setAnswers }: VehicleStepProps) {
   // Dependent on the make: the picker lists the chosen make's models (free text
   // for an unlisted/unseeded make). Empty make is guarded inside ModelField.
   return (
@@ -94,7 +92,7 @@ export function ModelStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-export function ColourStep({ answers, setAnswers }: StepProps) {
+export function ColourStep({ answers, setAnswers }: VehicleStepProps) {
   // Its own step (2026-07-23): the swatch grid earns a screen. Switching to a
   // plain colour clears any wrapped/other note (colourChangePatch) so a note
   // never rides under a colour it doesn't describe.
@@ -108,13 +106,13 @@ export function ColourStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-export function YearStep({ answers, setAnswers }: StepProps) {
+export function YearStep({ answers, setAnswers }: VehicleStepProps) {
   return (
     <YearField value={answers.year ?? null} onChange={(year) => setAnswers({ year })} />
   );
 }
 
-export function DistinctiveFeaturesStep({ answers, setAnswers, onSkip }: StepProps) {
+export function DistinctiveFeaturesStep({ answers, setAnswers, onSkip }: VehicleStepProps) {
   // Owner-authored photo+description evidence pairs (the car is theirs, so
   // gallery upload is offered — the sightings camera-only rule doesn't apply).
   const marks = answers.distinctiveFeatures ?? [];
@@ -133,7 +131,7 @@ export function DistinctiveFeaturesStep({ answers, setAnswers, onSkip }: StepPro
   );
 }
 
-export function PhotosStep({ answers, setAnswers }: StepProps) {
+export function PhotosStep({ answers, setAnswers }: VehicleStepProps) {
   return (
     <PhotoGridPicker
       photos={answers.photos ?? []}
@@ -236,7 +234,7 @@ export function TheftContextStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-export function BodyTypeStep({ answers, setAnswers }: StepProps) {
+export function BodyTypeStep({ answers, setAnswers }: VehicleStepProps) {
   return (
     <CardSelect
       options={BODY_TYPE_OPTIONS}

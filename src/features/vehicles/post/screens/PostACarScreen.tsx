@@ -30,13 +30,37 @@ import { useRef } from 'react';
 import { PaymentError, createBountyPaymentIntent, useBountyPayment } from '@/features/payments';
 import { successHaptic } from '@/shared/lib/haptics';
 import { useToast } from '@/shared/ui';
-import { WizardScreen } from '@/shared/wizard';
+import { WizardScreen, type WizardFlow } from '@/shared/wizard';
 
 import { submitPost } from '../api/postApi';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
 
-export function PostACarScreen() {
+export interface PostACarScreenProps {
+  /**
+   * Override the wizard flow. The garage passes a variant whose vehicle phase is
+   * collapsed to a confirm step, for a report started from a saved car. Defaults
+   * to the ordinary postACarFlow. Kept as a plain WizardFlow so this screen never
+   * learns what a saved vehicle is (ARCHITECTURE.md rule 1).
+   */
+  flow?: WizardFlow<PostACarAnswers>;
+  /** Seed answers; defaults to the starting-bounty seed. */
+  initialAnswers?: Partial<PostACarAnswers>;
+  /**
+   * Fired when the user leaves the wizard WITHOUT creating a post — the signal
+   * that they were exploring rather than reporting a theft. The /post-a-car
+   * route uses it to offer the garage; a report started FROM the garage passes
+   * nothing, which is how that path is excluded. A plain callback, so this
+   * screen still never learns the garage exists (ARCHITECTURE.md rule 1).
+   */
+  onAbandon?: () => void;
+}
+
+export function PostACarScreen({
+  flow,
+  initialAnswers,
+  onAbandon,
+}: PostACarScreenProps = {}) {
   const router = useRouter();
   const toast = useToast();
   const { payBounty } = useBountyPayment();
@@ -78,9 +102,19 @@ export function PostACarScreen() {
 
   return (
     <WizardScreen
-      flow={postACarFlow}
-      initialAnswers={POST_A_CAR_INITIAL_ANSWERS}
-      onExit={() => router.back()}
+      flow={flow ?? postACarFlow}
+      initialAnswers={initialAnswers ?? POST_A_CAR_INITIAL_ANSWERS}
+      onExit={() => {
+        // requestExit is the ONLY route to onExit, and the success path leaves
+        // via router.replace without touching it — so reaching here means the
+        // wizard was abandoned. Guarded on the draft id because someone who got
+        // as far as creating one and then hit a payment problem HAS had a car
+        // stolen; "save one for next time" is the wrong sentence for them.
+        if (!createdPostIdRef.current) {
+          onAbandon?.();
+        }
+        router.back();
+      }}
       onComplete={handleComplete}
     />
   );

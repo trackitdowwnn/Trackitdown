@@ -7,15 +7,22 @@
  *        press feedback — no borders or shadows, just breathing room.
  *        Destructive rows (sign out is NOT one; delete account is) render in
  *        the muted danger tone, never alarm-red decoration.
- * LINKS: src/features/profile (first consumer); docs/DESIGN_SYSTEM.md
+ *
+ *        Passing `selected` turns the row into a CHOOSER row: the chevron
+ *        becomes a check (or a spacer), and the role becomes radio. That is one
+ *        prop rather than a second component because the row itself — height,
+ *        press feedback, title weight — is identical either way.
+ * LINKS: src/features/profile (first consumer); src/features/watchlist
+ *        (collection picker, the first chooser); docs/DESIGN_SYSTEM.md
  *        (Colour, Typography, Accessibility).
  *
  * Usage:
  *   <ListRow icon={Bell} title="Notifications" onPress={openNotifications} />
  *   <ListRow icon={Trash2} title="Delete account" destructive onPress={confirmDelete} />
+ *   <ListRow title="My commute" selected={id === current} onPress={choose} />
  */
 
-import { ChevronRight, type LucideIcon } from 'lucide-react-native';
+import { Check, ChevronRight, type LucideIcon } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
@@ -30,6 +37,13 @@ export interface ListRowProps {
   onPress?: () => void;
   /** Muted danger tone for irreversible actions. */
   destructive?: boolean;
+  /**
+   * Marks this row as the current choice in a set: a check REPLACES the
+   * chevron, since a row that is both "the answer" and "go deeper" reads as
+   * neither. Rows in a group where nothing is chosen yet pass `false`, not
+   * undefined, so the set stays a radio group to a screen reader.
+   */
+  selected?: boolean;
   disabled?: boolean;
   testID?: string;
 }
@@ -41,6 +55,7 @@ export function ListRow({
   subtitle,
   onPress,
   destructive = false,
+  selected,
   disabled = false,
   testID,
 }: ListRowProps) {
@@ -57,8 +72,11 @@ export function ListRow({
       ]}
       onPress={onPress}
       disabled={!pressable}
-      accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityState={{ disabled }}
+      // A row in a chooser is a radio, not a button: the role is what tells a
+      // screen reader that `selected` means "this one of several" rather than
+      // "this toggle is on".
+      accessibilityRole={selected === undefined ? (onPress ? 'button' : undefined) : 'radio'}
+      accessibilityState={{ disabled, ...(selected === undefined ? {} : { selected }) }}
       accessibilityLabel={[title, value, subtitle].filter(Boolean).join(', ')}
       testID={testID}
     >
@@ -78,7 +96,17 @@ export function ListRow({
           {value}
         </Text>
       ) : null}
-      {pressable ? <ChevronRight size={sizes.icon} color={colors.textSecondary} /> : null}
+      {selected === undefined ? (
+        pressable ? (
+          <ChevronRight size={sizes.icon} color={colors.textSecondary} />
+        ) : null
+      ) : selected ? (
+        <Check size={sizes.icon} color={colors.textPrimary} />
+      ) : (
+        // A same-size spacer, so the titles of chosen and unchosen rows line
+        // up instead of shifting by an icon width down the list.
+        <View style={styles.checkSpacer} />
+      )}
     </Pressable>
   );
 }
@@ -113,5 +141,9 @@ const styles = StyleSheet.create({
   value: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  checkSpacer: {
+    width: sizes.icon,
+    height: sizes.icon,
   },
 });
