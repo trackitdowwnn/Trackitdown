@@ -78,6 +78,9 @@ export function buildPrefilledPostFlow({
   const summaryStep: WizardStep<PostACarAnswers> = {
     id: 'vehicle-summary',
     question: 'Is this the car?',
+    // NO helper, deliberately (product call 2026-07-29): the question and the
+    // photo carry the moment; explanatory subtext between them slowed it
+    // down. The Edit affordance sits at the top of the step body instead.
     component: () => <VehicleSummaryStep vehicle={vehicle} onEdit={onEdit} />,
     schema: z.object({}),
     ctaLabel: 'Yes, continue',

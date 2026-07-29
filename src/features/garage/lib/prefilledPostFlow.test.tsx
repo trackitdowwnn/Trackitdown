@@ -97,6 +97,16 @@ describe('collapsed vehicle phase', () => {
     expect(carPhase(flow).steps.map((s) => s.id)).toEqual(['vehicle-summary']);
   });
 
+  it('keeps the confirm step to the question and the photo — no helper subtext', () => {
+    // Product call 2026-07-29: explanatory subtext between the question and
+    // the hero slowed the moment down. The Edit affordance (on the photo's
+    // identity strip, bottom right) is the only other element.
+    const step = carPhase(build(vehicle()).flow).steps[0];
+
+    expect(step.question).toBe('Is this the car?');
+    expect(step.helper).toBeUndefined();
+  });
+
   it('drops the "Sorry this happened" intro — they came from their own garage', () => {
     const { flow } = build(vehicle());
 

@@ -99,7 +99,7 @@ export {
   type PermissionPrimerContent,
   type PermissionPrimerProps,
 } from './PermissionPrimer';
-export { PlateChip, type PlateChipProps } from './PlateChip';
+export { PlateChip, spellPlate, type PlateChipProps } from './PlateChip';
 export { ReadMore, type ReadMoreProps } from './ReadMore';
 export { SafetyNotice } from './SafetyNotice';
 export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
