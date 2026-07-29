@@ -22,6 +22,7 @@ for suite in \
   supabase/tests/post_detail_verification.sql \
   supabase/tests/create_post_verification.sql \
   supabase/tests/sightings_verification.sql \
+  supabase/tests/chat_verification.sql \
   supabase/tests/watchlist_verification.sql \
   supabase/tests/post_payment_verification.sql \
   supabase/tests/refund_cancel_verification.sql \

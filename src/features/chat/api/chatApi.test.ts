@@ -13,6 +13,7 @@
 import {
   ChatActionError,
   fetchInbox,
+  fetchThreadPeer,
   fetchMessages,
   flagMessage,
   markThreadRead,
@@ -220,5 +221,71 @@ describe('subscribeToThreadMessages', () => {
     expect(onInsert).toHaveBeenCalledWith(expect.objectContaining({ id: MESSAGE }));
     cleanup();
     expect(mockRemoveChannel).toHaveBeenCalled();
+  });
+});
+
+describe('fetchThreadPeer', () => {
+  const OWNER_PAYLOAD = {
+    their_last_read_at: '2026-07-15T10:00:00Z',
+    peer: {
+      first_name: 'Sam',
+      created_at: '2026-05-01T10:00:00Z',
+      sightings_reported: 4,
+      sightings_helpful: 2,
+      recoveries_credited: 1,
+    },
+  };
+
+  it('maps the owner view — marker plus the narrow passport, avatar withheld', async () => {
+    mockRpc.mockResolvedValue({ data: OWNER_PAYLOAD, error: null });
+
+    const result = await fetchThreadPeer('t1');
+
+    expect(mockRpc).toHaveBeenCalledWith('get_thread_peer', { p_thread_id: 't1' });
+    expect(result).toEqual({
+      theirLastReadAt: '2026-07-15T10:00:00Z',
+      peer: {
+        firstName: 'Sam',
+        // Withheld by design: the storage path embeds the uid this RPC
+        // exists to keep server-side.
+        avatarUrl: null,
+        createdAt: '2026-05-01T10:00:00Z',
+        counters: { sightingsReported: 4, sightingsHelpful: 2, recoveriesCredited: 1 },
+      },
+    });
+  });
+
+  it('maps the spotter view — marker with peer:null (owner identity never exposed)', async () => {
+    mockRpc.mockResolvedValue({
+      data: { their_last_read_at: '2026-07-15T10:00:00Z', peer: null },
+      error: null,
+    });
+
+    const result = await fetchThreadPeer('t1');
+
+    expect(result).toEqual({ theirLastReadAt: '2026-07-15T10:00:00Z', peer: null });
+  });
+
+  it('PRIVACY: a widened peer block fails loudly — a leaked uid never passes', async () => {
+    mockRpc.mockResolvedValue({
+      data: {
+        their_last_read_at: '2026-07-15T10:00:00Z',
+        peer: { ...OWNER_PAYLOAD.peer, id: 'a-uid-that-must-not-reach-the-client' },
+      },
+      error: null,
+    });
+
+    await expect(fetchThreadPeer('t1')).rejects.toThrow();
+  });
+
+  it('maps NOT_PARTICIPANT to the calm copy', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: 'NOT_PARTICIPANT', code: 'P0001' },
+    });
+
+    const error = await fetchThreadPeer('t1').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ChatActionError);
+    expect((error as ChatActionError).code).toBe('NOT_PARTICIPANT');
   });
 });

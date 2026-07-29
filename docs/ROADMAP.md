@@ -73,6 +73,14 @@ v1 scope, stop and flag it.
   transits push (third-party infra; SECURITY_AND_TRUST §3). The deep route
   `/chat/[threadId]` is already live and gate-aware. Unread state works
   in-app today (tab badge + refetch-on-focus).
+- **Message reactions** (considered and deferred in the 2026-07-28 chat
+  design pass) — long-press ❤️/👍 with a small pop, per Airbnb's threads.
+  Deferred because it is NOT a polish item against our model: messages are
+  INSERT-only realtime with service-role-only DML, so reactions need a new
+  table, a new SECURITY DEFINER RPC, participant RLS with its own absence
+  tests, and a second realtime stream the thread subscription doesn't
+  carry. Feature-sized; revisit only if threads get long enough that
+  "received" needs a lighter signal than a reply.
 - **Offline queueing for sighting reports** — v1 is retry-in-flow only; a
   report drafted with no signal is not persisted across app restarts.
 - **Gallery photos as supplementary sighting evidence** (ADR-0003) —

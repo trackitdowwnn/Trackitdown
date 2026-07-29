@@ -9,7 +9,16 @@
  */
 
 import type { InboxThread } from '../types';
-import { contextLine, isUnread, previewText, totalUnread } from './inboxModel';
+import {
+  INBOX_FILTERS,
+  contextLine,
+  emptyFilterCopy,
+  filterLabel,
+  filterThreads,
+  isUnread,
+  previewText,
+  totalUnread,
+} from './inboxModel';
 
 const thread = (overrides: Partial<InboxThread> = {}): InboxThread => ({
   threadId: 't1',
@@ -64,5 +73,76 @@ describe('preview + unread', () => {
     expect(
       totalUnread([thread({ unreadCount: 2 }), thread({ unreadCount: 0 }), thread({ unreadCount: 5 })]),
     ).toBe(7);
+  });
+});
+
+describe('filterThreads', () => {
+  const rows = [
+    thread({ threadId: 'o-unread', role: 'owner', unreadCount: 2 }),
+    thread({ threadId: 's-read', role: 'spotter', unreadCount: 0 }),
+    thread({ threadId: 'o-read', role: 'owner', unreadCount: 0 }),
+    thread({ threadId: 's-unread', role: 'spotter', unreadCount: 1 }),
+  ];
+
+  it("'all' is the identity — same rows, same order", () => {
+    expect(filterThreads(rows, 'all')).toEqual(rows);
+  });
+
+  it("'unread' keeps only rows with something new", () => {
+    expect(filterThreads(rows, 'unread').map((t) => t.threadId)).toEqual([
+      'o-unread',
+      's-unread',
+    ]);
+  });
+
+  it("'my_cars' is the OWNER side — spotters wrote to me about my car", () => {
+    expect(filterThreads(rows, 'my_cars').map((t) => t.threadId)).toEqual([
+      'o-unread',
+      'o-read',
+    ]);
+  });
+
+  it("'my_sightings' is the SPOTTER side", () => {
+    expect(filterThreads(rows, 'my_sightings').map((t) => t.threadId)).toEqual([
+      's-read',
+      's-unread',
+    ]);
+  });
+
+  it('never reorders — the RPC already sorted by newest activity', () => {
+    // Order-preservation is the property; each filter is a subsequence.
+    const ids = rows.map((t) => t.threadId);
+    for (const filter of INBOX_FILTERS) {
+      const filtered = filterThreads(rows, filter).map((t) => t.threadId);
+      expect(filtered).toEqual(ids.filter((id) => filtered.includes(id)));
+    }
+  });
+});
+
+describe('filterLabel', () => {
+  it('puts the live count on Unread', () => {
+    const rows = [thread({ unreadCount: 2 }), thread({ threadId: 't2', unreadCount: 1 })];
+    expect(filterLabel('unread', rows)).toBe('Unread (2)');
+  });
+
+  it("drops the count at zero — 'Unread (0)' reads as a bug", () => {
+    expect(filterLabel('unread', [thread({ unreadCount: 0 })])).toBe('Unread');
+  });
+
+  it('names the role filters in the user’s words, not the schema’s', () => {
+    expect(filterLabel('my_cars', [])).toBe('My cars');
+    expect(filterLabel('my_sightings', [])).toBe('My sightings');
+    expect(filterLabel('all', [])).toBe('All');
+  });
+});
+
+describe('emptyFilterCopy', () => {
+  it('an empty Unread is good news and reads like it', () => {
+    expect(emptyFilterCopy('unread').title).toBe('All caught up');
+  });
+
+  it('each filter explains ITS OWN emptiness — no shared generic copy', () => {
+    const titles = INBOX_FILTERS.map((filter) => emptyFilterCopy(filter).title);
+    expect(new Set(titles).size).toBe(INBOX_FILTERS.length);
   });
 });
