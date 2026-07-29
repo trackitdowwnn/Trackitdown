@@ -1,46 +1,82 @@
 /**
  * WHAT:  ChooseCarToReportScreen — "Which car?", shown when someone starts a
- *        report and already has cars in their garage. Pick one and the whole
- *        vehicle phase of the wizard is prefilled; or carry on to a blank
- *        report for a car that isn't saved.
- * WHY:   The garage's payoff was reachable from ONE place — the "Report this
- *        car stolen" button inside /my-cars. Anyone who reached for the tab
- *        bar's + (the obvious thing to do when your car has just gone) retyped
- *        details the app already held. This is the missing entry point; the
- *        prefill itself is the existing /report-stolen/[vehicleId] path.
+ *        report and already has cars in their garage. A utilitarian picker:
+ *        one row per car (square thumbnail, name, plate), tap = straight
+ *        into the prefilled report; a final "It's a different car" row goes
+ *        to the blank wizard.
+ * WHY:   Redesigned 2026-07-29 against Airbnb's listing-picker anatomy: when
+ *        a host must choose one of their listings for an action, they get
+ *        tap-to-advance ROWS, not the management surface's photo cards —
+ *        the card treatment is for browsing what you own; a picker is a
+ *        question. Ours is asked at the worst moment of someone's week, so
+ *        the emotional translation goes further than the reference: zero
+ *        decoration, no buttons, no confirm step — the row IS the choice.
  *
- *        NOT the interstitial the README rejects. That rule ("never prompt on
- *        entry") is about a user with NO saved car being told to go and add
- *        one — strictly SLOWER than just reporting. This screen is never shown
- *        to them: the tab bar routes straight to the blank wizard unless the
- *        cached signal already says there are cars to choose from, so nobody
- *        pays a tap for a garage they haven't filled.
- *
- *        Reuses GarageCard for the photo/plate/nickname presentation, but
- *        WITHOUT its overflow: editing or removing a car is the wrong offer to
- *        someone whose car has just been stolen, and each card should present
- *        exactly one thing to do.
+ *        This screen is never shown to someone with no saved car: the tab
+ *        bar routes straight to the blank wizard unless the cached signal
+ *        says there are cars to choose from (see the README's Nudges section
+ *        for why this is not the rejected on-entry interstitial).
  * LINKS: src/app/report-stolen/index.tsx (the route);
  *        src/app/(tabs)/_layout.tsx (routes here only when cars are known);
- *        src/features/garage/screens/ReportSavedCarScreen.tsx (where a choice
- *          lands); src/features/garage/screens/MyCarsScreen.tsx (the sibling
- *          list this borrows its shape from).
+ *        src/features/garage/screens/ReportSavedCarScreen.tsx (where a
+ *          choice lands); src/features/garage/components/GarageCard.tsx (the
+ *          management-surface card this deliberately does NOT reuse).
  */
 
 import { useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { Car, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useCallback, useEffect } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { createLogger } from '@/shared/lib/logger';
-import { colors, sizes, spacing, typography } from '@/shared/theme';
-import { Button, ErrorState, Screen } from '@/shared/ui';
+import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { AppImage, Button, ErrorState, PlateChip, Screen, spellPlate } from '@/shared/ui';
 
-import { GarageCard } from '../components/GarageCard';
 import { useMyVehicles } from '../hooks/useMyVehicles';
+import { vehicleDisplayName } from '../lib/vehicleAnswers';
 import type { SavedVehicle } from '../types';
 
 const log = createLogger('garage');
+
+/** Square picker thumbnail (the reference's ~56–64pt), radius md. */
+const THUMB_SIZE = 64;
+
+/** One car, one tap. The row is the choice — no buttons, no confirm. */
+function ChooseCarRow({ vehicle, onPress }: { vehicle: SavedVehicle; onPress: () => void }) {
+  const cover = vehicle.photos[0]?.url;
+  const name = vehicleDisplayName(vehicle);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={
+        // spellPlate: a reader must never attempt "AB12 CDE" as a word.
+        `Report ${name}${vehicle.plate ? `, plate ${spellPlate(vehicle.plate)},` : ''} stolen`
+      }
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      testID={`choose-car-${vehicle.id}`}
+    >
+      {cover ? (
+        <AppImage uri={cover} recyclingKey={vehicle.id} style={styles.thumb} />
+      ) : (
+        <View style={[styles.thumb, styles.thumbEmpty]}>
+          <Car size={sizes.iconSm} color={colors.textSecondary} />
+        </View>
+      )}
+      <View style={styles.rowBody}>
+        <Text style={styles.rowName} numberOfLines={1}>
+          {name}
+        </Text>
+        {vehicle.plate ? (
+          <View style={styles.plateRow}>
+            <PlateChip plate={vehicle.plate} />
+          </View>
+        ) : null}
+      </View>
+      <ChevronRight size={sizes.icon} color={colors.textSecondary} />
+    </Pressable>
+  );
+}
 
 export function ChooseCarToReportScreen() {
   const router = useRouter();
@@ -80,8 +116,8 @@ export function ChooseCarToReportScreen() {
 
   const choose = useCallback(
     (vehicle: SavedVehicle) => {
-      // The same event the /my-cars card fires, so the add → post funnel stays
-      // ONE metric across both entry points.
+      // The same event the /my-cars sheet fires, so the add → post funnel
+      // stays ONE metric across both entry points.
       log.info('garage_prefilled_post_launched', { vehicleId: vehicle.id });
       router.replace({
         pathname: '/report-stolen/[vehicleId]',
@@ -91,17 +127,9 @@ export function ChooseCarToReportScreen() {
     [router],
   );
 
-  const renderCard = useCallback(
-    ({ item }: { item: SavedVehicle }) => (
-      <GarageCard
-        vehicle={item}
-        onReportStolen={() => choose(item)}
-        // Unreachable while the list is filtered to un-posted cars; kept
-        // truthful rather than a no-op in case that filter ever changes.
-        onOpenPost={() => item.activePostId && router.push(`/post/${item.activePostId}`)}
-      />
-    ),
-    [choose, router],
+  const renderRow = useCallback(
+    ({ item }: { item: SavedVehicle }) => <ChooseCarRow vehicle={item} onPress={() => choose(item)} />,
+    [choose],
   );
 
   return (
@@ -129,16 +157,55 @@ export function ChooseCarToReportScreen() {
           <ErrorState body="We couldn't load your cars." onRetry={retry} />
           <Button label="Report a car from scratch" variant="ghost" onPress={startBlank} />
         </View>
+      ) : status === 'loading' ? (
+        // Skeleton rows in the row geometry, and NO footer yet: showing
+        // "It's a different car" before the saved cars appear could route
+        // someone straight past the feature at its one moment of need
+        // (ui review #3).
+        <View
+          style={styles.listContent}
+          testID="choose-car-skeleton"
+          accessible
+          accessibilityLabel="Loading your cars"
+          accessibilityState={{ busy: true }}
+        >
+          {[0, 1].map((n) => (
+            <View key={n} style={styles.row}>
+              <View style={[styles.skeletonBlock, styles.thumb]} />
+              <View style={styles.rowBody}>
+                <View style={[styles.skeletonBlock, styles.skeletonName]} />
+                <View style={[styles.skeletonBlock, styles.skeletonPlate]} />
+              </View>
+            </View>
+          ))}
+        </View>
       ) : (
         <FlatList
           data={offerable}
-          renderItem={renderCard}
+          renderItem={renderRow}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           ListFooterComponent={
             // Always present, never buried: someone whose stolen car simply
             // isn't in the garage must not have to work out how to proceed.
-            <Button label="It's a different car" variant="secondary" onPress={startBlank} />
+            // The same row anatomy as the cars — it is the same kind of
+            // answer, just without a saved car behind it.
+            <Pressable
+              onPress={startBlank}
+              accessibilityRole="button"
+              accessibilityLabel="It's a different car — report from scratch"
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              testID="choose-car-different"
+            >
+              <View style={[styles.thumb, styles.thumbEmpty]}>
+                <Car size={sizes.iconSm} color={colors.textSecondary} />
+              </View>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowName}>It&apos;s a different car</Text>
+                <Text style={styles.rowMeta}>Report from scratch</Text>
+              </View>
+              <ChevronRight size={sizes.icon} color={colors.textSecondary} />
+            </Pressable>
           }
         />
       )}
@@ -150,29 +217,79 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    gap: spacing.xs,
   },
   back: {
-    minWidth: sizes.control,
-    minHeight: sizes.control,
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: -(sizes.touchTarget - sizes.icon) / 2,
   },
   title: {
     ...typography.title,
     color: colors.textPrimary,
-    flex: 1,
+    flexShrink: 1,
   },
   stateBlock: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
     gap: spacing.md,
   },
   listContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.lg,
+    paddingVertical: spacing.md,
+    // Rounded press feedback without a border — rows separate by rhythm,
+    // not rules (the app has no divider-line convention on lists).
+    borderRadius: radii.md,
+  },
+  rowPressed: {
+    backgroundColor: colors.surfaceSubtle,
+  },
+  thumb: {
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+  },
+  thumbEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceSubtle,
+  },
+  rowBody: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  rowName: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+  },
+  rowMeta: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  plateRow: {
+    flexDirection: 'row',
+  },
+  skeletonBlock: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.sm,
+  },
+  skeletonName: {
+    height: typography.cardTitle.lineHeight,
+    width: '45%',
+  },
+  skeletonPlate: {
+    height: typography.plate.lineHeight + spacing.xs * 2,
+    width: '35%',
   },
 });

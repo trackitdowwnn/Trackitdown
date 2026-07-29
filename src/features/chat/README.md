@@ -26,26 +26,63 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
 ## Screens
 
 1. **InboxScreen** (fills the Inbox tab's member state; guest state exists)
-   — FlashList of Airbnb-style rows: Avatar, first name, context line
+   — Filter chips (ChoiceChips): All · Unread (live count) · My cars ·
+   My sightings — Airbnb's category filters as our owner-side/spotter-side
+   split, filtered CLIENT-side over the loaded payload (inboxModel; a chip
+   never costs a round trip). Per-filter empty copy (an empty Unread is
+   good news and reads like it); a truly EMPTY inbox keeps the plain
+   invitation with no chips.
+   — FlashList of Airbnb-style rows: Avatar wearing the car's cover photo
+   as a corner badge (the context anchor, made visual; the POST's public
+   photo, never anything of the other person's), first name, context line
    ("About your Blue BMW · ‹PlateChip›" for owners / "Your sighting ·
    Blue BMW" for spotters), one-line last-message preview, relative time,
    unread dot + bold title. Sorted by last activity. Skeleton rows while
-   loading; EmptyState copy: "Conversations open when a spotter reports a
-   sighting on your car — or when you report one."
+   loading. No swipe actions — no swipe convention exists in the app, and
+   the inbox doesn't introduce one.
 
 2. **ChatThreadScreen** (`/chat/[threadId]`, outside tabs)
-   — Header: Avatar + first name; tappable post-context strip (thumbnail,
-   make/model, status) → post detail.
-   — Messages: inverted FlashList; our bubbles right (primary-tinted
-   surface), theirs left (surfaceSubtle); day separators + timestamps on
-   >15-min gaps; system messages centred and quiet (never a fake bubble).
+   — Header: Avatar + first name. For the OWNER the name is tappable →
+   PublicProfileSheet (the narrow first-name + reputation passport; its
+   first wiring); for a SPOTTER it is plain text — owner identity is never
+   exposed (DOMAIN.md). The data comes from the `get_thread_peer` RPC,
+   which keeps the peer's uid SERVER-side (a uid in app code pivots via
+   the permissive profiles select to display_name/avatar_path — security
+   review H1); the sheet returns no avatar for the same reason. Only the
+   sheet COMPONENT is deferred-imported, to avoid closing a require cycle
+   (chat → profile → garage → vehicles → chat; same precedent as
+   PostSightingsScreen).
+   — Tappable post-context strip (thumbnail, make/model, shared
+   StatusBadge for closed states / "Still missing" for active, an
+   underlined View cue) → post detail.
+   — Messages: bottom-start FlashList; our bubbles right (primary),
+   theirs left (surfaceSubtle); GROUPED corners within a same-sender run
+   (messageGroups.groupPos — runs break on sender change, day, time
+   caption, system message); day separators + timestamps on >15-min gaps;
+   system messages centred and quiet (never a fake bubble). New arrivals
+   and optimistic sends fade in (motion.fast, ReduceMotion.System);
+   confirmed sends replace their optimistic bubble WITHOUT animating (a
+   double pop reads as a double send).
+   — **Seen** (thread-level read receipt): one quiet "Seen" under the
+   newest of MY messages the peer's marker covers
+   (messageGroups.latestSeenOutboundId over useThreadPeer). Mutual,
+   always on, no toggle (v1 call, 2026-07-28). Point-in-time by design:
+   the marker means "last had the thread open", refreshed on focus, and
+   the caption claims no more ("Seen", never "Seen at 14:32"). No new
+   writes, no migration — the markers were always on the thread row.
+   — **Quick replies** (lib/quickReplies): role-aware one-tap openers in a
+   horizontal row above the composer, shown only while the input is EMPTY.
+   Picking one FILLS the draft, editable — never auto-sent. Static curated
+   sets; the // SAFETY register (no meeting/following/waiting/watching/
+   approaching, however softly) is pinned by a lexicon test.
    — Input: multiline TextField + send button (enabled on content),
    keyboard-aware.
    — Long-press a message → "Report this message" → flags table.
    — **Closed-post lifecycle (DOMAIN):** when the post leaves 'active', a
    quiet banner states it ("This car was recovered — this conversation is
-   now closed." / "This post has closed…") and the input is removed. The
-   server is the real gate: `send_message` raises POST_CLOSED.
+   now closed." / "This post has closed…") and the input + quick replies
+   are removed. The server is the real gate: `send_message` raises
+   POST_CLOSED.
 
 ## Data (migration `*_chat.sql`)
 
@@ -108,7 +145,10 @@ absence tests) + §3 (no content in push/logs).
 
 ## Out of scope
 
-Photo/media messages, typing indicators, read receipts, edit/delete,
-user blocking (Phase 4 — the flag action ships now), group threads,
-in-chat bounty negotiation, inbox realtime, pagination beyond
-latest-100 + load-older.
+Photo/media messages, typing indicators, per-message read receipts (the
+thread-level "Seen" above ships; per-message ticks would need per-message
+writes the realtime model doesn't carry), message reactions (ROADMAP —
+costed there: new table + RPC + RLS + a second realtime stream),
+edit/delete, user blocking (Phase 4 — the flag action ships now), group
+threads, in-chat bounty negotiation, inbox realtime, pagination beyond
+latest-100 + load-older, swipe actions (no app-wide swipe convention).

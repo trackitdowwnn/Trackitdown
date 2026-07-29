@@ -57,9 +57,10 @@ saved answers, so the owner only completes when/where, bounty, review and pay.
 
 ## Screens
 
-- **`MyCarsScreen`** (rewritten, moved here from `features/vehicles`) — the
-  garage list + the My-posts link. Empty, loading (skeletons), error and
-  populated states.
+- **`MyCarsScreen`** (rewritten, moved here from `features/vehicles`;
+  redesigned 2026-07-29 against Airbnb's host Listings tab) — photography-first
+  cards, the header's bare **+** to add, cap note in the footer. Empty,
+  loading (skeletons matching the card geometry), error and populated states.
 - **`AddVehicleScreen`** — `WizardScreen` over `buildAddVehicleFlow()`. Serves
   **both** add and edit (`/add-vehicle`, `/edit-vehicle/[vehicleId]`): the flow
   and the mapping are identical, only the RPC and the toast differ.
@@ -71,9 +72,16 @@ saved answers, so the owner only completes when/where, bounty, review and pay.
   builds the prefilled flow, and renders `PostACarScreen` with it. Fails kindly
   when the car is gone or already has a live listing.
 
-Garage cards show photo, nickname or make/model, `PlateChip`, and an overflow
-for Edit / Remove (`ConfirmDialog`). A car with a live post reads **"Currently
-reported stolen"**, and its report action becomes a link to that post.
+Garage cards are photography-first (2026-07-29 redesign): a full-width 3:2
+cover with no border or shadow, a "Reported stolen" pill overlaid ONLY in that
+exceptional state, then nickname or make/model, one meta line, and `PlateChip`
+below. The card carries **no buttons and no overflow** — the whole card is one
+tap into a bottom sheet: **Report this car stolen** (the sheet's single
+primary), Edit details, Remove from garage (`ConfirmDialog`). A car with a
+live post offers **View listing** in place of the report action. The "Which
+car?" chooser deliberately does NOT reuse the card: a picker is a question,
+not a browse, so it gets utilitarian tap-rows (square thumb, name, plate) —
+the reference's own split between managing and choosing.
 
 ## Data & server
 

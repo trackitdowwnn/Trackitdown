@@ -4,23 +4,41 @@
  *        (oldest → newest; the screen's FlashList starts rendered at the
  *        bottom via maintainVisibleContentPosition): day separators before
  *        their day, Airbnb-style timestamp grouping (a time shows on the
- *        first message of a day and after >15-minute gaps), optimistic
- *        bubbles last (newest, at the bottom).
+ *        first message of a day and after >15-minute gaps), sender-run
+ *        positions for the grouped-corner bubble treatment, optimistic
+ *        bubbles last (newest, at the bottom). Also the "Seen" maths:
+ *        which of MY messages the peer's read marker covers.
  * WHY:   Grouping maths must be hammerable without rendering (house
  *        precedent: photoGridModel, moneySliderMath). FlashList v2 has no
  *        `inverted` — bottom-start rendering keeps the data in natural
  *        order, so this builder stays free of inverted-list off-by-ones.
+ *        Seen derives from the thread-level last-read stamp (see chatApi's
+ *        fetchThreadPeerState): one quiet "Seen" under the newest covered
+ *        message, never per-message ticks — the stamp is "last had the
+ *        thread open", and the rendering must not claim more than that.
  * LINKS: src/features/chat/components (renderers);
+ *        src/features/chat/api/chatApi.ts (fetchThreadPeerState);
  *        src/shared/lib/dateTimeLabel.ts (day-label sibling styles);
  *        docs/DESIGN_SYSTEM.md (calm, quiet metadata).
  */
 
 import { TIME_GAP_MINUTES, type ChatMessage, type OutgoingMessage } from '../types';
 
+/** Where a user bubble sits in a same-sender run — drives which corners are
+ *  tightened (Airbnb's grouped-bubble anatomy). Runs break on sender change,
+ *  day change, a time caption, and system messages. */
+export type MessageGroupPos = 'single' | 'first' | 'middle' | 'last';
+
 /** One render item for the thread's list (reading order). */
 export type ChatListItem =
   | { type: 'day'; id: string; label: string }
-  | { type: 'message'; message: ChatMessage; mine: boolean; showTime: boolean }
+  | {
+      type: 'message';
+      message: ChatMessage;
+      mine: boolean;
+      showTime: boolean;
+      groupPos: MessageGroupPos;
+    }
   /** Optimistic outgoing (always mine, always newest; state drives the
    *  pending/failed treatment instead of a timestamp). */
   | { type: 'outgoing'; message: OutgoingMessage };
@@ -80,15 +98,96 @@ export function buildChatList(
       message,
       mine: message.senderId === myId,
       showTime: newDay || gapMinutes > TIME_GAP_MINUTES,
+      groupPos: 'single', // resolved by the pass below, once neighbours are known
     });
     previousAt = at;
   }
+
+  assignGroupPositions(items);
 
   for (const message of outgoing) {
     items.push({ type: 'outgoing', message });
   }
 
   return items;
+}
+
+/**
+ * Second pass: mark each USER bubble's place in its same-sender run, so the
+ * renderer can tighten the corners inside a run (Airbnb's grouped anatomy —
+ * three quick messages read as one thought, not three announcements).
+ *
+ * A run breaks on anything that already breaks the eye: a different sender, a
+ * day separator, a time caption (showTime), or a system message. Meaning the
+ * time caption ALWAYS sits above a fully-rounded top corner — the two cues
+ * never fight.
+ */
+function assignGroupPositions(items: ChatListItem[]): void {
+  let run: Extract<ChatListItem, { type: 'message' }>[] = [];
+
+  const closeRun = () => {
+    if (run.length === 1) {
+      run[0].groupPos = 'single';
+    } else if (run.length > 1) {
+      run.forEach((item, index) => {
+        item.groupPos = index === 0 ? 'first' : index === run.length - 1 ? 'last' : 'middle';
+      });
+    }
+    run = [];
+  };
+
+  for (const item of items) {
+    const isUserMessage = item.type === 'message' && item.message.kind === 'user';
+    if (!isUserMessage) {
+      closeRun(); // day separators and system messages break runs
+      continue;
+    }
+    const startsNewRun =
+      item.showTime || run.length === 0 || run[run.length - 1].message.senderId !== item.message.senderId;
+    if (startsNewRun) {
+      closeRun();
+    }
+    run.push(item);
+  }
+  closeRun();
+}
+
+/**
+ * The newest of MY user messages the peer's read marker covers — where the
+ * single quiet "Seen" renders. `null` when nothing qualifies (no marker yet,
+ * or they haven't opened the thread since my newest message… strictly: since
+ * this one).
+ *
+ * Uses `<=`: the marker is stamped AFTER the reader's client has loaded the
+ * thread, so a message created in the same instant has been displayed.
+ * CAVEAT (review #6): the columns also carry a DEFAULT of now() from thread
+ * creation — before anyone has read anything. Harmless today because the
+ * only opening-transaction message is the system one, which this function
+ * excludes; if open_thread ever inserts a USER message in that transaction,
+ * revisit this boundary before trusting it.
+ */
+export function latestSeenOutboundId(
+  messages: ChatMessage[],
+  myId: string,
+  theirLastReadAt: string | null,
+): string | null {
+  if (!theirLastReadAt) {
+    return null;
+  }
+  const readUpTo = new Date(theirLastReadAt).getTime();
+  let latest: ChatMessage | null = null;
+  for (const message of messages) {
+    if (message.kind !== 'user' || message.senderId !== myId) {
+      continue;
+    }
+    if (new Date(message.createdAt).getTime() > readUpTo) {
+      continue;
+    }
+    if (!latest || new Date(message.createdAt).getTime() > new Date(latest.createdAt).getTime()) {
+      latest = message;
+    }
+  }
+  return latest?.id ?? null;
 }
 
 /** Stable FlashList key for any item. */

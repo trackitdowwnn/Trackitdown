@@ -78,7 +78,7 @@ beforeEach(() => {
 });
 
 describe('the cars on offer', () => {
-  it('shows a card per saved car', async () => {
+  it('shows a row per saved car', async () => {
     mockVehicles = {
       status: 'ready',
       vehicles: [vehicle(), vehicle({ id: 'v2', make: 'Ford', model: 'Focus' })],
@@ -86,16 +86,18 @@ describe('the cars on offer', () => {
     };
     const { getByTestId } = await renderScreen();
 
-    expect(getByTestId('garage-card-v1')).toBeTruthy();
-    expect(getByTestId('garage-card-v2')).toBeTruthy();
+    expect(getByTestId('choose-car-v1')).toBeTruthy();
+    expect(getByTestId('choose-car-v2')).toBeTruthy();
   });
 
-  it('hides the Edit / Remove overflow', async () => {
-    // Tidying the garage is the wrong offer to someone whose car has just been
-    // stolen; each card should present exactly one thing to do.
-    const { queryByTestId } = await renderScreen();
+  it('a row speaks its whole action, with the plate spelled out', async () => {
+    // The row IS the choice, so its label must say what tapping does — and
+    // spellPlate keeps a reader from attempting "AB12 CDE" as a word.
+    const { getByTestId } = await renderScreen();
 
-    expect(queryByTestId('garage-card-actions-v1')).toBeNull();
+    expect(getByTestId('choose-car-v1').props.accessibilityLabel).toBe(
+      'Report BMW 320d, plate A B 1 2, C D E, stolen',
+    );
   });
 
   it('never offers a car that is already reported stolen', async () => {
@@ -110,8 +112,8 @@ describe('the cars on offer', () => {
     };
     const { queryByTestId, getByTestId } = await renderScreen();
 
-    expect(queryByTestId('garage-card-v1')).toBeNull();
-    expect(getByTestId('garage-card-v2')).toBeTruthy();
+    expect(queryByTestId('choose-car-v1')).toBeNull();
+    expect(getByTestId('choose-car-v2')).toBeTruthy();
   });
 
   it('logs a count, never a plate or a nickname', async () => {
@@ -131,10 +133,10 @@ describe('the cars on offer', () => {
 
 describe('choosing a car', () => {
   it('goes to the prefilled report for that car', async () => {
-    const { getByText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(getByText('Report this car stolen'));
+      fireEvent.press(getByTestId('choose-car-v1'));
     });
 
     // replace, not push: this screen is a fork, not somewhere to come back to.
@@ -145,10 +147,10 @@ describe('choosing a car', () => {
   });
 
   it('reuses the same funnel event as the My cars entry point', async () => {
-    const { getByText } = await renderScreen();
+    const { getByTestId } = await renderScreen();
 
     await act(async () => {
-      fireEvent.press(getByText('Report this car stolen'));
+      fireEvent.press(getByTestId('choose-car-v1'));
     });
 
     expect(mockLogInfo).toHaveBeenCalledWith('garage_prefilled_post_launched', {

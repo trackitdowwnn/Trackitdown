@@ -1,19 +1,30 @@
 /**
  * WHAT:  Pure inbox maths — the context line for a thread row ("About your
  *        Blue BMW" + plate for owners / "Your sighting · Blue BMW" for
- *        spotters), the unread total that feeds the Inbox tab badge, and
- *        the row's unread treatment.
+ *        spotters), the unread total that feeds the Inbox tab badge, the
+ *        row's unread treatment, and the filter-chip model (All · Unread ·
+ *        My cars · My sightings) with its per-filter empty-state copy.
  * WHY:   The context line is what anchors a conversation to a CAR (Airbnb
  *        anchors to a listing); its wording and the privacy split — the
  *        plate renders ONLY on the owner's own rows (their own plate),
  *        never on a spotter's — are product decisions worth pinning in
- *        tests without rendering.
- * LINKS: src/features/chat/components/ThreadRow.tsx (consumer);
+ *        tests without rendering. The filters are Airbnb's inbox chips
+ *        translated: their categories become our owner-side/spotter-side
+ *        split, with Unread as the workhorse. Filtering is CLIENT-side
+ *        over the already-loaded list — the inbox is one RPC payload, and
+ *        a filter must never cost a round trip.
+ * LINKS: src/features/chat/components/ThreadRow.tsx,
+ *        src/features/chat/screens/InboxScreen.tsx (consumers);
  *        src/shared/ui/appTabBarModel.ts (badge thresholds live there);
  *        docs/DESIGN_SYSTEM.md (PlateChip norms).
  */
 
 import type { InboxThread } from '../types';
+
+/** The inbox filter chips, in display order. */
+export type InboxFilter = 'all' | 'unread' | 'my_cars' | 'my_sightings';
+
+export const INBOX_FILTERS: InboxFilter[] = ['all', 'unread', 'my_cars', 'my_sightings'];
 
 /** The thread row's anchoring line. `plate` non-null means "render a
  *  PlateChip after the prefix" — only ever the OWNER'S OWN plate. */
@@ -50,4 +61,71 @@ export function isUnread(thread: InboxThread): boolean {
 /** The Inbox tab badge value (AppTabBar's model handles 9+ capping). */
 export function totalUnread(threads: InboxThread[]): number {
   return threads.reduce((sum, thread) => sum + Math.max(0, thread.unreadCount), 0);
+}
+
+/** Apply one filter chip. Order is preserved — the RPC already sorts by
+ *  newest activity, and a filter must never reshuffle. */
+export function filterThreads(threads: InboxThread[], filter: InboxFilter): InboxThread[] {
+  switch (filter) {
+    case 'unread':
+      return threads.filter(isUnread);
+    // "My cars" = threads where I am the OWNER (spotters wrote to me about my
+    // car); "My sightings" = threads where I am the SPOTTER. The same role
+    // field that drives the plate privacy split drives this — one source.
+    case 'my_cars':
+      return threads.filter((thread) => thread.role === 'owner');
+    case 'my_sightings':
+      return threads.filter((thread) => thread.role === 'spotter');
+    default:
+      return threads;
+  }
+}
+
+/** Chip label, with the live unread count on the Unread chip ("Unread (3)").
+ *  Zero drops the count — "Unread (0)" reads as a bug, not a state. */
+export function filterLabel(filter: InboxFilter, threads: InboxThread[]): string {
+  switch (filter) {
+    case 'unread': {
+      const count = threads.filter(isUnread).length;
+      return count > 0 ? `Unread (${count})` : 'Unread';
+    }
+    case 'my_cars':
+      return 'My cars';
+    case 'my_sightings':
+      return 'My sightings';
+    default:
+      return 'All';
+  }
+}
+
+/** Per-filter empty copy. An empty Unread is GOOD NEWS and must read like
+ *  it; an empty role filter explains how that side of the split begins.
+ *  Only shown when the unfiltered list is non-empty — a truly empty inbox
+ *  keeps the original invitation EmptyState. */
+export function emptyFilterCopy(filter: InboxFilter): { title: string; body: string } {
+  switch (filter) {
+    case 'unread':
+      return {
+        title: 'All caught up',
+        body: 'No unread messages — nice. New replies will appear here.',
+      };
+    case 'my_cars':
+      return {
+        title: 'No messages about your cars',
+        body: 'When a spotter reports a sighting on one of your posts, their conversation shows here.',
+      };
+    case 'my_sightings':
+      return {
+        title: 'No messages about your sightings',
+        body: 'Report a sighting on a post and the owner can message you here.',
+      };
+    default:
+      // Unreachable from the UI (the screen shows filter-empties only when
+      // the unfiltered list is non-empty, and 'all' is the identity) — kept
+      // for exhaustiveness, deliberately duplicating the invitation copy.
+      return {
+        title: 'No conversations yet',
+        body: 'Conversations open when a spotter reports a sighting on your car — or when you report one.',
+      };
+  }
 }

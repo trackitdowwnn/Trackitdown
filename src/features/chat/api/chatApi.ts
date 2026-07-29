@@ -1,24 +1,31 @@
 /**
  * WHAT:  The chat data path — RPC wrappers (open_thread / send_message /
- *        mark_thread_read / get_inbox / flag_message), the messages page
- *        read (RLS-scoped table select), and the per-thread realtime
- *        subscription factory. Machine-token errors map to calm copy here.
+ *        mark_thread_read / get_inbox / flag_message / get_thread_peer),
+ *        the messages page read (RLS-scoped table select), and the
+ *        per-thread realtime subscription factory. Machine-token errors map
+ *        to calm copy here.
  * WHY:   The SECURITY DEFINER RPCs are the only write boundary and this
  *        file their only caller (house pattern: sightingApi). PRIVACY:
  *        message CONTENT never appears in logs — events carry ids and
  *        lengths only ([chat] tag, docs/LOGGING.md); the inbox's `other`
- *        block is parsed .strict() so a widened RPC leaking more than
- *        first name + avatar fails loudly client-side
- *        (SECURITY_AND_TRUST §1/§6).
- * LINKS: src/features/chat/types.ts; supabase/migrations/*_chat.sql;
- *        src/features/sightings/api/sightingApi.ts (the pattern);
- *        docs/DOMAIN.md (Chat).
+ *        block and get_thread_peer's `peer` block are parsed .strict() so a
+ *        widened RPC leaking more than first name + reputation fails loudly
+ *        client-side (SECURITY_AND_TRUST §1/§6). No peer uid ever reaches
+ *        this file's return values — see fetchThreadPeer.
+ * LINKS: src/features/chat/types.ts; supabase/migrations/*_chat.sql,
+ *        *_chat_thread_peer.sql; src/features/sightings/api/sightingApi.ts
+ *        (the pattern); docs/DOMAIN.md (Chat).
  */
 
 import { z } from 'zod';
 
+// Type-only: erased at runtime, so it cannot close the chat→profile require
+// cycle (profile → garage → vehicles → chat).
+import type { PublicProfile } from '@/features/profile';
 import { supabase } from '@/shared/api';
+import { samplePhotos } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
+import type { PostStatus } from '@/shared/types';
 
 import type {
   ChatMessage,
@@ -100,7 +107,19 @@ const inboxRowSchema = z.object({
     model: z.string(),
     colour: z.string().nullable(),
     plate: z.string().nullable(),
-    status: z.string(),
+    // The full PostStatus set, validated at the boundary: an unknown status
+    // must fail loudly here, not silently render as "Still missing" after a
+    // downstream cast (code review #4).
+    status: z.enum([
+      'draft',
+      'pending_verification',
+      'active',
+      'recovery_claimed',
+      'recovered',
+      'recovered_no_spotter',
+      'cancelled',
+      'expired',
+    ]) satisfies z.ZodType<PostStatus>,
     cover_photo_url: z.string().nullable(),
   }),
   // PRIVACY: strict() — any extra field fails loudly. FIRST NAME ONLY: no
@@ -127,7 +146,11 @@ function toInboxThread(row: z.infer<typeof inboxRowSchema>): InboxThread {
       colour: row.post.colour,
       plate: row.post.plate,
       status: row.post.status,
-      coverPhotoUrl: row.post.cover_photo_url,
+      // Seeded posts have no photos, and the feed fakes its pictures with
+      // samplePhotos — keyed by post id here too, so the same car shows the
+      // SAME photo in the feed, the watchlist and its chat rows. [] in
+      // production, where the real url wins anyway.
+      coverPhotoUrl: row.post.cover_photo_url ?? samplePhotos(row.post_id)[0]?.uri ?? null,
     },
     other: {
       firstName: row.other.first_name,
@@ -221,6 +244,64 @@ export async function flagMessage(messageId: string, reason?: string): Promise<v
   });
   if (error) throw toChatError(error, 'flag_message');
   log.info('message_flagged', { messageId });
+}
+
+// --- Thread peer (RPC) --------------------------------------------------------------
+
+/** A participant's view of the OTHER side of one thread. */
+export interface ThreadPeer {
+  /** When they last had the thread open — the "Seen" caption derives here.
+   *  A thread-level stamp (mark_thread_read), NOT a per-message receipt. */
+  theirLastReadAt: string;
+  /** The spotter's narrow passport — present ONLY when the caller is the
+   *  post's OWNER. A spotter always gets null: owner identity is never
+   *  exposed (DOMAIN.md; security review M2). */
+  peer: PublicProfile | null;
+}
+
+// .strict(): a widened RPC leaking a uid, display_name, or avatar_path must
+// fail loudly client-side, exactly like get_inbox's `other` block.
+const threadPeerResultSchema = z.object({
+  their_last_read_at: z.string(),
+  peer: z
+    .object({
+      first_name: z.string(),
+      created_at: z.string(),
+      sightings_reported: z.number().int(),
+      sightings_helpful: z.number().int(),
+      recoveries_credited: z.number().int(),
+    })
+    .strict()
+    .nullable(),
+});
+
+/**
+ * PRIVACY: this deliberately replaced a direct read of the thread row. The
+ * row is participant-readable and carries both uids, but a uid in app code
+ * pivots (via the permissive profiles select) to display_name — which may
+ * hold a surname — and avatar_path. The RPC keeps the uid server-side and
+ * returns only what may be rendered; avatarUrl stays null because the
+ * storage path embeds the uid this exists to withhold.
+ */
+export async function fetchThreadPeer(threadId: string): Promise<ThreadPeer> {
+  const { data, error } = await supabase.rpc('get_thread_peer', { p_thread_id: threadId });
+  if (error) throw toChatError(error, 'get_thread_peer');
+  const parsed = threadPeerResultSchema.parse(data);
+  return {
+    theirLastReadAt: parsed.their_last_read_at,
+    peer: parsed.peer
+      ? {
+          firstName: parsed.peer.first_name,
+          avatarUrl: null,
+          createdAt: parsed.peer.created_at,
+          counters: {
+            sightingsReported: parsed.peer.sightings_reported,
+            sightingsHelpful: parsed.peer.sightings_helpful,
+            recoveriesCredited: parsed.peer.recoveries_credited,
+          },
+        }
+      : null,
+  };
 }
 
 // --- Messages read (RLS-scoped) ---------------------------------------------------

@@ -1,27 +1,32 @@
 /**
- * WHAT:  MyCarsScreen — the pushed "My cars" page (reached from Profile): the
- *        saved cars, each with a prominent "Report this car stolen", and one
- *        centred "Add a car" button beneath. Guests get the unchanged auth
- *        invitation; loading/empty/error states keep the page's identity.
- * WHY:   This is the feature's home and its conversion surface — the whole
- *        garage exists so the report action is two taps away at the worst moment
- *        of someone's week, so it is a card-level button, not a menu item.
- *        The page stays deliberately SINGLE-PURPOSE: it is about the cars you
- *        own, and nothing else. It once carried a link through to My posts;
- *        that was removed because a post is not a car, and the link competed
- *        with the one action this screen is for. My posts keeps its own Profile
- *        row.
+ * WHAT:  MyCarsScreen — the pushed "My cars" page (reached from Profile):
+ *        photography-first saved-car cards (the whole card is one tap → the
+ *        actions sheet: Report this car stolen / Edit / Remove), a bare "+"
+ *        in the header to add, and the cap note beneath. Guests get the
+ *        unchanged auth invitation; loading/empty/error states keep the
+ *        page's identity.
+ * WHY:   Redesigned 2026-07-29 against Airbnb's host Listings tab: cards are
+ *        calm photos with text below, actions live behind the tap in a
+ *        bottom sheet, and add is the header's + — no buttons on cards, no
+ *        overflow dots. Report moved from a card-level button INTO the sheet
+ *        deliberately: this page is the PEACETIME surface, and the distress
+ *        path has its own faster route (the tab bar's + goes straight to the
+ *        "Which car?" chooser) — here, one extra tap buys a garage that
+ *        reads like a garage rather than a form. Inside the sheet the report
+ *        action keeps top billing as the one primary button.
+ *        The page stays deliberately SINGLE-PURPOSE: the cars you own,
+ *        nothing else (the old My-posts link competed with that and is gone;
+ *        My posts keeps its own Profile row).
  *        An EMPTY garage narrows further still: value-led copy and one solid
- *        "Add your car" button, because someone with an empty garage has to be
- *        persuaded to make a bet before anything has gone wrong.
+ *        "Add your car" button, because someone with an empty garage has to
+ *        be persuaded to make a bet before anything has gone wrong.
  * LINKS: src/app/my-cars.tsx (route); src/features/garage/hooks/useMyVehicles.ts;
- *        src/features/garage/components/GarageCard.tsx;
- *        src/features/vehicles/screens/MyPostsScreen.tsx (the sibling list,
- *          reached from Profile).
+ *        src/features/garage/components/GarageCard.tsx (the card anatomy +
+ *          reference notes); src/features/vehicles/screens/MyPostsScreen.tsx.
  */
 
 import { useRouter } from 'expo-router';
-import { ChevronLeft, Pencil, Trash2 } from 'lucide-react-native';
+import { ChevronLeft, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -43,7 +48,7 @@ import {
 } from '@/shared/ui';
 
 import { deleteVehicle } from '../api/garageApi';
-import { GarageCard } from '../components/GarageCard';
+import { GARAGE_PHOTO_ASPECT_RATIO, GarageCard } from '../components/GarageCard';
 import { useMyVehicles } from '../hooks/useMyVehicles';
 import { vehicleDisplayName } from '../lib/vehicleAnswers';
 import { MAX_VEHICLES, type SavedVehicle } from '../types';
@@ -99,24 +104,27 @@ export function MyCarsScreen() {
     }
   }, [acting, refresh, toast]);
 
+  // The whole card is one tap → the actions sheet (Airbnb: cards carry no
+  // buttons; menus are bottom sheets). Report/Edit/Remove all live there.
   const renderCard = useCallback(
     ({ item }: { item: SavedVehicle }) => (
       <GarageCard
         vehicle={item}
-        onReportStolen={() => onReportStolen(item)}
-        onOpenPost={() => item.activePostId && router.push(`/post/${item.activePostId}`)}
-        onOpenActions={() => {
+        onPress={() => {
           setActing(item);
           actionsRef.current?.open();
         }}
       />
     ),
-    [onReportStolen, router],
+    [],
   );
 
   return (
     <Screen>
-      {/* Pushed page, headers hidden app-wide → an on-screen back control. */}
+      {/* Pushed page, headers hidden app-wide → an on-screen back control.
+          Add lives HERE as a bare + (the reference's header affordance), not
+          as a button in the list's footer. At the cap it stays tappable and
+          explains itself (onAdd toasts) — a dead control explains nothing. */}
       <View style={styles.headerRow}>
         <Pressable
           onPress={() => router.back()}
@@ -130,6 +138,17 @@ export function MyCarsScreen() {
         <Text style={styles.title} accessibilityRole="header">
           My cars
         </Text>
+        {session.status !== 'signedOut' ? (
+          <Pressable
+            onPress={onAdd}
+            accessibilityRole="button"
+            accessibilityLabel="Add a car"
+            style={styles.headerAdd}
+            testID="my-cars-add"
+          >
+            <Plus size={sizes.icon} color={colors.textPrimary} />
+          </Pressable>
+        ) : null}
       </View>
 
       {session.status === 'signedOut' ? (
@@ -175,67 +194,83 @@ export function MyCarsScreen() {
             </View>
           }
           ListFooterComponent={
-            // Nothing below an empty garage — the CTA above is the only action.
-            vehicles.length > 0 ? (
+            // Add moved to the header's +; the footer keeps only the cap fact
+            // (at the cap the + toasts the same message on tap).
+            vehicles.length > 0 && atCap ? (
               <View style={styles.footer}>
-                {atCap ? (
-                  // At the cap the button would be a dead end (the server
-                  // refuses), so state the fact instead of offering a tap that
-                  // only produces an error.
-                  <Text style={styles.capNote}>
-                    That&apos;s all {MAX_VEHICLES} — remove one to add another.
-                  </Text>
-                ) : (
-                  <View style={styles.addAction}>
-                    <Button
-                      label="Add a car"
-                      variant="secondary"
-                      fullWidth={false}
-                      onPress={onAdd}
-                    />
-                  </View>
-                )}
+                <Text style={styles.capNote}>
+                  That&apos;s all {MAX_VEHICLES} — remove one to add another.
+                </Text>
               </View>
             ) : null
           }
         />
       )}
 
-      {/* Overflow for the acted-on car. */}
+      {/* The card's actions — everything the old on-card button and overflow
+          carried, one tap behind the photo. Report keeps top billing as the
+          sheet's single primary; a car with a live listing offers its
+          listing instead (a second report would be refused as PLATE_IN_USE). */}
       <BottomSheet ref={actionsRef} title={acting ? vehicleDisplayName(acting) : undefined}>
-        <ListRow
-          icon={Pencil}
-          title="Edit"
-          onPress={() => {
-            actionsRef.current?.close();
-            if (acting) {
-              router.push({
-                pathname: '/edit-vehicle/[vehicleId]',
-                params: { vehicleId: acting.id },
-              });
+        <View style={styles.sheetBody}>
+          {acting?.isCurrentlyPosted ? (
+            <ListRow
+              icon={ExternalLink}
+              title="View listing"
+              subtitle="This car is currently reported stolen"
+              onPress={() => {
+                actionsRef.current?.close();
+                if (acting?.activePostId) {
+                  router.push(`/post/${acting.activePostId}`);
+                }
+              }}
+              testID="garage-action-view-post"
+            />
+          ) : (
+            <Button
+              label="Report this car stolen"
+              onPress={() => {
+                actionsRef.current?.close();
+                if (acting) {
+                  onReportStolen(acting);
+                }
+              }}
+            />
+          )}
+          <ListRow
+            icon={Pencil}
+            title="Edit details"
+            onPress={() => {
+              actionsRef.current?.close();
+              if (acting) {
+                router.push({
+                  pathname: '/edit-vehicle/[vehicleId]',
+                  params: { vehicleId: acting.id },
+                });
+              }
+            }}
+            testID="garage-action-edit"
+          />
+          {/* Disabled rather than hidden while the car has a live listing: the
+              server refuses with VEHICLE_HAS_ACTIVE_POST, and walking someone
+              through a destructive confirm only to fail is the wrong order. */}
+          <ListRow
+            icon={Trash2}
+            title="Remove from garage"
+            subtitle={
+              acting?.isCurrentlyPosted
+                ? 'Available once this car’s listing is closed'
+                : undefined
             }
-          }}
-          testID="garage-action-edit"
-        />
-        {/* Disabled rather than hidden while the car has a live listing: the
-            server refuses with VEHICLE_HAS_ACTIVE_POST, and walking someone
-            through a destructive confirm only to fail is the wrong order. */}
-        <ListRow
-          icon={Trash2}
-          title="Remove"
-          subtitle={
-            acting?.isCurrentlyPosted
-              ? 'Available once this car’s listing is closed'
-              : undefined
-          }
-          destructive
-          disabled={acting?.isCurrentlyPosted}
-          onPress={() => {
-            actionsRef.current?.close();
-            removeRef.current?.open();
-          }}
-          testID="garage-action-remove"
-        />
+            destructive
+            disabled={acting?.isCurrentlyPosted}
+            onPress={() => {
+              actionsRef.current?.close();
+              removeRef.current?.open();
+            }}
+            testID="garage-action-remove"
+          />
+        </View>
       </BottomSheet>
 
       {/* Copy states only what actually happens: the ROWS go. The stored photo
@@ -253,18 +288,15 @@ export function MyCarsScreen() {
   );
 }
 
-/** Mirrors GarageCard's geometry so load → ready doesn't jump. */
+/** Mirrors GarageCard's geometry — photo, name, meta, AND the plate row —
+ *  so load → ready doesn't jump (ui review #4). */
 function SkeletonGarageCard() {
   return (
-    <View style={styles.skeletonCard}>
-      <View style={styles.topRow}>
-        <View style={[styles.skeletonBlock, styles.skeletonPhoto]} />
-        <View style={styles.identity}>
-          <View style={[styles.skeletonBlock, styles.skeletonName]} />
-          <View style={[styles.skeletonBlock, styles.skeletonMeta]} />
-        </View>
-      </View>
-      <View style={[styles.skeletonBlock, styles.skeletonButton]} />
+    <View accessible accessibilityLabel="Loading" accessibilityState={{ busy: true }}>
+      <View style={[styles.skeletonBlock, styles.skeletonPhoto]} />
+      <View style={[styles.skeletonBlock, styles.skeletonName]} />
+      <View style={[styles.skeletonBlock, styles.skeletonMeta]} />
+      <View style={[styles.skeletonBlock, styles.skeletonPlate]} />
     </View>
   );
 }
@@ -287,7 +319,15 @@ const styles = StyleSheet.create({
   title: {
     ...typography.title,
     color: colors.textPrimary,
-    flexShrink: 1,
+    // flex, not flexShrink: pushes the header's + to the trailing edge.
+    flex: 1,
+  },
+  headerAdd: {
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -(sizes.touchTarget - sizes.icon) / 2,
   },
   stateBlock: {
     paddingHorizontal: spacing.xl,
@@ -295,7 +335,8 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: spacing.xl,
-    gap: spacing.lg,
+    // The reference's rhythm: photo-led cards breathe at 24, not 16.
+    gap: spacing.xl,
   },
   emptyBlock: {
     // EmptyState brings its own generous vertical padding, so this only owns
@@ -306,52 +347,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   footer: {
-    gap: spacing.md,
     paddingTop: spacing.md,
-  },
-  addAction: {
     alignItems: 'center',
   },
   capNote: {
     ...typography.caption,
     color: colors.textSecondary,
   },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-  },
-  identity: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  skeletonCard: {
-    gap: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: radii.xl,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+  sheetBody: {
+    gap: spacing.md,
   },
   skeletonBlock: {
     backgroundColor: colors.surfaceSubtle,
     borderRadius: radii.sm,
   },
   skeletonPhoto: {
-    width: 72,
-    height: 54,
-    borderRadius: radii.md,
+    width: '100%',
+    aspectRatio: GARAGE_PHOTO_ASPECT_RATIO,
+    borderRadius: radii.lg,
   },
   skeletonName: {
-    height: typography.heading.lineHeight,
-    width: '55%',
+    height: typography.cardTitle.lineHeight,
+    width: '45%',
+    marginTop: spacing.md,
   },
   skeletonMeta: {
     height: typography.caption.lineHeight,
-    width: '35%',
+    width: '30%',
+    marginTop: spacing.xs,
   },
-  skeletonButton: {
-    height: sizes.control,
-    borderRadius: radii.md,
+  skeletonPlate: {
+    height: typography.plate.lineHeight + spacing.xs * 2,
+    width: '28%',
+    marginTop: spacing.sm,
   },
 });

@@ -10,7 +10,7 @@
  */
 
 import type { ChatMessage, OutgoingMessage } from '../types';
-import { buildChatList, chatItemKey, dayLabel } from './messageGroups';
+import { buildChatList, chatItemKey, dayLabel, latestSeenOutboundId } from './messageGroups';
 
 const NOW = new Date('2026-07-15T18:00:00Z');
 const ME = 'me';
@@ -117,5 +117,112 @@ describe('buildChatList', () => {
       expect(failed.message.content).toBe('kept, not dropped');
       expect(failed.message.state).toBe('failed');
     }
+  });
+});
+
+describe('groupPos — the grouped-corner runs', () => {
+  const positionsOf = (items: ReturnType<typeof buildChatList>) =>
+    items.flatMap((item) => (item.type === 'message' ? [item.groupPos] : []));
+
+  it('a lone message is single', () => {
+    const items = buildChatList([message('a', '2026-07-15T10:00:00Z')], [], ME, NOW);
+    expect(positionsOf(items)).toEqual(['single']);
+  });
+
+  it('a rapid same-sender burst reads first / middle / last', () => {
+    const items = buildChatList(
+      [
+        message('a', '2026-07-15T10:00:00Z'),
+        message('b', '2026-07-15T10:01:00Z'),
+        message('c', '2026-07-15T10:02:00Z'),
+      ],
+      [],
+      ME,
+      NOW,
+    );
+    expect(positionsOf(items)).toEqual(['first', 'middle', 'last']);
+  });
+
+  it('a sender change breaks the run', () => {
+    const items = buildChatList(
+      [
+        message('a', '2026-07-15T10:00:00Z', ME),
+        message('b', '2026-07-15T10:01:00Z', 'them'),
+        message('c', '2026-07-15T10:02:00Z', 'them'),
+      ],
+      [],
+      ME,
+      NOW,
+    );
+    expect(positionsOf(items)).toEqual(['single', 'first', 'last']);
+  });
+
+  it('a time caption breaks the run — the two cues never fight', () => {
+    // >15 min gap earns a time caption; the bubble under it must open a
+    // fresh run so the caption never sits over a tightened corner.
+    const items = buildChatList(
+      [
+        message('a', '2026-07-15T10:00:00Z'),
+        message('b', '2026-07-15T10:01:00Z'),
+        message('c', '2026-07-15T10:30:00Z'),
+      ],
+      [],
+      ME,
+      NOW,
+    );
+    expect(positionsOf(items)).toEqual(['first', 'last', 'single']);
+  });
+
+  it('a system message breaks the run and never joins one', () => {
+    const items = buildChatList(
+      [
+        message('a', '2026-07-15T10:00:00Z'),
+        message('sys', '2026-07-15T10:00:30Z', null),
+        message('b', '2026-07-15T10:01:00Z'),
+      ],
+      [],
+      ME,
+      NOW,
+    );
+    // The system item keeps the default and is rendered by SystemMessage,
+    // which ignores groupPos entirely.
+    const userPositions = items.flatMap((item) =>
+      item.type === 'message' && item.message.kind === 'user' ? [item.groupPos] : [],
+    );
+    expect(userPositions).toEqual(['single', 'single']);
+  });
+});
+
+describe('latestSeenOutboundId', () => {
+  const mine = [
+    message('m1', '2026-07-15T10:00:00Z'),
+    message('m2', '2026-07-15T11:00:00Z'),
+    message('m3', '2026-07-15T12:00:00Z'),
+  ];
+
+  it('picks the NEWEST of my messages the marker covers — one Seen, ever', () => {
+    expect(latestSeenOutboundId(mine, ME, '2026-07-15T11:30:00Z')).toBe('m2');
+  });
+
+  it('covers a message created at the exact marker instant', () => {
+    // The marker is stamped AFTER the reader's client loaded the thread.
+    expect(latestSeenOutboundId(mine, ME, '2026-07-15T11:00:00Z')).toBe('m2');
+  });
+
+  it('null when they have not read since my oldest message', () => {
+    expect(latestSeenOutboundId(mine, ME, '2026-07-15T09:00:00Z')).toBeNull();
+  });
+
+  it('null without a marker — no data must never render as "not seen"', () => {
+    expect(latestSeenOutboundId(mine, ME, null)).toBeNull();
+  });
+
+  it('never picks their messages or the system message', () => {
+    const mixed = [
+      message('theirs', '2026-07-15T13:00:00Z', 'them'),
+      message('sys', '2026-07-15T13:30:00Z', null),
+      ...mine,
+    ];
+    expect(latestSeenOutboundId(mixed, ME, '2026-07-15T14:00:00Z')).toBe('m3');
   });
 });

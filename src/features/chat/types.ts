@@ -10,6 +10,8 @@
  *        docs/DOMAIN.md (Chat).
  */
 
+import type { PostStatus } from '@/shared/types';
+
 /** Bounds — mirrored by the chat migration's CHECK constraints. */
 export const MAX_MESSAGE_LENGTH = 2000;
 export const MAX_FLAG_REASON_LENGTH = 500;
@@ -69,7 +71,9 @@ export interface InboxThread {
     model: string;
     colour: string | null;
     plate: string | null;
-    status: string;
+    // Validated at the api boundary (z.enum) — an unknown server status
+    // fails the parse there instead of being cast downstream.
+    status: PostStatus;
     coverPhotoUrl: string | null;
   };
   other: {

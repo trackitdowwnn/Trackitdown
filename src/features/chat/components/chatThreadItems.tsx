@@ -13,15 +13,44 @@
  *        docs/DOMAIN.md (Chat: the system safety message).
  */
 
-import { type AccessibilityActionEvent, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  type AccessibilityActionEvent,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from 'react-native';
 
 import { colors, opacity, radii, spacing, typography } from '@/shared/theme';
 
+import type { MessageGroupPos } from '../lib/messageGroups';
 import type { ChatMessage, OutgoingMessage } from '../types';
 
 /** Bubbles never span the full column — the asymmetry is what reads as a
  *  conversation. A percentage (not a sizes token, which are px) kept named. */
 const BUBBLE_MAX_WIDTH = '80%';
+
+/**
+ * Grouped-corner anatomy (Airbnb's refreshed threads): within a same-sender
+ * run, the corners FACING the run tighten to radii.sm while the outer corners
+ * keep radii.lg — three quick messages read as one thought. The tightened
+ * side is the side the bubble sits on (right for mine, left for theirs).
+ */
+function groupedCorners(mine: boolean, groupPos: MessageGroupPos): ViewStyle | null {
+  if (groupPos === 'single') {
+    return null;
+  }
+  const towardPrevious = mine ? 'borderTopRightRadius' : 'borderTopLeftRadius';
+  const towardNext = mine ? 'borderBottomRightRadius' : 'borderBottomLeftRadius';
+  if (groupPos === 'first') {
+    return { [towardNext]: radii.sm };
+  }
+  if (groupPos === 'last') {
+    return { [towardPrevious]: radii.sm };
+  }
+  return { [towardPrevious]: radii.sm, [towardNext]: radii.sm };
+}
 
 /** Local time for the small caption above a group ("14:32", device locale). */
 function timeCaption(iso: string): string {
@@ -34,13 +63,26 @@ export interface MessageBubbleProps {
   message: ChatMessage;
   mine: boolean;
   showTime: boolean;
+  /** Position in a same-sender run — drives the grouped-corner treatment. */
+  groupPos?: MessageGroupPos;
+  /** Renders a quiet "Seen" beneath — set on AT MOST one bubble per thread
+   *  (messageGroups.latestSeenOutboundId picks it). */
+  seen?: boolean;
   /** The other participant's first name, for a warm a11y label ("Sam: …"). */
   otherName?: string;
   /** Report a message. Own messages aren't reportable (queue noise). */
   onReport?: (message: ChatMessage) => void;
 }
 
-export function MessageBubble({ message, mine, showTime, otherName, onReport }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  mine,
+  showTime,
+  groupPos = 'single',
+  seen = false,
+  otherName,
+  onReport,
+}: MessageBubbleProps) {
   const reportable = Boolean(onReport) && !mine;
   const report = () => {
     if (reportable) onReport?.(message);
@@ -60,11 +102,23 @@ export function MessageBubble({ message, mine, showTime, otherName, onReport }: 
         accessibilityHint={reportable ? 'Long-press or use the report action' : undefined}
         accessibilityActions={reportable ? [{ name: 'report', label: 'Report this message' }] : undefined}
         onAccessibilityAction={reportable ? handleAccessibilityAction : undefined}
-        style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
+        style={[
+          styles.bubble,
+          mine ? styles.bubbleMine : styles.bubbleTheirs,
+          groupedCorners(mine, groupPos),
+        ]}
         testID={`bubble-${message.id}`}
       >
         <Text style={mine ? styles.textMine : styles.textTheirs}>{message.content}</Text>
       </Pressable>
+      {seen ? (
+        // The thread-level read stamp, worn by the newest covered message —
+        // deliberately "Seen", not "Seen at 14:32": the marker means "they
+        // had the thread open", and the caption must not claim more.
+        <Text style={styles.seen} testID={`seen-${message.id}`}>
+          Seen
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -161,6 +215,10 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   deliveryState: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  seen: {
     ...typography.caption,
     color: colors.textSecondary,
   },

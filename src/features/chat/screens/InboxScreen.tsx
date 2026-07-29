@@ -1,27 +1,46 @@
 /**
- * WHAT:  ChatInboxScreen — the Inbox tab's signed-in content: the thread
- *        list (FlashList of ThreadRows, newest activity first) with
- *        skeleton rows while loading, a calm EmptyState when no
- *        conversations exist, pull-to-refresh, and an error state with
- *        retry. Guest handling stays in the route (existing gate).
- * WHY:   Refetch-on-focus (in useInbox) keeps rows and the tab badge honest
- *        at every glance — the v1 freshness mechanism. Skeletons are
+ * WHAT:  ChatInboxScreen — the Inbox tab's signed-in content: filter chips
+ *        (All · Unread · My cars · My sightings) over the thread list
+ *        (FlashList of ThreadRows, newest activity first), skeleton rows
+ *        while loading, per-filter empty states, pull-to-refresh, and an
+ *        error state with retry. Guest handling stays in the route.
+ * WHY:   Airbnb's 2024 inbox pillars, translated: one unified list with
+ *        Unread as the workhorse chip, and their category filters becoming
+ *        our owner-side/spotter-side split. Filtering is CLIENT-side over
+ *        the loaded payload (inboxModel) — a chip must never cost a round
+ *        trip. Refetch-on-focus (in useInbox) keeps rows and the tab badge
+ *        honest at every glance — the v1 freshness mechanism. Skeletons are
  *        surfaceSubtle blocks (design system: no spinners on lists).
- * LINKS: src/features/chat/hooks/useInbox.ts; src/features/chat/components/
- *        ThreadRow.tsx; src/app/(tabs)/inbox.tsx (route + guest state).
+ *
+ *        The chips row renders only when there ARE threads: a first-time
+ *        user gets the plain invitation, not four filters over nothing. An
+ *        empty FILTER keeps the chips visible (switching away must stay
+ *        possible) with copy specific to what's empty — an empty Unread is
+ *        good news and reads like it.
+ * LINKS: src/features/chat/hooks/useInbox.ts; src/features/chat/lib/
+ *        inboxModel.ts (filter maths + empty copy); src/features/chat/
+ *        components/ThreadRow.tsx; src/app/(tabs)/inbox.tsx (route/guest).
  */
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
 import { RefreshControl, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useEntranceGate } from '@/shared/hooks';
 import { colors, motion, radii, sizes, spacing } from '@/shared/theme';
-import { EmptyState, ErrorState } from '@/shared/ui';
+import { ChoiceChips, EmptyState, ErrorState } from '@/shared/ui';
 
 import { ThreadRow } from '../components/ThreadRow';
 import { useInbox } from '../hooks/useInbox';
+import {
+  INBOX_FILTERS,
+  emptyFilterCopy,
+  filterLabel,
+  filterThreads,
+  type InboxFilter,
+} from '../lib/inboxModel';
 import type { InboxThread } from '../types';
 
 export function ChatInboxScreen() {
@@ -30,6 +49,16 @@ export function ChatInboxScreen() {
   // Window opens when data is READY (not at mount, which is the skeleton
   // phase) so a slow load still gets the entrance; recycled cells don't.
   const entranceActive = useEntranceGate(status === 'ready');
+
+  // Session-local, deliberately not persisted: a filter is a glance tool,
+  // and reopening the app onto a stale "Unread" filter would read as a
+  // half-empty inbox.
+  const [filter, setFilter] = useState<InboxFilter>('all');
+  const visible = useMemo(() => filterThreads(threads, filter), [threads, filter]);
+  const chipOptions = useMemo(
+    () => INBOX_FILTERS.map((value) => ({ value, label: filterLabel(value, threads) })),
+    [threads],
+  );
 
   if (status === 'loading') {
     return (
@@ -63,6 +92,8 @@ export function ChatInboxScreen() {
     );
   }
 
+  // A truly empty inbox: the invitation, no chips — four filters over
+  // nothing would be furniture.
   if (threads.length === 0) {
     return (
       <View style={styles.centered}>
@@ -74,32 +105,52 @@ export function ChatInboxScreen() {
     );
   }
 
+  const empty = emptyFilterCopy(filter);
+
   return (
-    <FlashList
-      data={threads}
-      keyExtractor={(thread: InboxThread) => thread.threadId}
-      renderItem={({ item, index }) => (
+    <View style={styles.container}>
+      <View style={styles.chipsRow}>
+        <ChoiceChips options={chipOptions} value={filter} onSelect={setFilter} />
+      </View>
+      {visible.length === 0 ? (
+        // Chips stay mounted: the way OUT of an empty filter is the chips
+        // themselves. keyed by filter so switching between two empty filters
+        // still reads as a change.
         <Animated.View
-          entering={
-            entranceActive
-              ? FadeInDown.duration(motion.standard)
-                  .delay(Math.min(index, 6) * motion.listStagger)
-                  .reduceMotion(ReduceMotion.System)
-              : undefined
-          }
+          key={filter}
+          style={styles.centered}
+          entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
         >
-          <ThreadRow
-            thread={item}
-            onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
-          />
+          <EmptyState title={empty.title} body={empty.body} />
         </Animated.View>
+      ) : (
+        <FlashList
+          data={visible}
+          keyExtractor={(thread: InboxThread) => thread.threadId}
+          renderItem={({ item, index }) => (
+            <Animated.View
+              entering={
+                entranceActive
+                  ? FadeInDown.duration(motion.standard)
+                      .delay(Math.min(index, 6) * motion.listStagger)
+                      .reduceMotion(ReduceMotion.System)
+                  : undefined
+              }
+            >
+              <ThreadRow
+                thread={item}
+                onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
+              />
+            </Animated.View>
+          )}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
+          }
+          contentContainerStyle={styles.list}
+          testID="inbox-list"
+        />
       )}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
-      }
-      contentContainerStyle={styles.list}
-      testID="inbox-list"
-    />
+    </View>
   );
 }
 
@@ -114,6 +165,10 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
+  },
+  chipsRow: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.sm,
   },
   list: {
     paddingVertical: spacing.sm,
