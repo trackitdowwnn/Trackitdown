@@ -1080,11 +1080,20 @@ begin
     when others then
       raise exception 'CHECK 11 FAILED: flag_message as anon raised "%" (SQLSTATE %) — its body ran, so anon still holds EXECUTE (expected 42501)', sqlerrm, sqlstate;
   end;
+  begin
+    set local role anon;
+    perform public.get_thread_peer('deaddead-dead-dead-dead-deaddeaddead');
+    reset role;
+  exception
+    when insufficient_privilege then v_denied := v_denied + 1;
+    when others then
+      raise exception 'CHECK 11 FAILED: get_thread_peer as anon raised "%" (SQLSTATE %) — its body ran, so anon still holds EXECUTE (expected 42501)', sqlerrm, sqlstate;
+  end;
 
-  if v_denied <> 9 then
-    raise exception 'CHECK 11 FAILED: expected 9 grant denials for anon, got %', v_denied;
+  if v_denied <> 10 then
+    raise exception 'CHECK 11 FAILED: expected 10 grant denials for anon, got %', v_denied;
   end if;
-  raise notice 'CHECK 11 passed: anon grant-denied (42501) on all three tables and all six RPCs';
+  raise notice 'CHECK 11 passed: anon grant-denied (42501) on all three tables and all seven RPCs';
 end $$;
 
 
@@ -1151,6 +1160,95 @@ begin
     raise exception 'CHECK 13 FAILED: the 21st send within 60s did NOT raise RATE_LIMITED';
   end if;
   raise notice 'CHECK 13 passed: 20 sends/60s allowed, the 21st raises RATE_LIMITED';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 14 — get_thread_peer (the 2026-07-28 chat design pass). The privacy
+-- shape is the whole point: the OWNER gets the spotter's narrow passport
+-- (first_name + created_at + the three counters, NOTHING else — no id, no
+-- display_name, no avatar_path); the SPOTTER gets peer:null (owner identity
+-- is never exposed, DOMAIN.md); both get the OTHER side's read marker; a
+-- third user and a missing thread raise the same opaque NOT_PARTICIPANT.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_tid  uuid;
+  v_doc  jsonb;
+  v_peer jsonb;
+  v_keys text[];
+  v_ok   boolean := false;
+begin
+  select id into v_tid from public.threads
+  where post_id = 'a1a1a1a1-0000-0000-0000-000000000001'
+    and spotter_id = '22222222-2222-2222-2222-222222222222';
+  if v_tid is null then
+    raise exception 'CHECK 14 SETUP: the CHECK 1 thread was not found';
+  end if;
+
+  -- Owner (Alex): marker present, peer block present and EXACTLY the five
+  -- allowed keys.
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}',
+    true);
+  v_doc := public.get_thread_peer(v_tid);
+  if v_doc ->> 'their_last_read_at' is null then
+    raise exception 'CHECK 14 FAILED: owner view missing their_last_read_at: %', v_doc;
+  end if;
+  v_peer := v_doc -> 'peer';
+  if v_peer is null or v_peer = 'null'::jsonb then
+    raise exception 'CHECK 14 FAILED: owner view missing the spotter passport: %', v_doc;
+  end if;
+  if v_peer ->> 'first_name' <> 'Beth' then
+    raise exception 'CHECK 14 FAILED: passport first_name expected Beth, got %', v_peer;
+  end if;
+  select array_agg(k order by k) into v_keys from jsonb_object_keys(v_peer) as t(k);
+  if v_keys <> array['created_at', 'first_name', 'recoveries_credited',
+                     'sightings_helpful', 'sightings_reported'] then
+    -- A leaked id / display_name / avatar_path lands here.
+    raise exception 'CHECK 14 FAILED: passport keys widened to %', v_keys;
+  end if;
+
+  -- Spotter (Beth): marker present, peer STRICTLY null.
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}',
+    true);
+  v_doc := public.get_thread_peer(v_tid);
+  if v_doc ->> 'their_last_read_at' is null then
+    raise exception 'CHECK 14 FAILED: spotter view missing their_last_read_at: %', v_doc;
+  end if;
+  if (v_doc -> 'peer') <> 'null'::jsonb then
+    raise exception 'CHECK 14 FAILED: spotter view must carry peer:null (owner identity is never exposed), got %', v_doc;
+  end if;
+
+  -- Third user (Carl) and a missing thread: one opaque token for both.
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}',
+    true);
+  begin
+    perform public.get_thread_peer(v_tid);
+    raise exception 'CHECK 14 FAILED: a third user could read thread peer state';
+  exception when others then
+    if sqlerrm not like 'NOT_PARTICIPANT%' then
+      raise exception 'CHECK 14 FAILED: third user expected NOT_PARTICIPANT, got %', sqlerrm;
+    end if;
+  end;
+  begin
+    perform public.get_thread_peer('deaddead-dead-dead-dead-deaddeaddead');
+    raise exception 'CHECK 14 FAILED: a missing thread did not raise';
+  exception when others then
+    if sqlerrm not like 'NOT_PARTICIPANT%' then
+      raise exception 'CHECK 14 FAILED: missing thread expected NOT_PARTICIPANT (no existence oracle), got %', sqlerrm;
+    end if;
+  end;
+  v_ok := true;
+
+  if v_ok then
+    raise notice 'CHECK 14 passed: get_thread_peer — owner gets the narrow passport (exact keys), spotter gets peer:null, both get the marker, outsiders get one opaque NOT_PARTICIPANT';
+  end if;
 end $$;
 
 
