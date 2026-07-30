@@ -62,10 +62,14 @@ export const motion = {
   longPress: 350,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */
   loaderMinVisible: 600,
-  /** FullscreenLoader: one cycle of the calm three-dot wave. */
+  /** One cycle of a calm loading pulse (PhotoGridPicker's uploading tile). */
   loaderLoop: 1200,
-  /** FullscreenLoader: how far a dot swells at the top of its wave. */
-  loaderWaveScale: 1.4,
+  /** BrandLoader: dwell time per waiting phrase before it rotates — long
+   *  enough to read twice, short enough to prove the app is alive. */
+  loaderPhraseRotate: 2800,
+  /** BrandLoader: the phrase cross-fade. Ambient text breathes slower than
+   *  UI motion on purpose — a sanctioned exception like mapFly. */
+  loaderPhraseFade: 600,
 } as const;
 
 export type MotionToken = keyof typeof motion;
