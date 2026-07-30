@@ -38,6 +38,12 @@ const schemaFor = (id: string) => {
 };
 
 const photo = { uri: 'file:///a.jpg', capturedAt: '2026-07-14T12:00:00Z' };
+const livePhoto = { ...photo, source: 'live' as const };
+const galleryPhoto = {
+  uri: 'file:///lib.jpg',
+  capturedAt: '2026-07-14T12:01:00Z',
+  source: 'gallery' as const,
+};
 
 describe('reportSightingFlow shape', () => {
   it('is one intro-less phase of four steps ending in Send report', () => {
@@ -57,6 +63,24 @@ describe('reportSightingFlow shape', () => {
     expect(schema.safeParse({ photos: [photo] }).success).toBe(true);
     expect(schema.safeParse({ photos: [photo, photo, photo] }).success).toBe(true);
     expect(schema.safeParse({ photos: [photo, photo, photo, photo] }).success).toBe(false);
+  });
+
+  it('requires at least one LIVE capture — gallery photos alone cannot pass (ADR-0003)', () => {
+    const schema = schemaFor('photos');
+    expect(schema.safeParse({ photos: [galleryPhoto] }).success).toBe(false);
+    expect(schema.safeParse({ photos: [galleryPhoto, galleryPhoto] }).success).toBe(false);
+    // One live capture unlocks the step; gallery extras ride along.
+    expect(schema.safeParse({ photos: [livePhoto, galleryPhoto] }).success).toBe(true);
+    // An absent source means a live in-app capture (CameraCapture's default).
+    expect(schema.safeParse({ photos: [photo, galleryPhoto] }).success).toBe(true);
+    // The confirm gate re-asserts the same rule — an edit cannot send gallery-only.
+    expect(schemaFor('confirm').safeParse({ photos: [galleryPhoto] }).success).toBe(false);
+  });
+
+  it('rejects a located gallery photo — a library photo carries no location, ever', () => {
+    const schema = schemaFor('photos');
+    const locatedGallery = { ...galleryPhoto, lat: 51.5, lng: -0.12 };
+    expect(schema.safeParse({ photos: [livePhoto, locatedGallery] }).success).toBe(false);
   });
 
   it('rejects a half-located photo (lat/lng both-or-neither, like the DB CHECK)', () => {

@@ -53,17 +53,19 @@ jest.mock('expo-image-manipulator', () => ({
 
 const POST_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
 
-const located: EvidencePhoto = {
+const located = {
   uri: 'file:///a.jpg',
   capturedAt: '2026-07-14T12:00:00Z',
   lat: 51.54,
   lng: -0.14,
   accuracyM: 12,
-};
-const unlocated: EvidencePhoto = {
+  source: 'live',
+} as const satisfies EvidencePhoto;
+const unlocated = {
   uri: 'file:///b.jpg',
   capturedAt: '2026-07-14T12:01:00Z',
-};
+  source: 'live',
+} as const satisfies EvidencePhoto;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -94,6 +96,7 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       lng: -0.14,
       accuracy_m: 12,
       captured_at: '2026-07-14T12:00:00Z',
+      source: 'live',
     });
     // SAFETY: the second photo must NOT borrow the first photo's location.
     expect(params.p_photos[1]).toEqual({
@@ -102,6 +105,7 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       lng: null,
       accuracy_m: null,
       captured_at: '2026-07-14T12:01:00Z',
+      source: 'live',
     });
     expect(params.p_note).toBe('saw it');
   });

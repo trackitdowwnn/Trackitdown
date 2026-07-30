@@ -114,6 +114,10 @@ export const sizes = {
   mapPinRing: 2,
   /** Non-interactive context pill height (timeline cards). */
   pillHeight: 24,
+  /** The camera-as-step canvas (report-sighting photos step): viewfinder +
+   *  thumb rail + shutter row as one fixed-height block inside the wizard's
+   *  scroll — fixed so the step never reflows as photos arrive. */
+  cameraStep: 520,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

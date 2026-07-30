@@ -139,6 +139,8 @@ export interface OwnerSighting {
     lng: number | null;
     accuracyM: number | null;
     capturedAt: string;
+    /** ADR-0003 provenance — 'gallery' photos are labelled to the owner. */
+    source: 'live' | 'gallery';
   }[];
   parkedLikelihood: ParkedLikelihood | null;
   direction: DrivingDirection | null;

@@ -39,6 +39,7 @@ const evidenceShape = z
     accuracyM: z.number().optional(),
     width: z.number().optional(),
     height: z.number().optional(),
+    source: z.enum(['live', 'gallery']).optional(),
   })
   // A located photo is located by a complete fix: lat and lng arrive together
   // or not at all (mirrors the sighting_photos both-or-neither CHECK).
@@ -51,6 +52,20 @@ const evidenceShape = z
   // sighting_photos accuracy-located CHECK; sightingApi re-checks at submit).
   .refine((photo) => photo.accuracyM === undefined || photo.lat !== undefined, {
     message: 'accuracyM is only allowed on a located photo',
+  })
+  // ADR-0003: a gallery photo carries no location, ever.
+  .refine((photo) => photo.source !== 'gallery' || photo.lat === undefined, {
+    message: 'a gallery photo carries no location',
+  });
+
+/** ADR-0003 rule 1 (the wizard's gate; sightingApi and the RPC re-enforce):
+ *  1–3 photos, at least one a LIVE in-app capture. */
+const evidencePhotos = z
+  .array(evidenceShape)
+  .min(MIN_SIGHTING_PHOTOS)
+  .max(MAX_SIGHTING_PHOTOS)
+  .refine((photos) => photos.some((photo) => photo.source !== 'gallery'), {
+    message: 'At least one photo must be taken in the app',
   });
 
 export const REPORT_SIGHTING_INITIAL_ANSWERS: Partial<ReportSightingAnswers> = {
@@ -87,7 +102,7 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           helper: 'From a distance. One photo is enough — three max.',
           component: PhotosStep,
           schema: z.object({
-            photos: z.array(evidenceShape).min(MIN_SIGHTING_PHOTOS).max(MAX_SIGHTING_PHOTOS),
+            photos: evidencePhotos,
           }),
           ctaLabel: 'Continue',
           // Derive the coarse area label from the first located photo now so
@@ -105,9 +120,12 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
         {
           id: 'context',
           question: 'Anything else that helps?',
-          helper: 'All optional — continue straight past if not.',
+          helper: 'All optional — skip straight past if not.',
           component: ContextStep,
-          // Everything optional: an empty step must never cost a report.
+          // Everything optional: an empty step must never cost a report. The
+          // step renders the framework's PROMINENT Skip via onSkip, and
+          // `optional` keeps the final gate from ever demanding it.
+          optional: true,
           schema: z.object({
             contextFlags: z.array(z.enum(SIGHTING_CONTEXT_FLAGS)).optional(),
             note: z.string().max(MAX_NOTE_LENGTH).optional(),
@@ -125,10 +143,10 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           id: 'confirm',
           question: 'Check and send',
           component: ConfirmStep,
-          // The final gate re-asserts the photo rule; send itself is the
-          // screen's onComplete (submitSighting).
+          // The final gate re-asserts the photo rule (incl. ≥1 live); send
+          // itself is the screen's onComplete (submitSighting).
           schema: z.object({
-            photos: z.array(evidenceShape).min(MIN_SIGHTING_PHOTOS).max(MAX_SIGHTING_PHOTOS),
+            photos: evidencePhotos,
           }),
         },
       ],
