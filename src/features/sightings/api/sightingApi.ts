@@ -77,7 +77,9 @@ export class SightingSubmissionError extends Error {
 // --- Submit-ready validation ---------------------------------------------------
 
 /** A located capture carries its OWN full fix; an un-located one carries none.
- *  This is the client half of the evidence-atomicity rule (the RPC re-checks). */
+ *  This is the client half of the evidence-atomicity rule (the RPC re-checks).
+ *  ADR-0003: source defaults 'live'; a GALLERY photo may carry NO location
+ *  (its EXIF is never read as evidence — payout blindness, made structural). */
 const evidencePhotoSchema = z
   .object({
     uri: z.string().min(1),
@@ -87,16 +89,27 @@ const evidencePhotoSchema = z
     lat: z.number().optional(),
     lng: z.number().optional(),
     accuracyM: z.number().optional(),
+    source: z.enum(['live', 'gallery']).default('live'),
   })
   .refine((photo) => (photo.lat === undefined) === (photo.lng === undefined), {
     message: 'A photo must carry both coordinates or neither',
   })
   .refine((photo) => photo.accuracyM === undefined || photo.lat !== undefined, {
     message: 'Accuracy without a fix is meaningless',
+  })
+  .refine((photo) => photo.source !== 'gallery' || photo.lat === undefined, {
+    message: 'A gallery photo carries no location (ADR-0003)',
   });
 
 const submitAnswersSchema = z.object({
-  photos: z.array(evidencePhotoSchema).min(MIN_SIGHTING_PHOTOS).max(MAX_SIGHTING_PHOTOS),
+  // ADR-0003 rule 1 (client half; the RPC re-enforces): ≥1 LIVE capture.
+  photos: z
+    .array(evidencePhotoSchema)
+    .min(MIN_SIGHTING_PHOTOS)
+    .max(MAX_SIGHTING_PHOTOS)
+    .refine((photos) => photos.some((photo) => photo.source === 'live'), {
+      message: 'At least one live in-app capture is required',
+    }),
   contextFlags: z.array(z.enum(SIGHTING_CONTEXT_FLAGS)).default([]),
   note: z.string().max(MAX_NOTE_LENGTH).default(''),
   areaLabel: z.string().max(120).optional(),
@@ -134,6 +147,7 @@ export function buildCreateSightingParams(
       lng: photo.lng ?? null,
       accuracy_m: photo.accuracyM ?? null,
       captured_at: photo.capturedAt,
+      source: photo.source,
     })),
     p_context_flags: answers.contextFlags,
     p_note: emptyToNull(answers.note),
@@ -310,6 +324,8 @@ const ownerSightingSchema = z.object({
       lng: z.number().nullable(),
       accuracy_m: z.number().nullable(),
       captured_at: z.string(),
+      // ADR-0003 provenance; optional so pre-hybrid cached payloads parse.
+      source: z.enum(['live', 'gallery']).optional().default('live'),
     }),
   ),
   // PRIVACY: strict() — any EXTRA field on the spotter payload (a widened
@@ -354,6 +370,7 @@ export async function fetchPostSightings(postId: string): Promise<OwnerSighting[
       lng: photo.lng,
       accuracyM: photo.accuracy_m,
       capturedAt: photo.captured_at,
+      source: photo.source,
     })),
     spotter: {
       firstName: row.spotter.first_name,

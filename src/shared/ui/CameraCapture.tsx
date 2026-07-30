@@ -27,7 +27,7 @@
 import { Feather } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
@@ -50,6 +50,10 @@ export interface EvidencePhoto {
   /** GPS accuracy radius in metres, recorded as reported — poor accuracy is
    *  data, not a rejection reason. */
   accuracyM?: number;
+  /** Provenance (ADR-0003): 'live' = in-app capture (the evidence);
+   *  'gallery' = supplementary library photo — labelled to owners, never
+   *  location-bearing. Absent = 'live' (every capture from this component). */
+  source?: 'live' | 'gallery';
 }
 
 export interface CameraCaptureProps {
@@ -60,6 +64,10 @@ export interface CameraCaptureProps {
   /** Per-flow primer content (ask + denied copy) — defaults to a generic
    *  in-app-capture framing; flows with higher stakes pass their own. */
   primerContent?: PermissionPrimerContent;
+  /** Rendered beside the shutter — a NEUTRAL slot (the sightings flow puts
+   *  its ADR-0003 gallery button here). The gallery PATH stays outside this
+   *  component by design; this is layout only. */
+  shutterAccessory?: ReactNode;
 }
 
 /** Default camera primer: truthful for any consumer — in-app capture with a
@@ -84,6 +92,8 @@ const FIX_TIMEOUT_MS = 4000;
 /** Best-effort fix: current position raced against a timeout, falling back to
  *  a recent last-known position. Null = un-located (an honest outcome). */
 async function captureFix(): Promise<{ lat: number; lng: number; accuracyM?: number } | null> {
+  // Cleared in finally — a lost race must not leave a dangling timer.
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const { granted } = await Location.getForegroundPermissionsAsync();
     if (!granted) return null;
@@ -91,7 +101,9 @@ async function captureFix(): Promise<{ lat: number; lng: number; accuracyM?: num
       // A failed live fix resolves null (not rejects) so the last-known
       // fallback below still runs.
       Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }).catch(() => null),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), FIX_TIMEOUT_MS)),
+      new Promise<null>((resolve) => {
+        timeout = setTimeout(() => resolve(null), FIX_TIMEOUT_MS);
+      }),
     ]);
     const fix = position ?? (await Location.getLastKnownPositionAsync({ maxAge: 60_000 }));
     if (!fix) return null;
@@ -102,6 +114,8 @@ async function captureFix(): Promise<{ lat: number; lng: number; accuracyM?: num
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -110,6 +124,7 @@ export function CameraCapture({
   onChange,
   maxPhotos,
   primerContent = DEFAULT_CAMERA_PRIMER,
+  shutterAccessory,
 }: CameraCaptureProps) {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
@@ -193,6 +208,7 @@ export function CameraCapture({
             width: picture.width,
             height: picture.height,
             capturedAt,
+            source: 'live',
             ...(fix ?? {}),
           },
         ]);
@@ -225,30 +241,45 @@ export function CameraCapture({
             <Pressable
               key={photo.uri}
               accessibilityRole="button"
-              accessibilityLabel={`Remove photo ${index + 1}`}
+              accessibilityLabel={`Remove photo ${index + 1}${
+                photo.source === 'gallery' ? ' (from photo library)' : ''
+              }`}
               onPress={() => removeAt(index)}
               style={styles.thumb}
             >
               <AppImage uri={photo.uri} style={styles.thumbImage} />
+              {photo.source === 'gallery' ? (
+                // Provenance badge (ADR-0003): a library photo is never
+                // presented as a live capture, even at thumbnail size.
+                <View style={styles.thumbSource}>
+                  <Feather name="image" size={sizes.iconSm} color={colors.textOnPrimary} />
+                </View>
+              ) : null}
               <View style={styles.thumbRemove}>
                 <Feather name="x" size={sizes.iconSm} color={colors.textOnPrimary} />
               </View>
             </Pressable>
           ))}
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={full ? 'Photo limit reached' : 'Take photo'}
-          disabled={capturing || full}
-          onPress={() => void onShutter()}
-          style={({ pressed }) => [
-            styles.shutter,
-            (pressed || capturing) && styles.shutterPressed,
-            full && styles.shutterDisabled,
-          ]}
-        >
-          <View style={styles.shutterInner} />
-        </Pressable>
+        {/* Shutter stays optically centred; the accessory slot balances into
+            the left cell (the right cell mirrors it empty). */}
+        <View style={styles.shutterRow}>
+          <View style={styles.shutterSide}>{shutterAccessory}</View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={full ? 'Photo limit reached' : 'Take photo'}
+            disabled={capturing || full}
+            onPress={() => void onShutter()}
+            style={({ pressed }) => [
+              styles.shutter,
+              (pressed || capturing) && styles.shutterPressed,
+              full && styles.shutterDisabled,
+            ]}
+          >
+            <View style={styles.shutterInner} />
+          </Pressable>
+          <View style={styles.shutterSide} />
+        </View>
       </View>
     </View>
   );
@@ -306,6 +337,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.overlay,
     borderBottomLeftRadius: radii.sm,
     padding: spacing.xs,
+  },
+  thumbSource: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    backgroundColor: colors.overlay,
+    borderTopRightRadius: radii.sm,
+    padding: spacing.xs,
+  },
+  shutterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    gap: spacing.xl,
+  },
+  shutterSide: {
+    flex: 1,
+    alignItems: 'center',
   },
   shutter: {
     width: SHUTTER_SIZE,

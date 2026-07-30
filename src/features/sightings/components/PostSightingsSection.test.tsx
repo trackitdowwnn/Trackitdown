@@ -62,7 +62,16 @@ const sighting = (id: string, createdAt: string): OwnerSighting => ({
   direction: null,
   peoplePresence: null,
   confirmedFeatures: [],
-  photos: [{ path: `evidence/${id}.jpg`, lat: 51.55, lng: -0.11, accuracyM: 8, capturedAt: createdAt }],
+  photos: [
+    {
+      path: `evidence/${id}.jpg`,
+      lat: 51.55,
+      lng: -0.11,
+      accuracyM: 8,
+      capturedAt: createdAt,
+      source: 'live',
+    },
+  ],
   spotter: {
     firstName: 'Beth',
     sightingsReported: 3,

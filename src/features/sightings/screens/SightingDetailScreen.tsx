@@ -178,20 +178,33 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
     <Screen scroll contentContainerStyle={styles.content}>
       <SightingHeader sighting={sighting} status={effectiveStatus} />
 
-      {/* Evidence photos, large — the owner is examining, not skimming. */}
+      {/* Evidence photos, large — the owner is examining, not skimming.
+          ADR-0003: a gallery photo is labelled UNMISSABLY — it is context,
+          not capture-moment evidence, and never carries a location. */}
       <View style={styles.photoStack}>
-        {sighting.photos.map((photo) =>
-          photoUrls[photo.path] ? (
-            <AppImage
-              key={photo.path}
-              uri={photoUrls[photo.path]}
-              style={styles.photo}
-              accessibilityLabel="Sighting photo"
-            />
-          ) : (
-            <View key={photo.path} style={[styles.photo, styles.photoPending]} />
-          ),
-        )}
+        {sighting.photos.map((photo) => (
+          <View key={photo.path}>
+            {photoUrls[photo.path] ? (
+              <AppImage
+                uri={photoUrls[photo.path]}
+                style={styles.photo}
+                accessibilityLabel={
+                  photo.source === 'gallery'
+                    ? 'Sighting photo, added from photo library'
+                    : 'Sighting photo, taken in the app'
+                }
+              />
+            ) : (
+              <View style={[styles.photo, styles.photoPending]} />
+            )}
+            {photo.source === 'gallery' ? (
+              <View style={styles.photoSourceRow}>
+                <Feather name="image" size={sizes.iconSm} color={colors.textSecondary} />
+                <Text style={styles.photoSourceText}>Added from photo library</Text>
+              </View>
+            ) : null}
+          </View>
+        ))}
       </View>
 
       {/* The exact captured point — owner-only surface, so precision is
@@ -360,6 +373,16 @@ const styles = StyleSheet.create({
   },
   photoPending: {
     backgroundColor: colors.surfaceSubtle,
+  },
+  photoSourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  photoSourceText: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   mapCard: {
     height: sizes.mapPreview,

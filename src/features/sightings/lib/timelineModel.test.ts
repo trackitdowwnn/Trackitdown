@@ -43,8 +43,26 @@ const sighting = (
   peoplePresence: null,
   confirmedFeatures: [],
   photos: photo
-    ? [{ path: `p/${id}.jpg`, lat: photo.lat, lng: photo.lng, accuracyM: 10, capturedAt: createdAt }]
-    : [{ path: `p/${id}.jpg`, lat: null, lng: null, accuracyM: null, capturedAt: createdAt }],
+    ? [
+        {
+          path: `p/${id}.jpg`,
+          lat: photo.lat,
+          lng: photo.lng,
+          accuracyM: 10,
+          capturedAt: createdAt,
+          source: 'live' as const,
+        },
+      ]
+    : [
+        {
+          path: `p/${id}.jpg`,
+          lat: null,
+          lng: null,
+          accuracyM: null,
+          capturedAt: createdAt,
+          source: 'live' as const,
+        },
+      ],
   spotter: {
     firstName: 'Beth',
     sightingsReported: 3,
