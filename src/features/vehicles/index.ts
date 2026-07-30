@@ -17,6 +17,9 @@ export { PostDetailScreen, type PostDetailScreenProps } from './screens/PostDeta
 export { MakeField } from './post/components/MakeField';
 export { ModelField } from './post/components/ModelField';
 export type { PostDetail, PostDetailResult, ClosedReason } from './types';
+// The report-sighting wizard reads the post's registered marks through this
+// (deferred-imported) to offer them as confirmable checkmarks.
+export { fetchPostDetail } from './api/vehicleApi';
 // The shared vehicle-identity slice. features/garage collects EXACTLY this data,
 // so it consumes the type (and, from step 5, the step list) from here rather
 // than duplicating it. One-way only: vehicles must never import the garage —

@@ -198,7 +198,38 @@ travel. Airbnb's wishlist mechanics, translated:
   value, never rejected. Each photo carries only its OWN capture-moment fix —
   never a borrowed one. (Approved 2026-07-14 with the sightings feature.)
 - Sightings start as `unverified`. The owner can mark a sighting `helpful`
-  (fed into reputation) — but only a credited sighting pays out.
+  (fed into reputation) — but only a credited sighting pays out. Marking
+  helpful is server-side (`mark_sighting_helpful`, owner-of-post only,
+  `unverified → helpful` exclusively): a `credited` sighting is a payout
+  record and never re-labels; re-marking an already-helpful sighting is an
+  idempotent no-op, so the spotter's counter can only ever bump once per
+  sighting. (Live 2026-07-29 with the timeline feature.)
+- **Public sighting entries (ADR-0008, map grain ADR-0009).** An active post
+  shows everyone its five most recent sightings as time + coarse locality
+  ("Sighted near Holloway · 5h ago") plus a count of the rest — and, since
+  ADR-0009 (2026-07-30), a trail map drawn from `snap_lat`/`snap_lng`:
+  each point rounded SERVER-side to a 0.01° (~1 km) grid before it leaves
+  the database. Everything else about a sighting — photos, exact location,
+  spotter, notes — is owner-only (the owner's own map uses their exact
+  payload). The locality is its own column, captured at report time at
+  district/city grain; the street-level `area_label` never appears
+  publicly. Closed posts show none. (Approved 2026-07-29 / 2026-07-30.)
+- **Structured context (all optional, all taps — approved 2026-07-29).**
+  Beyond the photo, a report may carry: a vehicle STATE (parked / driving /
+  being loaded-towed — mutually exclusive; the towed case flips the urgency
+  calculus), a parked follow-up (`parked_likelihood`: settled / street /
+  moving — the spotter's one-tap judgement of how fast the owner must act),
+  a driving follow-up (`direction`: 8-way compass heading), condition chips
+  (plate changed-missing / damage visible / being stripped / looks intact),
+  a 3-way people observation (`people_presence`: nobody / nearby /
+  in_vehicle — supersedes the `people_nearby` flag for new reports; the
+  in-vehicle case reinforces the don't-approach register inline), and
+  confirmed distinctive marks (`confirmed_feature_ids` — the post's
+  registered marks the spotter ticked "could you see…?"; ids validated
+  server-side against that post's marks). Every field is skippable: an
+  empty context step is a valid report, and the free-text note stays the
+  catch-all. Nothing here is ever public — structured context is owner-only
+  like the note (ADR-0008 unchanged).
 - Rate limit: a spotter can report at most 3 sightings per post per day
   (a rolling 24-hour window, not a midnight reset).
 - Every sighting screen and notification carries the safety line: report

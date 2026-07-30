@@ -19,7 +19,7 @@ import { createLogger } from '@/shared/lib/logger';
 import type { WizardFlow } from '@/shared/wizard';
 
 import { ConfirmStep, ContextStep, PhotosStep, SafetyStep } from './components/sightingSteps';
-import { deriveAreaLabel } from './lib/areaLabel';
+import { derivePlaceLabels } from './lib/areaLabel';
 import {
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
@@ -93,13 +93,13 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           // Derive the coarse area label from the first located photo now so
           // the confirm screen renders instantly. Never blocks: null is fine.
           onContinue: async (answers) => {
-            const areaLabel = await deriveAreaLabel(answers.photos ?? []);
+            const { areaLabel, locality } = await derivePlaceLabels(answers.photos ?? []);
             log.info('step_completed', {
               step: 'photos',
               photoCount: answers.photos?.length ?? 0,
               located: Boolean(areaLabel) || (answers.photos ?? []).some((p) => p.lat !== undefined),
             });
-            return { areaLabel: areaLabel ?? undefined };
+            return { areaLabel: areaLabel ?? undefined, locality: locality ?? undefined };
           },
         },
         {

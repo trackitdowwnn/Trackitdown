@@ -5,10 +5,12 @@
  *        at the end (no Show-all tap), the sighting-activity line
  *        stays HIDDEN while the aggregate is zero (dormant), the SafetyNotice
  *        is always present, and the report row fires its callback.
- * WHY:   The conditional gating is the section's contract; the sighting gate
- *        is also SAFETY — the aggregate line must not appear (nor could leak)
- *        until the sightings feature lights it up. Old posts missing newer
- *        structured fields must render gracefully, never as empty shells.
+ * WHY:   The conditional gating is the section's contract; the sighting
+ *        section's face split is also SAFETY — the body must hand the
+ *        sightings feature the correct isOwner, because that flag decides
+ *        which RPC (rich vs restrained) is called (ADR-0008). Old posts
+ *        missing newer structured fields must render gracefully, never as
+ *        empty shells.
  * LINKS: src/features/vehicles/components/PostDetailBody.tsx, docs/TESTING.md.
  */
 
@@ -22,6 +24,14 @@ jest.mock('@/shared/ui/AppMap', () => ({ AppMap: 'AppMap', AppMapMarker: 'AppMap
 
 // The rail's bookmark toggle drags in the watchlist store/supabase — stub it.
 jest.mock('@/features/watchlist', () => ({ WatchToggle: () => null }));
+
+// The sighting-activity section owns its own data fetching (both faces hit
+// supabase) — stub the whole feature barrel; the section has its own tests.
+// The spy pins that the body hands it the right face split (id + isOwner).
+const mockSightingsSection = jest.fn((_props: unknown) => null);
+jest.mock('@/features/sightings', () => ({
+  PostSightingsSection: (props: unknown) => mockSightingsSection(props),
+}));
 
 // ConfirmDialog (the bounty ⓘ popup) rides the bottom-sheet + safe-area
 // stack — same mocks PostDetailScreen.test uses.
@@ -170,15 +180,22 @@ describe('PostDetailBody', () => {
     expect(queryByText('Sighting activity')).toBeNull();
   });
 
-  it('shows the aggregate line (count only) once sightings exist', async () => {
-    const { getByText, queryByText } = await renderBody({
-      ...base,
-      sightingCount: 3,
-      latestSightingAt: '2026-07-11T09:00:00Z',
-    });
-    expect(getByText(/3 sightings reported/)).toBeTruthy();
-    // SAFETY: the aggregate is ALL a non-owner ever sees — no locations.
-    expect(queryByText(/Camden.*sighting/i)).toBeNull();
+  it('mounts the sightings section with the post id and the viewer face', async () => {
+    // The timeline superseded the old aggregate line; the FACE SPLIT (owner
+    // vs public depth) is the sightings feature's contract — the body's job
+    // is only to pass the split correctly. SAFETY: isOwner here is what
+    // decides which RPC the section calls (ADR-0008).
+    mockSightingsSection.mockClear();
+    await renderBody({ ...base, isOwner: false });
+    expect(mockSightingsSection).toHaveBeenCalledWith(
+      expect.objectContaining({ postId: 'p1', isOwner: false }),
+    );
+
+    mockSightingsSection.mockClear();
+    await renderBody({ ...base, isOwner: true });
+    expect(mockSightingsSection).toHaveBeenCalledWith(
+      expect.objectContaining({ postId: 'p1', isOwner: true }),
+    );
   });
 
   it('bounty ⓘ is pressable and carries the explainer dialog (the promise lives there, not inline)', async () => {

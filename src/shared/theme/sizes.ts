@@ -86,6 +86,34 @@ export const sizes = {
    *  treats location as a headline-size element, not a thumbnail
    *  (docs/design-refs/post-detail/REFERENCE_SPEC.md §9). */
   mapPreview: 340,
+  /** Compact confirm-screen map (report-sighting "Check and send") — placement
+   *  context, deliberately smaller than the headline mapPreview. */
+  mapConfirmPreview: 160,
+  /** Sighting-timeline drawn geometry (researched treatment, 2026-07-30):
+   *  a 24px node column carrying a 2px rail; 12px sighting dots with a 2px
+   *  page-colour ring so they sit crisply ON the rail; 16px newest dot;
+   *  24px icon-in-circle anchor nodes. Content offset from the rail is the
+   *  column + spacing.xxl gap (~44px, inside the researched 40–60 range). */
+  timelineRailColumn: 24,
+  timelineRailStroke: 2,
+  timelineDot: 12,
+  timelineDotNewest: 16,
+  timelineDotRing: 2,
+  timelineDotStroke: 1.5,
+  timelineAnchor: 24,
+  /** Day-group stop on the rail — a micro-tick, not an event node. */
+  timelineTick: 6,
+  /** Dash rhythm (on/off, svg units) for the uncertainty segment. */
+  timelineDash: 4,
+  /** Map-pin family (drawn geometry; the PRESSABLE around a tappable pin is
+   *  padded up to touchTarget — same rule as sliderThumb). */
+  mapPin: 14,
+  mapPinNewest: 20,
+  mapPinOrigin: 12,
+  mapPinConfirm: 16,
+  mapPinRing: 2,
+  /** Non-interactive context pill height (timeline cards). */
+  pillHeight: 24,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

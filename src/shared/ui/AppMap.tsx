@@ -31,10 +31,11 @@ import { mapStyle } from '@/shared/theme';
 
 import type { MapComponentProps } from './LocationPicker';
 
-// The search map renders markers; re-exporting keeps react-native-maps
-// imported in exactly one native module (this file). Web resolves the
-// AppMap.web.tsx stub instead.
-export { Marker as AppMapMarker } from 'react-native-maps';
+// The search map renders markers (and the owner's sightings-trail map draws
+// its connecting line); re-exporting keeps react-native-maps imported in
+// exactly one native module (this file). Web resolves the AppMap.web.tsx
+// stub instead.
+export { Marker as AppMapMarker, Polyline as AppMapPolyline } from 'react-native-maps';
 
 /** Below this degree delta we treat two regions as the same VIEW (point and
  *  zoom) — a prop update merely echoing where the user already is starts no

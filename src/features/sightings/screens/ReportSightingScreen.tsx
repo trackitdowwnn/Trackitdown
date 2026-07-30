@@ -40,7 +40,24 @@ import {
   REPORT_SIGHTING_INITIAL_ANSWERS,
   reportSightingFlow,
 } from '../reportSightingFlow';
-import type { ReportSightingAnswers } from '../types';
+import type { ConfirmableFeature, ReportSightingAnswers } from '../types';
+
+/** The post's registered marks, for the context step's "Could you see…?"
+ *  checkmarks. Best-effort: any failure (hidden post, old payload without
+ *  ids, network) yields [] and the wizard simply offers no marks section.
+ *  Deferred import keeps sightings' module graph off the vehicles feature. */
+async function fetchConfirmableFeatures(postId: string): Promise<ConfirmableFeature[]> {
+  try {
+    const { fetchPostDetail } = await import('@/features/vehicles');
+    const result = await fetchPostDetail(postId);
+    if (result.kind !== 'visible') return [];
+    return result.post.distinctiveFeatures.flatMap((feature) =>
+      feature.id ? [{ id: feature.id, description: feature.description }] : [],
+    );
+  } catch {
+    return [];
+  }
+}
 
 const log = createLogger('sightings');
 
@@ -55,7 +72,7 @@ export interface ReportSightingScreenProps {
 type Phase =
   | { kind: 'checking' }
   | { kind: 'rate_limited' }
-  | { kind: 'wizard' }
+  | { kind: 'wizard'; confirmableFeatures: ConfirmableFeature[] }
   | { kind: 'sent' };
 
 export function ReportSightingScreen({ postId, source, bountyPence }: ReportSightingScreenProps) {
@@ -63,23 +80,26 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
   const [phase, setPhase] = useState<Phase>({ kind: 'checking' });
 
   // The quota gate: spent → the kind state instead of the wizard. A failed
-  // CHECK never blocks reporting (the RPC is the real enforcement).
+  // CHECK never blocks reporting (the RPC is the real enforcement). The
+  // post's registered marks ride the same await — one loading moment, and a
+  // marks failure costs nothing but the checkmarks section.
   useEffect(() => {
     let cancelled = false;
     log.info('flow_entered', { postId, source });
-    fetchSightingQuota(postId)
-      .then((quota) => {
+    // allSettled: a quota-check blip must not cost the marks (nor vice
+    // versa) — each degrades independently, and neither ever blocks.
+    Promise.allSettled([fetchSightingQuota(postId), fetchConfirmableFeatures(postId)]).then(
+      ([quota, marks]) => {
         if (cancelled) return;
-        if (quota.used >= quota.maxPerDay) {
+        const confirmableFeatures = marks.status === 'fulfilled' ? marks.value : [];
+        if (quota.status === 'fulfilled' && quota.value.used >= quota.value.maxPerDay) {
           log.info('rate_limited', { postId });
           setPhase({ kind: 'rate_limited' });
         } else {
-          setPhase({ kind: 'wizard' });
+          setPhase({ kind: 'wizard', confirmableFeatures });
         }
-      })
-      .catch(() => {
-        if (!cancelled) setPhase({ kind: 'wizard' });
-      });
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -130,7 +150,10 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
   return (
     <WizardScreen
       flow={reportSightingFlow}
-      initialAnswers={REPORT_SIGHTING_INITIAL_ANSWERS}
+      initialAnswers={{
+        ...REPORT_SIGHTING_INITIAL_ANSWERS,
+        confirmableFeatures: phase.confirmableFeatures,
+      }}
       onExit={() => router.back()}
       onComplete={handleComplete}
     />
@@ -203,6 +226,10 @@ function SightingSent({
           {bountyPence
             ? `If your sighting leads to the recovery, you’ll receive the ${formatPounds(bountyPence)} bounty.`
             : 'If your sighting leads to the recovery, you’ll receive the bounty.'}
+        </Text>
+        <Text style={styles.sentLine}>
+          You and the owner can now message each other about this report — if they get in
+          touch, it lands in your inbox.
         </Text>
       </View>
       <View style={styles.sentActions}>

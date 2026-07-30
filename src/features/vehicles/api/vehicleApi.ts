@@ -76,11 +76,11 @@ const visibleSchema = z.object({
     first_name: z.string().nullable(),
   }),
   features: z.array(z.object({ key: z.string(), label: z.string(), icon: z.string() })),
-  // Deferred: get_post_detail does not return these yet, so this defaults to []
-  // on every post today. Kept in the schema so the detail render can consume it
-  // the moment the RPC starts sending it (graceful absence until then).
+  // `id` optional: pre-context-v2 payloads omit it — everything renders, only
+  // the report-sighting confirmable-marks checkmarks need it (they hide
+  // gracefully when absent).
   distinctive_features: z
-    .array(z.object({ photo_url: z.string(), description: z.string() }))
+    .array(z.object({ id: z.guid().optional(), photo_url: z.string(), description: z.string() }))
     .optional()
     .default([]),
   stolen_from: z.enum(['driveway', 'street', 'car_park', 'other']).nullable(),
@@ -128,6 +128,7 @@ function toPostDetail(row: VisibleRow): PostDetail {
     },
     features: row.features,
     distinctiveFeatures: row.distinctive_features.map((feature) => ({
+      id: feature.id,
       photoUrl: feature.photo_url,
       description: feature.description,
     })),

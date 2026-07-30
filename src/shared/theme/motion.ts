@@ -27,6 +27,10 @@ export const motion = {
   /** Shorter map follow-pan (search map: card swipe nudges the camera to the
    *  next pin without a full fly-to). Also a sanctioned camera-move exception. */
   mapPan: 350,
+  /** The sighting timeline's ONE-TIME newest-dot pulse — a single soft halo
+   *  swell, never looping. Longer than UI motion because it's an ambient
+   *  emphasis, not a transition — a sanctioned exception like mapFly. */
+  timelinePulse: 700,
 
   // --- Springs (Reanimated withSpring configs; duration + dampingRatio form
   // gives a predictable settle time. Three feels, one source: calm by default,

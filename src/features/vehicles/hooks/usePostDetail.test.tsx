@@ -17,6 +17,10 @@ jest.mock('../api/vehicleApi', () => ({ fetchPostDetail: (...args: unknown[]) =>
 const mockUseSession = jest.fn();
 jest.mock('@/features/auth', () => ({ useSession: () => mockUseSession() }));
 
+// The live-refresh focus effect needs a navigation container the bare hook
+// harness doesn't have; the focus/poll behaviour is exercised on-device.
+jest.mock('expo-router', () => ({ useFocusEffect: () => {} }));
+
 const VISIBLE = { kind: 'visible', post: { id: 'p1', isOwner: false } };
 
 beforeEach(() => {
