@@ -32,6 +32,7 @@ export { ListRow, type ListRowProps } from './ListRow';
 export { ToastProvider, useToast, type ToastKind } from './Toast';
 export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
 export { BountyTag, type BountyTagProps } from './BountyTag';
+export { BrandLoader, LOADER_PHRASES, type BrandLoaderProps } from './BrandLoader';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export {
   CameraCapture,

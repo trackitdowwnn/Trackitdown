@@ -1,7 +1,10 @@
 /**
  * WHAT:  FullscreenLoader — the app's ONLY sanctioned blocking loader: a
- *        calm full-opacity page (app background, not a scrim) with a slow
- *        three-dot sage wave and an optional live-updating status message.
+ *        calm full-opacity page (app background, not a scrim) carrying the
+ *        BrandLoader — the SAME wordmark-plus-rotating-phrase face as the
+ *        cold-start splash, so every wait in the app looks like the app,
+ *        with an optional live-updating status message that overrides the
+ *        phrases while set.
  * WHY:   Reserved for the few moments the user genuinely must wait and must
  *        not interact — submitting a post + escrow payment, confirming
  *        recovery/payout, auth transitions. It is NEVER used for loading
@@ -14,7 +17,8 @@
  *        even if the operation finishes instantly, so fast paths never
  *        flash. Pair with useFullscreenLoader, which guarantees the loader
  *        hides when the wrapped operation throws.
- * LINKS: src/shared/hooks/useFullscreenLoader.ts (the safe way to drive
+ * LINKS: src/shared/ui/BrandLoader.tsx (the one loading visual);
+ *        src/shared/hooks/useFullscreenLoader.ts (the safe way to drive
  *        this); docs/DESIGN_SYSTEM.md (Loading, Motion, Accessibility);
  *        src/shared/ui/SelectScreen.tsx (same modal exit choreography).
  *
@@ -25,7 +29,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Modal, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Modal, StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -33,16 +37,13 @@ import Animated, {
   ReduceMotion,
   runOnJS,
   useAnimatedStyle,
-  useReducedMotion,
   useSharedValue,
-  withDelay,
-  withRepeat,
-  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, motion, opacity, sizes, spacing, typography } from '../theme';
+import { colors, motion, spacing } from '../theme';
+import { BrandLoader } from './BrandLoader';
 
 const motionEasing = Easing.out(Easing.quad);
 
@@ -137,25 +138,11 @@ export function FullscreenLoader({ visible, message, testID }: FullscreenLoaderP
         >
           <SafeAreaView style={styles.safe}>
             <EnterScale>
-              <LoaderMark />
-              {message ? (
-                // Keyed by message: the outgoing text fades out while the
-                // incoming fades in — a 200ms cross-fade on every update.
-                <View style={styles.messageSlot}>
-                  {/* No accessibilityLiveRegion: keyed remounts announce
-                      unreliably on Android, and the explicit
-                      announceForAccessibility above covers both platforms
-                      exactly once. */}
-                  <Animated.Text
-                    key={message}
-                    entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
-                    exiting={FadeOut.duration(motion.fast).reduceMotion(ReduceMotion.System)}
-                    style={styles.message}
-                  >
-                    {message}
-                  </Animated.Text>
-                </View>
-              ) : null}
+              {/* The one loading face (BrandLoader): wordmark + rotating
+                  phrase, with `message` overriding the phrases while set.
+                  No accessibilityLiveRegion inside: the explicit
+                  announceForAccessibility above covers both platforms. */}
+              <BrandLoader message={message} testID="fullscreen-loader-mark" />
             </EnterScale>
           </SafeAreaView>
         </Animated.View>
@@ -179,85 +166,6 @@ function EnterScale({ children }: { children: ReactNode }) {
   return <Animated.View style={[styles.content, style]}>{children}</Animated.View>;
 }
 
-/**
- * The animated mark: three sage dots in a soft staggered scale/opacity wave
- * (slow and calm — never frantic). Reduced motion swaps the wave for a
- * gentle whole-row opacity pulse.
- *
- * TODO(lottie): to move to a Lottie logo animation later, replace ONLY this
- * component's body — the loader's API and layout stay untouched.
- */
-function LoaderMark() {
-  const reduceMotion = useReducedMotion();
-
-  return (
-    <View
-      style={styles.mark}
-      accessible
-      accessibilityLabel="Loading"
-      testID="fullscreen-loader-mark"
-    >
-      {[0, 1, 2].map((index) =>
-        reduceMotion ? (
-          <PulseDot key={index} />
-        ) : (
-          <WaveDot key={index} delay={(index * motion.loaderLoop) / 6} />
-        ),
-      )}
-    </View>
-  );
-}
-
-function WaveDot({ delay }: { delay: number }) {
-  const wave = useSharedValue(0);
-
-  useEffect(() => {
-    // Half the loop rising, half falling; each dot offset by its delay.
-    wave.set(
-      withDelay(
-        delay,
-        withRepeat(
-          withSequence(
-            withTiming(1, { duration: motion.loaderLoop / 2, easing: Easing.inOut(Easing.sin) }),
-            withTiming(0, { duration: motion.loaderLoop / 2, easing: Easing.inOut(Easing.sin) }),
-          ),
-          -1,
-        ),
-      ),
-    );
-  }, [delay, wave]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: opacity.loaderRest + (1 - opacity.loaderRest) * wave.get(),
-    transform: [{ scale: 1 + (motion.loaderWaveScale - 1) * wave.get() }],
-  }));
-
-  return <Animated.View style={[styles.dot, style]} />;
-}
-
-/** Reduced motion: no movement — the whole dot breathes opacity only. */
-function PulseDot() {
-  const pulse = useSharedValue(0);
-
-  useEffect(() => {
-    pulse.set(
-      withRepeat(
-        withSequence(
-          withTiming(1, { duration: motion.loaderLoop, easing: Easing.inOut(Easing.sin) }),
-          withTiming(0, { duration: motion.loaderLoop, easing: Easing.inOut(Easing.sin) }),
-        ),
-        -1,
-      ),
-    );
-  }, [pulse]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: opacity.loaderRest + (1 - opacity.loaderRest) * pulse.get(),
-  }));
-
-  return <Animated.View style={[styles.dot, style]} />;
-}
-
 const styles = StyleSheet.create({
   page: {
     flex: 1,
@@ -272,27 +180,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xl,
-  },
-  mark: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  dot: {
-    width: sizes.loaderDot,
-    height: sizes.loaderDot,
-    borderRadius: sizes.loaderDot / 2,
-    backgroundColor: colors.primary,
-  },
-  // Fixed slot so message changes (and their cross-fade) never shift the mark.
-  messageSlot: {
-    minHeight: typography.body.lineHeight * 2,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  message: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
   },
 });

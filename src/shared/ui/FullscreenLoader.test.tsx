@@ -12,6 +12,7 @@
 
 import { act, render } from '@testing-library/react-native';
 
+import { LOADER_PHRASES } from './BrandLoader';
 import { FullscreenLoader } from './FullscreenLoader';
 
 jest.mock('react-native-safe-area-context', () =>
@@ -146,11 +147,15 @@ describe('FullscreenLoader', () => {
     expect(view.getByText('Processing payment…')).toBeTruthy();
   });
 
-  it('renders the mark alone when there is no message', async () => {
+  it('renders the brand face with a waiting phrase when there is no message', async () => {
     const view = await render(loader(true));
 
     expect(view.getByTestId('fullscreen-loader-mark')).toBeTruthy();
-    expect(view.queryByText(/./)).toBeNull();
+    // The one loading face: the wordmark plus one of the rotating phrases
+    // (never silence — the phrase swap IS the liveness signal).
+    expect(view.getByText('Trackitdown')).toBeTruthy();
+    const phrase = LOADER_PHRASES.find((candidate) => view.queryByText(candidate) !== null);
+    expect(phrase).toBeDefined();
   });
 
   it('renders the reduced-motion pulse variant', async () => {
