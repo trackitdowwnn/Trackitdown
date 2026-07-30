@@ -325,7 +325,6 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 post={result.post}
                 onOpenMap={() => onOpenMap(result.post)}
                 onReport={onReport}
-                onViewSightings={result.post.isOwner ? onViewSightings : undefined}
                 onMessageOwner={
                   result.post.isOwner ? undefined : () => onMessageOwner(result.post)
                 }

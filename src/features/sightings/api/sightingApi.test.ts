@@ -79,7 +79,13 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
   it('maps a located photo with ITS fix and an un-located one with nulls', () => {
     const params = buildCreateSightingParams(
       POST_ID,
-      { photos: [located, unlocated], contextFlags: ['parked'], note: ' saw it ', areaLabel: 'Camden' },
+      {
+        photos: [located, unlocated],
+        contextFlags: ['parked'],
+        note: ' saw it ',
+        areaLabel: 'Camden',
+        confirmedFeatureIds: [],
+      },
       ['p/1.jpg', 'p/2.jpg'],
     );
     expect(params.p_photos[0]).toEqual({
@@ -98,6 +104,36 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       captured_at: '2026-07-14T12:01:00Z',
     });
     expect(params.p_note).toBe('saw it');
+  });
+
+  it('maps the optional context fields, and their absence, onto the RPC params', () => {
+    const answered = buildCreateSightingParams(
+      POST_ID,
+      {
+        photos: [located],
+        contextFlags: ['driving', 'damage_visible'],
+        note: '',
+        parkedLikelihood: undefined,
+        direction: 'NE',
+        peoplePresence: 'in_vehicle',
+        confirmedFeatureIds: ['dddddddd-0000-0000-0000-000000000001'],
+      },
+      ['p/1.jpg'],
+    );
+    expect(answered.p_direction).toBe('NE');
+    expect(answered.p_people_presence).toBe('in_vehicle');
+    expect(answered.p_confirmed_feature_ids).toEqual(['dddddddd-0000-0000-0000-000000000001']);
+
+    // A skipped context step is a VALID report: everything null, never ''/[].
+    const skipped = buildCreateSightingParams(
+      POST_ID,
+      { photos: [located], contextFlags: [], note: '', confirmedFeatureIds: [] },
+      ['p/1.jpg'],
+    );
+    expect(skipped.p_parked_likelihood).toBeNull();
+    expect(skipped.p_direction).toBeNull();
+    expect(skipped.p_people_presence).toBeNull();
+    expect(skipped.p_confirmed_feature_ids).toBeNull();
   });
 });
 
@@ -187,6 +223,10 @@ describe('fetchPostSightings (PRIVACY strictness)', () => {
     note: null,
     area_label: 'Camden',
     location_unavailable: false,
+    parked_likelihood: null,
+    direction: null,
+    people_presence: null,
+    confirmed_features: [],
     photos: [
       { path: 'p/1.jpg', lat: 51.5, lng: -0.1, accuracy_m: 10, captured_at: '2026-07-14T12:00:00Z' },
     ],
@@ -204,6 +244,30 @@ describe('fetchPostSightings (PRIVACY strictness)', () => {
     const rows = await fetchPostSightings(POST_ID);
     expect(rows[0].spotter.firstName).toBe('Beth');
     expect(rows[0].contextFlags).toEqual(['parked']);
+    // Old sightings: null context-v2 fields parse and render as absent.
+    expect(rows[0].peoplePresence).toBeNull();
+    expect(rows[0].confirmedFeatures).toEqual([]);
+  });
+
+  it('parses the context-v2 fields on a new sighting', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        {
+          ...baseRow,
+          context_flags: ['being_loaded', 'looks_intact'],
+          people_presence: 'nearby',
+          confirmed_features: [
+            { id: 'dddddddd-0000-0000-0000-000000000001', description: 'Cracked wing mirror' },
+          ],
+        },
+      ],
+      error: null,
+    });
+    const rows = await fetchPostSightings(POST_ID);
+    expect(rows[0].peoplePresence).toBe('nearby');
+    expect(rows[0].confirmedFeatures).toEqual([
+      { id: 'dddddddd-0000-0000-0000-000000000001', description: 'Cracked wing mirror' },
+    ]);
   });
 
   it('REJECTS a payload whose spotter block carries an extra field (e.g. spotter_id)', async () => {

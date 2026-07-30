@@ -37,6 +37,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import { PostSightingsSection } from '@/features/sightings';
 import { WatchToggle } from '@/features/watchlist';
 import type { PostSummary } from '@/shared/types';
 
@@ -74,9 +75,6 @@ export interface PostDetailBodyProps {
   onOpenMap: () => void;
   /** Open the report-post confirm (the underlined row at the page's end). */
   onReport: () => void;
-  /** OWNER only: open their sighting list. Absent for spotters — the
-   *  aggregate line stays a plain, non-navigable fact (SECURITY_AND_TRUST §6). */
-  onViewSightings?: () => void;
   /** SPOTTER only: message the owner. The handler opens the thread when the
    *  viewer already has a sighting, else routes them to report one first
    *  (chat is sighting-gated — DOMAIN Chat). Absent for the owner. */
@@ -115,7 +113,6 @@ export function PostDetailBody({
   post,
   onOpenMap,
   onReport,
-  onViewSightings,
   onMessageOwner,
   onShowAbout,
   similarPosts,
@@ -133,9 +130,8 @@ export function PostDetailBody({
   const { width: windowWidth } = useWindowDimensions();
   // The reference's carousel geometry (FeedCarouselRow): ~2 cards + a peek.
   const railCardWidth = Math.round(windowWidth * 0.44);
-  // Hooks are unconditional; the "last seen" and sighting lines gate on data.
+  // Hooks are unconditional; the "last seen" line gates on data.
   const lastSeenAgo = useTimeAgo(post.lastSeenAt ?? post.createdAt);
-  const latestSightingAgo = useTimeAgo(post.latestSightingAt ?? post.createdAt);
 
 
   const hasCoords = post.lat != null && post.lng != null;
@@ -495,33 +491,32 @@ export function PostDetailBody({
         </>
       ) : null}
 
-      {/* 8 — Sighting activity — dormant until the sightings feature ships.
-          SAFETY: aggregate count ONLY — never individual sightings or their
-          locations to a non-owner (SECURITY_AND_TRUST §6). */}
-      {post.sightingCount > 0 ? (
-        <>
-          <Divider />
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sighting activity</Text>
-            <Text style={styles.meta}>
-              {post.sightingCount} {post.sightingCount === 1 ? 'sighting' : 'sightings'} reported
-              {post.latestSightingAt ? ` — most recent ${latestSightingAgo}` : ''}
-            </Text>
-            {/* Owner only: the aggregate becomes a doorway to their list. */}
-            {onViewSightings ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="View sightings"
-                onPress={onViewSightings}
-                style={styles.reportRow}
-                hitSlop={spacing.sm}
-              >
-                <Text style={styles.reportLabel}>View sightings</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </>
-      ) : null}
+      {/* 8 — Sighting activity: the timeline, two faces from one mount
+          point (PostSightingsSection). The owner gets the rich preview +
+          warm empty; the public gets the restrained {time, locality}
+          timeline or NOTHING — the section owns its divider/title so the
+          public-empty case vanishes entirely. SAFETY: the old aggregate
+          line is superseded; the face split and its fences live in the
+          sightings feature (ADR-0008, SECURITY_AND_TRUST §6). */}
+      <PostSightingsSection
+        postId={post.id}
+        isOwner={post.isOwner}
+        // Anchor data for the timeline's arc ends — this page's own payload,
+        // already coarsened for the viewer's face (adds nothing, ADR-0008).
+        anchors={{
+          status: post.status,
+          lastSeenAt: post.lastSeenAt,
+          lastSeenArea: post.lastSeenArea,
+          createdAt: post.createdAt,
+        }}
+        // The theft point this page already maps ("Last seen here") roots the
+        // trail; sighting points come from each face's own payload (ADR-0009).
+        origin={
+          post.lat !== undefined && post.lng !== undefined
+            ? { lat: post.lat, lng: post.lng }
+            : undefined
+        }
+      />
 
       {/* 9 — Safety. Deliberately NOT the reference's quiet "things to know"
           rows — the banner form stays unmissable (emotional translation). */}

@@ -21,8 +21,12 @@ export interface AppMapExtraProps {
   interactive?: boolean;
 }
 
-/** Web stub matching the native re-export — renders nothing. */
+/** Web stubs matching the native re-exports — render nothing. */
 export function AppMapMarker(_props: Record<string, unknown>) {
+  return null;
+}
+
+export function AppMapPolyline(_props: Record<string, unknown>) {
   return null;
 }
 

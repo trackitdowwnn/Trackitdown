@@ -44,7 +44,12 @@ moments; in the monochrome scheme value stands out through a bold black fill,
 weight, and size rather than hue. Danger red appears only on destructive/error
 UI — never as decoration on "stolen" content. `success` green and `warning`
 amber remain the semantic status hues (not brand colour), so pending/verified
-states stay legible.
+states stay legible. SANCTIONED EXCEPTION (2026-07-30): the sighting arc's
+nodes are sage (`success`) — a sighting is affirmative evidence on a hopeful
+arc. Two surfaces read that one arc: the sighting timeline's rail nodes and
+the OWNER-ONLY trail map's sighting pins (`SightingsTrailMap` — same
+evidence, in space). Dots/pins and the recovered-terminal fill only, never
+the rail line, the trail line, or entry text.
 
 ### Contrast (WCAG AA on the near-white `#F7F7F7` background)
 
@@ -73,9 +78,10 @@ with a text label (colour-blind-safe).
 The Google Map uses a custom light style (`src/shared/theme/mapStyle.ts`),
 NOT stock Google colours: land = `surfaceSubtle` light grey, water = a cool
 blue-grey, parks a cool green-grey, roads soft, labels quiet, POI/transit
-clutter removed — a calm, cool canvas under the on-brand pins (orange
-cluster, terracotta amount). This is deliberately the opposite of a
-busy/alarming crime map.
+clutter removed — a calm, cool canvas under the pins (near-black `primary`
+ink since the 2026-07-24 monochrome swap; the owner trail map's sighting
+pins are sage per the sanction above). This is deliberately the opposite of
+a busy/alarming crime map.
 
 ## Typography
 

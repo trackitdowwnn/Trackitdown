@@ -7,4 +7,6 @@
 
 export { ReportSightingScreen, type ReportSightingScreenProps } from './screens/ReportSightingScreen';
 export { PostSightingsScreen, type PostSightingsScreenProps } from './screens/PostSightingsScreen';
+export { SightingDetailScreen, type SightingDetailScreenProps } from './screens/SightingDetailScreen';
+export { PostSightingsSection, type PostSightingsSectionProps } from './components/PostSightingsSection';
 export type { OwnerSighting, ReportSightingAnswers, SightingContextFlag } from './types';

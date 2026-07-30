@@ -21,23 +21,44 @@ export function firstLocatedPhoto(photos: EvidencePhoto[]): EvidencePhoto | null
   return photos.find((photo) => photo.lat !== undefined && photo.lng !== undefined) ?? null;
 }
 
-export async function deriveAreaLabel(photos: EvidencePhoto[]): Promise<string | null> {
+/** Both place grains from ONE reverse-geocode of the first located photo. */
+export interface PlaceLabels {
+  /** Street/district-first, owner-facing ("Camden High Street, London"). */
+  areaLabel: string | null;
+  /** District/city grain ONLY — the public-facing coarse place (ADR-0008).
+   *  // SAFETY: street is deliberately excluded from this fallback chain;
+   *  the string can end up on an anonymous public timeline entry. */
+  locality: string | null;
+}
+
+const MAX_LOCALITY = 80;
+
+export async function derivePlaceLabels(photos: EvidencePhoto[]): Promise<PlaceLabels> {
   const located = firstLocatedPhoto(photos);
-  if (!located) return null;
+  if (!located) return { areaLabel: null, locality: null };
   try {
     const results = await Location.reverseGeocodeAsync({
       latitude: located.lat as number,
       longitude: located.lng as number,
     });
     const place = results[0];
-    if (!place) return null;
+    if (!place) return { areaLabel: null, locality: null };
     // Street/district first (what a spotter would say), city as context.
     // Deliberately NO house number — coarse is the point.
     const primary = place.street ?? place.district ?? place.subregion ?? place.city;
     const context = place.city && place.city !== primary ? place.city : null;
     const label = [primary, context].filter(Boolean).join(', ');
-    return label ? label.slice(0, MAX_LABEL) : null;
+    const locality = place.district ?? place.city ?? place.subregion ?? null;
+    return {
+      areaLabel: label ? label.slice(0, MAX_LABEL) : null,
+      locality: locality ? locality.slice(0, MAX_LOCALITY) : null,
+    };
   } catch {
-    return null;
+    return { areaLabel: null, locality: null };
   }
+}
+
+/** Back-compat: the owner-facing label only. */
+export async function deriveAreaLabel(photos: EvidencePhoto[]): Promise<string | null> {
+  return (await derivePlaceLabels(photos)).areaLabel;
 }

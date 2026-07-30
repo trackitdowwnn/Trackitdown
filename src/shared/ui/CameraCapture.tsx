@@ -13,6 +13,10 @@
  *        the shutter moment so photo/place/time cannot be mixed from
  *        different moments; a failed or missing fix produces an UN-located
  *        evidence photo (never a blocked shutter, never a fabricated point).
+ *        While the camera is OPEN a discarded position watch keeps the
+ *        provider warm — a cold provider's first fix routinely outlasts the
+ *        shutter's budget and was shipping real reports un-located; the
+ *        watch dies with the component (no background location, ever).
  *        Camera permission is handled inside (primer → request → settings);
  *        LOCATION permission is the consumer's to prime — this component
  *        only reads the current grant.
@@ -23,7 +27,7 @@
 import { Feather } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
@@ -110,6 +114,37 @@ export function CameraCapture({
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [capturing, setCapturing] = useState(false);
+
+  // WARM THE PROVIDER while the camera is open: after location has sat idle,
+  // the FIRST fix (indoors above all) routinely exceeds the shutter's
+  // FIX_TIMEOUT_MS budget AND leaves last-known empty — which shipped real
+  // reports un-located despite granted permission. A discarded watch keeps a
+  // fresh fix flowing, so captureFix() resolves inside its budget or falls
+  // back to a genuinely recent last-known. Removed the moment the camera
+  // unmounts — no background location, ever (SECURITY_AND_TRUST).
+  useEffect(() => {
+    if (!permission?.granted) return;
+    let cancelled = false;
+    let subscription: Location.LocationSubscription | null = null;
+    void (async () => {
+      try {
+        const { granted } = await Location.getForegroundPermissionsAsync();
+        if (!granted || cancelled) return;
+        const started = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 },
+          () => {}, // updates are discarded — the WATCH is the point
+        );
+        if (cancelled) started.remove();
+        else subscription = started;
+      } catch {
+        // no warm-up → captureFix still does its best at the shutter
+      }
+    })();
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, [permission?.granted]);
 
   // Permission not yet resolved — render nothing rather than flash a primer.
   if (!permission) {

@@ -21,6 +21,10 @@ jest.mock('@/features/watchlist', () => ({
   useWatchToggle: () => ({ watched: false, toggle: jest.fn() }),
 }));
 
+// The sighting-activity section owns its own data fetching (both faces hit
+// supabase) — stub the feature barrel; the section has its own tests.
+jest.mock('@/features/sightings', () => ({ PostSightingsSection: () => null }));
+
 // The per-section editors reach the supabase-backed save API — stub the host +
 // pencil (edit-gating is covered in PostDetailBody.test).
 jest.mock('../components/editors', () => ({

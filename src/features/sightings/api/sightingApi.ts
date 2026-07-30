@@ -28,13 +28,17 @@ import type {
   CreateSightingParams,
   CreateSightingResult,
   OwnerSighting,
+  PublicSightingEntries,
   ReportSightingAnswers,
   SightingQuota,
 } from '../types';
 import {
+  DRIVING_DIRECTIONS,
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
   MIN_SIGHTING_PHOTOS,
+  PARKED_LIKELIHOOD,
+  PEOPLE_PRESENCE,
   SIGHTING_CONTEXT_FLAGS,
 } from '../types';
 
@@ -96,6 +100,14 @@ const submitAnswersSchema = z.object({
   contextFlags: z.array(z.enum(SIGHTING_CONTEXT_FLAGS)).default([]),
   note: z.string().max(MAX_NOTE_LENGTH).default(''),
   areaLabel: z.string().max(120).optional(),
+  locality: z.string().max(80).optional(),
+  parkedLikelihood: z.enum(PARKED_LIKELIHOOD).optional(),
+  direction: z.enum(DRIVING_DIRECTIONS).optional(),
+  peoplePresence: z.enum(PEOPLE_PRESENCE).optional(),
+  // Mirrors the RPC's cap (≤ 8 marks per post); ids are validated server-side
+  // against the post's registered marks. `confirmableFeatures` (the wizard's
+  // read-only seed) is deliberately NOT here — unknown keys strip on parse.
+  confirmedFeatureIds: z.array(z.guid()).max(8).default([]),
 });
 
 const createSightingResultSchema = z.object({ sighting_id: z.guid() });
@@ -126,6 +138,12 @@ export function buildCreateSightingParams(
     p_context_flags: answers.contextFlags,
     p_note: emptyToNull(answers.note),
     p_area_label: answers.areaLabel ? emptyToNull(answers.areaLabel) : null,
+    p_locality: answers.locality ? emptyToNull(answers.locality) : null,
+    p_parked_likelihood: answers.parkedLikelihood ?? null,
+    p_direction: answers.direction ?? null,
+    p_people_presence: answers.peoplePresence ?? null,
+    p_confirmed_feature_ids:
+      answers.confirmedFeatureIds.length > 0 ? answers.confirmedFeatureIds : null,
   };
 }
 
@@ -279,6 +297,12 @@ const ownerSightingSchema = z.object({
   note: z.string().nullable(),
   area_label: z.string().nullable(),
   location_unavailable: z.boolean(),
+  parked_likelihood: z.enum(PARKED_LIKELIHOOD).nullable(),
+  direction: z.enum(DRIVING_DIRECTIONS).nullable(),
+  people_presence: z.enum(PEOPLE_PRESENCE).nullable(),
+  confirmed_features: z.array(
+    z.object({ id: z.guid(), description: z.string() }).strict(),
+  ),
   photos: z.array(
     z.object({
       path: z.string(),
@@ -320,6 +344,10 @@ export async function fetchPostSightings(postId: string): Promise<OwnerSighting[
     note: row.note,
     areaLabel: row.area_label,
     locationUnavailable: row.location_unavailable,
+    parkedLikelihood: row.parked_likelihood,
+    direction: row.direction,
+    peoplePresence: row.people_presence,
+    confirmedFeatures: row.confirmed_features,
     photos: row.photos.map((photo) => ({
       path: photo.path,
       lat: photo.lat,
@@ -353,4 +381,79 @@ export async function signSightingPhotoUrls(paths: string[]): Promise<Record<str
     if (entry.signedUrl && entry.path) urls[entry.path] = entry.signedUrl;
   }
   return urls;
+}
+
+// --- Public timeline entries (ADR-0008) ---------------------------------------------
+
+// .strict() everywhere: the fence is the SHAPE. A widened RPC leaking a
+// coordinate, photo path, or spotter field must fail loudly client-side —
+// exactly the posture the owner payload takes above, pointed the other way.
+const publicEntrySchema = z
+  .object({
+    sighted_at: z.string(),
+    locality: z.string().nullable(),
+    // ADR-0009: server-snapped ~1km grid points — the ONLY location grain
+    // that may ever appear here. Still strict: any extra field fails loudly.
+    snap_lat: z.number().nullable(),
+    snap_lng: z.number().nullable(),
+  })
+  .strict();
+
+const publicEntriesSchema = z
+  .object({
+    entries: z.array(publicEntrySchema),
+    earlier_count: z.number().int().min(0),
+  })
+  .strict();
+
+/**
+ * The restrained PUBLIC face: five newest {time, locality} entries + a count
+ * of the rest, active posts only (a closed or missing post returns the same
+ * empty shape — no oracle). Callable by guests: this is the one public
+ * sighting surface (SECURITY_AND_TRUST §6 carve-out, ADR-0008).
+ */
+export async function fetchPublicSightingEntries(postId: string): Promise<PublicSightingEntries> {
+  const { data, error } = await supabase.rpc('get_public_sighting_entries', {
+    p_post_id: postId,
+  });
+  if (error) {
+    // Non-fatal to the caller's screen: the detail page simply renders no
+    // timeline section, the same as a post with no sightings.
+    log.warn('get_public_sighting_entries failed', { code: error.code });
+    return { entries: [], earlierCount: 0 };
+  }
+  const parsed = publicEntriesSchema.parse(data);
+  return {
+    entries: parsed.entries.map((entry) => ({
+      sightedAt: entry.sighted_at,
+      locality: entry.locality,
+      snapLat: entry.snap_lat,
+      snapLng: entry.snap_lng,
+    })),
+    earlierCount: parsed.earlier_count,
+  };
+}
+
+/**
+ * Owner marks a sighting helpful (DOMAIN: unverified → helpful only; a
+ * credited sighting never re-labels; repeat marks are idempotent server-side
+ * so the spotter's counter can only bump once). Returns the resulting status
+ * so the timeline can settle without a refetch.
+ */
+export async function markSightingHelpful(
+  sightingId: string,
+): Promise<{ status: 'helpful' | 'credited'; changed: boolean }> {
+  const { data, error } = await supabase.rpc('mark_sighting_helpful', {
+    p_sighting_id: sightingId,
+  });
+  if (error) {
+    log.warn('mark_sighting_helpful failed', { code: error.code });
+    throw new Error('We couldn’t mark that sighting. Please try again.');
+  }
+  const parsed = z
+    .object({ status: z.enum(['helpful', 'credited']), changed: z.boolean() })
+    .strict()
+    .parse(data);
+  log.info('sighting_marked_helpful', { sightingId, changed: parsed.changed });
+  return parsed;
 }

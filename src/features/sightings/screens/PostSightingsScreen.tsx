@@ -1,40 +1,36 @@
 /**
- * WHAT:  PostSightingsScreen — the OWNER's read-only list of sightings on
- *        their post: per sighting the evidence photos (short-lived signed
- *        reads from the private bucket), when and roughly where, the context
- *        chips/note, status, and the spotter's first name + reputation line.
+ * WHAT:  PostSightingsScreen — the OWNER's full sighting timeline for one of
+ *        their posts: the interactive trail MAP (located sightings connected
+ *        oldest→newest from the theft origin; owner-only coordinates), then
+ *        every sighting as a rail entry (newest first, day-grouped), the
+ *        movement hint (2+ located sightings, ≥0.1 mi apart), and
+ *        tap-through to each sighting's detail page.
  * WHY:   The owner's window on the reports coming in — and, later, what the
- *        recovery flow credits from. Read-only HERE by design: marking
- *        helpful / crediting are other features' server-side writes.
- *        PRIVACY: everything shown comes from get_post_sightings, whose
- *        payload is first-name + reputation only (never spotter_id or a
- *        surname) — enforced server-side AND re-validated by the api layer.
- *        "Message" therefore opens chat by SIGHTING id — the server resolves
- *        the spotter (open_thread_for_sighting); no spotter id ever reaches
- *        this client.
+ *        recovery flow credits from. The heavy per-sighting content (full
+ *        photos, map, message, mark-helpful) lives on the DETAIL page now;
+ *        this screen is for reading the shape of the activity.
+ *        PRIVACY: sightings come from get_post_sightings, whose payload is
+ *        first-name + reputation only (never spotter_id or a surname) —
+ *        enforced server-side AND re-validated by the api layer; the anchor
+ *        data and theft origin come from the owner's OWN fetchPostDetail
+ *        payload. Every coordinate on this screen is owner-face data.
  * LINKS: src/app/post-sightings.tsx (route);
- *        src/features/sightings/hooks/usePostSightings.ts;
+ *        src/features/sightings/screens/SightingDetailScreen.tsx;
+ *        src/features/sightings/components/SightingTimeline.tsx;
  *        docs/SECURITY_AND_TRUST.md §1.
  */
 
 import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
+import { useEffect, useState } from 'react';
 
-import { useTimeAgo } from '@/shared/hooks';
-import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
-import {
-  AppImage,
-  Button,
-  EmptyState,
-  ErrorState,
-  Screen,
-  useToast,
-} from '@/shared/ui';
+import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { EmptyState, ErrorState, SafetyNotice, Screen } from '@/shared/ui';
 
+import { SightingsTrailMap } from '../components/SightingsTrailMap';
+import { OwnerSightingTimeline } from '../components/SightingTimeline';
 import { usePostSightings } from '../hooks/usePostSightings';
-import type { OwnerSighting } from '../types';
+import { locatedTrail, type TimelineAnchorSource } from '../lib/timelineModel';
 
 export interface PostSightingsScreenProps {
   postId: string;
@@ -44,8 +40,34 @@ export function PostSightingsScreen({ postId }: PostSightingsScreenProps) {
   const router = useRouter();
   const { status, sightings, photoUrls, retry } = usePostSightings(postId);
 
+  // Anchor data (status + last-seen) for the timeline's arc ends, and the
+  // theft point for the trail map — the OWNER's own post detail carries the
+  // exact coordinates (ADR-0008 keeps them off every other face). Best-effort:
+  // a failure just renders the timeline anchor-less and the map origin-less.
+  // Deferred import keeps this screen's module graph off the vehicles feature.
+  const [anchors, setAnchors] = useState<TimelineAnchorSource | undefined>(undefined);
+  const [origin, setOrigin] = useState<{ lat: number; lng: number } | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { fetchPostDetail } = await import('@/features/vehicles');
+        const result = await fetchPostDetail(postId);
+        if (cancelled || result.kind !== 'visible') return;
+        const { status: postStatus, lastSeenAt, lastSeenArea, createdAt, lat, lng } = result.post;
+        setAnchors({ status: postStatus, lastSeenAt, lastSeenArea, createdAt });
+        if (lat !== undefined && lng !== undefined) setOrigin({ lat, lng });
+      } catch {
+        // anchor-less is a complete, honest timeline
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [postId]);
+
   if (status === 'loading') {
-    // Skeleton cards, not a spinner (design system: no spinners on lists).
+    // Skeleton rows, not a spinner (design system: no spinners on lists).
     return (
       <Screen scroll contentContainerStyle={styles.content}>
         <Text accessibilityRole="header" style={styles.title}>
@@ -56,11 +78,15 @@ export function PostSightingsScreen({ postId }: PostSightingsScreenProps) {
           accessibilityLabel="Loading sightings"
           testID="sightings-skeleton"
         >
-          {[0, 1].map((n) => (
-            <View key={n} style={styles.card}>
-              <View style={styles.skeletonPhoto} />
-              <View style={styles.skeletonLineWide} />
-              <View style={styles.skeletonLine} />
+          {/* Reserve the map card so it doesn't pop the rows down on load. */}
+          <View style={styles.skeletonMap} />
+          {[0, 1, 2].map((n) => (
+            <View key={n} style={styles.skeletonRow}>
+              <View style={styles.skeletonDot} />
+              <View style={styles.skeletonLines}>
+                <View style={styles.skeletonLineWide} />
+                <View style={styles.skeletonLine} />
+              </View>
             </View>
           ))}
         </View>
@@ -83,102 +109,44 @@ export function PostSightingsScreen({ postId }: PostSightingsScreenProps) {
           onAction={() => router.back()}
         />
       ) : (
-        sightings.map((sighting, index) => (
-          // Non-recycled ScrollView list — safe to stagger directly. FadeInDown
-          // auto-respects the OS reduce-motion flag (ReduceMotion.System).
-          <Animated.View
-            key={sighting.id}
-            entering={FadeInDown.duration(motion.standard)
-              .delay(Math.min(index, 6) * motion.listStagger)
-              .reduceMotion(ReduceMotion.System)}
-          >
-            <SightingCard sighting={sighting} photoUrls={photoUrls} />
-          </Animated.View>
-        ))
+        <>
+          {/* The trail in SPACE — owner-only (the map component's SAFETY
+              header says why); the timeline below stays the accessible and
+              complete record, including un-located sightings. */}
+          <SightingsTrailMap
+            points={locatedTrail(sightings).map((point) => ({
+              id: point.sightingId,
+              lat: point.lat,
+              lng: point.lng,
+            }))}
+            origin={origin}
+            onPinPress={(sightingId) =>
+              router.push({ pathname: '/sighting/[sightingId]', params: { sightingId, postId } })
+            }
+          />
+          {locatedTrail(sightings).length < sightings.length ? (
+            <Text style={styles.mapNote}>
+              Sightings without a captured location aren’t on the map — they’re in the
+              timeline below.
+            </Text>
+          ) : null}
+          <OwnerSightingTimeline
+            sightings={sightings}
+            photoUrls={photoUrls}
+            anchors={anchors}
+            onEntryPress={(sighting) =>
+              router.push({
+                pathname: '/sighting/[sightingId]',
+                params: { sightingId: sighting.id, postId },
+              })
+            }
+          />
+        </>
       )}
+
+      {/* Safety notice — every sighting screen (DOMAIN §1). */}
+      <SafetyNotice />
     </Screen>
-  );
-}
-
-const FLAG_LABELS: Record<string, string> = {
-  parked: 'Parked',
-  driving: 'Driving',
-  people_nearby: 'People nearby',
-  plate_changed: 'Plate changed or missing',
-};
-
-function SightingCard({
-  sighting,
-  photoUrls,
-}: {
-  sighting: OwnerSighting;
-  photoUrls: Record<string, string>;
-}) {
-  const router = useRouter();
-  const toast = useToast();
-  const reportedAgo = useTimeAgo(sighting.createdAt);
-  const flagLine = sighting.contextFlags.map((flag) => FLAG_LABELS[flag] ?? flag).join(' · ');
-  const { spotter } = sighting;
-  const [opening, setOpening] = useState(false);
-
-  const messageSpotter = async () => {
-    if (opening) return;
-    setOpening(true);
-    try {
-      // Deferred import keeps this screen's test module-graph off the chat
-      // feature; the SIGHTING id is the handle — never a spotter id (§1).
-      const { openThreadForSighting } = await import('@/features/chat');
-      const { threadId } = await openThreadForSighting(sighting.id);
-      router.push(`/chat/${threadId}`);
-    } catch (err) {
-      // ChatActionError (extends Error) carries user-facing copy; surface it.
-      toast.show(
-        err instanceof Error && err.message ? err.message : 'We couldn’t open the conversation.',
-        'error',
-      );
-    } finally {
-      setOpening(false);
-    }
-  };
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.photoRow}>
-        {sighting.photos.map((photo) =>
-          photoUrls[photo.path] ? (
-            <AppImage key={photo.path} uri={photoUrls[photo.path]} style={styles.photo} />
-          ) : (
-            <View key={photo.path} style={[styles.photo, styles.photoPending]} />
-          ),
-        )}
-      </View>
-      <View style={styles.headerRow}>
-        <Text style={styles.where} numberOfLines={1}>
-          {sighting.locationUnavailable
-            ? 'Location unavailable'
-            : (sighting.areaLabel ?? 'Captured location')}
-        </Text>
-        {sighting.status !== 'unverified' ? (
-          <Text style={styles.statusTag}>
-            {sighting.status === 'credited' ? 'Credited' : 'Marked helpful'}
-          </Text>
-        ) : null}
-      </View>
-      <Text style={styles.meta}>Reported {reportedAgo}</Text>
-      {flagLine ? <Text style={styles.body}>{flagLine}</Text> : null}
-      {sighting.note ? <Text style={styles.body}>{sighting.note}</Text> : null}
-      <Text style={styles.spotterLine}>
-        By {spotter.firstName} · {spotter.sightingsReported}{' '}
-        {spotter.sightingsReported === 1 ? 'sighting' : 'sightings'} reported
-        {spotter.recoveriesCredited > 0 ? ` · ${spotter.recoveriesCredited} recoveries` : ''}
-      </Text>
-      <Button
-        label={`Message ${spotter.firstName}`}
-        variant="secondary"
-        loading={opening}
-        onPress={() => void messageSpotter()}
-      />
-    </View>
   );
 }
 
@@ -192,20 +160,32 @@ const styles = StyleSheet.create({
     ...typography.title,
     color: colors.textPrimary,
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    gap: spacing.sm,
-    ...shadows.soft,
+  mapNote: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  skeletonMap: {
+    height: sizes.mapPreview,
+    borderRadius: radii.xl,
+    backgroundColor: colors.surfaceSubtle,
   },
   skeletonSet: {
     gap: spacing.lg,
   },
-  skeletonPhoto: {
-    aspectRatio: 1,
-    borderRadius: radii.md,
+  skeletonRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'flex-start',
+  },
+  skeletonDot: {
+    width: sizes.iconSm,
+    height: sizes.iconSm,
+    borderRadius: radii.full,
     backgroundColor: colors.surfaceSubtle,
+  },
+  skeletonLines: {
+    flex: 1,
+    gap: spacing.sm,
   },
   skeletonLineWide: {
     height: sizes.skeletonLine,
@@ -218,47 +198,5 @@ const styles = StyleSheet.create({
     width: '40%',
     borderRadius: radii.sm,
     backgroundColor: colors.surfaceSubtle,
-  },
-  photoRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  photo: {
-    flex: 1,
-    aspectRatio: 1,
-    borderRadius: radii.md,
-  },
-  photoPending: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  where: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    flexShrink: 1,
-  },
-  meta: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  body: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  spotterLine: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  statusTag: {
-    ...typography.caption,
-    // The near-black primary ink (success stays reserved for payout moments).
-    color: colors.primary,
   },
 });

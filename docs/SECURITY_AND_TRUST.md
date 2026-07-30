@@ -134,7 +134,12 @@ commenting standards.
   - `posts`: readable by anyone only when `status = 'active'`; owners see
     their own in any state; moderators see all.
   - `sightings`: spotter sees their own; the post's owner sees all
-    sightings on their post; public sees none.
+    sightings on their post. The public sees **no rows and no grant** — the
+    single carve-out is `get_public_sighting_entries` (ADR-0008), a capped
+    SECURITY DEFINER RPC returning `{time, locality}` for an ACTIVE post's
+    five most recent sightings plus a count: no ids, no coordinates, no
+    photos, no spotter fields, no notes. Locality is a dedicated
+    coarse-by-construction column — never the street-level `area_label`.
   - `verification_documents`: uploader + moderators only.
   - `messages`: only the two thread participants.
 - Status transitions happen via `security definer` functions / Edge

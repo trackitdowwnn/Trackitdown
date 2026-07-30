@@ -42,6 +42,9 @@ export interface VehicleFeature {
  *  position) as of 20260727120000; rendered in the "Distinctive features" section.
  *  `[]` when the post has none. See src/features/vehicles/post/README.md. */
 export interface DistinctiveFeatureView {
+  /** Stable row id (context-v2 payloads onward) — the handle a sighting's
+   *  confirmed_feature_ids references. Absent on older cached payloads. */
+  id?: string;
   photoUrl: string;
   description: string;
 }
