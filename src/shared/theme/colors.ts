@@ -53,6 +53,14 @@ export const colors = {
   surfaceInverse: '#222222',
   surfaceInversePressed: '#3A3A3A',
   overlay: 'rgba(0,0,0,0.45)',
+  // The spotter's alert zone drawn on a map (features/notifications). FILL and
+  // STROKE only — never text, never a border on a text container. Named tokens
+  // rather than inline rgba: the map circle sits over photography-adjacent map
+  // tiles, so its alpha is a palette decision, not a component detail.
+  // Derived from `primary` so the zone reads as "yours" like every other
+  // selection ring in the app.
+  mapZoneFill: 'rgba(26,26,26,0.10)',
+  mapZoneStroke: 'rgba(26,26,26,0.35)',
 } as const;
 
 export type ColorToken = keyof typeof colors;

@@ -21,7 +21,20 @@ v1 scope, stop and flag it.
       snapshot rather than reference the saved car — added to scope + built
       2026-07-27)
 - [ ] Search: map + list of active posts, distance sorting
-- [ ] Spotter alerts: push notification on new active post within radius
+- [x] Spotter alerts: push notification on new active post within radius
+      (built 2026-07-30 — features/notifications: push token registry, one
+      shared send utility, tap routing incl. cold start, alert zones with
+      PostGIS matching, 3-per-rolling-24h cap. **Sighting-chain re-alerts are
+      OUT of v1** — see v2 candidate #4; DOMAIN.md amended to match.)
+      **Extended 2026-07-31 — MULTI-ALERT, pulled forward from v2.** Up to 5
+      named alerts per user, created through a wizard and narrowable by make,
+      model, colour, body type, minimum bounty and recency. Pulled forward
+      because one unfiltered alert spends a 3/day budget on cars the spotter
+      was never going to spot — filtering is what makes the cap generous
+      rather than limiting. The cap stays PER USER, so more alerts never means
+      more interruptions. Also fixed a latent search bug on the way:
+      `search_posts` matched make/model/colour case-SENSITIVELY against
+      free-typed owner text.
 - [ ] Report a sighting: in-app camera, auto GPS, note; SafetyNotice
 - [ ] Owner ↔ spotter chat (opens only after a sighting)
 - [ ] Recovery confirmation flow: owner credits one sighting (or none)
@@ -64,15 +77,16 @@ v1 scope, stop and flag it.
 
 ## Deferred from built v1 features (build next, not v2)
 
-- **notify-owner-of-sighting push** — the sightings feature shipped without
-  push (no notifications infra exists yet); the owner sees reports in-app.
-  Arrives with the notifications feature (Edge Function + token storage).
-- **notify-message push** — chat shipped without push (same missing infra).
-  Contract is pinned in features/chat/README: payload = sender FIRST NAME +
-  post context ("New message about your Blue BMW") — message content NEVER
-  transits push (third-party infra; SECURITY_AND_TRUST §3). The deep route
-  `/chat/[threadId]` is already live and gate-aware. Unread state works
-  in-app today (tab badge + refetch-on-focus).
+- ~~**notify-owner-of-sighting push**~~ — **SHIPPED 2026-07-30** with the
+  notifications feature. `create_sighting` → `notifySighting` → the shared
+  send utility, authorised and made idempotent by
+  `claim_sighting_notification` (which verifies the caller really is that
+  sighting's spotter, so a forged id notifies nobody).
+- ~~**notify-message push**~~ — **SHIPPED 2026-07-30**, to the contract
+  pinned here: payload = sender FIRST NAME + post context, and message
+  content never transits push (built in SQL so `npm run test:db` asserts its
+  absence). Notifications collapse per thread — chat allows 20 messages a
+  minute, which would otherwise buzz the recipient 20 times.
 - **Message reactions** (considered and deferred in the 2026-07-28 chat
   design pass) — long-press ❤️/👍 with a small pop, per Airbnb's threads.
   Deferred because it is NOT a polish item against our model: messages are
@@ -88,10 +102,15 @@ v1 scope, stop and flag it.
   `create_sighting`, gallery pick/upload with EXIF stripped, owner-facing
   "added from photo library" labels, tests, security review. Decision is
   recorded; nothing is built.
-- **watched-post-recovered push** — the watchlist shipped in-app-only (same
-  missing notifications infra). Payload contract pinned in DOMAIN.md's
-  watchlist carve-out: post context only ("Good news — the Blue BMW you
-  were watching was recovered"), never watcher counts or other watchers'
+- **watched-post-recovered push** — STILL BLOCKED, and the reason has been
+  corrected: it is **not** waiting on notifications infra (that shipped
+  2026-07-30). **No code path anywhere moves a post to `recovered`** — there
+  is no recovery or payout function in any migration and no such Edge
+  Function, so there is nothing to hook. The `recovery` payload variant, its
+  route and its `push_sends` kind all ship and are tested; the exact
+  insertion point is written up in features/notifications/README. Payload
+  contract unchanged: post context only ("Good news — the Blue BMW you were
+  watching was recovered"), never watcher counts or other watchers'
   existence. Sighting-activity pushes for watchers are deliberately OUT
   (noise risk) — revisit only with launch data. **Named collections SHIPPED
   2026-07-27** (they were listed here as not-v1); shared/collaborative lists

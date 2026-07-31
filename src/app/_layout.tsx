@@ -25,6 +25,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthGate, AuthSheet } from '@/features/auth';
 import { SaveYourCarSheet } from '@/features/garage';
+// Direct path, not the feature barrel: this component pulls expo-notifications,
+// the auth gate and the UI barrel, so keeping it out of '@/features/notifications'
+// lets plain api modules import that barrel without inheriting all of it. Same
+// call as AppMap vs the shared/ui barrel.
+import { NotificationsHost } from '@/features/notifications/components/NotificationsHost';
 import { CollectionPickerSheet } from '@/features/watchlist';
 import { ToastProvider } from '@/shared/ui';
 
@@ -101,10 +106,19 @@ export default function RootLayout() {
                     rather than a lateral push. */}
                 <Stack.Screen name="report-sighting" options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="post-a-car" options={{ animation: 'slide_from_bottom' }} />
+                {/* Creating an alert is a self-contained task over the app,
+                    like the two above. Editing one (/alerts/[alertId]) is a
+                    lateral push from the list, so it keeps the default. */}
+                <Stack.Screen name="alerts/new" options={{ animation: 'slide_from_bottom' }} />
               </Stack>
               {/* The one auth surface: opens over any screen when a gated
                   action stores a pending intent (useRequireAuth). */}
               <AuthSheet />
+              {/* Renders nothing. Registers this device's push token and routes
+                  notification taps — including a COLD start, where the response
+                  is ready before the navigator is, so it waits for both here at
+                  the root rather than on a screen that may not exist yet. */}
+              <NotificationsHost />
               {/* Offers the garage to someone who opened the report wizard and
                   left without posting. Mounted here for the same reason as
                   AuthSheet: the wizard route unmounts on exit, so the sheet

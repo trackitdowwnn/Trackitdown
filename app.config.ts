@@ -56,9 +56,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           'Allow Trackitdown to access your photos to add pictures of your car.',
       },
     ],
-    // Startup permissions gate (features/permissions) — permission requesting
-    // only for now, no push tokens; defaults are fine.
-    'expo-notifications',
+    // Push notifications (features/notifications): the startup permission
+    // prompt AND real push delivery. `defaultChannel` must match
+    // ALERTS_CHANNEL_ID in src/features/notifications/lib/pushDevice.ts and the
+    // channelId the Edge Functions send — Android silently DROPS a notification
+    // whose channel doesn't exist on the device.
+    // NOTE: no custom `icon` yet. Android tints the notification icon, so it
+    // must be a 96x96 WHITE-on-transparent PNG; a coloured one renders as a
+    // white blob. Until that asset exists the Expo default is used, which is
+    // correct-looking rather than wrong.
+    ['expo-notifications', { defaultChannel: 'alerts', color: '#1A1A1A' }],
     // --- Auth (features/auth) -------------------------------------------------
     // Session tokens live in the OS keychain, not AsyncStorage.
     'expo-secure-store',
@@ -98,6 +105,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // name/slug are required by ExpoConfig; app.json supplies them.
     name: config.name ?? 'trackitdown',
     slug: config.slug ?? 'trackitdown',
+    // Android push (FCM V1) needs google-services.json. Read from an env var so
+    // the file can be an EAS file secret rather than committed — it identifies
+    // the Firebase project. Omitted entirely when unset, so a local build with
+    // no FCM configured still works (push tokens simply don't mint; see
+    // features/notifications/lib/pushDevice.ts).
+    android: process.env.GOOGLE_SERVICES_JSON
+      ? { ...config.android, googleServicesFile: process.env.GOOGLE_SERVICES_JSON }
+      : config.android,
     plugins,
   };
 };

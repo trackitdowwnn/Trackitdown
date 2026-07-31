@@ -115,6 +115,34 @@ describe('buildCreatePostParams', () => {
     });
   });
 
+  // SAFETY: p_last_seen_locality is the ONLY place name a spotter-alert push
+  // may say. p_last_seen_area is the raw reverse-geocoded label and can be
+  // street-grain — on a driveway theft that is the victim's own street.
+  it('sends the district-grain locality separately from the area label', () => {
+    const params = buildCreatePostParams(
+      readyAnswers({
+        lastSeenArea: 'Shenley Rd, Hemel Hempstead, HP2 7RJ',
+        lastSeenLocality: 'Hemel Hempstead',
+      }),
+      { photoUrls: ['a', 'b', 'c'] },
+    );
+
+    expect(params.p_last_seen_locality).toBe('Hemel Hempstead');
+    // The two must never be conflated.
+    expect(params.p_last_seen_locality).not.toBe(params.p_last_seen_area);
+  });
+
+  it('sends a null locality rather than falling back to the area label', () => {
+    // A failed geocode must NOT quietly promote the street-grain label into
+    // the push; the server says "your area" when this is null.
+    const params = buildCreatePostParams(
+      readyAnswers({ lastSeenArea: 'Shenley Rd, Hemel Hempstead', lastSeenLocality: null }),
+      { photoUrls: ['a', 'b', 'c'] },
+    );
+
+    expect(params.p_last_seen_locality).toBeNull();
+  });
+
   it('nulls the removed guided prompts, chip taxonomy, and V5C', () => {
     const params = buildCreatePostParams(readyAnswers({ descDrives: '' }), {
       photoUrls: ['a', 'b', 'c'],

@@ -27,9 +27,18 @@ const mockFrom = jest.fn();
 const mockChannelOn = jest.fn();
 const mockSubscribe = jest.fn();
 const mockRemoveChannel = jest.fn();
+const mockInvoke = jest.fn();
 
 jest.mock('@/shared/api', () => ({
   supabase: {
+    // Notifications are dispatched fire-and-forget through the Edge Function;
+    // resolve so the un-awaited promise never rejects mid-test.
+    functions: {
+      invoke: (...args: unknown[]) => {
+        mockInvoke(...args);
+        return Promise.resolve({ error: null });
+      },
+    },
     rpc: (...args: unknown[]) => mockRpc(...args),
     from: (...args: unknown[]) => mockFrom(...args),
     channel: () => ({
@@ -111,6 +120,27 @@ describe('sendMessage', () => {
       p_content: 'hello there',
     });
     expect(sent).toMatchObject({ id: MESSAGE, content: 'hello there', kind: 'user' });
+  });
+
+  // Stub migration: chat's notify-message push now goes through the shared
+  // notifications door rather than any chat-local push code.
+  it('dispatches a message notification carrying only the message id', async () => {
+    mockRpc.mockResolvedValue({ data: messageRow, error: null });
+    await sendMessage(THREAD, 'super secret content');
+
+    expect(mockInvoke).toHaveBeenCalledWith('notify-message', { body: { messageId: MESSAGE } });
+    // SAFETY: the content must never leave for third-party push infrastructure.
+    // The body is built server-side as sender first name + post context.
+    expect(JSON.stringify(mockInvoke.mock.calls)).not.toContain('super secret content');
+  });
+
+  it('still returns the message when the notification dispatch fails', async () => {
+    mockRpc.mockResolvedValue({ data: messageRow, error: null });
+    mockInvoke.mockImplementationOnce(() => {
+      throw new Error('offline');
+    });
+    // A push that cannot be sent must never fail the send itself.
+    await expect(sendMessage(THREAD, 'hello there')).resolves.toMatchObject({ id: MESSAGE });
   });
 
   it('rejects empty and over-long content client-side', async () => {

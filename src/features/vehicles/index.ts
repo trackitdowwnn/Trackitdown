@@ -16,6 +16,13 @@ export { PostAboutScreen } from './screens/PostAboutScreen';
 export { PostDetailScreen, type PostDetailScreenProps } from './screens/PostDetailScreen';
 export { MakeField } from './post/components/MakeField';
 export { ModelField } from './post/components/ModelField';
+// Car taxonomy. Was posting-only; features/notifications is now a second
+// consumer (alert criteria filter on the SAME values posts store, so they must
+// come from one list or an alert silently matches nothing). Makes and models
+// already live in shared/lib — these two stayed here and are exported rather
+// than moved, to keep the posting wizard's imports untouched.
+export { CAR_COLOURS, type CarColour } from './post/lib/carColours';
+export { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN } from './post/lib/bodyTypes';
 export type { PostDetail, PostDetailResult, ClosedReason } from './types';
 // The report-sighting wizard reads the post's registered marks through this
 // (deferred-imported) to offer them as confirmable checkmarks.

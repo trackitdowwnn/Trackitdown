@@ -124,6 +124,14 @@ jest.mock('@/features/auth', () => ({
   useRequireAuth: () => mockRequireAuth,
 }));
 
+// Mocked at the feature boundary (docs/TESTING.md): the real barrel reaches
+// the Supabase client, which throws at import without env vars.
+let mockAlertsState: unknown = { status: 'ready', alerts: [], refresh: jest.fn() };
+jest.mock('@/features/notifications', () => ({
+  useMyAlerts: () => mockAlertsState,
+  unregisterCurrentPushToken: jest.fn(),
+}));
+
 const profile = {
   id: 'user-1',
   firstName: 'Ollie',
@@ -136,6 +144,7 @@ const profile = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockProfileState = { status: 'ready', profile, refresh: jest.fn() };
+  mockAlertsState = { status: 'ready', alerts: [], refresh: jest.fn() };
   mockSignOut.mockResolvedValue(undefined);
   mockCountBlocking.mockResolvedValue(0);
   mockRequestDeletion.mockResolvedValue(undefined);
@@ -253,6 +262,67 @@ describe('signed in', () => {
     const { getByTestId } = await render(<ProfileScreen />);
     fireEvent.press(getByTestId('row-how-it-works'));
     expect(mockPush).toHaveBeenCalledWith('/onboarding?revisit=1');
+  });
+
+  // The two Settings rows were inert "Coming soon" placeholders until the
+  // notifications feature shipped.
+  it('both alert rows open alert settings and no longer say Coming soon', async () => {
+    const { getByTestId, queryByText } = await render(<ProfileScreen />);
+
+    expect(queryByText('Coming soon')).toBeNull();
+
+    // Presses are wrapped in act: an unwrapped one leaves a pending update
+    // that surfaces as an unrelated failure in the NEXT test, not this one.
+    await act(async () => {
+      fireEvent.press(getByTestId('row-alert-radius'));
+    });
+    expect(mockPush).toHaveBeenCalledWith('/alerts');
+
+    mockPush.mockClear();
+    await act(async () => {
+      fireEvent.press(getByTestId('row-notifications'));
+    });
+    expect(mockPush).toHaveBeenCalledWith('/alerts');
+  });
+
+  it('summarises no alerts as Not set', async () => {
+    const { getAllByText } = await render(<ProfileScreen />);
+    expect(getAllByText('Not set').length).toBeGreaterThan(0);
+  });
+
+  it('counts the ACTIVE alerts, singular and plural', async () => {
+    mockAlertsState = {
+      status: 'ready',
+      alerts: [{ enabled: true }],
+      refresh: jest.fn(),
+    };
+    const single = await render(<ProfileScreen />);
+    expect(single.getAllByText('1 alert').length).toBeGreaterThan(0);
+  });
+
+  it('excludes paused alerts from the count', async () => {
+    // Three saved, one live — saying "3 alerts" would imply three are firing.
+    mockAlertsState = {
+      status: 'ready',
+      alerts: [{ enabled: true }, { enabled: false }, { enabled: true }],
+      refresh: jest.fn(),
+    };
+    const { getAllByText } = await render(<ProfileScreen />);
+    expect(getAllByText('2 alerts').length).toBeGreaterThan(0);
+  });
+
+  it('says All paused when every alert is muted', async () => {
+    // A different answer from "no alerts" AND from a count — the row must not
+    // imply notifications are arriving when none can.
+    mockAlertsState = {
+      status: 'ready',
+      alerts: [{ enabled: false }, { enabled: false }],
+      refresh: jest.fn(),
+    };
+    const { getAllByText, queryByText } = await render(<ProfileScreen />);
+    expect(getAllByText('All paused').length).toBeGreaterThan(0);
+    expect(queryByText('2 alerts')).toBeNull();
+    expect(queryByText('Not set')).toBeNull();
   });
 
   it('log out: confirming signs out and stays put (guest mode, no auth wall)', async () => {

@@ -1,0 +1,279 @@
+# notifications
+
+Two things that only work together: the **push infrastructure** every other
+feature was waiting on, and its first real consumer — **alerts**, a
+location and radius that tells a spotter when a car is reported stolen near
+them. Without this the core loop has no way to reach anyone who isn't already
+looking at the app.
+
+**Actor:** spotter (any signed-in user). Guests can't hold a zone — it needs a
+`user_id` — so the settings screen is a gated action (`alert_settings`
+context). Owners are consumers too: sighting and message pushes reach them
+through the same infrastructure.
+
+## Alerts
+
+Up to **5 named alerts** per user, each a point + a radius of 1–50 miles,
+optionally narrowed by the car. When a post goes `active`, spotters whose alert
+matches get one push.
+
+Created and edited through a wizard that **opens by asking what to match on**
+(`components/AlertMatcherPicker.tsx`) — three cards: an area, a specific car, a
+minimum bounty. The ticks decide the rest: area → [car] → [bounty] → name, so
+"anything near home" is two screens rather than four with two left untouched.
+One phase, no intro, with a review — the shape `addVehicleFlow` uses, because
+this is a calm settings task, but a review still earns its place: an alert is
+invisible once saved, so this is the only chance to notice you set 1 mile
+instead of 10.
+
+- **The area card is LOCKED ON, not hidden.** `point` and `radius_m` are NOT
+  NULL — alerts are always local, because a spotter cannot act on a car 200
+  miles away. Showing it ticked-and-greyed with the reason states the rule
+  once; hiding it would leave the user wondering where the location question
+  came from on the next screen.
+- ⚠️ **The picker is a screen BEFORE the wizard, not a step inside it.**
+  `useWizardController` resets navigation whenever the flattened screen list
+  changes identity, and its indices are positions into that list (see
+  `navigation.ts`'s `reset` SAFETY note), so a step that added or removed later
+  steps as you toggled it would bounce you back to itself — and a review-edit
+  spur that changed the count would return to the wrong screen. Choosing first
+  and memoising the built flow keeps it stable for the whole run.
+- **What is saved is reduced through the ticks** (`lib/alertMatchers.ts`), not
+  read straight off the answers. Tick "a specific car", pick a BMW, back out,
+  untick it — the answers still hold the BMW, and the update is a full replace,
+  so without the reduction the row would stay BMW-only while every screen said
+  "any car". Editing derives the ticks back from the saved criteria, so it can
+  add a criterion as well as remove one.
+- **Recency rides with the bounty card** rather than earning a fourth: the
+  product offers three things to match on, and "how recently it was seen" is a
+  refinement of which reports are worth hearing about, not a separate axis.
+- **Area is ONE step**, map and radius slider together. The circle scaling live
+  as you drag is the payoff visual; splitting them would show a circle you
+  cannot change, then a number with no picture.
+- **It opens where you are, at 5 miles.** The centre is resolved before the map
+  mounts (`hooks/useDefaultAlertCentre.ts`) from: device position → the saved
+  Explore feed location → nothing, which leaves the picker's whole-UK view.
+  Opening on the country made the first screen of the wizard useless — you had
+  to pan or search before it meant anything.
+  - **It never cold-prompts.** Permission is read silently
+    (`checkDevicePermission`) and the position is only requested once that comes
+    back granted, because `expoLocationServices.getCurrentPosition` requests
+    permission internally. The picker's own "use my current location" button is
+    the one-tap way in for anyone who hasn't granted it.
+  - Resolved **while the matcher picker is on screen**, which is what makes it
+    free: `LocationPicker` reads `initialLocation` once, on mount, so the
+    coordinate must exist before the wizard renders. If the fix is slower than
+    the user, the wizard holds a brief loader — with a hard timeout, because a
+    GPS fix can hang without ever erroring.
+  - Consequence, accepted deliberately: centring on you also **settles** the
+    step, so Next unlocks without touching the map. That is the two-tap path
+    this is for, and it stays safe because `approximate` defaults on and the
+    server coarsens the stored point regardless.
+- **The zoom follows the radius.** `LocationPicker`'s `fitRadiusMiles` re-frames
+  the map whenever the radius changes, so the circle keeps a constant
+  relationship to the frame instead of overflowing at 50 miles and vanishing at
+  1. It re-frames around the map's *current* centre, so a pan survives; a manual
+  pinch does not, which is the accepted cost of the circle always reading the
+  same way. The maths is `shared/lib/mapRegion.ts` — shared, because
+  `LocationPicker` is shared and cannot import from a feature.
+  - The prop is **optional**, so the pickers in post-a-car and report-a-sighting
+    still open at street zoom. Their behaviour is byte-identical, and
+    `LocationPicker.test.tsx` guards it.
+- **5 miles, not the feed's 20.** Browsing a wide area is free; being
+  interrupted is not, and the map now opens framed on this radius, so a large
+  default would open on a view too coarse to recognise anywhere in.
+- **Approximate by default.** The toggle ("Use approximate area only") snaps
+  the point to the 0.01° (~1 km) grid **before it is stored**, server-side, in
+  `create_my_alert` / `update_my_alert`. The database never holds the exact
+  point. A client-side snap would be a promise; this is a guarantee — which is
+  also why there is no client write grant on the table.
+- **Criteria are optional and independent** — make, model, colour, body type,
+  minimum bounty, recency. All unset is "any car", which is exactly what a v1
+  alert was. Matched case-insensitively, because posts store whatever the owner
+  typed.
+  - The pickers offer **canonical values only, no free typing**. A typed
+    "beemer" would create an alert that silently matches nothing — worse than
+    no alert, because the user believes they are covered.
+  - **Known limit**: case-folding doesn't equate `VW` with `Volkswagen`, or
+    `Golf` with `Golf GTI`. The honest fix is normalising
+    `posts.make/model/colour` on write. Not done.
+  - **Recency filters `last_seen_at`, not post age.** It correctly excludes
+    reports of older thefts, but most reports are recent, so it narrows less
+    than users may expect. The step says so rather than implying otherwise.
+- **Disabled ≠ deleted.** Pausing keeps the alert. Nobody should lose the thing
+  they took trouble to set because they wanted quiet for a week.
+- Alerts and the Explore **feed location** stay separate settings (search-map
+  README). A new alert starts from the saved feed location when the device has
+  none to offer — a **prefill, not a link**: editing an alert never writes back
+  to the feed, and moving the feed never moves an existing alert.
+
+> **Correction to the v1 note.** The `20260802120000` header said dropping
+> `alert_zones_one_per_user_uidx` "*is* the entire v2 multi-zone migration".
+> That was wrong in two ways, both caught while doing it: that unique index was
+> the **only** index on `user_id` (a plain btree had to replace it, or every
+> list/RLS/match lookup loses its path), and `upsert_my_alert_zone` inferred
+> its `on conflict (user_id)` target from it. Confident comments about future
+> work are worth re-deriving.
+
+## Payload
+
+> "A blue BMW was reported stolen in Hemel Hempstead — don't approach."
+
+- Make, colour and a **district-grain** locality only, from
+  `posts.last_seen_locality`. Never `posts.last_seen_area`, which comes from
+  the LocationPicker's raw address label and can be street-grain — a feed
+  carousel showing it is one thing, broadcasting it to everyone within 50 miles
+  is another.
+- **Never** the plate, never coordinates, never a house number.
+- The **don't-approach clause is not optional** (DOMAIN.md / SECURITY_AND_TRUST
+  §1: every alert notification carries the safety line). The full
+  `SafetyNotice` renders on the post detail the tap opens.
+- The `data` payload is ids only, parsed through a `.strict()` zod schema, so a
+  leaked field is a parse failure rather than a silent delivery.
+
+The copy is built in **SQL**, inside `match_alert_zones`. That puts every
+privacy property under `npm run test:db` — the runner the project already has —
+instead of introducing a Deno test runner to assert "the plate isn't in there".
+
+## Volume
+
+At most **3 alert pushes per user per rolling 24 hours**, plus never twice for
+the same post. Overflow is **dropped silently, not digested**: with no pg_cron a
+digest would flush only when the next alert arrives, and a late stolen-car
+alert is worth little. A dropped push also loses nothing permanent — the post
+is in Explore and on the map regardless. Alert fatigue is the asymmetric risk: a
+spotter who mutes the app is worth zero alerts forever.
+
+## Screens
+
+- **AlertsScreen** (`/alerts`) — the list: each alert's name, what it watches
+  (`summariseAlert`), a pause switch, edit and delete, plus "Create an alert"
+  (disabled at the cap, which says so). Reached from **both** Profile rows
+  ("Alert location & radius" and "Notifications" are one setting in the user's
+  head) and from the Explore nudge card.
+  It owns the **per-user** concerns that don't belong on any single alert: the
+  permission primer and the notifications-off notice. An alert can't fix a
+  phone-level block, and asking five times would be absurd.
+  **The list stays usable when notifications are off at OS level** — you can
+  manage alerts, they just won't fire, and a persistent notice says so.
+  Honest states: loading, error, signed out, empty, and at-cap.
+- **AlertWizardScreen** (`/alerts/new`, `/alerts/[alertId]`) — one flow for
+  create AND edit, the pattern `AddVehicleScreen` uses. In edit mode it holds a
+  loader until the alert arrives: `update_my_alert` is a FULL REPLACE, so
+  mounting the wizard blank and re-seeding underneath the user would offer to
+  erase their criteria.
+- **AlertNudgeCard** — one-time dismissible card in the Explore feed for members
+  with no alerts. Sits below the existing feed cards and only when they're
+  hidden; three stacked cards is a wall.
+
+## Push infrastructure
+
+- `push_tokens` — **primary key on `token`, not `(user_id, token)`.** A device
+  token survives logout, so a composite key would leave the previous user's row
+  intact and send their notifications to whoever holds the phone now.
+  PK-on-token makes re-registration a `do update set user_id` that *moves* the
+  device. Asserted by the token-migration test.
+- **One send utility** (`supabase/functions/_shared/push.ts`) that every kind
+  uses — audience → chunk to 100 → Expo send → tickets → receipts → prune
+  `DeviceNotRegistered`. No per-feature push code.
+- **Receipts are drained opportunistically.** Expo's API is two-phase and there
+  is no pg_cron here, so `notify-spotters` fire-and-forgets
+  `process-push-receipts` at the start of each run. Honest consequence: a dead
+  token is pruned on the *next* send, not immediately. pg_cron is the upgrade
+  path.
+- **Tap routing** is one pure function (`lib/pushRoute.ts`), including the
+  cold-start case (app killed) — the classic gap. `NotificationsHost` gates
+  cold-start navigation on router readiness, the session having resolved, and
+  a once-only guard shared with the warm listener so a tap never routes twice.
+  A response that arrives while we're still on onboarding is **dropped and
+  marked handled** — without that last part the sticky launch response is
+  re-read the moment onboarding ends and opens after all.
+- Foreground pushes present as a quiet in-app Toast with a "View" action, not a
+  system banner over the app the user is already looking at.
+- **Message pushes are capped at one per thread per 2 minutes**, enforced in
+  `claim_message_notification`. Chat allows 20 messages a minute per thread, so
+  without it a hostile counterpart could fire 20 HIGH-importance pushes a
+  minute — sound and vibration each — at a theft victim. Collapsing alone is
+  **not** a volume control: `collapseId`/`tag` replaces the banner, not the
+  buzz. The message itself is always delivered; only the push is suppressed,
+  and the thread and its unread badge are untouched.
+- **Notifications also collapse** per post / per thread, so a burst reads as
+  one banner rather than a pile.
+- **The client cannot be trusted to trigger its own notification**, so
+  `notify-sighting` / `notify-message` authorise in the DATABASE:
+  `claim_sighting_notification` / `claim_message_notification` verify the
+  caller actually wrote the row, refuse system messages, and are idempotent.
+  A forged id notifies nobody.
+
+### Importing from this feature
+
+**The barrel (`index.ts`) is deliberately light** and must stay that way:
+`chatApi` and `sightingApi` import it just to call `notifySighting` /
+`notifyMessage`. Anything reaching expo-notifications, react-native-maps,
+AsyncStorage, the auth gate or the `shared/ui` barrel lands in those plain api
+modules' graph — and their tests then need the native map and AsyncStorage
+mocked merely to load the file. That broke them twice during this build.
+
+Same call as `AppMap`'s absence from the `shared/ui` barrel. The heavy pieces
+are imported by their single consumer, by path: `NotificationsHost`
+(`app/_layout.tsx`), `AlertsScreen` (`app/alerts/index.tsx`),
+`AlertWizardScreen` (`app/alerts/new.tsx` + `app/alerts/[alertId].tsx`),
+`AlertNudgeCard` + `useAlertNudgeCard` (search-map's `HomeFeedScreen`).
+
+### Triggering
+
+`posts.status = 'active'` is set in exactly one place —
+`mark_post_payment_held`, called from `stripe-webhook`. That function is
+**not modified**. Instead the webhook fire-and-forget invokes `notify-spotters`
+in a try/catch that never rethrows, so a push failure can't turn a settled
+payment into a Stripe retry. `notify-spotters` claims the post itself
+(`posts.alerts_sent_at`, `where alerts_sent_at is null`), which makes the
+webhook's process-first-record-after retry safe: a re-run claims nothing and
+exits quietly.
+
+A post with no zones in range still gets claimed. That's deliberate — the claim
+means "we tried", and we don't want a later retry blasting a stale post.
+
+`claim_post_alerts` returns **no coordinates**. For a driveway theft the
+last-seen point is the victim's home, and nothing downstream needs it —
+`match_alert_zones` re-reads the point and does all the spatial work inside the
+database, so the exact location never enters an Edge Function's memory or logs.
+
+## watched-post-recovered — BLOCKED, and why
+
+**No code path anywhere moves a post to `recovered`.** There is no recovery or
+payout function in any migration, no such Edge Function, and
+`posts.recovered_at`'s own comment names a function that was never written.
+There is nothing to hook.
+
+Shipped now: the `recovery` payload variant, its route, and its `kind` value —
+all tested. **No Edge Function and no claim column**, because a claim for a
+transition that doesn't exist is dead code that will be wrong by the time
+recovery is designed.
+
+When the recovery transition lands, it calls `sendExpoPush` with audience
+`select user_id from watchlist_items where post_id = $1`, excluding the owner,
+kind `'recovery'`, copy "Good news — the Blue BMW you were watching was
+recovered." Post context only — **never watcher counts or other watchers'
+existence** (DOMAIN.md watchlist carve-out).
+
+## Logging
+
+`[notifications]`: `push_permission { state, canAskAgain, surface }`,
+`push_token_registered { platform, changed }`, `push_token_unavailable`,
+`alert_zone_set { radiusMiles, approximate, enabled, origin }` (origin coarsened
+via `redactLocation`), `alert_zone_toggled`, `push_received_foreground`,
+`push_opened { type, postId?, coldStart }`.
+
+**Never the token.** `threadId` is deliberately excluded — it correlates two
+identities. **Pushes sent vs tapped is the engagement metric for the whole
+product.**
+
+## Out of scope
+
+- **Sighting-chain re-alerts** ("the car may have moved") — out of v1 by
+  decision; DOMAIN.md amended to match ROADMAP v2 candidate #4. Re-alerts scale
+  with reporter count, not with genuine movement, so a busy post in a dense area
+  would spam every zone around it.
+- Multiple zones, quiet hours, a per-type preferences matrix (one master switch
+  now), email notifications.

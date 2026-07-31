@@ -8,15 +8,20 @@
  *        docs/DOMAIN.md (alert radius 1–50 miles; recovered 30-day window).
  */
 
+import { RADIUS_MAX_MILES, RADIUS_MIN_MILES } from '@/shared/lib/distance';
+
 /** Default feed radius when the user hasn't set one. */
 export const FEED_RADIUS_DEFAULT_MILES = 20;
 
 /** The intermediate "Widen the area" step between the default and the max. */
 export const FEED_RADIUS_WIDEN_STEP_MILES = 35;
 
-/** Radius bounds — match the alert-radius range in DOMAIN.md. */
-export const FEED_RADIUS_MIN_MILES = 1;
-export const FEED_RADIUS_MAX_MILES = 50;
+/** Radius bounds — the SAME 1–50 range DOMAIN.md fixes for the alert radius,
+ *  so they live in shared/lib/distance.ts now that the notifications feature
+ *  needs them too. Re-exported under the feed's names so feed call sites read
+ *  in feed terms. */
+export const FEED_RADIUS_MIN_MILES = RADIUS_MIN_MILES;
+export const FEED_RADIUS_MAX_MILES = RADIUS_MAX_MILES;
 
 /** Hero-section page size. Mirrors the RPCs' LIMIT 10 first page. */
 export const FEED_PAGE_SIZE = 10;
@@ -28,9 +33,7 @@ export const RECOVERED_WINDOW_DAYS = 30;
 export const MAX_AREA_CAROUSELS = 3;
 export const MIN_POSTS_PER_AREA_CAROUSEL = 2;
 
-/** Geography truth, not tuning. */
-export const METRES_PER_MILE = 1609.344;
-
-export function milesToMetres(miles: number): number {
-  return Math.round(miles * METRES_PER_MILE);
-}
+/** Geography truth, not tuning — now owned by shared/lib/distance.ts, which
+ *  the notifications feature shares. Re-exported so feed call sites are
+ *  unchanged. */
+export { METRES_PER_MILE, milesToMetres } from '@/shared/lib/distance';

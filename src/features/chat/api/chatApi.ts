@@ -22,6 +22,7 @@ import { z } from 'zod';
 // Type-only: erased at runtime, so it cannot close the chat→profile require
 // cycle (profile → garage → vehicles → chat).
 import type { PublicProfile } from '@/features/profile';
+import { notifyMessage } from '@/features/notifications';
 import { supabase } from '@/shared/api';
 import { samplePhotos } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
@@ -208,6 +209,10 @@ export async function sendMessage(threadId: string, content: string): Promise<Ch
   }
   const row = messageRowSchema.parse(data);
   log.info('message_sent', { threadId, length: trimmed.length });
+  // Notify the other participant. SAFETY: only the message ID crosses here —
+  // the push body is built server-side as sender first name + post context,
+  // and the message CONTENT never transits push (SECURITY_AND_TRUST §3).
+  notifyMessage(row.id);
   return toChatMessage(row);
 }
 

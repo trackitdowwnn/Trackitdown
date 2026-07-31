@@ -57,6 +57,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
+import { regionAround } from '../lib/mapRegion';
 import { colors, motion, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
 import type {
   ForwardGeocodeResult,
@@ -109,6 +110,17 @@ export interface LocationPickerProps {
   promptLabel?: string;
   /** Show the circular "use my current location" button. */
   showCurrentLocationButton?: boolean;
+  /**
+   * Frame the map so a circle of this radius (miles) fits in view, and RE-FRAME
+   * whenever it changes — for pickers that draw a radius the user is editing
+   * (the alert zone). Omit for the ordinary "drop a pin" pickers, which stay at
+   * street zoom.
+   *
+   * Re-framing deliberately overrides a manual pinch: the circle keeps a
+   * constant relationship to the frame, so the map always answers "how big is
+   * this area" rather than preserving a zoom the user set two radii ago.
+   */
+  fitRadiusMiles?: number;
 }
 
 /** No map, no address, no position — just enough to render and stay valid. */
@@ -176,7 +188,19 @@ export const settledLocationSchema = locationValueSchema.refine((value) => value
   message: 'Choose where it was last seen',
 });
 
-function regionFor(coord: GeoCoord): GeoRegion {
+/**
+ * How much wider than the circle to frame the map. `regionAround` spans the
+ * DIAMETER, so at 1.0 the circle would touch the top and bottom edges exactly
+ * and read as overflowing. 1.3 leaves it clearly inside its frame.
+ */
+const CIRCLE_FIT_PADDING = 1.3;
+
+/** The viewport for a chosen point: street zoom normally, or framed around a
+ *  radius when the caller is drawing one. */
+function regionFor(coord: GeoCoord, fitRadiusMiles?: number): GeoRegion {
+  if (fitRadiusMiles != null && fitRadiusMiles > 0) {
+    return regionAround(coord, fitRadiusMiles * CIRCLE_FIT_PADDING);
+  }
   return { ...coord, latitudeDelta: STREET_DELTA, longitudeDelta: STREET_DELTA };
 }
 
@@ -188,9 +212,10 @@ export function LocationPicker({
   optionSlot,
   promptLabel = DEFAULT_PROMPT,
   showCurrentLocationButton = true,
+  fitRadiusMiles,
 }: LocationPickerProps) {
   const [region, setRegion] = useState<GeoRegion>(() =>
-    initialLocation ? regionFor(initialLocation) : UK_DEFAULT_REGION,
+    initialLocation ? regionFor(initialLocation, fitRadiusMiles) : UK_DEFAULT_REGION,
   );
   const [animateMs, setAnimateMs] = useState(0);
   const [isMoving, setIsMoving] = useState(false);
@@ -209,9 +234,13 @@ export function LocationPicker({
   // map. Kept fresh in an effect (never assigned during render).
   const servicesRef = useRef(locationServices);
   const onChangeRef = useRef(onLocationChange);
+  // Read by moveTo (search pick / locate) so a radius change never re-creates
+  // that callback — the map surface is remount-sensitive.
+  const fitRadiusRef = useRef(fitRadiusMiles);
   useEffect(() => {
     servicesRef.current = locationServices;
     onChangeRef.current = onLocationChange;
+    fitRadiusRef.current = fitRadiusMiles;
   });
 
   const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -306,6 +335,30 @@ export function LocationPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Re-frame when the caller's radius CHANGES, so the circle keeps a constant
+  // relationship to the frame while the user drags the slider.
+  //
+  // Adjusting state from a changed prop DURING RENDER (React's documented
+  // pattern), not from an effect. It must key off the change, not the current
+  // value: deriving the span on every render would re-apply it after each
+  // `onRegionChangeComplete` too, so a pinch would snap back the instant the
+  // gesture ended — fighting the user rather than merely overriding them on the
+  // next radius change.
+  //
+  // Skipped until a centre exists: framing 5 miles around the whole-UK fallback
+  // would zoom into the sea off Lancashire.
+  const hasCentre = hasSettled || initialLocation != null;
+  const [appliedFitRadius, setAppliedFitRadius] = useState(fitRadiusMiles);
+  if (fitRadiusMiles !== appliedFitRadius) {
+    setAppliedFitRadius(fitRadiusMiles);
+    if (fitRadiusMiles != null && fitRadiusMiles > 0 && hasCentre) {
+      // A SHORT hop, not motion.mapFly: the radius slider fires on every snap
+      // crossing, so half-second flies would queue up and lag the thumb.
+      setAnimateMs(motion.fast);
+      setRegion((current) => regionFor(current, fitRadiusMiles));
+    }
+  }
+
   const handleRegionChangeStart = useCallback(() => {
     setIsMoving(true);
     // A fresh pan invalidates any pending/in-flight resolve for the old point.
@@ -330,7 +383,7 @@ export function LocationPicker({
   /** Move the camera to a point programmatically (search pick / locate). */
   const moveTo = useCallback(
     (coord: GeoCoord, options?: { label?: string }) => {
-      const next = regionFor(coord);
+      const next = regionFor(coord, fitRadiusRef.current);
       geocodeReq.current++; // supersede anything in flight
       setAnimateMs(motion.mapFly);
       setRegion(next);

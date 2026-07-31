@@ -45,6 +45,11 @@ export {
   type CardSelectProps,
 } from './CardSelect';
 export {
+  CardSelectMulti,
+  type CardSelectMultiOption,
+  type CardSelectMultiProps,
+} from './CardSelectMulti';
+export {
   ChoiceChips,
   type ChoiceChipOption,
   type ChoiceChipsProps,

@@ -637,7 +637,10 @@ declare
   v_sigs text[] := array[
     'public.update_post_car_details(uuid, text, text, text, text, int, text)',
     'public.update_post_photos(uuid, text[])',
-    'public.update_post_last_seen(uuid, timestamptz, double precision, double precision, text)',
+    -- Gained a trailing, defaulted p_last_seen_locality in 20260802110000.
+    -- has_function_privilege resolves by EXACT signature, so the 5-arg form
+    -- would raise "function does not exist" rather than fail the assertion.
+    'public.update_post_last_seen(uuid, timestamptz, double precision, double precision, text, text)',
     'public.update_post_bounty(uuid, int)',
     'public.update_post_verification(uuid, text)',
     'public.update_post_theft_context(uuid, text, text, text)',

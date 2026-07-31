@@ -45,8 +45,15 @@ export interface PostACarAnswers extends VehicleAnswers {
   /** ISO datetime; the step gates max = now. */
   lastSeenAt: string;
   location: LastSeenLocation | null;
-  /** Coarse grouping label (the feed's bucket), derived at the location step. */
+  /** Coarse grouping label (the feed's bucket), derived at the location step.
+   *  NOTE: this is the raw reverse-geocoded address label truncated to 80 —
+   *  it CAN be street-grain. Public-facing copy must prefer lastSeenLocality. */
   lastSeenArea: string;
+  /** District/city grain only — the one place name a spotter-alert push may
+   *  name (posts.last_seen_locality). Nullable: geocoding is best-effort, and
+   *  an explicit null records "we tried and got nothing" so the push falls
+   *  back to "your area" rather than to the street-grain lastSeenArea. */
+  lastSeenLocality?: string | null;
   stolenFrom: StolenFrom | null;
   keysTaken: KeysTaken | null;
   /** Guided prompt: "Anything about how it drives or sounds?" — no longer a
@@ -86,6 +93,8 @@ export interface CreatePostParams {
   p_last_seen_lat: number;
   p_last_seen_lng: number;
   p_last_seen_area: string;
+  /** District-grain place for spotter alerts; null when the geocode failed. */
+  p_last_seen_locality: string | null;
   p_bounty_amount_pence: number;
   p_photo_urls: string[];
   p_feature_keys: string[] | null;

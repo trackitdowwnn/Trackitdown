@@ -1,20 +1,24 @@
 /**
- * WHAT:  deriveAreaLabel — a coarse, human place label ("Camden High Street,
- *        London") reverse-geocoded from the first LOCATED evidence photo.
+ * WHAT:  derivePlaceLabels — the coarse place labels ("Camden High Street,
+ *        London" for the owner, "Camden" for the public face) reverse-geocoded
+ *        from the first LOCATED evidence photo.
  * WHY:   The confirm screen says where the report will read as from, and the
- *        server stores the label as display copy for the owner. Coarse by
- *        construction (street/district level, never a house number) and pure
- *        best-effort: geocoding failure or an un-located report returns null —
- *        the report is simply "location unavailable" or shown by pin only.
- * LINKS: src/features/sightings/components/sightingSteps.tsx (photos step
+ *        server stores both grains. This file owns only the PHOTO part —
+ *        picking which photo carries the fix; the geocode and the two-grain
+ *        split live in shared/lib/location/placeLabels.ts, because the posting
+ *        wizard needs the same public grain for posts.last_seen_locality and
+ *        the two must not drift.
+ *        Pure best-effort: geocoding failure or an un-located report returns
+ *        null — the report is simply "location unavailable" or pin-only.
+ * LINKS: src/shared/lib/location/placeLabels.ts (the geocode + grain rules);
+ *        src/features/sightings/components/sightingSteps.tsx (photos step
  *        onContinue); src/features/sightings/api/sightingApi.ts (max 120).
  */
 
-import * as Location from 'expo-location';
-
+import { derivePlaceLabelsForCoord, type PlaceLabels } from '@/shared/lib/location/placeLabels';
 import type { EvidencePhoto } from '@/shared/ui';
 
-const MAX_LABEL = 120;
+export type { PlaceLabels };
 
 /** First photo that carries its own fix, if any. */
 export function firstLocatedPhoto(photos: EvidencePhoto[]): EvidencePhoto | null {
@@ -22,40 +26,13 @@ export function firstLocatedPhoto(photos: EvidencePhoto[]): EvidencePhoto | null
 }
 
 /** Both place grains from ONE reverse-geocode of the first located photo. */
-export interface PlaceLabels {
-  /** Street/district-first, owner-facing ("Camden High Street, London"). */
-  areaLabel: string | null;
-  /** District/city grain ONLY — the public-facing coarse place (ADR-0008).
-   *  // SAFETY: street is deliberately excluded from this fallback chain;
-   *  the string can end up on an anonymous public timeline entry. */
-  locality: string | null;
-}
-
-const MAX_LOCALITY = 80;
-
 export async function derivePlaceLabels(photos: EvidencePhoto[]): Promise<PlaceLabels> {
   const located = firstLocatedPhoto(photos);
   if (!located) return { areaLabel: null, locality: null };
-  try {
-    const results = await Location.reverseGeocodeAsync({
-      latitude: located.lat as number,
-      longitude: located.lng as number,
-    });
-    const place = results[0];
-    if (!place) return { areaLabel: null, locality: null };
-    // Street/district first (what a spotter would say), city as context.
-    // Deliberately NO house number — coarse is the point.
-    const primary = place.street ?? place.district ?? place.subregion ?? place.city;
-    const context = place.city && place.city !== primary ? place.city : null;
-    const label = [primary, context].filter(Boolean).join(', ');
-    const locality = place.district ?? place.city ?? place.subregion ?? null;
-    return {
-      areaLabel: label ? label.slice(0, MAX_LABEL) : null,
-      locality: locality ? locality.slice(0, MAX_LOCALITY) : null,
-    };
-  } catch {
-    return { areaLabel: null, locality: null };
-  }
+  return derivePlaceLabelsForCoord({
+    latitude: located.lat as number,
+    longitude: located.lng as number,
+  });
 }
 
 /** Back-compat: the owner-facing label only. */

@@ -60,6 +60,7 @@ import {
 import { formatRecentLogs } from '@/shared/lib/logger';
 import { useRequireAuth } from '@/features/auth';
 import { useHasSavedCar } from '@/features/garage';
+import { useMyAlerts } from '@/features/notifications';
 
 import {
   countDeletionBlockingPosts,
@@ -168,6 +169,23 @@ function LoadedProfile({
   // read the answer is served from the shared cache (a visit to /my-cars primes
   // it for free).
   const savedCar = useHasSavedCar({ enabled: true });
+  // Both Settings rows summarise the same zone, so the row says what is
+  // actually true rather than a static label: an unset zone and a paused one
+  // are different answers, and "Coming soon" was neither.
+  const alertsState = useMyAlerts();
+  const alertZoneSummary = (() => {
+    if (alertsState.status !== 'ready') return undefined; // say nothing rather than guess
+    const { alerts } = alertsState;
+    if (alerts.length === 0) return 'Not set';
+    const active = alerts.filter((alert) => alert.enabled).length;
+    // "3 alerts, all paused" is a different answer from "3 alerts" — the row
+    // must not imply notifications are arriving when every one is muted.
+    if (active === 0) return alerts.length === 1 ? 'Paused' : 'All paused';
+    return active === 1 ? '1 alert' : `${active} alerts`;
+  })();
+  // No gate needed here — LoadedProfile only renders for a signed-in user.
+  // The screen itself handles the guest deep-link case.
+  const openAlertSettings = () => router.push('/alerts');
   const signOutRef = useRef<ConfirmDialogRef>(null);
   const deleteConfirmRef = useRef<ConfirmDialogRef>(null);
   const deleteBlockedRef = useRef<ConfirmDialogRef>(null);
@@ -274,15 +292,23 @@ function LoadedProfile({
         ) : null}
 
         <Section title="Settings">
-          {/* Not `disabled` (which dims below readability): "Coming soon" is
-              information to read, and a row without onPress is already inert. */}
+          {/* BOTH rows land on the same screen: "Notifications" and "Alert
+              location" are one setting in the user's head, and two screens
+              would be two half-answers. */}
           <ListRow
             icon={MapPin}
             title="Alert location & radius"
-            value="Coming soon"
+            value={alertZoneSummary}
+            onPress={openAlertSettings}
             testID="row-alert-radius"
           />
-          <ListRow icon={Bell} title="Notifications" value="Coming soon" />
+          <ListRow
+            icon={Bell}
+            title="Notifications"
+            value={alertZoneSummary}
+            onPress={openAlertSettings}
+            testID="row-notifications"
+          />
           <ListRow
             icon={Info}
             title="How Trackitdown works"

@@ -19,6 +19,16 @@ should be, some are optional.
   rejected.
 - **`// SAFETY:` code**: e.g. sighting flows render SafetyNotice; posts
   in non-active states are not returned by public queries.
+- **Alert-zone approximate snapping**: with the approximate toggle on, the
+  point STORED must never be the exact point the user picked. The snap
+  happens server-side before the insert, so the test asserts the stored value
+  differs from the input — and is still close enough to keep matching.
+- **Push payload contents**: a push crosses third-party infrastructure, so
+  the ABSENCE assertions are the point — no plate, no coordinates, no message
+  content, and the don't-approach clause always present. Asserted on both
+  sides: `pushPayload.test.ts` (the client's strict schema refuses a widened
+  payload) and `supabase/tests/alerts_verification.sql` (the bodies are built
+  in SQL precisely so they are testable there).
 
 ## Tier 2 — SHOULD be tested
 
