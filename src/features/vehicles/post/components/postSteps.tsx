@@ -20,6 +20,7 @@ import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
+import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import {
   CardSelect,
   ChoiceChips,
@@ -33,7 +34,7 @@ import {
   TextField,
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
-import { colors, opacity, sizes, spacing, typography } from '@/shared/theme';
+import { colors, opacity, radii, sizes, spacing, typography } from '@/shared/theme';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
@@ -155,6 +156,20 @@ export function LastSeenWhenStep({ answers, setAnswers }: StepProps) {
 }
 
 export function LastSeenWhereStep({ answers, setAnswers }: StepProps) {
+  // Open the camera on the device rather than on the whole UK — most cars are
+  // reported from near where they were taken. Only resolved when there is no
+  // stored point yet, and it never blocks: if the chain finds nothing the map
+  // opens on the UK view exactly as before.
+  const defaultCentre = useDefaultMapCentre(answers.location == null);
+
+  // The picker reads its opening region ONCE, on mount, so it must not mount
+  // before the centre is known. surfaceSubtle, not a spinner — it is the same
+  // colour the map card shows through while its own tiles load, so this reads
+  // as the map arriving rather than as a separate loading state.
+  if (defaultCentre.status === 'resolving') {
+    return <View style={[styles.mapFrame, styles.mapFramePending]} />;
+  }
+
   return (
     <View style={styles.mapFrame}>
       <LocationPicker
@@ -163,6 +178,12 @@ export function LastSeenWhereStep({ answers, setAnswers }: StepProps) {
         // Feed the stored point back so returning here (Back / Edit) starts
         // SETTLED — otherwise the mount emits isSettled:false and wipes it.
         initialLocation={answers.location ?? null}
+        // SAFETY: centre only, deliberately NOT initialLocation. Where a car
+        // was last seen is a claim other people act on — it drives the alert
+        // fan-out and the public map — so it must be a point the reporter
+        // actually chose, not wherever they happened to open the wizard. Next
+        // stays disabled until they commit one.
+        initialCentre={defaultCentre.centre}
         onLocationChange={(value) => {
           if (!value.isSettled) {
             // Un-settle disables Next until the user commits a point again.
@@ -244,16 +265,53 @@ export function BodyTypeStep({ answers, setAnswers }: VehicleStepProps) {
   );
 }
 
-export function DescriptionStep({ answers, setAnswers }: StepProps) {
+/** Mirrors the flow's schema and `posts.desc_recognise`'s own CHECK. */
+const DESC_MIN_CHARS = 20;
+const DESC_MAX_CHARS = 1000;
+
+export function DescriptionStep({ answers, setAnswers, onSkip }: StepProps) {
+  const description = answers.descRecognise ?? '';
+  // Trimmed, so leading spaces cannot buy their way past the minimum — the
+  // schema gating Next trims too, and a counter that disagrees with the button
+  // is worse than no counter.
+  const count = description.trim().length;
+  const belowMinimum = count < DESC_MIN_CHARS;
+
   return (
-    <TextField
-      label="Description"
-      variant="multiline"
-      placeholder="Describe your car — anything that helps a spotter recognise it (marks, mods, wear, where it usually is)."
-      value={answers.descRecognise ?? ''}
-      onChangeText={(descRecognise) => setAnswers({ descRecognise })}
-      maxLength={1000}
-    />
+    <View style={styles.stack}>
+      <TextField
+        label="Description"
+        variant="multiline"
+        placeholder="Describe your car — anything that helps a spotter recognise it (marks, mods, wear, where it usually is)."
+        value={description}
+        onChangeText={(descRecognise) => setAnswers({ descRecognise })}
+        maxLength={DESC_MAX_CHARS}
+        // Says what is needed while it is needed, then just counts. Not an
+        // `error`: nothing is wrong yet, they are simply still typing.
+        helperText={
+          belowMinimum
+            ? `${count} / ${DESC_MAX_CHARS} — at least ${DESC_MIN_CHARS} characters to continue`
+            : `${count} / ${DESC_MAX_CHARS}`
+        }
+      />
+
+      {/* Only while Next is unreachable. Once the description is long enough
+          the owner uses Next, so offering to discard what they just wrote would
+          be a trap sitting under the button they actually want. */}
+      {belowMinimum ? (
+        <StepSkipButton
+          label="Skip for now"
+          testID="description-skip"
+          onPress={() => {
+            // Clear rather than submit a fragment. "Skip" means no description,
+            // and a stray "blue one" helps no spotter recognise the car while
+            // still occupying the space where a real description would go.
+            setAnswers({ descRecognise: '' });
+            onSkip?.();
+          }}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -293,8 +351,22 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textDecorationLine: 'underline',
   },
-  // Embedded LocationPicker needs a bounded height to lay out the map.
+  // Grows to fill a `fills` step (the posting wizard), so the map reaches the
+  // footer instead of floating in a fixed card.
+  //
+  // minHeight is doing real work, not just guarding small screens: this step is
+  // ALSO rendered by LastSeenEditor inside a plain ScrollView with no flexGrow,
+  // where `flex: 1` has nothing to measure against. There the map falls back to
+  // this floor — exactly the height it had before — so the editor is unchanged
+  // while the wizard grows.
   mapFrame: {
-    height: sizes.mapPickerHeight,
+    flex: 1,
+    minHeight: sizes.mapPickerHeight,
+  },
+  // Holds the card's shape while the opening centre resolves, so the step does
+  // not jump when the map arrives.
+  mapFramePending: {
+    borderRadius: radii.xl,
+    backgroundColor: colors.surfaceSubtle,
   },
 });

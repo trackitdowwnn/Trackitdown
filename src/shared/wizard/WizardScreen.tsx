@@ -16,7 +16,7 @@
  *        docs/DESIGN_SYSTEM.md (Motion, Accessibility, Forms).
  */
 
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   BackHandler,
@@ -52,6 +52,28 @@ import { useWizardController } from './useWizardController';
 const SLIDE_MS = 250;
 const slideEasing = easeOut;
 
+/**
+ * The step body's container. Scrolls by default; a `fills` step gets a plain
+ * flex View so a flex:1 child can occupy the space down to the footer.
+ *
+ * Extracted rather than inlined so the children are written ONCE — a ternary
+ * around two containers would duplicate the whole step body and let the two
+ * copies drift.
+ */
+function StepContainer({ fills, children }: { fills: boolean; children: ReactNode }) {
+  if (fills) {
+    return <View style={[styles.content, styles.fillsContent]}>{children}</View>;
+  }
+  return (
+    <ScrollView
+      contentContainerStyle={[styles.content, styles.scrollContent]}
+      keyboardShouldPersistTaps="handled"
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
 export interface WizardScreenProps<TAnswers> {
   flow: WizardFlow<TAnswers>;
   /** Leave the flow (X with dirty-confirm). Usually router.back(). */
@@ -82,6 +104,7 @@ export function WizardScreen<TAnswers>({
     error,
   } = controller;
   const keyboardHeight = useAndroidKeyboardHeight();
+  const isFillsStep = screen.kind === 'step' && screen.step.fills === true;
 
   // Android system back mirrors in-flow Back (previous screen — even on
   // intros, where the visible button is hidden, because blocking the system
@@ -160,17 +183,33 @@ export function WizardScreen<TAnswers>({
           </View>
         </View>
 
+        {/* NO SLIDE ON A FILLS STEP.
+            Two reasons, one cosmetic and one a real bug. A full-bleed map is
+            the screen, so sliding it reads as the whole app moving rather than
+            as one answer replacing another. And more importantly: a fills step
+            can swap its subtree after mount (the map waits for its opening
+            centre before it renders), which strands the entering transform
+            part-way — the step then sits permanently offset to the right, with
+            the footer, which lives outside this wrapper, staying put. */}
         <Animated.View
           key={screenIndex}
           style={styles.flex}
-          entering={(direction === 1 ? SlideInRight : SlideInLeft)
-            .duration(SLIDE_MS)
-            .easing(slideEasing)
-            .reduceMotion(ReduceMotion.System)}
-          exiting={(direction === 1 ? SlideOutLeft : SlideOutRight)
-            .duration(SLIDE_MS)
-            .easing(slideEasing)
-            .reduceMotion(ReduceMotion.System)}
+          entering={
+            isFillsStep
+              ? undefined
+              : (direction === 1 ? SlideInRight : SlideInLeft)
+                  .duration(SLIDE_MS)
+                  .easing(slideEasing)
+                  .reduceMotion(ReduceMotion.System)
+          }
+          exiting={
+            isFillsStep
+              ? undefined
+              : (direction === 1 ? SlideOutLeft : SlideOutRight)
+                  .duration(SLIDE_MS)
+                  .easing(slideEasing)
+                  .reduceMotion(ReduceMotion.System)
+          }
         >
           {screen.kind === 'intro' ? (
             <View style={[styles.content, styles.introContent]}>
@@ -182,19 +221,25 @@ export function WizardScreen<TAnswers>({
               />
             </View>
           ) : (
-            <ScrollView
-              contentContainerStyle={[styles.content, styles.scrollContent]}
-              keyboardShouldPersistTaps="handled"
-            >
+            // A `fills` step swaps the ScrollView for a plain flex View, so a
+            // flex:1 body (a map) can reach the footer. Everything inside is
+            // identical — only the container changes.
+            <StepContainer fills={screen.kind === 'step' && screen.step.fills === true}>
               {screen.kind === 'step' ? (
                 <>
-                  <Text accessibilityRole="header" style={styles.question}>
+                  <Text
+                    accessibilityRole="header"
+                    style={[
+                      styles.question,
+                      screen.step.fills === true && styles.questionFills,
+                    ]}
+                  >
                     {resolveQuestion(screen.step.question, answers)}
                   </Text>
                   {screen.step.helper ? (
                     <Text style={styles.helper}>{screen.step.helper}</Text>
                   ) : null}
-                  <View style={styles.stepBody}>
+                  <View style={[styles.stepBody, screen.step.fills === true && styles.stepBodyFills]}>
                     <screen.step.component
                       answers={answers}
                       setAnswers={controller.setAnswers}
@@ -207,7 +252,7 @@ export function WizardScreen<TAnswers>({
               ) : (
                 <ReviewStep flow={flow} answers={answers} onEdit={controller.editStep} />
               )}
-            </ScrollView>
+            </StepContainer>
           )}
         </Animated.View>
 
@@ -266,9 +311,26 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: spacing.xl,
   },
+  // The non-scrolling variant. flex (not flexGrow) so the container is BOUNDED
+  // by the space between header and footer — that bound is what a flex:1 step
+  // body measures itself against.
+  fillsContent: {
+    flex: 1,
+    // sm, not the scroll variant's xl: the footer below already carries its own
+    // padding, so anything more is a second gap stacked on the first — and on a
+    // fills step that gap is taken straight off the map.
+    paddingBottom: spacing.sm,
+  },
   question: {
     ...typography.display,
     color: colors.textPrimary,
+  },
+  // One step down the scale (32 -> 24) on a fills step. Display type earns its
+  // size when the question IS the screen; when a map is the screen, the
+  // headline's job is to label it, and every point of line-height above that
+  // is map the user does not get.
+  questionFills: {
+    ...typography.title,
   },
   helper: {
     ...typography.body,
@@ -277,6 +339,12 @@ const styles = StyleSheet.create({
   },
   stepBody: {
     marginTop: spacing.xxl,
+  },
+  // On a fills step the body takes the remaining height, and the headline gets
+  // a tighter gap — on a map step that margin is pure lost map.
+  stepBodyFills: {
+    flex: 1,
+    marginTop: spacing.lg,
   },
   footer: {
     paddingHorizontal: spacing.xl,

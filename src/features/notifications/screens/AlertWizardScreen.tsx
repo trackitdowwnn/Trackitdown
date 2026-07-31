@@ -38,7 +38,7 @@ import { createAlert, updateAlert } from '../api/alertsApi';
 import { AlertMatcherPicker } from '../components/AlertMatcherPicker';
 import { ALERT_INITIAL_ANSWERS, buildAlertFlow } from '../lib/alertFlow';
 import { criteriaForMatchers, matchersForCriteria } from '../lib/alertMatchers';
-import { useDefaultAlertCentre } from '../hooks/useDefaultAlertCentre';
+import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import { invalidateMyAlerts, useMyAlerts } from '../hooks/useMyAlerts';
 import {
   DEFAULT_ALERT_RADIUS_MILES,
@@ -101,7 +101,7 @@ export function AlertWizardScreen({ alertId }: AlertWizardScreenProps) {
   // this is free. LocationPicker reads `initialLocation` once, on mount, so the
   // coordinate has to exist before the wizard renders; the picker gives us
   // those few seconds. Skipped when editing: that alert already has a point.
-  const defaultCentre = useDefaultAlertCentre(!alertId);
+  const defaultCentre = useDefaultMapCentre(!alertId);
 
   const initialAnswers = useMemo(
     () =>
@@ -213,7 +213,7 @@ export function AlertWizardScreen({ alertId }: AlertWizardScreenProps) {
   // rather than mount the map on the whole-UK view and be unable to move it —
   // `initialLocation` is read once, on mount.
   //
-  // SAFETY: this can only be reached in create mode, and useDefaultAlertCentre
+  // SAFETY: this can only be reached in create mode, and useDefaultMapCentre
   // guarantees it resolves within RESOLVE_TIMEOUT_MS whatever the device does.
   // A guard that could spin for ever is exactly how AlertSettingsScreen hung on
   // this same feature — hence the test that this state always ends.

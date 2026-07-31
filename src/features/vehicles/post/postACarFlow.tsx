@@ -85,6 +85,9 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         {
           id: 'last-seen-where',
           question: 'Where did you last see it?',
+          // The map IS the step: it takes the height between the headline and
+          // the footer instead of sitting in a fixed frame. See WizardStep.fills.
+          fills: true,
           component: LastSeenWhereStep,
           schema: z.object({
             location: z.object({
@@ -115,7 +118,18 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           id: 'description',
           question: 'Describe your car',
           component: DescriptionStep,
-          schema: z.object({}),
+          // Next needs 20+ characters — a two-word description helps nobody
+          // pick this car out of a car park. Max mirrors posts.desc_recognise's
+          // own CHECK (1000), so the client can never compose a row the
+          // database will reject.
+          schema: z.object({
+            descRecognise: z.string().trim().min(20).max(1000),
+          }),
+          // ...but the step is SKIPPABLE, so that minimum gates the Next button
+          // WITHOUT trapping someone who has nothing to add: `optional` is what
+          // stops the review screen re-checking this schema at submit. Without
+          // it a skipped description could never be posted at all.
+          optional: true,
           reviewLabel: 'Description',
           reviewValue: (answers) => answers.descRecognise?.trim() || 'Not added',
         },

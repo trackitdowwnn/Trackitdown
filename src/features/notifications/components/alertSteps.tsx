@@ -26,7 +26,7 @@ import { CAR_MAKES, POPULAR_MAKES } from '@/shared/lib/carMakes';
 import { modelsForMake } from '@/shared/lib/carModels';
 import { milesToMetres } from '@/shared/lib/distance';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
-import { colors, spacing, typography } from '@/shared/theme';
+import { colors, sizes, spacing, typography } from '@/shared/theme';
 import {
   ChoiceChips,
   LocationPicker,
@@ -102,9 +102,11 @@ export function AreaStep({ answers, setAnswers }: StepProps) {
             // payoff visual only works if the whole circle stays in view.
             fitRadiusMiles={radiusMiles}
             promptLabel="Move the map to the area you want to watch"
+            // No caption: it floats ON the map, so its two wrapped lines cost
+            // ~40pt of the thing it sits on. The title carries the promise and
+            // the toggle is on by default, so the safe state needs no reading.
             optionSlot={{
               title: 'Use approximate area only',
-              caption: 'Alerts still work — we save a rough area, never your exact address',
               value: answers.approximate ?? true,
               onValueChange: (approximate) => setAnswers({ approximate }),
             }}
@@ -248,11 +250,21 @@ export function NameStep({ answers, setAnswers }: StepProps) {
 }
 
 const styles = StyleSheet.create({
+  // flex so this fills the step body — WITHOUT it the stack sizes to its
+  // content, the map's flex:1 has nothing to measure against, and it collapses
+  // back to minHeight leaving dead space under the slider. The flex chain has
+  // to be unbroken from the wizard's fills container all the way down.
   stack: {
-    gap: spacing.xl,
+    flex: 1,
+    gap: spacing.lg,
   },
+  // SPIKE: grows into whatever the fills step leaves after the headline and the
+  // radius slider, instead of a fixed frame. minHeight is the graceful floor —
+  // on a short screen the map stops shrinking and the step scrolls... except it
+  // cannot, on a fills step. That tension is exactly what the spike measures.
   mapFrame: {
-    height: 320,
+    flex: 1,
+    minHeight: sizes.mapPickerHeight,
   },
   field: {
     gap: spacing.sm,
