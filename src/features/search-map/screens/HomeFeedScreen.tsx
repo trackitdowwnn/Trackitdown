@@ -313,7 +313,6 @@ export function HomeFeedScreen() {
 
   const listHeader = (
     <View>
-      <FeedTopBar onPressSearch={openSearch} />
       {showLocationPrimer ? (
         <LocationPrimerCard
           onUseMyLocation={() => void requestMyLocation()}
@@ -380,13 +379,21 @@ export function HomeFeedScreen() {
         style={styles.flex}
         importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'}
       >
+      {/* PINNED. Outside the list, above every state, so search never scrolls
+          away and is reachable while the feed is still loading or has failed.
+          A plain sibling rather than an absolute overlay: the list then simply
+          takes the space that is left, with no listContent paddingTop to keep
+          in sync with this bar's height. (Same shape as InboxScreen's filter
+          chips above its FlashList.) */}
+      <FeedTopBar onPressSearch={openSearch} />
+
       {!location || (status === 'loading' && !refreshing) ? (
         <FeedSkeleton />
       ) : status === 'error' ? (
-        // Keep the pill and area control in the error state so search and
-        // "change area" stay reachable — the failure may be area-specific.
+        // The area control stays in the error state so "change area" is
+        // reachable — the failure may be area-specific. (Search is reachable
+        // by construction now: the pill is pinned above this branch.)
         <View>
-          <FeedTopBar onPressSearch={openSearch} />
           {location?.mode === 'local' ? (
             <FeedSectionHeader
               title={nearYouTitle}

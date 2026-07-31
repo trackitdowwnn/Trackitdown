@@ -1,7 +1,8 @@
 /**
- * WHAT:  FeedSkeleton — the full-feed loading state: a search-pill
- *        placeholder, an area-header line, and two horizontal rails of
- *        compact skeleton cards (the feed is rails end to end).
+ * WHAT:  FeedSkeleton — the full-feed loading state: an area-header line and
+ *        two horizontal rails of compact skeleton cards (the feed is rails end
+ *        to end). NO search-pill placeholder: the real FeedTopBar is pinned
+ *        above this and stays usable while the feed loads.
  * WHY:   The spec bans spinners for the feed's first load — the skeleton
  *        promises the exact layout that's coming (docs/DESIGN_SYSTEM.md,
  *        loading states), so its block heights come from the same typography
@@ -50,12 +51,11 @@ export function FeedSkeleton() {
       accessibilityState={{ busy: true }}
       style={styles.container}
     >
-      {/* Search pill placeholder first (the reference top layout), then the
-          near_you section-header line — its row is stretched to the touch
-          target by the real header's chevron Pressable. */}
-      <View style={styles.top}>
-        <Block width="100%" height={sizes.control} radius={radii.full} />
-      </View>
+      {/* NO search-pill placeholder. The real FeedTopBar is pinned above this
+          skeleton now, so drawing one here would put two pills on screen — and
+          a dead grey block where a working search button already is. Starts at
+          the near_you section-header line instead; its row is stretched to the
+          touch target by the real header's chevron Pressable. */}
       <View style={styles.titleRow}>
         {/* ~"Near you" width — the swap-in must not visibly shrink. */}
         <Block width="35%" height={typography.sectionTitle.lineHeight} />
@@ -99,9 +99,6 @@ const styles = StyleSheet.create({
     // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-  },
-  top: {
-    marginBottom: spacing.sm,
   },
   titleRow: {
     // Total row = padding + the chevron Pressable's 44pt content height,
