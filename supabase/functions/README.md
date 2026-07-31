@@ -1,17 +1,37 @@
-# Edge Functions — Stripe bounty escrow
+# Edge Functions — bounty escrow + push notifications
 
-These are the first Supabase Edge Functions in the repo. They power the
-**bounty escrow charge** for the post-a-car wizard:
+## Money
 
 | Function | Called by | Job |
 | --- | --- | --- |
 | `create-payment-intent` | the app (`supabase.functions.invoke`) | verify the caller owns the draft post, read the bounty **from the DB**, create a Stripe PaymentIntent (captured immediately = escrow), record the ledger row, return the client secret |
 | `deactivate-post` | the app (`supabase.functions.invoke`) | verify the caller owns a **paid** post (`active`/`pending_verification`), find the held escrow, refund the bounty **minus the non-recoverable card fee** (fee read from Stripe), and flip the post `→ cancelled` (payment `held → refunded`) |
-| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` flip the post `draft → pending_verification`, on `charge.refunded` confirm the refund (`→ cancelled`) — the authoritative / reconciling state change |
+| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` flip the post `draft → active` (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts, on `charge.refunded` confirm the refund (`→ cancelled`) |
 
-Shared code lives in `_shared/` (`clients.ts`, `http.ts`); the money-state SQL
-functions they call are in `supabase/migrations/20260726100000_post_payment.sql`
-(charge) and `supabase/migrations/20260729100000_post_refund_cancel.sql` (refund).
+## Notifications
+
+| Function | Called by | Job |
+| --- | --- | --- |
+| `notify-spotters` | `stripe-webhook`, **service-role only** | claim the post (`posts.alerts_sent_at`), match enabled `alert_zones` with `ST_DWithin`, apply the 3-per-rolling-24h cap, fan out one push |
+| `notify-sighting` | the app, after `create_sighting` | tell the post's owner. `claim_sighting_notification` verifies the caller really is that sighting's spotter |
+| `notify-message` | the app, after `send_message` | tell the other participant. Sender first name + post context only — **content never transits push** |
+| `process-push-receipts` | `notify-spotters`, fire-and-forget | drain Expo receipts ≥15 min old and prune `DeviceNotRegistered` tokens |
+
+`notify-spotters` and `process-push-receipts` compare the bearer against
+`SUPABASE_SERVICE_ROLE_KEY` rather than resolving it to a user: an
+authenticated caller must never be able to trigger a fan-out to every spotter
+in a 50-mile radius, or delete device tokens.
+
+**The push copy is built in SQL**, not here — that puts its privacy properties
+(no plate, no coordinates, no message content, always the don't-approach
+clause) under `npm run test:db`, instead of needing a second, Deno test stack.
+
+Shared code lives in `_shared/` (`clients.ts`, `http.ts`, `push.ts` — the ONE
+send utility every notification type uses). The money-state SQL functions are
+in `supabase/migrations/20260726100000_post_payment.sql` (charge) and
+`20260729100000_post_refund_cancel.sql` (refund); the notification ones in
+`20260802100000_push_infrastructure.sql`, `20260802130000_alert_matching.sql`
+and `20260802140000_notification_claims.sql`.
 
 > **Security model.** The publishable key (`pk_...`) is public and bundled in the
 > app — it can only open the PaymentSheet. The **secret key** (`sk_...`) and the
@@ -101,6 +121,37 @@ post to `cancelled`; the refund shows in the Stripe dashboard.
 Verify the DB side with `npm run test:db` (runs
 `supabase/tests/post_payment_verification.sql` and
 `supabase/tests/refund_cancel_verification.sql` against a local reset).
+
+---
+
+## Notification setup (you run these — Claude can't set secrets or deploy)
+
+### Expo access token
+Enable **Enhanced Security for Push Notifications** on expo.dev, then:
+```bash
+npx supabase secrets set EXPO_ACCESS_TOKEN=...
+```
+Optional until you enable it — `_shared/push.ts` sends the header only when the
+secret exists, so setting it early is harmless and forgetting it after enabling
+security fails every send with `UNAUTHORIZED`.
+
+### Deploy
+```bash
+npx supabase functions deploy notify-spotters
+npx supabase functions deploy notify-sighting
+npx supabase functions deploy notify-message
+npx supabase functions deploy process-push-receipts
+npx supabase functions deploy stripe-webhook --no-verify-jwt   # re-deploy: it now dispatches alerts
+```
+All four keep JWT verification on. `notify-sighting` / `notify-message` are
+called by the signed-in app; `notify-spotters` / `process-push-receipts` are
+service-to-service and check the bearer themselves.
+
+### Android/iOS credentials
+Push cannot be delivered at all until FCM (Android) / APNs (iOS) credentials
+are uploaded — see `src/features/notifications/README.md`. Until then
+`getExpoPushTokenAsync` rejects, the client logs one warning, and everything
+else works normally.
 
 ---
 

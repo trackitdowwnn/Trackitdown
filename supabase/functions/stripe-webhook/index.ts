@@ -91,6 +91,10 @@ Deno.serve(async (request) => {
     return new Response(JSON.stringify({ received: true, deduped: true }), { status: 200 });
   }
 
+  // Set when this event took a post live, so spotter alerts can be dispatched
+  // AFTER the money state is fully recorded (see the bottom of this function).
+  let wentLiveIntentId: string | null = null;
+
   // Route the handled event types to the idempotent money-state functions.
   try {
     if (event.type === 'payment_intent.succeeded') {
@@ -100,6 +104,7 @@ Deno.serve(async (request) => {
       });
       if (error) throw error;
       console.log('[payments] escrow held', { paymentIntentId: intent.id });
+      wentLiveIntentId = intent.id;
     } else if (event.type === 'payment_intent.payment_failed') {
       const intent = event.data.object as Stripe.PaymentIntent;
       const { error } = await admin.rpc('mark_post_payment_failed', {
@@ -158,6 +163,58 @@ Deno.serve(async (request) => {
     // the retry reprocesses (idempotent no-op) and records. Never a silent drop.
     console.error('[payments] recording processed event failed', recordError.message);
     return new Response('Record failed', { status: 500 });
+  }
+
+  // --- Spotter alerts (features/notifications) --------------------------------
+  // A paid post is LIVE-ON-PAYMENT, and this is the moment spotters should hear
+  // about it. Deliberately LAST: the money transition and its dedup record have
+  // already committed, so nothing below can affect them.
+  //
+  // NEVER RETHROWS. An alert failure must not turn a settled payment into a
+  // Stripe retry — the money is the point, the push is a nudge. And because
+  // this handler processes-first-records-after, a retry re-runs everything:
+  // notify-spotters claims posts.alerts_sent_at itself, so a re-run finds the
+  // post already claimed and sends nothing. That claim is what let us wire this
+  // up WITHOUT modifying mark_post_payment_held.
+  if (wentLiveIntentId) {
+    try {
+      const { data: payment } = await admin
+        .from('payments')
+        .select('post_id')
+        .eq('stripe_payment_intent_id', wentLiveIntentId)
+        .maybeSingle();
+      if (payment?.post_id) {
+        // NOT awaited. notify-spotters awaits the whole chunked Expo fan-out
+        // (100 tokens per request), so awaiting it here would put unbounded
+        // latency on the money path for a nudge — and a fan-out slower than
+        // Stripe's delivery timeout makes Stripe record a SETTLED payment as
+        // a failed delivery and retry it. The retry is safe (dedupe above +
+        // the alerts_sent_at claim), but repeated timeouts degrade endpoint
+        // health. Fire-and-forget matches what this function's own comment
+        // and supabase/functions/README.md already claim it does.
+        const dispatch = admin.functions
+          .invoke('notify-spotters', { body: { postId: payment.post_id } })
+          .then(({ error }) => {
+            if (error) console.error('[notifications] alert dispatch failed', error.message);
+          })
+          .catch((err) =>
+            console.error('[notifications] alert dispatch failed', (err as Error).message),
+          );
+
+        // A bare un-awaited promise can be killed when the isolate returns its
+        // response — possibly before the request is even sent. waitUntil is
+        // Supabase's documented way to keep it alive past the response. Where
+        // it isn't available we fall back to awaiting: slower, but a lost
+        // alert is worse than a slow webhook, and the claim makes a Stripe
+        // retry harmless either way.
+        const runtime = (globalThis as { EdgeRuntime?: { waitUntil?(p: Promise<unknown>): void } })
+          .EdgeRuntime;
+        if (typeof runtime?.waitUntil === 'function') runtime.waitUntil(dispatch);
+        else await dispatch;
+      }
+    } catch (err) {
+      console.error('[notifications] alert dispatch failed', (err as Error).message);
+    }
   }
 
   return new Response(JSON.stringify({ received: true }), { status: 200 });
