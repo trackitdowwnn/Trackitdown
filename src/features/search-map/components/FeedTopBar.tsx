@@ -1,12 +1,18 @@
 /**
- * WHAT:  FeedTopBar — the feed's floating search pill, alone at the very
- *        top of the screen with its icon + label centred.
+ * WHAT:  FeedTopBar — the feed's search pill, alone at the very top of the
+ *        screen with its icon + label centred. PINNED: it is rendered above
+ *        the feed list, not inside it, so it never scrolls away.
  * WHY:   The mobile-reference layout: the pill IS the top of the feed (no
  *        page title above it — the area-change control lives in the
  *        near_you FeedSectionHeader's chevron). It's a fake input (a
  *        button): tapping it opens the full search surface on the map
  *        screen. (Search matches make/model — plate capture is deferred, so
  *        the copy no longer mentions plates.)
+ *
+ *        It used to live in the list's ListHeaderComponent and scrolled out of
+ *        reach two rails down. Pinning costs ~72pt of feed height on every
+ *        screen — a deliberate trade for search always being one tap away,
+ *        including while the feed is loading or has failed.
  * LINKS: src/features/search-map/components/FeedSectionHeader.tsx (where
  *        the area control went); src/features/search-map/README.md
  *        (anatomy); docs/DESIGN_SYSTEM.md (tokens).
@@ -60,6 +66,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+    // The bar is PINNED above the feed, so it owns its band's colour rather
+    // than depending on whatever it happens to sit over. Invisible today (the
+    // page is already this colour and nothing scrolls under it in flex flow),
+    // and the thing that stops feed cards showing through if it is ever moved
+    // to an absolute overlay.
+    backgroundColor: colors.background,
   },
   searchPill: {
     flexDirection: 'row',
