@@ -64,6 +64,48 @@ commenting standards.
 - Number plates, locations, and V5C documents are personal data. Collect
   the minimum, state the purpose in the privacy policy, honour deletion
   requests.
+- **Push notifications leave our infrastructure.** Every push travels through
+  Expo and then Apple/Google, so its contents are readable by parties outside
+  the app. Therefore:
+  - A push payload carries **ids only** (`postId` / `threadId`), parsed
+    client-side through a `.strict()` schema so a widened payload fails to
+    parse rather than being acted on. The client re-fetches everything else
+    through RLS after the tap.
+  - The visible body may name make, colour and a **district-grain** locality.
+    **Never** the plate, never coordinates, and never
+    `posts.last_seen_area` — that column holds the raw reverse-geocoded label
+    and can be street-grain, which on a driveway theft is the victim's own
+    street.
+  - **Message content never transits push.** The body is the sender's first
+    name plus post context, built server-side.
+  - **Notification volume is capped**, because a push is a way to reach someone
+    who has already been robbed: at most 3 spotter alerts per user per rolling
+    24 hours, and at most one message push per thread per 2 minutes (chat
+    itself allows 20 messages a minute). The messages still arrive; only the
+    push is suppressed.
+  - Every interpolated value in a push body is length-bounded **before** the
+    sentence is assembled, never by truncating the finished string — the
+    don't-approach clause is at the end, so bounding the whole sentence would
+    let owner-authored text push the safety line off it.
+  - Bodies are built in SQL rather than in the Edge Function, specifically so
+    these absences are asserted by `npm run test:db`.
+- **A spotter's alert locations are home-ish data.** The "approximate area"
+  toggle is ON by default and the server snaps the point to a ~1km grid
+  **before** storing it, so the database never holds the exact location. That
+  snap is a server guarantee, not a client promise — `alert_zones` deliberately
+  has no client write grant, so every write goes through `create_my_alert` /
+  `update_my_alert`, which both snap. An alert is readable only by its owner;
+  nothing exposes one, or its criteria, to anyone else.
+  - The criteria (make/model/colour/body type/bounty/recency) are
+    owner-authored and owner-only. They are never logged — write events record
+    only the radius, whether the alert is narrowed at all, and a
+    `redactLocation`-coarsened origin.
+- **Push tokens are device credentials.** `push_tokens` is keyed on the token
+  itself, not on `(user_id, token)`: a token identifies a handset and survives
+  sign-out, so re-registration MOVES the device to whoever is signed in now.
+  Without that, a shared or resold phone would keep delivering the previous
+  user's sightings and messages. Sign-out releases the token before the
+  session drops, and tokens are never logged.
 - **Saved vehicles (the garage) — cars that were never stolen.** The garage
   holds plates and photos for vehicles nobody has reported, which is a wider
   collection than posts alone. Therefore:
@@ -146,6 +188,37 @@ commenting standards.
   Functions, never direct client `update` on `posts.status`.
 - Service-role keys exist only in Edge Function secrets — never in the app
   bundle or repo.
+- **RLS is not the whole story: `TRUNCATE` ignores it.** RLS filters rows for
+  `SELECT`/`INSERT`/`UPDATE`/`DELETE`, but `TRUNCATE` is a *table-level*
+  privilege checked before any policy runs. A role holding it empties the table
+  regardless of every policy on it.
+
+  > ### ⚠️ OPEN GAP — anon holds TRUNCATE on 24 tables
+  >
+  > This project ships `ALTER DEFAULT PRIVILEGES … GRANT ALL ON TABLES TO anon,
+  > authenticated`, so **every `CREATE TABLE` silently grants both roles
+  > `REFERENCES`, `TRIGGER` and `TRUNCATE`**. The per-table `grant select` lines
+  > in each migration *add* to that default; they do not replace it.
+  >
+  > Found 2026-07-31 by `alerts_verification.sql` CHECK 28 on its first ever
+  > execution, and confirmed by execution, not inference:
+  >
+  > ```sql
+  > set local role anon;
+  > truncate public.alert_zones;   -- 4 rows -> 0 rows
+  > ```
+  >
+  > **Fixed** for the four notification tables by
+  > `20260802170000_revoke_default_table_privileges.sql`, and now asserted by
+  > CHECKs 28–29. **Still open on the other 24 public tables**, including
+  > `payments`, `posts`, `profiles` and `sightings` — a single statement there
+  > would erase the escrow ledger or every live report.
+  >
+  > **Severity today: defence-in-depth, not a live hole.** PostgREST exposes
+  > only DML and RPCs — never `TRUNCATE` — and the anon API key is a JWT, not
+  > Postgres credentials, so there is no route to issue it from outside. It
+  > becomes exploitable the moment anything runs dynamic SQL as the caller.
+  > A privilege nothing uses costs nothing to drop, so drop it.
 
 ## 7. Moderation
 

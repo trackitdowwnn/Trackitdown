@@ -37,6 +37,8 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `surfaceInverse` | `#222222` | the rare dark surface: floating (map pill) and the ONE full-bleed use, the photo-preview viewer backdrop — same ink as `textPrimary`, named separately so text tweaks never restyle fills |
 | `surfaceInversePressed` | `#3A3A3A` | pressed state of `surfaceInverse` |
 | `overlay` | `rgba(0,0,0,0.45)` | modal scrim |
+| `mapZoneFill` | `rgba(26,26,26,0.10)` | the spotter's alert-zone circle on a map — FILL only, never text or a text container's border |
+| `mapZoneStroke` | `rgba(26,26,26,0.35)` | that circle's outline |
 
 Rules: near-black `primary` is the action colour — buttons, links, active
 states, selection. `accent` (also near-black) is reserved for bounty/value
@@ -50,6 +52,13 @@ arc. Two surfaces read that one arc: the sighting timeline's rail nodes and
 the OWNER-ONLY trail map's sighting pins (`SightingsTrailMap` — same
 evidence, in space). Dots/pins and the recovered-terminal fill only, never
 the rail line, the trail line, or entry text.
+
+The two `mapZone*` tokens join `overlay` as the only sanctioned raw rgba in
+the palette: the alert-zone circle sits over live map tiles, so its alpha is a
+palette decision rather than a component detail, and inline rgba in a
+component would put it beyond review. They are derived from `primary` so the
+zone reads as "yours", like every other selection ring in the app. Fill and
+stroke only — a translucent ink at 10% is nowhere near a text contrast ratio.
 
 ### Contrast (WCAG AA on the near-white `#F7F7F7` background)
 

@@ -238,12 +238,58 @@ travel. Airbnb's wishlist mechanics, translated:
 
 ## Notifications
 
-- Spotters set a personal alert radius (1–50 miles) and a home location
-  (or "use current location"). Stored per user.
-- When a post goes `active`, an Edge Function runs a PostGIS query:
-  find users whose radius circle contains the post's last-seen point, and
-  send them a push. Same when a post gets its first verified sighting in a
-  new area ("the car may have moved").
+- Spotters create up to **5 named alerts** (`MAX_ALERTS_PER_USER`), each a
+  location + radius (1–50 miles), built through a short wizard. Every alert can
+  be paused without discarding it.
+- **The wizard opens by asking what the alert should match on** — an area, a
+  specific car, a minimum bounty — and then asks only the questions those ticks
+  imply, so "anything near home" is a two-screen task. **The area is mandatory
+  and shown as a LOCKED choice, not hidden**: an alert with no location is not
+  something this product offers, because a spotter can only act on a car near
+  them. What is saved is reduced through those ticks, so unticking a card
+  always widens the alert rather than leaving a filter the user believes they
+  removed.
+- **An alert may be narrowed by the car**: make, model, colour, body type, a
+  minimum bounty, and how recently the car was last seen. Every criterion is
+  optional and independent — all unset means "any car", which is what a v1
+  alert was. Criteria are matched **case-insensitively** (`lower(btrim(...))`),
+  because posts store whatever the owner typed.
+  - The pickers offer only canonical values, never free text: a free-typed
+    "beemer" would create an alert that silently matches nothing, which is
+    worse than no alert because the spotter believes they are covered.
+  - Known limit: case-folding does not equate `VW` with `Volkswagen`, or
+    `Golf` with `Golf GTI`. The real fix is normalising make/model/colour on
+    write — not yet done.
+  - **Recency filters `last_seen_at`, not post age.** It correctly excludes
+    reports of older thefts, but most reports are recent, so it narrows less
+    than it appears to. The UI says so.
+- **The stored point is coarsened by default.** The "use approximate area
+  only" toggle is ON unless the user turns it off, and the server snaps the
+  point to a ~1km grid **before storing it**, so the database never holds a
+  home address. The RPC returns the stored point, not the submitted one.
+- When a post goes `active`, an Edge Function runs a PostGIS `ST_DWithin`
+  query: find users whose radius circle contains the post's last-seen point,
+  and send them a push. **The post's own owner is excluded.**
+- **Volume: at most 3 alert pushes per user per rolling 24 hours**, and never
+  twice for the same post. Overflow is dropped silently, not queued — a late
+  stolen-car alert is worth little, and the post is visible in Explore and on
+  the map regardless. Alert fatigue is the asymmetric risk.
+  - **The cap is PER USER, not per alert.** Five alerts that all match one post
+    still produce exactly one push: the matcher selects distinct users and
+    dedups on `push_sends(user_id, kind, subject_id)`. Adding alerts can never
+    increase how often someone is interrupted — only how well-targeted those
+    interruptions are.
+  - Known limit: slots are first-come, so a broad catch-all alert can spend the
+    day's budget before a narrow high-value one matches. There is no priority
+    ordering between a user's own alerts.
+- **Payload**: make + colour + a **district-grain** locality
+  (`posts.last_seen_locality`), plus the don't-approach clause. Never the
+  plate, never coordinates, and never `posts.last_seen_area` — that column is
+  the raw reverse-geocoded label and can be street-grain.
+- **Re-alerts on a new sighting ("the car may have moved") are NOT in v1.**
+  They scale with reporter count rather than with genuine movement, so a busy
+  post in a dense area would spam every zone around it. See ROADMAP.md v2
+  candidate #4 ("smart re-alerts based on sighting chains"), which owns this.
 
 ## Chat
 
