@@ -271,11 +271,16 @@ const DESC_MAX_CHARS = 1000;
 
 export function DescriptionStep({ answers, setAnswers, onSkip }: StepProps) {
   const description = answers.descRecognise ?? '';
-  // Trimmed, so leading spaces cannot buy their way past the minimum — the
-  // schema gating Next trims too, and a counter that disagrees with the button
-  // is worse than no counter.
-  const count = description.trim().length;
-  const belowMinimum = count < DESC_MIN_CHARS;
+  // TWO different counts, because they answer two different questions.
+  // The gate trims (so leading spaces cannot buy their way past the minimum,
+  // matching the schema — a counter disagreeing with the button is worse than
+  // no counter), while the cap does NOT, because `maxLength` acts on the raw
+  // string: a field of 1000 characters ending in spaces must not read "997 /
+  // 1000" while refusing further input.
+  const meaningful = description.trim().length;
+  const typed = description.length;
+  const belowMinimum = meaningful < DESC_MIN_CHARS;
+  const requirement = `at least ${DESC_MIN_CHARS} characters to continue`;
 
   return (
     <View style={styles.stack}>
@@ -290,9 +295,13 @@ export function DescriptionStep({ answers, setAnswers, onSkip }: StepProps) {
         // `error`: nothing is wrong yet, they are simply still typing.
         helperText={
           belowMinimum
-            ? `${count} / ${DESC_MAX_CHARS} — at least ${DESC_MIN_CHARS} characters to continue`
-            : `${count} / ${DESC_MAX_CHARS}`
+            ? `${typed} / ${DESC_MAX_CHARS} — ${requirement}`
+            : `${typed} / ${DESC_MAX_CHARS}`
         }
+        // A11y: helperText renders as a SIBLING of the input, so a screen
+        // reader focused on the field would otherwise hear only "Description"
+        // and never learn why Next is disabled. The hint rides on the input.
+        accessibilityHint={belowMinimum ? requirement : undefined}
       />
 
       {/* Only while Next is unreachable. Once the description is long enough

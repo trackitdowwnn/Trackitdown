@@ -91,7 +91,7 @@ function fromChip(value: string): string | null {
 export function AreaStep({ answers, setAnswers }: StepProps) {
   const radiusMiles = answers.radiusMiles ?? DEFAULT_ALERT_RADIUS_MILES;
   return (
-    <View style={styles.stack}>
+    <View style={styles.fillsStack}>
       <AlertZoneMapProvider radiusMetres={milesToMetres(radiusMiles)} dimmed={false}>
         <View style={styles.mapFrame}>
           <LocationPicker
@@ -250,11 +250,19 @@ export function NameStep({ answers, setAnswers }: StepProps) {
 }
 
 const styles = StyleSheet.create({
-  // flex so this fills the step body — WITHOUT it the stack sizes to its
-  // content, the map's flex:1 has nothing to measure against, and it collapses
-  // back to minHeight leaving dead space under the slider. The flex chain has
-  // to be unbroken from the wizard's fills container all the way down.
+  // The ordinary step rhythm, shared by the car / filters / name steps.
   stack: {
+    gap: spacing.xl,
+  },
+  // AREA STEP ONLY. Separate from `stack` because that one is shared by three
+  // SCROLLING steps, where `flex: 1` is meaningless and the tighter gap is a
+  // spaciousness regression they never asked for.
+  //
+  // flex so this fills the step body — without it the stack sizes to its
+  // content, the map's flex:1 has nothing to measure against, and it collapses
+  // back to minHeight leaving dead space under the slider. The chain has to be
+  // unbroken from the wizard's fills container all the way down.
+  fillsStack: {
     flex: 1,
     gap: spacing.lg,
   },

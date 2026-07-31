@@ -25,6 +25,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Animated, {
@@ -53,6 +54,18 @@ const SLIDE_MS = 250;
 const slideEasing = easeOut;
 
 /**
+ * Past this text scale a fills step gives up filling and scrolls instead.
+ *
+ * A fills step has no scroll rescue by design, which is fine while the headline
+ * is one or two lines. At large accessibility text sizes the headline grows,
+ * the map refuses to shrink past its minHeight and a slider below it has
+ * nowhere to go — so content runs off a container that cannot scroll. Falling
+ * back costs a big-text user the full-bleed map and gives them a reachable
+ * screen, which is the right trade (DESIGN_SYSTEM.md, dynamic type).
+ */
+const FILLS_MAX_FONT_SCALE = 1.3;
+
+/**
  * The step body's container. Scrolls by default; a `fills` step gets a plain
  * flex View so a flex:1 child can occupy the space down to the footer.
  *
@@ -61,11 +74,22 @@ const slideEasing = easeOut;
  * copies drift.
  */
 function StepContainer({ fills, children }: { fills: boolean; children: ReactNode }) {
-  if (fills) {
-    return <View style={[styles.content, styles.fillsContent]}>{children}</View>;
+  // `?? 1` because fontScale is absent in some environments (jest's mock);
+  // an unknown scale must not silently cost every fills step its layout.
+  const { fontScale } = useWindowDimensions();
+  if (fills && (fontScale ?? 1) <= FILLS_MAX_FONT_SCALE) {
+    // testID: which container a step got is the whole difference between a map
+    // that fills and one that silently sits at its minHeight, and it is
+    // invisible to every other assertion.
+    return (
+      <View testID="wizard-step-fills" style={[styles.content, styles.fillsContent]}>
+        {children}
+      </View>
+    );
   }
   return (
     <ScrollView
+      testID="wizard-step-scroll"
       contentContainerStyle={[styles.content, styles.scrollContent]}
       keyboardShouldPersistTaps="handled"
     >
@@ -193,6 +217,7 @@ export function WizardScreen<TAnswers>({
             the footer, which lives outside this wrapper, staying put. */}
         <Animated.View
           key={screenIndex}
+          testID="wizard-step-slide"
           style={styles.flex}
           entering={
             isFillsStep
@@ -224,14 +249,14 @@ export function WizardScreen<TAnswers>({
             // A `fills` step swaps the ScrollView for a plain flex View, so a
             // flex:1 body (a map) can reach the footer. Everything inside is
             // identical — only the container changes.
-            <StepContainer fills={screen.kind === 'step' && screen.step.fills === true}>
+            <StepContainer fills={isFillsStep}>
               {screen.kind === 'step' ? (
                 <>
                   <Text
                     accessibilityRole="header"
                     style={[
                       styles.question,
-                      screen.step.fills === true && styles.questionFills,
+                      isFillsStep && styles.questionFills,
                     ]}
                   >
                     {resolveQuestion(screen.step.question, answers)}
@@ -239,7 +264,7 @@ export function WizardScreen<TAnswers>({
                   {screen.step.helper ? (
                     <Text style={styles.helper}>{screen.step.helper}</Text>
                   ) : null}
-                  <View style={[styles.stepBody, screen.step.fills === true && styles.stepBodyFills]}>
+                  <View style={[styles.stepBody, isFillsStep && styles.stepBodyFills]}>
                     <screen.step.component
                       answers={answers}
                       setAnswers={controller.setAnswers}
@@ -329,8 +354,11 @@ const styles = StyleSheet.create({
   // size when the question IS the screen; when a map is the screen, the
   // headline's job is to label it, and every point of line-height above that
   // is map the user does not get.
+  // Self-contained, not a partial override of `question`: it only happens to
+  // work today because `title` replaces all three of `display`'s properties.
   questionFills: {
     ...typography.title,
+    color: colors.textPrimary,
   },
   helper: {
     ...typography.body,

@@ -130,10 +130,16 @@ const AREA_STEP: WizardStep<AlertAnswers> = {
     location: z.object({ latitude: z.number(), longitude: z.number() }),
   }),
   reviewLabel: 'Area',
+  // SAFETY: names the coarsening. Dropping the step's helper and the option
+  // card's caption took the ONLY mentions of it off the map step, and the risk
+  // case is someone turning the toggle OFF — precisely when the consequence
+  // needs stating. The review is the last screen before an exact home point
+  // would be stored, and this costs no map height, which is why it lives here
+  // rather than back on the map.
   reviewValue: (answers) =>
     `${answers.radiusMiles ?? DEFAULT_ALERT_RADIUS_MILES} miles around ${
       answers.placeLabel?.trim() || 'the pin'
-    }`,
+    }${answers.approximate === false ? ' · exact location' : ' · approximate area'}`,
 };
 
 const CAR_STEP: WizardStep<AlertAnswers> = {

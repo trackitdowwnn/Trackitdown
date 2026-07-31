@@ -443,10 +443,16 @@ describe('LocationPicker', () => {
       />,
     );
 
+    // The WHOLE ROW is the control, not just the Switch. A 31pt switch sat
+    // under the 44pt minimum while the card looked like a big target, and the
+    // title was not tappable at all — so pressing the row must toggle, and the
+    // row must be the single accessible element carrying the state.
     const toggle = withSlot.getByLabelText('Use approximate area only');
-    expect(toggle).toBeTruthy();
+    expect(toggle.props.accessibilityRole).toBe('switch');
+    expect(toggle.props.accessibilityState).toMatchObject({ checked: false });
+
     await act(async () => {
-      fireEvent(toggle, 'valueChange', true);
+      fireEvent.press(toggle);
     });
     expect(onValueChange).toHaveBeenCalledWith(true);
   });
