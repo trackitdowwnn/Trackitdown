@@ -14,6 +14,15 @@ node_modules/
 .env.local
 .env.*.local
 
+# Android push (FCM) credentials — features/notifications. google-services.json
+# identifies the Firebase project used purely as Android's push TRANSPORT (no
+# Firebase backend, no SDK, no data). The service-account key is a real secret
+# and belongs nowhere near the repo — upload it to Expo via `eas credentials`
+# and keep the file outside this folder.
+google-services.json
+google-services*.json
+*-firebase-adminsdk-*.json
+
 # ---------------------------------------------------------------------------
 # Expo
 # ---------------------------------------------------------------------------

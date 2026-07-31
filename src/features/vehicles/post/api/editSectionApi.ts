@@ -117,6 +117,8 @@ export interface LastSeenInput {
   lastSeenAt: string;
   location: LastSeenLocation;
   lastSeenArea: string;
+  /** District grain for spotter alerts; omitted when the geocode failed. */
+  lastSeenLocality?: string | null;
 }
 
 /** Last-seen when + where (+ coarse area). Draft only. */
@@ -127,6 +129,9 @@ export async function saveLastSeen(postId: string, input: LastSeenInput): Promis
     p_last_seen_lat: input.location.latitude,
     p_last_seen_lng: input.location.longitude,
     p_last_seen_area: input.lastSeenArea,
+    // This RPC FULL-REPLACES the section, so omitting the locality would blank
+    // a previously-derived one on any unrelated edit to the same section.
+    p_last_seen_locality: input.lastSeenLocality ?? null,
   });
 }
 

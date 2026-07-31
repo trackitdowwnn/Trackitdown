@@ -20,17 +20,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useStartupPermissionGrant } from '@/features/permissions';
+import {
+  loadFeedLocationPref,
+  saveFeedLocationPref,
+  type FeedLocationPref,
+} from '@/shared/lib/location/feedLocationStorage';
 import { createLogger, redactLocation } from '@/shared/lib/logger';
 
 import type { FeedLocation } from '../types';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
 import type { FeedDeviceLocation } from '../lib/feedDeviceLocation';
 import { expoFeedDeviceLocation } from '../lib/feedDeviceLocation';
-import {
-  loadFeedLocationPref,
-  saveFeedLocationPref,
-  type FeedLocationPref,
-} from '../lib/feedLocationStorage';
 
 const log = createLogger('search-map');
 

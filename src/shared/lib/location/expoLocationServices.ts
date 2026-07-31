@@ -23,7 +23,9 @@ interface ExpoLocationModule {
   reverseGeocodeAsync(coord: GeoCoord): Promise<ExpoAddress[]>;
   geocodeAsync(address: string): Promise<GeoCoord[]>;
   requestForegroundPermissionsAsync(): Promise<{ status: string }>;
+  getForegroundPermissionsAsync(): Promise<{ status: string }>;
   getCurrentPositionAsync(): Promise<{ coords: GeoCoord }>;
+  getLastKnownPositionAsync(): Promise<{ coords: GeoCoord } | null>;
 }
 
 interface ExpoAddress {
@@ -61,6 +63,34 @@ function formatAddress(address: ExpoAddress): string | null {
     address.postalCode,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(', ') : null;
+}
+
+/**
+ * The device's LAST KNOWN position — the fix the OS already has cached — or
+ * null if there is none. Returns immediately.
+ *
+ * WHY SEPARATE FROM `getCurrentPosition`: that one asks for a FRESH fix, which
+ * on a real handset takes 3-10 seconds (measured on a Galaxy A15, 2026-07-31).
+ * That is fine behind a button the user just pressed, and useless for
+ * "open this map roughly where they are" — the screen would be built and gone
+ * before it answered. Anything opening a map at a sensible default wants this.
+ *
+ * SAFETY: silent. It reads the permission with `getForegroundPermissions`
+ * (the non-prompting call) and returns null unless already granted, so it can
+ * be called on mount without ambushing anyone with the OS dialog.
+ */
+export async function getLastKnownPosition(): Promise<GeoCoord | null> {
+  const location = loadExpoLocation();
+  if (!location) return null;
+  try {
+    const permission = await location.getForegroundPermissionsAsync();
+    if (permission.status !== 'granted') return null;
+    const position = await location.getLastKnownPositionAsync();
+    if (!position) return null;
+    return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+  } catch {
+    return null;
+  }
 }
 
 export const expoLocationServices: LocationServices = {

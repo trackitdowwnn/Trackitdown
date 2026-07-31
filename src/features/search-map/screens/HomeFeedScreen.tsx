@@ -26,6 +26,11 @@ import { StyleSheet, View } from 'react-native';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
 import { SaveYourCarCard, useGarageNudgeCard } from '@/features/garage';
+// Direct paths, not the notifications barrel: both reach AsyncStorage / the UI
+// barrel, and that barrel is imported by plain api modules (chatApi,
+// sightingApi) for the notify triggers. See src/features/notifications/index.ts.
+import { AlertNudgeCard } from '@/features/notifications/components/AlertNudgeCard';
+import { useAlertNudgeCard } from '@/features/notifications/hooks/useAlertNudgeCard';
 import { useMyProfile } from '@/features/profile';
 import { WatchToggle } from '@/features/watchlist';
 import { spacing } from '@/shared/theme';
@@ -98,6 +103,10 @@ export function HomeFeedScreen() {
   const garageNudge = useGarageNudgeCard({
     accountCreatedAt: myProfile.status === 'ready' ? myProfile.profile.createdAt : null,
   });
+  // The alert-area offer. Decides for itself whether it applies (a member, no
+  // zone yet, never offered before); the placement rule below keeps it out of
+  // a pile of cards.
+  const alertNudge = useAlertNudgeCard();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mapPillVisible, setMapPillVisible] = useState(true);
@@ -322,6 +331,19 @@ export function HomeFeedScreen() {
             router.push('/add-vehicle');
           }}
           onDismiss={garageNudge.dismiss}
+        />
+      ) : null}
+      {/* The alert-area offer — LAST, and only when the feed is otherwise
+          clear. The other two are more urgent (pointing the feed at the right
+          area; the pre-theft setup that has to happen before anything goes
+          wrong), and three stacked cards is a wall, not a feed. */}
+      {!showLocationPrimer && !garageNudge.visible && alertNudge.visible ? (
+        <AlertNudgeCard
+          onSetArea={() => {
+            alertNudge.accept();
+            router.push('/alerts/new');
+          }}
+          onDismiss={alertNudge.dismiss}
         />
       ) : null}
       {display.kind === 'good-news-empty' && location?.mode === 'local' ? (

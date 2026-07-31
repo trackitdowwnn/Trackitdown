@@ -30,6 +30,10 @@ export function AppMapPolyline(_props: Record<string, unknown>) {
   return null;
 }
 
+export function AppMapCircle(_props: Record<string, unknown>) {
+  return null;
+}
+
 export function AppMap(_props: MapComponentProps & AppMapExtraProps) {
   return (
     <View style={styles.fallback}>

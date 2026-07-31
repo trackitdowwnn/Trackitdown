@@ -207,6 +207,132 @@ describe('LocationPicker', () => {
     expect(mapProps?.region).toEqual(UK_DEFAULT_REGION);
   });
 
+  describe('fitRadiusMiles', () => {
+    const CENTRE = { latitude: 51.5, longitude: -0.12 };
+    /** regionAround spans the diameter, and the picker pads by 1.3. */
+    const spanFor = (miles: number) => (miles * 1.3 * 2) / 69;
+
+    it('leaves the zoom at street level when omitted', async () => {
+      // The regression guard for post-a-car and report-a-sighting, which share
+      // this picker and must keep opening on a ~1km span.
+      await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialLocation={CENTRE}
+          locationServices={makeServices()}
+        />,
+      );
+      expect(mapProps?.region.latitudeDelta).toBeCloseTo(0.01, 6);
+    });
+
+    it('frames the map around the radius on mount', async () => {
+      await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialLocation={CENTRE}
+          locationServices={makeServices()}
+          fitRadiusMiles={5}
+        />,
+      );
+      expect(mapProps?.region.latitudeDelta).toBeCloseTo(spanFor(5), 6);
+    });
+
+    it('zooms OUT when the radius grows and back IN when it shrinks', async () => {
+      const { rerender } = await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialLocation={CENTRE}
+          locationServices={makeServices()}
+          fitRadiusMiles={5}
+        />,
+      );
+      const atFive = mapProps!.region.latitudeDelta;
+
+      await act(async () => {
+        rerender(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialLocation={CENTRE}
+            locationServices={makeServices()}
+            fitRadiusMiles={50}
+          />,
+        );
+      });
+      expect(mapProps!.region.latitudeDelta).toBeGreaterThan(atFive);
+      expect(mapProps!.region.latitudeDelta).toBeCloseTo(spanFor(50), 6);
+
+      await act(async () => {
+        rerender(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialLocation={CENTRE}
+            locationServices={makeServices()}
+            fitRadiusMiles={1}
+          />,
+        );
+      });
+      expect(mapProps!.region.latitudeDelta).toBeCloseTo(spanFor(1), 6);
+    });
+
+    it('re-frames around where the user panned to, not the original centre', async () => {
+      // The circle follows the pin, so the camera must too — otherwise dragging
+      // the radius after moving the map snaps you back to where you started.
+      const { rerender } = await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialLocation={CENTRE}
+          locationServices={makeServices()}
+          fitRadiusMiles={5}
+        />,
+      );
+      await settle({ latitude: 53.4, longitude: -2.24, latitudeDelta: 0.2, longitudeDelta: 0.2 });
+
+      await act(async () => {
+        rerender(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialLocation={CENTRE}
+            locationServices={makeServices()}
+            fitRadiusMiles={20}
+          />,
+        );
+      });
+      expect(mapProps!.region.latitude).toBeCloseTo(53.4, 6);
+      expect(mapProps!.region.latitudeDelta).toBeCloseTo(spanFor(20), 6);
+    });
+
+    it('leaves a pinch alone until the radius actually changes', async () => {
+      // Re-framing keys off the radius CHANGING, not off its current value. If
+      // it re-derived the span every render it would also re-apply after each
+      // onRegionChangeComplete, so a pinch would snap back the moment the
+      // gesture ended — the map fighting the user rather than simply
+      // overriding them at the next slider move.
+      await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialLocation={CENTRE}
+          locationServices={makeServices()}
+          fitRadiusMiles={5}
+        />,
+      );
+      await settle({ latitude: 51.5, longitude: -0.12, latitudeDelta: 0.9, longitudeDelta: 0.9 });
+
+      expect(mapProps!.region.latitudeDelta).toBeCloseTo(0.9, 6);
+    });
+
+    it('does not re-frame the whole-UK fallback, which has no centre yet', async () => {
+      // Framing 5 miles around (54, -2.5) would zoom into the Irish Sea.
+      await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          locationServices={makeServices()}
+          fitRadiusMiles={5}
+        />,
+      );
+      expect(mapProps?.region).toEqual(UK_DEFAULT_REGION);
+    });
+  });
+
   it('re-centres the map on a picked search result', async () => {
     const result = { latitude: 52.2, longitude: -0.9, label: 'Valley Green, Milton Keynes' };
     const forwardGeocode = jest.fn(async () => [result]);

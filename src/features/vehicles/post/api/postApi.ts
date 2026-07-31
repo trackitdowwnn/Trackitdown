@@ -115,6 +115,9 @@ const submitAnswersSchema = z.object({
     addressLabel: z.string(),
   }),
   lastSeenArea: z.string().default(''),
+  // Best-effort district grain for spotter alerts — nullish because a failed
+  // or skipped geocode must never block a submit.
+  lastSeenLocality: z.string().nullish(),
   stolenFrom: z.enum(['driveway', 'street', 'car_park', 'other']).nullish(),
   keysTaken: z.enum(['yes', 'no', 'unknown']).nullish(),
   descDrives: z.string().default(''),
@@ -175,12 +178,17 @@ export function buildCreatePostParams(
     p_stolen_from: answers.stolenFrom ?? null,
     p_keys_taken: answers.keysTaken ?? null,
     p_last_seen_at: answers.lastSeenAt,
-    // SAFETY: only the coarse lat/lng + area grouping cross the wire. The
-    // precise addressLabel is deliberately NOT sent — for a driveway theft it
-    // is the victim's exact home address (SECURITY_AND_TRUST home-coarsening).
     p_last_seen_lat: answers.location.latitude,
     p_last_seen_lng: answers.location.longitude,
+    // NOTE: lastSeenArea IS the reverse-geocoded address label (truncated to
+    // 80 at the location step), so it can be street-grain. get_post_detail
+    // coarsens the driveway POINT for non-owners but not this TEXT — see the
+    // gap noted in supabase/migrations/20260802110000_post_alert_columns.sql.
     p_last_seen_area: answers.lastSeenArea,
+    // SAFETY: the district-grain sibling, and the ONLY place name a spotter-
+    // alert push may say. Null when the geocode failed — the push then says
+    // "your area" rather than falling back to the street-grain label.
+    p_last_seen_locality: answers.lastSeenLocality ?? null,
     p_bounty_amount_pence: answers.bountyAmountPence,
     p_photo_urls: uploads.photoUrls,
     // The vehicle_feature chip step was removed (distinctive features replaced it);

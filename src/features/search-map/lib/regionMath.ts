@@ -17,8 +17,10 @@
 
 import type { GeoCoord, GeoRegion } from '@/shared/types';
 
-/** Miles per degree of latitude (constant enough for UK purposes). */
-const MILES_PER_DEGREE_LAT = 69;
+/** Framing a circle by radius now lives in shared/ — `shared/ui/LocationPicker`
+ *  needs it too, and a shared component cannot import from a feature. Re-exported
+ *  here so this feature's five call sites keep reading in map-screen terms. */
+export { regionAround } from '@/shared/lib/mapRegion';
 
 export interface Bbox {
   minLat: number;
@@ -57,16 +59,6 @@ export function movedEnough(
     current.latitudeDelta > searched.latitudeDelta * 1.4 ||
     current.latitudeDelta < searched.latitudeDelta / 1.4;
   return centreMoved || zoomChanged;
-}
-
-/** A region centred on a point spanning roughly `radiusMiles` each way. */
-export function regionAround(coord: GeoCoord, radiusMiles: number): GeoRegion {
-  const latitudeDelta = (radiusMiles * 2) / MILES_PER_DEGREE_LAT;
-  // Longitude degrees shrink with latitude; correct so the span is
-  // roughly square on the ground.
-  const longitudeDelta =
-    latitudeDelta / Math.max(0.2, Math.cos((coord.latitude * Math.PI) / 180));
-  return { ...coord, latitudeDelta, longitudeDelta };
 }
 
 /**

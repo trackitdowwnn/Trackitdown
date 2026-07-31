@@ -25,9 +25,18 @@ const mockRpc = jest.fn();
 const mockGetUser = jest.fn();
 const mockUpload = jest.fn();
 const mockCreateSignedUrls = jest.fn();
+const mockInvoke = jest.fn();
 
 jest.mock('@/shared/api', () => ({
   supabase: {
+    // Notifications are dispatched fire-and-forget through the Edge Function;
+    // resolve so the un-awaited promise never rejects mid-test.
+    functions: {
+      invoke: (...args: unknown[]) => {
+        mockInvoke(...args);
+        return Promise.resolve({ error: null });
+      },
+    },
     rpc: (...args: unknown[]) => mockRpc(...args),
     auth: { getUser: () => mockGetUser() },
     storage: {
@@ -200,6 +209,39 @@ describe('submitSighting', () => {
     // Paths are pinned under <postId>/<userId>/ so the RPC (and storage RLS)
     // can verify ownership of every object.
     expect(rpcArgs[1].p_photos[0].path).toMatch(new RegExp(`^${POST_ID}/user-1/`));
+  });
+
+  // Stub migration: the sightings feature's notify-owner-of-sighting push now
+  // goes through the shared notifications door, not any sightings-local code.
+  it('dispatches an owner notification carrying only the sighting id', async () => {
+    const sightingId = 'bbbbbbbb-0000-0000-0000-000000000002';
+    mockRpc.mockResolvedValue({ data: { sighting_id: sightingId }, error: null });
+
+    await submitSighting(POST_ID, {
+      photos: [located],
+      note: 'silver car parked behind the pub',
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith('notify-sighting', { body: { sightingId } });
+    // SAFETY: the note, the photos and the location stay out of it — the push
+    // body is built server-side from make/colour only.
+    const dispatched = JSON.stringify(mockInvoke.mock.calls);
+    expect(dispatched).not.toContain('silver car parked behind the pub');
+    expect(dispatched).not.toContain(String(located.lat));
+  });
+
+  it('still returns the sighting id when the notification dispatch fails', async () => {
+    const sightingId = 'bbbbbbbb-0000-0000-0000-000000000002';
+    mockRpc.mockResolvedValue({ data: { sighting_id: sightingId }, error: null });
+    mockInvoke.mockImplementationOnce(() => {
+      throw new Error('offline');
+    });
+
+    // The report has landed; a push that cannot be sent must not surface as a
+    // failed submit to the spotter.
+    await expect(
+      submitSighting(POST_ID, { photos: [located], note: '' }),
+    ).resolves.toMatchObject({ sightingId });
   });
 
   it('keeps a failed upload retryable with a user-facing message', async () => {

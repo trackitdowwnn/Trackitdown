@@ -6,6 +6,13 @@
  */
 
 export { formatDateLabel, formatDateTimeLabel, formatMonthYear } from './dateTimeLabel';
+export {
+  METRES_PER_MILE,
+  RADIUS_MAX_MILES,
+  RADIUS_MIN_MILES,
+  metresToMiles,
+  milesToMetres,
+} from './distance';
 export { isValidEmail } from './email';
 export { LEGAL_URLS } from './legal';
 export { createLogger, type LogEntry, type LogSink } from './logger';

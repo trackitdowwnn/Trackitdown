@@ -20,6 +20,7 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { z } from 'zod';
 
+import { notifySighting } from '@/features/notifications';
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 import type { EvidencePhoto } from '@/shared/ui';
@@ -298,6 +299,11 @@ export async function submitSighting(
     located: ready.photos.some((photo) => photo.lat !== undefined),
     durationMs: Date.now() - startedAt,
   });
+  // Tell the owner. Fire-and-forget by design: the report has landed, and a
+  // push that fails must never turn a successful submit into an error the
+  // spotter has to deal with. The server re-checks that this caller really is
+  // the sighting's spotter, so a forged id notifies nobody.
+  notifySighting(result.data.sighting_id);
   return { sightingId: result.data.sighting_id };
 }
 

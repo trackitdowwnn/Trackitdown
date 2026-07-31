@@ -21,6 +21,7 @@ import { formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
 // Direct path (not the '@/shared/lib' barrel) to keep this config's module graph
 // off the supabase client, mirroring the dateTimeLabel import above.
 import { formatPounds } from '@/shared/lib/money';
+import { deriveLocalityForCoord } from '@/shared/lib/location/placeLabels';
 import type { WizardFlow } from '@/shared/wizard';
 
 import {
@@ -94,6 +95,17 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           }),
           reviewLabel: 'Last seen near',
           reviewValue: (answers) => answers.location?.addressLabel ?? '',
+          // Derive the PUBLIC place grain once, here, rather than at submit.
+          // SAFETY: posts.last_seen_locality is what a spotter-alert push is
+          // allowed to name; lastSeenArea (the label above) is the raw
+          // reverse-geocode and can be street-grain — for a driveway theft
+          // that is the victim's own street. Never blocks: the helper swallows
+          // geocode failures and the column is nullable, so the push falls
+          // back to "your area".
+          onContinue: async (answers) => {
+            if (!answers.location) return;
+            return { lastSeenLocality: await deriveLocalityForCoord(answers.location) };
+          },
         },
         {
           // Free-text description of the car (→ desc_recognise), shown in the

@@ -30,6 +30,11 @@ export type PermissionsSnapshot = Record<PermissionKind, PermissionStatus>;
 export interface DevicePermissions {
   /** Silent — NEVER fires an OS dialog. */
   checkAll(): Promise<PermissionsSnapshot>;
+  /** Silent, ONE kind — NEVER fires an OS dialog. Exists alongside checkAll so
+   *  a single-permission surface (the alert settings screen reading only
+   *  'notifications') doesn't lazy-load the camera, location and photo modules
+   *  it has no interest in. */
+  check(kind: PermissionKind): Promise<PermissionStatus>;
   /** May fire the OS dialog for one permission. */
   request(kind: PermissionKind): Promise<PermissionStatus>;
 }
@@ -131,6 +136,15 @@ export function isUngranted(status: PermissionStatus): boolean {
   return status.state === 'denied' || status.state === 'undetermined';
 }
 
+/**
+ * One silent read, for background work that must NOT prompt and has no
+ * component to hang a hook on (push-token registration at launch). Prompting
+ * stays with the startup gate and in-flow primers.
+ */
+export function checkDevicePermission(kind: PermissionKind): Promise<PermissionStatus> {
+  return run(kind, 'check');
+}
+
 export const expoDevicePermissions: DevicePermissions = {
   async checkAll() {
     const [location, camera, photos, notifications] = await Promise.all([
@@ -140,6 +154,10 @@ export const expoDevicePermissions: DevicePermissions = {
       run('notifications', 'check'),
     ]);
     return { location, camera, photos, notifications };
+  },
+
+  check(kind) {
+    return run(kind, 'check');
   },
 
   request(kind) {

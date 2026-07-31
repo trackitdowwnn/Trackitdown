@@ -17,6 +17,7 @@
 
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
+import { unregisterCurrentPushToken } from '@/features/notifications';
 import { supabase } from '@/shared/api';
 import { avatarUrlFromPath } from '@/shared/lib/avatarUrl';
 import { createLogger } from '@/shared/lib/logger';
@@ -175,6 +176,15 @@ export async function countDeletionBlockingPosts(userId: string): Promise<number
 }
 
 export async function signOut(): Promise<void> {
+  // SAFETY: release this device's push token FIRST. The unregister RPC pins
+  // the delete to auth.uid(), so once the session is gone there is no way to
+  // prove the token was ours — and a stale row would keep delivering this
+  // user's sighting and message notifications to whoever holds the handset
+  // next. Never throws, never blocks the sign-out.
+  // .catch is belt to pushTokenApi's braces: that helper swallows its own
+  // errors by contract, but nothing should be able to trap someone in a
+  // session because a token release failed.
+  await unregisterCurrentPushToken().catch(() => {});
   const { error } = await supabase.auth.signOut();
   if (error) {
     throw error;
