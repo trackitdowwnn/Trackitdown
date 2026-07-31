@@ -28,11 +28,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { getLastKnownPosition } from '@/shared/lib/location/expoLocationServices';
-import { loadFeedLocationPref } from '@/shared/lib/location/feedLocationStorage';
+import { getLastKnownPosition } from './expoLocationServices';
+import { loadFeedLocationPref } from './feedLocationStorage';
 import type { GeoCoord } from '@/shared/types';
 
-export interface DefaultAlertCentreState {
+export interface DefaultMapCentreState {
   /** 'resolving' until the chain settles; the wizard holds a loader on it. */
   status: 'resolving' | 'ready';
   /** null means "we found nothing" — the picker shows its whole-UK view and
@@ -73,8 +73,8 @@ async function resolveCentre(): Promise<GeoCoord | null> {
  * @param enabled Pass false when editing (the saved alert already has a point),
  *   so a pointless permission read and GPS fix never run.
  */
-export function useDefaultAlertCentre(enabled = true): DefaultAlertCentreState {
-  const [state, setState] = useState<DefaultAlertCentreState>(() => ({
+export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
+  const [state, setState] = useState<DefaultMapCentreState>(() => ({
     status: enabled ? 'resolving' : 'ready',
     centre: null,
   }));

@@ -119,8 +119,13 @@ function withNameSuggestion(step: WizardStep<AlertAnswers>): WizardStep<AlertAns
 const AREA_STEP: WizardStep<AlertAnswers> = {
   id: 'area',
   question: 'Which area should we watch?',
-  helper: 'Move the map, then set how far around it to look.',
+  // NO helper, deliberately. The map teaches the step better than a sentence
+  // about the map does, and on a fills step every line of copy is taken
+  // directly out of the thing the user came here to use.
   component: AreaStep,
+  // The map IS the step, so it takes the height rather than sitting in a fixed
+  // frame inside a scroller. See WizardStep.fills.
+  fills: true,
   schema: z.object({
     location: z.object({ latitude: z.number(), longitude: z.number() }),
   }),

@@ -13,16 +13,16 @@
  *        The timeout is tested for the same reason the wizard shows a loader on
  *        this: a location call can hang with no error and no rejection, and the
  *        screen in front of it would spin for ever.
- * LINKS: ./useDefaultAlertCentre.ts; ../screens/AlertWizardScreen.tsx.
+ * LINKS: ./useDefaultMapCentre.ts; ../screens/AlertWizardScreen.tsx.
  */
 
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
-import { useDefaultAlertCentre } from './useDefaultAlertCentre';
+import { useDefaultMapCentre } from './useDefaultMapCentre';
 
 const mockGetLastKnown = jest.fn();
 const mockGetCurrentPosition = jest.fn();
-jest.mock('@/shared/lib/location/expoLocationServices', () => ({
+jest.mock('./expoLocationServices', () => ({
   getLastKnownPosition: (...args: unknown[]) => mockGetLastKnown(...args),
   // Present only so the test can assert it is NEVER used here.
   expoLocationServices: {
@@ -31,7 +31,7 @@ jest.mock('@/shared/lib/location/expoLocationServices', () => ({
 }));
 
 const mockLoadFeedPref = jest.fn();
-jest.mock('@/shared/lib/location/feedLocationStorage', () => ({
+jest.mock('./feedLocationStorage', () => ({
   loadFeedLocationPref: (...args: unknown[]) => mockLoadFeedPref(...args),
 }));
 
@@ -50,11 +50,11 @@ beforeEach(() => {
   mockLoadFeedPref.mockResolvedValue(null);
 });
 
-describe('useDefaultAlertCentre', () => {
+describe('useDefaultMapCentre', () => {
   it("uses the OS's cached fix when there is one", async () => {
     mockGetLastKnown.mockResolvedValue(DEVICE);
 
-    const { result } = await renderHook(() => useDefaultAlertCentre());
+    const { result } = await renderHook(() => useDefaultMapCentre());
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.centre).toEqual(DEVICE);
@@ -69,7 +69,7 @@ describe('useDefaultAlertCentre', () => {
     // permission dialog. Both reasons it must stay unused here.
     mockLoadFeedPref.mockResolvedValue(FEED_PREF);
 
-    const { result } = await renderHook(() => useDefaultAlertCentre());
+    const { result } = await renderHook(() => useDefaultMapCentre());
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(mockGetCurrentPosition).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('useDefaultAlertCentre', () => {
   it('falls back to the saved feed location when there is no cached fix', async () => {
     mockLoadFeedPref.mockResolvedValue(FEED_PREF);
 
-    const { result } = await renderHook(() => useDefaultAlertCentre());
+    const { result } = await renderHook(() => useDefaultMapCentre());
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     // The point only — radius and label belong to the feed, and the two
@@ -87,7 +87,7 @@ describe('useDefaultAlertCentre', () => {
   });
 
   it('resolves to null when there is nothing to go on', async () => {
-    const { result } = await renderHook(() => useDefaultAlertCentre());
+    const { result } = await renderHook(() => useDefaultMapCentre());
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.centre).toBeNull();
@@ -95,7 +95,7 @@ describe('useDefaultAlertCentre', () => {
 
   it('is ready immediately, and does nothing, when disabled', async () => {
     // Edit mode: the alert already has a point.
-    const { result } = await renderHook(() => useDefaultAlertCentre(false));
+    const { result } = await renderHook(() => useDefaultMapCentre(false));
 
     expect(result.current.status).toBe('ready');
     expect(mockGetLastKnown).not.toHaveBeenCalled();
@@ -108,7 +108,7 @@ describe('useDefaultAlertCentre', () => {
     // nor rejects, so no amount of awaiting would ever end.
     mockGetLastKnown.mockReturnValue(new Promise(() => {}));
 
-    const { result } = await renderHook(() => useDefaultAlertCentre());
+    const { result } = await renderHook(() => useDefaultMapCentre());
     expect(result.current.status).toBe('resolving');
 
     await act(async () => {

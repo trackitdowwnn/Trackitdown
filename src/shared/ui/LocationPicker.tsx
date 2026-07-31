@@ -103,6 +103,19 @@ export interface LocationPickerProps {
   locationServices?: LocationServices;
   /** Starting centre. If set, the picker starts SETTLED (a known point). */
   initialLocation?: GeoCoord | null;
+  /**
+   * Where to point the camera when there is no `initialLocation` — WITHOUT
+   * settling. The map opens somewhere useful (usually the device's position)
+   * but the value stays un-settled, so the wizard's Next stays disabled until
+   * the user actually commits a point.
+   *
+   * SAFETY: this is the difference between a preference and a claim. An alert
+   * zone can default to where you are and be right; "where did you last see the
+   * stolen car" cannot — auto-settling it would let a wrong last-seen point
+   * onto a live post, and that point drives the alert fan-out and the public
+   * map. Ignored when `initialLocation` is present.
+   */
+  initialCentre?: GeoCoord | null;
   onLocationChange?: (value: LocationValue) => void;
   /** Bottom option card; hidden entirely when omitted. */
   optionSlot?: LocationOptionSlot;
@@ -147,6 +160,9 @@ export const UK_DEFAULT_REGION: GeoRegion = {
 
 /** ~1km span — the street-level zoom a chosen point drops to. */
 const STREET_DELTA = 0.01;
+
+/** Width of the Android corner-cover frame — see styles.cornerMask. */
+const ANDROID_CORNER_FRAME = 12;
 
 /** Reverse-geocode fires this long after the map settles (never during pan). */
 const GEOCODE_DEBOUNCE_MS = 400;
@@ -208,15 +224,19 @@ export function LocationPicker({
   MapComponent,
   locationServices = noopLocationServices,
   initialLocation = null,
+  initialCentre = null,
   onLocationChange,
   optionSlot,
   promptLabel = DEFAULT_PROMPT,
   showCurrentLocationButton = true,
   fitRadiusMiles,
 }: LocationPickerProps) {
-  const [region, setRegion] = useState<GeoRegion>(() =>
-    initialLocation ? regionFor(initialLocation, fitRadiusMiles) : UK_DEFAULT_REGION,
-  );
+  const [region, setRegion] = useState<GeoRegion>(() => {
+    // A settled point wins; otherwise open on the suggested centre (camera
+    // only — `hasSettled` below stays false); otherwise the whole-UK view.
+    const opening = initialLocation ?? initialCentre;
+    return opening ? regionFor(opening, fitRadiusMiles) : UK_DEFAULT_REGION;
+  });
   const [animateMs, setAnimateMs] = useState(0);
   const [isMoving, setIsMoving] = useState(false);
   const [hasSettled, setHasSettled] = useState(initialLocation != null);
@@ -347,7 +367,7 @@ export function LocationPicker({
   //
   // Skipped until a centre exists: framing 5 miles around the whole-UK fallback
   // would zoom into the sea off Lancashire.
-  const hasCentre = hasSettled || initialLocation != null;
+  const hasCentre = hasSettled || initialLocation != null || initialCentre != null;
   const [appliedFitRadius, setAppliedFitRadius] = useState(fitRadiusMiles);
   if (fitRadiusMiles !== appliedFitRadius) {
     setAppliedFitRadius(fitRadiusMiles);
@@ -533,6 +553,16 @@ export function LocationPicker({
           onRegionChangeStart={handleRegionChangeStart}
           onRegionChangeComplete={handleRegionChangeComplete}
         />
+
+        {/* ANDROID ROUNDED CORNERS. The map cannot be clipped by an ancestor
+            (see mapCard) — so instead of cutting the corners off, this covers
+            them: a frame that sits just OUTSIDE the card, painted in the page
+            colour, whose INNER edge is rounded to radii.xl. The map's square
+            corners fall under the painted frame; everything inside the arc is
+            untouched. iOS clips properly and renders nothing here. */}
+        {Platform.OS === 'android' ? (
+          <View style={styles.cornerMask} pointerEvents="none" />
+        ) : null}
 
         {/* Overlay layer: box-none so pans reach the map; only real controls
             capture touches. */}
@@ -736,11 +766,40 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radii.xl,
     backgroundColor: colors.surfaceSubtle, // shows through until the map paints
-    // Android's react-native-maps draws in a SurfaceView that renders solid
-    // BLACK when a parent clips it with overflow:'hidden' + borderRadius. Clip
-    // to the rounded card on iOS only; on Android the map keeps square corners
-    // but actually renders. (Round it later via a mask if needed.)
+    // Android's react-native-maps draws in a SurfaceView that misrenders when a
+    // parent clips it with overflow:'hidden' + borderRadius — historically
+    // solid black, and on RN 0.86 the map draws OFFSET inside its card. Clip on
+    // iOS only; on Android the map keeps square corners but renders correctly.
+    //
+    // Tried and reverted twice now (2026-07-31). If rounded corners on Android
+    // are wanted, it needs a real mask (an overlay with matched corner cutouts,
+    // or MaskedView) — NOT overflow on the map's own ancestor.
     ...Platform.select({ ios: { overflow: 'hidden' as const }, default: {} }),
+  },
+  /**
+   * Android-only corner cover — see the JSX above for what it does.
+   *
+   * GEOMETRY: a square corner intrudes past a radius-R arc by R(√2−1)/√2 ≈
+   * 0.29R, so at radii.xl (24) the worst gap is ~7pt and a 12pt frame covers it
+   * with room to spare. The frame sits 12pt OUTSIDE the card, which is why the
+   * outer radius is radii.xl + 12: that makes the border's INNER radius exactly
+   * radii.xl, matching what iOS clips to.
+   *
+   * ⚠️ It paints `colors.background`, so it assumes the card sits ON the page
+   * background — true for every consumer today (wizard steps, the modal body,
+   * the sandbox). On a tinted surface the frame would show as a halo. It also
+   * bleeds 12pt outward, comfortably inside the 16pt gap to the radius slider
+   * and the 24pt page padding — keep those in mind before shrinking either.
+   */
+  cornerMask: {
+    position: 'absolute',
+    top: -ANDROID_CORNER_FRAME,
+    left: -ANDROID_CORNER_FRAME,
+    right: -ANDROID_CORNER_FRAME,
+    bottom: -ANDROID_CORNER_FRAME,
+    borderWidth: ANDROID_CORNER_FRAME,
+    borderColor: colors.background,
+    borderRadius: radii.xl + ANDROID_CORNER_FRAME,
   },
   pill: {
     position: 'absolute',
@@ -829,11 +888,15 @@ const styles = StyleSheet.create({
   locatePressed: {
     backgroundColor: colors.surfaceSubtle,
   },
+  // Sits ON the map, so its padding is map the user cannot see. md, not lg —
+  // still comfortably over the 44pt target because the Switch sets the row
+  // height, so this only trims the dead space around it.
   optionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    padding: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: radii.lg,
     backgroundColor: colors.surface,
     ...shadows.soft,

@@ -207,6 +207,58 @@ describe('LocationPicker', () => {
     expect(mapProps?.region).toEqual(UK_DEFAULT_REGION);
   });
 
+  describe('initialCentre', () => {
+    const CENTRE = { latitude: 53.48, longitude: -2.24 };
+
+    it('opens the map there WITHOUT settling the value', async () => {
+      // SAFETY: the whole point of this prop. "Where did you last see it" is a
+      // claim other people act on — it drives the alert fan-out and the public
+      // map — so opening the camera near the reporter must not also answer the
+      // question for them. If this ever emits isSettled:true, the posting
+      // wizard's Next unlocks on a point nobody chose.
+      const onLocationChange = jest.fn();
+      await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialCentre={CENTRE}
+          locationServices={makeServices()}
+          onLocationChange={onLocationChange}
+        />,
+      );
+
+      expect(mapProps?.region).toEqual(
+        expect.objectContaining({ latitude: CENTRE.latitude, longitude: CENTRE.longitude }),
+      );
+      expect(onLocationChange).toHaveBeenCalledWith(
+        expect.objectContaining({ isSettled: false }),
+      );
+    });
+
+    it('lets initialLocation win, and that one DOES settle', async () => {
+      const settled = { latitude: 51.5, longitude: -0.12 };
+      const onLocationChange = jest.fn();
+      await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialLocation={settled}
+          initialCentre={CENTRE}
+          locationServices={makeServices()}
+          onLocationChange={onLocationChange}
+        />,
+      );
+
+      expect(mapProps?.region).toEqual(
+        expect.objectContaining({ latitude: settled.latitude, longitude: settled.longitude }),
+      );
+      expect(onLocationChange).toHaveBeenCalledWith(expect.objectContaining({ isSettled: true }));
+    });
+
+    it('still falls back to the whole-UK view when neither is given', async () => {
+      await render(<LocationPicker MapComponent={MockMap} locationServices={makeServices()} />);
+      expect(mapProps?.region).toEqual(UK_DEFAULT_REGION);
+    });
+  });
+
   describe('fitRadiusMiles', () => {
     const CENTRE = { latitude: 51.5, longitude: -0.12 };
     /** regionAround spans the diameter, and the picker pads by 1.3. */

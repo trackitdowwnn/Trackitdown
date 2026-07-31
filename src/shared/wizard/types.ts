@@ -75,6 +75,17 @@ export interface WizardStep<TAnswers> {
   onContinue?: (
     answers: Partial<TAnswers>,
   ) => Promise<Partial<TAnswers> | void>;
+  /**
+   * SPIKE — render this step's body in a plain flex View instead of the usual
+   * ScrollView, so a `flex: 1` child (a map) can fill the space between the
+   * headline and the footer.
+   *
+   * The ScrollView grows its CONTENT CONTAINER (`flexGrow: 1`), not the step
+   * body, so a flex child inside it collapses to zero — which is why every map
+   * consumer pins a fixed height instead. Opt-in per step, because a
+   * non-scrolling step cannot rescue content that overflows on a small screen.
+   */
+  fills?: boolean;
   /** Primary-button label while ON this step (not last, not an edit spur);
    *  defaults to "Next". Speed flows use it for "Continue". */
   ctaLabel?: string;

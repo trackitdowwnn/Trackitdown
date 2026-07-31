@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useFullscreenLoader } from '@/shared/hooks';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
-import { colors, radii, spacing, typography } from '@/shared/theme';
+import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import type { LocationValue, PostSummary } from '@/shared/types';
 import {
   BottomSheet,
@@ -638,8 +638,11 @@ const styles = StyleSheet.create({
     ...typography.heading,
     color: colors.textPrimary,
   },
+  // The token, so the sandbox shows the picker at the height it really ships
+  // at. A local 360 made this preview flattering — the thing the sandbox exists
+  // to prevent.
   mapFrame: {
-    height: 360,
+    height: sizes.mapPickerHeight,
   },
   // Bounded frame so the primer's flexGrow layout anchors its actions to the
   // bottom, as it does in the camera modal / wizard step.

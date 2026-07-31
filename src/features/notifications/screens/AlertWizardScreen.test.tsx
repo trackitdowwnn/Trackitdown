@@ -36,15 +36,15 @@ jest.mock('../hooks/useMyAlerts', () => ({
 // Mocked rather than exercised: the real hook reaches AsyncStorage, the
 // permissions module and expo-location, none of which this suite is about.
 // Its own chain (and the no-cold-prompt rule) is covered by
-// ../hooks/useDefaultAlertCentre.test.ts.
+// ../hooks/useDefaultMapCentre.test.ts.
 let mockCentreState: { status: 'resolving' | 'ready'; centre: unknown } = {
   status: 'ready',
   centre: null,
 };
 /** Whether the screen asked the hook to run at all (false while editing). */
 let lastCentreEnabled: boolean | undefined;
-jest.mock('../hooks/useDefaultAlertCentre', () => ({
-  useDefaultAlertCentre: (enabled?: boolean) => {
+jest.mock('@/shared/lib/location/useDefaultMapCentre', () => ({
+  useDefaultMapCentre: (enabled?: boolean) => {
     lastCentreEnabled = enabled;
     return mockCentreState;
   },

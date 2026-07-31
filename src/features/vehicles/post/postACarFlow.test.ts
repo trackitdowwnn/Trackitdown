@@ -135,8 +135,27 @@ describe('step gating', () => {
     ).toBe(true);
   });
 
-  it('the description step is optional (always advanceable)', () => {
-    expect(passes('description', {})).toBe(true);
+  it('description gates Next on 20+ characters, but stays SKIPPABLE', () => {
+    // Two rules pulling in opposite directions, both of which must hold. The
+    // schema blocks Next on a two-word description that would help nobody pick
+    // this car out of a car park...
+    expect(passes('description', {})).toBe(false);
+    expect(passes('description', { descRecognise: 'blue one' })).toBe(false);
+    // ...whitespace cannot buy its way past the minimum (the on-screen counter
+    // trims too, so the count and the button always agree)...
+    expect(passes('description', { descRecognise: ' '.repeat(40) })).toBe(false);
+    expect(
+      passes('description', { descRecognise: 'Silver Golf, dent on the rear nearside door' }),
+    ).toBe(true);
+    // ...and 1000 is the ceiling, mirroring posts.desc_recognise's own CHECK so
+    // the client can never compose a row the database will reject.
+    expect(passes('description', { descRecognise: 'x'.repeat(1000) })).toBe(true);
+    expect(passes('description', { descRecognise: 'x'.repeat(1001) })).toBe(false);
+
+    // ...while `optional` stops the REVIEW screen re-checking that schema at
+    // submit. Without it, skipping the step would leave the post unpublishable
+    // — the gate would have become a trap.
+    expect(stepById('description').optional).toBe(true);
   });
 
   it('the body-type step is REQUIRED (Next gated on a pick; "Not sure" satisfies it)', () => {
