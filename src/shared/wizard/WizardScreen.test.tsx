@@ -12,7 +12,7 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Alert, BackHandler, Pressable, Text } from 'react-native';
+import { Alert, BackHandler, Dimensions, Pressable, StyleSheet, Text } from 'react-native';
 import { z } from 'zod';
 
 import type { WizardFlow, WizardStepProps } from './types';
@@ -236,5 +236,104 @@ describe('WizardScreen wiring', () => {
 
     expect(alertSpy).toHaveBeenCalledTimes(1);
     expect(onExit).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `fills` — the step mode that lets a map reach the footer.
+ *
+ * These assert LAYOUT, which this suite otherwise avoids, because the failure
+ * mode is invisible everywhere else. The default ScrollView grows its CONTENT
+ * CONTAINER, not the step body, so a `flex: 1` child inside it collapses to
+ * zero and a map silently falls back to its minHeight. That is not a crash, not
+ * a failed assertion, and not visible in any other test — it just quietly
+ * un-does the feature. It has already happened once, when AreaStep's own
+ * wrapper was left without `flex` and the map sat at its floor with dead space
+ * under the slider.
+ */
+describe('fills steps', () => {
+  const fillsFlow: WizardFlow<Answers> = {
+    id: 'fills-test',
+    finalCtaLabel: 'Publish',
+    phases: [
+      {
+        id: 'only',
+        title: 'Only',
+        steps: [
+          {
+            id: 'map',
+            question: 'Where?',
+            fills: true,
+            component: makeStep('name', 'Jane'),
+            schema: z.object({}),
+          },
+          {
+            id: 'plain',
+            question: 'And?',
+            component: makeStep('colour', 'Sage'),
+            schema: z.object({}),
+          },
+        ],
+      },
+    ],
+  };
+
+  const renderFills = () =>
+    render(<WizardScreen flow={fillsFlow} onExit={jest.fn()} onComplete={jest.fn()} />);
+
+  /** Drive the text scale: a fills step gives up filling at large sizes. */
+  const setFontScale = (fontScale: number) =>
+    jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 2, fontScale });
+
+  beforeEach(() => setFontScale(1));
+
+  it('renders a fills step WITHOUT a ScrollView, so a flex child can grow', async () => {
+    const view = await renderFills();
+    expect(view.getByTestId('wizard-step-fills')).toBeTruthy();
+    expect(view.queryByTestId('wizard-step-scroll')).toBeNull();
+  });
+
+  it('gives a fills step its scroller back at large text sizes', async () => {
+    // A fills step has no scroll rescue by design. At accessibility text sizes
+    // the headline grows, the map will not shrink past its minHeight and a
+    // slider below it has nowhere to go — so the content would run off a
+    // container that cannot scroll. A big-text user loses the full-bleed map
+    // and keeps a reachable screen, which is the right way round.
+    setFontScale(1.6);
+    const view = await renderFills();
+    expect(view.getByTestId('wizard-step-scroll')).toBeTruthy();
+    expect(view.queryByTestId('wizard-step-fills')).toBeNull();
+  });
+
+  it('still scrolls an ordinary step', async () => {
+    // The opt-in must stay an opt-in: every other step in every other flow
+    // keeps its scroller, or long steps become unreachable on small screens.
+    const view = await renderFills();
+    await press(view, 'Next');
+    expect(view.getByTestId('wizard-step-scroll')).toBeTruthy();
+    expect(view.queryByTestId('wizard-step-fills')).toBeNull();
+  });
+
+  it('gives the step body flex so the chain reaches the child', async () => {
+    // The specific regression: a body without `flex: 1` leaves a flex:1 map
+    // measuring against a content-sized parent, and it collapses to minHeight.
+    const view = await renderFills();
+    const body = view.getByTestId('fill-name').parent;
+    const flattened = StyleSheet.flatten(body?.props?.style);
+    expect(flattened).toMatchObject({ flex: 1 });
+  });
+
+  it('does not slide a fills step, and does slide an ordinary one', async () => {
+    // A fills step can swap its subtree after mount (a map waiting for its
+    // opening centre). That stranded the entering transform and left the step
+    // permanently offset to the right, with the footer — which lives outside
+    // the animated wrapper — staying put.
+    const view = await renderFills();
+    expect(view.getByTestId('wizard-step-slide').props.entering).toBeUndefined();
+
+    await press(view, 'Next');
+    expect(view.getByTestId('wizard-step-slide').props.entering).toBeDefined();
   });
 });

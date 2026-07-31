@@ -67,6 +67,7 @@ import type {
   LocationValue,
 } from '../types';
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
+import { MapCornerMask } from './MapCornerMask';
 import { Button } from './Button';
 import { TextField } from './TextField';
 
@@ -160,9 +161,6 @@ export const UK_DEFAULT_REGION: GeoRegion = {
 
 /** ~1km span — the street-level zoom a chosen point drops to. */
 const STREET_DELTA = 0.01;
-
-/** Width of the Android corner-cover frame — see styles.cornerMask. */
-const ANDROID_CORNER_FRAME = 12;
 
 /** Reverse-geocode fires this long after the map settles (never during pan). */
 const GEOCODE_DEBOUNCE_MS = 400;
@@ -554,15 +552,11 @@ export function LocationPicker({
           onRegionChangeComplete={handleRegionChangeComplete}
         />
 
-        {/* ANDROID ROUNDED CORNERS. The map cannot be clipped by an ancestor
-            (see mapCard) — so instead of cutting the corners off, this covers
-            them: a frame that sits just OUTSIDE the card, painted in the page
-            colour, whose INNER edge is rounded to radii.xl. The map's square
-            corners fall under the painted frame; everything inside the arc is
-            untouched. iOS clips properly and renders nothing here. */}
-        {Platform.OS === 'android' ? (
-          <View style={styles.cornerMask} pointerEvents="none" />
-        ) : null}
+        {/* Rounds the card on Android, where the map cannot be clipped (see
+            mapCard). Extracted so the technique is inspectable and reusable
+            rather than private to this file — MapCornerMask carries the
+            geometry and the open question about the three static map cards. */}
+        <MapCornerMask />
 
         {/* Overlay layer: box-none so pans reach the map; only real controls
             capture touches. */}
@@ -630,7 +624,18 @@ export function LocationPicker({
             ) : null}
 
             {optionSlot ? (
-              <View style={styles.optionCard}>
+              // The WHOLE ROW toggles. The Switch alone is ~31pt tall and the
+              // title was not tappable at all, so the real hit area sat under
+              // the 44pt minimum while the card looked like a big target. One
+              // accessible element, not a label plus a separate control.
+              <Pressable
+                accessibilityRole="switch"
+                accessibilityLabel={optionSlot.title}
+                accessibilityHint={optionSlot.caption}
+                accessibilityState={{ checked: optionSlot.value }}
+                onPress={() => optionSlot.onValueChange(!optionSlot.value)}
+                style={styles.optionCard}
+              >
                 <View style={styles.optionText}>
                   <Text style={styles.optionTitle}>{optionSlot.title}</Text>
                   {optionSlot.caption ? (
@@ -638,14 +643,18 @@ export function LocationPicker({
                   ) : null}
                 </View>
                 <Switch
-                  accessibilityLabel={optionSlot.title}
+                  // The row owns the semantics now; the Switch is the visual
+                  // state, hidden from assistive tech so it is not announced
+                  // twice.
+                  importantForAccessibility="no-hide-descendants"
+                  accessibilityElementsHidden
                   value={optionSlot.value}
                   onValueChange={optionSlot.onValueChange}
                   trackColor={{ true: colors.primary, false: colors.border }}
                   thumbColor={colors.surface}
                   ios_backgroundColor={colors.border}
                 />
-              </View>
+              </Pressable>
             ) : null}
           </View>
         </View>
@@ -776,31 +785,6 @@ const styles = StyleSheet.create({
     // or MaskedView) — NOT overflow on the map's own ancestor.
     ...Platform.select({ ios: { overflow: 'hidden' as const }, default: {} }),
   },
-  /**
-   * Android-only corner cover — see the JSX above for what it does.
-   *
-   * GEOMETRY: a square corner intrudes past a radius-R arc by R(√2−1)/√2 ≈
-   * 0.29R, so at radii.xl (24) the worst gap is ~7pt and a 12pt frame covers it
-   * with room to spare. The frame sits 12pt OUTSIDE the card, which is why the
-   * outer radius is radii.xl + 12: that makes the border's INNER radius exactly
-   * radii.xl, matching what iOS clips to.
-   *
-   * ⚠️ It paints `colors.background`, so it assumes the card sits ON the page
-   * background — true for every consumer today (wizard steps, the modal body,
-   * the sandbox). On a tinted surface the frame would show as a halo. It also
-   * bleeds 12pt outward, comfortably inside the 16pt gap to the radius slider
-   * and the 24pt page padding — keep those in mind before shrinking either.
-   */
-  cornerMask: {
-    position: 'absolute',
-    top: -ANDROID_CORNER_FRAME,
-    left: -ANDROID_CORNER_FRAME,
-    right: -ANDROID_CORNER_FRAME,
-    bottom: -ANDROID_CORNER_FRAME,
-    borderWidth: ANDROID_CORNER_FRAME,
-    borderColor: colors.background,
-    borderRadius: radii.xl + ANDROID_CORNER_FRAME,
-  },
   pill: {
     position: 'absolute',
     top: spacing.lg,
@@ -895,6 +879,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    // The row is the control, so it carries the 44pt minimum itself rather
+    // than inheriting whatever height the Switch happens to be.
+    minHeight: sizes.touchTarget,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radii.lg,

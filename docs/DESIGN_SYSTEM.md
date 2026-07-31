@@ -31,7 +31,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `borderStrong` | `#949494` | small elements that must stay visible (progress tracks) |
 | `success` | `#4F8A5B` | affirmative states — recovery confirmed, payout complete, ownership verified (fill/dot/icon, not body text) |
 | `warning` | `#A9762A` | pending verification, expiring posts (dot/icon/border only — never body text; clears 3:1 as a graphic) |
-| `danger` | `#C0281E` | destructive actions, errors (clear red, kept distinct from the orange primary) |
+| `danger` | `#C0281E` | destructive actions, errors (clear red, kept distinct from the near-black primary) |
 | `dangerPressed` | `#A21F16` | pressed state of danger |
 | `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
 | `surfaceInverse` | `#222222` | the rare dark surface: floating (map pill) and the ONE full-bleed use, the photo-preview viewer backdrop — same ink as `textPrimary`, named separately so text tweaks never restyle fills |
@@ -143,14 +143,14 @@ a busy/alarming crime map.
 
 ## Core components (live in `src/shared/ui/`)
 
-- **Button** — variants: `primary` (orange fill), `secondary` (outline),
+- **Button** — variants: `primary` (near-black fill), `secondary` (outline),
   `ghost`, `danger`. Height 52, radius `md`, full-width by default.
 - **Card** — white surface, radius `lg`, 16px padding, soft shadow. The
-  vehicle card (photo, plate chip, make/model, bounty in terracotta,
+  vehicle card (photo, plate chip, make/model, bounty in `primary`,
   distance, last-seen time) is the app's signature element — Airbnb-listing
   style with a large image and breathing room.
 - **PlateChip** — renders a UK registration in plate styling.
-- **BountyTag** — terracotta, e.g. "£500 bounty", always formatted from
+- **BountyTag** — `primary`, e.g. "£500 bounty", always formatted from
   pence via the shared money formatter.
 - **SafetyNotice** — reusable banner with the "report, don't approach"
   copy; required on sighting flows (see SECURITY_AND_TRUST.md).
@@ -167,7 +167,7 @@ a busy/alarming crime map.
   edge, no shadow; 24pt icons (`sizes.icon`) over always-visible `tabLabel`
   text; active `primary`, inactive `textSecondary`; badges in `accentText`
   terracotta (dot or 1–9/"9+" pill) — a sanctioned exception to the value-only
-  accent rule (a terracotta badge stays distinct from the orange primary and
+  accent rule (an accentText badge stays distinct from the near-black primary and
   needs no per-component override). Bar body is `sizes.tabBar` (56) tall
   plus safe area; press feedback is a subtle scale (`motion.tabPressScale`).
   The Profile tab is the one sanctioned photo tab: a signed-in member's
@@ -179,8 +179,35 @@ a busy/alarming crime map.
 
 ## Screen conventions
 
-- Map screens: light map style (muted natural tones), custom orange pins;
+- Map screens: light map style (muted natural tones), custom `primary` pins;
   selected pin grows and shows a floating vehicle card, Airbnb-style.
+- **Filling wizard steps** (`WizardStep.fills`, added 2026-07-31). A step whose
+  body IS the answer — today the two map steps — opts in and gets a plain flex
+  container instead of the usual `ScrollView`, so a `flex: 1` child reaches the
+  footer. It also takes a compact headline (`title`, not `display`) and **no
+  helper line**: on such a step every line of copy comes straight out of the
+  thing the user came to use. Three rules travel with it:
+  - **The flex chain must be unbroken** — fills container → step body → the
+    step's own wrapper → the map. One `View` without `flex` anywhere along it
+    and the child silently falls back to its `minHeight`, which reads as
+    "nearly right" rather than as a bug. `WizardScreen.test.tsx` guards each
+    link.
+  - **No slide transition.** A full-bleed map sliding reads as the whole app
+    moving; and a fills step that swaps its subtree after mount strands the
+    entering transform, leaving the step permanently offset.
+  - **It stops filling above 1.3× text scale** and scrolls instead. A fills step
+    has no scroll rescue, so at accessibility text sizes content would run off a
+    container that cannot scroll. Big text beats the full-bleed map.
+- **Rounded map cards on Android.** `react-native-maps` draws into a
+  `SurfaceView` that misrenders when an ancestor clips it (`overflow: 'hidden'`
+  + `borderRadius`) — historically black, and on RN 0.86 the map draws OFFSET
+  inside its card. The interactive picker therefore rounds its corners by
+  COVERING them (`MapCornerMask`) rather than clipping.
+  ⚠️ **Open question**: the three static map cards (`LastSeenMap`,
+  `SightingsTrailMap`, `SightingDetailScreen`) still clip on both platforms and
+  are believed fine — possibly because they pass `interactive={false}`, so the
+  SurfaceView never handles a gesture. Nobody has checked all four on a device.
+  Until someone does, do not unify by copying either treatment onto the other.
 - Forms: one topic per screen step (the posting flow is a stepper —
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
@@ -196,7 +223,7 @@ a busy/alarming crime map.
   to the actions-only rule (it mirrors the reference's verification badge
   and stays distinct from any nearby CTA).
 - Accessibility: minimum 44pt touch targets, WCAG AA contrast against the
-  near-white background (check orange/terracotta on `#F7F7F7`), labels on all interactive
+  near-white background (check `primary` and `accentText` on `#F7F7F7`), labels on all interactive
   elements, support dynamic type.
 
 ## Motion

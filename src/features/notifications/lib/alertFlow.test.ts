@@ -147,15 +147,37 @@ describe('gating', () => {
 
 describe('review copy', () => {
   it('describes the area with its radius', () => {
-    expect(stepById('area').reviewValue?.({ ...AREA, radiusMiles: 10, placeLabel: 'Luton' })).toBe(
-      '10 miles around Luton',
-    );
+    expect(
+      stepById('area').reviewValue?.({
+        ...AREA,
+        radiusMiles: 10,
+        placeLabel: 'Luton',
+        approximate: true,
+      }),
+    ).toBe('10 miles around Luton · approximate area');
   });
 
   it('falls back to "the pin" when there is no place label', () => {
     // Editing an existing alert has no label — we store a point, not a name.
-    expect(stepById('area').reviewValue?.({ ...AREA, radiusMiles: 10 })).toBe(
-      '10 miles around the pin',
+    expect(stepById('area').reviewValue?.({ ...AREA, radiusMiles: 10, approximate: true })).toBe(
+      '10 miles around the pin · approximate area',
+    );
+  });
+
+  it('NAMES the coarsening on the review, in both states', () => {
+    // SAFETY. The area step carries no helper and the option card no caption,
+    // so this line is the only place the choice is stated before an exact home
+    // point would be stored — and the case that matters is the toggle turned
+    // OFF, which is exactly when saying nothing would be worst.
+    expect(stepById('area').reviewValue?.({ ...AREA, radiusMiles: 5, approximate: true })).toContain(
+      'approximate area',
+    );
+    expect(
+      stepById('area').reviewValue?.({ ...AREA, radiusMiles: 5, approximate: false }),
+    ).toContain('exact location');
+    // Unset defaults to the SAFE reading, matching ALERT_INITIAL_ANSWERS.
+    expect(stepById('area').reviewValue?.({ ...AREA, radiusMiles: 5 })).toContain(
+      'approximate area',
     );
   });
 
