@@ -99,14 +99,31 @@ export function HomeFeedScreen() {
   // never import features/profile, since profile already imports the garage
   // (the My cars hint) and that would close a cycle. The hook keeps its own
   // fetch behind cheap checks, so a new or already-offered user costs nothing.
+  //
+  // ONE NUDGE AT A TIME. All three cards are setup offers, and stacked they are
+  // a wall rather than a feed. Each is handed an `active` saying whether a
+  // higher-priority offer already owns the slot, so its own `visible` means
+  // "on screen" — which keeps the impression logs honest and stops a suppressed
+  // card from fetching. Priority, most urgent first:
+  //
+  //   1. location primer — a feed pointed at the wrong area is wrong for
+  //      everything else, including the two offers below
+  //   2. garage — pre-theft setup, worth little once something has happened
+  //   3. alert area — valuable, but the only one that keeps its worth if asked
+  //      on a later visit
+  //
+  // The order is declaration order below: each `active` may only reference
+  // hooks already declared, which is what keeps this acyclic.
   const myProfile = useMyProfile();
   const garageNudge = useGarageNudgeCard({
     accountCreatedAt: myProfile.status === 'ready' ? myProfile.profile.createdAt : null,
+    active: !showLocationPrimer,
   });
   // The alert-area offer. Decides for itself whether it applies (a member, no
-  // zone yet, never offered before); the placement rule below keeps it out of
-  // a pile of cards.
-  const alertNudge = useAlertNudgeCard();
+  // zone yet, never offered before).
+  const alertNudge = useAlertNudgeCard({
+    active: !showLocationPrimer && !garageNudge.visible,
+  });
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mapPillVisible, setMapPillVisible] = useState(true);
@@ -320,9 +337,9 @@ export function HomeFeedScreen() {
         />
       ) : null}
       {/* The garage nudge — the one reaching surface for a feature whose whole
-          value is being set up BEFORE anything goes wrong. Deliberately UNDER
-          the location primer: getting the feed pointed at the right area is the
-          more urgent setup step, and two stacked cards would be a wall. */}
+          value is being set up BEFORE anything goes wrong. The priority that
+          keeps this out of a pile of cards lives at the hook calls above; each
+          condition here is now just "is this the card". */}
       {garageNudge.visible ? (
         <SaveYourCarCard
           onAdd={() => {
@@ -332,11 +349,8 @@ export function HomeFeedScreen() {
           onDismiss={garageNudge.dismiss}
         />
       ) : null}
-      {/* The alert-area offer — LAST, and only when the feed is otherwise
-          clear. The other two are more urgent (pointing the feed at the right
-          area; the pre-theft setup that has to happen before anything goes
-          wrong), and three stacked cards is a wall, not a feed. */}
-      {!showLocationPrimer && !garageNudge.visible && alertNudge.visible ? (
+      {/* The alert-area offer — LAST in the priority order above. */}
+      {alertNudge.visible ? (
         <AlertNudgeCard
           onSetArea={() => {
             alertNudge.accept();

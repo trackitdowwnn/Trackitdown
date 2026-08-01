@@ -139,6 +139,29 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
   the backend for when plate capture is re-added, but **nothing in the wizard
   calls them today** (the plate step and its `onContinue` were removed
   2026-07-24). `create_post` still owns the real enforcement at submit.
+- **The dormant verification objects are NOT a cheap cut** (investigated
+  2026-08-01, after a project review proposed deleting them as dead code). Four
+  objects survive ADR-0007: the `verification_documents` table, the private
+  `verification-documents` bucket, `update_post_verification`, and
+  `plate_available`. "Dormant" undersells the entanglement:
+  - `create_post` still has a **live write branch** into `verification_documents`,
+    reached whenever its `p_verification_path` argument is non-null. The client
+    hard-codes `null` (pinned by `postApi.test.ts`), so no row is ever written —
+    but dropping the table means changing the signature of the SECURITY DEFINER
+    function on the money path, which needs a coordinated client+server deploy
+    or every post fails with PGRST202 in the gap.
+  - Three SQL suites assert against these objects, and two of the assertions are
+    **security walls, not coverage**: `anon_role_verification.sql` CHECK 3 (anon
+    cannot read V5C paths) and CHECK 8 (anon cannot use `plate_available` as a
+    logged-out plate-existence oracle). Deleting the objects deletes the walls;
+    a future re-add would come back without them.
+  - `edit_post_sections_verification.sql` pins `update_post_verification`'s exact
+    signature in five places.
+
+  Net: a multi-hour, deploy-coordinated change to remove objects that cost
+  nothing to keep and that ADR-0007 kept **on purpose**. Keep them. The one thing
+  worth doing is confirming the private bucket is empty in production — it is a
+  storage-cost and data-retention question, not a code one.
 - **Status transitions are server-only** (DOMAIN.md lifecycle).
 - **Funnel logging** — per-step completion / drop-off (`[vehicles]` tag) is
   **not yet wired**; the upload + create_post calls log start/duration/failure.
@@ -259,6 +282,19 @@ validates, and Saves via a section RPC, then the detail refetches
 (`usePostDetail.retry`). No payment step — a draft isn't charged until "Post &
 pay"; the bounty editor is draft-only anyway.
 
+**FROZEN, not frozen-out (product call 2026-08-01).** A project review put this
+surface up for deletion as "seven screens where one form would do". It survives,
+and the reasoning is worth keeping because the surface *looks* more expensive
+than it is: `PostSectionEditor` + `PostSectionEditorHost` hold all the machinery
+(~310 lines), so each of the seven concrete editors is only 47–82 lines of field
+wiring. Collapsing them into one edit-everything form would DELETE less than it
+added, and would lose the property that makes the per-section design correct —
+the server gates editability *per section per status* (see below), which a single
+form cannot express without rebuilding the same seven cases inside itself.
+
+Frozen means: no eighth editor without a product reason, and no new capability
+routed through this pattern. It is finished, not a foundation.
+
 - **Editable by status.** DRAFT → every section. The **money-neutral** sections —
   *car details*, *theft context*, *distinctive features*, *description* — are
   gated to `draft + pending_verification + active`, so they stay editable on a
@@ -268,7 +304,8 @@ pay"; the bounty editor is draft-only anyway.
   the car was taken from must not move once the crowd is matching against them,
   and the bounty is frozen by escrow. This is a hard **server** gate, not just UI.
   (The V5C / proof-of-ownership editor was removed with verification; its RPC
-  `update_post_verification` remains in the schema but is dormant/unused.)
+  `update_post_verification` remains in the schema but is dormant/unused — see
+  the cut note below before proposing its deletion.)
 - **Why the money-neutral four are editable while live.** Live-on-payment
   publishes on payment, so `active` is the state an owner actually lives in. A
   WRONG detail actively harms the search — spotters scan for "silver Golf" and
