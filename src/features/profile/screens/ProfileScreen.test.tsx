@@ -108,6 +108,17 @@ const mockSignOut = jest.fn();
 const mockCountBlocking = jest.fn();
 const mockRequestDeletion = jest.fn();
 jest.mock('../api/profileApi', () => ({
+  // A real class, not a stand-in object: the screen branches on `instanceof`,
+  // so omitting it does not merely skip the branch — it throws
+  // "Right-hand side of 'instanceof' is not an object" and swallows the toast.
+  AccountDeletionError: class AccountDeletionError extends Error {
+    code: string;
+    constructor(message: string, code: string) {
+      super(message);
+      this.name = 'AccountDeletionError';
+      this.code = code;
+    }
+  },
   get signOut() {
     return mockSignOut;
   },
@@ -374,8 +385,8 @@ describe('signed in', () => {
     expect(mockReplace).not.toHaveBeenCalled(); // guest mode in place, no auth wall
   });
 
-  it('delete: missing Edge Function degrades to a calm error toast', async () => {
-    mockRequestDeletion.mockRejectedValue(new Error('Function not found'));
+  it('delete: an unrecognised failure degrades to a calm error toast', async () => {
+    mockRequestDeletion.mockRejectedValue(new Error('network down'));
     const { getByTestId, getAllByText } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-delete-account'));
@@ -385,7 +396,35 @@ describe('signed in', () => {
     });
     await waitFor(() =>
       expect(mockShowToast).toHaveBeenCalledWith(
-        'Account deletion is not available in this build yet.',
+        "We couldn't delete your account. Please try again.",
+        'error',
+      ),
+    );
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('delete: a server refusal shows the SERVER’s reason, not "try again"', async () => {
+    // The escrow case. countDeletionBlockingPosts can be a beat stale — a draft
+    // can go active between the pre-check and the confirm tap — so a user can
+    // legitimately reach this dialog and still be refused. "Try again" would be
+    // a lie that never comes true; they must be told to cancel the listing.
+    const { AccountDeletionError } = jest.requireMock('../api/profileApi');
+    mockRequestDeletion.mockRejectedValue(
+      new AccountDeletionError(
+        'You have a live listing with a bounty in escrow. Cancel it first, then delete your account.',
+        'ACCOUNT_HAS_ESCROW',
+      ),
+    );
+    const { getByTestId, getAllByText } = await render(<ProfileScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('row-delete-account'));
+    });
+    await act(async () => {
+      fireEvent.press(getAllByText('Delete account').at(-1) as never);
+    });
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith(
+        'You have a live listing with a bounty in escrow. Cancel it first, then delete your account.',
         'error',
       ),
     );
