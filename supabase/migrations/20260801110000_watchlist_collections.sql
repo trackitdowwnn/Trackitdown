@@ -164,6 +164,13 @@ grant update (collection_id) on public.watchlist_items to authenticated;
 -- caller's own. The EXISTS block below is COPIED BYTE-FOR-BYTE from
 -- 20260722100000 — it is the Tier 1 anti-oracle rule and must never be
 -- paraphrased. Only the collection clause is new.
+--
+-- SUPERSEDED (20260802180000_watchlist_recovered_rewatch.sql): the EXISTS
+-- block below is NO LONGER the live policy text. Its recovered-post branch
+-- could never evaluate — the subquery ran under the CALLER's RLS, which
+-- cannot see a recovered post — so it was replaced by the SECURITY DEFINER
+-- predicate `post_is_watchable(post_id)`, which encodes the same rule and can
+-- actually run. Read that file before changing anything here.
 alter policy watchlist_items_insert_own_visible_post
   on public.watchlist_items
   with check (
