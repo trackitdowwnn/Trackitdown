@@ -6,8 +6,19 @@ v1 scope, stop and flag it.
 
 ## v1 — launch scope (UK only)
 
+> **Marks:** `[x]` done · `[ ]` not started · `[~]` **partly done — the line
+> says what is built and what is not.** The third mark was added 2026-08-01
+> after an audit found several items that were substantially built but read as
+> untouched, which made the remaining work look far larger than it is. An
+> honest `[~]` beats a `[ ]` that hides a day's work already done.
+
 **Core loop**
-- [ ] Auth: email + Apple/Google sign-in, onboarding with alert radius setup
+- [~] Auth: email + Apple/Google sign-in, onboarding with alert radius setup.
+      Sign-in (email OTP + Apple + Google) and the 4-slide onboarding are
+      BUILT. **The alert-radius step is not in onboarding** and deliberately
+      never was — features/auth/README.md scopes it out, and radius setup lives
+      in the Alerts wizard instead. Decide whether to move it into onboarding
+      or strike it from this line; today the line overstates what is missing.
 - [x] Post a stolen car: stepper flow (details → photos → last seen →
       bounty → escrow payment). **The V5C verification upload was REMOVED**
       with live-on-payment (2026-07-30) — a paid post goes straight to
@@ -20,7 +31,9 @@ v1 scope, stop and flag it.
       prefills the wizard (5 per account, plate optional, no V5C; posts
       snapshot rather than reference the saved car — added to scope + built
       2026-07-27)
-- [ ] Search: map + list of active posts, distance sorting
+- [x] Search: map + list of active posts, distance sorting (features/search-map
+      — Explore feed, map screen, list sheet; distance sorting is server-side,
+      `order by dist` in get_home_feed/search_posts)
 - [x] Spotter alerts: push notification on new active post within radius
       (built 2026-07-30 — features/notifications: push token registry, one
       shared send utility, tap routing incl. cold start, alert zones with
@@ -35,28 +48,59 @@ v1 scope, stop and flag it.
       more interruptions. Also fixed a latent search bug on the way:
       `search_posts` matched make/model/colour case-SENSITIVELY against
       free-typed owner text.
-- [ ] Report a sighting: in-app camera, auto GPS, note; SafetyNotice
-- [ ] Owner ↔ spotter chat (opens only after a sighting)
-- [ ] Recovery confirmation flow: owner credits one sighting (or none)
-- [ ] Payout: Stripe Connect onboarding for spotter, 95/5 release, refunds
-- [ ] Reputation counters + 1/5/25 badges on profiles
+- [x] Report a sighting: in-app camera, auto GPS, note; SafetyNotice
+      (features/sightings — camera-only per ADR-0003, sightings_verification.sql)
+- [x] Owner ↔ spotter chat (opens only after a sighting) (features/chat —
+      Inbox + thread, chat_verification.sql)
+- [ ] Recovery confirmation flow: owner credits one sighting (or none).
+      **THE BIGGEST HOLE IN THE LOOP.** Nothing anywhere moves a post to
+      `recovered` or a sighting to `credited` — verified by grep across all
+      migrations. Everything downstream is therefore unreachable: the payout,
+      the recovery push, and `recoveries_credited`, which can never leave 0.
+- [ ] Payout: Stripe Connect onboarding for spotter, 95/5 release, refunds.
+      **Refunds are DONE** (deactivate-post + mark_post_payment_refunded +
+      refund_cancel_verification.sql). Connect onboarding and the 95/5 release
+      do not exist at all — and cannot be reached anyway until the recovery
+      flow above exists.
+- [~] Reputation counters + 1/5/25 badges on profiles. Counters and badge
+      maths are BUILT and server-maintained (`sightings_reported`,
+      `sightings_helpful`; ReputationCard + lib/reputation.ts). The third,
+      `recoveries_credited`, is permanently 0 for the reason above.
 - [x] Watchlist: bookmark posts to keep an eye out (toggle on every card, own
       tab, 30-day resolved section with tombstones — added to scope + built
       2026-07-22)
 - [x] Watchlist **collections**: user-named private lists, one collection per
       saved post, save-then-change (added to scope + built 2026-07-27).
       Sharing/collaborators are permanently OUT — see DOMAIN.md.
-- [ ] Flagging (posts, sightings, photos, messages) + user blocking
-- [ ] Moderation queues: verification, flags, disputes, collusion checks
-- [ ] Legal: T&Cs, privacy policy, safety guidelines page
+- [~] Flagging (posts, sightings, photos, messages) + user blocking.
+      **POST flagging is done** (flag_post + flagApi + post_flags_verification.sql).
+      Sightings, photos and messages have no flag path, and user blocking does
+      not exist at all — no table, RPC or UI.
+- [ ] Moderation queues: flags, disputes, collusion checks. (The
+      *verification* queue that used to head this list is obsolete — ADR-0007
+      removed pre-publish verification, so there is nothing to verify.)
+- [ ] Legal: T&Cs, privacy policy, safety guidelines page. The in-app
+      plumbing is BUILT (Profile rows + the sign-in consent line, opening
+      LEGAL_URLS via expo-web-browser); the three URLs and the support email
+      still point at `trackitdown.example`, a reserved placeholder TLD. This
+      is a hosting/content task, not an engineering one — the code side is
+      five strings across `shared/lib/legal.ts` and `profile/config.ts`.
+- [ ] Account deletion (store requirement + UK GDPR erasure). Client shipped
+      2026-07-10; the Edge Function it called was never written, so the button
+      could not delete. BUILT 2026-08-01 — see PR #37, not yet merged.
 
 **Infrastructure**
-- [ ] Supabase project (dev + prod), migrations in repo, RLS everywhere
-- [ ] EAS build profiles (development / preview / production)
-- [ ] GitHub Actions CI (lint, typecheck, test)
+- [x] Supabase project (dev + prod), migrations in repo, RLS everywhere
+      (52 migrations; RLS asserted by 13 SQL suites in `npm run test:db`)
+- [x] EAS build profiles (development / preview / production) — eas.json
+- [x] GitHub Actions CI (lint, typecheck, test) — .github/workflows/ci.yml,
+      `checks` + a `db` job running every SQL suite
 - [ ] Sentry crash reporting; basic analytics (PostHog or similar)
-- [ ] DVLA Vehicle Enquiry API integration for plate → make/model/colour
-      auto-fill and verification cross-check
+- [ ] DVLA Vehicle Enquiry API: plate → make/model/colour auto-fill **in the
+      GARAGE**. Rescoped 2026-08-01: the verification cross-check half is dead
+      (ADR-0007) and the post wizard no longer collects a plate at all
+      (2026-07-24), so the only surviving plate field — and the only place this
+      could help — is the garage.
 
 ## Explicitly NOT in v1 (do not build early)
 
