@@ -96,13 +96,16 @@ function BadgedTabs() {
             // Gated: a guest signs in first (sheet), then the wizard opens
             // without re-tapping. Full-screen flow OUTSIDE the (tabs) group,
             // so the tab bar is gone for the wizard.
-            // TESTING (dev only): skip the auth gate so the wizard can be
-            // opened without logging in while the flow is being redesigned.
-            // Production still gates — delete this __DEV__ branch to restore.
+            //
+            // NO __DEV__ BYPASS. One lived here so the wizard could be opened
+            // without signing in, and it made dev AND PREVIEW builds — the ones
+            // testers use — let a guest walk all thirteen steps, upload photos,
+            // and only fail at submit, where `create_post` raises
+            // NOT_AUTHENTICATED with no sheet to recover through. It had also
+            // started spreading (SaveYourCarSheet grew a workaround for it).
+            // Seed a dev session instead of skipping the gate.
             onPress: () =>
-              __DEV__
-                ? router.push(startPostRoute)
-                : requireAuth({ context: 'post_car', run: () => router.push(startPostRoute) }),
+              requireAuth({ context: 'post_car', run: () => router.push(startPostRoute) }),
           }}
         />
       )}

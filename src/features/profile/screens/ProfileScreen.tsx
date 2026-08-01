@@ -373,7 +373,6 @@ function LoadedProfile({
         {__DEV__ ? (
           <Section title="Developer" quiet testID="dev-section">
             <ListRow title="Copy recent logs" onPress={() => void copyLogs()} testID="row-copy-logs" />
-            <ListRow title="Component sandbox" onPress={() => router.push('/sandbox')} />
             <ListRow
               title={`Inbox badge +1 (now ${inboxBadge})`}
               onPress={() => setBadge('inbox', inboxBadge + 1)}
