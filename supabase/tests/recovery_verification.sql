@@ -1,12 +1,22 @@
 -- =============================================================================
--- WHAT:  Tier 1 verification for claim_recovery — the point where an owner's
---        escrow becomes somebody else's money (NOT a migration).
+-- WHAT:  Tier 1 verification for the recovery path — `claim_recovery` (who
+--        won) and `mark_post_recovered_no_spotter` (the refund that resolves a
+--        recovery nobody was credited for). NOT a migration.
 -- WHY:   Crediting a sighting decides who gets £50-£5,000. Every guard on it
 --        is a MONEY guard, so each is asserted here against the real
 --        `authenticated` role, not merely read in the source: owner-only,
 --        active-only, same-post-only, no self-credit, single winner, and
---        anon locked out. CHECK 9 additionally proves the thing the function
+--        anon locked out. CHECK 8 additionally proves the thing claim_recovery
 --        is designed NOT to do — move money.
+--
+--        CHECKS 9-12 cover the resolve half. The one that matters most is 10:
+--        a recovery WITH a credited sighting must never be refunded to the
+--        owner, because that money is the spotter's.
+--
+-- CHECKS: 1 credited path · 2 no double claim · 3 owner-only · 4 no foreign
+-- sighting · 5 no self-credit · 6 single winner (structural) · 7 claim grants ·
+-- 8 no money moved · 9 no-spotter resolve · 10 credited recovery is not
+-- refundable · 11 never-regress · 12 resolve grants.
 -- LINKS: supabase/migrations/20260802200000_claim_recovery.sql;
 --        docs/DOMAIN.md (lifecycle 4-6, "Single winner", bounty rules);
 --        docs/TESTING.md (Tier 1 = money/safety); scripts/test-db.sh.
@@ -283,3 +293,157 @@ where id in ('a1a1a1a1-0000-0000-0000-000000000003',
 update public.profiles set recoveries_credited = 0
 where id in ('33333333-3333-3333-3333-333333333333',
              '22222222-2222-2222-2222-222222222222');
+
+
+-- =============================================================================
+-- mark_post_recovered_no_spotter — the OTHER half of a claimed recovery.
+-- claim_recovery stops at recovery_claimed because recovered_no_spotter means
+-- ALREADY REFUNDED; these checks cover the write that records the refund.
+-- Fixtures: a held escrow on Beth's post, created here (the seed has none).
+-- =============================================================================
+
+delete from public.payments where post_id = 'a1a1a1a1-0000-0000-0000-000000000003';
+update public.posts set status = 'active', recovered_at = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 9 — the no-spotter resolve. A claimed recovery with nobody credited
+-- goes recovery_claimed -> recovered_no_spotter, and the escrow held ->
+-- refunded with the refund id and amount recorded.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_post   public.post_status;
+  v_pay    text;
+  v_amount int;
+begin
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+  values ('a1a1a1a1-0000-0000-0000-000000000003', 'pi_recovery_test_1', 'held', 25000);
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  perform public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000003', null);
+  reset role;
+
+  -- The Edge Function has already refunded at Stripe by this point; this is the
+  -- record step.
+  perform public.mark_post_recovered_no_spotter('pi_recovery_test_1', 're_test_1', 24000);
+
+  select status into v_post from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  if v_post <> 'recovered_no_spotter' then
+    raise exception 'CHECK 9 FAILED: post is %, expected recovered_no_spotter', v_post;
+  end if;
+
+  select status::text, refunded_amount_pence into v_pay, v_amount
+  from public.payments where stripe_payment_intent_id = 'pi_recovery_test_1';
+  if v_pay <> 'refunded' then
+    raise exception 'CHECK 9 FAILED: payment is %, expected refunded', v_pay;
+  end if;
+  -- The withheld Stripe fee is real money: the recorded amount must be what was
+  -- actually refunded (bounty minus fee), never the full bounty.
+  if v_amount <> 24000 then
+    raise exception 'CHECK 9 FAILED: recorded refund % pence, expected 24000 (25000 minus a 1000 fee)', v_amount;
+  end if;
+  raise notice 'CHECK 9 passed: no-spotter resolve -> recovered_no_spotter, escrow refunded with the fee withheld';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 10 — MONEY SAFETY. A recovery WITH a credited sighting must never be
+-- refunded to the owner: that money belongs to the spotter. Raises rather than
+-- no-ops, because the Edge Function has already moved money by this point and
+-- a silent no-op would strand a real Stripe refund with no record of it.
+-- -----------------------------------------------------------------------------
+do $$
+declare v_ok boolean := false;
+begin
+  update public.posts set status = 'active', recovered_at = null
+  where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  delete from public.payments where post_id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+  values ('a1a1a1a1-0000-0000-0000-000000000003', 'pi_recovery_test_2', 'held', 25000);
+
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+  values ('c0c0c0c0-0000-0000-0000-000000000005',
+          'a1a1a1a1-0000-0000-0000-000000000003',
+          '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true);
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  perform public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000003',
+                                'c0c0c0c0-0000-0000-0000-000000000005');
+  reset role;
+
+  begin
+    perform public.mark_post_recovered_no_spotter('pi_recovery_test_2', 're_test_2', 24000);
+  exception when others then
+    if sqlerrm like '%RECOVERY_HAS_CREDITED_SIGHTING%' then v_ok := true;
+    else raise exception 'CHECK 10 FAILED: wrong error: %', sqlerrm; end if;
+  end;
+  if not v_ok then
+    raise exception 'CHECK 10 FAILED: a credited recovery was refunded to the OWNER — that is the spotter money';
+  end if;
+  raise notice 'CHECK 10 passed: a credited recovery cannot be refunded to the owner';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 11 — never-regress. Called against a post that is NOT recovery_claimed
+-- (e.g. a duplicate delivery after the state moved on), it must leave the post
+-- alone. The allowlist of one is what stops a late call resurrecting a
+-- terminal post or closing a live one.
+-- -----------------------------------------------------------------------------
+do $$
+declare v_post public.post_status;
+begin
+  delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000005';
+  update public.posts set status = 'active', recovered_at = null
+  where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  delete from public.payments where post_id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+  values ('a1a1a1a1-0000-0000-0000-000000000003', 'pi_recovery_test_3', 'held', 25000);
+
+  -- ACTIVE, never claimed: this function must not touch it.
+  perform public.mark_post_recovered_no_spotter('pi_recovery_test_3', 're_test_3', 24000);
+
+  select status into v_post from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  if v_post <> 'active' then
+    raise exception 'CHECK 11 FAILED: an ACTIVE post was moved to % by the recovery refund recorder', v_post;
+  end if;
+  raise notice 'CHECK 11 passed: only recovery_claimed is resolvable — an active post is untouched';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 12 — SAFETY. Service-role only. A client that could call this would be
+-- able to mark its own bounty refunded with no refund having happened.
+-- -----------------------------------------------------------------------------
+do $$
+declare v_role text;
+begin
+  foreach v_role in array array['anon', 'authenticated'] loop
+    if has_function_privilege(v_role,
+         'public.mark_post_recovered_no_spotter(text, text, integer)', 'EXECUTE') then
+      raise exception 'CHECK 12 FAILED: % holds EXECUTE — it could mark a bounty refunded with no refund', v_role;
+    end if;
+  end loop;
+  if not has_function_privilege('service_role',
+       'public.mark_post_recovered_no_spotter(text, text, integer)', 'EXECUTE') then
+    raise exception 'CHECK 12 FAILED: service_role lost EXECUTE — no recovery could ever be resolved';
+  end if;
+  raise notice 'CHECK 12 passed: mark_post_recovered_no_spotter is service-role only';
+end $$;
+
+
+-- --- housekeeping ------------------------------------------------------------
+delete from public.payments where post_id = 'a1a1a1a1-0000-0000-0000-000000000003';
+delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000005';
+update public.posts set status = 'active', recovered_at = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+update public.profiles set recoveries_credited = 0
+where id = '33333333-3333-3333-3333-333333333333';
