@@ -297,7 +297,39 @@ begin
   if not (v_draft and v_expired) then
     raise exception 'CHECK 4 FAILED: draft=% expired=% not both rejected', v_draft, v_expired;
   end if;
-  raise notice 'CHECK 4 passed: draft/expired posts unwatchable; in-window recovered post watchable';
+  -- The visibility rule MOVED (20260802180000): the policy no longer contains
+  -- the inline EXISTS block that 20260801110000 said must never be paraphrased
+  -- — it delegates to post_is_watchable. Pin both halves from the catalogue,
+  -- because the rule can now be widened by editing one function body that no
+  -- other assertion names.
+  if (select with_check from pg_policies
+      where tablename = 'watchlist_items'
+        and policyname = 'watchlist_items_insert_own_visible_post')
+     not like '%post_is_watchable%' then
+    raise exception 'CHECK 4 FAILED: the insert gate no longer delegates to post_is_watchable';
+  end if;
+
+  if exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'post_is_watchable'
+      and (p.prosrc like '%draft%' or p.prosrc like '%expired%'
+           or p.prosrc like '%cancelled%' or p.prosrc like '%rejected%'
+           or p.prosrc like '%recovery_claimed%' or p.prosrc like '%pending_verification%')
+  ) then
+    raise exception 'CHECK 4 FAILED: post_is_watchable was widened to a hidden status';
+  end if;
+
+  -- SECURITY DEFINER is load-bearing, not incidental: without it the posts
+  -- scan reverts to the caller's RLS and the recovered branch dies again.
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'post_is_watchable' and p.prosecdef
+  ) then
+    raise exception 'CHECK 4 FAILED: post_is_watchable is no longer SECURITY DEFINER';
+  end if;
+
+  raise notice 'CHECK 4 passed: draft/expired posts unwatchable; in-window recovered post watchable; gate delegates to a SECURITY DEFINER post_is_watchable pinned to two statuses';
 end $$;
 
 
@@ -673,7 +705,21 @@ begin
     raise exception 'CHECK 8 FAILED: % view(s) reference watchlist_collections', v_n;
   end if;
 
-  raise notice 'CHECK 8 passed: no grant, policy, view, or function gives anyone but the watcher a path to watch rows/counts or collection names';
+  -- post_is_watchable is SECURITY DEFINER (it bypasses posts RLS so the
+  -- insert gate's recovered branch can evaluate at all). Both directions are
+  -- asserted. anon: this project ships ALTER DEFAULT PRIVILEGES granting
+  -- EXECUTE on new functions to anon, so every CREATE re-opens it and only an
+  -- explicit REVOKE closes it — the exact incident behind 20260713191000.
+  if has_function_privilege('anon', 'public.post_is_watchable(uuid)', 'EXECUTE') then
+    raise exception 'CHECK 8 FAILED: anon holds EXECUTE on post_is_watchable';
+  end if;
+  -- authenticated: a policy expression is evaluated AS THE CALLER, so losing
+  -- this grant fails the gate closed and breaks watching entirely.
+  if not has_function_privilege('authenticated', 'public.post_is_watchable(uuid)', 'EXECUTE') then
+    raise exception 'CHECK 8 FAILED: authenticated lost EXECUTE on post_is_watchable — the insert gate cannot evaluate';
+  end if;
+
+  raise notice 'CHECK 8 passed: no grant, policy, view, or function gives anyone but the watcher a path to watch rows/counts or collection names; post_is_watchable is authenticated-only';
 end $$;
 
 
@@ -823,11 +869,18 @@ begin
     raise exception 'CHECK 11 FAILED: authenticated repointed a watch at another post — SEE-BEFORE-ACT BYPASS';
   end if;
 
-  if exists (
+  -- Scoped to the row this check actually touched. A blanket "no row anywhere
+  -- points at the draft" is wrong here: CHECK 6 deliberately plants exactly
+  -- such a row as postgres (bypassing RLS) to prove get_my_watchlist HIDES
+  -- drafts, and it is still present. The property under test is that the
+  -- UPDATE did not REPOINT this watch — so assert it still points where it
+  -- started. (This assertion never ran until CHECK 4 was fixed.)
+  if not exists (
     select 1 from public.watchlist_items
-    where user_id = '22222222-2222-2222-2222-222222222222' and post_id = v_draft
+    where user_id = '22222222-2222-2222-2222-222222222222'
+      and post_id = 'b2b2b2b2-0000-0000-0000-000000000001'
   ) then
-    raise exception 'CHECK 11 FAILED: a watch now points at an unreadable draft';
+    raise exception 'CHECK 11 FAILED: the watch was repointed away from its original post';
   end if;
 
   raise notice 'CHECK 11 passed: the UPDATE grant reaches collection_id only — post_id is unreachable';
@@ -864,7 +917,14 @@ begin
   end;
   if not v_ok then raise exception 'CHECK 12 FAILED: a 21st collection was created (cap not enforced)'; end if;
 
-  -- Case-insensitive clash within one user.
+  -- Case-insensitive clash within one user. FREE A SLOT FIRST: the cap is
+  -- checked BEFORE the name, so attempting this while still at 20 raises
+  -- COLLECTION_LIMIT_REACHED and asserts nothing about name uniqueness. (This
+  -- line never ran until CHECK 4 was fixed, which is how it survived.)
+  delete from public.watchlist_collections
+  where user_id = '22222222-2222-2222-2222-222222222222'
+    and name = 'Cap list 20';
+
   v_ok := false;
   begin
     perform public.create_watchlist_collection('cap LIST 1');
