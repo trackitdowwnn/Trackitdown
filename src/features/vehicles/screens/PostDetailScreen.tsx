@@ -100,6 +100,12 @@ function canEditSafeSection(post: PostDetail): boolean {
 function canDeactivate(post: PostDetail): boolean {
   return post.isOwner && (post.status === 'active' || post.status === 'pending_verification');
 }
+/** The owner can mark an ACTIVE post recovered. Narrower than canDeactivate on
+ *  purpose: `claim_recovery` accepts `active` and nothing else, so offering
+ *  this on a pending_verification post would show a button that always fails. */
+function canMarkRecovered(post: PostDetail): boolean {
+  return post.isOwner && post.status === 'active';
+}
 
 export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const router = useRouter();
@@ -281,6 +287,13 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     deactivateRef.current?.open();
   }, []);
 
+  // No confirm dialog here, unlike deactivate: the recovery screen IS the
+  // confirmation, and it asks something a yes/no cannot — WHICH sighting. A
+  // dialog first would be a gate in front of a gate.
+  const onRecovered = useCallback(() => {
+    router.push({ pathname: '/recover-post', params: { postId } });
+  }, [postId, router]);
+
   const onOpenMap = useCallback(
     (post: PostDetail) => {
       if (post.lat == null || post.lng == null) {
@@ -356,6 +369,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                     : undefined
                 }
                 onDeactivate={canDeactivate(result.post) ? requestDeactivate : undefined}
+                onRecovered={canMarkRecovered(result.post) ? onRecovered : undefined}
               />
             </View>
           </>
