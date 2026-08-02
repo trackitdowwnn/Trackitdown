@@ -126,11 +126,36 @@ uniqueness would leak other people's garages); plate optional throughout.
 
 ### Scanning the plate from a photo (2026-08-02)
 
-The plate step offers "Scan it from a photo" — tap for the camera, long-press
-for the library. OCR runs **on device**
-(`@react-native-ml-kit/text-recognition`), candidates are ranked, and the owner
-confirms one in a sheet before anything is written. Typing stays primary and the
-skip stays.
+**The photos an owner adds are read for a registration.** There is no separate
+"take a photo of the plate" action — people photograph their car anyway and the
+plate is usually in shot, so asking again for something we already have is
+asking twice. (A dedicated scan button on the plate step was built first and
+removed on the same day for exactly that reason.)
+
+OCR runs **on device** (`@react-native-ml-kit/text-recognition`), candidates are
+ranked, and the owner confirms one in a sheet before anything is written.
+Typing stays primary and the skip stays.
+
+- **It is QUIET.** Nothing read, or a reading that AGREES with what was typed →
+  silence. A "plate verified" confirmation is noise: they already knew, and they
+  were right. It speaks only when the field is empty or the reading disagrees —
+  and a disagreement asks *"which one is right?"* with their own plate as a
+  named option, because a plate is easy to misread from a photo and they were
+  looking at the actual car.
+- **It never writes on its own.** Detection may only ASK. The most important
+  test in `PhotosWithPlateScanStep.test.tsx` asserts exactly that.
+- **The plate step comes FIRST, photos near the end**, so this can only offer to
+  fill or correct the field, never pre-fill it. Accepted: re-ordering would cost
+  the reason the plate is first — it is the one thing an owner can answer
+  instantly.
+- **A car saved with no photos gets no scan.** `minPhotos` is 0 here, and that
+  is the accepted cost of dropping the separate scan action.
+- **Why a garage component, not a flag on `buildVehicleSteps`.** The garage
+  swaps the shared photos step's *component* for `PhotosWithPlateScanStep`,
+  which renders the shared step untouched and adds its own behaviour around it.
+  `features/vehicles` must never learn that plates or the garage exist
+  (ARCHITECTURE rule 1), and this way the posting wizard's photo step is
+  unaffected **by construction** rather than by a flag someone could flip.
 
 - **Why the garage and not the posting wizard.** The wizard has no plate step —
   removed 2026-07-24 — and the shared `buildVehicleSteps` deliberately excludes

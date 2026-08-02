@@ -116,6 +116,52 @@ describe('with candidates', () => {
   });
 });
 
+// The photos-step path: the owner already typed something and the recogniser
+// read something else. That is a DISAGREEMENT, not a discovery, and the sheet
+// must not quietly imply the machine wins — a plate is easy to misread from a
+// photo, and they were looking at the actual car.
+describe('when it disagrees with a typed plate', () => {
+  it('asks which is right, and names keeping theirs', async () => {
+    const { getByText } = await act(async () =>
+      render(
+        <PlateScanSheet candidates={ONE} existingPlate="XY34 ZZZ" onConfirm={jest.fn()} />,
+      ),
+    );
+
+    expect(getByText('Which one is right?')).toBeTruthy();
+    // An explicit named option, never a bare "No" that reads as conceding.
+    expect(getByText('Keep XY34 ZZZ')).toBeTruthy();
+  });
+
+  it('keeping their plate confirms nothing', async () => {
+    const onConfirm = jest.fn();
+    const onDismiss = jest.fn();
+    const { getByText } = await act(async () =>
+      render(
+        <PlateScanSheet
+          candidates={ONE}
+          existingPlate="XY34 ZZZ"
+          onConfirm={onConfirm}
+          onDismiss={onDismiss}
+        />,
+      ),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByText('Keep XY34 ZZZ'));
+    });
+    expect(onDismiss).toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled(); // their typed plate is untouched
+  });
+
+  it('asks the DISCOVERY question instead when the field was empty', async () => {
+    const { getByText } = await act(async () =>
+      render(<PlateScanSheet candidates={ONE} onConfirm={jest.fn()} />),
+    );
+    expect(getByText('Is this your registration?')).toBeTruthy();
+  });
+});
+
 describe('when permission was refused', () => {
   it('explains it here rather than needing a toast provider', async () => {
     const onConfirm = jest.fn();

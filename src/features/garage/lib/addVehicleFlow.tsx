@@ -25,6 +25,7 @@ import { buildVehicleSteps } from '@/features/vehicles';
 import type { WizardFlow } from '@/shared/wizard';
 
 import { NicknameStep, PlateStep } from '../components/garageSteps';
+import { PhotosWithPlateScanStep } from '../components/PhotosWithPlateScanStep';
 import type { AddVehicleAnswers } from '../types';
 
 /** Everything starts empty — there is no equivalent of the bounty seed here. */
@@ -56,7 +57,17 @@ export function buildAddVehicleFlow(): WizardFlow<AddVehicleAnswers> {
           },
           // The SHARED slice — identical to the posting wizard's `car` phase.
           // minPhotos: 0 because a photo-less saved car is still worth having.
-          ...buildVehicleSteps<AddVehicleAnswers>({ minPhotos: 0 }),
+          //
+          // ...except the photos step, whose COMPONENT is swapped for the
+          // garage's wrapper, so the photos an owner adds are quietly read for
+          // a registration. The swap lives HERE rather than as an option on
+          // buildVehicleSteps because `features/vehicles` must not learn that
+          // plates or the garage exist (ARCHITECTURE rule 1) — and this way the
+          // posting wizard's photo step is untouched BY CONSTRUCTION, not by a
+          // flag someone could later flip.
+          ...buildVehicleSteps<AddVehicleAnswers>({ minPhotos: 0 }).map((step) =>
+            step.id === 'photos' ? { ...step, component: PhotosWithPlateScanStep } : step,
+          ),
           {
             id: 'nickname',
             question: 'Give it a name?',

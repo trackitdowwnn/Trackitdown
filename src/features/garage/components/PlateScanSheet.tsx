@@ -41,6 +41,14 @@ export interface PlateScanSheetProps {
    * already the "that didn't work, here's what to do" surface.
    */
   blocked?: boolean;
+  /**
+   * What the owner already typed, if anything. Its presence changes the
+   * QUESTION: with an empty field this is a discovery ("is this it?"), but
+   * against a typed plate it is a disagreement ("which is right?"), and the
+   * sheet must show what they typed as a choice rather than quietly implying
+   * the machine is correct. They may well be right and the photo misread.
+   */
+  existingPlate?: string | null;
   /** The canonical plate the user accepted. */
   onConfirm: (canon: string) => void;
   /** They chose to type instead, or dismissed the sheet. */
@@ -51,6 +59,7 @@ export function PlateScanSheet({
   ref,
   candidates,
   blocked = false,
+  existingPlate = null,
   onConfirm,
   onDismiss,
 }: PlateScanSheetProps) {
@@ -72,11 +81,15 @@ export function PlateScanSheet({
   const found = !blocked && candidates.length > 0;
   const chosen = candidates[selected];
 
+  const disagreeing = found && Boolean(existingPlate);
+
   const title = blocked
     ? 'Photo access is off'
-    : found
-      ? 'Is this your registration?'
-      : "Couldn't read it";
+    : !found
+      ? "Couldn't read it"
+      : disagreeing
+        ? 'Which one is right?'
+        : 'Is this your registration?';
 
   return (
     <BottomSheet ref={ref} title={title} onDismiss={onDismiss}>
@@ -99,7 +112,14 @@ export function PlateScanSheet({
           </>
         ) : (
           <>
-            {candidates.length > 1 ? (
+            {disagreeing ? (
+              <Text style={styles.body}>
+                Your photos look like{' '}
+                {candidates.length > 1 ? 'one of these' : candidates[0].display}, but you
+                typed {existingPlate}. Yours may well be right — a plate is easy to
+                misread from a photo.
+              </Text>
+            ) : candidates.length > 1 ? (
               <Text style={styles.body}>Tap the right one.</Text>
             ) : null}
 
@@ -129,10 +149,17 @@ export function PlateScanSheet({
             </View>
 
             <Button
-              label="Yes, that's it"
+              label={disagreeing ? 'Use this one' : "Yes, that's it"}
               onPress={() => chosen && onConfirm(chosen.canon)}
             />
-            <Button label="No, I'll type it" variant="ghost" onPress={() => onDismiss?.()} />
+            {/* Dismissing KEEPS what they typed. The wording says so, because
+                "No" next to a machine's confident guess should not feel like
+                admitting a mistake. */}
+            <Button
+              label={disagreeing ? `Keep ${existingPlate}` : "No, I'll type it"}
+              variant="ghost"
+              onPress={() => onDismiss?.()}
+            />
           </>
         )}
       </View>
