@@ -30,6 +30,7 @@ for suite in \
   supabase/tests/edit_post_sections_verification.sql \
   supabase/tests/garage_verification.sql \
   supabase/tests/alerts_verification.sql \
+  supabase/tests/recovery_verification.sql \
   supabase/tests/anon_role_verification.sql
 do
   echo "== ${suite}"

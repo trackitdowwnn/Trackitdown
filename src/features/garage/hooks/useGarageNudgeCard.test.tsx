@@ -43,8 +43,14 @@ const BRAND_NEW = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 /** Exposes the hook through rendered controls rather than an outer variable, so
  *  nothing is reassigned during render and the tests exercise it the way a
  *  screen would. */
-function Probe({ accountCreatedAt }: { accountCreatedAt: string | null }) {
-  const { visible, accept, dismiss } = useGarageNudgeCard({ accountCreatedAt });
+function Probe({
+  accountCreatedAt,
+  active = true,
+}: {
+  accountCreatedAt: string | null;
+  active?: boolean;
+}) {
+  const { visible, accept, dismiss } = useGarageNudgeCard({ accountCreatedAt, active });
   return (
     <>
       <Text>{visible ? 'visible' : 'hidden'}</Text>
@@ -58,8 +64,8 @@ function Probe({ accountCreatedAt }: { accountCreatedAt: string | null }) {
   );
 }
 
-const renderProbe = (accountCreatedAt: string | null = TENURED) =>
-  act(async () => render(<Probe accountCreatedAt={accountCreatedAt} />));
+const renderProbe = (accountCreatedAt: string | null = TENURED, active = true) =>
+  act(async () => render(<Probe accountCreatedAt={accountCreatedAt} active={active} />));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -110,6 +116,17 @@ describe('when it stays quiet', () => {
     const { getByText } = await renderProbe(null);
 
     expect(getByText('hidden')).toBeTruthy();
+  });
+
+  it('stays hidden, and costs nothing, when a higher-priority nudge owns the slot', async () => {
+    // The feed shows ONE nudge. `active` is folded into `visible` rather than
+    // checked at the call site so that visible means "on screen" — which is
+    // what the impression log keys off — and so a card nobody can see does not
+    // pay for a garage fetch either.
+    const { getByText } = await renderProbe(TENURED, false);
+
+    expect(getByText('hidden')).toBeTruthy();
+    expect(mockUseHasSavedCar).toHaveBeenCalledWith({ enabled: false });
   });
 });
 

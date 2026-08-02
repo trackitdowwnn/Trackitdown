@@ -106,7 +106,6 @@ export {
   type PermissionPrimerProps,
 } from './PermissionPrimer';
 export { PlateChip, spellPlate, type PlateChipProps } from './PlateChip';
-export { ReadMore, type ReadMoreProps } from './ReadMore';
 export { SafetyNotice } from './SafetyNotice';
 export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
