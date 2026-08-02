@@ -447,3 +447,234 @@ update public.posts set status = 'active', recovered_at = null
 where id = 'a1a1a1a1-0000-0000-0000-000000000003';
 update public.profiles set recoveries_credited = 0
 where id = '33333333-3333-3333-3333-333333333333';
+
+
+-- =============================================================================
+-- THE PAYOUT ENDING — payout_split + mark_recovery_paid.
+-- The mirror image of CHECKs 9-12: that half refuses when a sighting is
+-- credited, this half REQUIRES it. Between them a claimed recovery has exactly
+-- one legal ending and neither can perform the other's.
+-- =============================================================================
+
+delete from public.payments where post_id = 'a1a1a1a1-0000-0000-0000-000000000003';
+delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000006';
+update public.posts set status = 'active', recovered_at = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+
+-- The payee's connected account. payments.payee_account_id is a FK to THIS
+-- row (not the Stripe string) with ON DELETE RESTRICT, so a payout cannot be
+-- recorded without one.
+insert into public.stripe_connected_accounts
+  (profile_id, stripe_account_id, onboarding_complete, payouts_enabled)
+values ('33333333-3333-3333-3333-333333333333', 'acct_test_spotter', true, true)
+on conflict (profile_id) do update set payouts_enabled = true;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 13 — MONEY. The 95/5 split is exact and LOSSLESS at every amount: the
+-- two halves must add back to the bounty penny for penny. A split that rounds
+-- both sides independently can invent or lose a penny, which over enough
+-- recoveries is real money and an unreconcilable ledger.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_b      integer;
+  v_split  record;
+begin
+  foreach v_b in array array[5000, 5001, 7777, 9999, 12345, 33333, 500000] loop
+    select * into v_split from public.payout_split(v_b);
+    if v_split.transfer_pence + v_split.fee_pence <> v_b then
+      raise exception 'CHECK 13 FAILED: % split % + % does not sum to the bounty',
+        v_b, v_split.transfer_pence, v_split.fee_pence;
+    end if;
+    -- The spotter's share is 95%, so it must always dominate.
+    if v_split.transfer_pence <= v_split.fee_pence then
+      raise exception 'CHECK 13 FAILED: at % the platform took %, the spotter %',
+        v_b, v_split.fee_pence, v_split.transfer_pence;
+    end if;
+  end loop;
+
+  -- The floor of the allowed bounty range (DOMAIN: minimum £50).
+  select * into v_split from public.payout_split(5000);
+  if v_split.transfer_pence <> 4750 or v_split.fee_pence <> 250 then
+    raise exception 'CHECK 13 FAILED: a £50 bounty split %/%, expected 4750/250',
+      v_split.transfer_pence, v_split.fee_pence;
+  end if;
+  raise notice 'CHECK 13 passed: the 95/5 split is exact and lossless across the bounty range';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 14 — the payout ending. A claimed recovery WITH a credited sighting
+-- goes recovery_claimed -> recovered, and the escrow held -> released with the
+-- transfer recorded.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_post   public.post_status;
+  v_pay    text;
+  v_amount integer;
+  v_fee    integer;
+  v_acct   uuid;
+begin
+  select id into v_acct from public.stripe_connected_accounts
+  where profile_id = '33333333-3333-3333-3333-333333333333';
+
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+  values ('a1a1a1a1-0000-0000-0000-000000000003', 'pi_payout_1', 'held', 25000);
+
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+  values ('c0c0c0c0-0000-0000-0000-000000000006',
+          'a1a1a1a1-0000-0000-0000-000000000003',
+          '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true);
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  perform public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000003',
+                                'c0c0c0c0-0000-0000-0000-000000000006');
+  reset role;
+
+  -- The Edge Function has created the Stripe transfer by this point.
+  perform public.mark_recovery_paid(
+    'pi_payout_1', 'tr_test_1', v_acct, 23750, 1250);
+
+  select status into v_post from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  if v_post <> 'recovered' then
+    raise exception 'CHECK 14 FAILED: post is %, expected recovered', v_post;
+  end if;
+
+  select status::text, transfer_amount_pence, platform_fee_pence
+    into v_pay, v_amount, v_fee
+  from public.payments where stripe_payment_intent_id = 'pi_payout_1';
+  if v_pay <> 'released' then
+    raise exception 'CHECK 14 FAILED: payment is %, expected released', v_pay;
+  end if;
+  if v_amount <> 23750 or v_fee <> 1250 then
+    raise exception 'CHECK 14 FAILED: recorded %/%, expected 23750/1250', v_amount, v_fee;
+  end if;
+  raise notice 'CHECK 14 passed: payout ending -> recovered, escrow released, 95/5 recorded';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 15 — MONEY SAFETY. The split is re-derived at the WRITE and any other
+-- division is refused. The Edge Function computes these numbers to create the
+-- transfer, so this is the independent check that what is about to be recorded
+-- is what the rule permits — by something that did not compute it.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_ok   boolean := false;
+  v_acct uuid;
+begin
+  select id into v_acct from public.stripe_connected_accounts
+  where profile_id = '33333333-3333-3333-3333-333333333333';
+
+  update public.posts set status = 'active', recovered_at = null
+  where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  delete from public.payments where post_id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+  values ('a1a1a1a1-0000-0000-0000-000000000003', 'pi_payout_2', 'held', 25000);
+
+  update public.sightings set status = 'unverified'
+  where id = 'c0c0c0c0-0000-0000-0000-000000000006';
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  perform public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000003',
+                                'c0c0c0c0-0000-0000-0000-000000000006');
+  reset role;
+
+  -- A greedier platform cut than the rule allows.
+  begin
+    perform public.mark_recovery_paid(
+      'pi_payout_2', 'tr_test_2', v_acct, 20000, 5000);
+  exception when others then
+    if sqlerrm like '%PAYOUT_SPLIT_MISMATCH%' then v_ok := true;
+    else raise exception 'CHECK 15 FAILED: wrong error: %', sqlerrm; end if;
+  end;
+  if not v_ok then
+    raise exception 'CHECK 15 FAILED: a NON-95/5 split was recorded — the spotter was short-changed';
+  end if;
+  raise notice 'CHECK 15 passed: any split other than 95/5 is refused at the write';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 16 — MONEY SAFETY. A payout REQUIRES a credited sighting. Without one
+-- there is nobody the money belongs to and the correct ending is a refund.
+-- The exact inverse of CHECK 10, so the two endings cannot be confused.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_ok   boolean := false;
+  v_acct uuid;
+begin
+  select id into v_acct from public.stripe_connected_accounts
+  where profile_id = '33333333-3333-3333-3333-333333333333';
+
+  update public.posts set status = 'active', recovered_at = null
+  where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  delete from public.payments where post_id = 'a1a1a1a1-0000-0000-0000-000000000003';
+  delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000006';
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+  values ('a1a1a1a1-0000-0000-0000-000000000003', 'pi_payout_3', 'held', 25000);
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  perform public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000003', null);
+  reset role;
+
+  begin
+    perform public.mark_recovery_paid(
+      'pi_payout_3', 'tr_test_3', v_acct, 23750, 1250);
+  exception when others then
+    if sqlerrm like '%PAYOUT_WITHOUT_CREDITED_SIGHTING%' then v_ok := true;
+    else raise exception 'CHECK 16 FAILED: wrong error: %', sqlerrm; end if;
+  end;
+  if not v_ok then
+    raise exception 'CHECK 16 FAILED: a bounty was paid out with NOBODY credited';
+  end if;
+  raise notice 'CHECK 16 passed: a payout without a credited sighting is refused';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 17 — SAFETY. Service-role only, for both writers. A client that could
+-- call mark_recovery_paid could mark a bounty released with no transfer behind
+-- it; one that could call upsert_connected_account could point somebody else's
+-- payouts at their own Stripe account.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_role text;
+  v_fn   text;
+begin
+  foreach v_fn in array array[
+    'public.mark_recovery_paid(text, text, uuid, integer, integer)',
+    'public.upsert_connected_account(uuid, text, boolean, boolean)',
+    'public.payout_split(integer)'
+  ] loop
+    foreach v_role in array array['anon', 'authenticated'] loop
+      if has_function_privilege(v_role, v_fn, 'EXECUTE') then
+        raise exception 'CHECK 17 FAILED: % holds EXECUTE on %', v_role, v_fn;
+      end if;
+    end loop;
+    if not has_function_privilege('service_role', v_fn, 'EXECUTE') then
+      raise exception 'CHECK 17 FAILED: service_role lost EXECUTE on % — payouts would break', v_fn;
+    end if;
+  end loop;
+  raise notice 'CHECK 17 passed: the payout writers are service-role only';
+end $$;
+
+
+-- --- housekeeping ------------------------------------------------------------
+delete from public.payments where post_id = 'a1a1a1a1-0000-0000-0000-000000000003';
+delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000006';
+update public.posts set status = 'active', recovered_at = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000003';
+update public.profiles set recoveries_credited = 0
+where id = '33333333-3333-3333-3333-333333333333';
