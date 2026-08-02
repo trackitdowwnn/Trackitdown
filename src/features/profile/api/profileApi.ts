@@ -15,6 +15,7 @@
  *        docs/SECURITY_AND_TRUST.md §1/§3; docs/LOGGING.md.
  */
 
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 import { unregisterCurrentPushToken } from '@/features/notifications';
@@ -192,18 +193,58 @@ export async function signOut(): Promise<void> {
   log.info('Signed out');
 }
 
+/** Error carrying user-facing copy plus the server's machine `code`. */
+export class AccountDeletionError extends Error {
+  readonly code: string;
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = 'AccountDeletionError';
+    this.code = code;
+  }
+}
+
+/** Server codes that deserve their own words. Anything else gets the fallback —
+ *  a server message is never shown raw, so a 500's internals can't reach a
+ *  screen. */
+const DELETION_MESSAGES: Record<string, string> = {
+  ACCOUNT_HAS_ESCROW:
+    'You have a live listing with a bounty in escrow. Cancel it first, then delete your account.',
+  NOT_AUTHENTICATED: 'Please sign in again, then try deleting your account.',
+};
+const DELETION_FALLBACK = "We couldn't delete your account. Please try again.";
+
 /**
- * Invoke the server-side delete-account Edge Function (outlined in the
- * profile migration; not built yet). The server re-checks blocking posts —
- * the enforcement lives THERE, this call just requests it.
+ * Invoke the server-side delete-account Edge Function. The server re-checks
+ * blocking posts — the enforcement lives THERE, this call just requests it.
+ *
+ * The escrow rejection is worth distinguishing: the pre-check in
+ * countDeletionBlockingPosts can be a beat stale (a draft can go active between
+ * the check and the confirm tap), so a user CAN legitimately reach the confirm
+ * dialog and still be refused. Telling them "cancel your listing first" is
+ * actionable; "try again" would be a lie that never comes true.
  */
 export async function requestAccountDeletion(): Promise<void> {
   log.info('Account deletion requested');
   const { error } = await supabase.functions.invoke('delete-account');
   if (error) {
-    // Name only — server-controlled message strings stay out of the log.
-    log.warn('Account deletion failed or unavailable', { error: error.name });
-    throw error;
+    let code = 'UNKNOWN';
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const body = (await error.context.json()) as { code?: string };
+        code = body.code ?? 'UNKNOWN';
+      } catch {
+        // Non-JSON body (a gateway error page); the fallback copy covers it.
+      }
+    }
+    // Code only — server-controlled message strings stay out of the log.
+    log.warn('Account deletion failed', { code });
+    // Own-property lookup: bracket access on a plain object also resolves
+    // inherited keys, so a `code` of 'constructor' would otherwise map to a
+    // function (the guard paymentsApi's parseFunctionError uses).
+    const message = Object.hasOwn(DELETION_MESSAGES, code)
+      ? DELETION_MESSAGES[code]
+      : DELETION_FALLBACK;
+    throw new AccountDeletionError(message, code);
   }
   // The server deleted auth.users; drop the now-orphaned local tokens too.
   await supabase.auth.signOut().catch(() => {
