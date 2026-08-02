@@ -31,7 +31,6 @@
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import {
   Banknote,
   Bell,
@@ -68,7 +67,7 @@ import {
   signOut,
 } from '../api/profileApi';
 import { ProfileHeroCard } from '../components/ProfileHeroCard';
-import { LEGAL_URLS } from '@/shared/lib';
+import { legalHref } from '@/shared/lib';
 
 import { PAYOUTS_ENABLED, SUPPORT_EMAIL } from '../config';
 import { useMyProfile } from '../hooks/useMyProfile';
@@ -318,20 +317,22 @@ function LoadedProfile({
         </Section>
 
         <Section title="Support & legal">
+          {/* In-app, not the browser (2026-08-02): these opened
+              `trackitdown.example`, a reserved TLD resolving to nothing. */}
           <ListRow
             icon={Shield}
             title="Safety guidelines"
-            onPress={() => void WebBrowser.openBrowserAsync(LEGAL_URLS.safetyGuidelines)}
+            onPress={() => router.push(legalHref('safety'))}
           />
           <ListRow
             icon={FileText}
             title="Terms"
-            onPress={() => void WebBrowser.openBrowserAsync(LEGAL_URLS.terms)}
+            onPress={() => router.push(legalHref('terms'))}
           />
           <ListRow
             icon={FileText}
             title="Privacy policy"
-            onPress={() => void WebBrowser.openBrowserAsync(LEGAL_URLS.privacyPolicy)}
+            onPress={() => router.push(legalHref('privacy'))}
           />
           <ListRow
             icon={LifeBuoy}

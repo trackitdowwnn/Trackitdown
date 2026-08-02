@@ -1,27 +1,31 @@
 /**
  * WHAT:  AuthLegalNotice — the "By continuing you agree to our Terms and Privacy
  *        Policy" line under the auth actions, with the two phrases tappable.
- * WHY:   Legal consent must be visible at the point of sign-in, and the links
- *        open in the system browser (expo-web-browser) rather than an in-app
- *        webview — the same pattern the profile screen uses. Copy is calm and
- *        fixed (no exclamation), matching the flow's tone.
+ * WHY:   Legal consent must be visible at the point of sign-in. The links open
+ *        the documents IN-APP (2026-08-02): they previously opened
+ *        `trackitdown.example` in the system browser, a reserved TLD that
+ *        resolves to nothing — so the one link a user is most likely to tap
+ *        before agreeing to anything led to a browser error. In-app also means
+ *        the text can never drift from the version they actually agreed to.
+ *        Copy is calm and fixed (no exclamation), matching the flow's tone.
  * LINKS: src/features/auth/components/AuthSheet.tsx (consumer);
- *        src/shared/lib/legal.ts (LEGAL_URLS).
+ *        src/shared/lib/legal.ts (LEGAL_ROUTES); src/features/legal/.
  */
 
-import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
 import { StyleSheet, Text } from 'react-native';
 
-import { LEGAL_URLS } from '@/shared/lib';
+import { legalHref } from '@/shared/lib';
 import { colors, spacing, typography } from '@/shared/theme';
 
 export function AuthLegalNotice() {
+  const router = useRouter();
   return (
     <Text style={styles.text}>
       By continuing you agree to our{' '}
       <Text
         style={styles.link}
-        onPress={() => void WebBrowser.openBrowserAsync(LEGAL_URLS.terms)}
+        onPress={() => router.push(legalHref('terms'))}
         accessibilityRole="link"
       >
         Terms
@@ -29,7 +33,7 @@ export function AuthLegalNotice() {
       and{' '}
       <Text
         style={styles.link}
-        onPress={() => void WebBrowser.openBrowserAsync(LEGAL_URLS.privacyPolicy)}
+        onPress={() => router.push(legalHref('privacy'))}
         accessibilityRole="link"
       >
         Privacy Policy
