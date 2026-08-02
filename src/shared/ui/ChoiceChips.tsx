@@ -10,8 +10,7 @@
  *        second consumer. Values may be transient (a preset row can pass
  *        value=null and treat onSelect as an action).
  * LINKS: docs/DESIGN_SYSTEM.md (Colour, Accessibility);
- *        src/shared/ui/DateTimeField.tsx and src/app/wizard-demo.tsx
- *        (consumers).
+ *        src/shared/ui/DateTimeField.tsx (consumer).
  *
  * Usage:
  *   <ChoiceChips

@@ -398,3 +398,40 @@ begin
   end if;
   raise notice 'CHECK 10 passed: anon reads the full taxonomy (% row(s)) and only active posts'' % feature tag(s)', v_truth_vf, v_truth_pf_active;
 end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 11 — SAFETY. public.account_deletions is the ONE table that outlives an
+-- erased account (it carries the Stripe Connect link so an out-of-band payout
+-- teardown has something to act on). It must be service-role only. If anon or
+-- authenticated could read it, it would answer "was this person deleted?" —
+-- an oracle over people who have exercised their right to erasure — and if
+-- either could WRITE it, the erasure record could be forged or destroyed.
+--
+-- Asserted at the GRANT layer, not via RLS: the table has RLS on with ZERO
+-- policies, so a grant is the only thing that could open it, and Supabase's
+-- ALTER DEFAULT PRIVILEGES re-grants anon/authenticated on every new table in
+-- this schema (the hole 20260802170000 closed for four other tables).
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_priv text;
+  v_role text;
+begin
+  foreach v_role in array array['anon', 'authenticated'] loop
+    foreach v_priv in array array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'] loop
+      if has_table_privilege(v_role, 'public.account_deletions', v_priv) then
+        raise exception 'CHECK 11 FAILED: % holds % on account_deletions — the erasure record must be service-role only', v_role, v_priv;
+      end if;
+    end loop;
+  end loop;
+
+  -- The writer must still be able to write, or every erasure silently loses its
+  -- audit row (the failure mode is invisible — the function treats it as
+  -- non-fatal so a user is never trapped in an account they asked to erase).
+  if not has_table_privilege('service_role', 'public.account_deletions', 'INSERT') then
+    raise exception 'CHECK 11 FAILED: service_role cannot INSERT — erasures would go unrecorded';
+  end if;
+
+  raise notice 'CHECK 11 passed: account_deletions is service-role only (anon/authenticated hold nothing)';
+end $$;

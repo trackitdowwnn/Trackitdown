@@ -86,9 +86,10 @@ export function SaveYourCarSheet() {
     if (intent === null) {
       return;
     }
-    // The __DEV__ tab-bar branch lets a GUEST reach the wizard; offering them a
-    // garage they can't write to would be a dead end. This check also keeps
-    // working when that branch is eventually deleted.
+    // Defence in depth. This existed because a __DEV__ tab-bar branch let a
+    // GUEST reach the wizard (that branch was deleted 2026-08-01); the entry
+    // point gates properly now, but offering a garage to someone who cannot
+    // write to it would be a dead end however they arrived, so the check stays.
     if (!signedIn) {
       suppress('signed_out');
       return;

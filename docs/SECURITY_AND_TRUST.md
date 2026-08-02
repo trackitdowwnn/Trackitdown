@@ -121,15 +121,33 @@ commenting standards.
     (`vehicles.user_id → profiles ON DELETE CASCADE`). They are NOT subject to
     the 30-day post-closure rule, which governs post artefacts: a saved car has
     no closure event.
-  - **OPEN GAP — storage objects are NOT deleted.** `delete_vehicle` removes
-    rows only; the JPEGs stay in the public `post-photos` bucket and remain
-    reachable by URL indefinitely. `update_vehicle` orphans replaced photos the
-    same way, and no account-deletion Edge Function exists to trigger the
-    cascade in the first place. This is a UK GDPR erasure gap on personal data,
-    not merely doc drift. Any fix must first check `post_photos.url` /
-    `post_distinctive_feature.photo_url` for the same object: the garage and
-    posts deliberately SHARE objects, so deleting one blindly would blank the
-    hero image of a live stolen-car listing.
+  - **PARTLY CLOSED (2026-08-01) — account deletion now sweeps storage.** The
+    `delete-account` Edge Function exists. It had been invoked by the client
+    since 2026-07-10 but was never written, so the app shipped a delete button
+    that could not delete. It now removes every object the user owns in
+    `avatars`, `post-photos` and `verification-documents` before deleting the
+    `auth.users` row. It sweeps via the Storage API, never by deleting
+    `storage.objects` rows — a row delete leaves the bytes orphaned in the
+    backing store, findable by nothing. Order is load-bearing: storage FIRST, so
+    a failed sweep aborts while everything is still retryable, rather than
+    stranding personal data with no owner left to erase it.
+    - **`sighting-photos` is deliberately EXCLUDED.** Those are uploaded by the
+      spotter into `<postId>/<uid>/…` but are evidence on somebody ELSE's
+      listing, possibly a live one. Sweeping them would let anyone delete their
+      account and, as a side effect, strip the only photographic evidence from a
+      stranger's active theft case. The erasure still severs the link (profile
+      and sighting rows cascade), leaving an anonymous photo of a vehicle in a
+      public place — per ADR-0003 these are camera-only shots of the CAR, not
+      the spotter — and Art. 17(3)(e) covers evidence for legal claims. Flagged
+      as a judgement call, not a certainty.
+  - **STILL OPEN — `delete_vehicle` / `update_vehicle` orphan objects.** Both
+    remove rows only; the JPEGs stay in the public `post-photos` bucket and
+    remain reachable by URL indefinitely. Any fix must first check
+    `post_photos.url` / `post_distinctive_feature.photo_url` for the same
+    object: the garage and posts deliberately SHARE objects, so deleting one
+    blindly would blank the hero image of a live stolen-car listing. (Account
+    deletion is safe from that trap because the whole account's posts cascade
+    with it.)
   - Deleting a saved car never touches a post made from it — posts hold their
     own snapshot (DOMAIN.md, "Garage").
 - Auth is passwordless (email OTP + Apple/Google — DOMAIN.md). Session tokens
