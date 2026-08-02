@@ -124,6 +124,45 @@ to list saved cars.
 **Limits:** 5 vehicles per user; one saved car per plate **per user** (global
 uniqueness would leak other people's garages); plate optional throughout.
 
+### Scanning the plate from a photo (2026-08-02)
+
+The plate step offers "Scan it from a photo" — tap for the camera, long-press
+for the library. OCR runs **on device**
+(`@react-native-ml-kit/text-recognition`), candidates are ranked, and the owner
+confirms one in a sheet before anything is written. Typing stays primary and the
+skip stays.
+
+- **Why the garage and not the posting wizard.** The wizard has no plate step —
+  removed 2026-07-24 — and the shared `buildVehicleSteps` deliberately excludes
+  the plate. Adding one there would reverse a product decision and put a
+  keyboard in front of someone minutes after a theft. The garage is the calm
+  moment, before anything has gone wrong.
+- **The confirm sheet is the ONLY check.** There is no DVLA lookup in this app,
+  so nothing downstream catches a misread. A scanned plate is therefore never
+  auto-filled, however confident it looks: a silently wrong plate would
+  misdirect the "already reported stolen" check this step's own copy promises,
+  and would eventually collide with a stranger's registration once
+  `PLATE_IN_USE` wakes up (see Rules below).
+- **O/0 and I/1 are resolved by POSITION, not guessed.** UK formats fix which
+  slots are letters and which are digits, so `AB1Z CDE` repairs to `AB12 CDE` —
+  slot 4 must be a digit. Below 6 characters no repair is attempted at all:
+  the short dateless shapes are so loose that "2026" on a sign, or the fragment
+  "AB12" split out of a real plate, would otherwise become confident-looking
+  candidates. Logic and tests in `src/shared/lib/plateCandidates.ts`.
+- **// SAFETY — nothing but the confirmed plate survives.** The image is
+  re-encoded through `expo-image-manipulator` before the OCR module sees it, so
+  the copy it reads carries no EXIF (a camera-roll photo of your own car usually
+  carries your home GPS; the picker's `exif: false` only stops US reading it).
+  Recognised text lives in component state only, is dropped when the sheet
+  closes, and is never persisted or logged — not even redacted, because at scan
+  time we do not yet know which string is a plate. Logs carry counts and
+  outcomes only.
+- **Unverified until a real build.** The OCR module is a legacy bridge module
+  with no `codegenConfig`, running through New Architecture interop on RN 0.86.
+  It needs `eas build --profile development`; a Metro reload will not pick it
+  up. `src/shared/lib/ocr/textRecognition.ts` is the only file that imports it,
+  so replacing it is a one-file change.
+
 ## Rules & safety applied
 
 - **One active post per plate** is reactivated: today every post is plate-less
