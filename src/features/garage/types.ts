@@ -90,6 +90,19 @@ export interface AddVehicleAnswers {
   photos: PickedPhoto[];
   /** Garage-only, optional. */
   nickname: string;
+  /**
+   * Set only when the owner CONFIRMED a plate the photo scan read, which is
+   * what lets the plate step step aside — it has already been answered.
+   *
+   * It has to be this rather than "is `plate` non-empty", because the same
+   * wizard edits a saved car, where a plate is present from the database on the
+   * very first render; keying off the value alone would make the plate of an
+   * existing car impossible to reach.
+   *
+   * UI state, not data: `SaveVehicleParams` lists every field it sends, so this
+   * never reaches the server.
+   */
+  plateFromScan?: boolean;
 }
 
 /** Positional arguments for add_vehicle / update_vehicle, named as the SQL. */

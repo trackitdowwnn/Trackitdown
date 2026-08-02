@@ -178,3 +178,72 @@ describe('confidence, when the recogniser offers it', () => {
     expect(candidates[0].canon).toBe('XY34ZZZ');
   });
 });
+
+// A plate very often does NOT arrive alone on its line: the blue band, a dealer
+// frame and a trim badge all get grouped with it. Until 2026-08-02 those reads
+// were thrown away whole — "GB AB12 CDE" found NOTHING despite being perfect,
+// and "AB12 CDE Motors Ltd" offered only the junk "M07 ORS" coerced out of
+// "MOTORS", with the real plate missing entirely.
+describe('a plate sharing its line with something else', () => {
+  it.each([
+    ['the GB band', 'GB AB12 CDE'],
+    ['the UK band, unspaced plate', 'UK AB12CDE'],
+    ['a dealer frame', 'AB12 CDE Motors Ltd'],
+    ['a country code and a dealer', 'GB AB12 CDE Autos'],
+  ])('finds the plate through %s', (_label, recognised) => {
+    const [first] = extractPlateCandidates([plateBlock(recognised)]);
+    expect(first.canon).toBe('AB12CDE');
+    // Peeled off, it is an exact read — so it outranks anything coerced.
+    expect(first.coercions).toBe(0);
+  });
+
+  it('does not stitch a plate out of ordinary sign text', () => {
+    // Joining words is speculative, so a stitched piece must read CLEANLY.
+    // Allowing coercion too turned a Ford badge into "S71 INE" and an opening
+    // -hours board into the perfectly-shaped "95 SAT".
+    expect(extractPlateCandidates([plateBlock('MON FRI 9 5 SAT 10 4')])).toEqual([]);
+    expect(extractPlateCandidates([plateBlock('PARKING 2 HOURS ONLY')])).toEqual([]);
+    expect(extractPlateCandidates([plateBlock('HIGH STREET PAY HERE')])).toEqual([]);
+    expect(
+      extractPlateCandidates([plateBlock('FORD FIESTA ST LINE')]).map((c) => c.canon),
+    ).not.toContain('S71INE');
+  });
+
+  it('still repairs a misread glyph in a plate that is alone on its line', () => {
+    // The flagship behaviour, and the thing the stitching rule must not cost:
+    // a whole line keeps full coercion rights.
+    const [first] = extractPlateCandidates([plateBlock('AB1Z CDE')]);
+    expect(first.canon).toBe('AB12CDE');
+    expect(first.coercions).toBe(1);
+  });
+});
+
+// A screw cap, the band's edge or a frame border reads as one extra glyph
+// welded onto an end. Seven correct characters used to be discarded for it.
+describe('one character too many', () => {
+  it.each([
+    ['trailing', 'AB12CDEX'],
+    ['leading', 'XAB12CDE'],
+  ])('recovers the plate from a %s stray glyph', (_label, recognised) => {
+    const [first] = extractPlateCandidates([plateBlock(recognised)]);
+    expect(first.canon).toBe('AB12CDE');
+    // Trimming is doubt, and is counted as such.
+    expect(first.coercions).toBe(1);
+  });
+
+  it('ranks a clean seven-character read above a trimmed one', () => {
+    const candidates = extractPlateCandidates([
+      plateBlock('AB12CDEX'),
+      plateBlock('XY34ZZZ'),
+    ]);
+    expect(candidates[0].canon).toBe('XY34ZZZ');
+  });
+
+  it('never drops a character from the middle', () => {
+    // Only the ENDS are trimmed. "AB1X2CDE" would become the valid "AB12CDE"
+    // by deleting the interior X — and that is exactly the guess not to make,
+    // because a plate with a character removed from the middle is a DIFFERENT
+    // plate, not a misread one.
+    expect(extractPlateCandidates([plateBlock('AB1X2CDE')])).toEqual([]);
+  });
+});

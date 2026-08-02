@@ -66,6 +66,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AccessibilityActionEvent,
   AccessibilityInfo,
+  ActivityIndicator,
   type LayoutChangeEvent,
   Linking,
   Pressable,
@@ -110,10 +111,17 @@ import { PhotoPreviewModal } from './PhotoPreviewModal';
 
 export { type GridPhoto, photoListSchema, type PickedPhoto } from './photoGridModel';
 
-/** Overlay state a consumer can pin on a tile while it uploads the photo. */
+/** Overlay state a consumer can pin on a tile while it works on the photo. */
 export type PhotoTileStatus =
   | { kind: 'uploading'; progress?: number } // progress 0–1; omitted = indeterminate
-  | { kind: 'error' };
+  | { kind: 'error' }
+  /**
+   * This ONE tile is being worked on — the consumer supplies the words, so the
+   * grid stays ignorant of why. Used by the garage to show which photo a plate
+   * scan is currently reading; the label is the caller's because "looking for a
+   * number plate" is a garage sentence and this component must not learn it.
+   */
+  | { kind: 'busy'; label: string };
 
 /** The step-specific copy slots, so second consumers (V5C, profile) reword
  *  the user-facing story. Generic operational strings (sheet actions, upload
@@ -852,7 +860,18 @@ function GridTile({
       <Animated.View
         style={[styles.tile, animatedStyle]}
         accessible
-        accessibilityLabel={tileAccessibilityLabel(index, count, showCoverChrome)}
+        // The tile is ONE accessibility element and flattens its children, so
+        // the status overlay's own text reaches nobody — it has to be folded
+        // into this label, and the tile has to report that it is busy. Without
+        // this a screen-reader user is told "Photo 2 of 3" while the tile says
+        // "Upload failed".
+        accessibilityLabel={[
+          tileAccessibilityLabel(index, count, showCoverChrome),
+          statusAccessibilityLabel(status),
+        ]
+          .filter(Boolean)
+          .join(', ')}
+        accessibilityState={status ? { busy: status.kind !== 'error' } : undefined}
         accessibilityHint={
           canDrag
             ? 'Double-tap to preview. Double-tap and hold, then drag to reorder. Reorder and remove are also available as actions.'
@@ -881,7 +900,30 @@ function GridTile({
 
           {status ? (
             <View style={styles.statusOverlay}>
-              {status.kind === 'uploading' ? (
+              {status.kind === 'busy' ? (
+                // Spinner and words each get their OWN pill, for the same
+                // reason the text does: a bare white spinner vanishes against a
+                // photo of a white car, which is exactly the shot this appears
+                // on. Mark centred, words directly beneath it.
+                <>
+                  <View style={styles.statusPill}>
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.textOnPrimary}
+                      // Decorative — the tile's own label carries the status.
+                      importantForAccessibility="no"
+                      accessibilityElementsHidden
+                    />
+                  </View>
+                  <View style={[styles.statusPill, styles.statusPillWide]}>
+                    {/* Wraps to two lines on a half-width tile; capped so a
+                        long label or large Dynamic Type cannot outgrow it. */}
+                    <Text style={styles.statusText} numberOfLines={2}>
+                      {status.label}
+                    </Text>
+                  </View>
+                </>
+              ) : status.kind === 'uploading' ? (
                 // Solid pill, not text on the scrim: the photo beneath is
                 // arbitrary, so the scrim alone can't guarantee AA contrast.
                 <View style={styles.statusPill}>
@@ -933,6 +975,25 @@ function GridTile({
       </Animated.View>
     </GestureDetector>
   );
+}
+
+/**
+ * What a tile's status should ADD to its spoken label. Null when there is
+ * nothing to say, so the label is left exactly as it was.
+ */
+function statusAccessibilityLabel(status?: PhotoTileStatus): string | null {
+  if (!status) {
+    return null;
+  }
+  if (status.kind === 'busy') {
+    return status.label;
+  }
+  if (status.kind === 'error') {
+    return 'Upload failed';
+  }
+  return status.progress !== undefined
+    ? `Uploading ${Math.round(status.progress * 100)} percent`
+    : 'Uploading';
 }
 
 /** Calm skeleton pulse while a picked photo is resized off the UI thread. */
@@ -1128,6 +1189,11 @@ const styles = StyleSheet.create({
   statusText: {
     ...typography.label,
     color: colors.textOnPrimary,
+    textAlign: 'center',
+  },
+  // Leaves a margin inside the tile so a wrapped label never runs to the edges.
+  statusPillWide: {
+    maxWidth: '86%',
   },
   statusAction: {
     textDecorationLine: 'underline',

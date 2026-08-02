@@ -154,9 +154,14 @@ export function PlateScanSheet({
             />
             {/* Dismissing KEEPS what they typed. The wording says so, because
                 "No" next to a machine's confident guess should not feel like
-                admitting a mistake. */}
+                admitting a mistake.
+                With an empty field there is nothing to keep, so it simply
+                disagrees: "That's not it" mirrors "Yes, that's it" and puts the
+                error on the READING, which is where it belongs. It used to say
+                "No, I'll type it" — that made saying no sound like volunteering
+                for work, when declining a bad guess should cost nothing. */}
             <Button
-              label={disagreeing ? `Keep ${existingPlate}` : "No, I'll type it"}
+              label={disagreeing ? `Keep ${existingPlate}` : "That's not it"}
               variant="ghost"
               onPress={() => onDismiss?.()}
             />

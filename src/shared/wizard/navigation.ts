@@ -72,10 +72,13 @@ export const INITIAL_NAV_STATE: WizardNavState = {
 };
 
 export type WizardNavAction =
-  /** Advance: next screen, or back to review when editing from review. */
-  | { type: 'next'; screenCount: number }
+  /**
+   * Advance: next screen, or back to review when editing from review.
+   * `visible[i]` is false for a screen whose `when` says to walk past it.
+   */
+  | { type: 'next'; visible: readonly boolean[] }
   /** Go back one screen; during a review edit, cancel back to review. */
-  | { type: 'back' }
+  | { type: 'back'; visible: readonly boolean[] }
   /** Jump from the review screen to a step to edit it. */
   | { type: 'editStep'; targetIndex: number; reviewIndex: number }
   /**
@@ -92,6 +95,28 @@ export type WizardNavAction =
    */
   | { type: 'reset' };
 
+/**
+ * The first screen at or beyond `from` (walking in `step`) that is not being
+ * walked past. Falls back to `from` when there is none that way, so a hidden
+ * screen at an edge can never strand the walk off the end of the list.
+ */
+export function seekVisible(
+  from: number,
+  step: 1 | -1,
+  visible: readonly boolean[],
+): number {
+  const last = visible.length - 1;
+  let index = Math.min(Math.max(from, 0), last);
+  while (visible[index] === false) {
+    const candidate = index + step;
+    if (candidate < 0 || candidate > last) {
+      return from;
+    }
+    index = candidate;
+  }
+  return index;
+}
+
 export function wizardReducer(
   state: WizardNavState,
   action: WizardNavAction,
@@ -101,8 +126,9 @@ export function wizardReducer(
       if (state.returnToIndex !== null) {
         return { index: state.returnToIndex, returnToIndex: null, direction: 1 };
       }
+      const target = Math.min(state.index + 1, action.visible.length - 1);
       return {
-        index: Math.min(state.index + 1, action.screenCount - 1),
+        index: seekVisible(target, 1, action.visible),
         returnToIndex: null,
         direction: 1,
       };
@@ -112,7 +138,12 @@ export function wizardReducer(
       if (state.returnToIndex !== null) {
         return { index: state.returnToIndex, returnToIndex: null, direction: -1 };
       }
-      return { index: Math.max(state.index - 1, 0), returnToIndex: null, direction: -1 };
+      const target = Math.max(state.index - 1, 0);
+      return {
+        index: seekVisible(target, -1, action.visible),
+        returnToIndex: null,
+        direction: -1,
+      };
     }
     case 'editStep':
       return {

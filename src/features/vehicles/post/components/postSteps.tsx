@@ -30,6 +30,7 @@ import {
   LocationPicker,
   MoneySlider,
   PhotoGridPicker,
+  type PhotoTileStatus,
   StepSkipButton,
   TextField,
 } from '@/shared/ui';
@@ -132,13 +133,25 @@ export function DistinctiveFeaturesStep({ answers, setAnswers, onSkip }: Vehicle
   );
 }
 
-export function PhotosStep({ answers, setAnswers }: VehicleStepProps) {
+/**
+ * `status` is a plain passthrough to the grid's existing per-tile overlay.
+ * Optional and typed purely in shared/ui vocabulary, so this step learns
+ * nothing about WHY a tile might be busy — a wrapper that has its own reason
+ * (the garage reads photos for a registration) supplies both the tiles and the
+ * words. The posting wizard never passes it and is unchanged.
+ */
+export function PhotosStep({
+  answers,
+  setAnswers,
+  status,
+}: VehicleStepProps & { status?: Record<string, PhotoTileStatus> }) {
   return (
     <PhotoGridPicker
       photos={answers.photos ?? []}
       onChangePhotos={(photos) => setAnswers({ photos })}
       minPhotos={3}
       maxPhotos={6}
+      status={status}
     />
   );
 }

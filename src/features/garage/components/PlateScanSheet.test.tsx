@@ -99,7 +99,7 @@ describe('with candidates', () => {
     expect(onConfirm).toHaveBeenCalledWith('AB12CDE');
   });
 
-  it('never confirms when the user chooses to type instead', async () => {
+  it('never confirms when the user says the reading is wrong', async () => {
     const onConfirm = jest.fn();
     const onDismiss = jest.fn();
     const { getByText } = await act(async () =>
@@ -109,7 +109,7 @@ describe('with candidates', () => {
     );
 
     await act(async () => {
-      fireEvent.press(getByText("No, I'll type it"));
+      fireEvent.press(getByText("That's not it"));
     });
     expect(onDismiss).toHaveBeenCalled();
     expect(onConfirm).not.toHaveBeenCalled();
