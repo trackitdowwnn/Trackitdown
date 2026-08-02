@@ -13,6 +13,7 @@
 // is not a post. MyPosts stays here.
 export { MyPostsScreen } from './screens/MyPostsScreen';
 export { PostAboutScreen } from './screens/PostAboutScreen';
+export { RecoverPostScreen } from './screens/RecoverPostScreen';
 export { PostDetailScreen, type PostDetailScreenProps } from './screens/PostDetailScreen';
 export { MakeField } from './post/components/MakeField';
 export { ModelField } from './post/components/ModelField';

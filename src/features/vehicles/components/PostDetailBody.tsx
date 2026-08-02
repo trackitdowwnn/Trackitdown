@@ -103,6 +103,11 @@ export interface PostDetailBodyProps {
    *  (shared with the "Manage post" sheet's row, so there is exactly one
    *  confirm) and then runs the refund + toast. */
   onDeactivate?: () => void;
+  /** OWNER + ACTIVE only: open the recovery flow. Presence = the control shows.
+   *  Rendered ABOVE deactivate deliberately — getting the car back is the
+   *  ending this product exists for; taking the listing down is giving up on
+   *  it, and the good news should not be the harder one to find. */
+  onRecovered?: () => void;
 }
 
 function Divider() {
@@ -126,6 +131,7 @@ export function PostDetailBody({
   onEditTheftContext,
   onEditDistinctiveFeatures,
   onDeactivate,
+  onRecovered,
 }: PostDetailBodyProps) {
   const { width: windowWidth } = useWindowDimensions();
   // The reference's carousel geometry (FeedCarouselRow): ~2 cards + a peek.
@@ -465,6 +471,29 @@ export function PostDetailBody({
           </View>
         ) : null}
       </View>
+
+      {/* 7a2 — Got it back — OWNER + ACTIVE only. The recovery flow: credit the
+          sighting that led to it, or say you found it another way. Above
+          deactivate on purpose (see the prop's comment). */}
+      {onRecovered ? (
+        <>
+          <Divider />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Got your car back?</Text>
+            <Text style={styles.deactivateBody}>
+              Close the listing and either send the bounty to the spotter who found it,
+              or get it back if you found it another way.
+            </Text>
+            <View style={styles.deactivateAction} testID="mark-recovered">
+              <Button
+                label="I got it back"
+                fullWidth={false}
+                onPress={onRecovered}
+              />
+            </View>
+          </View>
+        </>
+      ) : null}
 
       {/* 7b — Deactivate listing — OWNER + PAID only. Takes the post down and
           refunds the bounty (minus the non-recoverable card fee). Server-
