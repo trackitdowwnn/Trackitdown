@@ -30,6 +30,14 @@ const log = createLogger('garage');
 export interface UseGarageNudgeCardOptions {
   /** From the caller's profile — the garage never fetches this itself. */
   accountCreatedAt: string | null | undefined;
+  /**
+   * False when a higher-priority nudge owns the feed's single card slot.
+   * Folded into `visible` rather than checked by the caller so that `visible`
+   * means "on screen" and not merely "eligible" — the impression log and the
+   * savedCar fetch both hang off it, and an impression for a card nobody saw
+   * corrupts the accept rate it exists to measure.
+   */
+  active?: boolean;
 }
 
 export interface UseGarageNudgeCardResult {
@@ -41,6 +49,7 @@ export interface UseGarageNudgeCardResult {
 
 export function useGarageNudgeCard({
   accountCreatedAt,
+  active = true,
 }: UseGarageNudgeCardOptions): UseGarageNudgeCardResult {
   // null = still reading. Never render on null: a card that appears and then
   // vanishes a frame later is worse than one that appears a beat late.
@@ -65,15 +74,20 @@ export function useGarageNudgeCard({
 
   // Only ask the server once the CHEAP conditions already pass — a brand-new or
   // already-offered user never triggers a garage fetch at all.
-  const worthAsking = alreadyOffered === false && isTenured(accountCreatedAt, now);
+  // `active` joins the cheap conditions: a card that cannot be shown must not
+  // cost a round trip either. It flips true if the higher-priority nudge is
+  // dismissed, and the fetch starts then.
+  const worthAsking = active && alreadyOffered === false && isTenured(accountCreatedAt, now);
   const savedCar = useHasSavedCar({ enabled: worthAsking });
 
-  const visible = shouldShowGarageCard({
-    savedCar,
-    accountCreatedAt,
-    alreadyOffered,
-    now,
-  });
+  const visible =
+    active &&
+    shouldShowGarageCard({
+      savedCar,
+      accountCreatedAt,
+      alreadyOffered,
+      now,
+    });
 
   // One impression per mount, not per render — the same dedup rule the feed's
   // section impressions follow (docs/LOGGING.md: never log in a render path).

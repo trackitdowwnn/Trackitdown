@@ -21,6 +21,17 @@ import { useMyAlerts } from './useMyAlerts';
 
 const log = createLogger('notifications');
 
+export interface UseAlertNudgeCardOptions {
+  /**
+   * False when a higher-priority nudge owns the feed's single card slot.
+   * Folded into `visible` rather than checked by the caller so that `visible`
+   * means "on screen" and not merely "eligible" — this card sits LAST in the
+   * priority order, so before this existed it logged an impression on most
+   * feeds where it was suppressed, understating its own tap-through rate.
+   */
+  active?: boolean;
+}
+
 export interface UseAlertNudgeCardResult {
   visible: boolean;
   /** They took the offer — mark it made, so nothing asks again. */
@@ -28,7 +39,9 @@ export interface UseAlertNudgeCardResult {
   dismiss: () => void;
 }
 
-export function useAlertNudgeCard(): UseAlertNudgeCardResult {
+export function useAlertNudgeCard({
+  active = true,
+}: UseAlertNudgeCardOptions = {}): UseAlertNudgeCardResult {
   // null = still reading. Never render on null: a card that appears and then
   // vanishes a frame later is worse than one that appears a beat late.
   const [alreadyOffered, setAlreadyOffered] = useState<boolean | null>(null);
@@ -48,7 +61,10 @@ export function useAlertNudgeCard(): UseAlertNudgeCardResult {
   // Only for a signed-in user with NO alerts. A guest can't hold one, and
   // someone who already has one does not need inviting to make their first.
   const visible =
-    alreadyOffered === false && alerts.status === 'ready' && alerts.alerts.length === 0;
+    active &&
+    alreadyOffered === false &&
+    alerts.status === 'ready' &&
+    alerts.alerts.length === 0;
 
   // One impression per mount, not per render (docs/LOGGING.md: never log in a
   // render path).
