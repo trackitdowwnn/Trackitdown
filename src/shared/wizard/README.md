@@ -8,10 +8,11 @@ chrome, navigation, validation gating, segmented progress, phase intro
 screens, and a built-in review step. TypeScript-generic over the flow's
 answers shape so consuming flows get full type safety.
 
-**Who consumes it:** the posting stepper (details → photos → last seen →
-bounty → verification), Stripe Connect onboarding, and future onboarding
-flows. Not user-facing by itself — the dev-only `/wizard-demo` route
-exercises it.
+**Who consumes it:** four real flows — post-a-car (details → photos → last
+seen → bounty; the verification step was removed by ADR-0007), add-a-vehicle
+in the garage, report-a-sighting, and the alert wizard. Read any of those as
+the reference. The dev-only `/wizard-demo` route was deleted 2026-08-01: once
+four genuine consumers existed, a fake one could only drift out of date.
 
 **Screen anatomy:** header row with the exit X top-left (dirty answers →
 discard confirmation → `router.back()`) and a compact dot-pill progress

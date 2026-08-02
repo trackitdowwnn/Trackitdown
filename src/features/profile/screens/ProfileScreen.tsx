@@ -62,6 +62,7 @@ import { useHasSavedCar } from '@/features/garage';
 import { useMyAlerts } from '@/features/notifications';
 
 import {
+  AccountDeletionError,
   countDeletionBlockingPosts,
   requestAccountDeletion,
   signOut,
@@ -224,9 +225,15 @@ function LoadedProfile({
     try {
       await requestAccountDeletion(); // also clears the local session
       // The session flip lands the user in guest mode on this tab.
-    } catch {
-      // The Edge Function is outlined but not built yet (see migration).
-      toast.show('Account deletion is not available in this build yet.', 'error');
+    } catch (err) {
+      // The server's own words when it has better ones than "try again" — most
+      // importantly the escrow refusal, which the stale pre-check can miss.
+      toast.show(
+        err instanceof AccountDeletionError
+          ? err.message
+          : "We couldn't delete your account. Please try again.",
+        'error',
+      );
     }
   };
 
@@ -374,7 +381,6 @@ function LoadedProfile({
         {__DEV__ ? (
           <Section title="Developer" quiet testID="dev-section">
             <ListRow title="Copy recent logs" onPress={() => void copyLogs()} testID="row-copy-logs" />
-            <ListRow title="Component sandbox" onPress={() => router.push('/sandbox')} />
             <ListRow
               title={`Inbox badge +1 (now ${inboxBadge})`}
               onPress={() => setBadge('inbox', inboxBadge + 1)}

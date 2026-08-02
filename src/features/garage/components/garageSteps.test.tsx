@@ -20,6 +20,37 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { NicknameStep, PlateStep } from './garageSteps';
 
+// PlateStep now hosts the scan confirmation sheet, which reaches safe-area
+// insets and the gorhom modal. Neither is what these tests are about, so both
+// are mocked and the sheet stays CLOSED — otherwise its content would answer
+// the queries below and a match could come from the wrong surface.
+jest.mock('react-native-safe-area-context', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  require('react-native-safe-area-context/jest/mock').default,
+);
+
+jest.mock('@gorhom/bottom-sheet', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const mock = require('@gorhom/bottom-sheet/mock');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const ReactNative = require('react-native');
+  class ClosedModal extends React.Component {
+    present = () => {};
+    dismiss = () => {};
+    render() {
+      return null;
+    }
+  }
+  return {
+    ...mock,
+    BottomSheetModal: ClosedModal,
+    BottomSheetScrollView: (props: object) =>
+      React.createElement(ReactNative.ScrollView, props),
+  };
+});
+
 describe('PlateStep', () => {
   it('writes the plate as the user types', async () => {
     const setAnswers = jest.fn();

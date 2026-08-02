@@ -10,7 +10,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { ALERT_NUDGE_STORAGE_KEY } from '../lib/alertNudgeStorage';
 import { useAlertNudgeCard } from './useAlertNudgeCard';
@@ -90,6 +90,24 @@ describe('useAlertNudgeCard', () => {
     const second = await renderHook(() => useAlertNudgeCard());
     await waitFor(() => expect(AsyncStorage.getItem).toHaveBeenCalled());
     expect(second.result.current.visible).toBe(false);
+  });
+
+  it('stays hidden, and logs no impression, when another nudge owns the slot', async () => {
+    // This card is LAST in the feed's priority order, so it is suppressed on
+    // most feeds where it is otherwise eligible. If `active` gated only the
+    // render and not `visible`, every one of those would still log an
+    // impression — understating the accept rate the alert feature is measured
+    // by. Assert the two together: visible IS the impression signal.
+    const { result, rerender } = await renderHook(
+      ({ active }: { active: boolean }) => useAlertNudgeCard({ active }),
+      { initialProps: { active: false } },
+    );
+    await waitFor(() => expect(AsyncStorage.getItem).toHaveBeenCalled());
+    expect(result.current.visible).toBe(false);
+
+    // ...and appears the moment the slot frees up, without a remount.
+    await act(async () => rerender({ active: true }));
+    await waitFor(() => expect(result.current.visible).toBe(true));
   });
 
   it('suppresses itself when storage is unreadable', async () => {
