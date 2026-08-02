@@ -14,7 +14,7 @@ export {
   milesToMetres,
 } from './distance';
 export { isValidEmail } from './email';
-export { LEGAL_URLS } from './legal';
+export { legalHref, LEGAL_PUBLIC_URLS, type LegalDoc } from './legal';
 export { createLogger, type LogEntry, type LogSink } from './logger';
 export { formatPounds } from './money';
 export { samplePhotos } from './devSampleImages';
