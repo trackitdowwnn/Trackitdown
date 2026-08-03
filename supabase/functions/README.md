@@ -6,7 +6,17 @@
 | --- | --- | --- |
 | `create-payment-intent` | the app (`supabase.functions.invoke`) | verify the caller owns the draft post, read the bounty **from the DB**, create a Stripe PaymentIntent (captured immediately = escrow), record the ledger row, return the client secret |
 | `deactivate-post` | the app (`supabase.functions.invoke`) | verify the caller owns a **paid** post (`active`/`pending_verification`), find the held escrow, refund the bounty **minus the non-recoverable card fee** (fee read from Stripe), and flip the post `→ cancelled` (payment `held → refunded`) |
-| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` flip the post `draft → active` (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts, on `charge.refunded` confirm the refund (`→ cancelled`) |
+| `refund-recovery` | the app, after `claim_recovery` returns `refund` | the no-spotter ending: refund the bounty and close the post `→ recovered_no_spotter` |
+| `release-payout` | the app, after `claim_recovery` returns `payout` | the credited ending: transfer 95% to the spotter (ADR-0002 transfer math; one transfer per post, forever) and close the post `→ recovered`. Answers `awaiting_payee` — **not an error** — until they have onboarded |
+| `connect-onboarding` | the app, from the payouts surface | create the spotter's Express account if they have none, and return a fresh hosted onboarding link. Records the account as **not payable**; only the webhook may say otherwise |
+| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` flip the post `draft → active` (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts; on `charge.refunded` confirm the refund (`→ cancelled`); on **`account.updated`** copy Stripe's `payouts_enabled` onto the payee row — the ONLY thing that ever makes a spotter payable |
+
+⚠️ **`account.updated` must be enabled on the Stripe webhook endpoint.** It is
+not one of the defaults you get for a payments-only integration. Without it a
+spotter can finish onboarding and never become payable, `release-payout` answers
+`awaiting_payee` forever, and the owner is told the spotter still needs to add
+bank details they have already given. Nothing errors; the money simply never
+moves.
 
 ## Notifications
 
@@ -141,8 +151,13 @@ npx supabase functions deploy notify-spotters
 npx supabase functions deploy notify-sighting
 npx supabase functions deploy notify-message
 npx supabase functions deploy process-push-receipts
-npx supabase functions deploy stripe-webhook --no-verify-jwt   # re-deploy: it now dispatches alerts
+npx supabase functions deploy connect-onboarding
+npx supabase functions deploy stripe-webhook --no-verify-jwt   # re-deploy: alerts + account.updated
 ```
+
+**Then, in the Stripe dashboard**, add `account.updated` to the webhook
+endpoint's event list. `connect-onboarding` and the payout are inert without it
+(see the warning under Money above).
 All four keep JWT verification on. `notify-sighting` / `notify-message` are
 called by the signed-in app; `notify-spotters` / `process-push-receipts` are
 service-to-service and check the bearer themselves.

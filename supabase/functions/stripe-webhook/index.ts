@@ -145,6 +145,47 @@ Deno.serve(async (request) => {
         if (error) throw error;
         console.log('[payments] refund confirmed', { paymentIntentId: intentId });
       }
+    } else if (event.type === 'account.updated') {
+      // A SPOTTER'S payee account changed — almost always them finishing, or
+      // abandoning, Stripe's hosted onboarding.
+      //
+      // WHY THIS MATTERS MORE THAN IT LOOKS: `release-payout` refuses to
+      // transfer unless `payouts_enabled` is true, and NOTHING ELSE EVER SETS
+      // IT. Without this branch a spotter could complete onboarding perfectly
+      // and still never be paid: `release-payout` would answer
+      // `awaiting_payee` forever, and the owner would keep being told the
+      // spotter still had to add their bank details — about someone who
+      // already had. A silent, permanent failure that reads as their fault.
+      //
+      // Stripe is the authority on both flags, so they are COPIED, never
+      // inferred. `details_submitted` only means the form was finished —
+      // verification can still fail afterwards, and that is precisely the case
+      // that must not look ready. `charges_enabled` is irrelevant here: we
+      // never charge a connected account, we only transfer to one.
+      const account = event.data.object as Stripe.Account;
+      const profileId = account.metadata?.profile_id;
+      if (!profileId) {
+        // Not one of ours, or made outside the onboarding function. Ignored
+        // rather than guessed at — matching on anything else risks writing a
+        // payee row against the wrong person, and that is a payment to a
+        // stranger.
+        console.warn('[payments] account.updated without profile_id', {
+          accountId: account.id,
+        });
+      } else {
+        const { error } = await admin.rpc('upsert_connected_account', {
+          p_profile_id: profileId,
+          p_stripe_account_id: account.id,
+          p_onboarding_complete: Boolean(account.details_submitted),
+          p_payouts_enabled: Boolean(account.payouts_enabled),
+        });
+        if (error) throw error;
+        // Flags only — never a name, never the bank details Stripe just took.
+        console.log('[payments] payee account updated', {
+          accountId: account.id,
+          payoutsEnabled: Boolean(account.payouts_enabled),
+        });
+      }
     }
     // Any other event type: no action, but still recorded below as processed.
   } catch (err) {

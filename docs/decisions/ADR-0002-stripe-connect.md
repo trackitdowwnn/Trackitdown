@@ -20,6 +20,18 @@ late-bound recipient. This refines ADR-0001's "5% application fee" note.
   - Negative-balance liability: **platform** (`losses_collector: "application"`)
     — required with Express, and lets Stripe reverse a spotter's transfer if
     a bounty is disputed later.
+
+  > **As built (2026-08-03).** `connect-onboarding` expresses these three
+  > choices through the **v1 controller properties**
+  > (`controller.stripe_dashboard.type: 'express'`,
+  > `controller.fees.payer: 'application'`,
+  > `controller.losses.payments: 'application'`) rather than the v2 field names
+  > above. The v2 Accounts API needs a newer pinned `apiVersion` and stripe SDK
+  > than `_shared/clients.ts` carries (17.5.0 / 2024-06-20), and bumping the SDK
+  > underneath the whole escrow path in order to create one account was not a
+  > trade worth making. The semantics are identical; only the spelling differs.
+  > Revisit alongside any SDK upgrade — and note Stripe rejects a request that
+  > sends both `type` and `controller`.
 - **Charge pattern: separate charges and transfers** — NOT destination
   charges. Destination charges transfer immediately and cannot hold; here we
   must hold funds and the recipient may not exist at charge time.
