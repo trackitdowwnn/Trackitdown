@@ -203,6 +203,27 @@ Typing stays primary and the skip stays.
     so the row and its Edit spur survive. That matters here more than most:
     there is no DVLA lookup behind this, so review is the last chance to catch a
     reading confirmed by accident.
+  - **So confirming says one thing out loud** (2026-08-03): *"Plate saved — you
+    can change it at the end."* The single exception to the quiet rule, and not
+    a celebration. Retiring the step means the question they were braced for
+    never comes — so silence there is not restraint, it is a disappearance: they
+    tap, the sheet goes, and the wizard moves on as though nothing happened. The
+    second clause is the load-bearing half, being the only time the review
+    screen is mentioned to someone who now has an unverified reading in their
+    answers. The plate is deliberately **not** in the message: a toast is
+    announced verbatim, and a registration pronounced as a word is useless —
+    which is the same reason the sheet spells it out with `spellPlate`.
+- **Every ending goes through one handler** (2026-08-03), fired when the sheet
+  has FINISHED closing — not by the button that started it. A sheet takes 250ms
+  to leave, and `BottomSheet`'s `onDismiss` reports every departure including a
+  programmatic `close()`, so buttons that tidied up *and* closed ran the whole
+  ending twice: a rejection logged against a confirmation, rejections
+  double-counted with the second carrying `candidates: 0`, and a fresh scan
+  announced to a screen reader after the owner had finished. The sheet now
+  separates `onDecline` (a request to close) from `onDismiss` (it has gone).
+  The question is also **snapshotted** when it is asked, because confirming
+  writes `answers.plate` — a sheet reading live answers watches its own reply
+  arrive and spends its exit asking which of two identical plates is right.
 - **Turning a reading down RESUMES the scan** rather than ending it. Photos the
   walk stopped short of are parked, not discarded, and "That's not it" picks up
   from exactly there — a wrong plate on photo one no longer costs the right one
@@ -249,10 +270,10 @@ Typing stays primary and the skip stays.
   re-encoded through `expo-image-manipulator` before the OCR module sees it, so
   the copy it reads carries no EXIF (a camera-roll photo of your own car usually
   carries your home GPS; the picker's `exif: false` only stops US reading it).
-  Recognised text lives in component state only, is dropped when the sheet
-  closes, and is never persisted or logged — not even redacted, because at scan
+  Recognised text lives in component state only, is dropped once the sheet has
+  closed, and is never persisted or logged — not even redacted, because at scan
   time we do not yet know which string is a plate. Logs carry counts and
-  outcomes only.
+  outcomes only, and the confirmation toast carries no registration either.
 - **Verified on a device build (Android, 2026-08-02).** The OCR module is a
   legacy bridge module with no `codegenConfig`, running through New Architecture
   interop on RN 0.86 — that interop path now has a real read behind it rather

@@ -60,7 +60,7 @@ describe('with candidates', () => {
   it('shows the read plate and confirms it', async () => {
     const onConfirm = jest.fn();
     const { getByText } = await act(async () =>
-      render(<PlateScanSheet candidates={ONE} onConfirm={onConfirm} />),
+      render(<PlateScanSheet candidates={ONE} onConfirm={onConfirm} onDecline={jest.fn()} />),
     );
 
     expect(getByText('AB12 CDE')).toBeTruthy();
@@ -74,7 +74,9 @@ describe('with candidates', () => {
   it('offers up to three and confirms the one chosen', async () => {
     const onConfirm = jest.fn();
     const { getByText, getByTestId } = await act(async () =>
-      render(<PlateScanSheet candidates={THREE} onConfirm={onConfirm} />),
+      render(
+        <PlateScanSheet candidates={THREE} onConfirm={onConfirm} onDecline={jest.fn()} />,
+      ),
     );
 
     await act(async () => {
@@ -89,7 +91,9 @@ describe('with candidates', () => {
   it('defaults to the highest-ranked candidate', async () => {
     const onConfirm = jest.fn();
     const { getByText } = await act(async () =>
-      render(<PlateScanSheet candidates={THREE} onConfirm={onConfirm} />),
+      render(
+        <PlateScanSheet candidates={THREE} onConfirm={onConfirm} onDecline={jest.fn()} />,
+      ),
     );
     // Confirm without choosing — the best guess should already be selected, so
     // the common case is one tap.
@@ -101,18 +105,42 @@ describe('with candidates', () => {
 
   it('never confirms when the user says the reading is wrong', async () => {
     const onConfirm = jest.fn();
-    const onDismiss = jest.fn();
+    const onDecline = jest.fn();
     const { getByText } = await act(async () =>
       render(
-        <PlateScanSheet candidates={ONE} onConfirm={onConfirm} onDismiss={onDismiss} />,
+        <PlateScanSheet candidates={ONE} onConfirm={onConfirm} onDecline={onDecline} />,
       ),
     );
 
     await act(async () => {
       fireEvent.press(getByText("That's not it"));
     });
-    expect(onDismiss).toHaveBeenCalled();
+    expect(onDecline).toHaveBeenCalled();
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('asks to close, and tidies up nothing itself', async () => {
+    // The two are separate on purpose. `onDismiss` belongs to the sheet having
+    // GONE — firing it from the button too runs the caller's cleanup twice,
+    // the second time with the reading already cleared.
+    const onDecline = jest.fn();
+    const onDismiss = jest.fn();
+    const { getByText } = await act(async () =>
+      render(
+        <PlateScanSheet
+          candidates={ONE}
+          onConfirm={jest.fn()}
+          onDecline={onDecline}
+          onDismiss={onDismiss}
+        />,
+      ),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByText("That's not it"));
+    });
+    expect(onDecline).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 });
 
@@ -124,7 +152,12 @@ describe('when it disagrees with a typed plate', () => {
   it('asks which is right, and names keeping theirs', async () => {
     const { getByText } = await act(async () =>
       render(
-        <PlateScanSheet candidates={ONE} existingPlate="XY34 ZZZ" onConfirm={jest.fn()} />,
+        <PlateScanSheet
+          candidates={ONE}
+          existingPlate="XY34 ZZZ"
+          onConfirm={jest.fn()}
+          onDecline={jest.fn()}
+        />,
       ),
     );
 
@@ -135,14 +168,14 @@ describe('when it disagrees with a typed plate', () => {
 
   it('keeping their plate confirms nothing', async () => {
     const onConfirm = jest.fn();
-    const onDismiss = jest.fn();
+    const onDecline = jest.fn();
     const { getByText } = await act(async () =>
       render(
         <PlateScanSheet
           candidates={ONE}
           existingPlate="XY34 ZZZ"
           onConfirm={onConfirm}
-          onDismiss={onDismiss}
+          onDecline={onDecline}
         />,
       ),
     );
@@ -150,57 +183,25 @@ describe('when it disagrees with a typed plate', () => {
     await act(async () => {
       fireEvent.press(getByText('Keep XY34 ZZZ'));
     });
-    expect(onDismiss).toHaveBeenCalled();
+    expect(onDecline).toHaveBeenCalled();
     expect(onConfirm).not.toHaveBeenCalled(); // their typed plate is untouched
   });
 
   it('asks the DISCOVERY question instead when the field was empty', async () => {
     const { getByText } = await act(async () =>
-      render(<PlateScanSheet candidates={ONE} onConfirm={jest.fn()} />),
+      render(<PlateScanSheet candidates={ONE} onConfirm={jest.fn()} onDecline={jest.fn()} />),
     );
     expect(getByText('Is this your registration?')).toBeTruthy();
-  });
-});
-
-describe('when permission was refused', () => {
-  it('explains it here rather than needing a toast provider', async () => {
-    const onConfirm = jest.fn();
-    const onDismiss = jest.fn();
-    const { getByText } = await act(async () =>
-      render(
-        <PlateScanSheet
-          candidates={[]}
-          blocked
-          onConfirm={onConfirm}
-          onDismiss={onDismiss}
-        />,
-      ),
-    );
-
-    expect(getByText('Photo access is off')).toBeTruthy();
-    await act(async () => {
-      fireEvent.press(getByText('Type it instead'));
-    });
-    expect(onDismiss).toHaveBeenCalled();
-    expect(onConfirm).not.toHaveBeenCalled();
-  });
-
-  it('never shows candidates, even if some were left over from a previous scan', async () => {
-    const { queryByText, getByText } = await act(async () =>
-      render(<PlateScanSheet candidates={ONE} blocked onConfirm={jest.fn()} />),
-    );
-    expect(getByText('Photo access is off')).toBeTruthy();
-    expect(queryByText('AB12 CDE')).toBeNull();
   });
 });
 
 describe('when nothing was read', () => {
   it('is kind about it and offers typing, never a dead end', async () => {
     const onConfirm = jest.fn();
-    const onDismiss = jest.fn();
+    const onDecline = jest.fn();
     const { getByText, queryByText } = await act(async () =>
       render(
-        <PlateScanSheet candidates={[]} onConfirm={onConfirm} onDismiss={onDismiss} />,
+        <PlateScanSheet candidates={[]} onConfirm={onConfirm} onDecline={onDecline} />,
       ),
     );
 
@@ -212,7 +213,7 @@ describe('when nothing was read', () => {
     await act(async () => {
       fireEvent.press(getByText('Type it instead'));
     });
-    expect(onDismiss).toHaveBeenCalled();
+    expect(onDecline).toHaveBeenCalled();
     expect(onConfirm).not.toHaveBeenCalled();
   });
 });

@@ -17,7 +17,7 @@
  *        keeps its single job.
  * LINKS: src/shared/lib/plateCandidates.ts (where candidates come from);
  *        src/shared/ui/BottomSheet.tsx, PlateChip.tsx;
- *        ./garageSteps.tsx (the consumer);
+ *        ./PhotosWithPlateScanStep.tsx (the consumer);
  *        docs/DESIGN_SYSTEM.md (sheet anatomy, tone of voice).
  */
 
@@ -26,21 +26,21 @@ import type { Ref } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PlateCandidate } from '@/shared/lib/plateCandidates';
-import { spellPlate } from '@/shared/ui';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
-import { BottomSheet, Button, PlateChip, type BottomSheetRef } from '@/shared/ui';
+import { BottomSheet, Button, PlateChip, spellPlate, type BottomSheetRef } from '@/shared/ui';
 
 export interface PlateScanSheetProps {
   ref?: Ref<BottomSheetRef>;
-  /** Ranked best-first. Empty renders the "couldn't read it" state. */
-  candidates: readonly PlateCandidate[];
   /**
-   * Camera or photo permission was refused. Handled HERE rather than with a
-   * toast so the step needs no ToastProvider — a wizard step that requires a
-   * provider makes every consumer and every test carry it, and this sheet is
-   * already the "that didn't work, here's what to do" surface.
+   * Ranked best-first. Empty renders the "couldn't read it" state — which the
+   * photos step never asks for, because a scan that reads nothing stays silent
+   * rather than opening a sheet to say so. It is kept for the entry point that
+   * would need it: a scan the owner ASKED for owes an answer either way, and
+   * this sheet is where that answer would go. (The `blocked` permission state
+   * was deleted rather than kept, because permission is the photo grid's
+   * business now and no future caller here would own it.)
    */
-  blocked?: boolean;
+  candidates: readonly PlateCandidate[];
   /**
    * What the owner already typed, if anything. Its presence changes the
    * QUESTION: with an empty field this is a discovery ("is this it?"), but
@@ -51,16 +51,27 @@ export interface PlateScanSheetProps {
   existingPlate?: string | null;
   /** The canonical plate the user accepted. */
   onConfirm: (canon: string) => void;
-  /** They chose to type instead, or dismissed the sheet. */
+  /**
+   * They turned the reading down — the ghost button, or "type it instead".
+   * A REQUEST to close, not the closing itself: the sheet does not tidy up
+   * here, because it is still on screen for the length of the animation.
+   */
+  onDecline: () => void;
+  /**
+   * The sheet has FINISHED closing — however that happened, including a swipe
+   * or a tap on the scrim. Kept separate from `onDecline` because one prop
+   * meaning both fires twice for every button press, once with the question
+   * already gone. This is the only safe place to clear a reading.
+   */
   onDismiss?: () => void;
 }
 
 export function PlateScanSheet({
   ref,
   candidates,
-  blocked = false,
   existingPlate = null,
   onConfirm,
+  onDecline,
   onDismiss,
 }: PlateScanSheetProps) {
   const [selected, setSelected] = useState(0);
@@ -78,37 +89,27 @@ export function PlateScanSheet({
     setSelected(0);
   }
 
-  const found = !blocked && candidates.length > 0;
+  const found = candidates.length > 0;
   const chosen = candidates[selected];
 
   const disagreeing = found && Boolean(existingPlate);
 
-  const title = blocked
-    ? 'Photo access is off'
-    : !found
-      ? "Couldn't read it"
-      : disagreeing
-        ? 'Which one is right?'
-        : 'Is this your registration?';
+  const title = !found
+    ? "Couldn't read it"
+    : disagreeing
+      ? 'Which one is right?'
+      : 'Is this your registration?';
 
   return (
     <BottomSheet ref={ref} title={title} onDismiss={onDismiss}>
       <View style={styles.content} testID="plate-scan-sheet">
-        {blocked ? (
-          <>
-            <Text style={styles.body}>
-              To scan a plate we need access to your camera or photos. You can turn that
-              on in Settings — or just type the plate in.
-            </Text>
-            <Button label="Type it instead" onPress={() => onDismiss?.()} />
-          </>
-        ) : !found ? (
+        {!found ? (
           <>
             <Text style={styles.body}>
               We couldn&apos;t read a plate clearly. Try a straighter shot with the plate
               filling more of the frame — or just type it in.
             </Text>
-            <Button label="Type it instead" onPress={() => onDismiss?.()} />
+            <Button label="Type it instead" onPress={onDecline} />
           </>
         ) : (
           <>
@@ -120,33 +121,45 @@ export function PlateScanSheet({
                 misread from a photo.
               </Text>
             ) : candidates.length > 1 ? (
-              <Text style={styles.body}>Tap the right one.</Text>
+              // Not "tap": a switch or a screen reader does not tap, and the
+              // sentence is about WHICH plate, not about fingers.
+              <Text style={styles.body}>Pick the one that matches your car.</Text>
             ) : null}
 
-            <View
-              style={styles.options}
-              accessibilityRole={candidates.length > 1 ? 'radiogroup' : undefined}
-            >
-              {candidates.map((candidate, index) => {
-                const isSelected = index === selected;
-                return (
-                  <Pressable
-                    key={candidate.canon}
-                    onPress={() => setSelected(index)}
-                    accessibilityRole={candidates.length > 1 ? 'radio' : undefined}
-                    // Spelled out — "AB12 CDE" read aloud as a word is useless.
-                    accessibilityLabel={spellPlate(candidate.display)}
-                    accessibilityState={
-                      candidates.length > 1 ? { checked: isSelected } : undefined
-                    }
-                    style={[styles.option, isSelected && styles.optionSelected]}
-                    testID={`plate-candidate-${candidate.canon}`}
-                  >
-                    <PlateChip plate={candidate.display} />
-                  </Pressable>
-                );
-              })}
-            </View>
+            {/* One reading is not a choice, so it is not a control. Wrapping it
+                in a Pressable gave a 44pt target that swallowed taps and
+                answered with nothing, announced as "double tap to activate"
+                with no role and no state to change — and the wrapper's label
+                hid PlateChip's own, better one. A plain View lets the chip
+                speak for itself; the buttons below are the only choice on
+                offer. */}
+            {candidates.length === 1 ? (
+              <View style={styles.options}>
+                <View style={styles.option}>
+                  <PlateChip plate={candidates[0].display} />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.options} accessibilityRole="radiogroup">
+                {candidates.map((candidate, index) => {
+                  const isSelected = index === selected;
+                  return (
+                    <Pressable
+                      key={candidate.canon}
+                      onPress={() => setSelected(index)}
+                      accessibilityRole="radio"
+                      // Spelled out — "AB12 CDE" read aloud as a word is useless.
+                      accessibilityLabel={spellPlate(candidate.display)}
+                      accessibilityState={{ checked: isSelected }}
+                      style={[styles.option, styles.choosable, isSelected && styles.optionSelected]}
+                      testID={`plate-candidate-${candidate.canon}`}
+                    >
+                      <PlateChip plate={candidate.display} />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
 
             <Button
               label={disagreeing ? 'Use this one' : "Yes, that's it"}
@@ -163,7 +176,7 @@ export function PlateScanSheet({
             <Button
               label={disagreeing ? `Keep ${existingPlate}` : "That's not it"}
               variant="ghost"
-              onPress={() => onDismiss?.()}
+              onPress={onDecline}
             />
           </>
         )}
@@ -181,7 +194,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   options: {
-    gap: spacing.sm,
+    gap: spacing.md,
     alignItems: 'center',
   },
   option: {
@@ -191,12 +204,24 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
-    borderWidth: 2,
-    // Transparent rather than absent, so selecting does not shift the layout.
+    // Constant width, colour-only change on select — the house rule for a
+    // bordered selectable (see CardSelect), so nothing shifts when picked.
+    borderWidth: sizes.selectBorder,
+    // Transparent rather than absent, so the lone reading — which is not a
+    // control — sits at the same size as a choosable one without wearing a ring.
     borderColor: 'transparent',
   },
+  /** A row that IS a choice, so it must look like one before it is picked. */
+  choosable: {
+    borderColor: colors.border,
+    // The whole row, not just the chip: centred options left the space either
+    // side of a short plate dead, which is most of the row on a sheet.
+    alignSelf: 'stretch',
+  },
   optionSelected: {
+    // Border colour alone. A surfaceSubtle fill here is the chip's OWN fill, so
+    // picking a plate dissolved its edges into the selection at exactly the
+    // moment it needed to read as a plate.
     borderColor: colors.primary,
-    backgroundColor: colors.surfaceSubtle,
   },
 });

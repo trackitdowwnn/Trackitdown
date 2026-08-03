@@ -30,6 +30,8 @@ jest.mock('react-native-safe-area-context', () =>
 // hoisted factory below may reference it (the `mock` prefix is the escape
 // hatch for its out-of-scope-variable check).
 const mockOpened = { current: false };
+/** BottomSheet's own ANIMATION_DURATION_MS — the window this mock reproduces. */
+const mockSheetCloseMs = 250;
 jest.mock('@gorhom/bottom-sheet', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const React = require('react');
@@ -40,18 +42,39 @@ jest.mock('@gorhom/bottom-sheet', () => {
   // Renders its children only once presented, like the real modal — so the
   // sheet's buttons are pressable in a test, without the "couldn't read it"
   // copy existing in the tree while the sheet is shut.
+  //
+  // dismiss() is DEFERRED and fires onDismiss, because the real one is: gorhom
+  // keeps children mounted for the whole close animation and only calls
+  // onDismiss at the end of it (BottomSheetModal's unmount()). A mock that
+  // closed instantly and stayed silent hid every defect that lives in that
+  // window — including cleanup running twice, once with the question already
+  // cleared. The re-entrancy guard mirrors BottomSheet's presentedRef, which
+  // makes close() a no-op unless the sheet is actually open.
   class TrackingModal extends React.Component<
-    { children?: unknown },
+    { children?: unknown; onDismiss?: () => void },
     { open: boolean }
   > {
     state = { open: false };
+    timer: ReturnType<typeof setTimeout> | null = null;
     present = () => {
       mockOpened.current = true;
       this.setState({ open: true });
     };
     dismiss = () => {
-      this.setState({ open: false });
+      if (!this.state.open || this.timer) {
+        return;
+      }
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        this.setState({ open: false });
+        this.props.onDismiss?.();
+      }, mockSheetCloseMs);
     };
+    componentWillUnmount() {
+      if (this.timer) {
+        clearTimeout(this.timer);
+      }
+    }
     render() {
       return this.state.open ? this.props.children : null;
     }
@@ -121,6 +144,32 @@ const mockRecognise = jest.fn(async () => {
 jest.mock('@/shared/lib/ocr/textRecognition', () => ({
   recogniseText: (...args: unknown[]) => mockRecognise(...(args as [])),
 }));
+
+// What the feature SAYS about itself. These events are the only measure of
+// whether a scan is worth running, so a rejection logged on a confirmation —
+// or logged twice — is not cosmetic: it makes the numbers a lie.
+const mockLogInfo = jest.fn();
+jest.mock('@/shared/lib/logger', () => ({
+  createLogger: () => ({
+    info: (...args: unknown[]) => mockLogInfo(...args),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    error: jest.fn(),
+  }),
+}));
+
+const mockShowToast = jest.fn();
+jest.mock('@/shared/ui', () => {
+  const actual = jest.requireActual('@/shared/ui');
+  return {
+    ...actual,
+    // A getter, not a spread value: the real ToastProvider cannot be rendered
+    // here (reanimated is mapped to its mock, which has no useReducedMotion).
+    get useToast() {
+      return () => ({ show: mockShowToast });
+    },
+  };
+});
 
 const plateBlock = (text: string) => ({
   text,
@@ -206,6 +255,8 @@ beforeEach(() => {
   mockGate = null;
   tileStatus = undefined;
   mockDimmedOrder = [];
+  mockLogInfo.mockClear();
+  mockShowToast.mockClear();
 });
 
 afterEach(() => {
@@ -416,6 +467,10 @@ describe('showing WHICH photo it is reading', () => {
     await settle();
 
     expect(announce).toHaveBeenCalledWith(PLATE_SCAN_LABEL);
+    // ONCE. Announcing that a scan has started when there is nothing queued —
+    // which is what a stray drain() does — tells a screen-reader user to wait
+    // for something that is not happening.
+    expect(announce).toHaveBeenCalledTimes(1);
     announce.mockRestore();
   });
 
@@ -592,5 +647,149 @@ describe('carrying on after a reading is turned down', () => {
     expect(setAnswers).toHaveBeenCalledWith(
       expect.objectContaining({ plate: 'AB12 CDE', plateFromScan: true }),
     );
+  });
+});
+
+// A sheet takes 250ms to close, and the answer arrives at the START of that
+// window while the cleanup runs at the END of it. Everything below is about
+// that gap: what the closing sheet says while it slides away, and the cleanup
+// running EXACTLY once, with the right intent.
+describe('closing the question', () => {
+  const settleAll = async () => {
+    for (let round = 0; round < 60; round += 1) {
+      await act(async () => {
+        jest.advanceTimersByTime(motion.loaderMinVisible);
+        await Promise.resolve();
+      });
+    }
+  };
+
+  const rejections = () =>
+    mockLogInfo.mock.calls.filter(([event]) => event === 'plate_scan_rejected');
+
+  it('records a turned-down reading once, with the count it actually offered', async () => {
+    // Twice — once real, once with an empty count — is how a single handler
+    // wired to both the button and the sheet's own dismissal reports itself.
+    const view = await renderStep();
+    await addPhoto();
+    await settleAll();
+
+    await act(async () => {
+      fireEvent.press(view.getByText("That's not it") as never);
+    });
+    await settleAll();
+
+    expect(rejections()).toEqual([['plate_scan_rejected', { candidates: 1 }]]);
+  });
+
+  it('never records a rejection when the owner ACCEPTED the reading', async () => {
+    const view = await renderStep();
+    await addPhoto();
+    await settleAll();
+
+    await act(async () => {
+      fireEvent.press(view.getByText("Yes, that's it") as never);
+    });
+    await settleAll();
+
+    expect(rejections()).toEqual([]);
+  });
+
+  it('does not announce a fresh scan after the owner has finished', async () => {
+    // Accepting ends the work. A screen reader saying "Looking for a number
+    // plate" AFTERWARDS sends someone back to wait for nothing.
+    const announce = jest
+      .spyOn(AccessibilityInfo, 'announceForAccessibility')
+      .mockImplementation();
+    const view = await renderStep();
+    await addPhoto();
+    await settleAll();
+
+    await act(async () => {
+      fireEvent.press(view.getByText("Yes, that's it") as never);
+    });
+    await settleAll();
+
+    expect(announce).toHaveBeenCalledTimes(1);
+    announce.mockRestore();
+  });
+
+  it('keeps the question on screen while the sheet slides away', async () => {
+    // The answer is recorded the instant they tap, but the sheet is still
+    // visible for 250ms. Clearing the reading first swaps the copy to
+    // "Couldn't read it" — telling them it failed as it closes on a success.
+    const view = await renderStep();
+    await addPhoto();
+    await settleAll();
+
+    await act(async () => {
+      fireEvent.press(view.getByText("Yes, that's it") as never);
+    });
+
+    expect(view.queryByText("Couldn't read it")).toBeNull();
+    expect(view.getByText('Is this your registration?')).toBeTruthy();
+    await settleAll();
+  });
+
+  it('confirms the plate was taken, since the plate step will not be asked', async () => {
+    // `when: !plateFromScan` retires the question they were expecting, so
+    // without this the whole interaction ends in nothing visibly happening.
+    const view = await renderStep();
+    await addPhoto();
+    await settleAll();
+
+    await act(async () => {
+      fireEvent.press(view.getByText("Yes, that's it") as never);
+    });
+    await settleAll();
+
+    expect(mockShowToast).toHaveBeenCalledWith(
+      'Plate saved — you can change it when you check your car.',
+    );
+  });
+
+  it('says the plate was UPDATED when the reading replaced one they typed', async () => {
+    const view = await renderStep('XY34 ZZZ');
+    await addPhoto();
+    await settleAll();
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Use this one') as never);
+    });
+    await settleAll();
+
+    expect(mockShowToast).toHaveBeenCalledWith(
+      'Plate updated — you can change it when you check your car.',
+    );
+  });
+
+  it('does not replace a question the owner is still looking at', async () => {
+    // The picker is a native screen, so photos can land while an unanswered
+    // sheet is up. Swapping the reading underneath them changes the copy
+    // mid-decision and loses the first reading's candidates from the blacklist.
+    mockBlocksByCall = [[plateBlock('XY34 ZZZ')], [plateBlock('AB12 CDE')]];
+    const view = await renderStep();
+
+    await addPhoto('file://one.jpg');
+    await settleAll();
+    expect(view.getByText('XY34 ZZZ')).toBeTruthy();
+
+    // A second photo arrives with the sheet still open.
+    await addPhotos(['file://one.jpg', 'file://two.jpg']);
+    await settleAll();
+
+    expect(mockRecognise).toHaveBeenCalledTimes(1);
+    expect(view.getByText('XY34 ZZZ')).toBeTruthy();
+
+    // Turning it down blacklists the reading that was ACTUALLY on offer, and
+    // only then reads the photo that was waiting.
+    await act(async () => {
+      fireEvent.press(view.getByText("That's not it") as never);
+    });
+    await settleAll();
+
+    expect(rejections()).toEqual([['plate_scan_rejected', { candidates: 1 }]]);
+    expect(mockRecognise).toHaveBeenCalledTimes(2);
+    expect(view.getByText('AB12 CDE')).toBeTruthy();
   });
 });

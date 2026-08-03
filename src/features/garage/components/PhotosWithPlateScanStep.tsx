@@ -25,6 +25,35 @@
  *        Adding a photo must never block or slow the step, so a failure here
  *        is silent too: the plate is optional and typing always works.
  *
+ *        The ONE thing it says out loud is the toast on a confirmed reading,
+ *        and that is not a celebration: accepting one retires the plate step
+ *        (`plateFromScan`, see addVehicleFlow), so the question they were
+ *        expecting next never arrives. Silence there is not restraint, it is a
+ *        disappearance — hence a line saying it was taken and where to change
+ *        it. The plate itself is deliberately not in the message: a toast is
+ *        read aloud verbatim, and a registration pronounced as a word is
+ *        useless (which is why the sheet spells it — see spellPlate).
+ *
+ *        This DOES make the step need a ToastProvider, which the deleted
+ *        permission state used to argue against ("a wizard step that requires a
+ *        provider makes every consumer and every test carry it"). The argument
+ *        held while the payload was a failure notice the sheet could carry
+ *        itself; it does not hold for a message that must outlive the sheet.
+ *        The provider is app-wide (src/app/_layout.tsx) and above the sheet
+ *        portal by design, so the cost is a mocked hook in one test file.
+ *
+ *        ONE CLEAN-UP. A sheet takes a quarter of a second to close, and every
+ *        way of closing it — the buttons, a swipe, the scrim — reaches a single
+ *        handler at the END of that. Clearing the reading, remembering a
+ *        refusal and resuming the scan all happen THERE and nowhere else; a
+ *        button may record its own outcome and ask the sheet to leave, but may
+ *        not tidy up. Doing both in the button ran every ending twice, the
+ *        second time with the question already cleared: rejections logged
+ *        against confirmations, and a scan announced to a screen reader after
+ *        the owner had finished. (The one gap: leaving the step inside that
+ *        quarter second skips the handler entirely, so a confirmation gets no
+ *        toast. It needs Next tapped through a scrim that is still up.)
+ *
  *        QUIET IS ABOUT THE OUTCOME, NOT THE WORK. While it is reading, the
  *        photo it is reading is DIMMED — the grid's own per-tile status
  *        overlay, with a spinner and "Looking for a number plate". OCR starts
@@ -40,10 +69,14 @@
  *        photo added. The overlay uses space the grid already owns, so nothing
  *        moves.
  *
- * SAFETY: OCR runs on-device. Recognised text lives in local state, is dropped
- *        when the sheet closes, and is never persisted or logged — see
- *        shared/lib/ocr/textRecognition.ts. Only a plate the owner confirms
- *        reaches `answers`.
+ * SAFETY: OCR runs on-device. Recognised text never leaves this component and
+ *        is never persisted or logged — see shared/lib/ocr/textRecognition.ts.
+ *        Only a plate the owner confirms reaches `answers`. It is held in
+ *        exactly three places, all in memory and all dying with the step: the
+ *        `offer` state and its `pendingOffer` twin, both cleared once the sheet
+ *        has closed, and `rejected` — canonical plates the owner has turned
+ *        down, which by design outlive the sheet so the same misread is not
+ *        offered twice. The toast carries no registration either.
  * LINKS: src/features/vehicles/post/components/postSteps.tsx (PhotosStep);
  *        src/features/garage/lib/addVehicleFlow.tsx (does the swap);
  *        ./PlateScanSheet.tsx; src/shared/lib/plateCandidates.ts.
@@ -59,7 +92,7 @@ import { formatPlate, normalisePlate } from '@/shared/lib/plate';
 import { type PlateCandidate, extractPlateCandidates } from '@/shared/lib/plateCandidates';
 import { recogniseText } from '@/shared/lib/ocr/textRecognition';
 import { motion } from '@/shared/theme';
-import type { BottomSheetRef } from '@/shared/ui';
+import { useToast, type BottomSheetRef } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import type { AddVehicleAnswers } from '../types';
@@ -87,6 +120,31 @@ interface ScanResult {
 }
 
 /**
+ * A question put to the owner, frozen at the moment it was asked.
+ *
+ * `existing` is snapshotted rather than read from `answers` at render time
+ * because CONFIRMING writes the plate — so a sheet still on screen would see
+ * its own answer arrive, decide it was now disagreeing with a typed plate, and
+ * spend its closing animation asking "Which one is right?" between a plate and
+ * itself. The question a sheet is asking must not change under it while the
+ * answer is being given.
+ */
+interface PlateOffer {
+  candidates: readonly PlateCandidate[];
+  /** What they had typed when the reading was taken, for the disagreement copy. */
+  existing: string | null;
+}
+
+/**
+ * Stable empty list for the closed sheet. The sheet resets its selection
+ * whenever the candidate list's IDENTITY changes, so a fresh `[]` per render
+ * would throw the owner's choice away every time this step re-rendered
+ * underneath it — a dimmed tile appearing, or a keystroke in a sibling field —
+ * and drop them back on the first plate mid-decision.
+ */
+const NO_CANDIDATES: readonly PlateCandidate[] = [];
+
+/**
  * The words shown on the tile being read, and spoken for it. Lives here rather
  * than in the grid because "number plate" is a garage sentence — `shared/ui`
  * only knows that a tile is busy.
@@ -100,9 +158,17 @@ const settleFor = (ms: number) =>
 export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers>) {
   const { answers, setAnswers } = props;
   const sheetRef = useRef<BottomSheetRef>(null);
+  const toast = useToast();
   // SAFETY: recognised text never leaves this component. Only a confirmed
   // plate is written to answers.
-  const [candidates, setCandidates] = useState<readonly PlateCandidate[]>([]);
+  const [offer, setOffer] = useState<PlateOffer | null>(null);
+  // The same offer, readable from the cleanup handler — which runs when the
+  // sheet has FINISHED closing, a quarter of a second after the press, from a
+  // callback that must not go stale between the two.
+  const pendingOffer = useRef<PlateOffer | null>(null);
+  // Why the sheet is closing. Set by confirm(); everything else — the ghost
+  // button, a swipe, a tap on the scrim — is a refusal.
+  const decision = useRef<'confirmed' | null>(null);
   // WHICH photo is being read right now — the ONE piece of scan state that
   // renders. It dims that tile and no other, so the walk from photo to photo is
   // the progress indicator. The guards below stay refs.
@@ -144,10 +210,14 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers
     async (uris: string[]): Promise<ScanResult> => {
       try {
         const found: PlateCandidate[] = [];
-        // What this pass never opened. Handed back so that turning a reading
-        // down resumes from the next photo instead of starting over.
-        let unread: string[] = [];
         const readable = uris.slice(0, MAX_PHOTOS_SCANNED);
+        // What this pass never opened. Handed back so that turning a reading
+        // down resumes from the next photo instead of starting over — and only
+        // then: a batch that finds nothing keeps the cap and writes the
+        // remainder off, because re-queueing it would just walk all six photos
+        // by another name. Starts as everything past the cap, so a burst of six
+        // that stops to ask about photo two still has four to fall back on.
+        let unread: string[] = uris.slice(readable.length);
         for (let index = 0; index < readable.length; index += 1) {
           const uri = readable[index];
           // Dim THIS tile, and only this one, for as long as it is being read.
@@ -212,7 +282,19 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers
           candidates: found.length,
           hadTypedPlate: Boolean(typed),
         });
-        setCandidates(found);
+        // Frozen here, against the plate they had typed when the reading was
+        // taken — the same value the agreement check above compared with.
+        const asked: PlateOffer = {
+          candidates: found,
+          existing: typedPlate.current?.trim() || null,
+        };
+        pendingOffer.current = asked;
+        // A fresh question starts unanswered. Belt and braces against the last
+        // sheet's verdict surviving into this one: `handleSheetClosed` clears
+        // it too, but it cannot run if a close was ever missed, and a stale
+        // 'confirmed' would read the next refusal as a yes.
+        decision.current = null;
+        setOffer(asked);
         sheetRef.current?.open();
         return { outcome: 'offered', unread };
       } catch (error) {
@@ -233,7 +315,18 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers
     // One pass at a time — a fast tapper adding four photos should not start
     // four concurrent OCR passes on a mid-range phone. The running drain will
     // pick up whatever they just queued.
-    if (busy.current) {
+    //
+    // The empty queue is guarded HERE, with it, rather than by the loop below:
+    // this is called to resume after a refusal, which is often nothing left to
+    // do, and announcing a scan that is not about to happen sends a
+    // screen-reader user back to wait for silence.
+    // A question already on screen stops a new pass dead. The photo picker is
+    // a native screen that can be open while the PREVIOUS batch finishes and
+    // presents the sheet, so photos can land on top of an unanswered question —
+    // and a second offer replacing the first under the owner's eyes changes the
+    // copy, snaps the selection back, and loses the first reading's candidates
+    // from the blacklist. Photos still queue; `handleSheetClosed` resumes.
+    if (busy.current || pendingOffer.current || queue.current.length === 0) {
       return;
     }
     busy.current = true;
@@ -302,26 +395,74 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers
       log.info('plate_scan_confirmed', { fromPhotos: true });
       // We have the answer. Anything still parked is no longer worth reading.
       queue.current = [];
-      setCandidates([]);
+      decision.current = 'confirmed';
+      // Only asks the sheet to leave. The reading stays on screen until it has
+      // gone, and the tidying up happens in one place — below.
       sheetRef.current?.close();
     },
     [setAnswers],
   );
 
-  const dismiss = useCallback(() => {
-    // "That's not it" is information, not just a no: every reading on offer was
-    // wrong, so none of them may be offered again — otherwise the next photo
-    // that reads the same plate stops the walk to ask a question already
-    // answered.
-    candidates.forEach((candidate) => rejected.current.add(candidate.canon));
-    log.info('plate_scan_rejected', { candidates: candidates.length });
-    // Whatever the recogniser saw goes the moment the question is answered.
-    setCandidates([]);
+  /** The ghost button. Says nothing itself; closing IS the refusal. */
+  const decline = useCallback(() => {
     sheetRef.current?.close();
+  }, []);
+
+  /**
+   * The sheet has finished closing — by the button, a swipe, or the scrim.
+   *
+   * EVERY ending arrives here and nowhere else, exactly once. The buttons used
+   * to do their own tidying up and then close, which ran all of it a second
+   * time when the sheet reported itself closed 250ms later: a rejection logged
+   * twice, a rejection logged against a CONFIRMATION, and a fresh scan
+   * announced to a screen reader after the owner had finished.
+   */
+  const handleSheetClosed = useCallback(() => {
+    const asked = pendingOffer.current;
+    const confirmed = decision.current === 'confirmed';
+    // Both cleared here rather than on open: a confirmation followed by a
+    // later sheet the owner swipes away must be read as a refusal, not
+    // inherited as a second yes.
+    decision.current = null;
+    pendingOffer.current = null;
+    // SAFETY: whatever the recogniser saw goes the moment the question is over.
+    setOffer(null);
+
+    if (confirmed) {
+      // The plate step is retired by `plateFromScan`, so the question they were
+      // expecting next never comes. Without a word here, accepting a reading
+      // looks like nothing happened at all.
+      //
+      // "Check your car" is the review screen's own title (see addVehicleFlow),
+      // so it names somewhere they are about to arrive rather than gesturing at
+      // "the end". And a reading accepted OVER a typed plate replaced one — it
+      // did not fill a blank — which "saved" would quietly understate.
+      toast.show(
+        asked?.existing
+          ? 'Plate updated — you can change it when you check your car.'
+          : 'Plate saved — you can change it when you check your car.',
+      );
+      return;
+    }
+
+    // No question was outstanding, so nothing was refused. Recording a
+    // rejection here would put the phantom back in the numbers that this whole
+    // change exists to clean up.
+    if (!asked) {
+      return;
+    }
+
+    // Turning a reading down is information, not just a no: every reading on
+    // offer was wrong, so none may be offered again — otherwise the next photo
+    // reading the same plate stops the walk to ask a settled question.
+    // Blacklisted BEFORE resuming, or the drain re-offers what was just
+    // refused.
+    asked.candidates.forEach((candidate) => rejected.current.add(candidate.canon));
+    log.info('plate_scan_rejected', { candidates: asked.candidates.length });
     // Carry on from where the offer interrupted us. If nothing was parked this
     // does nothing, which is the "that was the last photo" case.
     void drain();
-  }, [candidates, drain]);
+  }, [drain, toast]);
 
   return (
     <>
@@ -338,11 +479,14 @@ export function PhotosWithPlateScanStep(props: WizardStepProps<AddVehicleAnswers
       />
       <PlateScanSheet
         ref={sheetRef}
-        candidates={candidates}
+        candidates={offer?.candidates ?? NO_CANDIDATES}
         // A plate already typed means this is a disagreement, not a discovery.
-        existingPlate={answers.plate ?? null}
+        // From the snapshot, so confirming cannot rewrite the question as it
+        // is being answered.
+        existingPlate={offer?.existing ?? null}
         onConfirm={confirm}
-        onDismiss={dismiss}
+        onDecline={decline}
+        onDismiss={handleSheetClosed}
       />
     </>
   );
