@@ -1,6 +1,14 @@
 # ADR-0002 — Stripe Connect: account config & charge pattern
 
-**Status:** accepted · **Date:** 2026-07-07 · Refines ADR-0001
+**Status:** accepted; onboarding half superseded · **Date:** 2026-07-07 ·
+Refines ADR-0001
+
+> **Onboarding decisions superseded by
+> [ADR-0010](./ADR-0010-whitelabel-payouts.md)** (2026-08-03): new payee
+> accounts move to Accounts v2 `recipient` configuration with no Stripe
+> dashboard and platform-owned collection in our own UI. The charge-pattern
+> half of this ADR — separate charges and transfers, immediate capture, 5% by
+> transfer math — **stands unchanged** and ADR-0010 builds on it.
 
 ## Context
 

@@ -179,7 +179,24 @@ travel. Airbnb's wishlist mechanics, translated:
   (Not a Stripe `application_fee_amount`; see ADR-0002 for why.)
 - Spotters must complete Stripe Connect onboarding (KYC) before a payout
   can be released. Prompt for this when their first sighting is credited,
-  not at signup.
+  not at signup — the "you've earned £X" moment is the entry point, and the
+  highest-motivation form a user will ever fill.
+- **Payout account model (decided 2026-08-03, ADR-0010):** payee accounts are
+  Accounts v2 `recipient` configuration with **no Stripe dashboard** — we
+  collect name, date of birth, address and bank details in **our own native
+  UI**, tokenised client-side so nothing sensitive ever touches our server.
+  Consequences that are DOMAIN rules, not implementation details:
+  - **We are the requirements collector.** "Stripe needs more information" is a
+    state our UI owns, and re-collection at least every six months is our
+    recurring obligation.
+  - **Risk/liveness step-ups always fall back to a Stripe surface** — that is
+    Stripe's rule under every account model, not a gap in ours.
+  - **Payouts release automatically** once the recipient capability is active
+    and a credited post is waiting — but auto-release exists ONLY behind the
+    collusion check (SECURITY_AND_TRUST §5). A webhook that moves money does
+    not ship before the check that stops an owner crediting themselves.
+  - Our tables store the Stripe account id and status only. Bank and identity
+    data: never stored, never logged, never transiting our functions.
 - All amounts are stored in **pence (integer)**. Never floats for money.
 
 ## Sighting rules
