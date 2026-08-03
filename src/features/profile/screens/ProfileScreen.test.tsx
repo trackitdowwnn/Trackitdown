@@ -91,7 +91,6 @@ jest.mock('@/shared/ui', () => {
 });
 
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(() => Promise.resolve()) }));
-jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(() => Promise.resolve()) }));
 jest.mock('expo-constants', () => ({
   __esModule: true,
   default: { expoConfig: { version: '1.2.3' } },
@@ -295,6 +294,21 @@ describe('signed in', () => {
     const { queryByTestId } = await render(<ProfileScreen />);
     expect(queryByTestId('row-alert-radius')).toBeNull();
     expect(queryByTestId('row-notifications')).toBeNull();
+  });
+
+  // This row shipped `disabled` from 2026-07-10 to 2026-08-03 — visible, inert,
+  // and the only way a spotter could ever be paid.
+  it('opens payouts, and promises nothing about their status on the way', async () => {
+    const { getByTestId, queryByText } = await render(<ProfileScreen />);
+
+    await act(async () => {
+      fireEvent.press(getByTestId('row-payouts'));
+    });
+    expect(mockPush).toHaveBeenCalledWith('/payouts');
+    // No cached status value: it would need a fourth network read here, and a
+    // stale "ready" is worse than silence when Stripe may have just suspended
+    // the account. The screen behind this row is the source of truth.
+    expect(queryByText('Set up payouts')).toBeNull();
   });
 
   it('summarises no alerts as Not set', async () => {

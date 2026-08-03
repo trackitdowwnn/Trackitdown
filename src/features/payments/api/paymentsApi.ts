@@ -18,10 +18,14 @@
  *          PostACarScreen.tsx (orchestrates submit → pay).
  */
 
-import { FunctionsHttpError } from '@supabase/supabase-js';
-
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
+
+import { PaymentError, parseFunctionError } from './functionError';
+
+// Re-exported so every existing `import { PaymentError } from './paymentsApi'`
+// and `instanceof PaymentError` caller is untouched by the 2026-08-03 split.
+export { PaymentError };
 
 const log = createLogger('payments');
 
@@ -52,42 +56,6 @@ export const DEACTIVATE_ERROR_MESSAGES: Record<string, string> = {
 };
 
 const DEACTIVATE_FALLBACK = 'We couldn’t deactivate your listing. Please try again.';
-
-/** Error carrying a plain-English `message` (shown to the user) plus a `code`
- *  for logging/tests. Thrown by createBountyPaymentIntent / deactivatePost. */
-export class PaymentError extends Error {
-  readonly code: string;
-  constructor(message: string, code: string) {
-    super(message);
-    this.name = 'PaymentError';
-    this.code = code;
-  }
-}
-
-/** Pull the { error, code } body out of a non-2xx Edge Function response and map
- *  it to user-facing copy via the supplied `messages` map (+ `fallback`). */
-async function parseFunctionError(
-  error: unknown,
-  messages: Record<string, string>,
-  fallback: string,
-): Promise<PaymentError> {
-  if (error instanceof FunctionsHttpError) {
-    try {
-      const body = (await error.context.json()) as { error?: string; code?: string };
-      const code = body.code ?? 'UNKNOWN';
-      // Own-property lookup only: bracket access on a plain object STILL resolves
-      // inherited keys (a `code` of 'toString'/'constructor' would map to a
-      // function), so gate on Object.hasOwn before reading the map.
-      const mapped = Object.hasOwn(messages, code) ? messages[code] : undefined;
-      const message = mapped ?? body.error ?? fallback;
-      return new PaymentError(message, code);
-    } catch {
-      return new PaymentError(fallback, 'UNKNOWN');
-    }
-  }
-  // Network / relay error with no HTTP body.
-  return new PaymentError(fallback, 'NETWORK');
-}
 
 /**
  * Open (or reuse) the escrow PaymentIntent for a draft post and return its

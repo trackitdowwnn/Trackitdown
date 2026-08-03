@@ -296,15 +296,6 @@ function LoadedProfile({
           testID="row-my-cars"
         />
 
-        {PAYOUTS_ENABLED ? (
-          // TODO(payments): derive the value from stripe_connected_accounts
-          // (none → "Set up payouts", payouts_enabled → "Payouts ready",
-          // else "Action needed") and deep-link into the payments feature.
-          <Section title="Payouts">
-            <ListRow icon={Banknote} title="Payouts" value="Set up payouts" disabled />
-          </Section>
-        ) : null}
-
         <Section title="Settings">
           {/* ONE row. "Notifications" and "Alert location" are one setting in
               the user's head — which is the reason they always led to the same
@@ -318,6 +309,21 @@ function LoadedProfile({
             onPress={openAlertSettings}
             testID="row-alerts"
           />
+          {/* Deliberately NO status value here, which is what the old TODO
+              asked for. It would cost a fourth network read on a tab people
+              open constantly, to render five words — and a cached "Payouts
+              ready" while Stripe has just suspended the account is worse than
+              saying nothing. The screen owns the truth; this row owns the way
+              in. Moved out of its own one-row section at the same time: a
+              section of one reads as a section that lost its siblings. */}
+          {PAYOUTS_ENABLED ? (
+            <ListRow
+              icon={Banknote}
+              title="Payouts"
+              onPress={() => router.push('/payouts')}
+              testID="row-payouts"
+            />
+          ) : null}
           <ListRow
             icon={Info}
             title="How Trackitdown works"

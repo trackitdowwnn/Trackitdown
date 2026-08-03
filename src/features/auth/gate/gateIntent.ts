@@ -29,7 +29,8 @@ export type GateContext =
   | 'my_posts'
   | 'tab_inbox'
   | 'tab_profile'
-  | 'alert_settings';
+  | 'alert_settings'
+  | 'payouts';
 
 /** The sheet is an invitation tied to what the user wanted — never a generic
  *  wall (DESIGN_SYSTEM tone). */
@@ -45,6 +46,7 @@ export const GATE_TITLES: Record<GateContext, string> = {
   tab_inbox: 'Log in to see your messages',
   tab_profile: 'Log in to see your profile',
   alert_settings: 'Log in to set your alert area',
+  payouts: 'Log in to set up payouts',
 };
 
 export interface PendingIntent {

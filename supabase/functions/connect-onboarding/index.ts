@@ -1,7 +1,9 @@
 /**
  * WHAT:  Edge Function that gives a spotter somewhere for their bounty to land:
  *        creates their Stripe Express account if they have none, then returns a
- *        fresh hosted onboarding link for them to open.
+ *        fresh hosted link — onboarding if they are still setting up,
+ *        `account_update` if they are already payable and want to change where
+ *        the money goes.
  * WHY:   `release-payout` will not transfer a penny unless
  *        `stripe_connected_accounts.payouts_enabled` is true, and until this
  *        function existed nothing ever created a row there. The money half of
@@ -85,15 +87,31 @@ Deno.serve(async (request) => {
     return errorResponse('LOOKUP_FAILED', 'We couldn’t start this. Please try again.', 500);
   }
 
-  // Already done. Say so rather than sending them back through KYC they have
-  // finished — and rather than creating a SECOND Express account for the same
-  // person, which Stripe permits and which would split their history.
-  if (existing?.payouts_enabled) {
-    return jsonResponse({ status: 'already_enabled' });
-  }
-
   const stripe = createStripeClient();
   let accountId = existing?.stripe_account_id as string | undefined;
+
+  // ALREADY PAYABLE. Not "nothing to do" — people change banks, move house, and
+  // have documents expire, and until 2026-08-03 this returned a bare
+  // `already_enabled` with no link, which left a set-up spotter with no route
+  // to their own details at all. `account_update` is Stripe's own answer: the
+  // same hosted flow, opened for editing rather than for signing up.
+  if (existing?.payouts_enabled && accountId) {
+    try {
+      const link = await stripe.accountLinks.create({
+        account: accountId,
+        refresh_url: REFRESH_URL,
+        return_url: RETURN_URL,
+        type: 'account_update',
+      });
+      console.log('[payments] connect update link issued', { accountId });
+      return jsonResponse({ status: 'update_available', url: link.url });
+    } catch (err) {
+      // Falling back to the old answer keeps a working payout account working:
+      // failing here would make "manage my details" look like "payouts broke".
+      console.error('[payments] connect update link failed', (err as Error).message);
+      return jsonResponse({ status: 'already_enabled' });
+    }
+  }
 
   if (!accountId) {
     try {
