@@ -28,7 +28,7 @@
  *        docs/decisions/ADR-0002-stripe-connect.md; docs/DOMAIN.md.
  */
 
-import type Stripe from 'npm:stripe@17.5.0';
+import type Stripe from 'npm:stripe@22.4.0';
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';

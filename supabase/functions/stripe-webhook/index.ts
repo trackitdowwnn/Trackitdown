@@ -25,7 +25,7 @@
  *          idempotent); supabase/functions/README.md (registering the endpoint).
  */
 
-import type Stripe from 'npm:stripe@17.5.0';
+import type Stripe from 'npm:stripe@22.4.0';
 
 import {
   createServiceRoleClient,

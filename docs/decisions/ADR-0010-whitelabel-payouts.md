@@ -67,8 +67,13 @@ facts underneath that rejection:
 5. **A Stripe remediation fallback stays wired** for risk/liveness step-ups.
    The current embedded + hosted path is kept for exactly this, and for
    existing v1 accounts, which are not migrated.
-6. Server SDK upgrades to stripe-node 21.x first, proven against escrow,
-   before any v2 call is written.
+6. Server SDK upgrades to stripe-node **22.4.0** first (the maintained line —
+   the v21 line died after two patches; both pin API `2026-03-25.dahlia`),
+   proven against escrow, before any v2 call is written. Done 2026-08-03; the
+   per-call-site changelog check found no shape changes on our escrow surface,
+   and the one behavioural change in range (partial-capture/cancel no longer
+   auto-creating Refunds) does not apply to a flow whose only cancellation is
+   an unconfirmed draft intent.
 
 ## Consequences
 

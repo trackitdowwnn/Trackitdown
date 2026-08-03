@@ -16,7 +16,7 @@
  *        docs/decisions/ADR-0002-stripe-connect.md.
  */
 
-import type Stripe from 'npm:stripe@17.5.0';
+import type Stripe from 'npm:stripe@22.4.0';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 /** What the caller needs to know, without leaking Stripe's whole object. */
@@ -63,14 +63,14 @@ export async function createConnectAccount(
     // NO `type: 'express'`. ADR-0002 chose controller properties over the
     // legacy account types, and Stripe rejects a request carrying both.
     //
-    // ⚠️ DEVIATION FROM ADR-0002's LETTER, NOT ITS INTENT: the ADR names the v2
-    // Accounts fields (`dashboard`, `fees_collector`, `losses_collector`), which
-    // need the v2 Accounts API — a newer pinned `apiVersion` and stripe SDK than
-    // `_shared/clients.ts` uses (17.5.0 / 2024-06-20). Upgrading the SDK under
-    // the whole escrow path to create one account is a bad trade, so this uses
-    // the v1 controller form, which expresses the SAME three decisions: Express
-    // dashboard, platform collects fees, platform carries losses. Revisit
-    // together with any SDK bump.
+    // STILL THE v1 CONTROLLER FORM, NOW DELIBERATELY TRANSITIONAL: the SDK bump
+    // (22.4.0, 2026-08-03) makes `stripe.v2.core.accounts` available, and
+    // ADR-0010 decides new payee accounts move to the v2 `recipient`
+    // configuration with `dashboard: none`. That build is the next phase; until
+    // it lands, this remains the ONLY account creator, and accounts it creates
+    // are the ones the hosted/embedded fallback exists for. Do not "quickly"
+    // port this to v2 in passing — the v2 shape changes who collects
+    // requirements, which is a product change, not a refactor.
     country: 'GB',
     // UK-only, GBP-only (ROADMAP's v1 fence). A spotter is paid, never charged,
     // so only transfers are requested.
