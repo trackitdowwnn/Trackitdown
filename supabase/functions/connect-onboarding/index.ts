@@ -132,8 +132,49 @@ Deno.serve(async (request) => {
   //
   // Answered before the account is even created, so a spotter who has typed
   // nothing yet also cannot have the window closed on them by a stray call.
+  //
+  // ...UNLESS THEY ASK TO SKIP IT, and they must be able to. Our form knows how
+  // to describe a UK individual with a UK bank account and nothing else, so a
+  // spotter Stripe refuses for a reason those ten fields cannot express — a
+  // company, a non-UK account — would otherwise be gated forever behind a form
+  // that can never satisfy it, with no route to the onboarding that could.
+  // Skipping spends the prefill window deliberately, which is strictly better
+  // than being unpayable.
+  //
+  // `skipPrefill` is an intent about the CALLER's own account, not an identity:
+  // the account still comes from the JWT and nothing about who is paid can be
+  // influenced from the wire.
   if (!existing.detailsSubmitted) {
-    return jsonResponse({ status: 'details_required' });
+    let skipPrefill = false;
+    try {
+      const body = (await request.json()) as { skipPrefill?: unknown };
+      skipPrefill = body?.skipPrefill === true;
+    } catch {
+      // No body at all is the normal case — the client sends one only to skip.
+    }
+
+    if (!skipPrefill) {
+      return jsonResponse({ status: 'details_required' });
+    }
+
+    // The account has to exist before the gate can be recorded against it.
+    if (!accountId) {
+      try {
+        accountId = await createConnectAccount(stripe, admin, userId);
+      } catch (err) {
+        console.error('[payments] connect account create failed', (err as Error).message);
+        return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
+      }
+    }
+    const { error: skipError } = await admin.rpc('mark_payout_details_submitted', {
+      p_profile_id: userId,
+      p_stripe_account_id: accountId,
+    });
+    if (skipError) {
+      console.error('[payments] payout prefill skip failed', skipError.message);
+      return errorResponse('LEDGER_ERROR', 'We couldn’t set up payouts. Please try again.', 500);
+    }
+    console.log('[payments] payout prefill skipped', { accountId });
   }
 
   if (!accountId) {

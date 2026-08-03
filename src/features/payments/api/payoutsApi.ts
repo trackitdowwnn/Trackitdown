@@ -105,13 +105,15 @@ export interface PayoutAccount {
  * that arrived over the wire is a payee id someone could change". This is the
  * payouts equivalent of never sending an amount, and it is pinned by a test.
  */
-export async function startConnectOnboarding(): Promise<ConnectOnboardingResult> {
-  log.debug('connect-onboarding invoke');
+export async function startConnectOnboarding(
+  options: { skipPrefill?: boolean } = {},
+): Promise<ConnectOnboardingResult> {
+  log.debug('connect-onboarding invoke', { skipPrefill: Boolean(options.skipPrefill) });
   const { data, error } = await supabase.functions.invoke<{
     status?: string;
     url?: string;
     clientSecret?: string;
-  }>('connect-onboarding');
+  }>('connect-onboarding', options.skipPrefill ? { body: { skipPrefill: true } } : undefined);
 
   if (error) {
     const failure = await parseFunctionError(

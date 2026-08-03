@@ -61,6 +61,15 @@ interface FetchResult {
   outcome: PayoutAccount | null | 'error';
 }
 
+/** The account's own answer, with no session or loading concerns mixed in. */
+function statusFor(account: PayoutAccount | null): PayoutAccountStatus {
+  if (account === null) return 'notStarted';
+  if (account.payoutsEnabled) return 'ready';
+  // The webhook writes both flags together, so this is the honest split: the
+  // form is done and Stripe is deciding, or it genuinely is not done.
+  return account.onboardingComplete ? 'verifying' : 'unfinished';
+}
+
 export function usePayoutAccount(): PayoutAccountState {
   const session = useSession();
   const [generation, setGeneration] = useState(0);
@@ -153,13 +162,20 @@ export function usePayoutAccount(): PayoutAccountState {
   const status: PayoutAccountStatus = (() => {
     if (session.status === 'loading') return 'loading';
     if (session.status === 'signedOut') return 'guest';
-    if (!result || result.key !== key) return 'loading';
+    if (!result || result.key !== key) {
+      // Stale-while-revalidate for the SAME user, the house pattern from
+      // useMyProfile: a pull-to-refresh or a settle re-read must not blank the
+      // card back to a skeleton. Only a first load for this user is 'loading'.
+      // The userId prefix keeps cross-user reuse impossible, and a stale error
+      // is never reused so a retry reads as loading.
+      const previous = result?.key.split(':')[0];
+      if (result && result.outcome !== 'error' && previous === session.userId) {
+        return statusFor(result.outcome);
+      }
+      return 'loading';
+    }
     if (result.outcome === 'error') return 'error';
-    if (result.outcome === null) return 'notStarted';
-    if (result.outcome.payoutsEnabled) return 'ready';
-    // The webhook writes both flags together, so this is the honest split:
-    // the form is done and Stripe is deciding, or it genuinely is not done.
-    return result.outcome.onboardingComplete ? 'verifying' : 'unfinished';
+    return statusFor(result.outcome);
   })();
 
   return { status, account, settling, refresh, settleReturn };

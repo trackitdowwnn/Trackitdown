@@ -75,9 +75,23 @@ describe('startConnectOnboarding', () => {
   it('SECURITY: sends no account id — the payee is resolved from the JWT', async () => {
     mockInvoke.mockResolvedValue({ data: { status: 'already_enabled' }, error: null });
     await startConnectOnboarding();
-    // No second argument at all. An account id the client could send is an
-    // account id the client could change.
-    expect(mockInvoke).toHaveBeenCalledWith('connect-onboarding');
+    // No body. An account id the client could send is an account id the client
+    // could change.
+    expect(mockInvoke).toHaveBeenCalledWith('connect-onboarding', undefined);
+  });
+
+  it('sends ONLY an intent when skipping prefill — never an identity', async () => {
+    // The escape hatch for someone our UK-individual form cannot describe. It
+    // says what to do, not who to do it to: the account still comes from the
+    // JWT, so nothing about who gets paid travels over the wire.
+    mockInvoke.mockResolvedValue({
+      data: { status: 'onboarding_session', clientSecret: 'accs_1' },
+      error: null,
+    });
+    await startConnectOnboarding({ skipPrefill: true });
+
+    const [, options] = mockInvoke.mock.calls[0];
+    expect(Object.keys(options.body)).toEqual(['skipPrefill']);
   });
 
   it('returns the in-app onboarding session — the normal setup path', async () => {

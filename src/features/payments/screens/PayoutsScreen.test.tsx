@@ -12,6 +12,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
+import { PaymentError } from '../api/functionError';
 import { PayoutsScreen } from './PayoutsScreen';
 
 jest.mock('react-native-safe-area-context', () =>
@@ -97,6 +98,23 @@ jest.mock('../hooks/usePayoutAccount', () => ({
 }));
 
 const STRIPE_URL = 'https://connect.stripe.com/setup/abc';
+
+/** Fill every required field so `submit()` reaches the api rather than zod. */
+const fillForm = async (getByTestId: (id: string) => unknown) => {
+  const type = async (id: string, value: string) => {
+    await act(async () => {
+      fireEvent.changeText(getByTestId(id) as never, value);
+    });
+  };
+  await type('payout-first-name', 'Ada');
+  await type('payout-last-name', 'Lovelace');
+  await type('payout-dob', '01041990');
+  await type('payout-address-1', '12 Bridge Street');
+  await type('payout-city', 'Manchester');
+  await type('payout-postcode', 'M1 1AA');
+  await type('payout-sort-code', '108800');
+  await type('payout-account-number', '00012345');
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -186,6 +204,35 @@ describe('our own form comes first', () => {
     });
     expect(getByText(/never store them/i)).toBeTruthy();
     expect(queryByText(/never see/i)).toBeNull();
+  });
+
+  it('offers Stripe when our form cannot describe them', async () => {
+    // A company, or a non-UK account. Our ten fields have no word for either,
+    // so without this the spotter is gated forever behind a form that can
+    // never satisfy Stripe — permanently unpayable.
+    mockStart.mockResolvedValue({ status: 'details_required' });
+    // The REAL PaymentError — the screen tests `instanceof`, and only the api
+    // module is mocked, so `functionError` is the genuine article here.
+    mockSubmitDetails.mockRejectedValue(
+      new PaymentError('Stripe couldn’t accept those details.', 'DETAILS_REJECTED'),
+    );
+
+    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(getByText('Set up payouts'));
+    });
+    await fillForm(getByTestId);
+    await act(async () => {
+      fireEvent.press(getByText('Continue'));
+    });
+
+    expect(getByTestId('payouts-details-rejected')).toBeTruthy();
+    mockStart.mockResolvedValue({ status: 'onboarding_session', clientSecret: 'accs_1' });
+    await act(async () => {
+      fireEvent.press(getByText('Continue with Stripe'));
+    });
+    // Spends the prefill window deliberately, which beats being unpayable.
+    expect(mockStart).toHaveBeenCalledWith({ skipPrefill: true });
   });
 
   it('offers a way out of ten fields of bank and identity data', async () => {

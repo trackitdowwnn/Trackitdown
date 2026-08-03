@@ -1,7 +1,23 @@
 /**
- * WHAT:  PayoutsScreen — where a spotter gives their bounty somewhere to land.
- *        Opens Stripe's hosted onboarding, then reports honestly where they
- *        stand: not started, part way, being checked, or ready.
+ * WHAT:  PayoutsScreen — where a spotter gives their bounty somewhere to land,
+ *        and then reports honestly where they stand: not started, part way,
+ *        being checked, or ready.
+ *
+ *        THREE FLOWS LIVE HERE, in this order of preference:
+ *          1. `PayoutDetailsForm` — our own native form. Stripe allows us to
+ *             submit bank details and identity fields only while the prefill
+ *             window is open, so this runs FIRST and the server refuses to mint
+ *             a session (`details_required`) until it has.
+ *          2. `ConnectAccountOnboarding` — Stripe's embedded component, in-app,
+ *             for whatever our form could not say and the liveness check only
+ *             they can do.
+ *          3. The browser — for changing details on an account that already
+ *             works (Stripe has no React Native component for it) and as the
+ *             fallback if a session cannot be minted.
+ *        Our form cannot describe a company or a non-UK account, so a
+ *        `DETAILS_REJECTED` offers "Continue with Stripe", which spends the
+ *        prefill window deliberately rather than leaving someone permanently
+ *        unpayable behind a form that can never satisfy Stripe.
  * WHY:   `release-payout` refuses to transfer until Stripe says a spotter is
  *        payable, and nothing in the app could create that account. Every
  *        credited bounty sat on the platform balance while both parties were
@@ -31,7 +47,9 @@
  *        including the query string would fail to match the expiry redirect and
  *        hang the session with no way out but the back button.
  * LINKS: ../api/payoutsApi.ts; ../hooks/usePayoutAccount.ts;
- *        supabase/functions/connect-onboarding/index.ts (the hosted link);
+ *        ../components/PayoutDetailsForm.tsx (flow 1);
+ *        supabase/functions/submit-payout-details/index.ts (where it goes);
+ *        supabase/functions/connect-onboarding/index.ts (session, link, gate);
  *        src/app/payouts.tsx; docs/DESIGN_SYSTEM.md (tone).
  */
 
@@ -108,6 +126,8 @@ export function PayoutsScreen() {
   const params = useLocalSearchParams<{ onboarding?: string }>();
   const [opening, setOpening] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  // Stripe refused what our form can describe. Offers the way past.
+  const [detailsRejected, setDetailsRejected] = useState(false);
   const [browserSaidExpired, setBrowserSaidExpired] = useState(false);
   // Two ways to learn the link expired, and only one of them needs storing.
   // Deriving the deep-link half keeps the effect below free of any setState —
@@ -159,14 +179,15 @@ export function PayoutsScreen() {
     return result.clientSecret;
   }, []);
 
-  const open = useCallback(async () => {
+  const open = useCallback(
+    async (options: { skipPrefill?: boolean } = {}) => {
     if (opening) {
       return;
     }
     setOpening(true);
     setBrowserSaidExpired(false);
     try {
-      const result = await startConnectOnboarding();
+      const result = await startConnectOnboarding(options);
       if (result.status === 'already_enabled') {
         // Nothing to open — the server had nothing left to ask for. Re-read so
         // the screen agrees with it.
@@ -222,7 +243,9 @@ export function PayoutsScreen() {
     } finally {
       setOpening(false);
     }
-  }, [fetchClientSecret, opening, refresh, settleReturn, toast]);
+    },
+    [fetchClientSecret, opening, refresh, settleReturn, toast],
+  );
 
   /**
    * Their details go to Stripe, and then we go straight on to whatever Stripe
@@ -237,6 +260,13 @@ export function PayoutsScreen() {
         setShowForm(false);
         await open();
       } catch (error) {
+        // Stripe would not take what our form can describe — a company, a
+        // non-UK account, something these ten fields have no word for. Without
+        // a way past, that spotter is gated forever behind a form that can
+        // never satisfy it. So offer Stripe's own onboarding, which can.
+        if (error instanceof PaymentError && error.code === 'DETAILS_REJECTED') {
+          setDetailsRejected(true);
+        }
         toast.show(
           error instanceof PaymentError
             ? error.message
@@ -249,6 +279,13 @@ export function PayoutsScreen() {
     },
     [open, toast],
   );
+
+  /** Spend the prefill window deliberately and let Stripe ask instead. */
+  const onSkipPrefill = useCallback(async () => {
+    setShowForm(false);
+    setDetailsRejected(false);
+    await open({ skipPrefill: true });
+  }, [open]);
 
   /**
    * The embedded component has closed. This is EXACTLY as much of a promise as
@@ -344,23 +381,37 @@ export function PayoutsScreen() {
     }
     if (showForm) {
       return (
-        <PayoutDetailsForm
-          onSubmit={onSubmitDetails}
-          onCancel={() => setShowForm(false)}
-          busy={opening}
-        />
-      );
-    }
-    if (status === 'error') {
-      return (
-        <ErrorState
-          title="Couldn't load your payout details"
-          body="Check your connection and try again."
-          onRetry={refresh}
-        />
+        <>
+          <PayoutDetailsForm
+            onSubmit={onSubmitDetails}
+            onCancel={() => setShowForm(false)}
+            busy={opening}
+          />
+          {detailsRejected ? (
+            <View style={styles.card} testID="payouts-details-rejected">
+              <Text style={styles.cardTitle} accessibilityRole="header">
+                Stripe needs something else
+              </Text>
+              <Text style={styles.cardBody}>
+                This form covers a UK account in your own name. If that isn’t you — a
+                company, or an account elsewhere — Stripe can ask for the right details
+                directly.
+              </Text>
+              <Button
+                label="Continue with Stripe"
+                variant="secondary"
+                onPress={() => void onSkipPrefill()}
+                loading={opening}
+              />
+            </View>
+          ) : null}
+        </>
       );
     }
     if (settling) {
+      // ABOVE `error` on purpose: the settling window issues its own re-reads,
+      // and one transient failure among them must not flip "Nearly there" into
+      // an error that blames the spotter for Stripe's queue.
       // Outranks the derived state, and this is the whole point: until the
       // webhook lands, someone who just finished is indistinguishable from
       // someone who gave up, and guessing wrong blames the wrong person.
@@ -372,10 +423,20 @@ export function PayoutsScreen() {
           <Text style={styles.cardBody}>
             We’re waiting for Stripe to confirm. This usually takes a moment.
           </Text>
-          {/* Never a dead end: if the window closes unresolved, this is the
-              way to ask again without leaving and coming back. */}
+          {/* Skips the wait rather than escaping a dead end — the window ends
+              by itself, and once it does this card is gone. It is here so
+              somebody who knows they finished need not watch a spinner. */}
           <Button label="Check again" variant="secondary" onPress={refresh} />
         </View>
+      );
+    }
+    if (status === 'error') {
+      return (
+        <ErrorState
+          title="Couldn't load your payout details"
+          body="Check your connection and try again."
+          onRetry={refresh}
+        />
       );
     }
     if (status === 'loading') {
