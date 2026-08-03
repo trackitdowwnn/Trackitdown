@@ -45,6 +45,7 @@ jest.mock('@/features/sightings', () => ({
 
 const mockClaim = jest.fn();
 const mockRefund = jest.fn();
+const mockRelease = jest.fn();
 jest.mock('../api/recoveryApi', () => {
   class RecoveryError extends Error {
     code: string;
@@ -61,6 +62,9 @@ jest.mock('../api/recoveryApi', () => {
     },
     get refundRecovery() {
       return mockRefund;
+    },
+    get releasePayout() {
+      return mockRelease;
     },
   };
 });
@@ -79,6 +83,7 @@ beforeEach(() => {
   mockSightings = [SIGHTING];
   mockClaim.mockResolvedValue({ nextStep: 'refund', creditedSightingId: null });
   mockRefund.mockResolvedValue({ refundedPence: 24000 });
+  mockRelease.mockResolvedValue({ status: 'awaiting_payee', transferPence: null });
 });
 
 describe('the guard', () => {
@@ -131,6 +136,94 @@ describe('crediting a spotter', () => {
     // Saying "paid" would be a promise we cannot keep.
     const said = String(mockShowToast.mock.calls[0][0]);
     expect(said).not.toMatch(/\bpaid\b/i);
+  });
+
+  // Until 2026-08-03 this branch called NOTHING. It showed "we'll get the
+  // bounty to them" and went back, leaving the money in escrow and the post
+  // stranded on `recovery_claimed` — which also blocked the owner's account
+  // deletion for good. The assertion that matters is simply: it asks.
+  it('actually releases the bounty', async () => {
+    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    await waitFor(() => expect(mockRelease).toHaveBeenCalledWith('p1'));
+    expect(mockRefund).not.toHaveBeenCalled();
+  });
+
+  it('says the money has MOVED when it has', async () => {
+    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+    mockRelease.mockResolvedValue({ status: 'paid', transferPence: 23750 });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
+    // 95% of £250. The owner is told the real figure, not a round bounty.
+    expect(String(mockShowToast.mock.calls[0][0])).toContain('£237.50');
+  });
+
+  it('blames nobody when the spotter has not onboarded yet', async () => {
+    // The NORMAL first answer: a spotter has no Stripe account until a sighting
+    // of theirs is credited, which is this exact moment.
+    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+    mockRelease.mockResolvedValue({ status: 'awaiting_payee', transferPence: null });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
+    const [said, kind] = mockShowToast.mock.calls[0];
+    expect(String(said)).toMatch(/bank details/i);
+    expect(kind).toBeUndefined(); // news, not an error
+  });
+
+  it('never tells the owner to try again when the payout fails', async () => {
+    // The claim has already landed and CANNOT be redone — `claim_recovery`
+    // accepts `active` only, and the post no longer is. Sending them back to a
+    // screen that will now refuse them is the worst possible answer.
+    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+    mockRelease.mockRejectedValue(new Error('network'));
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
+    const [said, kind] = mockShowToast.mock.calls[0];
+    expect(String(said)).toMatch(/credited/i);
+    expect(String(said)).not.toMatch(/try again/i);
+    expect(kind).not.toBe('error');
+    // And it still leaves the screen — the recovery IS recorded.
+    await waitFor(() => expect(mockBack).toHaveBeenCalled());
   });
 });
 

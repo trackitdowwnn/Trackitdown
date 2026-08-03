@@ -9,10 +9,16 @@ document wins — fix the code or update this doc deliberately.
   confirms recovery.
 - **Spotter** — any user who has enabled alerts. Sets their own alert radius,
   receives notifications about active posts within it, reports sightings.
-- **Moderator** — internal admin. Reviews new posts before they go public,
-  handles flagged content and disputes.
-- **Platform** — us. Takes a 5% fee from each paid bounty via Stripe Connect
-  application fees.
+- **Moderator** — internal admin. Handles flagged content and disputes.
+  (No longer "reviews new posts before they go public" — ADR-0007 retired
+  pre-publish review. Nothing moderator-facing is built at all; the only flag
+  paths that exist are for a post and a message, and nothing consumes either.)
+- **Platform** — us. Retains 5% of each paid bounty. The bounty is captured to
+  our balance at posting and 95% is TRANSFERRED to the spotter on a credited
+  recovery, so our 5% is simply the remainder that never leaves — it is **not**
+  a Stripe `application_fee_amount`, which only exists for the destination
+  charges we deliberately do not use. See ADR-0002 and Bounty rules below.
+  This line said "via Stripe Connect application fees" until 2026-08-03.
 
 ## Accounts & sign-in
 
@@ -409,9 +415,15 @@ unpublished, unsearchable, and carries no money or lifecycle state.
 - Users can delete their account in-app (App Store requirement). Deletion
   is server-side (Edge Function) per SECURITY_AND_TRUST.md retention rules.
 - Deletion is BLOCKED while any of the user's posts has money in escrow —
-  status `active`, `pending_verification`, or `recovery_claimed`. The user
-  must cancel the post or complete its recovery first. The client may
-  pre-check to explain this kindly; the server check is the enforcement.
+  status `active`, `pending_verification` (a retired state, still listed so a
+  legacy row cannot slip through), or `recovery_claimed`. The user must cancel
+  the post or complete its recovery first. The client may pre-check to explain
+  this kindly; the server check is the enforcement.
+- ⚠️ **Known trap (2026-08-03):** "complete its recovery" is currently
+  impossible for the credited-spotter branch. Nothing calls `release-payout`,
+  so a post that reaches `recovery_claimed` never reaches `recovered` — and its
+  owner can therefore never delete their account. Crediting a spotter is
+  presently a one-way door. Closing the payout wire closes this too.
 
 ## Disputes
 

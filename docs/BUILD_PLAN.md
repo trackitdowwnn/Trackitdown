@@ -65,7 +65,9 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
 
 - [x] Stripe PaymentSheet: escrow charge at posting (`src/features/payments` +
       `create-payment-intent` Edge Function; captures immediately, server-read
-      amount, idempotent per post; `draft → pending_verification` on success)
+      amount, idempotent per post; **`draft → active` on success** — this said
+      `draft → pending_verification` until 2026-08-03, describing the
+      pre-publish gate ADR-0007 removed on 2026-07-30)
 - [x] stripe-webhook Edge Function (signature check, dedupe, idempotent)
 - [~] Refund paths: **cancelled is DONE** (`deactivate-post` +
       `mark_post_payment_refunded`, withholding the authoritative Stripe fee).
@@ -91,15 +93,24 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
       (`alerts_verification.sql`, 45 checks)
 - [x] Sighting flow: in-app camera, auto GPS, note, SafetyNotice
 - [x] Owner ↔ spotter chat (opens only after a sighting)
-- [ ] Recovery confirmation: owner credits one sighting (or none).
-      **THE ONE THING THAT CLOSES THE LOOP, AND IT IS NOT BUILT.** Nothing
-      moves a post to `recovered` or a sighting to `credited`. Everything
-      below depends on it.
-- [ ] Spotter Stripe Connect onboarding + release-payout (95/5) — blocked by
-      the line above; there is nothing to pay out for.
-- [ ] Milestone: full journey on two phones with two test accounts — blocked
-      at the same point: the journey runs end-to-end up to "owner gets it
-      back", then stops.
+- [x] Recovery confirmation: owner credits one sighting (or none).
+      **BUILT 2026-08-02.** `claim_recovery` + `mark_recovered_no_spotter` +
+      `RecoverPostScreen`. This line said "THE ONE THING THAT CLOSES THE LOOP,
+      AND IT IS NOT BUILT" until 2026-08-03, a day after it shipped.
+- [~] Spotter Stripe Connect onboarding + release-payout (95/5).
+      `release-payout` is **BUILT** (`20260802220000_release_payout.sql` +
+      the Edge Function). Two things remain, and neither is the hard part:
+      - [ ] **Call it.** `RecoverPostScreen.tsx` toasts "we'll get the bounty
+            to them" on the payout branch and invokes nothing. Until this is
+            wired the post is stranded in `recovery_claimed` — which also
+            blocks the owner's account deletion, permanently.
+      - [ ] **Connect onboarding**, so there is a payee. Needs an account-link
+            Edge Function and the UI behind `PAYOUTS_ENABLED`. ⚠️ Also needs
+            Stripe Connect ENABLED on the platform account — see the unticked
+            Phase 0 Stripe lines, still marked "— you".
+- [ ] Milestone: full journey on two phones with two test accounts — now
+      blocked only on the two boxes above. Everything up to and including
+      "owner credits a spotter" runs; the money is the last inch.
 
 ## Phase 4 — Trust layer & polish
 

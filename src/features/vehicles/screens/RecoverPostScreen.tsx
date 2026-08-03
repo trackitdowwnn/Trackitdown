@@ -15,7 +15,15 @@
  *        ending refunds the bounty. Crediting a spotter sends it to them. The
  *        screen must not push toward either; the copy stays even-handed and the
  *        no-spotter option is a peer, not a get-out.
- * LINKS: ../api/recoveryApi.ts (the two calls and why there are two);
+ *
+ * MONEY: BOTH endings now actually move money. Until 2026-08-03 only the refund
+ *        did: the credited branch showed "we'll get the bounty to them" and
+ *        called nothing, stranding the post on `recovery_claimed` — which also
+ *        blocked the owner's account deletion forever. Once the claim lands it
+ *        CANNOT be undone (`claim_recovery` accepts `active` only), so every
+ *        branch after it — including the failures — is worded as "they are
+ *        credited, here is where the money is", never as "try again".
+ * LINKS: ../api/recoveryApi.ts (the three calls and why there are three);
  *        src/features/sightings/hooks/usePostSightings.ts;
  *        supabase/migrations/20260802200000_claim_recovery.sql;
  *        docs/DOMAIN.md (lifecycle 4-6, "Single winner").
@@ -31,7 +39,7 @@ import { formatPounds } from '@/shared/lib/money';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
 
-import { RecoveryError, claimRecovery, refundRecovery } from '../api/recoveryApi';
+import { RecoveryError, claimRecovery, refundRecovery, releasePayout } from '../api/recoveryApi';
 
 export interface RecoverPostScreenProps {
   postId: string;
@@ -61,11 +69,33 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
         toast.show(
           `Glad you got it back. ${formatPounds(refund.refundedPence)} is on its way back to you.`,
         );
-      } else {
-        // Honest: the bounty is committed to them, but it cannot land until
-        // they have given Stripe their details. Promising "paid" here would be
-        // a promise we do not control.
-        toast.show('Thank you — we’ll get the bounty to them.');
+        router.back();
+        return;
+      }
+
+      // THE CLAIM HAS LANDED. Everything below is about the money, and nothing
+      // below can undo it — `claim_recovery` accepts `active` and the post is
+      // no longer active. So every branch here, including the failures, has to
+      // read as "they are credited, here is where the bounty is" and never as
+      // "that didn't work".
+      try {
+        const payout = await releasePayout(postId);
+        toast.show(
+          payout.status === 'paid' && payout.transferPence !== null
+            ? `Sent. ${formatPounds(payout.transferPence)} is on its way to them.`
+            : // The usual first time: a spotter has no Stripe account until a
+              // sighting of theirs is credited, which is this moment. Say what
+              // is actually true rather than implying a delay on our side.
+              'They’re credited. We’ll send the bounty as soon as they’ve added their bank details.',
+        );
+      } catch (payoutError) {
+        // The credit stands; only the transfer is outstanding, and it can be
+        // retried from the listing. Surfaced calmly, not as an error toast.
+        toast.show(
+          payoutError instanceof RecoveryError
+            ? payoutError.message
+            : 'They’re credited. We’ll finish sending the bounty shortly.',
+        );
       }
       router.back();
     } catch (error) {

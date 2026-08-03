@@ -38,7 +38,6 @@ import {
   FileText,
   Info,
   LifeBuoy,
-  MapPin,
   Shield,
   Sparkles,
 } from 'lucide-react-native';
@@ -117,7 +116,16 @@ export function ProfileScreen() {
     return <SignedOutState onPreview={() => setDevPreview(true)} />;
   }
 
-  const profile: MyProfile = state.status === 'ready' ? state.profile : DEV_MOCK_PROFILE;
+  // Sample data belongs to the dev preview and nothing else. Testing
+  // `devPreview` here rather than relying on the early returns above makes that
+  // true BY CONSTRUCTION: as written, one new `status` added to the hook — or
+  // one early return moved — would otherwise hand a real signed-out user a
+  // fabricated reputation and a stranger's name.
+  const profile: MyProfile | null =
+    state.status === 'ready' ? state.profile : devPreview ? DEV_MOCK_PROFILE : null;
+  if (!profile) {
+    return <SignedOutState onPreview={() => setDevPreview(true)} />;
+  }
   return (
     <LoadedProfile
       profile={profile}
@@ -298,22 +306,17 @@ function LoadedProfile({
         ) : null}
 
         <Section title="Settings">
-          {/* BOTH rows land on the same screen: "Notifications" and "Alert
-              location" are one setting in the user's head, and two screens
-              would be two half-answers. */}
-          <ListRow
-            icon={MapPin}
-            title="Alert location & radius"
-            value={alertZoneSummary}
-            onPress={openAlertSettings}
-            testID="row-alert-radius"
-          />
+          {/* ONE row. "Notifications" and "Alert location" are one setting in
+              the user's head — which is the reason they always led to the same
+              screen — but two rows carrying the SAME summary read as two
+              settings that happen to agree, and invite a hunt for the
+              difference between them. One destination, one row saying so. */}
           <ListRow
             icon={Bell}
-            title="Notifications"
+            title="Alerts & notifications"
             value={alertZoneSummary}
             onPress={openAlertSettings}
-            testID="row-notifications"
+            testID="row-alerts"
           />
           <ListRow
             icon={Info}

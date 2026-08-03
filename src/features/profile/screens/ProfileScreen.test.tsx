@@ -275,9 +275,10 @@ describe('signed in', () => {
     expect(mockPush).toHaveBeenCalledWith('/onboarding?revisit=1');
   });
 
-  // The two Settings rows were inert "Coming soon" placeholders until the
-  // notifications feature shipped.
-  it('both alert rows open alert settings and no longer say Coming soon', async () => {
+  // This row was an inert "Coming soon" placeholder until the notifications
+  // feature shipped, and was then TWO rows with the same summary and the same
+  // destination until 2026-08-03.
+  it('one alert row opens alert settings and no longer says Coming soon', async () => {
     const { getByTestId, queryByText } = await render(<ProfileScreen />);
 
     expect(queryByText('Coming soon')).toBeNull();
@@ -285,15 +286,15 @@ describe('signed in', () => {
     // Presses are wrapped in act: an unwrapped one leaves a pending update
     // that surfaces as an unrelated failure in the NEXT test, not this one.
     await act(async () => {
-      fireEvent.press(getByTestId('row-alert-radius'));
+      fireEvent.press(getByTestId('row-alerts'));
     });
     expect(mockPush).toHaveBeenCalledWith('/alerts');
+  });
 
-    mockPush.mockClear();
-    await act(async () => {
-      fireEvent.press(getByTestId('row-notifications'));
-    });
-    expect(mockPush).toHaveBeenCalledWith('/alerts');
+  it('offers alerts exactly once — the same summary twice reads as two settings', async () => {
+    const { queryByTestId } = await render(<ProfileScreen />);
+    expect(queryByTestId('row-alert-radius')).toBeNull();
+    expect(queryByTestId('row-notifications')).toBeNull();
   });
 
   it('summarises no alerts as Not set', async () => {

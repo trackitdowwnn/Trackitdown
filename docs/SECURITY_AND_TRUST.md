@@ -165,11 +165,19 @@ commenting standards.
 
 - The client app **never** touches amounts, fees, or payout logic. It only
   opens Stripe-hosted flows (PaymentSheet for escrow, Connect onboarding
-  for spotters).
-- Escrow charge on posting; payout of 95% / 5% application fee only via
-  the `release-payout` Edge Function, which validates state transitions
-  server-side (post must be `recovery_claimed`, sighting must belong to
-  the post, spotter must be onboarded).
+  for spotters — the latter is not built yet).
+- Escrow charge on posting; payout of 95% by **transfer**, with our 5%
+  retained as the remainder that never leaves the platform balance — **not**
+  an `application_fee_amount` (ADR-0002; this line said "application fee"
+  until 2026-08-03). Only via the `release-payout` Edge Function, which
+  validates state transitions server-side (post must be `recovery_claimed`,
+  sighting must belong to the post, spotter must be onboarded) and whose
+  `mark_recovery_paid` re-derives the split independently and rejects a
+  mismatch.
+  ⚠️ **Nothing calls `release-payout` today**, and no Connect onboarding
+  exists, so a credited bounty currently stays on the platform balance
+  indefinitely while both parties are shown copy saying it is on its way.
+  Do not take a live payment until that is closed.
 - Webhooks: verify Stripe signatures, dedupe by event id, and make every
   handler idempotent.
 - Amounts are integer pence everywhere. `// MONEY:` lines require tests.

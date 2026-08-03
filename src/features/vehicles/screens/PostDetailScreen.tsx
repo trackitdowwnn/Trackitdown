@@ -46,6 +46,7 @@ import {
 } from '@/shared/ui';
 
 import { flagPost } from '../api/flagApi';
+import { RecoveryError, releasePayout } from '../api/recoveryApi';
 import { PostSectionEditorHost, type EditableSection } from '../components/editors';
 import { PostBottomBar } from '../components/PostBottomBar';
 import { PostDetailBody } from '../components/PostDetailBody';
@@ -106,6 +107,15 @@ function canDeactivate(post: PostDetail): boolean {
 function canMarkRecovered(post: PostDetail): boolean {
   return post.isOwner && post.status === 'active';
 }
+/** A credited spotter is waiting to be paid. `recovery_claimed` means the winner
+ *  is chosen and the bounty is still in escrow — usually because they have not
+ *  given Stripe their details yet, which is the expected first answer, not a
+ *  fault. Before this row existed the owner had NO action on such a listing:
+ *  every other one requires `active`, so crediting someone made the app go
+ *  silent on the post it cared most about. */
+function canReleasePayout(post: PostDetail): boolean {
+  return post.isOwner && post.status === 'recovery_claimed';
+}
 
 export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const router = useRouter();
@@ -125,6 +135,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // Which section the owner is editing (a full-screen overlay), or null. Cleared
   // on cancel; on save it also refetches the detail so the change shows.
   const [editing, setEditing] = useState<EditableSection | null>(null);
+  // Guards a double-tap on "Send the bounty". The transfer itself is idempotent
+  // server-side, so this is about not firing two requests, not about safety.
+  const [releasing, setReleasing] = useState(false);
 
   const heroHeight = Math.round(width * HERO_RATIO);
   // The sheet's rounded top overlaps the hero, so the VISUAL hero bottom —
@@ -294,6 +307,32 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     router.push({ pathname: '/recover-post', params: { postId } });
   }, [postId, router]);
 
+  // Retrying a payout. Idempotent server-side (one transfer per post, forever),
+  // so this needs no confirm — and `awaiting_payee` is reported as news rather
+  // than as a failure, because it is: the spotter simply has not onboarded yet.
+  const onReleasePayout = useCallback(async () => {
+    if (releasing) {
+      return;
+    }
+    setReleasing(true);
+    try {
+      const payout = await releasePayout(postId);
+      if (payout.status === 'paid' && payout.transferPence !== null) {
+        toast.show(`Sent. ${formatPounds(payout.transferPence)} is on its way to them.`);
+        retry(); // the post is `recovered` now — reload so the screen agrees
+      } else {
+        toast.show('Not yet — they still need to add their bank details. We’ll keep it safe.');
+      }
+    } catch (error) {
+      toast.show(
+        error instanceof RecoveryError ? error.message : 'We couldn’t send it. Please try again.',
+        'error',
+      );
+    } finally {
+      setReleasing(false);
+    }
+  }, [postId, releasing, retry, toast]);
+
   const onOpenMap = useCallback(
     (post: PostDetail) => {
       if (post.lat == null || post.lng == null) {
@@ -453,6 +492,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
             canEditSafeSection(visiblePost) ? () => setEditing('distinctive_features') : undefined
           }
           onDeactivate={canDeactivate(visiblePost) ? requestDeactivate : undefined}
+          onReleasePayout={
+            canReleasePayout(visiblePost) ? () => void onReleasePayout() : undefined
+          }
         />
       ) : null}
 

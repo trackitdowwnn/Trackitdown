@@ -1,6 +1,7 @@
 /**
- * WHAT:  The two calls that close a recovery — `claim_recovery` (who won) and
- *        the `refund-recovery` Edge Function (the no-spotter ending).
+ * WHAT:  The three calls that close a recovery — `claim_recovery` (who won),
+ *        then ONE of `release-payout` (a spotter was credited) or
+ *        `refund-recovery` (the no-spotter ending).
  * WHY:   DOMAIN.md's lifecycle splits this deliberately, and the client has to
  *        follow the same split. `claim_recovery` records the CLAIM and the
  *        winner but moves no money, landing the post on `recovery_claimed`;
@@ -12,9 +13,19 @@
  *        make via `nextStep` — named by the server rather than re-derived here,
  *        so the client never has to guess the money path from a status.
  *
- * MONEY: no amount is ever sent from the client. The refund is computed
- *        server-side from the ledger and Stripe's own balance transaction.
+ *        UNTIL 2026-08-03 THE PAYOUT HALF OF THAT SENTENCE WAS A LIE. Only the
+ *        refund branch had a second call; `nextStep: 'payout'` showed a toast
+ *        saying "we'll get the bounty to them" and invoked nothing, so every
+ *        credited spotter's bounty stayed on the platform balance and the post
+ *        stayed on `recovery_claimed` forever — which also permanently blocked
+ *        the owner's account deletion. `release-payout` had been written and
+ *        deployed; nothing called it.
+ *
+ * MONEY: no amount is ever sent from the client. Both the refund and the payout
+ *        split are computed server-side from the ledger, and `mark_recovery_paid`
+ *        re-derives the 95/5 independently and rejects a mismatch.
  * LINKS: supabase/migrations/20260802200000_claim_recovery.sql;
+ *        supabase/functions/release-payout/index.ts;
  *        supabase/functions/refund-recovery/index.ts;
  *        src/features/payments/api/paymentsApi.ts (the error-code pattern
  *          mirrored here); docs/DOMAIN.md (lifecycle 4-6).
@@ -61,6 +72,20 @@ const REFUND_MESSAGES: Record<string, string> = {
     'You credited a spotter for this recovery, so the bounty goes to them.',
   POST_NOT_CLAIMED: 'This listing isn’t waiting on a recovery.',
   NO_HELD_PAYMENT: 'We couldn’t find the bounty for this listing.',
+};
+
+/**
+ * Payout failures are worded for someone whose CREDIT HAS ALREADY LANDED. The
+ * spotter is chosen and the money is committed either way, so none of these may
+ * read as "that didn't work, do it again" — the claim cannot be redone, and
+ * suggesting otherwise would send them back to a screen that now refuses them.
+ */
+const PAYOUT_MESSAGES: Record<string, string> = {
+  POST_NOT_CLAIMED: 'This listing isn’t waiting on a payout. It may already be settled.',
+  NO_CREDITED_SIGHTING: 'No spotter is credited on this listing.',
+  NO_HELD_PAYMENT: 'We couldn’t find the bounty for this listing.',
+  LEDGER_ERROR: 'The bounty is on its way. Please check back shortly.',
+  STRIPE_ERROR: 'They’re credited, but sending the bounty didn’t go through. We’ll retry.',
 };
 
 const FALLBACK = 'Something went wrong. Please try again.';
@@ -132,4 +157,54 @@ export async function refundRecovery(postId: string): Promise<RecoveryRefundResu
   const result = data as { refundedPence?: number };
   log.info('recovery_refunded', { postId });
   return { refundedPence: result?.refundedPence ?? 0 };
+}
+
+/**
+ * What happened to the bounty. `awaiting_payee` is a SUCCESS, not a failure:
+ * a spotter has no Stripe account until their first credited sighting, so
+ * "they haven't onboarded yet" is the expected answer the first time. The
+ * bounty stays in escrow and this call is safe to make again later.
+ */
+export type PayoutStatus = 'paid' | 'awaiting_payee';
+
+export interface ReleasePayoutResult {
+  status: PayoutStatus;
+  /** What the spotter receives (95%). Absent until it has actually moved. */
+  transferPence: number | null;
+}
+
+/**
+ * Finish a credited recovery: transfer 95% of the bounty to the spotter.
+ *
+ * Safe to call more than once. The Edge Function carries a per-post transfer
+ * idempotency key, so a retry after a dropped response returns the SAME
+ * transfer rather than paying twice — which is what makes it correct to offer
+ * this again from post detail when the first attempt was `awaiting_payee`.
+ *
+ * MONEY: no amount is sent. The split is derived server-side and checked twice.
+ */
+export async function releasePayout(postId: string): Promise<ReleasePayoutResult> {
+  const { data, error } = await supabase.functions.invoke('release-payout', {
+    body: { postId },
+  });
+
+  if (error) {
+    let code = 'UNKNOWN';
+    if (error instanceof FunctionsHttpError) {
+      try {
+        const body = (await error.context.json()) as { code?: string };
+        code = body.code ?? 'UNKNOWN';
+      } catch {
+        // Non-JSON body (a gateway page); the fallback copy covers it.
+      }
+    }
+    log.warn('release_payout failed', { postId, code });
+    throw new RecoveryError(messageFor(PAYOUT_MESSAGES, code), code);
+  }
+
+  const result = data as { status?: string; transferPence?: number };
+  const status: PayoutStatus = result?.status === 'paid' ? 'paid' : 'awaiting_payee';
+  // No amount in the log line — the event and the outcome, nothing else.
+  log.info('recovery_paid', { postId, status });
+  return { status, transferPence: result?.transferPence ?? null };
 }

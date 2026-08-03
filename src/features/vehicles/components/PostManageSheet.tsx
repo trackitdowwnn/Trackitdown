@@ -17,7 +17,7 @@
  *        src/shared/ui/BottomSheet.tsx + ListRow.tsx; docs/DESIGN_SYSTEM.md.
  */
 
-import { Ban, Eye, Pencil, Share2 } from 'lucide-react-native';
+import { Ban, Banknote, Eye, Pencil, Share2 } from 'lucide-react-native';
 import { useImperativeHandle, useRef, type Ref } from 'react';
 
 import { BottomSheet, ListRow, type BottomSheetRef } from '@/shared/ui';
@@ -42,6 +42,18 @@ export interface PostManageSheetProps {
   /** OWNER + PAID only: take the listing down and refund the bounty. Opens the
    *  parent's confirm — never deactivates straight from a row tap. */
   onDeactivate?: () => void;
+  /**
+   * OWNER + `recovery_claimed` only: try sending the credited spotter their
+   * bounty again.
+   *
+   * Exists because the usual answer the first time is "they haven't given
+   * Stripe their details yet", which leaves the listing sitting between states
+   * with the money still in escrow. Without a row here the owner has NO action
+   * on such a post — they credited someone and the app went quiet. Safe to tap
+   * repeatedly: the transfer carries a per-post idempotency key, so a second
+   * press can never pay twice.
+   */
+  onReleasePayout?: () => void;
 }
 
 export function PostManageSheet({
@@ -57,6 +69,7 @@ export function PostManageSheet({
   onEditTheftContext,
   onEditDistinctiveFeatures,
   onDeactivate,
+  onReleasePayout,
 }: PostManageSheetProps) {
   const sheetRef = useRef<BottomSheetRef>(null);
 
@@ -111,6 +124,19 @@ export function PostManageSheet({
       )}
 
       <ListRow icon={Share2} title="Share listing" onPress={run(onShare)} testID="manage-share" />
+
+      {/* Only on a listing whose spotter is credited but unpaid. Not
+          destructive and not a confirm: it moves money that is already
+          promised, to a person already chosen. */}
+      {onReleasePayout ? (
+        <ListRow
+          icon={Banknote}
+          title="Send the bounty"
+          subtitle="Try again to pay the spotter you credited."
+          onPress={run(onReleasePayout)}
+          testID="manage-release-payout"
+        />
+      ) : null}
 
       {/* Destructive, and last — the refund confirm is the parent's dialog. */}
       {onDeactivate ? (
