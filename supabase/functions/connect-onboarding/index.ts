@@ -1,9 +1,15 @@
 /**
  * WHAT:  Edge Function that gives a spotter somewhere for their bounty to land:
- *        creates their Stripe Express account if they have none, then returns a
- *        fresh hosted link — onboarding if they are still setting up,
- *        `account_update` if they are already payable and want to change where
- *        the money goes.
+ *        creates their Stripe Express account if they have none, then returns
+ *        the credential for whichever flow fits — an **Account Session** for
+ *        the embedded, in-app onboarding component if they are still setting
+ *        up, or a hosted `account_update` link if they are already payable and
+ *        want to change where the money goes.
+ *
+ *        TWO SHAPES, AND THE SERVER PICKS. The client sends no body at all, so
+ *        which flow to run is decided here from the account's own state — it is
+ *        never asked for. Callers get `{ status, clientSecret }` or
+ *        `{ status, url }` and branch on the status.
  * WHY:   `release-payout` will not transfer a penny unless
  *        `stripe_connected_accounts.payouts_enabled` is true, and until this
  *        function existed nothing ever created a row there. The money half of
@@ -178,20 +184,45 @@ Deno.serve(async (request) => {
     }
   }
 
-  // Account Links are single-use and expire in minutes, so one is minted per
-  // request rather than stored. Never log or persist it: it is a bearer URL
-  // into someone's identity documents.
+  // SETUP HAPPENS INSIDE THE APP. An Account Session is the credential for
+  // Stripe's embedded `ConnectAccountOnboarding` component, which renders in
+  // the app rather than throwing the spotter out to a browser — the single
+  // clunkiest moment in the product, at the exact point someone is deciding
+  // whether to trust us with their bank details.
+  //
+  // WHY NOT JUST WEBVIEW THE HOSTED FLOW: because Stripe forbids it, in as many
+  // words — "Stripe-hosted onboarding is only supported in web browsers. You
+  // can't use it in embedded web views inside mobile or desktop applications."
+  // The embedded component is the supported route, not a workaround for it.
+  //
+  // Sessions are short-lived and single-account, so one is minted per request
+  // and never stored. The client re-invokes this function when the SDK asks for
+  // a fresh secret, which is why nothing above this point has side effects on a
+  // repeat call.
   try {
-    const link = await stripe.accountLinks.create({
+    const session = await stripe.accountSessions.create({
       account: accountId,
-      refresh_url: REFRESH_URL,
-      return_url: RETURN_URL,
-      type: 'account_onboarding',
+      components: { account_onboarding: { enabled: true } },
     });
-    console.log('[payments] connect onboarding link issued', { accountId });
-    return jsonResponse({ status: 'onboarding_required', url: link.url });
+    console.log('[payments] connect onboarding session issued', { accountId });
+    return jsonResponse({ status: 'onboarding_session', clientSecret: session.client_secret });
   } catch (err) {
-    console.error('[payments] connect account link failed', (err as Error).message);
-    return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
+    // The hosted link still works and is still deployed, so a session failure
+    // is recoverable rather than terminal: fall back to the browser flow that
+    // shipped first. Worse UX, but a spotter who can be paid beats a dead end.
+    console.error('[payments] connect account session failed', (err as Error).message);
+    try {
+      const link = await stripe.accountLinks.create({
+        account: accountId,
+        refresh_url: REFRESH_URL,
+        return_url: RETURN_URL,
+        type: 'account_onboarding',
+      });
+      console.log('[payments] connect onboarding link issued (session fallback)', { accountId });
+      return jsonResponse({ status: 'onboarding_required', url: link.url });
+    } catch (linkErr) {
+      console.error('[payments] connect account link failed', (linkErr as Error).message);
+      return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
+    }
   }
 });

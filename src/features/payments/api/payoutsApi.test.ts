@@ -59,6 +59,22 @@ describe('startConnectOnboarding', () => {
     expect(mockInvoke).toHaveBeenCalledWith('connect-onboarding');
   });
 
+  it('returns the in-app onboarding session — the normal setup path', async () => {
+    mockInvoke.mockResolvedValue({
+      data: { status: 'onboarding_session', clientSecret: 'accs_secret_123' },
+      error: null,
+    });
+    await expect(startConnectOnboarding()).resolves.toEqual({
+      status: 'onboarding_session',
+      clientSecret: 'accs_secret_123',
+    });
+  });
+
+  it('rejects a secret-less session rather than mounting a component that cannot load', async () => {
+    mockInvoke.mockResolvedValue({ data: { status: 'onboarding_session' }, error: null });
+    await expect(startConnectOnboarding()).rejects.toMatchObject({ code: 'BAD_SHAPE' });
+  });
+
   it('returns the onboarding link', async () => {
     mockInvoke.mockResolvedValue({
       data: { status: 'onboarding_required', url: 'https://connect.stripe.com/setup/abc' },

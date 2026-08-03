@@ -42,10 +42,31 @@ late-bound recipient. This refines ADR-0001's "5% application fee" note.
 - **5% fee via transfer math**, NOT `application_fee_amount` (that field is
   only for destination/direct charges). On recovery, transfer
   `round(bounty_pence × 0.95)` to the spotter; the 5% remainder stays.
-- **Onboarding:** Stripe-hosted onboarding via **Account Links** (the RN app
-  opens the hosted flow; Connect embedded components are web-only). Prompt at
+- **Onboarding:** ~~Stripe-hosted onboarding via **Account Links** (the RN app
+  opens the hosted flow; Connect embedded components are web-only)~~. Prompt at
   the first credited sighting, and create the spotter's connected account
   lazily at that point.
+
+  > **Corrected 2026-08-03 — "embedded components are web-only" is no longer
+  > true, and that one parenthetical is what produced a browser-bouncing
+  > onboarding flow.** `@stripe/stripe-react-native` ships a first-party
+  > `ConnectAccountOnboarding` (private preview 0.59.0, **GA 0.69.0**); Stripe
+  > documents React Native alongside Web/iOS/Android. Setup now runs **inside
+  > the app** via an **Account Session** (`accountSessions.create`, available on
+  > the pinned 17.5.0 / 2024-06-20 — no server SDK bump). Required the RN SDK
+  > above Expo SDK 57's pin, plus `react-native-webview` as an optional peer.
+  >
+  > Two boundaries found while doing it, both worth not rediscovering:
+  > - **Never put hosted onboarding in your own WebView.** Stripe forbids it:
+  >   *"Stripe-hosted onboarding is only supported in web browsers. You can't
+  >   use it in embedded web views inside mobile or desktop applications."*
+  > - **Account Links still matter.** They remain the only route for CHANGING a
+  >   payable account's details (Stripe's Account Management component is not
+  >   supported on React Native), and the server falls back to them if minting a
+  >   session fails. `connect-return` exists for them, and stays.
+  >
+  > Unchanged: Express means `requirement_collection: 'stripe'`, so a
+  > Stripe-branded sign-in step is unavoidable — it just happens in-app now.
 
 ## Consequences
 

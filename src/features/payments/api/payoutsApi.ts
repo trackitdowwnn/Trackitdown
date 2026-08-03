@@ -43,13 +43,22 @@ export const PAYOUT_ONBOARDING_ERROR_MESSAGES: Record<string, string> = {
 const ONBOARDING_FALLBACK = 'We couldn’t set up payouts. Please try again.';
 
 /**
- * What the server wants to happen next.
+ * What the server wants to happen next. Three of these are distinguished by
+ * WHERE the flow runs, not just what it is:
  *
- * `already_enabled` carries no URL — there is nothing to open because there is
- * nothing left to do. Every other outcome hands back a short-lived hosted link.
+ * - `onboarding_session` — setup, INSIDE the app via Stripe's embedded
+ *   component. The normal path, and the reason this union changed shape.
+ * - `onboarding_required` — the same setup as a hosted link, in a browser.
+ *   Only ever returned if the session mint failed; kept so a Stripe hiccup
+ *   degrades to worse UX rather than to a spotter who cannot be paid.
+ * - `update_available` — changing details on an account that already works.
+ *   Stays hosted because Stripe's Account Management component is not
+ *   supported on React Native.
+ * - `already_enabled` — nothing to do, and so no credential of any kind.
  */
 export type ConnectOnboardingResult =
   | { status: 'already_enabled' }
+  | { status: 'onboarding_session'; clientSecret: string }
   | { status: 'onboarding_required'; url: string }
   | { status: 'update_available'; url: string };
 
@@ -75,6 +84,7 @@ export async function startConnectOnboarding(): Promise<ConnectOnboardingResult>
   const { data, error } = await supabase.functions.invoke<{
     status?: string;
     url?: string;
+    clientSecret?: string;
   }>('connect-onboarding');
 
   if (error) {
@@ -92,7 +102,14 @@ export async function startConnectOnboarding(): Promise<ConnectOnboardingResult>
     return { status: 'already_enabled' };
   }
 
-  // Both remaining shapes REQUIRE a url; a link-less one would leave the screen
+  // The in-app path. Never log the secret — it authorises the embedded
+  // component against someone's identity documents.
+  if (data?.status === 'onboarding_session' && data.clientSecret) {
+    log.info('payout onboarding session ready');
+    return { status: 'onboarding_session', clientSecret: data.clientSecret };
+  }
+
+  // Both link shapes REQUIRE a url; a link-less one would leave the screen
   // waiting for a browser that never opens.
   if (
     (data?.status === 'onboarding_required' || data?.status === 'update_available') &&

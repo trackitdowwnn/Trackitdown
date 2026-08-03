@@ -35,6 +35,12 @@
  *        src/app/payouts.tsx; docs/DESIGN_SYSTEM.md (tone).
  */
 
+import {
+  ConnectAccountOnboarding,
+  ConnectComponentsProvider,
+  loadConnectAndInitialize,
+  type StripeConnectInstance,
+} from '@stripe/stripe-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -54,6 +60,10 @@ const log = createLogger('payments');
 
 /** The bare prefix, deliberately without the query string — see the header. */
 const RETURN_PREFIX = 'trackitdown://payouts';
+
+/** PUBLIC key — it can open a flow, never move money. Same one the escrow
+ *  PaymentSheet uses; see BountyPaymentProvider for why bundling it is safe. */
+const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
 
 /** What each state says. Calm, and never blaming someone for Stripe's queue. */
 const COPY: Record<
@@ -113,6 +123,34 @@ export function PayoutsScreen() {
     settleReturn();
   }, [params.onboarding, settleReturn]);
 
+  // The secret the SDK is about to ask for. Deciding WHICH flow to run costs one
+  // call, and throwing its answer away would make the component fetch a second
+  // secret a heartbeat later; priming it means one round trip, once.
+  const primedSecret = useRef<string | null>(null);
+  const [connectInstance, setConnectInstance] = useState<StripeConnectInstance | null>(null);
+
+  /**
+   * Called by the SDK, now and again later — a session is short-lived and it
+   * will come back for a fresh one. So this re-invokes rather than caching, and
+   * only ever hands back a secret it was actually given.
+   */
+  const fetchClientSecret = useCallback(async () => {
+    const primed = primedSecret.current;
+    primedSecret.current = null;
+    if (primed) {
+      return primed;
+    }
+    const result = await startConnectOnboarding();
+    if (result.status !== 'onboarding_session') {
+      // The account became payable (or the server fell back to a link) between
+      // opening the component and it asking. Returning '' ends the session
+      // cleanly; `onExit` then settles and the screen re-reads the truth.
+      log.warn('payout session no longer available', { status: result.status });
+      return '';
+    }
+    return result.clientSecret;
+  }, []);
+
   const open = useCallback(async () => {
     if (opening) {
       return;
@@ -128,6 +166,23 @@ export function PayoutsScreen() {
         return;
       }
 
+      // THE IN-APP PATH. Stripe's embedded component, rendered over this
+      // screen — no browser, no bounce page, no deep link.
+      if (result.status === 'onboarding_session') {
+        primedSecret.current = result.clientSecret;
+        setConnectInstance(
+          loadConnectAndInitialize({
+            publishableKey,
+            fetchClientSecret,
+            appearance: { variables: { colorPrimary: colors.primary } },
+          }),
+        );
+        return;
+      }
+
+      // Everything below is the browser: `update_available` (Stripe has no
+      // React Native component for managing an existing account) and the
+      // hosted-link fallback the server uses if minting a session failed.
       const outcome = await WebBrowser.openAuthSessionAsync(result.url, RETURN_PREFIX);
       // Compared as a string literal on purpose: importing WebBrowserResultType
       // would drag the enum into every test's mock for no benefit.
@@ -151,10 +206,42 @@ export function PayoutsScreen() {
     } finally {
       setOpening(false);
     }
-  }, [opening, refresh, settleReturn, toast]);
+  }, [fetchClientSecret, opening, refresh, settleReturn, toast]);
+
+  /**
+   * The embedded component has closed. This is EXACTLY as much of a promise as
+   * the browser redirect was — which is to say none: `payouts_enabled` is
+   * written only by Stripe's `account.updated` webhook, and someone can exit
+   * this component half way through. So it settles, and the account decides.
+   */
+  const onOnboardingExit = useCallback(() => {
+    setConnectInstance(null);
+    primedSecret.current = null;
+    settleReturn();
+  }, [settleReturn]);
 
   // Leaving mid-session must not strand an orphaned iOS sheet behind us.
   useEffect(() => () => void WebBrowser.dismissAuthSession?.(), []);
+
+  // Stripe's own full-screen modal (a native UIKit sheet on iOS, an RN Modal on
+  // Android), so it is rendered instead of the page rather than inside it.
+  if (connectInstance) {
+    return (
+      <ConnectComponentsProvider connectInstance={connectInstance}>
+        <ConnectAccountOnboarding
+          title="Set up payouts"
+          onExit={onOnboardingExit}
+          onLoadError={(event) => {
+            // Never surface Stripe's internals; the screen behind is intact and
+            // the button is still there.
+            log.warn('payout onboarding load failed', { type: event?.error?.type });
+            setConnectInstance(null);
+            toast.show('We couldn’t open Stripe. Please try again.', 'error');
+          }}
+        />
+      </ConnectComponentsProvider>
+    );
+  }
 
   return (
     <Screen scroll contentContainerStyle={styles.scroll}>

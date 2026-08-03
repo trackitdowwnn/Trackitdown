@@ -44,14 +44,29 @@ is the NORMAL first outcome, not a failure, and the bounty waits in escrow.
   ⚠️ `account.updated` must be enabled on the Stripe webhook endpoint by hand;
   it is not a default for a payments-only integration, and without it the whole
   payout path fails silently.
-- **`openAuthSessionAsync` is not the same on both platforms.** On iOS the auth
-  session claims the `trackitdown:` scheme, so the redirect never reaches the
-  router and the app does not navigate. On Android the deep link fires *and*
-  the promise resolves — and because the polyfill races AppState against a
-  Linking listener, a successful return often arrives as `{ type: 'dismiss' }`.
-  If the OS killed the app behind the browser, only the route sees anything.
-  So: never branch on the result type, treat the return as a hint, and settle
-  through one idempotent path that re-reads the account. See `PayoutsScreen`.
+- **Setup is in-app; changing details is not.** `ConnectAccountOnboarding`
+  (Stripe's own RN component, GA in SDK 0.69.0) handles first-time setup via an
+  **Account Session**. Stripe has no React Native component for managing an
+  account that already works, so "Update bank details" still opens a browser —
+  as does the hosted-link fallback if a session cannot be minted.
+- ⛔ **Never put Stripe's hosted onboarding in a WebView.** It looks like the
+  obvious way to make the update path in-app too, and Stripe forbids it in as
+  many words: *"Stripe-hosted onboarding is only supported in web browsers. You
+  can't use it in embedded web views inside mobile or desktop applications."*
+  The embedded component is the supported route; a WebView around the hosted
+  flow is a ToS violation.
+- **`openAuthSessionAsync` is not the same on both platforms** — still true for
+  the two browser paths above. On iOS the auth session claims the
+  `trackitdown:` scheme, so the redirect never reaches the router and the app
+  does not navigate. On Android the deep link fires *and* the promise resolves —
+  and because the polyfill races AppState against a Linking listener, a
+  successful return often arrives as `{ type: 'dismiss' }`. If the OS killed the
+  app behind the browser, only the route sees anything. So: never branch on the
+  result type, treat the return as a hint, and settle through one idempotent
+  path that re-reads the account. See `PayoutsScreen`.
+- **`onExit` proves nothing either.** The embedded component closing is exactly
+  as weak a signal as the browser redirect was — someone can back out half way.
+  It calls `settleReturn()` for the same reason and through the same path.
 - **The redirect passed to the browser is the bare prefix**
   `trackitdown://payouts` — Android matches with `startsWith`, so including the
   query string silently fails to match the expiry redirect and hangs the
