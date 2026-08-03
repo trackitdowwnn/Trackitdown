@@ -39,19 +39,26 @@
  *        docs/DOMAIN.md ("prompt at first credited sighting, not at signup").
  */
 
-import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
+import { createServiceRoleClient, createStripeClient, requireEnv } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
 /**
- * Where Stripe sends the spotter afterwards. Both are the app's own scheme, so
- * the hosted flow hands control straight back to the screen that started it.
+ * Where Stripe sends the spotter afterwards.
+ *
+ * THESE MUST BE HTTPS. Account Links accept http/https only; a custom scheme is
+ * rejected with a flat "Not a valid URL", which is exactly what happened when
+ * these were `trackitdown://payouts?…` on 2026-08-03 — the account was created
+ * and only the LINK failed, so the error looked like a Stripe configuration
+ * problem when it was ours. The `connect-return` function is the bounce: an
+ * HTTPS page that immediately forwards to the app's scheme.
  *
  * `refresh_url` is not an error path — Stripe uses it when a link has expired
  * (they are short-lived by design), and the app answers by asking for a new
  * one. Sending them to a dead end there would strand someone mid-KYC.
  */
-const RETURN_URL = 'trackitdown://payouts?onboarding=complete';
-const REFRESH_URL = 'trackitdown://payouts?onboarding=refresh';
+const RETURN_BASE = `${requireEnv('SUPABASE_URL')}/functions/v1/connect-return`;
+const RETURN_URL = `${RETURN_BASE}?onboarding=complete`;
+const REFRESH_URL = `${RETURN_BASE}?onboarding=refresh`;
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {

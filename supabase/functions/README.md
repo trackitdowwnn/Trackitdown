@@ -8,7 +8,8 @@
 | `deactivate-post` | the app (`supabase.functions.invoke`) | verify the caller owns a **paid** post (`active`/`pending_verification`), find the held escrow, refund the bounty **minus the non-recoverable card fee** (fee read from Stripe), and flip the post `→ cancelled` (payment `held → refunded`) |
 | `refund-recovery` | the app, after `claim_recovery` returns `refund` | the no-spotter ending: refund the bounty and close the post `→ recovered_no_spotter` |
 | `release-payout` | the app, after `claim_recovery` returns `payout` | the credited ending: transfer 95% to the spotter (ADR-0002 transfer math; one transfer per post, forever) and close the post `→ recovered`. Answers `awaiting_payee` — **not an error** — until they have onboarded |
-| `connect-onboarding` | the app, from the payouts surface | create the spotter's Express account if they have none, and return a fresh hosted onboarding link. Records the account as **not payable**; only the webhook may say otherwise |
+| `connect-onboarding` | the app, from the payouts surface | create the spotter's Express account if they have none, and return a fresh hosted link — onboarding, or `account_update` if they are already payable. Records the account as **not payable**; only the webhook may say otherwise |
+| `connect-return` | **Stripe's browser**, after hosted onboarding | an HTTPS page that forwards to `trackitdown://payouts?onboarding=…`. Exists because Account Links accept **http/https only** — a custom scheme is rejected with "Not a valid URL". Deployed `--no-verify-jwt`: Stripe's browser has no session |
 | `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` flip the post `draft → active` (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts; on `charge.refunded` confirm the refund (`→ cancelled`); on **`account.updated`** copy Stripe's `payouts_enabled` onto the payee row — the ONLY thing that ever makes a spotter payable |
 
 ⚠️ **`account.updated` must be enabled on the Stripe webhook endpoint.** It is
@@ -152,6 +153,7 @@ npx supabase functions deploy notify-sighting
 npx supabase functions deploy notify-message
 npx supabase functions deploy process-push-receipts
 npx supabase functions deploy connect-onboarding
+npx supabase functions deploy connect-return --no-verify-jwt   # Stripe's browser has no session
 npx supabase functions deploy stripe-webhook --no-verify-jwt   # re-deploy: alerts + account.updated
 ```
 

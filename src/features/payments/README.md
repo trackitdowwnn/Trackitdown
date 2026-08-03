@@ -56,8 +56,16 @@ is the NORMAL first outcome, not a failure, and the bounty waits in escrow.
   `trackitdown://payouts` — Android matches with `startsWith`, so including the
   query string silently fails to match the expiry redirect and hangs the
   session. And never `Linking.createURL`: in a dev client it yields
-  `exp+trackitdown://`, which cannot match the server's hardcoded literal.
-  **This flow cannot complete in Expo Go.**
+  `exp+trackitdown://`, which cannot match. **This flow cannot complete in
+  Expo Go.**
+- **Stripe never redirects to the app directly.** Account Links accept
+  **http/https only** — a custom scheme is rejected outright with "Not a valid
+  URL", which cost an afternoon on 2026-08-03 because the account was created
+  successfully and only the *link* failed, so it read as a Stripe setup problem.
+  `return_url`/`refresh_url` therefore point at the `connect-return` Edge
+  Function, an HTTPS page that immediately forwards to the app scheme. Universal
+  links would remove the hop but need a verified domain, and ours is still a
+  placeholder.
 - **"Just finished" and "gave up half way" look identical** for a few seconds,
   because the webhook writes `details_submitted` and `payouts_enabled` in one
   upsert. `usePayoutAccount`'s settling window exists solely so the screen does
