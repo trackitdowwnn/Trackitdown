@@ -68,6 +68,27 @@ late-bound recipient. This refines ADR-0001's "5% application fee" note.
   > Unchanged: Express means `requirement_collection: 'stripe'`, so a
   > Stripe-branded sign-in step is unavoidable — it just happens in-app now.
 
+  > **Extended 2026-08-03 — collect what we can ourselves.** Stripe permits the
+  > platform to submit bank details and identity fields for an Express account
+  > **until the first Account Link or Account Session exists**, and never again
+  > after. `submit-payout-details` uses that window from a native form; the
+  > session mint is gated behind `stripe_connected_accounts.details_submitted_at`
+  > so nothing can close it before the form is shown. Bank details go as a **raw
+  > dictionary** — a `btok_` bank-account token may only be attached where
+  > `requirement_collection` is `application` — and are never stored or logged.
+  >
+  > **The floor, checked and recorded so it is not re-litigated:**
+  > `external_account_collection: false` and
+  > `disable_stripe_user_authentication: true` are only legal for the
+  > KYC-responsible party, so Stripe's verification screen and sign-in popup
+  > stay. Risk-review responses **cannot be made through the API under any
+  > account configuration**, so no integration is ever fully native. Taking the
+  > responsible-party route would mean re-onboarding every existing spotter into
+  > new accounts (dashboard type is immutable), holding passport scans under UK
+  > GDPR, a six-monthly regulatory re-review, a lawyer-reviewed ToS change, and
+  > a UK "without delay" rejection-notification duty. **Rejected: that is a
+  > compliance function, not a feature.**
+
 ## Consequences
 
 - **Supersedes the "Connect application fee" wording** in ADR-0001 and

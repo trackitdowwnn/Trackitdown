@@ -15,7 +15,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
 import { PaymentError } from './functionError';
-import { fetchMyPayoutAccount, startConnectOnboarding } from './payoutsApi';
+import { fetchMyPayoutAccount, startConnectOnboarding, submitPayoutDetails } from './payoutsApi';
 
 const mockInvoke = jest.fn();
 const mockMaybeSingle = jest.fn();
@@ -31,12 +31,18 @@ jest.mock('@/shared/api', () => ({
   },
 }));
 
+// Every log call is captured, because one of the tests below is about what
+// must NEVER appear in one.
+const mockLogCalls: unknown[][] = [];
+const capture = (...args: unknown[]) => {
+  mockLogCalls.push(args);
+};
 jest.mock('@/shared/lib/logger', () => ({
   createLogger: () => ({
-    info: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-    error: jest.fn(),
+    info: (...args: unknown[]) => capture(...args),
+    warn: (...args: unknown[]) => capture(...args),
+    debug: (...args: unknown[]) => capture(...args),
+    error: (...args: unknown[]) => capture(...args),
   }),
 }));
 
@@ -48,7 +54,22 @@ function httpError(body: unknown): FunctionsHttpError {
   return new FunctionsHttpError(context);
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockLogCalls.length = 0;
+});
+
+const DETAILS = {
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+  dob: '1990-04-01',
+  phone: '07700900123',
+  addressLine1: '12 Bridge Street',
+  city: 'Manchester',
+  postalCode: 'M1 1AA',
+  sortCode: '108800',
+  accountNumber: '00012345',
+};
 
 describe('startConnectOnboarding', () => {
   it('SECURITY: sends no account id — the payee is resolved from the JWT', async () => {
@@ -139,6 +160,69 @@ describe('startConnectOnboarding', () => {
   it('rejects an unrecognised status', async () => {
     mockInvoke.mockResolvedValue({ data: { status: 'something_new' }, error: null });
     await expect(startConnectOnboarding()).rejects.toBeInstanceOf(PaymentError);
+  });
+});
+
+describe('submitPayoutDetails', () => {
+  it('NEVER logs the bank details — not masked, not partially, not at all', async () => {
+    // The single most important assertion in this file. These numbers pass
+    // through our server on their way to Stripe and must leave no trace; a
+    // masked tail in a log is still an account number in a log.
+    mockInvoke.mockResolvedValue({ data: { status: 'submitted' }, error: null });
+    await submitPayoutDetails(DETAILS);
+
+    const logged = JSON.stringify(mockLogCalls);
+    expect(logged).not.toContain(DETAILS.accountNumber);
+    expect(logged).not.toContain(DETAILS.sortCode);
+    expect(logged).not.toContain(DETAILS.dob);
+    expect(logged).not.toContain(DETAILS.lastName);
+    expect(logged).not.toContain(DETAILS.postalCode);
+  });
+
+  it('logs nothing about the details on failure either', async () => {
+    // The error path is where a well-meaning "log the body so we can debug it"
+    // usually gets added.
+    mockInvoke.mockResolvedValue({
+      data: null,
+      error: httpError({ error: 'nope', code: 'DETAILS_REJECTED' }),
+    });
+    await expect(submitPayoutDetails(DETAILS)).rejects.toBeInstanceOf(PaymentError);
+
+    const logged = JSON.stringify(mockLogCalls);
+    expect(logged).not.toContain(DETAILS.accountNumber);
+    expect(logged).not.toContain(DETAILS.sortCode);
+  });
+
+  it('SECURITY: sends no account id — the payee comes from the JWT', async () => {
+    mockInvoke.mockResolvedValue({ data: { status: 'submitted' }, error: null });
+    await submitPayoutDetails(DETAILS);
+
+    const [, options] = mockInvoke.mock.calls[0];
+    expect(Object.keys(options.body)).not.toContain('accountId');
+    expect(Object.keys(options.body)).not.toContain('stripeAccountId');
+  });
+
+  it('maps a rejection to copy that tells them to check, not to give up', async () => {
+    mockInvoke.mockResolvedValue({
+      data: null,
+      error: httpError({ error: 'nope', code: 'DETAILS_REJECTED' }),
+    });
+    await expect(submitPayoutDetails(DETAILS)).rejects.toMatchObject({
+      code: 'DETAILS_REJECTED',
+      message: expect.stringContaining('check them'),
+    });
+  });
+
+  it('says the details ARE saved when only our note of it failed', async () => {
+    // The details reached Stripe; only the gate flag did not. Telling them it
+    // failed would send them to re-enter a bank account Stripe already has.
+    mockInvoke.mockResolvedValue({
+      data: null,
+      error: httpError({ error: 'nope', code: 'LEDGER_ERROR' }),
+    });
+    await expect(submitPayoutDetails(DETAILS)).rejects.toMatchObject({
+      message: expect.stringContaining('saved'),
+    });
   });
 });
 

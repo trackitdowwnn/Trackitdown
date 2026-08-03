@@ -44,7 +44,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
 import { useRequireAuth } from '@/features/auth';
@@ -53,7 +53,8 @@ import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
 
 import { PaymentError } from '../api/functionError';
-import { startConnectOnboarding } from '../api/payoutsApi';
+import { startConnectOnboarding, submitPayoutDetails, type PayoutDetails } from '../api/payoutsApi';
+import { PayoutDetailsForm } from '../components/PayoutDetailsForm';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
 
 const log = createLogger('payments');
@@ -100,6 +101,7 @@ export function PayoutsScreen() {
   const { status, settling, refresh, settleReturn } = usePayoutAccount();
   const params = useLocalSearchParams<{ onboarding?: string }>();
   const [opening, setOpening] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [browserSaidExpired, setBrowserSaidExpired] = useState(false);
   // Two ways to learn the link expired, and only one of them needs storing.
   // Deriving the deep-link half keeps the effect below free of any setState —
@@ -166,6 +168,14 @@ export function PayoutsScreen() {
         return;
       }
 
+      // OUR FORM FIRST. The server refuses to mint a session until it has run,
+      // because doing so would permanently close the window in which we are
+      // allowed to submit bank details at all.
+      if (result.status === 'details_required') {
+        setShowForm(true);
+        return;
+      }
+
       // THE IN-APP PATH. Stripe's embedded component, rendered over this
       // screen — no browser, no bounce page, no deep link.
       if (result.status === 'onboarding_session') {
@@ -214,6 +224,32 @@ export function PayoutsScreen() {
    * written only by Stripe's `account.updated` webhook, and someone can exit
    * this component half way through. So it settles, and the account decides.
    */
+  /**
+   * Their details go to Stripe, and then we go straight on to whatever Stripe
+   * still wants — without making them tap "continue" a second time. The window
+   * we just used is now closed, so `open()` will get a session this time.
+   */
+  const onSubmitDetails = useCallback(
+    async (details: PayoutDetails) => {
+      setOpening(true);
+      try {
+        await submitPayoutDetails(details);
+        setShowForm(false);
+        await open();
+      } catch (error) {
+        toast.show(
+          error instanceof PaymentError
+            ? error.message
+            : 'We couldn’t save your details. Please try again.',
+          'error',
+        );
+      } finally {
+        setOpening(false);
+      }
+    },
+    [open, toast],
+  );
+
   const onOnboardingExit = useCallback(() => {
     setConnectInstance(null);
     primedSecret.current = null;
@@ -221,7 +257,21 @@ export function PayoutsScreen() {
   }, [settleReturn]);
 
   // Leaving mid-session must not strand an orphaned iOS sheet behind us.
-  useEffect(() => () => void WebBrowser.dismissAuthSession?.(), []);
+  //
+  // iOS ONLY, and the guard is load-bearing: `dismissAuthSession` EXISTS on
+  // Android — so the optional call `?.()` never skipped it — and throws
+  // "WebBrowser.dismissBrowser is not available on android" the moment it runs.
+  // Without this check it logged an error every single time anyone left the
+  // screen, on the platform where there is no sheet to dismiss in the first
+  // place.
+  useEffect(
+    () => () => {
+      if (Platform.OS === 'ios') {
+        WebBrowser.dismissAuthSession();
+      }
+    },
+    [],
+  );
 
   // Stripe's own full-screen modal (a native UIKit sheet on iOS, an RN Modal on
   // Android), so it is rendered instead of the page rather than inside it.
@@ -273,7 +323,11 @@ export function PayoutsScreen() {
         />
       ) : null}
 
-      {settling ? (
+      {showForm ? (
+        <PayoutDetailsForm onSubmit={onSubmitDetails} busy={opening} />
+      ) : null}
+
+      {!showForm && settling ? (
         // Outranks the derived state, and this is the whole point: until the
         // webhook lands, someone who just finished is indistinguishable from
         // someone who gave up, and guessing wrong blames the wrong person.
@@ -285,7 +339,11 @@ export function PayoutsScreen() {
         </View>
       ) : null}
 
-      {!settling && status !== 'loading' && status !== 'error' && status !== 'guest' ? (
+      {!showForm &&
+      !settling &&
+      status !== 'loading' &&
+      status !== 'error' &&
+      status !== 'guest' ? (
         <View style={styles.card} testID={`payouts-${status}`}>
           <Text style={styles.cardTitle}>{COPY[status].title}</Text>
           <Text style={styles.cardBody}>{COPY[status].body}</Text>

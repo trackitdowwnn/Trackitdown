@@ -46,6 +46,7 @@
  */
 
 import { createServiceRoleClient, createStripeClient, requireEnv } from '../_shared/clients.ts';
+import { createConnectAccount, findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
 /**
@@ -89,26 +90,23 @@ Deno.serve(async (request) => {
 
   // The account is always the CALLER's. Deliberately no id in the request body:
   // a payee id that arrived over the wire is a payee id someone could change.
-  const { data: existing, error: lookupError } = await admin
-    .from('stripe_connected_accounts')
-    .select('stripe_account_id, payouts_enabled')
-    .eq('profile_id', userId)
-    .maybeSingle();
-
-  if (lookupError) {
-    console.error('[payments] connect account lookup failed', lookupError.message);
+  let existing;
+  try {
+    existing = await findConnectAccount(admin, userId);
+  } catch (err) {
+    console.error('[payments] connect account lookup failed', (err as Error).message);
     return errorResponse('LOOKUP_FAILED', 'We couldn’t start this. Please try again.', 500);
   }
 
   const stripe = createStripeClient();
-  let accountId = existing?.stripe_account_id as string | undefined;
+  let accountId = existing.accountId ?? undefined;
 
   // ALREADY PAYABLE. Not "nothing to do" — people change banks, move house, and
   // have documents expire, and until 2026-08-03 this returned a bare
   // `already_enabled` with no link, which left a set-up spotter with no route
   // to their own details at all. `account_update` is Stripe's own answer: the
   // same hosted flow, opened for editing rather than for signing up.
-  if (existing?.payouts_enabled && accountId) {
+  if (existing.payoutsEnabled && accountId) {
     try {
       const link = await stripe.accountLinks.create({
         account: accountId,
@@ -126,61 +124,27 @@ Deno.serve(async (request) => {
     }
   }
 
+  // THE GATE. Stripe lets us submit bank details and identity fields ourselves
+  // — but only until the first session exists, and then never again for the
+  // life of the account. So a session is NOT minted until our own form has run:
+  // doing it first is what made a native form impossible, silently, on the very
+  // first tap.
+  //
+  // Answered before the account is even created, so a spotter who has typed
+  // nothing yet also cannot have the window closed on them by a stray call.
+  if (!existing.detailsSubmitted) {
+    return jsonResponse({ status: 'details_required' });
+  }
+
   if (!accountId) {
+    // Only reachable if the details were recorded without an account, which
+    // `submit-payout-details` makes impossible — kept because "impossible"
+    // states are exactly the ones that cost you an afternoon later.
     try {
-      const account = await stripe.accounts.create({
-        // NO `type: 'express'`. ADR-0002 chose controller properties over the
-        // legacy account types, and Stripe rejects a request carrying both.
-        //
-        // ⚠️ DEVIATION FROM ADR-0002's LETTER, NOT ITS INTENT: the ADR names
-        // the v2 Accounts fields (`dashboard`, `fees_collector`,
-        // `losses_collector`), which need the v2 Accounts API — a newer
-        // pinned `apiVersion` and stripe SDK than `_shared/clients.ts` uses
-        // (17.5.0 / 2024-06-20). Upgrading the SDK under the whole escrow path
-        // to create one account is a bad trade, so this uses the v1 controller
-        // form, which expresses the SAME three decisions: Express dashboard,
-        // platform collects fees, platform carries losses. Revisit together
-        // with any SDK bump.
-        country: 'GB',
-        // UK-only, GBP-only (ROADMAP's v1 fence). A spotter is paid, never
-        // charged, so only transfers are requested.
-        capabilities: { transfers: { requested: true } },
-        business_type: 'individual',
-        // Platform bears negative balances — required with an Express
-        // dashboard, and under separate charges and transfers it is what lets
-        // Stripe reverse a spotter's transfer if the bounty is disputed later.
-        // The transfer is not tied to the original charge, so nothing else
-        // would.
-        controller: {
-          losses: { payments: 'application' },
-          fees: { payer: 'application' },
-          stripe_dashboard: { type: 'express' },
-        },
-        // THE LINK BACK. `account.updated` arrives with no reference to our
-        // user unless we put one here, and the webhook refuses to guess — so
-        // without this metadata a completed onboarding could never be matched
-        // to the spotter it belongs to.
-        metadata: { profile_id: userId },
-      });
-      accountId = account.id;
+      accountId = await createConnectAccount(stripe, admin, userId);
     } catch (err) {
       console.error('[payments] connect account create failed', (err as Error).message);
       return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
-    }
-
-    // Recorded BEFORE the link is handed out, and deliberately not-yet-payable.
-    // If this write were skipped and the user abandoned the flow, the next call
-    // would create a second account for the same person; recording it first
-    // means the id is ours to reuse.
-    const { error: upsertError } = await admin.rpc('upsert_connected_account', {
-      p_profile_id: userId,
-      p_stripe_account_id: accountId,
-      p_onboarding_complete: false,
-      p_payouts_enabled: false,
-    });
-    if (upsertError) {
-      console.error('[payments] connect account record failed', upsertError.message);
-      return errorResponse('LEDGER_ERROR', 'We couldn’t set up payouts. Please try again.', 500);
     }
   }
 

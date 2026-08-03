@@ -76,8 +76,10 @@ jest.mock('@/shared/ui', () => {
 });
 
 const mockStart = jest.fn();
+const mockSubmitDetails = jest.fn();
 jest.mock('../api/payoutsApi', () => ({
   startConnectOnboarding: (...args: unknown[]) => mockStart(...args),
+  submitPayoutDetails: (...args: unknown[]) => mockSubmitDetails(...args),
 }));
 
 const mockSettleReturn = jest.fn();
@@ -151,6 +153,45 @@ describe('what each state says', () => {
     expect(getByTestId('payouts-settling')).toBeTruthy();
     // The derived state would have blamed them for stopping half way.
     expect(queryByText('Pick up where you left off')).toBeNull();
+  });
+});
+
+describe('our own form comes first', () => {
+  it('shows the native form rather than handing straight to Stripe', async () => {
+    // The window in which we may submit bank details at all closes the moment a
+    // session exists, so the server says details_required until our form runs.
+    mockStart.mockResolvedValue({ status: 'details_required' });
+    const { getByText, getByTestId, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByText('Set up payouts'));
+    });
+
+    expect(getByTestId('payout-details-form')).toBeTruthy();
+    expect(queryByTestId('connect-onboarding')).toBeNull();
+    expect(mockOpenAuth).not.toHaveBeenCalled();
+  });
+
+  it('promises plainly that we never keep the bank details', async () => {
+    mockStart.mockResolvedValue({ status: 'details_required' });
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(getByText('Set up payouts'));
+    });
+    expect(getByText(/never see or store your bank details/i)).toBeTruthy();
+  });
+
+  it('does not claim they are finished — Stripe still has questions', async () => {
+    // Saying "done" and then showing a Stripe verification screen would be a
+    // bait and switch.
+    mockStart.mockResolvedValue({ status: 'details_required' });
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(getByText('Set up payouts'));
+    });
+    expect(getByText(/Stripe will ask you to confirm/i)).toBeTruthy();
   });
 });
 

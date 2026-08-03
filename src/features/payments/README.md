@@ -44,11 +44,37 @@ is the NORMAL first outcome, not a failure, and the bounty waits in escrow.
   ⚠️ `account.updated` must be enabled on the Stripe webhook endpoint by hand;
   it is not a default for a payments-only integration, and without it the whole
   payout path fails silently.
+- **THE PREFILL WINDOW — the most important thing on this page.** Stripe lets a
+  platform submit bank details and identity fields for an Express account
+  itself: *"you can update all information **until you create an Account Link or
+  Account Session**, after which some properties can no longer be updated."*
+  That window is why `PayoutDetailsForm` can exist at all, and it **shuts
+  permanently and silently** on the first session. So `connect-onboarding`
+  answers `details_required` and refuses to mint one until our form has run.
+  Anything that mints a session earlier — a stray call, a "warm it up" ping —
+  destroys the feature for that account forever, with no error.
+  - Bank details go as a **raw dictionary**, never a token. A `btok_` from
+    `createToken({type:'BankAccount'})` may only be attached where
+    `controller.requirement_collection` is `application`; Express is not.
+  - **We never store them.** They transit `submit-payout-details` to Stripe and
+    are gone. Not a column, not a log, not a masked tail — there is a test in
+    `payoutsApi.test.ts` asserting they never reach a log call.
 - **Setup is in-app; changing details is not.** `ConnectAccountOnboarding`
-  (Stripe's own RN component, GA in SDK 0.69.0) handles first-time setup via an
-  **Account Session**. Stripe has no React Native component for managing an
-  account that already works, so "Update bank details" still opens a browser —
+  (Stripe's own RN component, GA in SDK 0.69.0) handles what our form could not
+  via an **Account Session**. Stripe has no React Native component for managing
+  an account that already works, so "Update bank details" still opens a browser —
   as does the hosted-link fallback if a session cannot be minted.
+- ⛔ **The floor, so it is not re-litigated.** Stripe's verification screen and
+  its sign-in popup cannot be removed on Express:
+  `external_account_collection: false` and
+  `disable_stripe_user_authentication: true` are *only* legal where the platform
+  is the KYC-responsible party. Becoming that party means re-onboarding every
+  existing spotter into new accounts (dashboard type is immutable), holding
+  passport scans under UK GDPR, a six-monthly regulatory re-review forever, a
+  lawyer-reviewed ToS change, and a UK duty to notify rejected accounts "without
+  delay". And **risk-review responses can never be made through the API under
+  any configuration** — nobody reaches 100% native. Our form gets the 80% that
+  is free; the rest is a compliance function, not a design task.
 - ⛔ **Never put Stripe's hosted onboarding in a WebView.** It looks like the
   obvious way to make the update path in-app too, and Stripe forbids it in as
   many words: *"Stripe-hosted onboarding is only supported in web browsers. You

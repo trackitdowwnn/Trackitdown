@@ -58,9 +58,35 @@ const ONBOARDING_FALLBACK = 'We couldn’t set up payouts. Please try again.';
  */
 export type ConnectOnboardingResult =
   | { status: 'already_enabled' }
+  /** Our own form has not run yet. Minting a session first would shut the
+   *  window in which we are allowed to submit details at all. */
+  | { status: 'details_required' }
   | { status: 'onboarding_session'; clientSecret: string }
   | { status: 'onboarding_required'; url: string }
   | { status: 'update_available'; url: string };
+
+/**
+ * What a spotter types into our own form.
+ *
+ * PII: this object exists for the length of one request. It is never put into
+ * state that outlives the screen, never persisted, and never logged — see
+ * `submitPayoutDetails`.
+ */
+export interface PayoutDetails {
+  firstName: string;
+  lastName: string;
+  /** YYYY-MM-DD. */
+  dob: string;
+  phone?: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  postalCode: string;
+  /** 6 digits; the form may show it spaced, this carries it raw. */
+  sortCode: string;
+  /** 8 digits. */
+  accountNumber: string;
+}
 
 /** A spotter's payee account as the database knows it. */
 export interface PayoutAccount {
@@ -102,6 +128,11 @@ export async function startConnectOnboarding(): Promise<ConnectOnboardingResult>
     return { status: 'already_enabled' };
   }
 
+  if (data?.status === 'details_required') {
+    log.info('payout details not yet submitted');
+    return { status: 'details_required' };
+  }
+
   // The in-app path. Never log the secret — it authorises the embedded
   // component against someone's identity documents.
   if (data?.status === 'onboarding_session' && data.clientSecret) {
@@ -123,6 +154,44 @@ export async function startConnectOnboarding(): Promise<ConnectOnboardingResult>
   // documents, and a malformed body may still contain one.
   log.error('connect-onboarding returned an unexpected shape');
   throw new PaymentError(ONBOARDING_FALLBACK, 'BAD_SHAPE');
+}
+
+const DETAILS_ERROR_MESSAGES: Record<string, string> = {
+  NOT_AUTHENTICATED: 'You need to be signed in to set up payouts.',
+  INVALID_DETAILS: 'Please check your details and try again.',
+  DETAILS_REJECTED: 'Stripe couldn’t accept those details. Please check them and try again.',
+  LOOKUP_FAILED: 'We couldn’t save your details. Please try again.',
+  STRIPE_ERROR: 'We couldn’t save your details. Please try again.',
+  LEDGER_ERROR: 'Your details are saved. Please check back shortly.',
+};
+
+const DETAILS_FALLBACK = 'We couldn’t save your details. Please try again.';
+
+/**
+ * Send the details a spotter typed into our own form straight to Stripe.
+ *
+ * PII: the ONLY call in the app carrying a sort code and account number. They
+ * go over HTTPS to our Edge Function, on to Stripe, and are gone. Nothing here
+ * logs the argument — not a field, not a length, not a masked tail. A partial
+ * account number in a log is still an account number in a log, and there is a
+ * test asserting this stays true.
+ *
+ * SECURITY: no account id is sent. The payee is resolved from the caller's JWT
+ * server-side, because this call decides where money eventually lands.
+ */
+export async function submitPayoutDetails(details: PayoutDetails): Promise<void> {
+  log.debug('submit-payout-details invoke');
+  const { error } = await supabase.functions.invoke('submit-payout-details', {
+    body: details,
+  });
+
+  if (error) {
+    const failure = await parseFunctionError(error, DETAILS_ERROR_MESSAGES, DETAILS_FALLBACK);
+    // The code, and nothing else. The body that failed is not ours to repeat.
+    log.warn('submit-payout-details failed', { code: failure.code });
+    throw failure;
+  }
+  log.info('payout details submitted');
 }
 
 /**
