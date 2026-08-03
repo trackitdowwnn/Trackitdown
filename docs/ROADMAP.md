@@ -83,10 +83,13 @@ v1 scope, stop and flag it.
       and an `account.updated` branch in `stripe-webhook` — the only writer of
       `payouts_enabled`. A `PayoutsScreen` behind Profile → Payouts.
       **Still open, and all three matter:**
-      1. ⚠️ **No collusion check before payout.** SECURITY_AND_TRUST §5 requires
-         one; nothing implements it. Now the wire is closed, an owner can credit
-         their own second account and transfer 95% of their own escrow to
-         themselves. **This blocks real money, not the demo.**
+      1. **Collusion check — BUILT 2026-08-03.** Runs in `release-payout`
+         before any transfer: shared-device history (`device_links`), shared
+         card fingerprint, normalised-email match. Any hit → `held_for_review`,
+         resolved by hand in the console. Fails closed; reasons never reach a
+         client. Honest limit: two phones + two cards + unrelated emails defeat
+         it — it prices fraud, it does not abolish it. (SECURITY_AND_TRUST §5
+         has the full write-up.)
       2. **Nothing re-runs the payout** when the webhook makes a spotter
          payable — the owner must return and tap "Send the bounty". Copy on
          both sides now says so rather than promising it happens by itself.

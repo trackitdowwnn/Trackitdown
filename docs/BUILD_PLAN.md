@@ -109,10 +109,12 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
       ⚠️ `account.updated` must be enabled BY HAND on the Stripe webhook
       endpoint; it is not a default, and without it no spotter ever becomes
       payable and nothing errors.
-- [ ] **Collusion check before payout** — required by SECURITY_AND_TRUST §5 and
-      not built. Was harmless while no payee could exist; now the wire is
-      closed it is the gap that lets an owner pay themselves. **Blocks real
-      money.**
+- [x] **Collusion check before payout** — BUILT 2026-08-03
+      (`20260803140000_payout_collusion_check.sql` + `_shared/collusion.ts` in
+      `release-payout`). Shared-device / shared-card / matching-email →
+      `held_for_review`, manual resolution in the console. This was the
+      prerequisite for auto-release (ADR-0010): a webhook that moves money now
+      has a gate in front of it.
 - [~] Milestone: full journey on two phones with two test accounts. Everything
       through "owner credits a spotter" and on to a transfer now runs. Not yet
       walked end to end on two devices, and the escrow PaymentSheet wants a

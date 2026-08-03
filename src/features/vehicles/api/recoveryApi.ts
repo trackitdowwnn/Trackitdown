@@ -181,8 +181,13 @@ export async function refundRecovery(postId: string): Promise<RecoveryRefundResu
  * a spotter has no Stripe account until their first credited sighting, so
  * "they haven't onboarded yet" is the expected answer the first time. The
  * bounty stays in escrow and this call is safe to make again later.
+ *
+ * `held_for_review` is also not a failure, and must NEVER be blurred into
+ * `awaiting_payee`: telling an owner "they still need to add bank details"
+ * while we are actually double-checking the payout sends them to chase the
+ * spotter about a delay that is ours. The money is safe; a human decides.
  */
-export type PayoutStatus = 'paid' | 'awaiting_payee';
+export type PayoutStatus = 'paid' | 'awaiting_payee' | 'held_for_review';
 
 export interface ReleasePayoutResult {
   status: PayoutStatus;
@@ -223,7 +228,12 @@ export async function releasePayout(postId: string): Promise<ReleasePayoutResult
   }
 
   const result = data as { status?: string; transferPence?: number };
-  const status: PayoutStatus = result?.status === 'paid' ? 'paid' : 'awaiting_payee';
+  const status: PayoutStatus =
+    result?.status === 'paid'
+      ? 'paid'
+      : result?.status === 'held_for_review'
+        ? 'held_for_review'
+        : 'awaiting_payee';
   // No amount in the log line — the event and the outcome, nothing else.
   log.info('recovery_paid', { postId, status });
   return { status, transferPence: result?.transferPence ?? null };

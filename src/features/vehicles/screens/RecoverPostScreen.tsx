@@ -83,14 +83,20 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
         toast.show(
           payout.status === 'paid' && payout.transferPence !== null
             ? `Sent. ${formatPounds(payout.transferPence)} is on its way to them.`
-            : // The usual first time: a spotter has no Stripe account until a
-              // sighting of theirs is credited, which is this moment.
-              //
-              // NOT "we'll send it when they're ready". Nothing re-runs the
-              // payout when the webhook enables them — the owner sends it from
-              // the listing. Saying otherwise told them to stop thinking about
-              // money that then never moved.
-              'They’re credited. Once they’ve added their bank details, send it from your listing.',
+            : payout.status === 'held_for_review'
+              ? // Calm, unspecific, and NOT the bank-details line — telling an
+                // owner to chase the spotter about a delay that is ours would
+                // be blame pointed at the wrong person. Which signal fired is
+                // never surfaced anywhere.
+                'They’re credited. We’re just double-checking this payout — no need to do anything.'
+              : // The usual first time: a spotter has no Stripe account until a
+                // sighting of theirs is credited, which is this moment.
+                //
+                // NOT "we'll send it when they're ready". Nothing re-runs the
+                // payout when the webhook enables them — the owner sends it from
+                // the listing. Saying otherwise told them to stop thinking about
+                // money that then never moved.
+                'They’re credited. Once they’ve added their bank details, send it from your listing.',
         );
       } catch (payoutError) {
         // The credit stands; only the transfer is outstanding, and it can be

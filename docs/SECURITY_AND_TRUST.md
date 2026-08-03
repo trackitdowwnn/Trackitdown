@@ -194,10 +194,31 @@ commenting standards.
   - `account.updated` must be enabled by hand on the Stripe webhook endpoint.
     It is not a default, and without it `payouts_enabled` never becomes true,
     so every payout answers `awaiting_payee` forever — silently.
-  - **The collusion check below is NOT built.** Now that the payout wire is
-    closed, an owner can post a bounty, report a sighting from a second
-    account, credit it, and transfer 95% of their own escrow to themselves.
-    Nothing checks for it. **Do not take a live payment until that is closed.**
+  - **The collusion check is BUILT (2026-08-03)** and runs inside
+    `release-payout` before any transfer, replacing the "do not take a live
+    payment" gate that stood here. Three signals, any hit → the payout answers
+    `held_for_review`, a `payout_reviews` row is written, and a human (us)
+    resolves it by hand in the console — `approved` unblocks the next run,
+    `rejected` keeps the escrow held deliberately, because in the fraud shape
+    this catches, the refund-claimant is the fraudster:
+    1. **shared_device** — the `device_links` ledger records a push token
+       moving between accounts (the same handset signed into both). Recorded
+       by `register_push_token` at the moment of the move, because
+       `push_tokens` itself deliberately forgets the previous owner.
+    2. **shared_card** — the card fingerprint behind this bounty's escrow
+       charge matches a card the spotter has paid with on their own posts
+       (Stripe lookups at payout time; nothing stored).
+    3. **matching_email** — the accounts' emails normalise to one address
+       (case, `+tags`, gmail's ignored dots).
+    **Honest limits, on the record:** two phones, two cards and unrelated
+    emails defeat all three — this raises the cost of fraud from zero to
+    "maintain genuinely separate identities", it does not make fraud
+    impossible. Signup-IP matching was considered and REJECTED: we store no
+    IPs, the only source is undocumented auth-schema internals, and UK mobile
+    CGNAT would drown true positives in false ones. The gate **fails closed**
+    (an unevaluable signal is a retryable error, never "assume innocent"), and
+    review REASONS never reach any client — telling a fraudster which signal
+    caught them is a tutorial.
 - Webhooks: verify Stripe signatures, dedupe by event id, and make every
   handler idempotent.
 - Amounts are integer pence everywhere. `// MONEY:` lines require tests.

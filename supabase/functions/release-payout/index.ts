@@ -37,6 +37,7 @@
 import type Stripe from 'npm:stripe@22.4.0';
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
+import { collusionGate } from '../_shared/collusion.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
 /**
@@ -123,6 +124,32 @@ Deno.serve(async (request) => {
     );
   }
 
+  // --- The collusion gate (SECURITY_AND_TRUST §5) -----------------------------
+  // Before payee readiness on purpose: a flagged pair should be told "we're
+  // double-checking" up front, not after the spotter has done five minutes of
+  // KYC for a transfer that was never going to run.
+  //
+  // The check that CANNOT live here: same-profile self-crediting — the DB
+  // already refuses it in claim_recovery (CANNOT_CREDIT_OWN_SIGHTING). This
+  // gate exists for the two-account version of the same person.
+  const stripe = createStripeClient();
+  const gate = await collusionGate(admin, stripe, {
+    postId,
+    ownerId: post.owner_id as string,
+    spotterId: credited.spotter_id as string,
+    paymentIntentId: null, // resolved inside from the held payment when needed
+  });
+  if (gate === 'held') {
+    // Not an error: the claim stands, the money is safe, and a human (us)
+    // decides. The client shows calm copy; the reasons NEVER leave the server —
+    // telling a fraudster which signal caught them is a tutorial.
+    console.log('[payments] payout held for review', { postId });
+    return jsonResponse({ status: 'held_for_review' });
+  }
+  if (gate === 'error') {
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
+  }
+
   // --- Can they actually receive it? ------------------------------------------
   const { data: connect } = await admin
     .from('stripe_connected_accounts')
@@ -165,7 +192,6 @@ Deno.serve(async (request) => {
 
   // --- Transfer (idempotent — never a second payout) --------------------------
   let transfer: Stripe.Transfer;
-  const stripe = createStripeClient();
   try {
     transfer = await stripe.transfers.create(
       {

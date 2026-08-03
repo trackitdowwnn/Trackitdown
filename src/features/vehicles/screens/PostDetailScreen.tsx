@@ -320,6 +320,10 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
       if (payout.status === 'paid' && payout.transferPence !== null) {
         toast.show(`Sent. ${formatPounds(payout.transferPence)} is on its way to them.`);
         retry(); // the post is `recovered` now — reload so the screen agrees
+      } else if (payout.status === 'held_for_review') {
+        // Ours, not theirs: never the bank-details line here, or the owner
+        // chases the spotter about a delay we caused on purpose.
+        toast.show('We’re just double-checking this payout — no need to do anything.');
       } else {
         toast.show('Not yet — they still need to add their bank details. We’ll keep it safe.');
       }

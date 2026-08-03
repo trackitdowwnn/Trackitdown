@@ -200,6 +200,31 @@ describe('crediting a spotter', () => {
     expect(kind).toBeUndefined(); // news, not an error
   });
 
+  it('says WE are double-checking when the payout is held — never the bank-details line', async () => {
+    // A held payout is our doing (the collusion gate). The bank-details copy
+    // would send the owner to chase the spotter about a delay that is ours,
+    // and naming the reason would teach a fraudster which signal caught them.
+    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+    mockRelease.mockResolvedValue({ status: 'held_for_review', transferPence: null });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
+    const [said, kind] = mockShowToast.mock.calls[0];
+    expect(String(said)).toMatch(/double-checking/i);
+    expect(String(said)).not.toMatch(/bank details/i);
+    expect(String(said)).not.toMatch(/device|card|email/i); // reasons never surface
+    expect(kind).toBeUndefined(); // news, not an error
+  });
+
   it('never tells the owner to try again when the payout fails', async () => {
     // The claim has already landed and CANNOT be redone — `claim_recovery`
     // accepts `active` only, and the post no longer is. Sending them back to a
