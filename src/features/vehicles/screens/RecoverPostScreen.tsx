@@ -84,9 +84,13 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
           payout.status === 'paid' && payout.transferPence !== null
             ? `Sent. ${formatPounds(payout.transferPence)} is on its way to them.`
             : // The usual first time: a spotter has no Stripe account until a
-              // sighting of theirs is credited, which is this moment. Say what
-              // is actually true rather than implying a delay on our side.
-              'They’re credited. We’ll send the bounty as soon as they’ve added their bank details.',
+              // sighting of theirs is credited, which is this moment.
+              //
+              // NOT "we'll send it when they're ready". Nothing re-runs the
+              // payout when the webhook enables them — the owner sends it from
+              // the listing. Saying otherwise told them to stop thinking about
+              // money that then never moved.
+              'They’re credited. Once they’ve added their bank details, send it from your listing.',
         );
       } catch (payoutError) {
         // The credit stands; only the transfer is outstanding, and it can be
@@ -94,7 +98,7 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
         toast.show(
           payoutError instanceof RecoveryError
             ? payoutError.message
-            : 'They’re credited. We’ll finish sending the bounty shortly.',
+            : 'They’re credited. You can send the bounty from your listing.',
         );
       }
       router.back();

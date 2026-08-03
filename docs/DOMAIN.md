@@ -419,11 +419,16 @@ unpublished, unsearchable, and carries no money or lifecycle state.
   legacy row cannot slip through), or `recovery_claimed`. The user must cancel
   the post or complete its recovery first. The client may pre-check to explain
   this kindly; the server check is the enforcement.
-- ⚠️ **Known trap (2026-08-03):** "complete its recovery" is currently
-  impossible for the credited-spotter branch. Nothing calls `release-payout`,
-  so a post that reaches `recovery_claimed` never reaches `recovered` — and its
-  owner can therefore never delete their account. Crediting a spotter is
-  presently a one-way door. Closing the payout wire closes this too.
+- ~~⚠️ **Known trap (2026-08-03):** "complete its recovery" is currently
+  impossible for the credited-spotter branch.~~ **Closed 2026-08-03**, later
+  the same day: `release-payout` is called when a spotter is credited, and
+  again from the post's manage sheet ("Send the bounty") for the normal case
+  where they had not yet set up payouts. A `recovery_claimed` post can now
+  reach `recovered`, so the account-deletion block clears with it.
+  Residual, and honest: the post stays in `recovery_claimed` for as long as the
+  spotter takes to onboard, because **nothing re-runs the payout when they
+  become payable** — the owner sends it. An owner who never returns leaves the
+  bounty in escrow and their own account undeletable.
 
 ## Disputes
 

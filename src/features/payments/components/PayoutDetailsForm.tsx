@@ -35,8 +35,15 @@ import type { PayoutDetails } from '../api/payoutsApi';
 import { buildPayoutDetailsSchema, digitsOnly, parseUkDate } from './payoutDetailsSchema';
 
 export interface PayoutDetailsFormProps {
-  /** Submits to Stripe. Throws with user-facing copy on failure. */
+  /**
+   * Submits to Stripe. Handles its own failures — this form never sees an
+   * error, because `void submit()` below would turn a rejection into an
+   * unhandled one.
+   */
   onSubmit: (details: PayoutDetails) => Promise<void>;
+  /** Back out without finishing. Ten fields of bank and identity data with no
+   *  way out but the back chevron is a trap, not a form. */
+  onCancel: () => void;
   busy?: boolean;
 }
 
@@ -66,13 +73,32 @@ const EMPTY: Fields = {
   accountNumber: '',
 };
 
-export function PayoutDetailsForm({ onSubmit, busy = false }: PayoutDetailsFormProps) {
+export function PayoutDetailsForm({
+  onSubmit,
+  onCancel,
+  busy = false,
+}: PayoutDetailsFormProps) {
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof Fields, string>>>({});
 
+  /**
+   * Types the slashes for them.
+   *
+   * The field asks for DD/MM/YYYY on a number pad — and the iOS number pad has
+   * no `/` key at all, so without this the only way to satisfy the format is to
+   * paste. They type eight digits and the separators appear.
+   */
+  const formatDob = (value: string): string => {
+    const digits = value.replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+  };
+
   const set = useCallback(
     (key: keyof Fields) => (value: string) => {
-      setFields((current) => ({ ...current, [key]: value }));
+      const next = key === 'dob' ? formatDob(value) : value;
+      setFields((current) => ({ ...current, [key]: next }));
       // Clear the error the moment they start fixing it — leaving it up while
       // someone types the correction reads as "still wrong".
       setErrors((current) => (current[key] ? { ...current, [key]: undefined } : current));
@@ -115,9 +141,14 @@ export function PayoutDetailsForm({ onSubmit, busy = false }: PayoutDetailsFormP
 
   return (
     <View style={styles.form} testID="payout-details-form">
+      {/* PRECISE ON PURPOSE. This said "we never see or store your bank
+          details", which is half false: they are POSTed to our own server and
+          held in memory on the way to Stripe. "Pass straight on" and "never
+          store" are both true; "never see" was not, and it is exactly the
+          sentence a regulator would quote back. */}
       <Text style={styles.lede}>
-        This goes straight to Stripe, who handle the payment side and the ID check. We
-        never see or store your bank details.
+        We pass these straight to Stripe, who handle the payments and the ID check, and
+        we never store them.
       </Text>
 
       <Text style={styles.section}>Your details</Text>
@@ -144,6 +175,7 @@ export function PayoutDetailsForm({ onSubmit, busy = false }: PayoutDetailsFormP
         error={errors.dob}
         helperText="DD/MM/YYYY"
         keyboardType="number-pad"
+        maxLength={10}
         testID="payout-dob"
       />
       <TextField
@@ -212,11 +244,10 @@ export function PayoutDetailsForm({ onSubmit, busy = false }: PayoutDetailsFormP
         if you started from scratch.
       </Text>
 
-      <Button
-        label={busy ? 'Saving…' : 'Continue'}
-        onPress={() => void submit()}
-        disabled={busy}
-      />
+      {/* `loading`, not a swapped label plus `disabled` — the house busy state
+          keeps the fill and announces "busy" rather than "dimmed". */}
+      <Button label="Continue" onPress={() => void submit()} loading={busy} />
+      <Button label="Not now" variant="ghost" onPress={onCancel} disabled={busy} />
     </View>
   );
 }

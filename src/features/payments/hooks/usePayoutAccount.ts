@@ -79,6 +79,11 @@ export function usePayoutAccount(): PayoutAccountState {
       return;
     }
     let cancelled = false;
+    // Reset before every read, including across a user switch. Left stale at
+    // `true`, the next `settleReturn()` short-circuits on its first tick and
+    // the settling window is silently skipped — which is the one thing this
+    // hook exists to provide.
+    enabledRef.current = false;
     fetchMyPayoutAccount(session.userId)
       .then((account) => {
         if (!cancelled) {
@@ -88,6 +93,7 @@ export function usePayoutAccount(): PayoutAccountState {
       })
       .catch(() => {
         if (!cancelled) {
+          enabledRef.current = false;
           setResult({ key, outcome: 'error' });
         }
       });

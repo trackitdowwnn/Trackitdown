@@ -50,7 +50,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useRequireAuth } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
-import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
+import { Button, EmptyState, ErrorState, Screen, useToast } from '@/shared/ui';
 
 import { PaymentError } from '../api/functionError';
 import { startConnectOnboarding, submitPayoutDetails, type PayoutDetails } from '../api/payoutsApi';
@@ -75,7 +75,10 @@ const COPY: Record<
     // The title asks; the button answers. Repeating the button's words as the
     // heading reads as a form with a stutter.
     title: 'Where should your bounties go?',
-    body: 'Stripe handles the bank details and the ID check — we never see them. It takes about five minutes, and you only do it once.',
+    // Not "we never see them" — they pass through our server on the way to
+    // Stripe. And not "you only do it once": this screen itself models Stripe
+    // coming back for more.
+    body: 'Stripe handles the payments and the ID check, and we never store your bank details. It’s a one-off setup and takes about five minutes.',
     action: 'Set up payouts',
   },
   unfinished: {
@@ -90,7 +93,10 @@ const COPY: Record<
   },
   ready: {
     title: 'Payouts are on',
-    body: 'Any bounty you earn goes to the account you set up with Stripe.',
+    // "Any bounty you earn goes to..." implied it arrives by itself. It does
+    // not: the owner releases it from their listing, so a spotter who onboarded
+    // to collect an already-credited bounty would have sat here waiting.
+    body: 'Bounties you earn will be sent to the account you set up with Stripe, once the owner releases them.',
     action: 'Update bank details',
   },
 };
@@ -219,12 +225,6 @@ export function PayoutsScreen() {
   }, [fetchClientSecret, opening, refresh, settleReturn, toast]);
 
   /**
-   * The embedded component has closed. This is EXACTLY as much of a promise as
-   * the browser redirect was — which is to say none: `payouts_enabled` is
-   * written only by Stripe's `account.updated` webhook, and someone can exit
-   * this component half way through. So it settles, and the account decides.
-   */
-  /**
    * Their details go to Stripe, and then we go straight on to whatever Stripe
    * still wants — without making them tap "continue" a second time. The window
    * we just used is now closed, so `open()` will get a session this time.
@@ -250,6 +250,12 @@ export function PayoutsScreen() {
     [open, toast],
   );
 
+  /**
+   * The embedded component has closed. This is EXACTLY as much of a promise as
+   * the browser redirect was — which is to say none: `payouts_enabled` is
+   * written only by Stripe's `account.updated` webhook, and someone can exit
+   * this component half way through. So it settles, and the account decides.
+   */
   const onOnboardingExit = useCallback(() => {
     setConnectInstance(null);
     primedSecret.current = null;
@@ -294,7 +300,19 @@ export function PayoutsScreen() {
   }
 
   return (
-    <Screen scroll contentContainerStyle={styles.scroll}>
+    <Screen
+      scroll
+      contentContainerStyle={styles.scroll}
+      // The form is ten fields deep; without this the last two sit under the
+      // keyboard and the first tap on Continue is spent dismissing it.
+      keyboardAware
+      // The settling window stops after ~14s. Without a pull-to-refresh,
+      // "Stripe is checking your details" is a dead end until the screen is
+      // left and re-entered — which the hook's own comment already assumed
+      // existed.
+      onRefresh={refresh}
+      refreshing={status === 'loading'}
+    >
       <View style={styles.headerRow}>
         <BackButton />
         <Text style={styles.title} accessibilityRole="header">
@@ -302,66 +320,87 @@ export function PayoutsScreen() {
         </Text>
       </View>
 
-      {status === 'loading' ? <PayoutsSkeleton /> : null}
+      {/* ONE body, chosen once. This was five independently-gated blocks whose
+          exclusivity was maintained by hand, and it did not hold: a refresh
+          error while the form was open stacked an EmptyState over the fields,
+          and a deep-link return while signed out rendered the guest state and
+          "Nearly there" together for the whole settling window. Priority
+          order, early returns, structurally impossible to show two. */}
+      {renderBody()}
+    </Screen>
+  );
 
-      {status === 'error' ? (
-        <EmptyState
-          title="Couldn't load your payout details"
-          body="Check your connection and try again."
-          actionLabel="Try again"
-          onAction={refresh}
-        />
-      ) : null}
-
-      {status === 'guest' ? (
-        // Reachable: /payouts is deep-linkable and the app is guest-first.
+  function renderBody() {
+    if (status === 'guest') {
+      // Reachable: /payouts is deep-linkable and the app is guest-first.
+      return (
         <EmptyState
           title="Get paid for what you spot"
           body="Log in to set up payouts, so a bounty has somewhere to land."
           actionLabel="Log in"
           onAction={() => requireAuth({ context: 'payouts' })}
         />
-      ) : null}
-
-      {showForm ? (
-        <PayoutDetailsForm onSubmit={onSubmitDetails} busy={opening} />
-      ) : null}
-
-      {!showForm && settling ? (
-        // Outranks the derived state, and this is the whole point: until the
-        // webhook lands, someone who just finished is indistinguishable from
-        // someone who gave up, and guessing wrong blames the wrong person.
+      );
+    }
+    if (showForm) {
+      return (
+        <PayoutDetailsForm
+          onSubmit={onSubmitDetails}
+          onCancel={() => setShowForm(false)}
+          busy={opening}
+        />
+      );
+    }
+    if (status === 'error') {
+      return (
+        <ErrorState
+          title="Couldn't load your payout details"
+          body="Check your connection and try again."
+          onRetry={refresh}
+        />
+      );
+    }
+    if (settling) {
+      // Outranks the derived state, and this is the whole point: until the
+      // webhook lands, someone who just finished is indistinguishable from
+      // someone who gave up, and guessing wrong blames the wrong person.
+      return (
         <View style={styles.card} testID="payouts-settling">
-          <Text style={styles.cardTitle}>Nearly there</Text>
+          <Text style={styles.cardTitle} accessibilityRole="header">
+            Nearly there
+          </Text>
           <Text style={styles.cardBody}>
             We’re waiting for Stripe to confirm. This usually takes a moment.
           </Text>
+          {/* Never a dead end: if the window closes unresolved, this is the
+              way to ask again without leaving and coming back. */}
+          <Button label="Check again" variant="secondary" onPress={refresh} />
         </View>
-      ) : null}
-
-      {!showForm &&
-      !settling &&
-      status !== 'loading' &&
-      status !== 'error' &&
-      status !== 'guest' ? (
-        <View style={styles.card} testID={`payouts-${status}`}>
-          <Text style={styles.cardTitle}>{COPY[status].title}</Text>
-          <Text style={styles.cardBody}>{COPY[status].body}</Text>
-          {linkExpired ? (
-            <Text style={styles.note}>
-              That link expired — they only last a few minutes. Tap below for a fresh one.
-            </Text>
-          ) : null}
-          <Button
-            label={opening ? 'Opening Stripe…' : COPY[status].action}
-            onPress={() => void open()}
-            disabled={opening}
-            variant={status === 'ready' ? 'secondary' : 'primary'}
-          />
-        </View>
-      ) : null}
-    </Screen>
-  );
+      );
+    }
+    if (status === 'loading') {
+      return <PayoutsSkeleton />;
+    }
+    return (
+      <View style={styles.card} testID={`payouts-${status}`}>
+        <Text style={styles.cardTitle} accessibilityRole="header">
+          {COPY[status].title}
+        </Text>
+        <Text style={styles.cardBody}>{COPY[status].body}</Text>
+        {linkExpired ? (
+          <Text style={styles.note}>
+            That link expired — they only last a few minutes. Start again for a fresh one.
+          </Text>
+        ) : null}
+        <Button
+          label={COPY[status].action}
+          loading={opening}
+          onPress={() => void open()}
+          variant={status === 'ready' ? 'secondary' : 'primary'}
+        />
+      </View>
+    );
+  }
 }
 
 function BackButton() {

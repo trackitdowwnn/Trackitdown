@@ -85,8 +85,25 @@ const PAYOUT_MESSAGES: Record<string, string> = {
   NO_CREDITED_SIGHTING: 'No spotter is credited on this listing.',
   NO_HELD_PAYMENT: 'We couldn’t find the bounty for this listing.',
   LEDGER_ERROR: 'The bounty is on its way. Please check back shortly.',
-  STRIPE_ERROR: 'They’re credited, but sending the bounty didn’t go through. We’ll retry.',
+  STRIPE_ERROR: 'They’re credited, but sending the bounty didn’t go through. Try again from your listing.',
+  POST_NOT_FOUND: 'We couldn’t find that listing.',
+  NOT_AUTHENTICATED: 'Please sign in again, then try once more.',
+  LOOKUP_FAILED: 'They’re credited. Try sending the bounty again from your listing.',
+  SPLIT_ERROR: 'They’re credited, but we couldn’t work out the amount. Please contact us.',
+  BAD_REQUEST: 'They’re credited. Try sending the bounty again from your listing.',
 };
+
+/**
+ * The payout path gets its OWN fallback, and this is why.
+ *
+ * The shared `FALLBACK` is "Something went wrong. Please try again." — the exact
+ * wording the map above exists to avoid, because by the time a payout can fail
+ * the claim is already irreversible and "try again" points at a screen that
+ * will now refuse them. And it is not a rare path: `releasePayout` labels every
+ * non-HTTP failure `UNKNOWN`, so an ordinary dropped connection lands here.
+ */
+const PAYOUT_FALLBACK =
+  'They’re credited. Try sending the bounty again from your listing.';
 
 const FALLBACK = 'Something went wrong. Please try again.';
 
@@ -199,7 +216,10 @@ export async function releasePayout(postId: string): Promise<ReleasePayoutResult
       }
     }
     log.warn('release_payout failed', { postId, code });
-    throw new RecoveryError(messageFor(PAYOUT_MESSAGES, code), code);
+    throw new RecoveryError(
+      Object.hasOwn(PAYOUT_MESSAGES, code) ? PAYOUT_MESSAGES[code] : PAYOUT_FALLBACK,
+      code,
+    );
   }
 
   const result = data as { status?: string; transferPence?: number };

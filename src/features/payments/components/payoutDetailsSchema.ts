@@ -29,7 +29,11 @@ export function parseUkDate(value: string): Date | null {
   if (!match) {
     return null;
   }
-  const [, day, month, year] = match.map(Number) as unknown as [string, number, number, number];
+  // Read individually rather than `match.map(Number) as unknown as [...]` —
+  // that array's first element is NaN and the assertion typed it `string`.
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
   const date = new Date(Date.UTC(year, month - 1, day));
   // Date rolls overflow silently (31 Feb becomes 3 March), so compare back.
   if (

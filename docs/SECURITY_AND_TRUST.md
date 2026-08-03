@@ -163,9 +163,20 @@ commenting standards.
 
 ## 4. Payments (Stripe Connect)
 
-- The client app **never** touches amounts, fees, or payout logic. It only
-  opens Stripe-hosted flows (PaymentSheet for escrow, Connect onboarding
-  for spotters — the latter is not built yet).
+- The client app **never** touches amounts, fees, or payout logic. It opens
+  Stripe's own flows (PaymentSheet for escrow, the embedded
+  `ConnectAccountOnboarding` component for spotters) and, since 2026-08-03,
+  collects payout details in a native form of our own — see below.
+- ⚠️ **We transit raw bank details.** `submit-payout-details` receives a sort
+  code and account number from our form and forwards them to Stripe's Accounts
+  API. Stripe permits this only until an Account Link or Session exists for
+  that account, which is why the session mint is gated on
+  `details_submitted_at`. They are **never stored** — no column holds them —
+  and **never logged**, not even masked; a partial account number in a log is
+  still an account number in a log. Tokenising instead is not available: a
+  `btok_` may only be attached where `controller.requirement_collection` is
+  `application`, and ours are Express. **This is financial PII in transit and
+  must appear in the privacy policy and the Art. 30 record.**
 - Escrow charge on posting; payout of 95% by **transfer**, with our 5%
   retained as the remainder that never leaves the platform balance — **not**
   an `application_fee_amount` (ADR-0002; this line said "application fee"
@@ -174,10 +185,19 @@ commenting standards.
   sighting must belong to the post, spotter must be onboarded) and whose
   `mark_recovery_paid` re-derives the split independently and rejects a
   mismatch.
-  ⚠️ **Nothing calls `release-payout` today**, and no Connect onboarding
-  exists, so a credited bounty currently stays on the platform balance
-  indefinitely while both parties are shown copy saying it is on its way.
-  Do not take a live payment until that is closed.
+  **Wired 2026-08-03.** `release-payout` is called from `RecoverPostScreen`
+  when a spotter is credited, and again from the post's manage sheet ("Send the
+  bounty") for the usual case where they had not yet onboarded. Connect
+  onboarding exists. This entry previously said nothing called it and told the
+  reader not to take a live payment; that gate is met.
+  ⚠️ **Two things still stand between this and real money:**
+  - `account.updated` must be enabled by hand on the Stripe webhook endpoint.
+    It is not a default, and without it `payouts_enabled` never becomes true,
+    so every payout answers `awaiting_payee` forever — silently.
+  - **The collusion check below is NOT built.** Now that the payout wire is
+    closed, an owner can post a bounty, report a sighting from a second
+    account, credit it, and transfer 95% of their own escrow to themselves.
+    Nothing checks for it. **Do not take a live payment until that is closed.**
 - Webhooks: verify Stripe signatures, dedupe by event id, and make every
   handler idempotent.
 - Amounts are integer pence everywhere. `// MONEY:` lines require tests.

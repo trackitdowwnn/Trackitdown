@@ -97,20 +97,26 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
       **BUILT 2026-08-02.** `claim_recovery` + `mark_recovered_no_spotter` +
       `RecoverPostScreen`. This line said "THE ONE THING THAT CLOSES THE LOOP,
       AND IT IS NOT BUILT" until 2026-08-03, a day after it shipped.
-- [~] Spotter Stripe Connect onboarding + release-payout (95/5).
-      `release-payout` is **BUILT** (`20260802220000_release_payout.sql` +
-      the Edge Function). Two things remain, and neither is the hard part:
-      - [ ] **Call it.** `RecoverPostScreen.tsx` toasts "we'll get the bounty
-            to them" on the payout branch and invokes nothing. Until this is
-            wired the post is stranded in `recovery_claimed` — which also
-            blocks the owner's account deletion, permanently.
-      - [ ] **Connect onboarding**, so there is a payee. Needs an account-link
-            Edge Function and the UI behind `PAYOUTS_ENABLED`. ⚠️ Also needs
-            Stripe Connect ENABLED on the platform account — see the unticked
-            Phase 0 Stripe lines, still marked "— you".
-- [ ] Milestone: full journey on two phones with two test accounts — now
-      blocked only on the two boxes above. Everything up to and including
-      "owner credits a spotter" runs; the money is the last inch.
+- [x] Spotter Stripe Connect onboarding + release-payout (95/5).
+      **DONE 2026-08-03.** Both boxes that stood here are closed:
+      - [x] **Call it.** Invoked from `RecoverPostScreen` on the payout branch,
+            and again from the post's manage sheet ("Send the bounty") for the
+            usual case where the spotter has not yet onboarded.
+      - [x] **Connect onboarding.** `connect-onboarding` (Account Session),
+            `submit-payout-details` (our own native form, inside Stripe's
+            prefill window), `connect-return`, and `account.updated` in
+            `stripe-webhook`. UI at Profile → Payouts.
+      ⚠️ `account.updated` must be enabled BY HAND on the Stripe webhook
+      endpoint; it is not a default, and without it no spotter ever becomes
+      payable and nothing errors.
+- [ ] **Collusion check before payout** — required by SECURITY_AND_TRUST §5 and
+      not built. Was harmless while no payee could exist; now the wire is
+      closed it is the gap that lets an owner pay themselves. **Blocks real
+      money.**
+- [~] Milestone: full journey on two phones with two test accounts. Everything
+      through "owner credits a spotter" and on to a transfer now runs. Not yet
+      walked end to end on two devices, and the escrow PaymentSheet wants a
+      re-test after the Stripe SDK bump (0.64.0 → 0.72.0).
 
 ## Phase 4 — Trust layer & polish
 

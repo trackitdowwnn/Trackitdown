@@ -65,6 +65,14 @@ Do NOT log inside render functions, loops, or per-keystroke handlers.
 NEVER log, at any level, in any environment:
 
 - Auth tokens, session objects, API keys, webhook payloads verbatim
+- **Bank details.** Sort codes and account numbers pass through
+  `submit-payout-details` on their way to Stripe (2026-08-03). There is no
+  redacting helper for these on purpose: a masked tail is still an account
+  number in a log, so the rule is nothing at all — not the value, not its
+  length, not the request body that carried it. Log the outcome and the Stripe
+  account id. Same for a date of birth and a home address collected with them.
+- Stripe **Account Session client secrets** and **Account Link URLs** — bearer
+  credentials into someone's identity documents
 - Verification document contents or their signed URLs
 - Chat message contents (log the event "message sent", never the text)
 - Full number plates — use the logger's `redactPlate()` → `AB12***`

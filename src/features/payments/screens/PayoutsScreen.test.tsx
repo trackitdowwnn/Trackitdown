@@ -174,13 +174,36 @@ describe('our own form comes first', () => {
     expect(mockOpenAuth).not.toHaveBeenCalled();
   });
 
-  it('promises plainly that we never keep the bank details', async () => {
+  it('promises only what is true about the bank details', async () => {
+    // It said "we never SEE or store" them, which is half false: they are
+    // POSTed to our own Edge Function and held in memory on the way to Stripe.
+    // "Pass straight on" and "never store" are both true; the other one is the
+    // sentence a regulator would quote back.
     mockStart.mockResolvedValue({ status: 'details_required' });
-    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
       fireEvent.press(getByText('Set up payouts'));
     });
-    expect(getByText(/never see or store your bank details/i)).toBeTruthy();
+    expect(getByText(/never store them/i)).toBeTruthy();
+    expect(queryByText(/never see/i)).toBeNull();
+  });
+
+  it('offers a way out of ten fields of bank and identity data', async () => {
+    mockStart.mockResolvedValue({ status: 'details_required' });
+    const { getByText, getByTestId, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+    await act(async () => {
+      fireEvent.press(getByText('Set up payouts'));
+    });
+    expect(getByTestId('payout-details-form')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByText('Not now'));
+    });
+    // Back to the screen they came from, not out of the app entirely.
+    expect(queryByTestId('payout-details-form')).toBeNull();
+    expect(getByTestId('payouts-notStarted')).toBeTruthy();
   });
 
   it('does not claim they are finished — Stripe still has questions', async () => {

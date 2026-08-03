@@ -74,20 +74,28 @@ v1 scope, stop and flag it.
       209 lines, 95/5 transfer math per ADR-0002, a per-post transfer
       idempotency key, and `mark_recovery_paid` independently re-deriving the
       split and rejecting a mismatch (`20260802220000_release_payout.sql`).
-      **THE HOLE MOVED HERE, AND IT IS NOW TWO WIRES RATHER THAN A FEATURE:**
-      1. **Nothing calls `release-payout`.** `RecoverPostScreen.tsx` handles the
-         `refund` branch, and on the `payout` branch shows a toast saying
-         "we'll get the bounty to them" and navigates back. The post stays in
-         `recovery_claimed`, the bounty stays in escrow, and BOTH parties have
-         been told money is on its way.
-      2. **There is no payee.** No Connect onboarding exists anywhere, so
-         `release-payout` would answer `PAYEE_NOT_READY` — which by design it
-         treats as normal and re-runnable, not as a failure.
-      Also missing on the spotter's side: no `type: 'recovery'` push SENDER
-      (the payload, route and `push_sends` kind all exist and are tested), and
-      **no spotter-facing surface at all** — `/post-sightings` and
-      `/sighting/[id]` are both owner-only, so a spotter cannot check a report
-      they filed, let alone learn they were credited.
+      **BOTH WIRES CLOSED 2026-08-03.** `release-payout` is invoked from
+      `RecoverPostScreen` on the `payout` branch, and again from the post's
+      manage sheet ("Send the bounty") for the usual case where the spotter had
+      not yet onboarded. Connect onboarding is built: `connect-onboarding`
+      (Account Session), `submit-payout-details` (our own native form for bank
+      details + identity, inside Stripe's prefill window), `connect-return`,
+      and an `account.updated` branch in `stripe-webhook` — the only writer of
+      `payouts_enabled`. A `PayoutsScreen` behind Profile → Payouts.
+      **Still open, and all three matter:**
+      1. ⚠️ **No collusion check before payout.** SECURITY_AND_TRUST §5 requires
+         one; nothing implements it. Now the wire is closed, an owner can credit
+         their own second account and transfer 95% of their own escrow to
+         themselves. **This blocks real money, not the demo.**
+      2. **Nothing re-runs the payout** when the webhook makes a spotter
+         payable — the owner must return and tap "Send the bounty". Copy on
+         both sides now says so rather than promising it happens by itself.
+      3. Still missing on the spotter's side: no `type: 'recovery'` push SENDER
+         (the payload, route and `push_sends` kind all exist and are tested),
+         and **no spotter-facing sightings surface** — `/post-sightings` and
+         `/sighting/[id]` are owner-only, so a spotter cannot check a report
+         they filed, let alone learn they were credited. Combined with (2), the
+         realistic steady state is a credited spotter who is never told.
 - [~] Reputation counters + 1/5/25 badges on profiles. Counters and badge
       maths are BUILT and server-maintained (`sightings_reported`,
       `sightings_helpful`; ReputationCard + lib/reputation.ts). The third,
