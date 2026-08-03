@@ -7,6 +7,13 @@
  *        powers the money flow, so it gains nothing here. Swapping one phase's
  *        step array is plain data.
  *
+ *        STILL TRUE after `WizardStep.when` arrived (2026-08-02, so the garage's
+ *        plate step can retire once the photo scan answers it). That predicate
+ *        hides ONE step from the walk; this swaps a whole PHASE, and decides it
+ *        from the saved car BEFORE the wizard mounts rather than from answers
+ *        mid-flow. Rewriting this on top of `when` would mean a predicate on
+ *        every one of seven steps to express one either/or.
+ *
  *        "Edit" is a flow swap, not a jump: the caller re-builds with
  *        `expanded: true`, which restores the full seven steps seeded with the
  *        SAME answers. The wizard has no jump-to-step API, and adding one for

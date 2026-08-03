@@ -12,10 +12,10 @@
  *        SWAPPABILITY, which is not theoretical here.
  *        `@react-native-ml-kit/text-recognition` declares no `codegenConfig`
  *        and was last published before RN 0.86, so under Expo 57's New
- *        Architecture it depends on the legacy interop layer. That is the
- *        common case and usually works, but it is UNVERIFIED until a real
- *        `eas build --profile development` runs it on a device. If it turns out
- *        not to work, only this file changes.
+ *        Architecture it depends on the legacy interop layer. VERIFIED WORKING
+ *        on a device build (Android, 2026-08-02) — it had been unproven until
+ *        then. The interop dependency stands, so if a future RN drops that
+ *        layer only this file changes.
  *
  * SAFETY: this function sees every word in a user's photograph — street names,
  *         shop fronts, other people's registrations. It runs ON DEVICE: no

@@ -698,4 +698,67 @@ describe('status overlays', () => {
     fireEvent.press(getByTestId('pgp-photo-1-retry'));
     expect(onRetry).toHaveBeenCalledWith(expect.objectContaining({ uri: photo(1).uri }));
   });
+
+  it('shows a busy overlay with the consumer’s own words', async () => {
+    // The grid never learns WHY a tile is busy — the caller supplies the
+    // sentence, which is what keeps "number plate" out of shared/ui.
+    const { getByText } = await renderPicker({
+      photos: photos(2),
+      status: { [photo(1).uri]: { kind: 'busy', label: 'Looking for a number plate' } },
+    });
+    expect(getByText('Looking for a number plate')).toBeTruthy();
+  });
+
+  it('pins the overlay to the flagged tile only', async () => {
+    const { queryAllByText } = await renderPicker({
+      photos: photos(3),
+      status: { [photo(1).uri]: { kind: 'busy', label: 'Reading' } },
+    });
+    expect(queryAllByText('Reading')).toHaveLength(1);
+  });
+});
+
+// The tile is ONE accessibility element and flattens its children, so the
+// overlay's own text reaches nobody. Every status therefore has to reach the
+// tile's own label and busy state, or a screen reader is told "Photo 2 of 3"
+// while the tile plainly says something else.
+describe('status overlays are reported to assistive tech', () => {
+  it('folds a busy status into the tile label and marks it busy', async () => {
+    const { getByTestId } = await renderPicker({
+      photos: photos(2),
+      status: { [photo(1).uri]: { kind: 'busy', label: 'Looking for a number plate' } },
+    });
+    const tile = getByTestId('pgp-photo-1');
+    expect(tile.props.accessibilityLabel).toContain('Looking for a number plate');
+    expect(tile.props.accessibilityState).toEqual({ busy: true });
+  });
+
+  it('reports an upload in progress as busy', async () => {
+    const { getByTestId } = await renderPicker({
+      photos: photos(2),
+      status: { [photo(1).uri]: { kind: 'uploading', progress: 0.42 } },
+    });
+    const tile = getByTestId('pgp-photo-1');
+    expect(tile.props.accessibilityLabel).toContain('Uploading 42 percent');
+    expect(tile.props.accessibilityState).toEqual({ busy: true });
+  });
+
+  it('reports a failure WITHOUT calling it busy', async () => {
+    // A failed upload is stopped, not working — announcing it as busy would
+    // tell someone to wait for something that is never coming.
+    const { getByTestId } = await renderPicker({
+      photos: photos(2),
+      status: { [photo(1).uri]: { kind: 'error' } },
+    });
+    const tile = getByTestId('pgp-photo-1');
+    expect(tile.props.accessibilityLabel).toContain('Upload failed');
+    expect(tile.props.accessibilityState).toEqual({ busy: false });
+  });
+
+  it('leaves an ordinary tile’s label alone', async () => {
+    const { getByTestId } = await renderPicker({ photos: photos(2) });
+    const tile = getByTestId('pgp-photo-1');
+    expect(tile.props.accessibilityLabel).toBe('Photo 2 of 2');
+    expect(tile.props.accessibilityState).toBeUndefined();
+  });
 });

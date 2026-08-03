@@ -58,10 +58,47 @@ describe('add-vehicle flow structure', () => {
     const shared = buildVehicleSteps({ minPhotos: 0 }).map((s) => s.id);
     const ids = steps.map((s) => s.id);
 
-    // The garage's own steps bracket the shared slice: plate first, nickname last.
-    expect(ids[0]).toBe('plate');
-    expect(ids[ids.length - 1]).toBe('nickname');
-    expect(ids.slice(1, -1)).toEqual(shared);
+    // The shared slice runs first; the garage's own two follow it.
+    expect(ids.slice(0, shared.length)).toEqual(shared);
+    expect(ids.slice(shared.length)).toEqual(['plate', 'nickname']);
+  });
+
+  it('asks for the plate AFTER the photos, not before', () => {
+    // Moved 2026-08-02. The scan reads the photos an owner adds anyway, so
+    // asking first meant typing a registration about to be offered for free.
+    const ids = steps.map((s) => s.id);
+    expect(ids.indexOf('plate')).toBeGreaterThan(ids.indexOf('photos'));
+  });
+});
+
+describe('the plate step steps aside once the scan has answered it', () => {
+  const plateWhen = stepById('plate').when;
+
+  it('is asked when nothing has answered it', () => {
+    expect(plateWhen?.({})).toBe(true);
+  });
+
+  it('is walked past once the owner confirmed a scanned plate', () => {
+    expect(plateWhen?.({ plate: 'AB12 CDE', plateFromScan: true })).toBe(false);
+  });
+
+  it('is STILL asked when a plate was typed by hand', () => {
+    // Only a confirmed READING retires the question. Someone who typed it has
+    // already been asked, so nothing changes for them either way.
+    expect(plateWhen?.({ plate: 'AB12 CDE' })).toBe(true);
+  });
+
+  it('is STILL asked when editing a saved car that has a plate', () => {
+    // The same wizard edits an existing car, seeded from the database with no
+    // plateFromScan. Keying off a non-empty plate would make the registration
+    // of every saved car impossible to reach.
+    expect(plateWhen?.({ plate: 'XY34 ZZZ', make: 'Ford' })).toBe(true);
+  });
+
+  it('stays on the review screen either way, so a misread is correctable', () => {
+    // `when` hides it from the WALK only. There is no DVLA lookup behind this,
+    // so review is the last chance to catch a confirmed misread.
+    expect(stepById('plate').reviewValue?.({ plate: 'AB12 CDE' })).toBe('AB12 CDE');
   });
 
   it('saves rather than pays — the CTA promises no charge', () => {

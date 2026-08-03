@@ -99,19 +99,31 @@ export function useWizardController<TAnswers>(
     setAnswersState((current) => ({ ...current, ...patch }));
   }, []);
 
+  // Which screens the walk should stop on. Recomputed from the CURRENT answers
+  // on every move, because that is the whole point: a step steps aside the
+  // moment another one answers its question. Intros and review have no step and
+  // are always walked to.
+  const visible = useMemo(
+    () =>
+      screens.map((screen) =>
+        screen.kind === 'step' ? (screen.step.when?.(answers) ?? true) : true,
+      ),
+    [screens, answers],
+  );
+
   const next = useCallback(() => {
     // Completing an edit commits it — the snapshot is no longer a fallback.
     editSnapshotRef.current = null;
-    dispatch({ type: 'next', screenCount: screens.length });
-  }, [screens.length]);
+    dispatch({ type: 'next', visible });
+  }, [visible]);
   const back = useCallback(() => {
     setError(null);
     if (editSnapshotRef.current !== null) {
       setAnswersState(editSnapshotRef.current);
       editSnapshotRef.current = null;
     }
-    dispatch({ type: 'back' });
-  }, []);
+    dispatch({ type: 'back', visible });
+  }, [visible]);
   const editStep = useCallback(
     (targetIndex: number) => {
       editSnapshotRef.current = answers;

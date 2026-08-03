@@ -52,8 +52,19 @@ saved answers, so the owner only completes when/where, bounty, review and pay.
   need a last-minute correction, and a prefill you can't fix is worse than none.
 - **Exception:** a car with fewer than 3 photos keeps the real photos step, so it
   can't reach review and fail on `create_post`'s `PHOTO_COUNT`.
-- `shared/wizard` is **not** changed. Composing two step arrays avoids putting a
-  `skipIf` predicate into a framework that also powers the money flow.
+- This flow composes two step arrays rather than branching inside one. That
+  stays the right shape here: it swaps a whole PHASE (collapsed summary vs seven
+  steps) and is decided from the saved car before the wizard mounts, which is
+  not something a per-step predicate expresses.
+  - The note here used to say `shared/wizard` is never changed, to keep a
+    `skipIf` predicate out of a framework that also powers the money flow. That
+    is no longer true — `WizardStep.when` was added on 2026-08-02 so the plate
+    step can retire once the photo scan has answered it. It is deliberately the
+    *narrow* version of what was rejected: it hides a step from the WALK only,
+    leaving the screen list, every index and the review row untouched, so the
+    money flow's edit-spur positions cannot be invalidated by it. The reasoning
+    that killed the original proposal — never let a predicate renumber screens —
+    is what shaped it, not something it overturned.
 
 ## Screens
 
@@ -126,11 +137,107 @@ uniqueness would leak other people's garages); plate optional throughout.
 
 ### Scanning the plate from a photo (2026-08-02)
 
-The plate step offers "Scan it from a photo" — tap for the camera, long-press
-for the library. OCR runs **on device**
-(`@react-native-ml-kit/text-recognition`), candidates are ranked, and the owner
-confirms one in a sheet before anything is written. Typing stays primary and the
-skip stays.
+**The photos an owner adds are read for a registration.** There is no separate
+"take a photo of the plate" action — people photograph their car anyway and the
+plate is usually in shot, so asking again for something we already have is
+asking twice. (A dedicated scan button on the plate step was built first and
+removed on the same day for exactly that reason.)
+
+OCR runs **on device** (`@react-native-ml-kit/text-recognition`), candidates are
+ranked, and the owner confirms one in a sheet before anything is written.
+Typing stays primary and the skip stays.
+
+- **It is QUIET.** Nothing read, or a reading that AGREES with what was typed →
+  silence. A "plate verified" confirmation is noise: they already knew, and they
+  were right. It speaks only when the field is empty or the reading disagrees —
+  and a disagreement asks *"which one is right?"* with their own plate as a
+  named option, because a plate is easy to misread from a photo and they were
+  looking at the actual car.
+- **Quiet about the OUTCOME, not about the WORK** (2026-08-02). While it is
+  reading, **the photo being read is dimmed** — the grid's own per-tile `status`
+  overlay, with a spinner and *"Looking for a number plate"* — and the dim
+  **moves to the next photo** as the scan walks them. OCR starts only AFTER
+  `PhotoGridPicker`'s resize shimmer has stopped, so without it the step looks
+  finished for the 1–5s it reads and then a sheet arrives from nowhere. It
+  reports progress and never a result, so the silences above are untouched.
+  - **Why on the tile, not a line above the grid** (which is what it was for
+    half a day): one line cannot say WHICH of three photos is being read, so it
+    read as a stall. It also mounted outside the grid and inserted ~30pt of
+    layout, shunting every tile down on scan start and back up on finish — on
+    every photo added. The overlay uses space the grid already owns.
+  - **A tile is held `motion.loaderMinVisible` before the scan moves on**, so a
+    fast read cannot strobe across three tiles. A CLEAN read skips the hold:
+    the sheet is about to take the screen and delaying it to admire a tile
+    would only postpone the answer.
+  - **`shared/ui` does not learn what a plate is.** `PhotoTileStatus` gained a
+    generic `{ kind: 'busy'; label }`; the garage supplies the sentence, and
+    `PhotosStep` gained an optional `status` passthrough typed purely in
+    shared/ui vocabulary. No import points from vehicles to the garage.
+  - One `announceForAccessibility` when a scan starts (uninvited work should
+    not have to be discovered), and each dimmed tile reports itself as busy
+    with the label folded into its own accessibility label — the tile flattens
+    its children, so overlay text reaches assistive tech no other way. There is
+    deliberately no "finished" announcement: that is the "✓ verified" noise
+    wearing a different hat.
+- **Photos queue; `scanned` is marked on DEQUEUE.** A burst added while a scan
+  is running is picked up by the running drain instead of being dropped. Until
+  2026-08-02 fresh URIs were added to `scanned` *before* the re-entrancy guard
+  could turn them away, so a second burst was marked read and then never looked
+  at by anything — a status line claiming to check photos it had silently
+  skipped is worse than no status line. Cost: two bursts now mean two sequential
+  OCR passes rather than one capped at `MAX_PHOTOS_SCANNED`.
+- **It never writes on its own.** Detection may only ASK. The most important
+  test in `PhotosWithPlateScanStep.test.tsx` asserts exactly that.
+- **The plate step now comes AFTER the photos** (moved 2026-08-02; it was first,
+  and the note here used to defend that). The scan reads the photos an owner
+  adds anyway, so asking first meant typing a registration that was about to be
+  offered for free. Asking last means the question is only ever put to people
+  the scan could not answer it for.
+  - **And when it did answer, the step steps aside entirely.** `when` on the
+    step returns false once `plateFromScan` is set, and the walk goes straight
+    past. It keys off `plateFromScan` — set only by an owner CONFIRMING a
+    reading — not off a non-empty `plate`, because the same wizard edits a saved
+    car whose plate is present from the database on the first render; keying off
+    the value would make the registration of every saved car unreachable.
+  - **It stays on the review screen.** `when` hides a step from the WALK only,
+    so the row and its Edit spur survive. That matters here more than most:
+    there is no DVLA lookup behind this, so review is the last chance to catch a
+    reading confirmed by accident.
+  - **So confirming says one thing out loud** (2026-08-03): *"Plate saved — you
+    can change it at the end."* The single exception to the quiet rule, and not
+    a celebration. Retiring the step means the question they were braced for
+    never comes — so silence there is not restraint, it is a disappearance: they
+    tap, the sheet goes, and the wizard moves on as though nothing happened. The
+    second clause is the load-bearing half, being the only time the review
+    screen is mentioned to someone who now has an unverified reading in their
+    answers. The plate is deliberately **not** in the message: a toast is
+    announced verbatim, and a registration pronounced as a word is useless —
+    which is the same reason the sheet spells it out with `spellPlate`.
+- **Every ending goes through one handler** (2026-08-03), fired when the sheet
+  has FINISHED closing — not by the button that started it. A sheet takes 250ms
+  to leave, and `BottomSheet`'s `onDismiss` reports every departure including a
+  programmatic `close()`, so buttons that tidied up *and* closed ran the whole
+  ending twice: a rejection logged against a confirmation, rejections
+  double-counted with the second carrying `candidates: 0`, and a fresh scan
+  announced to a screen reader after the owner had finished. The sheet now
+  separates `onDecline` (a request to close) from `onDismiss` (it has gone).
+  The question is also **snapshotted** when it is asked, because confirming
+  writes `answers.plate` — a sheet reading live answers watches its own reply
+  arrive and spends its exit asking which of two identical plates is right.
+- **Turning a reading down RESUMES the scan** rather than ending it. Photos the
+  walk stopped short of are parked, not discarded, and "That's not it" picks up
+  from exactly there — a wrong plate on photo one no longer costs the right one
+  on photo two. Rejected readings are remembered and never offered again, or the
+  next photo showing the same plate would stop to ask a question already
+  answered.
+- **A car saved with no photos gets no scan.** `minPhotos` is 0 here, and that
+  is the accepted cost of dropping the separate scan action.
+- **Why a garage component, not a flag on `buildVehicleSteps`.** The garage
+  swaps the shared photos step's *component* for `PhotosWithPlateScanStep`,
+  which renders the shared step untouched and adds its own behaviour around it.
+  `features/vehicles` must never learn that plates or the garage exist
+  (ARCHITECTURE rule 1), and this way the posting wizard's photo step is
+  unaffected **by construction** rather than by a flag someone could flip.
 
 - **Why the garage and not the posting wizard.** The wizard has no plate step —
   removed 2026-07-24 — and the shared `buildVehicleSteps` deliberately excludes
@@ -143,6 +250,16 @@ skip stays.
   misdirect the "already reported stolen" check this step's own copy promises,
   and would eventually collide with a stranger's registration once
   `PLATE_IN_USE` wakes up (see Rules below).
+- **A plate rarely arrives alone on its line** (2026-08-02). The GB/UK band, a
+  dealer frame and a trim badge get grouped with it, and a screw cap reads as a
+  stray glyph on the end. Every contiguous run of words is now tested, and one
+  stray character is trimmed from either end — before this, `GB AB12 CDE` found
+  **nothing** despite a flawless read, and `AB12 CDE Motors Ltd` offered only
+  `M07 ORS` (coerced out of "MOTORS") with the real plate missing. The guard
+  that stops this inventing registrations is **one guess at a time**: a piece
+  stitched out of part of a line must read cleanly, with no glyph coercion on
+  top. A whole line keeps full coercion rights — that is where the repair below
+  happens.
 - **O/0 and I/1 are resolved by POSITION, not guessed.** UK formats fix which
   slots are letters and which are digits, so `AB1Z CDE` repairs to `AB12 CDE` —
   slot 4 must be a digit. Below 6 characters no repair is attempted at all:
@@ -153,15 +270,17 @@ skip stays.
   re-encoded through `expo-image-manipulator` before the OCR module sees it, so
   the copy it reads carries no EXIF (a camera-roll photo of your own car usually
   carries your home GPS; the picker's `exif: false` only stops US reading it).
-  Recognised text lives in component state only, is dropped when the sheet
-  closes, and is never persisted or logged — not even redacted, because at scan
+  Recognised text lives in component state only, is dropped once the sheet has
+  closed, and is never persisted or logged — not even redacted, because at scan
   time we do not yet know which string is a plate. Logs carry counts and
-  outcomes only.
-- **Unverified until a real build.** The OCR module is a legacy bridge module
-  with no `codegenConfig`, running through New Architecture interop on RN 0.86.
-  It needs `eas build --profile development`; a Metro reload will not pick it
-  up. `src/shared/lib/ocr/textRecognition.ts` is the only file that imports it,
-  so replacing it is a one-file change.
+  outcomes only, and the confirmation toast carries no registration either.
+- **Verified on a device build (Android, 2026-08-02).** The OCR module is a
+  legacy bridge module with no `codegenConfig`, running through New Architecture
+  interop on RN 0.86 — that interop path now has a real read behind it rather
+  than an assumption. It still needs a native build (`npx expo run:android` or
+  `eas build --profile development`); a Metro reload will not pick it up.
+  `src/shared/lib/ocr/textRecognition.ts` is the only file that imports it, so
+  replacing it is a one-file change.
 
 ## Rules & safety applied
 

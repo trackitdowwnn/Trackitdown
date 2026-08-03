@@ -1,6 +1,6 @@
 /**
- * WHAT:  The add-a-car WizardFlow — one phase: plate, then the SHARED
- *        vehicle-identity steps, then an optional nickname. Plus the empty
+ * WHAT:  The add-a-car WizardFlow — one phase: the SHARED vehicle-identity
+ *        steps, then the plate, then an optional nickname. Plus the empty
  *        initial answers.
  * WHY:   This is the whole point of the shared slice: the garage collects
  *        exactly what the posting wizard's `car` phase collects, so it spreads
@@ -25,6 +25,7 @@ import { buildVehicleSteps } from '@/features/vehicles';
 import type { WizardFlow } from '@/shared/wizard';
 
 import { NicknameStep, PlateStep } from '../components/garageSteps';
+import { PhotosWithPlateScanStep } from '../components/PhotosWithPlateScanStep';
 import type { AddVehicleAnswers } from '../types';
 
 /** Everything starts empty — there is no equivalent of the bounty seed here. */
@@ -40,23 +41,40 @@ export function buildAddVehicleFlow(): WizardFlow<AddVehicleAnswers> {
         id: 'vehicle',
         title: 'Your car',
         steps: [
+          // The SHARED slice — identical to the posting wizard's `car` phase.
+          // minPhotos: 0 because a photo-less saved car is still worth having.
+          //
+          // ...except the photos step, whose COMPONENT is swapped for the
+          // garage's wrapper, so the photos an owner adds are quietly read for
+          // a registration. The swap lives HERE rather than as an option on
+          // buildVehicleSteps because `features/vehicles` must not learn that
+          // plates or the garage exist (ARCHITECTURE rule 1) — and this way the
+          // posting wizard's photo step is untouched BY CONSTRUCTION, not by a
+          // flag someone could later flip.
+          ...buildVehicleSteps<AddVehicleAnswers>({ minPhotos: 0 }).map((step) =>
+            step.id === 'photos' ? { ...step, component: PhotosWithPlateScanStep } : step,
+          ),
           {
-            // Plate FIRST: it is the one field an owner can answer instantly,
-            // and it is the key that later tells the garage "this car is
-            // currently reported stolen". Optional — Next is never blocked, so
-            // an owner without the plate to hand simply continues.
+            // Plate AFTER the photos (moved 2026-08-02; it used to be first).
+            // The scan reads the photos an owner adds anyway, so asking first
+            // meant typing a registration that was about to be offered for
+            // free. Asking after means the question is only ever put to people
+            // the scan could not answer it for.
+            //
+            // And when it DID answer — a reading the owner confirmed — `when`
+            // walks straight past this step. It stays on the review screen, so
+            // a misread is still correctable; `plateFromScan` rather than a
+            // non-empty `plate`, so editing a saved car still reaches it.
             id: 'plate',
             question: "What's the number plate?",
             helper: 'Optional — you can add it later.',
             component: PlateStep,
             optional: true,
+            when: (answers) => !answers.plateFromScan,
             schema: z.object({ plate: z.string().trim().min(1) }),
             reviewLabel: 'Plate',
             reviewValue: (answers) => answers.plate?.trim() || 'Not provided',
           },
-          // The SHARED slice — identical to the posting wizard's `car` phase.
-          // minPhotos: 0 because a photo-less saved car is still worth having.
-          ...buildVehicleSteps<AddVehicleAnswers>({ minPhotos: 0 }),
           {
             id: 'nickname',
             question: 'Give it a name?',

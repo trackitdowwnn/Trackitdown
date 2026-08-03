@@ -60,6 +60,22 @@ export interface WizardStep<TAnswers> {
    */
   optional?: boolean;
   /**
+   * Return false to WALK PAST this step — Next and Back skip straight over it.
+   * For a question something else has already answered: the garage's plate step
+   * steps aside once the photo scan has read a registration the owner confirmed.
+   *
+   * It hides the step from the WALK ONLY. The screen list is unchanged, so every
+   * index stays valid (see the reset SAFETY note in navigation.ts) and the
+   * REVIEW ROW SURVIVES — which matters, because an answer nobody was asked for
+   * is precisely the one they need a chance to correct. Reaching it from review
+   * still works: an edit spur jumps by index and returns to review.
+   *
+   * A predicate on ANSWERS, re-read on every move, so keep it cheap and free of
+   * side effects. Pair it with `optional`, or the review CTA will demand an
+   * answer to a question the flow never asked.
+   */
+  when?: (answers: Partial<TAnswers>) => boolean;
+  /**
    * Optional async action run when the user advances from this step (after
    * the schema passes). Use it for a server round-trip the answer depends on
    * — a DVLA plate lookup, a uniqueness check. While it runs the primary

@@ -76,7 +76,9 @@ const flow: WizardFlow<DemoAnswers> = {
 };
 
 const screens = flattenFlow(flow);
-const SCREEN_COUNT = screens.length; // intro, name, colour, intro, newsletter, review
+// screens: intro, name, colour, intro, newsletter, review
+/** No step is being walked past — the shape of every flow without a `when`. */
+const ALL_VISIBLE = screens.map(() => true);
 const REVIEW_INDEX = 5;
 
 function navState(
@@ -107,19 +109,19 @@ describe('flattenFlow', () => {
 
 describe('wizardReducer', () => {
   it('advances one screen on next', () => {
-    expect(wizardReducer(INITIAL_NAV_STATE, { type: 'next', screenCount: SCREEN_COUNT }))
+    expect(wizardReducer(INITIAL_NAV_STATE, { type: 'next', visible: ALL_VISIBLE }))
       .toEqual(navState(1));
   });
 
   it('does not advance past the last screen', () => {
     expect(
-      wizardReducer(navState(REVIEW_INDEX), { type: 'next', screenCount: SCREEN_COUNT }),
+      wizardReducer(navState(REVIEW_INDEX), { type: 'next', visible: ALL_VISIBLE }),
     ).toEqual(navState(REVIEW_INDEX));
   });
 
   it('goes back one screen and never below the first', () => {
-    expect(wizardReducer(navState(2), { type: 'back' })).toEqual(navState(1, null, -1));
-    expect(wizardReducer(navState(0), { type: 'back' })).toEqual(navState(0, null, -1));
+    expect(wizardReducer(navState(2), { type: 'back', visible: ALL_VISIBLE })).toEqual(navState(1, null, -1));
+    expect(wizardReducer(navState(0), { type: 'back', visible: ALL_VISIBLE })).toEqual(navState(0, null, -1));
   });
 
   it('jumps from review to the edited step and remembers where to return', () => {
@@ -134,14 +136,58 @@ describe('wizardReducer', () => {
   it('returns to review when the edited step completes, not forward', () => {
     const afterEdit = wizardReducer(navState(1, REVIEW_INDEX), {
       type: 'next',
-      screenCount: SCREEN_COUNT,
+      visible: ALL_VISIBLE,
     });
     expect(afterEdit).toEqual(navState(REVIEW_INDEX));
   });
 
   it('returns to review when the user backs out of an edit', () => {
-    const cancelled = wizardReducer(navState(1, REVIEW_INDEX), { type: 'back' });
+    const cancelled = wizardReducer(navState(1, REVIEW_INDEX), { type: 'back', visible: ALL_VISIBLE });
     expect(cancelled).toEqual(navState(REVIEW_INDEX, null, -1));
+  });
+
+  // A step whose `when` says to walk past it. Positions are NOT renumbered —
+  // the screen list is untouched — so an edit spur into it still lands.
+  describe('walking past a hidden step', () => {
+    /** Screen 1 steps aside. */
+    const hidden1 = ALL_VISIBLE.map((_, index) => index !== 1);
+
+    it('next skips it', () => {
+      expect(wizardReducer(navState(0), { type: 'next', visible: hidden1 })).toEqual(
+        navState(2),
+      );
+    });
+
+    it('back skips it too, so Back is not a trap', () => {
+      // The bug this prevents: Back lands on a hidden step, which is skipped
+      // forward again, and the user can never get behind it.
+      expect(wizardReducer(navState(2), { type: 'back', visible: hidden1 })).toEqual(
+        navState(0, null, -1),
+      );
+    });
+
+    it('skips a whole run of hidden steps', () => {
+      const hidden12 = ALL_VISIBLE.map((_, index) => index !== 1 && index !== 2);
+      expect(wizardReducer(navState(0), { type: 'next', visible: hidden12 })).toEqual(
+        navState(3),
+      );
+    });
+
+    it('an edit spur still reaches it — review is how you correct it', () => {
+      const editing = wizardReducer(navState(REVIEW_INDEX), {
+        type: 'editStep',
+        targetIndex: 1,
+        reviewIndex: REVIEW_INDEX,
+      });
+      expect(editing).toEqual(navState(1, REVIEW_INDEX, -1));
+    });
+
+    it('stays put rather than running off the end when the way is all hidden', () => {
+      const noneVisible = ALL_VISIBLE.map(() => false);
+      expect(
+        wizardReducer(navState(0), { type: 'next', visible: noneVisible }),
+      ).toEqual(navState(1));
+    });
   });
 });
 
