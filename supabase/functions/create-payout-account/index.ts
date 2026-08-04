@@ -41,6 +41,7 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -207,6 +208,15 @@ Deno.serve(async (request) => {
       'Stripe couldn’t accept that bank account. Please check it and try again.',
       400,
     );
+  }
+
+  // AUTO-RELEASE, INSTANTLY: Stripe often activates a clean GB individual on
+  // the spot, and the person on this screen is very likely here because a
+  // bounty is waiting. If they are payable RIGHT NOW, pay them right now — the
+  // collusion gate runs inside the core, and the no-op/idempotency guarantees
+  // make this safe to fire blindly. Never throws.
+  if (payoutsActive) {
+    await releaseAllPendingFor(admin, stripe, userId);
   }
 
   console.log('[payments] payout account created', { accountId, payoutsActive });

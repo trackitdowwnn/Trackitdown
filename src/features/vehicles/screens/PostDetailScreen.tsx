@@ -325,7 +325,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         // chases the spotter about a delay we caused on purpose.
         toast.show('We’re just double-checking this payout — no need to do anything.');
       } else {
-        toast.show('Not yet — they still need to add their bank details. We’ll keep it safe.');
+        toast.show(
+          'Not yet — they still need to add their bank details. It’ll send automatically when they do.',
+        );
       }
     } catch (error) {
       toast.show(

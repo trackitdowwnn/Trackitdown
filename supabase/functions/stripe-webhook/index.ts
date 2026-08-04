@@ -33,6 +33,7 @@ import {
   requireEnv,
   stripeCryptoProvider,
 } from '../_shared/clients.ts';
+import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
 // NOTE: no CORS / preflight — Stripe calls this server-to-server, not a browser.
 // The endpoint takes the RAW body (signature is computed over the exact bytes),
@@ -185,6 +186,22 @@ Deno.serve(async (request) => {
           accountId: account.id,
           payoutsEnabled: Boolean(account.payouts_enabled),
         });
+
+        // AUTO-RELEASE (2026-08-04): the moment a payee becomes payable, send
+        // whatever they are already owed — this is what makes "you'll be paid
+        // automatically" true instead of a promise about a tap the owner never
+        // knew to make. Fired on payable regardless of transition direction:
+        // the core is a no-op unless a recovery_claimed post with a credited
+        // sighting exists, and the per-post idempotency key makes racing the
+        // owner's manual tap safe.
+        //
+        // MONEY: the collusion gate runs INSIDE the core, on this path too.
+        // Never throws — an auto-release failure must not 500 this event and
+        // force Stripe to replay it; the flags above are already recorded, and
+        // the owner's manual retry remains the recovery path.
+        if (account.payouts_enabled) {
+          await releaseAllPendingFor(admin, stripe, profileId);
+        }
       }
     }
     // Any other event type: no action, but still recorded below as processed.

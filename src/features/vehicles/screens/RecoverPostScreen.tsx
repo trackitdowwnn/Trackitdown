@@ -99,11 +99,10 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
               : // The usual first time: a spotter has no Stripe account until a
                 // sighting of theirs is credited, which is this moment.
                 //
-                // NOT "we'll send it when they're ready". Nothing re-runs the
-                // payout when the webhook enables them — the owner sends it from
-                // the listing. Saying otherwise told them to stop thinking about
-                // money that then never moved.
-                'They’re credited. Once they’ve added their bank details, send it from your listing.',
+                // "Automatically" became TRUE on 2026-08-04: the webhook (and
+                // the account-creation path) release the moment the payee is
+                // payable, through the same gated core as the manual retry.
+                'They’re credited. We’ll send the bounty automatically once they’ve added their bank details.',
         );
       } catch (payoutError) {
         // The credit stands; only the transfer is outstanding, and it can be
