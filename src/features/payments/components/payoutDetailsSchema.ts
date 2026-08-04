@@ -88,7 +88,17 @@ export function buildPayoutDetailsSchema(now: Date = new Date()) {
     accountNumber: z
       .string()
       .refine((value) => digitsOnly(value).length === 8, 'An account number is 8 digits'),
-  });
+    confirmAccountNumber: z.string(),
+  })
+    // A typo here is money sent to a stranger's account, silently, weeks later
+    // — the one mistake this form can make that no later screen can undo. So
+    // it is typed twice, compared on digits (spacing may differ between the
+    // two boxes), and the error lands on the CONFIRM field: the first entry is
+    // as likely to be the right one.
+    .refine(
+      (values) => digitsOnly(values.accountNumber) === digitsOnly(values.confirmAccountNumber),
+      { message: 'These don’t match — check both', path: ['confirmAccountNumber'] },
+    );
 }
 
 export type PayoutDetailsInput = z.infer<ReturnType<typeof buildPayoutDetailsSchema>>;

@@ -77,10 +77,30 @@ jest.mock('@/shared/ui', () => {
 });
 
 const mockStart = jest.fn();
-const mockSubmitDetails = jest.fn();
+const mockSubmitTokens = jest.fn();
+const mockPendingCredit = jest.fn();
 jest.mock('../api/payoutsApi', () => ({
   startConnectOnboarding: (...args: unknown[]) => mockStart(...args),
-  submitPayoutDetails: (...args: unknown[]) => mockSubmitDetails(...args),
+  submitPayoutTokens: (...args: unknown[]) => mockSubmitTokens(...args),
+  fetchMyPendingCredit: (...args: unknown[]) => mockPendingCredit(...(args as [])),
+}));
+
+// The tokenisers go straight to Stripe from the device; in a test they answer
+// with opaque ids, which is also all the screen ever sees of them.
+const mockIdentityToken = jest.fn();
+const mockBankToken = jest.fn();
+jest.mock('../api/stripeTokens', () => ({
+  createIdentityToken: (...args: unknown[]) => mockIdentityToken(...args),
+  createBankToken: (...args: unknown[]) => mockBankToken(...args),
+}));
+
+// The screen reads the signed-in email for the identity token.
+jest.mock('@/shared/api', () => ({
+  supabase: {
+    auth: {
+      getUser: jest.fn(async () => ({ data: { user: { email: 'ada@example.com' } } })),
+    },
+  },
 }));
 
 const mockSettleReturn = jest.fn();
@@ -114,6 +134,7 @@ const fillForm = async (getByTestId: (id: string) => unknown) => {
   await type('payout-postcode', 'M1 1AA');
   await type('payout-sort-code', '108800');
   await type('payout-account-number', '00012345');
+  await type('payout-confirm-account-number', '00012345');
 };
 
 beforeEach(() => {
@@ -123,6 +144,10 @@ beforeEach(() => {
   mockStart.mockResolvedValue({ status: 'onboarding_session', clientSecret: 'accs_secret_123' });
   mockOpenAuth.mockResolvedValue({ type: 'success', url: 'trackitdown://payouts?onboarding=complete' });
   mockCanGoBack.mockReturnValue(true);
+  mockPendingCredit.mockResolvedValue(null);
+  mockIdentityToken.mockResolvedValue('accttok_test_1');
+  mockBankToken.mockResolvedValue('btok_test_1');
+  mockSubmitTokens.mockResolvedValue('submitted');
 });
 
 describe('what each state says', () => {
@@ -212,8 +237,10 @@ describe('our own form comes first', () => {
     // never satisfy Stripe — permanently unpayable.
     mockStart.mockResolvedValue({ status: 'details_required' });
     // The REAL PaymentError — the screen tests `instanceof`, and only the api
-    // module is mocked, so `functionError` is the genuine article here.
-    mockSubmitDetails.mockRejectedValue(
+    // module is mocked, so `functionError` is the genuine article here. The
+    // rejection comes from the identity tokeniser: Stripe refused the identity
+    // itself, before anything reached our server.
+    mockIdentityToken.mockRejectedValue(
       new PaymentError('Stripe couldn’t accept those details.', 'DETAILS_REJECTED'),
     );
 
@@ -261,7 +288,7 @@ describe('our own form comes first', () => {
     await act(async () => {
       fireEvent.press(getByText('Set up payouts'));
     });
-    expect(getByText(/Stripe will ask you to confirm/i)).toBeTruthy();
+    expect(getByText(/may ask to verify your identity/i)).toBeTruthy();
   });
 });
 

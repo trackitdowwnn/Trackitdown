@@ -25,9 +25,11 @@
  *        ../screens/PayoutsScreen.tsx (the consumer).
  */
 
+import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 
+import { legalHref } from '@/shared/lib';
 import { colors, spacing, typography } from '@/shared/theme';
 import { Button, TextField } from '@/shared/ui';
 
@@ -58,6 +60,7 @@ type Fields = {
   postalCode: string;
   sortCode: string;
   accountNumber: string;
+  confirmAccountNumber: string;
 };
 
 const EMPTY: Fields = {
@@ -71,6 +74,7 @@ const EMPTY: Fields = {
   postalCode: '',
   sortCode: '',
   accountNumber: '',
+  confirmAccountNumber: '',
 };
 
 export function PayoutDetailsForm({
@@ -78,8 +82,13 @@ export function PayoutDetailsForm({
   onCancel,
   busy = false,
 }: PayoutDetailsFormProps) {
+  const router = useRouter();
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof Fields, string>>>({});
+
+  const onOpenTerms = useCallback(() => {
+    router.push(legalHref('terms'));
+  }, [router]);
 
   /**
    * Types the slashes for them.
@@ -236,12 +245,32 @@ export function PayoutDetailsForm({
         keyboardType="number-pad"
         testID="payout-account-number"
       />
+      <TextField
+        label="Confirm account number"
+        value={fields.confirmAccountNumber}
+        onChangeText={set('confirmAccountNumber')}
+        error={errors.confirmAccountNumber}
+        keyboardType="number-pad"
+        testID="payout-confirm-account-number"
+      />
 
-      {/* Honest about what comes next. Saying "done" here and then showing a
-          Stripe verification screen would feel like a bait and switch. */}
+      {/* REQUIRED, not decoration: the identity token attests that these terms
+          were SHOWN and accepted — `shown_and_accepted: true` is a legal claim
+          this block makes true. Continue is the acceptance. */}
       <Text style={styles.note}>
-        Stripe will ask you to confirm a few things after this — usually much less than
-        if you started from scratch.
+        By continuing you agree to{' '}
+        <Text style={styles.link} onPress={onOpenTerms} accessibilityRole="link">
+          our terms
+        </Text>{' '}
+        and the{' '}
+        <Text
+          style={styles.link}
+          onPress={() => void Linking.openURL('https://stripe.com/connect-account/legal')}
+          accessibilityRole="link"
+        >
+          Stripe Connected Account Agreement
+        </Text>
+        . Stripe may ask to verify your identity before your first payout.
       </Text>
 
       {/* `loading`, not a swapped label plus `disabled` — the house busy state
@@ -268,5 +297,10 @@ const styles = StyleSheet.create({
   note: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  link: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    textDecorationLine: 'underline',
   },
 });

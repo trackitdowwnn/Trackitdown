@@ -196,6 +196,68 @@ export async function submitPayoutDetails(details: PayoutDetails): Promise<void>
   log.info('payout details submitted');
 }
 
+const TOKENS_ERROR_MESSAGES: Record<string, string> = {
+  NOT_AUTHENTICATED: 'You need to be signed in to set up payouts.',
+  DETAILS_REJECTED: 'Stripe couldn’t accept those details. Please check them and try again.',
+  LOOKUP_FAILED: 'We couldn’t save your details. Please try again.',
+  LEDGER_ERROR: 'We couldn’t save your details. Please try again.',
+  BAD_REQUEST: 'We couldn’t save your details. Please try again.',
+};
+
+const TOKENS_FALLBACK = 'We couldn’t save your details. Please try again.';
+
+export type PayoutTokensResult = 'submitted' | 'bank_updated' | 'already_exists';
+
+/**
+ * The credit-time path (ADR-0010): hand the server the two token IDS the form
+ * minted client-side — identity as a v2 account token, bank as a `btok_`.
+ *
+ * PII: there is none here, and that is the whole design. The values went from
+ * the phone straight to Stripe inside `stripeTokens.ts`; our server receives
+ * two opaque, single-use ids. Omit `accountToken` to replace only the bank on
+ * an existing account (the payout-failed re-entry).
+ */
+export async function submitPayoutTokens(tokens: {
+  accountToken?: string;
+  bankToken: string;
+}): Promise<PayoutTokensResult> {
+  log.debug('create-payout-account invoke');
+  const { data, error } = await supabase.functions.invoke<{
+    status?: string;
+  }>('create-payout-account', { body: tokens });
+
+  if (error) {
+    const failure = await parseFunctionError(error, TOKENS_ERROR_MESSAGES, TOKENS_FALLBACK);
+    log.warn('create-payout-account failed', { code: failure.code });
+    throw failure;
+  }
+
+  const status = data?.status;
+  if (status === 'submitted' || status === 'bank_updated' || status === 'already_exists') {
+    log.info('payout account submitted', { status });
+    return status;
+  }
+  log.error('create-payout-account returned an unexpected shape');
+  throw new PaymentError(TOKENS_FALLBACK, 'BAD_SHAPE');
+}
+
+/** The caller's credited-but-unpaid bounty, or null. Powers "You've earned £X". */
+export async function fetchMyPendingCredit(): Promise<{
+  postId: string;
+  transferPence: number;
+} | null> {
+  const { data, error } = await supabase.rpc('my_pending_credit');
+  if (error) {
+    log.warn('my_pending_credit failed', { code: error.code });
+    return null; // the context line is enhancement, never a blocker
+  }
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row?.post_id) {
+    return null;
+  }
+  return { postId: row.post_id as string, transferPence: Number(row.transfer_pence) };
+}
+
 /**
  * Read my own payee account, or null if I have never started.
  *

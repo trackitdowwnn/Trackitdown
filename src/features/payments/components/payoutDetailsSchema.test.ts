@@ -24,6 +24,7 @@ const valid = {
   postalCode: 'M1 1AA',
   sortCode: '10-88-00',
   accountNumber: '0001 2345',
+  confirmAccountNumber: '00012345', // different spacing on purpose — digits match
 };
 
 const parse = (overrides: Partial<typeof valid> = {}) =>
@@ -98,6 +99,15 @@ describe('the rules', () => {
 
   it('rejects a sort code with the right length but the wrong content', () => {
     expect(errorFor('sortCode', { sortCode: 'ABCDEF' })).toBe('A sort code is 6 digits');
+  });
+
+  it('demands the account number twice, and blames the CONFIRM box on mismatch', () => {
+    // A typo here is money to a stranger, silently, weeks later — the one
+    // mistake no later screen can undo. The error lands on confirm because the
+    // first entry is as likely to be the right one.
+    expect(errorFor('confirmAccountNumber', { confirmAccountNumber: '00012346' })).toBe(
+      'These don’t match — check both',
+    );
   });
 
   it('needs an address — Stripe requires one for a UK individual', () => {

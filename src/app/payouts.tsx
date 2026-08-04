@@ -14,6 +14,15 @@
  *        supabase/functions/connect-onboarding/index.ts (the redirect targets).
  */
 
-import { PayoutsScreen } from '@/features/payments';
+import { BountyPaymentProvider, PayoutsScreen } from '@/features/payments';
 
-export default PayoutsScreen;
+// StripeProvider (via BountyPaymentProvider) is required here since 2026-08-04:
+// the payout form mints the BANK token with the SDK's createToken, which only
+// works inside the provider. Same mounting pattern as post-a-car.
+export default function PayoutsRoute() {
+  return (
+    <BountyPaymentProvider>
+      <PayoutsScreen />
+    </BountyPaymentProvider>
+  );
+}

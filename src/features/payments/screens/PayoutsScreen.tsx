@@ -66,12 +66,20 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
 import { useRequireAuth } from '@/features/auth';
+import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
+import { formatPounds } from '@/shared/lib/money';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import { Button, EmptyState, ErrorState, Screen, useToast } from '@/shared/ui';
 
 import { PaymentError } from '../api/functionError';
-import { startConnectOnboarding, submitPayoutDetails, type PayoutDetails } from '../api/payoutsApi';
+import {
+  fetchMyPendingCredit,
+  startConnectOnboarding,
+  submitPayoutTokens,
+  type PayoutDetails,
+} from '../api/payoutsApi';
+import { createBankToken, createIdentityToken } from '../api/stripeTokens';
 import { PayoutDetailsForm } from '../components/PayoutDetailsForm';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
 
@@ -128,6 +136,23 @@ export function PayoutsScreen() {
   const [showForm, setShowForm] = useState(false);
   // Stripe refused what our form can describe. Offers the way past.
   const [detailsRejected, setDetailsRejected] = useState(false);
+  // The earn moment's context: "You've earned £X". Server-derived via
+  // payout_split, so the push and this line can never disagree on the number.
+  const [pendingCreditPence, setPendingCreditPence] = useState<number | null>(null);
+  useEffect(() => {
+    if (status === 'guest' || status === 'loading') {
+      return;
+    }
+    let cancelled = false;
+    void fetchMyPendingCredit().then((credit) => {
+      if (!cancelled) {
+        setPendingCreditPence(credit?.transferPence ?? null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
   const [browserSaidExpired, setBrowserSaidExpired] = useState(false);
   // Two ways to learn the link expired, and only one of them needs storing.
   // Deriving the deep-link half keeps the effect below free of any setState —
@@ -248,22 +273,37 @@ export function PayoutsScreen() {
   );
 
   /**
-   * Their details go to Stripe, and then we go straight on to whatever Stripe
-   * still wants — without making them tap "continue" a second time. The window
-   * we just used is now closed, so `open()` will get a session this time.
+   * The credit-time path (ADR-0010): everything they typed becomes two Stripe
+   * tokens ON THE PHONE — identity via the publishable key, bank via the SDK —
+   * and our server receives two opaque ids. Compare the previous generation,
+   * which POSTed the raw sort code through our Edge Function: with this,
+   * nothing sensitive touches our infrastructure at all.
+   *
+   * On success the settling machinery takes over: Stripe usually activates a
+   * clean GB individual in seconds, and the bounded re-check window catches it.
    */
   const onSubmitDetails = useCallback(
     async (details: PayoutDetails) => {
       setOpening(true);
       try {
-        await submitPayoutDetails(details);
+        const { data: userData } = await supabase.auth.getUser();
+        const email = userData.user?.email;
+        if (!email) {
+          throw new PaymentError('Please sign in again, then try once more.', 'NOT_AUTHENTICATED');
+        }
+
+        const accountToken = await createIdentityToken(details, email);
+        const bankToken = await createBankToken(details);
+        await submitPayoutTokens({ accountToken, bankToken });
+
         setShowForm(false);
-        await open();
+        settleReturn();
       } catch (error) {
         // Stripe would not take what our form can describe — a company, a
-        // non-UK account, something these ten fields have no word for. Without
-        // a way past, that spotter is gated forever behind a form that can
-        // never satisfy it. So offer Stripe's own onboarding, which can.
+        // non-UK account, something these fields have no word for. Without a
+        // way past, that spotter is gated forever behind a form that can never
+        // satisfy it. The "Continue with Stripe" card offers the legacy hosted
+        // path, which can ask for anything.
         if (error instanceof PaymentError && error.code === 'DETAILS_REJECTED') {
           setDetailsRejected(true);
         }
@@ -277,7 +317,7 @@ export function PayoutsScreen() {
         setOpening(false);
       }
     },
-    [open, toast],
+    [settleReturn, toast],
   );
 
   /** Spend the prefill window deliberately and let Stripe ask instead. */
@@ -356,6 +396,21 @@ export function PayoutsScreen() {
           Payouts
         </Text>
       </View>
+
+      {/* The earn moment. The push said "You've earned £X — tell us where to
+          send it"; the screen must greet them with the same sentence, not with
+          generic setup copy. Rendered for every non-terminal state — the
+          amount is WHY they are here. */}
+      {pendingCreditPence !== null && status !== 'guest' && status !== 'ready' ? (
+        <View style={styles.earnedCard} testID="payouts-earned">
+          <Text style={styles.earnedTitle} accessibilityRole="header">
+            You’ve earned {formatPounds(pendingCreditPence)}
+          </Text>
+          <Text style={styles.earnedBody}>
+            Your sighting led to a recovery. Tell us where to send it.
+          </Text>
+        </View>
+      ) : null}
 
       {/* ONE body, chosen once. This was five independently-gated blocks whose
           exclusivity was maintained by hand, and it did not hold: a refresh
@@ -519,6 +574,21 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: radii.lg,
     backgroundColor: colors.surface,
+  },
+  earnedCard: {
+    gap: spacing.xs,
+    padding: spacing.lg,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceInverse,
+  },
+  earnedTitle: {
+    ...typography.title,
+    color: colors.textOnPrimary,
+  },
+  earnedBody: {
+    ...typography.body,
+    // On the inverse surface, secondary-grey text would fail contrast.
+    color: colors.textOnPrimary,
   },
   cardTitle: {
     ...typography.heading,
