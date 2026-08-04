@@ -8,6 +8,10 @@
 export { ReportSightingScreen, type ReportSightingScreenProps } from './screens/ReportSightingScreen';
 export { PostSightingsScreen, type PostSightingsScreenProps } from './screens/PostSightingsScreen';
 export { SightingDetailScreen, type SightingDetailScreenProps } from './screens/SightingDetailScreen';
+export {
+  SightingDisputeScreen,
+  type SightingDisputeScreenProps,
+} from './screens/SightingDisputeScreen';
 export { PostSightingsSection, type PostSightingsSectionProps } from './components/PostSightingsSection';
 export { usePostSightings } from './hooks/usePostSightings';
 export type { OwnerSighting, ReportSightingAnswers, SightingContextFlag } from './types';

@@ -145,9 +145,11 @@ export function NotificationsHost() {
       router.push(pushRouteFor(payload));
       // The engagement metric for the whole product: sent vs tapped.
       // threadId is deliberately excluded — it correlates two identities.
+      // (The dispute-loop kinds carry a sightingId instead of a postId; the
+      // type alone is the metric there.)
       log.info('push_opened', {
         type: payload.type,
-        postId: payload.type === 'message' ? undefined : payload.postId,
+        postId: 'postId' in payload ? payload.postId : undefined,
         coldStart,
       });
     },
