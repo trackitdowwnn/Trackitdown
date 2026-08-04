@@ -14,6 +14,12 @@ cd "$(dirname "$0")/.."
 # Local Supabase db (supabase/config.toml [db] port 54322) unless overridden.
 DB_URL="${DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:54322/postgres}"
 
+# Windows psql picks client_encoding from the console/ANSI code page and it
+# VARIES with how output is redirected — the suites' UTF-8 text (em dashes in
+# copy assertions) then mis-reads and text comparisons fail only in some
+# harnesses. Pin it; harmless everywhere else.
+export PGCLIENTENCODING=UTF8
+
 # Fresh state: apply all migrations + seed.sql (requires `npx supabase start`).
 npx supabase db reset
 
@@ -31,6 +37,7 @@ for suite in \
   supabase/tests/garage_verification.sql \
   supabase/tests/alerts_verification.sql \
   supabase/tests/recovery_verification.sql \
+  supabase/tests/refund_hold_verification.sql \
   supabase/tests/anon_role_verification.sql
 do
   echo "== ${suite}"
