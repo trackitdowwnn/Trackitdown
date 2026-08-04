@@ -11,7 +11,16 @@
 | `submit-payout-details` | the app, from our own native form | submit bank details + identity fields via `accounts.update` while the prefill window is open, then open the gate. **Transit only** — nothing stored, nothing logged |
 | `connect-onboarding` | the app, from the payouts surface | answer `details_required` until our form has run (minting a session first would shut the prefill window **forever**), then return an **Account Session** (`onboarding_session`) for the in-app component, or a hosted **link** for `account_update` / as a fallback. Takes no request body — the server decides from the account's own state |
 | `connect-return` | **Stripe's browser**, after hosted onboarding | an HTTPS page that forwards to `trackitdown://payouts?onboarding=…`. Exists because Account Links accept **http/https only** — a custom scheme is rejected with "Not a valid URL". Deployed `--no-verify-jwt`: Stripe's browser has no session |
-| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` flip the post `draft → active` (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts; on `charge.refunded` confirm the refund (`→ cancelled`); on **`account.updated`** copy Stripe's `payouts_enabled` onto the payee row — the ONLY thing that ever makes a spotter payable |
+| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` flip the post `draft → active` (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts; on `charge.refunded` confirm the refund (`→ cancelled`); on **`account.updated`** copy Stripe's `payouts_enabled` onto the payee row — the ONLY thing that ever makes a spotter payable — then auto-release any waiting credited bounty |
+| `create-payout-account` | the app, from the earn-moment form | ADR-0010 credit-time path: create the v2 recipient account from two CLIENT-minted tokens (identity `accttok_`, bank `btok_`), or replace just the bank (RE-BANK). Auto-releases on the spot if Stripe activates immediately |
+| `release-held-refunds` | **Supabase Cron**, hourly (`x-cron-secret`) | the hold sweep (ADR-0011): refund expired undisputed holds under the same idempotency key the immediate exit would have used; retry upheld-dispute payouts through the release core; send dispute outcome pushes. Deployed `--no-verify-jwt`; safe to invoke by hand, twice |
+
+**Dispute runbook (v1, by hand):** a `refund_disputes` row lands `open` →
+read the sighting trail (photos + capture GPS + timestamps + chat) within the
+72-hour window → `select resolve_sighting_dispute('<dispute-id>', true|false);`
+with the service role. Upheld pays the spotter via the normal machinery;
+rejected lets the sweep refund the owner. Outcome pushes go out on the next
+sweep run.
 
 ⚠️ **`account.updated` must be enabled on the Stripe webhook endpoint.** It is
 not one of the defaults you get for a payments-only integration. Without it a

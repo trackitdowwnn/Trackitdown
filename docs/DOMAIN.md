@@ -449,6 +449,33 @@ unpublished, unsearchable, and carries no money or lifecycle state.
 
 ## Disputes
 
-- If an owner refuses to credit an obviously decisive sighting, the spotter
-  can raise a dispute; a moderator reviews the sighting trail and can
-  credit a sighting on the owner's behalf. Log every moderator action.
+Built 2026-08-05 (ADR-0011). The owner-denial control — what stops an owner
+whose car a spotter found from taking the bounty back with one tap:
+
+- **The trigger** (one SQL definition, `recent_uncredited_sightings`): an
+  uncredited sighting reported within 14 days of the exit attempt. Older
+  sightings never hold up an honest owner's refund.
+- **The attestation**: both refund exits (deactivate, "found it another way")
+  refuse to proceed until the owner has been shown exactly those sightings
+  and confirmed "none of these led me to the car". The confirmation and the
+  sighting ids shown are recorded on the hold. The other button — "one of
+  these did help" — routes to the crediting flow.
+- **The hold**: the listing comes down immediately, but the refund WAITS 72
+  hours (`refund_holds`). Every recent spotter gets the `closed_uncredited`
+  push and may file ONE dispute per sighting (`open_dispute`, no-oracle: every
+  refusal is the same answer). An open or upheld dispute blocks the refund.
+- **Resolution is a person** (v1): the founder reads the sighting trail —
+  capture-GPS photos, timestamps, retained chat — and runs
+  `resolve_sighting_dispute` by hand (service role; every action is a row).
+  Upheld: the sighting is credited on the owner's behalf (the post returns to
+  `recovery_claimed` and the normal payout machinery pays the spotter, 95/5,
+  collusion gate and all); sibling disputes auto-reject. Rejected or
+  unclaimed: the hourly `release-held-refunds` sweep sends the owner's refund
+  once the window passes.
+- Spotters learn the outcome by push (`dispute_upheld` / `dispute_rejected`)
+  and on the dispute screen. Rejection is final and deliberately unexplained —
+  the evidence was weighed by a person, and reasons become argument surfaces.
+
+There is still no passive expiry: nothing refunds by waiting. Every refund is
+an affirmative act, and now every affirmative act with recent sightings on the
+table is attested, delayed, and contestable.

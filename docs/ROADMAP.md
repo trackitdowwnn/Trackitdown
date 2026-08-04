@@ -26,7 +26,10 @@ v1 scope, stop and flag it.
 - [ ] Moderator queue (simple internal web page) — flags, disputes and
       collusion checks. The *ownership-verification* queue is no longer part
       of the posting path; re-introducing any ownership check depends on this
-      queue existing first. **Nothing moderator-facing is built.**
+      queue existing first. **No moderator UI is built** — but the dispute
+      MACHINERY now exists (2026-08-05, ADR-0011: refund holds, spotter
+      disputes, hand-run `resolve_sighting_dispute`), so this page's dispute
+      half becomes a reader over `refund_disputes` + the sighting trail.
 - [x] Garage / "My cars": pre-register your vehicles so reporting one stolen
       prefills the wizard (5 per account, plate optional, no V5C; posts
       snapshot rather than reference the saved car — added to scope + built

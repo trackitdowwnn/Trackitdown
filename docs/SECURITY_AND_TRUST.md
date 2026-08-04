@@ -235,6 +235,18 @@ commenting standards.
 - Collusion check before payout: flag for moderator review if the owner
   and winning spotter share a device fingerprint, card fingerprint, or
   signup IP.
+- Owner-denial control (built 2026-08-05, ADR-0011) — the collusion check's
+  mirror image: collusion is an owner paying THEMSELVES; denial is an owner
+  refusing to pay the spotter who earned it. Any exit-with-refund while
+  uncredited sightings from the last 14 days exist requires an explicit
+  recorded attestation ("none of these led me to the car", with the exact
+  sighting ids shown), delists immediately but HOLDS the refund 72 hours,
+  and notifies every such spotter, who may dispute once per sighting. An
+  open/upheld dispute blocks the refund; disputes are resolved by hand
+  against the immutable evidence trail (capture-GPS photos, timestamps,
+  retained chat), and an upheld one credits the spotter through the normal
+  payout machinery, collusion gate included. The spotter-facing surface is
+  no-oracle: every refusal is one indistinguishable answer.
 - Bounty cap £5,000 in v1.
 
 ## 6. Database security
