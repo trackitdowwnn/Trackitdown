@@ -12,22 +12,37 @@
  *        supabase/migrations/20260802100000_push_infrastructure.sql.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { NOTIFICATION_KINDS } from '../../src/features/notifications/lib/notificationKinds';
 
-const MIGRATION = join(__dirname, '../migrations/20260802100000_push_infrastructure.sql');
+const MIGRATIONS_DIR = join(__dirname, '../migrations');
 
 describe('push_sends kind constraint', () => {
   it('lists exactly the kinds the client knows about', () => {
-    const sql = readFileSync(MIGRATION, 'utf8');
-    const match = sql.match(/push_sends_kind_chk\s+check\s*\(kind in \(([^)]*)\)\)/);
-    // If this fails the constraint moved or was reformatted — update the
-    // regex rather than deleting the assertion.
-    expect(match).not.toBeNull();
+    // The LATEST definition wins: a later migration may drop and re-add the
+    // constraint to widen it (20260804100000 did exactly that), and pinning
+    // this test to the original file would compare the client against a
+    // superseded whitelist. Migrations sort lexicographically by timestamp,
+    // so the last file containing the constraint holds the live definition.
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((name) => name.endsWith('.sql'))
+      .sort();
 
-    const kinds = (match?.[1] ?? '')
+    let latest: string | null = null;
+    for (const name of files) {
+      const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+      const match = sql.match(/push_sends_kind_chk\s+check\s*\(kind in \(([^)]*)\)\)/);
+      if (match) {
+        latest = match[1];
+      }
+    }
+    // If this fails the constraint was reformatted — update the regex rather
+    // than deleting the assertion.
+    expect(latest).not.toBeNull();
+
+    const kinds = (latest ?? '')
       .split(',')
       .map((value: string) => value.trim().replace(/^'|'$/g, ''));
     expect([...kinds].sort()).toEqual([...NOTIFICATION_KINDS].sort());

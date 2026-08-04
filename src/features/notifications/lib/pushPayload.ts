@@ -37,11 +37,19 @@ const recoveryPayloadSchema = z
   .object({ type: z.literal('recovery'), postId: z.guid() })
   .strict();
 
+/** YOUR sighting was credited — the earn moment. The amount lives in the
+ *  visible title, never in this payload; the tap opens /payouts, where
+ *  "where do we send it" gets answered. */
+const creditedPayloadSchema = z
+  .object({ type: z.literal('credited'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
   messagePayloadSchema,
   recoveryPayloadSchema,
+  creditedPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

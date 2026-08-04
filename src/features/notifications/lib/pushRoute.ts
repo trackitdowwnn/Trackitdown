@@ -29,5 +29,10 @@ export function pushRouteFor(payload: PushPayload): Href {
       return `/post/${payload.postId}`;
     case 'message':
       return `/chat/${payload.threadId}`;
+    // "You've earned £X" lands where the money gets an address, not on the
+    // car: the context of this tap is the payout. /payouts is guest-open like
+    // every destination here, so even a signed-out tap never dead-ends.
+    case 'credited':
+      return '/payouts';
   }
 }

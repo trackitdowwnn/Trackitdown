@@ -43,6 +43,12 @@ jest.mock('@/features/sightings', () => ({
   usePostSightings: () => ({ status: 'ready', sightings: mockSightings, photoUrls: {} }),
 }));
 
+// Same reason — the notifications barrel pulls pushTokenApi → shared/api.
+const mockNotifyCredited = jest.fn();
+jest.mock('@/features/notifications', () => ({
+  notifyCredited: (...args: unknown[]) => mockNotifyCredited(...args),
+}));
+
 const mockClaim = jest.fn();
 const mockRefund = jest.fn();
 const mockRelease = jest.fn();
@@ -136,6 +142,41 @@ describe('crediting a spotter', () => {
     // Saying "paid" would be a promise we cannot keep.
     const said = String(mockShowToast.mock.calls[0][0]);
     expect(said).not.toMatch(/\bpaid\b/i);
+  });
+
+  it('tells the spotter they earned it — the earn moment fires on credit', async () => {
+    // Whatever the payout below does (paid, awaiting_payee, held_for_review),
+    // the spotter genuinely earned the bounty the moment the credit landed,
+    // and the push is what makes that moment exist for them.
+    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    await waitFor(() => expect(mockNotifyCredited).toHaveBeenCalledWith('p1'));
+  });
+
+  it('says nothing to anyone on the found-it-myself ending', async () => {
+    // No spotter earned anything; a push here would be noise at best and a
+    // wrong promise at worst.
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-none'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+    await waitFor(() => expect(mockRefund).toHaveBeenCalled());
+    expect(mockNotifyCredited).not.toHaveBeenCalled();
   });
 
   // Until 2026-08-03 this branch called NOTHING. It showed "we'll get the

@@ -27,13 +27,15 @@ describe('notification kinds stay in sync', () => {
 
   it('every kind routes somewhere', () => {
     // Building one payload per kind proves the router's switch is exhaustive
-    // at RUNTIME, not just to the type checker.
+    // at RUNTIME, not just to the type checker. The pattern names every legal
+    // destination family — `credited` lands on /payouts, where the money gets
+    // its address, rather than on a post or thread.
     for (const kind of NOTIFICATION_KINDS) {
       const payload =
         kind === 'message'
           ? ({ type: 'message', threadId: THREAD_ID } as const)
           : ({ type: kind, postId: POST_ID } as const);
-      expect(pushRouteFor(payload)).toMatch(/^\/(post|chat)\//);
+      expect(pushRouteFor(payload)).toMatch(/^\/(post\/|chat\/|payouts$)/);
     }
   });
 });

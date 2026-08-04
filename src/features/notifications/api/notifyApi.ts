@@ -24,7 +24,10 @@ import { createLogger } from '@/shared/lib/logger';
 
 const log = createLogger('notifications');
 
-function dispatch(fn: 'notify-sighting' | 'notify-message', body: Record<string, string>): void {
+function dispatch(
+  fn: 'notify-sighting' | 'notify-message' | 'notify-credited',
+  body: Record<string, string>,
+): void {
   // The try/catch is NOT redundant with the .catch(): if invoke throws
   // SYNCHRONOUSLY (a misconfigured client), no promise is ever created, so
   // .catch() is never attached and the error would propagate straight into
@@ -53,4 +56,11 @@ export function notifySighting(sightingId: string): void {
 /** Tell the other participant a message arrived. Content never travels. */
 export function notifyMessage(messageId: string): void {
   dispatch('notify-message', { messageId });
+}
+
+/** Tell the credited spotter they earned the bounty — the earn moment. The
+ *  amount is computed server-side (payout_split, in the claim RPC); this
+ *  carries only the post id. */
+export function notifyCredited(postId: string): void {
+  dispatch('notify-credited', { postId });
 }

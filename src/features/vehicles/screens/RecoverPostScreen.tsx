@@ -34,6 +34,7 @@ import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { notifyCredited } from '@/features/notifications';
 import { usePostSightings } from '@/features/sightings';
 import { formatPounds } from '@/shared/lib/money';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
@@ -78,6 +79,12 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
       // no longer active. So every branch here, including the failures, has to
       // read as "they are credited, here is where the bounty is" and never as
       // "that didn't work".
+
+      // The earn moment: tell the spotter NOW, whatever the payout below does
+      // — held_for_review, awaiting_payee and paid are all states in which
+      // they genuinely earned it. Fire-and-forget; the claim RPC behind it
+      // re-verifies this caller owns the post and sends once, ever.
+      notifyCredited(postId);
       try {
         const payout = await releasePayout(postId);
         toast.show(

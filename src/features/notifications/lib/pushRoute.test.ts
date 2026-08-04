@@ -28,6 +28,13 @@ describe('pushRouteFor', () => {
   it('routes a message to its chat thread', () => {
     expect(pushRouteFor({ type: 'message', threadId: THREAD_ID })).toBe(`/chat/${THREAD_ID}`);
   });
+
+  it('routes "you’ve earned" to payouts, not to the car', () => {
+    // The context of this tap is the money getting an address. The post id
+    // still travels (analytics, future deep-link needs) but the destination is
+    // where the answer gets given.
+    expect(pushRouteFor({ type: 'credited', postId: POST_ID })).toBe('/payouts');
+  });
 });
 
 // The parse-then-route path lives in NotificationsHost (parsePushPayload +
