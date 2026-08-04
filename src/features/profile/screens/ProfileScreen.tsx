@@ -59,6 +59,7 @@ import { formatRecentLogs } from '@/shared/lib/logger';
 import { useRequireAuth } from '@/features/auth';
 import { useHasSavedCar } from '@/features/garage';
 import { useMyAlerts } from '@/features/notifications';
+import { usePayoutsRelevant } from '@/features/payments';
 
 import {
   AccountDeletionError,
@@ -181,6 +182,25 @@ function LoadedProfile({
   // actually true rather than a static label: an unset zone and a paused one
   // are different answers, and "Coming soon" was neither.
   const alertsState = useMyAlerts();
+  // Credit-time setup made "no setup" literally true, so the Payouts row shows
+  // only when there is something behind it: a payee account, or a credited
+  // bounty waiting. Everyone else's front door is the `credited` push. Hidden
+  // in the dev preview too (the RPC answers for nobody) — that is honest, the
+  // preview user has never been credited. Refetched on refocus (mount fetch is
+  // the hook's own; skip the duplicate) so the row can appear right after a
+  // first credit, not only after a restart.
+  const payouts = usePayoutsRelevant();
+  const payoutsFirstFocus = useRef(true);
+  const refreshPayoutsRow = payouts.refresh;
+  useFocusEffect(
+    useCallback(() => {
+      if (payoutsFirstFocus.current) {
+        payoutsFirstFocus.current = false;
+        return;
+      }
+      refreshPayoutsRow();
+    }, [refreshPayoutsRow]),
+  );
   const alertZoneSummary = (() => {
     if (alertsState.status !== 'ready') return undefined; // say nothing rather than guess
     const { alerts } = alertsState;
@@ -315,8 +335,10 @@ function LoadedProfile({
               ready" while Stripe has just suspended the account is worse than
               saying nothing. The screen owns the truth; this row owns the way
               in. Moved out of its own one-row section at the same time: a
-              section of one reads as a section that lost its siblings. */}
-          {PAYOUTS_ENABLED ? (
+              section of one reads as a section that lost its siblings.
+              (`payouts.relevant` costs one boolean read — cheaper than the
+              status it deliberately doesn't show.) */}
+          {PAYOUTS_ENABLED && payouts.relevant ? (
             <ListRow
               icon={Banknote}
               title="Payouts"

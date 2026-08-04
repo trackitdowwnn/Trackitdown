@@ -144,7 +144,10 @@ beforeEach(() => {
   mockStart.mockResolvedValue({ status: 'onboarding_session', clientSecret: 'accs_secret_123' });
   mockOpenAuth.mockResolvedValue({ type: 'success', url: 'trackitdown://payouts?onboarding=complete' });
   mockCanGoBack.mockReturnValue(true);
-  mockPendingCredit.mockResolvedValue(null);
+  // The default spotter here has a bounty waiting — under credit-time setup
+  // that is the ONLY person the setup card exists for. The nothing-waiting
+  // case gets its own tests.
+  mockPendingCredit.mockResolvedValue({ postId: 'post-1', transferPence: 19000 });
   mockIdentityToken.mockResolvedValue('accttok_test_1');
   mockBankToken.mockResolvedValue('btok_test_1');
   mockSubmitTokens.mockResolvedValue('submitted');
@@ -161,9 +164,25 @@ describe('what each state says', () => {
     expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'payouts' });
   });
 
-  it('offers setup when nothing has started', async () => {
-    const { getByTestId } = await act(async () => render(<PayoutsScreen />));
+  it('offers setup when a bounty is waiting for somewhere to land', async () => {
+    const { getByTestId, getByText } = await act(async () => render(<PayoutsScreen />));
     expect(getByTestId('payouts-notStarted')).toBeTruthy();
+    // The earn moment: the same sentence the push used, with the same
+    // server-derived number. Generic setup copy here would break the thread
+    // that brought them.
+    expect(getByTestId('payouts-earned')).toBeTruthy();
+    expect(getByText('You’ve earned £190')).toBeTruthy();
+  });
+
+  it('says NOTHING to set up when nothing is waiting — because there isn’t', async () => {
+    // Credit-time setup made "no setup" literal. A never-credited spotter who
+    // finds this screen (deep link, old bookmark) must not be walked into a
+    // form about money that does not exist.
+    mockPendingCredit.mockResolvedValue(null);
+    const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
+    expect(getByText('Nothing to set up')).toBeTruthy();
+    expect(queryByTestId('payouts-notStarted')).toBeNull();
+    expect(queryByTestId('payouts-earned')).toBeNull();
   });
 
   it('tells someone mid-way that their progress is saved', async () => {
@@ -209,7 +228,7 @@ describe('our own form comes first', () => {
     );
 
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
 
     expect(getByTestId('payout-details-form')).toBeTruthy();
@@ -225,7 +244,7 @@ describe('our own form comes first', () => {
     mockStart.mockResolvedValue({ status: 'details_required' });
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     expect(getByText(/never store them/i)).toBeTruthy();
     expect(queryByText(/never see/i)).toBeNull();
@@ -246,7 +265,7 @@ describe('our own form comes first', () => {
 
     const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     await fillForm(getByTestId);
     await act(async () => {
@@ -268,7 +287,7 @@ describe('our own form comes first', () => {
       render(<PayoutsScreen />),
     );
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     expect(getByTestId('payout-details-form')).toBeTruthy();
 
@@ -286,7 +305,7 @@ describe('our own form comes first', () => {
     mockStart.mockResolvedValue({ status: 'details_required' });
     const { getByText } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     expect(getByText(/may ask to verify your identity/i)).toBeTruthy();
   });
@@ -299,7 +318,7 @@ describe('setting up — inside the app', () => {
     // whether to trust us with their bank details.
     const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
 
     expect(getByTestId('connect-onboarding')).toBeTruthy();
@@ -311,7 +330,7 @@ describe('setting up — inside the app', () => {
     // none. Someone can back out half way, and only the webhook knows.
     const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     mockSettleReturn.mockClear();
 
@@ -327,7 +346,7 @@ describe('opening Stripe in a browser (update + fallback only)', () => {
     mockStart.mockResolvedValue({ status: 'onboarding_required', url: STRIPE_URL });
     const { getByText } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     expect(mockOpenAuth).toHaveBeenCalledWith(STRIPE_URL, 'trackitdown://payouts');
   });
@@ -348,7 +367,7 @@ describe('opening Stripe in a browser (update + fallback only)', () => {
     mockOpenAuth.mockResolvedValue({ type: 'dismiss' });
     const { getByText } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     expect(mockSettleReturn).toHaveBeenCalled();
   });
@@ -372,7 +391,7 @@ describe('opening Stripe in a browser (update + fallback only)', () => {
     });
     const { getByText } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     expect(getByText(/link expired/i)).toBeTruthy();
   });
@@ -383,11 +402,11 @@ describe('opening Stripe in a browser (update + fallback only)', () => {
     mockOpenAuth.mockRejectedValue(new Error('WebBrowser is already open'));
     const { getByText } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'error');
     // Back to a tappable label, not stuck on "Opening Stripe…".
-    expect(getByText('Set up payouts')).toBeTruthy();
+    expect(getByText('Add your details')).toBeTruthy();
   });
 });
 
@@ -419,7 +438,7 @@ describe('the return', () => {
     mockSettleReturn.mockClear();
 
     await act(async () => {
-      fireEvent.press(getByText('Set up payouts'));
+      fireEvent.press(getByText('Add your details'));
     });
     // One press → one settle. The param was already consumed on mount.
     expect(mockSettleReturn).toHaveBeenCalledTimes(1);

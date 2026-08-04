@@ -241,6 +241,24 @@ export async function submitPayoutTokens(tokens: {
   throw new PaymentError(TOKENS_FALLBACK, 'BAD_SHAPE');
 }
 
+/**
+ * Whether the caller has any reason to see a payouts surface at all: a payee
+ * account exists, or a credited bounty awaits. Gates the Profile row — under
+ * credit-time setup a never-credited spotter has NOTHING to set up, and the
+ * `credited` push is the front door.
+ *
+ * False on error, deliberately: the row is a convenience entrance, and a
+ * transient failure hiding it loses nothing the push cannot recover.
+ */
+export async function fetchPayoutsRelevant(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('payouts_relevant');
+  if (error) {
+    log.warn('payouts_relevant failed', { code: error.code });
+    return false;
+  }
+  return data === true;
+}
+
 /** The caller's credited-but-unpaid bounty, or null. Powers "You've earned £X". */
 export async function fetchMyPendingCredit(): Promise<{
   postId: string;

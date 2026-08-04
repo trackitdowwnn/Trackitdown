@@ -142,6 +142,18 @@ jest.mock('@/features/notifications', () => ({
   unregisterCurrentPushToken: jest.fn(),
 }));
 
+// Same boundary rule as garage/notifications. Defaults to RELEVANT so the
+// row's own wiring tests keep a row to press; the hidden case is its own test.
+let mockPayoutsRelevant = true;
+jest.mock('@/features/payments', () => ({
+  usePayoutsRelevant: () => ({
+    get relevant() {
+      return mockPayoutsRelevant;
+    },
+    refresh: jest.fn(),
+  }),
+}));
+
 const profile = {
   id: 'user-1',
   firstName: 'Ollie',
@@ -155,6 +167,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockProfileState = { status: 'ready', profile, refresh: jest.fn() };
   mockAlertsState = { status: 'ready', alerts: [], refresh: jest.fn() };
+  mockPayoutsRelevant = true;
   mockSignOut.mockResolvedValue(undefined);
   mockCountBlocking.mockResolvedValue(0);
   mockRequestDeletion.mockResolvedValue(undefined);
@@ -309,6 +322,15 @@ describe('signed in', () => {
     // stale "ready" is worse than silence when Stripe may have just suspended
     // the account. The screen behind this row is the source of truth.
     expect(queryByText('Set up payouts')).toBeNull();
+  });
+
+  it('shows NO payouts row to someone with nothing behind it', async () => {
+    // Credit-time setup (ADR-0010 amendments): a never-credited spotter has
+    // nothing to set up, so a row inviting them to do it anyway would be a
+    // door to an empty room. The `credited` push is their front door.
+    mockPayoutsRelevant = false;
+    const { queryByTestId } = await render(<ProfileScreen />);
+    expect(queryByTestId('row-payouts')).toBeNull();
   });
 
   it('summarises no alerts as Not set', async () => {

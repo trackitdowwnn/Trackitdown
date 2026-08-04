@@ -1,7 +1,8 @@
 /**
  * WHAT:  PayoutsScreen — where a spotter gives their bounty somewhere to land,
- *        and then reports honestly where they stand: not started, part way,
- *        being checked, or ready.
+ *        and then reports honestly where they stand: nothing to set up yet
+ *        (credit-time setup means exactly that), a bounty waiting for details,
+ *        part way, being checked, or ready.
  *
  *        THREE FLOWS LIVE HERE, in this order of preference:
  *          1. `PayoutDetailsForm` — our own native form. Stripe allows us to
@@ -98,14 +99,16 @@ const COPY: Record<
   { title: string; body: string; action: string }
 > = {
   notStarted: {
-    // The title asks; the button answers. Repeating the button's words as the
-    // heading reads as a form with a stutter.
+    // Only ever shown WITH a credited bounty above it now — a spotter with
+    // nothing waiting gets the nothing-to-set-up state instead (see
+    // renderBody). The title asks; the button answers. Repeating the button's
+    // words as the heading reads as a form with a stutter.
     title: 'Where should your bounties go?',
-    // Not "we never see them" — they pass through our server on the way to
-    // Stripe. And not "you only do it once": this screen itself models Stripe
-    // coming back for more.
-    body: 'Stripe handles the payments and the ID check, and we never store your bank details. It’s a one-off setup and takes about five minutes.',
-    action: 'Set up payouts',
+    // "Straight to Stripe" became literally true with client-side tokenisation
+    // (ADR-0010): the details never touch our server. And not "you only do it
+    // once": this screen itself models Stripe coming back for more.
+    body: 'Your details go straight to Stripe — we never see or store your bank details. It takes about a minute.',
+    action: 'Add your details',
   },
   unfinished: {
     title: 'Pick up where you left off',
@@ -119,10 +122,11 @@ const COPY: Record<
   },
   ready: {
     title: 'Payouts are on',
-    // "Any bounty you earn goes to..." implied it arrives by itself. It does
-    // not: the owner releases it from their listing, so a spotter who onboarded
-    // to collect an already-credited bounty would have sat here waiting.
-    body: 'Bounties you earn will be sent to the account you set up with Stripe, once the owner releases them.',
+    // "Automatically" became true on 2026-08-04: the release runs the moment a
+    // sighting is credited (or the moment this account becomes payable, if the
+    // credit came first). Before that, this line carefully said "once the
+    // owner releases them" — and now saying that would be the stale claim.
+    body: 'Bounties you earn are sent to your account automatically. Nothing to do here unless your bank details change.',
     action: 'Update bank details',
   },
 };
@@ -138,7 +142,14 @@ export function PayoutsScreen() {
   const [detailsRejected, setDetailsRejected] = useState(false);
   // The earn moment's context: "You've earned £X". Server-derived via
   // payout_split, so the push and this line can never disagree on the number.
-  const [pendingCreditPence, setPendingCreditPence] = useState<number | null>(null);
+  //
+  // TRI-STATE, and the third state is load-bearing: `undefined` means "still
+  // asking", `null` means "asked — nothing waiting". notStarted branches on
+  // that difference (setup form vs nothing-to-set-up), and collapsing them
+  // would flash the wrong screen at everyone for the length of one fetch.
+  const [pendingCreditPence, setPendingCreditPence] = useState<number | null | undefined>(
+    undefined,
+  );
   useEffect(() => {
     if (status === 'guest' || status === 'loading') {
       return;
@@ -401,7 +412,7 @@ export function PayoutsScreen() {
           send it"; the screen must greet them with the same sentence, not with
           generic setup copy. Rendered for every non-terminal state — the
           amount is WHY they are here. */}
-      {pendingCreditPence !== null && status !== 'guest' && status !== 'ready' ? (
+      {typeof pendingCreditPence === 'number' && status !== 'guest' && status !== 'ready' ? (
         <View style={styles.earnedCard} testID="payouts-earned">
           <Text style={styles.earnedTitle} accessibilityRole="header">
             You’ve earned {formatPounds(pendingCreditPence)}
@@ -496,6 +507,23 @@ export function PayoutsScreen() {
     }
     if (status === 'loading') {
       return <PayoutsSkeleton />;
+    }
+    if (status === 'notStarted') {
+      // Credit-time setup: with no account and no bounty waiting there is
+      // NOTHING to set up, and saying so beats a form about money that does
+      // not exist. The setup card renders only under a real credited amount.
+      if (pendingCreditPence === undefined) {
+        // Still asking which of those two this is — don't flash either.
+        return <PayoutsSkeleton />;
+      }
+      if (pendingCreditPence === null) {
+        return (
+          <EmptyState
+            title="Nothing to set up"
+            body="When a sighting of yours leads to a recovery, we’ll let you know you’ve earned the bounty — and ask where to send it. That’s the whole setup."
+          />
+        );
+      }
     }
     return (
       <View style={styles.card} testID={`payouts-${status}`}>

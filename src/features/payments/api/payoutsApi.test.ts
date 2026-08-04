@@ -15,9 +15,15 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
 import { PaymentError } from './functionError';
-import { fetchMyPayoutAccount, startConnectOnboarding, submitPayoutDetails } from './payoutsApi';
+import {
+  fetchMyPayoutAccount,
+  fetchPayoutsRelevant,
+  startConnectOnboarding,
+  submitPayoutDetails,
+} from './payoutsApi';
 
 const mockInvoke = jest.fn();
+const mockRpc = jest.fn();
 const mockMaybeSingle = jest.fn();
 const mockEq = jest.fn(() => ({ maybeSingle: mockMaybeSingle }));
 const mockSelect = jest.fn(() => ({ eq: mockEq }));
@@ -28,6 +34,7 @@ jest.mock('@/shared/api', () => ({
       invoke: (...args: unknown[]) => mockInvoke(...args),
     },
     from: (...args: unknown[]) => mockFrom(...(args as [])),
+    rpc: (...args: unknown[]) => mockRpc(...(args as [])),
   },
 }));
 
@@ -269,5 +276,24 @@ describe('fetchMyPayoutAccount', () => {
     // already onboarded to do it all again.
     mockMaybeSingle.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
     await expect(fetchMyPayoutAccount(USER_ID)).rejects.toBeInstanceOf(PaymentError);
+  });
+});
+
+describe('fetchPayoutsRelevant', () => {
+  it('asks the caller-scoped RPC and returns its boolean', async () => {
+    mockRpc.mockResolvedValue({ data: true, error: null });
+    await expect(fetchPayoutsRelevant()).resolves.toBe(true);
+    expect(mockRpc).toHaveBeenCalledWith('payouts_relevant');
+  });
+
+  it('hides the row on error — a missing convenience beats a false invitation', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
+    await expect(fetchPayoutsRelevant()).resolves.toBe(false);
+  });
+
+  it('treats anything but literal true as not relevant', async () => {
+    // A null answer (or a shape change) must fail toward hidden, never shown.
+    mockRpc.mockResolvedValue({ data: null, error: null });
+    await expect(fetchPayoutsRelevant()).resolves.toBe(false);
   });
 });

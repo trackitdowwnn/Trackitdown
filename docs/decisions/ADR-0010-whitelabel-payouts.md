@@ -96,6 +96,33 @@ facts underneath that rejection:
   verification wave expanding beyond `card_payments`), our exposure is capped
   by the remediation fallback: worst case, spotters see a Stripe surface again.
 
+## Amendments (2026-08-04, at build time)
+
+Recorded as the decision met reality during the Z0–Z4 build:
+
+- **ToS is the account agreement, not a recipient agreement.** GA v2 recipient
+  accounts have no separate "recipient service agreement": acceptance rides the
+  account token as
+  `identity.attestations.terms_of_service.account.shown_and_accepted`, with
+  date/IP inferred by Stripe from the CLIENT call — which is exactly why
+  acceptance must be minted into the token on the phone, never asserted by our
+  server. The form's "Continue is the acceptance" note is that attestation's UI.
+- **Reconciliation, not webhook faith.** A lost `account.updated` (endpoint
+  scoped to "Your account" instead of connected accounts) stranded a completed
+  onboarding on "Continue setting up". The rule now: whenever a screen asks
+  where an account stands, the server RETRIEVES it from Stripe and syncs the
+  row before answering. Webhooks make the row fresh; reconciliation makes it true.
+- **Entry points hide until relevant.** The Profile "Payouts" row renders only
+  when `payouts_relevant()` says there is something behind it (an account
+  exists, or a credited bounty waits). "No setup" is made literally true: a
+  never-credited spotter has no payouts surface anywhere, and the `credited`
+  push is the front door.
+- **Auto-release shipped 2026-08-04** behind the collusion gate, as decision 4
+  required: one shared core (`_shared/releasePayout.ts`) serves the owner's
+  manual retry, the `account.updated` webhook, and the account-creation path.
+  Per-post idempotency keys make the three firing together safe by
+  construction. Owner copy now says "automatically" because it now is.
+
 ## Rejected alternatives
 
 - **Stay on the embedded hybrid (B)** — zero new obligations, but permanently
