@@ -45,6 +45,7 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
+import { gateExitRefund } from '../_shared/refundHold.ts';
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -69,14 +70,20 @@ Deno.serve(async (request) => {
   const userId = userData.user.id;
 
   let postId: unknown;
+  let attestedSightingIds: unknown;
   try {
-    ({ postId } = await request.json());
+    ({ postId, attestedSightingIds } = await request.json());
   } catch {
     return errorResponse('BAD_REQUEST', 'Malformed request.', 400);
   }
   if (typeof postId !== 'string' || postId.length === 0) {
     return errorResponse('BAD_REQUEST', 'Missing post id.', 400);
   }
+  const attested =
+    Array.isArray(attestedSightingIds) &&
+    attestedSightingIds.every((id) => typeof id === 'string' && id.length > 0)
+      ? (attestedSightingIds as string[])
+      : null;
 
   // --- Ownership + the one acceptable state -----------------------------------
   const { data: post, error: postError } = await admin
@@ -121,6 +128,40 @@ Deno.serve(async (request) => {
     );
   }
 
+  // --- THE OWNER-DENIAL GATE, before any Stripe call ---------------------------
+  // "I found it another way" with recent uncredited sightings is exactly the
+  // exit an owner denying a spotter would take. Attestation + a 72-hour hold
+  // while those spotters are told; no recent sightings → refund now, as ever.
+  const gate = await gateExitRefund(admin, {
+    postId,
+    ownerId: userId,
+    exitPath: 'recovery',
+    attestedSightingIds: attested,
+  });
+  if (gate.action === 'attestation_required') {
+    return jsonResponse(
+      {
+        code: 'ATTESTATION_REQUIRED',
+        error: 'This listing has recent sightings to look at first.',
+        sightingIds: gate.sightingIds,
+      },
+      409,
+    );
+  }
+  if (gate.action === 'error') {
+    return gate.code === 'ATTESTATION_STALE'
+      ? errorResponse(
+          'ATTESTATION_STALE',
+          'A new sighting arrived while you were confirming. Please look again.',
+          409,
+        )
+      : errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
+  }
+  if (gate.action === 'held') {
+    console.log('[payments] recovery refund held', { postId, expiresAt: gate.expiresAt });
+    return jsonResponse({ held: true, refundAfter: gate.expiresAt });
+  }
+
   // --- Refund the held escrow (the one shared implementation) -----------------
   // Fee read authoritatively, arithmetic guarded, refund idempotent — see
   // _shared/refundEscrow.ts. Key distinct from deactivate-post's
@@ -158,5 +199,5 @@ Deno.serve(async (request) => {
   }
 
   console.log('[payments] recovery closed with no spotter', { postId, refundPence, feePence });
-  return jsonResponse({ refundedPence: refundPence, feePence });
+  return jsonResponse({ held: false, refundedPence: refundPence, feePence });
 });

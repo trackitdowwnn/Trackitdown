@@ -35,6 +35,7 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
+import { gateExitRefund } from '../_shared/refundHold.ts';
 
 /** The paid states whose escrow can be refunded on deactivation. A draft has no
  *  escrow; a recovered/claimed post's money is already resolved. */
@@ -64,14 +65,20 @@ Deno.serve(async (request) => {
 
   // --- Parse the request ------------------------------------------------------
   let postId: unknown;
+  let attestedSightingIds: unknown;
   try {
-    ({ postId } = await request.json());
+    ({ postId, attestedSightingIds } = await request.json());
   } catch {
     return errorResponse('BAD_REQUEST', 'Malformed request.', 400);
   }
   if (typeof postId !== 'string' || postId.length === 0) {
     return errorResponse('BAD_REQUEST', 'Missing post id.', 400);
   }
+  const attested =
+    Array.isArray(attestedSightingIds) &&
+    attestedSightingIds.every((id) => typeof id === 'string' && id.length > 0)
+      ? (attestedSightingIds as string[])
+      : null;
 
   // --- Verify ownership + refund-eligible paid state --------------------------
   // Service role bypasses RLS; we re-impose the ownership check here so a signed-in
@@ -96,6 +103,43 @@ Deno.serve(async (request) => {
       'This listing can’t be deactivated for a refund.',
       409,
     );
+  }
+
+  // --- THE OWNER-DENIAL GATE, before any Stripe call ---------------------------
+  // Recent uncredited sightings mean this refund may be claiming money a
+  // spotter earned. The owner must be shown them and attest; the refund then
+  // WAITS 72 hours while those spotters are told and may dispute. No recent
+  // sightings → the gate answers refund_now and nothing below changes.
+  const gate = await gateExitRefund(admin, {
+    postId,
+    ownerId: userId,
+    exitPath: 'deactivate',
+    attestedSightingIds: attested,
+  });
+  if (gate.action === 'attestation_required') {
+    // 409 + the ids: the client shows exactly these sightings and asks again.
+    return jsonResponse(
+      {
+        code: 'ATTESTATION_REQUIRED',
+        error: 'This listing has recent sightings to look at first.',
+        sightingIds: gate.sightingIds,
+      },
+      409,
+    );
+  }
+  if (gate.action === 'error') {
+    return gate.code === 'ATTESTATION_STALE'
+      ? errorResponse(
+          'ATTESTATION_STALE',
+          'A new sighting arrived while you were confirming. Please look again.',
+          409,
+        )
+      : errorResponse('LOOKUP_FAILED', 'We couldn’t deactivate your listing. Please try again.', 500);
+  }
+  if (gate.action === 'held') {
+    // The listing is down (the hold delisted it); only the money waits.
+    console.log('[payments] deactivate refund held', { postId, expiresAt: gate.expiresAt });
+    return jsonResponse({ held: true, refundAfter: gate.expiresAt });
   }
 
   // --- Refund the held escrow (the one shared implementation) -----------------
@@ -135,5 +179,5 @@ Deno.serve(async (request) => {
   }
 
   console.log('[payments] listing deactivated + refunded', { postId, refundPence, feePence });
-  return jsonResponse({ refundedPence: refundPence, feePence });
+  return jsonResponse({ held: false, refundedPence: refundPence, feePence });
 });
