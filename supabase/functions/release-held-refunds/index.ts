@@ -39,13 +39,27 @@ Deno.serve(async (request) => {
     return errorResponse('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
   }
 
-  // The one gate. A missing env var fails CLOSED (nothing matches undefined).
-  const secret = Deno.env.get('CRON_SECRET');
-  if (!secret || request.headers.get('x-cron-secret') !== secret) {
+  // The one gate. Two acceptable secrets, both fail CLOSED when unset:
+  // the Vault-held `cron_secret` (what the pg_cron job sends — generated and
+  // rotated entirely inside Postgres, never in git or a transcript) and the
+  // CRON_SECRET env var (manual invocation). A header matching neither, or
+  // no header, is a flat 401 with no detail.
+  const admin = createServiceRoleClient();
+  const header = request.headers.get('x-cron-secret');
+  const envSecret = Deno.env.get('CRON_SECRET');
+  let vaultSecret: string | null = null;
+  try {
+    const { data } = await admin.rpc('read_cron_secret');
+    vaultSecret = typeof data === 'string' && data.length > 0 ? data : null;
+  } catch {
+    // Vault unreadable → that source simply cannot match.
+  }
+  const allowed = Boolean(
+    header && ((envSecret && header === envSecret) || (vaultSecret && header === vaultSecret)),
+  );
+  if (!allowed) {
     return errorResponse('NOT_AUTHENTICATED', 'Not allowed.', 401);
   }
-
-  const admin = createServiceRoleClient();
   const stripe = createStripeClient();
   const summary = { refunded: 0, paid: 0, notified: 0, skipped: 0 };
 
