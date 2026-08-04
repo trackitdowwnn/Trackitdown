@@ -49,6 +49,12 @@ jest.mock('@/features/notifications', () => ({
   notifyCredited: (...args: unknown[]) => mockNotifyCredited(...args),
 }));
 
+// Same reason again — the payments barrel pulls the Stripe native module.
+const mockExitCheck = jest.fn();
+jest.mock('@/features/payments', () => ({
+  exitCheck: (...args: unknown[]) => mockExitCheck(...args),
+}));
+
 const mockClaim = jest.fn();
 const mockRefund = jest.fn();
 const mockRelease = jest.fn();
@@ -88,8 +94,16 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSightings = [SIGHTING];
   mockClaim.mockResolvedValue({ nextStep: 'refund', creditedSightingId: null });
-  mockRefund.mockResolvedValue({ refundedPence: 24000 });
+  mockRefund.mockResolvedValue({ held: false, refundedPence: 24000 });
   mockRelease.mockResolvedValue({ status: 'awaiting_payee', transferPence: null });
+  // Default: no recent uncredited sightings, so the exits behave exactly as
+  // they did before the owner-denial gate. The attestation cases set true.
+  mockExitCheck.mockResolvedValue({
+    requiresAttestation: false,
+    sightingIds: [],
+    windowDays: 14,
+    holdHours: 72,
+  });
 });
 
 describe('the guard', () => {
@@ -309,7 +323,71 @@ describe('found it another way', () => {
     await waitFor(() => expect(mockClaim).toHaveBeenCalledWith('p1', null));
     // Without this second call the post is stranded in recovery_claimed with
     // the bounty still in escrow — claimed, but nobody paid and nobody refunded.
-    await waitFor(() => expect(mockRefund).toHaveBeenCalledWith('p1'));
+    // (undefined attestation: the pre-flight said none was needed.)
+    await waitFor(() => expect(mockRefund).toHaveBeenCalledWith('p1', undefined));
+  });
+
+  it('detours through the attestation when recent sightings exist', async () => {
+    // The owner-denial gate: "found it another way" with fresh uncredited
+    // sightings must show them BEFORE the irreversible claim, and the
+    // confirmed exit carries exactly what was shown.
+    mockExitCheck.mockResolvedValue({
+      requiresAttestation: true,
+      sightingIds: ['sighting-1'],
+      windowDays: 14,
+      holdHours: 72,
+    });
+    mockRefund.mockResolvedValue({ held: true, refundAfter: '2026-08-08T12:00:00Z' });
+
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-none'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    // Nothing irreversible happened yet — the attestation comes first.
+    expect(mockClaim).not.toHaveBeenCalled();
+    expect(getByTestId('exit-attestation')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByText('None of these led me to the car'));
+    });
+    await waitFor(() => expect(mockClaim).toHaveBeenCalledWith('p1', null));
+    await waitFor(() => expect(mockRefund).toHaveBeenCalledWith('p1', ['sighting-1']));
+    // The held answer is reported honestly, with the date.
+    expect(mockShowToast).toHaveBeenCalledWith(expect.stringContaining('unless a sighting'));
+  });
+
+  it('offers the honest way back: "one of these did help" returns to the list', async () => {
+    mockExitCheck.mockResolvedValue({
+      requiresAttestation: true,
+      sightingIds: ['sighting-1'],
+      windowDays: 14,
+      holdHours: 72,
+    });
+    const { getByText, getByTestId, queryByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" />),
+    );
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-none'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+    expect(getByTestId('exit-attestation')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByText('One of these did help'));
+    });
+    // Back on the picker with nothing claimed and nothing selected — crediting
+    // is exactly what this screen already does.
+    expect(queryByTestId('exit-attestation')).toBeNull();
+    expect(getByTestId('credit-sighting-1')).toBeTruthy();
+    expect(mockClaim).not.toHaveBeenCalled();
   });
 
   it('is offered even when there were no sightings at all', async () => {

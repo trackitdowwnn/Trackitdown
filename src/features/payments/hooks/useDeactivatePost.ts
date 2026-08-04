@@ -23,25 +23,36 @@ const log = createLogger('payments');
 const DEACTIVATE_FAILED_MESSAGE = 'We couldn’t deactivate your listing. Please try again.';
 
 export type DeactivateOutcome =
-  | { outcome: 'done'; result: DeactivateResult; message: null }
-  | { outcome: 'failed'; result: null; message: string };
+  | { outcome: 'done'; result: Extract<DeactivateResult, { held: false }>; message: null }
+  /** The listing is down; the refund waits out the dispute window. */
+  | { outcome: 'held'; refundAfter: string; message: null }
+  | { outcome: 'failed'; result: null; message: string; code: string };
 
 export function useDeactivatePost() {
   const [pending, setPending] = useState(false);
 
-  const deactivate = useCallback(async (postId: string): Promise<DeactivateOutcome> => {
-    setPending(true);
-    try {
-      const result = await deactivatePost(postId);
-      return { outcome: 'done', result, message: null };
-    } catch (err) {
-      const message = err instanceof PaymentError ? err.message : DEACTIVATE_FAILED_MESSAGE;
-      log.warn('deactivate failed', { code: err instanceof PaymentError ? err.code : 'UNKNOWN' });
-      return { outcome: 'failed', result: null, message };
-    } finally {
-      setPending(false);
-    }
-  }, []);
+  const deactivate = useCallback(
+    async (postId: string, attestedSightingIds?: string[]): Promise<DeactivateOutcome> => {
+      setPending(true);
+      try {
+        const result = await deactivatePost(postId, attestedSightingIds);
+        if (result.held) {
+          return { outcome: 'held', refundAfter: result.refundAfter, message: null };
+        }
+        return { outcome: 'done', result, message: null };
+      } catch (err) {
+        const message = err instanceof PaymentError ? err.message : DEACTIVATE_FAILED_MESSAGE;
+        const code = err instanceof PaymentError ? err.code : 'UNKNOWN';
+        log.warn('deactivate failed', { code });
+        // The code rides along so the screen can react to ATTESTATION_STALE
+        // (re-run the pre-flight) without string-matching the copy.
+        return { outcome: 'failed', result: null, message, code };
+      } finally {
+        setPending(false);
+      }
+    },
+    [],
+  );
 
   return { deactivate, pending };
 }

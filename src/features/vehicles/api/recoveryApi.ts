@@ -72,6 +72,10 @@ const REFUND_MESSAGES: Record<string, string> = {
     'You credited a spotter for this recovery, so the bounty goes to them.',
   POST_NOT_CLAIMED: 'This listing isn’t waiting on a recovery.',
   NO_HELD_PAYMENT: 'We couldn’t find the bounty for this listing.',
+  // The owner-denial gate. REQUIRED should never surface (the screen
+  // pre-flights); STALE means a sighting landed mid-confirm.
+  ATTESTATION_REQUIRED: 'This listing has recent sightings to look at first.',
+  ATTESTATION_STALE: 'A new sighting arrived while you were confirming. Please look again.',
 };
 
 /**
@@ -143,18 +147,29 @@ export async function claimRecovery(
   return { nextStep, creditedSightingId: result?.creditedSightingId ?? null };
 }
 
-export interface RecoveryRefundResult {
-  refundedPence: number;
-}
+/**
+ * What the no-spotter refund did: refunded now, or HELD for the 72-hour
+ * dispute window because recent uncredited sightings exist (the owner-denial
+ * control — the claim stands either way, only the money waits).
+ */
+export type RecoveryRefundResult =
+  | { held: false; refundedPence: number }
+  | { held: true; refundAfter: string };
 
 /**
  * Finish a no-spotter recovery: refund the bounty and close the post.
  *
  * MONEY: the amount comes back FROM the server. Never send one.
+ * `attestedSightingIds` is what the owner was shown when they confirmed none
+ * of the recent sightings helped — required by the server whenever such
+ * sightings exist.
  */
-export async function refundRecovery(postId: string): Promise<RecoveryRefundResult> {
+export async function refundRecovery(
+  postId: string,
+  attestedSightingIds?: string[],
+): Promise<RecoveryRefundResult> {
   const { data, error } = await supabase.functions.invoke('refund-recovery', {
-    body: { postId },
+    body: attestedSightingIds ? { postId, attestedSightingIds } : { postId },
   });
 
   if (error) {
@@ -171,9 +186,13 @@ export async function refundRecovery(postId: string): Promise<RecoveryRefundResu
     throw new RecoveryError(messageFor(REFUND_MESSAGES, code), code);
   }
 
-  const result = data as { refundedPence?: number };
+  const result = data as { held?: boolean; refundedPence?: number; refundAfter?: string };
+  if (result?.held === true && typeof result.refundAfter === 'string') {
+    log.info('recovery_refund_held', { postId });
+    return { held: true, refundAfter: result.refundAfter };
+  }
   log.info('recovery_refunded', { postId });
-  return { refundedPence: result?.refundedPence ?? 0 };
+  return { held: false, refundedPence: result?.refundedPence ?? 0 };
 }
 
 /**

@@ -53,6 +53,11 @@ export const DEACTIVATE_ERROR_MESSAGES: Record<string, string> = {
   STRIPE_ERROR: 'We couldn’t deactivate your listing. Please try again.',
   LEDGER_ERROR: 'Your refund is processing. Please check back shortly.',
   LOOKUP_FAILED: 'We couldn’t deactivate your listing. Please try again.',
+  // Both belong to the owner-denial gate. REQUIRED should never surface (the
+  // screen pre-flights via exitCheck); STALE is real: a sighting landed while
+  // they were confirming, and the honest answer is "look again".
+  ATTESTATION_REQUIRED: 'This listing has recent sightings to look at first.',
+  ATTESTATION_STALE: 'A new sighting arrived while you were confirming. Please look again.',
 };
 
 const DEACTIVATE_FALLBACK = 'We couldn’t deactivate your listing. Please try again.';
@@ -88,24 +93,64 @@ export async function createBountyPaymentIntent(postId: string): Promise<string>
   return data.clientSecret;
 }
 
-/** What a successful deactivation refunded (server-authoritative pence). */
-export interface DeactivateResult {
-  /** Amount returned to the owner = bounty − non-recoverable card fee. */
-  refundedPence: number;
-  /** The withheld Stripe processing fee. */
-  feePence: number;
+/**
+ * What deactivation did with the money. Two honest answers now: refunded
+ * (server-authoritative pence), or HELD — the listing is down but the refund
+ * waits out the 72-hour dispute window because recent sightings exist.
+ */
+export type DeactivateResult =
+  | {
+      held: false;
+      /** Amount returned to the owner = bounty − non-recoverable card fee. */
+      refundedPence: number;
+      /** The withheld Stripe processing fee. */
+      feePence: number;
+    }
+  | { held: true; refundAfter: string };
+
+/** The exit pre-flight: must the owner attest to recent sightings first? */
+export interface ExitCheck {
+  requiresAttestation: boolean;
+  sightingIds: string[];
+  windowDays: number;
+  holdHours: number;
+}
+
+/**
+ * Ask whether an exit-with-refund on this post needs the attestation step,
+ * and for exactly which sightings. Server-derived (the one SQL definition of
+ * "recent uncredited") so the client can never show fewer sightings than the
+ * server would hold for.
+ */
+export async function exitCheck(postId: string): Promise<ExitCheck> {
+  const { data, error } = await supabase.rpc('exit_check', { p_post_id: postId });
+  if (error) {
+    log.warn('exit_check failed', { code: error.code });
+    throw new PaymentError(DEACTIVATE_FALLBACK, error.code ?? 'UNKNOWN');
+  }
+  const doc = data as Partial<ExitCheck> | null;
+  return {
+    requiresAttestation: Boolean(doc?.requiresAttestation),
+    sightingIds: Array.isArray(doc?.sightingIds) ? doc.sightingIds : [],
+    windowDays: typeof doc?.windowDays === 'number' ? doc.windowDays : 14,
+    holdHours: typeof doc?.holdHours === 'number' ? doc.holdHours : 72,
+  };
 }
 
 /**
  * Deactivate a PAID post and refund its bounty (minus the non-recoverable card
  * fee). The Edge Function verifies ownership + refund-eligibility, issues the
- * Stripe refund, and moves the post to `cancelled` — this call carries only the
- * post id. Throws a PaymentError with user-facing copy on any failure.
+ * Stripe refund, and moves the post to `cancelled` — this call carries only
+ * the post id, plus (when the attestation step ran) the sighting ids the owner
+ * was shown. Throws a PaymentError with user-facing copy on any failure.
  */
-export async function deactivatePost(postId: string): Promise<DeactivateResult> {
+export async function deactivatePost(
+  postId: string,
+  attestedSightingIds?: string[],
+): Promise<DeactivateResult> {
   log.debug('deactivate-post invoke', { postId });
   const { data, error } = await supabase.functions.invoke<DeactivateResult>('deactivate-post', {
-    body: { postId },
+    body: attestedSightingIds ? { postId, attestedSightingIds } : { postId },
   });
 
   if (error) {
@@ -117,11 +162,14 @@ export async function deactivatePost(postId: string): Promise<DeactivateResult> 
     log.warn('deactivate-post failed', { code: paymentError.code });
     throw paymentError;
   }
-  if (typeof data?.refundedPence !== 'number') {
-    log.error('deactivate-post returned no refund amount');
-    throw new PaymentError(DEACTIVATE_FALLBACK, 'BAD_SHAPE');
+  if (data?.held === true && typeof data.refundAfter === 'string') {
+    log.info('listing deactivated + refund held', { postId });
+    return data;
   }
-
-  log.info('listing deactivated + refunded', { postId, refundedPence: data.refundedPence });
-  return data;
+  if (data?.held === false && typeof data.refundedPence === 'number') {
+    log.info('listing deactivated + refunded', { postId, refundedPence: data.refundedPence });
+    return data;
+  }
+  log.error('deactivate-post returned an unexpected shape');
+  throw new PaymentError(DEACTIVATE_FALLBACK, 'BAD_SHAPE');
 }

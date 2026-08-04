@@ -51,14 +51,21 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
   const [statement, setStatement] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // `load` performs only the async read (no synchronous setState — the lint
+  // rule about cascading renders in effects is right here); `reload` is the
+  // event-handler variant that also shows the skeleton again.
   const load = useCallback(() => {
-    setState({ status: 'loading' });
     fetchDisputeContext(sightingId)
       .then((context) => {
         setState(context ? { status: 'ready', context } : { status: 'unavailable' });
       })
       .catch(() => setState({ status: 'error' }));
   }, [sightingId]);
+
+  const reload = useCallback(() => {
+    setState({ status: 'loading' });
+    load();
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -121,7 +128,7 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
         <ErrorState
           title="Couldn’t load this"
           body="Check your connection and try again."
-          onRetry={load}
+          onRetry={reload}
         />
       );
     }

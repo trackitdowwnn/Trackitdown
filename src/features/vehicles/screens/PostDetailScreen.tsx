@@ -28,7 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bookmark } from 'lucide-react-native';
 
 import { useRequireAuth } from '@/features/auth';
-import { useDeactivatePost } from '@/features/payments';
+import { exitCheck, useDeactivatePost } from '@/features/payments';
 import { useWatchToggle } from '@/features/watchlist';
 import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
@@ -47,6 +47,7 @@ import {
 
 import { flagPost } from '../api/flagApi';
 import { RecoveryError, releasePayout } from '../api/recoveryApi';
+import { ExitAttestation } from '../components/ExitAttestation';
 import { PostSectionEditorHost, type EditableSection } from '../components/editors';
 import { PostBottomBar } from '../components/PostBottomBar';
 import { PostDetailBody } from '../components/PostDetailBody';
@@ -278,6 +279,14 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     manageRef.current?.open();
   }, []);
 
+  // The owner-denial attestation (DOMAIN.md Disputes): when the server says
+  // recent uncredited sightings exist, deactivation detours through a look at
+  // exactly those sightings before any refund can be held.
+  const [attestation, setAttestation] = useState<{
+    sightingIds: string[];
+    holdHours: number;
+  } | null>(null);
+
   // Deactivate + refund. The confirm already fired (the dialog below); this
   // issues the server refund, toasts the EXACT refunded amount, and refetches so
   // the post now reads "Cancelled" and drops off public surfaces.
@@ -289,16 +298,73 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     if (result.outcome === 'done') {
       toast.show(`Listing deactivated — ${formatPounds(result.result.refundedPence)} refunded`);
       retry();
+    } else if (result.outcome === 'held') {
+      // Reachable only if sightings appeared between the pre-flight and now.
+      toast.show(heldToast(result.refundAfter));
+      retry();
     } else {
       toast.show(result.message, 'error');
     }
   }, [deactivate, deactivating, postId, retry, toast]);
 
+  // The attested exit: same call, carrying exactly what the owner was shown.
+  const onAttestedDeactivate = useCallback(
+    async (attestedSightingIds: string[]) => {
+      if (deactivating) {
+        return;
+      }
+      const result = await deactivate(postId, attestedSightingIds);
+      if (result.outcome === 'held') {
+        setAttestation(null);
+        toast.show(heldToast(result.refundAfter));
+        retry();
+      } else if (result.outcome === 'done') {
+        // The trigger set emptied server-side (sightings aged out) — the
+        // refund simply went through.
+        setAttestation(null);
+        toast.show(`Listing deactivated — ${formatPounds(result.result.refundedPence)} refunded`);
+        retry();
+      } else if (result.code === 'ATTESTATION_STALE') {
+        // A sighting landed mid-confirm. Refresh the set and ask again.
+        toast.show(result.message, 'error');
+        try {
+          const check = await exitCheck(postId);
+          setAttestation(
+            check.requiresAttestation
+              ? { sightingIds: check.sightingIds, holdHours: check.holdHours }
+              : null,
+          );
+        } catch {
+          setAttestation(null);
+        }
+      } else {
+        toast.show(result.message, 'error');
+      }
+    },
+    [deactivate, deactivating, postId, retry, toast],
+  );
+
   // Both deactivate entry points (the body's button, the manage sheet's row)
-  // open the same confirm — never the refund itself.
+  // land here. The pre-flight decides which door: recent sightings → the
+  // attestation; none → the plain destructive confirm, exactly as before.
+  // A failed pre-flight opens the plain confirm — enforcement is the SERVER's
+  // (the gate re-checks), so degrading here costs honesty nothing.
   const requestDeactivate = useCallback(() => {
-    deactivateRef.current?.open();
-  }, []);
+    void (async () => {
+      try {
+        const check = await exitCheck(postId);
+        if (check.requiresAttestation) {
+          setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
+          return;
+        }
+      } catch (err) {
+        log.warn('exit_check pre-flight failed', {
+          code: err instanceof Error ? err.message : 'UNKNOWN',
+        });
+      }
+      deactivateRef.current?.open();
+    })();
+  }, [postId]);
 
   // No confirm dialog here, unlike deactivate: the recovery screen IS the
   // confirmation, and it asks something a yes/no cannot — WHICH sighting. A
@@ -533,8 +599,39 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
           }}
         />
       ) : null}
+
+      {/* The owner-denial attestation — full-screen and OPAQUE (the transparent
+          Modal bleed-through lesson), mounted over everything when the exit
+          pre-flight found recent sightings. */}
+      {attestation ? (
+        <View style={[styles.attestationOverlay, { paddingTop: insets.top + spacing.lg }]}>
+          <ExitAttestation
+            postId={postId}
+            sightingIds={attestation.sightingIds}
+            holdHours={attestation.holdHours}
+            busy={deactivating}
+            onConfirm={(ids) => void onAttestedDeactivate(ids)}
+            onCredit={() => {
+              setAttestation(null);
+              // Crediting IS the recovery flow — it already knows how to ask
+              // which sighting and to move the money the right way.
+              router.push({ pathname: '/recover-post', params: { postId } });
+            }}
+            onCancel={() => setAttestation(null)}
+          />
+        </View>
+      ) : null}
     </View>
   );
+}
+
+/** The one sentence for a held refund, with the real date in it. */
+function heldToast(refundAfter: string): string {
+  const date = new Date(refundAfter);
+  const when = Number.isNaN(date.getTime())
+    ? 'the 72-hour window'
+    : date.toLocaleString('en-GB', { weekday: 'long', hour: 'numeric', minute: '2-digit' });
+  return `Listing deactivated. Your refund is sent after ${when}, unless a sighting is contested.`;
 }
 
 /** Graceful copy for a post a viewer can't (or no longer can) see. */
@@ -631,5 +728,16 @@ const styles = StyleSheet.create({
     height: typography.heading.lineHeight,
     flex: 1,
     maxWidth: '55%',
+  },
+  attestationOverlay: {
+    // Explicit insets, not absoluteFillObject (typecheck) — and an OPAQUE
+    // background: money copy must never render over half-visible content.
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.background,
+    padding: spacing.xl,
   },
 });

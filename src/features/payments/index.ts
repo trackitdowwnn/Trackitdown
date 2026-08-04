@@ -19,7 +19,9 @@ export {
   PaymentError,
   createBountyPaymentIntent,
   deactivatePost,
+  exitCheck,
   type DeactivateResult,
+  type ExitCheck,
 } from './api/paymentsApi';
 export {
   useBountyPayment,
