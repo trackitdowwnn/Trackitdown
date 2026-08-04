@@ -8,7 +8,12 @@
  * LINKS: ./payoutDetailsSchema.ts; ./PayoutDetailsForm.tsx.
  */
 
-import { buildPayoutDetailsSchema, digitsOnly, parseUkDate } from './payoutDetailsSchema';
+import {
+  buildBankDetailsSchema,
+  buildPayoutDetailsSchema,
+  digitsOnly,
+  parseUkDate,
+} from './payoutDetailsSchema';
 
 /** Fixed so the age rule is tested against a known clock, not today's. */
 const NOW = new Date('2026-08-03T00:00:00Z');
@@ -118,5 +123,36 @@ describe('the rules', () => {
 
   it('treats the phone and second address line as genuinely optional', () => {
     expect(parse({ phone: '', addressLine2: '' }).success).toBe(true);
+  });
+});
+
+describe('the bank-only schema', () => {
+  it('shares the full form’s rules — same digits, same double entry', () => {
+    const ok = buildBankDetailsSchema().safeParse({
+      sortCode: '10-88-00',
+      accountNumber: '0001 2345',
+      confirmAccountNumber: '00012345',
+    });
+    expect(ok.success).toBe(true);
+
+    const mismatch = buildBankDetailsSchema().safeParse({
+      sortCode: '108800',
+      accountNumber: '00012345',
+      confirmAccountNumber: '00012346',
+    });
+    expect(mismatch.success).toBe(false);
+    if (!mismatch.success) {
+      expect(mismatch.error.issues[0]?.path[0]).toBe('confirmAccountNumber');
+    }
+  });
+
+  it('asks for nothing but the bank trio', () => {
+    // The point of the form: no identity re-collection to change a sort code.
+    const result = buildBankDetailsSchema().safeParse({
+      sortCode: '108800',
+      accountNumber: '00012345',
+      confirmAccountNumber: '00012345',
+    });
+    expect(result.success).toBe(true);
   });
 });

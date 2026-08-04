@@ -57,48 +57,67 @@ function ageOn(date: Date, now: Date): number {
 }
 
 /**
+ * The bank trio, shared verbatim between the full earn-moment form and the
+ * bank-only replacement form — two forms with two ideas of a sort code would
+ * eventually disagree.
+ */
+const bankFields = {
+  sortCode: z
+    .string()
+    .refine((value) => digitsOnly(value).length === 6, 'A sort code is 6 digits'),
+  accountNumber: z
+    .string()
+    .refine((value) => digitsOnly(value).length === 8, 'An account number is 8 digits'),
+  confirmAccountNumber: z.string(),
+};
+
+// A typo here is money sent to a stranger's account, silently, weeks later
+// — the one mistake these forms can make that no later screen can undo. So
+// it is typed twice, compared on digits (spacing may differ between the
+// two boxes), and the error lands on the CONFIRM field: the first entry is
+// as likely to be the right one.
+const accountNumbersMatch = [
+  (values: { accountNumber: string; confirmAccountNumber: string }) =>
+    digitsOnly(values.accountNumber) === digitsOnly(values.confirmAccountNumber),
+  { message: 'These don’t match — check both', path: ['confirmAccountNumber'] as ['confirmAccountNumber'] },
+] as const;
+
+/**
  * `now` is injected rather than read inside the schema so the age rule is
  * testable without freezing the clock, and so a test written today still passes
  * in five years.
  */
 export function buildPayoutDetailsSchema(now: Date = new Date()) {
-  return z.object({
-    firstName: z.string().trim().min(1, 'Enter your first name'),
-    lastName: z.string().trim().min(1, 'Enter your last name'),
-    dob: z
-      .string()
-      .trim()
-      .refine((value) => parseUkDate(value) !== null, 'Use the format DD/MM/YYYY')
-      .refine((value) => {
-        const date = parseUkDate(value);
-        return date === null || date.getTime() <= now.getTime();
-      }, 'That date is in the future')
-      .refine((value) => {
-        const date = parseUkDate(value);
-        return date === null || ageOn(date, now) >= MIN_AGE_YEARS;
-      }, 'You need to be 18 or over to be paid'),
-    phone: z.string().trim().optional(),
-    addressLine1: z.string().trim().min(1, 'Enter your address'),
-    addressLine2: z.string().trim().optional(),
-    city: z.string().trim().min(1, 'Enter your town or city'),
-    postalCode: z.string().trim().min(1, 'Enter your postcode'),
-    sortCode: z
-      .string()
-      .refine((value) => digitsOnly(value).length === 6, 'A sort code is 6 digits'),
-    accountNumber: z
-      .string()
-      .refine((value) => digitsOnly(value).length === 8, 'An account number is 8 digits'),
-    confirmAccountNumber: z.string(),
-  })
-    // A typo here is money sent to a stranger's account, silently, weeks later
-    // — the one mistake this form can make that no later screen can undo. So
-    // it is typed twice, compared on digits (spacing may differ between the
-    // two boxes), and the error lands on the CONFIRM field: the first entry is
-    // as likely to be the right one.
-    .refine(
-      (values) => digitsOnly(values.accountNumber) === digitsOnly(values.confirmAccountNumber),
-      { message: 'These don’t match — check both', path: ['confirmAccountNumber'] },
-    );
+  return z
+    .object({
+      firstName: z.string().trim().min(1, 'Enter your first name'),
+      lastName: z.string().trim().min(1, 'Enter your last name'),
+      dob: z
+        .string()
+        .trim()
+        .refine((value) => parseUkDate(value) !== null, 'Use the format DD/MM/YYYY')
+        .refine((value) => {
+          const date = parseUkDate(value);
+          return date === null || date.getTime() <= now.getTime();
+        }, 'That date is in the future')
+        .refine((value) => {
+          const date = parseUkDate(value);
+          return date === null || ageOn(date, now) >= MIN_AGE_YEARS;
+        }, 'You need to be 18 or over to be paid'),
+      phone: z.string().trim().optional(),
+      addressLine1: z.string().trim().min(1, 'Enter your address'),
+      addressLine2: z.string().trim().optional(),
+      city: z.string().trim().min(1, 'Enter your town or city'),
+      postalCode: z.string().trim().min(1, 'Enter your postcode'),
+      ...bankFields,
+    })
+    .refine(...accountNumbersMatch);
+}
+
+/** The bank-only replacement form ("that account didn't work" / new bank). */
+export function buildBankDetailsSchema() {
+  return z.object({ ...bankFields }).refine(...accountNumbersMatch);
 }
 
 export type PayoutDetailsInput = z.infer<ReturnType<typeof buildPayoutDetailsSchema>>;
+export type BankDetailsInput = z.infer<ReturnType<typeof buildBankDetailsSchema>>;

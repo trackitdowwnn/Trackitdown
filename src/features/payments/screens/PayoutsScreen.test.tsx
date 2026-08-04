@@ -351,17 +351,6 @@ describe('opening Stripe in a browser (update + fallback only)', () => {
     expect(mockOpenAuth).toHaveBeenCalledWith(STRIPE_URL, 'trackitdown://payouts');
   });
 
-  it('still uses the browser to CHANGE details — Stripe has no RN component for it', async () => {
-    mockStart.mockResolvedValue({ status: 'update_available', url: STRIPE_URL });
-    mockAccountState = { status: 'ready', settling: false };
-    const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
-    await act(async () => {
-      fireEvent.press(getByText('Update bank details'));
-    });
-    expect(mockOpenAuth).toHaveBeenCalledWith(STRIPE_URL, 'trackitdown://payouts');
-    expect(queryByTestId('connect-onboarding')).toBeNull();
-  });
-
   it('settles on a dismiss too — Android reports success that way', async () => {
     mockStart.mockResolvedValue({ status: 'onboarding_required', url: STRIPE_URL });
     mockOpenAuth.mockResolvedValue({ type: 'dismiss' });
@@ -374,10 +363,10 @@ describe('opening Stripe in a browser (update + fallback only)', () => {
 
   it('opens no browser when the server says there is nothing to do', async () => {
     mockStart.mockResolvedValue({ status: 'already_enabled' });
-    mockAccountState = { status: 'ready', settling: false };
+    mockAccountState = { status: 'unfinished', settling: false };
     const { getByText } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
-      fireEvent.press(getByText('Update bank details'));
+      fireEvent.press(getByText('Continue setting up'));
     });
     expect(mockOpenAuth).not.toHaveBeenCalled();
     expect(mockRefresh).toHaveBeenCalled();
@@ -407,6 +396,80 @@ describe('opening Stripe in a browser (update + fallback only)', () => {
     expect(mockShowToast).toHaveBeenCalledWith(expect.any(String), 'error');
     // Back to a tappable label, not stuck on "Opening Stripe…".
     expect(getByText('Add your details')).toBeTruthy();
+  });
+});
+
+describe('changing bank details — in the app, no browser', () => {
+  // The browser hop this replaced was a DEAD END for legacy Express accounts:
+  // Stripe refuses account_update links when it collects requirements, the
+  // server fell back to already_enabled, and the button was a spinner to
+  // nowhere. Found on a real phone, 2026-08-04.
+  const fillBankForm = async (getByTestId: (id: string) => unknown) => {
+    const type = async (id: string, value: string) => {
+      await act(async () => {
+        fireEvent.changeText(getByTestId(id) as never, value);
+      });
+    };
+    await type('bank-sort-code', '10-88-00');
+    await type('bank-account-number', '00012345');
+    await type('bank-confirm-account-number', '00012345');
+  };
+
+  beforeEach(() => {
+    mockAccountState = { status: 'ready', settling: false };
+  });
+
+  it('opens the three-field form, not a browser', async () => {
+    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(getByText('Update bank details'));
+    });
+    expect(getByTestId('bank-details-form')).toBeTruthy();
+    expect(mockOpenAuth).not.toHaveBeenCalled();
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('sends ONE bank token and no identity token', async () => {
+    // Identity is already with Stripe; resending it would create a second
+    // account. The server's RE-BANK branch keys off exactly this shape.
+    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(getByText('Update bank details'));
+    });
+    await fillBankForm(getByTestId);
+    await act(async () => {
+      fireEvent.press(getByText('Save new account'));
+    });
+
+    // Digits only — the token must not carry the dashes someone typed.
+    expect(mockBankToken).toHaveBeenCalledWith({ sortCode: '108800', accountNumber: '00012345' });
+    expect(mockIdentityToken).not.toHaveBeenCalled();
+    expect(mockSubmitTokens).toHaveBeenCalledWith({ bankToken: 'btok_test_1' });
+    expect(mockShowToast).toHaveBeenCalledWith('Done — bounties will go to your new account.');
+  });
+
+  it('offers Stripe’s own page when the in-app change is refused', async () => {
+    mockBankToken.mockRejectedValue(
+      new PaymentError('Stripe couldn’t accept that bank account.', 'DETAILS_REJECTED'),
+    );
+    mockStart.mockResolvedValue({ status: 'update_available', url: STRIPE_URL });
+
+    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(getByText('Update bank details'));
+    });
+    await fillBankForm(getByTestId);
+    await act(async () => {
+      fireEvent.press(getByText('Save new account'));
+    });
+    expect(getByTestId('payouts-bank-rejected')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByText('Continue with Stripe'));
+    });
+    // The server decides which surface that is: an account_update link for v2
+    // accounts, a LOGIN LINK for legacy Express — either way, a browser.
+    expect(mockOpenAuth).toHaveBeenCalledWith(STRIPE_URL, 'trackitdown://payouts');
   });
 });
 

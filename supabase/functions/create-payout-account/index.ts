@@ -93,13 +93,18 @@ Deno.serve(async (request) => {
   const stripe = createStripeClient();
 
   // --- RE-BANK: an account exists and only the bank is being replaced --------
-  // The payout-failed re-entry path ("that account didn't work"). Identity is
-  // already with Stripe; only the destination changes. Attaching the new
-  // account makes it the default for its currency and removes the old default.
+  // The "update bank details" and payout-failed re-entry path. Identity is
+  // already with Stripe; only the destination changes.
+  //
+  // MONEY: `default_for_currency: true` is the entire point of the call. A
+  // second same-currency bank account does NOT become the payout destination
+  // by being added — without the flag, this would report "bank_updated" while
+  // every future bounty kept going to the account they were trying to leave.
   if (existing.accountId && !hasAccountToken) {
     try {
       await stripe.accounts.createExternalAccount(existing.accountId, {
         external_account: bankToken,
+        default_for_currency: true,
       });
       console.log('[payments] payout bank replaced', { accountId: existing.accountId });
       return jsonResponse({ status: 'bank_updated' });

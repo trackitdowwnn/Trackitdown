@@ -12,9 +12,15 @@
  *          2. `ConnectAccountOnboarding` — Stripe's embedded component, in-app,
  *             for whatever our form could not say and the liveness check only
  *             they can do.
- *          3. The browser — for changing details on an account that already
- *             works (Stripe has no React Native component for it) and as the
- *             fallback if a session cannot be minted.
+ *          3. `BankDetailsForm` — changing WHERE the money lands on a working
+ *             account: three fields, in-app, both account generations (the
+ *             server's RE-BANK branch takes one bank token).
+ *          4. The browser — the fallback of last resort: a session that cannot
+ *             be minted, or a bank change Stripe refuses to take through our
+ *             form. For legacy Express accounts the server answers with a
+ *             LOGIN LINK (account_update links are refused when Stripe
+ *             collects requirements — found as a spinner-to-nowhere,
+ *             2026-08-04).
  *        Our form cannot describe a company or a non-UK account, so a
  *        `DETAILS_REJECTED` offers "Continue with Stripe", which spends the
  *        prefill window deliberately rather than leaving someone permanently
@@ -81,6 +87,7 @@ import {
   type PayoutDetails,
 } from '../api/payoutsApi';
 import { createBankToken, createIdentityToken } from '../api/stripeTokens';
+import { BankDetailsForm } from '../components/BankDetailsForm';
 import { PayoutDetailsForm } from '../components/PayoutDetailsForm';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
 
@@ -138,8 +145,13 @@ export function PayoutsScreen() {
   const params = useLocalSearchParams<{ onboarding?: string }>();
   const [opening, setOpening] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  // "Update bank details" on a ready account: three fields, in the app. The
+  // browser hop this replaced was a dead end for legacy Express accounts —
+  // Stripe refuses `account_update` links when it collects requirements.
+  const [showBankForm, setShowBankForm] = useState(false);
   // Stripe refused what our form can describe. Offers the way past.
   const [detailsRejected, setDetailsRejected] = useState(false);
+  const [bankRejected, setBankRejected] = useState(false);
   // The earn moment's context: "You've earned £X". Server-derived via
   // payout_split, so the push and this line can never disagree on the number.
   //
@@ -339,6 +351,48 @@ export function PayoutsScreen() {
   }, [open]);
 
   /**
+   * Replace only the bank on the existing account: one bank token on the
+   * phone, one opaque id to the server's RE-BANK branch. Nothing sensitive
+   * transits us, and nothing needs a browser.
+   */
+  const onSubmitBank = useCallback(
+    async (details: { sortCode: string; accountNumber: string }) => {
+      setOpening(true);
+      try {
+        const bankToken = await createBankToken(details);
+        await submitPayoutTokens({ bankToken });
+        setShowBankForm(false);
+        setBankRejected(false);
+        toast.show('Done — bounties will go to your new account.');
+        refresh();
+      } catch (error) {
+        // A refusal our three fields cannot explain (an account Stripe cannot
+        // pay, an API restriction on this account's generation): keep the form
+        // up and offer Stripe's own surface as the way past, below.
+        if (error instanceof PaymentError && error.code === 'DETAILS_REJECTED') {
+          setBankRejected(true);
+        }
+        toast.show(
+          error instanceof PaymentError
+            ? error.message
+            : 'We couldn’t save your details. Please try again.',
+          'error',
+        );
+      } finally {
+        setOpening(false);
+      }
+    },
+    [refresh, toast],
+  );
+
+  /** The Stripe-surface fallback for a bank change our form couldn't land. */
+  const onBankViaStripe = useCallback(async () => {
+    setShowBankForm(false);
+    setBankRejected(false);
+    await open();
+  }, [open]);
+
+  /**
    * The embedded component has closed. This is EXACTLY as much of a promise as
    * the browser redirect was — which is to say none: `payouts_enabled` is
    * written only by Stripe's `account.updated` webhook, and someone can exit
@@ -474,6 +528,37 @@ export function PayoutsScreen() {
         </>
       );
     }
+    if (showBankForm) {
+      return (
+        <>
+          <BankDetailsForm
+            onSubmit={onSubmitBank}
+            onCancel={() => {
+              setShowBankForm(false);
+              setBankRejected(false);
+            }}
+            busy={opening}
+          />
+          {bankRejected ? (
+            <View style={styles.card} testID="payouts-bank-rejected">
+              <Text style={styles.cardTitle} accessibilityRole="header">
+                Stripe needs something else
+              </Text>
+              <Text style={styles.cardBody}>
+                If Stripe can’t take that account here, their own page can sort it out
+                directly.
+              </Text>
+              <Button
+                label="Continue with Stripe"
+                variant="secondary"
+                onPress={() => void onBankViaStripe()}
+                loading={opening}
+              />
+            </View>
+          ) : null}
+        </>
+      );
+    }
     if (settling) {
       // ABOVE `error` on purpose: the settling window issues its own re-reads,
       // and one transient failure among them must not flip "Nearly there" into
@@ -539,7 +624,10 @@ export function PayoutsScreen() {
         <Button
           label={COPY[status].action}
           loading={opening}
-          onPress={() => void open()}
+          // Ready means "change where the money lands" — three fields, in the
+          // app, both account generations. Every other state still needs a
+          // Stripe surface of one kind or another, and `open` picks which.
+          onPress={() => (status === 'ready' ? setShowBankForm(true) : void open())}
           variant={status === 'ready' ? 'secondary' : 'primary'}
         />
       </View>

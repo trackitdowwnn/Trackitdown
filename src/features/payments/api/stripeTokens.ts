@@ -114,15 +114,32 @@ export async function createIdentityToken(
 }
 
 /**
+ * What a bank token needs. `PayoutDetails` satisfies this structurally; the
+ * bank-only replacement form sends just the two numbers — the holder name is
+ * already on the account at Stripe, and re-asking it to change a sort code
+ * would be theatre.
+ */
+export interface BankTokenDetails {
+  firstName?: string;
+  lastName?: string;
+  sortCode: string;
+  accountNumber: string;
+}
+
+/**
  * Mint the bank token via the SDK. Needs a mounted StripeProvider —
  * PayoutsScreen wraps itself in BountyPaymentProvider for exactly this.
  */
-export async function createBankToken(details: PayoutDetails): Promise<string> {
+export async function createBankToken(details: BankTokenDetails): Promise<string> {
+  const holderName =
+    details.firstName && details.lastName
+      ? `${details.firstName} ${details.lastName}`
+      : undefined;
   const { token, error } = await createToken({
     type: 'BankAccount',
     country: 'GB',
     currency: 'gbp',
-    accountHolderName: `${details.firstName} ${details.lastName}`,
+    accountHolderName: holderName,
     accountHolderType: 'Individual',
     routingNumber: details.sortCode,
     accountNumber: details.accountNumber,

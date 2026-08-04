@@ -159,10 +159,26 @@ Deno.serve(async (request) => {
       console.log('[payments] connect update link issued', { accountId });
       return jsonResponse({ status: 'update_available', url: link.url });
     } catch (err) {
-      // Falling back to the old answer keeps a working payout account working:
-      // failing here would make "manage my details" look like "payouts broke".
-      console.error('[payments] connect update link failed', (err as Error).message);
-      return jsonResponse({ status: 'already_enabled' });
+      // EXPECTED for legacy Express accounts, not exceptional: Stripe refuses
+      // `account_update` links wherever IT collects requirements, which is
+      // every account with an Express dashboard. Their supported "manage my
+      // details" surface is that dashboard, and a LOGIN LINK is the door to
+      // it. (v2 dashboard-none accounts are the mirror image: account_update
+      // works, login links would fail — there is no dashboard to log into.)
+      // Before this branch, the failure fell through to `already_enabled` and
+      // the button showed a spinner that went nowhere.
+      console.warn('[payments] connect update link refused', (err as Error).message);
+      try {
+        const login = await stripe.accounts.createLoginLink(accountId);
+        console.log('[payments] connect login link issued', { accountId });
+        return jsonResponse({ status: 'update_available', url: login.url });
+      } catch (loginErr) {
+        // Falling back to the old answer keeps a working payout account
+        // working: failing here would make "manage my details" look like
+        // "payouts broke".
+        console.error('[payments] connect login link failed', (loginErr as Error).message);
+        return jsonResponse({ status: 'already_enabled' });
+      }
     }
   }
 
