@@ -35,16 +35,16 @@
  * SAFETY: refuses a post with a credited sighting — that money is a spotter's.
  *         Checked here AND again inside mark_post_recovered_no_spotter, because
  *         this check happens before the refund and the DB one after it.
- * LINKS: supabase/functions/deactivate-post/index.ts (the sibling this mirrors);
+ * LINKS: supabase/functions/_shared/refundEscrow.ts (the refund execution);
+ *        supabase/functions/deactivate-post/index.ts (the sibling this mirrors);
  *        supabase/migrations/20260802210000_mark_recovered_no_spotter.sql;
  *        supabase/migrations/20260802200000_claim_recovery.sql;
  *        docs/DOMAIN.md (lifecycle 6, bounty rules); docs/decisions/ADR-0002.
  */
 
-import type Stripe from 'npm:stripe@22.4.0';
-
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -121,73 +121,33 @@ Deno.serve(async (request) => {
     );
   }
 
-  // --- The held escrow --------------------------------------------------------
-  const { data: held, error: heldError } = await admin
-    .from('payments')
-    .select('stripe_payment_intent_id, amount_pence')
-    .eq('post_id', postId)
-    .eq('status', 'held')
-    .maybeSingle();
+  // --- Refund the held escrow (the one shared implementation) -----------------
+  // Fee read authoritatively, arithmetic guarded, refund idempotent — see
+  // _shared/refundEscrow.ts. Key distinct from deactivate-post's
+  // `post-refund-<id>`: one post could be cancelled and then recovered, and a
+  // shared key would return the FIRST refund for the second request.
+  const stripe = createStripeClient();
+  const outcome = await refundHeldEscrow(admin, stripe, {
+    postId,
+    idempotencyKey: `recovery-refund-${postId}`,
+    metadata: { reason: 'recovered_no_spotter' },
+  });
 
-  if (heldError) {
-    console.error('[payments] held payment lookup failed', heldError.message);
-    return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
-  }
-  if (!held) {
+  if (outcome.status === 'no_held_payment') {
     return errorResponse('NO_HELD_PAYMENT', 'We couldn’t find the escrow for this listing.', 409);
   }
-
-  const paymentIntentId = held.stripe_payment_intent_id as string;
-  const amountPence = held.amount_pence as number;
-
-  // --- The authoritative Stripe fee (never guessed) ---------------------------
-  const stripe = createStripeClient();
-  let feePence: number | null = null;
-  try {
-    const intent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ['latest_charge.balance_transaction'],
-    });
-    const charge = intent.latest_charge as Stripe.Charge | null;
-    const balanceTxn = charge?.balance_transaction as Stripe.BalanceTransaction | null;
-    if (balanceTxn && typeof balanceTxn.fee === 'number') {
-      feePence = balanceTxn.fee;
-    }
-  } catch (err) {
-    console.error('[payments] fee lookup failed', (err as Error).message);
+  if (outcome.status === 'lookup_failed') {
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
   }
-  if (feePence === null) {
+  if (outcome.status === 'stripe_error') {
     return errorResponse('STRIPE_ERROR', 'We couldn’t finish this. Please try again.', 502);
   }
-
-  const refundPence = amountPence - feePence;
-  if (refundPence <= 0 || refundPence > amountPence) {
-    console.error('[payments] computed refund out of range', { amountPence, feePence });
-    return errorResponse('STRIPE_ERROR', 'We couldn’t finish this. Please try again.', 500);
-  }
-
-  // --- Refund (idempotent) ----------------------------------------------------
-  // Key distinct from deactivate-post's `post-refund-<id>`: one post could be
-  // cancelled and then recovered, and a shared key would return the FIRST
-  // refund for the second request.
-  let refund: Stripe.Refund;
-  try {
-    refund = await stripe.refunds.create(
-      {
-        payment_intent: paymentIntentId,
-        amount: refundPence,
-        metadata: { post_id: postId, reason: 'recovered_no_spotter' },
-      },
-      { idempotencyKey: `recovery-refund-${postId}` },
-    );
-  } catch (err) {
-    console.error('[payments] refund create failed', (err as Error).message);
-    return errorResponse('STRIPE_ERROR', 'We couldn’t finish this. Please try again.', 502);
-  }
+  const { refundId, refundPence, feePence, paymentIntentId } = outcome;
 
   // --- Record it (idempotent, never-regress) ----------------------------------
   const { error: rpcError } = await admin.rpc('mark_post_recovered_no_spotter', {
     p_payment_intent_id: paymentIntentId,
-    p_refund_id: refund.id,
+    p_refund_id: refundId,
     p_refunded_amount_pence: refundPence,
   });
   if (rpcError) {
