@@ -23,6 +23,8 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 export interface ConnectAccountLookup {
   accountId: string | null;
   payoutsEnabled: boolean;
+  /** Stripe's "they finished the form" flag, as our row last heard it. */
+  onboardingComplete: boolean;
   /** Whether they have already given us details through our own form. */
   detailsSubmitted: boolean;
 }
@@ -34,7 +36,7 @@ export async function findConnectAccount(
 ): Promise<ConnectAccountLookup> {
   const { data, error } = await admin
     .from('stripe_connected_accounts')
-    .select('stripe_account_id, payouts_enabled, details_submitted_at')
+    .select('stripe_account_id, payouts_enabled, onboarding_complete, details_submitted_at')
     .eq('profile_id', userId)
     .maybeSingle();
 
@@ -44,6 +46,7 @@ export async function findConnectAccount(
   return {
     accountId: (data?.stripe_account_id as string | undefined) ?? null,
     payoutsEnabled: Boolean(data?.payouts_enabled),
+    onboardingComplete: Boolean(data?.onboarding_complete),
     detailsSubmitted: Boolean(data?.details_submitted_at),
   };
 }

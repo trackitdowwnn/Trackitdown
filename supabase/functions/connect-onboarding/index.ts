@@ -101,6 +101,48 @@ Deno.serve(async (request) => {
   const stripe = createStripeClient();
   let accountId = existing.accountId ?? undefined;
 
+  // RECONCILE BEFORE DECIDING. Our row's flags are written by the
+  // account.updated webhook — which silently never arrives if the Stripe
+  // endpoint isn't scoped to CONNECTED accounts (a dashboard setting, easy to
+  // get wrong, invisible when wrong). Found the hard way: a spotter finished
+  // onboarding perfectly and this function kept answering "continue setting
+  // up" off a stale row, forever. So when the account exists, ask Stripe
+  // directly and sync; the webhook becomes an optimisation, not a dependency.
+  //
+  // A failed read falls back to the row — that is exactly the status quo this
+  // block exists to improve on, so degrading to it is honest, not fail-open.
+  if (accountId) {
+    try {
+      const account = await stripe.accounts.retrieve(accountId);
+      const fresh = {
+        onboardingComplete: Boolean(account.details_submitted),
+        payoutsEnabled: Boolean(account.payouts_enabled),
+      };
+      if (
+        fresh.onboardingComplete !== existing.onboardingComplete ||
+        fresh.payoutsEnabled !== existing.payoutsEnabled
+      ) {
+        const { error: syncError } = await admin.rpc('upsert_connected_account', {
+          p_profile_id: userId,
+          p_stripe_account_id: accountId,
+          p_onboarding_complete: fresh.onboardingComplete,
+          p_payouts_enabled: fresh.payoutsEnabled,
+        });
+        if (syncError) {
+          console.error('[payments] connect reconcile write failed', syncError.message);
+        } else {
+          console.log('[payments] connect account reconciled', {
+            accountId,
+            payoutsEnabled: fresh.payoutsEnabled,
+          });
+          existing = { ...existing, ...fresh };
+        }
+      }
+    } catch (err) {
+      console.warn('[payments] connect reconcile read failed', (err as Error).message);
+    }
+  }
+
   // ALREADY PAYABLE. Not "nothing to do" — people change banks, move house, and
   // have documents expire, and until 2026-08-03 this returned a bare
   // `already_enabled` with no link, which left a set-up spotter with no route
