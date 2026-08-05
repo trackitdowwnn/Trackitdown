@@ -24,7 +24,6 @@ import { z } from 'zod';
 import type { PublicProfile } from '@/features/profile';
 import { notifyMessage } from '@/features/notifications';
 import { supabase } from '@/shared/api';
-import { samplePhotos } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import type { PostStatus } from '@/shared/types';
 
@@ -147,11 +146,9 @@ function toInboxThread(row: z.infer<typeof inboxRowSchema>): InboxThread {
       colour: row.post.colour,
       plate: row.post.plate,
       status: row.post.status,
-      // Seeded posts have no photos, and the feed fakes its pictures with
-      // samplePhotos — keyed by post id here too, so the same car shows the
-      // SAME photo in the feed, the watchlist and its chat rows. [] in
-      // production, where the real url wins anyway.
-      coverPhotoUrl: row.post.cover_photo_url ?? samplePhotos(row.post_id)[0]?.uri ?? null,
+      // The RPC's real cover photo, or nothing. Null renders the thread row's
+      // placeholder, which is the honest answer for a post without pictures.
+      coverPhotoUrl: row.post.cover_photo_url ?? null,
     },
     other: {
       firstName: row.other.first_name,

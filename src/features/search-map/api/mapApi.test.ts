@@ -32,6 +32,9 @@ const rpcMapPost = (overrides: Record<string, unknown> = {}) => ({
   last_seen_area: 'St Albans',
   distance_miles: null,
   created_at: '2026-07-10T18:05:00Z',
+  // search_posts shares home_feed_post_json, so map pins carry the same cover
+  // photo the feed cards do — the result sheet renders real cars too.
+  photos: [{ url: 'https://cdn.example/map-cover.jpg' }],
   lat: 51.752,
   lng: -0.339,
   ...overrides,

@@ -15,7 +15,6 @@
 import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
-import { samplePhotos } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import type { PostStatus } from '@/shared/types';
 
@@ -116,12 +115,9 @@ function toPostDetail(row: VisibleRow): PostDetail {
     lat: row.lat ?? undefined,
     lng: row.lng ?? undefined,
     // Photo order is the RPC's (by position); map url → uri for AppImage.
-    // No real photos yet (upload pipeline unbuilt) → DEV shows sample car
-    // images so the hero can be seen (samplePhotos is [] in production).
-    photos:
-      row.photos.length > 0
-        ? row.photos.map((photo) => ({ uri: photo.url }))
-        : samplePhotos(row.id),
+    // Empty means empty (2026-08-06): the hero renders its placeholder rather
+    // than borrowing a stranger's car from the old __DEV__ sample pool.
+    photos: row.photos.map((photo) => ({ uri: photo.url })),
     owner: {
       memberSince: row.owner.member_since,
       firstName: row.owner.first_name ?? undefined,

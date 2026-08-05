@@ -16,7 +16,6 @@
 import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
-import { samplePhotos } from '@/shared/lib';
 import { createLogger, redactLocation } from '@/shared/lib/logger';
 import type { PostStatus, PostSummary } from '@/shared/types';
 
@@ -46,6 +45,12 @@ export const rpcPostSchema = z.object({
   last_seen_area: z.string().nullable(),
   distance_miles: z.number().nullable(),
   created_at: z.string(),
+  // The card's cover image, pre-shaped by home_feed_post_json as a one-element
+  // array ([] when the post has no photos). REQUIRED, not optional: the server
+  // coalesces to [] and never omits the key, so an absent one means the RPC
+  // and this file have drifted — which must fail loudly here rather than
+  // render a feed of placeholders that looks like a product decision.
+  photos: z.array(z.object({ url: z.string() })),
 });
 
 const rpcSectionSchema = z.object({
@@ -63,10 +68,12 @@ type RpcPost = z.infer<typeof rpcPostSchema>;
 export function toPostSummary(row: RpcPost): PostSummary {
   return {
     id: row.id,
-    // No photo schema in the feed RPC yet → cards render the placeholder in
-    // production; DEV fills sample car images so the feed can be seen with
-    // pictures (samplePhotos returns [] outside __DEV__).
-    photos: samplePhotos(row.id),
+    // The real cover photo, straight from the RPC (2026-08-06). Until then
+    // this line called samplePhotos(), which meant DEV saw a feed full of
+    // Unsplash cars and production saw blank cards — the bug and its own
+    // camouflage in one expression. An empty array here is now the honest
+    // answer for a post whose uploads failed: the card shows a placeholder.
+    photos: row.photos.map((photo) => ({ uri: photo.url })),
     make: row.make,
     model: row.model,
     colour: row.colour,

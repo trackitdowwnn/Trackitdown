@@ -8,23 +8,27 @@ Primary actor: **spotter** (any signed-in user browsing); owners see their
 own posts here like anyone else. Read-only feature: never writes posts,
 never touches status or money.
 
-> ## ⚠️ THE FEED HAS NO PHOTOS IN A RELEASE BUILD (found 2026-08-03)
+> ## ✅ THE FEED HAS ITS PHOTOS (found 2026-08-03, fixed 2026-08-06)
 >
-> `get_home_feed` has **no photo column**, so `api/feedApi.ts:66` fills cards
-> from `src/shared/lib/devSampleImages.ts`, which returns ten Unsplash cars in
-> `__DEV__` and **`[]` everywhere else**. Every card in the feed, the watchlist
-> and the inbox renders the placeholder on a real build.
+> For weeks `get_home_feed` had **no photo column**, so `feedApi` filled cards
+> from `src/shared/lib/devSampleImages.ts` — ten Unsplash cars in `__DEV__`,
+> `[]` everywhere else. Every card in the feed, the watchlist and the inbox
+> rendered a placeholder on a real build.
 >
-> This was invisible for weeks precisely BECAUSE of the dev fallback: the app
-> looked finished on every dev build anyone ever ran it on. A stand-in that is
-> only convincing to the developer is worse than a visible gap.
+> **Why it survived so long is the lesson worth keeping.** The dev fallback
+> was the bug's own camouflage: the app looked finished on every dev build
+> anyone ever ran it on. A stand-in that is only convincing to the developer
+> is worse than a visible gap, and `devSampleImages.ts` was deleted in the
+> same commit as the fix so the two can never disagree again.
 >
-> The fix is a photo column on the feed/search/nearby RPCs and a real
-> `photos` field on the card schemas; the dev fallback should be deleted in
-> the same change, so dev and prod agree about what exists. Until then, treat
-> any screenshot of the feed as fiction. Same fallback in
-> `watchlist/api/watchlistApi.ts:70,91`, `chat/api/chatApi.ts:154`,
-> `vehicles/api/vehicleApi.ts:124`.
+> The fix is in the SHARED serialiser — `home_feed_post_json` now emits
+> `'photos'` as the first photo by position (`[{url}]`, or `[]`), so
+> `get_home_feed`, `get_nearby_posts`, `search_posts`, `get_map_posts` and
+> post detail all gained it at once, and a tenth caller added later cannot
+> forget it. The client schema REQUIRES the key: a server that stops sending
+> it fails loudly rather than quietly reinstating a blank feed. See
+> `supabase/migrations/20260806130000_feed_photos.sql` and CHECKS 17–19 in
+> `supabase/tests/home_feed_verification.sql`.
 
 **Screens**
 - `HomeFeedScreen` (route `src/app/(tabs)/explore.tsx`) — the feed.

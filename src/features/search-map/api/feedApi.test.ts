@@ -34,6 +34,9 @@ const rpcPost = (overrides: Record<string, unknown> = {}) => ({
   last_seen_area: 'Salford',
   distance_miles: 2.4,
   created_at: '2026-07-10T18:05:00Z',
+  // The RPC's cover photo, one-element array (home_feed_post_json coalesces to
+  // [] and never omits the key — hence a fixture that always carries it).
+  photos: [{ url: 'https://cdn.example/post-cover.jpg' }],
   ...overrides,
 });
 
@@ -75,7 +78,7 @@ describe('fetchHomeFeed', () => {
     expect(sections[0].id).toBe('near_you');
     expect(sections[0].posts[0]).toEqual({
       id: POST_ID,
-      photos: [],
+      photos: [{ uri: 'https://cdn.example/post-cover.jpg' }],
       make: 'Ford',
       model: 'Fiesta',
       colour: 'Blue',
@@ -135,6 +138,64 @@ describe('fetchHomeFeed', () => {
     expect(section.posts[0].lastSeenAt).toBe('2026-07-10T18:05:00Z'); // created_at fallback
     expect(section.posts[0].lastSeenArea).toBeUndefined();
     expect(section.posts[0].distanceMiles).toBeUndefined();
+  });
+
+  // ⛳ The regression these three guard is the one that shipped: the feed RPC
+  // returned no photo column, so every production card rendered a placeholder
+  // while __DEV__ filled itself with sample cars and hid the fact for weeks.
+  it('maps the RPC cover photo to PostSummary.photos', async () => {
+    mockRpc.mockResolvedValue(
+      feedPayload([
+        {
+          id: 'near_you',
+          title: 'Near you',
+          layout: 'hero-vertical',
+          posts: [rpcPost({ photos: [{ url: 'https://cdn.example/real-car.jpg' }] })],
+        },
+      ]),
+    );
+
+    const [section] = await fetchHomeFeed({ latitude: 53.48, longitude: -2.24, radiusMiles: 20 });
+
+    expect(section.posts[0].photos).toEqual([{ uri: 'https://cdn.example/real-car.jpg' }]);
+  });
+
+  it('maps a photoless post to [] — never a fabricated image', async () => {
+    mockRpc.mockResolvedValue(
+      feedPayload([
+        {
+          id: 'near_you',
+          title: 'Near you',
+          layout: 'hero-vertical',
+          posts: [rpcPost({ photos: [] })],
+        },
+      ]),
+    );
+
+    const [section] = await fetchHomeFeed({ latitude: 53.48, longitude: -2.24, radiusMiles: 20 });
+
+    expect(section.posts[0].photos).toEqual([]);
+  });
+
+  it('rejects a post with NO photos key at all (server drift must be loud)', async () => {
+    // The key is required, not optional-with-default, precisely so that a
+    // server which stopped sending photos fails here instead of quietly
+    // reinstating the blank feed this whole change removed.
+    const { photos: _dropped, ...withoutPhotos } = rpcPost();
+    mockRpc.mockResolvedValue(
+      feedPayload([
+        {
+          id: 'near_you',
+          title: 'Near you',
+          layout: 'hero-vertical',
+          posts: [withoutPhotos],
+        },
+      ]),
+    );
+
+    await expect(
+      fetchHomeFeed({ latitude: 53.48, longitude: -2.24, radiusMiles: 20 }),
+    ).rejects.toThrow();
   });
 
   it('rejects a post whose status is not publicly visible (SAFETY)', async () => {

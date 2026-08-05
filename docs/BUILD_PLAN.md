@@ -155,10 +155,13 @@ of it. **Run the beta on Stripe TEST MODE** — test cards, full loop, no real
 money held — which moves legal review, live-mode Stripe and the hosted privacy
 policy out of the path and into pre-submission, where they actually bind.
 
-- [ ] **Feed photos in production** (ROADMAP critical path #1). Photo data on
-      `get_home_feed` / `search_posts` / nearby, copying the shape
-      `list_my_posts` already returns. Delete `devSampleImages` in the same
-      commit.
+- [x] **Feed photos in production** (ROADMAP critical path #1) — **DONE
+      2026-08-06.** Landed one level deeper than this line planned: the
+      `'photos'` key went into the SHARED `home_feed_post_json` serialiser
+      rather than into each RPC, so `get_home_feed`, `get_nearby_posts`,
+      `search_posts`, `get_map_posts` and post detail all gained it at once
+      and a future caller cannot forget it. `devSampleImages` deleted in the
+      same commit, as required. CHECKS 17–19 in `home_feed_verification.sql`.
 - [ ] **Spotter "My reports" surface** — `list_my_sightings` + a screen entered
       from Profile, mirroring "My posts". Give `/sighting-dispute` its in-app
       door here: today it is reachable ONLY by push, so a spotter who declined
@@ -166,7 +169,8 @@ policy out of the path and into pre-submission, where they actually bind.
 - [ ] **One telemetry sink** (ROADMAP critical path #2). 70 events already
       emitted, none escaping the device. Ship with the item above so the first
       testers are measured.
-- [ ] **The cut list** — `devSampleImages`, `QuickReplyRow` → `ChoiceChips`,
+- [~] **The cut list** — ~~`devSampleImages`~~ (done 2026-08-06),
+      `QuickReplyRow` → `ChoiceChips`,
       the two permission primers, passive expiry (a DOMAIN edit), DVLA off v1.
 - [ ] EAS build to a closed internal track; **verify internal testing is not
       review-gated** before assuming it.

@@ -586,3 +586,127 @@ begin
   end if;
   raise notice 'CHECK 16 passed: plate criterion ignored (== no criteria); make criterion narrows % -> %', v_count_all, v_count_make;
 end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 17 — every post the feed emits carries a 'photos' ARRAY.
+-- ROADMAP critical path #1: the feed shipped with no photo column at all, and
+-- the client papered over it with __DEV__ sample images — so production cards
+-- were blank while ours looked perfect. The key must exist, be a jsonb array,
+-- and never be null, because the client schema requires an array (a null key
+-- would fail parsing and take the whole feed down rather than one card).
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_total   integer;
+  v_bad     integer;
+begin
+  with feed as (
+    select public.get_home_feed(53.4808, -2.2426, 15000) as doc
+  ),
+  returned as (
+    select post
+    from feed,
+         lateral jsonb_array_elements(doc -> 'sections') as section,
+         lateral jsonb_array_elements(section -> 'posts') as post
+  )
+  select count(*),
+         count(*) filter (where jsonb_typeof(post -> 'photos') is distinct from 'array')
+    into v_total, v_bad
+  from returned;
+
+  if v_total = 0 then
+    raise exception 'CHECK 17 FAILED: get_home_feed returned no posts near Manchester (seed missing?)';
+  end if;
+  if v_bad > 0 then
+    raise exception 'CHECK 17 FAILED: % of % feed post(s) had a missing/non-array photos key', v_bad, v_total;
+  end if;
+  raise notice 'CHECK 17 passed: all % feed post(s) carry a photos array', v_total;
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 18 — the photo is the post's REAL first photo, not just any photo.
+-- The seed gives every post three (positions 0..2) from a rotating pool, so a
+-- helper that dropped the ORDER BY would still pass CHECK 17 while showing a
+-- different car's angle as the cover. Asserted against get_nearby_posts, which
+-- returns a flat array and shares the helper with every other feed RPC.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_checked integer;
+  v_wrong   integer;
+begin
+  with page as (
+    select public.get_nearby_posts(53.4808, -2.2426, 15000, 0, 25) as doc
+  ),
+  returned as (
+    select (post ->> 'id')::uuid                as id,
+           post -> 'photos' -> 0 ->> 'url'      as cover
+    from page, lateral jsonb_array_elements(doc) as post
+  ),
+  expected as (
+    select r.id,
+           r.cover,
+           (select pp.url
+              from public.post_photos pp
+             where pp.post_id = r.id
+             order by pp.position
+             limit 1) as first_url
+    from returned r
+  )
+  select count(*), count(*) filter (where cover is distinct from first_url)
+    into v_checked, v_wrong
+  from expected;
+
+  if v_checked = 0 then
+    raise exception 'CHECK 18 FAILED: get_nearby_posts returned nothing to check (seed missing?)';
+  end if;
+  if v_wrong > 0 then
+    raise exception 'CHECK 18 FAILED: % of % card(s) showed a photo that is not the lowest-position one', v_wrong, v_checked;
+  end if;
+  raise notice 'CHECK 18 passed: all % card(s) show the post''s first photo by position', v_checked;
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 19 — a post with NO photos yields [], not null and not an error.
+-- The production case the seed never produces: a paid post whose uploads
+-- failed. It must render a placeholder card, not break the feed's parse.
+-- Seeds its own post, asserts, and rolls the row back out again.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_owner  uuid;
+  v_post   uuid;
+  v_photos jsonb;
+begin
+  select owner_id into v_owner from public.posts where status = 'active' limit 1;
+  if v_owner is null then
+    raise exception 'CHECK 19 FAILED: no active seed post to borrow an owner from';
+  end if;
+
+  insert into public.posts (owner_id, make, model, colour, bounty_amount_pence,
+                            status, last_seen_at, last_seen_area, last_seen_location)
+  values (v_owner, 'Photoless', 'Testcar', 'Grey', 10000,
+          'active', now(), 'Manchester',
+          ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography)
+  returning id into v_post;
+
+  select post -> 'photos'
+    into v_photos
+  from lateral jsonb_array_elements(
+         public.get_nearby_posts(53.4808, -2.2426, 15000, 0, 25)
+       ) as post
+  where (post ->> 'id')::uuid = v_post;
+
+  if v_photos is null then
+    raise exception 'CHECK 19 FAILED: the photoless post did not come back from get_nearby_posts at all';
+  end if;
+  if v_photos <> '[]'::jsonb then
+    raise exception 'CHECK 19 FAILED: a photoless post emitted % instead of []', v_photos;
+  end if;
+
+  delete from public.posts where id = v_post;
+  raise notice 'CHECK 19 passed: a post with no photos emits [] and still renders';
+end $$;

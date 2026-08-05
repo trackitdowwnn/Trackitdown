@@ -34,24 +34,23 @@ v1 scope, stop and flag it.
       prefills the wizard (5 per account, plate optional, no V5C; posts
       snapshot rather than reference the saved car — added to scope + built
       2026-07-27)
-- [~] Search: map + list of active posts, distance sorting (features/search-map
+- [x] Search: map + list of active posts, distance sorting (features/search-map
       — Explore feed, map screen, list sheet; distance sorting is server-side,
       `order by dist` in get_home_feed/search_posts)
-      **⚠️ Downgraded from [x] on 2026-08-03: the cards have no photos in a
-      release build.** `get_home_feed` returns no photo column, so
-      `feedApi.ts:66` falls back to `devSampleImages`, which yields ten
-      Unsplash cars in `__DEV__` and `[]` in production. Feed, watchlist and
-      inbox all render placeholders for real users. A stolen-car feed without
-      photographs of the cars is not a shipped search feature. Fix = photo
-      data on the feed/search/nearby RPCs + card schemas, and delete the dev
-      fallback in the same change so dev stops flattering us.
-      **⛳ CRITICAL PATH ITEM #1 (2026-08-05 review).** There is a working
-      precedent to copy rather than design: `list_my_posts` already returns
-      `'photos'` as a JSON array holding the post's FIRST photo (lowest
-      `post_photos.position`) as `[{ "url": ... }]`, shaped so it maps
-      straight to `PostSummary.photos` with no reshaping — see
-      `myPostsApi.ts:44` and the migration's own comment. This is an M, not
-      the L it has been reading as.
+      **Downgraded to [~] on 2026-08-03 because the cards had no photos in a
+      release build; RESTORED to [x] on 2026-08-06.** `home_feed_post_json` —
+      the serialiser all nine card RPCs share — now emits `'photos'` as the
+      post's first photo by position (`[{url}]`, or `[]`), so the feed, the
+      nearby pages, faceted search, the map and post detail gained real
+      pictures in one edit, and a tenth caller cannot forget them. The client
+      schema REQUIRES the key, so a server that stops sending it fails loudly
+      instead of quietly restoring the blank feed. `devSampleImages` was
+      deleted in the same commit — it was the bug's own camouflage, and every
+      remaining `samplePhotos()` fallback (watchlist, chat, post detail) went
+      with it. CHECKS 17–19 in `home_feed_verification.sql` assert the key
+      exists, that it is the LOWEST-position photo rather than any photo, and
+      that a photoless post yields `[]` rather than breaking the parse.
+      ⛳ This was CRITICAL PATH ITEM #1 for the 2026-08-26 beta.
 - [x] Spotter alerts: push notification on new active post within radius
       (built 2026-07-30 — features/notifications: push token registry, one
       shared send utility, tap routing incl. cold start, alert zones with
@@ -197,11 +196,12 @@ their own half, and no evidence from anyone but the author.** The six status
 corrections above came out of the same pass. What follows are the subtractions —
 taken first, deliberately.
 
-- **CUT: `devSampleImages`.** `samplePhotos()` returns ten Unsplash cars in
-  `__DEV__` and `[]` in production, which is *why* the missing feed photos
-  survived unnoticed: dev flatters us with a full feed while real users get
-  placeholders. Delete it in the same commit that lands real photo data, so the
-  feed can never lie to us again.
+- ~~**CUT: `devSampleImages`.**~~ **DONE 2026-08-06**, in the same commit that
+  landed real photo data, exactly as this entry required. `samplePhotos()`
+  returned ten Unsplash cars in `__DEV__` and `[]` in production, which is
+  *why* the missing feed photos survived unnoticed: dev flattered us with a
+  full feed while real users got placeholders. The module and all four call
+  sites are gone; the feed can no longer lie to us.
 - **CUT: passive post expiry.** DOMAIN promises "expiry (default 90 days, owner
   can renew), bounty refunded" and then concedes further down that nothing
   refunds by waiting. Nothing sets `status = 'expired'` anywhere. We are cutting
@@ -249,7 +249,8 @@ having anything to say.
   recovery flow) — one push kind and one sender, and the escrow decision stays
   a human act. Only after repeated silence should anything close the post, and
   even then closing it to new sightings is safer than refunding it.
-- **THE SILENT RUNNER-UP.** `claim_recovery` sets exactly one sighting to
+- ~~**THE SILENT RUNNER-UP.**~~ **CLOSED 2026-08-05, and properly closed
+  2026-08-06.** `claim_recovery` sets exactly one sighting to
   `credited` and leaves the others untouched, and `closed_uncredited` fires
   ONLY from `create_refund_hold` — i.e. only when nobody was credited. So when
   the owner credits spotter A, spotters B and C are told nothing whatsoever:
@@ -260,6 +261,16 @@ having anything to say.
   found, another spotter's report led to it. Costs one sender; buys back the
   goodwill of every spotter who ever loses, which on a crowd product is most
   of them.
+  **The follow-up is the part worth reading.** The push shipped on 2026-08-05
+  with a verification suite that `scripts/test-db.sh` never actually ran — the
+  suite was written and then not wired into the runner. Adding the one line on
+  2026-08-06 failed immediately: `claim_not_credited_notifications` deduped its
+  AUDIENCE per person but stamped its CLAIM per row, so a spotter who filed two
+  sightings kept an unclaimed one and a retry announced to them twice. Fixed in
+  `20260806140000_not_credited_claim_all_sightings.sql` (claim every eligible
+  row, dedupe with `jsonb_agg(distinct …)`). **A suite that is not in
+  `test-db.sh` is not a test**, and this one caught a real double-push the day
+  it was finally allowed to run.
 
 ## Beta target — 2026-08-26 (set by the 2026-08-05 review)
 
@@ -274,8 +285,9 @@ against App Store Connect before relying on it.**)
 
 The critical path, in order:
 
-1. **Feed photos in production** — see the Search item above. Nothing else
-   matters while the primary surface shows cars with no photographs of cars.
+1. ~~**Feed photos in production**~~ — **DONE 2026-08-06**, see the Search item
+   above. This was the "nothing else matters while it's broken" item; it is no
+   longer broken, and item 2 is now the head of the path.
 2. **Spotter "My reports" surface + the dispute door**, then **one telemetry
    sink**. Ship together: 70 funnel events are already instrumented and every
    one of them dies in the Metro console, so the day testers arrive is too late
