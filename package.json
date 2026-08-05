@@ -84,7 +84,7 @@
     "resolver": "react-native-worklets/jest/resolver",
     "testTimeout": 15000,
     "moduleNameMapper": {
-      "^react-native-reanimated$": "react-native-reanimated/mock",
+      "^react-native-reanimated$": "<rootDir>/jest/reanimatedMock.js",
       "^lucide-react-native$": "<rootDir>/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js"
     },
     "transformIgnorePatterns": [

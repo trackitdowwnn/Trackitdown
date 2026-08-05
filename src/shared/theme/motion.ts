@@ -70,6 +70,17 @@ export const motion = {
   /** BrandLoader: the phrase cross-fade. Ambient text breathes slower than
    *  UI motion on purpose — a sanctioned exception like mapFly. */
   loaderPhraseFade: 600,
+  /** BrandLoader: one full left-to-right pass of the shimmer highlight across
+   *  the waiting line. Sanctioned exception to the 200–300ms scale, like
+   *  loaderPhraseFade.
+   *
+   *  Was 1800ms and effectively invisible (2026-08-06): the splash it appears
+   *  on lifts as soon as the feed lands — often inside 500ms — so a near-two-
+   *  second sweep never completed even a third of a pass before the screen
+   *  was gone. A loading animation nobody ever sees a full cycle of is not a
+   *  calm animation, it is a missing one. At 700ms a whole sweep lands inside
+   *  the shortest splash, and a longer wait shows several. */
+  loaderShimmer: 700,
 } as const;
 
 export type MotionToken = keyof typeof motion;

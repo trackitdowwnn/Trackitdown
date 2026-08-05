@@ -21,7 +21,9 @@ jest.mock('react-native-safe-area-context', () =>
 );
 
 // Boundary mock: the loader needs animated views, fade builders (chainable
-// no-ops), shared values, and the reduced-motion flag.
+// no-ops), shared values, the reduced-motion flag, and — since the waiting
+// line shimmers per character — the colour interpolation and the loop
+// cancellation its cleanup calls.
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const { View, Text } = require('react-native');
@@ -41,10 +43,21 @@ jest.mock('react-native-reanimated', () => {
   return {
     __esModule: true,
     default: { View, Text },
-    Easing: { out: (fn: unknown) => fn, inOut: (fn: unknown) => fn, quad: () => 0, sin: () => 0 },
+    Easing: {
+      out: (fn: unknown) => fn,
+      inOut: (fn: unknown) => fn,
+      quad: () => 0,
+      sin: () => 0,
+      linear: () => 0,
+    },
     ReduceMotion: { System: 'system' },
     FadeIn: builder(),
     FadeOut: builder(),
+    // The waiting phrases rise in from below and leave through the top.
+    FadeInDown: builder(),
+    FadeOutUp: builder(),
+    cancelAnimation: () => {},
+    interpolateColor: () => '#6A6A6A',
     runOnJS: (fn: (...args: unknown[]) => void) => fn,
     useAnimatedStyle: () => ({}),
     useReducedMotion: () => false,
@@ -55,6 +68,20 @@ jest.mock('react-native-reanimated', () => {
     withTiming: (v: unknown) => v,
   };
 });
+
+/** The waiting line shimmers one view PER CHARACTER, so it is not a single
+ *  queryable text node — recompose what a reader actually sees. (The
+ *  reduced-motion branch does render one plain Text, so the test below that
+ *  covers it can still use getByText.) */
+function renderedText(view: { toJSON: () => unknown }): string {
+  const walk = (node: unknown): string => {
+    if (node == null) return '';
+    if (typeof node === 'string') return node;
+    if (Array.isArray(node)) return node.map(walk).join('');
+    return walk((node as { children?: unknown }).children);
+  };
+  return walk(view.toJSON());
+}
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -81,7 +108,7 @@ describe('FullscreenLoader', () => {
     });
 
     expect(view.getByTestId('fullscreen-loader-mark')).toBeTruthy();
-    expect(view.getByText('Uploading photos…')).toBeTruthy();
+    expect(renderedText(view)).toContain('Uploading photos…');
   });
 
   it('stays up for the 600ms minimum even when hidden immediately', async () => {
@@ -144,7 +171,7 @@ describe('FullscreenLoader', () => {
       view.rerender(loader(true, 'Processing payment…'));
     });
 
-    expect(view.getByText('Processing payment…')).toBeTruthy();
+    expect(renderedText(view)).toContain('Processing payment…');
   });
 
   it('renders the brand face with a waiting phrase when there is no message', async () => {
@@ -154,11 +181,12 @@ describe('FullscreenLoader', () => {
     // The one loading face: the wordmark plus one of the rotating phrases
     // (never silence — the phrase swap IS the liveness signal).
     expect(view.getByText('Trackitdown')).toBeTruthy();
-    const phrase = LOADER_PHRASES.find((candidate) => view.queryByText(candidate) !== null);
+    const rendered = renderedText(view);
+    const phrase = LOADER_PHRASES.find((candidate) => rendered.includes(candidate));
     expect(phrase).toBeDefined();
   });
 
-  it('renders the reduced-motion pulse variant', async () => {
+  it('renders the reduced-motion variant — one still line, no shimmer', async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- runtime mock override
     const reanimated = require('react-native-reanimated');
     const spy = jest.spyOn(reanimated, 'useReducedMotion').mockReturnValue(true);

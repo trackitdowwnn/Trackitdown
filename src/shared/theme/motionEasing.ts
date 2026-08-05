@@ -25,3 +25,10 @@ import { Easing } from 'react-native-reanimated';
  *  one — don't pre-export unused curves (each would force every partial
  *  Reanimated test mock to stub `Easing.in`/`.inOut` for no benefit). */
 export const easeOut = Easing.out(Easing.cubic);
+
+/** Constant speed — for a LOOPING ambient pass that has no beginning and no
+ *  end to decelerate into. The only consumer is BrandLoader's shimmer: an
+ *  eased sweep would accelerate away from one edge and brake into the other,
+ *  which on a repeat reads as a stutter twice per cycle. Do not reach for this
+ *  for anything that arrives or settles — that is `easeOut`'s job. */
+export const linear = Easing.linear;

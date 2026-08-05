@@ -14,6 +14,23 @@ spot-and-report-from-a-distance → recovered). Re-viewable via
 `/onboarding?revisit=1` ("How Trackitdown works" in settings). Local
 AsyncStorage flag `trackitdown.onboarding_seen_v1`.
 
+**Redesigned 2026-08-06.** The hero is a single UK registration plate drawn in
+code (`OnboardingPlate`), pinned ABOVE the pager so it does not scroll — what
+changes as you swipe is the status stamped beneath it: Reported → Broadcast →
+Sighted → Recovered, with the bounty named on the last. One car, one case, four
+states; the slides themselves are now purely words, and the footer numbers the
+steps because these four genuinely are the product loop in order.
+
+It replaced a placeholder emoji in a grey circle on every slide (🚗 📣 📸 🎉),
+which read as unfinished, told four unrelated stories, and — on the recovery
+slide — celebrated with party confetti at someone whose car had just been
+stolen. Monochrome by decision: a real plate is yellow, but this is the thing
+people remember from the screen, so it gets precision rather than novelty.
+
+`ONBOARDING_PLATE` is a well-formed current-style mark (it matches our seed
+fixture), so it could in principle belong to a real vehicle — **swap it for a
+cleared demonstration plate before any public release.**
+
 ## The deferred-auth gate (guest-first)
 
 `onboarding → the tabs, as a GUEST`. No auth wall anywhere: browsing (feed,

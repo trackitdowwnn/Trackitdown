@@ -218,6 +218,19 @@ a busy/alarming crime map.
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
+  Blocking waits show ONE face — `BrandLoader` (wordmark + a rotating waiting
+  phrase), rendered by both the cold-start splash and `FullscreenLoader`. The
+  phrase is lit by a highlight sweeping left to right through its letters
+  (`motion.loaderShimmer`, 700ms), above a small `ActivityIndicator`. Both,
+  deliberately: the splash usually lifts inside 500ms, and in a glimpse that
+  short the spinner is the part that reads, while the sweep is what makes the
+  wait feel like this app rather than any app. **Do not lengthen the sweep for
+  calm** — it shipped at 1800ms on 2026-08-06 and never completed a third of a
+  pass before the screen was gone, which is an animation nobody ever sees.
+  The sweep's resting colour is `textSecondary` and must not go lighter: it is
+  the lightest text colour clearing WCAG AA on the background (~4.9:1), and
+  the waiting phrase is content, not decoration. Under reduced motion the
+  sweep is dropped and the line renders still.
 - Profile surfaces (2026-07-16, docs/design-refs/profile/REFERENCE_SPEC.md):
   the identity hero/passport card is the ONE elevated object on its screen
   (`surface`, `radii.xl`, soft shadow, `sizes.avatarXl` avatar); counters

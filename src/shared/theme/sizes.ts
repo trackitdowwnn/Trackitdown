@@ -24,8 +24,6 @@ export const sizes = {
   progressPill: 24,
   /** Minimum touch target (DESIGN_SYSTEM Accessibility). */
   touchTarget: 44,
-  /** FullscreenLoader wave dot. */
-  loaderDot: 12,
   /** MoneySlider: thumb diameter and rail thickness (the touchable row is
    *  padded to touchTarget; these are the drawn sizes). */
   sliderThumb: 28,
