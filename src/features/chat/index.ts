@@ -7,6 +7,11 @@
  */
 
 export { ChatActionError, openThread, openThreadForSighting } from './api/chatApi';
+// fetchInbox + totalUnread power the Inbox route's hidden-half badge sync:
+// with the tab split into segments, only the visible screen's hook reports its
+// unread half, so the route re-reads the HIDDEN half on focus (ADR-0012).
+export { fetchInbox } from './api/chatApi';
+export { totalUnread } from './lib/inboxModel';
 export { ChatInboxScreen } from './screens/InboxScreen';
 export { ChatThreadScreen } from './screens/ChatThreadScreen';
 export type {

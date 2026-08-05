@@ -78,6 +78,9 @@ export const sizes = {
   /** AppTabBar badge: dot diameter and count-pill height. */
   badgeDot: 8,
   badgePill: 16,
+  /** The needs-attention accent bar on notification-center rows — a drawn
+   *  stroke, like timelineRailStroke, not a spacing value. */
+  attentionBar: 3,
   /** Skeleton-placeholder line height — a drawn dimension, not a spacing gap. */
   skeletonLine: 12,
   /** Embedded map picker height (e.g. the post-a-car "last seen where" step). */

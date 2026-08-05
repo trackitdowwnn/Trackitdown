@@ -233,6 +233,61 @@ export async function sendToUsers(
   return sendExpoPush(admin, messages);
 }
 
+/**
+ * THE RULE (DOMAIN.md, ADR-0012): persist first, then maybe push. Every
+ * notification-worthy event calls THIS, which writes one `notifications` row
+ * per recipient and then hands the same content to `sendToUsers` — so the
+ * in-app center and the push can never disagree, and a user who denied push
+ * permission still gets everything in the feed.
+ *
+ * ORDER IS THE POINT: the row insert comes first, and a push failure (or
+ * zero registered tokens) still leaves the rows. An INSERT failure is logged
+ * and the push still goes out — a database blip must not eat the lock-screen
+ * moment too; the row is the durable half, the push the best-effort half,
+ * and each fails alone. Never throws (same contract as sendToUsers).
+ *
+ * Chat is the one deliberate NON-caller: message pushes stay on bare
+ * sendToUsers because the Messages segment IS chat's persistent surface —
+ * duplicating threads into the center is noise (spec decision, 2026-08-05).
+ */
+export async function notifyUsers(
+  admin: SupabaseClient,
+  userIds: readonly string[],
+  content: {
+    kind: string;
+    title: string;
+    body: string;
+    data: Record<string, unknown>;
+    collapseKey?: string;
+  },
+): Promise<SendPushResult> {
+  const unique = [...new Set(userIds)];
+  if (unique.length === 0) return { accepted: 0, rejected: 0, pruned: 0 };
+
+  const { error } = await admin.from('notifications').insert(
+    unique.map((userId) => ({
+      user_id: userId,
+      kind: content.kind,
+      title: content.title,
+      body: content.body,
+      payload: content.data,
+    })),
+  );
+  if (error) {
+    console.error('[notifications] feed rows insert failed', {
+      kind: content.kind,
+      error: error.message,
+    });
+  }
+
+  return sendToUsers(admin, unique, {
+    title: content.title,
+    body: content.body,
+    data: content.data,
+    collapseKey: content.collapseKey,
+  });
+}
+
 /** Delete tokens Expo has told us are dead. Best-effort and idempotent. */
 async function pruneTokens(admin: SupabaseClient, tokens: readonly string[]): Promise<number> {
   let pruned = 0;

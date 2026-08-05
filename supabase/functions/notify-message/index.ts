@@ -17,6 +17,9 @@
  *        docs/ROADMAP.md (the pinned payload contract).
  */
 
+// DELIBERATELY sendToUsers, not notifyUsers: chat is the one sender excluded
+// from the notification center (ADR-0012) — the Messages segment IS its
+// persistent surface, and duplicating threads into the feed is noise.
 import { sendToUsers } from '../_shared/push.ts';
 import { createServiceRoleClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';

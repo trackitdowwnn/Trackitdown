@@ -62,6 +62,12 @@ jest.mock('../hooks/usePushRegistration', () => ({
   usePushRegistration: jest.fn(),
 }));
 
+// The api module reaches the supabase client (env-dependent at import).
+const mockMarkByPayload = jest.fn();
+jest.mock('../api/notificationsApi', () => ({
+  markNotificationsReadByPayload: (...args: unknown[]) => mockMarkByPayload(...args),
+}));
+
 function responseFor(data: unknown, identifier = 'notif-1') {
   return {
     notification: {

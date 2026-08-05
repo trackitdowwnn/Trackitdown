@@ -32,7 +32,8 @@ import { createServiceRoleClient, createStripeClient } from '../_shared/clients.
 import { errorResponse, jsonResponse } from '../_shared/http.ts';
 import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
 import { releasePayoutForPost } from '../_shared/releasePayout.ts';
-import { sendToUsers } from '../_shared/push.ts';
+import { notifyUsers } from '../_shared/push.ts';
+import { announcePayoutSent, announceRecoveryToWatchers } from '../_shared/recoveryAnnounce.ts';
 
 Deno.serve(async (request) => {
   if (request.method !== 'POST') {
@@ -61,7 +62,21 @@ Deno.serve(async (request) => {
     return errorResponse('NOT_AUTHENTICATED', 'Not allowed.', 401);
   }
   const stripe = createStripeClient();
-  const summary = { refunded: 0, paid: 0, notified: 0, skipped: 0 };
+  const summary = { refunded: 0, paid: 0, notified: 0, skipped: 0, purged: 0 };
+
+  // --- Phase 0: feed retention (ADR-0012 §8) ---------------------------------
+  // 90 days, anchored HERE so retention runs wherever the sweep runs; the
+  // dashboard's daily purge job is the belt. Best-effort like everything else.
+  try {
+    const { data: purged, error: purgeError } = await admin.rpc('purge_old_notifications');
+    if (purgeError) {
+      console.error('[notifications] purge failed', purgeError.message);
+    } else {
+      summary.purged = typeof purged === 'number' ? purged : 0;
+    }
+  } catch (err) {
+    console.error('[notifications] purge failed', (err as Error).message);
+  }
 
   // --- Phase 1: expired, undisputed holds → the owner's refund ---------------
   // "Released" is derived, not stored: a hold whose payment is no longer
@@ -127,6 +142,11 @@ Deno.serve(async (request) => {
       }
       console.log('[payments] held refund released', { postId, exitPath });
       summary.refunded += 1;
+      if (exitPath === 'recovery') {
+        // The post just became recovered_no_spotter — the watchers hear the
+        // car went home. Claim-guarded; a replay announces nothing twice.
+        await announceRecoveryToWatchers(admin, postId);
+      }
     } catch (err) {
       console.error('[payments] hold sweep item failed', { postId, error: (err as Error).message });
       summary.skipped += 1;
@@ -189,7 +209,10 @@ Deno.serve(async (request) => {
         title: string;
         body: string;
       };
-      await sendToUsers(admin, [doc.user_id], {
+      // Persist-then-push (THE RULE): a dispute outcome is exactly the kind
+      // of news that must survive a missed banner.
+      await notifyUsers(admin, [doc.user_id], {
+        kind: doc.kind,
         title: doc.title,
         body: doc.body,
         data: { type: doc.kind, sightingId: doc.sighting_id },
@@ -205,6 +228,37 @@ Deno.serve(async (request) => {
         error: (err as Error).message,
       });
     }
+  }
+
+  // --- Phase 2c: announcements a crash orphaned -------------------------------
+  // A death between the state transition (mark_recovery_paid /
+  // mark_post_recovered_no_spotter) and the announce leaves the claim marker
+  // NULL with nothing retrying it — the interactive path's not_claimed
+  // early-return never gets there again. The pending partial indexes exist
+  // for exactly this scan. RECENT-SCOPED (7 days): recoveries that predate
+  // the notification center must never be announced as news.
+  const recentCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const { data: pendingRecovery } = await admin
+      .from('posts')
+      .select('id')
+      .in('status', ['recovered', 'recovered_no_spotter'])
+      .is('recovery_notified_at', null)
+      .gte('recovered_at', recentCutoff);
+    for (const post of pendingRecovery ?? []) {
+      await announceRecoveryToWatchers(admin, post.id as string);
+    }
+    const { data: pendingPayout } = await admin
+      .from('payments')
+      .select('post_id')
+      .eq('status', 'released')
+      .is('payout_notified_at', null)
+      .gte('updated_at', recentCutoff);
+    for (const payment of pendingPayout ?? []) {
+      await announcePayoutSent(admin, payment.post_id as string);
+    }
+  } catch (err) {
+    console.error('[notifications] announce sweep failed', (err as Error).message);
   }
 
   console.log('[payments] hold sweep done', summary);

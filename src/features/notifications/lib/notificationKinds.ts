@@ -10,7 +10,7 @@
  */
 
 /** Mirrored EXACTLY by the migration's `push_sends_kind_chk` whitelist
- *  (LATEST definition — 20260805110000 widened it). */
+ *  (LATEST definition — 20260806100000 widened it). */
 export const NOTIFICATION_KINDS = [
   'alert',
   'sighting',
@@ -20,6 +20,7 @@ export const NOTIFICATION_KINDS = [
   'closed_uncredited',
   'dispute_upheld',
   'dispute_rejected',
+  'payout_sent',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
@@ -38,3 +39,7 @@ export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 // the money gets an address) and `dispute_rejected` (final, calm; routes back
 // to the dispute screen, which shows the resolved state). Senders for the
 // outcomes: release-held-refunds via claim_dispute_outcome_notification.
+// `payout_sent` (2026-08-06): the transfer actually went out — "On its way,
+// £X heading to your account". The money moment users care most about,
+// previously silent. Sender: the release core via
+// claim_payout_sent_notification; routes to /payouts like the money kinds.

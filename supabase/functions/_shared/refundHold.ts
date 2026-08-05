@@ -25,7 +25,7 @@
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
-import { sendToUsers } from './push.ts';
+import { notifyUsers } from './push.ts';
 
 export type ExitGateOutcome =
   /** No recent uncredited sightings — refund immediately, as always. */
@@ -108,7 +108,10 @@ export async function gateExitRefund(
   // the dispute screen is reachable from the sighting either way.
   for (const item of doc.notify ?? []) {
     try {
-      await sendToUsers(admin, [item.user_id], {
+      // Persist-then-push (THE RULE): the 72-hour window must reach a spotter
+      // whose push permission is off — the feed row is their only signal.
+      await notifyUsers(admin, [item.user_id], {
+        kind: 'closed_uncredited',
         title: item.title,
         body: item.body,
         data: { type: 'closed_uncredited', sightingId: item.sighting_id },

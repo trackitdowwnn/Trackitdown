@@ -11,7 +11,7 @@
  *        docs/SECURITY_AND_TRUST.md (privacy rules enforced here).
  */
 
-/* eslint-disable no-console -- this is the one sanctioned console user */
+ 
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 

@@ -61,6 +61,12 @@ const disputeRejectedPayloadSchema = z
   .object({ type: z.literal('dispute_rejected'), sightingId: z.guid() })
   .strict();
 
+/** Your bounty transfer actually went out. Amount lives in the visible title
+ *  only — never in this payload. */
+const payoutSentPayloadSchema = z
+  .object({ type: z.literal('payout_sent'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -70,6 +76,7 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   closedUncreditedPayloadSchema,
   disputeUpheldPayloadSchema,
   disputeRejectedPayloadSchema,
+  payoutSentPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;
