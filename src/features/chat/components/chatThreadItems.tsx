@@ -165,10 +165,18 @@ export function SystemMessage({ message }: { message: ChatMessage }) {
   );
 }
 
+/**
+ * A ruled divider, not a floating caption. Day labels and the time captions
+ * above a message group were both bare centred grey text, so two different
+ * jobs — "a new day starts here" and "this group is N hours later" — looked
+ * identical. The rules give the day its own weight; time stays plain.
+ */
 export function DaySeparator({ label }: { label: string }) {
   return (
     <View style={styles.dayBlock}>
+      <View style={styles.dayRule} />
       <Text style={styles.dayText}>{label}</Text>
+      <View style={styles.dayRule} />
     </View>
   );
 }
@@ -236,8 +244,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   dayBlock: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+  },
+  dayRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
   },
   dayText: {
     ...typography.caption,

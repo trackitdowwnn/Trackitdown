@@ -1,7 +1,8 @@
 /**
- * WHAT:  ChatThreadScreen — one conversation: header (back, Avatar + first
- *        name, tappable → the peer's public profile sheet), the tappable
- *        post-context strip, the message list (grouped bubbles / system /
+ * WHAT:  ChatThreadScreen — one conversation: the header BLOCK (back, Avatar,
+ *        first name + their role, tappable → the peer's public profile sheet,
+ *        and the tappable post-context strip, sharing one surface), the pinned
+ *        collapsible SafetyNotice, the message list (grouped bubbles / system /
  *        day separators / the single "Seen" from messageGroups), the
  *        role-aware quick-reply row, the keyboard-aware composer — removed
  *        and replaced by the quiet ClosedThreadBanner when the post has
@@ -193,6 +194,11 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
 
   const closed = meta.thread ? meta.thread.post.status !== 'active' : false;
   const otherName = meta.thread?.other.firstName;
+  // Who the OTHER person is, in one word under their name. `role` is MINE, so
+  // theirs is the opposite — and it is the single most useful thing to know at
+  // a glance here: whether you are reading the person who lost the car or the
+  // person who spotted it.
+  const peerRoleLabel = meta.thread?.role === 'owner' ? 'Spotter' : 'Owner';
 
   // iOS ignores accessibilityLiveRegion, so announce send failures explicitly.
   useEffect(() => {
@@ -226,62 +232,85 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      {/* Header: back + the other person. */}
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          hitSlop={spacing.sm}
-          style={styles.back}
-          testID="chat-back"
-        >
-          <Feather name="chevron-left" size={sizes.icon} color={colors.textPrimary} />
-        </Pressable>
-        {/* Initial-letter avatar only — the other party's avatar path embeds
-            their uid, so it isn't returned to the client (see chat types).
-            For the OWNER the name is tappable → the spotter's first-name +
-            reputation passport (the same one a sighting shows). A spotter's
-            header is plain text: owner identity is never exposed. */}
-        <View style={styles.headerIdentity}>
-          {meta.thread ? (
-            peer?.peer ? (
-              <Pressable
-                onPress={() => void openPeerProfile()}
-                accessibilityRole="button"
-                accessibilityLabel={`View ${meta.thread.other.firstName}’s profile`}
-                style={({ pressed }) => [styles.headerPerson, pressed && styles.headerPersonPressed]}
-                testID="chat-peer-profile"
-              >
-                <Avatar name={meta.thread.other.firstName} />
-                <Text style={styles.headerName}>{meta.thread.other.firstName}</Text>
-              </Pressable>
-            ) : (
-              <View style={styles.headerPerson}>
-                <Avatar name={meta.thread.other.firstName} />
-                <Text style={styles.headerName}>{meta.thread.other.firstName}</Text>
-              </View>
-            )
-          ) : null}
+      {/* ONE header block: the person and the car they're talking about are a
+          single unit of context, so they share a surface and end on a single
+          hairline. (They used to be two slabs on two different backgrounds
+          with a rule between them, which read as unrelated furniture.) */}
+      <View style={styles.headerBlock}>
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={spacing.sm}
+            style={styles.back}
+            testID="chat-back"
+          >
+            <Feather name="chevron-left" size={sizes.icon} color={colors.textPrimary} />
+          </Pressable>
+          {/* Initial-letter avatar only — the other party's avatar path embeds
+              their uid, so it isn't returned to the client (see chat types).
+              For the OWNER the name is tappable → the spotter's first-name +
+              reputation passport (the same one a sighting shows). A spotter's
+              header is plain text: owner identity is never exposed. */}
+          <View style={styles.headerIdentity}>
+            {meta.thread ? (
+              peer?.peer ? (
+                <Pressable
+                  onPress={() => void openPeerProfile()}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${meta.thread.other.firstName}’s profile`}
+                  style={({ pressed }) => [
+                    styles.headerPerson,
+                    pressed && styles.headerPersonPressed,
+                  ]}
+                  testID="chat-peer-profile"
+                >
+                  <Avatar name={meta.thread.other.firstName} />
+                  <View style={styles.headerText}>
+                    <Text style={styles.headerName} numberOfLines={1}>
+                      {meta.thread.other.firstName}
+                    </Text>
+                    <Text style={styles.headerRole}>{peerRoleLabel}</Text>
+                  </View>
+                </Pressable>
+              ) : (
+                <View style={styles.headerPerson}>
+                  <Avatar name={meta.thread.other.firstName} />
+                  <View style={styles.headerText}>
+                    <Text style={styles.headerName} numberOfLines={1}>
+                      {meta.thread.other.firstName}
+                    </Text>
+                    <Text style={styles.headerRole}>{peerRoleLabel}</Text>
+                  </View>
+                </View>
+              )
+            ) : null}
+          </View>
         </View>
-      </View>
 
-      {meta.thread ? (
-        <PostContextStrip
-          thread={meta.thread}
-          onPress={(postId) => router.push(`/post/${postId}`)}
-        />
-      ) : null}
+        {meta.thread ? (
+          <PostContextStrip
+            thread={meta.thread}
+            onPress={(postId) => router.push(`/post/${postId}`)}
+          />
+        ) : null}
+      </View>
 
       {/* SECURITY_AND_TRUST §1: the SafetyNotice appears on every chat thread —
           pinned here, not only as the system first message (which scrolls out
           of a long, paginated thread). UNCONDITIONAL: meta comes from
           get_inbox while messages load separately, and a transient meta
           failure must never produce a conversation without the notice
-          (security review M1). It needs nothing from meta anyway. */}
-      <View style={styles.safety}>
-        <SafetyNotice />
-      </View>
+          (security review M1). It needs nothing from meta anyway.
+
+          COLLAPSIBLE here and nowhere else: this is the one surface where the
+          notice sits above LIVE content for a whole session rather than being
+          read once in a flow, and at full height it cost ~100dp of every
+          thread — with the keyboard up, most of the conversation. It is still
+          pinned, still undismissable, and still reads in full to a screen
+          reader; only the elaboration folds. */}
+      <SafetyNotice collapsible />
 
       {meta.status === 'missing' ? (
         <View style={styles.centered}>
@@ -404,6 +433,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  // Person + car as one surface, closed by one hairline.
+  headerBlock: {
+    backgroundColor: colors.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -434,13 +469,18 @@ const styles = StyleSheet.create({
   headerPersonPressed: {
     backgroundColor: colors.surfaceSubtle,
   },
+  headerText: {
+    flex: 1,
+  },
+  // cardTitle, not heading: with the role line beneath it, 18/24 Bold made the
+  // identity block top-heavy against a 13pt caption.
   headerName: {
-    ...typography.heading,
+    ...typography.cardTitle,
     color: colors.textPrimary,
   },
-  safety: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.sm,
+  headerRole: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   body: {
     flex: 1,
