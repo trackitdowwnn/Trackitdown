@@ -27,6 +27,7 @@ jest.mock('@/features/permissions', () => ({
 
 const device = (overrides: Partial<FeedDeviceLocation> = {}): FeedDeviceLocation => ({
   hasPermission: jest.fn(async () => false),
+  requestPermission: jest.fn(async () => false),
   getCurrentPosition: jest.fn(async () => null),
   reverseGeocodeArea: jest.fn(async () => null),
   ...overrides,
@@ -89,7 +90,19 @@ describe('useFeedLocation chain', () => {
     await waitFor(() => expect(result.current.location).toEqual({ mode: 'national' }));
     expect(result.current.showLocationPrimer).toBe(true);
     // The no-cold-prompt guarantee: only hasPermission (silent) was consulted.
+    expect(dev.requestPermission).not.toHaveBeenCalled();
     expect(dev.getCurrentPosition).not.toHaveBeenCalled();
+  });
+
+  it('never pitches the primer when permission is already granted but the fix fails', async () => {
+    // Permission granted, cold GPS: no coordinates, so the feed can only be
+    // national — but there is nothing left to ask for, so no card.
+    const dev = device({ hasPermission: jest.fn(async () => true) });
+
+    const { result } = await renderHook(() => useFeedLocation(dev));
+
+    await waitFor(() => expect(result.current.location).toEqual({ mode: 'national' }));
+    expect(result.current.showLocationPrimer).toBe(false);
   });
 
   it('ends national when a corrupt preference is stored and the device has no permission', async () => {
@@ -120,6 +133,24 @@ describe('useFeedLocation chain', () => {
       ),
     );
     expect(result.current.showLocationPrimer).toBe(false);
+  });
+
+  it('a startup grant retires the primer even when no fix ever arrives', async () => {
+    // THE REPORTED BUG: the user taps Allow on the startup dialog and the card
+    // asking for that very permission stays on the feed, because the position
+    // behind it never landed. The grant alone has to be enough.
+    const dev = device();
+    const { result, rerender } = await renderHook(() => useFeedLocation(dev));
+    await waitFor(() => expect(result.current.showLocationPrimer).toBe(true));
+
+    (dev.hasPermission as jest.Mock).mockResolvedValue(true);
+    // getCurrentPosition stays null: cold GPS, no last-known fix.
+    mockStartupGrant.mockReturnValue(true);
+    await rerender(undefined);
+
+    await waitFor(() => expect(result.current.showLocationPrimer).toBe(false));
+    // The feed itself is honestly still national — only the pitch is gone.
+    expect(result.current.location).toEqual({ mode: 'national' });
   });
 
   it('a startup grant never overrides a saved area pick', async () => {
@@ -168,6 +199,7 @@ describe('setArea', () => {
 describe('requestMyLocation (primer CTA)', () => {
   it('prompts, locates, and switches to local mode on grant', async () => {
     const dev = device({
+      requestPermission: jest.fn(async () => true),
       getCurrentPosition: jest.fn(async () => SALFORD),
       reverseGeocodeArea: jest.fn(async () => 'Salford'),
     });
@@ -183,9 +215,24 @@ describe('requestMyLocation (primer CTA)', () => {
     expect(result.current.location).toEqual(
       expect.objectContaining({ mode: 'local', addressLabel: 'Salford' }),
     );
+    expect(result.current.showLocationPrimer).toBe(false);
   });
 
-  it('stays national and reports false on denial', async () => {
+  it('hides the card on grant even when the fix fails — the allow is answered', async () => {
+    const dev = device({ requestPermission: jest.fn(async () => true) });
+    const { result } = await renderHook(() => useFeedLocation(dev));
+    await waitFor(() => expect(result.current.showLocationPrimer).toBe(true));
+
+    let granted = true;
+    await act(async () => {
+      granted = await result.current.requestMyLocation();
+    });
+
+    expect(granted).toBe(false); // no coordinates — the feed stays national
+    expect(result.current.showLocationPrimer).toBe(false); // but the ask is over
+  });
+
+  it('stays national, keeps the card, and reports false on denial', async () => {
     const dev = device();
     const { result } = await renderHook(() => useFeedLocation(dev));
     await waitFor(() => expect(result.current.location).toEqual({ mode: 'national' }));
@@ -197,5 +244,7 @@ describe('requestMyLocation (primer CTA)', () => {
 
     expect(granted).toBe(false);
     expect(result.current.location).toEqual({ mode: 'national' });
+    // Still something to pitch: a denial is not an answer we act on.
+    expect(result.current.showLocationPrimer).toBe(true);
   });
 });
