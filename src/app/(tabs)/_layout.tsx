@@ -9,9 +9,11 @@
  *        here is declarative wiring — the APP_TABS array IS the app's tab
  *        set, so adding a tab is one entry plus one screen file. Badges
  *        (Inbox unread) flow from TabBadgeProvider so any screen can set
- *        them. The Profile-tab auth override is deliberate and Profile-only —
- *        Inbox keeps its invitation screen (features/auth/README.md records
- *        the rule split). My Cars left the bar (2026-07-23): it's now a push
+ *        them. Profile AND Inbox (owner call, 2026-08-06) hold-and-sheet a
+ *        guest's tap — both tabs have nothing to show a guest but an
+ *        invitation, so the tap IS the action; their routes keep invitation
+ *        screens for deep links (features/auth/README.md records the rule
+ *        split). My Cars left the bar (2026-07-23): it's now a push
  *        from Profile (src/app/my-cars.tsx).
  * LINKS: src/shared/ui/AppTabBar.tsx; src/features/profile/hooks/useProfileTab.ts;
  *        docs/DESIGN_SYSTEM.md.
@@ -21,7 +23,7 @@ import { Tabs, useRouter } from 'expo-router';
 import { Bookmark, Compass, MessageCircle, Plus, User } from 'lucide-react-native';
 import { useMemo } from 'react';
 
-import { useRequireAuth } from '@/features/auth';
+import { useRequireAuth, useTabAuthGate } from '@/features/auth';
 import { useHasSavedCar } from '@/features/garage';
 import { useProfileTab } from '@/features/profile';
 import {
@@ -53,6 +55,16 @@ function BadgedTabs() {
   const router = useRouter();
   const requireAuth = useRequireAuth();
   const profileTab = useProfileTab();
+
+  // Inbox joined the hold-and-sheet override (owner call, 2026-08-06): like
+  // Profile, a guest's Inbox has nothing to show but an invitation, so the tap
+  // IS the action. Both tabs run the SAME gate (useTabAuthGate) — the two
+  // hand-written copies this replaced could drift apart without anything
+  // failing loudly. The route keeps its invitation screen for deep links.
+  const inboxListeners = useTabAuthGate({
+    context: 'tab_inbox',
+    route: '/(tabs)/inbox',
+  });
 
   // Where + goes: someone with cars in the garage picks one and gets the whole
   // vehicle phase prefilled; everyone else goes straight to the blank wizard.
@@ -112,9 +124,8 @@ function BadgedTabs() {
     >
       <Tabs.Screen name="explore" />
       <Tabs.Screen name="watchlist" />
-      <Tabs.Screen name="inbox" />
-      {/* Non-members: the press is prevented (stay on the current tab) and
-          the AuthSheet opens — Profile-only override of the invitation rule. */}
+      {/* Non-members: press prevented + AuthSheet, same as Profile below. */}
+      <Tabs.Screen name="inbox" listeners={inboxListeners} />
       <Tabs.Screen name="profile" listeners={profileTab.listeners} />
     </Tabs>
   );

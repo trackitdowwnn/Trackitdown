@@ -26,10 +26,21 @@ const mockUseSession = jest.fn();
 const mockFetchMyProfile = jest.fn();
 const mockNavigate = jest.fn();
 
+// The press gate itself moved to features/auth (useTabAuthGate) and is pinned
+// in its own suite; here it is stood up from the SAME mocked standing/gate so
+// these tests still prove what useProfileTab is responsible for — handing the
+// gate the Profile context and the Profile route.
 jest.mock('@/features/auth', () => ({
   useAuthStanding: () => mockStanding(),
   useRequireAuth: () => mockRequireAuth,
   useSession: () => mockUseSession(),
+  useTabAuthGate: ({ context, route }: { context: string; route: string }) => ({
+    tabPress: (event: { preventDefault: () => void }) => {
+      if (mockStanding() === 'member') return;
+      event.preventDefault();
+      mockRequireAuth({ context, run: () => mockNavigate(route) });
+    },
+  }),
 }));
 jest.mock('../api/profileApi', () => ({
   fetchMyProfile: (...a: unknown[]) => mockFetchMyProfile(...a),

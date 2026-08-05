@@ -78,6 +78,9 @@ export const sizes = {
   /** AppTabBar badge: dot diameter and count-pill height. */
   badgeDot: 8,
   badgePill: 16,
+  /** SurfaceTabs' active-tab underline — a drawn stroke sitting ON the row's
+   *  hairline, so it must read as deliberate ink rather than a thick border. */
+  surfaceTabUnderline: 2,
   /** The needs-attention accent bar on notification-center rows — a drawn
    *  stroke, like timelineRailStroke, not a spacing value. */
   attentionBar: 3,

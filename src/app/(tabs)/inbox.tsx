@@ -27,7 +27,7 @@
 
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useRequireAuth, useSession } from '@/features/auth';
@@ -40,8 +40,8 @@ import {
   type InboxSegment,
 } from '@/features/notifications/lib/inboxSegmentStorage';
 import { NotificationCenterScreen } from '@/features/notifications/screens/NotificationCenterScreen';
-import { colors, spacing } from '@/shared/theme';
-import { ChoiceChips, EmptyState, useTabBadges } from '@/shared/ui';
+import { colors, spacing, typography } from '@/shared/theme';
+import { EmptyState, SurfaceTabs, useTabBadges } from '@/shared/ui';
 
 const SEGMENTS: { value: InboxSegment; label: string }[] = [
   { value: 'messages', label: 'Messages' },
@@ -116,9 +116,19 @@ export default function InboxRoute() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.segmentRow}>
-        <ChoiceChips options={SEGMENTS} value={segment} onSelect={onSelectSegment} />
+      {/* Title, then the surface switch, then the hairline that ends the
+          chrome — and nothing else. The switch is UNDERLINE TABS, deliberately
+          a different grammar from the filter chips inside the Messages face:
+          chips filter a list, tabs choose a surface, and when both were pill
+          rows the top of this screen read as one confusing band. SurfaceTabs
+          is full-bleed (it owns its own gutter) so its rule reaches both
+          edges — hence the title, not the tabs, carries the padding here. */}
+      <View style={styles.titleRow}>
+        <Text style={styles.screenTitle} accessibilityRole="header">
+          Inbox
+        </Text>
       </View>
+      <SurfaceTabs options={SEGMENTS} value={segment} onSelect={onSelectSegment} />
       {segment === 'messages' ? <ChatInboxScreen /> : <NotificationCenterScreen />}
     </SafeAreaView>
   );
@@ -129,8 +139,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  segmentRow: {
+  titleRow: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  screenTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
   },
 });

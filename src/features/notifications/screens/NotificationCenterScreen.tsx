@@ -163,11 +163,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
   },
+  // Same vertical rhythm as the Messages face's chip row (44pt control +
+  // spacing.sm), so switching tabs doesn't shift where the list starts.
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   markAll: {
     minHeight: sizes.touchTarget,

@@ -73,8 +73,14 @@ jest.mock('@/features/garage', () => ({
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+const mockNavigate = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, replace: mockReplace, back: jest.fn() }),
+  useRouter: () => ({
+    push: mockPush,
+    replace: mockReplace,
+    navigate: mockNavigate,
+    back: jest.fn(),
+  }),
   useFocusEffect: () => {}, // focus-refresh behaviour not simulated here
 }));
 
@@ -373,7 +379,7 @@ describe('signed in', () => {
     expect(queryByText('Not set')).toBeNull();
   });
 
-  it('log out: confirming signs out and stays put (guest mode, no auth wall)', async () => {
+  it('log out: confirming signs out and lands on the Explore feed', async () => {
     const { getByTestId, getAllByText } = await render(<ProfileScreen />);
     await act(async () => {
       fireEvent.press(getByTestId('row-sign-out'));
@@ -384,7 +390,25 @@ describe('signed in', () => {
       fireEvent.press(getAllByText('Log out').at(-1) as never);
     });
     await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
-    expect(mockReplace).not.toHaveBeenCalled(); // the session flip re-renders in place
+    // Guest mode, but NOT left staring at this tab's own login invitation —
+    // the feed is the surface that works with no account.
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/(tabs)/explore'));
+    expect(mockReplace).not.toHaveBeenCalled(); // a tab switch, not an auth wall
+  });
+
+  it('log out: a failed sign-out keeps the user put and says so', async () => {
+    mockSignOut.mockRejectedValueOnce(new Error('offline'));
+    const { getByTestId, getAllByText } = await render(<ProfileScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('row-sign-out'));
+    });
+    await act(async () => {
+      fireEvent.press(getAllByText('Log out').at(-1) as never);
+    });
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalled());
+    // Still signed in — moving them to the feed would read as a sign-out that
+    // worked.
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('log out: cancelling does nothing', async () => {
