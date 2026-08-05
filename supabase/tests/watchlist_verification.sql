@@ -663,7 +663,13 @@ begin
   join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public'
     and p.prosrc ilike '%watchlist_items%'
-    and p.proname <> 'get_my_watchlist';
+    -- The allowlist. get_my_watchlist is the one CLIENT path.
+    -- claim_recovery_notifications (20260806) reads watch rows to build the
+    -- "your watched car was recovered" audience — SERVICE ROLE ONLY (grants
+    -- asserted in notification_center_verification CHECK 7), so the property
+    -- this check protects — no path by which anyone but the watcher reaches
+    -- watch rows — still holds. Anything else appearing here is a finding.
+    and p.proname not in ('get_my_watchlist', 'claim_recovery_notifications');
   if v_n <> 0 then
     raise exception 'CHECK 8 FAILED: % other function(s) reference watchlist_items — a second query path exists', v_n;
   end if;

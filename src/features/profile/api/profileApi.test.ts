@@ -32,6 +32,9 @@ const mockUnregister = jest.fn(async () => {
 });
 jest.mock('@/features/notifications', () => ({
   unregisterCurrentPushToken: () => mockUnregister(),
+  // Sign-out zeroes the Inbox badge halves; the real module is pure, the
+  // mock just needs the name to exist.
+  resetInboxBadge: jest.fn(),
 }));
 
 // profileApi imports this for avatar resizing; unused on this path.

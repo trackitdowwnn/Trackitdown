@@ -14,7 +14,6 @@
 import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
-import { samplePhotos } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import type { PostStatus } from '@/shared/types';
 
@@ -65,9 +64,11 @@ function toEntry(row: WatchRow): WatchlistEntry {
       // The RPC guarantees resolved_at on closed rows; watched_at is a
       // defensive fallback that can only move the drop-off EARLIER.
       resolvedAt: row.resolved_at ?? row.watched_at,
-      // Same DEV fallback as the full row below — a tombstone for a seeded
-      // post would otherwise be the only card in the app with no picture.
-      thumbnailUrl: row.thumbnail_url ?? samplePhotos(row.id)[0]?.uri ?? null,
+      // A tombstone deliberately carries less than the live card ever did, and
+      // the RPC hand-builds it without a thumbnail — so null here is correct,
+      // not a gap. (It used to borrow a __DEV__ sample image, which made the
+      // one card in the app that is SUPPOSED to look diminished look normal.)
+      thumbnailUrl: row.thumbnail_url ?? null,
     };
   }
   // Full rows come from home_feed_post_json, which always carries the post's
@@ -82,13 +83,10 @@ function toEntry(row: WatchRow): WatchlistEntry {
     collectionId: row.collection_id,
     post: {
       id: row.id,
-      // The RPC returns the post's REAL first photo. Seeded posts have none,
-      // and the feed RPC carries no photo field at all — so feedApi fills every
-      // dev card from samplePhotos(id). Without the same fallback here, keyed
-      // on the same id, a car with pictures in the feed loses them the moment
-      // it's saved, which reads as a broken watchlist rather than seed data.
-      // samplePhotos returns [] in production, where the real url wins anyway.
-      photos: row.thumbnail_url ? [{ uri: row.thumbnail_url }] : samplePhotos(row.id),
+      // The RPC's own thumbnail_url — the same first-photo lateral join the
+      // feed helper now performs, so a saved car keeps the picture it had in
+      // the feed. Empty when the post genuinely has no photos.
+      photos: row.thumbnail_url ? [{ uri: row.thumbnail_url }] : [],
       make: row.make,
       model: row.model,
       colour: row.colour,

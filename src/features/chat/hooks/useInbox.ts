@@ -16,6 +16,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { reportInboxBadge } from '@/features/notifications';
 import { useTabBadges } from '@/shared/ui';
 
 import { fetchInbox } from '../api/chatApi';
@@ -41,7 +42,9 @@ export function useInbox() {
         const rows = await fetchInbox();
         setThreads(rows);
         setStatus('ready');
-        setBadge('inbox', totalUnread(rows));
+        // The Inbox badge is chat unread + center unread; the aggregator
+        // returns the honest sum so neither half overwrites the other.
+        setBadge('inbox', reportInboxBadge('chat', totalUnread(rows)));
       } catch {
         // A focus refetch failing must not blank an already-shown list.
         setStatus((previous) => (previous === 'ready' ? 'ready' : 'error'));
@@ -65,7 +68,7 @@ export function useInbox() {
         if (cancelled) return;
         setThreads(rows);
         setStatus('ready');
-        setBadge('inbox', totalUnread(rows));
+        setBadge('inbox', reportInboxBadge('chat', totalUnread(rows)));
       } catch {
         if (!cancelled) setStatus((previous) => (previous === 'ready' ? 'ready' : 'error'));
       }

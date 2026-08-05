@@ -20,7 +20,7 @@
  *   />
  */
 
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors, radii, sizes, spacing, typography } from '../theme';
 
@@ -40,6 +40,26 @@ export interface ChoiceChipsProps<V extends string = string> {
    * unchecked radio that never checks is a name/role/value mismatch.
    */
   role?: 'radio' | 'button';
+  /**
+   * One horizontally-scrolling line instead of wrapping onto a second.
+   *
+   * Wrapping is right inside a form, where a chip group is the whole answer
+   * and vertical space is free. It is wrong at the top of a LIST screen: the
+   * Inbox's four filters overflow a phone by ~20px, so the last chip dropped
+   * to a line of its own and read as a layout fault. Scrolling also keeps the
+   * header height constant, which stops the list jumping when a count label
+   * grows ("Unread" → "Unread (12)").
+   *
+   * The scroller is full-bleed and owns the screen gutter itself, so chips can
+   * scroll out under the edge: the CALLER must not add horizontal padding.
+   */
+  scrollable?: boolean;
+  /**
+   * Optional — the chip ROW takes this, the scroller takes `${testID}-scroller`.
+   * Opt-in rather than a fixed id because a wizard step can render two chip
+   * groups, and a hardcoded id would make both unfindable.
+   */
+  testID?: string;
 }
 
 export function ChoiceChips<V extends string = string>({
@@ -47,10 +67,16 @@ export function ChoiceChips<V extends string = string>({
   value,
   onSelect,
   role = 'radio',
+  scrollable = false,
+  testID,
 }: ChoiceChipsProps<V>) {
   const asRadios = role === 'radio';
-  return (
-    <View style={styles.row} accessibilityRole={asRadios ? 'radiogroup' : undefined}>
+  const chips = (
+    <View
+      style={[styles.row, scrollable && styles.rowScrollable]}
+      accessibilityRole={asRadios ? 'radiogroup' : undefined}
+      testID={testID}
+    >
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -74,6 +100,23 @@ export function ChoiceChips<V extends string = string>({
       })}
     </View>
   );
+
+  if (!scrollable) {
+    return chips;
+  }
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      // The gutter lives on the CONTENT, not the scroller, so the first chip
+      // starts on the screen margin while the last can scroll under the edge —
+      // which is what tells the user there is more to the right.
+      contentContainerStyle={styles.scrollContent}
+      testID={testID ? `${testID}-scroller` : undefined}
+    >
+      {chips}
+    </ScrollView>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -81,6 +124,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  rowScrollable: {
+    flexWrap: 'nowrap',
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.xl,
   },
   chip: {
     minHeight: sizes.touchTarget,

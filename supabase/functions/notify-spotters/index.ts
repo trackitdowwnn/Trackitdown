@@ -17,7 +17,7 @@
  *        src/features/notifications/README.md.
  */
 
-import { drainPushReceipts, sendToUsers } from '../_shared/push.ts';
+import { drainPushReceipts, notifyUsers } from '../_shared/push.ts';
 import { createServiceRoleClient, requireEnv } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
@@ -86,7 +86,10 @@ Deno.serve(async (request) => {
       return jsonResponse({ claimed: true, matched: 0, sent: 0 });
     }
 
-    const result = await sendToUsers(admin, userIds, {
+    // Persist-then-push (THE RULE): the feed row lands even for spotters
+    // with push denied — the center is how they hear about it at all.
+    const result = await notifyUsers(admin, userIds, {
+      kind: 'alert',
       title: match.title as string,
       body: match.body as string,
       // Ids only — the client re-fetches everything else through RLS.

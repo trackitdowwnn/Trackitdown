@@ -30,6 +30,7 @@ import { useSession } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
 import { useToast } from '@/shared/ui';
 
+import { markNotificationsReadByPayload } from '../api/notificationsApi';
 import { usePushRegistration } from '../hooks/usePushRegistration';
 import { parsePushPayload } from '../lib/pushPayload';
 import { pushRouteFor } from '../lib/pushRoute';
@@ -142,6 +143,15 @@ export function NotificationsHost() {
         return;
       }
       handledResponseIds.add(identifier);
+      // The center's row for this push flips read — a push you tapped is a
+      // notification you saw. By payload match, not id: push data is shared
+      // across recipients, so no per-user row id rides it. Fire-and-forget;
+      // a lost mark costs one stale dot until the next focus refetch. Chat
+      // pushes are skipped: they never have center rows (the one exclusion),
+      // so the RPC would be a guaranteed no-op round trip.
+      if (payload.type !== 'message') {
+        void markNotificationsReadByPayload(payload.type, payload);
+      }
       router.push(pushRouteFor(payload));
       // The engagement metric for the whole product: sent vs tapped.
       // threadId is deliberately excluded — it correlates two identities.

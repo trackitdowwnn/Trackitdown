@@ -18,7 +18,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import { unregisterCurrentPushToken } from '@/features/notifications';
+import { resetInboxBadge, unregisterCurrentPushToken } from '@/features/notifications';
 import { supabase } from '@/shared/api';
 import { avatarUrlFromPath } from '@/shared/lib/avatarUrl';
 import { createLogger } from '@/shared/lib/logger';
@@ -186,6 +186,9 @@ export async function signOut(): Promise<void> {
   // errors by contract, but nothing should be able to trap someone in a
   // session because a token release failed.
   await unregisterCurrentPushToken().catch(() => {});
+  // The Inbox badge halves are module-level and would otherwise survive into
+  // the NEXT account's session — this is the one place they must be zeroed.
+  resetInboxBadge();
   const { error } = await supabase.auth.signOut();
   if (error) {
     throw error;

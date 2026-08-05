@@ -261,6 +261,15 @@ travel. Airbnb's wishlist mechanics, translated:
 
 ## Notifications
 
+- **THE PERSIST-THEN-PUSH RULE (2026-08-06, ADR-0012):** every
+  notification-worthy event writes a `notifications` row FIRST and then maybe
+  sends the push — one utility (`notifyUsers`), so the in-app notification
+  center (the Inbox tab's second face) and the pushes can never disagree, and
+  users without push permission still receive everything in-app. Chat
+  messages are the ONE exclusion: the Messages segment is their persistent
+  surface. Rows carry the copy that was true at write time plus the exact
+  typed payload; retention is 90 days (pg_cron); unread is the user's to
+  clear — nothing auto-marks-read except tapping the row or its push.
 - Spotters create up to **5 named alerts** (`MAX_ALERTS_PER_USER`), each a
   location + radius (1–50 miles), built through a short wizard. Every alert can
   be paused without discarding it.

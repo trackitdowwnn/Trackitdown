@@ -1,8 +1,9 @@
 /**
  * WHAT:  Feature-local device-location adapter for the feed — silent
- *        permission check (no OS prompt), prompting position request, and a
- *        reverse geocode that returns a SHORT area name ("Salford"), not the
- *        shared adapter's full one-line address.
+ *        permission check (no OS prompt), a separate prompting request, a
+ *        position read that is silent-guarded and time-capped, and a reverse
+ *        geocode that returns a SHORT area name ("Salford"), not the shared
+ *        adapter's full one-line address.
  * WHY:   The feed header says "Cars near <Area>" — a street+postcode label
  *        would be wrong there, so this picks locality-ish fields
  *        (city → district → subregion → region). The silent check matters:
@@ -22,16 +23,31 @@ import type { GeoCoord } from '@/shared/types';
 export interface FeedDeviceLocation {
   /** Is foreground location ALREADY granted? Never prompts. */
   hasPermission(): Promise<boolean>;
-  /** Request permission (may prompt) and read the position; null on denial/failure. */
+  /**
+   * Ask for foreground permission (MAY prompt) and report the answer. Split
+   * from getCurrentPosition so the caller learns the ANSWER immediately —
+   * the fix that follows can take seconds or never land, and the primer card
+   * must retire on the "Allow", not on the coordinates.
+   */
+  requestPermission(): Promise<boolean>;
+  /** Read the position with permission already granted; null on failure. */
   getCurrentPosition(): Promise<GeoCoord | null>;
   /** Short area name for a point ("Salford"), or null. */
   reverseGeocodeArea(coord: GeoCoord): Promise<string | null>;
 }
 
+/**
+ * How long to wait for a FRESH fix before settling for the last known one.
+ * expo-location has no timeout of its own: getCurrentPositionAsync can sit
+ * unresolved indefinitely indoors, and everything awaiting it sits there too.
+ */
+const FRESH_FIX_TIMEOUT_MS = 10_000;
+
 interface ExpoLocationModule {
   getForegroundPermissionsAsync(): Promise<{ status: string }>;
   requestForegroundPermissionsAsync(): Promise<{ status: string }>;
   getCurrentPositionAsync(): Promise<{ coords: GeoCoord }>;
+  getLastKnownPositionAsync(): Promise<{ coords: GeoCoord } | null>;
   reverseGeocodeAsync(coord: GeoCoord): Promise<
     {
       city?: string | null;
@@ -66,18 +82,50 @@ export const expoFeedDeviceLocation: FeedDeviceLocation = {
     }
   },
 
+  async requestPermission() {
+    const location = loadExpoLocation();
+    if (!location) return false;
+    try {
+      const { status } = await location.requestForegroundPermissionsAsync();
+      return status === 'granted';
+    } catch {
+      return false;
+    }
+  },
+
   async getCurrentPosition() {
     const location = loadExpoLocation();
     if (!location) return null;
+    // SAFETY: never read a position without explicit granted permission. The
+    // SILENT check, deliberately — asking is requestPermission's job, and a
+    // second request here would re-prompt a user who already said no.
     try {
-      // SAFETY: never read a position without explicit granted permission.
-      const { status } = await location.requestForegroundPermissionsAsync();
+      const { status } = await location.getForegroundPermissionsAsync();
       if (status !== 'granted') return null;
-      const position = await location.getCurrentPositionAsync();
+    } catch {
+      return null;
+    }
+    // A fresh fix first; the LAST KNOWN one as fallback, and a hard cap on the
+    // wait. A cold GPS failing, or hanging, right after the first-ever grant is
+    // the common case, and it made "I allowed location and nothing changed"
+    // literally true — a minutes-old cached fix sorts a 20-mile feed exactly
+    // as well. .catch on the fix itself, not on the race, so a rejection that
+    // lands after the timeout can't surface as an unhandled rejection.
+    const fresh = location.getCurrentPositionAsync().catch(() => null);
+    const timeout = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), FRESH_FIX_TIMEOUT_MS);
+    });
+    const position = await Promise.race([fresh, timeout]);
+    if (position) {
       return {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
       };
+    }
+    try {
+      const last = await location.getLastKnownPositionAsync();
+      if (!last) return null;
+      return { latitude: last.coords.latitude, longitude: last.coords.longitude };
     } catch {
       return null;
     }

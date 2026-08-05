@@ -24,7 +24,7 @@
  *        docs/DOMAIN.md (prompt at first credited sighting).
  */
 
-import { sendToUsers } from '../_shared/push.ts';
+import { notifyUsers } from '../_shared/push.ts';
 import { createServiceRoleClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
@@ -65,7 +65,10 @@ Deno.serve(async (request) => {
       return jsonResponse({ claimed: false });
     }
 
-    const result = await sendToUsers(admin, [claim.user_id as string], {
+    // Persist-then-push (THE RULE): a spotter with push denied learns they
+    // earned money from the center — previously they learned it never.
+    const result = await notifyUsers(admin, [claim.user_id as string], {
+      kind: 'credited',
       title: claim.title as string,
       body: claim.body as string,
       data: { type: 'credited', postId: claim.post_id as string },

@@ -64,7 +64,20 @@ jest.mock('expo-router', () => ({
   useNavigation: () => ({ setOptions: jest.fn() }),
   // MyCarsScreen's back button (pushed page) needs a router.
   useRouter: () => ({ back: jest.fn() }),
+  // The inbox route's hidden-half badge sync runs on focus; a noop keeps
+  // these tests about GATING, not freshness.
+  useFocusEffect: () => {},
 }));
+
+// The route sets the tab badge through the provider; these tests render the
+// route bare, so the hook is stubbed (badge behaviour has its own suites).
+jest.mock('@/shared/ui', () => {
+  const actual = jest.requireActual('@/shared/ui');
+  return {
+    ...actual,
+    useTabBadges: () => ({ badges: {}, setBadge: jest.fn() }),
+  };
+});
 
 const mockRequireAuth = jest.fn();
 let mockSession: { status: string; userId: string | null } = {
@@ -83,6 +96,21 @@ jest.mock('@/features/chat', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const { Text } = require('react-native');
   return { ChatInboxScreen: () => <Text>chat-inbox-content</Text> };
+});
+
+// The route's segment memory reaches AsyncStorage (native module, null in
+// jest) — the house jest mock stands in.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
+// The center screen mounts only on the Notifications segment; this file tests
+// the route's gating, so it is stubbed like the chat screen above.
+jest.mock('@/features/notifications/screens/NotificationCenterScreen', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const { Text } = require('react-native');
+  return { NotificationCenterScreen: () => <Text>center-content</Text> };
 });
 
 beforeEach(() => {
@@ -129,7 +157,7 @@ describe('My Cars tab (guest)', () => {
 describe('Inbox tab (guest)', () => {
   it('renders the invitation — and does NOT auto-fire the auth sheet', async () => {
     const { getByText } = await render(<InboxScreen />);
-    expect(getByText('Your messages live here')).toBeTruthy();
+    expect(getByText('Your messages and updates live here')).toBeTruthy();
     expect(mockRequireAuth).not.toHaveBeenCalled();
   });
 

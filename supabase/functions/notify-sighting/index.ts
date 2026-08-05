@@ -17,7 +17,7 @@
  *        src/features/sightings/README.md; docs/ROADMAP.md.
  */
 
-import { sendToUsers } from '../_shared/push.ts';
+import { notifyUsers } from '../_shared/push.ts';
 import { createServiceRoleClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
@@ -61,7 +61,9 @@ Deno.serve(async (request) => {
       return jsonResponse({ claimed: false });
     }
 
-    const result = await sendToUsers(admin, [claim.user_id as string], {
+    // Persist-then-push (THE RULE): the row is the durable half.
+    const result = await notifyUsers(admin, [claim.user_id as string], {
+      kind: 'sighting',
       title: claim.title as string,
       body: claim.body as string,
       data: { type: 'sighting', postId: claim.post_id as string },

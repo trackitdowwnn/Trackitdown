@@ -16,7 +16,10 @@
  *        user gets the plain invitation, not four filters over nothing. An
  *        empty FILTER keeps the chips visible (switching away must stay
  *        possible) with copy specific to what's empty — an empty Unread is
- *        good news and reads like it.
+ *        good news and reads like it. The row SCROLLS rather than wraps
+ *        (2026-08-05): four labels don't fit a phone, and the wrapped orphan
+ *        read as broken layout — scrolling also pins the header height, so a
+ *        growing count ("Unread (12)") can't shove the list down.
  * LINKS: src/features/chat/hooks/useInbox.ts; src/features/chat/lib/
  *        inboxModel.ts (filter maths + empty copy); src/features/chat/
  *        components/ThreadRow.tsx; src/app/(tabs)/inbox.tsx (route/guest).
@@ -109,8 +112,12 @@ export function ChatInboxScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Scrollable, not wrapping: the four labels overflow a phone by ~20px,
+          so "My sightings" used to drop to a second line as an orphan. The
+          chips own the gutter themselves (full-bleed scroller), so this
+          wrapper carries only the vertical rhythm. */}
       <View style={styles.chipsRow}>
-        <ChoiceChips options={chipOptions} value={filter} onSelect={setFilter} />
+        <ChoiceChips options={chipOptions} value={filter} onSelect={setFilter} scrollable />
       </View>
       {visible.length === 0 ? (
         // Chips stay mounted: the way OUT of an empty filter is the chips
@@ -167,7 +174,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   chipsRow: {
-    paddingHorizontal: spacing.xl,
     paddingBottom: spacing.sm,
   },
   list: {

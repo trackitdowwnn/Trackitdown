@@ -239,23 +239,49 @@ last-seen point is the victim's home, and nothing downstream needs it —
 `match_alert_zones` re-reads the point and does all the spatial work inside the
 database, so the exact location never enters an Edge Function's memory or logs.
 
-## watched-post-recovered — BLOCKED, and why
+## watched-post-recovered — SHIPPED 2026-08-06 (it waited a month for its sender)
 
-**No code path anywhere moves a post to `recovered`.** There is no recovery or
-payout function in any migration, no such Edge Function, and
-`posts.recovered_at`'s own comment names a function that was never written.
-There is nothing to hook.
+The `recovery` kind shipped 2026-08-02 as payload + route + kind with no
+sender, blocked on "no code path anywhere moves a post to `recovered`". The
+recovery transitions landed on 2026-08-02/03 (claim_recovery → release-payout
+/ refund-recovery), and the notification center build closed the loop:
+`claim_recovery_notifications` (claim on `posts.recovery_notified_at`, copy in
+SQL, audience `watchlist_items` minus the owner — who CAN watch their own
+post, so the exclusion is real) is fired via
+`_shared/recoveryAnnounce.ts` from all three completion paths: the release
+core, the no-spotter refund, and the hold sweep. Post context only — **never
+watcher counts or other watchers' existence** (DOMAIN.md watchlist carve-out).
 
-Shipped now: the `recovery` payload variant, its route, and its `kind` value —
-all tested. **No Edge Function and no claim column**, because a claim for a
-transition that doesn't exist is dead code that will be wrong by the time
-recovery is designed.
+## The notification center (2026-08-06, ADR-0012)
 
-When the recovery transition lands, it calls `sendExpoPush` with audience
-`select user_id from watchlist_items where post_id = $1`, excluding the owner,
-kind `'recovery'`, copy "Good news — the Blue BMW you were watching was
-recovered." Post context only — **never watcher counts or other watchers'
-existence** (DOMAIN.md watchlist carve-out).
+The Inbox tab's second face (Messages | Notifications — the segment host is
+the route, `src/app/(tabs)/inbox.tsx`, because chat and notifications must
+not import each other's screens).
+
+**THE RULE: persist first, then maybe push.** `notifyUsers()` in
+`_shared/push.ts` writes one `notifications` row per recipient, then hands the
+same content to `sendToUsers`. The row is the durable half; each half fails
+alone. Every sender uses it except `notify-message` (chat's persistent surface
+is the Messages segment — the one deliberate exclusion). Rows carry write-time
+copy + the exact typed payload; the client renders with
+`parsePushPayload → pushRouteFor`, so a row and its push always land in the
+same place.
+
+- Read state: nothing auto-marks. Tap marks one (optimistic, RPC behind);
+  "Mark all as read" is the bulk affordance; a push TAP marks by kind+payload
+  match (`mark_notifications_read_by_payload`) — no per-user row id rides a
+  shared push. All marking via RPCs; clients hold no update grant.
+- Badge: `lib/inboxBadge.ts` sums chat unread + center unread; both hooks
+  report through it and set the one `inbox` badge. Chat imports us — never
+  the reverse.
+- Freshness: refetch-on-focus + pull-to-refresh (chat's documented choice).
+- Look: neutral `surfaceSubtle` icon circles, meaning carried by icon shape +
+  the three semantic hues (`lib/centerRowMeta.ts` — the one mapping);
+  `credited` and `closed_uncredited` keep a warning accent bar while unread.
+- Retention: 90 days, pg_cron `purge-old-notifications` (daily 03:30).
+- New with the center: the `payout_sent` kind — "On its way — £X" from the
+  RECORDED transfer amount, fired by the release core via
+  `claim_payout_sent_notification`.
 
 ## Logging
 

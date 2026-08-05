@@ -7,6 +7,9 @@
  *        tap away (Airbnb's listing strip pattern). The banner states the
  *        closure calmly — recovered is good news, never alarm styling — and
  *        the input's removal (screen's job) makes read-only self-evident.
+ *        The strip draws NO background and NO rule of its own (2026-08-05):
+ *        the thread screen groups it with the person header into one surface,
+ *        and a strip carrying its own slab made the two read as unrelated.
  * LINKS: src/features/chat/screens/ChatThreadScreen.tsx (consumer);
  *        docs/DOMAIN.md (Chat: read-only after close).
  */
@@ -78,15 +81,16 @@ export function ClosedThreadBanner({ status }: { status: string }) {
 }
 
 const styles = StyleSheet.create({
+  // No surface or rule of its own: the thread screen wraps this and the person
+  // header in ONE block that owns both, so the two stopped reading as separate
+  // slabs. Transparent, so the strip inherits whatever it is placed on.
   strip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
+    paddingBottom: spacing.md,
+    paddingTop: spacing.xs,
   },
   stripPressed: {
     backgroundColor: colors.surfaceSubtle,

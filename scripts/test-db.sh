@@ -38,6 +38,8 @@ for suite in \
   supabase/tests/alerts_verification.sql \
   supabase/tests/recovery_verification.sql \
   supabase/tests/refund_hold_verification.sql \
+  supabase/tests/notification_center_verification.sql \
+  supabase/tests/not_credited_verification.sql \
   supabase/tests/anon_role_verification.sql
 do
   echo "== ${suite}"

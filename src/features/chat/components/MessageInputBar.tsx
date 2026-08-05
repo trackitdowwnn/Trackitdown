@@ -1,19 +1,34 @@
 /**
- * WHAT:  MessageInputBar — the thread's composer: a multiline TextField and
- *        a round send button that enables only when there is content.
- * WHY:   The input is controlled by the SCREEN (the text survives a failed
- *        send there, not here) and sending is delegated up — this bar is
- *        purely presentational so the optimistic-send contract stays in
+ * WHAT:  MessageInputBar — the thread's composer: a rounded pill holding a
+ *        multiline TextInput that grows with the message up to a cap and then
+ *        scrolls, plus a round send button that enables only when there is
+ *        content.
+ * WHY:   This used to wrap the shared form TextField, and a form control is
+ *        the wrong object here. It brought a FLOATING LABEL reading "Message"
+ *        (a chat box is identified by its placeholder, not a label that slides
+ *        up and permanently steals a line) and reserved helper-text space that
+ *        nothing ever filled — the send button carried a `marginBottom` fudge
+ *        purely to sit level with the space that reservation created. Both are
+ *        gone: the pill is exactly as tall as the text in it.
+ *
+ *        The height cap matters more than it looks. Unbounded, a pasted
+ *        paragraph pushes the entire conversation off screen, so growth stops
+ *        at COMPOSER_MAX_HEIGHT and the field scrolls inside itself — you can
+ *        always still see who you are talking to. The input stays controlled
+ *        by the SCREEN (text survives a failed send there, not here) and
+ *        sending is delegated up, so the optimistic-send contract stays in
  *        useThreadMessages where it's tested.
  * LINKS: src/features/chat/screens/ChatThreadScreen.tsx (owner of state);
- *        src/shared/ui/TextField.tsx; docs/DESIGN_SYSTEM.md (targets, calm).
+ *        docs/DESIGN_SYSTEM.md (targets, radii, calm).
  */
 
 import { Feather } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing } from '@/shared/theme';
-import { TextField } from '@/shared/ui';
+import { colors, opacity, radii, sizes, spacing, typography } from '@/shared/theme';
+
+/** Roughly four lines of body text before the field scrolls instead of grows. */
+const COMPOSER_MAX_HEIGHT = 120;
 
 export interface MessageInputBarProps {
   value: string;
@@ -26,13 +41,18 @@ export function MessageInputBar({ value, onChangeText, onSend, maxLength }: Mess
   const canSend = value.trim().length > 0;
   return (
     <View style={styles.bar}>
-      <View style={styles.field}>
-        <TextField
-          label="Message"
+      <View style={styles.pill}>
+        <TextInput
           value={value}
           onChangeText={onChangeText}
           maxLength={maxLength}
           multiline
+          placeholder="Message…"
+          placeholderTextColor={colors.textSecondary}
+          style={styles.input}
+          // The pill IS the label — announce it rather than leaving a bare
+          // edit box, since there is no visible label to read.
+          accessibilityLabel="Message"
           testID="message-input"
         />
       </View>
@@ -58,14 +78,35 @@ export function MessageInputBar({ value, onChangeText, onSend, maxLength }: Mess
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
+    // Bottom-aligned so a growing pill rises while the send button stays put
+    // on the baseline — the button must not drift up the screen as you type.
     alignItems: 'flex-end',
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.background,
   },
-  field: {
+  pill: {
     flex: 1,
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    borderRadius: radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+  },
+  input: {
+    ...typography.body,
+    color: colors.textPrimary,
+    maxHeight: COMPOSER_MAX_HEIGHT,
+    // Android pads the font box asymmetrically, which tips a single-line
+    // value off the pill's optical centre (DESIGN_SYSTEM, Typography).
+    includeFontPadding: false,
+    paddingVertical: spacing.sm,
+    // RN gives multiline inputs a platform top inset on iOS; zeroing it keeps
+    // one line centred in the pill on both platforms.
+    paddingTop: spacing.sm,
   },
   send: {
     width: sizes.touchTarget,
@@ -74,8 +115,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    // Sit level with the input's box (the TextField reserves helper space).
-    marginBottom: spacing.md,
   },
   sendPressed: {
     backgroundColor: colors.primaryPressed,

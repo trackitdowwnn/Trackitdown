@@ -60,6 +60,11 @@ export {
   type ChoiceChipsMultiProps,
 } from './ChoiceChipsMulti';
 export {
+  SurfaceTabs,
+  type SurfaceTabOption,
+  type SurfaceTabsProps,
+} from './SurfaceTabs';
+export {
   DEFAULT_DATE_TIME_PRESETS,
   DateTimeField,
   type DateTimeFieldProps,

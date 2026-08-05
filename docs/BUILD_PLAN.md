@@ -126,22 +126,70 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
       *verification* queue is obsolete — ADR-0007 removed pre-publish
       verification. Nothing moderator-facing exists at all.)
 - [~] Flagging + user blocking. **Post flagging is DONE** (`flag_post`,
-      flagApi, `post_flags_verification.sql`). Sightings, photos and messages
-      have no flag path; user blocking does not exist in any form.
+      flagApi, `post_flags_verification.sql`) and so is **MESSAGE flagging**
+      (`flag_message` + `chatApi.flagMessage` + the thread's long-press report
+      sheet) — corrected 2026-08-05, this line claimed otherwise while all
+      three were shipped. Sightings and photos still have no flag path.
+      User blocking does not exist in any form, and it is a STORE SUBMISSION
+      blocker (guideline 1.2 expects report AND block on UGC + messaging), not
+      a beta blocker. Slot it between beta and submission.
 - [~] Reputation counters + badges — counters and badge maths BUILT and
       server-maintained; `recoveries_credited` is stuck at 0 until the
       recovery flow lands.
-- [ ] Account deletion (Apple/Google requirement + UK GDPR erasure) — BUILT
-      2026-08-01, PR #37, not yet merged. Was missing from this plan entirely
-      despite the client shipping a Delete account button on 2026-07-10.
-- [ ] Empty/error/loading states everywhere; ui-reviewer design pass
+- [x] Account deletion (Apple/Google requirement + UK GDPR erasure). **Both
+      halves are in the tree** — `supabase/functions/delete-account`, invoked
+      by `profileApi.requestAccountDeletion`. Corrected 2026-08-05; this line
+      still said "PR #37, not yet merged".
+- [~] Empty/error/loading states everywhere; ui-reviewer design pass.
+      Explore, profile, post detail, inbox and chat have had passes. **Five
+      screens have had none: sightings, the alerts wizard, payouts, my-posts,
+      recover-post.** The 2026-08-05 review's call: do NOT sweep all five
+      before the beta. Testers will point at the two that matter, and passes
+      on screens nobody has used are the unfalsifiable work a no-deadline
+      project fills up with.
 
-## Phase 5 — Pre-launch
+## Phase 4.5 — Beta, 2026-08-26 (inserted by the 2026-08-05 product review)
 
+Split out of Phase 5 because the review found the beta does not depend on most
+of it. **Run the beta on Stripe TEST MODE** — test cards, full loop, no real
+money held — which moves legal review, live-mode Stripe and the hosted privacy
+policy out of the path and into pre-submission, where they actually bind.
+
+- [x] **Feed photos in production** (ROADMAP critical path #1) — **DONE
+      2026-08-06.** Landed one level deeper than this line planned: the
+      `'photos'` key went into the SHARED `home_feed_post_json` serialiser
+      rather than into each RPC, so `get_home_feed`, `get_nearby_posts`,
+      `search_posts`, `get_map_posts` and post detail all gained it at once
+      and a future caller cannot forget it. `devSampleImages` deleted in the
+      same commit, as required. CHECKS 17–19 in `home_feed_verification.sql`.
+- [ ] **Spotter "My reports" surface** — `list_my_sightings` + a screen entered
+      from Profile, mirroring "My posts". Give `/sighting-dispute` its in-app
+      door here: today it is reachable ONLY by push, so a spotter who declined
+      notifications can never contest a denial.
+- [ ] **One telemetry sink** (ROADMAP critical path #2). 70 events already
+      emitted, none escaping the device. Ship with the item above so the first
+      testers are measured.
+- [~] **The cut list** — ~~`devSampleImages`~~ (done 2026-08-06),
+      `QuickReplyRow` → `ChoiceChips`,
+      the two permission primers, passive expiry (a DOMAIN edit), DVLA off v1.
+- [ ] EAS build to a closed internal track; **verify internal testing is not
+      review-gated** before assuming it.
+- [ ] Beta: **ten** testers in one city, half of them people who will not be
+      polite about it. Then STOP and read the results before building more.
+
+## Phase 5 — Pre-launch (after the beta)
+
+- [ ] User blocking — the submission blocker (guideline 1.2), see Phase 4
 - [ ] Legal review of escrow model; T&Cs; privacy policy; safety page
-- [ ] Sentry + analytics wired
-- [ ] EAS production builds; TestFlight / internal testing track
-- [ ] Beta: 10–20 testers in one launch city; fix top confusions
+- [ ] Hosted `LEGAL_PUBLIC_URLS` + a real `SUPPORT_EMAIL` (stores require a
+      publicly reachable privacy policy; the in-app documents cannot satisfy it)
+- [ ] Stripe LIVE mode: Connect Express, `sk_live`, and — **by hand** — the
+      `account.updated` webhook event. Without it no spotter ever becomes
+      payable and nothing errors.
+- [ ] Moderator dashboard: flags, disputes, collusion queues (a console is
+      fine for ten testers; it is not fine past that)
+- [ ] Sentry (fold into the sink above — do not wire telemetry twice)
+- [ ] EAS production builds; TestFlight external / production tracks
 - [ ] Store listings: "information reward" framing, moderation
       commitment, demo account for review
 - [ ] Cold-start plan executed: launch city communities, bounty optional

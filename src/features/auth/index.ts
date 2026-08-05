@@ -12,6 +12,11 @@ export { AuthGate } from './components/AuthGate';
 export { AuthSheet } from './components/AuthSheet';
 export { type GateContext } from './gate/gateIntent';
 export { useRequireAuth } from './gate/useRequireAuth';
+export {
+  useTabAuthGate,
+  type TabAuthGate,
+  type TabPressEvent,
+} from './gate/useTabAuthGate';
 export { useAuthStanding, type AuthStanding } from './hooks/useAuthStanding';
 export { useOnboardingGate, type OnboardingGateState } from './hooks/useOnboardingGate';
 export { useSession, type SessionState } from './hooks/useSession';

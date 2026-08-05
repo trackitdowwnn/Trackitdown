@@ -11,6 +11,14 @@ commenting standards.
   SafetyNotice component: **report from a distance; never approach the
   vehicle, follow it, or confront anyone; if a crime is in progress call
   999.**
+  - A chat thread uses the `collapsible` form (2026-08-05): pinned as one
+    line, expanding on tap. This satisfies the rule rather than bending it —
+    it is not dismissible, it keeps `role="alert"`, the visible half is the
+    actionable instruction ("report, don't approach"), and the accessibility
+    label is the full message in both states, so nothing is ever hidden from
+    a screen reader. Only the elaboration folds, and only where the notice
+    sits above a live conversation for the whole session. Pinned by
+    `src/shared/ui/SafetyNotice.test.tsx`.
 - We never build features that facilitate pursuit: no live navigation
   toward a sighted car, no "car is moving" live tracking, no directions
   from spotter to vehicle.

@@ -19,6 +19,14 @@ jest.mock('../api/chatApi', () => ({
   fetchInbox: (...args: unknown[]) => mockFetchInbox(...args),
 }));
 
+// Feature boundary: the real barrel reaches the supabase client. The badge
+// aggregator is pure, so the mock mirrors its contract (sum passthrough) —
+// these tests assert the CHAT half's honest reporting, not the sum.
+const mockReportInboxBadge = jest.fn((_source: string, n: number) => n);
+jest.mock('@/features/notifications', () => ({
+  reportInboxBadge: (...args: [string, number]) => mockReportInboxBadge(...args),
+}));
+
 // Focus effect fires once like a mounted, focused tab (the refetch-on-
 // REfocus path shares load() with refresh(), which the tests below drive).
 jest.mock('expo-router', () => ({

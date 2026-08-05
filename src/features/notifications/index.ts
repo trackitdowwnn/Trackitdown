@@ -26,6 +26,11 @@ export { unregisterCurrentPushToken } from './api/pushTokenApi';
 // Authorisation is enforced server-side by the claim RPCs.
 export { notifyCredited, notifyMessage, notifySighting } from './api/notifyApi';
 
+// The Inbox badge aggregator (chat unread + center unread → one number).
+// Pure module, zero imports — it costs this barrel's weight budget nothing,
+// and chat (which already imports this barrel) feeds its half through it.
+export { reportInboxBadge, resetInboxBadge } from './lib/inboxBadge';
+
 // Alert state, read by Profile's summary row and the Explore nudge card. Its
 // deps are React, the api layer and useSession — imported by MODULE path, not
 // the auth barrel, precisely to keep this file within the budget below.
@@ -44,6 +49,9 @@ export { useMyAlerts, invalidateMyAlerts, type MyAlertsState } from './hooks/use
 //   src/app/_layout.tsx        -> components/NotificationsHost
 //   src/app/alerts/index.tsx   -> screens/AlertsScreen
 //   src/app/alerts/new|[id]    -> screens/AlertWizardScreen
+//   src/app/(tabs)/inbox.tsx   -> screens/NotificationCenterScreen
+//                              -> lib/inboxSegmentStorage
+//                              -> api/notificationsApi (the badge sync count)
 //   search-map/HomeFeedScreen  -> components/AlertNudgeCard
 //                              -> hooks/useAlertNudgeCard
 // Before adding an export here, check what it drags in.

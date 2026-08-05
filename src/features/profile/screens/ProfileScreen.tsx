@@ -12,8 +12,11 @@
  *        REFERENCE_SPEC.md). Guests browse freely (deferred auth), so
  *        signed-out is a first-class state: a friendly invitation through
  *        the auth gate — never a wall — plus a __DEV__ sample-data preview.
- *        Sign-out and deletion land back in guest mode in place (no auth
- *        screen exists to bounce to). Deletion stays findable-but-quiet on
+ *        Both sign-out and deletion drop to guest mode with no auth screen to
+ *        bounce to — but SIGN-OUT then switches to the Explore tab (owner
+ *        call, 2026-08-05): staying here re-renders this very tab as "Log in
+ *        to see your profile", which reads as a wall raised by the action the
+ *        user just took. Deletion still lands in place. Deletion stays findable-but-quiet on
  *        this root (App Store rule) rather than buried a level deep like the
  *        reference: honest, never guilt-trippy, blocked with a clear reason
  *        while any post has money in escrow (advisory client check — the
@@ -225,8 +228,13 @@ function LoadedProfile({
     }
     try {
       await signOut();
-      // Guest mode, in place: the session flip re-renders this tab as the
-      // signed-out invitation — no auth wall to land on.
+      // Guest mode — but land them on the feed, not here. The session flip
+      // alone would leave them staring at this tab's "Log in to see your
+      // profile" invitation, which reads as a wall thrown up by the very
+      // action they just took. Explore is the one surface that works with no
+      // account at all, so it is where signing out belongs. navigate (not
+      // push): switch tabs, don't grow a stack behind them.
+      router.navigate('/(tabs)/explore');
     } catch {
       toast.show("Couldn't sign out — try again.", 'error');
     }
