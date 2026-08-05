@@ -1,8 +1,12 @@
 /**
- * WHAT:  The two announcements a finished recovery owes people: `payout_sent`
- *        to the spotter whose transfer just went out, and `recovery` to
- *        everyone watching the car — the sender the `recovery` kind shipped
- *        without (2026-08-02) and waited a month for.
+ * WHAT:  The three announcements a finished recovery owes people:
+ *        `payout_sent` to the spotter whose transfer just went out, `recovery`
+ *        to everyone watching the car — the sender the `recovery` kind shipped
+ *        without (2026-08-02) and waited a month for — and `not_credited` to
+ *        the spotters who reported this car and were not the one credited.
+ *        That third one closed the loop's last silent corner (2026-08-06): on
+ *        a crowd product most spotters LOSE, and until then losing was
+ *        indistinguishable from being ignored.
  * WHY:   Both fire AFTER the money/state landed, from every path that can
  *        finish a recovery (the release core; the no-spotter refund; the hold
  *        sweep), and both are claims-first: the SQL claim owns idempotency
@@ -47,6 +51,37 @@ export async function announcePayoutSent(admin: SupabaseClient, postId: string):
     });
   } catch (err) {
     console.error('[notifications] payout_sent announce failed', (err as Error).message);
+  }
+}
+
+/**
+ * "A car you reported was found" to the spotters who reported it and did NOT
+ * win — the loop's silent corner until 2026-08-06. The claim refuses unless a
+ * sighting was actually credited, so the `recovered_no_spotter` paths (where
+ * `closed_uncredited` already spoke) call this harmlessly and send nothing.
+ */
+export async function announceNotCredited(admin: SupabaseClient, postId: string): Promise<void> {
+  try {
+    const { data: claim, error } = await admin.rpc('claim_not_credited_notifications', {
+      p_post_id: postId,
+    });
+    if (error || !(claim as { claimed?: boolean })?.claimed) {
+      if (error) console.error('[notifications] not_credited claim failed', error.message);
+      return;
+    }
+    const doc = claim as { user_ids: string[]; post_id: string; title: string; body: string };
+    if ((doc.user_ids ?? []).length === 0) {
+      return; // claim consumed, no runners-up — the common single-spotter case
+    }
+    await notifyUsers(admin, doc.user_ids, {
+      kind: 'not_credited',
+      title: doc.title,
+      body: doc.body,
+      data: { type: 'not_credited', postId: doc.post_id },
+      collapseKey: `not_credited:${doc.post_id}`,
+    });
+  } catch (err) {
+    console.error('[notifications] not_credited announce failed', (err as Error).message);
   }
 }
 

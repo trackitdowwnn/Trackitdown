@@ -26,6 +26,10 @@ export function pushRouteFor(payload: PushPayload): Href {
     case 'alert':
     case 'sighting':
     case 'recovery':
+    // "A car you reported was found" — the runner-up's ending. The car, not
+    // the dispute screen: the post WAS credited, so there is nothing to
+    // contest, and the thing they actually want to see is that it went home.
+    case 'not_credited':
       return `/post/${payload.postId}`;
     case 'message':
       return `/chat/${payload.threadId}`;

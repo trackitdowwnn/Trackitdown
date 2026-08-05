@@ -67,6 +67,14 @@ const payoutSentPayloadSchema = z
   .object({ type: z.literal('payout_sent'), postId: z.guid() })
   .strict();
 
+/** A car you reported was recovered on someone else's sighting. The POST id,
+ *  not a sighting id: there is no dispute to file here (see notificationKinds),
+ *  so the tap goes to the car itself. Nothing about the winner travels — the
+ *  visible copy says "another spotter" and this payload says even less. */
+const notCreditedPayloadSchema = z
+  .object({ type: z.literal('not_credited'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -77,6 +85,7 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   disputeUpheldPayloadSchema,
   disputeRejectedPayloadSchema,
   payoutSentPayloadSchema,
+  notCreditedPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

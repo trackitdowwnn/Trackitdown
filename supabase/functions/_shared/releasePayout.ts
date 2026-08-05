@@ -31,7 +31,11 @@ import type Stripe from 'npm:stripe@22.4.0';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { collusionGate } from './collusion.ts';
-import { announcePayoutSent, announceRecoveryToWatchers } from './recoveryAnnounce.ts';
+import {
+  announceNotCredited,
+  announcePayoutSent,
+  announceRecoveryToWatchers,
+} from './recoveryAnnounce.ts';
 
 /**
  * The canonical split, mirroring `payout_split` in SQL. Integer arithmetic —
@@ -205,11 +209,18 @@ export async function releasePayoutForPost(
 
   console.log('[payments] bounty released', { postId, transferPence, feePence });
 
-  // The news, AFTER the money landed: "on its way" to the spotter, and the
-  // watchers' recovery announcement. Both best-effort and claim-guarded —
+  // The news, AFTER the money landed: "on its way" to the spotter, the
+  // watchers' recovery announcement, and the ending owed to every OTHER
+  // spotter who reported this car. All three best-effort and claim-guarded —
   // never a reason to report the payout as anything but paid.
+  //
+  // not_credited belongs HERE and only here: this is the one code path that
+  // credits somebody, and firing on the completed payout (rather than at
+  // claim_recovery) means nobody is ever told "another spotter was credited"
+  // for a credit that then sits unpaid forever behind an un-onboarded payee.
   await announcePayoutSent(admin, postId);
   await announceRecoveryToWatchers(admin, postId);
+  await announceNotCredited(admin, postId);
 
   return { status: 'paid', transferPence, feePence };
 }

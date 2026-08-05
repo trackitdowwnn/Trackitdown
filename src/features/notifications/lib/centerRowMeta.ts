@@ -55,6 +55,12 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   closed_uncredited: { Icon: Hourglass, iconColor: colors.warning, needsAttention: true },
   dispute_upheld: { Icon: BadgeCheck, iconColor: colors.success, needsAttention: false },
   dispute_rejected: { Icon: Scale, iconColor: colors.textSecondary, needsAttention: false },
+  // Good news that isn't YOUR good news: the car went home, someone else was
+  // credited. CheckCircle2 like `recovery` because that is what happened, but
+  // neutral ink rather than success green — the green ones are the rows where
+  // the reader personally won, and colouring this one to match would overclaim.
+  // Never needsAttention: there is nothing to do about it.
+  not_credited: { Icon: CheckCircle2, iconColor: colors.textSecondary, needsAttention: false },
   // Never rendered — chat is excluded from the center — but the map is total
   // over NotificationKind so a stray row degrades to a sane row, not a crash.
   message: { Icon: MessageCircle, iconColor: colors.textSecondary, needsAttention: false },
