@@ -144,6 +144,33 @@ Deno.serve(async (request) => {
     );
   }
 
+  // A status check alone is no longer enough: a refund HOLD (owner-denial
+  // control, 2026-08-05) moves the post to `cancelled` while the payment is
+  // still `held` for its 72-hour dispute window. That post passes the check
+  // above — and the erasure would then die half way on payments' ON DELETE
+  // RESTRICT. Money still in motion blocks deletion, whatever the post says.
+  const { count: heldCount, error: heldError } = await admin
+    .from('payments')
+    .select('id, posts!inner(owner_id)', { count: 'exact', head: true })
+    .eq('status', 'held')
+    .eq('posts.owner_id', userId);
+
+  if (heldError) {
+    console.error('[profile] held-payment check failed', heldError.message);
+    return errorResponse(
+      'LOOKUP_FAILED',
+      'We couldn’t delete your account. Please try again.',
+      500,
+    );
+  }
+  if ((heldCount ?? 0) > 0) {
+    return errorResponse(
+      'ACCOUNT_HAS_ESCROW',
+      'A bounty of yours is still being settled. Once it’s done, you can delete your account.',
+      409,
+    );
+  }
+
   // --- Capture the Stripe Connect link BEFORE the cascade destroys it ---------
   // Not fatal if it fails: a missing audit row must never trap someone in an
   // account they asked to erase. Erasure is the user's right; the audit row is

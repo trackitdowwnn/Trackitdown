@@ -38,7 +38,6 @@ import {
   FileText,
   Info,
   LifeBuoy,
-  MapPin,
   Shield,
   Sparkles,
 } from 'lucide-react-native';
@@ -60,6 +59,7 @@ import { formatRecentLogs } from '@/shared/lib/logger';
 import { useRequireAuth } from '@/features/auth';
 import { useHasSavedCar } from '@/features/garage';
 import { useMyAlerts } from '@/features/notifications';
+import { usePayoutsRelevant } from '@/features/payments';
 
 import {
   AccountDeletionError,
@@ -117,7 +117,16 @@ export function ProfileScreen() {
     return <SignedOutState onPreview={() => setDevPreview(true)} />;
   }
 
-  const profile: MyProfile = state.status === 'ready' ? state.profile : DEV_MOCK_PROFILE;
+  // Sample data belongs to the dev preview and nothing else. Testing
+  // `devPreview` here rather than relying on the early returns above makes that
+  // true BY CONSTRUCTION: as written, one new `status` added to the hook — or
+  // one early return moved — would otherwise hand a real signed-out user a
+  // fabricated reputation and a stranger's name.
+  const profile: MyProfile | null =
+    state.status === 'ready' ? state.profile : devPreview ? DEV_MOCK_PROFILE : null;
+  if (!profile) {
+    return <SignedOutState onPreview={() => setDevPreview(true)} />;
+  }
   return (
     <LoadedProfile
       profile={profile}
@@ -173,6 +182,25 @@ function LoadedProfile({
   // actually true rather than a static label: an unset zone and a paused one
   // are different answers, and "Coming soon" was neither.
   const alertsState = useMyAlerts();
+  // Credit-time setup made "no setup" literally true, so the Payouts row shows
+  // only when there is something behind it: a payee account, or a credited
+  // bounty waiting. Everyone else's front door is the `credited` push. Hidden
+  // in the dev preview too (the RPC answers for nobody) — that is honest, the
+  // preview user has never been credited. Refetched on refocus (mount fetch is
+  // the hook's own; skip the duplicate) so the row can appear right after a
+  // first credit, not only after a restart.
+  const payouts = usePayoutsRelevant();
+  const payoutsFirstFocus = useRef(true);
+  const refreshPayoutsRow = payouts.refresh;
+  useFocusEffect(
+    useCallback(() => {
+      if (payoutsFirstFocus.current) {
+        payoutsFirstFocus.current = false;
+        return;
+      }
+      refreshPayoutsRow();
+    }, [refreshPayoutsRow]),
+  );
   const alertZoneSummary = (() => {
     if (alertsState.status !== 'ready') return undefined; // say nothing rather than guess
     const { alerts } = alertsState;
@@ -288,33 +316,36 @@ function LoadedProfile({
           testID="row-my-cars"
         />
 
-        {PAYOUTS_ENABLED ? (
-          // TODO(payments): derive the value from stripe_connected_accounts
-          // (none → "Set up payouts", payouts_enabled → "Payouts ready",
-          // else "Action needed") and deep-link into the payments feature.
-          <Section title="Payouts">
-            <ListRow icon={Banknote} title="Payouts" value="Set up payouts" disabled />
-          </Section>
-        ) : null}
-
         <Section title="Settings">
-          {/* BOTH rows land on the same screen: "Notifications" and "Alert
-              location" are one setting in the user's head, and two screens
-              would be two half-answers. */}
-          <ListRow
-            icon={MapPin}
-            title="Alert location & radius"
-            value={alertZoneSummary}
-            onPress={openAlertSettings}
-            testID="row-alert-radius"
-          />
+          {/* ONE row. "Notifications" and "Alert location" are one setting in
+              the user's head — which is the reason they always led to the same
+              screen — but two rows carrying the SAME summary read as two
+              settings that happen to agree, and invite a hunt for the
+              difference between them. One destination, one row saying so. */}
           <ListRow
             icon={Bell}
-            title="Notifications"
+            title="Alerts & notifications"
             value={alertZoneSummary}
             onPress={openAlertSettings}
-            testID="row-notifications"
+            testID="row-alerts"
           />
+          {/* Deliberately NO status value here, which is what the old TODO
+              asked for. It would cost a fourth network read on a tab people
+              open constantly, to render five words — and a cached "Payouts
+              ready" while Stripe has just suspended the account is worse than
+              saying nothing. The screen owns the truth; this row owns the way
+              in. Moved out of its own one-row section at the same time: a
+              section of one reads as a section that lost its siblings.
+              (`payouts.relevant` costs one boolean read — cheaper than the
+              status it deliberately doesn't show.) */}
+          {PAYOUTS_ENABLED && payouts.relevant ? (
+            <ListRow
+              icon={Banknote}
+              title="Payouts"
+              onPress={() => router.push('/payouts')}
+              testID="row-payouts"
+            />
+          ) : null}
           <ListRow
             icon={Info}
             title="How Trackitdown works"

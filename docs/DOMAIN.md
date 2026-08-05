@@ -9,10 +9,16 @@ document wins — fix the code or update this doc deliberately.
   confirms recovery.
 - **Spotter** — any user who has enabled alerts. Sets their own alert radius,
   receives notifications about active posts within it, reports sightings.
-- **Moderator** — internal admin. Reviews new posts before they go public,
-  handles flagged content and disputes.
-- **Platform** — us. Takes a 5% fee from each paid bounty via Stripe Connect
-  application fees.
+- **Moderator** — internal admin. Handles flagged content and disputes.
+  (No longer "reviews new posts before they go public" — ADR-0007 retired
+  pre-publish review. Nothing moderator-facing is built at all; the only flag
+  paths that exist are for a post and a message, and nothing consumes either.)
+- **Platform** — us. Retains 5% of each paid bounty. The bounty is captured to
+  our balance at posting and 95% is TRANSFERRED to the spotter on a credited
+  recovery, so our 5% is simply the remainder that never leaves — it is **not**
+  a Stripe `application_fee_amount`, which only exists for the destination
+  charges we deliberately do not use. See ADR-0002 and Bounty rules below.
+  This line said "via Stripe Connect application fees" until 2026-08-03.
 
 ## Accounts & sign-in
 
@@ -173,7 +179,24 @@ travel. Airbnb's wishlist mechanics, translated:
   (Not a Stripe `application_fee_amount`; see ADR-0002 for why.)
 - Spotters must complete Stripe Connect onboarding (KYC) before a payout
   can be released. Prompt for this when their first sighting is credited,
-  not at signup.
+  not at signup — the "you've earned £X" moment is the entry point, and the
+  highest-motivation form a user will ever fill.
+- **Payout account model (decided 2026-08-03, ADR-0010):** payee accounts are
+  Accounts v2 `recipient` configuration with **no Stripe dashboard** — we
+  collect name, date of birth, address and bank details in **our own native
+  UI**, tokenised client-side so nothing sensitive ever touches our server.
+  Consequences that are DOMAIN rules, not implementation details:
+  - **We are the requirements collector.** "Stripe needs more information" is a
+    state our UI owns, and re-collection at least every six months is our
+    recurring obligation.
+  - **Risk/liveness step-ups always fall back to a Stripe surface** — that is
+    Stripe's rule under every account model, not a gap in ours.
+  - **Payouts release automatically** once the recipient capability is active
+    and a credited post is waiting — but auto-release exists ONLY behind the
+    collusion check (SECURITY_AND_TRUST §5). A webhook that moves money does
+    not ship before the check that stops an owner crediting themselves.
+  - Our tables store the Stripe account id and status only. Bank and identity
+    data: never stored, never logged, never transiting our functions.
 - All amounts are stored in **pence (integer)**. Never floats for money.
 
 ## Sighting rules
@@ -409,12 +432,50 @@ unpublished, unsearchable, and carries no money or lifecycle state.
 - Users can delete their account in-app (App Store requirement). Deletion
   is server-side (Edge Function) per SECURITY_AND_TRUST.md retention rules.
 - Deletion is BLOCKED while any of the user's posts has money in escrow —
-  status `active`, `pending_verification`, or `recovery_claimed`. The user
-  must cancel the post or complete its recovery first. The client may
-  pre-check to explain this kindly; the server check is the enforcement.
+  status `active`, `pending_verification` (a retired state, still listed so a
+  legacy row cannot slip through), or `recovery_claimed`. The user must cancel
+  the post or complete its recovery first. The client may pre-check to explain
+  this kindly; the server check is the enforcement.
+- ~~⚠️ **Known trap (2026-08-03):** "complete its recovery" is currently
+  impossible for the credited-spotter branch.~~ **Closed 2026-08-03**, later
+  the same day: `release-payout` is called when a spotter is credited, and
+  again from the post's manage sheet ("Send the bounty") for the normal case
+  where they had not yet set up payouts. A `recovery_claimed` post can now
+  reach `recovered`, so the account-deletion block clears with it.
+  Residual, and honest: the post stays in `recovery_claimed` for as long as the
+  spotter takes to onboard, because **nothing re-runs the payout when they
+  become payable** — the owner sends it. An owner who never returns leaves the
+  bounty in escrow and their own account undeletable.
 
 ## Disputes
 
-- If an owner refuses to credit an obviously decisive sighting, the spotter
-  can raise a dispute; a moderator reviews the sighting trail and can
-  credit a sighting on the owner's behalf. Log every moderator action.
+Built 2026-08-05 (ADR-0011). The owner-denial control — what stops an owner
+whose car a spotter found from taking the bounty back with one tap:
+
+- **The trigger** (one SQL definition, `recent_uncredited_sightings`): an
+  uncredited sighting reported within 14 days of the exit attempt. Older
+  sightings never hold up an honest owner's refund.
+- **The attestation**: both refund exits (deactivate, "found it another way")
+  refuse to proceed until the owner has been shown exactly those sightings
+  and confirmed "none of these led me to the car". The confirmation and the
+  sighting ids shown are recorded on the hold. The other button — "one of
+  these did help" — routes to the crediting flow.
+- **The hold**: the listing comes down immediately, but the refund WAITS 72
+  hours (`refund_holds`). Every recent spotter gets the `closed_uncredited`
+  push and may file ONE dispute per sighting (`open_dispute`, no-oracle: every
+  refusal is the same answer). An open or upheld dispute blocks the refund.
+- **Resolution is a person** (v1): the founder reads the sighting trail —
+  capture-GPS photos, timestamps, retained chat — and runs
+  `resolve_sighting_dispute` by hand (service role; every action is a row).
+  Upheld: the sighting is credited on the owner's behalf (the post returns to
+  `recovery_claimed` and the normal payout machinery pays the spotter, 95/5,
+  collusion gate and all); sibling disputes auto-reject. Rejected or
+  unclaimed: the hourly `release-held-refunds` sweep sends the owner's refund
+  once the window passes.
+- Spotters learn the outcome by push (`dispute_upheld` / `dispute_rejected`)
+  and on the dispute screen. Rejection is final and deliberately unexplained —
+  the evidence was weighed by a person, and reasons become argument surfaces.
+
+There is still no passive expiry: nothing refunds by waiting. Every refund is
+an affirmative act, and now every affirmative act with recent sightings on the
+table is attested, delayed, and contestable.

@@ -105,16 +105,47 @@ describe('createBountyPaymentIntent', () => {
 
 describe('deactivatePost', () => {
   it('returns the server refund figures on success', async () => {
-    mockInvoke.mockResolvedValue({ data: { refundedPence: 49230, feePence: 770 }, error: null });
-    await expect(deactivatePost(POST_ID)).resolves.toEqual({ refundedPence: 49230, feePence: 770 });
+    mockInvoke.mockResolvedValue({
+      data: { held: false, refundedPence: 49230, feePence: 770 },
+      error: null,
+    });
+    await expect(deactivatePost(POST_ID)).resolves.toEqual({
+      held: false,
+      refundedPence: 49230,
+      feePence: 770,
+    });
+  });
+
+  it('returns the held answer with its date when the refund must wait', async () => {
+    mockInvoke.mockResolvedValue({
+      data: { held: true, refundAfter: '2026-08-08T12:00:00Z' },
+      error: null,
+    });
+    await expect(deactivatePost(POST_ID)).resolves.toEqual({
+      held: true,
+      refundAfter: '2026-08-08T12:00:00Z',
+    });
   });
 
   it('MONEY: sends only the post id — never a refund amount', async () => {
-    mockInvoke.mockResolvedValue({ data: { refundedPence: 49230, feePence: 770 }, error: null });
+    mockInvoke.mockResolvedValue({
+      data: { held: false, refundedPence: 49230, feePence: 770 },
+      error: null,
+    });
     await deactivatePost(POST_ID);
     expect(mockInvoke).toHaveBeenCalledWith('deactivate-post', { body: { postId: POST_ID } });
     const [, options] = mockInvoke.mock.calls[0];
     expect(Object.keys(options.body)).toEqual(['postId']);
+  });
+
+  it('MONEY: the attested call carries ids and still never an amount', async () => {
+    mockInvoke.mockResolvedValue({
+      data: { held: true, refundAfter: '2026-08-08T12:00:00Z' },
+      error: null,
+    });
+    await deactivatePost(POST_ID, ['s-1', 's-2']);
+    const [, options] = mockInvoke.mock.calls[0];
+    expect(Object.keys(options.body).sort()).toEqual(['attestedSightingIds', 'postId']);
   });
 
   it('maps a known error code to its user-facing message', async () => {

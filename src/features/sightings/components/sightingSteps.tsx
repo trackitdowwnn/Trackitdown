@@ -60,7 +60,6 @@ import {
   CONDITION_FLAGS,
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
-  MIN_SIGHTING_PHOTOS,
   VEHICLE_STATE_FLAGS,
   type ConditionFlag,
   type ParkedLikelihood,

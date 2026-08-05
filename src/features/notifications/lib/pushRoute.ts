@@ -29,5 +29,18 @@ export function pushRouteFor(payload: PushPayload): Href {
       return `/post/${payload.postId}`;
     case 'message':
       return `/chat/${payload.threadId}`;
+    // "You've earned £X" lands where the money gets an address, not on the
+    // car: the context of this tap is the payout. /payouts is guest-open like
+    // every destination here, so even a signed-out tap never dead-ends.
+    case 'credited':
+    // A won dispute is the same earn moment with a different door.
+    case 'dispute_upheld':
+      return '/payouts';
+    // The dispute surface: filing (closed_uncredited) and the resolved answer
+    // (rejected) are the same screen in different states — it reads its own
+    // truth from my_dispute_context, so both taps land there.
+    case 'closed_uncredited':
+    case 'dispute_rejected':
+      return `/sighting-dispute?sightingId=${payload.sightingId}`;
   }
 }

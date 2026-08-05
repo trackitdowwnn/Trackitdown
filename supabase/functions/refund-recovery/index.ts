@@ -35,16 +35,17 @@
  * SAFETY: refuses a post with a credited sighting — that money is a spotter's.
  *         Checked here AND again inside mark_post_recovered_no_spotter, because
  *         this check happens before the refund and the DB one after it.
- * LINKS: supabase/functions/deactivate-post/index.ts (the sibling this mirrors);
+ * LINKS: supabase/functions/_shared/refundEscrow.ts (the refund execution);
+ *        supabase/functions/deactivate-post/index.ts (the sibling this mirrors);
  *        supabase/migrations/20260802210000_mark_recovered_no_spotter.sql;
  *        supabase/migrations/20260802200000_claim_recovery.sql;
  *        docs/DOMAIN.md (lifecycle 6, bounty rules); docs/decisions/ADR-0002.
  */
 
-import type Stripe from 'npm:stripe@17.5.0';
-
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
+import { gateExitRefund } from '../_shared/refundHold.ts';
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -69,14 +70,20 @@ Deno.serve(async (request) => {
   const userId = userData.user.id;
 
   let postId: unknown;
+  let attestedSightingIds: unknown;
   try {
-    ({ postId } = await request.json());
+    ({ postId, attestedSightingIds } = await request.json());
   } catch {
     return errorResponse('BAD_REQUEST', 'Malformed request.', 400);
   }
   if (typeof postId !== 'string' || postId.length === 0) {
     return errorResponse('BAD_REQUEST', 'Missing post id.', 400);
   }
+  const attested =
+    Array.isArray(attestedSightingIds) &&
+    attestedSightingIds.every((id) => typeof id === 'string' && id.length > 0)
+      ? (attestedSightingIds as string[])
+      : null;
 
   // --- Ownership + the one acceptable state -----------------------------------
   const { data: post, error: postError } = await admin
@@ -121,73 +128,67 @@ Deno.serve(async (request) => {
     );
   }
 
-  // --- The held escrow --------------------------------------------------------
-  const { data: held, error: heldError } = await admin
-    .from('payments')
-    .select('stripe_payment_intent_id, amount_pence')
-    .eq('post_id', postId)
-    .eq('status', 'held')
-    .maybeSingle();
-
-  if (heldError) {
-    console.error('[payments] held payment lookup failed', heldError.message);
-    return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
+  // --- THE OWNER-DENIAL GATE, before any Stripe call ---------------------------
+  // "I found it another way" with recent uncredited sightings is exactly the
+  // exit an owner denying a spotter would take. Attestation + a 72-hour hold
+  // while those spotters are told; no recent sightings → refund now, as ever.
+  const gate = await gateExitRefund(admin, {
+    postId,
+    ownerId: userId,
+    exitPath: 'recovery',
+    attestedSightingIds: attested,
+  });
+  if (gate.action === 'attestation_required') {
+    return jsonResponse(
+      {
+        code: 'ATTESTATION_REQUIRED',
+        error: 'This listing has recent sightings to look at first.',
+        sightingIds: gate.sightingIds,
+      },
+      409,
+    );
   }
-  if (!held) {
+  if (gate.action === 'error') {
+    return gate.code === 'ATTESTATION_STALE'
+      ? errorResponse(
+          'ATTESTATION_STALE',
+          'A new sighting arrived while you were confirming. Please look again.',
+          409,
+        )
+      : errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
+  }
+  if (gate.action === 'held') {
+    console.log('[payments] recovery refund held', { postId, expiresAt: gate.expiresAt });
+    return jsonResponse({ held: true, refundAfter: gate.expiresAt });
+  }
+
+  // --- Refund the held escrow (the one shared implementation) -----------------
+  // Fee read authoritatively, arithmetic guarded, refund idempotent — see
+  // _shared/refundEscrow.ts. Key distinct from deactivate-post's
+  // `post-refund-<id>`: one post could be cancelled and then recovered, and a
+  // shared key would return the FIRST refund for the second request.
+  const stripe = createStripeClient();
+  const outcome = await refundHeldEscrow(admin, stripe, {
+    postId,
+    idempotencyKey: `recovery-refund-${postId}`,
+    metadata: { reason: 'recovered_no_spotter' },
+  });
+
+  if (outcome.status === 'no_held_payment') {
     return errorResponse('NO_HELD_PAYMENT', 'We couldn’t find the escrow for this listing.', 409);
   }
-
-  const paymentIntentId = held.stripe_payment_intent_id as string;
-  const amountPence = held.amount_pence as number;
-
-  // --- The authoritative Stripe fee (never guessed) ---------------------------
-  const stripe = createStripeClient();
-  let feePence: number | null = null;
-  try {
-    const intent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ['latest_charge.balance_transaction'],
-    });
-    const charge = intent.latest_charge as Stripe.Charge | null;
-    const balanceTxn = charge?.balance_transaction as Stripe.BalanceTransaction | null;
-    if (balanceTxn && typeof balanceTxn.fee === 'number') {
-      feePence = balanceTxn.fee;
-    }
-  } catch (err) {
-    console.error('[payments] fee lookup failed', (err as Error).message);
+  if (outcome.status === 'lookup_failed') {
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
   }
-  if (feePence === null) {
+  if (outcome.status === 'stripe_error') {
     return errorResponse('STRIPE_ERROR', 'We couldn’t finish this. Please try again.', 502);
   }
-
-  const refundPence = amountPence - feePence;
-  if (refundPence <= 0 || refundPence > amountPence) {
-    console.error('[payments] computed refund out of range', { amountPence, feePence });
-    return errorResponse('STRIPE_ERROR', 'We couldn’t finish this. Please try again.', 500);
-  }
-
-  // --- Refund (idempotent) ----------------------------------------------------
-  // Key distinct from deactivate-post's `post-refund-<id>`: one post could be
-  // cancelled and then recovered, and a shared key would return the FIRST
-  // refund for the second request.
-  let refund: Stripe.Refund;
-  try {
-    refund = await stripe.refunds.create(
-      {
-        payment_intent: paymentIntentId,
-        amount: refundPence,
-        metadata: { post_id: postId, reason: 'recovered_no_spotter' },
-      },
-      { idempotencyKey: `recovery-refund-${postId}` },
-    );
-  } catch (err) {
-    console.error('[payments] refund create failed', (err as Error).message);
-    return errorResponse('STRIPE_ERROR', 'We couldn’t finish this. Please try again.', 502);
-  }
+  const { refundId, refundPence, feePence, paymentIntentId } = outcome;
 
   // --- Record it (idempotent, never-regress) ----------------------------------
   const { error: rpcError } = await admin.rpc('mark_post_recovered_no_spotter', {
     p_payment_intent_id: paymentIntentId,
-    p_refund_id: refund.id,
+    p_refund_id: refundId,
     p_refunded_amount_pence: refundPence,
   });
   if (rpcError) {
@@ -198,5 +199,5 @@ Deno.serve(async (request) => {
   }
 
   console.log('[payments] recovery closed with no spotter', { postId, refundPence, feePence });
-  return jsonResponse({ refundedPence: refundPence, feePence });
+  return jsonResponse({ held: false, refundedPence: refundPence, feePence });
 });

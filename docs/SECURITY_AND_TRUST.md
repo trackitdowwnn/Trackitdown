@@ -163,13 +163,62 @@ commenting standards.
 
 ## 4. Payments (Stripe Connect)
 
-- The client app **never** touches amounts, fees, or payout logic. It only
-  opens Stripe-hosted flows (PaymentSheet for escrow, Connect onboarding
-  for spotters).
-- Escrow charge on posting; payout of 95% / 5% application fee only via
-  the `release-payout` Edge Function, which validates state transitions
-  server-side (post must be `recovery_claimed`, sighting must belong to
-  the post, spotter must be onboarded).
+- The client app **never** touches amounts, fees, or payout logic. It opens
+  Stripe's own flows (PaymentSheet for escrow, the embedded
+  `ConnectAccountOnboarding` component for spotters) and, since 2026-08-03,
+  collects payout details in a native form of our own — see below.
+- ⚠️ **We transit raw bank details.** `submit-payout-details` receives a sort
+  code and account number from our form and forwards them to Stripe's Accounts
+  API. Stripe permits this only until an Account Link or Session exists for
+  that account, which is why the session mint is gated on
+  `details_submitted_at`. They are **never stored** — no column holds them —
+  and **never logged**, not even masked; a partial account number in a log is
+  still an account number in a log. Tokenising instead is not available: a
+  `btok_` may only be attached where `controller.requirement_collection` is
+  `application`, and ours are Express. **This is financial PII in transit and
+  must appear in the privacy policy and the Art. 30 record.**
+- Escrow charge on posting; payout of 95% by **transfer**, with our 5%
+  retained as the remainder that never leaves the platform balance — **not**
+  an `application_fee_amount` (ADR-0002; this line said "application fee"
+  until 2026-08-03). Only via the `release-payout` Edge Function, which
+  validates state transitions server-side (post must be `recovery_claimed`,
+  sighting must belong to the post, spotter must be onboarded) and whose
+  `mark_recovery_paid` re-derives the split independently and rejects a
+  mismatch.
+  **Wired 2026-08-03.** `release-payout` is called from `RecoverPostScreen`
+  when a spotter is credited, and again from the post's manage sheet ("Send the
+  bounty") for the usual case where they had not yet onboarded. Connect
+  onboarding exists. This entry previously said nothing called it and told the
+  reader not to take a live payment; that gate is met.
+  ⚠️ **Two things still stand between this and real money:**
+  - `account.updated` must be enabled by hand on the Stripe webhook endpoint.
+    It is not a default, and without it `payouts_enabled` never becomes true,
+    so every payout answers `awaiting_payee` forever — silently.
+  - **The collusion check is BUILT (2026-08-03)** and runs inside
+    `release-payout` before any transfer, replacing the "do not take a live
+    payment" gate that stood here. Three signals, any hit → the payout answers
+    `held_for_review`, a `payout_reviews` row is written, and a human (us)
+    resolves it by hand in the console — `approved` unblocks the next run,
+    `rejected` keeps the escrow held deliberately, because in the fraud shape
+    this catches, the refund-claimant is the fraudster:
+    1. **shared_device** — the `device_links` ledger records a push token
+       moving between accounts (the same handset signed into both). Recorded
+       by `register_push_token` at the moment of the move, because
+       `push_tokens` itself deliberately forgets the previous owner.
+    2. **shared_card** — the card fingerprint behind this bounty's escrow
+       charge matches a card the spotter has paid with on their own posts
+       (Stripe lookups at payout time; nothing stored).
+    3. **matching_email** — the accounts' emails normalise to one address
+       (case, `+tags`, gmail's ignored dots).
+    **Honest limits, on the record:** two phones, two cards and unrelated
+    emails defeat all three — this raises the cost of fraud from zero to
+    "maintain genuinely separate identities", it does not make fraud
+    impossible. Signup-IP matching was considered and REJECTED: we store no
+    IPs, the only source is undocumented auth-schema internals, and UK mobile
+    CGNAT would drown true positives in false ones. The gate **fails closed**
+    (an unevaluable signal is a retryable error, never "assume innocent"), and
+    review REASONS never reach any client — telling a fraudster which signal
+    caught them is a tutorial.
 - Webhooks: verify Stripe signatures, dedupe by event id, and make every
   handler idempotent.
 - Amounts are integer pence everywhere. `// MONEY:` lines require tests.
@@ -186,6 +235,18 @@ commenting standards.
 - Collusion check before payout: flag for moderator review if the owner
   and winning spotter share a device fingerprint, card fingerprint, or
   signup IP.
+- Owner-denial control (built 2026-08-05, ADR-0011) — the collusion check's
+  mirror image: collusion is an owner paying THEMSELVES; denial is an owner
+  refusing to pay the spotter who earned it. Any exit-with-refund while
+  uncredited sightings from the last 14 days exist requires an explicit
+  recorded attestation ("none of these led me to the car", with the exact
+  sighting ids shown), delists immediately but HOLDS the refund 72 hours,
+  and notifies every such spotter, who may dispute once per sighting. An
+  open/upheld dispute blocks the refund; disputes are resolved by hand
+  against the immutable evidence trail (capture-GPS photos, timestamps,
+  retained chat), and an upheld one credits the spotter through the normal
+  payout machinery, collusion gate included. The spotter-facing surface is
+  no-oracle: every refusal is one indistinguishable answer.
 - Bounty cap £5,000 in v1.
 
 ## 6. Database security

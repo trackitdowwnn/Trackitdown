@@ -28,7 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bookmark } from 'lucide-react-native';
 
 import { useRequireAuth } from '@/features/auth';
-import { useDeactivatePost } from '@/features/payments';
+import { exitCheck, useDeactivatePost } from '@/features/payments';
 import { useWatchToggle } from '@/features/watchlist';
 import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
@@ -46,6 +46,8 @@ import {
 } from '@/shared/ui';
 
 import { flagPost } from '../api/flagApi';
+import { RecoveryError, releasePayout } from '../api/recoveryApi';
+import { ExitAttestation } from '../components/ExitAttestation';
 import { PostSectionEditorHost, type EditableSection } from '../components/editors';
 import { PostBottomBar } from '../components/PostBottomBar';
 import { PostDetailBody } from '../components/PostDetailBody';
@@ -106,6 +108,15 @@ function canDeactivate(post: PostDetail): boolean {
 function canMarkRecovered(post: PostDetail): boolean {
   return post.isOwner && post.status === 'active';
 }
+/** A credited spotter is waiting to be paid. `recovery_claimed` means the winner
+ *  is chosen and the bounty is still in escrow — usually because they have not
+ *  given Stripe their details yet, which is the expected first answer, not a
+ *  fault. Before this row existed the owner had NO action on such a listing:
+ *  every other one requires `active`, so crediting someone made the app go
+ *  silent on the post it cared most about. */
+function canReleasePayout(post: PostDetail): boolean {
+  return post.isOwner && post.status === 'recovery_claimed';
+}
 
 export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const router = useRouter();
@@ -125,6 +136,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // Which section the owner is editing (a full-screen overlay), or null. Cleared
   // on cancel; on save it also refetches the detail so the change shows.
   const [editing, setEditing] = useState<EditableSection | null>(null);
+  // Guards a double-tap on "Send the bounty". The transfer itself is idempotent
+  // server-side, so this is about not firing two requests, not about safety.
+  const [releasing, setReleasing] = useState(false);
 
   const heroHeight = Math.round(width * HERO_RATIO);
   // The sheet's rounded top overlaps the hero, so the VISUAL hero bottom —
@@ -265,6 +279,14 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     manageRef.current?.open();
   }, []);
 
+  // The owner-denial attestation (DOMAIN.md Disputes): when the server says
+  // recent uncredited sightings exist, deactivation detours through a look at
+  // exactly those sightings before any refund can be held.
+  const [attestation, setAttestation] = useState<{
+    sightingIds: string[];
+    holdHours: number;
+  } | null>(null);
+
   // Deactivate + refund. The confirm already fired (the dialog below); this
   // issues the server refund, toasts the EXACT refunded amount, and refetches so
   // the post now reads "Cancelled" and drops off public surfaces.
@@ -276,16 +298,73 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     if (result.outcome === 'done') {
       toast.show(`Listing deactivated — ${formatPounds(result.result.refundedPence)} refunded`);
       retry();
+    } else if (result.outcome === 'held') {
+      // Reachable only if sightings appeared between the pre-flight and now.
+      toast.show(heldToast(result.refundAfter));
+      retry();
     } else {
       toast.show(result.message, 'error');
     }
   }, [deactivate, deactivating, postId, retry, toast]);
 
+  // The attested exit: same call, carrying exactly what the owner was shown.
+  const onAttestedDeactivate = useCallback(
+    async (attestedSightingIds: string[]) => {
+      if (deactivating) {
+        return;
+      }
+      const result = await deactivate(postId, attestedSightingIds);
+      if (result.outcome === 'held') {
+        setAttestation(null);
+        toast.show(heldToast(result.refundAfter));
+        retry();
+      } else if (result.outcome === 'done') {
+        // The trigger set emptied server-side (sightings aged out) — the
+        // refund simply went through.
+        setAttestation(null);
+        toast.show(`Listing deactivated — ${formatPounds(result.result.refundedPence)} refunded`);
+        retry();
+      } else if (result.code === 'ATTESTATION_STALE') {
+        // A sighting landed mid-confirm. Refresh the set and ask again.
+        toast.show(result.message, 'error');
+        try {
+          const check = await exitCheck(postId);
+          setAttestation(
+            check.requiresAttestation
+              ? { sightingIds: check.sightingIds, holdHours: check.holdHours }
+              : null,
+          );
+        } catch {
+          setAttestation(null);
+        }
+      } else {
+        toast.show(result.message, 'error');
+      }
+    },
+    [deactivate, deactivating, postId, retry, toast],
+  );
+
   // Both deactivate entry points (the body's button, the manage sheet's row)
-  // open the same confirm — never the refund itself.
+  // land here. The pre-flight decides which door: recent sightings → the
+  // attestation; none → the plain destructive confirm, exactly as before.
+  // A failed pre-flight opens the plain confirm — enforcement is the SERVER's
+  // (the gate re-checks), so degrading here costs honesty nothing.
   const requestDeactivate = useCallback(() => {
-    deactivateRef.current?.open();
-  }, []);
+    void (async () => {
+      try {
+        const check = await exitCheck(postId);
+        if (check.requiresAttestation) {
+          setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
+          return;
+        }
+      } catch (err) {
+        log.warn('exit_check pre-flight failed', {
+          code: err instanceof Error ? err.message : 'UNKNOWN',
+        });
+      }
+      deactivateRef.current?.open();
+    })();
+  }, [postId]);
 
   // No confirm dialog here, unlike deactivate: the recovery screen IS the
   // confirmation, and it asks something a yes/no cannot — WHICH sighting. A
@@ -293,6 +372,38 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const onRecovered = useCallback(() => {
     router.push({ pathname: '/recover-post', params: { postId } });
   }, [postId, router]);
+
+  // Retrying a payout. Idempotent server-side (one transfer per post, forever),
+  // so this needs no confirm — and `awaiting_payee` is reported as news rather
+  // than as a failure, because it is: the spotter simply has not onboarded yet.
+  const onReleasePayout = useCallback(async () => {
+    if (releasing) {
+      return;
+    }
+    setReleasing(true);
+    try {
+      const payout = await releasePayout(postId);
+      if (payout.status === 'paid' && payout.transferPence !== null) {
+        toast.show(`Sent. ${formatPounds(payout.transferPence)} is on its way to them.`);
+        retry(); // the post is `recovered` now — reload so the screen agrees
+      } else if (payout.status === 'held_for_review') {
+        // Ours, not theirs: never the bank-details line here, or the owner
+        // chases the spotter about a delay we caused on purpose.
+        toast.show('We’re just double-checking this payout — no need to do anything.');
+      } else {
+        toast.show(
+          'Not yet — they still need to add their bank details. It’ll send automatically when they do.',
+        );
+      }
+    } catch (error) {
+      toast.show(
+        error instanceof RecoveryError ? error.message : 'We couldn’t send it. Please try again.',
+        'error',
+      );
+    } finally {
+      setReleasing(false);
+    }
+  }, [postId, releasing, retry, toast]);
 
   const onOpenMap = useCallback(
     (post: PostDetail) => {
@@ -453,6 +564,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
             canEditSafeSection(visiblePost) ? () => setEditing('distinctive_features') : undefined
           }
           onDeactivate={canDeactivate(visiblePost) ? requestDeactivate : undefined}
+          onReleasePayout={
+            canReleasePayout(visiblePost) ? () => void onReleasePayout() : undefined
+          }
         />
       ) : null}
 
@@ -485,8 +599,39 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
           }}
         />
       ) : null}
+
+      {/* The owner-denial attestation — full-screen and OPAQUE (the transparent
+          Modal bleed-through lesson), mounted over everything when the exit
+          pre-flight found recent sightings. */}
+      {attestation ? (
+        <View style={[styles.attestationOverlay, { paddingTop: insets.top + spacing.lg }]}>
+          <ExitAttestation
+            postId={postId}
+            sightingIds={attestation.sightingIds}
+            holdHours={attestation.holdHours}
+            busy={deactivating}
+            onConfirm={(ids) => void onAttestedDeactivate(ids)}
+            onCredit={() => {
+              setAttestation(null);
+              // Crediting IS the recovery flow — it already knows how to ask
+              // which sighting and to move the money the right way.
+              router.push({ pathname: '/recover-post', params: { postId } });
+            }}
+            onCancel={() => setAttestation(null)}
+          />
+        </View>
+      ) : null}
     </View>
   );
+}
+
+/** The one sentence for a held refund, with the real date in it. */
+function heldToast(refundAfter: string): string {
+  const date = new Date(refundAfter);
+  const when = Number.isNaN(date.getTime())
+    ? 'the 72-hour window'
+    : date.toLocaleString('en-GB', { weekday: 'long', hour: 'numeric', minute: '2-digit' });
+  return `Listing deactivated. Your refund is sent after ${when}, unless a sighting is contested.`;
 }
 
 /** Graceful copy for a post a viewer can't (or no longer can) see. */
@@ -583,5 +728,16 @@ const styles = StyleSheet.create({
     height: typography.heading.lineHeight,
     flex: 1,
     maxWidth: '55%',
+  },
+  attestationOverlay: {
+    // Explicit insets, not absoluteFillObject (typecheck) — and an OPAQUE
+    // background: money copy must never render over half-visible content.
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.background,
+    padding: spacing.xl,
   },
 });

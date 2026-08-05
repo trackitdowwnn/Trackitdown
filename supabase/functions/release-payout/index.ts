@@ -34,24 +34,9 @@
  *        docs/decisions/ADR-0002-stripe-connect.md; docs/DOMAIN.md.
  */
 
-import type Stripe from 'npm:stripe@17.5.0';
-
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
-
-/**
- * The canonical split, mirroring `payout_split` in SQL. Integer arithmetic —
- * `* 95 / 100`, never `* 0.95` — and the fee is the REMAINDER so the two halves
- * always add back to the bounty exactly.
- *
- * This duplication is deliberate and is not drift waiting to happen: we need
- * the number here to create the transfer, and the RPC recomputes it and refuses
- * anything else. Two independent derivations that must agree.
- */
-function splitBounty(bountyPence: number): { transferPence: number; feePence: number } {
-  const transferPence = Math.round((bountyPence * 95) / 100);
-  return { transferPence, feePence: bountyPence - transferPence };
-}
+import { releasePayoutForPost } from '../_shared/releasePayout.ts';
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
@@ -102,108 +87,52 @@ Deno.serve(async (request) => {
     return errorResponse('POST_NOT_CLAIMED', 'This listing isn’t waiting on a payout.', 409);
   }
 
-  // --- Who won ----------------------------------------------------------------
-  const { data: credited, error: creditedError } = await admin
-    .from('sightings')
-    .select('id, spotter_id')
-    .eq('post_id', postId)
-    .eq('status', 'credited')
-    .maybeSingle();
-
-  if (creditedError) {
-    console.error('[payments] credited sighting lookup failed', creditedError.message);
-    return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
-  }
-  if (!credited) {
-    // No winner — this recovery's ending is a refund, not a payout.
-    return errorResponse(
-      'NO_CREDITED_SIGHTING',
-      'No spotter was credited for this recovery.',
-      409,
-    );
-  }
-
-  // --- Can they actually receive it? ------------------------------------------
-  const { data: connect } = await admin
-    .from('stripe_connected_accounts')
-    .select('id, stripe_account_id, payouts_enabled')
-    .eq('profile_id', credited.spotter_id)
-    .maybeSingle();
-
-  if (!connect || !connect.payouts_enabled) {
-    // NOT an error state. The bounty stays in escrow and the post stays
-    // `recovery_claimed` until they have onboarded; this runs again then.
-    console.log('[payments] payout waiting on payee onboarding', { postId });
-    return jsonResponse({ status: 'awaiting_payee' });
-  }
-
-  // --- The held escrow --------------------------------------------------------
-  const { data: held, error: heldError } = await admin
-    .from('payments')
-    .select('stripe_payment_intent_id, amount_pence')
-    .eq('post_id', postId)
-    .eq('status', 'held')
-    .maybeSingle();
-
-  if (heldError) {
-    console.error('[payments] held payment lookup failed', heldError.message);
-    return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
-  }
-  if (!held) {
-    return errorResponse('NO_HELD_PAYMENT', 'We couldn’t find the bounty for this listing.', 409);
-  }
-
-  const paymentIntentId = held.stripe_payment_intent_id as string;
-  const bountyPence = held.amount_pence as number;
-  const { transferPence, feePence } = splitBounty(bountyPence);
-
-  // Defensive: a transfer must be a positive amount no larger than the bounty.
-  if (transferPence <= 0 || transferPence > bountyPence) {
-    console.error('[payments] computed transfer out of range', { bountyPence, transferPence });
-    return errorResponse('SPLIT_ERROR', 'We couldn’t finish this. Please try again.', 500);
-  }
-
-  // --- Transfer (idempotent — never a second payout) --------------------------
-  let transfer: Stripe.Transfer;
+  // --- The core does the money; this function only proved the caller owns it.
+  // Extracted 2026-08-04 (_shared/releasePayout.ts) so the webhook's automatic
+  // release and this manual retry can never drift apart.
   const stripe = createStripeClient();
-  try {
-    transfer = await stripe.transfers.create(
-      {
-        amount: transferPence,
-        currency: 'gbp',
-        destination: connect.stripe_account_id as string,
-        // No `source_transaction`: that ties a transfer to one charge's funds
-        // and waits for them to settle. Under separate charges and transfers
-        // (ADR-0002) the bounty is already on the platform balance, and the
-        // dispute-reversal protection comes from the connected account's
-        // `losses_collector: "application"`, not from linking the charge.
-        transfer_group: postId,
-        metadata: { post_id: postId, sighting_id: credited.id },
-      },
-      // ONE payout per post, forever. A retry after a dropped response returns
-      // the same transfer rather than paying the spotter twice.
-      { idempotencyKey: `post-payout-${postId}` },
-    );
-  } catch (err) {
-    console.error('[payments] transfer create failed', (err as Error).message);
-    return errorResponse('STRIPE_ERROR', 'We couldn’t send the bounty. Please try again.', 502);
-  }
+  const outcome = await releasePayoutForPost(admin, stripe, postId);
 
-  // --- Record it (idempotent, never-regress, split re-checked) -----------------
-  const { error: rpcError } = await admin.rpc('mark_recovery_paid', {
-    p_payment_intent_id: paymentIntentId,
-    p_transfer_id: transfer.id,
-    p_payee_account_id: connect.id,
-    p_transfer_amount_pence: transferPence,
-    p_platform_fee_pence: feePence,
-  });
-  if (rpcError) {
-    // The transfer SUCCEEDED but we couldn't record it. Retryable: the
-    // idempotency key reuses the same transfer and the RPC never regresses.
-    console.error('[payments] mark_recovery_paid failed', rpcError.message);
-    return errorResponse('LEDGER_ERROR', 'The bounty is on its way. Please check back shortly.', 500);
+  switch (outcome.status) {
+    case 'paid':
+      return jsonResponse({
+        status: 'paid',
+        transferPence: outcome.transferPence,
+        feePence: outcome.feePence,
+      });
+    case 'awaiting_payee':
+      return jsonResponse({ status: 'awaiting_payee' });
+    case 'held_for_review':
+      // Not an error: the claim stands, the money is safe, and a human (us)
+      // decides. The reasons NEVER leave the server — telling a fraudster
+      // which signal caught them is a tutorial.
+      return jsonResponse({ status: 'held_for_review' });
+    case 'not_claimed':
+      return errorResponse('POST_NOT_CLAIMED', 'This listing isn’t waiting on a payout.', 409);
+    case 'error':
+      switch (outcome.code) {
+        case 'NO_CREDITED_SIGHTING':
+          return errorResponse(
+            'NO_CREDITED_SIGHTING',
+            'No spotter was credited for this recovery.',
+            409,
+          );
+        case 'NO_HELD_PAYMENT':
+          return errorResponse(
+            'NO_HELD_PAYMENT',
+            'We couldn’t find the bounty for this listing.',
+            409,
+          );
+        case 'STRIPE_ERROR':
+          return errorResponse('STRIPE_ERROR', 'We couldn’t send the bounty. Please try again.', 502);
+        case 'LEDGER_ERROR':
+          return errorResponse(
+            'LEDGER_ERROR',
+            'The bounty is on its way. Please check back shortly.',
+            500,
+          );
+        default:
+          return errorResponse('LOOKUP_FAILED', 'We couldn’t finish this. Please try again.', 500);
+      }
   }
-
-  console.log('[payments] bounty released', { postId, transferPence, feePence });
-  return jsonResponse({ status: 'paid', transferPence, feePence });
 });

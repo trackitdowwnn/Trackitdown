@@ -21,10 +21,10 @@ export {
 // features may take — registration is owned by NotificationsHost.
 export { unregisterCurrentPushToken } from './api/pushTokenApi';
 
-// The ONE way another feature causes a push. Both are fire-and-forget and
-// never throw — a notification must not be able to fail the action that
-// caused it. Authorisation is enforced server-side by the claim RPCs.
-export { notifyMessage, notifySighting } from './api/notifyApi';
+// The ONE way another feature causes a push. All fire-and-forget and never
+// throw — a notification must not be able to fail the action that caused it.
+// Authorisation is enforced server-side by the claim RPCs.
+export { notifyCredited, notifyMessage, notifySighting } from './api/notifyApi';
 
 // Alert state, read by Profile's summary row and the Explore nudge card. Its
 // deps are React, the api layer and useSession — imported by MODULE path, not

@@ -142,12 +142,22 @@ fallback chain by construction.
 - **RLS:** spotters SELECT their own rows (their history); the owner reads via
   the RPC only; anon: nothing; no client writes outside the RPC.
 
-## Push notification — honest stub
+## Push notification — SHIPPED (2026-07-30)
 
-`notify-owner-of-sighting` is **NOT built**: no push infra exists yet (no
-expo-notifications, no token storage, no deployed Edge Functions). The owner
-"is notified" only in the in-app sense (the aggregate + their list). The
-notifications feature adds the Edge Function + trigger — ROADMAP.
+This section said "NOT built — no push infra exists yet" until 2026-08-03,
+which was wrong for four days. It ships as
+`supabase/functions/notify-sighting/` (the name changed from the specced
+`notify-owner-of-sighting`), invoked from `sightingApi.ts:306` via
+`notifications/api/notifyApi.ts:50`. The DB side authorises it:
+`claim_sighting_notification` verifies the caller is that sighting's own
+spotter, is idempotent, and collapses per post.
+
+**Known weakness, not a stub:** the invoke is CLIENT-side and
+fire-and-forget, so a spotter's app dying between `create_sighting` and the
+invoke means the owner is never pushed. Nothing is lost permanently — the
+sighting is in the owner's list either way — but the URGENT half of this
+feature is best-effort, which is exactly the wrong half to be best-effort.
+`notifyApi.ts:18` names the fix (a `pg_net` DB trigger); it is not built.
 
 ## Logging (`[sightings]`)
 

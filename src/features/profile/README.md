@@ -23,11 +23,19 @@ narrative ReputationCard).
 `20260710120000_profile_fields_and_avatars.sql`), `posts` (read-only
 deletion pre-check), `stripe_connected_accounts` (payout status, read-only).
 **Storage:** public `avatars` bucket, own-folder writes.
-**Edge Functions:** `delete-account` — NOT built yet; outlined in the
-migration's comment block. The client pre-checks for posts with escrowed
+**Edge Functions:** `delete-account` — **BUILT** (2026-08-01, 247 lines),
+invoked at `api/profileApi.ts:228`. This line said "NOT built yet" until
+2026-08-03. It sweeps storage as well as rows; `sighting-photos` is
+deliberately excluded (SECURITY_AND_TRUST §5 records that as a judgement
+call, not a certainty). The client still pre-checks for posts with escrowed
 money (active / pending_verification / recovery_claimed) and blocks with
-honest copy; the server re-check is the enforcement when the function lands.
-**Config:** `config.ts` — `PAYOUTS_ENABLED=false` (row ships dark until
-Phase 3 payments), legal URLs (TODO placeholders), support email.
+honest copy; the server re-check is now the real enforcement.
+⚠️ **Known trap:** crediting a spotter moves a post to `recovery_claimed`,
+and nothing can currently move it out of that state — so an owner who
+credits someone can never delete their account. See the payout gap below.
+**Config:** `config.ts` — `PAYOUTS_ENABLED=false` (the row ships dark; the
+payee half of the money loop does not exist — no Connect onboarding, and
+`release-payout` has no caller), legal URLs (TODO placeholders), support
+email (`support@trackitdown.example` — a reserved TLD, so it goes nowhere).
 **Out of scope:** blocked-users management, payment methods, vanity profile
 URLs, notification toggles (live in the notifications feature), real auth.

@@ -26,14 +26,25 @@ v1 scope, stop and flag it.
 - [ ] Moderator queue (simple internal web page) — flags, disputes and
       collusion checks. The *ownership-verification* queue is no longer part
       of the posting path; re-introducing any ownership check depends on this
-      queue existing first. **Nothing moderator-facing is built.**
+      queue existing first. **No moderator UI is built** — but the dispute
+      MACHINERY now exists (2026-08-05, ADR-0011: refund holds, spotter
+      disputes, hand-run `resolve_sighting_dispute`), so this page's dispute
+      half becomes a reader over `refund_disputes` + the sighting trail.
 - [x] Garage / "My cars": pre-register your vehicles so reporting one stolen
       prefills the wizard (5 per account, plate optional, no V5C; posts
       snapshot rather than reference the saved car — added to scope + built
       2026-07-27)
-- [x] Search: map + list of active posts, distance sorting (features/search-map
+- [~] Search: map + list of active posts, distance sorting (features/search-map
       — Explore feed, map screen, list sheet; distance sorting is server-side,
       `order by dist` in get_home_feed/search_posts)
+      **⚠️ Downgraded from [x] on 2026-08-03: the cards have no photos in a
+      release build.** `get_home_feed` returns no photo column, so
+      `feedApi.ts:66` falls back to `devSampleImages`, which yields ten
+      Unsplash cars in `__DEV__` and `[]` in production. Feed, watchlist and
+      inbox all render placeholders for real users. A stolen-car feed without
+      photographs of the cars is not a shipped search feature. Fix = photo
+      data on the feed/search/nearby RPCs + card schemas, and delete the dev
+      fallback in the same change so dev stops flattering us.
 - [x] Spotter alerts: push notification on new active post within radius
       (built 2026-07-30 — features/notifications: push token registry, one
       shared send utility, tap routing incl. cold start, alert zones with
@@ -52,20 +63,50 @@ v1 scope, stop and flag it.
       (features/sightings — camera-only per ADR-0003, sightings_verification.sql)
 - [x] Owner ↔ spotter chat (opens only after a sighting) (features/chat —
       Inbox + thread, chat_verification.sql)
-- [ ] Recovery confirmation flow: owner credits one sighting (or none).
-      **THE BIGGEST HOLE IN THE LOOP.** Nothing anywhere moves a post to
-      `recovered` or a sighting to `credited` — verified by grep across all
-      migrations. Everything downstream is therefore unreachable: the payout,
-      the recovery push, and `recoveries_credited`, which can never leave 0.
-- [ ] Payout: Stripe Connect onboarding for spotter, 95/5 release, refunds.
+- [x] Recovery confirmation flow: owner credits one sighting (or none).
+      **BUILT 2026-08-02** — `20260802200000_claim_recovery.sql`,
+      `20260802210000_mark_recovered_no_spotter.sql`, `RecoverPostScreen`,
+      entered from post detail. This entry read "THE BIGGEST HOLE IN THE LOOP —
+      nothing anywhere moves a post to `recovered`" until 2026-08-03, a day
+      after it shipped. Single winner is enforced by a partial unique index;
+      the owner cannot credit their own sighting; the "I found it another way"
+      branch calls `refund-recovery` and reaches a terminal state correctly.
+- [~] Payout: Stripe Connect onboarding for spotter, 95/5 release, refunds.
       **Refunds are DONE** (deactivate-post + mark_post_payment_refunded +
-      refund_cancel_verification.sql). Connect onboarding and the 95/5 release
-      do not exist at all — and cannot be reached anyway until the recovery
-      flow above exists.
+      refund_cancel_verification.sql). **`release-payout` is DONE too** —
+      209 lines, 95/5 transfer math per ADR-0002, a per-post transfer
+      idempotency key, and `mark_recovery_paid` independently re-deriving the
+      split and rejecting a mismatch (`20260802220000_release_payout.sql`).
+      **BOTH WIRES CLOSED 2026-08-03.** `release-payout` is invoked from
+      `RecoverPostScreen` on the `payout` branch, and again from the post's
+      manage sheet ("Send the bounty") for the usual case where the spotter had
+      not yet onboarded. Connect onboarding is built: `connect-onboarding`
+      (Account Session), `submit-payout-details` (our own native form for bank
+      details + identity, inside Stripe's prefill window), `connect-return`,
+      and an `account.updated` branch in `stripe-webhook` — the only writer of
+      `payouts_enabled`. A `PayoutsScreen` behind Profile → Payouts.
+      **Still open, and all three matter:**
+      1. **Collusion check — BUILT 2026-08-03.** Runs in `release-payout`
+         before any transfer: shared-device history (`device_links`), shared
+         card fingerprint, normalised-email match. Any hit → `held_for_review`,
+         resolved by hand in the console. Fails closed; reasons never reach a
+         client. Honest limit: two phones + two cards + unrelated emails defeat
+         it — it prices fraud, it does not abolish it. (SECURITY_AND_TRUST §5
+         has the full write-up.)
+      2. **Nothing re-runs the payout** when the webhook makes a spotter
+         payable — the owner must return and tap "Send the bounty". Copy on
+         both sides now says so rather than promising it happens by itself.
+      3. Still missing on the spotter's side: no `type: 'recovery'` push SENDER
+         (the payload, route and `push_sends` kind all exist and are tested),
+         and **no spotter-facing sightings surface** — `/post-sightings` and
+         `/sighting/[id]` are owner-only, so a spotter cannot check a report
+         they filed, let alone learn they were credited. Combined with (2), the
+         realistic steady state is a credited spotter who is never told.
 - [~] Reputation counters + 1/5/25 badges on profiles. Counters and badge
       maths are BUILT and server-maintained (`sightings_reported`,
       `sightings_helpful`; ReputationCard + lib/reputation.ts). The third,
-      `recoveries_credited`, is permanently 0 for the reason above.
+      `recoveries_credited`, moves only on a PAID recovery, so it stays 0 until
+      the two wires above are connected.
 - [x] Watchlist: bookmark posts to keep an eye out (toggle on every card, own
       tab, 30-day resolved section with tombstones — added to scope + built
       2026-07-22)
@@ -146,13 +187,16 @@ v1 scope, stop and flag it.
   `create_sighting`, gallery pick/upload with EXIF stripped, owner-facing
   "added from photo library" labels, tests, security review. Decision is
   recorded; nothing is built.
-- **watched-post-recovered push** — STILL BLOCKED, and the reason has been
-  corrected: it is **not** waiting on notifications infra (that shipped
-  2026-07-30). **No code path anywhere moves a post to `recovered`** — there
-  is no recovery or payout function in any migration and no such Edge
-  Function, so there is nothing to hook. The `recovery` payload variant, its
-  route and its `push_sends` kind all ship and are tested; the exact
-  insertion point is written up in features/notifications/README. Payload
+- **watched-post-recovered push** — **UNBLOCKED 2026-08-02, still unbuilt.**
+  The reason has now been corrected twice. It was never waiting on
+  notifications infra (that shipped 2026-07-30), and the second reason given
+  here — "no code path anywhere moves a post to `recovered`" — stopped being
+  true when `claim_recovery` and `release-payout` landed. `mark_recovery_paid`
+  is the hook: it is the moment a post genuinely becomes `recovered`, and it
+  is where both this push and the spotter's own "you were credited" push
+  belong. The `recovery` payload variant, its route and its `push_sends` kind
+  all ship and are tested; the exact insertion point is written up in
+  features/notifications/README. Payload
   contract unchanged: post context only ("Good news — the Blue BMW you were
   watching was recovered"), never watcher counts or other watchers'
   existence. Sighting-activity pushes for watchers are deliberately OUT

@@ -72,6 +72,24 @@ jest.mock('../api/flagApi', () => ({
   flagPost: (...args: unknown[]) => mockFlagPost(...args),
 }));
 
+// Mocked at the api boundary like flagApi above — importing the real module
+// reaches `shared/api`, which throws at load without Supabase env configured.
+const mockReleasePayout = jest.fn();
+jest.mock('../api/recoveryApi', () => {
+  class RecoveryError extends Error {
+    code: string;
+    constructor(message: string, code: string) {
+      super(message);
+      this.name = 'RecoveryError';
+      this.code = code;
+    }
+  }
+  return {
+    RecoveryError,
+    releasePayout: (...args: unknown[]) => mockReleasePayout(...args),
+  };
+});
+
 // The chat feature is imported lazily (dynamic import) by the message-owner
 // handler — __esModule so `await import()` destructuring resolves the mock.
 const mockOpenThread = jest.fn();
@@ -259,6 +277,34 @@ describe('PostDetailScreen', () => {
       setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'draft' } });
       const { queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
       expect(queryByText('Deactivate & refund')).toBeNull();
+    });
+  });
+
+  // A listing whose spotter is credited but not yet paid used to offer the
+  // owner NOTHING: deactivate and mark-recovered both require `active`, so
+  // crediting someone made every action vanish from the post they cared most
+  // about — and, because deletion is blocked while a post holds escrow, it
+  // also locked them out of deleting their account for good.
+  describe('a credited spotter who has not been paid yet', () => {
+    it('offers the owner a way to send the bounty', async () => {
+      setResult('ready', {
+        kind: 'visible',
+        post: { ...post, isOwner: true, status: 'recovery_claimed' },
+      });
+      const { getByTestId } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      expect(getByTestId('manage-release-payout')).toBeTruthy();
+    });
+
+    it('offers it on no other status, and never to a spotter', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'active' } });
+      const live = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      expect(live.queryByTestId('manage-release-payout')).toBeNull();
+
+      setResult('ready', { kind: 'visible', post: { ...post, status: 'recovery_claimed' } });
+      const spotter = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      expect(spotter.queryByTestId('manage-release-payout')).toBeNull();
     });
   });
 

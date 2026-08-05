@@ -37,11 +37,39 @@ const recoveryPayloadSchema = z
   .object({ type: z.literal('recovery'), postId: z.guid() })
   .strict();
 
+/** YOUR sighting was credited — the earn moment. The amount lives in the
+ *  visible title, never in this payload; the tap opens /payouts, where
+ *  "where do we send it" gets answered. */
+const creditedPayloadSchema = z
+  .object({ type: z.literal('credited'), postId: z.guid() })
+  .strict();
+
+/** A post you sighted closed without crediting anyone — the 72-hour window to
+ *  contest is open. The sighting id, not the post id: the post is invisible
+ *  to the spotter once closed, and the dispute screen keys off THEIR sighting. */
+const closedUncreditedPayloadSchema = z
+  .object({ type: z.literal('closed_uncredited'), sightingId: z.guid() })
+  .strict();
+
+/** Your dispute won — "you've earned £X" (amount in the visible title only). */
+const disputeUpheldPayloadSchema = z
+  .object({ type: z.literal('dispute_upheld'), sightingId: z.guid() })
+  .strict();
+
+/** Your dispute was reviewed and didn't stand. Final; no reasons in a push. */
+const disputeRejectedPayloadSchema = z
+  .object({ type: z.literal('dispute_rejected'), sightingId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
   messagePayloadSchema,
   recoveryPayloadSchema,
+  creditedPayloadSchema,
+  closedUncreditedPayloadSchema,
+  disputeUpheldPayloadSchema,
+  disputeRejectedPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

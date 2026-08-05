@@ -91,7 +91,6 @@ jest.mock('@/shared/ui', () => {
 });
 
 jest.mock('expo-clipboard', () => ({ setStringAsync: jest.fn(() => Promise.resolve()) }));
-jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn(() => Promise.resolve()) }));
 jest.mock('expo-constants', () => ({
   __esModule: true,
   default: { expoConfig: { version: '1.2.3' } },
@@ -143,6 +142,18 @@ jest.mock('@/features/notifications', () => ({
   unregisterCurrentPushToken: jest.fn(),
 }));
 
+// Same boundary rule as garage/notifications. Defaults to RELEVANT so the
+// row's own wiring tests keep a row to press; the hidden case is its own test.
+let mockPayoutsRelevant = true;
+jest.mock('@/features/payments', () => ({
+  usePayoutsRelevant: () => ({
+    get relevant() {
+      return mockPayoutsRelevant;
+    },
+    refresh: jest.fn(),
+  }),
+}));
+
 const profile = {
   id: 'user-1',
   firstName: 'Ollie',
@@ -156,6 +167,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockProfileState = { status: 'ready', profile, refresh: jest.fn() };
   mockAlertsState = { status: 'ready', alerts: [], refresh: jest.fn() };
+  mockPayoutsRelevant = true;
   mockSignOut.mockResolvedValue(undefined);
   mockCountBlocking.mockResolvedValue(0);
   mockRequestDeletion.mockResolvedValue(undefined);
@@ -275,9 +287,10 @@ describe('signed in', () => {
     expect(mockPush).toHaveBeenCalledWith('/onboarding?revisit=1');
   });
 
-  // The two Settings rows were inert "Coming soon" placeholders until the
-  // notifications feature shipped.
-  it('both alert rows open alert settings and no longer say Coming soon', async () => {
+  // This row was an inert "Coming soon" placeholder until the notifications
+  // feature shipped, and was then TWO rows with the same summary and the same
+  // destination until 2026-08-03.
+  it('one alert row opens alert settings and no longer says Coming soon', async () => {
     const { getByTestId, queryByText } = await render(<ProfileScreen />);
 
     expect(queryByText('Coming soon')).toBeNull();
@@ -285,15 +298,39 @@ describe('signed in', () => {
     // Presses are wrapped in act: an unwrapped one leaves a pending update
     // that surfaces as an unrelated failure in the NEXT test, not this one.
     await act(async () => {
-      fireEvent.press(getByTestId('row-alert-radius'));
+      fireEvent.press(getByTestId('row-alerts'));
     });
     expect(mockPush).toHaveBeenCalledWith('/alerts');
+  });
 
-    mockPush.mockClear();
+  it('offers alerts exactly once — the same summary twice reads as two settings', async () => {
+    const { queryByTestId } = await render(<ProfileScreen />);
+    expect(queryByTestId('row-alert-radius')).toBeNull();
+    expect(queryByTestId('row-notifications')).toBeNull();
+  });
+
+  // This row shipped `disabled` from 2026-07-10 to 2026-08-03 — visible, inert,
+  // and the only way a spotter could ever be paid.
+  it('opens payouts, and promises nothing about their status on the way', async () => {
+    const { getByTestId, queryByText } = await render(<ProfileScreen />);
+
     await act(async () => {
-      fireEvent.press(getByTestId('row-notifications'));
+      fireEvent.press(getByTestId('row-payouts'));
     });
-    expect(mockPush).toHaveBeenCalledWith('/alerts');
+    expect(mockPush).toHaveBeenCalledWith('/payouts');
+    // No cached status value: it would need a fourth network read here, and a
+    // stale "ready" is worse than silence when Stripe may have just suspended
+    // the account. The screen behind this row is the source of truth.
+    expect(queryByText('Set up payouts')).toBeNull();
+  });
+
+  it('shows NO payouts row to someone with nothing behind it', async () => {
+    // Credit-time setup (ADR-0010 amendments): a never-credited spotter has
+    // nothing to set up, so a row inviting them to do it anyway would be a
+    // door to an empty room. The `credited` push is their front door.
+    mockPayoutsRelevant = false;
+    const { queryByTestId } = await render(<ProfileScreen />);
+    expect(queryByTestId('row-payouts')).toBeNull();
   });
 
   it('summarises no alerts as Not set', async () => {

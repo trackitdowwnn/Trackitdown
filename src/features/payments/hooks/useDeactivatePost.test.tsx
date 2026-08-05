@@ -38,13 +38,28 @@ async function deactivate() {
 
 describe('useDeactivatePost', () => {
   it('returns "done" with the server refund figures on success', async () => {
-    mockInvoke.mockResolvedValue({ data: { refundedPence: 49230, feePence: 770 }, error: null });
+    mockInvoke.mockResolvedValue({
+      data: { held: false, refundedPence: 49230, feePence: 770 },
+      error: null,
+    });
     await expect((await deactivate())('p1')).resolves.toEqual({
       outcome: 'done',
-      result: { refundedPence: 49230, feePence: 770 },
+      result: { held: false, refundedPence: 49230, feePence: 770 },
       message: null,
     });
     expect(mockInvoke).toHaveBeenCalledWith('deactivate-post', { body: { postId: 'p1' } });
+  });
+
+  it('returns "held" with the date when the refund waits out the window', async () => {
+    mockInvoke.mockResolvedValue({
+      data: { held: true, refundAfter: '2026-08-08T12:00:00Z' },
+      error: null,
+    });
+    await expect((await deactivate())('p1', ['s-1'])).resolves.toEqual({
+      outcome: 'held',
+      refundAfter: '2026-08-08T12:00:00Z',
+      message: null,
+    });
   });
 
   it('returns "failed" with the mapped message when the function errors', async () => {
@@ -56,6 +71,7 @@ describe('useDeactivatePost', () => {
       outcome: 'failed',
       result: null,
       message: 'This listing can’t be deactivated for a refund.',
+      code: 'POST_NOT_REFUNDABLE',
     });
   });
 });

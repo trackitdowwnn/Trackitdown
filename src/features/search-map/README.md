@@ -8,6 +8,24 @@ Primary actor: **spotter** (any signed-in user browsing); owners see their
 own posts here like anyone else. Read-only feature: never writes posts,
 never touches status or money.
 
+> ## ⚠️ THE FEED HAS NO PHOTOS IN A RELEASE BUILD (found 2026-08-03)
+>
+> `get_home_feed` has **no photo column**, so `api/feedApi.ts:66` fills cards
+> from `src/shared/lib/devSampleImages.ts`, which returns ten Unsplash cars in
+> `__DEV__` and **`[]` everywhere else**. Every card in the feed, the watchlist
+> and the inbox renders the placeholder on a real build.
+>
+> This was invisible for weeks precisely BECAUSE of the dev fallback: the app
+> looked finished on every dev build anyone ever ran it on. A stand-in that is
+> only convincing to the developer is worse than a visible gap.
+>
+> The fix is a photo column on the feed/search/nearby RPCs and a real
+> `photos` field on the card schemas; the dev fallback should be deleted in
+> the same change, so dev and prod agree about what exists. Until then, treat
+> any screenshot of the feed as fiction. Same fallback in
+> `watchlist/api/watchlistApi.ts:70,91`, `chat/api/chatApi.ts:154`,
+> `vehicles/api/vehicleApi.ts:124`.
+
 **Screens**
 - `HomeFeedScreen` (route `src/app/(tabs)/explore.tsx`) — the feed.
 - `MapSearchScreen` (route `src/app/search-map.tsx`) — the full map search
@@ -22,8 +40,9 @@ never touches status or money.
    `/search-map?search=1`, which auto-opens the surface). (Copy dropped
    "plate" — plate capture is deferred, see the Search surface section.)
 3. Sectioned feed (below).
-4. Floating "Map" pill (dark, white text, map icon) bottom-centre → stub;
-   hides on scroll-down, returns on scroll-up (Reanimated 4).
+4. Floating "Map" pill (dark, white text, map icon) bottom-centre → pushes
+   `/search-map` (`HomeFeedScreen.tsx:175`); this line said "stub" long after
+   it was wired. Hides on scroll-down, returns on scroll-up (Reanimated 4).
 
 **Feed-location preference**
 Versioned AsyncStorage key `trackitdown.feed_location_v1`:
@@ -118,8 +137,9 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
    pager across. While a card is up the list sheet slides away (the card
    owns the bottom of the screen); it returns at peek on dismiss.
    Dismiss: map-background tap or Android back (back exits
-   the screen only when no card is up). Card tap → post detail (TODO until
-   the vehicles feature ships). The card is the shared VehicleCard `map`
+   the screen only when no card is up). Card tap → post detail, wired at
+   `MapSearchScreen.tsx:302` (this said "TODO until the vehicles feature
+   ships" long after it shipped). The card is the shared VehicleCard `map`
    variant: photo, make/model, VISIBLE PlateChip, near-black bounty,
    distance. Selection changes announce to screen readers ("Blue BMW
    3 Series, £500 bounty — swipe for more results").

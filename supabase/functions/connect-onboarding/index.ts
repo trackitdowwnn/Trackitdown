@@ -1,0 +1,291 @@
+/**
+ * WHAT:  Edge Function that gives a spotter somewhere for their bounty to land:
+ *        creates their Stripe Express account if they have none, then returns
+ *        the credential for whichever flow fits — an **Account Session** for
+ *        the embedded, in-app onboarding component if they are still setting
+ *        up, or a hosted `account_update` link if they are already payable and
+ *        want to change where the money goes.
+ *
+ *        TWO SHAPES, AND THE SERVER PICKS. The client sends no body at all, so
+ *        which flow to run is decided here from the account's own state — it is
+ *        never asked for. Callers get `{ status, clientSecret }` or
+ *        `{ status, url }` and branch on the status.
+ * WHY:   `release-payout` will not transfer a penny unless
+ *        `stripe_connected_accounts.payouts_enabled` is true, and until this
+ *        function existed nothing ever created a row there. The money half of
+ *        the product had a payer and no payee.
+ *
+ * ASKED FOR AT THE RIGHT MOMENT, NOT AT SIGNUP.
+ *        DOMAIN.md is explicit: KYC is requested when a spotter's first
+ *        sighting is CREDITED, not when they join. Demanding bank details and a
+ *        date of birth from someone who has just downloaded a car-spotting app
+ *        is how you lose them before they have spotted anything. So this is
+ *        called from the payouts surface, and the natural time to reach it is
+ *        the moment there is money waiting.
+ *
+ * MONEY: this function moves NOTHING. It creates an account and a link; the
+ *        transfer is `release-payout`, and the flags that permit it are written
+ *        only by Stripe's own `account.updated` webhook. A client cannot make
+ *        itself payable by calling this.
+ *
+ * WHY THE ACCOUNT IS NOT MARKED READY HERE:
+ *        returning from Stripe's flow does NOT mean verification passed —
+ *        documents can be reviewed for days and can fail. So this records the
+ *        account with `payouts_enabled: false` and lets the webhook be the
+ *        single source of truth. Trusting the redirect would create a spotter
+ *        who looks payable and is not, and `release-payout` would then fail at
+ *        the transfer instead of waiting politely.
+ *
+ * LINKS: supabase/migrations/20260802220000_release_payout.sql
+ *          (upsert_connected_account — the only writer of that table);
+ *        supabase/functions/stripe-webhook/index.ts (account.updated);
+ *        supabase/functions/release-payout/index.ts (what this unblocks);
+ *        docs/decisions/ADR-0002-stripe-connect.md (Express, separate charges
+ *          and transfers, losses_collector: application);
+ *        docs/DOMAIN.md ("prompt at first credited sighting, not at signup").
+ */
+
+import { createServiceRoleClient, createStripeClient, requireEnv } from '../_shared/clients.ts';
+import { createConnectAccount, findConnectAccount } from '../_shared/connectAccount.ts';
+import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+
+/**
+ * Where Stripe sends the spotter afterwards.
+ *
+ * THESE MUST BE HTTPS. Account Links accept http/https only; a custom scheme is
+ * rejected with a flat "Not a valid URL", which is exactly what happened when
+ * these were `trackitdown://payouts?…` on 2026-08-03 — the account was created
+ * and only the LINK failed, so the error looked like a Stripe configuration
+ * problem when it was ours. The `connect-return` function is the bounce: an
+ * HTTPS page that immediately forwards to the app's scheme.
+ *
+ * `refresh_url` is not an error path — Stripe uses it when a link has expired
+ * (they are short-lived by design), and the app answers by asking for a new
+ * one. Sending them to a dead end there would strand someone mid-KYC.
+ */
+const RETURN_BASE = `${requireEnv('SUPABASE_URL')}/functions/v1/connect-return`;
+const RETURN_URL = `${RETURN_BASE}?onboarding=complete`;
+const REFRESH_URL = `${RETURN_BASE}?onboarding=refresh`;
+
+Deno.serve(async (request) => {
+  if (request.method === 'OPTIONS') {
+    return preflightResponse();
+  }
+  if (request.method !== 'POST') {
+    return errorResponse('METHOD_NOT_ALLOWED', 'Method not allowed.', 405);
+  }
+
+  const authHeader = request.headers.get('Authorization') ?? '';
+  const jwt = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!jwt) {
+    return errorResponse('NOT_AUTHENTICATED', 'You need to be signed in.', 401);
+  }
+
+  const admin = createServiceRoleClient();
+  const { data: userData, error: userError } = await admin.auth.getUser(jwt);
+  if (userError || !userData.user) {
+    return errorResponse('NOT_AUTHENTICATED', 'You need to be signed in.', 401);
+  }
+  const userId = userData.user.id;
+
+  // The account is always the CALLER's. Deliberately no id in the request body:
+  // a payee id that arrived over the wire is a payee id someone could change.
+  let existing;
+  try {
+    existing = await findConnectAccount(admin, userId);
+  } catch (err) {
+    console.error('[payments] connect account lookup failed', (err as Error).message);
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t start this. Please try again.', 500);
+  }
+
+  const stripe = createStripeClient();
+  let accountId = existing.accountId ?? undefined;
+
+  // RECONCILE BEFORE DECIDING. Our row's flags are written by the
+  // account.updated webhook — which silently never arrives if the Stripe
+  // endpoint isn't scoped to CONNECTED accounts (a dashboard setting, easy to
+  // get wrong, invisible when wrong). Found the hard way: a spotter finished
+  // onboarding perfectly and this function kept answering "continue setting
+  // up" off a stale row, forever. So when the account exists, ask Stripe
+  // directly and sync; the webhook becomes an optimisation, not a dependency.
+  //
+  // A failed read falls back to the row — that is exactly the status quo this
+  // block exists to improve on, so degrading to it is honest, not fail-open.
+  if (accountId) {
+    try {
+      const account = await stripe.accounts.retrieve(accountId);
+      const fresh = {
+        onboardingComplete: Boolean(account.details_submitted),
+        payoutsEnabled: Boolean(account.payouts_enabled),
+      };
+      if (
+        fresh.onboardingComplete !== existing.onboardingComplete ||
+        fresh.payoutsEnabled !== existing.payoutsEnabled
+      ) {
+        const { error: syncError } = await admin.rpc('upsert_connected_account', {
+          p_profile_id: userId,
+          p_stripe_account_id: accountId,
+          p_onboarding_complete: fresh.onboardingComplete,
+          p_payouts_enabled: fresh.payoutsEnabled,
+        });
+        if (syncError) {
+          console.error('[payments] connect reconcile write failed', syncError.message);
+        } else {
+          console.log('[payments] connect account reconciled', {
+            accountId,
+            payoutsEnabled: fresh.payoutsEnabled,
+          });
+          existing = { ...existing, ...fresh };
+        }
+      }
+    } catch (err) {
+      console.warn('[payments] connect reconcile read failed', (err as Error).message);
+    }
+  }
+
+  // ALREADY PAYABLE. Not "nothing to do" — people change banks, move house, and
+  // have documents expire, and until 2026-08-03 this returned a bare
+  // `already_enabled` with no link, which left a set-up spotter with no route
+  // to their own details at all. `account_update` is Stripe's own answer: the
+  // same hosted flow, opened for editing rather than for signing up.
+  if (existing.payoutsEnabled && accountId) {
+    try {
+      const link = await stripe.accountLinks.create({
+        account: accountId,
+        refresh_url: REFRESH_URL,
+        return_url: RETURN_URL,
+        type: 'account_update',
+      });
+      console.log('[payments] connect update link issued', { accountId });
+      return jsonResponse({ status: 'update_available', url: link.url });
+    } catch (err) {
+      // EXPECTED for legacy Express accounts, not exceptional: Stripe refuses
+      // `account_update` links wherever IT collects requirements, which is
+      // every account with an Express dashboard. Their supported "manage my
+      // details" surface is that dashboard, and a LOGIN LINK is the door to
+      // it. (v2 dashboard-none accounts are the mirror image: account_update
+      // works, login links would fail — there is no dashboard to log into.)
+      // Before this branch, the failure fell through to `already_enabled` and
+      // the button showed a spinner that went nowhere.
+      console.warn('[payments] connect update link refused', (err as Error).message);
+      try {
+        const login = await stripe.accounts.createLoginLink(accountId);
+        console.log('[payments] connect login link issued', { accountId });
+        return jsonResponse({ status: 'update_available', url: login.url });
+      } catch (loginErr) {
+        // Falling back to the old answer keeps a working payout account
+        // working: failing here would make "manage my details" look like
+        // "payouts broke".
+        console.error('[payments] connect login link failed', (loginErr as Error).message);
+        return jsonResponse({ status: 'already_enabled' });
+      }
+    }
+  }
+
+  // THE GATE. Stripe lets us submit bank details and identity fields ourselves
+  // — but only until the first session exists, and then never again for the
+  // life of the account. So a session is NOT minted until our own form has run:
+  // doing it first is what made a native form impossible, silently, on the very
+  // first tap.
+  //
+  // Answered before the account is even created, so a spotter who has typed
+  // nothing yet also cannot have the window closed on them by a stray call.
+  //
+  // ...UNLESS THEY ASK TO SKIP IT, and they must be able to. Our form knows how
+  // to describe a UK individual with a UK bank account and nothing else, so a
+  // spotter Stripe refuses for a reason those ten fields cannot express — a
+  // company, a non-UK account — would otherwise be gated forever behind a form
+  // that can never satisfy it, with no route to the onboarding that could.
+  // Skipping spends the prefill window deliberately, which is strictly better
+  // than being unpayable.
+  //
+  // `skipPrefill` is an intent about the CALLER's own account, not an identity:
+  // the account still comes from the JWT and nothing about who is paid can be
+  // influenced from the wire.
+  if (!existing.detailsSubmitted) {
+    let skipPrefill = false;
+    try {
+      const body = (await request.json()) as { skipPrefill?: unknown };
+      skipPrefill = body?.skipPrefill === true;
+    } catch {
+      // No body at all is the normal case — the client sends one only to skip.
+    }
+
+    if (!skipPrefill) {
+      return jsonResponse({ status: 'details_required' });
+    }
+
+    // The account has to exist before the gate can be recorded against it.
+    if (!accountId) {
+      try {
+        accountId = await createConnectAccount(stripe, admin, userId);
+      } catch (err) {
+        console.error('[payments] connect account create failed', (err as Error).message);
+        return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
+      }
+    }
+    const { error: skipError } = await admin.rpc('mark_payout_details_submitted', {
+      p_profile_id: userId,
+      p_stripe_account_id: accountId,
+    });
+    if (skipError) {
+      console.error('[payments] payout prefill skip failed', skipError.message);
+      return errorResponse('LEDGER_ERROR', 'We couldn’t set up payouts. Please try again.', 500);
+    }
+    console.log('[payments] payout prefill skipped', { accountId });
+  }
+
+  if (!accountId) {
+    // Only reachable if the details were recorded without an account, which
+    // `submit-payout-details` makes impossible — kept because "impossible"
+    // states are exactly the ones that cost you an afternoon later.
+    try {
+      accountId = await createConnectAccount(stripe, admin, userId);
+    } catch (err) {
+      console.error('[payments] connect account create failed', (err as Error).message);
+      return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
+    }
+  }
+
+  // SETUP HAPPENS INSIDE THE APP. An Account Session is the credential for
+  // Stripe's embedded `ConnectAccountOnboarding` component, which renders in
+  // the app rather than throwing the spotter out to a browser — the single
+  // clunkiest moment in the product, at the exact point someone is deciding
+  // whether to trust us with their bank details.
+  //
+  // WHY NOT JUST WEBVIEW THE HOSTED FLOW: because Stripe forbids it, in as many
+  // words — "Stripe-hosted onboarding is only supported in web browsers. You
+  // can't use it in embedded web views inside mobile or desktop applications."
+  // The embedded component is the supported route, not a workaround for it.
+  //
+  // Sessions are short-lived and single-account, so one is minted per request
+  // and never stored. The client re-invokes this function when the SDK asks for
+  // a fresh secret, which is why nothing above this point has side effects on a
+  // repeat call.
+  try {
+    const session = await stripe.accountSessions.create({
+      account: accountId,
+      components: { account_onboarding: { enabled: true } },
+    });
+    console.log('[payments] connect onboarding session issued', { accountId });
+    return jsonResponse({ status: 'onboarding_session', clientSecret: session.client_secret });
+  } catch (err) {
+    // The hosted link still works and is still deployed, so a session failure
+    // is recoverable rather than terminal: fall back to the browser flow that
+    // shipped first. Worse UX, but a spotter who can be paid beats a dead end.
+    console.error('[payments] connect account session failed', (err as Error).message);
+    try {
+      const link = await stripe.accountLinks.create({
+        account: accountId,
+        refresh_url: REFRESH_URL,
+        return_url: RETURN_URL,
+        type: 'account_onboarding',
+      });
+      console.log('[payments] connect onboarding link issued (session fallback)', { accountId });
+      return jsonResponse({ status: 'onboarding_required', url: link.url });
+    } catch (linkErr) {
+      console.error('[payments] connect account link failed', (linkErr as Error).message);
+      return errorResponse('STRIPE_ERROR', 'We couldn’t set up payouts. Please try again.', 502);
+    }
+  }
+});

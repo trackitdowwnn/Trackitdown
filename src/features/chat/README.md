@@ -122,13 +122,20 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
 - Unread = messages newer than my last_read_at, not sent by me; per-thread
   counts from `get_inbox`; the sum drives the Inbox tab badge via the
   existing TabBadgeProvider.
-- **notify-message push: HONEST STUB** — no push infra exists (no
-  expo-notifications, no token storage, no deployed Edge Functions; same
-  posture as notify-owner-of-sighting). Contract specced now: payload =
-  sender first name + post context ("New message about your Blue BMW") —
-  message content NEVER transits push (third-party infra;
-  SECURITY_AND_TRUST §3 / LOGGING.md). Deep route `/chat/[threadId]` is
-  live and gate-aware for when it ships.
+- **notify-message push: SHIPPED** (2026-07-30). This section read "HONEST
+  STUB — no push infra exists" until 2026-08-03, three days after it was
+  built; a doc that says a shipped thing is missing costs more than one that
+  says nothing. `supabase/functions/notify-message/` is deployed and invoked
+  from `chatApi.ts:215` via `notifications/api/notifyApi.ts:55`. The specced
+  contract held: payload = sender first name + post context ("New message
+  about your Blue BMW"), and message content NEVER transits push
+  (third-party infra; SECURITY_AND_TRUST §3 / LOGGING.md). Deep route
+  `/chat/[threadId]` is live and gate-aware.
+  - **Known weakness, not a stub:** the invoke is CLIENT-side and
+    fire-and-forget, so an app killed in the window between `send_message`
+    and the invoke notifies nobody. The message itself is never lost — it is
+    in the thread. `notifyApi.ts:18` names the fix (a `pg_net` DB trigger);
+    it is not built.
 
 ## Privacy & logging
 
