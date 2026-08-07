@@ -120,6 +120,15 @@ export const sizes = {
   mapPinOrigin: 12,
   mapPinConfirm: 16,
   mapPinRing: 2,
+  /** The search map's DEMOTED pin — no price, for posts outside the top few
+   *  bounties in view. A LOZENGE, not a dot: the reference draws it as its
+   *  price pill with the price hidden, so the two read as one family rather
+   *  than two kinds of object (docs/design-refs/map/). Its own tokens, not
+   *  mapPinOrigin's: that one is the sightings trail's origin marker and tuning
+   *  it must not resize this. The ring eats mapPinRing from each edge, leaving
+   *  a 14×7 ink core. */
+  mapPinMiniWidth: 18,
+  mapPinMiniHeight: 11,
   /** Non-interactive context pill height (timeline cards). */
   pillHeight: 24,
   /** The camera-as-step canvas (report-sighting photos step): viewfinder +

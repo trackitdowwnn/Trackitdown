@@ -1,15 +1,14 @@
 /**
  * WHAT:  Pure map-region geometry — region↔bbox conversion, the
- *        "moved enough to offer Search-this-area" test, framing a region
- *        around a point-at-radius or a set of posts, the slippy-map
- *        zoom level a region corresponds to (for clustering), haversine
- *        distance (peek-card ordering), and the "comfortably visible"
- *        test (pan-only-when-needed camera rule).
- * WHY:   The map screen's calm-search model hinges on these numbers being
- *        testable without a map view: results only refresh when the user
- *        explicitly asks, and "has the viewport moved enough to ask?" is a
- *        pure function of two regions. Kept UK-simple on purpose — no
- *        antimeridian handling (matches the viewport RPC's stance).
+ *        "moved enough to re-search" test, camera insets for the chrome
+ *        floating over the map, framing a region around a point-at-radius or a
+ *        set of posts, haversine distance (peek-card ordering), and the
+ *        "comfortably visible" test (pan-only-when-needed camera rule).
+ * WHY:   The map's behaviour hinges on these numbers being testable without a
+ *        map view: "has the viewport moved enough to re-search?" and "would
+ *        framing this land it behind the sheet?" are both pure functions of
+ *        regions. Kept UK-simple on purpose — no antimeridian handling
+ *        (matches the viewport RPC's stance).
  * LINKS: src/features/search-map/hooks/useViewportPosts.ts (consumer);
  *        supabase/migrations (search_posts bbox semantics);
  *        src/shared/types/location.ts (GeoRegion).
@@ -40,10 +39,13 @@ export function regionToBbox(region: GeoRegion): Bbox {
 }
 
 /**
- * Has the viewport moved enough that offering "Search this area" makes
- * sense? True when the centre shifted by more than `fraction` of the
- * (smaller) viewport span, or the zoom changed by more than ~40%.
- * Small nudges and momentum drift stay quiet — the calm-map rule.
+ * Has the viewport moved enough to be worth re-searching? True when the
+ * centre shifted by more than `fraction` of the (smaller) viewport span, or
+ * the zoom changed by more than ~40%.
+ *
+ * This is the FIRST of the three brakes on auto-search (the other two are the
+ * debounce and the pause-while-a-card-is-open): a nudge, a momentum tail or a
+ * thumb resting on the map must never cost a request.
  */
 export function movedEnough(
   searched: GeoRegion,
@@ -62,8 +64,9 @@ export function movedEnough(
 }
 
 /**
- * The tightest region (plus breathing room) containing all coords — used
- * to zoom into a tapped cluster. Falls back to `fallback` when empty.
+ * The tightest region (plus breathing room) containing all coords — the map's
+ * opening frame around the results it just loaded. Falls back to `fallback`
+ * when empty, because framing nothing would zoom to a point.
  */
 export function frameCoords(coords: GeoCoord[], fallback: GeoRegion): GeoRegion {
   if (coords.length === 0) {
@@ -85,9 +88,73 @@ export function frameCoords(coords: GeoCoord[], fallback: GeoRegion): GeoRegion 
   };
 }
 
-/** Slippy-map zoom level for a region — what supercluster clusters by. */
-export function regionZoom(region: GeoRegion): number {
-  return Math.round(Math.log2(360 / region.longitudeDelta));
+/**
+ * How much of the map's HEIGHT is covered by floating chrome — the top bar
+ * above, the resting sheet or the card pager below. Fractions of the map rect
+ * (0..1), never pixels, so this math is platform-independent and testable
+ * without a map view.
+ *
+ * WHY NOT react-native-maps' `mapPadding`: it changes what
+ * onRegionChangeComplete REPORTS, and differently per platform (Android derives
+ * the region from a padding-aware getVisibleRegion(), iOS from mapView.region).
+ * The map screen feeds that reported region into the search bbox, the pin slice
+ * and movedEnough simultaneously — a platform divergence there would mean the
+ * area we search differs from the area drawn, on one OS only. Doing it in JS
+ * keeps exactly one meaning of "region" everywhere: the full map rect.
+ */
+export interface MapInsets {
+  top: number;
+  bottom: number;
+}
+
+/** No chrome — the identity inset. */
+export const NO_INSETS: MapInsets = { top: 0, bottom: 0 };
+
+/**
+ * The fraction of the map still visible, FLOORED. Chrome taller than the map
+ * is not a real layout, but it is reachable — a measured card at large text on
+ * a short screen — and without the floor `cameraForVisible` divides by zero or
+ * a negative and hands the map a NaN or inverted camera.
+ */
+function visibleFractionOf(insets: MapInsets): number {
+  return Math.max(1 - insets.top - insets.bottom, 0.2);
+}
+
+/**
+ * The slice of `region` the user can actually SEE, given chrome over it.
+ * Latitude increases up-screen, so a top inset removes the northernmost band
+ * and pushes the visible centre south.
+ */
+export function visibleRegion(region: GeoRegion, insets: MapInsets): GeoRegion {
+  const visibleFraction = visibleFractionOf(insets);
+  return {
+    latitude: region.latitude + ((insets.bottom - insets.top) * region.latitudeDelta) / 2,
+    longitude: region.longitude,
+    latitudeDelta: region.latitudeDelta * visibleFraction,
+    longitudeDelta: region.longitudeDelta,
+  };
+}
+
+/**
+ * The exact inverse: the camera to set so `target` fills the VISIBLE band
+ * rather than the whole map rect. Use at every fly-to, or the thing you framed
+ * lands under the sheet.
+ */
+export function cameraForVisible(target: GeoRegion, insets: MapInsets): GeoRegion {
+  const visibleFraction = visibleFractionOf(insets);
+  const latitudeDelta = target.latitudeDelta / visibleFraction;
+  return {
+    latitude: target.latitude - ((insets.bottom - insets.top) * latitudeDelta) / 2,
+    longitude: target.longitude,
+    latitudeDelta,
+    longitudeDelta: target.longitudeDelta,
+  };
+}
+
+/** The centre of what the user can see — the honest anchor for "nearest first". */
+export function visibleCentre(region: GeoRegion, insets: MapInsets): GeoCoord {
+  const visible = visibleRegion(region, insets);
+  return { latitude: visible.latitude, longitude: visible.longitude };
 }
 
 /** Mean Earth radius (metres) for the haversine below. */

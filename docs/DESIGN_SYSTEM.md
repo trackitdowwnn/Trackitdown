@@ -114,6 +114,10 @@ a busy/alarming crime map.
   - `body` 16/24, Regular — default text
   - `caption` 13/18, Regular — metadata, timestamps
   - `label` 14/18, Medium — buttons, form labels
+  - `mapPin` 14/18, Bold — **map-pin bounty pills only** (added 2026-08-07);
+    label size one weight up, because a pin fights map tiles and its own
+    overlapping neighbours. Capped at `mapPinFontScaleCap` (1.3): uncapped,
+    the OS 200% setting doubles every pill and buries the map
   - `tabLabel` 11/14, Medium — **tab-bar item labels only**; the single
     sanctioned size below `caption` (matches platform tab conventions)
   - `plate` 14/18, Black — number-plate chip (below)
@@ -187,6 +191,35 @@ a busy/alarming crime map.
 
 - Map screens: light map style (muted natural tones), custom `primary` pins;
   selected pin grows and shows a floating vehicle card, Airbnb-style.
+  - **Two pin tiers (2026-08-06).** Only the top few bounties in view carry a
+    £ pill; every other post is the same shape with the price hidden — a
+    `sizes.mapPinMiniWidth`×`sizes.mapPinMiniHeight` lozenge with a
+    `sizes.mapPinRing` surface ring. A wall of price tags is unreadable, and
+    the user only ever taps a handful — a crowded map means those taps miss
+    the best options. Selecting a mini promotes it to a pill.
+    - Pill text is `typography.mapPin` (label-size, one weight up): a pin
+      fights map tiles and its own overlapping neighbours, and going up a
+      *size* instead would turn a dense area into a wall of type.
+    - **Two deliberate divergences from the reference**, both forced by our
+      map style — it paints land `#EEEEEE` and roads `#FFFFFF`, where the
+      reference's is mid-tone green. Theirs draws the mini WHITE and the pill
+      BORDERLESS; ours keeps ink in the mini and a hairline `border` on the
+      pill, because white-on-white has no edge and at 18×11 a hairline *is*
+      the whole mark. If `mapStyle`'s land ever darkens, revisit both.
+    - The mini is `textSecondary`, NOT `primary`. It is the QUIET tier, and
+      filling it with the map's blackest ink made it outshout the priced pill
+      (a white fill held by a hairline), inverting the hierarchy the two tiers
+      exist to express. #6A6A6A is 4.7:1 on the land and 5.4:1 over a white
+      road — past the 3:1 a graphic needs, and visibly below the pill.
+  - **Floating CONTROLS over map tiles use `shadows.lifted`** (back, recentre,
+    search pill, map pill) — they must hold an edge against busy tiles.
+    **MARKERS keep `shadows.soft`**: they are content, not chrome, and
+    `lifted`'s `elevation: 10` on forty-plus Android markers is both muddy and
+    expensive.
+  - **Anything that frames the camera must inset for that chrome.** A result
+    centred behind the sheet may as well not exist. Where a sheet can be
+    dragged, the inset tracks it and the camera zooms to match, so the same
+    ground stays on screen however much of it is left (2026-08-06).
 - **Filling wizard steps** (`WizardStep.fills`, added 2026-07-31). A step whose
   body IS the answer — today the two map steps — opts in and gets a plain flex
   container instead of the usual `ScrollView`, so a `flex: 1` child reaches the

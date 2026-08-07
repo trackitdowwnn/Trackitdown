@@ -10,7 +10,7 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 import type { MapPost } from '../types';
-import { useMapSelection } from './useMapSelection';
+import { useMapSelection, useMapSelectionState } from './useMapSelection';
 
 const post = (id: string): MapPost => ({
   id,
@@ -28,9 +28,17 @@ const post = (id: string): MapPost => ({
 
 const POSTS = [post('a'), post('b'), post('c')];
 
+// The selection state is owned by the SCREEN now (so it can pause auto-search
+// before the post list exists). These tests compose the two halves back
+// together, which is exactly what the screen does.
+const useSelection = (posts: MapPost[]) => {
+  const [id, setId] = useMapSelectionState();
+  return useMapSelection(posts, id, setId);
+};
+
 describe('useMapSelection', () => {
   it('selects by id and derives the pager index', async () => {
-    const { result } = await renderHook(() => useMapSelection(POSTS));
+    const { result } = await renderHook(() => useSelection(POSTS));
 
     await act(async () => result.current.selectPost('b'));
 
@@ -39,7 +47,7 @@ describe('useMapSelection', () => {
   });
 
   it('selects by pager index and derives the id', async () => {
-    const { result } = await renderHook(() => useMapSelection(POSTS));
+    const { result } = await renderHook(() => useSelection(POSTS));
 
     await act(async () => result.current.selectByIndex(2));
 
@@ -47,7 +55,7 @@ describe('useMapSelection', () => {
   });
 
   it('clears on background tap and on out-of-range index', async () => {
-    const { result } = await renderHook(() => useMapSelection(POSTS));
+    const { result } = await renderHook(() => useSelection(POSTS));
 
     await act(async () => result.current.selectPost('a'));
     await act(async () => result.current.clear());
@@ -60,7 +68,7 @@ describe('useMapSelection', () => {
 
   it('deselects implicitly when the selected post vanishes from the results', async () => {
     const { result, rerender } = await renderHook(
-      ({ posts }: { posts: MapPost[] }) => useMapSelection(posts),
+      ({ posts }: { posts: MapPost[] }) => useSelection(posts),
       { initialProps: { posts: POSTS } },
     );
 

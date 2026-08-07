@@ -2,7 +2,7 @@
  * WHAT:  Types owned by the search-map feature — the home feed (sections as
  *        get_home_feed returns them, the flattened FlashList item union, the
  *        resolved feed location) AND the map search (MapPost with exact pin
- *        coordinates, the viewport result, and the pin/cluster draw union).
+ *        coordinates, the viewport result, and the marker draw item).
  * WHY:   The feed renders ONE vertical FlashList, so sections must flatten
  *        into a discriminated item union whose `type` doubles as the
  *        FlashList getItemType (recycling pools per row shape). The map
@@ -82,14 +82,18 @@ export interface ViewportResult {
   posts: MapPost[];
 }
 
-/** One thing to draw on the map: a bounty pin or a cluster bubble. */
-export type MapPinItem =
-  | { type: 'post'; key: string; post: MapPost }
-  | {
-      type: 'cluster';
-      key: string;
-      clusterId: number;
-      count: number;
-      latitude: number;
-      longitude: number;
-    };
+/**
+ * One marker on the map. Every post in view gets one — clustering was removed
+ * on 2026-08-06, so there is no bubble variant; the pill/mini split below does
+ * the de-cluttering a cluster used to. `type` is kept as a discriminant so a
+ * second marker kind stays a data change rather than a rewrite.
+ */
+export interface MapPinItem {
+  type: 'post';
+  key: string;
+  post: MapPost;
+  /** 'full' = a £ pill; 'mini' = the same lozenge, price hidden. Only the top few
+   *  bounties in view earn a pill — a wall of price tags is unreadable
+   *  (see MAX_PRICE_PINS). Selection promotes a mini to a pill. */
+  emphasis: 'full' | 'mini';
+}
