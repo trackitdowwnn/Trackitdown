@@ -191,26 +191,33 @@ a busy/alarming crime map.
 
 - Map screens: light map style (muted natural tones), custom `primary` pins;
   selected pin grows and shows a floating vehicle card, Airbnb-style.
-  - **Two pin tiers (2026-08-06).** Only the top few bounties in view carry a
-    £ pill; every other post is the same shape with the price hidden — a
-    `sizes.mapPinMiniWidth`×`sizes.mapPinMiniHeight` lozenge with a
-    `sizes.mapPinRing` surface ring. A wall of price tags is unreadable, and
-    the user only ever taps a handful — a crowded map means those taps miss
-    the best options. Selecting a mini promotes it to a pill.
+  - **EVERY marker carries its price (2026-08-07).** One appearance: a white
+    £ pill with a hairline border; the selected one inverts to
+    `surfaceInverse` and grows. There is no quiet tier.
+    - **Never ship a price-less map marker.** A marker with no price on it
+      reads as a GROUP — there is nothing else it could be saying — so a
+      "demoted" pin quietly claims to be several cars. We shipped one for a
+      day (top-12-only pricing, borrowed from the reference) and it was
+      reported as "grouping" four separate times. The ink argument for it was
+      sound and beside the point.
+    - Overlapping pills are FINE where overlapping dots were not: a pill has
+      an edge and a number, so a pile of them still reads as a pile of prices.
+      The reference does exactly this (`docs/design-refs/map/`, shot 2 has
+      four pills piled together). Markers that would stack are staggered
+      slightly rather than fully separated — see `fanOutOverlaps`.
     - Pill text is `typography.mapPin` (label-size, one weight up): a pin
       fights map tiles and its own overlapping neighbours, and going up a
       *size* instead would turn a dense area into a wall of type.
-    - **Two deliberate divergences from the reference**, both forced by our
-      map style — it paints land `#EEEEEE` and roads `#FFFFFF`, where the
-      reference's is mid-tone green. Theirs draws the mini WHITE and the pill
-      BORDERLESS; ours keeps ink in the mini and a hairline `border` on the
-      pill, because white-on-white has no edge and at 18×11 a hairline *is*
-      the whole mark. If `mapStyle`'s land ever darkens, revisit both.
-    - The mini is `textSecondary`, NOT `primary`. It is the QUIET tier, and
-      filling it with the map's blackest ink made it outshout the priced pill
-      (a white fill held by a hairline), inverting the hierarchy the two tiers
-      exist to express. #6A6A6A is 4.7:1 on the land and 5.4:1 over a white
-      road — past the 3:1 a graphic needs, and visibly below the pill.
+    - **One deliberate divergence from the reference**: its pill is
+      borderless, ours keeps a hairline `border`. Forced by our map style —
+      it paints land `#EEEEEE` and roads `#FFFFFF`, where the reference's is
+      mid-tone green, so a borderless white pill has no edge at all. If
+      `mapStyle`'s land ever darkens, revisit.
+    - Bounty rank still decides **paint order** (highest on top, so a tap in a
+      crowd lands on the car worth tapping) and **how many markers stay in the
+      assistive-tech tree** — the drawn set and the reachable set deliberately
+      differ, because a screen reader should not swipe past a hundred markers
+      when the sheet lists every car with more detail.
   - **Floating CONTROLS over map tiles use `shadows.lifted`** (back, recentre,
     search pill, map pill) — they must hold an edge against busy tiles.
     **MARKERS keep `shadows.soft`**: they are content, not chrome, and

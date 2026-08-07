@@ -13,7 +13,7 @@
  *        src/features/search-map/lib/feedSections.ts (flattening).
  */
 
-import type { PostSummary } from '@/shared/types';
+import type { GeoCoord, PostSummary } from '@/shared/types';
 
 export type FeedSectionLayout = 'hero-vertical' | 'carousel';
 
@@ -92,8 +92,36 @@ export interface MapPinItem {
   type: 'post';
   key: string;
   post: MapPost;
-  /** 'full' = a £ pill; 'mini' = the same lozenge, price hidden. Only the top few
-   *  bounties in view earn a pill — a wall of price tags is unreadable
-   *  (see MAX_PRICE_PINS). Selection promotes a mini to a pill. */
-  emphasis: 'full' | 'mini';
+  /**
+   * Position by bounty among the markers in view — 0 is the highest.
+   *
+   * EVERY marker draws the same £ pill (2026-08-07). This used to pick pill vs
+   * price-less dot, and the dot was the mistake: a marker with no price on it
+   * reads as a GROUP, because there is nothing else it could be saying. The
+   * ranking survives for two jobs where order still matters — paint order under
+   * overlap, and which markers stay in the assistive-tech tree.
+   */
+  rank: number;
+  /**
+   * Where to DRAW this marker, when that differs from where the car is.
+   *
+   * Only set by fanOutOverlaps, and only for markers that would otherwise land
+   * on top of each other: at a 19km view, cars 150m apart are ~5pt apart under
+   * an 18pt marker, so they stack into one mark and only one is tappable.
+   * Absent means "draw it at post.latitude/longitude", which is the normal case.
+   *
+   * ⚠️ NEVER read this for anything but the marker's coordinate. Distance
+   * sorting, the card, the sighting wizard and every RPC use post's own
+   * coordinates, which stay exact.
+   */
+  draw?: GeoCoord;
+  /**
+   * Where the marker's box sits relative to its coordinate, 0..1 on each axis.
+   * Absent means centred, which is the normal case.
+   *
+   * Only set by keepMarkersOnScreen, and only for markers close enough to a
+   * viewport edge to be cut in half by it. A clipped £ pill reads as "£1,3…",
+   * which is worse than useless — you cannot tell £1,300 from £13,000.
+   */
+  anchor?: { x: number; y: number };
 }

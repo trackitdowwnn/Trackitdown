@@ -14,7 +14,9 @@ import type { GeoRegion } from '@/shared/types';
 import {
   NO_INSETS,
   type MapInsets,
+  MAX_ENTRY_RADIUS_MILES,
   cameraForVisible,
+  entryFrame,
   distanceMeters,
   frameCoords,
   isComfortablyVisible,
@@ -266,5 +268,73 @@ describe('the visible-fraction FLOOR', () => {
     const visible = visibleRegion(HERTS, impossible);
 
     expect(visible.latitudeDelta).toBeGreaterThan(0);
+  });
+});
+
+describe('entryFrame (where the map OPENS)', () => {
+  const CENTRE: GeoRegion = {
+    latitude: 51.75,
+    longitude: -0.34,
+    latitudeDelta: 9, // national mode — the whole UK
+    longitudeDelta: 9,
+  };
+  /** `miles` north of CENTRE. */
+  const north = (miles: number) => ({
+    latitude: 51.75 + miles / 69,
+    longitude: -0.34,
+  });
+
+  it('returns the entry region when there is nothing to frame', () => {
+    expect(entryFrame([], CENTRE)).toBe(CENTRE);
+  });
+
+  it('frames tightly around nearby cars', () => {
+    const framed = entryFrame([north(0.5), north(1)], CENTRE);
+
+    expect(framed.latitudeDelta).toBeLessThan(CENTRE.latitudeDelta);
+    expect(framed.latitude).toBeCloseTo(north(0.75).latitude, 4);
+  });
+
+  // THE WHOLE POINT. Fitting every result put ~64km on screen at ~100m per
+  // point, so two cars 800m apart drew 8pt apart under an 18pt marker: they
+  // overlapped into a blob you had to zoom into. That is what clustering used
+  // to hide, and clustering is gone.
+  it('NEVER opens wider than the cap, however scattered the results', () => {
+    const scattered = [north(0), north(50), north(200), { latitude: 55.9, longitude: -4.25 }];
+
+    const framed = entryFrame(scattered, CENTRE);
+
+    const cap = regionAround(framed, MAX_ENTRY_RADIUS_MILES);
+    expect(framed.latitudeDelta).toBeLessThanOrEqual(cap.latitudeDelta + 1e-9);
+    expect(framed.latitudeDelta).toBeLessThan(CENTRE.latitudeDelta);
+  });
+
+  // Even inside the cap, three cars at opposite edges span more than it once
+  // frameCoords' 40% padding is applied — so the clamp must hit the RESULT.
+  it('caps the padded span too, not just the candidate set', () => {
+    const framed = entryFrame([north(-5.9), north(5.9)], CENTRE);
+
+    expect(framed.latitudeDelta).toBeLessThanOrEqual(
+      regionAround(framed, MAX_ENTRY_RADIUS_MILES).latitudeDelta + 1e-9,
+    );
+  });
+
+  // Opening on empty ground you happen to know about is worse than opening on
+  // the one car there is: panning out is one gesture, finding a lone pin in a
+  // national view is not.
+  it('centres on the NEAREST car when every result is beyond the cap', () => {
+    const framed = entryFrame([north(40), north(120)], CENTRE);
+
+    expect(framed.latitude).toBeCloseTo(north(40).latitude, 4);
+    expect(framed.latitudeDelta).toBeCloseTo(
+      regionAround(north(40), MAX_ENTRY_RADIUS_MILES).latitudeDelta,
+      6,
+    );
+  });
+
+  it('does not zoom to a point for a single nearby car', () => {
+    const framed = entryFrame([north(1)], CENTRE);
+
+    expect(framed.latitudeDelta).toBeGreaterThan(0.009);
   });
 });

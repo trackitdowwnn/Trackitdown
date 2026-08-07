@@ -57,12 +57,12 @@ import {
   summarise,
   toRpcCriteria,
 } from '../lib/searchCriteria';
-import { pinsForRegion } from '../lib/mapPins';
+import { fanOutOverlaps, keepMarkersOnScreen, pinsForRegion } from '../lib/mapPins';
 import {
   type MapInsets,
   cameraForVisible,
   distanceMeters,
-  frameCoords,
+  entryFrame,
   isComfortablyVisible,
   metersToMiles,
   regionAround,
@@ -208,7 +208,7 @@ function MapSearchBody({
   // the resting peek, on the reasoning that a camera chasing the sheet would
   // be motion nobody asked for — it is now asked for: the map zooms out as the
   // sheet rises so the same ground stays visible in the smaller strip.
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const [pagerHeight, setPagerHeight] = useState(0);
   // ⚠️ INVARIANT: `handleSheetSnap` is the ONLY writer of this. It carries the
   // camera's return leg, so a second call site would let the index change
@@ -338,9 +338,20 @@ function MapSearchBody({
   // dep that matters: `result.posts` only refreshes when a search LANDS, so
   // without re-culling on every settle a pan would keep drawing markers the
   // user has already moved away from.
+  // Ranked, then SPREAD: cars a few hundred metres apart draw a few points
+  // apart at any useful zoom, so without this they stack into one dark mark and
+  // only the topmost is tappable. Nothing groups them any more, so this is what
+  // keeps every marker its own marker (see fanOutOverlaps for the cost).
   const allPins = useMemo(
-    () => pinsForRegion(result.posts, settledRegion),
-    [result.posts, settledRegion],
+    () =>
+      keepMarkersOnScreen(
+        // Fan FIRST: nudging an edge marker inward can only help once its
+        // position is final, and the fan is what decides that position.
+        fanOutOverlaps(pinsForRegion(result.posts, settledRegion), settledRegion, windowWidth),
+        settledRegion,
+        windowWidth,
+      ),
+    [result.posts, settledRegion, windowWidth],
   );
   // Mounted in batches rather than all at once — nothing thins the population
   // any more, so a dense area is up to VIEWPORT_POST_LIMIT custom markers in
@@ -514,11 +525,18 @@ function MapSearchBody({
     [selectByIndex, sortedPosts, settledRegion, flyTo, mapInsets],
   );
 
-  // OPEN FRAMED ON THE RESULTS, once. The entry region is a fixed radius (the
-  // feed's 20 miles, or 5 from a "See all → area" link), which opens nearly
-  // empty in one place and crowded in another; framing what actually came back
-  // is honest in both. Via frameCamera — these are results we already hold, so
-  // framing them must not trigger another search.
+  // OPEN FRAMED ON THE NEARBY RESULTS, once. The entry region is a fixed radius
+  // (the feed's 20 miles, or 5 from a "See all → area" link, or the whole UK in
+  // national mode), which opens nearly empty in one place and crowded in
+  // another; framing what actually came back is honest in both.
+  //
+  // entryFrame, NOT frameCoords: fitting EVERY result is honest and unusable.
+  // Posts scattered nationwide forced a ~64km view at ~100 m/pt, where cars
+  // 800m apart drew 8pt apart under an 18pt marker — they overlapped into
+  // blobs that had to be zoomed into, which is exactly the problem clustering
+  // used to solve and we no longer have. entryFrame caps the opening span.
+  // Via frameCamera — these are results we already hold, so framing them must
+  // not trigger another search.
   //
   // A ref, not state: this must happen once per screen and must NOT re-fire
   // when auto-search lands new results under the user mid-browse.
@@ -528,7 +546,7 @@ function MapSearchBody({
       return;
     }
     framedOnResults.current = true;
-    frameCamera(cameraForVisible(frameCoords(result.posts, entryRegion), mapInsets));
+    frameCamera(cameraForVisible(entryFrame(result.posts, entryRegion), mapInsets));
   }, [status, result.posts, entryRegion, mapInsets, frameCamera]);
 
   // A failed auto re-search is quiet by design: results and pins stay put and

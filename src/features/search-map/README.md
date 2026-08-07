@@ -124,15 +124,15 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
    the selected pin inverts to `surfaceInverse` (`components/MapPins.tsx`).
 3. NO CLUSTERING (removed 2026-08-06) — every post in view gets its own
    marker. supercluster used to collapse dense areas into count bubbles; the
-   pill/dot split in item 7 does that job now, and a bubble was a tap that
-   only ever led to another tap. `lib/mapPins.ts` still CULLS to the viewport,
+   staggering in item 7 does that job now, and a bubble was a tap that only
+   ever led to another tap. `lib/mapPins.ts` still CULLS to the viewport,
    which is load-bearing: `result.posts` only refreshes when a search lands
    (~600ms behind the gesture), so without it a pan keeps drawing markers the
    user has already moved away from. Worst case is now
    `VIEWPORT_POST_LIMIT` (100) simultaneous markers.
    - **They mount in BATCHES, not all at once** (`hooks/useProgressivePins.ts`
-     + `revealPins`). Every priced pin lands in the first commit; the demoted
-     ones fill in ~20 per tick. Each marker holds `tracksViewChanges` open for
+     + `revealPins`). The highest-ranked markers land in the first commit and
+     the long tail fills in ~20 per tick. Each marker holds `tracksViewChanges` open for
      500ms as it rasterises, so a hundred in one commit is the precise Android
      jank clustering used to hide. The reveal restarts on a landed SEARCH, not
      on a pan — a pan re-culls posts whose markers are already mounted, and
@@ -193,14 +193,24 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
    runs when they close it. A failed refresh keeps the pins and says so in a
    toast; the region stays unsearched so the next pan re-attempts by itself.
    (`hooks/useViewportPosts.ts`, `lib/regionMath.ts` `movedEnough`.)
-7. MINI-PINS — only the top `MAX_PRICE_PINS` (12) bounties in view carry a £
-   pill; the rest are the SAME LOZENGE with the price hidden, so the two tiers
-   read as one family rather than two kinds of object (that is how the
-   reference draws it — `docs/design-refs/map/`). A wall of price tags is
-   unreadable, and the reference demotes all but its top-ranked listings for
-   the same reason. Selecting a mini promotes it to a pill (`lib/mapPins.ts`,
-   `components/MapPins.tsx`). Ours stays near-black where the reference's is
-   white — see DESIGN_SYSTEM for why our map style cannot carry white.
+7. EVERY MARKER SHOWS ITS PRICE (2026-08-07). There is no second tier. A
+   marker with no price on it reads as a GROUP — there is nothing else it
+   could be saying — so the price-less `mini` pin borrowed from the reference
+   was quietly claiming to be several cars; it was reported as grouping
+   four times in a day. The ink argument for it (a wall of price tags is
+   unreadable) was sound and beside the point.
+   - Overlapping pills are fine where overlapping dots were not: a pill has an
+     edge and a number, so a pile still reads as a pile of prices. The
+     reference piles them too (`docs/design-refs/map/`, shot 2).
+   - Markers that would stack are STAGGERED, not separated —
+     `fanOutOverlaps` spreads them ~34pt, well under a pill's ~72pt width.
+     Demanding full clearance would throw a group of five ~1.9km off position,
+     a far bigger lie than the overlap it fixes.
+   - Bounty rank survives for paint order (highest on top, so a tap in a crowd
+     hits the car worth tapping — equal zIndex between overlapping Android
+     markers is undefined) and for the assistive-tech cap (`AT_MARKER_LIMIT`).
+     ⚠️ The drawn set and the reachable set therefore DIFFER; the sheet is the
+     complete path and lists every car with more detail.
 8. CAMERA INSETS, AND THE SHEET DRIVES THE ZOOM — the sheet and the card pager
    cover the bottom of the map, so everything that FRAMES something (card
    follow, recentre, the sort anchor, the opening frame) goes through

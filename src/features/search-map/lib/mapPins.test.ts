@@ -12,7 +12,8 @@
 import type { GeoRegion } from '@/shared/types';
 
 import type { MapPinItem, MapPost } from '../types';
-import { pinsForRegion, revealPins } from './mapPins';
+import { fanOutOverlaps, keepMarkersOnScreen, pinsForRegion, revealPins } from './mapPins';
+import { distanceMeters } from './regionMath';
 
 const post = (
   id: string,
@@ -68,119 +69,84 @@ describe('viewport culling', () => {
   });
 });
 
-describe('pill vs mini ranking', () => {
-  // The floor: a quiet area should read as quiet, not coy. Four markers cost
-  // almost no ink whatever they are, so there is nothing to save by hiding
-  // three of their prices.
-  it('prices every post in a sparse view', () => {
-    const pins = pinsForRegion(spread(4), REGION, 12);
+describe('bounty rank (paint order + the AT cap)', () => {
+  // EVERY marker is a £ pill now (2026-08-07) — a marker with no price on it
+  // reads as a group. Rank survives for the two jobs where order still matters.
+  it('gives every post in view a pill and a rank', () => {
+    const pins = pinsForRegion(spread(20), REGION);
 
-    expect(pins).toHaveLength(4);
-    expect(pins.every((pin) => pin.emphasis === 'full')).toBe(true);
+    expect(pins).toHaveLength(20);
+    expect([...pins].map((pin) => pin.rank).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 20 }, (_, i) => i),
+    );
   });
 
-  // The share: the middle band is where a flat cap did the most damage — 12
-  // pills out of 20 posts is a wall of price tags.
-  it('prices only a share of a busy view', () => {
-    const pins = pinsForRegion(spread(20), REGION, 12);
+  it('ranks the HIGHEST bounty first, not the first returned', () => {
+    const pins = pinsForRegion(spread(20), REGION);
 
-    expect(pins.filter((pin) => pin.emphasis === 'full')).toHaveLength(4);
-    expect(pins.filter((pin) => pin.emphasis === 'mini')).toHaveLength(16);
+    // spread() makes bounty rise with index, so the last post wins.
+    expect(pins.find((pin) => pin.rank === 0)?.key).toBe('p19');
+    expect(pins.find((pin) => pin.rank === 19)?.key).toBe('p00');
   });
 
-  // The ceiling: the share would ask for 15 at a hundred posts.
-  it('never exceeds maxPricePins however crowded it gets', () => {
-    const pins = pinsForRegion(spread(100), REGION, 12);
-
-    expect(pins.filter((pin) => pin.emphasis === 'full')).toHaveLength(12);
-    expect(pins).toHaveLength(100);
-  });
-
-  it('the pills are the HIGHEST bounties, not the first returned', () => {
-    const pins = pinsForRegion(spread(20), REGION, 3);
-
-    const priced = pins
-      .filter((pin) => pin.emphasis === 'full')
-      .map((pin) => pin.key)
-      .sort();
-    // spread() makes bounty rise with index, so the last three win.
-    expect(priced).toEqual(['p17', 'p18', 'p19']);
-  });
-
-  // Server order varies between searches; an unstable sort would flip a post
-  // between pill and mini on identical data as the user pans.
+  // Server order varies between searches. Under heavy overlap paint order is
+  // what decides which marker a tap HITS, so an unstable rank would make taps
+  // land on a different car on identical data as the user pans.
   it('breaks bounty ties deterministically, whatever order posts arrive in', () => {
     const tied = spread(6).map((p) => ({ ...p, bountyPence: 5000 }));
 
-    const forwards = pinsForRegion(tied, REGION, 3)
-      .filter((pin) => pin.emphasis === 'full')
-      .map((pin) => pin.key)
-      .sort();
-    const backwards = pinsForRegion([...tied].reverse(), REGION, 3)
-      .filter((pin) => pin.emphasis === 'full')
-      .map((pin) => pin.key)
-      .sort();
+    const rankOf = (posts: MapPost[]) =>
+      Object.fromEntries(pinsForRegion(posts, REGION).map((pin) => [pin.key, pin.rank]));
 
-    expect(forwards).toEqual(backwards);
+    expect(rankOf([...tied].reverse())).toEqual(rankOf(tied));
   });
 
-  // Culling happens FIRST: a high bounty outside the viewport must not take a
-  // pill away from one the user can actually see.
+  // Culling happens FIRST: a bigger bounty outside the viewport must not push
+  // a visible marker down the paint order.
   it('ranks only what is in view', () => {
     const pins = pinsForRegion(
       [post('near', 51.75, -0.34, 1000), post('richOffscreen', 55.86, -4.25, 999999)],
       REGION,
-      1,
     );
 
     expect(pins).toHaveLength(1);
     expect(pins[0].key).toBe('near');
-    expect(pins[0].emphasis).toBe('full');
+    expect(pins[0].rank).toBe(0);
   });
 });
 
 describe('revealPins (progressive mounting)', () => {
-  const item = (key: string, emphasis: 'full' | 'mini'): MapPinItem => ({
+  const item = (key: string, rank: number): MapPinItem => ({
     type: 'post',
     key,
     post: post(key, 51.75, -0.34),
-    emphasis,
+    rank,
   });
-  const pins = (fullCount: number, miniCount: number): MapPinItem[] => [
-    ...Array.from({ length: fullCount }, (_, i) => item(`f${i}`, 'full')),
-    ...Array.from({ length: miniCount }, (_, i) => item(`m${i}`, 'mini')),
-  ];
+  const pins = (count: number): MapPinItem[] =>
+    Array.from({ length: count }, (_, i) => item(`p${i}`, i));
 
-  // The ranked few are the whole point of the map; a price fading in late
-  // would read as the map changing its mind about what matters.
-  it('never withholds a priced pin, however small the budget', () => {
-    const revealed = revealPins(pins(12, 80), 0);
+  // Highest bounties first, so the markers a user is most likely reaching for
+  // are in the FIRST commit and the fill-in adds the long tail.
+  it('reveals the highest-ranked markers first', () => {
+    const revealed = revealPins(pins(100), 12);
 
     expect(revealed).toHaveLength(12);
-    expect(revealed.every((pin) => pin.emphasis === 'full')).toBe(true);
+    expect(revealed.map((pin) => pin.rank)).toEqual(Array.from({ length: 12 }, (_, i) => i));
   });
 
-  it('reveals the budgeted number of demoted pins on top', () => {
-    const revealed = revealPins(pins(12, 80), 20);
+  it('withholds nothing once the budget covers the population', () => {
+    const all = pins(30);
 
-    expect(revealed.filter((pin) => pin.emphasis === 'full')).toHaveLength(12);
-    expect(revealed.filter((pin) => pin.emphasis === 'mini')).toHaveLength(20);
-  });
-
-  // MapPins is memoised. A fresh array on every tick after the reveal has
-  // finished would re-render every marker and undo the whole point.
-  it('returns the SAME array once nothing is withheld', () => {
-    const all = pins(12, 80);
-
-    expect(revealPins(all, 80)).toBe(all);
+    // Identity, not just length: MapPins is memoised, so a fresh array every
+    // tick after the reveal finished would re-render every marker.
+    expect(revealPins(all, 30)).toBe(all);
     expect(revealPins(all, 999)).toBe(all);
   });
 
   it('keeps the original order — this feeds a keyed marker list', () => {
-    const all = pins(2, 4);
+    const keys = revealPins(pins(6), 3).map((pin) => pin.key);
 
-    const keys = revealPins(all, 2).map((pin) => pin.key);
-    expect(keys).toEqual(['f0', 'f1', 'm0', 'm1']);
+    expect(keys).toEqual(['p0', 'p1', 'p2']);
   });
 
   it('handles an empty view', () => {
@@ -189,46 +155,196 @@ describe('revealPins (progressive mounting)', () => {
 });
 
 describe('revealPins never withholds the SELECTED pin', () => {
-  const item = (key: string, emphasis: 'full' | 'mini'): MapPinItem => ({
+  const item = (key: string, rank: number): MapPinItem => ({
     type: 'post',
     key,
     post: post(key, 51.75, -0.34),
-    emphasis,
+    rank,
   });
-  const many = (miniCount: number): MapPinItem[] => [
-    item('f0', 'full'),
-    ...Array.from({ length: miniCount }, (_, i) => item(`m${i}`, 'mini')),
-  ];
+  const many = (count: number): MapPinItem[] =>
+    Array.from({ length: count }, (_, i) => item(`p${i}`, i));
 
   // Selection is promoted to a pill DOWNSTREAM, in the renderer — which never
   // sees a pin dropped here. Without this guard the promotion silently does
   // nothing and the card describes a car with no marker under it.
-  it('keeps a selected demoted pin that the budget would have dropped', () => {
-    const revealed = revealPins(many(80), 2, 'm40');
+  it('keeps a selected low-rank marker that the budget would have dropped', () => {
+    const revealed = revealPins(many(80), 2, 'p40');
 
-    expect(revealed.map((pin) => pin.key)).toContain('m40');
+    expect(revealed.map((pin) => pin.key)).toContain('p40');
   });
 
   // Reachable via the PAGER, not a pin tap: selectByIndex walks every result
   // post, not just the drawn ones, so a swipe during the reveal can land on a
   // withheld one — and handlePagerSettle then flies the camera to it.
   it('still withholds its unselected neighbours', () => {
-    const revealed = revealPins(many(80), 2, 'm40');
+    const revealed = revealPins(many(80), 2, 'p40');
 
-    expect(revealed.map((pin) => pin.key)).not.toContain('m41');
-    expect(revealed).toHaveLength(4); // f0 + 2 budgeted + the selected one
+    expect(revealed.map((pin) => pin.key)).not.toContain('p41');
+    expect(revealed).toHaveLength(3); // 2 budgeted + the selected one
   });
 
   it('does not double-count the selected pin against the budget', () => {
-    const withSelection = revealPins(many(80), 5, 'm40');
+    const withSelection = revealPins(many(80), 5, 'p40');
     const without = revealPins(many(80), 5, null);
 
     expect(withSelection).toHaveLength(without.length + 1);
   });
 
-  it('is a no-op when the selected pin was priced anyway', () => {
-    const revealed = revealPins(many(80), 5, 'f0');
+  it('is a no-op when the selected marker was inside the budget anyway', () => {
+    const revealed = revealPins(many(80), 5, 'p0');
 
-    expect(revealed).toHaveLength(6); // f0 + 5 budgeted, nothing added twice
+    expect(revealed).toHaveLength(5); // nothing added twice
+  });
+});
+
+describe('fanOutOverlaps (every marker stays its own marker)', () => {
+  /** ~19km across on a 360pt-wide map ≈ 53 m/pt, so 26pt ≈ 1.4km. */
+  const VIEW: GeoRegion = {
+    latitude: 51.75,
+    longitude: -0.34,
+    latitudeDelta: 0.17,
+    longitudeDelta: 0.17,
+    };
+  const WIDTH = 360;
+  const at = (id: string, lat: number, lng: number): MapPinItem => ({
+    type: 'post',
+    key: id,
+    post: post(id, lat, lng),
+    rank: 0,
+  });
+
+  it('leaves well-separated markers exactly where their cars are', () => {
+    const pins = [at('a', 51.70, -0.40), at('b', 51.80, -0.20)];
+
+    const out = fanOutOverlaps(pins, VIEW, WIDTH);
+
+    expect(out).toBe(pins); // identity preserved for the memoised renderer
+    expect(out.every((p) => p.draw === undefined)).toBe(true);
+  });
+
+  // Observed on device: four cars within a few hundred metres drew as one dark
+  // mark with the ones behind showing only crescents of their own edge.
+  it('spreads markers that would land on top of each other', () => {
+    const tight = [
+      at('a', 51.7500, -0.3400),
+      at('b', 51.7505, -0.3405),
+      at('c', 51.7495, -0.3395),
+      at('d', 51.7502, -0.3398),
+    ];
+
+    const out = fanOutOverlaps(tight, VIEW, WIDTH);
+
+    expect(out.every((p) => p.draw !== undefined)).toBe(true);
+    // Every drawn pair is now at least a marker-width apart.
+    const drawn = out.map((p) => p.draw!);
+    for (let i = 0; i < drawn.length; i += 1) {
+      for (let j = i + 1; j < drawn.length; j += 1) {
+        expect(distanceMeters(drawn[i], drawn[j])).toBeGreaterThan(500);
+      }
+    }
+  });
+
+  // The whole safety argument rests on this: only the DRAW coordinate moves.
+  it('never touches the post\u2019s own coordinates', () => {
+    const tight = [at('a', 51.75, -0.34), at('b', 51.7501, -0.3401)];
+
+    const out = fanOutOverlaps(tight, VIEW, WIDTH);
+
+    expect(out[0].post.latitude).toBe(51.75);
+    expect(out[0].post.longitude).toBe(-0.34);
+    expect(out[1].post.latitude).toBe(51.7501);
+  });
+
+  // Markers that jitter between renders are worse than markers that overlap.
+  it('is deterministic — same input, same layout', () => {
+    const tight = [at('a', 51.75, -0.34), at('b', 51.7501, -0.3401), at('c', 51.7499, -0.3399)];
+
+    const first = fanOutOverlaps(tight, VIEW, WIDTH);
+    const second = fanOutOverlaps(tight, VIEW, WIDTH);
+
+    expect(second.map((p) => p.draw)).toEqual(first.map((p) => p.draw));
+  });
+
+  // Zooming in must DISSOLVE the fan, not preserve it — the displacement is
+  // only ever a substitute for resolution the map doesn't have.
+  it('stops fanning once the zoom separates them naturally', () => {
+    const tight = [at('a', 51.75, -0.34), at('b', 51.7501, -0.3401)];
+    const closeUp: GeoRegion = { ...VIEW, latitudeDelta: 0.002, longitudeDelta: 0.002 };
+
+    const out = fanOutOverlaps(tight, closeUp, WIDTH);
+
+    expect(out.every((p) => p.draw === undefined)).toBe(true);
+  });
+
+  it('handles a degenerate map width rather than dividing by zero', () => {
+    const pins = [at('a', 51.75, -0.34), at('b', 51.75, -0.34)];
+
+    expect(fanOutOverlaps(pins, VIEW, 0)).toBe(pins);
+  });
+});
+
+describe('keepMarkersOnScreen (nothing gets cut in half)', () => {
+  const VIEW: GeoRegion = {
+    latitude: 51.75,
+    longitude: -0.34,
+    latitudeDelta: 0.17,
+    longitudeDelta: 0.18, // 360pt wide -> 0.0005 deg per pt
+  };
+  const WIDTH = 360;
+  const pillAt = (lng: number): MapPinItem => ({
+    type: 'post',
+    key: 'p',
+    post: post('p', 51.75, lng),
+    rank: 0,
+  });
+  /** Longitude `dp` points in from the WEST edge. */
+  const fromWest = (dp: number) => VIEW.longitude - VIEW.longitudeDelta / 2 + (dp / WIDTH) * VIEW.longitudeDelta;
+
+  it('leaves markers in open ground centred', () => {
+    const pins = [pillAt(VIEW.longitude)];
+
+    const out = keepMarkersOnScreen(pins, VIEW, WIDTH);
+
+    expect(out).toBe(pins); // identity kept for the memoised renderer
+  });
+
+  // A 72pt pill 10pt from the edge would hang 26pt off it — and a clipped
+  // price reads "£1,3…", which cannot be told from £13,000.
+  it('shifts a pill that the WEST edge would cut in half', () => {
+    const out = keepMarkersOnScreen([pillAt(fromWest(10))], VIEW, WIDTH);
+
+    const anchor = out[0].anchor;
+    expect(anchor).toBeDefined();
+    expect(anchor!.x).toBeLessThan(0.5);
+    // Box starts at x - anchor.x*width; must not be off-screen.
+    expect(10 - anchor!.x * 72).toBeGreaterThanOrEqual(-0.001);
+  });
+
+  it('shifts a pill that the EAST edge would cut in half', () => {
+    const out = keepMarkersOnScreen([pillAt(fromWest(WIDTH - 10))], VIEW, WIDTH);
+
+    const anchor = out[0].anchor;
+    expect(anchor).toBeDefined();
+    expect(anchor!.x).toBeGreaterThan(0.5);
+    // Box ends at x + (1-anchor.x)*width; must not overrun the map.
+    expect(WIDTH - 10 + (1 - anchor!.x) * 72).toBeLessThanOrEqual(WIDTH + 0.001);
+  });
+
+  // The anchor moves the BOX, never the point — that is what separates this
+  // from fanOutOverlaps, which does move the drawn position.
+  it('never changes the coordinate it is pinned to', () => {
+    const out = keepMarkersOnScreen([pillAt(fromWest(2))], VIEW, WIDTH);
+
+    expect(out[0].post.longitude).toBeCloseTo(fromWest(2), 10);
+    expect(out[0].draw).toBeUndefined();
+  });
+
+  it('reads the FANNED position when there is one', () => {
+    const fanned: MapPinItem = {
+      ...pillAt(VIEW.longitude),
+      draw: { latitude: 51.75, longitude: fromWest(5) },
+    };
+
+    expect(keepMarkersOnScreen([fanned], VIEW, WIDTH)[0].anchor).toBeDefined();
   });
 });

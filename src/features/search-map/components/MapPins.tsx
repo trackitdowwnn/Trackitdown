@@ -1,29 +1,31 @@
 /**
- * WHAT:  MapPins — the search map's markers: BOUNTY PILLS for the few
- *        highest-bounty posts in view (the reference's price-pin analogue;
- *        selected inverts to the dark surface) and MINI-PINS (the same lozenge
- *        with the price hidden) for the rest. Every post in view gets its own
- *        marker — clustering was removed 2026-08-06 and the pill/mini split
- *        de-clutters instead.
- * WHY:   Markers with custom views are the classic Android jank source. Each
+ * WHAT:  MapPins — the search map's markers. EVERY post in view gets the same
+ *        BOUNTY PILL; the selected one inverts to the dark surface and grows.
+ *        Clustering was removed 2026-08-06, and the price-less second tier that
+ *        replaced it went on 2026-08-07.
+ * WHY:   The second tier had to go because of what it SAID. A marker with no
+ *        price on it reads as a group — there is nothing else it could be
+ *        saying — so a demoted pin was quietly claiming to be several cars.
+ *        The owner reported it as "grouping" four times before that landed.
+ *        Overlapping pills are fine where overlapping dots were not: a pill has
+ *        an edge and a number, so a pile of them still reads as a pile of
+ *        prices (the reference does exactly this — docs/design-refs/map/).
+ *
+ *        Markers with custom views are the classic Android jank source. Each
  *        marker TRACKS view changes for a few frames after mount (so the
  *        custom view rasterises AFTER layout — setting tracksViewChanges
  *        false from frame 0 is the blank-marker trap), then stops tracking
  *        so it pans free.
  *
  *        RE-RASTERISING IS A PROP, NOT A KEY. Selection used to re-key the
- *        marker, remounting it to force the repaint. Emphasis (pill vs dot)
- *        changes far more often than selection — the top-N set churns on
- *        every pan — so keying on it would remount dozens of markers per pan
- *        and re-arm 500ms of tracking on each, which is precisely the jank
- *        this file exists to avoid. `retrackKey` re-arms tracking IN PLACE
- *        instead, and now carries selection too: one mechanism, no remounts.
- *        ⚠️ If a device ever shows blank markers on emphasis change, fall
- *        back to re-keying for SELECTION only (rare, one marker) and keeping
- *        retrackKey for emphasis.
+ *        marker, remounting it to force the repaint; `retrackKey` re-arms
+ *        tracking IN PLACE instead. It now carries selection alone — with one
+ *        appearance there is nothing else that changes what is drawn — so the
+ *        churn that made this mechanism necessary (a top-N set turning over on
+ *        every pan) no longer exists.
  *
- *        Which posts get a pill is decided in mapPins.pinsForRegion — this
- *        component is a dumb renderer of that decision.
+ *        Rank, paint order and the assistive-tech cap are decided in
+ *        mapPins.pinsForRegion — this component is a dumb renderer of that.
  * LINKS: src/shared/ui/AppMap.tsx (AppMapMarker re-export — the single
  *        react-native-maps import); src/features/search-map/lib/
  *        mapPins.ts (MapPinItem); docs/DESIGN_SYSTEM.md (tokens).
@@ -36,11 +38,21 @@ import { formatPounds } from '@/shared/lib';
 import { colors, mapPinFontScaleCap, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
 import { AppMapMarker } from '@/shared/ui/AppMap';
 
+import { AT_MARKER_LIMIT } from '../lib/mapPins';
 import type { MapPinItem } from '../types';
 
 /** How long a freshly-mounted marker keeps tracking view changes before it
  *  freezes — long enough for the custom view to lay out and rasterise. */
 const TRACK_SETTLE_MS = 500;
+
+/** The usual anchor: the marker box centred on its coordinate. Hoisted so an
+ *  unshifted marker gets a stable object rather than a new one per render. */
+const MARKER_CENTRE = { x: 0.5, y: 0.5 } as const;
+
+/** Ceiling for marker paint order. Selection takes it; everything else sits
+ *  below by bounty rank, floored at 1 (a falsy zIndex is dropped by the iOS
+ *  Google marker when it re-creates). */
+const MAX_PIN_Z = 200;
 
 /** A marker that rasterises its custom child AFTER layout, then freezes. */
 function TrackedMarker({
@@ -50,6 +62,7 @@ function TrackedMarker({
   accessibilityLabel,
   selected = false,
   accessible = true,
+  anchor,
   zIndex,
   retrackKey,
   children,
@@ -61,16 +74,19 @@ function TrackedMarker({
   /** false drops the marker from the assistive-tech tree — it stays tappable
    *  by sight, but the sheet's list is the AT path. See the call site. */
   accessible?: boolean;
+  /** Where the box sits relative to the coordinate. Shifted only for markers
+   *  a viewport edge would otherwise cut in half (see keepMarkersOnScreen). */
+  anchor: { x: number; y: number };
   /** Paint order. Without it, up to a hundred sibling markers stack in an
-   *  undefined order and the SELECTED pin can end up behind a neighbouring
-   *  dot — clustering used to keep the population small enough to hide this. */
+   *  undefined order — and with every marker now a full-width pill, overlap is
+   *  the normal case rather than the exception. */
   zIndex: number;
-  /** Exposed to assistive tech: selection is load-bearing here — it is what
-   *  reveals a demoted pin's price — so it must be perceivable non-visually. */
+  /** Exposed to assistive tech: selection changes the pill's appearance, so
+   *  it must be perceivable non-visually too. */
   selected?: boolean;
-  /** Change this whenever the DRAWN content changes (selection, emphasis) and
-   *  the marker re-rasterises in place. See the header for why this is a prop
-   *  rather than a key. */
+  /** Change this whenever the DRAWN content changes — selection is the only
+   *  such change now — and the marker re-rasterises in place. See the header
+   *  for why this is a prop rather than a key. */
   retrackKey: string;
   children: ReactNode;
 }) {
@@ -98,7 +114,7 @@ function TrackedMarker({
   return (
     <AppMapMarker
       coordinate={{ latitude, longitude }}
-      anchor={{ x: 0.5, y: 0.5 }}
+      anchor={anchor}
       tracksViewChanges={tracking}
       zIndex={zIndex}
       onPress={onPress}
@@ -129,48 +145,46 @@ export const MapPins = memo(function MapPins({
     <>
       {pins.map((pin) => {
         const selected = pin.post.id === selectedPostId;
-        // A selected mini is PROMOTED to a pill: a selected dot is nearly
-        // invisible, and the card already carries the bounty, so the promotion
-        // costs nothing and makes the selection findable at a glance.
-        const showPill = pin.emphasis === 'full' || selected;
         return (
           <TrackedMarker
             // The key is the post id ALONE — see the header. Anything that
             // changes the drawn content goes through retrackKey instead.
             key={pin.key}
             selected={selected}
-            // Selected above priced above demoted. This also biases taps in a
-            // crowded field towards the markers worth tapping, now that up to
-            // a hundred 44pt targets can overlap. Never 0 — the iOS Google
-            // marker skips a falsy zIndex when it re-creates the marker.
-            zIndex={selected ? 3 : pin.emphasis === 'full' ? 2 : 1}
-            // A demoted pin is NOT an individual stop for assistive tech.
-            // Clustering used to bound the marker count; without it a screen
-            // reader would swipe through up to a hundred of these to reach the
-            // sheet — which lists every one of them with more detail and a
-            // live count. The priced pills and the selected pin stay reachable.
-            accessible={pin.emphasis === 'full' || selected}
-            retrackKey={`${selected}_${pin.emphasis}`}
-            latitude={pin.post.latitude}
-            longitude={pin.post.longitude}
+            // Selection on top, then HIGHEST BOUNTY FIRST. Under heavy overlap
+            // paint order is what decides which marker a tap actually hits, and
+            // between overlapping Android markers with equal zIndex that order
+            // is undefined — so ranking it is not decoration. Never 0: the iOS
+            // Google marker skips a falsy zIndex when it re-creates a marker.
+            zIndex={selected ? MAX_PIN_Z : Math.max(1, MAX_PIN_Z - 1 - pin.rank)}
+            // ⚠️ The DRAWN set and the REACHABLE set deliberately differ. Every
+            // marker is drawn and tappable, but only the top few are individual
+            // stops for a screen reader: without a cap that is up to a hundred
+            // swipes to get past the map, and the sheet below lists every car
+            // with more detail and a live count. That is the intended path, not
+            // a consolation. The selected pin is always reachable.
+            accessible={pin.rank < AT_MARKER_LIMIT || selected}
+            anchor={pin.anchor ?? MARKER_CENTRE}
+            retrackKey={String(selected)}
+            // draw, NOT post: fanOutOverlaps moves markers that would
+            // otherwise stack. Absent for the normal case. The post keeps its
+            // exact coordinates for everything else.
+            latitude={pin.draw?.latitude ?? pin.post.latitude}
+            longitude={pin.draw?.longitude ?? pin.post.longitude}
             onPress={() => onPressPost(pin.post.id)}
             accessibilityLabel={`${formatPounds(pin.post.bountyPence)} bounty — ${pin.post.make} ${pin.post.model}`}
           >
-            {showPill ? (
-              <View style={[styles.bountyPill, selected && styles.bountyPillSelected]}>
-                <Text
-                  // Capped: an uncapped 14pt at the OS 200% setting doubles
-                  // every pill and buries the map. The full amount stays
-                  // scalable in the sheet list, the card, and the label below.
-                  maxFontSizeMultiplier={mapPinFontScaleCap}
-                  style={[styles.bountyText, selected && styles.bountyTextSelected]}
-                >
-                  {formatPounds(pin.post.bountyPence)}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.miniPin} testID="mini-pin" />
-            )}
+            <View style={[styles.bountyPill, selected && styles.bountyPillSelected]}>
+              <Text
+                // Capped: an uncapped 14pt at the OS 200% setting doubles
+                // every pill and buries the map. The full amount stays
+                // scalable in the sheet list, the card, and the label below.
+                maxFontSizeMultiplier={mapPinFontScaleCap}
+                style={[styles.bountyText, selected && styles.bountyTextSelected]}
+              >
+                {formatPounds(pin.post.bountyPence)}
+              </Text>
+            </View>
           </TrackedMarker>
         );
       })}
@@ -185,35 +199,6 @@ const styles = StyleSheet.create({
     minHeight: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // The demoted pin: presence without a price. A LOZENGE, not a dot — the
-  // reference draws this as its price pill with the price hidden, so the two
-  // read as one family rather than two kinds of object.
-  //
-  // ⚠️ DELIBERATE DIVERGENCE: the reference's is WHITE. Ours cannot be. Their
-  // base map is mid-tone green, so a white mark separates from it; mapStyle.ts
-  // paints our land #EEEEEE and our roads #FFFFFF, where white is 1.09:1 and
-  // 1.0:1 — at 18×11 the shadow would be the entire mark, which is not a mark.
-  // So we take the anatomy and keep our own ink.
-  //
-  // But textSecondary, NOT primary. Filling the DEMOTED tier with the map's
-  // blackest ink inverted the hierarchy: the quiet tier outshouted the priced
-  // pill, which is a white fill held by a hairline. The reference runs the
-  // other way round — its quiet tier is the pale one and its loud tier carries
-  // the dark type. #6A6A6A is 4.7:1 on the land and 5.4:1 over a white road,
-  // comfortably past the 3:1 a graphic needs, while reading as the background
-  // tier it is. Growing the selected pill was treating the symptom of this.
-  //
-  // The ring's job is SEPARATION, not contrast: pins that sit close but no
-  // longer cluster would otherwise merge into a blob.
-  miniPin: {
-    width: sizes.mapPinMiniWidth,
-    height: sizes.mapPinMiniHeight,
-    borderRadius: radii.full,
-    backgroundColor: colors.textSecondary,
-    borderWidth: sizes.mapPinRing,
-    borderColor: colors.surface,
-    ...shadows.soft,
   },
   // ⚠️ The border is also a deliberate divergence — the reference's pill is
   // shadow-only. Same reason as the tone above: white on #EEEEEE land is

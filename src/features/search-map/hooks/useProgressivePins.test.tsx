@@ -21,7 +21,7 @@ import { act, renderHook } from '@testing-library/react-native';
 import type { MapPinItem } from '../types';
 import { useProgressivePins } from './useProgressivePins';
 
-const item = (key: string, emphasis: 'full' | 'mini'): MapPinItem => ({
+const item = (key: string, rank: number): MapPinItem => ({
   type: 'post',
   key,
   post: {
@@ -37,14 +37,12 @@ const item = (key: string, emphasis: 'full' | 'mini'): MapPinItem => ({
     latitude: 51.75,
     longitude: -0.34,
   },
-  emphasis,
+  rank,
 });
 
-/** 12 priced + `miniCount` demoted — the shape of a dense viewport. */
-const pins = (miniCount: number): MapPinItem[] => [
-  ...Array.from({ length: 12 }, (_, i) => item(`f${i}`, 'full')),
-  ...Array.from({ length: miniCount }, (_, i) => item(`m${i}`, 'mini')),
-];
+/** A dense viewport: `count` markers, ranked by bounty (0 = highest). */
+const pins = (count: number): MapPinItem[] =>
+  Array.from({ length: count }, (_, i) => item(`p${i}`, i));
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -63,7 +61,7 @@ const tick = async () => {
 
 describe('useProgressivePins', () => {
   it('mounts a first slice rather than the whole population', async () => {
-    const all = pins(88);
+    const all = pins(100);
 
     const { result } = await act(async () => renderHook(() => useProgressivePins(all, 0)));
 
@@ -71,16 +69,17 @@ describe('useProgressivePins', () => {
     expect(result.current.length).toBeGreaterThan(0);
   });
 
-  // The ranked few are the reason the map is useful — they must be there in
-  // the first commit, not fade in behind the dots.
-  it('includes every priced pin in that first slice', async () => {
-    const { result } = await act(async () => renderHook(() => useProgressivePins(pins(88), 0)));
+  // The markers a user is most likely reaching for must be in the FIRST
+  // commit, not fade in behind the long tail.
+  it('fills that first slice with the highest-ranked markers', async () => {
+    const { result } = await act(async () => renderHook(() => useProgressivePins(pins(100), 0)));
 
-    expect(result.current.filter((pin) => pin.emphasis === 'full')).toHaveLength(12);
+    const ranks = result.current.map((pin) => pin.rank);
+    expect(Math.max(...ranks)).toBe(ranks.length - 1);
   });
 
   it('fills the rest in over the following ticks', async () => {
-    const all = pins(88);
+    const all = pins(100);
     const { result } = await act(async () => renderHook(() => useProgressivePins(all, 0)));
     const first = result.current.length;
 
@@ -90,7 +89,7 @@ describe('useProgressivePins', () => {
   });
 
   it('gets everything out eventually, and then stops', async () => {
-    const all = pins(88);
+    const all = pins(100);
     const { result } = await act(async () => renderHook(() => useProgressivePins(all, 0)));
 
     for (let i = 0; i < 10; i += 1) {
@@ -107,7 +106,7 @@ describe('useProgressivePins', () => {
   it('does NOT restart when the pins array is rebuilt at the same populationId', async () => {
     const { result, rerender } = await act(async () =>
       renderHook(({ list }: { list: MapPinItem[] }) => useProgressivePins(list, 7), {
-        initialProps: { list: pins(88) },
+        initialProps: { list: pins(100) },
       }),
     );
     for (let i = 0; i < 10; i += 1) {
@@ -117,7 +116,7 @@ describe('useProgressivePins', () => {
 
     // A pan: same posts, brand-new array (the cull re-ran).
     await act(async () => {
-      rerender({ list: pins(88) });
+      rerender({ list: pins(100) });
     });
 
     expect(result.current).toHaveLength(100);
@@ -127,7 +126,7 @@ describe('useProgressivePins', () => {
   // a genuinely new set of cars rather than the same ones re-fetched after a pan.
   it('DOES restart when the POPULATION turns over', async () => {
     const { result, rerender } = await act(async () =>
-      renderHook(({ id }: { id: number }) => useProgressivePins(pins(88), id), {
+      renderHook(({ id }: { id: number }) => useProgressivePins(pins(100), id), {
         initialProps: { id: 7 },
       }),
     );

@@ -12,9 +12,6 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
-
-import { colors, sizes } from '@/shared/theme';
 
 import type { MapPinItem, MapPost } from '../types';
 import { MapPins } from './MapPins';
@@ -70,11 +67,11 @@ const post = (id: string, bountyPence: number): MapPost => ({
   longitude: -0.34,
 });
 
-const pin = (id: string, emphasis: 'full' | 'mini', bountyPence = 25000): MapPinItem => ({
+const pin = (id: string, rank: number, bountyPence = 25000): MapPinItem => ({
   type: 'post',
   key: id,
   post: post(id, bountyPence),
-  emphasis,
+  rank,
 });
 
 const renderPins = async (pins: MapPinItem[], selectedPostId: string | null = null) =>
@@ -88,75 +85,30 @@ const renderPins = async (pins: MapPinItem[], selectedPostId: string | null = nu
     ),
   );
 
-describe('pill vs mini', () => {
-  it('draws the bounty on a full pin', async () => {
-    const { getByText } = await renderPins([pin('a', 'full', 25000)]);
+describe('one marker, one price', () => {
+  // The price-less second tier went on 2026-08-07: a marker with no price on it
+  // reads as a GROUP, because there is nothing else it could be saying. The
+  // owner reported it as "grouping" four times before that landed. This is the
+  // guard against a well-meaning reintroduction of a quiet tier.
+  it('draws the bounty on EVERY marker, whatever its rank', async () => {
+    const view = await renderPins([pin('a', 0, 25000), pin('b', 30, 4500)]);
 
-    expect(getByText('£250')).toBeTruthy();
+    expect(view.getByText('£250')).toBeTruthy();
+    expect(view.getByText('£45')).toBeTruthy();
   });
 
-  it('draws NO price on a mini pin — that is the whole point of it', async () => {
-    const { queryByText } = await renderPins([pin('a', 'mini', 25000)]);
-
-    expect(queryByText('£250')).toBeNull();
-  });
-
-  // A selected dot would be nearly invisible on the map.
-  it('promotes a selected mini back to a pill', async () => {
-    const { getByText } = await renderPins([pin('a', 'mini', 25000)], 'a');
-
-    expect(getByText('£250')).toBeTruthy();
-  });
-
-  // The label is not the visual — a screen reader user gets the bounty either
-  // way, so demotion must never cost them information.
-  it('keeps the full accessible label on a mini pin', async () => {
-    const { getByLabelText } = await renderPins([pin('a', 'mini', 25000)]);
+  it('keeps the full accessible label', async () => {
+    const { getByLabelText } = await renderPins([pin('a', 5, 25000)]);
 
     expect(getByLabelText('£250 bounty — Ford Fiesta')).toBeTruthy();
   });
 
-  // The reference draws the demoted pin as its price pill with the price
-  // hidden — a lozenge, not a dot — so the two read as one family.
-  it('draws the mini pin as a LOZENGE, not a circle', async () => {
-    const view = await renderPins([pin('a', 'mini')]);
-
-    const style = StyleSheet.flatten(view.getByTestId('mini-pin').props.style);
-    expect(style.width).toBe(sizes.mapPinMiniWidth);
-    expect(style.height).toBe(sizes.mapPinMiniHeight);
-    expect(style.width).toBeGreaterThan(style.height);
-  });
-
-  // REGRESSION GUARD, and the one place this is written down in code: the
-  // reference's demoted pin is WHITE, and copying that is the obvious
-  // "match the screenshots" change to make. It cannot be made. mapStyle.ts
-  // paints land #EEEEEE and roads #FFFFFF — a white 18×11 lozenge is invisible
-  // on both, and at that size a hairline border is the entire mark. The ink
-  // stays ours; only the anatomy is borrowed.
-  it('never goes WHITE — it would vanish on our map style', async () => {
-    const view = await renderPins([pin('a', 'mini')]);
-
-    const style = StyleSheet.flatten(view.getByTestId('mini-pin').props.style);
-    expect(style.backgroundColor).not.toBe(colors.surface);
-  });
-
-  // ...but it is not the blackest ink on the map either. Filling the DEMOTED
-  // tier with `primary` outshouted the priced pill (a white fill + hairline)
-  // and inverted the hierarchy the two tiers exist to express.
-  it('is quieter than the priced tier, not louder', async () => {
-    const view = await renderPins([pin('a', 'mini')]);
-
-    const style = StyleSheet.flatten(view.getByTestId('mini-pin').props.style);
-    expect(style.backgroundColor).toBe(colors.textSecondary);
-    expect(style.backgroundColor).not.toBe(colors.primary);
-  });
-
-  it('fires onPressPost from a mini pin — a dot you cannot tap is a lie', async () => {
+  it('fires onPressPost — a marker you cannot tap is a lie', async () => {
     const onPressPost = jest.fn();
     const view = await act(async () =>
       render(
         <MapPins
-          pins={[pin('a', 'mini')]}
+          pins={[pin('a', 9)]}
           selectedPostId={null}
           onPressPost={onPressPost}
         />,
@@ -172,17 +124,17 @@ describe('pill vs mini', () => {
 });
 
 describe('marker identity (the jank guard)', () => {
-  // If emphasis ever returns to the React key, this fails — and dozens of
-  // markers would remount on every pan in the real app.
-  it('does NOT remount a marker when only its emphasis changes', async () => {
-    const view = await renderPins([pin('a', 'full')]);
+  // If selection ever returns to the React key, this fails — and the marker
+  // would remount and re-arm 500ms of tracksViewChanges on every tap.
+  it('does NOT remount a marker when only its selection changes', async () => {
+    const view = await renderPins([pin('a', 0)]);
     const before = view.getByTestId('marker');
 
     await act(async () => {
       view.rerender(
         <MapPins
-          pins={[pin('a', 'mini')]}
-          selectedPostId={null}
+          pins={[pin('a', 0)]}
+          selectedPostId="a"
           onPressPost={jest.fn()}
         />,
       );
@@ -192,15 +144,16 @@ describe('marker identity (the jank guard)', () => {
     expect(view.getByTestId('marker')).toBe(before);
   });
 
-  it('does NOT remount a marker when only its selection changes', async () => {
-    const view = await renderPins([pin('a', 'full')]);
+  it('does NOT remount a marker when only its RANK changes', async () => {
+    const view = await renderPins([pin('a', 0)]);
     const before = view.getByTestId('marker');
 
+    // Rank churns on every pan as the in-view population changes.
     await act(async () => {
       view.rerender(
         <MapPins
-          pins={[pin('a', 'full')]}
-          selectedPostId="a"
+          pins={[pin('a', 17)]}
+          selectedPostId={null}
           onPressPost={jest.fn()}
         />,
       );
@@ -211,49 +164,57 @@ describe('marker identity (the jank guard)', () => {
 });
 
 describe('every post gets its own marker', () => {
-  // Clustering was removed 2026-08-06 — nothing collapses any more, so the
-  // renderer must draw one marker per pin however many there are.
+  // Clustering was removed 2026-08-06 and the price-less tier 2026-08-07 —
+  // nothing collapses or hides anything now.
   it('renders one marker per pin', async () => {
-    const view = await renderPins([pin('a', 'full'), pin('b', 'mini'), pin('c', 'mini')]);
+    const view = await renderPins([pin('a', 0), pin('b', 1), pin('c', 2)]);
 
     expect(view.getAllByTestId('marker')).toHaveLength(3);
   });
 });
 
 describe('paint order and the assistive-tech path', () => {
-  const zIndexOf = (node: { props: Record<string, unknown> }) => node.props['data-zindex'];
+  const zIndexOf = (node: { props: Record<string, unknown> }) => node.props['data-zindex'] as number;
 
-  // Paint order is invisible in a simulator AND in jest, and it decides which
-  // of up to a hundred overlapping 44pt targets a tap resolves to.
-  it('stacks selected above priced above demoted', async () => {
-    const view = await renderPins([pin('a', 'full'), pin('b', 'mini'), pin('c', 'mini')], 'c');
+  // Under heavy overlap — the normal case now that every marker is a full-width
+  // pill — paint order is what decides which marker a tap HITS, and between
+  // overlapping Android markers with equal zIndex that order is undefined.
+  it('paints the highest bounty above the rest', async () => {
+    const view = await renderPins([pin('a', 0), pin('b', 1), pin('c', 2)]);
 
-    const [priced, demoted, selected] = view.getAllByTestId('marker');
-    expect(zIndexOf(priced)).toBe(2);
-    expect(zIndexOf(demoted)).toBe(1);
-    expect(zIndexOf(selected)).toBe(3);
+    const [first, second, third] = view.getAllByTestId('marker').map(zIndexOf);
+    expect(first).toBeGreaterThan(second);
+    expect(second).toBeGreaterThan(third);
+  });
+
+  it('puts the SELECTED marker above everything', async () => {
+    const view = await renderPins([pin('a', 0), pin('b', 40)], 'b');
+
+    const [top, selected] = view.getAllByTestId('marker').map(zIndexOf);
+    expect(selected).toBeGreaterThan(top);
   });
 
   // Never 0: the iOS Google marker skips a falsy zIndex when it re-creates.
-  it('never assigns a falsy z-index', async () => {
-    const view = await renderPins([pin('a', 'mini')]);
+  it('never assigns a falsy z-index, however deep the rank', async () => {
+    const view = await renderPins([pin('a', 5000)]);
 
     expect(zIndexOf(view.getByTestId('marker'))).toBeGreaterThan(0);
   });
 
-  // Clustering used to bound the marker count. Without it, leaving every dot
-  // individually focusable makes a screen-reader user swipe through up to a
-  // hundred of them to reach the sheet — which lists them all with more detail.
-  it('keeps demoted pins out of the assistive-tech tree', async () => {
-    const view = await renderPins([pin('a', 'full'), pin('b', 'mini')]);
+  // ⚠️ The DRAWN set and the REACHABLE set deliberately differ. Every marker is
+  // drawn and tappable, but leaving all of them individually focusable makes a
+  // screen-reader user swipe through up to a hundred to get past the map — and
+  // the sheet lists every car with more detail and a live count.
+  it('keeps low-ranked markers out of the assistive-tech tree', async () => {
+    const view = await renderPins([pin('a', 0), pin('b', 90)]);
 
-    const [priced, demoted] = view.getAllByTestId('marker');
-    expect(priced.props.accessible).toBe(true);
-    expect(demoted.props.accessible).toBe(false);
+    const [top, deep] = view.getAllByTestId('marker');
+    expect(top.props.accessible).toBe(true);
+    expect(deep.props.accessible).toBe(false);
   });
 
-  it('but a SELECTED demoted pin stays reachable', async () => {
-    const view = await renderPins([pin('a', 'mini')], 'a');
+  it('but a SELECTED low-ranked marker stays reachable', async () => {
+    const view = await renderPins([pin('a', 90)], 'a');
 
     expect(view.getByTestId('marker').props.accessible).toBe(true);
   });

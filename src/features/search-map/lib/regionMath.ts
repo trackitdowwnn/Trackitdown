@@ -14,12 +14,14 @@
  *        src/shared/types/location.ts (GeoRegion).
  */
 
+import { regionAround } from '@/shared/lib/mapRegion';
 import type { GeoCoord, GeoRegion } from '@/shared/types';
 
 /** Framing a circle by radius now lives in shared/ — `shared/ui/LocationPicker`
- *  needs it too, and a shared component cannot import from a feature. Re-exported
- *  here so this feature's five call sites keep reading in map-screen terms. */
-export { regionAround } from '@/shared/lib/mapRegion';
+ *  needs it too, and a shared component cannot import from a feature. Imported
+ *  above (entryFrame uses it) and re-exported here so this feature's call sites
+ *  keep reading in map-screen terms. */
+export { regionAround };
 
 export interface Bbox {
   minLat: number;
@@ -85,6 +87,63 @@ export function frameCoords(coords: GeoCoord[], fallback: GeoRegion): GeoRegion 
     longitude: (minLng + maxLng) / 2,
     latitudeDelta: Math.max((maxLat - minLat) * 1.4, 0.01),
     longitudeDelta: Math.max((maxLng - minLng) * 1.4, 0.01),
+  };
+}
+
+/**
+ * The widest the map may OPEN, as a radius in miles.
+ *
+ * WHY: framing every result is honest about where the cars are and useless to
+ * look at. Posts scattered nationwide force a ~64km view, which is ~100 metres
+ * of ground per screen point — so two cars 800m apart are drawn 8pt apart while
+ * the marker itself is 18pt wide. They overlap, their shadows compound, and a
+ * knot of three reads as one black blob you have to zoom into. That is what
+ * clustering used to hide; with clustering gone (owner's call, 2026-08-06) the
+ * only remaining defence is to not open that far out in the first place.
+ *
+ * A RADIUS, so six here is a twelve-mile span ≈ 19km, ≈ 30 m/pt on a ~640pt
+ * map band: the same 800m gap now draws ~27pt apart, comfortably clear of the
+ * 18pt marker. Chosen as the widest opening at which two nearby cars still
+ * read as two markers rather than one mass.
+ */
+export const MAX_ENTRY_RADIUS_MILES = 6;
+
+/**
+ * Where the map should OPEN once the first results land: framed on the cars
+ * near the entry point, never wider than MAX_ENTRY_RADIUS_MILES.
+ *
+ * Three cases, in order:
+ *   1. Results inside the cap — frame those (frameCoords' 40% padding applies).
+ *   2. Results, but all further out — centre on the NEAREST one at the cap,
+ *      so the map opens on cars rather than on empty ground it happens to
+ *      know about. Panning out from there is one gesture; finding the only
+ *      pin in a national view is not.
+ *   3. No results at all — the entry region unchanged. Framing nothing would
+ *      zoom to a point.
+ *
+ * The cap is applied to the RESULT too, not just the candidate set: three cars
+ * at opposite edges of the radius still span more than it once padded.
+ */
+export function entryFrame(coords: GeoCoord[], entry: GeoRegion): GeoRegion {
+  if (coords.length === 0) {
+    return entry;
+  }
+  const centre: GeoCoord = { latitude: entry.latitude, longitude: entry.longitude };
+  const near = coords.filter(
+    (c) => metersToMiles(distanceMeters(centre, c)) <= MAX_ENTRY_RADIUS_MILES,
+  );
+  if (near.length === 0) {
+    const nearest = coords.reduce((best, c) =>
+      distanceMeters(centre, c) < distanceMeters(centre, best) ? c : best,
+    );
+    return regionAround(nearest, MAX_ENTRY_RADIUS_MILES);
+  }
+  const framed = frameCoords(near, entry);
+  const cap = regionAround(framed, MAX_ENTRY_RADIUS_MILES);
+  return {
+    ...framed,
+    latitudeDelta: Math.min(framed.latitudeDelta, cap.latitudeDelta),
+    longitudeDelta: Math.min(framed.longitudeDelta, cap.longitudeDelta),
   };
 }
 
