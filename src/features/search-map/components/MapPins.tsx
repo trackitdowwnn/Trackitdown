@@ -166,11 +166,13 @@ export const MapPins = memo(function MapPins({
             accessible={pin.rank < AT_MARKER_LIMIT || selected}
             anchor={pin.anchor ?? MARKER_CENTRE}
             retrackKey={String(selected)}
-            // draw, NOT post: fanOutOverlaps moves markers that would
-            // otherwise stack. Absent for the normal case. The post keeps its
-            // exact coordinates for everything else.
-            latitude={pin.draw?.latitude ?? pin.post.latitude}
-            longitude={pin.draw?.longitude ?? pin.post.longitude}
+            // The car's OWN coordinates, always. A marker displaced to avoid
+            // an overlap used to live here; it moved with the zoom, because a
+            // constant on-screen gap needs a ground offset that grows as you
+            // zoom out. Markers that slide around the map are worse than
+            // markers that overlap.
+            latitude={pin.post.latitude}
+            longitude={pin.post.longitude}
             onPress={() => onPressPost(pin.post.id)}
             accessibilityLabel={`${formatPounds(pin.post.bountyPence)} bounty — ${pin.post.make} ${pin.post.model}`}
           >

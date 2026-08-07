@@ -20,10 +20,10 @@
  *        src/features/search-map/lib/regionMath.ts (regionToBbox).
  */
 
-import type { GeoCoord, GeoRegion } from '@/shared/types';
+import type { GeoRegion } from '@/shared/types';
 
 import type { MapPinItem, MapPost } from '../types';
-import { distanceMeters, regionToBbox } from './regionMath';
+import { regionToBbox } from './regionMath';
 
 /**
  * How many markers stay in the ASSISTIVE-TECH tree, by bounty rank.
@@ -79,108 +79,6 @@ export function pinsForRegion(posts: MapPost[], region: GeoRegion): MapPinItem[]
 }
 
 /**
- * How far apart two markers must sit, in points, before they read as two.
- *
- * Deliberately well BELOW a pill's ~72pt width. Demanding full clearance would
- * fan a group of five onto a ring ~64pt in radius — around 1.9km of
- * displacement at a 19km view, a far bigger lie than the overlap it fixes. At
- * 34 they STAGGER: you can see there are three pills and hit each one, which is
- * how the reference looks (docs/design-refs/map/ shot 2 has four pills piled on
- * each other). Overlapping pills stay readable; it was overlapping identical
- * DOTS that merged into a featureless blob.
- */
-const MARKER_SEPARATION_DP = 34;
-
-/** Metres per degree of latitude. Longitude shrinks by cos(lat). */
-const METRES_PER_DEGREE_LAT = 111_320;
-
-/**
- * Spread markers that would otherwise land on top of each other into a small
- * ring around their shared centre, so each one is separately visible and
- * tappable.
- *
- * WHY: this is what clustering used to hide, and clustering was removed on the
- * owner's call (2026-08-06). Cars a few hundred metres apart draw a few points
- * apart at any view wide enough to be useful, so they stack and only the
- * topmost is tappable. Observed on device at Hatfield, 2026-08-07: four pins
- * within a few hundred metres drew as one mark with the ones behind showing
- * as thin crescents of their own edge.
- *
- * ⚠️ THIS DRAWS A MARKER AWAY FROM ITS CAR. That is the accepted cost of the
- * owner's "no grouping, every marker standalone" call: the alternative at this
- * zoom is showing one marker for four cars. The displacement is bounded by the
- * ring radius (a small multiple of MARKER_SEPARATION_DP, so it shrinks to
- * nothing as you zoom in and the group dissolves), it only ever applies to
- * markers that ALREADY could not be told apart, and it touches the `draw`
- * coordinate ONLY — post.latitude/longitude stay exact for the card, the sort,
- * the sighting wizard and every RPC.
- *
- * Deterministic: groups are formed in the array's existing (id-tie-broken)
- * order and members are placed by index, so the same input always produces the
- * same layout and markers never jitter between renders.
- */
-export function fanOutOverlaps(
-  pins: MapPinItem[],
-  region: GeoRegion,
-  mapWidthDp: number,
-): MapPinItem[] {
-  if (pins.length < 2 || mapWidthDp <= 0) {
-    return pins;
-  }
-  const cosLat = Math.max(0.2, Math.cos((region.latitude * Math.PI) / 180));
-  const metresPerDp = (region.longitudeDelta * METRES_PER_DEGREE_LAT * cosLat) / mapWidthDp;
-  const separationM = MARKER_SEPARATION_DP * metresPerDp;
-  if (!Number.isFinite(separationM) || separationM <= 0) {
-    return pins;
-  }
-
-  // Greedy grouping: each pin joins the first group whose centre it would
-  // collide with. O(n²) at n <= VIEWPORT_POST_LIMIT is trivial, and greedy
-  // keeps it order-stable where a centroid-recentring pass would not.
-  const groups: { lat: number; lng: number; members: MapPinItem[] }[] = [];
-  for (const pin of pins) {
-    const { latitude, longitude } = pin.post;
-    const hit = groups.find(
-      (g) =>
-        distanceMeters({ latitude: g.lat, longitude: g.lng }, { latitude, longitude }) <
-        separationM,
-    );
-    if (hit) {
-      hit.members.push(pin);
-    } else {
-      groups.push({ lat: latitude, lng: longitude, members: [pin] });
-    }
-  }
-  if (groups.every((g) => g.members.length === 1)) {
-    return pins; // nothing collides — keep the array identity for the memo
-  }
-
-  const fanned = new Map<string, GeoCoord>();
-  for (const group of groups) {
-    const count = group.members.length;
-    if (count === 1) {
-      continue;
-    }
-    // Radius grows with the ring's population so neighbours on it stay a full
-    // separation apart: circumference >= count * separation.
-    const radiusM = Math.max(separationM * 0.7, (count * separationM) / (2 * Math.PI));
-    group.members.forEach((pin, index) => {
-      const angle = (index / count) * 2 * Math.PI;
-      const dLat = (radiusM * Math.cos(angle)) / METRES_PER_DEGREE_LAT;
-      const dLng = (radiusM * Math.sin(angle)) / (METRES_PER_DEGREE_LAT * cosLat);
-      fanned.set(pin.key, {
-        latitude: group.lat + dLat,
-        longitude: group.lng + dLng,
-      });
-    });
-  }
-  return pins.map((pin) => {
-    const draw = fanned.get(pin.key);
-    return draw ? { ...pin, draw } : pin;
-  });
-}
-
-/**
  * Roughly how wide a marker draws, in points — a £ pill at four digits. Only
  * ever used to keep one off the viewport edge, so an approximation is fine;
  * erring high just nudges a little sooner. A five-digit bounty draws wider and
@@ -213,7 +111,7 @@ export function keepMarkersOnScreen(
   let changed = false;
   const next = pins.map((pin) => {
     const width = MARKER_WIDTH_DP;
-    const lng = pin.draw?.longitude ?? pin.post.longitude;
+    const lng = pin.post.longitude;
     const x = ((lng - westEdge) / region.longitudeDelta) * mapWidthDp;
     // Default 0.5. Near the west edge the box must start at 0 or later, so the
     // anchor can be at most x/width of the way across it; near the east edge it

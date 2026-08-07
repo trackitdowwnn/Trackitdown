@@ -124,7 +124,7 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
    the selected pin inverts to `surfaceInverse` (`components/MapPins.tsx`).
 3. NO CLUSTERING (removed 2026-08-06) — every post in view gets its own
    marker. supercluster used to collapse dense areas into count bubbles; the
-   staggering in item 7 does that job now, and a bubble was a tap that only
+   pill/price split in item 7 does that job now, and a bubble was a tap that only
    ever led to another tap. `lib/mapPins.ts` still CULLS to the viewport,
    which is load-bearing: `result.posts` only refreshes when a search lands
    (~600ms behind the gesture), so without it a pan keeps drawing markers the
@@ -202,10 +202,16 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
    - Overlapping pills are fine where overlapping dots were not: a pill has an
      edge and a number, so a pile still reads as a pile of prices. The
      reference piles them too (`docs/design-refs/map/`, shot 2).
-   - Markers that would stack are STAGGERED, not separated —
-     `fanOutOverlaps` spreads them ~34pt, well under a pill's ~72pt width.
-     Demanding full clearance would throw a group of five ~1.9km off position,
-     a far bigger lie than the overlap it fixes.
+   - Markers that would stack are LEFT to stack. A marker is always drawn on
+     its car. Spreading them apart (`fanOutOverlaps`) shipped on 2026-08-07 and
+     was reverted the same day: keeping a constant on-screen gap needs a GROUND
+     offset proportional to the zoom span, so every fanned marker slid across
+     the map each time the camera settled, and moved further out the more you
+     zoomed out. Markers that move are worse than markers that overlap. Do not
+     reintroduce it without solving that; it is not a tuning problem.
+   - `keepMarkersOnScreen` survives the same critique because it moves the
+     marker's BOX (its anchor) and never its coordinate: the offset is bounded
+     by the marker's own width instead of growing with the zoom.
    - Bounty rank survives for paint order (highest on top, so a tap in a crowd
      hits the car worth tapping — equal zIndex between overlapping Android
      markers is undefined) and for the assistive-tech cap (`AT_MARKER_LIMIT`).

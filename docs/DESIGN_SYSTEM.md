@@ -203,8 +203,12 @@ a busy/alarming crime map.
     - Overlapping pills are FINE where overlapping dots were not: a pill has
       an edge and a number, so a pile of them still reads as a pile of prices.
       The reference does exactly this (`docs/design-refs/map/`, shot 2 has
-      four pills piled together). Markers that would stack are staggered
-      slightly rather than fully separated — see `fanOutOverlaps`.
+      four pills piled together). Markers that would stack are LEFT to stack:
+      a marker is always drawn on its car. Spreading them apart was tried on
+      2026-08-07 and reverted the same day — a constant on-screen gap needs a
+      ground offset that grows with the zoom, so the markers visibly slid
+      across the map every time the camera settled. Markers that move are
+      worse than markers that overlap.
     - Pill text is `typography.mapPin` (label-size, one weight up): a pin
       fights map tiles and its own overlapping neighbours, and going up a
       *size* instead would turn a dense area into a wall of type.

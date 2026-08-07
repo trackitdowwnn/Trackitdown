@@ -13,7 +13,7 @@
  *        src/features/search-map/lib/feedSections.ts (flattening).
  */
 
-import type { GeoCoord, PostSummary } from '@/shared/types';
+import type { PostSummary } from '@/shared/types';
 
 export type FeedSectionLayout = 'hero-vertical' | 'carousel';
 
@@ -84,9 +84,9 @@ export interface ViewportResult {
 
 /**
  * One marker on the map. Every post in view gets one — clustering was removed
- * on 2026-08-06, so there is no bubble variant; the pill/mini split below does
- * the de-cluttering a cluster used to. `type` is kept as a discriminant so a
- * second marker kind stays a data change rather than a rewrite.
+ * on 2026-08-06, so there is no bubble variant, and every marker carries its
+ * own price. `type` is kept as a discriminant so a second marker kind stays a
+ * data change rather than a rewrite.
  */
 export interface MapPinItem {
   type: 'post';
@@ -102,19 +102,6 @@ export interface MapPinItem {
    * overlap, and which markers stay in the assistive-tech tree.
    */
   rank: number;
-  /**
-   * Where to DRAW this marker, when that differs from where the car is.
-   *
-   * Only set by fanOutOverlaps, and only for markers that would otherwise land
-   * on top of each other: at a 19km view, cars 150m apart are ~5pt apart under
-   * an 18pt marker, so they stack into one mark and only one is tappable.
-   * Absent means "draw it at post.latitude/longitude", which is the normal case.
-   *
-   * ⚠️ NEVER read this for anything but the marker's coordinate. Distance
-   * sorting, the card, the sighting wizard and every RPC use post's own
-   * coordinates, which stay exact.
-   */
-  draw?: GeoCoord;
   /**
    * Where the marker's box sits relative to its coordinate, 0..1 on each axis.
    * Absent means centred, which is the normal case.

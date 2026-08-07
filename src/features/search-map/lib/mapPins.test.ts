@@ -12,8 +12,7 @@
 import type { GeoRegion } from '@/shared/types';
 
 import type { MapPinItem, MapPost } from '../types';
-import { fanOutOverlaps, keepMarkersOnScreen, pinsForRegion, revealPins } from './mapPins';
-import { distanceMeters } from './regionMath';
+import { keepMarkersOnScreen, pinsForRegion, revealPins } from './mapPins';
 
 const post = (
   id: string,
@@ -197,92 +196,6 @@ describe('revealPins never withholds the SELECTED pin', () => {
   });
 });
 
-describe('fanOutOverlaps (every marker stays its own marker)', () => {
-  /** ~19km across on a 360pt-wide map ≈ 53 m/pt, so 26pt ≈ 1.4km. */
-  const VIEW: GeoRegion = {
-    latitude: 51.75,
-    longitude: -0.34,
-    latitudeDelta: 0.17,
-    longitudeDelta: 0.17,
-    };
-  const WIDTH = 360;
-  const at = (id: string, lat: number, lng: number): MapPinItem => ({
-    type: 'post',
-    key: id,
-    post: post(id, lat, lng),
-    rank: 0,
-  });
-
-  it('leaves well-separated markers exactly where their cars are', () => {
-    const pins = [at('a', 51.70, -0.40), at('b', 51.80, -0.20)];
-
-    const out = fanOutOverlaps(pins, VIEW, WIDTH);
-
-    expect(out).toBe(pins); // identity preserved for the memoised renderer
-    expect(out.every((p) => p.draw === undefined)).toBe(true);
-  });
-
-  // Observed on device: four cars within a few hundred metres drew as one dark
-  // mark with the ones behind showing only crescents of their own edge.
-  it('spreads markers that would land on top of each other', () => {
-    const tight = [
-      at('a', 51.7500, -0.3400),
-      at('b', 51.7505, -0.3405),
-      at('c', 51.7495, -0.3395),
-      at('d', 51.7502, -0.3398),
-    ];
-
-    const out = fanOutOverlaps(tight, VIEW, WIDTH);
-
-    expect(out.every((p) => p.draw !== undefined)).toBe(true);
-    // Every drawn pair is now at least a marker-width apart.
-    const drawn = out.map((p) => p.draw!);
-    for (let i = 0; i < drawn.length; i += 1) {
-      for (let j = i + 1; j < drawn.length; j += 1) {
-        expect(distanceMeters(drawn[i], drawn[j])).toBeGreaterThan(500);
-      }
-    }
-  });
-
-  // The whole safety argument rests on this: only the DRAW coordinate moves.
-  it('never touches the post\u2019s own coordinates', () => {
-    const tight = [at('a', 51.75, -0.34), at('b', 51.7501, -0.3401)];
-
-    const out = fanOutOverlaps(tight, VIEW, WIDTH);
-
-    expect(out[0].post.latitude).toBe(51.75);
-    expect(out[0].post.longitude).toBe(-0.34);
-    expect(out[1].post.latitude).toBe(51.7501);
-  });
-
-  // Markers that jitter between renders are worse than markers that overlap.
-  it('is deterministic — same input, same layout', () => {
-    const tight = [at('a', 51.75, -0.34), at('b', 51.7501, -0.3401), at('c', 51.7499, -0.3399)];
-
-    const first = fanOutOverlaps(tight, VIEW, WIDTH);
-    const second = fanOutOverlaps(tight, VIEW, WIDTH);
-
-    expect(second.map((p) => p.draw)).toEqual(first.map((p) => p.draw));
-  });
-
-  // Zooming in must DISSOLVE the fan, not preserve it — the displacement is
-  // only ever a substitute for resolution the map doesn't have.
-  it('stops fanning once the zoom separates them naturally', () => {
-    const tight = [at('a', 51.75, -0.34), at('b', 51.7501, -0.3401)];
-    const closeUp: GeoRegion = { ...VIEW, latitudeDelta: 0.002, longitudeDelta: 0.002 };
-
-    const out = fanOutOverlaps(tight, closeUp, WIDTH);
-
-    expect(out.every((p) => p.draw === undefined)).toBe(true);
-  });
-
-  it('handles a degenerate map width rather than dividing by zero', () => {
-    const pins = [at('a', 51.75, -0.34), at('b', 51.75, -0.34)];
-
-    expect(fanOutOverlaps(pins, VIEW, 0)).toBe(pins);
-  });
-});
-
 describe('keepMarkersOnScreen (nothing gets cut in half)', () => {
   const VIEW: GeoRegion = {
     latitude: 51.75,
@@ -330,21 +243,15 @@ describe('keepMarkersOnScreen (nothing gets cut in half)', () => {
     expect(WIDTH - 10 + (1 - anchor!.x) * 72).toBeLessThanOrEqual(WIDTH + 0.001);
   });
 
-  // The anchor moves the BOX, never the point — that is what separates this
-  // from fanOutOverlaps, which does move the drawn position.
+  // The anchor moves the BOX, never the point. This is the whole reason it
+  // survived while the fan-out did not: a displaced POSITION has to grow as you
+  // zoom out to keep a constant on-screen gap, so fanned markers slid across
+  // the map on every camera change. An anchor offset is bounded by the marker's
+  // own width and the coordinate underneath never moves.
   it('never changes the coordinate it is pinned to', () => {
     const out = keepMarkersOnScreen([pillAt(fromWest(2))], VIEW, WIDTH);
 
     expect(out[0].post.longitude).toBeCloseTo(fromWest(2), 10);
-    expect(out[0].draw).toBeUndefined();
   });
 
-  it('reads the FANNED position when there is one', () => {
-    const fanned: MapPinItem = {
-      ...pillAt(VIEW.longitude),
-      draw: { latitude: 51.75, longitude: fromWest(5) },
-    };
-
-    expect(keepMarkersOnScreen([fanned], VIEW, WIDTH)[0].anchor).toBeDefined();
-  });
 });

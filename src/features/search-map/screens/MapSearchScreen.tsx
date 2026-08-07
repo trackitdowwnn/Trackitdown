@@ -57,7 +57,7 @@ import {
   summarise,
   toRpcCriteria,
 } from '../lib/searchCriteria';
-import { fanOutOverlaps, keepMarkersOnScreen, pinsForRegion } from '../lib/mapPins';
+import { keepMarkersOnScreen, pinsForRegion } from '../lib/mapPins';
 import {
   type MapInsets,
   cameraForVisible,
@@ -338,19 +338,16 @@ function MapSearchBody({
   // dep that matters: `result.posts` only refreshes when a search LANDS, so
   // without re-culling on every settle a pan would keep drawing markers the
   // user has already moved away from.
-  // Ranked, then SPREAD: cars a few hundred metres apart draw a few points
-  // apart at any useful zoom, so without this they stack into one dark mark and
-  // only the topmost is tappable. Nothing groups them any more, so this is what
-  // keeps every marker its own marker (see fanOutOverlaps for the cost).
+  // Ranked, then nudged off the viewport edge. Markers that would OVERLAP are
+  // left to overlap: every one is drawn on its own car, at every zoom.
+  // Spreading them apart was tried and reverted the same day (2026-08-07) —
+  // holding a constant on-screen gap needs a ground offset proportional to the
+  // zoom span, so fanned markers slid across the map on every camera settle and
+  // drifted further the more you zoomed out. keepMarkersOnScreen is not the
+  // same trade: it moves the marker's BOX, never its coordinate.
   const allPins = useMemo(
     () =>
-      keepMarkersOnScreen(
-        // Fan FIRST: nudging an edge marker inward can only help once its
-        // position is final, and the fan is what decides that position.
-        fanOutOverlaps(pinsForRegion(result.posts, settledRegion), settledRegion, windowWidth),
-        settledRegion,
-        windowWidth,
-      ),
+      keepMarkersOnScreen(pinsForRegion(result.posts, settledRegion), settledRegion, windowWidth),
     [result.posts, settledRegion, windowWidth],
   );
   // Mounted in batches rather than all at once — nothing thins the population
