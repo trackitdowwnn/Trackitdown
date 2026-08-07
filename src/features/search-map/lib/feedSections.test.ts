@@ -9,7 +9,7 @@
 
 import type { PostSummary } from '@/shared/types';
 
-import type { FeedSection } from '../types';
+import type { FeedNudgeItem, FeedSection } from '../types';
 import {
   appendHeroPage,
   asCarousels,
@@ -18,6 +18,7 @@ import {
   feedItemType,
   flattenSections,
   heroPostCount,
+  insertAfterFirstSection,
 } from './feedSections';
 
 let nextId = 0;
@@ -184,5 +185,56 @@ describe('appendHeroPage', () => {
 
     expect(appendHeroPage(sections, [post()])).toEqual(sections);
     expect(heroPostCount(sections)).toBe(0);
+  });
+});
+
+describe('insertAfterFirstSection', () => {
+  const nudge: FeedNudgeItem = { type: 'nudgeRow', key: 'nudge_garage', nudge: 'garage' };
+
+  const carousels = (...ids: string[]) =>
+    flattenSections(ids.map((id) => section({ id, layout: 'carousel' })));
+
+  it('places the nudge before the SECOND section header, so one rail leads', () => {
+    const items = carousels('near_you', 'highest_bounties', 'recent_uk');
+
+    const withNudge = insertAfterFirstSection(items, nudge);
+
+    expect(withNudge.map((i) => i.type)).toEqual([
+      'sectionHeader',
+      'carouselRow',
+      'nudgeRow',
+      'sectionHeader',
+      'carouselRow',
+      'sectionHeader',
+      'carouselRow',
+    ]);
+  });
+
+  it('appends when there is only one section (no second header to precede)', () => {
+    const items = carousels('near_you');
+
+    const withNudge = insertAfterFirstSection(items, nudge);
+
+    expect(withNudge.map((i) => i.type)).toEqual(['sectionHeader', 'carouselRow', 'nudgeRow']);
+  });
+
+  // The caller renders the offer in the list header instead — with no rails
+  // there is nothing for it to sit after.
+  it('returns an empty list untouched', () => {
+    expect(insertAfterFirstSection([], nudge)).toEqual([]);
+  });
+
+  it('leaves the original items and their keys alone', () => {
+    const items = carousels('near_you', 'recent_uk');
+    const keysBefore = items.map((i) => i.key);
+
+    const withNudge = insertAfterFirstSection(items, nudge);
+
+    expect(items.map((i) => i.key)).toEqual(keysBefore); // not mutated
+    expect(withNudge.filter((i) => i.type !== 'nudgeRow').map((i) => i.key)).toEqual(keysBefore);
+  });
+
+  it('gives the nudge its own recycling pool', () => {
+    expect(feedItemType(nudge)).toBe('nudgeRow');
   });
 });

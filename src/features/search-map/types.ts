@@ -47,10 +47,24 @@ export type FeedLocation =
  * pool per row shape. Every field a row renders MUST come from the item
  * itself (recycled rows keep no state).
  */
+/**
+ * A setup offer riding between rails rather than stacked above them. `nudge`
+ * travels ON the item because a recycled row keeps no state of its own. Named
+ * separately so the screen can hold one without widening it to the union.
+ */
+export interface FeedNudgeItem {
+  type: 'nudgeRow';
+  key: string;
+  /** Which offer. A union of one today — the alert-area offer moved to a root
+   *  sheet — but kept named so a second feed offer stays a data change. */
+  nudge: 'garage';
+}
+
 export type FeedItem =
   | { type: 'sectionHeader'; key: string; section: FeedSection }
   | { type: 'heroCard'; key: string; sectionId: string; post: PostSummary }
-  | { type: 'carouselRow'; key: string; section: FeedSection };
+  | { type: 'carouselRow'; key: string; section: FeedSection }
+  | FeedNudgeItem;
 
 export type FeedItemType = FeedItem['type'];
 

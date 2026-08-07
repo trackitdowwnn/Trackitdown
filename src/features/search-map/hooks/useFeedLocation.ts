@@ -4,11 +4,15 @@
  *        permission is ALREADY granted) → national mode ("the UK"), then
  *        upgrades from national when the STARTUP permission prompts grant
  *        location after the chain settled. Exposes setArea (persists the
- *        "Set my area" pick) and requestMyLocation (the primer card's CTA —
- *        the one path allowed to trigger the OS prompt).
+ *        "Set my area" pick) and requestMyLocation — the one path here allowed
+ *        to trigger the OS prompt. ⚠️ requestMyLocation has NO production
+ *        caller since the primer became a row that opens the picker instead
+ *        (2026-08-06); it is kept, tested, for a future one-tap entry point,
+ *        and is now the easiest way to reintroduce a cold-fire. Delete it
+ *        rather than wire it up casually.
  * WHY:   The feed must be useful with zero setup and zero permissions, and
- *        must never cold-fire the OS location dialog — asking is the primer
- *        card's job. The preference is client-only and deliberately separate
+ *        must never cold-fire the OS location dialog — asking belongs to an
+ *        explicit user action (the picker's own current-location button). The preference is client-only and deliberately separate
  *        from the (future) alert settings. Location changes are logged
  *        coarse ([search-map], redactLocation) — precise coords stay out of
  *        logs per docs/LOGGING.md.

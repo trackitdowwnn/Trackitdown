@@ -189,3 +189,34 @@ describe('assembling criteria', () => {
     expect(onApply).not.toHaveBeenCalled();
   });
 });
+
+describe('the change-area row', () => {
+  // Location moved HERE on 2026-08-06 so every feed section chevron could mean
+  // "see this on the map". If this row disappears there is NO way to change
+  // your feed area once one is set — the primer only shows when none is.
+  it('shows the current area and opens the picker', async () => {
+    const onChangeArea = jest.fn();
+    const view = await render(
+      <SearchSheet
+        initialCriteria={emptyCriteria()}
+        region={REGION}
+        onApply={jest.fn()}
+        onClose={jest.fn()}
+        areaLabel="St Albans"
+        onChangeArea={onChangeArea}
+      />,
+    );
+
+    expect(view.getByText('St Albans')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('search-change-area'));
+    });
+    expect(onChangeArea).toHaveBeenCalledTimes(1);
+  });
+
+  it('is absent when browsing nationally (no area to change)', async () => {
+    const { view } = await renderSheet();
+
+    expect(view.queryByTestId('search-change-area')).toBeNull();
+  });
+});

@@ -11,7 +11,7 @@
  *        useSyncExternalStore version counter) — that is this codebase's
  *        answer to cache invalidation; there is no TanStack Query here.
  * LINKS: ../api/alertsApi.ts; src/features/profile/hooks/useMyProfile.ts
- *        (the pattern); ../components/AlertNudgeCard.tsx (a consumer).
+ *        (the pattern); ../components/AlertNudgeSheet.tsx (a consumer).
  */
 
 import { useEffect, useState, useSyncExternalStore } from 'react';

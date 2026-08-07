@@ -13,7 +13,7 @@
  *        ../components/FeedSkeleton.tsx.
  */
 
-import { render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { HomeFeedScreen } from './HomeFeedScreen';
 
@@ -25,23 +25,24 @@ let mockLocation: Record<string, unknown>;
 jest.mock('../hooks/useHomeFeed', () => ({ useHomeFeed: () => mockFeed }));
 jest.mock('../hooks/useFeedLocation', () => ({ useFeedLocation: () => mockLocation }));
 
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), back: jest.fn() }),
+  useRouter: () => ({ push: mockPush, back: jest.fn() }),
   // setOptions: the screen hides the tab bar while the search surface is open.
   useNavigation: () => ({ setOptions: jest.fn(), addListener: jest.fn(() => jest.fn()) }),
 }));
 
-// The nudges and profile reach storage/network and are irrelevant here.
-jest.mock('@/features/garage', () => ({
-  SaveYourCarCard: () => null,
-  useGarageNudgeCard: () => ({ visible: false, accept: jest.fn(), dismiss: jest.fn() }),
-}));
-jest.mock('@/features/notifications/components/AlertNudgeCard', () => ({
-  AlertNudgeCard: () => null,
-}));
-jest.mock('@/features/notifications/hooks/useAlertNudgeCard', () => ({
-  useAlertNudgeCard: () => ({ visible: false, accept: jest.fn(), dismiss: jest.fn() }),
-}));
+// The nudge and profile reach storage/network and are irrelevant here. The card
+// is rendered as a findable MARKER (not null) so the placement tests below can
+// tell WHERE in the feed the offer landed.
+let mockGarageNudge: Record<string, unknown>;
+jest.mock('@/features/garage', () => {
+  const { Text } = jest.requireActual('react-native');
+  return {
+    SaveYourCarCard: () => <Text testID="garage-nudge-card">garage nudge</Text>,
+    useGarageNudgeCard: () => mockGarageNudge,
+  };
+});
 jest.mock('@/features/profile', () => ({ useMyProfile: () => ({ profile: null }) }));
 jest.mock('@/features/watchlist', () => ({ WatchToggle: () => null }));
 
@@ -65,9 +66,29 @@ const LOCAL_LOCATION = {
   requestMyLocation: jest.fn(),
 };
 
+const post = (id: string) => ({
+  id,
+  photos: [],
+  make: 'Ford',
+  model: 'Fiesta',
+  colour: 'Blue',
+  plate: 'AB12 CDE',
+  status: 'active',
+  lastSeenAt: '2026-07-10T18:00:00Z',
+  bountyPence: 15000,
+});
+
+const feedSection = (id: string, title: string) => ({
+  id,
+  title,
+  layout: 'carousel' as const,
+  posts: [post(`${id}-1`)],
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockLocation = { ...LOCAL_LOCATION };
+  mockGarageNudge = { visible: false, accept: jest.fn(), dismiss: jest.fn() };
   mockFeed = {
     status: 'ready',
     sections: [],
@@ -115,5 +136,93 @@ describe('the feed search pill is pinned', () => {
     mockFeed = { ...mockFeed, status: 'loading' };
     const view = await render(<HomeFeedScreen />);
     expect(view.getAllByLabelText(SEARCH_LABEL)).toHaveLength(1);
+  });
+});
+
+describe('where a setup offer sits in the feed', () => {
+  /** Section titles and the nudge marker, in the order they render. */
+  const order = (view: Awaited<ReturnType<typeof render>>) =>
+    [...view.queryAllByText(/^(Near St Albans|Highest bounties|garage nudge)$/)].map(
+      (node) => node.props.children as string,
+    );
+
+  it('rides BELOW the first rail, so the tab opens on cars and not on setup', async () => {
+    mockGarageNudge = { visible: true, accept: jest.fn(), dismiss: jest.fn() };
+    mockFeed = {
+      ...mockFeed,
+      sections: [
+        feedSection('near_you', 'Near you'),
+        feedSection('highest_bounties', 'Highest bounties'),
+      ],
+    };
+
+    const view = await render(<HomeFeedScreen />);
+
+    expect(order(view)).toEqual(['Near St Albans', 'garage nudge', 'Highest bounties']);
+  });
+
+  it('falls back into the header when there are no rails to ride between', async () => {
+    // good-news-empty: without this the offer would vanish for exactly the
+    // people with the emptiest feed.
+    mockGarageNudge = { visible: true, accept: jest.fn(), dismiss: jest.fn() };
+    mockFeed = { ...mockFeed, sections: [] };
+
+    const view = await render(<HomeFeedScreen />);
+
+    expect(view.getByTestId('garage-nudge-card')).toBeTruthy();
+  });
+
+  it('is absent entirely when the hook says so', async () => {
+    mockFeed = { ...mockFeed, sections: [feedSection('near_you', 'Near you')] };
+
+    const view = await render(<HomeFeedScreen />);
+
+    expect(view.queryByTestId('garage-nudge-card')).toBeNull();
+  });
+});
+
+describe('section chevrons', () => {
+  // Every chevron means the same thing now: "show me this section on the map".
+  // near_you's used to open the AREA PICKER instead — one affordance behaving
+  // unlike every other one (changed 2026-08-06; change-area moved into the
+  // search surface). If this reverts, the feed regains that inconsistency.
+  it('opens the map framed on the feed area from the "Near <Area>" header', async () => {
+    mockFeed = { ...mockFeed, sections: [feedSection('near_you', 'Near you')] };
+
+    const view = await render(<HomeFeedScreen />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('See all — Near St Albans'));
+    });
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    const [call] = mockPush.mock.calls[0] as [{ pathname: string; params: Record<string, string> }];
+    expect(call.pathname).toBe('/search-map');
+    // Framed on the feed's own region, since near_you has no named area.
+    expect(call.params.lat).toBe('51.77');
+    expect(call.params.lng).toBe('-0.34');
+    expect(call.params.latDelta).toBeDefined();
+    expect(call.params.lngDelta).toBeDefined();
+  });
+
+  it('opens the map by NAME for an area carousel', async () => {
+    mockFeed = {
+      ...mockFeed,
+      sections: [
+        {
+          ...feedSection('area_st-albans', 'Recently stolen in St Albans'),
+          area: 'St Albans',
+        },
+      ],
+    };
+
+    const view = await render(<HomeFeedScreen />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('See all — Recently stolen in St Albans'));
+    });
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/search-map',
+      params: { area: 'St Albans' },
+    });
   });
 });

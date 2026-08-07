@@ -83,6 +83,29 @@ export function flattenSections(sections: FeedSection[]): FeedItem[] {
   return items;
 }
 
+/**
+ * Place a nudge after the FIRST section's content — immediately before the
+ * second section header, or at the end when there is only one section.
+ *
+ * Why not the list header: a setup offer above every rail is the first thing on
+ * the tab, ahead of the cars the user opened it for. One rail's worth of real
+ * content earns the offer its place. An EMPTY list gets the items back
+ * untouched — the caller renders the offer in the header there instead, since
+ * there is no rail for it to follow.
+ */
+export function insertAfterFirstSection(items: FeedItem[], nudge: FeedItem): FeedItem[] {
+  if (items.length === 0) {
+    return items;
+  }
+  const secondHeader = items.findIndex(
+    (item, index) => index > 0 && item.type === 'sectionHeader',
+  );
+  if (secondHeader === -1) {
+    return [...items, nudge];
+  }
+  return [...items.slice(0, secondHeader), nudge, ...items.slice(secondHeader)];
+}
+
 /** FlashList getItemType — one recycling pool per row shape. */
 export function feedItemType(item: FeedItem): FeedItemType {
   return item.type;

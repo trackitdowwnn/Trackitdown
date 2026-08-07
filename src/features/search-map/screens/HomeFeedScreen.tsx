@@ -26,11 +26,6 @@ import { StyleSheet, View } from 'react-native';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
 import { SaveYourCarCard, useGarageNudgeCard } from '@/features/garage';
-// Direct paths, not the notifications barrel: both reach AsyncStorage / the UI
-// barrel, and that barrel is imported by plain api modules (chatApi,
-// sightingApi) for the notify triggers. See src/features/notifications/index.ts.
-import { AlertNudgeCard } from '@/features/notifications/components/AlertNudgeCard';
-import { useAlertNudgeCard } from '@/features/notifications/hooks/useAlertNudgeCard';
 import { useMyProfile } from '@/features/profile';
 import { WatchToggle } from '@/features/watchlist';
 import { spacing } from '@/shared/theme';
@@ -69,8 +64,9 @@ import {
   feedDisplay,
   feedItemType,
   flattenSections,
+  insertAfterFirstSection,
 } from '../lib/feedSections';
-import type { FeedItem } from '../types';
+import type { FeedItem, FeedNudgeItem } from '../types';
 
 const log = createLogger('search-map');
 
@@ -91,7 +87,10 @@ const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50 };
 
 export function HomeFeedScreen() {
   const router = useRouter();
-  const { location, showLocationPrimer, setArea, requestMyLocation } = useFeedLocation();
+  // No requestMyLocation here any more: the primer row opens the PICKER, whose
+  // own current-location button owns the permission prompt (the feed must never
+  // cold-fire it). The hook still exposes it for a future one-tap caller.
+  const { location, showLocationPrimer, setArea } = useFeedLocation();
   const { status, sections, refresh, refreshing, loadMore, loadingMore, retry } =
     useHomeFeed(location);
 
@@ -100,29 +99,23 @@ export function HomeFeedScreen() {
   // (the My cars hint) and that would close a cycle. The hook keeps its own
   // fetch behind cheap checks, so a new or already-offered user costs nothing.
   //
-  // ONE NUDGE AT A TIME. All three cards are setup offers, and stacked they are
-  // a wall rather than a feed. Each is handed an `active` saying whether a
-  // higher-priority offer already owns the slot, so its own `visible` means
-  // "on screen" — which keeps the impression logs honest and stops a suppressed
-  // card from fetching. Priority, most urgent first:
+  // ONE NUDGE AT A TIME. Both cards are setup offers, and stacked they are a
+  // wall rather than a feed. The garage card is handed an `active` saying
+  // whether the higher-priority offer already owns the slot, so its own
+  // `visible` means "on screen" — which keeps the impression logs honest and
+  // stops a suppressed card from fetching. Priority, most urgent first:
   //
   //   1. location primer — a feed pointed at the wrong area is wrong for
-  //      everything else, including the two offers below
+  //      everything else, including the offer below
   //   2. garage — pre-theft setup, worth little once something has happened
-  //   3. alert area — valuable, but the only one that keeps its worth if asked
-  //      on a later visit
   //
-  // The order is declaration order below: each `active` may only reference
-  // hooks already declared, which is what keeps this acyclic.
+  // The alert-area offer USED to be a third rung here. It now lives at the app
+  // root as AlertNudgeSheet, earned by finishing three listings rather than
+  // shown to everyone on arrival — so it no longer competes for this slot.
   const myProfile = useMyProfile();
   const garageNudge = useGarageNudgeCard({
     accountCreatedAt: myProfile.status === 'ready' ? myProfile.profile.createdAt : null,
     active: !showLocationPrimer,
-  });
-  // The alert-area offer. Decides for itself whether it applies (a member, no
-  // zone yet, never offered before).
-  const alertNudge = useAlertNudgeCard({
-    active: !showLocationPrimer && !garageNudge.visible,
   });
 
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -156,7 +149,7 @@ export function HomeFeedScreen() {
     [sections, location?.mode],
   );
   // Every section renders as a horizontal rail (reference feed layout).
-  const items = useMemo(
+  const sectionItems = useMemo(
     () =>
       flattenSections(
         asCarousels(display.kind === 'feed' ? display.sections : display.fallbackSections),
@@ -164,13 +157,38 @@ export function HomeFeedScreen() {
     [display],
   );
 
+  // The garage offer rides BETWEEN rails rather than above them, so the tab
+  // opens on cars. Kept as a nullable item (rather than folded into the render)
+  // because the empty-feed fallback below needs to know whether one exists.
+  const feedNudge = useMemo<FeedNudgeItem | null>(
+    () => (garageNudge.visible ? { type: 'nudgeRow', key: 'nudge_garage', nudge: 'garage' } : null),
+    [garageNudge.visible],
+  );
+
+  const items = useMemo(
+    () => (feedNudge ? insertAfterFirstSection(sectionItems, feedNudge) : sectionItems),
+    [sectionItems, feedNudge],
+  );
+
+  // With no rails at all (good-news-empty / empty country) there is nothing for
+  // the offer to sit after, so it falls back to the header — otherwise it would
+  // vanish for exactly the people with the emptiest feed.
+  const nudgeInHeader = feedNudge !== null && sectionItems.length === 0;
+
   // Navigate to the map WITHOUT a search — the Map pill (browse) and
-  // "See all → <area>" links.
+  // "See all → <area>" links. A `region` frames the map on exactly what the
+  // section covers; `area` lets the map resolve a named locality itself.
   const openMap = useCallback(
-    (options?: { area?: string }) => {
+    (options?: { area?: string; region?: GeoRegion }) => {
       const params: Record<string, string> = {};
       if (options?.area) {
         params.area = options.area;
+      }
+      if (options?.region) {
+        params.lat = String(options.region.latitude);
+        params.lng = String(options.region.longitude);
+        params.latDelta = String(options.region.latitudeDelta);
+        params.lngDelta = String(options.region.longitudeDelta);
       }
       router.push({ pathname: '/search-map', params });
     },
@@ -233,6 +251,11 @@ export function HomeFeedScreen() {
     ({ viewableItems }: { viewableItems: ViewToken<FeedItem>[] }) => {
       for (const token of viewableItems) {
         const item = token.item;
+        // A nudge row belongs to no section — it has its own impression log in
+        // its hook, and reading `.section` here would throw.
+        if (item.type === 'nudgeRow') {
+          continue;
+        }
         const sectionId =
           item.type === 'heroCard' ? item.sectionId : item.section.id;
         if (!impressed.current.has(sectionId)) {
@@ -273,19 +296,38 @@ export function HomeFeedScreen() {
       ? `Near ${location.addressLabel}`
       : NEAR_YOU_FALLBACK_TITLE;
 
+  // One definition of the offer, rendered either between rails (the normal
+  // case) or in the header when there are no rails at all.
+  const renderNudge = useCallback(
+    () => (
+      <SaveYourCarCard
+        onAdd={() => {
+          garageNudge.accept();
+          router.push('/add-vehicle');
+        }}
+        onDismiss={garageNudge.dismiss}
+      />
+    ),
+    [garageNudge, router],
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: FeedItem }) => {
       switch (item.type) {
+        case 'nudgeRow':
+          return renderNudge();
         case 'sectionHeader':
-          // near_you renders the SAME header style as every other section
-          // (product call 2026-07-22 — no special "Stolen cars near <Area>"
-          // sentence); its chevron opens the area picker instead of a map.
+          // EVERY section's chevron now means the same thing: "show me this
+          // section on the map" (product call 2026-08-06 — it used to open the
+          // area picker here, which made one chevron behave unlike every other
+          // one). near_you has no named area, so it frames the map on the
+          // region the feed is already searching. Changing area moved to the
+          // search surface, where location belongs.
           if (item.section.id === NEAR_YOU_SECTION_ID) {
             return (
               <FeedSectionHeader
                 title={nearYouTitle}
-                onSeeAll={() => setPickerOpen(true)}
-                seeAllAccessibilityLabel="Change area"
+                onSeeAll={() => openMap({ region: searchRegion })}
               />
             );
           }
@@ -322,7 +364,7 @@ export function HomeFeedScreen() {
           );
       }
     },
-    [openMap, onPressPost, nearYouTitle, loadMore, loadingMore],
+    [openMap, onPressPost, nearYouTitle, searchRegion, loadMore, loadingMore, renderNudge],
   );
 
   const areaLabel =
@@ -330,35 +372,13 @@ export function HomeFeedScreen() {
 
   const listHeader = (
     <View>
-      {showLocationPrimer ? (
-        <LocationPrimerCard
-          onUseMyLocation={() => void requestMyLocation()}
-          onSetArea={() => setPickerOpen(true)}
-        />
-      ) : null}
-      {/* The garage nudge — the one reaching surface for a feature whose whole
-          value is being set up BEFORE anything goes wrong. The priority that
-          keeps this out of a pile of cards lives at the hook calls above; each
-          condition here is now just "is this the card". */}
-      {garageNudge.visible ? (
-        <SaveYourCarCard
-          onAdd={() => {
-            garageNudge.accept();
-            router.push('/add-vehicle');
-          }}
-          onDismiss={garageNudge.dismiss}
-        />
-      ) : null}
-      {/* The alert-area offer — LAST in the priority order above. */}
-      {alertNudge.visible ? (
-        <AlertNudgeCard
-          onSetArea={() => {
-            alertNudge.accept();
-            router.push('/alerts/new');
-          }}
-          onDismiss={alertNudge.dismiss}
-        />
-      ) : null}
+      {/* The location primer STAYS pinned above the feed: it is a correction,
+          not an offer — every car below it is from the wrong place until it is
+          answered — so it must not sit under the content it invalidates. The
+          garage and alert offers ride between rails instead (see `items`). */}
+      {showLocationPrimer ? <LocationPrimerCard onSetArea={() => setPickerOpen(true)} /> : null}
+      {/* …except when there are no rails to ride between. */}
+      {nudgeInHeader ? renderNudge() : null}
       {display.kind === 'good-news-empty' && location?.mode === 'local' ? (
         <>
           {/* With no page title, a header must appear here too or the
@@ -473,6 +493,14 @@ export function HomeFeedScreen() {
           sourceRect={searchSourceRect}
           onApply={handleApplySearch}
           onClose={closeSearch}
+          // Location lives here now that every section chevron means "see this
+          // on the map". Close first: the picker is a modal and the sheet is a
+          // full-screen overlay, so leaving both up would stack two surfaces.
+          areaLabel={areaLabel}
+          onChangeArea={() => {
+            closeSearch();
+            setPickerOpen(true);
+          }}
         />
       ) : null}
     </Screen>
