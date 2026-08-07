@@ -11,8 +11,14 @@
 /** One onboarding slide. Copy is pinned by tests — it is product wording. */
 export interface OnboardingSlideData {
   key: string;
-  /** Placeholder illustration. TODO(art): replace with final artwork slot. */
-  emoji: string;
+  /** The status stamped under the registration plate as this slide centres —
+   *  REPORTED → BROADCAST → SIGHTED → RECOVERED. Uppercase, one word: it is
+   *  read as a record state, not a sentence. */
+  stamp: string;
+  /** The step's short name for the footer rail ("POST", "ALERT"…). These four
+   *  slides are a genuine SEQUENCE (the product loop), which is the only
+   *  reason numbering them is honest rather than decorative. */
+  step: string;
   headline: string;
   /** Optional trailing headline phrase set in the accent (near-black) — the
    *  bounty/value colour (docs/DESIGN_SYSTEM.md: accent is reserved for value). */

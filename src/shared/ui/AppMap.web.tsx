@@ -19,6 +19,8 @@ export interface AppMapExtraProps {
   onPress?: () => void;
   /** Ignored on web (kept for prop parity with the native map). */
   interactive?: boolean;
+  /** Ignored on web (kept for prop parity with the native map). */
+  showsUserLocation?: boolean;
 }
 
 /** Web stubs matching the native re-exports — render nothing. */

@@ -161,3 +161,38 @@ export async function setAlertEnabled(alertId: string, enabled: boolean): Promis
   log.info('alert_toggled', { enabled });
   return toAlert(alertRowSchema.parse(data));
 }
+
+/**
+ * How many OTHER spotters an alert at this point and bounty would reach today.
+ *
+ * Drives the bounty slider's "reaches N spotters" line — the one honest
+ * argument for a higher bounty, since a spotter's `min_bounty_pence` decides
+ * whether a post reaches them at all.
+ *
+ * Returns 0 both for "nobody" and for "too few to report" — the RPC floors
+ * small counts deliberately (they are the identifying ones, and it is also the
+ * answer we would least want to hand a thief). Callers must treat 0 as RENDER
+ * NOTHING, never as "0 spotters are watching".
+ *
+ * SAFETY: coordinates are the caller's own last-seen point, and the RPC snaps
+ * them to the ~1km grid before use. Never logged here — the surrounding
+ * wizard step already holds them and the network log should not.
+ */
+export async function fetchAlertReach(
+  latitude: number,
+  longitude: number,
+  bountyPence: number,
+): Promise<number> {
+  const { data, error } = await supabase.rpc('get_alert_reach', {
+    p_lat: latitude,
+    p_lng: longitude,
+    p_bounty_pence: bountyPence,
+  });
+  if (error) {
+    // Non-fatal by design: this is a supporting line under a slider, so a
+    // failure hides it rather than interrupting someone posting a stolen car.
+    log.warn('alert_reach_failed', { code: error.code });
+    return 0;
+  }
+  return z.number().int().nonnegative().catch(0).parse(data);
+}

@@ -52,3 +52,21 @@ export function bountyBreakdown(bountyPence: number): BountyBreakdown {
   const feePence = Math.floor((bountyPence * 5) / 100);
   return { spotterPence: bountyPence - feePence, feePence };
 }
+
+/**
+ * Bounty minus the ESTIMATED non-recoverable card fee (~UK rate, 1.5% + 20p),
+ * floored at zero — what an owner gets back when a listing ends without a
+ * credited spotter (cancel, expiry, takedown, recovered-it-themselves).
+ *
+ * MONEY: DISPLAY ONLY, and an ESTIMATE. The server withholds the real Stripe
+ * fee and returns the authoritative refunded amount, which is what the
+ * post-refund toast shows — never wire this into a refund or charge path.
+ *
+ * Lives here rather than under features/vehicles (where it started) because the
+ * bounty slider quotes it too, and shared/ui cannot import from a feature.
+ * Every surface that quotes a refund before the owner commits must use this one
+ * function, or two screens will disagree about the same number.
+ */
+export function estimateRefundPence(bountyPence: number): number {
+  return Math.max(0, bountyPence - (Math.round(bountyPence * 0.015) + 20));
+}

@@ -710,3 +710,276 @@ begin
   delete from public.posts where id = v_post;
   raise notice 'CHECK 19 passed: a post with no photos emits [] and still renders';
 end $$;
+
+-- -----------------------------------------------------------------------------
+-- CHECK 20 — get_home_feed EXCLUDES the caller's own posts, and an ANON caller
+-- still sees everything. The second half is the one that bites: auth.uid() is
+-- NULL for anon, so a naive `owner_id <> auth.uid()` yields NULL for every row
+-- and hands anonymous browsers a completely empty feed. This asserts the
+-- `is distinct from` form survives.
+-- (20260806160000_home_feed_excludes_own_posts.sql. The exclusion was extended
+-- to get_nearby_posts / search_posts / search_posts_count by 20260806170000 —
+-- CHECK 21 covers those.)
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_owner   uuid;
+  v_post    uuid;
+  v_ids     jsonb;
+  v_anon    jsonb;
+begin
+  select owner_id into v_owner from public.posts where status = 'active' limit 1;
+  if v_owner is null then
+    raise exception 'CHECK 20 FAILED: no active seed post to borrow an owner from';
+  end if;
+
+  insert into public.posts (owner_id, make, model, colour, bounty_amount_pence,
+                            status, last_seen_at, last_seen_area, last_seen_location)
+  values (v_owner, 'Ownfeed', 'Testcar', 'Red', 10000,
+          'active', now(), 'Manchester',
+          ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography)
+  returning id into v_post;
+
+  -- As the OWNER: their own post must not appear in any section.
+  perform set_config('request.jwt.claims',
+                     json_build_object('sub', v_owner)::text, true);
+
+  select coalesce(jsonb_agg(p ->> 'id'), '[]'::jsonb)
+    into v_ids
+  from jsonb_array_elements(public.get_home_feed(53.4808, -2.2426, 32187) -> 'sections') s,
+       lateral jsonb_array_elements(s -> 'posts') p;
+
+  if v_ids ? v_post::text then
+    raise exception 'CHECK 20 FAILED: the owner was shown their own post in the feed';
+  end if;
+
+  -- ...but the rest of the feed must SURVIVE. Without this, a predicate that
+  -- emptied the feed for every authenticated caller would pass every other
+  -- assertion in this file: "[] does not contain my post" is trivially true.
+  -- Absence is only correct when it is selective.
+  if jsonb_array_length(v_ids) = 0 then
+    raise exception 'CHECK 20 FAILED: the owner sees an EMPTY feed, not merely one without their own post';
+  end if;
+
+  -- As ANON: the same post MUST come back. A dropped feed here means the
+  -- predicate regressed to `<>` and NULL-eliminated every row.
+  perform set_config('request.jwt.claims', '', true);
+
+  select coalesce(jsonb_agg(p ->> 'id'), '[]'::jsonb)
+    into v_anon
+  from jsonb_array_elements(public.get_home_feed(53.4808, -2.2426, 32187) -> 'sections') s,
+       lateral jsonb_array_elements(s -> 'posts') p;
+
+  if not (v_anon ? v_post::text) then
+    raise exception 'CHECK 20 FAILED: an anonymous caller lost the post — owner_id <> auth.uid() NULL-eliminated it';
+  end if;
+
+  delete from public.posts where id = v_post;
+  raise notice 'CHECK 20 passed: owners never see their own post in the feed, anon still sees everything';
+end $$;
+
+-- -----------------------------------------------------------------------------
+-- CHECK 21 — the owner exclusion holds across PAGINATION and the MAP, not just
+-- the feed's first page. get_nearby_posts pages the near_you rail: if it and
+-- get_home_feed disagree, a post absent from page 1 reappears on page 2, which
+-- reads as a glitch rather than a rule. search_posts / search_posts_count must
+-- agree with each other too, or the "Show N cars" button promises a number the
+-- map cannot deliver. Anon is re-checked on every one: `<>` instead of
+-- `is distinct from` would empty all of them for logged-out browsers.
+-- (20260806170000_own_posts_excluded_from_pagination_and_map.sql)
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_owner    uuid;
+  v_post     uuid;
+  v_ids      jsonb;
+  v_count    integer;
+  v_anon_ids jsonb;
+  -- A bbox comfortably around central Manchester.
+  v_min_lat  double precision := 53.40;
+  v_min_lng  double precision := -2.32;
+  v_max_lat  double precision := 53.56;
+  v_max_lng  double precision := -2.16;
+begin
+  select owner_id into v_owner from public.posts where status = 'active' limit 1;
+  if v_owner is null then
+    raise exception 'CHECK 21 FAILED: no active seed post to borrow an owner from';
+  end if;
+
+  insert into public.posts (owner_id, make, model, colour, bounty_amount_pence,
+                            status, last_seen_at, last_seen_area, last_seen_location)
+  values (v_owner, 'Ownmap', 'Testcar', 'Green', 10000,
+          'active', now(), 'Manchester',
+          ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography)
+  returning id into v_post;
+
+  perform set_config('request.jwt.claims',
+                     json_build_object('sub', v_owner)::text, true);
+
+  -- (a) PAGINATION: the rail's own pages must agree with get_home_feed.
+  select coalesce(jsonb_agg(p ->> 'id'), '[]'::jsonb)
+    into v_ids
+  from jsonb_array_elements(
+         public.get_nearby_posts(53.4808, -2.2426, 32187, 0, 25)) p;
+
+  if v_ids ? v_post::text then
+    raise exception 'CHECK 21 FAILED: get_nearby_posts returned the owner their own post — the near_you rail contradicts its first page';
+  end if;
+
+  -- NON-EMPTY, same guard as CHECK 20. Without it a total authenticated
+  -- blackout passes: `not (v_ids ? v_post)` is trivially true of an empty
+  -- array, so an added `and v_viewer is null`, or a NULL-eliminating owner
+  -- predicate, would leave the owner with an empty rail past page 1 while (d)
+  -- kept anon green and CI stayed silent.
+  if jsonb_array_length(v_ids) = 0 then
+    raise exception 'CHECK 21 FAILED: get_nearby_posts returned NOTHING to the owner — they must lose only their OWN post, not the whole rail';
+  end if;
+
+  -- (b) MAP results.
+  select coalesce(jsonb_agg(p ->> 'id'), '[]'::jsonb)
+    into v_ids
+  from jsonb_array_elements(
+         public.search_posts(v_min_lat, v_min_lng, v_max_lat, v_max_lng,
+                             '{}'::jsonb, 100) -> 'posts') p;
+
+  if v_ids ? v_post::text then
+    raise exception 'CHECK 21 FAILED: search_posts returned the owner their own post';
+  end if;
+
+  if jsonb_array_length(v_ids) = 0 then
+    raise exception 'CHECK 21 FAILED: search_posts returned NOTHING to the owner — they must lose only their OWN post, not the whole map';
+  end if;
+
+  -- (c) The COUNT must agree with the results it describes. `>=`, not `=`:
+  -- search_posts_count is UNCAPPED while search_posts caps its page at 100, so
+  -- an exact match would start failing spuriously the day the seed exceeds 100
+  -- active posts in this bbox. What must never happen is the count being
+  -- SMALLER than the page — that would mean the button under-promises what the
+  -- map is already showing, i.e. the two predicates have drifted apart.
+  select public.search_posts_count(v_min_lat, v_min_lng, v_max_lat, v_max_lng,
+                                   '{}'::jsonb)
+    into v_count;
+
+  if v_count < jsonb_array_length(v_ids) then
+    raise exception 'CHECK 21 FAILED: search_posts_count said % but search_posts returned % — the predicates have drifted apart',
+      v_count, jsonb_array_length(v_ids);
+  end if;
+
+  -- (c2) The count's OWN exclusion, isolated. (c) above only proves the count
+  -- is not SMALLER than the page — and an unexcluded count is LARGER, so (c)
+  -- passes whether or not search_posts_count carries the owner predicate at
+  -- all. Filtering down to the seeded post makes the assertion exact: the
+  -- owner must be told zero. Without this the button would over-promise by one
+  -- and nothing in the suite would notice.
+  select public.search_posts_count(v_min_lat, v_min_lng, v_max_lat, v_max_lng,
+                                   '{"make":"Ownmap"}'::jsonb)
+    into v_count;
+
+  if v_count <> 0 then
+    raise exception 'CHECK 21 FAILED: search_posts_count counted % of the owner''s own posts — it must count 0', v_count;
+  end if;
+
+  -- (d) ANON must still see the post through every one of them.
+  perform set_config('request.jwt.claims', '', true);
+
+  select public.search_posts_count(v_min_lat, v_min_lng, v_max_lat, v_max_lng,
+                                   '{"make":"Ownmap"}'::jsonb)
+    into v_count;
+  if v_count <> 1 then
+    raise exception 'CHECK 21 FAILED: anon counted % matching posts, expected 1 — the exclusion is firing on the wrong caller', v_count;
+  end if;
+
+  select coalesce(jsonb_agg(p ->> 'id'), '[]'::jsonb)
+    into v_anon_ids
+  from jsonb_array_elements(
+         public.get_nearby_posts(53.4808, -2.2426, 32187, 0, 25)) p;
+  if not (v_anon_ids ? v_post::text) then
+    raise exception 'CHECK 21 FAILED: anon lost the post from get_nearby_posts — owner_id <> auth.uid() NULL-eliminated it';
+  end if;
+
+  select coalesce(jsonb_agg(p ->> 'id'), '[]'::jsonb)
+    into v_anon_ids
+  from jsonb_array_elements(
+         public.search_posts(v_min_lat, v_min_lng, v_max_lat, v_max_lng,
+                             '{}'::jsonb, 100) -> 'posts') p;
+  if not (v_anon_ids ? v_post::text) then
+    raise exception 'CHECK 21 FAILED: anon lost the post from search_posts — owner_id <> auth.uid() NULL-eliminated it';
+  end if;
+
+  delete from public.posts where id = v_post;
+  raise notice 'CHECK 21 passed: pagination + map exclude the owner, count agrees, anon unaffected';
+end $$;
+
+-- -----------------------------------------------------------------------------
+-- CHECK 22 — search_posts / search_posts_count match make/model/colour
+-- CASE-INSENSITIVELY.
+--
+-- REGRESSION GUARD. 20260806170000 rebuilt both functions from the wrong
+-- source file and silently reverted `lower(btrim(...))` back to an exact `=`
+-- on all three copies of the shared predicate; it shipped to the live database
+-- and nothing failed. Repaired by 20260807110000.
+--
+-- Why it matters: posts.make/model/colour have NO check constraint and no
+-- normalisation — create_post stores exactly what the owner typed, and
+-- MakeField allows free-typed entry — while the client sends the CANONICAL
+-- picker string. So an owner who typed "bmw" has their stolen car vanish from a
+-- spotter's "BMW" search AND from the "Show N cars" count above it. It also
+-- splits search from alerts: match_alert_zones compares lower(btrim(...)) and
+-- its comment asserts the two can never disagree.
+--
+-- The existing CHECK 15/16 cannot catch this: they seed and query with
+-- IDENTICAL case, so they pass either way. This one deliberately seeds lower
+-- and queries upper.
+-- (20260807110000_restore_case_insensitive_search_matching.sql)
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_owner   uuid;
+  v_post    uuid;
+  v_ids     jsonb;
+  v_count   integer;
+  v_min_lat double precision := 53.40;
+  v_min_lng double precision := -2.32;
+  v_max_lat double precision := 53.56;
+  v_max_lng double precision := -2.16;
+begin
+  select owner_id into v_owner from public.posts where status = 'active' limit 1;
+  if v_owner is null then
+    raise exception 'CHECK 22 FAILED: no active seed post to borrow an owner from';
+  end if;
+
+  -- Seeded the way a careless owner types it: lower case, and padded.
+  insert into public.posts (owner_id, make, model, colour, bounty_amount_pence,
+                            status, last_seen_at, last_seen_area, last_seen_location)
+  values (v_owner, ' casemake ', 'casemodel', 'casecolour', 10000,
+          'active', now(), 'Manchester',
+          ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography)
+  returning id into v_post;
+
+  -- Queried the way the picker sends it: canonical case, no padding. ANON, so
+  -- the owner exclusion cannot be what hides it.
+  perform set_config('request.jwt.claims', '', true);
+
+  select coalesce(jsonb_agg(p ->> 'id'), '[]'::jsonb)
+    into v_ids
+  from jsonb_array_elements(
+         public.search_posts(v_min_lat, v_min_lng, v_max_lat, v_max_lng,
+                             '{"make":"CaseMake","model":"CaseModel","colour":"CaseColour"}'::jsonb,
+                             100) -> 'posts') p;
+
+  if not (v_ids ? v_post::text) then
+    raise exception 'CHECK 22 FAILED: search_posts lost a post whose make/model/colour differ only in CASE — an owner who typed "bmw" is invisible to a spotter searching "BMW"';
+  end if;
+
+  -- The count must agree, or the button and the map disagree about the same car.
+  select public.search_posts_count(v_min_lat, v_min_lng, v_max_lat, v_max_lng,
+                                   '{"make":"CaseMake","model":"CaseModel","colour":"CaseColour"}'::jsonb)
+    into v_count;
+
+  if v_count <> 1 then
+    raise exception 'CHECK 22 FAILED: search_posts_count said % for a case-differing match, expected 1 — it has drifted from search_posts', v_count;
+  end if;
+
+  delete from public.posts where id = v_post;
+  raise notice 'CHECK 22 passed: make/model/colour match case-insensitively in both search functions';
+end $$;

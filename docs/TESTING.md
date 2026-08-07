@@ -61,6 +61,19 @@ should be, some are optional.
 - **CI**: `npm test` runs in CI on every push (see
   `.github/workflows/ci.yml`). A red Tier 1 test is never skipped or
   `.todo`'d to get a merge through.
+- **`npm run test:db`** runs every `supabase/tests/*_verification.sql` suite
+  against a freshly reset LOCAL database. Prerequisite is Docker Desktop +
+  `npx supabase start` — **not** a Postgres client install: the script uses
+  host `psql` when it is on PATH and otherwise pipes each suite through the
+  `supabase_db_<project_id>` container's own psql, which is the normal path on
+  Windows. Setting `DATABASE_URL` without host psql is a hard error rather
+  than a silent run against the wrong server. Never point this at a remote —
+  it begins with `supabase db reset`.
+  - Suites are silent on success by design (some print no notices at all —
+    `refund_hold_verification.sql` has 39 assertions and zero output). The
+    signal is the EXIT CODE: each file `raise`s on violation and
+    `psql -v ON_ERROR_STOP=1` turns that into exit 3, which aborts the run.
+    Counting "passed" lines undercounts the suites badly.
 
 ## Stack gotchas (this project's versions)
 

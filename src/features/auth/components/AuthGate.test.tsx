@@ -31,9 +31,13 @@ jest.mock('@/features/permissions', () => ({
 }));
 
 const mockReplace = jest.fn();
+let mockSegments: string[] = ['(tabs)'];
+let mockParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, push: jest.fn(), back: jest.fn() }),
-  useSegments: () => ['(tabs)'],
+  // Read at CALL time, so each test can position the gate on a route.
+  useSegments: () => mockSegments,
+  useGlobalSearchParams: () => mockParams,
 }));
 
 const child = <Text>the app</Text>;
@@ -43,6 +47,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   resetContentReadyForTests();
   mockRoute = 'loading';
+  mockSegments = ['(tabs)'];
+  mockParams = {};
 });
 
 afterEach(() => {
@@ -118,6 +124,42 @@ describe('onboarding', () => {
     const { queryByTestId } = await act(async () => render(<AuthGate>{child}</AuthGate>));
 
     expect(queryByTestId('brand-splash')).toBeNull();
+  });
+});
+
+describe('re-viewing onboarding from settings', () => {
+  // The bug: Profile's "How Trackitdown works" pushes /onboarding?revisit=1,
+  // and the gate — seeing the seen-flag set — replaced it with the feed before
+  // the first slide could paint. The row looked like it navigated to Explore.
+  it('LEAVES a deliberate re-view alone', async () => {
+    mockRoute = 'app'; // onboarding already seen, as it is for every returning user
+    mockSegments = ['onboarding'];
+    mockParams = { revisit: '1' };
+
+    await act(async () => render(<AuthGate>{child}</AuthGate>));
+
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('still evicts a seen user who lands on onboarding WITHOUT the revisit flag', async () => {
+    // The original rule, which must survive the fix: onboarding is not a place
+    // a returning user gets to by accident or by stale deep link.
+    mockRoute = 'app';
+    mockSegments = ['onboarding'];
+    mockParams = {};
+
+    await act(async () => render(<AuthGate>{child}</AuthGate>));
+
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/explore');
+  });
+
+  it('still sends a FIRST launch to onboarding', async () => {
+    mockRoute = 'onboarding';
+    mockSegments = ['(tabs)'];
+
+    await act(async () => render(<AuthGate>{child}</AuthGate>));
+
+    expect(mockReplace).toHaveBeenCalledWith('/onboarding');
   });
 });
 

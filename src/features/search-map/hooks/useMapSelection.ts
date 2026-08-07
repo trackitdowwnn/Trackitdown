@@ -29,25 +29,41 @@ export interface UseMapSelectionResult {
   clear: () => void;
 }
 
-export function useMapSelection(posts: MapPost[]): UseMapSelectionResult {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+/**
+ * The raw selection state, split out so a caller can read "is a card open?"
+ * BEFORE it has a post list to derive from.
+ *
+ * WHY IT EXISTS: the map pauses auto-search while a card is open, but the
+ * post list is sorted from the searched region, which comes from the very
+ * hook that needs the pause — a cycle. `selectedId` depends on nothing, so
+ * owning it one level up unties the knot without weakening the id-is-truth
+ * model below.
+ */
+export function useMapSelectionState() {
+  return useState<string | null>(null);
+}
 
+export function useMapSelection(
+  posts: MapPost[],
+  selectedId: string | null,
+  setSelectedId: (id: string | null) => void,
+): UseMapSelectionResult {
   const selectedIndex = useMemo(
     () => (selectedId === null ? -1 : posts.findIndex((post) => post.id === selectedId)),
     [posts, selectedId],
   );
   const selected = selectedIndex >= 0 ? posts[selectedIndex] : null;
 
-  const selectPost = useCallback((id: string) => setSelectedId(id), []);
+  const selectPost = useCallback((id: string) => setSelectedId(id), [setSelectedId]);
 
   const selectByIndex = useCallback(
     (index: number) => {
       setSelectedId(index >= 0 && index < posts.length ? posts[index].id : null);
     },
-    [posts],
+    [posts, setSelectedId],
   );
 
-  const clear = useCallback(() => setSelectedId(null), []);
+  const clear = useCallback(() => setSelectedId(null), [setSelectedId]);
 
   return { selected, selectedIndex, selectPost, selectByIndex, clear };
 }

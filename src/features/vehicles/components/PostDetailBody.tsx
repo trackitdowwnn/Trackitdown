@@ -7,7 +7,9 @@
  *        (clamped prose + "Show more" →
  *        /post-about; an honest "no description yet" line when prose-less),
  *        "Car details" (the FULL fact list in-page, gaps struck through),
- *        the owner passport card
+ *        "Distinctive features" (the owner's photographed marks as cards —
+ *        photo inset beside the description, truncated past three behind a
+ *        grey "Show all N" block button), the owner passport card
  *        (OwnerCard), the (dormant) sighting-activity line, the SafetyNotice,
  *        an underlined report row, and the "More cars nearby" compact-card
  *        rail (the reference's "More stays nearby" shelf; useSimilarPosts).
@@ -23,11 +25,14 @@
  *        src/shared/ui (Button, ConfirmDialog, PlateChip, StatusBadge,
  *        SafetyNotice, VehicleCard, SkeletonVehicleCard);
  *        src/features/vehicles/lib/carDetails.ts;
- *        docs/design-refs/post-detail/GAP_ANALYSIS.md (composition B).
+ *        docs/design-refs/post-detail/GAP_ANALYSIS.md (composition B; B2 is
+ *        the "Show all N" overflow pattern);
+ *        docs/design-refs/airbnb-feed/1000014407.jpg (the card-list reference
+ *        the distinctive-feature cards are built from).
  */
 
 import { Feather } from '@expo/vector-icons';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -42,7 +47,7 @@ import { WatchToggle } from '@/features/watchlist';
 import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { formatDateLabel, formatPounds } from '@/shared/lib';
+import { estimateRefundPence, formatDateLabel, formatPounds } from '@/shared/lib';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import {
   AppImage,
@@ -57,7 +62,6 @@ import {
 } from '@/shared/ui';
 
 import { buildCarDetailRows } from '../lib/carDetails';
-import { estimateRefundPence } from '../lib/refundEstimate';
 import { theftContextLines } from '../lib/theftContext';
 import type { PostDetail } from '../types';
 // Direct import (not the ./editors barrel) so PostDetailBody doesn't pull the
@@ -68,6 +72,11 @@ import { OwnerCard } from './OwnerCard';
 
 /** In-page description clamp before "Show more" (the reference's ~6 lines). */
 const ABOUT_CLAMP_LINES = 6;
+
+/** Distinctive-feature cards shown before the grey "Show all N" block button
+ *  takes over (the reference's overflow pattern, GAP_ANALYSIS B2). A post can
+ *  carry up to MAX_DISTINCTIVE_FEATURES (8) marks. */
+const FEATURE_PREVIEW_COUNT = 3;
 
 export interface PostDetailBodyProps {
   post: PostDetail;
@@ -139,6 +148,18 @@ export function PostDetailBody({
   // Hooks are unconditional; the "last seen" line gates on data.
   const lastSeenAgo = useTimeAgo(post.lastSeenAt ?? post.createdAt);
 
+  // Distinctive features collapse past the third card (the reference's
+  // "Show all N" pattern). `expanded` is pinned to `collapsible` so the slice
+  // and the button can never disagree: the owner edits marks without this
+  // component unmounting (the editor overlays the same screen), so the list
+  // can shrink under a raw `showAllFeatures` at any time. The flag itself is
+  // NOT reset — expand, trim below three, then add back, and the section
+  // returns expanded. Cosmetic and rare; not worth an effect to chase.
+  const [showAllFeatures, setShowAllFeatures] = useState(false);
+  const features = post.distinctiveFeatures;
+  const collapsible = features.length > FEATURE_PREVIEW_COUNT;
+  const expanded = showAllFeatures && collapsible;
+  const visibleFeatures = expanded ? features : features.slice(0, FEATURE_PREVIEW_COUNT);
 
   const hasCoords = post.lat != null && post.lng != null;
 
@@ -386,9 +407,11 @@ export function PostDetailBody({
       ) : null}
 
       {/* 5b — Distinctive features: owner-photographed identifying features (a
-          cracked mirror, a sticker). Each is a photo + its description. Shows
-          when there are features OR the owner can edit (draft or live). */}
-      {post.distinctiveFeatures.length > 0 || onEditDistinctiveFeatures ? (
+          cracked mirror, a sticker). Each is a card: the photo inset beside its
+          description. Past FEATURE_PREVIEW_COUNT the list truncates behind the
+          reference's grey "Show all N" block button. Shows when there are
+          features OR the owner can edit (draft or live). */}
+      {features.length > 0 || onEditDistinctiveFeatures ? (
         <>
           <Divider />
           <View style={styles.section}>
@@ -402,19 +425,36 @@ export function PostDetailBody({
                 />
               ) : null}
             </View>
-            {post.distinctiveFeatures.length > 0 ? (
-              <View style={styles.featureList}>
-                {post.distinctiveFeatures.map((feature, index) => (
-                  <View key={`${feature.photoUrl}-${index}`} style={styles.featureRow}>
-                    <AppImage
-                      uri={feature.photoUrl}
-                      style={styles.featurePhoto}
+            {features.length > 0 ? (
+              <>
+                <View style={styles.featureList}>
+                  {visibleFeatures.map((feature, index) => (
+                    // The card is ONE accessible object: the photo is the
+                    // evidence for the description beside it, so a screen
+                    // reader should hear the mark once, not twice.
+                    <View
+                      key={feature.id ?? `${feature.photoUrl}-${index}`}
+                      style={styles.featureCard}
+                      accessible
                       accessibilityLabel={`Distinctive feature: ${feature.description}`}
-                    />
-                    <Text style={styles.featureDescription}>{feature.description}</Text>
-                  </View>
-                ))}
-              </View>
+                    >
+                      <AppImage uri={feature.photoUrl} style={styles.featurePhoto} />
+                      <Text style={styles.featureDescription}>{feature.description}</Text>
+                    </View>
+                  ))}
+                </View>
+                {/* Section-level control, so it sits OUTSIDE the list and takes
+                    the section's own 16pt gap (matching "Show more" above). */}
+                {collapsible ? (
+                  <Button
+                    label={
+                      expanded ? 'Show fewer features' : `Show all ${features.length} features`
+                    }
+                    variant="subtle"
+                    onPress={() => setShowAllFeatures((shown) => !shown)}
+                  />
+                ) : null}
+              </>
             ) : (
               <Text style={styles.proseMissing}>No distinctive features added yet.</Text>
             )}
@@ -817,22 +857,41 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textDecorationLine: 'line-through',
   },
-  // Distinctive features: a photo thumbnail beside its description, one per row.
+  // Distinctive features: the reference's card list — a hairline-bordered white
+  // card per mark, its photo inset and rounded, the description carrying the
+  // card as a bold body-size line. The photo is the evidence; the card gives it
+  // standing without pretending to be tappable.
   featureList: {
-    gap: spacing.lg,
+    // 12 — the measured gap between the reference's cards.
+    gap: spacing.md,
   },
-  featureRow: {
+  featureCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.lg,
+    // Uniform inset (matching the editor's card for the same content), so the
+    // photo sits optically centred rather than shoved against one edge.
+    gap: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    // A quiet container, NOT an elevated one (the statBand grammar above).
+    // The reference's cards are shadowed because they are TAPPABLE; ours are
+    // not, and a shadow would promise an interaction that isn't there.
+    // OwnerCard stays the page's one deliberately-elevated object.
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   featurePhoto: {
-    width: 72,
-    height: 54, // 4:3, matching the photo grid aspect
+    width: sizes.featureThumb,
+    // 4:3 by ratio, not a second magic number — the crop can't drift.
+    aspectRatio: 4 / 3,
     borderRadius: radii.md,
   },
   featureDescription: {
-    ...typography.body,
+    // cardTitle, NOT heading: bold at body size so the photo stays the hero
+    // (typography.ts). `heading` is this page's stat-numeral tier — a mark must
+    // not carry the same weight as the bounty figure.
+    ...typography.cardTitle,
     color: colors.textPrimary,
     flex: 1,
   },

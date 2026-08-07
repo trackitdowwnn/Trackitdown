@@ -2,7 +2,7 @@
  * WHAT:  Types owned by the search-map feature — the home feed (sections as
  *        get_home_feed returns them, the flattened FlashList item union, the
  *        resolved feed location) AND the map search (MapPost with exact pin
- *        coordinates, the viewport result, and the pin/cluster draw union).
+ *        coordinates, the viewport result, and the marker draw item).
  * WHY:   The feed renders ONE vertical FlashList, so sections must flatten
  *        into a discriminated item union whose `type` doubles as the
  *        FlashList getItemType (recycling pools per row shape). The map
@@ -47,10 +47,24 @@ export type FeedLocation =
  * pool per row shape. Every field a row renders MUST come from the item
  * itself (recycled rows keep no state).
  */
+/**
+ * A setup offer riding between rails rather than stacked above them. `nudge`
+ * travels ON the item because a recycled row keeps no state of its own. Named
+ * separately so the screen can hold one without widening it to the union.
+ */
+export interface FeedNudgeItem {
+  type: 'nudgeRow';
+  key: string;
+  /** Which offer. A union of one today — the alert-area offer moved to a root
+   *  sheet — but kept named so a second feed offer stays a data change. */
+  nudge: 'garage';
+}
+
 export type FeedItem =
   | { type: 'sectionHeader'; key: string; section: FeedSection }
   | { type: 'heroCard'; key: string; sectionId: string; post: PostSummary }
-  | { type: 'carouselRow'; key: string; section: FeedSection };
+  | { type: 'carouselRow'; key: string; section: FeedSection }
+  | FeedNudgeItem;
 
 export type FeedItemType = FeedItem['type'];
 
@@ -68,14 +82,33 @@ export interface ViewportResult {
   posts: MapPost[];
 }
 
-/** One thing to draw on the map: a bounty pin or a cluster bubble. */
-export type MapPinItem =
-  | { type: 'post'; key: string; post: MapPost }
-  | {
-      type: 'cluster';
-      key: string;
-      clusterId: number;
-      count: number;
-      latitude: number;
-      longitude: number;
-    };
+/**
+ * One marker on the map. Every post in view gets one — clustering was removed
+ * on 2026-08-06, so there is no bubble variant, and every marker carries its
+ * own price. `type` is kept as a discriminant so a second marker kind stays a
+ * data change rather than a rewrite.
+ */
+export interface MapPinItem {
+  type: 'post';
+  key: string;
+  post: MapPost;
+  /**
+   * Position by bounty among the markers in view — 0 is the highest.
+   *
+   * EVERY marker draws the same £ pill (2026-08-07). This used to pick pill vs
+   * price-less dot, and the dot was the mistake: a marker with no price on it
+   * reads as a GROUP, because there is nothing else it could be saying. The
+   * ranking survives for two jobs where order still matters — paint order under
+   * overlap, and which markers stay in the assistive-tech tree.
+   */
+  rank: number;
+  /**
+   * Where the marker's box sits relative to its coordinate, 0..1 on each axis.
+   * Absent means centred, which is the normal case.
+   *
+   * Only set by keepMarkersOnScreen, and only for markers close enough to a
+   * viewport edge to be cut in half by it. A clipped £ pill reads as "£1,3…",
+   * which is worse than useless — you cannot tell £1,300 from £13,000.
+   */
+  anchor?: { x: number; y: number };
+}

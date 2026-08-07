@@ -59,7 +59,12 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import { z } from 'zod';
 
-import { type BountyBreakdown, bountyBreakdown, formatPounds } from '../lib/money';
+import {
+  type BountyBreakdown,
+  bountyBreakdown,
+  estimateRefundPence,
+  formatPounds,
+} from '../lib/money';
 import { easeOut } from '@/shared/theme/motionEasing';
 import {
   colors,
@@ -89,18 +94,41 @@ export type { SnapStep } from './moneySliderMath';
 export interface MoneySliderPanelCopy {
   /** Line explaining the 95/5 split, built from the live breakdown. */
   splitLine: (breakdown: BountyBreakdown) => string;
-  /** Line explaining escrow, given the formatted amount ("£200"). */
-  escrowLine: (formattedAmount: string) => string;
+  /** Line explaining escrow. Takes raw PENCE, not a formatted string, because
+   *  it quotes the refund estimate as well as the amount held. */
+  escrowLine: (bountyPence: number) => string;
 }
 
-/** The bounty step's panel wording (docs/DOMAIN.md: split, escrow, refunds). */
+/**
+ * The bounty step's panel wording (docs/DOMAIN.md: split, escrow, refunds).
+ *
+ * The escrow line does two jobs it did not used to do, and both matter more
+ * than they look:
+ *
+ * 1. It states the refund conditions COMPLETELY. It used to say "refunded if
+ *    you cancel or recover it yourself", which omits expiry (90 days — the most
+ *    likely ending for most posts) and takedown. That omission buried the
+ *    headline: the money comes back unless a spotter actually finds the car.
+ *    Read as written, a slider in pounds says "this is what you are spending";
+ *    it is nearer to a deposit.
+ * 2. It NAMES THE DEDUCTION. Our own Terms promise "that deduction is shown to
+ *    you before you pay" (features/legal/lib/legalContent.ts), and payment is
+ *    Stripe's PaymentSheet — there is no app checkout screen — so this panel is
+ *    the only surface that can keep that promise. It said "minus card
+ *    processing costs" with no figure until 2026-08-07.
+ *
+ * The figure is estimateRefundPence, the SAME function the post-detail
+ * deactivate section quotes, so the two can never disagree about one bounty.
+ */
 export const defaultBountyPanelCopy: MoneySliderPanelCopy = {
   splitLine: (breakdown) =>
     `If your car is recovered thanks to a spotter, they receive ${formatPounds(
       breakdown.spotterPence,
     )} and our platform fee is ${formatPounds(breakdown.feePence)}.`,
-  escrowLine: (formattedAmount) =>
-    `${formattedAmount} is held securely when your post goes live — refunded if you cancel or recover it yourself (minus card processing costs).`,
+  escrowLine: (bountyPence) =>
+    `${formatPounds(bountyPence)} is held when your post goes live. You only pay it if a spotter finds your car — otherwise ${formatPounds(
+      estimateRefundPence(bountyPence),
+    )} comes back to you, whether you cancel, recover it yourself, or the post expires. Card processing costs are not refundable.`,
 };
 
 /** Form-level validation matching what the slider can emit. */
@@ -126,6 +154,12 @@ export interface MoneySliderProps {
   label?: string;
   /** Transparency panel copy; omit to hide the panel. */
   panel?: MoneySliderPanelCopy;
+  /** One supporting line beneath the panel. A STRING, not a data prop: the
+   *  slider must not learn what an alert or a spotter is, so the screen that
+   *  knows composes the sentence and passes it down. Omit to render nothing —
+   *  there is no empty state, because the caller decides when it has something
+   *  worth saying. */
+  footnote?: string;
   disabled?: boolean;
   accessibilityLabel?: string;
   testID?: string;
@@ -151,6 +185,7 @@ export function MoneySlider({
   curveExponent = 2,
   label,
   panel,
+  footnote,
   disabled = false,
   accessibilityLabel = 'Amount',
   testID,
@@ -464,9 +499,11 @@ export function MoneySlider({
       {panel ? (
         <View style={styles.panel}>
           <Text style={styles.panelText}>{panel.splitLine(bountyBreakdown(value))}</Text>
-          <Text style={styles.panelText}>{panel.escrowLine(formattedValue)}</Text>
+          <Text style={styles.panelText}>{panel.escrowLine(value)}</Text>
         </View>
       ) : null}
+
+      {footnote ? <Text style={styles.footnote}>{footnote}</Text> : null}
     </View>
   );
 }
@@ -541,5 +578,15 @@ const styles = StyleSheet.create({
   panelText: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  // Deliberately heavier than panelText: the panel is small print the owner may
+  // never read, this is the line the amount is actually buying. Centred under
+  // the control rather than left-aligned with the panel, so it reads as part of
+  // the slider rather than a third clause of the terms.
+  footnote: {
+    ...typography.label,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginTop: spacing.md,
   },
 });

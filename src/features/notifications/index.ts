@@ -35,6 +35,8 @@ export { reportInboxBadge, resetInboxBadge } from './lib/inboxBadge';
 // deps are React, the api layer and useSession — imported by MODULE path, not
 // the auth barrel, precisely to keep this file within the budget below.
 export { useMyAlerts, invalidateMyAlerts, type MyAlertsState } from './hooks/useMyAlerts';
+// The posting wizard's bounty step shows how many spotters a bounty reaches.
+export { useAlertReach } from './hooks/useAlertReach';
 
 // ---------------------------------------------------------------------------
 // THIS BARREL IS DELIBERATELY LIGHT. chatApi and sightingApi import it just to
@@ -47,13 +49,13 @@ export { useMyAlerts, invalidateMyAlerts, type MyAlertsState } from './hooks/use
 // Same call as AppMap's absence from the shared/ui barrel. The heavy exports
 // are imported by their single consumer, by path:
 //   src/app/_layout.tsx        -> components/NotificationsHost
+//                              -> components/AlertNudgeSheet
 //   src/app/alerts/index.tsx   -> screens/AlertsScreen
 //   src/app/alerts/new|[id]    -> screens/AlertWizardScreen
 //   src/app/(tabs)/inbox.tsx   -> screens/NotificationCenterScreen
 //                              -> lib/inboxSegmentStorage
 //                              -> api/notificationsApi (the badge sync count)
-//   search-map/HomeFeedScreen  -> components/AlertNudgeCard
-//                              -> hooks/useAlertNudgeCard
+//   src/app/post/[id].tsx      -> hooks/useCountPostViewForAlertNudge
 // Before adding an export here, check what it drags in.
 //
 // pushRoute / pushPayload are also deliberately absent: nothing outside this

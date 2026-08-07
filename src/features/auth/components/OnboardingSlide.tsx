@@ -1,15 +1,20 @@
 /**
- * WHAT:  One onboarding slide — illustration circle (placeholder emoji),
- *        display headline, supporting sentence, optional safety pill — with
- *        scroll-linked parallax/fade/scale driven by the pager's offset.
- * WHY:   Motion is choreographed against the finger, not timers: the
- *        illustration parallaxes gently against the scroll, text fades and
- *        rises as its slide centres, the outgoing illustration scales down a
- *        touch (the design system's press-scale amount) — calm, never
- *        carnival. Reduced motion drops parallax/translate/scale and keeps a
- *        plain crossfade. Each slide is ONE accessibility element announcing
- *        "Slide n of N" plus its full copy.
+ * WHAT:  One onboarding slide — display headline, supporting sentence, and
+ *        the optional safety pill — fading and rising as its slide centres.
+ * WHY:   The slide used to own an illustration too: a placeholder emoji in a
+ *        grey circle, parallaxing against the scroll. That art slot is gone
+ *        (2026-08-06). The hero is now a single registration plate that lives
+ *        ABOVE the pager and does not page (OnboardingPlate), because the four
+ *        slides are one car's story rather than four subjects — so a slide is
+ *        now purely the words, and the words get the whole moment.
+ *
+ *        Motion is choreographed against the finger, not timers: text fades
+ *        and rises as its slide centres. Reduced motion drops the translate
+ *        and keeps a plain crossfade. Each slide is ONE accessibility element
+ *        announcing "Slide n of N" plus its full copy — the plate above is
+ *        decorative, so this label is the entire message for a screen reader.
  * LINKS: src/features/auth/lib/onboardingSlides.ts (copy);
+ *        src/features/auth/components/OnboardingPlate.tsx (the hero);
  *        docs/DESIGN_SYSTEM.md (Motion, Typography, Accessibility);
  *        docs/SECURITY_AND_TRUST.md (safety line treatment).
  */
@@ -22,7 +27,7 @@ import Animated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 
-import { colors, displayFontScaleCap, motion, radii, spacing, typography } from '@/shared/theme';
+import { colors, displayFontScaleCap, radii, spacing, typography } from '@/shared/theme';
 
 import type { OnboardingSlideData } from '../types';
 
@@ -36,12 +41,8 @@ export interface OnboardingSlideProps {
   reduceMotion: boolean;
 }
 
-/** How far the illustration drifts against the scroll. */
-const PARALLAX_DISTANCE = spacing.xxl;
 /** How far the text block rises as its slide centres. */
 const TEXT_RISE = spacing.lg;
-/** Placeholder emoji size until final art. TODO(art). */
-const EMOJI_SIZE = typography.display.fontSize * 2;
 
 export function OnboardingSlide({
   slide,
@@ -53,37 +54,6 @@ export function OnboardingSlide({
 }: OnboardingSlideProps) {
   'use no memo';
   const range = [(index - 1) * pageWidth, index * pageWidth, (index + 1) * pageWidth];
-
-  const illustrationStyle = useAnimatedStyle(() => {
-    if (reduceMotion) {
-      return {
-        opacity: interpolate(scrollX.value, range, [0, 1, 0], 'clamp'),
-        transform: [{ translateX: 0 }, { scale: 1 }],
-      };
-    }
-    return {
-      opacity: 1,
-      transform: [
-        // Drifting WITH the finger direction reads as depth behind the text.
-        {
-          translateX: interpolate(
-            scrollX.value,
-            range,
-            [PARALLAX_DISTANCE, 0, -PARALLAX_DISTANCE],
-            'clamp',
-          ),
-        },
-        {
-          scale: interpolate(
-            scrollX.value,
-            range,
-            [motion.pressScale, 1, motion.pressScale],
-            'clamp',
-          ),
-        },
-      ],
-    };
-  });
 
   const textStyle = useAnimatedStyle(() => {
     const opacity = interpolate(
@@ -117,20 +87,6 @@ export function OnboardingSlide({
       accessibilityLabel={a11yLabel}
       testID={`onboarding-slide-${index}`}
     >
-      <Animated.View style={[styles.illustrationArea, illustrationStyle]}>
-        <View style={styles.illustrationCircle}>
-          <Text
-            style={styles.emoji}
-            // Decorative and inside a fixed circle — never scales.
-            maxFontSizeMultiplier={1}
-            accessible={false}
-            importantForAccessibility="no"
-          >
-            {slide.emoji}
-          </Text>
-        </View>
-      </Animated.View>
-
       <Animated.View style={[styles.textBlock, textStyle]}>
         <Text style={styles.headline} maxFontSizeMultiplier={displayFontScaleCap}>
           {slide.headline}
@@ -144,11 +100,7 @@ export function OnboardingSlide({
           // warning-bordered but calm (never alarm-red). This treatment is
           // the visual seed of the future shared SafetyNotice component.
           <View style={styles.safetyPill}>
-            <Feather
-              name="alert-triangle"
-              size={typography.label.fontSize}
-              color={colors.warning}
-            />
+            <Feather name="alert-triangle" size={typography.label.fontSize} color={colors.warning} />
             <Text style={styles.safetyText}>{slide.safetyLine}</Text>
           </View>
         ) : null}
@@ -159,36 +111,12 @@ export function OnboardingSlide({
 
 const styles = StyleSheet.create({
   slide: {
-    flex: 1,
     paddingHorizontal: spacing.xl,
   },
-  // The illustration takes whatever the text doesn't need (~55% at default
-  // type) and SHRINKS at large font scales, so text never collides with the
-  // footer — art is the flexible party, copy is not.
-  illustrationArea: {
-    flex: 1,
-    minHeight: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  illustrationCircle: {
-    width: '60%',
-    aspectRatio: 1,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emoji: {
-    fontSize: EMOJI_SIZE,
-    // Emoji glyphs clip at their font's default line height when scaled.
-    lineHeight: EMOJI_SIZE + spacing.md,
-  },
-  // Natural height: the text block takes what its copy needs at any font
-  // scale; the illustration above absorbs the difference.
+  // Natural height: the pager hugs its tallest slide, and the plate above
+  // absorbs whatever vertical room is left over at any font scale.
   textBlock: {
     gap: spacing.md,
-    paddingBottom: spacing.lg,
   },
   headline: {
     ...typography.display,
@@ -212,6 +140,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
   },
   safetyText: {
     ...typography.label,

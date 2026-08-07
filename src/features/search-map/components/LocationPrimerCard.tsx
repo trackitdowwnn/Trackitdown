@@ -1,70 +1,45 @@
 /**
- * WHAT:  LocationPrimerCard — the inline card shown atop a national-mode
- *        feed when the user has never picked an area: explains why location
- *        helps, offers "Use my location" (the ONE path that may fire the OS
- *        permission prompt) and "Set my area" (no permission needed).
- * WHY:   The feed must never cold-fire the OS location dialog — this card is
- *        the primer that asks first (SECURITY_AND_TRUST: location is
- *        personal data, opt-in). Kept feature-local until another feature
- *        needs a primer, per ARCHITECTURE.md.
- * LINKS: src/features/search-map/hooks/useFeedLocation.ts (useMyLocation);
+ * WHAT:  LocationPrimerCard — the compact row shown atop a national-mode feed
+ *        when the user has never picked an area. Opens the area picker.
+ * WHY:   The feed must never cold-fire the OS location dialog — location is
+ *        personal data, opt-in (SECURITY_AND_TRUST). Routing the row to the
+ *        PICKER rather than straight at the device fix keeps that rule intact:
+ *        the picker's own "use my current location" button is the explicit
+ *        press that may raise the prompt, so nothing fires from a feed tap.
+ *
+ *        A NudgeRow, not a card, and the only one of the three that stays
+ *        PINNED above the feed: this is not a setup offer but a correction —
+ *        every car listed beneath it is from the wrong place until it is
+ *        answered — so it must not sit below the content it invalidates.
+ *        No dismiss for the same reason: a setup step, not a suggestion.
+ * LINKS: src/features/search-map/hooks/useFeedLocation.ts;
+ *        src/shared/ui/NudgeRow.tsx (the shape, shared with the feed's other
+ *        two nudges); src/shared/ui/LocationPicker.tsx
+ *        (showCurrentLocationButton — the one-tap device fix, inside);
  *        docs/DESIGN_SYSTEM.md (tone: helpful, never demanding).
  */
 
+import { MapPin } from 'lucide-react-native';
 import { memo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, spacing, typography } from '@/shared/theme';
-import { Button } from '@/shared/ui';
+import { NudgeRow } from '@/shared/ui';
 
 export interface LocationPrimerCardProps {
-  /** May trigger the OS permission prompt. */
-  onUseMyLocation: () => void;
-  /** Opens the Set-my-area picker instead — no permission involved. */
+  /** Opens the Set-my-area picker. No permission is involved in getting there;
+   *  the picker's current-location button owns that prompt. */
   onSetArea: () => void;
 }
 
 export const LocationPrimerCard = memo(function LocationPrimerCard({
-  onUseMyLocation,
   onSetArea,
 }: LocationPrimerCardProps) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.title}>{"See what's happening near you"}</Text>
-      <Text style={styles.body}>
-        {"Show cars reported around your area. Your location stays on your device — it's only used to sort what you see."}
-      </Text>
-      <View style={styles.actions}>
-        <Button label="Use my location" fullWidth={false} onPress={onUseMyLocation} />
-        <Button label="Set my area" variant="ghost" fullWidth={false} onPress={onSetArea} />
-      </View>
-    </View>
+    <NudgeRow
+      icon={MapPin}
+      title="Show cars near you"
+      body="Pick an area, or use your location."
+      onPress={onSetArea}
+      testID="location-primer-card"
+    />
   );
-});
-
-const styles = StyleSheet.create({
-  card: {
-    // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
-    padding: spacing.lg,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-    gap: spacing.sm,
-  },
-  title: {
-    ...typography.heading,
-    color: colors.textPrimary,
-  },
-  body: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-    flexWrap: 'wrap',
-  },
 });

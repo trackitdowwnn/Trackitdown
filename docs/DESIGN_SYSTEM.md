@@ -114,6 +114,10 @@ a busy/alarming crime map.
   - `body` 16/24, Regular — default text
   - `caption` 13/18, Regular — metadata, timestamps
   - `label` 14/18, Medium — buttons, form labels
+  - `mapPin` 14/18, Bold — **map-pin bounty pills only** (added 2026-08-07);
+    label size one weight up, because a pin fights map tiles and its own
+    overlapping neighbours. Capped at `mapPinFontScaleCap` (1.3): uncapped,
+    the OS 200% setting doubles every pill and buries the map
   - `tabLabel` 11/14, Medium — **tab-bar item labels only**; the single
     sanctioned size below `caption` (matches platform tab conventions)
   - `plate` 14/18, Black — number-plate chip (below)
@@ -187,6 +191,46 @@ a busy/alarming crime map.
 
 - Map screens: light map style (muted natural tones), custom `primary` pins;
   selected pin grows and shows a floating vehicle card, Airbnb-style.
+  - **EVERY marker carries its price (2026-08-07).** One appearance: a white
+    £ pill with a hairline border; the selected one inverts to
+    `surfaceInverse` and grows. There is no quiet tier.
+    - **Never ship a price-less map marker.** A marker with no price on it
+      reads as a GROUP — there is nothing else it could be saying — so a
+      "demoted" pin quietly claims to be several cars. We shipped one for a
+      day (top-12-only pricing, borrowed from the reference) and it was
+      reported as "grouping" four separate times. The ink argument for it was
+      sound and beside the point.
+    - Overlapping pills are FINE where overlapping dots were not: a pill has
+      an edge and a number, so a pile of them still reads as a pile of prices.
+      The reference does exactly this (`docs/design-refs/map/`, shot 2 has
+      four pills piled together). Markers that would stack are LEFT to stack:
+      a marker is always drawn on its car. Spreading them apart was tried on
+      2026-08-07 and reverted the same day — a constant on-screen gap needs a
+      ground offset that grows with the zoom, so the markers visibly slid
+      across the map every time the camera settled. Markers that move are
+      worse than markers that overlap.
+    - Pill text is `typography.mapPin` (label-size, one weight up): a pin
+      fights map tiles and its own overlapping neighbours, and going up a
+      *size* instead would turn a dense area into a wall of type.
+    - **One deliberate divergence from the reference**: its pill is
+      borderless, ours keeps a hairline `border`. Forced by our map style —
+      it paints land `#EEEEEE` and roads `#FFFFFF`, where the reference's is
+      mid-tone green, so a borderless white pill has no edge at all. If
+      `mapStyle`'s land ever darkens, revisit.
+    - Bounty rank still decides **paint order** (highest on top, so a tap in a
+      crowd lands on the car worth tapping) and **how many markers stay in the
+      assistive-tech tree** — the drawn set and the reachable set deliberately
+      differ, because a screen reader should not swipe past a hundred markers
+      when the sheet lists every car with more detail.
+  - **Floating CONTROLS over map tiles use `shadows.lifted`** (back, recentre,
+    search pill, map pill) — they must hold an edge against busy tiles.
+    **MARKERS keep `shadows.soft`**: they are content, not chrome, and
+    `lifted`'s `elevation: 10` on forty-plus Android markers is both muddy and
+    expensive.
+  - **Anything that frames the camera must inset for that chrome.** A result
+    centred behind the sheet may as well not exist. Where a sheet can be
+    dragged, the inset tracks it and the camera zooms to match, so the same
+    ground stays on screen however much of it is left (2026-08-06).
 - **Filling wizard steps** (`WizardStep.fills`, added 2026-07-31). A step whose
   body IS the answer — today the two map steps — opts in and gets a plain flex
   container instead of the usual `ScrollView`, so a `flex: 1` child reaches the
@@ -218,6 +262,19 @@ a busy/alarming crime map.
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
+  Blocking waits show ONE face — `BrandLoader` (wordmark + a rotating waiting
+  phrase), rendered by both the cold-start splash and `FullscreenLoader`. The
+  phrase is lit by a highlight sweeping left to right through its letters
+  (`motion.loaderShimmer`, 700ms), above a small `ActivityIndicator`. Both,
+  deliberately: the splash usually lifts inside 500ms, and in a glimpse that
+  short the spinner is the part that reads, while the sweep is what makes the
+  wait feel like this app rather than any app. **Do not lengthen the sweep for
+  calm** — it shipped at 1800ms on 2026-08-06 and never completed a third of a
+  pass before the screen was gone, which is an animation nobody ever sees.
+  The sweep's resting colour is `textSecondary` and must not go lighter: it is
+  the lightest text colour clearing WCAG AA on the background (~4.9:1), and
+  the waiting phrase is content, not decoration. Under reduced motion the
+  sweep is dropped and the line renders still.
 - Profile surfaces (2026-07-16, docs/design-refs/profile/REFERENCE_SPEC.md):
   the identity hero/passport card is the ONE elevated object on its screen
   (`surface`, `radii.xl`, soft shadow, `sizes.avatarXl` avatar); counters

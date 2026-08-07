@@ -13,7 +13,7 @@
  *        src/features/auth/gate/useRequireAuth.ts (the per-action gate).
  */
 
-import { useRouter, useSegments } from 'expo-router';
+import { useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
 import { type ReactNode, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -32,6 +32,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const route = useAuthGate();
   const router = useRouter();
   const segments = useSegments();
+  // GLOBAL, not local: this component lives in the root layout, above the
+  // screen, so useLocalSearchParams would never see the onboarding route's own
+  // query string.
+  const params = useGlobalSearchParams<{ revisit?: string }>();
 
   // Once the app has landed (new users: right after onboarding completes),
   // fire the native OS permission dialogs for whatever is still askable.
@@ -42,14 +46,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
     const seg = segments[0];
     const onOnboarding = seg === 'onboarding';
-    // The gate owns onboarding and the index landing (seg undefined); every
-    // other route is open to guests — deep links included.
+    // A DELIBERATE re-view from settings ("How Trackitdown works" pushes
+    // /onboarding?revisit=1) is not the gate's business. Without this the gate
+    // saw "flag already seen + we're on onboarding" and replaced the screen
+    // with the feed before the first slide could paint, which made that
+    // settings row look like it silently navigated to Explore — the bug it
+    // was, from the day the row shipped until 2026-08-06.
+    const revisiting = onOnboarding && params.revisit === '1';
+    // The gate owns FIRST-LAUNCH onboarding and the index landing (seg
+    // undefined); every other route is open to guests — deep links included.
     if (route === 'onboarding' && !onOnboarding) {
       router.replace('/onboarding');
-    } else if (route === 'app' && (onOnboarding || seg === undefined)) {
+    } else if (route === 'app' && ((onOnboarding && !revisiting) || seg === undefined)) {
       router.replace('/(tabs)/explore');
     }
-  }, [route, segments, router]);
+  }, [route, segments, router, params.revisit]);
 
   // Keep the splash up past the routing decision, until the first screen has
   // something on it — otherwise the feed assembles itself in public and the

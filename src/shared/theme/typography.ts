@@ -36,6 +36,12 @@ export const typography = {
   body: { fontSize: 16, lineHeight: 24, fontFamily: fontFamilies.regular },
   caption: { fontSize: 13, lineHeight: 18, fontFamily: fontFamilies.regular },
   label: { fontSize: 14, lineHeight: 18, fontFamily: fontFamilies.medium },
+  /** Map-pin bounties — label-size but BOLD. The reference sets its price pins
+   *  a weight above its own body label (docs/design-refs/map/): a pin has to
+   *  hold its own against map tiles and its overlapping neighbours, but going
+   *  up a SIZE instead would make the pill tall enough to turn a dense area
+   *  into a wall of type. Weight, not size. */
+  mapPin: { fontSize: 14, lineHeight: 18, fontFamily: fontFamilies.bold },
   /** Number-plate styling: heavy but compact (label-size, no letter spacing
    *  — tightened 2026-07-23 so the chip sits quietly beside titles). */
   plate: { fontSize: 14, lineHeight: 18, fontFamily: fontFamilies.black },
@@ -53,3 +59,11 @@ export const displayFontScaleCap = 1.3;
 /** Dynamic-type cap for tab-bar labels: one step of growth, then truncate —
  *  the bar itself never gets taller. */
 export const tabLabelFontScaleCap = 1.2;
+
+/** Dynamic-type cap for map-pin bounties. Uncapped, the OS 200% setting turns
+ *  14pt into 28pt, roughly doubling each pill in both axes — twelve of those
+ *  overlapping is precisely the wall of type the `mapPin` token chose weight
+ *  over size to avoid, and it would bury the map it labels. Costs nothing:
+ *  the bounty is fully scalable in the sheet list, in the peek card, and in
+ *  the marker's own accessibilityLabel. */
+export const mapPinFontScaleCap = 1.3;

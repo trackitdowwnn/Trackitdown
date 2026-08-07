@@ -1,41 +1,52 @@
 /**
  * WHAT:  MapSearchScreen — the app's centrepiece: a full-bleed map of
- *        ACTIVE stolen-car posts as bounty-pill pins with clustering, the
- *        list riding over it as a persistent peek/half/full sheet, a
- *        floating card pager synced with pin selection, and the calm
- *        "Search this area" model (results change only on explicit search).
+ *        ACTIVE stolen-car posts — one marker each, the top bounties as £
+ *        pills and the rest as price-less lozenges — the list riding over it
+ *        as a persistent peek/half/full sheet whose POSITION DRIVES THE ZOOM,
+ *        which opens itself to half on entry; a floating card
+ *        pager synced with pin selection, and results that FOLLOW THE MAP:
+ *        re-searched a beat after each settled pan, paused while a card is open.
  * WHY:   Replaces the v1 stub. Entry region: an `area` route param
  *        forward-geocodes to that town; otherwise the feed's resolved
  *        location at its radius. The map mounts only after the entry
  *        region resolves so useViewportPosts' capture-once contract holds.
  * LINKS: src/features/search-map/README.md (map-search spec);
  *        hooks/useViewportPosts.ts, hooks/useMapSelection.ts,
- *        lib/{regionMath,mapClustering}.ts, components/Map*.tsx;
+ *        lib/{regionMath,mapPins}.ts, components/Map*.tsx;
  *        docs/SECURITY_AND_TRUST.md (active locations are public).
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BackHandler, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequireAuth } from '@/features/auth';
+import { useDevicePermission } from '@/features/permissions';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, motion, radii, shadows, sizes, spacing } from '@/shared/theme';
-import type { GeoRegion } from '@/shared/types';
-import { FullscreenLoader } from '@/shared/ui';
+import { colors, motion, sizes, spacing } from '@/shared/theme';
+import type { GeoCoord, GeoRegion } from '@/shared/types';
+import { FullscreenLoader, useToast } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
 
 import { MapCardPager } from '../components/MapCardPager';
-import { MapListSheet } from '../components/MapListSheet';
+import {
+  MAP_SHEET_PEEK_PERCENT,
+  MAP_SHEET_SNAP_PERCENTS,
+  MapListSheet,
+  sheetZoomFraction,
+} from '../components/MapListSheet';
+import { MapCircleButton } from '../components/MapCircleButton';
 import { MapPins } from '../components/MapPins';
+import { MapRecentreButton } from '../components/MapRecentreButton';
 import { MapSearchPill } from '../components/MapSearchPill';
 import { SearchSheet } from '../components/SearchSheet';
-import { SearchThisAreaButton } from '../components/SearchThisAreaButton';
 import { useFeedLocation } from '../hooks/useFeedLocation';
-import { useMapSelection } from '../hooks/useMapSelection';
+import { useMapSelection, useMapSelectionState } from '../hooks/useMapSelection';
+import { useProgressivePins } from '../hooks/useProgressivePins';
+import { useSortAnchor } from '../hooks/useSortAnchor';
 import { useViewportPosts } from '../hooks/useViewportPosts';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
 import {
@@ -46,13 +57,17 @@ import {
   summarise,
   toRpcCriteria,
 } from '../lib/searchCriteria';
-import { buildClusterIndex, clusterMemberCoords, pinsForRegion } from '../lib/mapClustering';
+import { keepMarkersOnScreen, pinsForRegion } from '../lib/mapPins';
 import {
+  type MapInsets,
+  cameraForVisible,
   distanceMeters,
-  frameCoords,
+  entryFrame,
   isComfortablyVisible,
   metersToMiles,
   regionAround,
+  visibleCentre,
+  visibleRegion,
 } from '../lib/regionMath';
 import type { MapPost } from '../types';
 
@@ -172,17 +187,91 @@ function MapSearchBody({
   insetBottom: number;
 }) {
   const router = useRouter();
+  const toast = useToast();
+  // Read SILENTLY (useDevicePermission never prompts on mount) — this only
+  // decides whether the blue dot is safe to draw. The recentre button owns
+  // any asking.
+  const locationPermission = useDevicePermission('location');
+  const reduceMotion = useReducedMotion();
+  // Selection state is owned HERE, above the data hook, because the map
+  // pauses auto-search while a card is open and the hook needs to know that
+  // before the post list (which is sorted from its own output) exists.
+  const [selectedId, setSelectedId] = useMapSelectionState();
+  const cardOpen = selectedId !== null;
+
+  // How much of the map is covered by floating chrome, as fractions of its
+  // height. Everything that FRAMES something (fly-tos, the "is this pin
+  // comfortably visible" test, the sort anchor) goes through these, or it
+  // frames into the band behind the sheet.
+  //
+  // These now TRACK THE SHEET (product call 2026-08-06). They were pinned to
+  // the resting peek, on the reasoning that a camera chasing the sheet would
+  // be motion nobody asked for — it is now asked for: the map zooms out as the
+  // sheet rises so the same ground stays visible in the smaller strip.
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const [pagerHeight, setPagerHeight] = useState(0);
+  // ⚠️ INVARIANT: `handleSheetSnap` is the ONLY writer of this. It carries the
+  // camera's return leg, so a second call site would let the index change
+  // without the camera following — which is exactly the bug that shipped here:
+  // a bare setSheetIndex(0) on pin-press meant a drag's zoom-out was never
+  // undone, and the core loop (drag up, tap a car, close, drag up) ratcheted
+  // the map out 1.59x per cycle until it showed the whole country. Keeping one
+  // writer makes that unexpressible, which is a stronger guard than a test:
+  // the bug was "nobody called the return leg", and no unit test can catch
+  // an absent call.
+  const [sheetIndex, setSheetIndex] = useState(0);
+  const insetsForSheet = useCallback(
+    (index: number): MapInsets => ({
+      // sizes.control, NOT touchTarget: the row's tallest child is the search
+      // pill (52), so measuring the 44 back button would frame 8pt too high
+      // and let a pin sit behind the pill.
+      top: (inset + spacing.md + sizes.control + spacing.sm) / windowHeight,
+      bottom: cardOpen
+        ? (pagerHeight + insetBottom + spacing.lg) / windowHeight
+        : (MAP_SHEET_SNAP_PERCENTS[index] ?? MAP_SHEET_PEEK_PERCENT) / 100,
+    }),
+    [inset, insetBottom, windowHeight, cardOpen, pagerHeight],
+  );
+  const mapInsets = useMemo(
+    () => insetsForSheet(sheetIndex),
+    [insetsForSheet, sheetIndex],
+  );
+
+  /**
+   * The insets the sheet-driven ZOOM uses — deliberately not insetsForSheet.
+   *
+   * Two differences, both wanted. The bottom is how far the sheet has risen
+   * ABOVE peek (see sheetZoomFraction), so peek frames the whole map and the
+   * zoom is gentler at every snap — that is what the reference measures. And
+   * there is no cardOpen branch, so a re-measured pager height can never leak
+   * into the camera scale.
+   *
+   * Safe to differ from insetsForSheet because handleSheetSnap applies this on
+   * BOTH sides of the move: only the ratio between two snaps survives, so the
+   * two functions never have to agree on an absolute, and a round trip returns
+   * to the exact camera it started from.
+   */
+  const zoomInsetsForSheet = useCallback(
+    (index: number): MapInsets => ({
+      top: (inset + spacing.md + sizes.control + spacing.sm) / windowHeight,
+      bottom: sheetZoomFraction(index),
+    }),
+    [inset, windowHeight],
+  );
+
   const {
     status,
     result,
     searchedRegion,
     searching,
-    showSearchArea,
+    searchId,
+    populationId,
+    searchFailed,
     onRegionChange,
+    recordRegion,
     applySearch,
-    searchThisArea,
     retry,
-  } = useViewportPosts(entryRegion, initialCriteria);
+  } = useViewportPosts(entryRegion, { initialCriteria, paused: cardOpen });
 
   // The screen owns the APPLIED criteria (for the pill summary); the SearchSheet
   // owns the draft while it's open. Seeded from the search carried in from the
@@ -193,32 +282,88 @@ function MapSearchBody({
   const closeSearch = useCallback(() => setSearchOpen(false), []);
 
   // ONE distance-ordered list feeds the pager, the sheet, and selection-
-  // index derivation, so "index" means the same thing everywhere. Distance
-  // is from the SEARCHED region's centre (stable while browsing — a pan
-  // without a re-search never reshuffles the cards under the user).
+  // index derivation, so "index" means the same thing everywhere.
+  //
+  // Measured from the anchor, NOT the live searched region: auto-search moves
+  // that on every settled pan, and because selection is derived from the
+  // INDEX, a reorder mid-read would point the pager at a different car than
+  // the one on screen. useSortAnchor holds it still while a card is open.
+  // The VISIBLE centre, not the rect centre — "nearest" must mean nearest to
+  // what the user can actually see past the sheet.
+  //
+  // The insets used here are FROZEN at the resting peek, never `mapInsets`.
+  // mapInsets tracks the sheet now, and the visible centre moves several miles
+  // between snaps — so sorting off it would reorder the list under the very
+  // finger dragging the sheet, and reorder the pager as the card's height is
+  // re-measured. That is exactly the reorder useSortAnchor exists to stop; it
+  // freezes the REGION, so the insets are the other way the bug gets in.
+  const anchorRegion = useSortAnchor(searchedRegion, cardOpen);
+  // Deliberately NOT insetsForSheet(0) — that still carries the card branch,
+  // so a re-measured pager height would leak the reorder back in. This is the
+  // resting geometry and nothing else: constant for the life of the screen.
+  // Captured ONCE, not memoised: `windowHeight` and `inset` change on rotation
+  // and on an Android keyboard show, which would move the sort centre and
+  // reorder the list — including under an open card. A few percent of stale
+  // top-inset shifts the centre imperceptibly; a reorder mid-read points the
+  // pager at the wrong car.
+  // Lazy initial state, not a ref: this is READ during render, and it must be
+  // computed once rather than on every one.
+  const [sortInsets] = useState<MapInsets>(() => ({
+    top: (inset + spacing.md + sizes.control + spacing.sm) / windowHeight,
+    bottom: MAP_SHEET_PEEK_PERCENT / 100,
+  }));
   const sortedPosts = useMemo(() => {
-    const centre = { latitude: searchedRegion.latitude, longitude: searchedRegion.longitude };
+    const centre = visibleCentre(anchorRegion, sortInsets);
     return result.posts
       .map((post) => ({ ...post, distanceMiles: metersToMiles(distanceMeters(centre, post)) }))
       // Id tie-break: server order varies between searches, and equal-
       // distance cards must not swap places under the user on a re-search.
       .sort((a, b) => a.distanceMiles - b.distanceMiles || a.id.localeCompare(b.id));
-  }, [result.posts, searchedRegion]);
+  }, [result.posts, anchorRegion, sortInsets]);
 
-  const { selected, selectedIndex, selectPost, selectByIndex, clear } =
-    useMapSelection(sortedPosts);
+  const { selected, selectedIndex, selectPost, selectByIndex, clear } = useMapSelection(
+    sortedPosts,
+    selectedId,
+    setSelectedId,
+  );
 
   // Camera: uncontrolled map + this prop drives programmatic fly-tos only.
   const [camera, setCamera] = useState<GeoRegion>(entryRegion);
   // The current VIEW — the last user settle or programmatic fly-to target.
-  // Drives pin slicing and cluster-zoom fallback framing.
+  // Drives pin slicing (which posts are culled into view) and the fallback
+  // framing when there are no results to frame around.
   const [settledRegion, setSettledRegion] = useState<GeoRegion>(entryRegion);
 
-  const clusterIndex = useMemo(() => buildClusterIndex(result.posts), [result.posts]);
-  const pins = useMemo(
-    () => pinsForRegion(clusterIndex, settledRegion),
-    [clusterIndex, settledRegion],
+  // Culled to the current view and ranked pill-vs-mini. `settledRegion` is the
+  // dep that matters: `result.posts` only refreshes when a search LANDS, so
+  // without re-culling on every settle a pan would keep drawing markers the
+  // user has already moved away from.
+  // Ranked, then nudged off the viewport edge. Markers that would OVERLAP are
+  // left to overlap: every one is drawn on its own car, at every zoom.
+  // Spreading them apart was tried and reverted the same day (2026-08-07) —
+  // holding a constant on-screen gap needs a ground offset proportional to the
+  // zoom span, so fanned markers slid across the map on every camera settle and
+  // drifted further the more you zoomed out. keepMarkersOnScreen is not the
+  // same trade: it moves the marker's BOX, never its coordinate.
+  const allPins = useMemo(
+    () =>
+      keepMarkersOnScreen(pinsForRegion(result.posts, settledRegion), settledRegion, windowWidth),
+    [result.posts, settledRegion, windowWidth],
   );
+  // Mounted in batches rather than all at once — nothing thins the population
+  // any more, so a dense area is up to VIEWPORT_POST_LIMIT custom markers in
+  // one commit, each holding tracksViewChanges open for 500ms.
+  //
+  // populationId, NOT searchId: searchId bumps on every landed search
+  // INCLUDING the auto re-search after each pan, which returns a largely
+  // overlapping set. Resetting there would unmount ~68 already-drawn markers
+  // per pan and re-arm 500ms of tracking on each as they came back — more jank
+  // than not batching at all, and the exact failure this hook exists to stop.
+  //
+  // The selected id goes in so the reveal can never withhold the pin the card
+  // is describing — the pager selects across ALL result posts, not just the
+  // drawn ones.
+  const pins = useProgressivePins(allPins, populationId, selected?.id ?? null);
 
   const handleRegionChange = useCallback(
     (region: GeoRegion) => {
@@ -231,11 +376,16 @@ function MapSearchBody({
   // Programmatic fly-tos: AppMap deliberately does NOT report its own
   // animations as settles (isGesture filter), so treat the TARGET as the
   // settled view — pins re-slice for the new region and useViewportPosts'
-  // current-region ref stays honest ("Search this area" would otherwise
+  // current-region ref stays honest (the auto re-search would otherwise
   // compare against a pre-fly-to viewport). A later user gesture corrects
   // any aspect-fit drift between target and actual.
+  // Which clock the next camera move runs on. Set alongside the camera itself
+  // so a sheet drag and its zoom share one duration.
+  const [cameraDurationMs, setCameraDurationMs] = useState<number>(motion.mapPan);
+
   const flyTo = useCallback(
     (region: GeoRegion) => {
+      setCameraDurationMs(motion.mapPan);
       setCamera(region);
       setSettledRegion(region);
       onRegionChange(region);
@@ -243,21 +393,105 @@ function MapSearchBody({
     [onRegionChange],
   );
 
+  /**
+   * Move the camera WITHOUT asking for results — for moves the user did not
+   * request data for: the zoom that tracks the sheet, and the initial framing
+   * around results we already hold.
+   *
+   * The only difference from flyTo is recordRegion instead of onRegionChange.
+   * That matters a lot: a sheet drag changes the zoom by far more than
+   * movedEnough's 1.4x threshold, so going through flyTo would fire a network
+   * search on every drag, in both directions.
+   */
+  const frameCamera = useCallback(
+    (region: GeoRegion) => {
+      // The UI clock: frameCamera only ever serves the sheet drag and the
+      // one-time result framing, and the sheet runs on motion.standard.
+      setCameraDurationMs(motion.standard);
+      setCamera(region);
+      setSettledRegion(region);
+      recordRegion(region);
+    },
+    [recordRegion],
+  );
+
+  // The sheet moved: hold the VISIBLE ground still and re-derive the camera for
+  // the new chrome. Zooming out as the sheet rises is the whole point — the
+  // same cars stay on screen in the strip that's left.
+  const handleSheetSnap = useCallback(
+    (index: number) => {
+      if (index === sheetIndex) {
+        return;
+      }
+      // Side effects belong in the HANDLER, never inside a setState updater:
+      // updaters must be pure and React invokes them twice under StrictMode,
+      // which would fire the camera move twice per drag.
+      const stillVisible = visibleRegion(settledRegion, zoomInsetsForSheet(sheetIndex));
+      frameCamera(cameraForVisible(stillVisible, zoomInsetsForSheet(index)));
+      setSheetIndex(index);
+      // Logged so a sheet move is DISTINGUISHABLE from a map gesture. Both
+      // move the camera and only one may search, and without this the two are
+      // indistinguishable after the fact — a drag that started searching would
+      // look exactly like the user pinching.
+      //
+      // NOT a drag count: this also fires for the moves the app makes itself —
+      // the entry auto-expand, and the return to peek on a pin press. The event
+      // means "the sheet moved", which is what the camera cares about.
+      log.info('map_sheet_snap', { from: sheetIndex, to: index });
+    },
+    [sheetIndex, settledRegion, zoomInsetsForSheet, frameCamera],
+  );
+
   const handlePressPost = useCallback(
     (id: string) => {
       selectPost(id);
+      // The sheet is CLOSED (not snapped) while a card is up and returns to
+      // PEEK when the card dismisses, so our index must follow it back to 0.
+      //
+      // handleSheetSnap(0), NOT a bare setSheetIndex(0) — this is the ZOOM's
+      // return leg and it has to run somewhere. The dismissal path cannot do
+      // it: the sheet's snapToIndex(0) reports index 0, which handleSheetSnap
+      // early-returns on because our index already says 0. So a bare setState
+      // left the map permanently at the drag's zoom-out, and the screen's core
+      // loop — drag the list up, tap a car, close it, drag up again — RATCHETED
+      // it: 1.59x, 2.5x, 4.0x, 6.3x, out to nothing over a session.
+      //
+      // Done here rather than in an effect on `cardOpen`: a pin tap is the only
+      // way a card opens, and setState in an effect body cascades renders.
+      handleSheetSnap(0);
       log.info('map_pin_select', { postId: id });
     },
-    [selectPost],
+    [selectPost, handleSheetSnap],
   );
 
-  const handlePressCluster = useCallback(
-    (clusterId: number) => {
-      flyTo(frameCoords(clusterMemberCoords(clusterIndex, clusterId), settledRegion));
-      log.info('map_cluster_zoom', { clusterId });
+  // Recentring is a PAN, not a zoom jump — it keeps the span the user chose.
+  // The fly-to feeds onRegionChange like any other move, so the normal
+  // debounced search follows: you asked to go there, you want results there.
+  const handleRecentre = useCallback(
+    (coord: GeoCoord) => {
+      flyTo(
+        cameraForVisible(
+          {
+            ...coord,
+            // visibleRegion, NOT an inline (1 - top - bottom): visibleFractionOf
+            // FLOORS the fraction at 0.2, so the two only agree while the sheet
+            // is low. At the full snap bottom is 0.88 and the inline gives
+            // 0.012 — cameraForVisible then divides by the floored 0.2 and
+            // recentring becomes a ~16x zoom IN. On a tall-inset, short-window
+            // device the inline goes NEGATIVE and hands the map a negative
+            // latitudeDelta. This is the floored value by construction, so the
+            // round trip is exact at every snap.
+            latitudeDelta: visibleRegion(settledRegion, mapInsets).latitudeDelta,
+            longitudeDelta: settledRegion.longitudeDelta,
+          },
+          mapInsets,
+        ),
+      );
+      log.info('map_recentre');
     },
-    [clusterIndex, settledRegion, flyTo],
+    [flyTo, settledRegion, mapInsets],
   );
+
 
   const handlePagerSettle = useCallback(
     (index: number) => {
@@ -267,17 +501,79 @@ function MapSearchBody({
       // screen gets no camera move (never a jarring recentre); an edge or
       // off-screen pin gets a gentle pan at the user's CURRENT zoom
       // (settledRegion holds the live span).
-      if (post && !isComfortablyVisible(post, settledRegion)) {
-        flyTo({
-          latitude: post.latitude,
-          longitude: post.longitude,
-          latitudeDelta: settledRegion.latitudeDelta,
-          longitudeDelta: settledRegion.longitudeDelta,
-        });
+      // "Comfortably visible" is judged against what the user can SEE — a pin
+      // sitting behind the card pager is not visible, however central it is.
+      if (post && !isComfortablyVisible(post, visibleRegion(settledRegion, mapInsets))) {
+        flyTo(
+          cameraForVisible(
+            {
+              latitude: post.latitude,
+              longitude: post.longitude,
+              // Floored — see handleRecentre above for what the inline
+              // (1 - top - bottom) does at the taller snaps.
+              latitudeDelta: visibleRegion(settledRegion, mapInsets).latitudeDelta,
+              longitudeDelta: settledRegion.longitudeDelta,
+            },
+            mapInsets,
+          ),
+        );
       }
     },
-    [selectByIndex, sortedPosts, settledRegion, flyTo],
+    [selectByIndex, sortedPosts, settledRegion, flyTo, mapInsets],
   );
+
+  // OPEN FRAMED ON THE NEARBY RESULTS, once. The entry region is a fixed radius
+  // (the feed's 20 miles, or 5 from a "See all → area" link, or the whole UK in
+  // national mode), which opens nearly empty in one place and crowded in
+  // another; framing what actually came back is honest in both.
+  //
+  // entryFrame, NOT frameCoords: fitting EVERY result is honest and unusable.
+  // Posts scattered nationwide forced a ~64km view at ~100 m/pt, where cars
+  // 800m apart drew 8pt apart under an 18pt marker — they overlapped into
+  // blobs that had to be zoomed into, which is exactly the problem clustering
+  // used to solve and we no longer have. entryFrame caps the opening span.
+  // Via frameCamera — these are results we already hold, so framing them must
+  // not trigger another search.
+  //
+  // A ref, not state: this must happen once per screen and must NOT re-fire
+  // when auto-search lands new results under the user mid-browse.
+  const framedOnResults = useRef(false);
+  useEffect(() => {
+    if (framedOnResults.current || status !== 'ready' || result.posts.length === 0) {
+      return;
+    }
+    framedOnResults.current = true;
+    frameCamera(cameraForVisible(entryFrame(result.posts, entryRegion), mapInsets));
+  }, [status, result.posts, entryRegion, mapInsets, frameCamera]);
+
+  // A failed auto re-search is quiet by design: results and pins stay put and
+  // the map keeps working. Fired on the EDGE (a boolean dep), so a re-render
+  // never re-announces. The next settled pan re-attempts by itself, because a
+  // failure leaves the searched region unmoved.
+  // The toast CARRIES THE RETRY. Deleting "Search this area" also deleted the
+  // manual re-search, so without an action here the only way back is to pan
+  // 30% of the viewport again — a big gesture, and nothing tells the user
+  // that is what's required.
+  //
+  // Drops the SELECTION first, for the same reason handleClearSearch does:
+  // retry() runs immediately and does NOT consult the hook's `paused` (only
+  // the debounced auto-search does), and the toast stays on screen while a
+  // card is up — only the list sheet hides. Swapping the result set under an
+  // open card leaves the index-derived pager pointing at a different vehicle
+  // than the card shows, and that card files sightings by post.id.
+  const handleRetry = useCallback(() => {
+    clear();
+    retry();
+  }, [clear, retry]);
+
+  useEffect(() => {
+    if (searchFailed) {
+      toast.show("Couldn't refresh this area.", 'error', {
+        label: 'Try again',
+        onPress: handleRetry,
+      });
+    }
+  }, [searchFailed, toast, handleRetry]);
 
   // Android back with a card up dismisses the card, not the screen.
   // Keyed on a boolean, not the `selected` object — its identity changes
@@ -341,11 +637,23 @@ function MapSearchBody({
   );
 
   // The pill's × — drop the filter and re-query the current region unfiltered.
+  //
+  // Drops the SELECTION first, and that is not tidiness. applySearch runs
+  // immediately and does NOT consult the hook's `paused` (only the debounced
+  // auto-search does), so it replaces the result set whether or not a card is
+  // open — and the × is its own nested Pressable inside the pill, still live
+  // while a card is up. Selection is derived from the sort INDEX, so a swapped
+  // result set leaves the pager pointing at a DIFFERENT car while showing the
+  // same card, and that card's "I've seen this car" carries post.id straight
+  // into the sighting wizard. A sighting filed against the wrong vehicle.
+  // Unlike the pill BODY (which returns and asks for a second tap), clearing a
+  // filter should still happen on one tap — so clear and continue.
   const handleClearSearch = useCallback(() => {
+    clear();
     const empty = emptyCriteria();
     setAppliedCriteria(empty);
     void applySearch({ criteria: empty, region: searchedRegion });
-  }, [applySearch, searchedRegion]);
+  }, [clear, applySearch, searchedRegion]);
 
   // (Android back while the search surface is open is owned by SearchSheet.)
 
@@ -359,52 +667,71 @@ function MapSearchBody({
       >
         <AppMap
           region={camera}
-          animateDurationMs={motion.mapPan}
+          // Sheet-driven moves take the UI clock (standard, matching the
+          // sheet's own timing) so the two read as ONE gesture; geographic
+          // moves — a card follow, a recentre — keep the slower map clock.
+          // Reduced motion cuts both to instant, or the sheet would snap while
+          // the map kept flying, which is the opposite of one gesture.
+          animateDurationMs={reduceMotion ? motion.instant : cameraDurationMs}
         onRegionChangeStart={() => {}}
         onRegionChangeComplete={handleRegionChange}
         onPress={clear}
+        // ONLY when already granted — on Android this flips
+        // setMyLocationEnabled, which can raise the OS dialog, and a map that
+        // merely opened must never ask for anything.
+        showsUserLocation={locationPermission.status?.state === 'granted'}
       >
         <MapPins
           pins={pins}
           selectedPostId={selected?.id ?? null}
           onPressPost={handlePressPost}
-          onPressCluster={handlePressCluster}
         />
       </AppMap>
 
       <View style={[styles.topBar, { top: inset + spacing.md }]} pointerEvents="box-none">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={onBack}
-          style={styles.backButton}
-        >
-          <Feather name="chevron-left" size={sizes.icon} color={colors.textPrimary} />
-        </Pressable>
+        <MapCircleButton icon="chevron-left" accessibilityLabel="Back" onPress={onBack} />
+        {/* Opening a search while a card is up would replace the results the
+            card belongs to — applySearch runs directly and does not consult
+            the hook's `paused`. Dismiss the card first; the pill is one tap
+            away again immediately. */}
         <MapSearchPill
           summary={isEmptyCriteria(appliedCriteria) ? null : summarise(appliedCriteria)}
-          onPress={() => setSearchOpen(true)}
+          onPress={() => {
+            if (hasSelection) {
+              clear();
+              return;
+            }
+            setSearchOpen(true);
+          }}
           onClear={handleClearSearch}
         />
       </View>
 
+      {/* Its OWN layer, below the top bar — not in that row. Three controls
+          on one line left the pill ~224dp on a 360dp screen, which truncates
+          the label at large text sizes; and this button appears a beat after
+          mount (the silent permission check), which would reflow the pill
+          under the user. Still top-right rather than the reference's
+          bottom-right: the sheet's full snap covers anything down there. */}
       <View
-        style={[styles.searchArea, { top: inset + spacing.md + sizes.control + spacing.sm }]}
+        style={[styles.recentre, { top: inset + spacing.md + sizes.control + spacing.sm }]}
         pointerEvents="box-none"
       >
-        <SearchThisAreaButton
-          visible={showSearchArea}
-          searching={searching}
-          onPress={() => void searchThisArea()}
-        />
+        <MapRecentreButton onLocate={handleRecentre} />
       </View>
 
       <MapListSheet
         total={result.total}
         posts={sortedPosts}
         status={status}
+        searching={searching}
+        searchId={searchId}
         hidden={hasSelection}
-        onRetry={retry}
+        // Either outcome opens it — an error or an empty area is still
+        // something to read, and leaving it at peek would hide the message.
+        expandOnEntry={status !== 'loading'}
+        onSnapChange={handleSheetSnap}
+        onRetry={handleRetry}
         onPressPost={openPost}
       />
 
@@ -413,6 +740,9 @@ function MapSearchBody({
       <View
         style={[styles.pager, { bottom: insetBottom + spacing.lg }]}
         pointerEvents="box-none"
+        // Measured so the camera can inset by the card's REAL height rather
+        // than a guess — the card's height varies with its content.
+        onLayout={(event) => setPagerHeight(event.nativeEvent.layout.height)}
       >
         <MapCardPager
           posts={sortedPosts}
@@ -445,31 +775,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  // Top row: back button + the search pill sharing the top inset.
+  // Top row: back button + the search pill sharing the top inset. The 16pt
+  // gutter (not the usual 24) is the map's own exception — full-bleed map
+  // chrome hugs the edges so the tiles stay the content (DESIGN_SYSTEM).
   topBar: {
     position: 'absolute',
     left: spacing.lg,
     right: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
   },
-  backButton: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    borderRadius: radii.full,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // lifted (not soft) to stay legible over busy map tiles, matching the
-    // search-this-area pill's elevation.
-    ...shadows.lifted,
-  },
-  searchArea: {
+  // Recentre sits BELOW the row, right-aligned — see the note at its render.
+  recentre: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+    right: spacing.lg,
+    alignItems: 'flex-end',
   },
   pager: {
     position: 'absolute',

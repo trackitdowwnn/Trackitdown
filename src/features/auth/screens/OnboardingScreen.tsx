@@ -1,8 +1,9 @@
 /**
- * WHAT:  OnboardingScreen — the first-launch intro: four swipeable slides on
- *        a paged horizontal scroll with scroll-linked animation, morphing
- *        pager dots, a Skip action (slides 1–3), and a primary CTA whose
- *        label cross-fades from "Next" to "Get started" on the last slide.
+ * WHAT:  OnboardingScreen — the first-launch intro. A single registration
+ *        plate is pinned above four swipeable text slides; the plate does not
+ *        page, its STATUS does (Reported → Broadcast → Sighted → Recovered).
+ *        Below: a numbered step rail, a Skip action (slides 1–3), and a
+ *        primary CTA whose label cross-fades from "Next" to "Get started".
  * WHY:   A stolen-car app needs trust fast: the intro teaches the loop
  *        (post → alert → spot safely → paid) in four calm screens and plants
  *        the report-don't-approach safety rule before the user ever sees a
@@ -12,9 +13,20 @@
  *        (settings' "How Trackitdown works") they simply go back and the
  *        flag/log noise is skipped. Slide views, skips, and completion are
  *        logged with the [auth] tag: this is the app's first funnel.
- * LINKS: src/features/auth/lib/onboardingSlides.ts (copy);
+ *
+ *        REDESIGNED 2026-08-06. The previous intro gave every slide its own
+ *        placeholder emoji in a grey circle — 🚗 📣 📸 🎉 — which read as
+ *        unfinished, told four unrelated stories, and celebrated a recovery
+ *        with party confetti at someone whose car had just been stolen. The
+ *        hero is now the one object the product actually turns on, and it is
+ *        SHARED across the four slides on purpose: one car, one case, four
+ *        states. That is also why the footer numbers the steps — these slides
+ *        are a real sequence, so the numbering carries information rather
+ *        than decorating the screen.
+ * LINKS: src/features/auth/lib/onboardingSlides.ts (copy + stamps);
  *        src/features/auth/lib/onboardingStorage.ts (seen flag);
- *        src/features/auth/components/OnboardingSlide.tsx, OnboardingPagerDots.tsx;
+ *        src/features/auth/components/OnboardingPlate.tsx (the hero),
+ *        OnboardingSlide.tsx, OnboardingPagerDots.tsx;
  *        docs/DESIGN_SYSTEM.md (Motion, Tone); docs/LOGGING.md.
  *
  * Usage (route file):
@@ -24,7 +36,7 @@
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   interpolate,
   type SharedValue,
@@ -40,6 +52,7 @@ import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import { Button } from '@/shared/ui/Button';
 
 import { OnboardingPagerDots } from '../components/OnboardingPagerDots';
+import { OnboardingPlate } from '../components/OnboardingPlate';
 import { OnboardingSlide } from '../components/OnboardingSlide';
 import { markOnboardingSeenInGate } from '../hooks/useOnboardingGate';
 import { ONBOARDING_SLIDES } from '../lib/onboardingSlides';
@@ -152,6 +165,12 @@ export function OnboardingScreen() {
         ) : null}
       </View>
 
+      {/* The fixed point of the screen. It sits OUTSIDE the pager: the car
+          does not change from slide to slide, only what has happened to it. */}
+      <View style={styles.hero}>
+        <OnboardingPlate scrollX={scrollX} pageWidth={pageWidth} reduceMotion={reduceMotion} />
+      </View>
+
       <Animated.ScrollView
         ref={scrollRef}
         horizontal
@@ -160,6 +179,10 @@ export function OnboardingScreen() {
         bounces={false}
         onScroll={scrollHandler}
         scrollEventThrottle={16}
+        // Hugs its tallest slide rather than filling: the hero above is the
+        // flexible party at large font scales, exactly as the illustration
+        // it replaced was.
+        style={styles.pager}
         onMomentumScrollEnd={(event) => {
           setPage(Math.round(event.nativeEvent.contentOffset.x / pageWidth));
         }}
@@ -179,7 +202,10 @@ export function OnboardingScreen() {
       </Animated.ScrollView>
 
       <View style={styles.footer}>
-        <OnboardingPagerDots count={total} scrollX={scrollX} pageWidth={pageWidth} />
+        <View style={styles.rail}>
+          <OnboardingPagerDots count={total} scrollX={scrollX} pageWidth={pageWidth} />
+          <StepLabel scrollX={scrollX} pageWidth={pageWidth} />
+        </View>
         <MorphingCta
           scrollX={scrollX}
           pageWidth={pageWidth}
@@ -221,6 +247,64 @@ function SkipFade({
     };
   });
   return <Animated.View style={style}>{children}</Animated.View>;
+}
+
+/**
+ * The step rail's right-hand half: "01 Post", "02 Alert"… cross-fading with
+ * the scroll, in a fixed slot so the numerals never shift the dots beside
+ * them. Numbering is honest here — these four slides are the product loop in
+ * order, so the numeral tells the reader where they are in a PROCESS, which a
+ * dot alone cannot. Decorative to assistive tech: each slide already
+ * announces "Slide n of N".
+ */
+function StepLabel({ scrollX, pageWidth }: { scrollX: SharedValue<number>; pageWidth: number }) {
+  'use no memo';
+  return (
+    <View
+      style={styles.stepSlot}
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+    >
+      {ONBOARDING_SLIDES.map((slide, index) => (
+        <StepLabelItem
+          key={slide.key}
+          index={index}
+          step={slide.step}
+          scrollX={scrollX}
+          pageWidth={pageWidth}
+        />
+      ))}
+    </View>
+  );
+}
+
+function StepLabelItem({
+  index,
+  step,
+  scrollX,
+  pageWidth,
+}: {
+  index: number;
+  step: string;
+  scrollX: SharedValue<number>;
+  pageWidth: number;
+}) {
+  'use no memo';
+  const style = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      scrollX.value,
+      [(index - 0.5) * pageWidth, index * pageWidth, (index + 0.5) * pageWidth],
+      [0, 1, 0],
+      'clamp',
+    ),
+  }));
+
+  return (
+    <Animated.View style={[styles.step, style]}>
+      <Text style={styles.stepNumber}>{String(index + 1).padStart(2, '0')}</Text>
+      <Text style={styles.stepName}>{step}</Text>
+    </Animated.View>
+  );
 }
 
 /**
@@ -290,11 +374,55 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     minHeight: sizes.touchTarget,
   },
+  // Takes whatever the copy doesn't need and SHRINKS at large font scales, so
+  // the text never collides with the footer — the hero is the flexible party,
+  // the words are not.
+  hero: {
+    flex: 1,
+    minHeight: 0,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  pager: {
+    flexGrow: 0,
+  },
   footer: {
     gap: spacing.lg,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
+    paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
+  },
+  // Position on the left, the named step on the right: the dots say "where in
+  // four", the label says "which part of the loop".
+  rail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stepSlot: {
+    // Fixed slot: the four labels are absolute inside it and cross-fade in
+    // place, so the longest name never nudges the dots across the row.
+    minWidth: sizes.touchTarget * 2,
+    height: typography.label.lineHeight,
+  },
+  step: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  stepNumber: {
+    ...typography.label,
+    fontFamily: typography.plate.fontFamily,
+    color: colors.primary,
+  },
+  stepName: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
   },
   // Mirrors shared/ui Button's primary variant — including minHeight (not
   // height) + padding so the label can grow with dynamic type.

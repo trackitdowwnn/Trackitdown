@@ -43,7 +43,8 @@ export {
 
 /** Below this degree delta we treat two regions as the same VIEW (point and
  *  zoom) — a prop update merely echoing where the user already is starts no
- *  fly-to, but a zoom change at the same centre (cluster tap) still animates. */
+ *  fly-to, but a zoom change at the same centre (the sheet-tracking zoom) still
+ *  animates. */
 const SAME_POINT_EPSILON = 1e-6;
 
 export interface AppMapExtraProps {
@@ -55,6 +56,17 @@ export interface AppMapExtraProps {
    *  the map can't be dragged and doesn't fight a parent ScrollView. Default
    *  true (the fully interactive picker/search map). */
   interactive?: boolean;
+  /**
+   * Draw the OS blue user dot. Default false.
+   *
+   * ⚠️ ONLY pass true when foreground location is ALREADY granted. BOTH
+   * platforms can raise the OS permission dialog from this prop — on Android
+   * via setMyLocationEnabled, on iOS via MapKit's own authorization request
+   * when the status is undetermined — and a map that merely mounted must never
+   * ask for anything. The native "my location" BUTTON stays off regardless;
+   * surfaces draw their own control.
+   */
+  showsUserLocation?: boolean;
 }
 
 export function AppMap({
@@ -65,6 +77,7 @@ export function AppMap({
   children,
   onPress,
   interactive = true,
+  showsUserLocation = false,
 }: MapComponentProps & AppMapExtraProps) {
   const mapRef = useRef<MapView>(null);
   // The region the map currently shows — lets us tell a prop-driven fly-to
@@ -96,6 +109,7 @@ export function AppMap({
       customMapStyle={mapStyle as unknown as MapView['props']['customMapStyle']}
       style={StyleSheet.absoluteFill}
       initialRegion={region}
+      showsUserLocation={showsUserLocation}
       showsMyLocationButton={false}
       toolbarEnabled={false}
       // Static-preview mode (post-detail "Last seen here"): every gesture off

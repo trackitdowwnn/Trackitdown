@@ -4,7 +4,9 @@
  *        details" lists EVERY fact in-page with muted "Not provided" gap rows
  *        at the end (no Show-all tap), the sighting-activity line
  *        stays HIDDEN while the aggregate is zero (dormant), the SafetyNotice
- *        is always present, and the report row fires its callback.
+ *        is always present, the report row fires its callback, and
+ *        "Distinctive features" renders one card per mark, truncating past
+ *        three behind a "Show all N features" toggle.
  * WHY:   The conditional gating is the section's contract; the sighting
  *        section's face split is also SAFETY — the body must hand the
  *        sightings feature the correct isOwner, because that flag decides
@@ -317,5 +319,97 @@ describe('owner per-section edit pencils', () => {
     // Theft + marks sections render for the owner even with no data yet.
     expect(getByTestId('edit-theft-context')).toBeTruthy();
     expect(getByTestId('edit-distinctive-features')).toBeTruthy();
+  });
+});
+
+describe('distinctive features', () => {
+  const mark = (n: number) => ({
+    photoUrl: `https://cdn.example/mark-${n}.jpg`,
+    description: `Mark ${n}`,
+  });
+
+  // Each card is ONE accessible object labelled from its description, so
+  // counting the labels counts the rendered cards.
+  const CARD_LABEL = /^Distinctive feature: /;
+
+  it('renders one card per feature, each a single labelled object', async () => {
+    const { getByText, getAllByLabelText, queryByText } = await renderBody({
+      ...base,
+      distinctiveFeatures: [mark(1), mark(2)],
+    });
+    expect(getByText('Distinctive features')).toBeTruthy();
+    expect(getAllByLabelText(CARD_LABEL)).toHaveLength(2);
+    expect(getByText('Mark 1')).toBeTruthy();
+    expect(getByText('Mark 2')).toBeTruthy();
+    // At or below the preview count the list is never collapsed.
+    expect(queryByText(/^Show all/)).toBeNull();
+  });
+
+  it('collapses past the third card behind a "Show all N features" button', async () => {
+    const { getByText, getAllByLabelText, queryByText } = await renderBody({
+      ...base,
+      distinctiveFeatures: [mark(1), mark(2), mark(3), mark(4), mark(5)],
+    });
+    expect(getAllByLabelText(CARD_LABEL)).toHaveLength(3);
+    expect(getByText('Mark 3')).toBeTruthy();
+    expect(queryByText('Mark 4')).toBeNull();
+    expect(queryByText('Mark 5')).toBeNull();
+    expect(getByText('Show all 5 features')).toBeTruthy();
+  });
+
+  it('reveals every card when the show-all button is pressed, then collapses again', async () => {
+    const { getByText, getAllByLabelText, queryByText } = await renderBody({
+      ...base,
+      distinctiveFeatures: [mark(1), mark(2), mark(3), mark(4), mark(5)],
+    });
+
+    await act(async () => {
+      fireEvent.press(getByText('Show all 5 features'));
+    });
+    expect(getAllByLabelText(CARD_LABEL)).toHaveLength(5);
+    expect(getByText('Mark 5')).toBeTruthy();
+    expect(getByText('Show fewer features')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByText('Show fewer features'));
+    });
+    expect(getAllByLabelText(CARD_LABEL)).toHaveLength(3);
+    expect(queryByText('Mark 4')).toBeNull();
+    expect(getByText('Show all 5 features')).toBeTruthy();
+  });
+
+  it('shows every card and no button at the preview count', async () => {
+    const { getAllByLabelText, queryByText } = await renderBody({
+      ...base,
+      distinctiveFeatures: [mark(1), mark(2), mark(3)],
+    });
+    expect(getAllByLabelText(CARD_LABEL)).toHaveLength(3);
+    expect(queryByText(/^Show all/)).toBeNull();
+  });
+
+  // N=4 is the case where the button hides exactly one card — the threshold's
+  // least flattering shape, and the one most likely to be regressed away.
+  it('still collapses at four features, hiding exactly one', async () => {
+    const { getAllByLabelText, getByText } = await renderBody({
+      ...base,
+      distinctiveFeatures: [mark(1), mark(2), mark(3), mark(4)],
+    });
+    expect(getAllByLabelText(CARD_LABEL)).toHaveLength(3);
+    expect(getByText('Show all 4 features')).toBeTruthy();
+  });
+
+  // Context-v2 payloads carry a stable row id (the handle a sighting's
+  // confirmed_feature_ids references); older cached ones don't. Both key paths
+  // must render, and marks sharing a photo must not collide.
+  it('renders marks with and without stable ids, including a shared photo', async () => {
+    const { getAllByLabelText } = await renderBody({
+      ...base,
+      distinctiveFeatures: [
+        { id: 'f1', photoUrl: 'https://cdn.example/same.jpg', description: 'Mark 1' },
+        { id: 'f2', photoUrl: 'https://cdn.example/same.jpg', description: 'Mark 2' },
+        mark(3),
+      ],
+    });
+    expect(getAllByLabelText(CARD_LABEL)).toHaveLength(3);
   });
 });

@@ -100,12 +100,35 @@ describe('MoneySlider rendering', () => {
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
     expect(getByText(/they receive £190 and our platform fee is £10/)).toBeTruthy();
-    expect(getByText(/£200 is held securely/)).toBeTruthy();
+    expect(getByText(/£200 is held when your post goes live/)).toBeTruthy();
+  });
+
+  // The refund conditions must read COMPLETELY. The line used to say "refunded
+  // if you cancel or recover it yourself", omitting expiry — the most likely
+  // ending for most posts — which buried the point: the money comes back
+  // unless a spotter actually finds the car.
+  it('names every way the money comes back, not just cancelling', async () => {
+    const { getByText } = await render(
+      <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
+    );
+    expect(getByText(/only pay it if a spotter finds your car/)).toBeTruthy();
+    expect(getByText(/cancel, recover it yourself, or the post expires/)).toBeTruthy();
+  });
+
+  // Our Terms promise "that deduction is shown to you before you pay", and
+  // payment is Stripe's PaymentSheet — so this panel is the only surface that
+  // can keep it. The line said "minus card processing costs" with no figure.
+  it('quotes the actual refund figure, not just that a fee exists', async () => {
+    const { getByText } = await render(
+      <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
+    );
+    // 20000 − (round(20000 × 0.015) + 20) = 19680
+    expect(getByText(/£196\.80 comes back to you/)).toBeTruthy();
   });
 
   it('hides the panel when no copy is provided', async () => {
     const { queryByText } = await render(<MoneySlider {...bountyProps} valuePence={20000} />);
-    expect(queryByText(/held securely/)).toBeNull();
+    expect(queryByText(/is held when your post goes live/)).toBeNull();
   });
 
   it('clamps an out-of-range controlled value', async () => {

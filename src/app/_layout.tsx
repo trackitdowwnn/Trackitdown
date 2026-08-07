@@ -29,6 +29,7 @@ import { SaveYourCarSheet } from '@/features/garage';
 // the auth gate and the UI barrel, so keeping it out of '@/features/notifications'
 // lets plain api modules import that barrel without inheriting all of it. Same
 // call as AppMap vs the shared/ui barrel.
+import { AlertNudgeSheet } from '@/features/notifications/components/AlertNudgeSheet';
 import { NotificationsHost } from '@/features/notifications/components/NotificationsHost';
 import { CollectionPickerSheet } from '@/features/watchlist';
 import { ToastProvider } from '@/shared/ui';
@@ -125,6 +126,12 @@ export default function RootLayout() {
                   cannot live on the screen that triggers it. Inert until an
                   intent is raised. */}
               <SaveYourCarSheet />
+              {/* Offers an alert area to someone who has just finished their
+                  third listing — same reasoning again: the post route unmounts
+                  as they back out, so the sheet cannot live there. It yields
+                  while the garage offer above is pending. Inert until an intent
+                  is raised. */}
+              <AlertNudgeSheet />
               {/* "Change" on the save toast lands here. Root-mounted for the
                   same reason again: the toast outlives the feed cell whose
                   bookmark raised it. Inert until an intent is raised. */}

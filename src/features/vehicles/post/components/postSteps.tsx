@@ -19,6 +19,7 @@
 import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { useAlertReach } from '@/features/notifications';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import {
@@ -343,14 +344,38 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
     (bountyAmountPence: number) => setAnswers({ bountyAmountPence }),
     [setAnswers],
   );
+  const bountyPence = answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE;
+
+  // WHY the reach line lives here and not inside MoneySlider: the slider is a
+  // shared money control and must not learn what an alert or a spotter is. It
+  // takes a finished sentence.
+  //
+  // The bounty step runs after when-where, so the coordinates are already in
+  // `answers`. Null until that step resolves, which the hook handles.
+  const reach = useAlertReach(
+    answers.location?.latitude ?? null,
+    answers.location?.longitude ?? null,
+    bountyPence,
+  );
+
   return (
     <MoneySlider
       label="Bounty"
-      valuePence={answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE}
+      valuePence={bountyPence}
       onChangePence={onChangePence}
       minPence={MIN_BOUNTY_PENCE}
       maxPence={MAX_BOUNTY_PENCE}
       panel={defaultBountyPanelCopy}
+      // "Reaches", never "notifies". The count is zones matching TODAY; push
+      // registration, the rolling daily cap and the per-post dedupe all sit
+      // between it and a notification anyone receives. Null (too few to report,
+      // or no location yet) renders nothing at all — an owner hours from a
+      // theft must not be told "0 spotters are watching".
+      footnote={
+        reach === null
+          ? undefined
+          : `Reaches ${reach} ${reach === 1 ? 'spotter' : 'spotters'} watching this area`
+      }
     />
   );
 }

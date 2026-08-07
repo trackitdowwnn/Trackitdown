@@ -122,6 +122,28 @@ drops off all public surfaces. Enforced server-side by the feed RPCs via
 `recovered_at`; ordinary public reads remain active-only under RLS.
 (Approved 2026-07-11 with the home-feed feature.)
 
+**Owners never see their own post on the discovery surfaces.** The feed, its
+"Near you" pagination, the map and the map's result count all exclude the
+caller's own listings (`get_home_feed`, `get_nearby_posts`, `search_posts`,
+`search_posts_count`, via `owner_id is distinct from auth.uid()` — `is
+distinct from`, never `<>`, which would empty every surface for logged-out
+browsers). The surfaces are for finding OTHER people's cars; an owner's own
+listing there is noise, and a partial rule is worse than none — a post absent
+from page 1 and back on page 2 reads as a glitch. Accepted cost: an owner
+cannot find their own car on the map. Their own case is followed through the
+post's OWNER-ONLY sighting trail, which is a different surface with its own
+RPC and is unaffected. (Approved 2026-08-06; extended from feed-only to the
+map the same day.)
+
+**Search criteria are matched case-insensitively.** `search_posts` and
+`search_posts_count` compare make/model/colour as `lower(btrim(...))` on both
+sides, identically to `match_alert_zones` — search and alerts must never
+disagree about what "a BMW" means. This is load-bearing because
+`posts.make/model/colour` have no CHECK and no normalisation: the owner's typed
+"bmw" must match the picker's canonical "BMW", or their stolen car is invisible
+to the spotter who asked for exactly that car. (Regressed and repaired
+2026-08-07; guarded by CHECK 22 in `home_feed_verification.sql`.)
+
 **Watchlist visibility carve-out.** A user who watched a post while it was
 public may learn its OUTCOME after it closes — watching a car and never
 hearing it was found is the failure mode the watchlist exists to prevent:

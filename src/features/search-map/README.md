@@ -4,9 +4,16 @@ WHAT: Owns the Explore tab: the **home feed** — an Airbnb-style sectioned
 feed of stolen-car posts near the user — and the **map search** (full map +
 list of active posts) that the feed's search pill, Map pill, and "See all"
 links navigate to.
-Primary actor: **spotter** (any signed-in user browsing); owners see their
-own posts here like anyone else. Read-only feature: never writes posts,
-never touches status or money.
+Primary actor: **spotter** (any signed-in user browsing). Every browse surface
+here EXCLUDES your own posts (2026-08-06) — the feed, its near_you pagination,
+and the map/search results and count. They are the one listing you can do
+nothing about, in the place cars you could help with should be. An owner
+follows their own case through the post page and the owner-only sighting trail
+map instead. The rule lives in SQL (`owner_id is distinct from auth.uid()` —
+never `<>`, which NULL-eliminates every row for anonymous callers); all four
+RPCs must stay in step, and CHECK 20/21 in
+`supabase/tests/home_feed_verification.sql` assert they do.
+Read-only feature: never writes posts, never touches status or money.
 
 > ## ✅ THE FEED HAS ITS PHOTOS (found 2026-08-03, fixed 2026-08-06)
 >
@@ -115,8 +122,21 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
 1. Full-bleed `AppMap` under everything; floating back button top-left.
 2. BOUNTY PINS — markers are near-black pill tags (the amount), not dots;
    the selected pin inverts to `surfaceInverse` (`components/MapPins.tsx`).
-3. CLUSTERING — supercluster (`lib/mapClustering.ts`) over the current
-   result set; clusters render as sage count bubbles; tapping zooms to fit.
+3. NO CLUSTERING (removed 2026-08-06) — every post in view gets its own
+   marker. supercluster used to collapse dense areas into count bubbles; the
+   pill/price split in item 7 does that job now, and a bubble was a tap that only
+   ever led to another tap. `lib/mapPins.ts` still CULLS to the viewport,
+   which is load-bearing: `result.posts` only refreshes when a search lands
+   (~600ms behind the gesture), so without it a pan keeps drawing markers the
+   user has already moved away from. Worst case is now
+   `VIEWPORT_POST_LIMIT` (100) simultaneous markers.
+   - **They mount in BATCHES, not all at once** (`hooks/useProgressivePins.ts`
+     + `revealPins`). The highest-ranked markers land in the first commit and
+     the long tail fills in ~20 per tick. Each marker holds `tracksViewChanges` open for
+     500ms as it rasterises, so a hundred in one commit is the precise Android
+     jank clustering used to hide. The reveal restarts on a landed SEARCH, not
+     on a pan — a pan re-culls posts whose markers are already mounted, and
+     resetting there would make visible markers disappear mid-gesture.
 4. PEEK CARD (pin ↔ card loop — definitive spec). Tapping a pin springs a
    floating card up from the bottom (~250ms Reanimated spring, translateY +
    fade); the card is a horizontal pager (snap paging, ~8px neighbour peek)
@@ -149,14 +169,96 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
    3 Series, £500 bounty — swipe for more results").
    (`components/MapCardPager.tsx`, `hooks/useMapSelection.ts`.)
 5. LIST-AS-SHEET — a persistent (non-modal) gorhom sheet at peek/half/full;
-   handle reads "N cars in this area" (server total); body is the full
-   VehicleCard list (`components/MapListSheet.tsx`).
-6. "SEARCH THIS AREA" — panning never auto-refreshes; a floating pill offers
-   to re-search the moved viewport (`hooks/useViewportPosts.ts`,
-   `lib/regionMath.ts` `movedEnough`).
+   handle reads "N cars in this area" (server total), or "Searching this
+   area…" while a re-search runs — it is the map's ONLY searching indicator,
+   which works because a search can only run when no card is up and the sheet
+   only hides when one is. The handle label is a TITLE (`typography.heading`,
+   `textPrimary`), not a caption — at peek this line is the entire sheet, and
+   the reference gives that slot a confident count. Body is the full
+   VehicleCard list, scrolled back to the top on each landed search
+   (`components/MapListSheet.tsx`).
+   - **It OPENS ITSELF to half on entry**, once, a beat after the first search
+     settles (`expandOnEntry`). Gated on the search rather than on mount so it
+     opens onto cars instead of skeletons, and the beat lets the fit-to-results
+     framing commit first — the rise then zooms out FROM the framed camera
+     rather than racing it. A user who drags the sheet before the beat elapses
+     cancels it; they have already said where they want it.
+6. RESULTS FOLLOW THE MAP — panning re-searches itself ~600ms after the map
+   settles (2026-08-06; there used to be a "Search this area" button, which
+   made the user do bookkeeping the app can do itself). Three things keep it
+   from being jumpy, and none is optional: `movedEnough` ignores nudges and
+   momentum drift; the debounce collapses a burst of hunting gestures into ONE
+   search at the final region; and it is PAUSED while a peek card is open, so
+   results never change under someone who is reading — the postponed search
+   runs when they close it. A failed refresh keeps the pins and says so in a
+   toast; the region stays unsearched so the next pan re-attempts by itself.
+   (`hooks/useViewportPosts.ts`, `lib/regionMath.ts` `movedEnough`.)
+7. EVERY MARKER SHOWS ITS PRICE (2026-08-07). There is no second tier. A
+   marker with no price on it reads as a GROUP — there is nothing else it
+   could be saying — so the price-less `mini` pin borrowed from the reference
+   was quietly claiming to be several cars; it was reported as grouping
+   four times in a day. The ink argument for it (a wall of price tags is
+   unreadable) was sound and beside the point.
+   - Overlapping pills are fine where overlapping dots were not: a pill has an
+     edge and a number, so a pile still reads as a pile of prices. The
+     reference piles them too (`docs/design-refs/map/`, shot 2).
+   - Markers that would stack are LEFT to stack. A marker is always drawn on
+     its car. Spreading them apart (`fanOutOverlaps`) shipped on 2026-08-07 and
+     was reverted the same day: keeping a constant on-screen gap needs a GROUND
+     offset proportional to the zoom span, so every fanned marker slid across
+     the map each time the camera settled, and moved further out the more you
+     zoomed out. Markers that move are worse than markers that overlap. Do not
+     reintroduce it without solving that; it is not a tuning problem.
+   - `keepMarkersOnScreen` survives the same critique because it moves the
+     marker's BOX (its anchor) and never its coordinate: the offset is bounded
+     by the marker's own width instead of growing with the zoom.
+   - Bounty rank survives for paint order (highest on top, so a tap in a crowd
+     hits the car worth tapping — equal zIndex between overlapping Android
+     markers is undefined) and for the assistive-tech cap (`AT_MARKER_LIMIT`).
+     ⚠️ The drawn set and the reachable set therefore DIFFER; the sheet is the
+     complete path and lists every car with more detail.
+8. CAMERA INSETS, AND THE SHEET DRIVES THE ZOOM — the sheet and the card pager
+   cover the bottom of the map, so everything that FRAMES something (card
+   follow, recentre, the sort anchor, the opening frame) goes through
+   `visibleRegion`/`cameraForVisible` and frames into the band the user can
+   actually see. The insets TRACK THE SHEET's snap point, so raising the sheet
+   zooms the map out and lowering it zooms back in. Reported via gorhom's
+   `onAnimate` (as the move starts) rather than `onChange` (~250ms later), so
+   map and sheet read as one gesture.
+   - **The zoom uses a DIFFERENT inset from the framing** —
+     `zoomInsetsForSheet` / `sheetZoomFraction`, not `insetsForSheet`. Framing
+     must dodge the sheet or it centres results behind it; the zoom must not,
+     or it is far too aggressive. Measured off `docs/design-refs/map/` (the
+     same map at two snap positions): the reference's camera scale between
+     them is 0.59, where holding the ground exactly would give 0.50 — it
+     frames the whole map at PEEK and insets only by the rise above it. The
+     two insets never conflict because `handleSheetSnap` applies its one on
+     both sides of the move, so only the ratio survives and a round trip
+     returns to the identical camera.
+   Deliberately NOT react-native-maps'
+   `mapPadding`: that changes what `onRegionChangeComplete` reports, and
+   differently per platform, which would desync the searched bbox from the
+   drawn map on one OS only.
+9. RECENTRE — a top-right control flies to the device position at the current
+   zoom. It asks for permission only from its own onPress; the map never
+   cold-fires the OS dialog, and the blue dot is drawn only when permission is
+   already granted (`components/MapRecentreButton.tsx`).
+
+**Ordering safety.** The list is sorted by distance from the searched region,
+which now moves on every settled pan — and selection is derived from the list
+INDEX, so a reorder mid-read would point the pager at a different car than the
+one on screen. `hooks/useSortAnchor.ts` freezes the anchor while a card is
+open. Pausing the search protects MEMBERSHIP; freezing the anchor protects
+ORDER; a selected card needs both.
 
 **Entry** — the Map/search pill frames the feed's resolved location at its
-radius; "See all → <Area>" forward-geocodes the town and centres there.
+radius; "See all → <Area>" forward-geocodes the town and centres there. Those
+give the map somewhere to START, but the camera then RE-FRAMES ONCE around the
+posts the first search returns (2026-08-06): a fixed radius opens nearly empty
+in one place and crowded in another, and framing what actually came back is
+honest in both. Once only, guarded by a ref — it must never re-fire when an
+auto-search lands new results under someone mid-browse. Empty results keep the
+entry region; framing nothing would zoom to a point.
 
 **Data** — RPC `search_posts(min_lat, min_lng, max_lat, max_lng, criteria,
 limit)` → `{ total, posts }` with exact per-post `lat`/`lng`, and the cheap
@@ -208,7 +310,10 @@ sheet; empty: "No stolen cars in this area" good-news EmptyState; error:
 **Logging** — `map_search_area` (bbox SPANS only, never corners, plus the
 criteria KEY names used — never their values), `search_apply` (criteria key
 presence + the coarse distance band, no coordinates, no plate),
-`map_pin_select` (postId), `map_cluster_zoom` (clusterId),
+`map_pin_select` (postId), `map_recentre` (no payload),
+`map_sheet_snap` (from, to — the sheet drives the camera, so without this a
+drag and a pinch are indistinguishable in the log, and only one of them may
+search),
 `map_card_view` (postId, index, trigger: pin | swipe),
 `map_card_swipe` (fromIndex, toIndex). No coordinates in logs.
 

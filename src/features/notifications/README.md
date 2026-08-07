@@ -150,7 +150,7 @@ spotter who mutes the app is worth zero alerts forever.
   (`summariseAlert`), a pause switch, edit and delete, plus "Create an alert"
   (disabled at the cap, which says so). Reached from **both** Profile rows
   ("Alert location & radius" and "Notifications" are one setting in the user's
-  head) and from the Explore nudge card.
+  head) and from the alert-area sheet.
   It owns the **per-user** concerns that don't belong on any single alert: the
   permission primer and the notifications-off notice. An alert can't fix a
   phone-level block, and asking five times would be absurd.
@@ -162,9 +162,22 @@ spotter who mutes the app is worth zero alerts forever.
   loader until the alert arrives: `update_my_alert` is a FULL REPLACE, so
   mounting the wizard blank and re-seeding underneath the user would offer to
   erase their criteria.
-- **AlertNudgeCard** — one-time dismissible card in the Explore feed for members
-  with no alerts. Sits below the existing feed cards and only when they're
-  hidden; three stacked cards is a wall.
+- **AlertNudgeSheet** — the one-time offer of an alert area, for members with
+  none. Mounted at the app root and **earned, not scheduled**: it fires as
+  someone LEAVES their third listing, because three listings opened is the
+  cheapest honest signal that they are watching cars near them, and the exit is
+  the moment that costs them nothing (the same rule as the garage's exit sheet
+  — see `features/garage/README.md`). A timer was considered and rejected: a
+  clock doesn't know whether you're mid-scroll or reading a listing.
+
+  It was an inline feed card until 2026-08-06. The card was easy to scroll past
+  and, at full size, pushed the first real content off the screen; setting an
+  alert area is the app's core loop, so the offer earns one interruption
+  instead. The post-view COUNT persists across sessions
+  (`alertNudgeStorage.ts`); the intent that fires the sheet does not
+  (`alertNudgeIntent.ts`), so it can never open out of nowhere on a cold start.
+  It yields while the garage's exit sheet is pending — two root sheets would
+  stack.
 
 ## Push infrastructure
 

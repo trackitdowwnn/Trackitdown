@@ -24,8 +24,6 @@ export const sizes = {
   progressPill: 24,
   /** Minimum touch target (DESIGN_SYSTEM Accessibility). */
   touchTarget: 44,
-  /** FullscreenLoader wave dot. */
-  loaderDot: 12,
   /** MoneySlider: thumb diameter and rail thickness (the touchable row is
    *  padded to touchTarget; these are the drawn sizes). */
   sliderThumb: 28,
@@ -95,6 +93,10 @@ export const sizes = {
   /** Compact confirm-screen map (report-sighting "Check and send") — placement
    *  context, deliberately smaller than the headline mapPreview. */
   mapConfirmPreview: 160,
+  /** Distinctive-feature card thumbnail (post detail 5b) — the mark's photo
+   *  inset in its row, at the 4:3 the photo grid uses (height via
+   *  aspectRatio, so the crop can never drift from the width). */
+  featureThumb: 112,
   /** Sighting-timeline drawn geometry (researched treatment, 2026-07-30):
    *  a 24px node column carrying a 2px rail; 12px sighting dots with a 2px
    *  page-colour ring so they sit crisply ON the rail; 16px newest dot;

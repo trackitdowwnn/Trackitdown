@@ -215,6 +215,13 @@ export interface SearchSheetProps {
   onApply: (criteria: SearchCriteria, region: GeoRegion) => void;
   /** Dismiss without applying (prior results stay). */
   onClose: () => void;
+  /** The feed's current area name, shown on the change-area row. Omit the row
+   *  entirely (with onChangeArea) when browsing nationally. */
+  areaLabel?: string | null;
+  /** Open the area picker. Location lives HERE rather than on a feed section
+   *  header, so every section chevron can mean "see this on the map"
+   *  (2026-08-06). Presence of this AND areaLabel renders the row. */
+  onChangeArea?: () => void;
 }
 
 export function SearchSheet({
@@ -223,6 +230,8 @@ export function SearchSheet({
   sourceRect,
   onApply,
   onClose,
+  areaLabel,
+  onChangeArea,
 }: SearchSheetProps) {
   // Opt out of the React Compiler: the `progress` shared value is mutated from
   // handlers/effects, which the compiler's immutability model forbids.
@@ -377,6 +386,27 @@ export function SearchSheet({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
+          {/* WHERE, first and always visible — not an accordion section: it
+              navigates away to the picker rather than editing the draft, so
+              collapsing it beside the filter cards would misrepresent it. */}
+          {areaLabel && onChangeArea ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Change area. Currently ${areaLabel}`}
+              onPress={onChangeArea}
+              style={({ pressed }) => [styles.areaRow, pressed && styles.areaRowPressed]}
+              testID="search-change-area"
+            >
+              <View style={styles.areaText}>
+                <Text style={styles.areaLabel}>Area</Text>
+                <Text style={styles.areaValue} numberOfLines={1}>
+                  {areaLabel}
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={sizes.iconSm} color={colors.textSecondary} />
+            </Pressable>
+          ) : null}
+
           <SearchSection
             title="Vehicle"
             summary={vehicleSummary(criteria)}
@@ -623,6 +653,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xxl,
     gap: spacing.md,
+  },
+  // --- Where (navigates out; deliberately NOT an accordion card) ---
+  areaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: sizes.touchTarget,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  areaRowPressed: {
+    backgroundColor: colors.surfaceSubtle,
+  },
+  areaText: {
+    flex: 1,
+  },
+  areaLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+  },
+  areaValue: {
+    ...typography.body,
+    color: colors.textPrimary,
   },
   // --- Accordion cards ---
   card: {
