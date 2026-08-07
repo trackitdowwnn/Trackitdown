@@ -30,7 +30,7 @@ import { Bookmark } from 'lucide-react-native';
 import { useRequireAuth } from '@/features/auth';
 import { exitCheck, useDeactivatePost } from '@/features/payments';
 import { useWatchToggle } from '@/features/watchlist';
-import { formatPounds } from '@/shared/lib';
+import { estimateRefundPence, formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import {
@@ -57,7 +57,6 @@ import { usePostDetail } from '../hooks/usePostDetail';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { closedStateCopy } from '../lib/closedState';
 import { buildSharePayload } from '../lib/postShare';
-import { estimateRefundPence } from '../lib/refundEstimate';
 import type { PostDetail, PostDetailResult } from '../types';
 
 const log = createLogger('vehicles');

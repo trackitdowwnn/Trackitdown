@@ -35,6 +35,8 @@ export { reportInboxBadge, resetInboxBadge } from './lib/inboxBadge';
 // deps are React, the api layer and useSession — imported by MODULE path, not
 // the auth barrel, precisely to keep this file within the budget below.
 export { useMyAlerts, invalidateMyAlerts, type MyAlertsState } from './hooks/useMyAlerts';
+// The posting wizard's bounty step shows how many spotters a bounty reaches.
+export { useAlertReach } from './hooks/useAlertReach';
 
 // ---------------------------------------------------------------------------
 // THIS BARREL IS DELIBERATELY LIGHT. chatApi and sightingApi import it just to

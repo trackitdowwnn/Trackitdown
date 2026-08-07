@@ -47,7 +47,7 @@ import { WatchToggle } from '@/features/watchlist';
 import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { formatDateLabel, formatPounds } from '@/shared/lib';
+import { estimateRefundPence, formatDateLabel, formatPounds } from '@/shared/lib';
 import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
 import {
   AppImage,
@@ -62,7 +62,6 @@ import {
 } from '@/shared/ui';
 
 import { buildCarDetailRows } from '../lib/carDetails';
-import { estimateRefundPence } from '../lib/refundEstimate';
 import { theftContextLines } from '../lib/theftContext';
 import type { PostDetail } from '../types';
 // Direct import (not the ./editors barrel) so PostDetailBody doesn't pull the

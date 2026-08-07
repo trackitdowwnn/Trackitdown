@@ -3064,6 +3064,121 @@ end $$;
 
 
 -- -----------------------------------------------------------------------------
+-- CHECK 45 -- get_alert_reach: the count the bounty slider shows an owner.
+--
+-- It answers "how many more spotters does a higher bounty reach", which is the
+-- one honest argument for raising it. Four properties, and three of them are
+-- SAFETY rather than product -- this counts rows describing other people's
+-- home-ish points (SECURITY_AND_TRUST section 3):
+--   (a) the count RISES with the bounty (the whole point);
+--   (b) small counts report 0, because a small count is the identifying one --
+--       and "2 spotters are watching" is also what we would least want to hand
+--       a thief;
+--   (c) the caller's OWN zone never counts;
+--   (d) two points inside one ~1km grid cell give the SAME answer, so the
+--       function cannot resolve zone density more finely than the zones are
+--       stored.
+-- (20260807120000_alert_reach_count.sql)
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  -- Manchester, the seed's centre of gravity.
+  c_lat constant double precision := 53.4808;
+  c_lng constant double precision := -2.2426;
+  v_low     integer;
+  v_high    integer;
+  v_self    integer;
+  v_near    integer;
+  v_dedup   integer;
+  v_paused  uuid[];
+begin
+  -- The seed ships alert zones of its own, and the count is DISTINCT BY USER,
+  -- so a seed zone belonging to one of the users below would keep them counted
+  -- after their test zone is paused -- which is correct behaviour and would
+  -- make this check assert nothing. Neutralise the pre-existing zones for the
+  -- duration and restore them at the end. Safe: a do-block is one transaction,
+  -- so a raised assertion rolls this back too.
+  select array_agg(id) into v_paused from public.alert_zones where enabled;
+  update public.alert_zones set enabled = false where id = any(coalesce(v_paused, '{}'));
+
+  -- Five OTHER spotters, all covering the point, with rising thresholds. At
+  -- 50,000 pence only two clear it; at 300,000 all five do.
+  insert into public.alert_zones (user_id, name, point, radius_m, enabled, approximate, min_bounty_pence)
+  values
+    ('22222222-2222-2222-2222-222222222222', 'CHECK 45 a',
+     ST_SetSRID(ST_MakePoint(c_lng, c_lat), 4326)::geography, 16093, true, false, 5000),
+    ('33333333-3333-3333-3333-333333333333', 'CHECK 45 b',
+     ST_SetSRID(ST_MakePoint(c_lng, c_lat), 4326)::geography, 16093, true, false, 50000),
+    ('44444444-4444-4444-4444-444444444444', 'CHECK 45 c',
+     ST_SetSRID(ST_MakePoint(c_lng, c_lat), 4326)::geography, 16093, true, false, 100000),
+    ('55555555-5555-5555-5555-555555555555', 'CHECK 45 d',
+     ST_SetSRID(ST_MakePoint(c_lng, c_lat), 4326)::geography, 16093, true, false, 200000),
+    ('66666666-6666-6666-6666-666666666666', 'CHECK 45 e',
+     ST_SetSRID(ST_MakePoint(c_lng, c_lat), 4326)::geography, 16093, true, false, 300000);
+
+  -- Caller is Alex, who holds no zone here.
+  perform set_config('request.jwt.claims',
+                     json_build_object('sub', '11111111-1111-1111-1111-111111111111')::text, true);
+
+  -- (b) THE FLOOR. Two zones clear 50,000 -- below the reportable minimum, so
+  -- the honest answer to the caller is nothing at all, not "2".
+  v_low := public.get_alert_reach(c_lat, c_lng, 50000);
+  if v_low <> 0 then
+    raise exception 'CHECK 45 FAILED: a reach of 2 reported as % -- small counts must floor to 0, they are the identifying ones', v_low;
+  end if;
+
+  -- (a) THE POINT OF THE FEATURE. All five clear 300,000.
+  v_high := public.get_alert_reach(c_lat, c_lng, 300000);
+  if v_high <> 5 then
+    raise exception 'CHECK 45 FAILED: expected 5 spotters at a 300,000p bounty, got % -- the count must RISE with the bounty or the slider has nothing to say', v_high;
+  end if;
+
+  -- (d) GRID SNAP. ~0.003 degrees is a few hundred metres: inside one cell, so
+  -- the answer must not move. If this ever differs, the function has become a
+  -- finer-grained oracle over strangers' zones than the zones themselves are.
+  v_near := public.get_alert_reach(c_lat + 0.003, c_lng + 0.003, 300000);
+  if v_near <> v_high then
+    raise exception 'CHECK 45 FAILED: two points in the same ~1km cell returned % and % -- the input snap is not containing probe precision', v_high, v_near;
+  end if;
+
+  -- (c) NEVER COUNT YOURSELF. Beth holds one of the five zones; as the caller
+  -- she must see four, which is below the floor, so 0.
+  perform set_config('request.jwt.claims',
+                     json_build_object('sub', '22222222-2222-2222-2222-222222222222')::text, true);
+  v_self := public.get_alert_reach(c_lat, c_lng, 300000);
+  if v_self <> 0 then
+    raise exception 'CHECK 45 FAILED: the caller''s own zone was counted (got %, expected 4 -> floored to 0)', v_self;
+  end if;
+
+  -- A paused zone reaches nobody, so it must not be counted either.
+  update public.alert_zones set enabled = false
+   where name = 'CHECK 45 a';
+  perform set_config('request.jwt.claims',
+                     json_build_object('sub', '11111111-1111-1111-1111-111111111111')::text, true);
+  if public.get_alert_reach(c_lat, c_lng, 300000) <> 0 then
+    raise exception 'CHECK 45 FAILED: a paused zone was counted -- it reaches nobody';
+  end if;
+
+  -- A spotter with TWO zones over the same point is one person, so they must
+  -- count once. The number is shown to an owner as "reaches N spotters"; if it
+  -- counted zones it would overstate the audience, which on a money screen is
+  -- the direction that matters.
+  update public.alert_zones set enabled = true where name = 'CHECK 45 a';
+  insert into public.alert_zones (user_id, name, point, radius_m, enabled, approximate, min_bounty_pence)
+  values ('22222222-2222-2222-2222-222222222222', 'CHECK 45 a2',
+          ST_SetSRID(ST_MakePoint(c_lng, c_lat), 4326)::geography, 16093, true, false, 5000);
+  v_dedup := public.get_alert_reach(c_lat, c_lng, 300000);
+  if v_dedup <> 5 then
+    raise exception 'CHECK 45 FAILED: a spotter holding two zones counted as % people, expected 5 -- "reaches N spotters" must count PEOPLE, not zones', v_dedup;
+  end if;
+
+  perform set_config('request.jwt.claims', '', true);
+  delete from public.alert_zones where name like 'CHECK 45 %';
+  update public.alert_zones set enabled = true where id = any(coalesce(v_paused, '{}'));
+  raise notice 'CHECK 45 passed: reach rises with the bounty, floors small counts, counts people not zones, excludes self and paused, and cannot be probed below the grid';
+end $$;
+
+-- -----------------------------------------------------------------------------
 -- Housekeeping: remove everything this file created so the seed state is
 -- unchanged for the other suites and for a re-run. Posts go LAST -- the
 -- sighting, the thread and the messages cascade from them.
