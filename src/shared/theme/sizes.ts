@@ -120,6 +120,22 @@ export const sizes = {
   mapPinOrigin: 12,
   mapPinConfirm: 16,
   mapPinRing: 2,
+  /** The stats screen's sightings-per-day chart. `Min` is the floor a day WITH
+   *  sightings never draws below — without it a quiet day beside a busy one
+   *  rounds to a hairline and reads as empty. `Empty` is the stub an EMPTY day
+   *  draws: the gap between bursts is the information, so the quiet days have
+   *  to form a visible axis rather than leaving the busy ones floating.
+   *  `Gap` is 2 on purpose — the only subdivision of the 4pt scale here, the
+   *  same exception indexRailLetterPad takes, because 4pt gaps across 28 bars
+   *  leave the bars thinner than the spaces and the row reads as a comb. */
+  sparklineHeight: 64,
+  sparklineMin: 4,
+  sparklineEmpty: 2,
+  sparklineGap: 2,
+  /** Reserved heights for the stats screen's loading blocks, so the real
+   *  content lands in place instead of shifting the page under a reader. */
+  statsSkeletonHead: 96,
+  statsSkeletonBlock: 180,
   /** Non-interactive context pill height (timeline cards). */
   pillHeight: 24,
   /** The camera-as-step canvas (report-sighting photos step): viewfinder +

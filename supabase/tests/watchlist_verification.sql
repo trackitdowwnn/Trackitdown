@@ -669,6 +669,16 @@ begin
     -- asserted in notification_center_verification CHECK 7), so the property
     -- this check protects — no path by which anyone but the watcher reaches
     -- watch rows — still holds. Anything else appearing here is a finding.
+    --
+    -- ⚠️ 2026-08-07: get_post_stats was briefly added here so a listing's
+    -- Activity page could show its owner a watcher count. That was wrong and
+    -- the entry was removed. DOMAIN.md states the rule as "no owner-facing
+    -- surface ever exposes watcher rows, COUNTS, or existence" — a count is
+    -- named, and a comment in a test cannot amend the rulebook. The count is
+    -- also a live delta oracle rather than a static number: an owner controls
+    -- when their listing becomes reachable by a chosen person and can re-read
+    -- the figure on demand, so 0→1 attributes that watch with certainty.
+    -- If an owner-facing watcher count is ever wanted, amend DOMAIN.md first.
     and p.proname not in ('get_my_watchlist', 'claim_recovery_notifications');
   if v_n <> 0 then
     raise exception 'CHECK 8 FAILED: % other function(s) reference watchlist_items — a second query path exists', v_n;
