@@ -224,6 +224,10 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     router.push({ pathname: '/post-sightings', params: { postId } });
   }, [postId, router]);
 
+  const onViewStats = useCallback(() => {
+    router.push({ pathname: '/post-stats', params: { postId } });
+  }, [postId, router]);
+
   const onShowAbout = useCallback(() => {
     router.push({ pathname: '/post-about', params: { postId } });
   }, [postId, router]);
@@ -544,6 +548,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
           ref={manageRef}
           sightingCount={visiblePost.sightingCount}
           onViewSightings={onViewSightings}
+          onViewStats={onViewStats}
           onShare={() => onShare(visiblePost)}
           onEditCarDetails={
             canEditSafeSection(visiblePost) ? () => setEditing('car_details') : undefined

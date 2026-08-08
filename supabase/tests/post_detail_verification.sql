@@ -487,3 +487,316 @@ begin
   end if;
   raise notice 'CHECK 15 passed: Part-2 fields present in visible branch, absent from stub';
 end $$;
+
+-- -----------------------------------------------------------------------------
+-- CHECK 16 -- get_post_stats: what has happened to ONE of the caller's posts.
+--
+-- Three properties, and the first is the security one:
+--   (a) OWNERSHIP is the only gate. A post owned by someone else returns the
+--       SAME null as a post that does not exist -- no existence oracle, no
+--       status oracle. spotters_alerted describes OTHER USERS, so a leak here
+--       is a leak about people who never posted anything -- and there is
+--       deliberately NO watcher count at all (DOMAIN.md forbids exposing
+--       watcher rows, counts or existence to an owner).
+--   (b) The numbers are RIGHT: counts match the seeded rows, the sighting
+--       split adds up, and the per-day series is oldest-first.
+--   (c) A post with NOTHING returns zeros, not nulls. The screen renders
+--       arithmetic on these; a null would surface as "NaN days" to an owner
+--       whose car is missing.
+-- (20260807130000_post_stats.sql)
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  c_owner  constant uuid := '11111111-1111-1111-1111-111111111111';
+  c_other  constant uuid := '22222222-2222-2222-2222-222222222222';
+  v_post   uuid;
+  v_quiet  uuid;
+  v_few    uuid;
+  v_doc    jsonb;
+  v_days   jsonb;
+begin
+  insert into public.posts (owner_id, status, bounty_amount_pence, make, model,
+                            colour, last_seen_at, last_seen_area, last_seen_location, expires_at)
+  values (c_owner, 'active', 25000, 'Ford', 'Fiesta', 'Blue', now() - interval '5 days',
+          'Manchester', ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography,
+          now() + interval '85 days')
+  returning id into v_post;
+
+  -- A second post with no activity at all -- the common case, and the one an
+  -- owner is most likely to open.
+  insert into public.posts (owner_id, status, bounty_amount_pence, make, model,
+                            colour, last_seen_at, last_seen_area, last_seen_location, expires_at)
+  values (c_owner, 'active', 15000, 'Kia', 'Ceed', 'Red', now() - interval '1 day',
+          'Manchester', ST_SetSRID(ST_MakePoint(-2.2400, 53.4800), 4326)::geography,
+          now() + interval '89 days')
+  returning id into v_quiet;
+
+  -- Three sightings across two days, one of each status.
+  insert into public.sightings (post_id, spotter_id, status, created_at, area_label,
+                                location_unavailable)
+  values (v_post, c_other, 'unverified', now() - interval '3 days', 'Salford',   false),
+         (v_post, c_other, 'helpful',    now() - interval '3 days', 'Salford',   false),
+         (v_post, c_other, 'credited',   now() - interval '1 day',  'Stockport', false);
+
+  -- FIVE alerted spotters — every seeded profile except the post's own owner,
+  -- because the fan-out never alerts the owner (DOMAIN.md Notifications) and a
+  -- fixture that did would still pass if the count started including them.
+  -- Five is exactly the floor, so this pins the boundary from ABOVE; the
+  -- floor-post below pins it from beneath.
+  --
+  -- One of them appears TWICE, so the count is proven to mean PEOPLE.
+  --
+  -- Written to notifications, not push_sends: push_sends is purged globally at
+  -- 30 days while posts live 90, so it would decay to 0 mid-life (see the
+  -- migration header).
+  insert into public.notifications (user_id, kind, title, body, payload)
+  select u, 'alert', 'Stolen car near you', 'A car was reported nearby',
+         jsonb_build_object('type', 'alert', 'postId', v_post::text)
+  from unnest(array[
+    '22222222-2222-2222-2222-222222222222'::uuid,
+    '33333333-3333-3333-3333-333333333333'::uuid,
+    '44444444-4444-4444-4444-444444444444'::uuid,
+    '55555555-5555-5555-5555-555555555555'::uuid,
+    '66666666-6666-6666-6666-666666666666'::uuid
+  ]) u;
+  insert into public.notifications (user_id, kind, title, body, payload)
+  values (c_other, 'alert', 'Stolen car near you', 'dup',
+          jsonb_build_object('type', 'alert', 'postId', v_post::text));
+
+
+  -- A third post, alerted to FOUR people — one below the floor. Without this
+  -- the floor is dead weight to a reader: deleting it from the RPC breaks no
+  -- test, and "why floor a number about your own post?" is exactly the
+  -- optimisation someone will make. The answer is that an unfloored count is a
+  -- density oracle over strangers' alert zones for the price of posting a car
+  -- (get_alert_reach refuses the same question below 5).
+  insert into public.posts (owner_id, status, bounty_amount_pence, make, model,
+                            colour, last_seen_at, last_seen_area, last_seen_location, expires_at)
+  values (c_owner, 'active', 20000, 'Seat', 'Ibiza', 'White', now() - interval '2 days',
+          'Manchester', ST_SetSRID(ST_MakePoint(-2.2410, 53.4810), 4326)::geography,
+          now() + interval '88 days')
+  returning id into v_few;
+
+  insert into public.notifications (user_id, kind, title, body, payload)
+  select u, 'alert', 'Stolen car near you', 'A car was reported nearby',
+         jsonb_build_object('type', 'alert', 'postId', v_few::text)
+  from unnest(array[
+    '22222222-2222-2222-2222-222222222222'::uuid,
+    '33333333-3333-3333-3333-333333333333'::uuid,
+    '44444444-4444-4444-4444-444444444444'::uuid,
+    '55555555-5555-5555-5555-555555555555'::uuid
+  ]) u;
+
+  -- ⚠️ THE DECOY, and the most important row in this fixture.
+  --
+  -- `and kind = 'alert'` in the RPC is the ONLY line separating spotters_alerted
+  -- from a watcher count — the thing DOMAIN.md forbids in capitals and a draft
+  -- of this RPC already got wrong once. claim_recovery_notifications draws its
+  -- audience straight from the watch table (20260806100000:353) and
+  -- recoveryAnnounce.ts:109 writes it through notifyUsers as
+  -- { type:'recovery', postId } — the SAME payload key, on the SAME post, that
+  -- this count reads. closed_uncredited, not_credited, sighting and credited
+  -- rows all carry postId too. Without a decoy, deleting that predicate breaks
+  -- NO assertion: the suite stays green while an owner is shown watchers.
+  --
+  -- It sits on v_few, NOT on the main post, and the reason is worth keeping.
+  -- The decoy has to be someone the alerts did NOT reach, or the distinct-user
+  -- count is unchanged and the decoy proves nothing — the first version of this
+  -- row made exactly that mistake and passed against a deliberately broken RPC.
+  -- Only six profiles exist and v_post's five alerts already cover every one
+  -- except its owner, so there is no spare person there. v_few has four, which
+  -- leaves 6666… free.
+  --
+  -- The payoff: 4 alerted + this 1 watcher = 5, which is exactly AT the floor,
+  -- so dropping the kind filter turns v_few's answer from 0 into 5 and trips
+  -- the floor assertion below. One row, two properties.
+  insert into public.notifications (user_id, kind, title, body, payload)
+  values ('66666666-6666-6666-6666-666666666666'::uuid, 'recovery',
+          'Recovered', 'The car you were watching was found',
+          jsonb_build_object('type', 'recovery', 'postId', v_few::text));
+
+  -- And an alert addressed to the OWNER of v_few, so the RPC's
+  -- `user_id is distinct from auth.uid()` is load-bearing too. The fan-out
+  -- never alerts an owner, so this row is counterfactual by construction —
+  -- which is the point: without it, deleting that predicate breaks nothing and
+  -- the third belt rots out silently. With it, 4 real + 1 owner = 5 clears the
+  -- floor and the assertion below fails.
+  --
+  -- Three separate mutations now converge on that one assertion: losing the
+  -- floor, losing the kind='alert' watcher gate, and losing the self-exclusion.
+  insert into public.notifications (user_id, kind, title, body, payload)
+  values (c_owner, 'alert', 'Stolen car near you', 'counterfactual',
+          jsonb_build_object('type', 'alert', 'postId', v_few::text));
+
+  insert into public.threads (post_id, owner_id, spotter_id)
+  values (v_post, c_owner, c_other);
+  insert into public.messages (thread_id, sender_id, content)
+  select id, c_owner, 'hello' from public.threads where post_id = v_post;
+  insert into public.messages (thread_id, sender_id, content)
+  select id, c_other, 'hi' from public.threads where post_id = v_post;
+  -- open_thread writes one of these on every thread it creates, so WITHOUT a
+  -- system row here `and m.kind = 'user'` is untested: deleting it from the RPC
+  -- would break nothing, and every conversation would report a phantom message
+  -- that nobody sent. messages must still be 2.
+  -- sender_id NULL: messages_kind_sender_chk makes a system message with an
+  -- author unrepresentable (and a user message without one), which is how
+  -- open_thread writes its safety row too.
+  insert into public.messages (thread_id, sender_id, kind, content)
+  select id, null, 'system', 'Keep the conversation in the app.'
+  from public.threads where post_id = v_post;
+
+  -- (a) A NON-OWNER gets null, indistinguishable from a missing post.
+  perform set_config('request.jwt.claims',
+                     json_build_object('sub', c_other)::text, true);
+  if public.get_post_stats(v_post) is not null then
+    raise exception 'CHECK 16 FAILED: a non-owner received stats for someone else''s post -- these counts describe other users';
+  end if;
+  if public.get_post_stats(gen_random_uuid()) is not null then
+    raise exception 'CHECK 16 FAILED: a missing post did not return null';
+  end if;
+
+  -- (b) The owner's numbers.
+  perform set_config('request.jwt.claims',
+                     json_build_object('sub', c_owner)::text, true);
+  v_doc := public.get_post_stats(v_post);
+
+  if (v_doc ->> 'spotters_alerted')::int <> 5 then
+    raise exception 'CHECK 16 FAILED: spotters_alerted = %, expected 5 -- it must count PEOPLE, not notification rows, and 5 is exactly the floor', v_doc ->> 'spotters_alerted';
+  end if;
+
+  -- THE FLOOR, from beneath. Four alerted people must report 0, not 4.
+  -- Deleting the floor from the RPC has to break something.
+  --
+  -- THE DECOY LANDS HERE TOO. v_few also carries one kind='recovery' row for a
+  -- sixth person (a watcher). If `and kind = 'alert'` is ever dropped from the
+  -- RPC, this post counts 5 instead of 4, clears the floor, and answers 5 —
+  -- so this one assertion fails for either reason, and the message names both.
+  if (public.get_post_stats(v_few) ->> 'spotters_alerted')::int <> 0 then
+    raise exception 'CHECK 16 FAILED: 4 alerted spotters reported as % -- one of THREE predicates is gone: the floor (below 5 the answer is 0, or the count is a density oracle over strangers'' alert zones for the price of posting a car), the kind=''alert'' watcher gate (DOMAIN.md forbids showing an owner a watcher count outright), or the self-exclusion (the reader counting themselves)', public.get_post_stats(v_few) ->> 'spotters_alerted';
+  end if;
+
+  -- ⚠️ KNOWN GAP, recorded rather than papered over: the 5 asserted above IS
+  -- c_min_reportable, so an RPC that CLAMPED to the floor instead of flooring
+  -- from beneath (`if v_alerted >= 5 then v_alerted := 5`) would pass both
+  -- assertions. Pinning exactness needs a 7th person and only six profiles are
+  -- seeded, one of them the owner. If a profile is ever added to seed.sql,
+  -- alert a 6th user on v_post and assert 6 here.
+
+  -- The shape may not grow to PER-PERSON granularity (the function comment says
+  -- so in those words). The key-set check below is top-level only, so it would
+  -- miss spotters_alerted turning from a number into {total, by_person:[…]},
+  -- or a watcher field nested inside the day rows. These two close that.
+  if jsonb_typeof(v_doc -> 'spotters_alerted') <> 'number' then
+    raise exception 'CHECK 16 FAILED: spotters_alerted is a % -- it must stay a scalar count. A per-person breakdown is exactly what the RPC comment forbids', jsonb_typeof(v_doc -> 'spotters_alerted');
+  end if;
+  if v_doc::text ilike '%watch%' then
+    raise exception 'CHECK 16 FAILED: the payload mentions watching ANYWHERE, at any nesting depth: % -- DOMAIN.md forbids exposing watcher rows, counts or existence to an owner', v_doc;
+  end if;
+  -- THE EXACT PAYLOAD SHAPE. DOMAIN.md forbids exposing watcher rows, COUNTS or
+  -- existence to an owner, and a draft of this RPC returned one.
+  --
+  -- Asserting `not (v_doc ? 'watchers')` was the first attempt and it guarded a
+  -- single spelling: watchlist_count, watching, saved_by, followers and
+  -- interested all sailed past it. Pinning the WHOLE key set closes the rename
+  -- and catches any other silent growth besides — the client's .strict() zod
+  -- only catches that at app runtime, never in test:db.
+  --
+  -- Listed rather than sorted-and-compared on purpose: array_agg(... order by k)
+  -- would depend on the database collation, where '_' is ignored at the primary
+  -- level under en_US, so the expected literal would have to be written in an
+  -- order that looks wrong to a reader.
+  if exists (
+    select 1
+    from jsonb_object_keys(v_doc) k
+    where k not in ('spotters_alerted', 'created_at', 'expires_at',
+                    'sightings_total', 'sightings_unverified', 'sightings_helpful',
+                    'sightings_credited', 'first_sighting_at', 'last_sighting_at',
+                    'sightings_by_day', 'conversations', 'messages')
+  ) then
+    raise exception 'CHECK 16 FAILED: get_post_stats grew a field this suite has never reviewed: %. If it counts or implies WATCHERS, DOMAIN.md forbids it outright; anything else needs a privacy read before it reaches an owner', (select string_agg(k, ', ') from jsonb_object_keys(v_doc) k where k not in ('spotters_alerted', 'created_at', 'expires_at', 'sightings_total', 'sightings_unverified', 'sightings_helpful', 'sightings_credited', 'first_sighting_at', 'last_sighting_at', 'sightings_by_day', 'conversations', 'messages'));
+  end if;
+  if (select count(*) from jsonb_object_keys(v_doc)) <> 12 then
+    raise exception 'CHECK 16 FAILED: expected 12 payload keys, got % -- a field the screen reads was dropped: %', (select count(*) from jsonb_object_keys(v_doc)), v_doc;
+  end if;
+  if (v_doc ->> 'sightings_total')::int <> 3
+     or (v_doc ->> 'sightings_unverified')::int <> 1
+     or (v_doc ->> 'sightings_helpful')::int <> 1
+     or (v_doc ->> 'sightings_credited')::int <> 1 then
+    raise exception 'CHECK 16 FAILED: the sighting split does not add up: %', v_doc;
+  end if;
+  if (v_doc ->> 'conversations')::int <> 1 or (v_doc ->> 'messages')::int <> 2 then
+    raise exception 'CHECK 16 FAILED: conversations/messages wrong: %', v_doc;
+  end if;
+  if v_doc ->> 'first_sighting_at' is null or v_doc ->> 'last_sighting_at' is null then
+    raise exception 'CHECK 16 FAILED: first/last sighting missing with 3 sightings present';
+  end if;
+
+  -- Two distinct days, oldest first, and the busy day carries 2.
+  v_days := v_doc -> 'sightings_by_day';
+  if jsonb_array_length(v_days) <> 2 then
+    raise exception 'CHECK 16 FAILED: expected 2 sighting days, got %: %', jsonb_array_length(v_days), v_days;
+  end if;
+  if (v_days -> 0 ->> 'day') >= (v_days -> 1 ->> 'day') then
+    raise exception 'CHECK 16 FAILED: sightings_by_day is not oldest-first: %', v_days;
+  end if;
+  if (v_days -> 0 ->> 'count')::int <> 2 then
+    raise exception 'CHECK 16 FAILED: the two same-day sightings did not group: %', v_days;
+  end if;
+
+  -- (c) The quiet post: ZEROS, not nulls. The screen does arithmetic on these.
+  v_doc := public.get_post_stats(v_quiet);
+  if (v_doc ->> 'sightings_total')::int <> 0
+     or (v_doc ->> 'spotters_alerted')::int <> 0
+     or (v_doc ->> 'conversations')::int <> 0 then
+    raise exception 'CHECK 16 FAILED: a post with no activity did not return zeros: %', v_doc;
+  end if;
+  if jsonb_array_length(v_doc -> 'sightings_by_day') <> 0 then
+    raise exception 'CHECK 16 FAILED: a post with no sightings must return an EMPTY day series, not null: %', v_doc;
+  end if;
+  if v_doc ->> 'created_at' is null or v_doc ->> 'expires_at' is null then
+    raise exception 'CHECK 16 FAILED: the clock fields are missing -- the screen renders "live N days" from them';
+  end if;
+
+  -- (d) TIMEZONE. The day series must not move with the session timezone:
+  -- date_trunc on a timestamptz buckets by it, so a late-evening sighting would
+  -- land on a different day than the client's UTC key and its bar would
+  -- silently vanish. A sighting at 23:30 UTC is the case that catches it.
+  insert into public.sightings (post_id, spotter_id, status, created_at, area_label,
+                                location_unavailable)
+  values (v_post, c_other, 'unverified',
+          (current_date - interval '2 days' + time '23:30') at time zone 'UTC',
+          'Salford', false);
+  set local timezone = 'UTC';
+  v_days := public.get_post_stats(v_post) -> 'sightings_by_day';
+  -- Asia/Tokyo, NOT Europe/London: London IS UTC from late October to late
+  -- March, so a London-based check silently stops testing anything for five
+  -- months of the year. Tokyo is UTC+9 with no DST, so 23:30 UTC is the next
+  -- local day every day.
+  set local timezone = 'Asia/Tokyo';
+  if public.get_post_stats(v_post) -> 'sightings_by_day' <> v_days then
+    raise exception 'CHECK 16 FAILED: the day series moved with the session timezone -- a late-evening sighting will drop off the owner''s chart';
+  end if;
+  set local timezone = 'UTC';
+
+  -- (e) THE GRANT LAYER. The project ships ALTER DEFAULT PRIVILEGES granting
+  -- EXECUTE to anon, so the revoke in the migration is the only thing closing
+  -- this door and nothing else asserts it.
+  perform set_config('request.jwt.claims', null, true);
+  begin
+    set local role anon;
+    perform public.get_post_stats(v_post);
+    reset role;
+    raise exception 'CHECK 16 FAILED: anon EXECUTE on get_post_stats was NOT grant-denied';
+  exception
+    when insufficient_privilege then null;  -- expected 42501
+    when others then
+      raise exception 'CHECK 16 FAILED: get_post_stats as anon raised "%" (SQLSTATE %) -- its body ran, so anon holds EXECUTE (expected 42501)', sqlerrm, sqlstate;
+  end;
+
+  perform set_config('request.jwt.claims', '', true);
+  -- notifications.payload carries no FK to posts, so these do not cascade.
+  delete from public.notifications
+   where payload ->> 'postId' in (v_post::text, v_quiet::text, v_few::text);
+  delete from public.posts where id in (v_post, v_quiet, v_few);
+  raise notice 'CHECK 16 passed: stats are owner-only (null for everyone else), counts people not rows, a quiet post returns zeros, the day series is timezone-proof, and anon is grant-denied';
+end $$;

@@ -1,6 +1,6 @@
 /**
  * WHAT:  PostManageSheet — the owner's action sheet for THIS listing, opened by
- *        the sticky bar's "Manage post". A ListRow menu: view sightings, one row
+ *        the sticky bar's "Manage post". A ListRow menu: view sightings, activity, one row
  *        per section they're currently allowed to edit, share, and (paid posts)
  *        the destructive deactivate + refund.
  * WHY:   "Manage post" used to navigate to /my-posts, which threw the owner off
@@ -17,7 +17,7 @@
  *        src/shared/ui/BottomSheet.tsx + ListRow.tsx; docs/DESIGN_SYSTEM.md.
  */
 
-import { Ban, Banknote, Eye, Pencil, Share2 } from 'lucide-react-native';
+import { Ban, Banknote, ChartNoAxesColumn, Eye, Pencil, Share2 } from 'lucide-react-native';
 import { useImperativeHandle, useRef, type Ref } from 'react';
 
 import { BottomSheet, ListRow, type BottomSheetRef } from '@/shared/ui';
@@ -26,6 +26,8 @@ export interface PostManageSheetProps {
   ref?: Ref<BottomSheetRef>;
   /** OWNER only: open their sighting list. */
   onViewSightings: () => void;
+  /** Opens the per-listing activity stats. */
+  onViewStats: () => void;
   /** How many sightings this post has — shown as quiet row metadata. */
   sightingCount: number;
   /** Share the listing (the same payload as the header's share button). */
@@ -59,6 +61,7 @@ export interface PostManageSheetProps {
 export function PostManageSheet({
   ref,
   onViewSightings,
+  onViewStats,
   sightingCount,
   onShare,
   onEditCarDetails,
@@ -109,6 +112,15 @@ export function PostManageSheet({
         value={sightingCount > 0 ? String(sightingCount) : undefined}
         onPress={run(onViewSightings)}
         testID="manage-view-sightings"
+      />
+
+      {/* Beneath sightings on purpose: sightings are the thing an owner came
+          for, activity is the context around it. */}
+      <ListRow
+        icon={ChartNoAxesColumn}
+        title="View activity"
+        onPress={run(onViewStats)}
+        testID="manage-view-stats"
       />
 
       {edits.map(({ key, title, onPress }) =>

@@ -8,6 +8,12 @@ post); mode is decided once from the server-computed `is_owner`.
 
 **Screens**
 - `PostDetailScreen` (route `src/app/post/[id].tsx` — thin wrapper).
+- `PostStatsScreen` (route `src/app/post-stats.tsx` — thin wrapper). **Owner
+  only.** "Activity" for one listing: spotters alerted, days live/left, the
+  sighting split and a 28-day sparkline, and whether anyone has been in touch.
+  Flat hairline sections at the reference rhythm — no cards; see the screen
+  header for why a dashboard register is the wrong one here. Reached from
+  `PostManageSheet` → "View activity".
 
 **Anatomy** (top → bottom; the 2026-07 redesign — composition "B",
 domain-reordered per docs/design-refs/post-detail/GAP_ANALYSIS.md: a
@@ -94,7 +100,7 @@ rounded-top sheet overlapping the hero.)
 **Deactivate confirm** — owned by `PostDetailScreen`, not the body: the body's
 "Deactivate listing" section button and the manage sheet's row both open the same
 `ConfirmDialog`, so the destructive copy and the refund estimate
-(`lib/refundEstimate.ts`) exist exactly once. The quoted figure is an ESTIMATE;
+(`estimateRefundPence`, `src/shared/lib/money.ts`) exist exactly once. The quoted figure is an ESTIMATE;
 the post-refund toast shows the server's exact amount.
 
 **Share / flag** — share via React Native's `Share` (`lib/postShare.ts`,
@@ -110,6 +116,19 @@ posts, `post_photos`, a `sighting_stats` scalar, and `viewer_has_sighting`
 (caller-only: whether THIS viewer has a sighting here — gates the message
 affordance; never other users' data). Client hard-validates the
 three-variant payload with zod (`api/vehicleApi.ts`).
+
+**Activity data** — one `get_post_stats(p_post_id)` RPC (SECURITY DEFINER,
+`20260807130000`), read by `api/postStatsApi.ts` (zod `.strict()`) via
+`hooks/usePostStats.ts`. **SAFETY:** `owner_id = auth.uid()` is the only gate
+and there is no user-id parameter; a post owned by someone else returns the
+same `null` as one that does not exist, so the client treats `null` as
+"not found", never as an error. Counts only — never rows, never identities.
+Two invariants a future change must not break: `spotters_alerted` is FLOORED to
+0 below 5 (an unfloored count is a density oracle over strangers' alert zones
+for the price of posting a car), and the count reads `kind = 'alert'` rows ONLY
+— recovery/credited/sighting notifications carry the same `postId` but go to
+WATCHERS, and DOMAIN.md forbids exposing watcher counts to an owner. Both are
+pinned by `post_detail_verification.sql` CHECK 16.
 
 **Message the owner** (migration `20260715130000`) — the section handler
 opens the thread via `openThread` (deferred `import('@/features/chat')`) when
