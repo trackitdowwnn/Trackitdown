@@ -71,6 +71,12 @@ commenting standards.
     bury a victim's real post during the hours that matter.
   - **Location coarsening.** A `driveway` theft's last-seen point is the
     victim's home, so it is coarsened to ~1km for non-owners (§6, DOMAIN.md).
+    True of every coordinate-emitting surface: `get_post_detail`,
+    `get_home_feed`, and — since 2026-08-10 — `search_posts`, which was the
+    last one still returning it exact. That was a LIVE leak, not a latent one:
+    posts go straight to `active` on payment (see the amendment above), so the
+    earlier "no active driveway post can exist yet" justification was false.
+    `get_nearby_posts` returns no coordinates and needs no snap.
   - **Map-search distance filter (2026-08-10).** `search_posts` /
     `search_posts_count` take a caller-supplied origin and a radius clamped to
     1–50 miles, mirroring `get_home_feed`. The origin is always the exact

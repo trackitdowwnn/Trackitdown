@@ -660,6 +660,80 @@ begin
 end $$;
 
 
+-- -----------------------------------------------------------------------------
+-- CHECK 18 — SAFETY: a DRIVEWAY theft's pin is coarsened.
+--
+-- stolen_from = 'driveway' means the last-seen point IS the victim's home
+-- address. get_home_feed and get_post_detail both snap it to a ~1km grid for
+-- non-owners; search_posts did not, so the map handed any anonymous caller an
+-- unsnapped home address — and the distance filter makes that a targeted
+-- query rather than an incidental one.
+--
+-- Asserts BOTH directions, because a snap that also blunted every other pin
+-- would break the map while still passing a one-sided check.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_driveway uuid := 'a1a1a1a1-0000-0000-0000-000000000006';
+  v_exact    geometry;
+  v_returned_lat numeric;
+  v_returned_lng numeric;
+  v_snapped  geometry;
+  v_other_off integer;
+begin
+  -- Guard the subject: this proves nothing unless that post is active, in the
+  -- bbox, and really flagged as a driveway theft.
+  select p.last_seen_location::geometry into v_exact
+  from public.posts p
+  where p.id = v_driveway
+    and p.status = 'active'
+    and p.stolen_from = 'driveway'
+    and p.last_seen_location && ST_MakeEnvelope(-2.55, 53.30, -2.00, 53.70, 4326)::geography;
+  if v_exact is null then
+    raise exception 'CHECK 18 FAILED: the seeded active driveway post % is missing, not active, '
+                    'not flagged driveway, or outside the test bbox — the coarsening assertion '
+                    'below would prove nothing.', v_driveway;
+  end if;
+  v_snapped := ST_SnapToGrid(v_exact, 0.01);
+
+  select (post ->> 'lat')::numeric, (post ->> 'lng')::numeric
+    into v_returned_lat, v_returned_lng
+  from jsonb_array_elements(
+         public.search_posts(53.30, -2.55, 53.70, -2.00, '{}'::jsonb, 100) -> 'posts') as post
+  where (post ->> 'id')::uuid = v_driveway;
+
+  if v_returned_lat is null then
+    raise exception 'CHECK 18 FAILED: the driveway post is missing from an unfiltered search — '
+                    'coarsening must not remove it, only blunt it.';
+  end if;
+
+  -- It must be the SNAPPED point, not the exact one.
+  if v_returned_lat <> ST_Y(v_snapped)::numeric or v_returned_lng <> ST_X(v_snapped)::numeric then
+    raise exception 'CHECK 18 FAILED: driveway pin returned (%, %) but the ~1km snap is (%, %) '
+                    '— the exact point is (%, %). A victim''s home address is being emitted at '
+                    'street precision.',
+      v_returned_lat, v_returned_lng, ST_Y(v_snapped), ST_X(v_snapped),
+      ST_Y(v_exact), ST_X(v_exact);
+  end if;
+
+  -- ...and NOTHING ELSE is blunted. Every non-driveway post must still come
+  -- back at its exact point, or the fix has quietly degraded the whole map.
+  select count(*)
+    into v_other_off
+  from jsonb_array_elements(
+         public.search_posts(53.30, -2.55, 53.70, -2.00, '{}'::jsonb, 100) -> 'posts') as post
+  join public.posts p on p.id = (post ->> 'id')::uuid
+  where p.stolen_from is distinct from 'driveway'
+    and ((post ->> 'lat')::numeric <> ST_Y(p.last_seen_location::geometry)::numeric
+      or (post ->> 'lng')::numeric <> ST_X(p.last_seen_location::geometry)::numeric);
+  if v_other_off > 0 then
+    raise exception 'CHECK 18 FAILED: % non-driveway post(s) came back coarsened', v_other_off;
+  end if;
+
+  raise notice 'CHECK 18 passed: driveway pins are snapped to ~1km; every other pin stays exact.';
+end $$;
+
+
 do $$
 begin
   raise notice 'ALL SEARCH CHECKS PASSED.';
