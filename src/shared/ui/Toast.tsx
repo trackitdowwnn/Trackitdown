@@ -36,7 +36,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, motion, radii, shadows, sizes, spacing, typography } from '../theme';
+import {
+  motion,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 
 export type ToastKind = 'success' | 'error';
@@ -62,6 +71,21 @@ export function useToast(): ToastValue {
   return context;
 }
 
+/**
+ * The same value, or null when no provider is above — for LEAF PRIMITIVES whose
+ * toast is a courtesy rather than the point (PlateChip's copy confirmation).
+ *
+ * The throwing `useToast` is still the right hook for a screen: a screen that
+ * lost its provider has a real bug and should say so loudly. But a primitive
+ * rendered in seven places must not make mounting a ToastProvider a condition
+ * of rendering a plate — every existing test renders these cards bare, and the
+ * app's own provider lives at the root anyway (src/app/_layout.tsx), so null
+ * here means "a test harness", never a user-facing gap.
+ */
+export function useOptionalToast(): ToastValue | null {
+  return useContext(ToastContext);
+}
+
 interface ActiveToast {
   message: string;
   kind: ToastKind;
@@ -72,6 +96,7 @@ interface ActiveToast {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
   const [toast, setToast] = useState<ActiveToast | null>(null);
   const nextId = useRef(0);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -179,41 +204,52 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-const styles = StyleSheet.create({
-  // Above the tab bar so it never covers navigation; pointerEvents none so
-  // it can't block taps beneath it.
-  host: {
-    position: 'absolute',
-    left: spacing.xl,
-    right: spacing.xl,
-    alignItems: 'center',
-  },
-  pill: {
-    backgroundColor: colors.textPrimary,
-    borderRadius: radii.full,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    maxWidth: '100%',
-    ...shadows.soft,
-  },
-  pillError: {
-    backgroundColor: colors.danger,
-  },
-  pillRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  message: {
-    ...typography.label,
-    color: colors.textOnPrimary,
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  // Underline = tappable (design-system convention), on the pill's dark fill.
-  actionLabel: {
-    ...typography.label,
-    color: colors.textOnPrimary,
-    textDecorationLine: 'underline',
-  },
-});
+// Colour targets deliberately unchanged by the theming migration: the pill is
+// filled with `textPrimary` and inked with `textOnPrimary`, a pairing that
+// inverts correctly on its own — dark pill on a light page, light pill on a
+// dark one — so the toast keeps standing off its background in both schemes.
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    // Above the tab bar so it never covers navigation; pointerEvents none so
+    // it can't block taps beneath it.
+    host: {
+      position: 'absolute',
+      left: spacing.xl,
+      right: spacing.xl,
+      alignItems: 'center',
+    },
+    pill: {
+      // surfaceInverse, not textPrimary (2026-08-10). An INK token used as a
+      // fill is the exact coupling shadows.ts was decoupled to kill, and
+      // colors.ts names surfaceInverse so "a text-colour tweak never silently
+      // restyles a fill". The two tokens hold identical values in both
+      // palettes, so this is a zero-pixel change — which is why it is worth
+      // making now rather than after they diverge.
+      backgroundColor: c.surfaceInverse,
+      borderRadius: radii.full,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      maxWidth: '100%',
+      ...shadows.soft,
+    },
+    pillError: {
+      backgroundColor: c.danger,
+    },
+    pillRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    message: {
+      ...typography.label,
+      color: c.textOnPrimary,
+      textAlign: 'center',
+      flexShrink: 1,
+    },
+    // Underline = tappable (design-system convention), on the pill's dark fill.
+    actionLabel: {
+      ...typography.label,
+      color: c.textOnPrimary,
+      textDecorationLine: 'underline',
+    },
+  });

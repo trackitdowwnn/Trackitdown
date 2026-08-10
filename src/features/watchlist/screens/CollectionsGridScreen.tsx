@@ -21,7 +21,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { FlatList, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { createLogger } from '@/shared/lib/logger';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { EmptyState, ErrorState, Screen, SkeletonVehicleCard, ThemedRefreshControl } from '@/shared/ui';
 
 import { CollectionTile } from '../components/CollectionTile';
@@ -38,6 +38,7 @@ const GUTTER = spacing.lg;
 const GAP = spacing.lg;
 
 export function CollectionsGridScreen() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const { width } = useWindowDimensions();
   const { status, entries, refreshing, refresh, retry } = useWatchlist();
@@ -126,10 +127,10 @@ export function CollectionsGridScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,

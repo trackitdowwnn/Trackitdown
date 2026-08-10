@@ -1,6 +1,7 @@
 /**
  * WHAT:  Tests for useWatchToggle — member toggles (optimistic flip, API
- *        persist, "Added" toast with a View action, quiet removal), the
+ *        persist, "Added" toast with a View action, "Removed" toast whose Undo
+ *        puts the post back without double-counting the gate conversion), the
  *        failure revert + error toast, and the guest gate: the intent
  *        continuation completes the watch post-auth, logging the
  *        conversion, and reads watch state at RUN time, not tap time.
@@ -169,7 +170,7 @@ describe('member toggle', () => {
     await unmount();
   });
 
-  it('removes quietly — no success toast, just the delete', async () => {
+  it('says a removal happened, and offers Undo', async () => {
     mockFetchWatchedPostIds.mockResolvedValue(['post-1']);
     const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'watchlist'));
     await waitFor(() => expect(result.current.watched).toBe(true));
@@ -180,7 +181,60 @@ describe('member toggle', () => {
 
     expect(result.current.watched).toBe(false);
     expect(mockRemoveWatch).toHaveBeenCalledWith('post-1');
-    expect(mockToastShow).not.toHaveBeenCalled();
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'Removed from your watchlist',
+      'success',
+      expect.objectContaining({ label: 'Undo' }),
+    );
+    await unmount();
+  });
+
+  it('Undo puts the post back', async () => {
+    mockFetchWatchedPostIds.mockResolvedValue(['post-1']);
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'watchlist'));
+    await waitFor(() => expect(result.current.watched).toBe(true));
+
+    await act(async () => {
+      result.current.toggle();
+    });
+    expect(result.current.watched).toBe(false);
+
+    // Press the toast's action, exactly as the ToastProvider would.
+    const action = mockToastShow.mock.calls.at(-1)?.[2] as { onPress: () => void };
+    await act(async () => {
+      action.onPress();
+    });
+
+    await waitFor(() => expect(result.current.watched).toBe(true));
+    // Which LIST it lands back in is the targeting suite's business, not this
+    // one's (and the AsyncStorage mock carries an MRU across tests in this
+    // file) — what matters here is that the re-add actually went out.
+    expect(mockAddWatch).toHaveBeenCalledWith('post-1', expect.anything());
+    await unmount();
+  });
+
+  it('Undo is not logged as a gate conversion', async () => {
+    // The undo re-enters performToggle; passing the original `viaGate` through
+    // would count one guest conversion twice in the funnel.
+    mockFetchWatchedPostIds.mockResolvedValue(['post-1']);
+    const { result, unmount } = await renderHook(() => useWatchToggle('post-1', 'feed'));
+    await waitFor(() => expect(result.current.watched).toBe(true));
+
+    await act(async () => {
+      result.current.toggle();
+    });
+    const action = mockToastShow.mock.calls.at(-1)?.[2] as { onPress: () => void };
+    await act(async () => {
+      action.onPress();
+    });
+
+    await waitFor(() => expect(result.current.watched).toBe(true));
+    // Re-added, and the re-add's own toast is the normal "saved" confirmation.
+    expect(mockToastShow).toHaveBeenLastCalledWith(
+      'Added to your watchlist',
+      'success',
+      expect.objectContaining({ label: 'Change' }),
+    );
     await unmount();
   });
 

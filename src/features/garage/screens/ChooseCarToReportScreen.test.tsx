@@ -146,6 +146,27 @@ describe('choosing a car', () => {
     });
   });
 
+  it('hands the row’s press down to the plate chip', async () => {
+    // PlateChip is a Pressable (long-press copies the plate), so it becomes the
+    // touch responder for its own bounds — a chip given no handler silently
+    // turns the plate into a dead spot on the path someone takes the moment
+    // their car is stolen. It shipped that way once.
+    //
+    // It cannot be asserted behaviourally: RNTL's fireEvent.press walks UP to
+    // the nearest ancestor handler, so a press on a handler-less chip still
+    // reaches the row and passes on broken code (verified by breaking it).
+    // `onPress` isn't on the host element either — Pressable passes responder
+    // props down, not onPress.
+    //
+    // So assert the a11y role, which the SAME ternary drives: a chip told it is
+    // standalone declares role="button", a chip handed the row's press declares
+    // none. That is also the user-facing half of the bug — a second button
+    // announced inside a row that is already one.
+    const { getByLabelText } = await renderScreen();
+
+    expect(getByLabelText('Plate A B 1 2, C D E').props.accessibilityRole).toBeUndefined();
+  });
+
   it('reuses the same funnel event as the My cars entry point', async () => {
     const { getByTestId } = await renderScreen();
 

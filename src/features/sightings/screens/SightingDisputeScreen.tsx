@@ -27,7 +27,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatPounds } from '@/shared/lib/money';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { Button, EmptyState, ErrorState, Screen, TextField, useToast } from '@/shared/ui';
 
 import { DisputeError, fetchDisputeContext, openDispute, type DisputeContext } from '../api/disputeApi';
@@ -45,6 +53,8 @@ type LoadState =
   | { status: 'ready'; context: DisputeContext };
 
 export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   const toast = useToast();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -104,7 +114,7 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
           style={styles.back}
           testID="dispute-back"
         >
-          <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+          <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
         </Pressable>
         <Text style={styles.title} accessibilityRole="header">
           Your sighting
@@ -226,7 +236,7 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
   }
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   scroll: {
     padding: spacing.xl,
     gap: spacing.lg,
@@ -245,27 +255,27 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   card: {
     gap: spacing.md,
     padding: spacing.lg,
     borderRadius: radii.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
   },
   cardTitle: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   cardBody: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   skeletonLine: {
     height: sizes.skeletonLine,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonTitle: {
     width: '55%',

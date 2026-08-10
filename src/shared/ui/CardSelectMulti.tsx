@@ -33,7 +33,15 @@ import { Feather } from '@expo/vector-icons';
 import type { LucideIcon } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '../theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 
 export interface CardSelectMultiOption<V extends string = string> {
   value: V;
@@ -65,6 +73,9 @@ export function CardSelectMulti<V extends string = string>({
   value,
   onChange,
 }: CardSelectMultiProps<V>) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   const toggle = (option: V) => {
     onChange(
       value.includes(option) ? value.filter((v) => v !== option) : [...value, option],
@@ -97,7 +108,7 @@ export function CardSelectMulti<V extends string = string>({
             {Icon ? (
               <Icon
                 size={sizes.icon}
-                color={selected ? colors.textPrimary : colors.textSecondary}
+                color={selected ? palette.textPrimary : palette.textSecondary}
               />
             ) : null}
             <View style={styles.text}>
@@ -114,7 +125,7 @@ export function CardSelectMulti<V extends string = string>({
                 <Feather
                   name={option.locked ? 'lock' : 'check'}
                   size={sizes.iconSm}
-                  color={colors.textOnPrimary}
+                  color={palette.textOnPrimary}
                   importantForAccessibility="no"
                 />
               ) : null}
@@ -126,52 +137,53 @@ export function CardSelectMulti<V extends string = string>({
   );
 }
 
-const styles = StyleSheet.create({
-  group: {
-    gap: spacing.md,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    minHeight: sizes.touchTarget + spacing.md,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.lg,
-    // Constant-width border (colour-only change on select) so nothing reflows.
-    borderWidth: sizes.selectBorder,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  cardSelected: {
-    borderColor: colors.primary,
-  },
-  cardPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  text: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  label: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-  },
-  description: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  box: {
-    width: sizes.icon,
-    height: sizes.icon,
-    borderRadius: radii.sm,
-    borderWidth: sizes.selectBorder,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  boxSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    group: {
+      gap: spacing.md,
+    },
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.lg,
+      minHeight: sizes.touchTarget + spacing.md,
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radii.lg,
+      // Constant-width border (colour-only change on select) so nothing reflows.
+      borderWidth: sizes.selectBorder,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    cardSelected: {
+      borderColor: c.primary,
+    },
+    cardPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    text: {
+      flex: 1,
+      gap: spacing.xs,
+    },
+    label: {
+      ...typography.cardTitle,
+      color: c.textPrimary,
+    },
+    description: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    box: {
+      width: sizes.icon,
+      height: sizes.icon,
+      borderRadius: radii.sm,
+      borderWidth: sizes.selectBorder,
+      borderColor: c.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    boxSelected: {
+      backgroundColor: c.primary,
+      borderColor: c.primary,
+    },
+  });

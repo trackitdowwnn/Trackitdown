@@ -28,7 +28,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radii, shadows, sizes, spacing, typography } from '../theme';
+import {
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 
 /** Bar height below the status bar. Exported so a hero screen can align its
  *  scroll-fade range to where the header sits. */
@@ -62,6 +71,7 @@ export function AppHeaderButton({
   accessibilityState,
   children,
 }: AppHeaderButtonProps) {
+  const styles = useThemedStyles(makeStyles);
   const fade = useContext(HeaderFadeContext);
 
   // Circle + shadow fade 1 → 0 over the bar's own fade range; a plain solid
@@ -119,6 +129,8 @@ export function AppHeader({
   onBack,
   rightActions,
 }: AppHeaderProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const insets = useSafeAreaInsets();
 
   // Background + hairline + title all fade in together on the UI thread.
@@ -158,7 +170,7 @@ export function AppHeader({
         </Animated.View>
         <View style={styles.row} pointerEvents="box-none">
           <AppHeaderButton onPress={onBack} accessibilityLabel="Back">
-            <Feather name="chevron-left" size={sizes.icon} color={colors.textPrimary} />
+            <Feather name="chevron-left" size={sizes.icon} color={palette.textPrimary} />
           </AppHeaderButton>
           <View style={styles.rightRow}>{rightActions}</View>
         </View>
@@ -167,64 +179,65 @@ export function AppHeader({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
-  solid: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  titleWrap: {
-    position: 'absolute',
-    height: HEADER_BAR_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-  },
-  row: {
-    height: HEADER_BAR_HEIGHT,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-  },
-  rightRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  buttonHit: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  circle: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: radii.full,
-    backgroundColor: colors.surface,
-    ...shadows.lifted,
-  },
-  pressedTint: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtlePressed,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+    },
+    solid: {
+      backgroundColor: c.surface,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    titleWrap: {
+      position: 'absolute',
+      height: HEADER_BAR_HEIGHT,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    title: {
+      ...typography.cardTitle,
+      color: c.textPrimary,
+    },
+    row: {
+      height: HEADER_BAR_HEIGHT,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.lg,
+    },
+    rightRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    buttonHit: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    circle: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: radii.full,
+      backgroundColor: c.surface,
+      ...shadows.lifted,
+    },
+    pressedTint: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: radii.full,
+      backgroundColor: c.surfaceSubtlePressed,
+    },
+  });

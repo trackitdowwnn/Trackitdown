@@ -29,7 +29,7 @@ import { Banknote, Car, MapPin } from 'lucide-react-native';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, CardSelectMulti, type CardSelectMultiOption } from '@/shared/ui';
 
 import type { AlertMatcher } from '../types';
@@ -73,6 +73,8 @@ export function AlertMatcherPicker({
   onExit,
   editing = false,
 }: AlertMatcherPickerProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
@@ -100,10 +102,10 @@ export function AlertMatcherPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   // Mirrors WizardScreen's header padding so the exit affordance sits in the
   // same place before and after the wizard mounts.
@@ -121,11 +123,11 @@ const styles = StyleSheet.create({
   },
   question: {
     ...typography.display,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   helper: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     marginTop: spacing.md,
   },
   body: {

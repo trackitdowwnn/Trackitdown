@@ -34,8 +34,12 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `danger` | `#C0281E` | destructive actions, errors (clear red, kept distinct from the near-black primary) |
 | `dangerPressed` | `#A21F16` | pressed state of danger |
 | `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
-| `surfaceInverse` | `#222222` | the rare dark surface: floating (map pill) and the ONE full-bleed use, the photo-preview viewer backdrop — same ink as `textPrimary`, named separately so text tweaks never restyle fills |
+| `surfaceInverse` | `#222222` | the surface that is the INVERSE OF THE PAGE — the feed's floating map pill, the selected map pin, the Toast pill. **Flips with the theme** (near-white on dark). Named separately from `textPrimary` so text tweaks never restyle fills |
 | `surfaceInversePressed` | `#3A3A3A` | pressed state of `surfaceInverse` |
+| `surfaceOverMedia` | `#222222` | chrome sitting on PHOTOGRAPHY — the photo-viewer backdrop and close button, camera counters, the hero photo-count pill, photo-tile status pills. **Identical in both palettes**: a photo is as bright in dark mode as in light, so its chrome must not flip |
+| `surfaceOverMediaPressed` | `#3A3A3A` | pressed state of the above |
+| `textOnMedia` | `#FFFFFF` | text/icons on `surfaceOverMedia` or over a `mediaScrim` |
+| `mediaScrim` | `rgba(0,0,0,0.45)` | a scrim over a PHOTO (gradients behind photo chrome). Unlike `overlay` it does NOT deepen on dark — what's beneath is the photo, whose brightness owes nothing to the theme |
 | `overlay` | `rgba(0,0,0,0.45)` | modal scrim |
 | `mapZoneFill` | `rgba(26,26,26,0.10)` | the spotter's alert-zone circle on a map — FILL only, never text or a text container's border |
 | `mapZoneStroke` | `rgba(26,26,26,0.35)` | that circle's outline |
@@ -82,7 +86,67 @@ structure per `docs/decisions/ADR-0005-airbnb-orange-theme.md`.)
 Never encode status by colour alone: `StatusBadge` always pairs its dot
 with a text label (colour-blind-safe).
 
+> **Known gap.** `borderStrong` measures **2.83:1** on `background` (it clears
+> 3.03 on `surface`), despite its own token comment claiming ≥3:1 on the
+> background. Real and shipped. `#8F8F8F` would clear it. Recorded in
+> `src/shared/theme/colors.test.ts`, which fails when it is fixed.
+
+### Dark palette (added 2026-08-09 — `docs/decisions/ADR-0013-dark-mode.md`)
+
+There are now **two** palettes. Components never import `colors` directly; they
+take the active one from `useThemedStyles(makeStyles)` or `usePalette()`. See
+ADR-0013 for why this had to be a migration rather than a value swap.
+
+Soft charcoal, never true black — the page is `#141414` and cards sit **above**
+it, mirroring the light theme's hierarchy rather than flattening it. The
+monochrome rule is unchanged but **inverts**: `primary`/`accent` become
+near-white and `textOnPrimary` becomes near-black.
+
+| Token | Light | Dark | Dark vs bg | vs surface |
+|---|---|---|---|---|
+| `background` | `#F7F7F7` | `#141414` | — | — |
+| `surface` | `#FFFFFF` | `#1E1E1E` | — | — |
+| `surfaceSubtle` | `#EEEEEE` | `#2A2A2A` | — | — |
+| `primary` / `accent` / `accentText` | `#1A1A1A` | `#F2F2F2` | 16.5 AAA | 14.9 |
+| `primaryPressed` | `#333333` | `#D6D6D6` | — | — |
+| `textPrimary` | `#222222` | `#EDEDED` | 15.7 AAA | 14.2 |
+| `textSecondary` | `#6A6A6A` | `#A3A3A3` | 7.3 AAA | 6.6 |
+| `textOnPrimary` | `#FFFFFF` | `#141414` | 16.5 on `primary` | — |
+| `border` | `#DDDDDD` | `#333333` | 1.5 decorative | 1.3 |
+| `borderStrong` | `#949494` | `#6E6E6E` | 3.6 ≥3 | 3.3 ≥3 |
+| `success` | `#4F8A5B` | `#6FBF7F` | 8.3 | 7.5 |
+| `warning` | `#A9762A` | `#E0A64B` | 8.5 | 7.7 |
+| `danger` | `#C0281E` | `#F2685C` | 6.1 AA | 5.5 |
+| `surfaceInverse` | `#222222` | `#EDEDED` | inverts | — |
+| `overlay` | `rgba(0,0,0,0.45)` | `rgba(0,0,0,0.65)` | — | — |
+
+Semantic hues are **lightened, not reused** — the light values are tuned for
+near-white and fall to 2–3:1 on charcoal.
+
+**Two tokens split, and the distinction matters.** `surfaceInverse` means
+"inverse of the PAGE" and **flips** (map pins, the map pill — a dark pin on the
+dark basemap measures ~1.2:1 and vanishes). The new `surfaceOverMedia` /
+`surfaceOverMediaPressed` / `textOnMedia` mean "chrome sitting on PHOTOGRAPHY"
+and are **identical in both palettes** — a white close button over a bright
+photo is wrong in every theme. `overlay` (scrim over the page, deepens on dark)
+splits from the new `mediaScrim` (gradient over a photo, unchanged) the same way.
+
+**Shadows are theme-invariant** — `shadows.ts` casts a literal black, not
+`textPrimary`. In dark they barely register, which is correct: elevation there
+is carried by the surface ladder, not by shadow.
+
+Contrast is **computed, not asserted**: `src/shared/theme/colors.test.ts`
+re-derives every ratio above for both palettes, so changing a value re-checks
+the promise rather than updating an expectation.
+
 ### Map style
+
+There are two style arrays — `mapStyle` and `mapStyleDark`, chosen by
+`mapStyleFor(scheme)`. The dark twin is structurally identical (same features,
+same visibility rules) with every colour moved to its dark-palette role; the two
+bespoke hues keep their *relationship* rather than their values — parks and
+water sit LIGHTER than the land in light mode and DARKER in dark, since a
+lighter park on a dark map would read as bright paint.
 
 The Google Map uses a custom light style (`src/shared/theme/mapStyle.ts`),
 NOT stock Google colours: land = `surfaceSubtle` light grey, water = a cool
@@ -104,6 +168,16 @@ a busy/alarming crime map.
   (900) — **there is no SemiBold (600) face**, which is why the old 600 tier
   (title/heading/cardTitle) collapses into Bold rather than by accident.
 - Scale (size / line height / family):
+  - `displayHero` 40/46, Black — **the onboarding headline only** (added
+    2026-08-08, from `docs/design-refs/onboarding/`). Onboarding is the one
+    surface with a single sentence and a whole screen to say it in: nothing
+    competes with it and the reader has not yet been given anything to do.
+    A separate role rather than a bigger `display`, because `display` is
+    shared with in-page hero numbers (MoneySlider's readout) that must not
+    grow with it. Capped at `displayFontScaleCap` (1.3) on every run of the
+    headline — the multiplier is not reliably inherited across nested `Text`,
+    so an emphasised word left uncapped would outgrow the plain words beside
+    it at large dynamic-type settings.
   - `display` 32/38, Black — big moments ("Car recovered 🎉")
   - `title` 24/30, Bold — screen titles
   - `sectionTitle` 20/26, Bold — feed section headers (added 2026-07-11;
@@ -142,8 +216,14 @@ a busy/alarming crime map.
 - Radii: `sm` 8 (chips), `md` 12 (inputs, buttons), `lg` 16 (cards),
   `xl` 24 (sheets, modals).
 - Elevation: soft and subtle only —
-  `shadowColor #222222 (textPrimary), opacity 0.06, radius 12, offset (0, 4)`.
-  No hard drop shadows.
+  `shadowColor #000000, opacity 0.05, radius 12, offset (0, 4)`. No hard drop
+  shadows. The colour is a **literal black, not a token**: a shadow is cast by a
+  light source, not by ink, and tying it to `textPrimary` would have turned every
+  card shadow into a white glow once ink inverted (ADR-0013). This keeps
+  `shadows` theme-invariant. On dark it barely registers, which is correct —
+  elevation there is carried by the surface ladder, not by shadow, so anything
+  floating over a busy surface (map chrome) needs a `borderStrong` hairline
+  instead.
 
 ## Core components (live in `src/shared/ui/`)
 
@@ -153,7 +233,14 @@ a busy/alarming crime map.
   vehicle card (photo, plate chip, make/model, bounty in `primary`,
   distance, last-seen time) is the app's signature element — Airbnb-listing
   style with a large image and breathing room.
-- **PlateChip** — renders a UK registration in plate styling.
+- **PlateChip** — renders a UK registration in plate styling. **Interactive:**
+  long-press copies the plate (light haptic + "Plate copied" toast); a screen
+  reader gets the same via a "Copy plate" action. Because it is a `Pressable`
+  it becomes the touch responder for its own bounds, so **any tappable row or
+  card containing one MUST forward its own press** via the required
+  `onPress` prop — pass an explicit `null` only when nothing tappable encloses
+  it. A chip left without a handler inside a card turns the plate into a dead
+  patch that swallows the card's tap.
 - **BountyTag** — `primary`, e.g. "£500 bounty", always formatted from
   pence via the shared money formatter.
 - **SafetyNotice** — reusable banner with the "report, don't approach"
@@ -213,10 +300,17 @@ a busy/alarming crime map.
       fights map tiles and its own overlapping neighbours, and going up a
       *size* instead would turn a dense area into a wall of type.
     - **One deliberate divergence from the reference**: its pill is
-      borderless, ours keeps a hairline `border`. Forced by our map style —
-      it paints land `#EEEEEE` and roads `#FFFFFF`, where the reference's is
-      mid-tone green, so a borderless white pill has no edge at all. If
-      `mapStyle`'s land ever darkens, revisit.
+      borderless, ours keeps a hairline. Forced by our map style — the pill
+      barely separates from the land by fill in either theme (1.16:1 light,
+      1.09:1 dark), so the edge is what makes it a pill rather than floating
+      text. The hairline is `borderStrong`, not `border` (2026-08-10): dark
+      mode darkened the land, `border` measured 1.08:1 against it, and
+      `shadows` casts a literal black that contributes nothing on dark tiles —
+      so the pill lost every edge at once. `borderStrong` is 3.55:1 on the dark
+      land and 2.61:1 on the light one, which also fixes light, where the old
+      hairline was 1.17:1 and the shadow was carrying it alone. The same rule
+      applies to every floating map control (`MapCircleButton`,
+      `MapSearchPill`).
     - Bounty rank still decides **paint order** (highest on top, so a tap in a
       crowd lands on the car worth tapping) and **how many markers stay in the
       assistive-tech tree** — the drawn set and the reachable set deliberately

@@ -88,6 +88,29 @@ describe('with candidates', () => {
     expect(onConfirm).toHaveBeenCalledWith('XY34ZZZ');
   });
 
+  it('hands each candidate’s selection down to its plate chip', async () => {
+    // PlateChip is a Pressable (long-press copies the plate), so it becomes the
+    // touch responder for its own bounds. In a chooser made ENTIRELY of plates,
+    // a chip given no handler makes the whole visible target dead. It shipped
+    // that way once.
+    //
+    // It cannot be asserted behaviourally: RNTL's fireEvent.press walks UP to
+    // the nearest ancestor handler, so pressing a handler-less chip still
+    // reaches the radio and passes on broken code (verified by breaking it).
+    // `onPress` isn't on the host element either — Pressable passes responder
+    // props down, not onPress.
+    //
+    // So assert the a11y role, which the SAME ternary drives: a chip told it is
+    // standalone declares role="button", a chip handed the radio's press
+    // declares none. That is also the user-facing half of the bug — a button
+    // announced inside a radio.
+    const { getByLabelText } = await act(async () =>
+      render(<PlateScanSheet candidates={THREE} onConfirm={jest.fn()} onDecline={jest.fn()} />),
+    );
+
+    expect(getByLabelText('Plate X Y 3 4, Z Z Z').props.accessibilityRole).toBeUndefined();
+  });
+
   it('defaults to the highest-ranked candidate', async () => {
     const onConfirm = jest.fn();
     const { getByText } = await act(async () =>

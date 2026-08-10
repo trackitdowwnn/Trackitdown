@@ -11,7 +11,7 @@
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import type { WizardPhaseIntro } from './types';
 
 export interface PhaseIntroProps {
@@ -21,6 +21,8 @@ export interface PhaseIntroProps {
 }
 
 export function PhaseIntro({ phaseNumber, intro }: PhaseIntroProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.container}>
       {intro.illustration ? (
@@ -35,25 +37,26 @@ export function PhaseIntro({ phaseNumber, intro }: PhaseIntroProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: spacing.lg,
-  },
-  illustration: {
-    marginBottom: spacing.xl,
-  },
-  phaseNumber: {
-    ...typography.title,
-    color: colors.primary,
-  },
-  headline: {
-    ...typography.display,
-    color: colors.textPrimary,
-  },
-  body: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: 'center',
+      gap: spacing.lg,
+    },
+    illustration: {
+      marginBottom: spacing.xl,
+    },
+    phaseNumber: {
+      ...typography.title,
+      color: c.primary,
+    },
+    headline: {
+      ...typography.display,
+      color: c.textPrimary,
+    },
+    body: {
+      ...typography.body,
+      color: c.textSecondary,
+    },
+  });

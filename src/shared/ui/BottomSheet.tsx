@@ -50,7 +50,7 @@ import { StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '../hooks';
-import { colors, radii, sizes, spacing, typography } from '../theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { TextInputHostContext } from './TextInputHost';
 
@@ -81,6 +81,7 @@ export interface BottomSheetProps {
 }
 
 export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProps) {
+  const styles = useThemedStyles(makeStyles);
   const modalRef = useRef<BottomSheetModal>(null);
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -140,7 +141,9 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
         accessibilityLabel="Close sheet"
       />
     ),
-    [],
+    // `styles` is memoised per palette, so this identity is stable until the
+    // theme actually flips.
+    [styles],
   );
 
   return (
@@ -187,28 +190,29 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
   );
 }
 
-const styles = StyleSheet.create({
-  background: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-  },
-  handleIndicator: {
-    backgroundColor: colors.border,
-    width: sizes.grabberWidth,
-    height: sizes.grabberHeight,
-    borderRadius: radii.sm,
-  },
-  backdrop: {
-    backgroundColor: colors.overlay,
-  },
-  content: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-  },
-  title: {
-    ...typography.heading,
-    color: colors.textPrimary,
-    marginBottom: spacing.lg,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    background: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: radii.xl,
+      borderTopRightRadius: radii.xl,
+    },
+    handleIndicator: {
+      backgroundColor: c.border,
+      width: sizes.grabberWidth,
+      height: sizes.grabberHeight,
+      borderRadius: radii.sm,
+    },
+    backdrop: {
+      backgroundColor: c.overlay,
+    },
+    content: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.sm,
+    },
+    title: {
+      ...typography.heading,
+      color: c.textPrimary,
+      marginBottom: spacing.lg,
+    },
+  });

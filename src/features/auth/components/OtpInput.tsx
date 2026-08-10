@@ -23,7 +23,15 @@ import {
   View,
 } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { HostTextInput } from '@/shared/ui';
 
 // Must match Supabase's `otp_length` (supabase/config.toml + the hosted
@@ -59,6 +67,7 @@ export function OtpInput({
   errorNonce = 0,
   autoFocus = true,
 }: OtpInputProps) {
+  const styles = useThemedStyles(makeStyles);
   const inputRef = useRef<TextInput>(null);
   // Lazy useState (not useRef().current) so the value is created once without
   // reading a ref during render (react-compiler lint).
@@ -148,7 +157,7 @@ export function OtpInput({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -159,16 +168,16 @@ const styles = StyleSheet.create({
     height: sizes.control,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: c.border,
+    backgroundColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   boxFilled: {
-    borderColor: colors.borderStrong,
+    borderColor: c.borderStrong,
   },
   boxActive: {
-    borderColor: colors.primary,
+    borderColor: c.primary,
   },
   boxSubmitting: {
     opacity: opacity.disabled,
@@ -191,6 +200,6 @@ const styles = StyleSheet.create({
   },
   digit: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
 });

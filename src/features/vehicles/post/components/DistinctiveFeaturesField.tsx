@@ -25,7 +25,16 @@ import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '@/shared/hooks';
-import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { AppImage, Button, TextField } from '@/shared/ui';
 import type { PickedPhoto } from '@/shared/ui';
 
@@ -58,6 +67,8 @@ function FeatureCard({
   onEdit: () => void;
   onRemove: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   return (
     <Animated.View
       style={styles.card}
@@ -80,7 +91,7 @@ function FeatureCard({
           onPress={onEdit}
           style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
         >
-          <Feather name="edit-2" size={sizes.iconSm} color={colors.textSecondary} />
+          <Feather name="edit-2" size={sizes.iconSm} color={palette.textSecondary} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -89,7 +100,7 @@ function FeatureCard({
           onPress={onRemove}
           style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
         >
-          <Feather name="trash-2" size={sizes.iconSm} color={colors.danger} />
+          <Feather name="trash-2" size={sizes.iconSm} color={palette.danger} />
         </Pressable>
       </View>
     </Animated.View>
@@ -98,6 +109,8 @@ function FeatureCard({
 
 /** The dashed "Add a feature" tile (Airbnb add-pattern). */
 function AddTile({ onPress }: { onPress: () => void }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   return (
     <Pressable
       accessibilityRole="button"
@@ -105,13 +118,14 @@ function AddTile({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       style={({ pressed }) => [styles.addTile, pressed && styles.addTilePressed]}
     >
-      <Feather name="plus" size={sizes.iconSm} color={colors.primary} />
+      <Feather name="plus" size={sizes.iconSm} color={palette.primary} />
       <Text style={styles.addLabel}>Add a feature</Text>
     </Pressable>
   );
 }
 
 export function DistinctiveFeaturesField({ value, onChange }: DistinctiveFeaturesFieldProps) {
+  const styles = useThemedStyles(makeStyles);
   const [editorOpen, setEditorOpen] = useState(false);
   // null = adding a new pair; a number = editing that index.
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -168,6 +182,8 @@ function FeatureEditor({
   onCancel: () => void;
   onSave: (feature: DistinctiveFeature) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useAndroidKeyboardHeight();
   const [photo, setPhoto] = useState<PickedPhoto | null>(initial?.photo ?? null);
@@ -238,7 +254,7 @@ function FeatureEditor({
               onPress={onCancel}
               style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
             >
-              <Feather name="x" size={sizes.icon} color={colors.textPrimary} />
+              <Feather name="x" size={sizes.icon} color={palette.textPrimary} />
             </Pressable>
             <Text accessibilityRole="header" style={styles.editorTitle}>
               {isEdit ? 'Edit feature' : 'Add a feature'}
@@ -292,7 +308,7 @@ function FeatureEditor({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   stack: {
     gap: spacing.lg,
   },
@@ -305,19 +321,19 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     borderRadius: radii.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
   },
   thumb: {
     width: sizes.avatarLg,
     height: sizes.avatarLg,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   cardDesc: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flex: 1,
   },
   cardActions: {
@@ -332,7 +348,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
   },
   iconButtonPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   addTile: {
     flexDirection: 'row',
@@ -342,15 +358,15 @@ const styles = StyleSheet.create({
     minHeight: sizes.control,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: colors.borderStrong,
+    borderColor: c.borderStrong,
     borderRadius: radii.md,
   },
   addTilePressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   addLabel: {
     ...typography.label,
-    color: colors.primary,
+    color: c.primary,
   },
   // --- Editor ---------------------------------------------------------------
   flex: {
@@ -358,7 +374,7 @@ const styles = StyleSheet.create({
   },
   editor: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   editorHeader: {
     flexDirection: 'row',
@@ -369,7 +385,7 @@ const styles = StyleSheet.create({
   },
   editorTitle: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   editorContent: {
     paddingHorizontal: spacing.xl,
@@ -388,7 +404,7 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: PHOTO_ASPECT,
     borderRadius: radii.md,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   editorFooter: {
     paddingHorizontal: spacing.xl,

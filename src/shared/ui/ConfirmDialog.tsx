@@ -25,7 +25,7 @@
 import { type Ref, useImperativeHandle, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
 import { Button } from './Button';
 
@@ -62,6 +62,7 @@ export function ConfirmDialog({
   onConfirm,
   onDismiss,
 }: ConfirmDialogProps) {
+  const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
   // Distinguish a confirm-close from a plain dismissal for onDismiss.
   const confirmed = useRef(false);
@@ -107,12 +108,13 @@ export function ConfirmDialog({
   );
 }
 
-const styles = StyleSheet.create({
-  content: {
-    gap: spacing.md,
-  },
-  body: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    content: {
+      gap: spacing.md,
+    },
+    body: {
+      ...typography.body,
+      color: c.textSecondary,
+    },
+  });

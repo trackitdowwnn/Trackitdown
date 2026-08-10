@@ -45,7 +45,16 @@ import { useSession } from '@/features/auth';
 // Type-only: erased at runtime, so it does NOT create the require cycle the
 // deferred import below exists to avoid.
 import type { PublicProfileSheetProps } from '@/features/profile';
-import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   Avatar,
   BottomSheet,
@@ -83,6 +92,8 @@ export interface ChatThreadScreenProps {
 }
 
 export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   const session = useSession();
   const meta = useThreadMeta(threadId);
@@ -246,7 +257,7 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
             style={styles.back}
             testID="chat-back"
           >
-            <Feather name="chevron-left" size={sizes.icon} color={colors.textPrimary} />
+            <Feather name="chevron-left" size={sizes.icon} color={palette.textPrimary} />
           </Pressable>
           {/* Initial-letter avatar only — the other party's avatar path embeds
               their uid, so it isn't returned to the client (see chat types).
@@ -428,16 +439,16 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   // Person + car as one surface, closed by one hairline.
   headerBlock: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomColor: c.border,
   },
   header: {
     flexDirection: 'row',
@@ -467,7 +478,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
   },
   headerPersonPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   headerText: {
     flex: 1,
@@ -476,11 +487,11 @@ const styles = StyleSheet.create({
   // identity block top-heavy against a 13pt caption.
   headerName: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   headerRole: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   body: {
     flex: 1,
@@ -505,7 +516,7 @@ const styles = StyleSheet.create({
     height: sizes.avatarLg,
     width: '70%',
     borderRadius: radii.lg,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonMine: {
     alignSelf: 'flex-end',
@@ -515,7 +526,7 @@ const styles = StyleSheet.create({
   },
   sendError: {
     ...typography.caption,
-    color: colors.danger,
+    color: c.danger,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xs,
   },
@@ -524,6 +535,6 @@ const styles = StyleSheet.create({
   },
   sheetText: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

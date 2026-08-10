@@ -18,7 +18,7 @@
 import { BadgeCheck, Camera } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
-import { colors, radii, sizes } from '@/shared/theme';
+import { radii, sizes, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { Avatar, type AvatarSize } from '@/shared/ui';
 
 export interface AvatarWithBadgeProps {
@@ -31,24 +31,27 @@ export interface AvatarWithBadgeProps {
 }
 
 export function AvatarWithBadge({ uri, name, size = 'xl', badge, testID }: AvatarWithBadgeProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   return (
     <View style={styles.wrap} testID={testID}>
       <Avatar uri={uri} name={name} size={size} />
       {badge === 'camera' ? (
         <View style={[styles.chip, styles.cameraChip]} testID="avatar-badge-camera">
-          <Camera size={sizes.iconSm} color={colors.textPrimary} />
+          <Camera size={sizes.iconSm} color={palette.textPrimary} />
         </View>
       ) : null}
       {badge === 'trusted' ? (
         <View style={[styles.chip, styles.trustedChip]} testID="avatar-badge-trusted">
-          <BadgeCheck size={sizes.iconSm} color={colors.textOnPrimary} />
+          <BadgeCheck size={sizes.iconSm} color={palette.textOnPrimary} />
         </View>
       ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   wrap: {
     alignSelf: 'center',
   },
@@ -63,15 +66,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cameraChip: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   // The white ring separates the check from any photo underneath — the
   // reference's verification shield carries the same ring.
   trustedChip: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     borderWidth: 2,
-    borderColor: colors.surface,
+    borderColor: c.surface,
   },
 });

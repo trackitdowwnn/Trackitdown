@@ -22,7 +22,7 @@ import { Bookmark, List, Plus } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { colors, spacing } from '@/shared/theme';
+import { spacing, useThemedStyles, type Palette } from '@/shared/theme';
 import { BottomSheet, Button, ListRow, TextField, useToast } from '@/shared/ui';
 import type { BottomSheetRef } from '@/shared/ui';
 
@@ -39,6 +39,7 @@ import { useSession } from '@/features/auth';
 const SAVED_LABEL = 'Saved';
 
 export function CollectionPickerSheet() {
+  const styles = useThemedStyles(makeStyles);
   const intent = useCollectionPickerIntent();
   const session = useSession();
   const toast = useToast();
@@ -198,7 +199,7 @@ export function CollectionPickerSheet() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   content: {
     gap: spacing.sm,
   },
@@ -219,7 +220,7 @@ const styles = StyleSheet.create({
     // Hairline separator: "New list" makes a new answer rather than being one,
     // so it reads as its own group instead of a fourth radio option.
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: c.border,
     paddingTop: spacing.sm,
   },
 });

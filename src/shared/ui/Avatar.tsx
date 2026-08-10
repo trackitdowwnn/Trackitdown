@@ -17,7 +17,7 @@
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, typography } from '../theme';
+import { radii, sizes, typography, useThemedStyles, type Palette } from '../theme';
 import { AppImage } from './AppImage';
 
 export type AvatarSize = 'sm' | 'md' | 'lg' | 'xl';
@@ -47,6 +47,7 @@ const initialStyleFor = (size: AvatarSize) => ({
 });
 
 export function Avatar({ uri, name, size = 'md', accessibilityLabel, testID }: AvatarProps) {
+  const styles = useThemedStyles(makeStyles);
   const diameter = DIAMETER[size];
   const initial = name?.trim().charAt(0).toUpperCase() ?? '';
 
@@ -69,20 +70,21 @@ export function Avatar({ uri, name, size = 'md', accessibilityLabel, testID }: A
   );
 }
 
-const styles = StyleSheet.create({
-  circle: {
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photo: {
-    width: '100%',
-    height: '100%',
-  },
-  initial: {
-    ...typography.heading, // weight only; size/lineHeight come per-diameter
-    color: colors.primary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    circle: {
+      borderRadius: radii.full,
+      backgroundColor: c.surfaceSubtle,
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    photo: {
+      width: '100%',
+      height: '100%',
+    },
+    initial: {
+      ...typography.heading, // weight only; size/lineHeight come per-diameter
+      color: c.primary,
+    },
+  });

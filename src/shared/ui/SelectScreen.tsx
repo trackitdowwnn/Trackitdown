@@ -59,7 +59,16 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { lightHaptic } from '../lib/haptics';
-import { colors, motion, radii, sizes, spacing, typography } from '../theme';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { EmptyState } from './EmptyState';
 import {
@@ -123,6 +132,8 @@ export function SelectScreen<V extends string | number>({
   showIndex = false,
   stagger = false,
 }: SelectScreenProps<V>) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const searchRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList<SelectListItem<V>>>(null);
   const [query, setQuery] = useState('');
@@ -273,7 +284,7 @@ export function SelectScreen<V extends string | number>({
                   hitSlop={spacing.sm}
                   style={({ pressed }) => [styles.close, pressed && styles.closePressed]}
                 >
-                  <Feather name="x" size={typography.heading.fontSize} color={colors.textPrimary} />
+                  <Feather name="x" size={typography.heading.fontSize} color={palette.textPrimary} />
                 </Pressable>
                 {title ? (
                   <Text accessibilityRole="header" numberOfLines={1} style={styles.title}>
@@ -289,14 +300,14 @@ export function SelectScreen<V extends string | number>({
                   <Feather
                     name="search"
                     size={typography.body.fontSize}
-                    color={colors.textSecondary}
+                    color={palette.textSecondary}
                   />
                   <TextInput
                     ref={searchRef}
                     value={query}
                     onChangeText={setQuery}
                     placeholder={searchPlaceholder}
-                    placeholderTextColor={colors.textSecondary}
+                    placeholderTextColor={palette.textSecondary}
                     autoCorrect={false}
                     accessibilityLabel={searchPlaceholder}
                     style={styles.searchInput}
@@ -311,7 +322,7 @@ export function SelectScreen<V extends string | number>({
                       <Feather
                         name="x-circle"
                         size={typography.body.fontSize}
-                        color={colors.textSecondary}
+                        color={palette.textSecondary}
                       />
                     </Pressable>
                   ) : null}
@@ -414,6 +425,9 @@ function SelectRow<V extends string | number>({
   /** Row index for the first-load stagger, or undefined to skip. */
   stagger?: number;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   if (item.kind === 'header') {
     return (
       <View style={styles.sectionHeader}>
@@ -454,7 +468,7 @@ function SelectRow<V extends string | number>({
           ) : null}
         </View>
         {selected ? (
-          <Feather name="check" size={typography.heading.fontSize} color={colors.primary} />
+          <Feather name="check" size={typography.heading.fontSize} color={palette.primary} />
         ) : null}
       </Pressable>
     </Animated.View>
@@ -463,6 +477,9 @@ function SelectRow<V extends string | number>({
 
 /** The type-to-add "Use "<query>"" free-text row (manual-entry escape hatch). */
 function ManualRow({ label, onPress }: { label: string; onPress: () => void }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -471,7 +488,7 @@ function ManualRow({ label, onPress }: { label: string; onPress: () => void }) {
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <View style={styles.rowIcon}>
-        <Feather name="plus" size={typography.body.fontSize} color={colors.primary} />
+        <Feather name="plus" size={typography.body.fontSize} color={palette.primary} />
       </View>
       <Text numberOfLines={1} style={[styles.rowLabel, styles.manualAction]}>
         {label}
@@ -489,6 +506,8 @@ function IndexRail({
   anchors: SectionAnchor[];
   onJump: (index: number) => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.indexRail} pointerEvents="box-none">
       {anchors.map((anchor) => (
@@ -509,135 +528,136 @@ function IndexRail({
   );
 }
 
-const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-  },
-  // Static opaque fill behind the animating sheet, so the transparent Modal
-  // never reveals the screen behind it during the slide/fade (Android bleed-
-  // through / footer flicker). Same colour as the sheet so the content appears
-  // to rise over one continuous surface.
-  backdrop: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  sheet: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-  },
-  close: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    borderRadius: radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closePressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  title: {
-    ...typography.heading,
-    color: colors.textPrimary,
-    flex: 1,
-    textAlign: 'center',
-  },
-  searchWrap: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-  },
-  search: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: sizes.control,
-    borderRadius: radii.xl,
-    backgroundColor: colors.surfaceSubtle,
-    paddingLeft: spacing.lg,
-    // Trailing padding stays small: the 44pt clear button brings its own.
-    paddingRight: spacing.xs,
-  },
-  clearSearch: {
-    minWidth: sizes.touchTarget,
-    minHeight: sizes.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchInput: {
-    ...typography.body,
-    color: colors.textPrimary,
-    flex: 1,
-    paddingVertical: 0,
-  },
-  listContent: {
-    paddingBottom: spacing.xl,
-  },
-  // Extra right padding so rows clear the index rail when it's shown.
-  listContentIndexed: {
-    paddingRight: spacing.lg,
-  },
-  // The "Use "<query>"" free-text row reads in the accent ink (an action).
-  manualAction: {
-    color: colors.primary,
-  },
-  // The A–Z rail floats over the list's right edge, vertically centred.
-  indexRail: {
-    position: 'absolute',
-    right: spacing.xs,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  indexLetter: {
-    paddingVertical: sizes.indexRailLetterPad,
-    paddingHorizontal: spacing.xs,
-  },
-  indexLetterText: {
-    ...typography.caption,
-    fontFamily: typography.label.fontFamily,
-    color: colors.textSecondary,
-  },
-  sectionHeader: {
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xs,
-  },
-  sectionTitle: {
-    ...typography.label,
-    color: colors.textSecondary,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: sizes.control,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-  },
-  rowPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  rowIcon: {
-    // Fits a small make monogram / logo; smaller glyphs (colour dots) centre.
-    width: sizes.circleButtonSm,
-    alignItems: 'center',
-  },
-  rowText: {
-    flex: 1,
-  },
-  rowLabel: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  rowSubtitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    flex: {
+      flex: 1,
+    },
+    // Static opaque fill behind the animating sheet, so the transparent Modal
+    // never reveals the screen behind it during the slide/fade (Android bleed-
+    // through / footer flicker). Same colour as the sheet so the content appears
+    // to rise over one continuous surface.
+    backdrop: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    sheet: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+    },
+    close: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget,
+      borderRadius: radii.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    closePressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    title: {
+      ...typography.heading,
+      color: c.textPrimary,
+      flex: 1,
+      textAlign: 'center',
+    },
+    searchWrap: {
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.md,
+    },
+    search: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: sizes.control,
+      borderRadius: radii.xl,
+      backgroundColor: c.surfaceSubtle,
+      paddingLeft: spacing.lg,
+      // Trailing padding stays small: the 44pt clear button brings its own.
+      paddingRight: spacing.xs,
+    },
+    clearSearch: {
+      minWidth: sizes.touchTarget,
+      minHeight: sizes.touchTarget,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    searchInput: {
+      ...typography.body,
+      color: c.textPrimary,
+      flex: 1,
+      paddingVertical: 0,
+    },
+    listContent: {
+      paddingBottom: spacing.xl,
+    },
+    // Extra right padding so rows clear the index rail when it's shown.
+    listContentIndexed: {
+      paddingRight: spacing.lg,
+    },
+    // The "Use "<query>"" free-text row reads in the accent ink (an action).
+    manualAction: {
+      color: c.primary,
+    },
+    // The A–Z rail floats over the list's right edge, vertically centred.
+    indexRail: {
+      position: 'absolute',
+      right: spacing.xs,
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    indexLetter: {
+      paddingVertical: sizes.indexRailLetterPad,
+      paddingHorizontal: spacing.xs,
+    },
+    indexLetterText: {
+      ...typography.caption,
+      fontFamily: typography.label.fontFamily,
+      color: c.textSecondary,
+    },
+    sectionHeader: {
+      backgroundColor: c.background,
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.xs,
+    },
+    sectionTitle: {
+      ...typography.label,
+      color: c.textSecondary,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      minHeight: sizes.control,
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.sm,
+    },
+    rowPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    rowIcon: {
+      // Fits a small make monogram / logo; smaller glyphs (colour dots) centre.
+      width: sizes.circleButtonSm,
+      alignItems: 'center',
+    },
+    rowText: {
+      flex: 1,
+    },
+    rowLabel: {
+      ...typography.body,
+      color: c.textPrimary,
+    },
+    rowSubtitle: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+  });

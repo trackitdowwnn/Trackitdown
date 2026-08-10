@@ -19,7 +19,15 @@
 
 import { StyleSheet, Pressable, Text, View } from 'react-native';
 
-import { colors, displayFontScaleCap, radii, shadows, spacing, typography } from '@/shared/theme';
+import {
+  displayFontScaleCap,
+  radii,
+  shadows,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 import { isTrustedSpotter, memberSinceLabel } from '../lib/reputation';
 import type { MyProfile } from '../types';
@@ -32,6 +40,7 @@ export function ProfileHeroCard({
   profile: MyProfile;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const trusted = isTrustedSpotter(profile.counters);
 
   // The card is ONE a11y element, so its label must carry everything a
@@ -71,11 +80,11 @@ export function ProfileHeroCard({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // The ONE deliberately-elevated object on the profile root (reference §4):
   // the roundest, softest card — everything below it stays flat.
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.xl,
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.xl,
@@ -83,7 +92,7 @@ const styles = StyleSheet.create({
   },
   // The page's biggest tap target gives the same quiet feedback as ListRow.
   cardPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   identity: {
     alignItems: 'center',
@@ -91,11 +100,11 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     marginTop: spacing.sm,
   },
   since: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

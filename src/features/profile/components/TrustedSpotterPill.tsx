@@ -17,9 +17,20 @@
 import { BadgeCheck } from 'lucide-react-native';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, displayFontScaleCap, radii, spacing, typography } from '@/shared/theme';
+import {
+  displayFontScaleCap,
+  radii,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 export function TrustedSpotterPill() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   return (
     <View
       style={styles.pill}
@@ -27,7 +38,7 @@ export function TrustedSpotterPill() {
       accessibilityLabel="Trusted spotter"
       testID="trusted-spotter"
     >
-      <BadgeCheck size={typography.caption.fontSize + spacing.xs} color={colors.primary} />
+      <BadgeCheck size={typography.caption.fontSize + spacing.xs} color={palette.primary} />
       {/* textPrimary for the caption ink; the icon carries `primary`. In the
           monochrome scheme both are near-black, so this is now an intent
           distinction (label ink vs brand mark), not a contrast one. */}
@@ -38,19 +49,19 @@ export function TrustedSpotterPill() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
     alignSelf: 'flex-start',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     borderRadius: radii.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   text: {
     ...typography.caption,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
 });

@@ -28,7 +28,13 @@
 import { type Ref } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, displayFontScaleCap, spacing, typography } from '@/shared/theme';
+import {
+  displayFontScaleCap,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { Avatar, BottomSheet, type BottomSheetRef } from '@/shared/ui';
 
 import { earnedBadges, isTrustedSpotter, memberSinceLabel, passportStats } from '../lib/reputation';
@@ -47,6 +53,7 @@ export interface PublicProfileSheetProps {
 // SAFETY: render ONLY what PublicProfile carries. Do not add props that
 // smuggle extra spotter data past the type boundary.
 export function PublicProfileSheet({ ref, profile, onDismiss }: PublicProfileSheetProps) {
+  const styles = useThemedStyles(makeStyles);
   const stats = profile ? passportStats(profile.counters) : [];
   const earned = profile ? earnedBadges(profile.counters) : [];
 
@@ -88,7 +95,7 @@ export function PublicProfileSheet({ ref, profile, onDismiss }: PublicProfileShe
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   content: {
     gap: spacing.lg,
   },
@@ -104,11 +111,11 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     marginTop: spacing.sm,
   },
   since: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

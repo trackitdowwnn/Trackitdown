@@ -21,7 +21,7 @@ import { useCallback } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRequireAuth, useSession } from '@/features/auth';
-import { colors, sizes, spacing, typography } from '@/shared/theme';
+import { sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import type { PostSummary } from '@/shared/types';
 import {
   EmptyState,
@@ -35,6 +35,7 @@ import {
 import { useMyPosts } from '../hooks/useMyPosts';
 
 export function MyPostsScreen() {
+  const styles = useThemedStyles(makeStyles);
   const session = useSession();
   const requireAuth = useRequireAuth();
   const router = useRouter();
@@ -51,7 +52,7 @@ export function MyPostsScreen() {
         />
       </View>
     ),
-    [router],
+    [router, styles],
   );
 
   return (
@@ -101,6 +102,8 @@ export function MyPostsScreen() {
 }
 
 function BackButton() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   return (
     <Pressable
@@ -110,12 +113,12 @@ function BackButton() {
       style={styles.back}
       testID="my-posts-back"
     >
-      <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+      <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -133,7 +136,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   skeletons: {

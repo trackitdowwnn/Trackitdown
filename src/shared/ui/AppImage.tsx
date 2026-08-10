@@ -21,7 +21,7 @@
 import { Image, type ImageContentFit, type ImageStyle } from 'expo-image';
 import { StyleSheet, type StyleProp } from 'react-native';
 
-import { colors, motion } from '../theme';
+import { motion, useThemedStyles, type Palette } from '../theme';
 
 export interface AppImageProps {
   uri: string;
@@ -50,6 +50,8 @@ export function AppImage({
   onError,
   testID,
 }: AppImageProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <Image
       source={{ uri }}
@@ -66,8 +68,9 @@ export function AppImage({
   );
 }
 
-const styles = StyleSheet.create({
-  base: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    base: {
+      backgroundColor: c.surfaceSubtle,
+    },
+  });

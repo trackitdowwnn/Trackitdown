@@ -287,6 +287,21 @@ describe('signed in', () => {
     expect(getByText('Version 1.2.3')).toBeTruthy();
   });
 
+  it('offers Dark mode as a switch, reading the scheme actually in effect', async () => {
+    // Bare render → no ThemeProvider → the defaulted context reports 'light',
+    // which is exactly what a phone in light mode would produce. The row must
+    // mirror that rather than the stored preference: the switch has two states
+    // and the preference has three, so before the user ever touches it the only
+    // honest position is whatever is currently on screen.
+    const { getByTestId } = await render(<ProfileScreen />);
+    const row = getByTestId('row-dark-mode');
+
+    expect(row.props.accessibilityState).toMatchObject({ checked: false });
+    // A switch, NOT a radio or a link — a settings toggle read as a radio sends
+    // a screen-reader user hunting for the other options.
+    expect(row.props.accessibilityRole).toBe('switch');
+  });
+
   it('How Trackitdown works re-opens onboarding in revisit mode', async () => {
     const { getByTestId } = await render(<ProfileScreen />);
     fireEvent.press(getByTestId('row-how-it-works'));

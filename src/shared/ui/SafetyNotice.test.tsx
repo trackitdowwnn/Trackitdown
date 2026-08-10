@@ -17,7 +17,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { SafetyNotice } from './SafetyNotice';
+import { SAFETY_NOTICE_BODY, SafetyNotice } from './SafetyNotice';
 
 const FULL_BODY =
   /Never approach the vehicle, follow it, or confront anyone\. If a crime is in progress, call 999\./;
@@ -78,5 +78,14 @@ describe('SafetyNotice (collapsible)', () => {
 
     expect(getByTestId('safety-notice-collapsible')).toBeTruthy();
     expect(queryByText(/report, don’t approach/i)).toBeTruthy();
+  });
+
+  it('exports the exact §1 wording for the one surface that restates it', async () => {
+    // SightingDetailScreen's "Open in Maps" confirm repeats this sentence
+    // before handing an owner the captured point. It IMPORTS this constant
+    // rather than retyping it — a second hand-typed copy had already drifted
+    // once. Pinning the export to the same wording the component renders means
+    // the confirm cannot silently disagree with the notice above it.
+    expect(SAFETY_NOTICE_BODY).toMatch(FULL_BODY);
   });
 });

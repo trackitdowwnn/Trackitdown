@@ -11,7 +11,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import type { MapComponentProps } from './LocationPicker';
 
 export interface AppMapExtraProps {
@@ -37,6 +37,8 @@ export function AppMapCircle(_props: Record<string, unknown>) {
 }
 
 export function AppMap(_props: MapComponentProps & AppMapExtraProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.fallback}>
       <Text style={styles.text}>
@@ -46,17 +48,18 @@ export function AppMap(_props: MapComponentProps & AppMapExtraProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  fallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceSubtle,
-    padding: spacing.xl,
-  },
-  text: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    fallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surfaceSubtle,
+      padding: spacing.xl,
+    },
+    text: {
+      ...typography.body,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+  });

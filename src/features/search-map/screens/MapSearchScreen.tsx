@@ -26,7 +26,7 @@ import { useRequireAuth } from '@/features/auth';
 import { useDevicePermission } from '@/features/permissions';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, motion, sizes, spacing } from '@/shared/theme';
+import { motion, sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
 import type { GeoCoord, GeoRegion } from '@/shared/types';
 import { FullscreenLoader, useToast } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
@@ -85,6 +85,7 @@ const UK_REGION: GeoRegion = {
 const AREA_ENTRY_RADIUS_MILES = 5;
 
 export function MapSearchScreen() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const { area, lat, lng, latDelta, lngDelta, criteria } = useLocalSearchParams<{
     area?: string;
@@ -186,6 +187,7 @@ function MapSearchBody({
   inset: number;
   insetBottom: number;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const toast = useToast();
   // Read SILENTLY (useDevicePermission never prompts on mount) — this only
@@ -766,14 +768,14 @@ function MapSearchBody({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   resolving: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   // Top row: back button + the search pill sharing the top inset. The 16pt
   // gutter (not the usual 24) is the map's own exception — full-bleed map

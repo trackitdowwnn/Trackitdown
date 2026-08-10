@@ -22,7 +22,7 @@
 
 import { StyleSheet, View } from 'react-native';
 
-import { colors, motion, radii, sizes } from '@/shared/theme';
+import { motion, radii, sizes, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { AppMap, AppMapMarker, AppMapPolyline } from '@/shared/ui/AppMap';
 
 import { trailRegion } from '../lib/timelineModel';
@@ -52,6 +52,8 @@ export function SightingsTrailMap({
   onPinPress,
   height = sizes.mapPreview,
 }: SightingsTrailMapProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const framed = origin ? [origin, ...points] : points;
   const region = trailRegion(framed);
   if (!region || points.length === 0) return null;
@@ -86,7 +88,7 @@ export function SightingsTrailMap({
           // The rail, in space — same stroke token as the timeline's line.
           <AppMapPolyline
             coordinates={path}
-            strokeColor={colors.primary}
+            strokeColor={palette.primary}
             strokeWidth={sizes.timelineRailStroke}
           />
         ) : null}
@@ -123,11 +125,11 @@ export function SightingsTrailMap({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   card: {
     borderRadius: radii.xl,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   // Invisible 44pt tap pad centring the drawn pin (DESIGN_SYSTEM touch rule).
   pinTarget: {
@@ -142,15 +144,15 @@ const styles = StyleSheet.create({
     width: sizes.mapPin,
     height: sizes.mapPin,
     borderRadius: radii.full,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderWidth: sizes.mapPinRing,
-    borderColor: colors.success,
+    borderColor: c.success,
   },
   pinNewest: {
     width: sizes.mapPinNewest,
     height: sizes.mapPinNewest,
-    backgroundColor: colors.success,
-    borderColor: colors.surface,
+    backgroundColor: c.success,
+    borderColor: c.surface,
   },
   // The theft origin: primary INK, unlike the timeline's quiet grey flag —
   // deliberate: a surfaceSubtle dot vanishes on the map canvas. Not a
@@ -159,8 +161,8 @@ const styles = StyleSheet.create({
     width: sizes.mapPinOrigin,
     height: sizes.mapPinOrigin,
     borderRadius: radii.full,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     borderWidth: sizes.mapPinRing,
-    borderColor: colors.surface,
+    borderColor: c.surface,
   },
 });

@@ -16,7 +16,15 @@ import { Feather } from '@expo/vector-icons';
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 export interface FeedSectionHeaderProps {
   title: string;
@@ -33,6 +41,8 @@ export const FeedSectionHeader = memo(function FeedSectionHeader({
   onSeeAll,
   seeAllAccessibilityLabel,
 }: FeedSectionHeaderProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   return (
     <View style={styles.row}>
       <Text accessibilityRole="header" style={styles.title} numberOfLines={1}>
@@ -47,7 +57,7 @@ export const FeedSectionHeader = memo(function FeedSectionHeader({
           hitSlop={spacing.sm}
         >
           <View style={styles.chevronCircle}>
-            <Feather name="chevron-right" size={sizes.iconSm} color={colors.textPrimary} />
+            <Feather name="chevron-right" size={sizes.iconSm} color={palette.textPrimary} />
           </View>
         </Pressable>
       ) : null}
@@ -55,7 +65,7 @@ export const FeedSectionHeader = memo(function FeedSectionHeader({
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -70,7 +80,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.sectionTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   seeAll: {
@@ -83,7 +93,7 @@ const styles = StyleSheet.create({
     width: sizes.circleButtonSm,
     height: sizes.circleButtonSm,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },

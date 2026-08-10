@@ -24,7 +24,14 @@ import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, sizes, spacing, typography } from '@/shared/theme';
+import {
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { EmptyState, Screen } from '@/shared/ui';
 
 import { legalDocument } from '../lib/legalContent';
@@ -35,6 +42,7 @@ export interface LegalDocumentScreenProps {
 }
 
 export function LegalDocumentScreen({ slug }: LegalDocumentScreenProps) {
+  const styles = useThemedStyles(makeStyles);
   const doc = legalDocument(slug);
 
   return (
@@ -85,6 +93,8 @@ export function LegalDocumentScreen({ slug }: LegalDocumentScreenProps) {
 }
 
 function BackButton() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   return (
     <Pressable
@@ -94,12 +104,12 @@ function BackButton() {
       style={styles.back}
       testID="legal-back"
     >
-      <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+      <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   scroll: {
     padding: spacing.xl,
     gap: spacing.lg,
@@ -118,32 +128,32 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   updated: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     marginTop: -spacing.sm,
   },
   lede: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   section: {
     gap: spacing.sm,
   },
   subhead: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   prose: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   bullet: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingLeft: spacing.md,
   },
 });

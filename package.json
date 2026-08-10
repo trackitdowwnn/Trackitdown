@@ -72,7 +72,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "test": "jest --passWithNoTests",
+    "test": "jest",
     "test:db": "bash scripts/test-db.sh",
     "emulator": "powershell -ExecutionPolicy Bypass -File scripts/start-emulator.ps1"
   },

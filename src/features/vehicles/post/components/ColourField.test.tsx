@@ -95,14 +95,18 @@ describe('ColourField', () => {
     expect(getByLabelText('Blue').props.accessibilityState).toMatchObject({ checked: false });
   });
 
-  it('borders light swatches so they stay visible, and leaves dark ones plain', async () => {
+  it('borders EVERY swatch, pale and dark alike, so none can vanish', async () => {
+    // Was "borders light swatches ... and leaves dark ones plain", which pinned
+    // an assumption that only held while the surface behind a swatch was always
+    // white. Dark mode inverted it: Black #1A1A1A on a #1E1E1E card is 1.03:1,
+    // so the plain-by-design half became the invisible half.
     const { getByTestId } = await renderField();
 
     const white = StyleSheet.flatten(getByTestId('colour-swatch-White').props.style);
     const black = StyleSheet.flatten(getByTestId('colour-swatch-Black').props.style);
 
     expect(white.borderWidth).toBe(1);
-    expect(black.borderWidth).toBeUndefined();
+    expect(black.borderWidth).toBe(1);
   });
 
   it('does not open the note sheet for a plain colour', async () => {

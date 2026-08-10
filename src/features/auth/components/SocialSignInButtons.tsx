@@ -15,7 +15,15 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/shared/ui';
-import { colors, opacity, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 export interface SocialSignInButtonsProps {
   onApple: () => void;
@@ -25,6 +33,8 @@ export interface SocialSignInButtonsProps {
 }
 
 export function SocialSignInButtons({ onApple, onGoogle, disabled }: SocialSignInButtonsProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.root}>
       <View style={styles.dividerRow}>
@@ -60,7 +70,7 @@ export function SocialSignInButtons({ onApple, onGoogle, disabled }: SocialSignI
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   root: {
     gap: spacing.md,
   },
@@ -72,11 +82,11 @@ const styles = StyleSheet.create({
   line: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
   },
   or: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   appleButton: {
     height: sizes.control,

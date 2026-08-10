@@ -21,7 +21,14 @@ import { Linking, SafeAreaView, ScrollView, StyleSheet, Switch, Text, View } fro
 
 import { useDevicePermission } from '@/features/permissions';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, radii, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   Button,
   ConfirmDialog,
@@ -65,6 +72,9 @@ function AlertRow({
   onToggle: (enabled: boolean) => void;
   onDelete: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   return (
     <View style={styles.row} testID={`alert-row-${alert.id}`}>
       <View style={styles.rowMain}>
@@ -84,15 +94,16 @@ function AlertRow({
         accessibilityLabel={`${alert.name} alerts`}
         value={alert.enabled}
         onValueChange={onToggle}
-        trackColor={{ true: colors.primary, false: colors.border }}
-        thumbColor={colors.surface}
-        ios_backgroundColor={colors.border}
+        trackColor={{ true: palette.primary, false: palette.borderStrong }}
+        thumbColor={palette.surface}
+        ios_backgroundColor={palette.borderStrong}
       />
     </View>
   );
 }
 
 export function AlertsScreen() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const toast = useToast();
   const state = useMyAlerts();
@@ -243,19 +254,19 @@ export function AlertsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+const makeStyles = (c: Palette) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   scroll: { padding: spacing.xl, gap: spacing.lg },
-  title: { ...typography.title, color: colors.textPrimary },
+  title: { ...typography.title, color: c.textPrimary },
   primerFrame: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,
   },
   notice: {
     ...typography.caption,
-    color: colors.textPrimary,
-    backgroundColor: colors.surfaceSubtle,
+    color: c.textPrimary,
+    backgroundColor: c.surfaceSubtle,
     borderRadius: radii.md,
     padding: spacing.lg,
   },
@@ -263,15 +274,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,
   },
   rowMain: { flex: 1, gap: spacing.xs },
-  rowName: { ...typography.cardTitle, color: colors.textPrimary },
-  rowNamePaused: { color: colors.textSecondary },
-  rowSummary: { ...typography.caption, color: colors.textSecondary },
-  rowPaused: { ...typography.caption, color: colors.textSecondary },
+  rowName: { ...typography.cardTitle, color: c.textPrimary },
+  rowNamePaused: { color: c.textSecondary },
+  rowSummary: { ...typography.caption, color: c.textSecondary },
+  rowPaused: { ...typography.caption, color: c.textSecondary },
   rowActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
-  note: { ...typography.caption, color: colors.textSecondary },
+  note: { ...typography.caption, color: c.textSecondary },
 });

@@ -17,7 +17,15 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 
-import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 export interface QuickReplyRowProps {
   replies: readonly string[];
@@ -26,6 +34,7 @@ export interface QuickReplyRowProps {
 }
 
 export function QuickReplyRow({ replies, onPick }: QuickReplyRowProps) {
+  const styles = useThemedStyles(makeStyles);
   if (replies.length === 0) {
     return null;
   }
@@ -58,7 +67,7 @@ export function QuickReplyRow({ replies, onPick }: QuickReplyRowProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   row: {
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
@@ -69,13 +78,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   chipPressed: {
-    backgroundColor: colors.surfaceSubtlePressed,
+    backgroundColor: c.surfaceSubtlePressed,
   },
   chipText: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
 });

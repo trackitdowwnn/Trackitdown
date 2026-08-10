@@ -23,7 +23,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { usePostSightings } from '@/features/sightings';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button } from '@/shared/ui';
 
 export interface ExitAttestationProps {
@@ -49,6 +49,7 @@ export function ExitAttestation({
   onCancel,
   busy = false,
 }: ExitAttestationProps) {
+  const styles = useThemedStyles(makeStyles);
   const { status, sightings } = usePostSightings(postId);
   const listed = sightings.filter((sighting) => sightingIds.includes(sighting.id));
 
@@ -103,20 +104,20 @@ export function ExitAttestation({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   card: {
     gap: spacing.md,
     padding: spacing.lg,
     borderRadius: radii.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
   },
   title: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   body: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   list: {
     gap: spacing.sm,
@@ -126,20 +127,20 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     minHeight: sizes.touchTarget,
     justifyContent: 'center',
   },
   itemTitle: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   itemNote: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   caption: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

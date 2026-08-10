@@ -22,6 +22,28 @@ commenting standards.
 - We never build features that facilitate pursuit: no live navigation
   toward a sighted car, no "car is moving" live tracking, no directions
   from spotter to vehicle.
+  - **The OWNER may open a sighting's point in their maps app** (2026-08-08).
+    Exactly one control, on the owner-only sighting detail screen. It does not
+    bend the rule above, and the boundaries are load-bearing rather than
+    incidental:
+    - It drops a **pin**, never turn-by-turn. `mapPinUrl` emits only the
+      *show me this place* forms (`ll=` / `geo:?q=`) and never the navigation
+      forms (`daddr=` / `google.navigation:`), so the app cannot produce live
+      navigation even by accident. The function is named for what it emits.
+    - It reads **"Open in Maps"**, not "Directions" — a place, not a journey.
+    - It sits **below the SafetyNotice** and behind a **confirm that restates
+      that notice verbatim** (the copy is imported from the component, not
+      retyped, so the two cannot drift).
+    - The caption handed to the third-party maps app is a fixed, non-identifying
+      string — never the plate, the car, or the spotter.
+
+    The ban above is *spotter→vehicle* and against *live* navigation; recovery
+    itself is "for the owner and police" (below), and the police ask "where".
+    A "Directions" button was also added to the **public** listing body on the
+    same day and removed on review: that body is what every spotter and every
+    logged-out browser reads, so it WAS the banned feature — the coordinate was
+    already public, but the affordance turned "a car to look out for" into
+    "drive here". Pinned by `src/shared/lib/mapsLink.test.ts`.
 - Sighting locations shown to owners are exact; the *spotter's* identity
   shows as first name + reputation only.
 - Terms of service must state that bounties reward information leading to

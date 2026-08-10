@@ -24,7 +24,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { EmptyState, ErrorState, SafetyNotice, Screen } from '@/shared/ui';
 
 import { SightingsTrailMap } from '../components/SightingsTrailMap';
@@ -37,6 +37,7 @@ export interface PostSightingsScreenProps {
 }
 
 export function PostSightingsScreen({ postId }: PostSightingsScreenProps) {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const { status, sightings, photoUrls, retry } = usePostSightings(postId);
 
@@ -150,7 +151,7 @@ export function PostSightingsScreen({ postId }: PostSightingsScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   content: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xl,
@@ -158,16 +159,16 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   mapNote: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   skeletonMap: {
     height: sizes.mapPreview,
     borderRadius: radii.xl,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonSet: {
     gap: spacing.lg,
@@ -181,7 +182,7 @@ const styles = StyleSheet.create({
     width: sizes.iconSm,
     height: sizes.iconSm,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonLines: {
     flex: 1,
@@ -191,12 +192,12 @@ const styles = StyleSheet.create({
     height: sizes.skeletonLine,
     width: '60%',
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonLine: {
     height: sizes.skeletonLine,
     width: '40%',
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
 });

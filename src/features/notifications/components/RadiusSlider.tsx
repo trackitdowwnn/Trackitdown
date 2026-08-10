@@ -35,7 +35,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { colors, motion, opacity, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  opacity,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 
 import {
@@ -72,6 +81,7 @@ export function RadiusSlider({
 }: RadiusSliderProps) {
   // React Compiler opt-out for the same reason MoneySlider opts out.
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
   const value = clampMiles(valueMiles);
 
@@ -235,7 +245,7 @@ export function RadiusSlider({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     gap: spacing.xs,
   },
@@ -249,11 +259,11 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   readout: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingVertical: 0,
     textAlign: 'right',
   },
@@ -265,21 +275,21 @@ const styles = StyleSheet.create({
     height: TRACK_HEIGHT,
     borderRadius: TRACK_HEIGHT / 2,
     // borderStrong, not border — a hairline track vanishes on this background.
-    backgroundColor: colors.borderStrong,
+    backgroundColor: c.borderStrong,
   },
   fill: {
     position: 'absolute',
     left: 0,
     height: TRACK_HEIGHT,
     borderRadius: TRACK_HEIGHT / 2,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
   },
   thumb: {
     position: 'absolute',
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     ...shadows.soft,
   },
 });

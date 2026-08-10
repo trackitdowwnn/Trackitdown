@@ -19,17 +19,46 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { timeAgo } from '@/shared/lib/timeAgo';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 import type { NotificationRow } from '../api/notificationsApi';
-import { CENTER_ROW_META } from '../lib/centerRowMeta';
+import { CENTER_ROW_META, type NotificationTone } from '../lib/centerRowMeta';
 
 export interface NotificationRowItemProps {
   row: NotificationRow;
   onPress: (row: NotificationRow) => void;
 }
 
+/**
+ * Tone → hue, against the palette in effect. Lives here rather than in the
+ * meta table because the table is a plain module that must not depend on a
+ * palette (see ../lib/centerRowMeta.ts) — this is the one place that has a
+ * render to resolve it in.
+ */
+function toneColor(c: Palette, tone: NotificationTone): string {
+  switch (tone) {
+    case 'success':
+      return c.success;
+    case 'warning':
+      return c.warning;
+    case 'danger':
+      return c.danger;
+    default:
+      return c.textSecondary;
+  }
+}
+
 export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const meta = CENTER_ROW_META[row.kind];
   const unread = row.readAt === null;
   const loud = unread && meta.needsAttention;
@@ -53,7 +82,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
           no ghost gutter. */}
       {loud ? <View style={styles.attentionBar} testID={`attention-${row.id}`} /> : null}
       <View style={styles.iconCircle}>
-        <meta.Icon size={sizes.icon} color={meta.iconColor} />
+        <meta.Icon size={sizes.icon} color={toneColor(palette, meta.tone)} />
       </View>
       <View style={styles.textColumn}>
         <Text
@@ -74,7 +103,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -84,7 +113,7 @@ const styles = StyleSheet.create({
     minHeight: sizes.touchTarget,
   },
   rowPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   attentionBar: {
     position: 'absolute',
@@ -93,13 +122,13 @@ const styles = StyleSheet.create({
     bottom: spacing.sm,
     width: sizes.attentionBar,
     borderRadius: radii.full,
-    backgroundColor: colors.warning,
+    backgroundColor: c.warning,
   },
   iconCircle: {
     width: sizes.avatarMd,
     height: sizes.avatarMd,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -109,7 +138,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   // A HEAVIER FAMILY, never fontWeight — Android fakes bold over the loaded
   // face otherwise (ThreadRow's nameUnread precedent).
@@ -118,7 +147,7 @@ const styles = StyleSheet.create({
   },
   body: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   metaColumn: {
     alignItems: 'flex-end',
@@ -126,7 +155,7 @@ const styles = StyleSheet.create({
   },
   time: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   unreadDot: {
     width: sizes.badgeDot,
@@ -134,6 +163,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     // The sanctioned badge hue (ThreadRow + AppTabBar) — same ink today, but
     // a palette retune must move both inbox faces together.
-    backgroundColor: colors.accentText,
+    backgroundColor: c.accentText,
   },
 });

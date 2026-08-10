@@ -30,7 +30,7 @@ import { useCallback, useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 
 import { legalHref } from '@/shared/lib';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, TextField } from '@/shared/ui';
 
 import type { PayoutDetails } from '../api/payoutsApi';
@@ -82,6 +82,7 @@ export function PayoutDetailsForm({
   onCancel,
   busy = false,
 }: PayoutDetailsFormProps) {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof Fields, string>>>({});
@@ -281,26 +282,26 @@ export function PayoutDetailsForm({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   form: {
     gap: spacing.md,
   },
   lede: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   section: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     marginTop: spacing.sm,
   },
   note: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   link: {
     ...typography.caption,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
 });

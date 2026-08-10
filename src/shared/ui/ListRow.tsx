@@ -23,9 +23,19 @@
  */
 
 import { Check, ChevronRight, type LucideIcon } from 'lucide-react-native';
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 
 export interface ListRowProps {
   title: string;
@@ -44,6 +54,24 @@ export interface ListRowProps {
    * undefined, so the set stays a radio group to a screen reader.
    */
   selected?: boolean;
+  /**
+   * Marks this row as a SWITCH: `toggled` drives the accessibility state and
+   * the role, and the row's own press should flip it. Pass the Switch itself
+   * as `trailing` — this prop is the semantics, that one is the pixels.
+   *
+   * Separate from `selected` because the two mean different things to a screen
+   * reader: `selected` is "this one of several" (radio), `toggled` is "this is
+   * on or off" (switch). A settings row that reads as a radio invites a hunt
+   * for the other options.
+   */
+  toggled?: boolean;
+  /**
+   * Replaces the chevron/check at the row's end — for a Switch or any other
+   * control that IS the row's answer. Rendered inert to assistive tech: the
+   * row already carries the label, role and state, and a second focusable node
+   * inside it would be announced twice.
+   */
+  trailing?: ReactNode;
   disabled?: boolean;
   testID?: string;
 }
@@ -56,11 +84,15 @@ export function ListRow({
   onPress,
   destructive = false,
   selected,
+  toggled,
+  trailing,
   disabled = false,
   testID,
 }: ListRowProps) {
-  const titleColor = destructive ? colors.danger : colors.textPrimary;
-  const iconColor = destructive ? colors.danger : colors.textSecondary;
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+  const titleColor = destructive ? palette.danger : palette.textPrimary;
+  const iconColor = destructive ? palette.danger : palette.textSecondary;
   const pressable = Boolean(onPress) && !disabled;
 
   return (
@@ -72,11 +104,25 @@ export function ListRow({
       ]}
       onPress={onPress}
       disabled={!pressable}
-      // A row in a chooser is a radio, not a button: the role is what tells a
-      // screen reader that `selected` means "this one of several" rather than
-      // "this toggle is on".
-      accessibilityRole={selected === undefined ? (onPress ? 'button' : undefined) : 'radio'}
-      accessibilityState={{ disabled, ...(selected === undefined ? {} : { selected }) }}
+      // Three different rows, three different roles. A chooser row is a RADIO
+      // ("this one of several"), a settings row with a switch is a SWITCH
+      // ("on or off"), and anything else that navigates is a button. Getting
+      // this wrong sends a screen-reader user hunting for options that don't
+      // exist, or reading a toggle as a link.
+      accessibilityRole={
+        toggled !== undefined
+          ? 'switch'
+          : selected !== undefined
+            ? 'radio'
+            : onPress
+              ? 'button'
+              : undefined
+      }
+      accessibilityState={{
+        disabled,
+        ...(selected === undefined ? {} : { selected }),
+        ...(toggled === undefined ? {} : { checked: toggled }),
+      }}
       accessibilityLabel={[title, value, subtitle].filter(Boolean).join(', ')}
       testID={testID}
     >
@@ -96,12 +142,19 @@ export function ListRow({
           {value}
         </Text>
       ) : null}
-      {selected === undefined ? (
+      {trailing !== undefined ? (
+        // Inert to assistive tech: the row above already carries the label,
+        // the switch role and the on/off state, so a focusable control inside
+        // it would announce the same thing a second time.
+        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {trailing}
+        </View>
+      ) : selected === undefined ? (
         pressable ? (
-          <ChevronRight size={sizes.icon} color={colors.textSecondary} />
+          <ChevronRight size={sizes.icon} color={palette.textSecondary} />
         ) : null
       ) : selected ? (
-        <Check size={sizes.icon} color={colors.textPrimary} />
+        <Check size={sizes.icon} color={palette.textPrimary} />
       ) : (
         // A same-size spacer, so the titles of chosen and unchosen rows line
         // up instead of shifting by an icon width down the list.
@@ -111,39 +164,40 @@ export function ListRow({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: sizes.control,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-  },
-  rowPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  rowDisabled: {
-    opacity: opacity.disabled,
-  },
-  textBlock: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  title: {
-    ...typography.body,
-  },
-  subtitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  value: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  checkSpacer: {
-    width: sizes.icon,
-    height: sizes.icon,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      minHeight: sizes.control,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radii.md,
+    },
+    rowPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    rowDisabled: {
+      opacity: opacity.disabled,
+    },
+    textBlock: {
+      flex: 1,
+      gap: spacing.xs,
+    },
+    title: {
+      ...typography.body,
+    },
+    subtitle: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    value: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    checkSpacer: {
+      width: sizes.icon,
+      height: sizes.icon,
+    },
+  });

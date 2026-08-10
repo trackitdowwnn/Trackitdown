@@ -26,7 +26,17 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 
 import {
@@ -67,6 +77,8 @@ export function ReputationCard({
   createdAt: string;
 }) {
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const reduceMotion = useReducedMotion();
   const earned = earnedBadges(counters);
   const next = nextBadgeGoal(counters);
@@ -102,7 +114,7 @@ export function ReputationCard({
                 accessibilityLabel={item.label}
               >
                 <View style={styles.highlightIcon}>
-                  <Icon size={EMBLEM_GLYPH} color={colors.primary} />
+                  <Icon size={EMBLEM_GLYPH} color={palette.primary} />
                 </View>
                 <Text style={styles.highlightText}>{item.label}</Text>
               </View>
@@ -141,13 +153,15 @@ export function ReputationCard({
 
 /** The empty state IS most users' card: a warm start, never sad zeros. */
 function FreshStory({ createdAt }: { createdAt: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const since = spottingSinceLabel(createdAt);
   return (
     <View style={styles.storyBlock}>
       <Text style={styles.invitation}>Your first sighting starts your spotter story.</Text>
       <View style={styles.highlightRow} accessible accessibilityLabel={since}>
         <View style={styles.highlightIcon}>
-          <Sparkles size={EMBLEM_GLYPH} color={colors.primary} />
+          <Sparkles size={EMBLEM_GLYPH} color={palette.primary} />
         </View>
         <Text style={styles.highlightText}>{since}</Text>
       </View>
@@ -158,6 +172,7 @@ function FreshStory({ createdAt }: { createdAt: string }) {
 /** The earned-badge stamps as a wrapping rail — exported so the public
  *  passport sheet can show earned trust without this card's chrome. */
 export function EmblemRail({ badges, testID }: { badges: BadgeState[]; testID?: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.emblemRail} testID={testID}>
       {badges.map((badge) => (
@@ -172,7 +187,9 @@ export function EmblemRail({ badges, testID }: { badges: BadgeState[]; testID?: 
  *  sight, not just by spoken label. Recovery emblems carry the accent
  *  (near-black) — the one true bounty family. */
 function Emblem({ badge }: { badge: BadgeState }) {
-  const tint = badge.counter === 'recoveriesCredited' ? colors.accentText : colors.primary;
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+  const tint = badge.counter === 'recoveriesCredited' ? palette.accentText : palette.primary;
   const Icon = FAMILY_ICONS[badge.counter];
   return (
     <View
@@ -205,6 +222,7 @@ function ProgressBar({
   reduceMotion: boolean;
 }) {
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
   const fraction = threshold > 0 ? achieved / threshold : 0;
   const fill = useSharedValue(reduceMotion ? fraction : 0);
   useEffect(() => {
@@ -227,9 +245,9 @@ function ProgressBar({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,
     gap: spacing.lg,
@@ -237,7 +255,7 @@ const styles = StyleSheet.create({
   },
   invitation: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   storyBlock: {
     gap: spacing.md,
@@ -253,12 +271,12 @@ const styles = StyleSheet.create({
   },
   highlightText: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   rule: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
   },
   emblemRail: {
     flexDirection: 'row',
@@ -274,9 +292,9 @@ const styles = StyleSheet.create({
     height: EMBLEM_DIAMETER,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.full,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -295,16 +313,16 @@ const styles = StyleSheet.create({
     flex: 1,
     height: sizes.sliderTrack,
     borderRadius: radii.full,
-    backgroundColor: colors.borderStrong,
+    backgroundColor: c.borderStrong,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     borderRadius: radii.full,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
   },
   quiet: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

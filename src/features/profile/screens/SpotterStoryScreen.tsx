@@ -20,7 +20,16 @@ import { ChevronLeft } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRequireAuth } from '@/features/auth';
-import { colors, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { EmptyState, Screen } from '@/shared/ui';
 
 import { ReputationCard } from '../components/ReputationCard';
@@ -30,6 +39,7 @@ import { passportStats } from '../lib/reputation';
 import type { MyProfile } from '../types';
 
 export function SpotterStoryScreen() {
+  const styles = useThemedStyles(makeStyles);
   const state = useMyProfile();
   const requireAuth = useRequireAuth();
 
@@ -75,6 +85,7 @@ export function SpotterStoryScreen() {
  *  no strip, the narrative card's warm invitation carries the page), then
  *  the full narrative ReputationCard. */
 function StoryContent({ profile }: { profile: MyProfile }) {
+  const styles = useThemedStyles(makeStyles);
   const stats = passportStats(profile.counters);
   return (
     <>
@@ -89,6 +100,8 @@ function StoryContent({ profile }: { profile: MyProfile }) {
 }
 
 function BackButton() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   return (
     <Pressable
@@ -98,7 +111,7 @@ function BackButton() {
       style={styles.back}
       testID="story-back"
     >
-      <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+      <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
     </Pressable>
   );
 }
@@ -106,6 +119,7 @@ function BackButton() {
 /** Card-shaped placeholder in the house skeleton idiom (surfaceSubtle lines
  *  on a surface card) — never a spinner. */
 function StorySkeleton() {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.skeletonCard} testID="story-skeleton">
       <View style={styles.skeletonLine} />
@@ -115,7 +129,7 @@ function StorySkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   scroll: {
     padding: spacing.xl,
     gap: spacing.xl,
@@ -136,20 +150,20 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   // The record card matches the narrative card's chrome (surface, radii.lg,
   // soft shadow) so the two read as one family.
   statsCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     ...shadows.soft,
   },
   skeletonCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,
     gap: spacing.md,
@@ -157,7 +171,7 @@ const styles = StyleSheet.create({
   skeletonLine: {
     height: sizes.skeletonLine,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonLineShort: {
     width: '60%',

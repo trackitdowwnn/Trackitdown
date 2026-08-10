@@ -20,23 +20,37 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 
 import type { PublicProfileSheetProps } from '@/features/profile';
 import { useTimeAgo } from '@/shared/hooks';
+import { mapPinUrl } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   AppImage,
   Avatar,
   Button,
+  ConfirmDialog,
   ErrorState,
+  SAFETY_NOTICE_BODY,
   SafetyNotice,
   Screen,
   useToast,
   type BottomSheetRef,
+  type ConfirmDialogRef,
 } from '@/shared/ui';
 import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 
@@ -56,6 +70,8 @@ export interface SightingDetailScreenProps {
 }
 
 export function SightingDetailScreen({ postId, sightingId }: SightingDetailScreenProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   const toast = useToast();
   const { status, sightings, photoUrls, retry } = usePostSightings(postId);
@@ -75,6 +91,7 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   const [PeerSheet, setPeerSheet] = useState<ComponentType<PublicProfileSheetProps> | null>(null);
   const [peerProfile, setPeerProfile] = useState<PublicProfileSheetProps['profile']>(null);
   const peerSheetRef = useRef<BottomSheetRef>(null);
+  const mapsConfirmRef = useRef<ConfirmDialogRef>(null);
 
   const openSpotterProfile = async () => {
     if (!sighting) return;
@@ -174,6 +191,24 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   // Friendly labels from the shared vocabulary (never raw enum values).
   const contextLine = contextSummary(sighting).join(' · ');
 
+  // Hand the captured point to whatever maps app the device has. A device can
+  // genuinely have none (stripped Android builds), and openURL then rejects —
+  // so this is a toast, never an unhandled rejection.
+  const openInMaps = async () => {
+    if (!locatedPhoto) return;
+    const url = mapPinUrl(
+      locatedPhoto.lat as number,
+      locatedPhoto.lng as number,
+      'Car sighted here',
+    );
+    try {
+      await Linking.openURL(url);
+      log.info('sighting_map_opened', { postId, sightingId });
+    } catch {
+      toast.show('We couldn’t open your maps app.', 'error');
+    }
+  };
+
   return (
     <Screen scroll contentContainerStyle={styles.content}>
       <SightingHeader sighting={sighting} status={effectiveStatus} />
@@ -199,7 +234,7 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
             )}
             {photo.source === 'gallery' ? (
               <View style={styles.photoSourceRow}>
-                <Feather name="image" size={sizes.iconSm} color={colors.textSecondary} />
+                <Feather name="image" size={sizes.iconSm} color={palette.textSecondary} />
                 <Text style={styles.photoSourceText}>Added from photo library</Text>
               </View>
             ) : null}
@@ -244,7 +279,7 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
           <Text style={styles.marksTitle}>Confirmed your marks</Text>
           {sighting.confirmedFeatures.map((mark) => (
             <View key={mark.id} style={styles.markRow}>
-              <Feather name="check" size={sizes.iconSm} color={colors.primary} />
+              <Feather name="check" size={sizes.iconSm} color={palette.primary} />
               <Text style={styles.markText}>{mark.description}</Text>
             </View>
           ))}
@@ -275,7 +310,40 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
             onPress={() => void markHelpful()}
           />
         ) : null}
+        {/* Deliberately BELOW the SafetyNotice, in the quietest variant, and
+            behind a confirm that repeats the notice in full.
+            §1 bans pursuit features — "no live navigation toward a sighted
+            car" — so this drops a PIN and never starts turn-by-turn (see
+            mapPinUrl), and it says "Open in Maps", not "Directions". §1's
+            enumerated ban is spotter→vehicle and this screen is owner-only,
+            with §1 elsewhere putting recovery in the hands of "the owner and
+            police" — but it is still the most direct route to the thing the
+            notice above forbids, so the confirm makes the owner read it once
+            more at the moment it applies. It earns its place: the alternative
+            is an owner copying coordinates off a screen that shows none, and
+            the police ask "where". */}
+        {locatedPhoto ? (
+          <Button
+            label="Open in Maps"
+            variant="ghost"
+            onPress={() => mapsConfirmRef.current?.open()}
+          />
+        ) : null}
       </View>
+
+      {/* The §1 notice, restated at the one moment it is most likely to be
+          ignored. The BODY is IMPORTED, never retyped: a hand-typed second copy
+          drifts, and this one already had (it gained a "Report from a distance."
+          the component's wording doesn't carry). The title is this moment's,
+          the warning is the app's one canonical sentence — including 999, the
+          emergency line, not 101. */}
+      <ConfirmDialog
+        ref={mapsConfirmRef}
+        title="Opening the map — please don’t approach"
+        body={SAFETY_NOTICE_BODY}
+        confirmLabel="Open in Maps"
+        onConfirm={() => void openInMaps()}
+      />
 
       {PeerSheet ? (
         <PeerSheet ref={peerSheetRef} profile={peerProfile} onDismiss={() => setPeerProfile(null)} />
@@ -291,6 +359,7 @@ function SightingHeader({
   sighting: OwnerSighting;
   status: OwnerSighting['status'];
 }) {
+  const styles = useThemedStyles(makeStyles);
   const reportedAgo = useTimeAgo(sighting.createdAt);
   return (
     <View style={styles.header}>
@@ -310,6 +379,7 @@ function SightingHeader({
 }
 
 function SpotterRow({ sighting, onPress }: { sighting: OwnerSighting; onPress: () => void }) {
+  const styles = useThemedStyles(makeStyles);
   const { spotter } = sighting;
   return (
     <View style={styles.spotterCard}>
@@ -335,7 +405,7 @@ function SpotterRow({ sighting, onPress }: { sighting: OwnerSighting; onPress: (
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   content: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xl,
@@ -346,7 +416,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   metaRow: {
     flexDirection: 'row',
@@ -356,12 +426,12 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   statusTag: {
     ...typography.caption,
     // Primary ink, not success green — sage stays reserved for payout moments.
-    color: colors.primary,
+    color: c.primary,
   },
   photoStack: {
     gap: spacing.sm,
@@ -372,7 +442,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
   },
   photoPending: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   photoSourceRow: {
     flexDirection: 'row',
@@ -382,36 +452,36 @@ const styles = StyleSheet.create({
   },
   photoSourceText: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   mapCard: {
     height: sizes.mapPreview,
     borderRadius: radii.xl,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   pin: {
     width: sizes.mapPinConfirm,
     height: sizes.mapPinConfirm,
     borderRadius: radii.full,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     borderWidth: sizes.mapPinRing,
-    borderColor: colors.surface,
+    borderColor: c.surface,
     ...shadows.soft,
   },
   body: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   marksCard: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     borderRadius: radii.lg,
     padding: spacing.lg,
     gap: spacing.sm,
   },
   marksTitle: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   markRow: {
     flexDirection: 'row',
@@ -420,14 +490,14 @@ const styles = StyleSheet.create({
   },
   markText: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   spotterCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     padding: spacing.lg,
     ...shadows.soft,
@@ -438,11 +508,11 @@ const styles = StyleSheet.create({
   },
   spotterName: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   spotterMeta: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   spotterLinkPressable: {
     minHeight: sizes.touchTarget,
@@ -450,7 +520,7 @@ const styles = StyleSheet.create({
   },
   spotterLink: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
   actions: {
@@ -464,18 +534,18 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 4 / 3,
     borderRadius: radii.lg,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonLineWide: {
     height: sizes.skeletonLine,
     width: '60%',
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonLine: {
     height: sizes.skeletonLine,
     width: '40%',
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
 });

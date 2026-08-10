@@ -32,7 +32,15 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRequireAuth, useSession } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   BottomSheet,
   Button,
@@ -56,6 +64,8 @@ import { MAX_VEHICLES, type SavedVehicle } from '../types';
 const log = createLogger('garage');
 
 export function MyCarsScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const session = useSession();
   const requireAuth = useRequireAuth();
   const router = useRouter();
@@ -133,7 +143,7 @@ export function MyCarsScreen() {
           style={styles.back}
           testID="my-cars-back"
         >
-          <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+          <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
         </Pressable>
         <Text style={styles.title} accessibilityRole="header">
           My cars
@@ -146,7 +156,7 @@ export function MyCarsScreen() {
             style={styles.headerAdd}
             testID="my-cars-add"
           >
-            <Plus size={sizes.icon} color={colors.textPrimary} />
+            <Plus size={sizes.icon} color={palette.textPrimary} />
           </Pressable>
         ) : null}
       </View>
@@ -291,6 +301,7 @@ export function MyCarsScreen() {
 /** Mirrors GarageCard's geometry — photo, name, meta, AND the plate row —
  *  so load → ready doesn't jump (ui review #4). */
 function SkeletonGarageCard() {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View accessible accessibilityLabel="Loading" accessibilityState={{ busy: true }}>
       <View style={[styles.skeletonBlock, styles.skeletonPhoto]} />
@@ -301,7 +312,7 @@ function SkeletonGarageCard() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -318,7 +329,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     // flex, not flexShrink: pushes the header's + to the trailing edge.
     flex: 1,
   },
@@ -352,13 +363,13 @@ const styles = StyleSheet.create({
   },
   capNote: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   sheetBody: {
     gap: spacing.md,
   },
   skeletonBlock: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     borderRadius: radii.sm,
   },
   skeletonPhoto: {

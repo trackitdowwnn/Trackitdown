@@ -22,7 +22,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { colors, opacity, radii, spacing, typography } from '@/shared/theme';
+import { opacity, radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import type { MessageGroupPos } from '../lib/messageGroups';
 import type { ChatMessage, OutgoingMessage } from '../types';
@@ -83,6 +83,7 @@ export function MessageBubble({
   otherName,
   onReport,
 }: MessageBubbleProps) {
+  const styles = useThemedStyles(makeStyles);
   const reportable = Boolean(onReport) && !mine;
   const report = () => {
     if (reportable) onReport?.(message);
@@ -131,6 +132,7 @@ export interface OutgoingBubbleProps {
 }
 
 export function OutgoingBubble({ message, onRetry }: OutgoingBubbleProps) {
+  const styles = useThemedStyles(makeStyles);
   const failed = message.state === 'failed';
   return (
     <View style={[styles.messageBlock, styles.blockMine]}>
@@ -158,6 +160,7 @@ export function OutgoingBubble({ message, onRetry }: OutgoingBubbleProps) {
 /** DOMAIN: the automatic safety first message — centred and quiet, visually
  *  distinct from every human bubble. */
 export function SystemMessage({ message }: { message: ChatMessage }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.systemBlock} testID={`system-${message.id}`}>
       <Text style={styles.systemText}>{message.content}</Text>
@@ -172,6 +175,7 @@ export function SystemMessage({ message }: { message: ChatMessage }) {
  * identical. The rules give the day its own weight; time stays plain.
  */
 export function DaySeparator({ label }: { label: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.dayBlock}>
       <View style={styles.dayRule} />
@@ -181,7 +185,7 @@ export function DaySeparator({ label }: { label: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   messageBlock: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xs,
@@ -195,7 +199,7 @@ const styles = StyleSheet.create({
   },
   time: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     alignSelf: 'center',
     paddingVertical: spacing.xs,
   },
@@ -206,32 +210,32 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   bubbleMine: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
   },
   bubbleTheirs: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   bubblePending: {
     opacity: opacity.inactive,
   },
   textMine: {
     ...typography.body,
-    color: colors.textOnPrimary,
+    color: c.textOnPrimary,
   },
   textTheirs: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   deliveryState: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   seen: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   deliveryFailed: {
-    color: colors.danger,
+    color: c.danger,
   },
   systemBlock: {
     paddingHorizontal: spacing.xxl,
@@ -240,7 +244,7 @@ const styles = StyleSheet.create({
   },
   systemText: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
   },
   dayBlock: {
@@ -253,10 +257,10 @@ const styles = StyleSheet.create({
   dayRule: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
   },
   dayText: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

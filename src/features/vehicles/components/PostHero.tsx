@@ -19,7 +19,16 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { AppImage } from '@/shared/ui';
 
@@ -34,6 +43,8 @@ export interface PostHeroProps {
 }
 
 export function PostHero({ photos, width, height, alt }: PostHeroProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [index, setIndex] = useState(0);
 
   // Card→detail continuity: the hero fades + grows from 0.94 on mount, so the
@@ -53,7 +64,7 @@ export function PostHero({ photos, width, height, alt }: PostHeroProps) {
   if (photos.length === 0) {
     return (
       <Animated.View style={[styles.fallback, { width, height }, enterStyle]}>
-        <Feather name="image" size={sizes.avatarSm} color={colors.textSecondary} />
+        <Feather name="image" size={sizes.avatarSm} color={palette.textSecondary} />
       </Animated.View>
     );
   }
@@ -99,11 +110,13 @@ export function PostHero({ photos, width, height, alt }: PostHeroProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
+  // The empty-hero placeholder is PAGE chrome, not chrome over a photo (there
+  // is no photo) — so it stays on the themed surface token.
   fallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   counter: {
     position: 'absolute',
@@ -111,14 +124,17 @@ const styles = StyleSheet.create({
     // Clear of the content sheet's rounded top edge, which overlaps the
     // hero's last `radii.xl` points (PostDetailScreen `sheet`).
     bottom: spacing.md + radii.xl,
-    // surfaceInverse = the sanctioned dark floating-pill surface.
-    backgroundColor: colors.surfaceInverse,
+    // surfaceOverMedia, NOT surfaceInverse: this pill sits ON THE PHOTOGRAPHY.
+    // surfaceInverse means "the inverse of the page" and flips to near-white on
+    // dark, which would put a white pill with white-ish text over a bright
+    // photo. A photo is as bright in either theme, so its chrome must not move.
+    backgroundColor: c.surfaceOverMedia,
     borderRadius: radii.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
   counterText: {
     ...typography.caption,
-    color: colors.textOnPrimary,
+    color: c.textOnMedia,
   },
 });

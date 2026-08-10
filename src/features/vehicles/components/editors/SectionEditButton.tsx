@@ -12,7 +12,7 @@
 import { Pencil } from 'lucide-react-native';
 import { Pressable, StyleSheet } from 'react-native';
 
-import { colors, sizes, spacing } from '@/shared/theme';
+import { sizes, spacing, usePalette } from '@/shared/theme';
 
 export function SectionEditButton({
   onPress,
@@ -24,6 +24,7 @@ export function SectionEditButton({
   label: string;
   testID?: string;
 }) {
+  const palette = usePalette();
   return (
     <Pressable
       onPress={onPress}
@@ -33,11 +34,12 @@ export function SectionEditButton({
       style={styles.button}
       testID={testID}
     >
-      <Pencil size={sizes.iconSm} color={colors.textSecondary} />
+      <Pencil size={sizes.iconSm} color={palette.textSecondary} />
     </Pressable>
   );
 }
 
+// Stays module-level: padding only, no colour to freeze.
 const styles = StyleSheet.create({
   button: {
     padding: spacing.xs,

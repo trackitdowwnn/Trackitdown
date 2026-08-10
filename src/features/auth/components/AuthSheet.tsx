@@ -20,7 +20,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { createLogger, isValidEmail } from '@/shared/lib';
-import { colors, motion, spacing, typography } from '@/shared/theme';
+import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
 import {
@@ -190,6 +190,7 @@ function EmailStep({
   onChangeEmail: (value: string) => void;
   onCodeSent: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const [busy, setBusy] = useState(false);
   // Two error slots on purpose: an email-path failure belongs ON the email
   // field; a social failure has nothing to do with that field, so it gets a
@@ -269,6 +270,7 @@ function OtpStep({
   email: string;
   onUseDifferentEmail: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorNonce, setErrorNonce] = useState(0);
@@ -346,6 +348,7 @@ function OtpStep({
 // --- Step 3: first name (new users) --------------------------------------------
 
 function ProfileStep() {
+  const styles = useThemedStyles(makeStyles);
   const session = useSession();
   const [firstName, setFirstName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -386,30 +389,30 @@ function ProfileStep() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   step: {
     gap: spacing.lg,
   },
   heading: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   body: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   // Underlined so it reads as a tappable control in the monochrome scheme
   // (near-black link text no longer stands out by colour alone).
   link: {
     ...typography.label,
-    color: colors.primary,
+    color: c.primary,
     textDecorationLine: 'underline',
   },
   linkDisabled: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   error: {
     ...typography.caption,
-    color: colors.danger,
+    color: c.danger,
   },
 });

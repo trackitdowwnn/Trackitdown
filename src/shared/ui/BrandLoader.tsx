@@ -43,7 +43,14 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { colors, motion, spacing, typography } from '../theme';
+import {
+  motion,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { easeOut, linear } from '../theme/motionEasing';
 
 
@@ -53,18 +60,6 @@ import { easeOut, linear } from '../theme/motionEasing';
  *  phrase pulsing rather than as something travelling through it, and that
  *  was half of why the first attempt at this was invisible. */
 const SHIMMER_BAND = 0.22;
-
-/** The sweep's two colours.
- *
- *  The resting end is `textSecondary` and CANNOT go lighter. That is the
- *  palette's lightest text colour that still clears WCAG AA on the near-white
- *  background (~4.9:1); the next step down, `borderStrong`, is ~2.9:1 and
- *  fails outright. The waiting phrase is real content — someone reads it —
- *  so the shimmer is not allowed to trade its legibility for drama. All of
- *  the "bold" therefore comes from SPEED (motion.loaderShimmer) and from the
- *  band being tight, not from washing the text out between passes. */
-const SHIMMER_REST = colors.textSecondary;
-const SHIMMER_PEAK = colors.primary;
 
 /** The waiting voice: watchful, communal, hopeful. Keep entries SHORT (one
  *  breath), sentence-cased, ellipsis-terminated; add sparingly. */
@@ -87,6 +82,8 @@ export interface BrandLoaderProps {
 }
 
 export function BrandLoader({ message, testID }: BrandLoaderProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   // Random starting phrase per mount keeps repeat waits feeling fresh.
   const [index, setIndex] = useState(() => Math.floor(Math.random() * LOADER_PHRASES.length));
 
@@ -148,7 +145,7 @@ export function BrandLoader({ message, testID }: BrandLoaderProps) {
           widths differ, and a trailing spinner would wander). */}
       <ActivityIndicator
         size="small"
-        color={colors.textSecondary}
+        color={palette.textSecondary}
         style={styles.spinner}
         // Decorative: the block's single progressbar label covers it.
         importantForAccessibility="no"
@@ -170,6 +167,7 @@ export function BrandLoader({ message, testID }: BrandLoaderProps) {
  * the tests read.
  */
 function ShimmerLine({ text }: { text: string }) {
+  const styles = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
   const progress = useSharedValue(0);
 
@@ -228,6 +226,9 @@ function ShimmerCharacter({
   position: number;
   progress: SharedValue<number>;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   const style = useAnimatedStyle(() => {
     // The head travels from one band-width BEFORE the line to one band-width
     // AFTER it, so the first and last characters get a full pass rather than
@@ -236,10 +237,22 @@ function ShimmerCharacter({
     const distance = Math.abs(position - head);
     const intensity = Math.max(0, 1 - distance / SHIMMER_BAND);
     return {
-      // Grey ink darkening to near-black as the band passes. On this
-      // near-white palette the sheen has to travel DARKER — a lightening
-      // sweep would dissolve the letters into the background.
-      color: interpolateColor(intensity, [0, 1], [SHIMMER_REST, SHIMMER_PEAK]),
+      // The sweep's two ends, read from the palette INSIDE the worklet — hoist
+      // either to a module const or a shared value and the hex freezes on the
+      // UI thread, which is the whole bug this migration exists to fix.
+      //
+      // The resting end is `textSecondary` and CANNOT go lighter (on the light
+      // palette): it is the lightest text colour still clearing WCAG AA on the
+      // page background (~4.9:1); the next step down, `borderStrong`, is ~2.9:1
+      // and fails outright. The waiting phrase is real content — someone reads
+      // it — so the shimmer never trades legibility for drama. The "bold" comes
+      // from SPEED (motion.loaderShimmer) and a tight band instead.
+      //
+      // Direction of travel is palette-relative, not absolute: on the light
+      // palette grey darkens toward near-black; on dark it brightens toward
+      // near-white. Either way the sheen moves AWAY from the page background,
+      // which is what stops the letters dissolving into it.
+      color: interpolateColor(intensity, [0, 1], [palette.textSecondary, palette.primary]),
     };
   });
 
@@ -268,57 +281,58 @@ export function splitIntoWords(text: string): string[] {
   return words;
 }
 
-const styles = StyleSheet.create({
-  root: {
-    // Span the parent: the absolute lines centre on the full line width,
-    // not inside the wordmark's shrink-wrapped box.
-    alignSelf: 'stretch',
-    alignItems: 'center',
-  },
-  wordmark: {
-    ...typography.display,
-    color: colors.primary,
-  },
-  messageSlot: {
-    // Two body lines of room so a long status never reflows the wordmark;
-    // stretched wide so the absolute lines have a full line to centre in.
-    height: typography.body.lineHeight * 2,
-    marginTop: spacing.xl,
-    alignSelf: 'stretch',
-    // The window the phrases travel through. Without this the outgoing line
-    // would fade out ON TOP of the wordmark 24pt above it, since the exit
-    // translates further than the gap.
-    overflow: 'hidden',
-  },
-  line: {
-    // Absolute: cross-fading lines overlap instead of stacking (the layout
-    // snap that read as jank).
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: spacing.xl,
-  },
-  wordRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  word: {
-    flexDirection: 'row',
-  },
-  message: {
-    ...typography.body,
-    // Bold, not regular (2026-08-06, at the owner's request). Weight is set
-    // by FAMILY here as everywhere else in the app — with statically loaded
-    // faces, `fontWeight` makes Android synthesize a fake bold on top of a
-    // real face (see theme/typography.ts). Heavier type also gives the
-    // shimmer more ink to travel through, so the sweep reads harder.
-    fontFamily: typography.cardTitle.fontFamily,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  spinner: {
-    marginTop: spacing.lg,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      // Span the parent: the absolute lines centre on the full line width,
+      // not inside the wordmark's shrink-wrapped box.
+      alignSelf: 'stretch',
+      alignItems: 'center',
+    },
+    wordmark: {
+      ...typography.display,
+      color: c.primary,
+    },
+    messageSlot: {
+      // Two body lines of room so a long status never reflows the wordmark;
+      // stretched wide so the absolute lines have a full line to centre in.
+      height: typography.body.lineHeight * 2,
+      marginTop: spacing.xl,
+      alignSelf: 'stretch',
+      // The window the phrases travel through. Without this the outgoing line
+      // would fade out ON TOP of the wordmark 24pt above it, since the exit
+      // translates further than the gap.
+      overflow: 'hidden',
+    },
+    line: {
+      // Absolute: cross-fading lines overlap instead of stacking (the layout
+      // snap that read as jank).
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      paddingHorizontal: spacing.xl,
+    },
+    wordRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+    },
+    word: {
+      flexDirection: 'row',
+    },
+    message: {
+      ...typography.body,
+      // Bold, not regular (2026-08-06, at the owner's request). Weight is set
+      // by FAMILY here as everywhere else in the app — with statically loaded
+      // faces, `fontWeight` makes Android synthesize a fake bold on top of a
+      // real face (see theme/typography.ts). Heavier type also gives the
+      // shimmer more ink to travel through, so the sweep reads harder.
+      fontFamily: typography.cardTitle.fontFamily,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    spinner: {
+      marginTop: spacing.lg,
+    },
+  });

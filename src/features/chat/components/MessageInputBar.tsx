@@ -25,7 +25,16 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 /** Roughly four lines of body text before the field scrolls instead of grows. */
 const COMPOSER_MAX_HEIGHT = 120;
@@ -38,6 +47,8 @@ export interface MessageInputBarProps {
 }
 
 export function MessageInputBar({ value, onChangeText, onSend, maxLength }: MessageInputBarProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const canSend = value.trim().length > 0;
   return (
     <View style={styles.bar}>
@@ -48,7 +59,7 @@ export function MessageInputBar({ value, onChangeText, onSend, maxLength }: Mess
           maxLength={maxLength}
           multiline
           placeholder="Message…"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={palette.textSecondary}
           style={styles.input}
           // The pill IS the label — announce it rather than leaving a bare
           // edit box, since there is no visible label to read.
@@ -69,13 +80,13 @@ export function MessageInputBar({ value, onChangeText, onSend, maxLength }: Mess
         ]}
         testID="send-button"
       >
-        <Feather name="arrow-up" size={sizes.icon} color={colors.textOnPrimary} />
+        <Feather name="arrow-up" size={sizes.icon} color={palette.textOnPrimary} />
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     // Bottom-aligned so a growing pill rises while the send button stays put
@@ -84,7 +95,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   pill: {
     flex: 1,
@@ -92,13 +103,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: radii.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: c.border,
+    backgroundColor: c.surface,
     paddingHorizontal: spacing.lg,
   },
   input: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     maxHeight: COMPOSER_MAX_HEIGHT,
     // Android pads the font box asymmetrically, which tips a single-line
     // value off the pill's optical centre (DESIGN_SYSTEM, Typography).
@@ -112,12 +123,12 @@ const styles = StyleSheet.create({
     width: sizes.touchTarget,
     height: sizes.touchTarget,
     borderRadius: radii.full,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendPressed: {
-    backgroundColor: colors.primaryPressed,
+    backgroundColor: c.primaryPressed,
   },
   sendDisabled: {
     opacity: opacity.disabled,

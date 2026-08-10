@@ -17,7 +17,13 @@
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, displayFontScaleCap, spacing, typography } from '@/shared/theme';
+import {
+  displayFontScaleCap,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 import type { StatRowItem } from '../lib/reputation';
 
@@ -32,6 +38,8 @@ export function StatColumn({
   horizontal?: boolean;
   testID?: string;
 }) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={horizontal ? styles.strip : styles.column} testID={testID}>
       {stats.map((stat, index) => (
@@ -58,7 +66,7 @@ export function StatColumn({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   column: {
     justifyContent: 'center',
   },
@@ -69,7 +77,7 @@ const styles = StyleSheet.create({
   },
   rowDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: c.border,
   },
   strip: {
     flexDirection: 'row',
@@ -83,16 +91,16 @@ const styles = StyleSheet.create({
   },
   cellDivided: {
     borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: colors.border,
+    borderLeftColor: c.border,
   },
   // ~2:1 value-to-label scale (reference: 22pt w600 over 10pt) on our
   // nearest tokens: sectionTitle 20 SemiBold over caption 13.
   value: {
     ...typography.sectionTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   label: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

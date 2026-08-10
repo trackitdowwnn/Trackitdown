@@ -22,7 +22,16 @@ import { Feather } from '@expo/vector-icons';
 import { memo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 import type { SourceRect } from './SearchSheet';
 
@@ -33,6 +42,8 @@ export interface FeedTopBarProps {
 }
 
 export const FeedTopBar = memo(function FeedTopBar({ onPressSearch }: FeedTopBarProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const pillRef = useRef<View>(null);
   // Measure the pill in WINDOW (absolute) coords on tap, then open — the
   // surface animates from this exact rect out to full-screen.
@@ -53,14 +64,14 @@ export const FeedTopBar = memo(function FeedTopBar({ onPressSearch }: FeedTopBar
         onPress={handlePress}
         style={({ pressed }) => [styles.searchPill, pressed && styles.searchPillPressed]}
       >
-        <Feather name="search" size={sizes.iconSm} color={colors.textPrimary} />
+        <Feather name="search" size={sizes.iconSm} color={palette.textPrimary} />
         <Text style={styles.searchPlaceholder}>Search make or model</Text>
       </Pressable>
     </View>
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.
     paddingHorizontal: spacing.lg,
@@ -71,7 +82,7 @@ const styles = StyleSheet.create({
     // page is already this colour and nothing scrolls under it in flex flow),
     // and the thing that stops feed cards showing through if it is ever moved
     // to an absolute overlay.
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   searchPill: {
     flexDirection: 'row',
@@ -80,17 +91,17 @@ const styles = StyleSheet.create({
     // an input field.
     justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.full,
     minHeight: sizes.control,
     paddingHorizontal: spacing.lg,
     ...shadows.soft,
   },
   searchPillPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   searchPlaceholder: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
 });

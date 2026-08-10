@@ -41,7 +41,16 @@ import {
   type TextInputProps,
 } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { HostTextInput } from './TextInputHost';
 
 // Derive the focus/blur event types from TextInput itself so we stay correct
@@ -102,6 +111,8 @@ export function TextField({
   onBlur,
   ...rest
 }: TextFieldProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [focused, setFocused] = useState(false);
   const hasFloatingLabel = Boolean(label);
   const isMultiline = variant === 'multiline';
@@ -160,15 +171,20 @@ export function TextField({
     onChangeText(variant === 'plate' ? text.toUpperCase() : text);
 
   // Error colour is static and wins over the focus transition.
+  // These interpolations are rebuilt on every render, so reading the palette
+  // here is enough — nothing is captured at module scope.
   const borderColor = error
-    ? colors.danger
-    : focusAnim.interpolate({ inputRange: [0, 1], outputRange: [colors.border, colors.primary] });
-
-  const labelColor = error
-    ? colors.danger
+    ? palette.danger
     : focusAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: [colors.textSecondary, colors.primary],
+        outputRange: [palette.border, palette.primary],
+      });
+
+  const labelColor = error
+    ? palette.danger
+    : focusAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [palette.textSecondary, palette.primary],
       });
 
   const message = error ?? helperText;
@@ -234,7 +250,7 @@ export function TextField({
           // With a floating label the label IS the placeholder; only surface the
           // format hint once focused. Without a label, show it as a normal placeholder.
           placeholder={hasFloatingLabel ? (focused ? placeholder : undefined) : placeholder}
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={palette.textSecondary}
           style={[
             styles.input,
             hasFloatingLabel && styles.inputFloating,
@@ -260,62 +276,63 @@ export function TextField({
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    gap: spacing.sm,
-  },
-  inputWrap: {
-    borderWidth: 1,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-  },
-  // Floating-label modes reserve top room for the floated label via input padding.
-  inputWrapFloating: {
-    minHeight: sizes.input,
-  },
-  inputWrapFloatingMultiline: {
-    minHeight: sizes.multilineMin,
-  },
-  // Plain (label-less) modes centre single-line text and pad multiline.
-  inputWrapPlain: {
-    minHeight: sizes.control,
-    justifyContent: 'center',
-  },
-  inputWrapPlainMultiline: {
-    minHeight: sizes.multilineMin,
-    paddingVertical: spacing.md,
-  },
-  inputWrapDisabled: {
-    backgroundColor: colors.surfaceSubtle,
-    opacity: opacity.disabled,
-  },
-  floatingLabel: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    fontFamily: typography.label.fontFamily,
-  },
-  input: {
-    ...typography.body,
-    color: colors.textPrimary,
-    padding: 0,
-  },
-  // Push text into the lower part of the box so the floated label sits above it.
-  inputFloating: {
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.sm,
-  },
-  inputPlate: {
-    ...typography.plate,
-  },
-  message: {
-    ...typography.caption,
-  },
-  messageHelper: {
-    color: colors.textSecondary,
-  },
-  messageError: {
-    color: colors.danger,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      gap: spacing.sm,
+    },
+    inputWrap: {
+      borderWidth: 1,
+      borderRadius: radii.md,
+      backgroundColor: c.surface,
+      paddingHorizontal: spacing.lg,
+    },
+    // Floating-label modes reserve top room for the floated label via input padding.
+    inputWrapFloating: {
+      minHeight: sizes.input,
+    },
+    inputWrapFloatingMultiline: {
+      minHeight: sizes.multilineMin,
+    },
+    // Plain (label-less) modes centre single-line text and pad multiline.
+    inputWrapPlain: {
+      minHeight: sizes.control,
+      justifyContent: 'center',
+    },
+    inputWrapPlainMultiline: {
+      minHeight: sizes.multilineMin,
+      paddingVertical: spacing.md,
+    },
+    inputWrapDisabled: {
+      backgroundColor: c.surfaceSubtle,
+      opacity: opacity.disabled,
+    },
+    floatingLabel: {
+      position: 'absolute',
+      left: spacing.lg,
+      right: spacing.lg,
+      fontFamily: typography.label.fontFamily,
+    },
+    input: {
+      ...typography.body,
+      color: c.textPrimary,
+      padding: 0,
+    },
+    // Push text into the lower part of the box so the floated label sits above it.
+    inputFloating: {
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.sm,
+    },
+    inputPlate: {
+      ...typography.plate,
+    },
+    message: {
+      ...typography.caption,
+    },
+    messageHelper: {
+      color: c.textSecondary,
+    },
+    messageError: {
+      color: c.danger,
+    },
+  });

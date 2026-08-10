@@ -31,20 +31,28 @@ import {
 import type { Edge } from 'react-native-safe-area-context';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors } from '../theme';
+import { usePalette, useThemedStyles, type Palette } from '../theme';
+
+/**
+ * The refresh spinner's colour props for a palette.
+ *
+ * A separate pure function rather than inline in the component below because
+ * it is the only part worth asserting on, and Screen.test.tsx calls
+ * ThemedRefreshControl as a PLAIN FUNCTION — a hook inside it would throw
+ * "Invalid hook call". This keeps the colours testable without a renderer.
+ */
+export const refreshControlColors = (c: Palette) => ({
+  tintColor: c.primary,
+  colors: [c.primary],
+  progressBackgroundColor: c.surface,
+});
 
 /** RefreshControl in app colours — primary spinner on a paper card (Android). */
 export function ThemedRefreshControl(
   props: Pick<RefreshControlProps, 'refreshing' | 'onRefresh' | 'testID'>,
 ) {
-  return (
-    <RefreshControl
-      tintColor={colors.primary}
-      colors={[colors.primary]}
-      progressBackgroundColor={colors.surface}
-      {...props}
-    />
-  );
+  const palette = usePalette();
+  return <RefreshControl {...refreshControlColors(palette)} {...props} />;
 }
 
 export interface ScreenProps {
@@ -84,6 +92,8 @@ export function Screen({
   contentContainerStyle,
   keyboardAware = false,
 }: ScreenProps) {
+  const styles = useThemedStyles(makeStyles);
+
   const body = (
     <>
       {scroll ? (
@@ -130,12 +140,13 @@ export function Screen({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  fill: {
-    flex: 1,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    fill: {
+      flex: 1,
+    },
+  });

@@ -19,7 +19,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { timeAgo } from '@/shared/lib/timeAgo';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { AppImage, Avatar, PlateChip } from '@/shared/ui';
 
 import { contextLine, isUnread, previewText } from '../lib/inboxModel';
@@ -36,6 +36,7 @@ export interface ThreadRowProps {
 }
 
 export function ThreadRow({ thread, onPress }: ThreadRowProps) {
+  const styles = useThemedStyles(makeStyles);
   const unread = isUnread(thread);
   const context = contextLine(thread);
   const when = timeAgo(thread.lastMessageAt);
@@ -80,7 +81,11 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
           <Text style={styles.context} numberOfLines={1}>
             {context.prefix}
           </Text>
-          {context.plate ? <PlateChip plate={context.plate} /> : null}
+          {/* onPress forwarded: the chip's long-press-to-copy makes it the
+              touch responder, which would otherwise eat the row's own tap. */}
+          {context.plate ? (
+            <PlateChip plate={context.plate} onPress={() => onPress(thread)} />
+          ) : null}
         </View>
         <Text
           style={[styles.preview, unread && styles.previewUnread]}
@@ -95,7 +100,7 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -104,7 +109,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   rowPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   avatarStack: {
     // Room for the badge to overhang the avatar's corner without clipping.
@@ -122,8 +127,8 @@ const styles = StyleSheet.create({
     // A surface ring so the badge reads as sitting ON the avatar rather than
     // merging with it — matches the app's soft, borderless card language.
     borderWidth: 2,
-    borderColor: colors.surface,
-    backgroundColor: colors.surfaceSubtle,
+    borderColor: c.surface,
+    backgroundColor: c.surfaceSubtle,
   },
   carBadgeImage: {
     width: '100%',
@@ -141,7 +146,7 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   // Family only (Satoshi-Bold) — keep body's 16/24 metrics so the row height doesn't jump
@@ -151,7 +156,7 @@ const styles = StyleSheet.create({
   },
   time: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   contextLine: {
     flexDirection: 'row',
@@ -160,20 +165,20 @@ const styles = StyleSheet.create({
   },
   context: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     flexShrink: 1,
   },
   preview: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   previewUnread: {
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   unreadDot: {
     width: sizes.badgeDot,
     height: sizes.badgeDot,
     borderRadius: radii.full,
-    backgroundColor: colors.accentText,
+    backgroundColor: c.accentText,
   },
 });

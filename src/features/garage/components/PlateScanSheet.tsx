@@ -26,7 +26,7 @@ import type { Ref } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { PlateCandidate } from '@/shared/lib/plateCandidates';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { BottomSheet, Button, PlateChip, spellPlate, type BottomSheetRef } from '@/shared/ui';
 
 export interface PlateScanSheetProps {
@@ -74,6 +74,7 @@ export function PlateScanSheet({
   onDecline,
   onDismiss,
 }: PlateScanSheetProps) {
+  const styles = useThemedStyles(makeStyles);
   const [selected, setSelected] = useState(0);
 
   // A new scan is a new question — never carry the previous answer's index
@@ -136,7 +137,9 @@ export function PlateScanSheet({
             {candidates.length === 1 ? (
               <View style={styles.options}>
                 <View style={styles.option}>
-                  <PlateChip plate={candidates[0].display} />
+                  {/* Standalone by design — see the note above: one reading is
+                      not a choice, so nothing tappable encloses it. */}
+                  <PlateChip plate={candidates[0].display} onPress={null} />
                 </View>
               </View>
             ) : (
@@ -154,7 +157,15 @@ export function PlateScanSheet({
                       style={[styles.option, styles.choosable, isSelected && styles.optionSelected]}
                       testID={`plate-candidate-${candidate.canon}`}
                     >
-                      <PlateChip plate={candidate.display} />
+                      {/* The radio's press, forwarded: the chip is the touch
+                          responder (long-press copies), so without this it
+                          would swallow the tap that PICKS this candidate —
+                          leaving the plate itself the one dead spot in a
+                          chooser made of plates. */}
+                      <PlateChip
+                        plate={candidate.display}
+                        onPress={() => setSelected(index)}
+                      />
                     </Pressable>
                   );
                 })}
@@ -185,13 +196,13 @@ export function PlateScanSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   content: {
     gap: spacing.md,
   },
   body: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   options: {
     gap: spacing.md,
@@ -213,7 +224,7 @@ const styles = StyleSheet.create({
   },
   /** A row that IS a choice, so it must look like one before it is picked. */
   choosable: {
-    borderColor: colors.border,
+    borderColor: c.border,
     // The whole row, not just the chip: centred options left the space either
     // side of a short plate dead, which is most of the row on a sheet.
     alignSelf: 'stretch',
@@ -222,6 +233,6 @@ const styles = StyleSheet.create({
     // Border colour alone. A surfaceSubtle fill here is the chip's OWN fill, so
     // picking a plate dissolved its edges into the selection at exactly the
     // moment it needed to read as a plate.
-    borderColor: colors.primary,
+    borderColor: c.primary,
   },
 });

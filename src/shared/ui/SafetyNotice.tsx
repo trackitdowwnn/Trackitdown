@@ -30,11 +30,30 @@ import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '../theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 
-const TITLE = 'Stay safe — report, don’t approach';
-const BODY =
+/**
+ * The §1 wording, exported because it is now repeated OUTSIDE this component:
+ * SightingDetailScreen's confirm restates it before handing an owner the exact
+ * captured point to a maps app. Repeating it there is deliberate — that is the
+ * moment it most needs re-reading — but a second hand-typed copy would drift
+ * from this one silently, and safety copy is the last text in the app that
+ * should say two different things in two places. Import, never retype.
+ */
+export const SAFETY_NOTICE_TITLE = 'Stay safe — report, don’t approach';
+export const SAFETY_NOTICE_BODY =
   'Never approach the vehicle, follow it, or confront anyone. If a crime is in progress, call 999.';
+
+const TITLE = SAFETY_NOTICE_TITLE;
+const BODY = SAFETY_NOTICE_BODY;
 const FULL_LABEL = `${TITLE}. ${BODY}`;
 
 export interface SafetyNoticeProps {
@@ -47,12 +66,14 @@ export interface SafetyNoticeProps {
 }
 
 export function SafetyNotice({ collapsible = false }: SafetyNoticeProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [expanded, setExpanded] = useState(false);
 
   if (!collapsible) {
     return (
       <View accessible accessibilityRole="alert" accessibilityLabel={FULL_LABEL} style={styles.banner}>
-        <Feather name="shield" size={sizes.icon} color={colors.textPrimary} />
+        <Feather name="shield" size={sizes.icon} color={palette.textPrimary} />
         <View style={styles.text}>
           <Text style={styles.title}>{TITLE}</Text>
           <Text style={styles.body}>{BODY}</Text>
@@ -75,14 +96,14 @@ export function SafetyNotice({ collapsible = false }: SafetyNoticeProps) {
       testID="safety-notice-collapsible"
     >
       <View style={styles.stripRow}>
-        <Feather name="shield" size={sizes.iconSm} color={colors.textPrimary} />
+        <Feather name="shield" size={sizes.iconSm} color={palette.textPrimary} />
         <Text style={styles.stripTitle} numberOfLines={2}>
           {TITLE}
         </Text>
         <Feather
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={sizes.iconSm}
-          color={colors.textSecondary}
+          color={palette.textSecondary}
         />
       </View>
       {expanded ? <Text style={styles.stripBody}>{BODY}</Text> : null}
@@ -90,51 +111,52 @@ export function SafetyNotice({ collapsible = false }: SafetyNoticeProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-  },
-  text: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  title: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-  },
-  body: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  // Full-bleed strip, not a card: it is chrome on the thread, and a rounded
-  // floating card here would compete with the message bubbles below it.
-  strip: {
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-  },
-  stripPressed: {
-    backgroundColor: colors.surfaceSubtlePressed,
-  },
-  stripRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: sizes.touchTarget - 2 * spacing.sm,
-  },
-  stripTitle: {
-    ...typography.label,
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  stripBody: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    paddingBottom: spacing.xs,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    banner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.lg,
+      padding: spacing.lg,
+    },
+    text: {
+      flex: 1,
+      gap: spacing.xs,
+    },
+    title: {
+      ...typography.cardTitle,
+      color: c.textPrimary,
+    },
+    body: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    // Full-bleed strip, not a card: it is chrome on the thread, and a rounded
+    // floating card here would compete with the message bubbles below it.
+    strip: {
+      backgroundColor: c.surfaceSubtle,
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.sm,
+    },
+    stripPressed: {
+      backgroundColor: c.surfaceSubtlePressed,
+    },
+    stripRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: sizes.touchTarget - 2 * spacing.sm,
+    },
+    stripTitle: {
+      ...typography.label,
+      color: c.textPrimary,
+      flex: 1,
+    },
+    stripBody: {
+      ...typography.caption,
+      color: c.textSecondary,
+      paddingBottom: spacing.xs,
+    },
+  });

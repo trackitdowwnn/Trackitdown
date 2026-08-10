@@ -21,7 +21,7 @@
 import { useEffect, useRef, type ComponentType } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { colors } from '@/shared/theme';
+import { useThemedStyles, type Palette } from '@/shared/theme';
 import { BottomSheet, type BottomSheetRef } from '@/shared/ui';
 
 import type { PostDetail } from '../../types';
@@ -77,6 +77,7 @@ export function PostSectionEditorHost({
   onClose,
   onSaved,
 }: PostSectionEditorHostProps) {
+  const styles = useThemedStyles(makeStyles);
   const Editor: EditorComponent = EDITORS[section];
 
   if (FULL_SCREEN_SECTIONS.includes(section)) {
@@ -140,13 +141,13 @@ function SheetEditor({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   overlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
 });

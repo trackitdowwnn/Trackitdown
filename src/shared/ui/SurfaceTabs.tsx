@@ -34,7 +34,7 @@
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, sizes, spacing, typography } from '../theme';
+import { sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 
 export interface SurfaceTabOption<V extends string = string> {
   value: V;
@@ -52,6 +52,8 @@ export function SurfaceTabs<V extends string = string>({
   value,
   onSelect,
 }: SurfaceTabsProps<V>) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.rule}>
       <View style={styles.row} accessibilityRole="tablist">
@@ -90,46 +92,47 @@ export function SurfaceTabs<V extends string = string>({
   );
 }
 
-const styles = StyleSheet.create({
-  // Full-bleed: the rule reaches both screen edges, the tabs do not.
-  rule: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  row: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.xl,
-    gap: spacing.xl,
-  },
-  tab: {
-    // Content-width, so the underline is the label's width — an equal-width
-    // split would rebuild the segmented track this replaced.
-    minHeight: sizes.touchTarget,
-    justifyContent: 'center',
-  },
-  tabPressed: {
-    opacity: 0.6,
-  },
-  // Size and line height are pinned across states; only family and colour
-  // move (see header).
-  label: {
-    ...typography.body,
-    lineHeight: 24,
-    color: colors.textSecondary,
-  },
-  labelSelected: {
-    ...typography.cardTitle,
-    lineHeight: 24,
-    color: colors.textPrimary,
-  },
-  // Sits ON the row's hairline rather than above it, so the active tab reads
-  // as cutting through the rule.
-  underline: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: sizes.surfaceTabUnderline,
-    backgroundColor: colors.primary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    // Full-bleed: the rule reaches both screen edges, the tabs do not.
+    rule: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.border,
+    },
+    row: {
+      flexDirection: 'row',
+      paddingHorizontal: spacing.xl,
+      gap: spacing.xl,
+    },
+    tab: {
+      // Content-width, so the underline is the label's width — an equal-width
+      // split would rebuild the segmented track this replaced.
+      minHeight: sizes.touchTarget,
+      justifyContent: 'center',
+    },
+    tabPressed: {
+      opacity: 0.6,
+    },
+    // Size and line height are pinned across states; only family and colour
+    // move (see header).
+    label: {
+      ...typography.body,
+      lineHeight: 24,
+      color: c.textSecondary,
+    },
+    labelSelected: {
+      ...typography.cardTitle,
+      lineHeight: 24,
+      color: c.textPrimary,
+    },
+    // Sits ON the row's hairline rather than above it, so the active tab reads
+    // as cutting through the rule.
+    underline: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: sizes.surfaceTabUnderline,
+      backgroundColor: c.primary,
+    },
+  });

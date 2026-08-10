@@ -35,7 +35,16 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { lightHaptic } from '@/shared/lib/haptics';
-import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
 import { CAR_COLOURS, type CarColour, isNoteColour } from '../lib/carColours';
@@ -72,6 +81,8 @@ function SwatchCell({
   onSelect: (name: string) => void;
 }) {
   'use no memo'; // mutates a shared value in the press handler (as AppTabBar/MoneySlider)
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const scale = useSharedValue(1);
   const popStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
@@ -106,19 +117,27 @@ function SwatchCell({
               styles.swatch,
               // Swatch fill is DATA (see carColours.ts), never a token.
               { backgroundColor: colour.hex },
-              colour.light && styles.swatchBordered,
+              // EVERY swatch, not just the pale ones (2026-08-10). The border
+              // used to be gated on `colour.light`, which was correct while the
+              // surface behind it was always white — only white/silver/gold
+              // could disappear. Dark mode inverted the problem: Black #1A1A1A
+              // on a #1E1E1E card is 1.03:1, so the most commonly picked colour
+              // in the grid rendered as an empty hole. A swatch is a sample of
+              // paint and needs an edge at BOTH ends of the range; borderStrong
+              // clears 3:1 on either surface.
+              styles.swatchBordered,
             ]}
           >
             {colour.secondaryHex ? (
               <View style={[styles.swatchHalf, { backgroundColor: colour.secondaryHex }]} />
             ) : null}
             {colour.icon ? (
-              <Feather name={colour.icon} size={sizes.iconSm} color={colors.textSecondary} />
+              <Feather name={colour.icon} size={sizes.iconSm} color={palette.textSecondary} />
             ) : null}
           </View>
           {selected ? (
             <View style={styles.checkBadge}>
-              <Feather name="check" size={sizes.colourSwatchBadgeIcon} color={colors.textOnPrimary} />
+              <Feather name="check" size={sizes.colourSwatchBadgeIcon} color={palette.textOnPrimary} />
             </View>
           ) : null}
         </Animated.View>
@@ -131,6 +150,7 @@ function SwatchCell({
 }
 
 export function ColourField({ value, note, onChange, onChangeNote, error }: ColourFieldProps) {
+  const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
 
   // Selecting an escape colour ("Multicolour / wrapped" / "Other") opens the
@@ -181,7 +201,7 @@ export function ColourField({ value, note, onChange, onChangeNote, error }: Colo
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   stack: {
     gap: spacing.xl,
   },
@@ -205,7 +225,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   ringSelected: {
-    borderColor: colors.primary,
+    borderColor: c.primary,
   },
   swatch: {
     width: sizes.colourSwatch,
@@ -215,10 +235,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Light fills would vanish on the light background — a hairline keeps them legible.
+  // Light fills would vanish on the light page — a hairline keeps them legible.
+  // ⚠️ The swatch fills are literal CAR colours, so they never move with the
+  // theme; only the ring does. On the dark page it is the DARK swatches that
+  // now need this edge, and `colour.light` no longer selects the right ones —
+  // a design call, deliberately left alone by this mechanical pass.
   swatchBordered: {
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: c.borderStrong,
   },
   // Two-tone (wrapped): the secondary colour fills the right half.
   swatchHalf: {
@@ -236,16 +260,16 @@ const styles = StyleSheet.create({
     width: sizes.colourSwatchBadge,
     height: sizes.colourSwatchBadge,
     borderRadius: radii.full,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
     // A ring in the background colour lifts the badge off the swatch edge.
     borderWidth: sizes.colourSwatchRing,
-    borderColor: colors.background,
+    borderColor: c.background,
   },
   swatchLabel: {
     ...typography.caption,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textAlign: 'center',
   },
   sheetBody: {
@@ -253,6 +277,6 @@ const styles = StyleSheet.create({
   },
   error: {
     ...typography.caption,
-    color: colors.danger,
+    color: c.danger,
   },
 });

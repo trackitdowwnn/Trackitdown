@@ -76,7 +76,15 @@ import { useRequireAuth } from '@/features/auth';
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 import { formatPounds } from '@/shared/lib/money';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { Button, EmptyState, ErrorState, Screen, useToast } from '@/shared/ui';
 
 import { PaymentError } from '../api/functionError';
@@ -139,6 +147,8 @@ const COPY: Record<
 };
 
 export function PayoutsScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const toast = useToast();
   const requireAuth = useRequireAuth();
   const { status, settling, refresh, settleReturn } = usePayoutAccount();
@@ -259,7 +269,9 @@ export function PayoutsScreen() {
           loadConnectAndInitialize({
             publishableKey,
             fetchClientSecret,
-            appearance: { variables: { colorPrimary: colors.primary } },
+            // Stripe's embedded UI takes a hex VALUE, so it reads the live
+            // palette — the near-black in light, the near-white in dark.
+            appearance: { variables: { colorPrimary: palette.primary } },
           }),
         );
         return;
@@ -292,7 +304,7 @@ export function PayoutsScreen() {
       setOpening(false);
     }
     },
-    [fetchClientSecret, opening, refresh, settleReturn, toast],
+    [fetchClientSecret, opening, palette, refresh, settleReturn, toast],
   );
 
   /**
@@ -636,6 +648,8 @@ export function PayoutsScreen() {
 }
 
 function BackButton() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   return (
     <Pressable
@@ -647,13 +661,14 @@ function BackButton() {
       style={styles.back}
       testID="payouts-back"
     >
-      <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+      <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
     </Pressable>
   );
 }
 
 /** House skeleton idiom — surfaceSubtle blocks on a surface card, never a spinner. */
 function PayoutsSkeleton() {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.card} testID="payouts-skeleton">
       <View style={[styles.skeletonLine, styles.skeletonTitle]} />
@@ -663,7 +678,7 @@ function PayoutsSkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   scroll: {
     padding: spacing.xl,
     gap: spacing.lg,
@@ -682,46 +697,48 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   card: {
     gap: spacing.md,
     padding: spacing.lg,
     borderRadius: radii.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
   },
+  // surfaceInverse: this card is the page's one inverted block, so it flips
+  // with the theme and stays the thing that stands out against the page.
   earnedCard: {
     gap: spacing.xs,
     padding: spacing.lg,
     borderRadius: radii.lg,
-    backgroundColor: colors.surfaceInverse,
+    backgroundColor: c.surfaceInverse,
   },
   earnedTitle: {
     ...typography.title,
-    color: colors.textOnPrimary,
+    color: c.textOnPrimary,
   },
   earnedBody: {
     ...typography.body,
     // On the inverse surface, secondary-grey text would fail contrast.
-    color: colors.textOnPrimary,
+    color: c.textOnPrimary,
   },
   cardTitle: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   cardBody: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   note: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   skeletonLine: {
     height: sizes.skeletonLine,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonTitle: {
     width: '55%',

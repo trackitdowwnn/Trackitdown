@@ -27,7 +27,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-import { mapStyle } from '@/shared/theme';
+import { mapStyleFor, useThemeControls } from '@/shared/theme';
 
 import type { MapComponentProps } from './LocationPicker';
 
@@ -79,6 +79,7 @@ export function AppMap({
   interactive = true,
   showsUserLocation = false,
 }: MapComponentProps & AppMapExtraProps) {
+  const { scheme } = useThemeControls();
   const mapRef = useRef<MapView>(null);
   // The region the map currently shows — lets us tell a prop-driven fly-to
   // apart from where the user already is.
@@ -105,8 +106,15 @@ export function AppMap({
     <MapView
       ref={mapRef}
       provider={PROVIDER_GOOGLE}
-      // Custom light style harmonised with the cool palette (ADR-0005).
-      customMapStyle={mapStyle as unknown as MapView['props']['customMapStyle']}
+      // Custom style harmonised with the active palette (ADR-0005/ADR-0013).
+      //
+      // MUST follow the scheme. Every overlay drawn on this map — the selected
+      // pin, the alert-zone circle, the sighting trail — inverts to near-white
+      // in dark mode BECAUSE the canvas is meant to be dark under it. Left on
+      // the light array they composite near-white on near-white at ~1:1 and
+      // disappear, which for the alert zone means a spotter sets a radius with
+      // no visible zone at all. The basemap and its overlays are one decision.
+      customMapStyle={mapStyleFor(scheme) as unknown as MapView['props']['customMapStyle']}
       style={StyleSheet.absoluteFill}
       initialRegion={region}
       showsUserLocation={showsUserLocation}

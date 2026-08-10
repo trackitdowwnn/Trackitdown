@@ -21,7 +21,17 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 
 /** Travel to clear the screen edge when hidden: pill height + its bottom
@@ -37,6 +47,8 @@ export const MapPillButton = memo(function MapPillButton({
   visible,
   onPress,
 }: MapPillButtonProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const shown = useSharedValue(visible ? 1 : 0);
   const reduceMotion = useReducedMotion();
 
@@ -66,34 +78,38 @@ export const MapPillButton = memo(function MapPillButton({
         onPress={onPress}
         style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
       >
-        <Feather name="map" size={sizes.iconSm} color={colors.textOnPrimary} />
+        <Feather name="map" size={sizes.iconSm} color={palette.textOnPrimary} />
         <Text style={styles.label}>Map</Text>
       </Pressable>
     </Animated.View>
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   wrap: {
     position: 'absolute',
     bottom: spacing.xl,
     alignSelf: 'center',
   },
+  // surfaceInverse, NOT surfaceOverMedia: this pill floats over the FEED (a
+  // themed page), so it must invert with the theme to stay the "dark floating
+  // fill" against whatever the page is. Chrome over photography is the other
+  // token — see PostHero.
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surfaceInverse,
+    backgroundColor: c.surfaceInverse,
     borderRadius: radii.full,
     minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.xl,
     ...shadows.lifted,
   },
   pillPressed: {
-    backgroundColor: colors.surfaceInversePressed,
+    backgroundColor: c.surfaceInversePressed,
   },
   label: {
     ...typography.label,
-    color: colors.textOnPrimary,
+    color: c.textOnPrimary,
   },
 });

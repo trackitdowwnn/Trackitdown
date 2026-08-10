@@ -16,7 +16,7 @@
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import type { PostStatus } from '@/shared/types';
 import { AppImage, StatusBadge, statusBadgeLabel } from '@/shared/ui';
 
@@ -28,6 +28,7 @@ export interface PostContextStripProps {
 }
 
 export function PostContextStrip({ thread, onPress }: PostContextStripProps) {
+  const styles = useThemedStyles(makeStyles);
   const car = [thread.post.colour, thread.post.make, thread.post.model]
     .filter(Boolean)
     .join(' ');
@@ -68,6 +69,7 @@ export function PostContextStrip({ thread, onPress }: PostContextStripProps) {
 }
 
 export function ClosedThreadBanner({ status }: { status: string }) {
+  const styles = useThemedStyles(makeStyles);
   const recovered = status === 'recovered' || status === 'recovered_no_spotter';
   return (
     <View style={styles.banner} accessibilityLiveRegion="polite" testID="closed-thread-banner">
@@ -80,7 +82,7 @@ export function ClosedThreadBanner({ status }: { status: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // No surface or rule of its own: the thread screen wraps this and the person
   // header in ONE block that owns both, so the two stopped reading as separate
   // slabs. Transparent, so the strip inherits whatever it is placed on.
@@ -93,7 +95,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
   },
   stripPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   thumb: {
     width: sizes.avatarMd,
@@ -101,7 +103,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
   },
   thumbEmpty: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   stripBody: {
     flex: 1,
@@ -109,11 +111,11 @@ const styles = StyleSheet.create({
   },
   car: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   status: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -122,11 +124,11 @@ const styles = StyleSheet.create({
   // target, and this names what tapping it does.
   viewLink: {
     ...typography.caption,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
   banner: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     borderRadius: radii.md,
     marginHorizontal: spacing.xl,
     marginVertical: spacing.sm,
@@ -134,7 +136,7 @@ const styles = StyleSheet.create({
   },
   bannerText: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
   },
 });

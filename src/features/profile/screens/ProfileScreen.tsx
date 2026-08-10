@@ -41,14 +41,22 @@ import {
   FileText,
   Info,
   LifeBuoy,
+  Moon,
   Shield,
   Sparkles,
 } from 'lucide-react-native';
 import { Children, Fragment, useCallback, useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, spacing, typography } from '@/shared/theme';
+import {
+  spacing,
+  typography,
+  usePalette,
+  useThemeControls,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   Button,
   ConfirmDialog,
@@ -79,6 +87,7 @@ import { DEV_MOCK_PROFILE } from '../lib/devMockProfile';
 import type { MyProfile } from '../types';
 
 export function ProfileScreen() {
+  const styles = useThemedStyles(makeStyles);
   const state = useMyProfile();
   const [devPreview, setDevPreview] = useState(false);
 
@@ -140,6 +149,7 @@ export function ProfileScreen() {
 }
 
 function SignedOutState({ onPreview }: { onPreview: () => void }) {
+  const styles = useThemedStyles(makeStyles);
   const requireAuth = useRequireAuth();
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -173,6 +183,7 @@ function LoadedProfile({
   devPreview: boolean;
   onExitPreview: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const toast = useToast();
   const { badges, setBadge } = useTabBadges();
@@ -204,6 +215,14 @@ function LoadedProfile({
       refreshPayoutsRow();
     }, [refreshPayoutsRow]),
   );
+  // The CHOICE, not the rendered result: "System" stays the honest answer even
+  // while the app happens to be dark, because the phone owns that half.
+  // The EFFECTIVE scheme, not the stored preference: the switch has two states
+  // and the preference has three, so before it is ever touched the honest
+  // position is whatever the phone is currently producing.
+  const { scheme, setPreference } = useThemeControls();
+  const palette = usePalette();
+
   const alertZoneSummary = (() => {
     if (alertsState.status !== 'ready') return undefined; // say nothing rather than guess
     const { alerts } = alertsState;
@@ -276,6 +295,20 @@ function LoadedProfile({
   const copyLogs = async () => {
     await Clipboard.setStringAsync(formatRecentLogs());
     toast.show('Recent logs copied');
+  };
+
+  // Opening a mailto: is NOT guaranteed to work — a device with no mail account
+  // configured (common on Android) rejects it, and the bare `void openURL(...)`
+  // this replaced then failed completely silently: the row was tappable, did
+  // nothing, and gave someone trying to reach a human no clue why. Falling back
+  // to the clipboard means the address always ends up somewhere they can use it.
+  const contactSupport = async () => {
+    try {
+      await Linking.openURL(`mailto:${SUPPORT_EMAIL}`);
+    } catch {
+      await Clipboard.setStringAsync(SUPPORT_EMAIL);
+      toast.show(`No mail app — ${SUPPORT_EMAIL} copied instead`);
+    }
   };
 
   const inboxBadge = typeof badges.inbox === 'number' ? badges.inbox : 0;
@@ -354,6 +387,30 @@ function LoadedProfile({
               testID="row-payouts"
             />
           ) : null}
+          {/* A switch, not a three-way chooser (owner call 2026-08-10). The
+              switch shows the scheme actually IN EFFECT, so before it is ever
+              touched it simply mirrors the phone — which keeps "follow the
+              system" as the default without spending a row on saying so. The
+              first flip pins the app to that scheme for good; there is no way
+              back to following the phone, which is the honest cost of a
+              two-state control and the reason the state shown is the effective
+              one rather than the stored preference. */}
+          <ListRow
+            icon={Moon}
+            title="Dark mode"
+            toggled={scheme === 'dark'}
+            onPress={() => setPreference(scheme === 'dark' ? 'light' : 'dark')}
+            trailing={
+              <Switch
+                value={scheme === 'dark'}
+                onValueChange={(next) => setPreference(next ? 'dark' : 'light')}
+                trackColor={{ true: palette.primary, false: palette.borderStrong }}
+                thumbColor={palette.surface}
+                ios_backgroundColor={palette.borderStrong}
+              />
+            }
+            testID="row-dark-mode"
+          />
           <ListRow
             icon={Info}
             title="How Trackitdown works"
@@ -383,7 +440,7 @@ function LoadedProfile({
           <ListRow
             icon={LifeBuoy}
             title="Contact support"
-            onPress={() => void Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+            onPress={() => void contactSupport()}
           />
         </Section>
 
@@ -471,6 +528,7 @@ function Section({
   quiet?: boolean;
   testID?: string;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const rows = Children.toArray(children); // toArray already drops null/false
   return (
     <View style={styles.section} testID={testID}>
@@ -487,10 +545,10 @@ function Section({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   scroll: {
     padding: spacing.xl,
@@ -498,7 +556,7 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   section: {
     gap: spacing.sm,
@@ -507,17 +565,17 @@ const styles = StyleSheet.create({
   // section keeps the old quiet label so it recedes.
   sectionTitle: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingHorizontal: spacing.md,
   },
   sectionTitleQuiet: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     paddingHorizontal: spacing.md,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
     // Inset = ListRow's pressed-pill radius (radii.md = 12): the hairline
     // meets the flat edge of the pressed surfaceSubtle pill exactly. If
     // either token moves, revisit both together.
@@ -535,15 +593,15 @@ const styles = StyleSheet.create({
   },
   textActionLabel: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline', // underline = tappable (DESIGN_SYSTEM)
   },
   textActionDestructive: {
-    color: colors.danger,
+    color: c.danger,
   },
   version: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   devPreviewRow: {
     alignItems: 'center',

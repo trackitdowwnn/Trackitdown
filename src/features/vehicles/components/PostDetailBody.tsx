@@ -1,7 +1,8 @@
 /**
  * WHAT:  PostDetailBody — the scrollable content of a visible post, hairline-
  *        divided with the reference's generous rhythm (32pt sections, title-
- *        scale headers): the title cluster (title, facts line, plate+status,
+ *        scale headers): the title cluster (make/model title, the tap-to-copy
+ *        plate on the line beneath it, status,
  *        the bounty/sightings/last-seen stat band, quiet meta), the last-seen
  *        map (promoted — spotters act on WHERE first), "About this car"
  *        (clamped prose + "Show more" →
@@ -47,8 +48,8 @@ import { WatchToggle } from '@/features/watchlist';
 import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { estimateRefundPence, formatDateLabel, formatPounds } from '@/shared/lib';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { estimateRefundPence, formatPounds } from '@/shared/lib';
+import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import {
   AppImage,
   Button,
@@ -120,6 +121,7 @@ export interface PostDetailBodyProps {
 }
 
 function Divider() {
+  const styles = useThemedStyles(makeStyles);
   return <View style={styles.divider} />;
 }
 
@@ -142,6 +144,8 @@ export function PostDetailBody({
   onDeactivate,
   onRecovered,
 }: PostDetailBodyProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const { width: windowWidth } = useWindowDimensions();
   // The reference's carousel geometry (FeedCarouselRow): ~2 cards + a peek.
   const railCardWidth = Math.round(windowWidth * 0.44);
@@ -195,22 +199,28 @@ export function PostDetailBody({
           (small-but-bold, the Airbnb stat-module treatment) — its old
           display-size solo section duplicated the sticky bar's "£450 reward"
           a thumb away (design session 2026-07-23). */}
-      {/* Listed-on: the quiet dateline, tucked right under the hero's curve
-          (above the title cluster's own rhythm). Last-seen when/where
-          belongs to the stat band and the map section. */}
-      <Text style={styles.listedOn}>Listed on {formatDateLabel(post.createdAt)}</Text>
-
-      <View style={[styles.section, styles.sectionAfterDateline]}>
-        {/* Title row: the centred name + the plate chip beside it (the colour is
-            carried by the "Car details" section, not a title chip). Wraps on
-            narrow screens. */}
+      {/* No "Listed on <date>" dateline (removed 2026-08-09): it answered a
+          question nobody asked — when the LISTING was made says nothing about
+          the car. What a spotter needs is when it was last SEEN, and the stat
+          band below plus the map section both carry that. */}
+      <View style={[styles.section, styles.sectionFirst]}>
+        {/* Title row: the centred name on its own line (the colour is carried
+            by the "Car details" section, not a title chip). */}
         <View style={styles.titleRow}>
           <Text style={styles.title}>
             {post.make} {post.model}
           </Text>
-          {/* No plate → the make/model title alone carries the identity. */}
-          {post.plate ? <PlateChip plate={post.plate} /> : null}
         </View>
+        {/* The plate sits UNDER the title rather than beside it (product call
+            2026-08-09): beside a long make/model it wrapped to its own line
+            anyway on narrow screens, so the layout was already two lines half
+            the time — and inconsistently. Below, it is always the second line,
+            and it has room for the copy affordance. */}
+        {post.plate ? (
+          <View style={styles.platePlacement}>
+            <PlateChip plate={post.plate} onPress={null} />
+          </View>
+        ) : null}
         <View style={styles.badgeRow}>
           {/* Owner sees "Live" (green) on their own active post; a spotter
               viewing the same post sees no badge (public stays calm). */}
@@ -240,7 +250,7 @@ export function PostDetailBody({
               <Feather
                 name="info"
                 size={sizes.iconSm}
-                color={colors.textSecondary}
+                color={palette.textSecondary}
                 importantForAccessibility="no"
               />
             </Pressable>
@@ -287,6 +297,16 @@ export function PostDetailBody({
               ) : null}
             </View>
             <LastSeenMap lat={post.lat as number} lng={post.lng as number} onOpenFull={onOpenMap} />
+            {/* NO "open in maps" affordance here, deliberately. This body is
+                PUBLIC — every spotter and every logged-out browser reads it —
+                and SECURITY_AND_TRUST §1 bans exactly this: "We never build
+                features that facilitate pursuit: … no directions from spotter
+                to vehicle." One was added here on 2026-08-08 and removed the
+                same day on review. The coordinate itself is not the issue: it
+                already ships in get_post_detail and LastSeenMap already draws
+                it. The AFFORDANCE is — it turns "a car to look out for near
+                you" into "drive here", which is the line §1 draws. The map tile
+                opens OUR map (browse what else is nearby); that stays. */}
           </View>
         </>
       ) : null}
@@ -352,7 +372,7 @@ export function PostDetailBody({
               <Feather
                 name={row.icon}
                 size={sizes.icon}
-                color={row.missing ? colors.textSecondary : colors.textPrimary}
+                color={row.missing ? palette.textSecondary : palette.textPrimary}
                 importantForAccessibility="no"
               />
               <Text style={[styles.detailValue, row.missing && styles.detailValueMissing]}>
@@ -389,7 +409,7 @@ export function PostDetailBody({
                         <Feather
                           name="info"
                           size={sizes.icon}
-                          color={colors.textPrimary}
+                          color={palette.textPrimary}
                           importantForAccessibility="no"
                         />
                         <Text style={styles.detailValue}>{line}</Text>
@@ -619,7 +639,7 @@ export function PostDetailBody({
           <Feather
             name="flag"
             size={sizes.iconSm}
-            color={colors.textPrimary}
+            color={palette.textPrimary}
             importantForAccessibility="no"
           />
           <Text style={styles.reportLabel}>Report this post</Text>
@@ -683,7 +703,7 @@ export function PostDetailBody({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   body: {
     // 24px gutter: post detail is a text/detail screen, not a feed surface.
     paddingHorizontal: spacing.xl,
@@ -695,30 +715,35 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
   },
-  listedOn: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    alignSelf: 'flex-end',
-    // Hugs the sheet's curved top edge, clear of the section rhythm below.
-    paddingTop: spacing.lg,
-  },
-  // The dateline already provides the breathing room above the title.
-  sectionAfterDateline: {
-    paddingTop: spacing.md,
+  // The first section carries its OWN clearance from the sheet's curved top
+  // edge. It used to be `spacing.md`, which was enough only because the
+  // now-removed dateline sat above it and contributed a line plus its own
+  // spacing.lg; with that gone, md alone jammed the title into the curve.
+  sectionFirst: {
+    paddingTop: spacing.xl,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    // Centred name (+ plate chip) — product call. Wraps on narrow screens.
+    // Centred name — product call. Wraps on narrow screens.
     justifyContent: 'center',
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
+  // A ROW with justifyContent, not alignItems on a column: PlateChip sets
+  // alignSelf:'flex-start' on itself (so it hugs its text), and alignSelf beats
+  // a parent's alignItems — it would sit hard left. In a row, its alignSelf
+  // only governs the cross (vertical) axis, so justifyContent centres it.
+  platePlacement: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+  },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
     textAlign: 'center',
     // Android pads font boxes asymmetrically (worse with custom faces) —
@@ -729,7 +754,7 @@ const styles = StyleSheet.create({
   // surface, radius, padding) — one badge grammar; text stays sentence case
   // (ALL-CAPS is plate-only).
   chip: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     borderRadius: radii.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -739,7 +764,7 @@ const styles = StyleSheet.create({
   // stays the dominant identifier beside it and the two chips match height.
   chipText: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     includeFontPadding: false,
   },
   // The similar-posts rail escapes the page's 24px gutter (full-bleed, like
@@ -776,17 +801,18 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
-  // The stat band — the reference's stat-module anatomy (§4): bold number
-  // over a tiny label, cells split by vertical hairlines, one quiet
-  // hairline-bordered container.
+  // The stat band — bold number over its label, cells parted by a SHORT
+  // vertical rule. No container (product call 2026-08-09): the box was drawing
+  // a border around three facts that already read as a group by alignment
+  // alone, and on a page whose sections are separated by full-width hairlines
+  // it was the one boxed module, which made it look like a control.
+  // `center`, not `stretch` — stretch is what made the old dividers full-height
+  // and is precisely what the short rule replaces.
   statBand: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.lg,
+    alignItems: 'center',
     paddingVertical: spacing.md,
     marginTop: spacing.sm,
   },
@@ -796,21 +822,27 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
   },
-  // Android: keep the bold stat numerals optically centred over their labels.
+  // `title` (24/Bold), a step up from the old `heading` (18): with the box
+  // gone the numbers carry the module on their own, so they have to hold the
+  // eye without a border helping them. Android: includeFontPadding off keeps
+  // the numerals optically centred over their labels.
   statValue: {
-    ...typography.heading,
-    color: colors.textPrimary,
+    ...typography.title,
+    color: c.textPrimary,
     includeFontPadding: false,
   },
   // accent stays bounty-only (DESIGN_SYSTEM colour rules; near-black, monochrome).
   statValueBounty: {
-    ...typography.heading,
-    color: colors.accent,
+    ...typography.title,
+    color: c.accent,
     includeFontPadding: false,
   },
+  // `label` (14/Medium) rather than `caption` (13/Regular) — the labels carry
+  // weight now too, so the whole band reads bold rather than a bold number
+  // sitting on a thin one. Role tokens, not raw fontFamilies (house rule).
   statLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
+    ...typography.label,
+    color: c.textSecondary,
   },
   // Label + ⓘ as one press target (hitSlop tops it up past the 44pt min).
   statLabelRow: {
@@ -818,15 +850,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
+  // A short "|" between cells, not a full-height rule: it separates without
+  // implying a table. Fixed height because the band is `center`-aligned now —
+  // there is no row height for it to stretch to. borderStrong, not border: at
+  // 24px tall and a hairline wide there is very little ink to see, and the
+  // lighter token disappears against the background.
   statDivider: {
     width: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    height: spacing.xl,
+    backgroundColor: c.borderStrong,
   },
   sectionTitle: {
     // Title-scale section headers — the reference's ~26pt tier (C1: two steps
     // up from `heading`, deliberately bypassing `sectionTitle` 20).
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     includeFontPadding: false,
   },
   detailList: {
@@ -840,21 +878,21 @@ const styles = StyleSheet.create({
   },
   detailValue: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flex: 1,
   },
   prose: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   // Honest absence, quiet voice — a fact about the post, not an error.
   proseMissing: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   // "Not provided" rows: muted + struck through (the reference's trust device).
   detailValueMissing: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textDecorationLine: 'line-through',
   },
   // Distinctive features: the reference's card list — a hairline-bordered white
@@ -872,14 +910,14 @@ const styles = StyleSheet.create({
     // photo sits optically centred rather than shoved against one edge.
     gap: spacing.md,
     padding: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     // A quiet container, NOT an elevated one (the statBand grammar above).
     // The reference's cards are shadowed because they are TAPPABLE; ours are
     // not, and a shadow would promise an interaction that isn't there.
     // OwnerCard stays the page's one deliberately-elevated object.
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   featurePhoto: {
     width: sizes.featureThumb,
@@ -892,7 +930,7 @@ const styles = StyleSheet.create({
     // (typography.ts). `heading` is this page's stat-numeral tier — a mark must
     // not carry the same weight as the bounty figure.
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flex: 1,
   },
   messageOwner: {
@@ -904,7 +942,7 @@ const styles = StyleSheet.create({
     // Instructional copy introducing a money action = body, not caption/meta
     // (mirrors messageOwnerText).
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   deactivateAction: {
     // Sit the button under the explainer at the section's rhythm.
@@ -913,7 +951,7 @@ const styles = StyleSheet.create({
   messageOwnerText: {
     // Instructional copy introducing an action = body, not caption/meta.
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   reportRow: {
     minHeight: sizes.touchTarget,
@@ -924,7 +962,7 @@ const styles = StyleSheet.create({
   },
   reportLabel: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
 });
