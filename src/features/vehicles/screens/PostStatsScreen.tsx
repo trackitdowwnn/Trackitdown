@@ -49,7 +49,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { timeAgo } from '@/shared/lib';
-import { colors, displayFontScaleCap, radii, sizes, spacing, typography } from '@/shared/theme';
+import { displayFontScaleCap, radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { EmptyState, ErrorState, Screen } from '@/shared/ui';
 
 import { StatBand, type StatBandCell } from '../components/StatBand';
@@ -75,6 +75,7 @@ function Section({
   first?: boolean;
   children: ReactNode;
 }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.section, first && styles.sectionFirst]}>
       {title ? (
@@ -94,6 +95,8 @@ function Section({
  * two levels deep. Same control, same testID convention, as PostAboutScreen.
  */
 function StatsHeader() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   return (
     <View style={styles.headerRow}>
@@ -104,7 +107,7 @@ function StatsHeader() {
         style={styles.back}
         testID="stats-back"
       >
-        <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+        <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
       </Pressable>
       <Text accessibilityRole="header" style={styles.title}>
         Activity
@@ -114,6 +117,7 @@ function StatsHeader() {
 }
 
 function Row({ label, value }: { label: string; value: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -123,6 +127,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export function PostStatsScreen({ postId }: PostStatsScreenProps) {
+  const styles = useThemedStyles(makeStyles);
   const { status, stats, retry } = usePostStats(postId);
   const router = useRouter();
   // Captured ONCE, lazily. Date.now() in render is impure (the lint rule says
@@ -283,7 +288,7 @@ export function PostStatsScreen({ postId }: PostStatsScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // No `gap`: the rhythm lives on the sections themselves, so a hairline sits
   // midway between two 32pt spans rather than at the edge of one.
   content: {
@@ -310,14 +315,14 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     // Uncapped, so it must be allowed to wrap rather than shove the chevron.
     flexShrink: 1,
   },
   // The measured rhythm: divider → 32 → title → 16 → content → 32 → divider.
   section: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: c.border,
     paddingVertical: spacing.xxl,
     gap: spacing.lg,
   },
@@ -333,7 +338,7 @@ const styles = StyleSheet.create({
   // between them. heading is the step below the page title.
   sectionTitle: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   // sectionTitle, NOT title: title is the page's own size, and at 24 the
   // sightings total outranked the "Sightings" heading directly above it while
@@ -341,18 +346,18 @@ const styles = StyleSheet.create({
   // StatBand's value, so both hero numbers now read at one size.
   bigNumber: {
     ...typography.sectionTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   quiet: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   // The absence sentence IS the content on the majority of listings, so it is
   // set in body. caption (the metadata role) whispered the one thing the page
   // had to say.
   absence: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   chart: {
     gap: spacing.sm,
@@ -364,30 +369,30 @@ const styles = StyleSheet.create({
   },
   rowLabel: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   // The count is the information and the word "Conversations" is the label for
   // it, so the emphasis runs value-first — the same way round as every other
   // number on this page (StatBand) and as profile's StatColumn.
   rowValue: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   // Loading blocks sized like the real content so nothing jumps on arrival.
   skeletonHeadlines: {
     height: sizes.statsSkeletonHead,
     borderRadius: radii.lg,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonLine: {
     height: sizes.skeletonLine,
     width: '60%',
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonBlock: {
     height: sizes.statsSkeletonBlock,
     borderRadius: radii.lg,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
 });

@@ -16,7 +16,15 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 import type { DrivingDirection } from '../types';
 
@@ -46,6 +54,8 @@ export interface CompassPickerProps {
 }
 
 export function CompassPicker({ value, onChange }: CompassPickerProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   return (
     <View accessibilityRole="radiogroup" style={styles.grid} testID="compass-picker">
       {GRID.map((row, rowIndex) => (
@@ -61,7 +71,7 @@ export function CompassPicker({ value, onChange }: CompassPickerProps) {
                   importantForAccessibility="no"
                   accessibilityElementsHidden
                 >
-                  <Feather name="compass" size={sizes.iconSm} color={colors.textSecondary} />
+                  <Feather name="compass" size={sizes.iconSm} color={palette.textSecondary} />
                 </View>
               );
             }
@@ -91,7 +101,7 @@ export function CompassPicker({ value, onChange }: CompassPickerProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   grid: {
     gap: spacing.sm,
     alignSelf: 'flex-start',
@@ -104,7 +114,7 @@ const styles = StyleSheet.create({
     width: sizes.control,
     height: sizes.control,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -112,19 +122,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   cellSelected: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
   },
   cellPressed: {
-    backgroundColor: colors.surfaceSubtlePressed,
+    backgroundColor: c.surfaceSubtlePressed,
   },
   cellSelectedPressed: {
-    backgroundColor: colors.primaryPressed,
+    backgroundColor: c.primaryPressed,
   },
   label: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   labelSelected: {
-    color: colors.textOnPrimary,
+    color: c.textOnPrimary,
   },
 });

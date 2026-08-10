@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { colors, radii, sizes, spacing } from '../theme';
+import { radii, sizes, spacing, usePalette } from '../theme';
 
 export interface WizardProgressBarProps {
   /** Fill fraction (0–1) per phase — drives the accessibility percentage. */
@@ -69,6 +69,9 @@ export function WizardProgressBar({ fills, activeIndex, dotCount, label }: Wizar
  * outgoing one narrows — the sticky "worm" between positions.
  */
 function Slot({ state, reduceMotion }: { state: SlotState; reduceMotion: boolean }) {
+  // The interpolation below is rebuilt on every render, so reading the palette
+  // here is enough — nothing about the slot's colour is captured at module scope.
+  const palette = usePalette();
   // JS-driven Animated (width/colour can't use the native driver), matching
   // the codebase's TextField pattern.
   const [widthAnim] = useState(() => new Animated.Value(state === 'active' ? 1 : 0));
@@ -111,7 +114,7 @@ function Slot({ state, reduceMotion }: { state: SlotState; reduceMotion: boolean
           }),
           backgroundColor: colorAnim.interpolate({
             inputRange: [0, 1],
-            outputRange: [colors.borderStrong, colors.primary],
+            outputRange: [palette.borderStrong, palette.primary],
           }),
         },
       ]}
@@ -119,6 +122,8 @@ function Slot({ state, reduceMotion }: { state: SlotState; reduceMotion: boolean
   );
 }
 
+// Geometry only — every colour here is animated per-render in Slot — so this
+// sheet is safe to build once at module scope.
 const styles = StyleSheet.create({
   dots: {
     flexDirection: 'row',

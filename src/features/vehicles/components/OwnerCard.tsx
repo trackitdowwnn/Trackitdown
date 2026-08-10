@@ -21,7 +21,16 @@ import { Feather } from '@expo/vector-icons';
 import { Fragment } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { Avatar } from '@/shared/ui';
 
 import type { OwnerSummary } from '../types';
@@ -42,6 +51,8 @@ function monthsSince(iso: string): number {
 }
 
 export function OwnerCard({ owner, sightingCount }: OwnerCardProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const identified = Boolean(owner.firstName);
   const months = monthsSince(owner.memberSince);
   const years = Math.floor(months / 12);
@@ -74,7 +85,7 @@ export function OwnerCard({ owner, sightingCount }: OwnerCardProps) {
           <View style={styles.shieldCircle}>
             {/* `success`, not `primary`: verification is a passive status
                 marker, and primary (near-black) is reserved for actions (ADR-0006). */}
-            <Feather name="shield" size={sizes.icon} color={colors.success} />
+            <Feather name="shield" size={sizes.icon} color={palette.success} />
           </View>
         )}
         <Text style={styles.name} numberOfLines={1}>
@@ -98,13 +109,13 @@ export function OwnerCard({ owner, sightingCount }: OwnerCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // The page's one deliberately-elevated object (like the profile hero card):
   // surface, xl radius, the sanctioned soft shadow.
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.xl,
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.lg,
@@ -120,7 +131,7 @@ const styles = StyleSheet.create({
     width: sizes.avatarXl,
     height: sizes.avatarXl,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -128,11 +139,11 @@ const styles = StyleSheet.create({
   // on this page; the bounty reads at heading scale in the stat band).
   name: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   role: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   // Equal halves with the identity column — long stat labels ("Sightings on
   // this post") get real width instead of a fixed proportion.
@@ -145,16 +156,16 @@ const styles = StyleSheet.create({
   },
   statValue: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     // Android: keep the bold numeral optically centred over its label.
     includeFontPadding: false,
   },
   statLabel: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   statDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
   },
 });

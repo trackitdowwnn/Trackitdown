@@ -28,7 +28,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { createLogger } from '@/shared/lib/logger';
-import { colors, sizes, spacing, typography } from '@/shared/theme';
+import {
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   BottomSheet,
   Button,
@@ -68,6 +75,7 @@ function WatchedCardRow({
   onPress: () => void;
   onMove: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const watched = useIsWatched(entry.post.id);
   // Render-phase state adjustment (house pattern — see VehicleCard's
   // carousel reset): remember that the store confirmed this row watched.
@@ -114,6 +122,8 @@ export interface CollectionScreenProps {
 }
 
 export function CollectionScreen({ collectionId }: CollectionScreenProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   const toast = useToast();
   const { status, active, resolved, refreshing, refresh, retry } = useWatchlist(
@@ -234,7 +244,11 @@ export function CollectionScreen({ collectionId }: CollectionScreenProps) {
         />
       );
     },
-    [router, collectionId],
+    // `styles` joins the deps now that it comes from useThemedStyles rather
+    // than module scope: it is a new object when the palette flips, and a
+    // renderItem holding the old one would keep drawing light rows in a dark
+    // list until something else invalidated the callback.
+    [router, collectionId, styles],
   );
 
   return (
@@ -249,7 +263,7 @@ export function CollectionScreen({ collectionId }: CollectionScreenProps) {
           style={styles.back}
           testID="collection-back"
         >
-          <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+          <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
         </Pressable>
         <Text
           accessibilityRole="header"
@@ -270,7 +284,7 @@ export function CollectionScreen({ collectionId }: CollectionScreenProps) {
             style={styles.back}
             testID="collection-menu"
           >
-            <MoreHorizontal size={sizes.icon} color={colors.textPrimary} />
+            <MoreHorizontal size={sizes.icon} color={palette.textPrimary} />
           </Pressable>
         ) : null}
       </View>
@@ -376,7 +390,7 @@ export function CollectionScreen({ collectionId }: CollectionScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -393,7 +407,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     // flex so a long list name truncates instead of shoving the ⋯ off screen.
     flex: 1,
   },
@@ -408,7 +422,7 @@ const styles = StyleSheet.create({
   },
   moveLabel: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textDecorationLine: 'underline',
   },
   skeletons: {
@@ -428,7 +442,7 @@ const styles = StyleSheet.create({
   },
   resolvedHeader: {
     ...typography.sectionTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     paddingBottom: spacing.md,

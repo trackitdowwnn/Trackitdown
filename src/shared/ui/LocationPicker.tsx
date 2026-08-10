@@ -58,7 +58,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
 import { regionAround } from '../lib/mapRegion';
-import { colors, motion, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
+import {
+  motion,
+  opacity,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import type {
   ForwardGeocodeResult,
   GeoCoord,
@@ -229,6 +240,8 @@ export function LocationPicker({
   showCurrentLocationButton = true,
   fitRadiusMiles,
 }: LocationPickerProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [region, setRegion] = useState<GeoRegion>(() => {
     // A settled point wins; otherwise open on the suggested centre (camera
     // only — `hasSettled` below stays false); otherwise the whole-UK view.
@@ -568,7 +581,7 @@ export function LocationPicker({
             onPress={openSearch}
             style={styles.pill}
           >
-            <Feather name="map-pin" size={typography.body.fontSize} color={colors.primary} />
+            <Feather name="map-pin" size={typography.body.fontSize} color={palette.primary} />
             {/* No live region here: settles are announced once explicitly (see
                 runGeocode), which avoids re-announcing the transient
                 "Finding address…" state on every pillText change. */}
@@ -579,7 +592,7 @@ export function LocationPicker({
             >
               {pillText}
             </Animated.Text>
-            <Feather name="search" size={typography.body.fontSize} color={colors.textSecondary} />
+            <Feather name="search" size={typography.body.fontSize} color={palette.textSecondary} />
           </Pressable>
 
           {/* Fixed centre pin. Non-interactive; the dot marks the exact point. */}
@@ -595,7 +608,7 @@ export function LocationPicker({
                 <MaterialCommunityIcons
                   name="car"
                   size={typography.heading.fontSize}
-                  color={colors.textOnPrimary}
+                  color={palette.textOnPrimary}
                 />
               </Animated.View>
               <View style={styles.stem} />
@@ -618,7 +631,7 @@ export function LocationPicker({
                   onPress={onUseCurrentLocation}
                   style={({ pressed }) => [styles.locateButton, pressed && styles.locatePressed]}
                 >
-                  <Feather name="navigation" size={typography.heading.fontSize} color={colors.primary} />
+                  <Feather name="navigation" size={typography.heading.fontSize} color={palette.primary} />
                 </Pressable>
               </View>
             ) : null}
@@ -650,9 +663,9 @@ export function LocationPicker({
                   accessibilityElementsHidden
                   value={optionSlot.value}
                   onValueChange={optionSlot.onValueChange}
-                  trackColor={{ true: colors.primary, false: colors.border }}
-                  thumbColor={colors.surface}
-                  ios_backgroundColor={colors.border}
+                  trackColor={{ true: palette.primary, false: palette.borderStrong }}
+                  thumbColor={palette.surface}
+                  ios_backgroundColor={palette.borderStrong}
                 />
               </Pressable>
             ) : null}
@@ -684,7 +697,7 @@ export function LocationPicker({
                   <Feather
                     name="map-pin"
                     size={typography.body.fontSize}
-                    color={colors.textSecondary}
+                    color={palette.textSecondary}
                   />
                   <Text numberOfLines={1} style={styles.resultLabel}>
                     {result.label}
@@ -724,6 +737,8 @@ export function LocationPickerModal({
   onLocationChange,
   ...pickerProps
 }: LocationPickerModalProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [current, setCurrent] = useState<LocationValue | null>(null);
 
   const handleChange = (value: LocationValue) => {
@@ -741,7 +756,7 @@ export function LocationPickerModal({
             onPress={onCancel}
             style={styles.modalClose}
           >
-            <Feather name="x" size={typography.title.fontSize} color={colors.textPrimary} />
+            <Feather name="x" size={typography.title.fontSize} color={palette.textPrimary} />
           </Pressable>
           {title ? (
             <Text numberOfLines={1} style={styles.modalTitle}>
@@ -767,200 +782,201 @@ export function LocationPickerModal({
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  mapCard: {
-    flex: 1,
-    borderRadius: radii.xl,
-    backgroundColor: colors.surfaceSubtle, // shows through until the map paints
-    // Android's react-native-maps draws in a SurfaceView that misrenders when a
-    // parent clips it with overflow:'hidden' + borderRadius — historically
-    // solid black, and on RN 0.86 the map draws OFFSET inside its card. Clip on
-    // iOS only; on Android the map keeps square corners but renders correctly.
-    //
-    // Tried and reverted twice now (2026-07-31). If rounded corners on Android
-    // are wanted, it needs a real mask (an overlay with matched corner cutouts,
-    // or MaskedView) — NOT overflow on the map's own ancestor.
-    ...Platform.select({ ios: { overflow: 'hidden' as const }, default: {} }),
-  },
-  pill: {
-    position: 'absolute',
-    top: spacing.lg,
-    left: spacing.lg,
-    right: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: sizes.touchTarget,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.xl,
-    backgroundColor: colors.surface,
-    ...shadows.soft,
-  },
-  pillText: {
-    flex: 1,
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  pinLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinGroup: {
-    alignItems: 'center',
-    transform: [{ translateY: -PIN_TIP_OFFSET }],
-  },
-  badge: {
-    width: BADGE_SIZE,
-    height: BADGE_SIZE,
-    borderRadius: BADGE_SIZE / 2,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stem: {
-    width: STEM_WIDTH,
-    height: STEM_HEIGHT,
-    backgroundColor: colors.primary,
-  },
-  dot: {
-    width: DOT_SIZE,
-    height: DOT_SIZE,
-    borderRadius: DOT_SIZE / 2,
-    backgroundColor: colors.primary,
-  },
-  bottomStack: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    gap: spacing.sm,
-  },
-  locateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-  },
-  hint: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    ...shadows.soft,
-  },
-  hintText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  locateButton: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    borderRadius: sizes.touchTarget / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-    ...shadows.soft,
-  },
-  locatePressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  // Sits ON the map, so its padding is map the user cannot see. md, not lg —
-  // still comfortably over the 44pt target because the Switch sets the row
-  // height, so this only trims the dead space around it.
-  optionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    // The row is the control, so it carries the 44pt minimum itself rather
-    // than inheriting whatever height the Switch happens to be.
-    minHeight: sizes.touchTarget,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    ...shadows.soft,
-  },
-  optionText: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  optionTitle: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  optionCaption: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  results: {
-    marginTop: spacing.md,
-    gap: spacing.xs,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: sizes.touchTarget,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md,
-  },
-  resultRowPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  resultLabel: {
-    flex: 1,
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  resultsEmpty: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  resultSkeleton: {
-    height: sizes.touchTarget,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceSubtle,
-  },
-  modalRoot: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-  },
-  modalClose: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalTitle: {
-    flex: 1,
-    textAlign: 'center',
-    ...typography.heading,
-    color: colors.textPrimary,
-  },
-  modalBody: {
-    flex: 1,
-    paddingHorizontal: spacing.xl,
-  },
-  modalFooter: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      flex: 1,
+    },
+    mapCard: {
+      flex: 1,
+      borderRadius: radii.xl,
+      backgroundColor: c.surfaceSubtle, // shows through until the map paints
+      // Android's react-native-maps draws in a SurfaceView that misrenders when a
+      // parent clips it with overflow:'hidden' + borderRadius — historically
+      // solid black, and on RN 0.86 the map draws OFFSET inside its card. Clip on
+      // iOS only; on Android the map keeps square corners but renders correctly.
+      //
+      // Tried and reverted twice now (2026-07-31). If rounded corners on Android
+      // are wanted, it needs a real mask (an overlay with matched corner cutouts,
+      // or MaskedView) — NOT overflow on the map's own ancestor.
+      ...Platform.select({ ios: { overflow: 'hidden' as const }, default: {} }),
+    },
+    pill: {
+      position: 'absolute',
+      top: spacing.lg,
+      left: spacing.lg,
+      right: spacing.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: sizes.touchTarget,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radii.xl,
+      backgroundColor: c.surface,
+      ...shadows.soft,
+    },
+    pillText: {
+      flex: 1,
+      ...typography.body,
+      color: c.textPrimary,
+    },
+    pinLayer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pinGroup: {
+      alignItems: 'center',
+      transform: [{ translateY: -PIN_TIP_OFFSET }],
+    },
+    badge: {
+      width: BADGE_SIZE,
+      height: BADGE_SIZE,
+      borderRadius: BADGE_SIZE / 2,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stem: {
+      width: STEM_WIDTH,
+      height: STEM_HEIGHT,
+      backgroundColor: c.primary,
+    },
+    dot: {
+      width: DOT_SIZE,
+      height: DOT_SIZE,
+      borderRadius: DOT_SIZE / 2,
+      backgroundColor: c.primary,
+    },
+    bottomStack: {
+      position: 'absolute',
+      left: spacing.lg,
+      right: spacing.lg,
+      bottom: spacing.lg,
+      gap: spacing.sm,
+    },
+    locateRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      gap: spacing.sm,
+    },
+    hint: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: radii.md,
+      backgroundColor: c.surface,
+      ...shadows.soft,
+    },
+    hintText: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    locateButton: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget,
+      borderRadius: sizes.touchTarget / 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: c.surface,
+      ...shadows.soft,
+    },
+    locatePressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    // Sits ON the map, so its padding is map the user cannot see. md, not lg —
+    // still comfortably over the 44pt target because the Switch sets the row
+    // height, so this only trims the dead space around it.
+    optionCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      // The row is the control, so it carries the 44pt minimum itself rather
+      // than inheriting whatever height the Switch happens to be.
+      minHeight: sizes.touchTarget,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: radii.lg,
+      backgroundColor: c.surface,
+      ...shadows.soft,
+    },
+    optionText: {
+      flex: 1,
+      gap: spacing.xs,
+    },
+    optionTitle: {
+      ...typography.label,
+      color: c.textPrimary,
+    },
+    optionCaption: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    results: {
+      marginTop: spacing.md,
+      gap: spacing.xs,
+    },
+    resultRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      minHeight: sizes.touchTarget,
+      paddingHorizontal: spacing.md,
+      borderRadius: radii.md,
+    },
+    resultRowPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    resultLabel: {
+      flex: 1,
+      ...typography.body,
+      color: c.textPrimary,
+    },
+    resultsEmpty: {
+      ...typography.caption,
+      color: c.textSecondary,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    resultSkeleton: {
+      height: sizes.touchTarget,
+      borderRadius: radii.md,
+      backgroundColor: c.surfaceSubtle,
+    },
+    modalRoot: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.md,
+    },
+    modalClose: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modalTitle: {
+      flex: 1,
+      textAlign: 'center',
+      ...typography.heading,
+      color: c.textPrimary,
+    },
+    modalBody: {
+      flex: 1,
+      paddingHorizontal: spacing.xl,
+    },
+    modalFooter: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.lg,
+    },
+  });

@@ -25,7 +25,16 @@ import { Feather } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 
 type FeatherName = ComponentProps<typeof Feather>['name'];
 
@@ -56,6 +65,8 @@ export function ChoiceChipsMulti<V extends string = string>({
   onChange,
   max,
 }: ChoiceChipsMultiProps<V>) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const atCap = max !== undefined && value.length >= max;
 
   const toggle = (option: V) => {
@@ -93,7 +104,7 @@ export function ChoiceChipsMulti<V extends string = string>({
               <Feather
                 name={option.icon}
                 size={sizes.iconSm}
-                color={selected ? colors.textOnPrimary : colors.textSecondary}
+                color={selected ? palette.textOnPrimary : palette.textSecondary}
                 importantForAccessibility="no"
               />
             ) : null}
@@ -108,7 +119,7 @@ export function ChoiceChipsMulti<V extends string = string>({
                 <Feather
                   name="check"
                   size={sizes.iconSm}
-                  color={colors.textOnPrimary}
+                  color={palette.textOnPrimary}
                   importantForAccessibility="no"
                 />
               ) : null}
@@ -120,44 +131,45 @@ export function ChoiceChipsMulti<V extends string = string>({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chip: {
-    minHeight: sizes.touchTarget,
-    minWidth: sizes.touchTarget,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  checkSlot: {
-    width: sizes.iconSm,
-    alignItems: 'center',
-  },
-  chipSelected: {
-    backgroundColor: colors.primary,
-  },
-  chipDisabled: {
-    opacity: opacity.disabled,
-  },
-  chipPressed: {
-    backgroundColor: colors.surfaceSubtlePressed,
-  },
-  chipSelectedPressed: {
-    backgroundColor: colors.primaryPressed,
-  },
-  label: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  labelSelected: {
-    color: colors.textOnPrimary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    chip: {
+      minHeight: sizes.touchTarget,
+      minWidth: sizes.touchTarget,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radii.sm,
+      backgroundColor: c.surfaceSubtle,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+    },
+    checkSlot: {
+      width: sizes.iconSm,
+      alignItems: 'center',
+    },
+    chipSelected: {
+      backgroundColor: c.primary,
+    },
+    chipDisabled: {
+      opacity: opacity.disabled,
+    },
+    chipPressed: {
+      backgroundColor: c.surfaceSubtlePressed,
+    },
+    chipSelectedPressed: {
+      backgroundColor: c.primaryPressed,
+    },
+    label: {
+      ...typography.label,
+      color: c.textPrimary,
+    },
+    labelSelected: {
+      color: c.textOnPrimary,
+    },
+  });

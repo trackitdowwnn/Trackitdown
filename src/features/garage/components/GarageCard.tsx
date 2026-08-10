@@ -28,7 +28,17 @@ import { Car } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View, useAnimatedValue } from 'react-native';
 
-import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { AppImage, PlateChip, spellPlate } from '@/shared/ui';
 
@@ -51,6 +61,8 @@ export interface GarageCardProps {
 }
 
 export function GarageCard({ vehicle, onPress, testID }: GarageCardProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const cover = vehicle.photos[0]?.url;
   const name = vehicleDisplayName(vehicle);
   const identity = [vehicle.colour, vehicle.make, vehicle.model].filter(Boolean).join(' ');
@@ -90,7 +102,7 @@ export function GarageCard({ vehicle, onPress, testID }: GarageCardProps) {
           // A saved car needs no photos, so the empty frame stays calm and
           // normal — never an error or a nag.
           <View style={[styles.photo, styles.photoPlaceholder]}>
-            <Car size={sizes.icon} color={colors.textSecondary} />
+            <Car size={sizes.icon} color={palette.textSecondary} />
           </View>
         )}
         {vehicle.isCurrentlyPosted ? (
@@ -111,7 +123,11 @@ export function GarageCard({ vehicle, onPress, testID }: GarageCardProps) {
       ) : null}
       {vehicle.plate ? (
         <View style={styles.plateRow}>
-          <PlateChip plate={vehicle.plate} />
+          {/* onPress forwarded: the chip's long-press-to-copy makes it the
+              touch responder, which would otherwise eat the card's own tap.
+              `null` when this card is a display-only render (no handler) —
+              nothing encloses the chip then, so there is no tap to eat. */}
+          <PlateChip plate={vehicle.plate} onPress={onPress ?? null} />
         </View>
       ) : null}
     </Animated.View>
@@ -142,7 +158,7 @@ export function GarageCard({ vehicle, onPress, testID }: GarageCardProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   photoFrame: {
     // Room for the pill; the photo itself clips to the radius.
     position: 'relative',
@@ -159,7 +175,7 @@ const styles = StyleSheet.create({
   photoPlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   // StatusBadge's pill anatomy, token-for-token (ui review #2) — one photo-
   // overlay pill vocabulary across the app. Not StatusBadge itself only
@@ -174,7 +190,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radii.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     // The one sanctioned soft shadow: keeps the pill's EDGE legible on a
     // white car or bright sky (text contrast is already 14.9:1).
     ...shadows.soft,
@@ -186,20 +202,20 @@ const styles = StyleSheet.create({
     // Neutral status mark, NOT danger: danger red is destructive/error UI
     // only, never decoration on "stolen" content (DESIGN_SYSTEM; ui review
     // critical #1). The words carry the meaning.
-    backgroundColor: colors.textPrimary,
+    backgroundColor: c.textPrimary,
   },
   statusLabel: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   name: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingTop: spacing.md,
   },
   meta: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     paddingTop: spacing.xs,
   },
   plateRow: {

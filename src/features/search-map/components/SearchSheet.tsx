@@ -18,7 +18,7 @@
  *        measure-and-grow overlay (Reanimated 4; sharedTransitionTag is
  *        experimental/navigation-coupled and unfit here). One `progress` shared
  *        value drives the box (left/top/width/height/radius), an opaque scrim
- *        (colors.overlay — also dodges the Android transparent-Modal flicker),
+ *        (the `overlay` token — also dodges the Android transparent-Modal flicker),
  *        a ghost pill label that fades early, and the content that fades in as
  *        the box nears full size; dismiss reverses it. No sourceRect (the map
  *        pill re-search) or reduced-motion → a plain cross-fade.
@@ -60,7 +60,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MakeField, ModelField } from '@/features/vehicles';
 import { formatPounds } from '@/shared/lib/money';
-import { colors, motion, opacity, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  opacity,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import type { GeoRegion } from '@/shared/types';
 import { Button, ChoiceChips, MoneyRangeSlider } from '@/shared/ui';
 
@@ -155,6 +166,8 @@ function SearchSection({
   testID?: string;
   children: ReactNode;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   return (
     <Animated.View
       style={[styles.card, expanded && styles.cardExpanded]}
@@ -179,7 +192,7 @@ function SearchSection({
         <Feather
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={sizes.iconSm}
-          color={colors.textSecondary}
+          color={palette.textSecondary}
         />
       </Pressable>
       {expanded ? (
@@ -236,6 +249,8 @@ export function SearchSheet({
   // Opt out of the React Compiler: the `progress` shared value is mutated from
   // handlers/effects, which the compiler's immutability model forbids.
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const { criteria, patch, setMake, reset } = useSearchCriteria(initialCriteria);
   const reduceMotion = useReducedMotion();
   const { width: screenW, height: screenH } = useWindowDimensions();
@@ -377,7 +392,7 @@ export function SearchSheet({
             style={({ pressed }) => [styles.close, pressed && styles.pressed]}
             testID="search-close"
           >
-            <Feather name="x" size={sizes.icon} color={colors.textPrimary} />
+            <Feather name="x" size={sizes.icon} color={palette.textPrimary} />
           </Pressable>
         </View>
 
@@ -403,7 +418,7 @@ export function SearchSheet({
                   {areaLabel}
                 </Text>
               </View>
-              <Feather name="chevron-right" size={sizes.iconSm} color={colors.textSecondary} />
+              <Feather name="chevron-right" size={sizes.iconSm} color={palette.textSecondary} />
             </Pressable>
           ) : null}
 
@@ -563,7 +578,7 @@ export function SearchSheet({
           style={[styles.ghost, { height: sourceRect?.height ?? 0 }, ghostStyle]}
           pointerEvents="none"
         >
-          <Feather name="search" size={sizes.iconSm} color={colors.textSecondary} />
+          <Feather name="search" size={sizes.iconSm} color={palette.textSecondary} />
           <Text style={styles.ghostText}>Search make or model</Text>
         </Animated.View>
         <Animated.View
@@ -576,7 +591,7 @@ export function SearchSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // Transparent overlay — the scrim provides the dim, the card the surface.
   overlay: {
     position: 'absolute',
@@ -590,22 +605,24 @@ const styles = StyleSheet.create({
   // The panel interior — background so the inner surface accordion cards pop.
   safe: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
-  // Full-screen dim behind the card; tapping it closes the surface.
+  // Full-screen dim behind the card; tapping it closes the surface. `overlay`,
+  // not `mediaScrim`: what it dims is the PAGE (map or feed), so it deepens on
+  // dark — a 0.45 black over an already-dark map separates nothing.
   scrim: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
+    backgroundColor: c.overlay,
   },
   // The sheet: starts as the pill (surface), morphs to the full screen.
   // Position + size + radius come from boxStyle (morph) or inline (fade).
   sheetCard: {
     position: 'absolute',
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     overflow: 'hidden',
   },
   // The pill's icon+label, shown at rest and faded out as the card grows.
@@ -621,7 +638,7 @@ const styles = StyleSheet.create({
   },
   ghostText: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   // The real panel, laid out at the card's fixed size (so it never reflows as
   // the card resizes) and faded in as the card nears full size.
@@ -641,7 +658,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   close: {
     width: sizes.touchTarget,
@@ -662,31 +679,31 @@ const styles = StyleSheet.create({
     minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: c.border,
   },
   areaRowPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   areaText: {
     flex: 1,
   },
   areaLabel: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   areaValue: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   // --- Accordion cards ---
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: c.border,
     overflow: 'hidden',
   },
   cardExpanded: {
@@ -703,11 +720,11 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   cardTitleExpanded: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flex: 1,
   },
   headerSpacer: {
@@ -715,7 +732,7 @@ const styles = StyleSheet.create({
   },
   cardSummary: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flex: 1,
     textAlign: 'right',
   },
@@ -726,7 +743,7 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   // --- Footer (inline, below the last filter card) ---
   footer: {
@@ -740,7 +757,7 @@ const styles = StyleSheet.create({
   },
   noResults: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   clearAll: {
     minHeight: sizes.touchTarget,
@@ -749,7 +766,7 @@ const styles = StyleSheet.create({
   },
   clearAllText: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
   pressed: {

@@ -1,7 +1,8 @@
 /**
  * WHAT:  Root layout for the app — sets up the Expo Router navigation stack,
- *        applies the light/dark navigation theme, and mounts the app-wide
- *        gesture, bottom-sheet, and toast providers.
+ *        mounts the app-wide palette, gesture, bottom-sheet and toast
+ *        providers, and derives the navigation theme + status bar from the
+ *        EFFECTIVE colour scheme (the user's System/Light/Dark choice resolved).
  * WHY:   Every screen renders inside this layout; it is the single entry
  *        point Expo Router mounts. GestureHandlerRootView is required once at
  *        the root for react-native-gesture-handler,
@@ -16,12 +17,23 @@
 
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+// Aliased: react-navigation's ThemeProvider styles the NAVIGATOR's own
+// furniture, ours supplies the app palette. Both are mounted, and having two
+// things called ThemeProvider in one file is exactly how the wrong one ends up
+// wrapping the wrong subtree.
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider as NavigationThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback } from 'react';
-import { Platform, StyleSheet, useColorScheme } from 'react-native';
+import * as SystemUI from 'expo-system-ui';
+import { useCallback, useEffect, useMemo } from 'react';
+import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+import { usePalette, useThemeControls, type Palette } from '@/shared/theme';
+// Direct path, not the theme barrel: this module reaches AsyncStorage and
+// Appearance, and the barrel is imported by ~139 files and nearly every test —
+// exporting it from there made 91 suites fail to load on a null AsyncStorage.
+import { ThemeProvider } from '@/shared/theme/ThemeProvider';
 
 import { AuthGate, AuthSheet } from '@/features/auth';
 import { SaveYourCarSheet } from '@/features/garage';
@@ -52,8 +64,56 @@ const pushAnimation = Platform.select({
 // already being gone, which is precisely the state we wanted.
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
+/**
+ * The navigator's own theme, built from OUR tokens rather than handed
+ * react-navigation's stock DarkTheme.
+ *
+ * DarkTheme's greys (#242424 card on a #1E1E1E background) are close enough to
+ * ours to look like a bug rather than a choice — a navigator background a shade
+ * off every screen painted on top of it. This paints the furniture we don't
+ * otherwise control in the same palette as everything else.
+ */
+function navigationTheme(scheme: 'light' | 'dark', palette: Palette) {
+  const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      background: palette.background,
+      card: palette.surface,
+      text: palette.textPrimary,
+      border: palette.border,
+      primary: palette.primary,
+    },
+  };
+}
+
+/**
+ * The provider has to sit ABOVE everything that reads a colour — including
+ * content @gorhom/bottom-sheet re-parents into its portal host — so the tree is
+ * split in two: this outer shell mounts the palette, and RootLayoutContent
+ * consumes it.
+ */
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  return (
+    <ThemeProvider>
+      <RootLayoutContent />
+    </ThemeProvider>
+  );
+}
+
+function RootLayoutContent() {
+  const palette = usePalette();
+  const { scheme } = useThemeControls();
+
+  // The root view BEHIND the React tree. Without this the window keeps its
+  // native default (light) and shows through during navigation transitions and
+  // overscroll — a white edge round a dark app.
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(palette.background).catch(() => {});
+  }, [palette.background]);
+
+  const navTheme = useMemo(() => navigationTheme(scheme, palette), [scheme, palette]);
 
   // Satoshi (the app-wide family — typography tokens reference these exact
   // names). Runtime-loaded so the existing dev client needs no rebuild.
@@ -83,7 +143,14 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={styles.root} onLayout={onLayoutRootView}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      {/* The navigator's theme now FOLLOWS the app's palette (dark mode, 2026-08-09).
+          This used to be pinned to DefaultTheme with a long note explaining why:
+          there was no dark palette, so reading the device scheme only restyled
+          the furniture we don't paint and left white status-bar icons on a
+          near-white page. Both halves of that are now answered — there is a
+          real dark palette, and the scheme below is the EFFECTIVE one (the
+          user's System/Light/Dark choice resolved), not the device's. */}
+      <NavigationThemeProvider value={navTheme}>
         {/* ToastProvider hosts the single app-wide toast above all screens, and
             MUST stay OUTSIDE BottomSheetModalProvider. @gorhom/bottom-sheet
             re-parents every presented sheet's content into the portal host that
@@ -137,10 +204,14 @@ export default function RootLayout() {
                   bookmark raised it. Inert until an intent is raised. */}
               <CollectionPickerSheet />
             </AuthGate>
-            <StatusBar style="auto" />
+            {/* Explicit from the EFFECTIVE scheme, never "auto": auto follows
+                the DEVICE, so it would put dark icons on a dark app whenever
+                someone picks Dark on a light phone. ("light" here means light
+                ICONS, for our dark surfaces.) */}
+            <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
           </BottomSheetModalProvider>
         </ToastProvider>
-      </ThemeProvider>
+      </NavigationThemeProvider>
     </GestureHandlerRootView>
   );
 }

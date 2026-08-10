@@ -17,13 +17,14 @@
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, typography } from '@/shared/theme';
+import { radii, sizes, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { SelectField, type SelectOption } from '@/shared/ui';
 
 import { CAR_MAKES, POPULAR_MAKES, makeSection } from '@/shared/lib/carMakes';
 
 /** Placeholder for a real make logo — a monogram of the make's first letter. */
 function Monogram({ letter }: { letter: string }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.monogram}>
       <Text style={styles.monogramText}>{letter}</Text>
@@ -74,18 +75,18 @@ export function MakeField({ value, onChange, error }: MakeFieldProps) {
 /** Re-derive a monogram letter if a caller needs one outside the field. */
 export const monogramFor = makeSection;
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   monogram: {
     width: sizes.circleButtonSm,
     height: sizes.circleButtonSm,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   monogramText: {
     ...typography.caption,
     fontFamily: typography.label.fontFamily,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

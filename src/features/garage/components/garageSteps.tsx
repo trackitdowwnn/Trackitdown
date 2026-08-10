@@ -16,7 +16,7 @@
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { StepSkipButton, TextField } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
 
@@ -25,6 +25,7 @@ import type { AddVehicleAnswers } from '../types';
 type GarageStepProps = WizardStepProps<AddVehicleAnswers>;
 
 export function PlateStep({ answers, setAnswers, onSkip }: GarageStepProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.block}>
       <TextField
@@ -54,6 +55,7 @@ export function PlateStep({ answers, setAnswers, onSkip }: GarageStepProps) {
 }
 
 export function NicknameStep({ answers, setAnswers, onSkip }: GarageStepProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.block}>
       <TextField
@@ -75,12 +77,12 @@ export function NicknameStep({ answers, setAnswers, onSkip }: GarageStepProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   block: {
     gap: spacing.md,
   },
   helper: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

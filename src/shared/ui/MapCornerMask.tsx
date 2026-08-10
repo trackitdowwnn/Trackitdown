@@ -31,7 +31,7 @@
 
 import { Platform, StyleSheet, View } from 'react-native';
 
-import { colors, radii, spacing } from '../theme';
+import { radii, spacing, usePalette } from '../theme';
 
 /** Width of the covering frame — see the geometry note above. */
 const FRAME = spacing.md;
@@ -46,6 +46,9 @@ export interface MapCornerMaskProps {
 }
 
 export function MapCornerMask({ tone = 'background' }: MapCornerMaskProps) {
+  // Read before the platform bail-out: hooks must run on every render.
+  const palette = usePalette();
+
   // iOS clips the card properly, so there is nothing to cover.
   if (Platform.OS !== 'android') {
     return null;
@@ -55,12 +58,14 @@ export function MapCornerMask({ tone = 'background' }: MapCornerMaskProps) {
       pointerEvents="none"
       style={[
         styles.mask,
-        { borderColor: tone === 'surface' ? colors.surface : colors.background },
+        { borderColor: tone === 'surface' ? palette.surface : palette.background },
       ]}
     />
   );
 }
 
+// No colour of its own — the paint tone is chosen per-render above — so this
+// sheet is safe to build once at module scope.
 const styles = StyleSheet.create({
   mask: {
     position: 'absolute',

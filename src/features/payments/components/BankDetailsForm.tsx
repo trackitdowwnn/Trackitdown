@@ -26,7 +26,7 @@
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, TextField } from '@/shared/ui';
 
 import { buildBankDetailsSchema, digitsOnly } from './payoutDetailsSchema';
@@ -47,6 +47,7 @@ type Fields = {
 const EMPTY: Fields = { sortCode: '', accountNumber: '', confirmAccountNumber: '' };
 
 export function BankDetailsForm({ onSubmit, onCancel, busy = false }: BankDetailsFormProps) {
+  const styles = useThemedStyles(makeStyles);
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<keyof Fields, string>>>({});
 
@@ -117,12 +118,12 @@ export function BankDetailsForm({ onSubmit, onCancel, busy = false }: BankDetail
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   form: {
     gap: spacing.md,
   },
   lede: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

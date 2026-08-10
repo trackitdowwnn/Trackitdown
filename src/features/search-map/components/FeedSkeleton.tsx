@@ -15,7 +15,7 @@
 
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, usePalette } from '@/shared/theme';
 import { SkeletonVehicleCard } from '@/shared/ui';
 
 import { carouselCardWidth } from './FeedCarouselRow';
@@ -29,13 +29,14 @@ function Block({
   height: number;
   radius?: number;
 }) {
+  const palette = usePalette();
   return (
     <View
       style={{
         width,
         height,
         borderRadius: radius ?? radii.sm,
-        backgroundColor: colors.surfaceSubtle,
+        backgroundColor: palette.surfaceSubtle,
       }}
     />
   );
@@ -94,6 +95,8 @@ export function FeedSkeleton() {
   );
 }
 
+// Stays a module-level sheet: pure geometry, not one colour in it — nothing
+// here can freeze against a theme change.
 const styles = StyleSheet.create({
   container: {
     // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.

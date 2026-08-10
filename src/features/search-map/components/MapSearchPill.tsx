@@ -16,7 +16,17 @@ import { Feather } from '@expo/vector-icons';
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, opacity, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  opacity,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 export interface MapSearchPillProps {
   /** The active-search summary, or null/'' when nothing is filtered. */
@@ -32,6 +42,8 @@ export const MapSearchPill = memo(function MapSearchPill({
   onPress,
   onClear,
 }: MapSearchPillProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const active = Boolean(summary && summary.trim());
   return (
     <View style={styles.container}>
@@ -41,7 +53,7 @@ export const MapSearchPill = memo(function MapSearchPill({
         onPress={onPress}
         style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
       >
-        <Feather name="search" size={sizes.iconSm} color={colors.textPrimary} />
+        <Feather name="search" size={sizes.iconSm} color={palette.textPrimary} />
         <Text
           numberOfLines={1}
           style={[styles.label, !active && styles.placeholder]}
@@ -56,7 +68,7 @@ export const MapSearchPill = memo(function MapSearchPill({
             onPress={onClear}
             style={({ pressed }) => [styles.clear, pressed && styles.clearPressed]}
           >
-            <Feather name="x" size={sizes.iconSm} color={colors.textSecondary} />
+            <Feather name="x" size={sizes.iconSm} color={palette.textSecondary} />
           </Pressable>
         ) : null}
       </Pressable>
@@ -64,7 +76,7 @@ export const MapSearchPill = memo(function MapSearchPill({
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     // The screen positions this absolutely; it owns only its own width.
     flex: 1,
@@ -73,22 +85,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.full,
     minHeight: sizes.control,
     paddingHorizontal: spacing.lg,
+    // See MapCircleButton: the lifted shadow is a black cast and disappears on
+    // a dark basemap, so floating map chrome carries its own hairline now.
+    borderWidth: 1,
+    borderColor: c.borderStrong,
     ...shadows.lifted,
   },
   pillPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   label: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flex: 1,
   },
   placeholder: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   clear: {
     // Full 44pt target; negative margin pulls it to the pill's edge without

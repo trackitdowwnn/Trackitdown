@@ -14,7 +14,7 @@
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { AppImage, StatusBadge } from '@/shared/ui';
 
 import type { WatchedTombstone } from '../types';
@@ -24,6 +24,8 @@ export const WatchlistTombstoneRow = memo(function WatchlistTombstoneRow({
 }: {
   entry: WatchedTombstone;
 }) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View
       style={styles.row}
@@ -48,7 +50,7 @@ export const WatchlistTombstoneRow = memo(function WatchlistTombstoneRow({
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -59,7 +61,7 @@ const styles = StyleSheet.create({
     width: sizes.avatarMd,
     height: sizes.avatarMd,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     overflow: 'hidden',
   },
   thumbImage: {
@@ -72,10 +74,10 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   meta: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

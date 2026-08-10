@@ -27,7 +27,16 @@ import { Feather } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { SelectScreen } from './SelectScreen';
 import type { SelectOption } from './selectOptions';
 
@@ -80,6 +89,8 @@ export function SelectField<V extends string | number>({
   stagger,
   allowManualEntry = false,
 }: SelectFieldProps<V>) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [open, setOpen] = useState(false);
 
   // A matched option's label; for free-text fields, fall back to the raw value
@@ -107,7 +118,7 @@ export function SelectField<V extends string | number>({
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
           styles.field,
-          { borderColor: error ? colors.danger : colors.border },
+          { borderColor: error ? palette.danger : palette.border },
           pressed && !disabled && styles.fieldPressed,
           disabled && styles.fieldDisabled,
         ]}
@@ -131,7 +142,7 @@ export function SelectField<V extends string | number>({
         <Feather
           name="chevron-down"
           size={typography.heading.fontSize}
-          color={colors.textSecondary}
+          color={palette.textSecondary}
         />
       </Pressable>
 
@@ -166,51 +177,52 @@ export function SelectField<V extends string | number>({
 }
 
 // Mirrors TextField's floating-label geometry so the two sit as siblings.
-const styles = StyleSheet.create({
-  root: {
-    gap: spacing.sm,
-  },
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: sizes.input,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-  },
-  fieldPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  fieldDisabled: {
-    backgroundColor: colors.surfaceSubtle,
-    opacity: opacity.disabled,
-  },
-  fieldText: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-  },
-  restingLabel: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  floatedLabel: {
-    ...typography.caption,
-    fontFamily: typography.label.fontFamily,
-    color: colors.textSecondary,
-  },
-  value: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  message: {
-    ...typography.caption,
-  },
-  messageHelper: {
-    color: colors.textSecondary,
-  },
-  messageError: {
-    color: colors.danger,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      gap: spacing.sm,
+    },
+    field: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      minHeight: sizes.input,
+      borderWidth: 1,
+      borderRadius: radii.md,
+      backgroundColor: c.surface,
+      paddingHorizontal: spacing.lg,
+    },
+    fieldPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    fieldDisabled: {
+      backgroundColor: c.surfaceSubtle,
+      opacity: opacity.disabled,
+    },
+    fieldText: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+    },
+    restingLabel: {
+      ...typography.body,
+      color: c.textSecondary,
+    },
+    floatedLabel: {
+      ...typography.caption,
+      fontFamily: typography.label.fontFamily,
+      color: c.textSecondary,
+    },
+    value: {
+      ...typography.body,
+      color: c.textPrimary,
+    },
+    message: {
+      ...typography.caption,
+    },
+    messageHelper: {
+      color: c.textSecondary,
+    },
+    messageError: {
+      color: c.danger,
+    },
+  });

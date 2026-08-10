@@ -14,7 +14,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatPounds } from '@/shared/lib';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, StatusBadge } from '@/shared/ui';
 
 import type { PostDetail } from '../types';
@@ -28,6 +28,7 @@ export interface PostBottomBarProps {
 }
 
 export function PostBottomBar({ post, onSeen, onManage }: PostBottomBarProps) {
+  const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
 
   return (
@@ -42,13 +43,17 @@ export function PostBottomBar({ post, onSeen, onManage }: PostBottomBarProps) {
             <StatusBadge status={post.status} showLiveWhenActive />
           </>
         ) : (
-          <>
+          // Inline, not stacked (product call 2026-08-09): "£450 reward" is one
+          // phrase and reads as one. Baseline-aligned so the caption sits on the
+          // amount's baseline rather than its box centre — with a 24pt number
+          // beside 12pt text, centring leaves the word visibly high.
+          <View style={styles.rewardRow}>
             {/* Money never truncates — the caption yields first, not the amount. */}
             <Text style={styles.bounty}>{formatPounds(post.bountyPence)}</Text>
             <Text numberOfLines={1} style={styles.caption}>
               reward
             </Text>
-          </>
+          </View>
         )}
       </View>
       {post.isOwner ? (
@@ -60,7 +65,7 @@ export function PostBottomBar({ post, onSeen, onManage }: PostBottomBarProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   bar: {
     position: 'absolute',
     left: 0,
@@ -72,21 +77,27 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: c.border,
   },
   left: {
     gap: spacing.xs,
     // Yield to the action button rather than push it off a narrow screen.
     flexShrink: 1,
   },
+  rewardRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.xs,
+    flexShrink: 1,
+  },
   bounty: {
     ...typography.heading,
-    color: colors.accentText,
+    color: c.accentText,
   },
   caption: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

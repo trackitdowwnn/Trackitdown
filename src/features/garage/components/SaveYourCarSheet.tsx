@@ -31,7 +31,7 @@ import { InteractionManager, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { BottomSheet, Button, type BottomSheetRef } from '@/shared/ui';
 
 import { useHasSavedCar } from '../hooks/useHasSavedCar';
@@ -41,6 +41,7 @@ import { hasOfferedGarageNudge, markGarageNudgeOffered } from '../lib/garageNudg
 const log = createLogger('garage');
 
 export function SaveYourCarSheet() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const session = useSession();
   const intent = useSaveCarNudgeIntent();
@@ -162,12 +163,12 @@ export function SaveYourCarSheet() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   content: {
     gap: spacing.md,
   },
   body: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

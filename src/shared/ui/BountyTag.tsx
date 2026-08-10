@@ -18,7 +18,7 @@
 import { StyleSheet, Text } from 'react-native';
 
 import { formatPounds } from '../lib';
-import { colors, typography } from '../theme';
+import { typography, useThemedStyles, type Palette } from '../theme';
 
 export interface BountyTagProps {
   /** Bounty in integer pence. */
@@ -29,6 +29,7 @@ export interface BountyTagProps {
 
 /** Near-black bounty amount, always formatted from integer pence. */
 export function BountyTag({ bountyPence, size = 'md' }: BountyTagProps) {
+  const styles = useThemedStyles(makeStyles);
   const amount = formatPounds(bountyPence);
   return (
     <Text
@@ -43,17 +44,18 @@ export function BountyTag({ bountyPence, size = 'md' }: BountyTagProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  // accentText: in the monochrome scheme accent and accentText are the same
-  // near-black (~15:1 AAA as text); the token name is kept for intent and so a
-  // future re-theme that gives bounty its own hue is a one-line swap.
-  base: {
-    color: colors.accentText,
-  },
-  md: {
-    ...typography.label,
-  },
-  lg: {
-    ...typography.heading,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    // accentText: in the monochrome scheme accent and accentText are the same
+    // near-black (~15:1 AAA as text); the token name is kept for intent and so a
+    // future re-theme that gives bounty its own hue is a one-line swap.
+    base: {
+      color: c.accentText,
+    },
+    md: {
+      ...typography.label,
+    },
+    lg: {
+      ...typography.heading,
+    },
+  });

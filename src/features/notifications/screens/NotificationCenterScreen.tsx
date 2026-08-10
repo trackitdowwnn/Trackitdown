@@ -19,13 +19,21 @@
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo } from 'react';
-import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useEntranceGate } from '@/shared/hooks';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
-import { EmptyState, ErrorState } from '@/shared/ui';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
+import { EmptyState, ErrorState, ThemedRefreshControl } from '@/shared/ui';
 
 import type { NotificationRow } from '../api/notificationsApi';
 import { NotificationRowItem } from '../components/NotificationRowItem';
@@ -36,6 +44,7 @@ import { pushRouteFor } from '../lib/pushRoute';
 const log = createLogger('notifications');
 
 export function NotificationCenterScreen() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const { status, rows, refreshing, markRead, markAllRead, refresh, retry } =
     useNotificationCenter();
@@ -141,7 +150,10 @@ export function NotificationCenterScreen() {
           </Animated.View>
         )}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
+          // ThemedRefreshControl, not a bare one: `tintColor` is iOS-only, so
+          // the hand-rolled version pulled down a stock BLUE spinner on
+          // Android in a monochrome app. The shared one sets `colors` too.
+          <ThemedRefreshControl refreshing={refreshing} onRefresh={refresh} />
         }
         contentContainerStyle={styles.list}
         testID="center-list"
@@ -150,7 +162,7 @@ export function NotificationCenterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
     // Matches the Messages face — switching segments must not shift where
@@ -181,14 +193,14 @@ const styles = StyleSheet.create({
   },
   markAllLabel: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
   // Sentence case, no tracking — the label scale carries the hierarchy
   // (ALL CAPS is reserved for number plates, design system rule).
   dayHeader: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
@@ -207,7 +219,7 @@ const styles = StyleSheet.create({
     width: sizes.avatarMd,
     height: sizes.avatarMd,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonBody: {
     flex: 1,
@@ -216,13 +228,13 @@ const styles = StyleSheet.create({
   skeletonLineWide: {
     height: sizes.skeletonLine,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     width: '70%',
   },
   skeletonLine: {
     height: sizes.skeletonLine,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     width: '45%',
   },
 });

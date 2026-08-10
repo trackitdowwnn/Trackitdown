@@ -11,13 +11,15 @@
 
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '../theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 
 export interface WizardHeaderProps {
   onExit: () => void;
 }
 
 export function WizardHeader({ onExit }: WizardHeaderProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -32,20 +34,21 @@ export function WizardHeader({ onExit }: WizardHeaderProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  exit: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    borderRadius: radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-  },
-  exitPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  exitGlyph: {
-    ...typography.heading,
-    color: colors.textPrimary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    exit: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget,
+      borderRadius: radii.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'flex-start',
+    },
+    exitPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    exitGlyph: {
+      ...typography.heading,
+      color: c.textPrimary,
+    },
+  });

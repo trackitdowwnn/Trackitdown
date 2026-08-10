@@ -26,7 +26,7 @@ import { CAR_MAKES, POPULAR_MAKES } from '@/shared/lib/carMakes';
 import { modelsForMake } from '@/shared/lib/carModels';
 import { milesToMetres } from '@/shared/lib/distance';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
-import { colors, sizes, spacing, typography } from '@/shared/theme';
+import { sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import {
   ChoiceChips,
   LocationPicker,
@@ -89,6 +89,7 @@ function fromChip(value: string): string | null {
 // --- 1. Area ----------------------------------------------------------------
 
 export function AreaStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   const radiusMiles = answers.radiusMiles ?? DEFAULT_ALERT_RADIUS_MILES;
   return (
     <View style={styles.fillsStack}>
@@ -134,6 +135,7 @@ export function AreaStep({ answers, setAnswers }: StepProps) {
 // --- 2. Which cars ----------------------------------------------------------
 
 export function CarStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   const make = answers.make ?? null;
   const models = make ? modelsForMake(make) : [];
 
@@ -198,6 +200,7 @@ export function CarStep({ answers, setAnswers }: StepProps) {
 // --- 3. Extra filters -------------------------------------------------------
 
 export function FiltersStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   const bountyPence = answers.minBountyPence ?? BOUNTY_MIN_PENCE;
   return (
     <View style={styles.stack}>
@@ -234,6 +237,7 @@ export function FiltersStep({ answers, setAnswers }: StepProps) {
 // --- 4. Name ----------------------------------------------------------------
 
 export function NameStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.stack}>
       <TextField
@@ -249,7 +253,7 @@ export function NameStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // The ordinary step rhythm, shared by the car / filters / name steps.
   stack: {
     gap: spacing.xl,
@@ -279,10 +283,10 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   note: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

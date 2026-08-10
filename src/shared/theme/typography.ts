@@ -24,6 +24,16 @@ export const fontFamilies = {
 } as const;
 
 export const typography = {
+  /** The onboarding headline, and NOTHING else — scoped to one consumer the way
+   *  tabLabel and mapPin are (2026-08-08, docs/design-refs/onboarding/).
+   *
+   *  Onboarding is the one surface with a single sentence and a whole screen to
+   *  say it in: no list competes with it, no chrome frames it, and the reader
+   *  has not yet been given anything to do. The reference sets that moment far
+   *  above its body scale, and `display` (32) is shared with in-page hero
+   *  numbers like MoneySlider's readout — raising IT would drag those up too.
+   *  Hence a role, not a bigger `display`. */
+  displayHero: { fontSize: 40, lineHeight: 46, fontFamily: fontFamilies.black },
   display: { fontSize: 32, lineHeight: 38, fontFamily: fontFamilies.black },
   title: { fontSize: 24, lineHeight: 30, fontFamily: fontFamilies.bold },
   /** Feed section headers — between heading and title so a scrolling feed

@@ -11,8 +11,11 @@
  *        the screen (the reference's photography-first language at full
  *        strength — redesigned 2026-07-29, second pass, after the card
  *        treatment read as too quiet for the moment). The overlay strip uses
- *        colors.overlay per its existing photo-chrome precedent
+ *        `mediaScrim` + `textOnMedia` per its existing photo-chrome precedent
  *        (CameraCapture, PhotoGridPicker) — no gradient dependency invented.
+ *        NOT `overlay`/`textOnPrimary`: those track the PAGE and flip with the
+ *        scheme, and a photo is exactly as bright in dark mode as in light, so
+ *        chrome sitting on one must not flip with it (see theme/c.ts).
  *
  *        The hero is DISPLAY-ONLY (no onPress) on purpose: under a yes/no
  *        question a tappable artifact is a tap-to-affirm trap — people tap
@@ -32,7 +35,15 @@
 import { Car } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { AppImage, PlateChip } from '@/shared/ui';
 
 import { vehicleDisplayName } from '../lib/vehicleAnswers';
@@ -49,6 +60,8 @@ export interface VehicleSummaryStepProps {
 }
 
 export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const cover = vehicle.photos[0]?.url;
   const name = vehicleDisplayName(vehicle);
   const photoCount = vehicle.photos.length;
@@ -80,7 +93,7 @@ export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps)
                   {name}
                 </Text>
                 <View style={styles.heroMetaRow}>
-                  {vehicle.plate ? <PlateChip plate={vehicle.plate} /> : null}
+                  {vehicle.plate ? <PlateChip plate={vehicle.plate} onPress={null} /> : null}
                   {vehicle.colour ? (
                     <Text style={styles.heroColour} numberOfLines={1}>
                       {vehicle.plate ? `· ${vehicle.colour}` : vehicle.colour}
@@ -102,7 +115,7 @@ export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps)
           </>
         ) : (
           <View style={styles.heroPlaceholder}>
-            <Car size={sizes.icon} color={colors.textSecondary} />
+            <Car size={sizes.icon} color={palette.textSecondary} />
           </View>
         )}
       </View>
@@ -115,7 +128,7 @@ export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps)
             {name}
           </Text>
           <View style={styles.heroMetaRow}>
-            {vehicle.plate ? <PlateChip plate={vehicle.plate} /> : null}
+            {vehicle.plate ? <PlateChip plate={vehicle.plate} onPress={null} /> : null}
             {vehicle.colour ? (
               <Text style={styles.fallbackColour}>{vehicle.colour}</Text>
             ) : null}
@@ -138,7 +151,7 @@ export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps)
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   block: {
     gap: spacing.lg,
   },
@@ -147,7 +160,7 @@ const styles = StyleSheet.create({
     aspectRatio: HERO_ASPECT_RATIO,
     borderRadius: radii.lg,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   heroPhoto: {
     width: '100%',
@@ -166,7 +179,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.overlay,
+    backgroundColor: c.mediaScrim,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     flexDirection: 'row',
@@ -185,12 +198,12 @@ const styles = StyleSheet.create({
   },
   editOnStripLabel: {
     ...typography.label,
-    color: colors.textOnPrimary,
+    color: c.textOnMedia,
     textDecorationLine: 'underline',
   },
   heroName: {
     ...typography.sectionTitle,
-    color: colors.textOnPrimary,
+    color: c.textOnMedia,
   },
   heroMetaRow: {
     flexDirection: 'row',
@@ -199,18 +212,18 @@ const styles = StyleSheet.create({
   },
   heroColour: {
     ...typography.label,
-    color: colors.textOnPrimary,
+    color: c.textOnMedia,
   },
   fallbackIdentity: {
     gap: spacing.xs,
   },
   fallbackName: {
     ...typography.sectionTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   fallbackColour: {
     ...typography.label,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   fallbackEdit: {
     alignSelf: 'flex-start',
@@ -219,11 +232,11 @@ const styles = StyleSheet.create({
   },
   fallbackEditLabel: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
   meta: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

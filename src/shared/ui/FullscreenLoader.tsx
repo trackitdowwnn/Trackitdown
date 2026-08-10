@@ -42,7 +42,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { colors, motion, spacing } from '../theme';
+import { motion, spacing, useThemedStyles, type Palette } from '../theme';
 import { BrandLoader } from './BrandLoader';
 
 const motionEasing = Easing.out(Easing.quad);
@@ -55,6 +55,7 @@ export interface FullscreenLoaderProps {
 }
 
 export function FullscreenLoader({ visible, message, testID }: FullscreenLoaderProps) {
+  const styles = useThemedStyles(makeStyles);
   // Lifecycle: shown → (visible=false) wait out the minimum-display window →
   // closing (exit animation plays) → unmounted. Mirrors SelectScreen's
   // delayed-unmount choreography, with the min-display wait in front.
@@ -153,6 +154,7 @@ export function FullscreenLoader({ visible, message, testID }: FullscreenLoaderP
 
 /** The "slight scale" of the entrance: 0.98 → 1 alongside the fade. */
 function EnterScale({ children }: { children: ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
   const scale = useSharedValue<number>(motion.pressScale);
 
   useEffect(() => {
@@ -166,19 +168,20 @@ function EnterScale({ children }: { children: ReactNode }) {
   return <Animated.View style={[styles.content, style]}>{children}</Animated.View>;
 }
 
-const styles = StyleSheet.create({
-  page: {
-    flex: 1,
-    // Full-opacity page, NOT a scrim: this is a calm place of its own.
-    backgroundColor: colors.background,
-  },
-  safe: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xl,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    page: {
+      flex: 1,
+      // Full-opacity page, NOT a scrim: this is a calm place of its own.
+      backgroundColor: c.background,
+    },
+    safe: {
+      flex: 1,
+    },
+    content: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xl,
+    },
+  });

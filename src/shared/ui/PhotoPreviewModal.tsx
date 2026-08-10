@@ -18,7 +18,15 @@ import { Feather } from '@expo/vector-icons';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radii, sizes, spacing, typography } from '../theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { AppImage } from './AppImage';
 
 export interface PhotoPreviewModalProps {
@@ -30,6 +38,8 @@ export interface PhotoPreviewModalProps {
 }
 
 export function PhotoPreviewModal({ uri, label, onClose }: PhotoPreviewModalProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const insets = useSafeAreaInsets();
 
   return (
@@ -68,7 +78,7 @@ export function PhotoPreviewModal({ uri, label, onClose }: PhotoPreviewModalProp
             style={({ pressed }) => [styles.close, pressed && styles.closePressed]}
             testID="photo-preview-close"
           >
-            <Feather name="x" size={sizes.icon} color={colors.textOnPrimary} />
+            <Feather name="x" size={sizes.icon} color={palette.textOnMedia} />
           </Pressable>
         </View>
       </View>
@@ -76,49 +86,54 @@ export function PhotoPreviewModal({ uri, label, onClose }: PhotoPreviewModalProp
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    // The one full-bleed dark surface in the app: photos read best on
-    // near-black, and surfaceInverse keeps it on-palette.
-    backgroundColor: colors.surfaceInverse,
-    justifyContent: 'center',
-  },
-  photo: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'transparent',
-  },
-  topBar: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  labelPill: {
-    backgroundColor: colors.textPrimary,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  label: {
-    ...typography.label,
-    color: colors.textOnPrimary,
-  },
-  close: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    borderRadius: radii.full,
-    backgroundColor: colors.overlay,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closePressed: {
-    backgroundColor: colors.surfaceInversePressed,
-  },
-});
+// Every colour here is a MEDIA token, not a page token: this whole screen is
+// chrome sitting on a photograph, so it must stay dark ink-on-light-glyph in
+// both schemes. A pill that inverted with the theme would put a white close
+// button over a bright photo — wrong in every theme, not just one.
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      // The one full-bleed dark surface in the app: photos read best on
+      // near-black, and surfaceOverMedia keeps it on-palette in both schemes.
+      backgroundColor: c.surfaceOverMedia,
+      justifyContent: 'center',
+    },
+    photo: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'transparent',
+    },
+    topBar: {
+      position: 'absolute',
+      left: spacing.lg,
+      right: spacing.lg,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    labelPill: {
+      backgroundColor: c.surfaceOverMedia,
+      borderRadius: radii.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    label: {
+      ...typography.label,
+      color: c.textOnMedia,
+    },
+    close: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget,
+      borderRadius: radii.full,
+      backgroundColor: c.mediaScrim,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    closePressed: {
+      backgroundColor: c.surfaceOverMediaPressed,
+    },
+  });

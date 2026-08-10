@@ -23,10 +23,12 @@
 
 import { StyleSheet, View } from 'react-native';
 
-import { colors } from '@/shared/theme';
+import { useThemedStyles, type Palette } from '@/shared/theme';
 import { BrandLoader } from '@/shared/ui';
 
 export function BrandSplash() {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.root} testID="brand-splash">
       <BrandLoader testID="brand-splash-loader" />
@@ -34,10 +36,10 @@ export function BrandSplash() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
     alignItems: 'center',
     justifyContent: 'center',
   },

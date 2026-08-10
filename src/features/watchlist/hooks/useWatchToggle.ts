@@ -1,8 +1,9 @@
 /**
  * WHAT:  useWatchToggle — one post's watch state + the toggle action:
  *        gate-aware (guests → AuthSheet, continuation completes the watch),
- *        optimistic (flip now, revert + error Toast on failure), quiet on
- *        removal, "Added to your watchlist" Toast with a View action on add.
+ *        optimistic (flip now, revert + error Toast on failure), "Saved to
+ *        <list>" Toast with a Change action on add, "Removed from your
+ *        watchlist" with an Undo action on remove.
  * WHY:   The toggle is the feature's whole surface-level API — every
  *        call site (feed card, map peek card, detail header) gets identical
  *        behaviour from this one hook. The gate conversion is logged
@@ -13,7 +14,7 @@
  *        docs/LOGGING.md ([watchlist] events).
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { useRequireAuth, useSession } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
@@ -84,6 +85,13 @@ export function useWatchToggle(postId: string, source: WatchToggleSource): UseWa
     void hydrateMruCollection(userId);
   }, [session.status, userId]);
 
+  // The Undo toast below re-enters performToggle. A direct self-reference would
+  // make the callback its own dependency (a cycle exhaustive-deps can't satisfy)
+  // and would capture a stale copy through the toast's closure besides — the
+  // toast outlives the render that raised it. The ref always holds the current
+  // one, and reads happen at press time, never at render time.
+  const performToggleRef = useRef<((viaGate: boolean) => void) | null>(null);
+
   const performToggle = useCallback(
     (viaGate: boolean) => {
       // Read membership at RUN time — the continuation may execute long
@@ -118,6 +126,34 @@ export function useWatchToggle(postId: string, source: WatchToggleSource): UseWa
               source: 'save_toast',
             }),
         });
+      } else {
+        // Removal used to be SILENT. On a feed of near-identical cards that
+        // made a mis-tapped bookmark unrecoverable: nothing said the car had
+        // gone, and the only way back was to find it again — which is hardest
+        // for exactly the car someone was watching because it was hard to find.
+        // Undo re-runs the same toggle, so it goes through the same optimistic
+        // flip, the same per-post op chain (the re-add queues behind the
+        // in-flight delete rather than racing it) and the same failure revert.
+        // Not `viaGate`: undoing is not a gate conversion, and logging it as
+        // one would inflate the funnel's best signal.
+        toast.show('Removed from your watchlist', 'success', {
+          label: 'Undo',
+          onPress: () => {
+            // Undo must RESTORE, never toggle. performToggle recomputes
+            // `next` from live state, so if the post became watched again
+            // between the removal and this press, re-entering it would REMOVE
+            // the post — an Undo that undoes the wrong thing.
+            //
+            // Showing another toast usually replaces this one before that can
+            // happen, but that is an accident of the provider, not a
+            // guarantee: ensureWatchedHydrated writes state on a session
+            // change with no toast at all, and this closure deliberately
+            // outlives the card (the ref is read at press time, and a
+            // recycled FlashList cell may already be gone).
+            if (isWatchedNow(postId)) return;
+            performToggleRef.current?.(false);
+          },
+        });
       }
       // Explicit type argument: inference over the add/remove union widens to
       // `void | null` and drops the collection add resolves with.
@@ -146,6 +182,13 @@ export function useWatchToggle(postId: string, source: WatchToggleSource): UseWa
     },
     [postId, source, toast, userId],
   );
+  // In an effect, not inline: this repo builds with the React Compiler, and
+  // writing a ref during render is a lint error (and genuinely unsound — the
+  // render may be thrown away). After-commit is soon enough; nothing can press
+  // the Undo on a toast that has not been shown yet.
+  useEffect(() => {
+    performToggleRef.current = performToggle;
+  }, [performToggle]);
 
   const toggle = useCallback(() => {
     const wasGuest = session.status !== 'signedIn';

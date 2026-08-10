@@ -16,9 +16,10 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, Text } from 'react-native';
 
 import { legalHref } from '@/shared/lib';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 export function AuthLegalNotice() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   return (
     <Text style={styles.text}>
@@ -43,17 +44,17 @@ export function AuthLegalNotice() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   text: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
     paddingHorizontal: spacing.md,
   },
   // Underlined so these inline links read as tappable in the monochrome scheme
   // (near-black link text no longer stands out by colour alone).
   link: {
-    color: colors.primary,
+    color: c.primary,
     textDecorationLine: 'underline',
   },
 });

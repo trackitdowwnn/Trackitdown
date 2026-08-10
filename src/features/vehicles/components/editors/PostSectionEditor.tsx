@@ -24,7 +24,7 @@ import { type ReactNode, useContext, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PostSubmissionError } from '@/features/vehicles/post';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, Screen, useToast } from '@/shared/ui';
 
 import { EditorPresentationContext } from './editorPresentation';
@@ -54,6 +54,7 @@ export function PostSectionEditor({
   canSave,
   children,
 }: PostSectionEditorProps) {
+  const styles = useThemedStyles(makeStyles);
   const presentation = useContext(EditorPresentationContext);
   const toast = useToast();
   const [saving, setSaving] = useState(false);
@@ -116,7 +117,7 @@ export function PostSectionEditor({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // Sheet mode: the BottomSheet already pads horizontally and for the safe area,
   // so this only owns the vertical rhythm between title / inputs / actions.
   sheet: {
@@ -124,7 +125,7 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   sheetBody: {
     gap: spacing.xl,
@@ -134,7 +135,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
@@ -150,11 +151,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderTopColor: c.border,
   },
   error: {
     ...typography.body,
-    color: colors.danger,
+    color: c.danger,
     paddingBottom: spacing.xs,
   },
 });

@@ -67,7 +67,6 @@ import {
 } from '../lib/money';
 import { easeOut } from '@/shared/theme/motionEasing';
 import {
-  colors,
   displayFontScaleCap,
   motion,
   opacity,
@@ -76,6 +75,8 @@ import {
   sizes,
   spacing,
   typography,
+  useThemedStyles,
+  type Palette,
 } from '../theme';
 import {
   clampPence,
@@ -194,6 +195,7 @@ export function MoneySlider({
   // worklets during render-scoped callbacks, which the compiler's immutability
   // model (correctly, for plain values) forbids. Reanimated owns this state.
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
   // The value the component trusts: always clamped integer pence.
   const value = clampPence(valuePence, minPence, maxPence);
@@ -508,85 +510,86 @@ export function MoneySlider({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: spacing.md,
-  },
-  disabled: {
-    opacity: opacity.disabled,
-  },
-  label: {
-    ...typography.label,
-    color: colors.textSecondary,
-  },
-  heroText: {
-    ...typography.display,
-    color: colors.accent,
-    paddingVertical: 0, // TextInput default padding would unbalance the row
-  },
-  // Both faces of the hero (read-only and editing) must meet the 44pt target:
-  // display line-height alone is ~38pt.
-  heroPressable: {
-    minHeight: sizes.touchTarget,
-    justifyContent: 'center',
-  },
-  editRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: sizes.touchTarget,
-  },
-  editInput: {
-    flexGrow: 1,
-  },
-  rangeHint: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  trackRow: {
-    height: sizes.touchTarget,
-    justifyContent: 'center',
-  },
-  rail: {
-    height: TRACK_HEIGHT,
-    borderRadius: TRACK_HEIGHT / 2,
-    // borderStrong, not border: "small elements that must stay visible
-    // (progress tracks)" — the plain border tone vanishes on the warm bg.
-    backgroundColor: colors.borderStrong,
-  },
-  fill: {
-    position: 'absolute',
-    left: 0,
-    height: TRACK_HEIGHT,
-    borderRadius: TRACK_HEIGHT / 2,
-    backgroundColor: colors.accent,
-  },
-  thumb: {
-    position: 'absolute',
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: THUMB_SIZE / 2,
-    backgroundColor: colors.surface,
-    ...shadows.soft,
-  },
-  panel: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  panelText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  // Deliberately heavier than panelText: the panel is small print the owner may
-  // never read, this is the line the amount is actually buying. Centred under
-  // the control rather than left-aligned with the panel, so it reads as part of
-  // the slider rather than a third clause of the terms.
-  footnote: {
-    ...typography.label,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginTop: spacing.md,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      gap: spacing.md,
+    },
+    disabled: {
+      opacity: opacity.disabled,
+    },
+    label: {
+      ...typography.label,
+      color: c.textSecondary,
+    },
+    heroText: {
+      ...typography.display,
+      color: c.accent,
+      paddingVertical: 0, // TextInput default padding would unbalance the row
+    },
+    // Both faces of the hero (read-only and editing) must meet the 44pt target:
+    // display line-height alone is ~38pt.
+    heroPressable: {
+      minHeight: sizes.touchTarget,
+      justifyContent: 'center',
+    },
+    editRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      minHeight: sizes.touchTarget,
+    },
+    editInput: {
+      flexGrow: 1,
+    },
+    rangeHint: {
+      ...typography.caption,
+      color: c.textSecondary,
+      marginTop: spacing.xs,
+    },
+    trackRow: {
+      height: sizes.touchTarget,
+      justifyContent: 'center',
+    },
+    rail: {
+      height: TRACK_HEIGHT,
+      borderRadius: TRACK_HEIGHT / 2,
+      // borderStrong, not border: "small elements that must stay visible
+      // (progress tracks)" — the plain border tone vanishes on the warm bg.
+      backgroundColor: c.borderStrong,
+    },
+    fill: {
+      position: 'absolute',
+      left: 0,
+      height: TRACK_HEIGHT,
+      borderRadius: TRACK_HEIGHT / 2,
+      backgroundColor: c.accent,
+    },
+    thumb: {
+      position: 'absolute',
+      width: THUMB_SIZE,
+      height: THUMB_SIZE,
+      borderRadius: THUMB_SIZE / 2,
+      backgroundColor: c.surface,
+      ...shadows.soft,
+    },
+    panel: {
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.lg,
+      padding: spacing.lg,
+      gap: spacing.sm,
+    },
+    panelText: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    // Deliberately heavier than panelText: the panel is small print the owner may
+    // never read, this is the line the amount is actually buying. Centred under
+    // the control rather than left-aligned with the panel, so it reads as part of
+    // the slider rather than a third clause of the terms.
+    footnote: {
+      ...typography.label,
+      color: c.textPrimary,
+      textAlign: 'center',
+      marginTop: spacing.md,
+    },
+  });

@@ -17,7 +17,15 @@ import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { EmptyState, Screen } from '@/shared/ui';
 
 import { usePostDetail } from '../hooks/usePostDetail';
@@ -28,6 +36,7 @@ export interface PostAboutScreenProps {
 }
 
 export function PostAboutScreen({ postId }: PostAboutScreenProps) {
+  const styles = useThemedStyles(makeStyles);
   const { status, result, retry } = usePostDetail(postId);
   const post = status === 'ready' && result?.kind === 'visible' ? result.post : null;
 
@@ -68,6 +77,7 @@ export function PostAboutScreen({ postId }: PostAboutScreenProps) {
 
 /** The subhead → field mapping (the reference's structured description). */
 function AboutContent({ post }: { post: PostDetail }) {
+  const styles = useThemedStyles(makeStyles);
   const sections = [
     { title: 'How to spot it', text: post.descRecognise },
     { title: 'How it drives', text: post.descDrives },
@@ -87,6 +97,8 @@ function AboutContent({ post }: { post: PostDetail }) {
 }
 
 function BackButton() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   return (
     <Pressable
@@ -96,12 +108,13 @@ function BackButton() {
       style={styles.back}
       testID="about-back"
     >
-      <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+      <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
     </Pressable>
   );
 }
 
 function AboutSkeleton() {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.skeleton} testID="about-skeleton">
       <View style={[styles.skeletonLine, styles.skeletonShort]} />
@@ -112,7 +125,7 @@ function AboutSkeleton() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   scroll: {
     padding: spacing.xl,
     gap: spacing.xl,
@@ -131,7 +144,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   section: {
@@ -139,11 +152,11 @@ const styles = StyleSheet.create({
   },
   subhead: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   prose: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   skeleton: {
     gap: spacing.md,
@@ -151,7 +164,7 @@ const styles = StyleSheet.create({
   skeletonLine: {
     height: sizes.skeletonLine,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonShort: {
     width: '60%',

@@ -136,6 +136,23 @@ export const sizes = {
    *  content lands in place instead of shifting the page under a reader. */
   statsSkeletonHead: 96,
   statsSkeletonBlock: 180,
+  /** The onboarding circular next control and its progress ring.
+   *
+   *  `fab` is the drawn circle: it must clear `touchTarget` (44) with room to
+   *  spare, and `control` (52) is deliberately NOT reused — that is a BAR
+   *  height, and tying a round control to a rectangular one means the next
+   *  person to change button height silently resizes this. 64 sits on the 4pt
+   *  grid and holds its own against a 40pt headline.
+   *
+   *  `fabRing` is the arc stroke. At the ~78pt outer diameter a 2pt stroke
+   *  (colourSwatchRing, tabAvatarRing) disappears; 3 reads as a deliberate arc
+   *  without becoming a band — the same call attentionBar made.
+   *
+   *  `fabRingGap` separates fill edge from ring, so the arc reads as progress
+   *  AROUND the button rather than a border ON it. */
+  fab: 64,
+  fabRing: 3,
+  fabRingGap: 4,
   /** Non-interactive context pill height (timeline cards). */
   pillHeight: 24,
   /** The camera-as-step canvas (report-sighting photos step): viewfinder +

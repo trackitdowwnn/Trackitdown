@@ -53,7 +53,16 @@ import Animated, {
   ZoomIn,
 } from 'react-native-reanimated';
 
-import { colors, motion, sizes, spacing, tabLabelFontScaleCap, typography } from '../theme';
+import {
+  motion,
+  sizes,
+  spacing,
+  tabLabelFontScaleCap,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { AppImage } from './AppImage';
 import { type BadgeValue, badgeDisplay, tabAccessibilityLabel } from './appTabBarModel';
@@ -110,6 +119,7 @@ export function AppTabBar({
 }: AppTabBarProps) {
   // React Compiler opt-out: shared values are mutated from press handlers.
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
 
   // The focused screen controls visibility via the standard mechanism.
@@ -218,6 +228,8 @@ function TabItem({
   onPress: () => void;
 }) {
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const Icon = config.icon;
   // A photo that failed to load reverts to the icon; a NEW uri (≠ the failed
   // one) retries automatically — no effect or reset needed.
@@ -249,7 +261,10 @@ function TabItem({
   const activeIconStyle = useAnimatedStyle(() => ({ opacity: activeSv.value }));
   const inactiveIconStyle = useAnimatedStyle(() => ({ opacity: 1 - activeSv.value }));
   const labelStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(activeSv.value, [0, 1], [colors.textSecondary, colors.primary]),
+    // Read inside the worklet: hoisting either end to a module const or a
+    // shared value would freeze the hex on the UI thread, where no theme
+    // change could reach it.
+    color: interpolateColor(activeSv.value, [0, 1], [palette.textSecondary, palette.primary]),
   }));
 
   const display = badgeDisplay(badge);
@@ -311,12 +326,12 @@ function TabItem({
             <Animated.View style={inactiveIconStyle}>
               <Icon
                 size={sizes.icon}
-                color={colors.textSecondary}
+                color={palette.textSecondary}
                 strokeWidth={STROKE_INACTIVE}
               />
             </Animated.View>
             <Animated.View style={[styles.iconOverlay, activeIconStyle]}>
-              <Icon size={sizes.icon} color={colors.primary} strokeWidth={STROKE_ACTIVE} />
+              <Icon size={sizes.icon} color={palette.primary} strokeWidth={STROKE_ACTIVE} />
             </Animated.View>
             {badgeNode}
           </View>
@@ -338,6 +353,8 @@ function TabItem({
  *  press spring as a tab, but announced as a button (an action, not a tab). */
 function ActionButton({ action, reduceMotion }: { action: TabBarAction; reduceMotion: boolean }) {
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const Icon = action.icon;
   const pressScale = useSharedValue(1);
 
@@ -362,7 +379,7 @@ function ActionButton({ action, reduceMotion }: { action: TabBarAction; reduceMo
       testID={action.testID ?? 'app-tab-action'}
     >
       <Animated.View style={[styles.actionCircle, circleStyle]}>
-        <Icon size={sizes.icon} color={colors.textOnPrimary} strokeWidth={STROKE_ACTIVE} />
+        <Icon size={sizes.icon} color={palette.textOnPrimary} strokeWidth={STROKE_ACTIVE} />
       </Animated.View>
     </Pressable>
   );
@@ -396,102 +413,103 @@ export function useTabBadges(): TabBadgesValue {
   return context;
 }
 
-const styles = StyleSheet.create({
-  bar: {
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    overflow: 'hidden', // clips the row while the bar slides away
-  },
-  row: {
-    flexDirection: 'row',
-    height: '100%',
-  },
-  item: {
-    flex: 1, // full-width share: the touch target is the whole column (56pt)
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  // Same column share as a tab so the row stays balanced; the circle is the
-  // visible affordance, the whole column is the touch target.
-  action: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionCircle: {
-    width: sizes.control,
-    height: sizes.control,
-    borderRadius: sizes.control / 2,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // The shared glyph slot: icon or ringed avatar, centred; see render comment.
-  iconSlot: {
-    width: sizes.tabIconSlot,
-    height: sizes.tabIconSlot,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconStack: {
-    width: sizes.icon,
-    height: sizes.icon,
-  },
-  iconOverlay: {
-    position: 'absolute',
-  },
-  // 26pt so the photo sits optically level with the 24pt outline icons.
-  avatarStack: {
-    width: sizes.tabAvatar,
-    height: sizes.tabAvatar,
-  },
-  avatarPhoto: {
-    width: '100%',
-    height: '100%',
-    borderRadius: sizes.tabAvatar / 2,
-  },
-  // Fills the slot: 2pt stroke at the slot edge leaves the 2pt breathing gap
-  // to the 26pt photo (34 − 2×2 stroke − 26 = 4 → 2pt per side).
-  avatarRing: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    borderRadius: sizes.tabIconSlot / 2,
-    borderWidth: sizes.tabAvatarRing,
-    borderColor: colors.primary,
-  },
-  badgeAnchor: {
-    position: 'absolute',
-    top: -spacing.xs,
-    right: -spacing.sm,
-  },
-  // accentText: monochrome scheme, so accent and accentText are the same
-  // near-black — white 11pt text on it is ~16:1 (AAA). The dot matches so both
-  // badge forms read as one colour. (Token kept for intent / future re-theme.)
-  badgeDot: {
-    width: sizes.badgeDot,
-    height: sizes.badgeDot,
-    borderRadius: sizes.badgeDot / 2,
-    backgroundColor: colors.accentText,
-  },
-  badgePill: {
-    minWidth: sizes.badgePill,
-    height: sizes.badgePill,
-    borderRadius: sizes.badgePill / 2,
-    backgroundColor: colors.accentText,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
-  badgeText: {
-    ...typography.tabLabel,
-    color: colors.textOnPrimary,
-  },
-  label: {
-    ...typography.tabLabel,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    bar: {
+      backgroundColor: c.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+      overflow: 'hidden', // clips the row while the bar slides away
+    },
+    row: {
+      flexDirection: 'row',
+      height: '100%',
+    },
+    item: {
+      flex: 1, // full-width share: the touch target is the whole column (56pt)
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+    },
+    // Same column share as a tab so the row stays balanced; the circle is the
+    // visible affordance, the whole column is the touch target.
+    action: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    actionCircle: {
+      width: sizes.control,
+      height: sizes.control,
+      borderRadius: sizes.control / 2,
+      backgroundColor: c.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // The shared glyph slot: icon or ringed avatar, centred; see render comment.
+    iconSlot: {
+      width: sizes.tabIconSlot,
+      height: sizes.tabIconSlot,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconStack: {
+      width: sizes.icon,
+      height: sizes.icon,
+    },
+    iconOverlay: {
+      position: 'absolute',
+    },
+    // 26pt so the photo sits optically level with the 24pt outline icons.
+    avatarStack: {
+      width: sizes.tabAvatar,
+      height: sizes.tabAvatar,
+    },
+    avatarPhoto: {
+      width: '100%',
+      height: '100%',
+      borderRadius: sizes.tabAvatar / 2,
+    },
+    // Fills the slot: 2pt stroke at the slot edge leaves the 2pt breathing gap
+    // to the 26pt photo (34 − 2×2 stroke − 26 = 4 → 2pt per side).
+    avatarRing: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      borderRadius: sizes.tabIconSlot / 2,
+      borderWidth: sizes.tabAvatarRing,
+      borderColor: c.primary,
+    },
+    badgeAnchor: {
+      position: 'absolute',
+      top: -spacing.xs,
+      right: -spacing.sm,
+    },
+    // accentText: monochrome scheme, so accent and accentText are the same
+    // near-black — white 11pt text on it is ~16:1 (AAA). The dot matches so both
+    // badge forms read as one colour. (Token kept for intent / future re-theme.)
+    badgeDot: {
+      width: sizes.badgeDot,
+      height: sizes.badgeDot,
+      borderRadius: sizes.badgeDot / 2,
+      backgroundColor: c.accentText,
+    },
+    badgePill: {
+      minWidth: sizes.badgePill,
+      height: sizes.badgePill,
+      borderRadius: sizes.badgePill / 2,
+      backgroundColor: c.accentText,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xs,
+    },
+    badgeText: {
+      ...typography.tabLabel,
+      color: c.textOnPrimary,
+    },
+    label: {
+      ...typography.tabLabel,
+    },
+  });

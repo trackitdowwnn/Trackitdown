@@ -21,7 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { z } from 'zod';
 
 import { useRequireAuth } from '@/features/auth';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import {
   BottomSheet,
   type BottomSheetRef,
@@ -59,6 +59,7 @@ const AVATAR_PHOTOS_PRIMER: PermissionPrimerContent = {
 };
 
 export function EditProfileScreen() {
+  const styles = useThemedStyles(makeStyles);
   const state = useMyProfile();
 
   if (state.status === 'loading') {
@@ -85,6 +86,7 @@ export function EditProfileScreen() {
 }
 
 function SignedOutEditState() {
+  const styles = useThemedStyles(makeStyles);
   const requireAuth = useRequireAuth();
   return (
     <SafeAreaView style={styles.container}>
@@ -100,6 +102,7 @@ function SignedOutEditState() {
 }
 
 function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => void }) {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const toast = useToast();
   const [firstName, setFirstName] = useState(profile.firstName);
@@ -246,10 +249,10 @@ function EditForm({ profile, onSaved }: { profile: MyProfile; onSaved: () => voi
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   scroll: {
     padding: spacing.xl,
@@ -257,7 +260,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   avatarRow: {
     alignItems: 'center',

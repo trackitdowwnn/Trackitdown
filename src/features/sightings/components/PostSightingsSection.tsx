@@ -24,7 +24,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { createLogger } from '@/shared/lib/logger';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { usePostSightings } from '../hooks/usePostSightings';
 import { usePublicSightingEntries } from '../hooks/usePublicSightingEntries';
@@ -67,6 +67,7 @@ export function PostSightingsSection({
   anchors,
   origin,
 }: PostSightingsSectionProps) {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   // Hooks are unconditional (React rule); each face's fetch is gated by
   // `enabled`, so exactly one request is ever made per mount.
@@ -194,12 +195,12 @@ export function PostSightingsSection({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // Mirrors the host page's section chrome (PostDetailBody) so this section
   // reads as native to the page: hairline divider, 32pt rhythm, title tier.
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
   },
   section: {
     paddingVertical: spacing.xxl,
@@ -207,12 +208,12 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     includeFontPadding: false,
   },
   meta: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   linkRow: {
     alignSelf: 'flex-start',
@@ -222,7 +223,7 @@ const styles = StyleSheet.create({
   link: {
     // The page's underlined-link grammar (underline = tappable).
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
   skeletonSet: {
@@ -237,7 +238,7 @@ const styles = StyleSheet.create({
     width: sizes.iconSm,
     height: sizes.iconSm,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonLines: {
     flex: 1,
@@ -247,12 +248,12 @@ const styles = StyleSheet.create({
     height: sizes.skeletonLine,
     width: '60%',
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonLine: {
     height: sizes.skeletonLine,
     width: '40%',
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
 });

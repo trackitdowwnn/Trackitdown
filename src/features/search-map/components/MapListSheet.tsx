@@ -23,7 +23,15 @@ import { AccessibilityInfo, Platform, StyleSheet, Text, View } from 'react-nativ
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { WatchToggle } from '@/features/watchlist';
-import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { EmptyState, ErrorState, SkeletonVehicleCard, VehicleCard } from '@/shared/ui';
 
@@ -116,6 +124,7 @@ export const MapListSheet = memo(function MapListSheet({
   onRetry,
   onPressPost,
 }: MapListSheetProps) {
+  const styles = useThemedStyles(makeStyles);
   const snapPoints = useMemo(() => SNAP_POINTS, []);
   const sheetRef = useRef<BottomSheet>(null);
   const reduceMotion = useReducedMotion();
@@ -298,16 +307,16 @@ export const MapListSheet = memo(function MapListSheet({
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   sheetBackground: {
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
   },
   grabber: {
     // borderStrong (not the shared sheet's `border`) for legibility over map
     // tiles; radii.sm rounds the ends to match the shared BottomSheet.
-    backgroundColor: colors.borderStrong,
+    backgroundColor: c.borderStrong,
     width: sizes.grabberWidth,
     height: sizes.grabberHeight,
     borderRadius: radii.sm,
@@ -328,7 +337,7 @@ const styles = StyleSheet.create({
   // same slot, so one style serves all three.
   handleLabel: {
     ...typography.heading,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   card: {
     // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.

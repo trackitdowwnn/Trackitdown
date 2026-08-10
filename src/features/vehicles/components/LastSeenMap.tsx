@@ -17,7 +17,16 @@
 import { Feather } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { colors, motion, radii, shadows, sizes, spacing } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 
 /** ~1.4-mile span around the point — close enough to place it, calm enough
@@ -33,6 +42,8 @@ export interface LastSeenMapProps {
 }
 
 export function LastSeenMap({ lat, lng, onOpenFull }: LastSeenMapProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const region = {
     latitude: lat,
     longitude: lng,
@@ -56,7 +67,7 @@ export function LastSeenMap({ lat, lng, onOpenFull }: LastSeenMapProps) {
       {/* Expand affordance — decorative twin of the card tap below, so it is
           hidden from accessibility (one target, one announcement). */}
       <View style={styles.expandBadge} pointerEvents="none" importantForAccessibility="no-hide-descendants">
-        <Feather name="maximize-2" size={sizes.iconSm} color={colors.textPrimary} />
+        <Feather name="maximize-2" size={sizes.iconSm} color={palette.textPrimary} />
       </View>
       {/* Whole card is one tap target — the map itself takes no gestures. */}
       <Pressable
@@ -69,21 +80,21 @@ export function LastSeenMap({ lat, lng, onOpenFull }: LastSeenMapProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   card: {
     height: sizes.mapPreview,
     borderRadius: radii.xl,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   pin: {
     width: PIN_DIAMETER,
     height: PIN_DIAMETER,
     borderRadius: radii.full,
-    // primary, not accent — accent is reserved for bounty/value (both near-black).
-    backgroundColor: colors.primary,
+    // primary, not accent — accent is reserved for bounty/value.
+    backgroundColor: c.primary,
     borderWidth: 2,
-    borderColor: colors.surface,
+    borderColor: c.surface,
   },
   expandBadge: {
     position: 'absolute',
@@ -92,7 +103,7 @@ const styles = StyleSheet.create({
     width: sizes.circleButtonSm,
     height: sizes.circleButtonSm,
     borderRadius: radii.full,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.lifted,

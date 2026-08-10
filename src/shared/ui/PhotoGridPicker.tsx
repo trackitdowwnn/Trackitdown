@@ -85,7 +85,18 @@ import Animated, {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { colors, motion, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
+import {
+  motion,
+  opacity,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { AppImage } from './AppImage';
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
@@ -222,6 +233,8 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
 }: PhotoGridPickerProps<T>) {
   // React Compiler opt-out: shared values are mutated from gesture worklets.
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const copy = useMemo(
     () => ({ ...defaultOwnerPhotoCopy, ...copyOverrides }),
     [copyOverrides],
@@ -490,7 +503,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
               accessibilityLabel="Dismiss tips"
               testID={testID ? `${testID}-dismiss-tips` : undefined}
             >
-              <Feather name="x" size={typography.body.lineHeight} color={colors.textSecondary} />
+              <Feather name="x" size={typography.body.lineHeight} color={palette.textSecondary} />
             </Pressable>
           ) : null}
         </View>
@@ -566,7 +579,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
             }
             testID={testID ? `${testID}-add` : undefined}
           >
-            <Feather name="plus" size={typography.title.lineHeight} color={colors.textSecondary} />
+            <Feather name="plus" size={typography.title.lineHeight} color={palette.textSecondary} />
             <Text style={styles.addLabel}>{copy.addLabel}</Text>
             {needMore > 0 ? <Text style={styles.addMore}>{copy.addMore(needMore)}</Text> : null}
             {needMore === 0 && copy.addRemaining ? (
@@ -589,7 +602,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
           accessibilityLabel={copy.cameraLabel}
           testID={testID ? `${testID}-camera` : undefined}
         >
-          <Feather name="camera" size={typography.body.lineHeight} color={colors.primary} />
+          <Feather name="camera" size={typography.body.lineHeight} color={palette.primary} />
           <Text style={styles.cameraLabel}>{copy.cameraLabel}</Text>
         </Pressable>
       ) : null}
@@ -721,6 +734,8 @@ function GridTile({
 }: GridTileProps) {
   // React Compiler opt-out: shared values are mutated from gesture worklets.
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const settleMs = reduceMotion ? 0 : motion.fast;
 
   // Whether THIS tile owns the in-flight drag: with one detector per tile, a
@@ -909,7 +924,7 @@ function GridTile({
                   <View style={styles.statusPill}>
                     <ActivityIndicator
                       size="small"
-                      color={colors.textOnPrimary}
+                      color={palette.textOnMedia}
                       // Decorative — the tile's own label carries the status.
                       importantForAccessibility="no"
                       accessibilityElementsHidden
@@ -969,7 +984,7 @@ function GridTile({
           <Feather
             name="more-horizontal"
             size={typography.body.lineHeight}
-            color={colors.textPrimary}
+            color={palette.textPrimary}
           />
         </Pressable>
       </Animated.View>
@@ -999,6 +1014,7 @@ function statusAccessibilityLabel(status?: PhotoTileStatus): string | null {
 /** Calm skeleton pulse while a picked photo is resized off the UI thread. */
 function ProcessingShimmer({ reduceMotion }: { reduceMotion: boolean }) {
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
   const pulse = useSharedValue(1);
 
   useEffect(() => {
@@ -1027,6 +1043,9 @@ function SheetAction({
   destructive?: boolean;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   return (
     <Pressable
       style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]}
@@ -1037,7 +1056,7 @@ function SheetAction({
       <Feather
         name={icon}
         size={typography.body.lineHeight}
-        color={destructive ? colors.danger : colors.textPrimary}
+        color={destructive ? palette.danger : palette.textPrimary}
       />
       <Text style={[styles.sheetActionLabel, destructive && styles.sheetActionDestructive]}>
         {label}
@@ -1046,185 +1065,193 @@ function SheetAction({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: spacing.md,
-  },
-  disabled: {
-    opacity: opacity.disabled,
-  },
-  tipsCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-  },
-  tipsText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    flex: 1,
-  },
-  grid: {
-    width: '100%',
-  },
-  tile: {
-    position: 'absolute',
-    borderRadius: radii.lg,
-  },
-  tileContent: {
-    flex: 1,
-    borderRadius: radii.lg,
-    overflow: 'hidden', // clip the image; the shadow lives on the outer view
-    backgroundColor: colors.surfaceSubtle,
-  },
-  tileImage: {
-    width: '100%',
-    height: '100%',
-  },
-  coverPillWrap: {
-    position: 'absolute',
-    top: spacing.sm,
-    left: spacing.sm,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  coverPillText: {
-    ...typography.caption,
-    color: colors.textPrimary,
-  },
-  menuButton: {
-    position: 'absolute',
-    // spacing.sm inset keeps the whole hitSlop inside the tile bounds (RN
-    // clamps touch areas to the parent), preserving the full 48pt target.
-    top: spacing.sm,
-    right: spacing.sm,
-    width: sizes.touchTarget - spacing.md, // pill-sized; hitSlop restores 44pt
-    height: sizes.touchTarget - spacing.md,
-    borderRadius: (sizes.touchTarget - spacing.md) / 2,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.soft,
-  },
-  pendingTile: {
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-  },
-  shimmerFill: {
-    flex: 1,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-  },
-  addTile: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: colors.borderStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  addLabel: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  addMore: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  coverHint: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  cameraRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    minHeight: sizes.touchTarget,
-    borderRadius: radii.md,
-  },
-  cameraRowPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  cameraLabel: {
-    ...typography.label,
-    color: colors.primary,
-  },
-  permissionCard: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  permissionTitle: {
-    ...typography.heading,
-    color: colors.textPrimary,
-  },
-  permissionBody: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  statusOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.overlay,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  statusPill: {
-    backgroundColor: colors.textPrimary,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  statusText: {
-    ...typography.label,
-    color: colors.textOnPrimary,
-    textAlign: 'center',
-  },
-  // Leaves a margin inside the tile so a wrapped label never runs to the edges.
-  statusPillWide: {
-    maxWidth: '86%',
-  },
-  statusAction: {
-    textDecorationLine: 'underline',
-  },
-  retryButton: {
-    minHeight: sizes.touchTarget,
-    justifyContent: 'center',
-  },
-  confirm: {
-    gap: spacing.md,
-  },
-  confirmBody: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  sheetAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: sizes.touchTarget,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.md,
-  },
-  sheetActionPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  sheetActionLabel: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  sheetActionDestructive: {
-    color: colors.danger,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      gap: spacing.md,
+    },
+    disabled: {
+      opacity: opacity.disabled,
+    },
+    tipsCard: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.lg,
+      padding: spacing.lg,
+    },
+    tipsText: {
+      ...typography.caption,
+      color: c.textSecondary,
+      flex: 1,
+    },
+    grid: {
+      width: '100%',
+    },
+    tile: {
+      position: 'absolute',
+      borderRadius: radii.lg,
+    },
+    tileContent: {
+      flex: 1,
+      borderRadius: radii.lg,
+      overflow: 'hidden', // clip the image; the shadow lives on the outer view
+      backgroundColor: c.surfaceSubtle,
+    },
+    tileImage: {
+      width: '100%',
+      height: '100%',
+    },
+    coverPillWrap: {
+      position: 'absolute',
+      top: spacing.sm,
+      left: spacing.sm,
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    coverPillText: {
+      ...typography.caption,
+      color: c.textPrimary,
+    },
+    menuButton: {
+      position: 'absolute',
+      // spacing.sm inset keeps the whole hitSlop inside the tile bounds (RN
+      // clamps touch areas to the parent), preserving the full 48pt target.
+      top: spacing.sm,
+      right: spacing.sm,
+      width: sizes.touchTarget - spacing.md, // pill-sized; hitSlop restores 44pt
+      height: sizes.touchTarget - spacing.md,
+      borderRadius: (sizes.touchTarget - spacing.md) / 2,
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...shadows.soft,
+    },
+    pendingTile: {
+      borderRadius: radii.lg,
+      overflow: 'hidden',
+    },
+    shimmerFill: {
+      flex: 1,
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.lg,
+    },
+    addTile: {
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: c.borderStrong,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+    },
+    addLabel: {
+      ...typography.label,
+      color: c.textPrimary,
+    },
+    addMore: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    coverHint: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    cameraRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      minHeight: sizes.touchTarget,
+      borderRadius: radii.md,
+    },
+    cameraRowPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    cameraLabel: {
+      ...typography.label,
+      color: c.primary,
+    },
+    permissionCard: {
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.lg,
+      padding: spacing.lg,
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+    },
+    permissionTitle: {
+      ...typography.heading,
+      color: c.textPrimary,
+    },
+    permissionBody: {
+      ...typography.body,
+      color: c.textSecondary,
+    },
+    statusOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      // mediaScrim, not overlay (2026-08-10). This sits on a PHOTO, and
+      // `overlay` now means "scrim over the page" and deepens to 0.65 on dark —
+      // which over a photo just buries it. The media tokens are identical in
+      // both palettes precisely because a photo is as bright either way.
+      backgroundColor: c.mediaScrim,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+    },
+    statusPill: {
+      // surfaceOverMedia, not textPrimary: an ink token used as a fill flips to
+      // near-WHITE on dark, putting a white pill on a photo. It also made the
+      // spinner beside it (textOnPrimary → #141414) invisible on the scrim.
+      backgroundColor: c.surfaceOverMedia,
+      borderRadius: radii.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    statusText: {
+      ...typography.label,
+      color: c.textOnMedia,
+      textAlign: 'center',
+    },
+    // Leaves a margin inside the tile so a wrapped label never runs to the edges.
+    statusPillWide: {
+      maxWidth: '86%',
+    },
+    statusAction: {
+      textDecorationLine: 'underline',
+    },
+    retryButton: {
+      minHeight: sizes.touchTarget,
+      justifyContent: 'center',
+    },
+    confirm: {
+      gap: spacing.md,
+    },
+    confirmBody: {
+      ...typography.body,
+      color: c.textSecondary,
+    },
+    sheetAction: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      minHeight: sizes.touchTarget,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radii.md,
+    },
+    sheetActionPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    sheetActionLabel: {
+      ...typography.body,
+      color: c.textPrimary,
+    },
+    sheetActionDestructive: {
+      color: c.danger,
+    },
+  });

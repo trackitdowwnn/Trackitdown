@@ -28,7 +28,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
+import { opacity, radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle';
 
@@ -49,39 +49,52 @@ export interface ButtonProps {
   fullWidth?: boolean;
 }
 
-/** Per-variant colours for rest and pressed states. */
-const VARIANT_STYLES: Record<
-  ButtonVariant,
-  { rest: ViewStyle; pressed: ViewStyle; label: TextStyle }
-> = {
+/**
+ * Per-variant colours for rest and pressed states.
+ *
+ * A FACTORY, not a const: at module scope `colors.primary` is copied in as a
+ * STRING the instant this module evaluates, so no runtime theme change could
+ * ever reach it. It goes through useThemedStyles instead, which memoises one
+ * result per palette across every Button in the app.
+ *
+ * The parameter is `c`, not `colors`, on purpose — a one-character difference
+ * would let a stale `colors.` reference typecheck against the parameter and
+ * survive the migration silently.
+ *
+ * Kept as plain objects rather than folded into StyleSheet.create because
+ * `variantStyle.label.color` is read as a VALUE below, for the spinner.
+ */
+const makeVariantStyles = (
+  c: Palette,
+): Record<ButtonVariant, { rest: ViewStyle; pressed: ViewStyle; label: TextStyle }> => ({
   primary: {
-    rest: { backgroundColor: colors.primary },
-    pressed: { backgroundColor: colors.primaryPressed },
-    label: { color: colors.textOnPrimary },
+    rest: { backgroundColor: c.primary },
+    pressed: { backgroundColor: c.primaryPressed },
+    label: { color: c.textOnPrimary },
   },
   secondary: {
-    rest: { borderWidth: 1, borderColor: colors.primary },
-    pressed: { borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.surfaceSubtle },
-    label: { color: colors.primary },
+    rest: { borderWidth: 1, borderColor: c.primary },
+    pressed: { borderWidth: 1, borderColor: c.primary, backgroundColor: c.surfaceSubtle },
+    label: { color: c.primary },
   },
   ghost: {
     rest: {},
-    pressed: { backgroundColor: colors.surfaceSubtle },
-    label: { color: colors.primary },
+    pressed: { backgroundColor: c.surfaceSubtle },
+    label: { color: c.primary },
   },
   danger: {
-    rest: { backgroundColor: colors.danger },
-    pressed: { backgroundColor: colors.dangerPressed },
-    label: { color: colors.textOnPrimary },
+    rest: { backgroundColor: c.danger },
+    pressed: { backgroundColor: c.dangerPressed },
+    label: { color: c.textOnPrimary },
   },
   // The page's only non-CTA block button (the "show all/more" pattern):
   // quiet grey fill, ink label — never competes with a primary action.
   subtle: {
-    rest: { backgroundColor: colors.surfaceSubtle },
-    pressed: { backgroundColor: colors.surfaceSubtlePressed },
-    label: { color: colors.textPrimary },
+    rest: { backgroundColor: c.surfaceSubtle },
+    pressed: { backgroundColor: c.surfaceSubtlePressed },
+    label: { color: c.textPrimary },
   },
-};
+});
 
 export function Button({
   label,
@@ -91,7 +104,7 @@ export function Button({
   loading = false,
   fullWidth = true,
 }: ButtonProps) {
-  const variantStyle = VARIANT_STYLES[variant];
+  const variantStyle = useThemedStyles(makeVariantStyles)[variant];
   // Loading blocks presses like disabled, but reads as "busy" not "unavailable"
   // to assistive tech, and keeps the full-opacity fill (a spinner, not a mute).
   const blocked = disabled || loading;

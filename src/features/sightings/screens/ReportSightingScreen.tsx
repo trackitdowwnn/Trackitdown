@@ -30,8 +30,18 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatPounds } from '@/shared/lib';
+import { successHaptic } from '@/shared/lib/haptics';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, motion, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { Button, EmptyState, FullscreenLoader, useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
 
@@ -76,6 +86,8 @@ type Phase =
   | { kind: 'sent' };
 
 export function ReportSightingScreen({ postId, source, bountyPence }: ReportSightingScreenProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>({ kind: 'checking' });
 
@@ -127,7 +139,7 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
     return (
       <View style={styles.stateWrap}>
         <EmptyState
-          illustration={<Feather name="check-circle" size={sizes.icon} color={colors.primary} />}
+          illustration={<Feather name="check-circle" size={sizes.icon} color={palette.primary} />}
           title="You’ve sent 3 reports for this car today"
           body="The owner has them. If you spot it again tomorrow, you can report again."
           actionLabel="Done"
@@ -175,6 +187,8 @@ function SightingSent({
   bountyPence?: number;
   onDone: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
@@ -188,6 +202,16 @@ function SightingSent({
     if (reduceMotion) return;
     badge.value = withSpring(1, motion.springBouncy);
   }, [badge, reduceMotion]);
+
+  // The confirming buzz, matching the two other completed-submission moments
+  // (AddVehicleScreen, PostACarScreen). It was missing from the ONE flow a user
+  // finishes standing in the street, probably one-handed, quite possibly not
+  // looking at the screen — the report is sent and nothing said so in the hand.
+  // Separate from the badge effect on purpose: it must still fire under reduced
+  // motion, which suppresses the spring but says nothing about haptics.
+  useEffect(() => {
+    successHaptic();
+  }, []);
   const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: badge.value }] }));
 
   const messageOwner = async () => {
@@ -214,7 +238,7 @@ function SightingSent({
     <View style={[styles.sent, { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xl }]}>
       <View style={styles.sentBody}>
         <Animated.View style={[styles.sentBadge, badgeStyle]}>
-          <Feather name="check" size={sizes.icon} color={colors.textOnPrimary} />
+          <Feather name="check" size={sizes.icon} color={palette.textOnPrimary} />
         </Animated.View>
         <Text accessibilityRole="header" style={styles.sentTitle}>
           Report sent — thank you
@@ -245,15 +269,15 @@ function SightingSent({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   stateWrap: {
     flex: 1,
     justifyContent: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   sent: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
     paddingHorizontal: spacing.xl,
     justifyContent: 'space-between',
   },
@@ -267,19 +291,19 @@ const styles = StyleSheet.create({
     width: sizes.avatarLg,
     height: sizes.avatarLg,
     borderRadius: radii.full,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
   },
   sentTitle: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textAlign: 'center',
   },
   sentLine: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
   },
   sentActions: {

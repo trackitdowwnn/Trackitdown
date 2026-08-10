@@ -22,7 +22,7 @@
 
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, sizes, spacing, typography } from '../theme';
+import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 
 export interface ChoiceChipOption<V extends string = string> {
   value: V;
@@ -70,6 +70,7 @@ export function ChoiceChips<V extends string = string>({
   scrollable = false,
   testID,
 }: ChoiceChipsProps<V>) {
+  const styles = useThemedStyles(makeStyles);
   const asRadios = role === 'radio';
   const chips = (
     <View
@@ -119,41 +120,42 @@ export function ChoiceChips<V extends string = string>({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  rowScrollable: {
-    flexWrap: 'nowrap',
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.xl,
-  },
-  chip: {
-    minHeight: sizes.touchTarget,
-    minWidth: sizes.touchTarget,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipSelected: {
-    backgroundColor: colors.primary,
-  },
-  chipPressed: {
-    backgroundColor: colors.surfaceSubtlePressed,
-  },
-  chipSelectedPressed: {
-    backgroundColor: colors.primaryPressed,
-  },
-  label: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  labelSelected: {
-    color: colors.textOnPrimary,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+    },
+    rowScrollable: {
+      flexWrap: 'nowrap',
+    },
+    scrollContent: {
+      paddingHorizontal: spacing.xl,
+    },
+    chip: {
+      minHeight: sizes.touchTarget,
+      minWidth: sizes.touchTarget,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radii.sm,
+      backgroundColor: c.surfaceSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    chipSelected: {
+      backgroundColor: c.primary,
+    },
+    chipPressed: {
+      backgroundColor: c.surfaceSubtlePressed,
+    },
+    chipSelectedPressed: {
+      backgroundColor: c.primaryPressed,
+    },
+    label: {
+      ...typography.label,
+      color: c.textPrimary,
+    },
+    labelSelected: {
+      color: c.textOnPrimary,
+    },
+  });

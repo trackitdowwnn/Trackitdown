@@ -38,7 +38,16 @@ import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { formatDateTimeLabel } from '../lib';
-import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
 import { Button } from './Button';
 import { ChoiceChips } from './ChoiceChips';
@@ -111,6 +120,8 @@ export function DateTimeField({
   minDate,
   sheetTitle,
 }: DateTimeFieldProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const sheetRef = useRef<BottomSheetRef>(null);
   // iOS spinner edits a draft; only Confirm commits it.
   const [draft, setDraft] = useState<Date>(new Date());
@@ -200,7 +211,7 @@ export function DateTimeField({
         onPress={openSheet}
         style={({ pressed }) => [
           styles.field,
-          { borderColor: error ? colors.danger : colors.border },
+          { borderColor: error ? palette.danger : palette.border },
           pressed && !disabled && styles.fieldPressed,
           disabled && styles.fieldDisabled,
         ]}
@@ -224,7 +235,7 @@ export function DateTimeField({
         <Feather
           name="calendar"
           size={typography.heading.fontSize}
-          color={colors.textSecondary}
+          color={palette.textSecondary}
         />
       </Pressable>
 
@@ -256,9 +267,13 @@ export function DateTimeField({
 
         {Platform.OS === 'ios' ? (
           <>
+            {/* themeVariant, not the device's: the app is light-only (see the
+                note in src/app/_layout.tsx), and on a dark-mode phone this
+                spinner rendered white-on-black inside our light sheet. */}
             <DateTimePicker
               mode="datetime"
               display="spinner"
+              themeVariant="light"
               value={draft}
               maximumDate={sheetMax}
               minimumDate={minDate}
@@ -279,54 +294,55 @@ export function DateTimeField({
 }
 
 // Mirrors SelectField's TextField-family geometry.
-const styles = StyleSheet.create({
-  root: {
-    gap: spacing.sm,
-  },
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: sizes.input,
-    borderWidth: 1,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-  },
-  fieldPressed: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  fieldDisabled: {
-    backgroundColor: colors.surfaceSubtle,
-    opacity: opacity.disabled,
-  },
-  fieldText: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-  },
-  restingLabel: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  floatedLabel: {
-    ...typography.caption,
-    fontFamily: typography.label.fontFamily,
-    color: colors.textSecondary,
-  },
-  value: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  message: {
-    ...typography.caption,
-  },
-  messageHelper: {
-    color: colors.textSecondary,
-  },
-  messageError: {
-    color: colors.danger,
-  },
-  presets: {
-    marginBottom: spacing.lg,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      gap: spacing.sm,
+    },
+    field: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      minHeight: sizes.input,
+      borderWidth: 1,
+      borderRadius: radii.md,
+      backgroundColor: c.surface,
+      paddingHorizontal: spacing.lg,
+    },
+    fieldPressed: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    fieldDisabled: {
+      backgroundColor: c.surfaceSubtle,
+      opacity: opacity.disabled,
+    },
+    fieldText: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+    },
+    restingLabel: {
+      ...typography.body,
+      color: c.textSecondary,
+    },
+    floatedLabel: {
+      ...typography.caption,
+      fontFamily: typography.label.fontFamily,
+      color: c.textSecondary,
+    },
+    value: {
+      ...typography.body,
+      color: c.textPrimary,
+    },
+    message: {
+      ...typography.caption,
+    },
+    messageHelper: {
+      color: c.textSecondary,
+    },
+    messageError: {
+      color: c.danger,
+    },
+    presets: {
+      marginBottom: spacing.lg,
+    },
+  });

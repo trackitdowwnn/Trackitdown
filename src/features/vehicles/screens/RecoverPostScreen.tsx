@@ -38,7 +38,7 @@ import { notifyCredited } from '@/features/notifications';
 import { exitCheck } from '@/features/payments';
 import { usePostSightings } from '@/features/sightings';
 import { formatPounds } from '@/shared/lib/money';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
 
 import { RecoveryError, claimRecovery, refundRecovery, releasePayout } from '../api/recoveryApi';
@@ -52,6 +52,8 @@ export interface RecoverPostScreenProps {
 const NO_SPOTTER = '__none__';
 
 export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   const toast = useToast();
   const { status, sightings } = usePostSightings(postId);
@@ -249,7 +251,7 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
           style={styles.back}
           testID="recover-back"
         >
-          <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+          <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
         </Pressable>
         <Text style={styles.title} accessibilityRole="header">
           You got it back
@@ -344,7 +346,7 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   scroll: {
     padding: spacing.xl,
     gap: spacing.lg,
@@ -363,16 +365,16 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   lede: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   body: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   options: {
     gap: spacing.sm,
@@ -382,24 +384,24 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: radii.md,
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: c.border,
     minHeight: sizes.touchTarget,
     justifyContent: 'center',
   },
   optionSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surfaceSubtle,
+    borderColor: c.primary,
+    backgroundColor: c.surfaceSubtle,
   },
   optionTitle: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   optionNote: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   caption: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

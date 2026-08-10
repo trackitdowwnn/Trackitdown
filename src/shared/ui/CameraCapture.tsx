@@ -30,7 +30,17 @@ import * as Location from 'expo-location';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
+import {
+  opacity,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { AppImage } from './AppImage';
 import { PermissionPrimer, type PermissionPrimerContent } from './PermissionPrimer';
 
@@ -126,6 +136,8 @@ export function CameraCapture({
   primerContent = DEFAULT_CAMERA_PRIMER,
   shutterAccessory,
 }: CameraCaptureProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [capturing, setCapturing] = useState(false);
@@ -252,11 +264,11 @@ export function CameraCapture({
                 // Provenance badge (ADR-0003): a library photo is never
                 // presented as a live capture, even at thumbnail size.
                 <View style={styles.thumbSource}>
-                  <Feather name="image" size={sizes.iconSm} color={colors.textOnPrimary} />
+                  <Feather name="image" size={sizes.iconSm} color={palette.textOnMedia} />
                 </View>
               ) : null}
               <View style={styles.thumbRemove}>
-                <Feather name="x" size={sizes.iconSm} color={colors.textOnPrimary} />
+                <Feather name="x" size={sizes.iconSm} color={palette.textOnMedia} />
               </View>
             </Pressable>
           ))}
@@ -287,96 +299,102 @@ export function CameraCapture({
 
 const SHUTTER_SIZE = 72;
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  viewfinder: {
-    flex: 1,
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-    backgroundColor: colors.surfaceInverse,
-  },
-  counter: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-    backgroundColor: colors.surfaceInverse,
-    borderRadius: radii.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  counterText: {
-    ...typography.caption,
-    color: colors.textOnPrimary,
-  },
-  controls: {
-    alignItems: 'center',
-    paddingTop: spacing.lg,
-    gap: spacing.lg,
-  },
-  thumbStrip: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    minHeight: sizes.avatarMd,
-  },
-  thumb: {
-    width: sizes.avatarMd,
-    height: sizes.avatarMd,
-    borderRadius: radii.sm,
-    overflow: 'hidden',
-  },
-  thumbImage: {
-    width: '100%',
-    height: '100%',
-  },
-  thumbRemove: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: colors.overlay,
-    borderBottomLeftRadius: radii.sm,
-    padding: spacing.xs,
-  },
-  thumbSource: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    backgroundColor: colors.overlay,
-    borderTopRightRadius: radii.sm,
-    padding: spacing.xs,
-  },
-  shutterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'stretch',
-    gap: spacing.xl,
-  },
-  shutterSide: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  shutter: {
-    width: SHUTTER_SIZE,
-    height: SHUTTER_SIZE,
-    borderRadius: radii.full,
-    borderWidth: sizes.grabberHeight,
-    borderColor: colors.borderStrong,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.lifted,
-  },
-  shutterInner: {
-    width: SHUTTER_SIZE - 16,
-    height: SHUTTER_SIZE - 16,
-    borderRadius: radii.full,
-    backgroundColor: colors.surface,
-  },
-  shutterPressed: {
-    opacity: opacity.disabled,
-  },
-  shutterDisabled: {
-    opacity: opacity.disabled,
-  },
-});
+// Split by WHAT THE CHROME SITS ON, not by where it is in the tree. Everything
+// over the viewfinder or a photo thumbnail uses the media tokens, which stay
+// dark-with-light-ink in both schemes — a white counter pill over a bright
+// viewfinder is wrong in every theme. The shutter and its ring sit on the page
+// below the viewfinder, so they keep the page tokens and do invert.
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      flex: 1,
+    },
+    viewfinder: {
+      flex: 1,
+      borderRadius: radii.lg,
+      overflow: 'hidden',
+      backgroundColor: c.surfaceOverMedia,
+    },
+    counter: {
+      position: 'absolute',
+      top: spacing.md,
+      right: spacing.md,
+      backgroundColor: c.surfaceOverMedia,
+      borderRadius: radii.full,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+    },
+    counterText: {
+      ...typography.caption,
+      color: c.textOnMedia,
+    },
+    controls: {
+      alignItems: 'center',
+      paddingTop: spacing.lg,
+      gap: spacing.lg,
+    },
+    thumbStrip: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      minHeight: sizes.avatarMd,
+    },
+    thumb: {
+      width: sizes.avatarMd,
+      height: sizes.avatarMd,
+      borderRadius: radii.sm,
+      overflow: 'hidden',
+    },
+    thumbImage: {
+      width: '100%',
+      height: '100%',
+    },
+    thumbRemove: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      backgroundColor: c.mediaScrim,
+      borderBottomLeftRadius: radii.sm,
+      padding: spacing.xs,
+    },
+    thumbSource: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      backgroundColor: c.mediaScrim,
+      borderTopRightRadius: radii.sm,
+      padding: spacing.xs,
+    },
+    shutterRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'stretch',
+      gap: spacing.xl,
+    },
+    shutterSide: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    shutter: {
+      width: SHUTTER_SIZE,
+      height: SHUTTER_SIZE,
+      borderRadius: radii.full,
+      borderWidth: sizes.grabberHeight,
+      borderColor: c.borderStrong,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...shadows.lifted,
+    },
+    shutterInner: {
+      width: SHUTTER_SIZE - 16,
+      height: SHUTTER_SIZE - 16,
+      borderRadius: radii.full,
+      backgroundColor: c.surface,
+    },
+    shutterPressed: {
+      opacity: opacity.disabled,
+    },
+    shutterDisabled: {
+      opacity: opacity.disabled,
+    },
+  });

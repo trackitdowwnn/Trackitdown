@@ -15,7 +15,7 @@
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { Button } from './Button';
 
 export interface ErrorStateProps {
@@ -34,6 +34,8 @@ export function ErrorState({
   retryLabel = 'Try again',
   onRetry,
 }: ErrorStateProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.container}>
       <Text accessibilityRole="header" style={styles.title}>
@@ -49,24 +51,25 @@ export function ErrorState({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxxl,
-    gap: spacing.md,
-  },
-  title: {
-    ...typography.heading,
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  body: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  action: {
-    marginTop: spacing.md,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      alignItems: 'center',
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.xxxl,
+      gap: spacing.md,
+    },
+    title: {
+      ...typography.heading,
+      color: c.textPrimary,
+      textAlign: 'center',
+    },
+    body: {
+      ...typography.body,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    action: {
+      marginTop: spacing.md,
+    },
+  });

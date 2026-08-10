@@ -36,7 +36,15 @@ import {
   TextField,
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
-import { colors, opacity, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
@@ -170,6 +178,7 @@ export function LastSeenWhenStep({ answers, setAnswers }: StepProps) {
 }
 
 export function LastSeenWhereStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   // Open the camera on the device rather than on the whole UK — most cars are
   // reported from near where they were taken. Only resolved when there is no
   // stored point yet, and it never blocks: if the chain finds nothing the map
@@ -245,6 +254,7 @@ const KEYS_TAKEN_OPTIONS = [
 ] as const;
 
 export function TheftContextStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.stack}>
       <ChoiceChips
@@ -284,6 +294,7 @@ const DESC_MIN_CHARS = 20;
 const DESC_MAX_CHARS = 1000;
 
 export function DescriptionStep({ answers, setAnswers, onSkip }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   const description = answers.descRecognise ?? '';
   // TWO different counts, because they answer two different questions.
   // The gate trims (so leading spaces cannot buy their way past the minimum,
@@ -380,7 +391,7 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   stack: {
     gap: spacing.xl,
   },
@@ -395,7 +406,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     ...typography.label,
-    color: colors.primary,
+    color: c.primary,
     textDecorationLine: 'underline',
   },
   // Grows to fill a `fills` step (the posting wizard), so the map reaches the
@@ -414,6 +425,6 @@ const styles = StyleSheet.create({
   // not jump when the map arrives.
   mapFramePending: {
     borderRadius: radii.xl,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
 });

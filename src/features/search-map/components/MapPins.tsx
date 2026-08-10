@@ -35,7 +35,16 @@ import { memo, useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { formatPounds } from '@/shared/lib';
-import { colors, mapPinFontScaleCap, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  mapPinFontScaleCap,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { AppMapMarker } from '@/shared/ui/AppMap';
 
 import { AT_MARKER_LIMIT } from '../lib/mapPins';
@@ -90,6 +99,7 @@ function TrackedMarker({
   retrackKey: string;
   children: ReactNode;
 }) {
+  const styles = useThemedStyles(makeStyles);
   const [tracking, setTracking] = useState(true);
   // Re-arm DURING RENDER, not in an effect: setting state synchronously in an
   // effect body cascades renders (and the lint rule forbids it). This is the
@@ -141,6 +151,7 @@ export const MapPins = memo(function MapPins({
   selectedPostId,
   onPressPost,
 }: MapPinsProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <>
       {pins.map((pin) => {
@@ -194,7 +205,7 @@ export const MapPins = memo(function MapPins({
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // 44pt minimum touch target wrapping the smaller drawn marker.
   hitTarget: {
     minWidth: sizes.touchTarget,
@@ -202,37 +213,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // ⚠️ The border is also a deliberate divergence — the reference's pill is
-  // shadow-only. Same reason as the tone above: white on #EEEEEE land is
-  // 1.09:1, and directly over a #FFFFFF road our own shadow is all that's
-  // left. The hairline is what gives the pill an edge on this map style; if
-  // mapStyle's land ever darkens, revisit it.
+  // ⚠️ The border is a deliberate divergence — the reference's pill is
+  // shadow-only. The pill barely separates from the land by FILL in either
+  // theme (surface-on-land is 1.16:1 light, 1.09:1 dark), so the edge is what
+  // makes it a pill rather than floating text.
+  //
+  // borderStrong, not border (2026-08-10). The old note here ended "if
+  // mapStyle's land ever darkens, revisit it" — dark mode darkened it, and this
+  // is that revisit. `border` measured 1.08:1 against the dark land, and
+  // `shadows.soft` casts a literal black that contributes nothing on dark
+  // tiles, so the pill lost every edge it had at once. borderStrong is 3.55:1
+  // on the dark land and 2.61:1 on the light one — which also fixes light,
+  // where the old hairline was only 1.17:1 and the shadow was doing all the
+  // work alone.
   bountyPill: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radii.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.borderStrong,
     ...shadows.soft,
   },
   // Selection GROWS as well as inverting (DESIGN_SYSTEM: "selected pin grows").
   // Tone alone stopped carrying it once clustering went: a field of near-black
   // dots makes near-black the map's dominant ink, so size and paint order have
   // to do the work. Costs no remount — it rides the existing retrackKey.
+  // surfaceInverse, NOT surfaceOverMedia: a pin sits on the BASEMAP, which is
+  // themed (mapStyleFor), not on photography. On the dark basemap this flips to
+  // near-white — a dark bubble on dark tiles measures ~1.2:1 and vanishes.
   bountyPillSelected: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.surfaceInverse,
-    borderColor: colors.surfaceInverse,
+    backgroundColor: c.surfaceInverse,
+    borderColor: c.surfaceInverse,
   },
   bountyText: {
     // mapPin, not label: same size, one weight up. A pin has to hold its own
     // against map tiles and its overlapping neighbours.
     ...typography.mapPin,
-    color: colors.accentText, // near-black bounty amount on the light pill
+    color: c.accentText, // the bounty amount, in ink, on the unselected pill
   },
   bountyTextSelected: {
-    color: colors.textOnPrimary,
+    color: c.textOnPrimary,
   },
 });

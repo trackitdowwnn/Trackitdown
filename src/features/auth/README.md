@@ -9,27 +9,46 @@ it stands between a theft victim and posting their car.
 
 ## Onboarding (first slice)
 
-Four calm, swipeable slides shown once on first launch (post-nothing → alerted →
-spot-and-report-from-a-distance → recovered). Re-viewable via
-`/onboarding?revisit=1` ("How Trackitdown works" in settings). Local
+Four calm slides shown once on first launch (post-nothing → alerted →
+spot-and-report-from-a-distance → recovered), stepped one at a time. Re-viewable
+via `/onboarding?revisit=1` ("How Trackitdown works" in settings). Local
 AsyncStorage flag `trackitdown.onboarding_seen_v1`.
 
-**Redesigned 2026-08-06.** The hero is a single UK registration plate drawn in
-code (`OnboardingPlate`), pinned ABOVE the pager so it does not scroll — what
-changes as you swipe is the status stamped beneath it: Reported → Broadcast →
-Sighted → Recovered, with the bounty named on the last. One car, one case, four
-states; the slides themselves are now purely words, and the footer numbers the
-steps because these four genuinely are the product loop in order.
+**Restyled 2026-08-08** against `docs/design-refs/onboarding/ob1.webp`. Three
+progress indicators became one: dots, a numbered step rail ("01 Post") and a
+separate button collapsed into a single **ring FAB** (`OnboardingRingFab`) that
+is both the progress and the control. The step names went with them — they
+restated the headline directly above. Skip moved from top-right into the footer
+beside the ring, matching `shared/wizard/WizardFooter`'s grammar. The last slide
+alone keeps a full-width button: "Get started" is a commitment and should be
+read, not inferred from an arrow. Headlines now alternate **weight**
+mid-sentence (Satoshi-Black against Regular) where they used to mark a trailing
+phrase in an accent colour that, at #1A1A1A on #222222, was invisible.
 
-It replaced a placeholder emoji in a grey circle on every slide (🚗 📣 📸 🎉),
-which read as unfinished, told four unrelated stories, and — on the recovery
-slide — celebrated with party confetti at someone whose car had just been
-stolen. Monochrome by decision: a real plate is yellow, but this is the thing
-people remember from the screen, so it gets precision rather than novelty.
+**It steps; it does not swipe.** Slides move with the same Reanimated layout
+animations as `shared/wizard/WizardScreen` — same SlideIn/SlideOut pair, same
+250ms ease-out — so the app's two stepped flows feel like one product. That
+meant knowingly giving up the horizontal pager: layout animations move a step
+between two settled states, which is a different idea from tracking a finger,
+and running both would put two systems on the same position mid-drag. Advance
+with the ring; Android back steps back.
 
-`ONBOARDING_PLATE` is a well-formed current-style mark (it matches our seed
-fixture), so it could in principle belong to a real vehicle — **swap it for a
-cleared demonstration plate before any public release.**
+**No hero above the words.** Two attempts at an accompanying object have come
+and gone. First a placeholder emoji in a grey circle per slide (🚗 📣 📸 🎉),
+which read as unfinished, told four unrelated stories and — on the recovery
+slide — celebrated with confetti at someone whose car had just been stolen.
+Then, from 2026-08-06, a UK registration plate drawn in code and pinned above
+the pager, whose stamped status changed as you swiped: Reported → Broadcast →
+Sighted → Recovered. It lasted two days and did not earn the room; it went on
+2026-08-08 with `OnboardingPlate`, the per-slide `stamp`, and the demonstration
+plate constant. What replaced it is nothing — the headline takes the space at
+40pt, which is what the reference's own opening slide does. Per-slide artwork
+was the alternative, and this app owns no illustration assets to do it honestly.
+
+The reference is lilac and leans on photography. Neither came across: ADR-0006
+makes monochrome a decision rather than a habit. What was borrowed is the
+anatomy — one soft wash (`OnboardingBackdrop`, drawn with the `react-native-svg`
+already in the tree), a ring control, weight contrast — not the trade dress.
 
 ## The deferred-auth gate (guest-first)
 

@@ -29,7 +29,15 @@ import { useCallback, useEffect } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { createLogger } from '@/shared/lib/logger';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { AppImage, Button, ErrorState, PlateChip, Screen, spellPlate } from '@/shared/ui';
 
 import { useMyVehicles } from '../hooks/useMyVehicles';
@@ -43,6 +51,8 @@ const THUMB_SIZE = 64;
 
 /** One car, one tap. The row is the choice — no buttons, no confirm. */
 function ChooseCarRow({ vehicle, onPress }: { vehicle: SavedVehicle; onPress: () => void }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const cover = vehicle.photos[0]?.url;
   const name = vehicleDisplayName(vehicle);
   return (
@@ -60,7 +70,7 @@ function ChooseCarRow({ vehicle, onPress }: { vehicle: SavedVehicle; onPress: ()
         <AppImage uri={cover} recyclingKey={vehicle.id} style={styles.thumb} />
       ) : (
         <View style={[styles.thumb, styles.thumbEmpty]}>
-          <Car size={sizes.iconSm} color={colors.textSecondary} />
+          <Car size={sizes.iconSm} color={palette.textSecondary} />
         </View>
       )}
       <View style={styles.rowBody}>
@@ -69,16 +79,21 @@ function ChooseCarRow({ vehicle, onPress }: { vehicle: SavedVehicle; onPress: ()
         </Text>
         {vehicle.plate ? (
           <View style={styles.plateRow}>
-            <PlateChip plate={vehicle.plate} />
+            {/* The row's press, forwarded: the chip is the touch responder
+                (long-press copies), so without this the plate would swallow
+                the tap that reports this car — on the panic-moment path. */}
+            <PlateChip plate={vehicle.plate} onPress={onPress} />
           </View>
         ) : null}
       </View>
-      <ChevronRight size={sizes.icon} color={colors.textSecondary} />
+      <ChevronRight size={sizes.icon} color={palette.textSecondary} />
     </Pressable>
   );
 }
 
 export function ChooseCarToReportScreen() {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   const { status, vehicles, retry } = useMyVehicles();
 
@@ -143,7 +158,7 @@ export function ChooseCarToReportScreen() {
           style={styles.back}
           testID="choose-car-back"
         >
-          <ChevronLeft size={sizes.icon} color={colors.textPrimary} />
+          <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
         </Pressable>
         <Text style={styles.title} accessibilityRole="header">
           Which car?
@@ -198,13 +213,13 @@ export function ChooseCarToReportScreen() {
               testID="choose-car-different"
             >
               <View style={[styles.thumb, styles.thumbEmpty]}>
-                <Car size={sizes.iconSm} color={colors.textSecondary} />
+                <Car size={sizes.iconSm} color={palette.textSecondary} />
               </View>
               <View style={styles.rowBody}>
                 <Text style={styles.rowName}>It&apos;s a different car</Text>
                 <Text style={styles.rowMeta}>Report from scratch</Text>
               </View>
-              <ChevronRight size={sizes.icon} color={colors.textSecondary} />
+              <ChevronRight size={sizes.icon} color={palette.textSecondary} />
             </Pressable>
           }
         />
@@ -213,7 +228,7 @@ export function ChooseCarToReportScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -230,7 +245,7 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   stateBlock: {
@@ -252,7 +267,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
   },
   rowPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   thumb: {
     width: THUMB_SIZE,
@@ -263,7 +278,7 @@ const styles = StyleSheet.create({
   thumbEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   rowBody: {
     flex: 1,
@@ -271,17 +286,17 @@ const styles = StyleSheet.create({
   },
   rowName: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   rowMeta: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   plateRow: {
     flexDirection: 'row',
   },
   skeletonBlock: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     borderRadius: radii.sm,
   },
   skeletonName: {

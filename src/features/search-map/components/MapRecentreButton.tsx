@@ -25,7 +25,7 @@ import { memo, useCallback, useState } from 'react';
 import { ActivityIndicator, Linking } from 'react-native';
 
 import { useDevicePermission } from '@/features/permissions';
-import { colors } from '@/shared/theme';
+import { usePalette } from '@/shared/theme';
 import type { GeoCoord } from '@/shared/types';
 import { useToast } from '@/shared/ui';
 
@@ -40,6 +40,7 @@ export interface MapRecentreButtonProps {
 export const MapRecentreButton = memo(function MapRecentreButton({
   onLocate,
 }: MapRecentreButtonProps) {
+  const palette = usePalette();
   const toast = useToast();
   const permission = useDevicePermission('location');
   const [locating, setLocating] = useState(false);
@@ -107,7 +108,7 @@ export const MapRecentreButton = memo(function MapRecentreButton({
       onPress={onPress}
       testID="map-recentre"
     >
-      {locating ? <ActivityIndicator size="small" color={colors.textPrimary} /> : undefined}
+      {locating ? <ActivityIndicator size="small" color={palette.textPrimary} /> : undefined}
     </MapCircleButton>
   );
 });

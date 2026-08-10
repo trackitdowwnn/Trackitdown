@@ -32,7 +32,7 @@ import { exitCheck, useDeactivatePost } from '@/features/payments';
 import { useWatchToggle } from '@/features/watchlist';
 import { estimateRefundPence, formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, radii, sizes, spacing, typography } from '@/shared/theme';
+import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import {
   AppHeader,
   AppHeaderButton,
@@ -118,6 +118,8 @@ function canReleasePayout(post: PostDetail): boolean {
 }
 
 export function PostDetailScreen({ postId }: PostDetailScreenProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -514,13 +516,13 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 >
                   <Bookmark
                     size={sizes.iconSm}
-                    color={watch.watched ? colors.primary : colors.textPrimary}
-                    fill={watch.watched ? colors.primary : 'transparent'}
+                    color={watch.watched ? palette.primary : palette.textPrimary}
+                    fill={watch.watched ? palette.primary : 'transparent'}
                   />
                 </AppHeaderButton>
               ) : null}
               <AppHeaderButton accessibilityLabel="Share" onPress={() => onShare(visiblePost)}>
-                <Feather name="share" size={sizes.iconSm} color={colors.textPrimary} />
+                <Feather name="share" size={sizes.iconSm} color={palette.textPrimary} />
               </AppHeaderButton>
             </>
           ) : null
@@ -645,6 +647,7 @@ function ClosedState({ result }: { result: PostDetailResult | null }) {
 }
 
 function PostDetailSkeleton({ heroHeight }: { heroHeight: number }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View>
       <View style={[styles.skeletonHero, { height: heroHeight }]} />
@@ -669,16 +672,16 @@ function PostDetailSkeleton({ heroHeight }: { heroHeight: number }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   sheet: {
     marginTop: -radii.xl,
     borderTopLeftRadius: radii.xl,
     borderTopRightRadius: radii.xl,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
     overflow: 'hidden',
   },
   stateBlock: {
@@ -686,7 +689,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   skeletonHero: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonBody: {
     paddingHorizontal: spacing.xl,
@@ -695,7 +698,7 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   skeletonLine: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     borderRadius: radii.sm,
   },
   skeletonTitle: {
@@ -726,7 +729,7 @@ const styles = StyleSheet.create({
     width: sizes.avatarMd,
     height: sizes.avatarMd,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonTileLine: {
     height: typography.heading.lineHeight,
@@ -741,7 +744,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
     padding: spacing.xl,
   },
 });

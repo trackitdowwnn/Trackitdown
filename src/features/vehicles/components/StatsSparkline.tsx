@@ -16,13 +16,17 @@
  *        `border` (#DDDDDD) is ~1.36:1 and simply is not there. `borderStrong`
  *        replaced it, justified as "3.03:1 on a white card" — borrowing
  *        RadiusSlider's and MoneySlider's reasoning along with the value. Then
- *        the Airbnb pass removed the cards, and the chart moved onto
- *        colors.background (#F7F7F7), where #949494 measures 2.83:1 — under the
+ *        the Airbnb pass removed the cards, and the chart moved onto the
+ *        `background` token (#F7F7F7), where #949494 measures 2.83:1 — under the
  *        3:1 graphic minimum. The number never changed; the surface underneath
  *        it did, and the comment kept asserting a card that was gone. These
  *        stubs are the axis, i.e. information, so they owe the full 3:1;
  *        textSecondary is 5.05:1 on background and 5.4:1 on surface, so it holds
- *        wherever this component is later placed.
+ *        wherever this component is later placed. The dark palette keeps the
+ *        floor by construction — #A3A3A3 is ~7:1 on #141414 and ~6.4:1 on
+ *        #1E1E1E — and the tokens are now read at RENDER time, so the bars
+ *        follow whichever palette is in effect rather than the one that
+ *        happened to be loaded first.
  *
  *        NOT memo()-wrapped, deliberately: `bars` is rebuilt by toSparkline on
  *        every render of the screen, so a memo could never hit — and a memo
@@ -38,7 +42,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { timeAgo } from '@/shared/lib';
-import { colors, radii, sizes } from '@/shared/theme';
+import { radii, sizes, usePalette } from '@/shared/theme';
 
 import type { SparklineBar } from '../lib/postStatsModel';
 
@@ -76,6 +80,7 @@ export function StatsSparkline({
   bars,
   height = sizes.sparklineHeight,
 }: StatsSparklineProps) {
+  const palette = usePalette();
   if (bars.length === 0) {
     return null;
   }
@@ -107,7 +112,7 @@ export function StatsSparkline({
                 bar.count > 0
                   ? Math.max(bar.fraction * height, sizes.sparklineMin)
                   : sizes.sparklineEmpty,
-              backgroundColor: bar.count > 0 ? colors.primary : colors.textSecondary,
+              backgroundColor: bar.count > 0 ? palette.primary : palette.textSecondary,
             },
           ]}
         />
@@ -116,6 +121,8 @@ export function StatsSparkline({
   );
 }
 
+// Stays a module-level sheet: geometry only. Both bar colours are inline
+// because they are a per-bar DECISION, not a static style.
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',

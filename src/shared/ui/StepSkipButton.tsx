@@ -23,7 +23,7 @@
 
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { colors, opacity, sizes, spacing, typography } from '../theme';
+import { opacity, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 
 export interface StepSkipButtonProps {
   /** What skipping means, in the user's terms — never a bare "Skip". */
@@ -33,6 +33,8 @@ export interface StepSkipButtonProps {
 }
 
 export function StepSkipButton({ label, onPress, testID }: StepSkipButtonProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -47,20 +49,21 @@ export function StepSkipButton({ label, onPress, testID }: StepSkipButtonProps) 
   );
 }
 
-const styles = StyleSheet.create({
-  link: {
-    alignSelf: 'center',
-    justifyContent: 'center',
-    // Full target: this is the only way out of an optional step.
-    minHeight: sizes.touchTarget,
-    marginTop: spacing.lg,
-  },
-  linkPressed: {
-    opacity: opacity.pressed,
-  },
-  label: {
-    ...typography.label,
-    color: colors.primary,
-    textDecorationLine: 'underline',
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    link: {
+      alignSelf: 'center',
+      justifyContent: 'center',
+      // Full target: this is the only way out of an optional step.
+      minHeight: sizes.touchTarget,
+      marginTop: spacing.lg,
+    },
+    linkPressed: {
+      opacity: opacity.pressed,
+    },
+    label: {
+      ...typography.label,
+      color: c.primary,
+      textDecorationLine: 'underline',
+    },
+  });

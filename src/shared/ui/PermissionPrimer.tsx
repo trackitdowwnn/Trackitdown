@@ -29,13 +29,14 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import {
-  colors,
   displayFontScaleCap,
   motion,
   radii,
   sizes,
   spacing,
   typography,
+  useThemedStyles,
+  type Palette,
 } from '../theme';
 import { Button } from './Button';
 
@@ -100,6 +101,7 @@ export function PermissionPrimer({
   announceAsHeader = true,
   testID,
 }: PermissionPrimerProps) {
+  const styles = useThemedStyles(makeStyles);
   const denied = variant === 'denied' ? content.denied : undefined;
   const headline = denied?.headline ?? content.headline;
   const body = denied?.body ?? content.body;
@@ -176,60 +178,61 @@ export function PermissionPrimer({
 
 const EMOJI_SIZE = typography.display.fontSize * 2;
 
-const styles = StyleSheet.create({
-  // flexGrow (not flex): fills bounded containers (camera modal, wizard
-  // step), hugs content in unbounded ones (a bottom sheet).
-  frame: {
-    flexGrow: 1,
-    flexShrink: 1,
-  },
-  // No screen padding of its own: every host (wizard step, camera modal,
-  // bottom sheet, sandbox frame) already owns the 24px gutter — self-padding
-  // here would double it (design-review finding).
-  content: {
-    flexGrow: 1,
-  },
-  // The art gets real presence: it takes the slack space in tall containers,
-  // keeping text and actions settled low; in short ones the whole primer
-  // scrolls (see the ScrollView) — the actions never clip. minHeight reuses
-  // avatarLg purely as "smallest sensible art tile" (72pt).
-  illustrationArea: {
-    flexGrow: 1,
-    minHeight: sizes.avatarLg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: spacing.lg,
-  },
-  // Same art language as OnboardingSlide's illustrationCircle (60% width,
-  // full-round, surfaceSubtle) — no width cap there, none here.
-  illustrationCircle: {
-    width: '60%',
-    aspectRatio: 1,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emoji: {
-    fontSize: EMOJI_SIZE,
-    lineHeight: EMOJI_SIZE + spacing.md,
-    textAlign: 'center',
-  },
-  textBlock: {
-    gap: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  headline: {
-    ...typography.display,
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  body: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  actions: {
-    gap: spacing.sm,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    // flexGrow (not flex): fills bounded containers (camera modal, wizard
+    // step), hugs content in unbounded ones (a bottom sheet).
+    frame: {
+      flexGrow: 1,
+      flexShrink: 1,
+    },
+    // No screen padding of its own: every host (wizard step, camera modal,
+    // bottom sheet, sandbox frame) already owns the 24px gutter — self-padding
+    // here would double it (design-review finding).
+    content: {
+      flexGrow: 1,
+    },
+    // The art gets real presence: it takes the slack space in tall containers,
+    // keeping text and actions settled low; in short ones the whole primer
+    // scrolls (see the ScrollView) — the actions never clip. minHeight reuses
+    // avatarLg purely as "smallest sensible art tile" (72pt).
+    illustrationArea: {
+      flexGrow: 1,
+      minHeight: sizes.avatarLg,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: spacing.lg,
+    },
+    // Same art language as OnboardingSlide's illustrationCircle (60% width,
+    // full-round, surfaceSubtle) — no width cap there, none here.
+    illustrationCircle: {
+      width: '60%',
+      aspectRatio: 1,
+      borderRadius: radii.full,
+      backgroundColor: c.surfaceSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emoji: {
+      fontSize: EMOJI_SIZE,
+      lineHeight: EMOJI_SIZE + spacing.md,
+      textAlign: 'center',
+    },
+    textBlock: {
+      gap: spacing.sm,
+      marginBottom: spacing.xl,
+    },
+    headline: {
+      ...typography.display,
+      color: c.textPrimary,
+      textAlign: 'center',
+    },
+    body: {
+      ...typography.body,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    actions: {
+      gap: spacing.sm,
+    },
+  });

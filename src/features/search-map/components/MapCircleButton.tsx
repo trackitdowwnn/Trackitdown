@@ -16,7 +16,7 @@ import { Feather } from '@expo/vector-icons';
 import { memo, type ReactNode } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
-import { colors, radii, shadows, sizes } from '@/shared/theme';
+import { radii, shadows, sizes, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 
 export interface MapCircleButtonProps {
   /** Feather glyph name. Ignored when `children` is given (e.g. a spinner). */
@@ -37,6 +37,8 @@ export const MapCircleButton = memo(function MapCircleButton({
   busy = false,
   testID,
 }: MapCircleButtonProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   return (
     <Pressable
       accessibilityRole="button"
@@ -46,22 +48,28 @@ export const MapCircleButton = memo(function MapCircleButton({
       style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       testID={testID}
     >
-      {children ?? (icon ? <Feather name={icon} size={sizes.icon} color={colors.textPrimary} /> : null)}
+      {children ?? (icon ? <Feather name={icon} size={sizes.icon} color={palette.textPrimary} /> : null)}
     </Pressable>
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   button: {
     width: sizes.touchTarget,
     height: sizes.touchTarget,
     borderRadius: radii.full,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    // A hairline as well as the shadow (2026-08-10). `shadows.lifted` was the
+    // whole reason this held an edge "against busy tiles" — and it casts a
+    // literal black, which is nothing on a dark basemap. Without the border
+    // this button is a #1E1E1E disc on dark land with no edge at all.
+    borderWidth: 1,
+    borderColor: c.borderStrong,
     ...shadows.lifted,
   },
   buttonPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
 });

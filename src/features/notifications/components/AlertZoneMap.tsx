@@ -36,7 +36,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
 import { AppMap, AppMapCircle } from '@/shared/ui/AppMap';
 import type { MapComponentProps } from '@/shared/ui/LocationPicker';
-import { colors } from '@/shared/theme';
+import { usePalette } from '@/shared/theme';
 
 interface AlertZoneMapValue {
   radiusMetres: number;
@@ -64,6 +64,7 @@ export function AlertZoneMapProvider({
  */
 export function AlertZoneMap(props: MapComponentProps) {
   const { radiusMetres, dimmed } = useContext(AlertZoneMapContext);
+  const palette = usePalette();
   return (
     <AppMap {...props}>
       {radiusMetres > 0 ? (
@@ -71,8 +72,8 @@ export function AlertZoneMap(props: MapComponentProps) {
           // The picker's pin sits at the map centre, so the zone follows it.
           center={{ latitude: props.region.latitude, longitude: props.region.longitude }}
           radius={radiusMetres}
-          fillColor={dimmed ? 'transparent' : colors.mapZoneFill}
-          strokeColor={colors.mapZoneStroke}
+          fillColor={dimmed ? 'transparent' : palette.mapZoneFill}
+          strokeColor={palette.mapZoneStroke}
           strokeWidth={1}
         />
       ) : null}

@@ -21,7 +21,15 @@ Rendered in:
 
 Optimistic insert/delete: add → Toast (`Saved to <list>`, or "Added to your
 watchlist" when the target list's name isn't known) with a **Change** action;
-remove → quiet; failure → revert + error Toast.
+remove → Toast (`Removed from your watchlist`) with an **Undo** action;
+failure → revert + error Toast.
+
+Undo re-adds through the same toggle, so it inherits the optimistic flip, the
+per-post op chain and the failure revert. It declines to act if the post is
+already watched again, so it can only ever restore, never re-remove. **Known
+gap:** it re-files into the most-recently-used list rather than the one the
+post was removed from — the client tracks watched *ids* only, so restoring the
+original list needs `removeWatch` to report where it removed from.
 
 **The heart never asks first.** It saves, then offers to change where. Making
 the user choose a list before the save would put a decision in front of the

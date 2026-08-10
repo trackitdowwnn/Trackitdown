@@ -28,7 +28,13 @@
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, displayFontScaleCap, spacing, typography } from '@/shared/theme';
+import {
+  displayFontScaleCap,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 export interface StatBandCell {
   key: string;
@@ -40,6 +46,7 @@ export interface StatBandCell {
 }
 
 export function StatBand({ cells }: { cells: StatBandCell[] }) {
+  const styles = useThemedStyles(makeStyles);
   if (cells.length === 0) {
     return null;
   }
@@ -74,7 +81,7 @@ export function StatBand({ cells }: { cells: StatBandCell[] }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   band: {
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -87,17 +94,17 @@ const styles = StyleSheet.create({
   },
   cellDivided: {
     borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: colors.border,
+    borderLeftColor: c.border,
   },
   // ~2:1 value-to-label — the measured reference ratio (22pt over 10pt) on our
   // nearest tokens. sectionTitle, NOT display: display is the app's
   // celebration size and this page is not a celebration.
   value: {
     ...typography.sectionTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   label: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

@@ -51,7 +51,17 @@ import { useEffect } from 'react';
 import Svg, { Defs, Line, LinearGradient, Stop } from 'react-native-svg';
 
 import { timeAgo } from '@/shared/lib/timeAgo';
-import { colors, motion, radii, shadows, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { AppImage, Avatar } from '@/shared/ui';
 
 import { contextSummary } from '../lib/contextLabels';
@@ -172,6 +182,8 @@ function RailCell({
   fadeBottom,
   children,
 }: RailCellProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const ring = node > 0 ? sizes.timelineDotRing : 0;
   const gapTop = centerY - node / 2 - ring;
   const gapBottom = centerY + node / 2 + ring;
@@ -190,13 +202,13 @@ function RailCell({
         <Defs>
           {/* Fade INTO the origin: dissolve downward… */}
           <LinearGradient id="fadeOut" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={colors.border} stopOpacity="1" />
-            <Stop offset="1" stopColor={colors.border} stopOpacity="0" />
+            <Stop offset="0" stopColor={palette.border} stopOpacity="1" />
+            <Stop offset="1" stopColor={palette.border} stopOpacity="0" />
           </LinearGradient>
           {/* …and re-emerge just above the origin node. */}
           <LinearGradient id="fadeIn" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={colors.border} stopOpacity="0" />
-            <Stop offset="1" stopColor={colors.border} stopOpacity="1" />
+            <Stop offset="0" stopColor={palette.border} stopOpacity="0" />
+            <Stop offset="1" stopColor={palette.border} stopOpacity="1" />
           </LinearGradient>
         </Defs>
         {!noTop ? (
@@ -205,7 +217,7 @@ function RailCell({
             y1={0}
             x2={RAIL_X}
             y2={gapTop}
-            stroke={fadeTop ? 'url(#fadeIn)' : colors.border}
+            stroke={fadeTop ? 'url(#fadeIn)' : palette.border}
             strokeWidth={sizes.timelineRailStroke}
             strokeDasharray={dashedTop ? DASH : undefined}
           />
@@ -216,7 +228,7 @@ function RailCell({
             y1={gapBottom}
             x2={RAIL_X}
             y2="100%"
-            stroke={fadeBottom ? 'url(#fadeOut)' : colors.border}
+            stroke={fadeBottom ? 'url(#fadeOut)' : palette.border}
             strokeWidth={sizes.timelineRailStroke}
             strokeDasharray={dashedBottom ? DASH : undefined}
           />
@@ -231,6 +243,7 @@ function RailCell({
  *  rail (sage on the timeline is the DESIGN_SYSTEM-sanctioned exception —
  *  dots and the recovered-terminal fill only). */
 function SightingDot({ newest, centerY }: { newest: boolean; centerY: number }) {
+  const styles = useThemedStyles(makeStyles);
   const size = newest ? sizes.timelineDotNewest : sizes.timelineDot;
   return (
     <View style={[styles.dotRing, { top: centerY - size / 2 - sizes.timelineDotRing }]}>
@@ -247,6 +260,7 @@ function SightingDot({ newest, centerY }: { newest: boolean; centerY: number }) 
  *  static emphasis. Invisible to screen readers by construction (inside the
  *  decorative rail cell, no a11y props). */
 function NewestPulse({ centerY }: { centerY: number }) {
+  const styles = useThemedStyles(makeStyles);
   const reduce = useReducedMotion();
   const progress = useSharedValue(0);
   useEffect(() => {
@@ -274,6 +288,8 @@ function AnchorNode({
   icon: keyof typeof Feather.glyphMap;
   tone: 'origin' | 'celebrate' | 'quiet';
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   return (
     <View
       style={[
@@ -285,7 +301,7 @@ function AnchorNode({
       <Feather
         name={icon}
         size={sizes.iconSm}
-        color={tone === 'celebrate' ? colors.textOnPrimary : colors.textSecondary}
+        color={tone === 'celebrate' ? palette.textOnPrimary : palette.textSecondary}
       />
     </View>
   );
@@ -298,6 +314,7 @@ const TICK_NODE_Y = spacing.lg + typography.caption.lineHeight / 2;
  *  rail itself reads as time). The tick is chronology, not evidence — border
  *  ink, never sage. A connector's dash/fade semantics pass straight through. */
 function DayHeader({ label, flags }: { label: string; flags: RailFlags }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
       <RailCell {...flags} node={sizes.timelineTick} centerY={TICK_NODE_Y}>
@@ -315,6 +332,7 @@ function DayHeader({ label, flags }: { label: string; flags: RailFlags }) {
 // --- Anchor + elided rows (shared by both faces) -------------------------------------
 
 function OriginRow({ source, flags }: { source: TimelineAnchorSource; flags: RailFlags }) {
+  const styles = useThemedStyles(makeStyles);
   const origin = originAnchor(source);
   return (
     <View
@@ -334,6 +352,7 @@ function OriginRow({ source, flags }: { source: TimelineAnchorSource; flags: Rai
 }
 
 function TerminalRow({ source, flags }: { source: TimelineAnchorSource; flags: RailFlags }) {
+  const styles = useThemedStyles(makeStyles);
   const terminal = terminalAnchor(source.status);
   if (!terminal) return null;
   return (
@@ -356,6 +375,7 @@ function TerminalRow({ source, flags }: { source: TimelineAnchorSource; flags: R
 /** The owner preview's honest history line: what the cap cut, ON the rail so
  *  the origin never claims the theft led straight to the oldest shown card. */
 function ElidedRow({ count, flags }: { count: number; flags: RailFlags }) {
+  const styles = useThemedStyles(makeStyles);
   const label = earlierCountLabel(count);
   if (!label) return null;
   return (
@@ -392,6 +412,8 @@ export function OwnerSightingTimeline({
   showHint = true,
   anchors,
 }: OwnerSightingTimelineProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   // Hint is computed over ALL sightings even when the list is limited — the
   // preview must not claim a different journey than the full timeline.
   const hint = showHint ? movementHint(sightings) : null;
@@ -425,7 +447,7 @@ export function OwnerSightingTimeline({
           <Feather
             name="navigation"
             size={sizes.iconSm}
-            color={colors.textSecondary}
+            color={palette.textSecondary}
             importantForAccessibility="no"
           />
           <Text style={styles.hint}>{hint}</Text>
@@ -484,6 +506,8 @@ function OwnerEntryRow({
   flags: RailFlags;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const when = `${timeAgo(sighting.createdAt)} · ${clockTime(sighting.createdAt)}`;
   // Honest location line (DOMAIN: shown honestly, never papered over). The
   // dashed incoming connector says the same thing decoratively; THIS label
@@ -555,7 +579,7 @@ function OwnerEntryRow({
                 : ''}
             </Text>
           </View>
-          <Feather name="chevron-right" size={sizes.iconSm} color={colors.textSecondary} />
+          <Feather name="chevron-right" size={sizes.iconSm} color={palette.textSecondary} />
         </View>
       </Pressable>
     </View>
@@ -576,6 +600,7 @@ export interface PublicSightingTimelineProps {
  *  beyond time + locality ARRIVES (the type is the fence). The anchors are
  *  post data the page already shows. */
 export function PublicSightingTimeline({ data, anchors }: PublicSightingTimelineProps) {
+  const styles = useThemedStyles(makeStyles);
   const items = buildTimelineItems(data.entries, (entry) => entry.sightedAt);
   const tail = earlierCountLabel(data.earlierCount);
   const entryCount = data.entries.length;
@@ -660,7 +685,7 @@ export function PublicSightingTimeline({ data, anchors }: PublicSightingTimeline
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   hintRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -669,7 +694,7 @@ const styles = StyleSheet.create({
   },
   hint: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   row: {
@@ -690,7 +715,7 @@ const styles = StyleSheet.create({
   },
   dayHeader: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
   },
@@ -699,29 +724,29 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     padding: sizes.timelineDotRing,
     borderRadius: radii.full,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   tick: {
     width: sizes.timelineTick,
     height: sizes.timelineTick,
     borderRadius: radii.full,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
   },
   dotRing: {
     position: 'absolute',
     alignSelf: 'center',
     padding: sizes.timelineDotRing,
     borderRadius: radii.full,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   dot: {
     borderRadius: radii.full,
     borderWidth: sizes.timelineDotStroke,
-    borderColor: colors.success,
-    backgroundColor: colors.surface,
+    borderColor: c.success,
+    backgroundColor: c.surface,
   },
   dotNewest: {
-    backgroundColor: colors.success,
+    backgroundColor: c.success,
   },
   pulseHalo: {
     position: 'absolute',
@@ -729,7 +754,7 @@ const styles = StyleSheet.create({
     width: sizes.timelineDotNewest * 2,
     height: sizes.timelineDotNewest * 2,
     borderRadius: radii.full,
-    backgroundColor: colors.success,
+    backgroundColor: c.success,
   },
   anchorCircle: {
     position: 'absolute',
@@ -737,12 +762,12 @@ const styles = StyleSheet.create({
     width: sizes.timelineAnchor,
     height: sizes.timelineAnchor,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   anchorCelebrate: {
-    backgroundColor: colors.success,
+    backgroundColor: c.success,
   },
   anchorBody: {
     flex: 1,
@@ -751,11 +776,11 @@ const styles = StyleSheet.create({
   },
   anchorLabel: {
     ...typography.cardTitle,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   anchorSublabel: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   // Owner entries: quiet cards off the rail (the shared surface recipe).
   card: {
@@ -764,11 +789,11 @@ const styles = StyleSheet.create({
     marginVertical: spacing.lg,
     padding: spacing.lg,
     borderRadius: radii.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     ...shadows.soft,
   },
   cardPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   cardTop: {
     flexDirection: 'row',
@@ -781,7 +806,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
   },
   cardThumbPending: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   cardBody: {
     flex: 1,
@@ -801,18 +826,18 @@ const styles = StyleSheet.create({
   },
   entryWhen: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     flexShrink: 1,
   },
   statusTag: {
     ...typography.caption,
-    color: colors.primary,
+    color: c.primary,
   },
   entryWhere: {
     // The card's headline (design-refs: quiet time above, the place leading)
     // — label tier: present without shouting, and two lines may wrap.
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   pillRow: {
     flexDirection: 'row',
@@ -824,11 +849,11 @@ const styles = StyleSheet.create({
     minHeight: sizes.pillHeight,
     justifyContent: 'center',
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   pillText: {
     ...typography.caption,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   spotterRow: {
     flexDirection: 'row',
@@ -838,7 +863,7 @@ const styles = StyleSheet.create({
   },
   spotterText: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     flexShrink: 1,
   },
   // Public entries: the same quiet card surface, holding only the fenced
@@ -849,20 +874,20 @@ const styles = StyleSheet.create({
     marginVertical: spacing.lg,
     padding: spacing.lg,
     borderRadius: radii.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     ...shadows.soft,
   },
   publicWhere: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   publicWhen: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   tail: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     paddingVertical: spacing.lg,
   },
 });

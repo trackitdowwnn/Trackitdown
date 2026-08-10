@@ -14,7 +14,14 @@
 import Feather from '@expo/vector-icons/Feather';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, radii, spacing, typography } from '@/shared/theme';
+import {
+  radii,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { AppImage } from '@/shared/ui';
 
 import type { CollectionTile as CollectionTileData } from '../lib/collectionsModel';
@@ -31,6 +38,9 @@ function carCount(count: number): string {
 }
 
 export function CollectionTile({ tile, width, onPress }: CollectionTileProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   return (
     <Pressable
       style={({ pressed }) => [{ width }, pressed && styles.pressed]}
@@ -45,7 +55,7 @@ export function CollectionTile({ tile, width, onPress }: CollectionTileProps) {
           // right after the user's key action. It must read as "ready", never
           // as a failed image.
           <View style={styles.placeholder}>
-            <Feather name="bookmark" size={typography.display.fontSize} color={colors.textSecondary} />
+            <Feather name="bookmark" size={typography.display.fontSize} color={palette.textSecondary} />
           </View>
         ) : (
           <AppImage uri={tile.coverUrl} recyclingKey={tile.routeId} style={styles.photo} />
@@ -59,14 +69,14 @@ export function CollectionTile({ tile, width, onPress }: CollectionTileProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   pressed: {
     opacity: 0.85,
   },
   cover: {
     borderRadius: radii.lg,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   photo: {
     width: '100%',
@@ -79,12 +89,12 @@ const styles = StyleSheet.create({
   },
   name: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     paddingTop: spacing.sm,
   },
   count: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     paddingTop: spacing.xs,
   },
 });

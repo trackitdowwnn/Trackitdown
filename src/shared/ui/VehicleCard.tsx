@@ -52,7 +52,18 @@ import { Pressable } from 'react-native-gesture-handler';
 
 import { useTimeAgo } from '../hooks';
 import { formatPounds } from '../lib';
-import { colors, motion, opacity, radii, shadows, sizes, spacing, typography } from '../theme';
+import {
+  motion,
+  opacity,
+  radii,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import type { PostSummary } from '../types';
 import { AppImage } from './AppImage';
 import { BountyTag } from './BountyTag';
@@ -93,6 +104,7 @@ function VehicleCardInner({
   topRightAction,
   showLiveBadge = false,
 }: VehicleCardProps) {
+  const styles = useThemedStyles(makeStyles);
   const compact = variant === 'compact';
   const mapCard = variant === 'map';
   const badgeLabel = statusBadgeLabel(post.status, showLiveBadge);
@@ -168,7 +180,10 @@ function VehicleCardInner({
                   just speak it. Stacked, not side-by-side — the text column
                   is only ~62% of the card and money must never truncate. */}
               <View style={styles.mapPlateBounty}>
-                {post.plate ? <PlateChip plate={post.plate} /> : null}
+                {/* onPress forwarded: the chip owns long-press-to-copy, which
+                    makes it the touch responder and would otherwise eat the
+                    card's own tap. */}
+                {post.plate ? <PlateChip plate={post.plate} onPress={onPress} /> : null}
                 <BountyTag bountyPence={post.bountyPence} size="md" />
               </View>
             </View>
@@ -234,7 +249,8 @@ function VehicleCardInner({
               /* Anchor row: rigid PlateChip left, near-black bounty right —
                  our equivalent of the reference card's price line. */
               <View style={styles.plateBountyRow}>
-                <PlateChip plate={post.plate} />
+                {/* onPress forwarded — see the map-card chip above. */}
+                <PlateChip plate={post.plate} onPress={onPress} />
                 <BountyTag bountyPence={post.bountyPence} size="lg" />
               </View>
             ) : (
@@ -281,6 +297,8 @@ function formatDistance(miles: number): string {
 }
 
 function PhotoCarousel({ post, staticOnly = false }: { post: PostSummary; staticOnly?: boolean }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const photos = post.photos.slice(0, staticOnly ? 1 : MAX_PHOTOS);
   const [activeIndex, setActiveIndex] = useState(0);
   // Measured, not assumed: compact map cards and future layouts won't share
@@ -319,7 +337,7 @@ function PhotoCarousel({ post, staticOnly = false }: { post: PostSummary; static
   if (photos.length === 0) {
     return (
       <View style={styles.photoFallback}>
-        <Feather name="image" size={typography.display.fontSize} color={colors.textSecondary} />
+        <Feather name="image" size={typography.display.fontSize} color={palette.textSecondary} />
       </View>
     );
   }
@@ -391,6 +409,7 @@ export function SkeletonVehicleCard({
 }: {
   variant?: 'feed' | 'compact' | 'map';
 }) {
+  const styles = useThemedStyles(makeStyles);
   const compact = variant === 'compact';
   if (variant === 'map') {
     return (
@@ -434,159 +453,160 @@ export function SkeletonVehicleCard({
   );
 }
 
-const styles = StyleSheet.create({
-  // Borderless by design: no surface, border, or shadow — the photo IS the card.
-  card: {
-    width: '100%',
-  },
-  photoArea: {
-    aspectRatio: PHOTO_ASPECT_RATIO,
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-    backgroundColor: colors.surfaceSubtle,
-  },
-  photoAreaCompact: {
-    // Square-ish, photo-led rail card (reference feed anatomy).
-    aspectRatio: 1,
-  },
-  // The floating map card: photo left, text right, on a real surface —
-  // it rides over the map, so it needs elevation the feed cards refuse.
-  mapCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-    ...shadows.lifted,
-  },
-  mapPhoto: {
-    width: '38%',
-    aspectRatio: 1,
-    backgroundColor: colors.surfaceSubtle,
-  },
-  mapText: {
-    flex: 1,
-    padding: spacing.md,
-    // The topRightAction overlay sits over this column's corner on the map
-    // variant — keep the title clear of the circle (ui review 2026-07-22).
-    paddingRight: sizes.circleButtonSm + spacing.md + spacing.sm,
-    justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  photo: {
-    width: '100%',
-    height: '100%',
-  },
-  photoFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgePosition: {
-    position: 'absolute',
-    top: spacing.md,
-    left: spacing.md,
-  },
-  // The (formerly reserved) top-right corner — mirrors the badge's inset.
-  topRightAction: {
-    position: 'absolute',
-    top: spacing.md,
-    right: spacing.md,
-  },
-  dots: {
-    position: 'absolute',
-    bottom: spacing.md,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  dot: {
-    width: sizes.progressDot,
-    height: sizes.progressDot,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface,
-    opacity: opacity.inactive,
-  },
-  dotActive: {
-    opacity: 1,
-  },
-  textStack: {
-    // Tight image→text gap and leading, per the Airbnb-reference anatomy:
-    // the photo is the hero, the text block hugs it.
-    paddingTop: spacing.sm,
-    gap: spacing.xs,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  title: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    flexShrink: 1,
-  },
-  // caption, not body: the type scale assigns metadata/timestamps to caption,
-  // keeping the title and bounty loud and the metadata quiet (Airbnb hierarchy).
-  distance: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  metaLine: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  plateBountyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    marginTop: spacing.xs, // a touch more air before the anchor row
-  },
-  // Plate-less card: left-anchor the lone bounty (overrides space-between).
-  bountyOnlyRow: {
-    justifyContent: 'flex-start',
-  },
-  // Map-card anchor stack: plate over bounty, hugging the left edge —
-  // the narrow text column can't fit them side by side without clipping.
-  mapPlateBounty: {
-    alignItems: 'flex-start',
-    gap: spacing.xs,
-  },
-  carouselFrame: {
-    flex: 1,
-  },
-  skeletonBlock: {
-    backgroundColor: colors.surfaceSubtle,
-  },
-  skeletonLine: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.sm,
-  },
-  skeletonTitle: {
-    height: typography.cardTitle.lineHeight,
-    width: '60%',
-  },
-  skeletonMeta: {
-    height: typography.caption.lineHeight,
-    width: '70%',
-  },
-  // The anchor row's height is set by the PlateChip: plate line + chip
-  // padding (taller than the bounty tag beside it), plus its top margin.
-  skeletonPlateBounty: {
-    height: typography.plate.lineHeight + spacing.xs * 2,
-    width: '100%',
-    marginTop: spacing.xs,
-  },
-  skeletonBountyCompact: {
-    height: typography.label.lineHeight,
-    width: '40%',
-  },
-  // Mirrors the map card's PlateChip line (chip height, chip-ish width).
-  skeletonMapPlate: {
-    height: typography.plate.lineHeight + spacing.xs * 2,
-    width: '60%',
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    // Borderless by design: no surface, border, or shadow — the photo IS the card.
+    card: {
+      width: '100%',
+    },
+    photoArea: {
+      aspectRatio: PHOTO_ASPECT_RATIO,
+      borderRadius: radii.lg,
+      overflow: 'hidden',
+      backgroundColor: c.surfaceSubtle,
+    },
+    photoAreaCompact: {
+      // Square-ish, photo-led rail card (reference feed anatomy).
+      aspectRatio: 1,
+    },
+    // The floating map card: photo left, text right, on a real surface —
+    // it rides over the map, so it needs elevation the feed cards refuse.
+    mapCard: {
+      flexDirection: 'row',
+      backgroundColor: c.surface,
+      borderRadius: radii.lg,
+      overflow: 'hidden',
+      ...shadows.lifted,
+    },
+    mapPhoto: {
+      width: '38%',
+      aspectRatio: 1,
+      backgroundColor: c.surfaceSubtle,
+    },
+    mapText: {
+      flex: 1,
+      padding: spacing.md,
+      // The topRightAction overlay sits over this column's corner on the map
+      // variant — keep the title clear of the circle (ui review 2026-07-22).
+      paddingRight: sizes.circleButtonSm + spacing.md + spacing.sm,
+      justifyContent: 'center',
+      gap: spacing.xs,
+    },
+    photo: {
+      width: '100%',
+      height: '100%',
+    },
+    photoFallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    badgePosition: {
+      position: 'absolute',
+      top: spacing.md,
+      left: spacing.md,
+    },
+    // The (formerly reserved) top-right corner — mirrors the badge's inset.
+    topRightAction: {
+      position: 'absolute',
+      top: spacing.md,
+      right: spacing.md,
+    },
+    dots: {
+      position: 'absolute',
+      bottom: spacing.md,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: spacing.xs,
+    },
+    dot: {
+      width: sizes.progressDot,
+      height: sizes.progressDot,
+      borderRadius: radii.sm,
+      backgroundColor: c.surface,
+      opacity: opacity.inactive,
+    },
+    dotActive: {
+      opacity: 1,
+    },
+    textStack: {
+      // Tight image→text gap and leading, per the Airbnb-reference anatomy:
+      // the photo is the hero, the text block hugs it.
+      paddingTop: spacing.sm,
+      gap: spacing.xs,
+    },
+    titleRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+    },
+    title: {
+      ...typography.cardTitle,
+      color: c.textPrimary,
+      flexShrink: 1,
+    },
+    // caption, not body: the type scale assigns metadata/timestamps to caption,
+    // keeping the title and bounty loud and the metadata quiet (Airbnb hierarchy).
+    distance: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    metaLine: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    plateBountyRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.md,
+      marginTop: spacing.xs, // a touch more air before the anchor row
+    },
+    // Plate-less card: left-anchor the lone bounty (overrides space-between).
+    bountyOnlyRow: {
+      justifyContent: 'flex-start',
+    },
+    // Map-card anchor stack: plate over bounty, hugging the left edge —
+    // the narrow text column can't fit them side by side without clipping.
+    mapPlateBounty: {
+      alignItems: 'flex-start',
+      gap: spacing.xs,
+    },
+    carouselFrame: {
+      flex: 1,
+    },
+    skeletonBlock: {
+      backgroundColor: c.surfaceSubtle,
+    },
+    skeletonLine: {
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.sm,
+    },
+    skeletonTitle: {
+      height: typography.cardTitle.lineHeight,
+      width: '60%',
+    },
+    skeletonMeta: {
+      height: typography.caption.lineHeight,
+      width: '70%',
+    },
+    // The anchor row's height is set by the PlateChip: plate line + chip
+    // padding (taller than the bounty tag beside it), plus its top margin.
+    skeletonPlateBounty: {
+      height: typography.plate.lineHeight + spacing.xs * 2,
+      width: '100%',
+      marginTop: spacing.xs,
+    },
+    skeletonBountyCompact: {
+      height: typography.label.lineHeight,
+      width: '40%',
+    },
+    // Mirrors the map card's PlateChip line (chip height, chip-ish width).
+    skeletonMapPlate: {
+      height: typography.plate.lineHeight + spacing.xs * 2,
+      width: '60%',
+    },
+  });

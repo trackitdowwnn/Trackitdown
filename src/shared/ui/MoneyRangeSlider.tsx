@@ -51,7 +51,16 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { formatPounds } from '../lib/money';
 import { easeOut } from '@/shared/theme/motionEasing';
-import { colors, motion, opacity, shadows, sizes, spacing, typography } from '../theme';
+import {
+  motion,
+  opacity,
+  shadows,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import {
   clampPence,
   type CurveConfig,
@@ -117,6 +126,7 @@ export function MoneyRangeSlider({
   // React Compiler opt-out: Reanimated shared values are mutated from gesture
   // worklets during render-scoped callbacks (see MoneySlider for the rationale).
   'use no memo';
+  const styles = useThemedStyles(makeStyles);
   const reduceMotion = useReducedMotion();
 
   // The trusted, ordered pair: both clamped integer pence, low <= high.
@@ -388,45 +398,46 @@ export function MoneyRangeSlider({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: spacing.md,
-  },
-  disabled: {
-    opacity: opacity.disabled,
-  },
-  label: {
-    ...typography.label,
-    color: colors.textSecondary,
-  },
-  rangeText: {
-    ...typography.title,
-    color: colors.accent,
-  },
-  trackRow: {
-    height: sizes.touchTarget,
-    justifyContent: 'center',
-  },
-  rail: {
-    height: TRACK_HEIGHT,
-    borderRadius: TRACK_HEIGHT / 2,
-    // borderStrong, not border: small elements that must stay visible.
-    backgroundColor: colors.borderStrong,
-  },
-  fill: {
-    position: 'absolute',
-    height: TRACK_HEIGHT,
-    borderRadius: TRACK_HEIGHT / 2,
-    backgroundColor: colors.accent,
-  },
-  thumb: {
-    position: 'absolute',
-    // Both thumbs anchor at the track's left; translateX drives them.
-    left: 0,
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: THUMB_SIZE / 2,
-    backgroundColor: colors.surface,
-    ...shadows.soft,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      gap: spacing.md,
+    },
+    disabled: {
+      opacity: opacity.disabled,
+    },
+    label: {
+      ...typography.label,
+      color: c.textSecondary,
+    },
+    rangeText: {
+      ...typography.title,
+      color: c.accent,
+    },
+    trackRow: {
+      height: sizes.touchTarget,
+      justifyContent: 'center',
+    },
+    rail: {
+      height: TRACK_HEIGHT,
+      borderRadius: TRACK_HEIGHT / 2,
+      // borderStrong, not border: small elements that must stay visible.
+      backgroundColor: c.borderStrong,
+    },
+    fill: {
+      position: 'absolute',
+      height: TRACK_HEIGHT,
+      borderRadius: TRACK_HEIGHT / 2,
+      backgroundColor: c.accent,
+    },
+    thumb: {
+      position: 'absolute',
+      // Both thumbs anchor at the track's left; translateX drives them.
+      left: 0,
+      width: THUMB_SIZE,
+      height: THUMB_SIZE,
+      borderRadius: THUMB_SIZE / 2,
+      backgroundColor: c.surface,
+      ...shadows.soft,
+    },
+  });

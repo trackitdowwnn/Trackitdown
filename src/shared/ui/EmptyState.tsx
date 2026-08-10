@@ -24,7 +24,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { Button } from './Button';
 
 export interface EmptyStateProps {
@@ -40,6 +40,8 @@ export interface EmptyStateProps {
 }
 
 export function EmptyState({ title, body, illustration, actionLabel, onAction }: EmptyStateProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.container}>
       {illustration ? <View style={styles.illustration}>{illustration}</View> : null}
@@ -56,27 +58,28 @@ export function EmptyState({ title, body, illustration, actionLabel, onAction }:
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxxl,
-    gap: spacing.md,
-  },
-  illustration: {
-    marginBottom: spacing.md,
-  },
-  title: {
-    ...typography.heading,
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  body: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  action: {
-    marginTop: spacing.md,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      alignItems: 'center',
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.xxxl,
+      gap: spacing.md,
+    },
+    illustration: {
+      marginBottom: spacing.md,
+    },
+    title: {
+      ...typography.heading,
+      color: c.textPrimary,
+      textAlign: 'center',
+    },
+    body: {
+      ...typography.body,
+      color: c.textSecondary,
+      textAlign: 'center',
+    },
+    action: {
+      marginTop: spacing.md,
+    },
+  });

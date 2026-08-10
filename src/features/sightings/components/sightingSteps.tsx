@@ -37,7 +37,17 @@ import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 
 import { useTimeAgo } from '@/shared/hooks';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, motion, opacity, radii, sizes, spacing, typography } from '@/shared/theme';
+import {
+  motion,
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   AppImage,
   BottomSheet,
@@ -78,6 +88,8 @@ type StepProps = WizardStepProps<ReportSightingAnswers>;
 /** Not skippable but readable in three seconds: the notice is the hero, the
  *  999 path is one tap, and Continue lives in the wizard footer. */
 export function SafetyStep(_props: StepProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   return (
     <View style={styles.stack}>
       <SafetyNotice />
@@ -87,7 +99,7 @@ export function SafetyStep(_props: StepProps) {
         onPress={() => void Linking.openURL('tel:999')}
         style={({ pressed }) => [styles.call999, pressed && styles.call999Pressed]}
       >
-        <Feather name="phone-call" size={sizes.iconSm} color={colors.textOnPrimary} />
+        <Feather name="phone-call" size={sizes.iconSm} color={palette.textOnPrimary} />
         <Text style={styles.call999Label}>Call 999</Text>
       </Pressable>
       <Text style={styles.quiet}>
@@ -132,6 +144,8 @@ export const SIGHTING_CAMERA_PRIMER: PermissionPrimerContent = {
  *  priming happens once before the camera so the first shutter press can
  *  carry a fix; a decline continues — the report is simply un-located. */
 export function PhotosStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [locationReady, setLocationReady] = useState<boolean | null>(null);
   const [picking, setPicking] = useState(false);
   const photos = answers.photos ?? [];
@@ -239,7 +253,7 @@ export function PhotosStep({ answers, setAnswers }: StepProps) {
               (picking || full) && styles.galleryButtonDisabled,
             ]}
           >
-            <Feather name="image" size={sizes.icon} color={colors.textPrimary} />
+            <Feather name="image" size={sizes.icon} color={palette.textPrimary} />
           </Pressable>
         }
       />
@@ -292,6 +306,7 @@ const PEOPLE_OPTIONS: { value: PeoplePresence; label: string }[] = [
 /** A conditional sub-question, revealed with the tokens' in-place fade.
  *  Reduced motion → simply present (ReduceMotion.System). */
 function Reveal({ children }: { children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Animated.View
       entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
@@ -319,6 +334,8 @@ function OptionRow({
   onPress: () => void;
   testID?: string;
 }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const iconName =
     kind === 'multi'
       ? selected
@@ -339,7 +356,7 @@ function OptionRow({
       <Feather
         name={iconName}
         size={sizes.iconSm}
-        color={selected ? colors.primary : colors.textSecondary}
+        color={selected ? palette.primary : palette.textSecondary}
       />
       <Text style={styles.markLabel}>{label}</Text>
     </Pressable>
@@ -347,6 +364,8 @@ function OptionRow({
 }
 
 export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const flags = answers.contextFlags ?? [];
   const state = VEHICLE_STATE_FLAGS.find((flag) => flags.includes(flag)) ?? null;
   const conditions = flags.filter((flag): flag is ConditionFlag =>
@@ -411,7 +430,7 @@ export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
         hitSlop={spacing.sm}
       >
         <Text style={styles.skipLabel}>Skip</Text>
-        <Feather name="arrow-right" size={sizes.iconSm} color={colors.textPrimary} />
+        <Feather name="arrow-right" size={sizes.iconSm} color={palette.textPrimary} />
       </Pressable>
 
       <View>
@@ -459,7 +478,7 @@ export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
                       )?.label ?? 'Add')
                     : (answers.direction ?? 'Add')}
                 </Text>
-                <Feather name="chevron-right" size={sizes.iconSm} color={colors.textSecondary} />
+                <Feather name="chevron-right" size={sizes.iconSm} color={palette.textSecondary} />
               </View>
             </Pressable>
           </Reveal>
@@ -478,7 +497,7 @@ export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
         <Feather
           name={more ? 'chevron-up' : 'chevron-down'}
           size={sizes.iconSm}
-          color={colors.textSecondary}
+          color={palette.textSecondary}
         />
       </Pressable>
 
@@ -610,6 +629,8 @@ export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
 const CONFIRM_DELTA = 0.008;
 
 export function ConfirmStep({ answers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const photos = answers.photos ?? [];
   const located = firstLocatedPhoto(photos);
   const takenAgo = useTimeAgo(photos[0]?.capturedAt ?? new Date().toISOString());
@@ -630,7 +651,10 @@ export function ConfirmStep({ answers }: StepProps) {
             <AppImage uri={photo.uri} style={styles.confirmPhoto} />
             {photo.source === 'gallery' ? (
               <View style={styles.confirmPhotoBadge}>
-                <Feather name="image" size={sizes.iconSm} color={colors.textOnPrimary} />
+                {/* textOnMedia, not textOnPrimary: this badge sits ON the
+                    photo, so it must stay white in both schemes — textOnPrimary
+                    flips to near-black in dark and would vanish on a dark shot. */}
+                <Feather name="image" size={sizes.iconSm} color={palette.textOnMedia} />
                 <Text style={styles.confirmPhotoBadgeText}>Library</Text>
               </View>
             ) : null}
@@ -688,17 +712,17 @@ export function ConfirmStep({ answers }: StepProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   stack: {
     gap: spacing.xl,
   },
   quiet: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   subheading: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     marginBottom: spacing.sm,
   },
   revealBlock: {
@@ -712,18 +736,18 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
   },
   markRowPressed: {
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   markLabel: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     flexShrink: 1,
   },
   safetyInline: {
     // Safety copy is the one place we are firm and unmissable — never the
     // quietest style on the screen.
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   call999: {
     minHeight: sizes.control,
@@ -734,14 +758,14 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     // Danger is the sanctioned colour for the emergency path — this is the
     // one screen where it is not decoration.
-    backgroundColor: colors.danger,
+    backgroundColor: c.danger,
   },
   call999Pressed: {
-    backgroundColor: colors.dangerPressed,
+    backgroundColor: c.dangerPressed,
   },
   call999Label: {
     ...typography.label,
-    color: colors.textOnPrimary,
+    color: c.textOnPrimary,
   },
   // The camera-as-step: viewfinder + controls own a fixed, generous canvas
   // (a flex child inside the wizard's scroll must claim its height).
@@ -753,12 +777,12 @@ const styles = StyleSheet.create({
     width: sizes.control,
     height: sizes.control,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   galleryButtonPressed: {
-    backgroundColor: colors.surfaceSubtlePressed,
+    backgroundColor: c.surfaceSubtlePressed,
   },
   galleryButtonDisabled: {
     opacity: opacity.disabled,
@@ -772,7 +796,7 @@ const styles = StyleSheet.create({
   },
   skipLabel: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
     textDecorationLine: 'underline',
   },
   moreRow: {
@@ -783,14 +807,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.md,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   moreRowPressed: {
-    backgroundColor: colors.surfaceSubtlePressed,
+    backgroundColor: c.surfaceSubtlePressed,
   },
   moreLabel: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   moreBody: {
     gap: spacing.xl,
@@ -803,11 +827,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.md,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   followUpLabel: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   followUpValueWrap: {
     flexDirection: 'row',
@@ -816,10 +840,10 @@ const styles = StyleSheet.create({
   },
   followUpValue: {
     ...typography.label,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
   followUpValueEmpty: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   sheetBody: {
     gap: spacing.lg,
@@ -844,7 +868,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.overlay,
+    // mediaScrim + textOnMedia, NOT overlay/textOnPrimary: this badge is
+    // chrome sitting ON the photo. `overlay` now means "a scrim over the PAGE"
+    // and deepens on dark; a photo is as bright in either theme, so its own
+    // chrome must not move at all.
+    backgroundColor: c.mediaScrim,
     borderTopRightRadius: radii.sm,
     borderBottomLeftRadius: radii.md,
     paddingHorizontal: spacing.sm,
@@ -852,29 +880,29 @@ const styles = StyleSheet.create({
   },
   confirmPhotoBadgeText: {
     ...typography.caption,
-    color: colors.textOnPrimary,
+    color: c.textOnMedia,
   },
   confirmMap: {
     height: sizes.mapConfirmPreview,
     borderRadius: radii.lg,
     overflow: 'hidden',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   pin: {
     width: sizes.mapPinConfirm,
     height: sizes.mapPinConfirm,
     borderRadius: radii.full,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     borderWidth: sizes.mapPinRing,
-    borderColor: colors.surface,
+    borderColor: c.surface,
   },
   meta: {
     ...typography.caption,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     marginTop: spacing.sm,
   },
   confirmLine: {
     ...typography.body,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
 });

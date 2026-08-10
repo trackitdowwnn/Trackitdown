@@ -12,7 +12,7 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, opacity, spacing, typography } from '../theme';
+import { opacity, spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { resolveQuestion, reviewGroups } from './navigation';
 import type { WizardFlow } from './types';
 
@@ -24,6 +24,7 @@ export interface ReviewStepProps<TAnswers> {
 }
 
 export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<TAnswers>) {
+  const styles = useThemedStyles(makeStyles);
   const groups = useMemo(() => reviewGroups(flow), [flow]);
 
   return (
@@ -62,50 +63,51 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    gap: spacing.xl,
-  },
-  title: {
-    ...typography.display,
-    color: colors.textPrimary,
-  },
-  group: {
-    gap: spacing.md,
-  },
-  groupTitle: {
-    ...typography.heading,
-    color: colors.textPrimary,
-  },
-  item: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  itemText: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  itemLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  itemValue: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  // Underlined so it still reads as a tappable control in the monochrome scheme
-  // (near-black link text no longer stands out by colour alone).
-  editLink: {
-    ...typography.label,
-    color: colors.primary,
-    textDecorationLine: 'underline',
-  },
-  editPressed: {
-    opacity: opacity.pressed,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    container: {
+      gap: spacing.xl,
+    },
+    title: {
+      ...typography.display,
+      color: c.textPrimary,
+    },
+    group: {
+      gap: spacing.md,
+    },
+    groupTitle: {
+      ...typography.heading,
+      color: c.textPrimary,
+    },
+    item: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    itemText: {
+      flex: 1,
+      gap: spacing.xs,
+    },
+    itemLabel: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    itemValue: {
+      ...typography.body,
+      color: c.textPrimary,
+    },
+    // Underlined so it still reads as a tappable control in the monochrome scheme
+    // (near-black link text no longer stands out by colour alone).
+    editLink: {
+      ...typography.label,
+      color: c.primary,
+      textDecorationLine: 'underline',
+    },
+    editPressed: {
+      opacity: opacity.pressed,
+    },
+  });

@@ -38,7 +38,7 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '../hooks';
-import { colors, spacing, typography } from '../theme';
+import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { resolveQuestion } from './navigation';
 import { PhaseIntro } from './PhaseIntro';
@@ -74,6 +74,7 @@ const FILLS_MAX_FONT_SCALE = 1.3;
  * copies drift.
  */
 function StepContainer({ fills, children }: { fills: boolean; children: ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
   // `?? 1` because fontScale is absent in some environments (jest's mock);
   // an unknown scale must not silently cost every fills step its layout.
   const { fontScale } = useWindowDimensions();
@@ -118,6 +119,7 @@ export function WizardScreen<TAnswers>({
   onComplete,
   initialAnswers,
 }: WizardScreenProps<TAnswers>) {
+  const styles = useThemedStyles(makeStyles);
   const controller = useWizardController(flow, { onExit, onComplete, initialAnswers });
   const {
     screen,
@@ -302,86 +304,87 @@ export function WizardScreen<TAnswers>({
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  // md, not xl: the 44pt exit target has ~13px of internal padding around its
-  // glyph, so md lands the glyph optically on the content's 24px edge.
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-  },
-  // Progress sits top-right beside the X; the extra right padding lands its
-  // end on the content's 24px edge (header pad 12 + 12 = 24).
-  headerProgress: {
-    flex: 1,
-    paddingRight: spacing.md,
-  },
-  content: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-  },
-  introContent: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: spacing.xl,
-  },
-  // The non-scrolling variant. flex (not flexGrow) so the container is BOUNDED
-  // by the space between header and footer — that bound is what a flex:1 step
-  // body measures itself against.
-  fillsContent: {
-    flex: 1,
-    // sm, not the scroll variant's xl: the footer below already carries its own
-    // padding, so anything more is a second gap stacked on the first — and on a
-    // fills step that gap is taken straight off the map.
-    paddingBottom: spacing.sm,
-  },
-  question: {
-    ...typography.display,
-    color: colors.textPrimary,
-  },
-  // One step down the scale (32 -> 24) on a fills step. Display type earns its
-  // size when the question IS the screen; when a map is the screen, the
-  // headline's job is to label it, and every point of line-height above that
-  // is map the user does not get.
-  // Self-contained, not a partial override of `question`: it only happens to
-  // work today because `title` replaces all three of `display`'s properties.
-  questionFills: {
-    ...typography.title,
-    color: colors.textPrimary,
-  },
-  helper: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-  },
-  stepBody: {
-    marginTop: spacing.xxl,
-  },
-  // On a fills step the body takes the remaining height, and the headline gets
-  // a tighter gap — on a map step that margin is pure lost map.
-  stepBodyFills: {
-    flex: 1,
-    marginTop: spacing.lg,
-  },
-  footer: {
-    paddingHorizontal: spacing.xl,
-  },
-  // Sits just above the footer buttons; danger-toned, announced politely so a
-  // failed lookup/submit is read out without stealing focus.
-  error: {
-    ...typography.caption,
-    color: colors.danger,
-    marginBottom: spacing.sm,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    flex: {
+      flex: 1,
+    },
+    // md, not xl: the 44pt exit target has ~13px of internal padding around its
+    // glyph, so md lands the glyph optically on the content's 24px edge.
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.lg,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+    },
+    // Progress sits top-right beside the X; the extra right padding lands its
+    // end on the content's 24px edge (header pad 12 + 12 = 24).
+    headerProgress: {
+      flex: 1,
+      paddingRight: spacing.md,
+    },
+    content: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.xl,
+    },
+    introContent: {
+      flex: 1,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingBottom: spacing.xl,
+    },
+    // The non-scrolling variant. flex (not flexGrow) so the container is BOUNDED
+    // by the space between header and footer — that bound is what a flex:1 step
+    // body measures itself against.
+    fillsContent: {
+      flex: 1,
+      // sm, not the scroll variant's xl: the footer below already carries its own
+      // padding, so anything more is a second gap stacked on the first — and on a
+      // fills step that gap is taken straight off the map.
+      paddingBottom: spacing.sm,
+    },
+    question: {
+      ...typography.display,
+      color: c.textPrimary,
+    },
+    // One step down the scale (32 -> 24) on a fills step. Display type earns its
+    // size when the question IS the screen; when a map is the screen, the
+    // headline's job is to label it, and every point of line-height above that
+    // is map the user does not get.
+    // Self-contained, not a partial override of `question`: it only happens to
+    // work today because `title` replaces all three of `display`'s properties.
+    questionFills: {
+      ...typography.title,
+      color: c.textPrimary,
+    },
+    helper: {
+      ...typography.body,
+      color: c.textSecondary,
+      marginTop: spacing.md,
+    },
+    stepBody: {
+      marginTop: spacing.xxl,
+    },
+    // On a fills step the body takes the remaining height, and the headline gets
+    // a tighter gap — on a map step that margin is pure lost map.
+    stepBodyFills: {
+      flex: 1,
+      marginTop: spacing.lg,
+    },
+    footer: {
+      paddingHorizontal: spacing.xl,
+    },
+    // Sits just above the footer buttons; danger-toned, announced politely so a
+    // failed lookup/submit is read out without stealing focus.
+    error: {
+      ...typography.caption,
+      color: c.danger,
+      marginBottom: spacing.sm,
+    },
+  });

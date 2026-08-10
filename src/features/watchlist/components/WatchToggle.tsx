@@ -27,7 +27,15 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { lightHaptic } from '@/shared/lib/haptics';
-import { colors, motion, radii, shadows, sizes } from '@/shared/theme';
+import {
+  motion,
+  radii,
+  shadows,
+  sizes,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 import { useWatchToggle } from '../hooks/useWatchToggle';
 import { consumeUserToggled } from '../lib/watchedStore';
@@ -41,6 +49,8 @@ export interface WatchToggleProps {
 }
 
 export function WatchToggle({ postId, source, testID }: WatchToggleProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const { watched, toggle } = useWatchToggle(postId, source);
   const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
@@ -84,22 +94,22 @@ export function WatchToggle({ postId, source, testID }: WatchToggleProps) {
       <Animated.View style={animatedStyle}>
         <Bookmark
           size={sizes.iconSm}
-          color={watched ? colors.primary : colors.textPrimary}
-          fill={watched ? colors.primary : 'transparent'}
+          color={watched ? palette.primary : palette.textPrimary}
+          fill={watched ? palette.primary : 'transparent'}
         />
       </Animated.View>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   // A real surface circle (like the map back button): the bookmark must stay
   // legible over any photo. Lifted shadow per that precedent.
   circle: {
     width: sizes.circleButtonSm,
     height: sizes.circleButtonSm,
     borderRadius: radii.full,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.lifted,

@@ -40,7 +40,7 @@ import {
   type InboxSegment,
 } from '@/features/notifications/lib/inboxSegmentStorage';
 import { NotificationCenterScreen } from '@/features/notifications/screens/NotificationCenterScreen';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { EmptyState, SurfaceTabs, useTabBadges } from '@/shared/ui';
 
 const SEGMENTS: { value: InboxSegment; label: string }[] = [
@@ -49,6 +49,7 @@ const SEGMENTS: { value: InboxSegment; label: string }[] = [
 ];
 
 export default function InboxRoute() {
+  const styles = useThemedStyles(makeStyles);
   const session = useSession();
   const requireAuth = useRequireAuth();
   const { setBadge } = useTabBadges();
@@ -134,10 +135,10 @@ export default function InboxRoute() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   titleRow: {
     paddingHorizontal: spacing.xl,
@@ -146,6 +147,6 @@ const styles = StyleSheet.create({
   },
   screenTitle: {
     ...typography.title,
-    color: colors.textPrimary,
+    color: c.textPrimary,
   },
 });

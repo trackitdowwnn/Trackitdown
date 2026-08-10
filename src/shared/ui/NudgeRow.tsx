@@ -23,7 +23,16 @@ import { X, type LucideIcon } from 'lucide-react-native';
 import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors, opacity, radii, sizes, spacing, typography } from '../theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 
 export interface NudgeRowProps {
   icon: LucideIcon;
@@ -50,6 +59,9 @@ export const NudgeRow = memo(function NudgeRow({
   testID,
   dismissTestID,
 }: NudgeRowProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -60,7 +72,7 @@ export const NudgeRow = memo(function NudgeRow({
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       testID={testID}
     >
-      <Icon size={sizes.icon} color={colors.textPrimary} />
+      <Icon size={sizes.icon} color={palette.textPrimary} />
       <View style={styles.text}>
         <Text style={styles.title} numberOfLines={1}>
           {title}
@@ -81,50 +93,51 @@ export const NudgeRow = memo(function NudgeRow({
           style={({ pressed }) => [styles.dismiss, pressed && styles.dismissPressed]}
           testID={dismissTestID}
         >
-          <X size={sizes.iconSm} color={colors.textSecondary} />
+          <X size={sizes.iconSm} color={palette.textSecondary} />
         </Pressable>
       ) : null}
     </Pressable>
   );
 });
 
-const styles = StyleSheet.create({
-  row: {
-    // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.
-    marginHorizontal: spacing.lg,
-    padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-  },
-  rowPressed: {
-    backgroundColor: colors.surfaceSubtlePressed,
-  },
-  text: {
-    flex: 1,
-  },
-  title: {
-    // Bold at body size — the offer is a card title, not a section header.
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-  },
-  body: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  dismiss: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Pull the 44pt target back into the row's padding so the glyph still sits
-    // on the edge without making the row taller than its content.
-    marginVertical: -(sizes.touchTarget - sizes.iconSm) / 2,
-    marginRight: -(sizes.touchTarget - sizes.iconSm) / 2,
-  },
-  dismissPressed: {
-    opacity: opacity.pressed,
-  },
-});
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    row: {
+      // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.
+      marginHorizontal: spacing.lg,
+      padding: spacing.md,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.lg,
+    },
+    rowPressed: {
+      backgroundColor: c.surfaceSubtlePressed,
+    },
+    text: {
+      flex: 1,
+    },
+    title: {
+      // Bold at body size — the offer is a card title, not a section header.
+      ...typography.cardTitle,
+      color: c.textPrimary,
+    },
+    body: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    dismiss: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget,
+      alignItems: 'center',
+      justifyContent: 'center',
+      // Pull the 44pt target back into the row's padding so the glyph still sits
+      // on the edge without making the row taller than its content.
+      marginVertical: -(sizes.touchTarget - sizes.iconSm) / 2,
+      marginRight: -(sizes.touchTarget - sizes.iconSm) / 2,
+    },
+    dismissPressed: {
+      opacity: opacity.pressed,
+    },
+  });

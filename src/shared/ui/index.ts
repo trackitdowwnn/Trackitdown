@@ -30,7 +30,7 @@ export {
 } from './ConfirmDialog';
 export { ListRow, type ListRowProps } from './ListRow';
 export { NudgeRow, type NudgeRowProps } from './NudgeRow';
-export { ToastProvider, useToast, type ToastKind } from './Toast';
+export { ToastProvider, useToast, useOptionalToast, type ToastKind } from './Toast';
 export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
 export { BountyTag, type BountyTagProps } from './BountyTag';
 export { BrandLoader, LOADER_PHRASES, type BrandLoaderProps } from './BrandLoader';
@@ -112,7 +112,7 @@ export {
   type PermissionPrimerProps,
 } from './PermissionPrimer';
 export { PlateChip, spellPlate, type PlateChipProps } from './PlateChip';
-export { SafetyNotice } from './SafetyNotice';
+export { SafetyNotice, SAFETY_NOTICE_BODY, SAFETY_NOTICE_TITLE } from './SafetyNotice';
 export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';

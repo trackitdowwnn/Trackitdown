@@ -31,7 +31,7 @@ import { InteractionManager, StyleSheet, Text, View } from 'react-native';
 
 import { useSaveCarNudgeIntent } from '@/features/garage';
 import { createLogger } from '@/shared/lib/logger';
-import { colors, spacing, typography } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { BottomSheet, Button, type BottomSheetRef } from '@/shared/ui';
 
 import { useMyAlerts } from '../hooks/useMyAlerts';
@@ -41,6 +41,7 @@ import { hasOfferedAlertNudge, markAlertNudgeOffered } from '../lib/alertNudgeSt
 const log = createLogger('notifications');
 
 export function AlertNudgeSheet() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const intent = useAlertNudgeIntent();
   const sheetRef = useRef<BottomSheetRef>(null);
@@ -184,12 +185,12 @@ export function AlertNudgeSheet() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   content: {
     gap: spacing.md,
   },
   body: {
     ...typography.body,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
 });

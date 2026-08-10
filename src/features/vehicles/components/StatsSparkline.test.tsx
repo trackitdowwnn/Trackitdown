@@ -14,7 +14,11 @@
 import { render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
-import { colors, sizes } from '@/shared/theme';
+import { sizes } from '@/shared/theme';
+// Straight from the palette module — the barrel no longer exports `colors`, so
+// that a component cannot import the light palette by accident. This test
+// asserts on real values, which is the legitimate exception.
+import { colors } from '@/shared/theme/colors';
 
 import type { SparklineBar } from '../lib/postStatsModel';
 import { StatsSparkline } from './StatsSparkline';

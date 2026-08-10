@@ -28,12 +28,12 @@
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { RefreshControl, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useEntranceGate } from '@/shared/hooks';
-import { colors, motion, radii, sizes, spacing } from '@/shared/theme';
-import { ChoiceChips, EmptyState, ErrorState } from '@/shared/ui';
+import { motion, radii, sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
+import { ChoiceChips, EmptyState, ErrorState, ThemedRefreshControl } from '@/shared/ui';
 
 import { ThreadRow } from '../components/ThreadRow';
 import { useInbox } from '../hooks/useInbox';
@@ -47,6 +47,7 @@ import {
 import type { InboxThread } from '../types';
 
 export function ChatInboxScreen() {
+  const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const { status, threads, refreshing, refresh, retry } = useInbox();
   // Window opens when data is READY (not at mount, which is the skeleton
@@ -151,7 +152,10 @@ export function ChatInboxScreen() {
             </Animated.View>
           )}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
+            // ThemedRefreshControl, not a bare one: `tintColor` is iOS-only, so
+            // the hand-rolled version pulled down a stock BLUE spinner on
+            // Android in a monochrome app. The shared one sets `colors` too.
+            <ThemedRefreshControl refreshing={refreshing} onRefresh={refresh} />
           }
           contentContainerStyle={styles.list}
           testID="inbox-list"
@@ -161,7 +165,7 @@ export function ChatInboxScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: spacing.md,
@@ -190,7 +194,7 @@ const styles = StyleSheet.create({
     width: sizes.avatarMd,
     height: sizes.avatarMd,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
   },
   skeletonBody: {
     flex: 1,
@@ -199,13 +203,13 @@ const styles = StyleSheet.create({
   skeletonLineWide: {
     height: sizes.skeletonLine,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     width: '70%',
   },
   skeletonLine: {
     height: sizes.skeletonLine,
     borderRadius: radii.sm,
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: c.surfaceSubtle,
     width: '45%',
   },
 });
