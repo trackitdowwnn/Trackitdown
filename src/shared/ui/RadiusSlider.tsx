@@ -152,6 +152,17 @@ export function RadiusSlider({
     // A TAP still jumps the thumb to where you pressed. Kept as its own gesture
     // rather than as pan's minDistance(0), because a tap cannot fire once the
     // finger travels — so it can never be triggered by a scroll.
+    // Glide the thumb and the readout onto the value that was actually
+    // COMMITTED. applyTouch deliberately leaves both at the raw touch position
+    // (so a drag tracks the finger), and the pan's onFinalize used to be the
+    // only thing that reconciled them.
+    const settle = () => {
+      'worklet';
+      const timing = { duration: grabMs, easing: easeOut };
+      position.value = withTiming(milesToPosition(lastSnapped.value), timing);
+      displayMiles.value = withTiming(lastSnapped.value, timing);
+    };
+
     const tap = Gesture.Tap()
       .enabled(!disabled)
       // maxDistance makes the claim above true BY CONSTRUCTION. RNGH's tap
@@ -160,7 +171,21 @@ export function RadiusSlider({
       // parent ScrollView cannot always save us (already at a scroll boundary,
       // or a wizard step whose content doesn't overflow).
       .maxDistance(10)
-      .onEnd((event) => applyTouch(event.x));
+      .onEnd((event, success) => {
+        // A tap that was cancelled must commit nothing.
+        if (!success) {
+          return;
+        }
+        applyTouch(event.x);
+        // MUST settle. When the tap wins the race RNGH cancels the pan FIRST,
+        // so pan.onFinalize runs before this handler and its settle is then
+        // overwritten by applyTouch's raw values. Without this the snap is
+        // committed to the parent while the thumb and the "N miles" readout
+        // sit on the unsnapped touch position — a tap at raw 27 commits 30 and
+        // displays 27. The external-value effect cannot rescue it either: it
+        // early-returns because lastSnapped already equals the echoed value.
+        settle();
+      });
 
     const pan = Gesture.Pan()
       .enabled(!disabled)
@@ -185,9 +210,7 @@ export function RadiusSlider({
       .onFinalize(() => {
         dragging.value = false;
         grabbed.value = withTiming(0, { duration: grabMs });
-        const timing = { duration: grabMs, easing: easeOut };
-        position.value = withTiming(milesToPosition(lastSnapped.value), timing);
-        displayMiles.value = withTiming(lastSnapped.value, timing);
+        settle();
         scheduleOnRN(endDrag);
       });
 

@@ -337,6 +337,24 @@ describe('the absolute last-seen window', () => {
     expect(parseCriteria(JSON.stringify(bad))).toBeNull();
   });
 
+  it('a route param carrying BOTH a preset and a range keeps only the range', () => {
+    // setWhen owns this rule for every in-sheet path, but parseCriteria is not
+    // an in-sheet path: a replayed or hand-edited param bypasses it entirely.
+    // The server ANDs the two, and the chip row would show nothing selected —
+    // an active, invisible filter. The schema has to co-own the invariant.
+    const both = {
+      ...emptyCriteria(),
+      recencyDays: 7,
+      seenFrom: startOfLocalDayIso(MAY_1),
+      seenTo: startOfLocalDayIso(MAY_10),
+    };
+
+    const parsed = parseCriteria(JSON.stringify(both));
+    expect(parsed).not.toBeNull();
+    expect(parsed?.recencyDays).toBeNull();
+    expect(parsed?.seenFrom).toBe(startOfLocalDayIso(MAY_1));
+  });
+
   it('defaults to null for a param written before the window existed', () => {
     const old = { ...emptyCriteria() } as unknown as Record<string, unknown>;
     delete old.seenFrom;

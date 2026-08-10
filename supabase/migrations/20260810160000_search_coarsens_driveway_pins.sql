@@ -5,9 +5,25 @@
 --
 -- WHY:  `stolen_from = 'driveway'` means the last-seen point IS the victim's
 --       home address. DOMAIN.md requires it be snapped for non-owners on every
---       map/feed surface. get_home_feed does it (20260711130000) and
---       get_post_detail does it (20260713180000); search_posts never did, so
---       the map handed any anonymous caller an unsnapped home address.
+--       map/feed surface. Only TWO RPCs emit coordinates at all:
+--       get_post_detail, which has snapped since 20260713180000, and this one,
+--       which never did — so the map handed any anonymous caller an unsnapped
+--       home address. get_home_feed and get_nearby_posts emit no coordinates
+--       (home_feed_post_json carries last_seen_area and a distance, no
+--       lat/lng) and need no snap. Do NOT read get_home_feed's own
+--       ST_SnapToGrid as a driveway precedent: it is a different rule for a
+--       different status, withholding a RECOVERED post's precise point.
+--
+--       ⚠️ THIS DOES NOT CLOSE THE GAP ON ITS OWN. Snapping the EMITTED pin
+--       still leaves the exact point reachable two other ways, both open:
+--         (a) the row predicate below still matches on the UNSNAPPED point
+--             (&& and ST_DWithin), so the bbox is a bisection oracle — a few
+--             dozen anonymous calls recover the true location to sub-metre
+--             precision. get_home_feed's recovered branch shows the fix:
+--             match and measure on the snapped point, not merely emit it.
+--         (b) feed distance_miles is computed from the exact point, so
+--             varying the origin trilaterates it.
+--       See docs/SECURITY_AND_TRUST.md §2.
 --
 --       This was carried as a "latent, pre-existing gap" in the headers of
 --       20260810100000 and 20260810140000, on the grounds that no post could
@@ -24,6 +40,11 @@
 --       changes what a matching row DISCLOSES, never which rows match. So the
 --       count still agrees with the results, and the three copies of that
 --       predicate remain identical.
+--
+--       ⚠️ Do NOT read "the predicate is untouched" as a safety property. It
+--       is the limitation described in (a) above: matching on the exact point
+--       is exactly what makes the bbox a bisection oracle. It is stated here
+--       as scope, not as reassurance.
 --
 --       Signature unchanged, so no drop and no re-grant (see 20260810140000's
 --       header for why that distinction matters).
