@@ -17,6 +17,7 @@ import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
 import { createLogger, redactLocation } from '@/shared/lib/logger';
+import { markStartup } from '@/shared/lib/startupTrace';
 import type { PostStatus, PostSummary } from '@/shared/types';
 
 import type { FeedSection } from '../types';
@@ -127,6 +128,7 @@ export async function fetchHomeFeed(params: {
     throw parsed.error;
   }
   const sections = parsed.data.sections.map(toFeedSection);
+  markStartup('feed_loaded');
   log.info('feed_load', {
     origin:
       params.latitude != null && params.longitude != null
