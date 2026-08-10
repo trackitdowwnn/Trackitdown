@@ -2,9 +2,14 @@
  * WHAT:  Tests for SearchSheet — the footer count label + apply, the
  *        no-results guidance, assembling criteria (a suggestion sets the make),
  *        the bounty quick chip, and Clear all. Heavy children (the pickers, the
- *        range slider) and the live-count hook are mocked at the boundary.
+ *        range slider) and the live-count hook are mocked at the boundary,
+ *        plus the MORPH close path (opened from a pill rect).
  * WHY:   The surface is where a whole query is assembled then applied once; a
- *        wiring slip would apply the wrong criteria or a stale count.
+ *        wiring slip would apply the wrong criteria or a stale count. The morph
+ *        tests exist because the reanimated mock used to drop withSpring's
+ *        completion callback AND no test ever passed a sourceRect — so the
+ *        animated close branch had zero coverage, and shipped both unanimated
+ *        (from the map) and wedge-on-interrupt.
  * LINKS: src/features/search-map/components/SearchSheet.tsx.
  */
 
@@ -36,13 +41,58 @@ jest.mock('react-native-reanimated', () => {
     LinearTransition: builder(),
     ReduceMotion: { System: 'system' },
     Extrapolation: { CLAMP: 'clamp' },
+    // motionEasing.ts evaluates Easing.out(Easing.cubic) at module scope, so a
+    // mock missing this throws on import rather than failing a test.
+    Easing: {
+      out: (easing: unknown) => easing,
+      cubic: (t: number) => t * t * t,
+      linear: (t: number) => t,
+    },
     useReducedMotion: () => false,
     useSharedValue: (initial: unknown) => useRef({ value: initial }).current,
     useAnimatedStyle: () => ({}),
-    withSpring: (value: unknown) => value,
-    interpolate: (_value: number, _input: number[], output: number[]) => output[0],
+    // Captures the completion callback instead of dropping it. The previous
+    // mock was `(value) => value`, which silently discarded the third
+    // argument — and that callback is the ONLY thing that ever calls onClose
+    // on the morph path, so every "closes" test here was really exercising the
+    // no-sourceRect branch. Tests drive the settle explicitly via
+    // flushAnimations(), which is what lets us assert that onClose is deferred
+    // until the animation finishes rather than fired on press.
+    withTiming: (value: unknown, _config: unknown, callback?: (finished: boolean) => void) => {
+      if (callback) {
+        mockAnimationCallbacks.push(callback);
+      }
+      return value;
+    },
+    // A REAL clamped linear interpolation. The old mock returned output[0]
+    // regardless of input, so it agreed with any implementation — including one
+    // that had no clamping at all.
+    interpolate: (value: number, input: number[], output: number[], extrapolation?: string) => {
+      const [inMin, inMax] = [input[0], input[input.length - 1]];
+      const [outMin, outMax] = [output[0], output[output.length - 1]];
+      const ratio = inMax === inMin ? 0 : (value - inMin) / (inMax - inMin);
+      const clamped = extrapolation === 'clamp' ? Math.min(1, Math.max(0, ratio)) : ratio;
+      return outMin + clamped * (outMax - outMin);
+    },
     runOnJS: (fn: (...args: unknown[]) => void) => fn,
   };
+});
+
+// `var` (not const/let): jest hoists the mock factory above this file's own
+// module-scope initialisation, and only a var binding exists — as undefined —
+// when the factory is defined. It is dereferenced solely at CALL time, by
+// which point the assignment below has run.
+// eslint-disable-next-line no-var
+var mockAnimationCallbacks: ((finished: boolean) => void)[] = [];
+
+/** Settle every in-flight animation. `finished` false = interrupted mid-flight. */
+function flushAnimations(finished = true) {
+  const pending = mockAnimationCallbacks.splice(0);
+  pending.forEach((callback) => callback(finished));
+}
+
+beforeEach(() => {
+  mockAnimationCallbacks.length = 0;
 });
 
 // The pickers pull the full SelectScreen/native graph — stub the whole
@@ -57,6 +107,23 @@ jest.mock('@/features/vehicles', () => {
       React.createElement(Text, null, `make:${value ?? 'none'}`),
     ModelField: ({ value }: { value: string | null }) =>
       React.createElement(Text, null, `model:${value ?? 'none'}`),
+    // The REAL vocabularies (the whole point of the 2026-08-10 change is that
+    // the sheet stopped hard-coding its own six colours), but only the shape
+    // the sheet reads. Kept small and literal so this mock states its own
+    // expectations rather than importing the modules it is standing in for.
+    CAR_COLOURS: [
+      { name: 'Black', hex: '#1A1A1A' },
+      { name: 'Blue', hex: '#2B4C7E' },
+      { name: 'Green', hex: '#1F5F3F' },
+      { name: 'Other', hex: '#8A8F94' },
+    ],
+    BODY_TYPE_OPTIONS: [
+      { value: 'Hatchback', label: 'Hatchback' },
+      { value: 'SUV', label: 'SUV / 4×4' },
+      { value: 'Coupé', label: 'Coupé' },
+      { value: 'unknown', label: 'Not sure' },
+    ],
+    BODY_TYPE_UNKNOWN: 'unknown',
   };
 });
 
@@ -70,13 +137,57 @@ jest.mock('@/shared/ui', () => {
   const { ChoiceChips } = require('@/shared/ui/ChoiceChips');
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const { Button } = require('@/shared/ui/Button');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const { ChoiceChipsMulti } = require('@/shared/ui/ChoiceChipsMulti');
   return {
     UK_DEFAULT_REGION: { latitude: 54.5, longitude: -2.5, latitudeDelta: 9, longitudeDelta: 9 },
     ChoiceChips,
+    // The REAL multi-select: it is pure UI (same as ChoiceChips), and the
+    // colour/body-type filters are the change under test — stubbing it would
+    // leave the toggle wiring unverified.
+    ChoiceChipsMulti,
     Button,
+    // Stubbed: the real one pulls gesture-handler + reanimated worklets. Kept
+    // DRIVABLE (press to emit a value) so the wiring is still exercised.
+    RadiusSlider: ({ valueMiles, onChangeMiles, testID }: Record<string, unknown>) =>
+      React.createElement(
+        Text,
+        // CallableFunction, not `(miles: number) => void`: babel's jest.mock
+        // scope check reads a named parameter in a type annotation as an
+        // out-of-scope variable and refuses to compile the factory.
+        { testID, onPress: () => (onChangeMiles as CallableFunction)(25) },
+        `radius:${valueMiles}`,
+      ),
     TextField: ({ value, onChangeText, testID }: Record<string, unknown>) =>
       React.createElement(TextInput, { testID, value, onChangeText }),
     MoneyRangeSlider: () => React.createElement(Text, null, 'range-slider'),
+  };
+});
+
+// SeenRangeFields → DateTimeField → BottomSheet (gorhom) drags a native graph
+// this suite's partial reanimated mock cannot satisfy. Stubbed at the boundary,
+// like MakeField/ModelField and RadiusSlider above; the range control's own
+// behaviour is covered by SeenRangeFields.test.tsx.
+jest.mock('./SeenRangeFields', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const { Text } = require('react-native');
+  return {
+    SeenRangeFields: ({ from, to, onChange }: Record<string, unknown>) =>
+      React.createElement(
+        Text,
+        {
+          testID: 'seen-range',
+          // Drivable, so the preset-vs-range exclusion is actually exercised.
+          onPress: () =>
+            (onChange as CallableFunction)({
+              seenFrom: '2026-05-01T00:00:00.000Z',
+              seenTo: '2026-05-10T00:00:00.000Z',
+            }),
+        },
+        `range:${from ?? 'none'}..${to ?? 'none'}`,
+      ),
   };
 });
 
@@ -87,10 +198,14 @@ jest.mock('../hooks/useSearchCount', () => ({
 
 const REGION = { latitude: 51.77, longitude: -0.34, latitudeDelta: 0.5, longitudeDelta: 0.5 };
 
-async function renderSheet(onApply = jest.fn(), onClose = jest.fn()) {
+async function renderSheet(
+  onApply = jest.fn(),
+  onClose = jest.fn(),
+  initialCriteria = emptyCriteria(),
+) {
   const view = await render(
     <SearchSheet
-      initialCriteria={emptyCriteria()}
+      initialCriteria={initialCriteria}
       region={REGION}
       onApply={onApply}
       onClose={onClose}
@@ -218,5 +333,261 @@ describe('the change-area row', () => {
     const { view } = await renderSheet();
 
     expect(view.queryByTestId('search-change-area')).toBeNull();
+  });
+});
+
+describe('the When filter', () => {
+  it('shows the date range straight away — nothing to discover first', async () => {
+    const { view } = await renderSheet();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('section-when'));
+    });
+
+    expect(view.getByTestId('seen-range')).toBeTruthy();
+    // No "Custom range" chip to find: the fields are simply there.
+    expect(view.queryByText('Custom range')).toBeNull();
+  });
+
+  it('a preset and a range are NEVER both active', async () => {
+    const { view, onApply } = await renderSheet();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('section-when'));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByText('Last 7 days'));
+    });
+    // Now pick dates — the preset must give way.
+    await act(async () => {
+      fireEvent.press(view.getByTestId('seen-range'));
+    });
+    await act(async () => {
+      fireEvent.press(applyButton(view));
+    });
+
+    // The server ANDs recency_days with the window, so a state holding both
+    // would silently intersect them and return fewer cars than either control
+    // claims — with both showing as active.
+    const [withRange] = onApply.mock.calls[0];
+    expect(withRange.recencyDays).toBeNull();
+    expect(withRange.seenFrom).not.toBeNull();
+    expect(withRange.seenTo).not.toBeNull();
+
+    // ...and back the other way.
+    await act(async () => {
+      fireEvent.press(view.getByText('Last 3 days'));
+    });
+    await act(async () => {
+      fireEvent.press(applyButton(view));
+    });
+    const [withPreset] = onApply.mock.calls[1];
+    expect(withPreset.recencyDays).toBe(3);
+    expect(withPreset.seenFrom).toBeNull();
+    expect(withPreset.seenTo).toBeNull();
+  });
+
+  it('"Any time" is the way OUT of a date range', async () => {
+    // DateTimeField's onChange is non-nullable and it has no clear affordance,
+    // so without this chip a range would be a state the user cannot escape.
+    const { view, onApply } = await renderSheet();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('section-when'));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByTestId('seen-range'));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByText('Any time'));
+    });
+    await act(async () => {
+      fireEvent.press(applyButton(view));
+    });
+
+    const [applied] = onApply.mock.calls[0];
+    expect(applied.seenFrom).toBeNull();
+    expect(applied.seenTo).toBeNull();
+    expect(applied.recencyDays).toBeNull();
+  });
+});
+
+describe('the widened filters', () => {
+  it('offers the FULL colour vocabulary, not a hand-picked few', async () => {
+    const { view } = await renderSheet();
+
+    // The whole point of the change: Green used to be unreachable because the
+    // sheet hard-coded six popular colours of the app's fifteen.
+    expect(view.getByText('Green')).toBeTruthy();
+    // The "Other" escape is INCLUDED — a post whose colour is Other is
+    // otherwise unfindable. (Body type's "Not sure" is excluded instead; see
+    // the next test.)
+    expect(view.getByText('Other')).toBeTruthy();
+    // No "Any" CHECKBOX: in a multi-select, "any" IS the empty selection, and
+    // an "Any" entry inside a checkbox group is a role mismatch. Scoped by
+    // role, not text — the bounty section legitimately offers an "Any" radio
+    // and the collapsed cards summarise as "Any".
+    expect(view.queryAllByRole('checkbox', { name: 'Any' })).toEqual([]);
+  });
+
+  it('offers body types but NEVER "Not sure"', async () => {
+    const { view } = await renderSheet();
+
+    expect(view.getByText('Coupé')).toBeTruthy();
+    // Filtering on "Not sure" would find only the owners who shrugged, which
+    // is not a body type — the same exclusion the alert wizard makes.
+    expect(view.queryByText('Not sure')).toBeNull();
+  });
+
+  it('applies several colours at once', async () => {
+    const { view, onApply } = await renderSheet();
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Black'));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByText('Blue'));
+    });
+    await act(async () => {
+      fireEvent.press(applyButton(view));
+    });
+
+    const [applied] = onApply.mock.calls[0];
+    expect(applied.colours).toEqual(['Black', 'Blue']);
+  });
+
+  it('applies a body type without disturbing the colours', async () => {
+    const { view, onApply } = await renderSheet();
+
+    await act(async () => {
+      fireEvent.press(view.getByText('SUV / 4×4'));
+    });
+    await act(async () => {
+      fireEvent.press(applyButton(view));
+    });
+
+    const [applied] = onApply.mock.calls[0];
+    expect(applied.bodyTypes).toEqual(['SUV']);
+    expect(applied.colours).toEqual([]);
+  });
+
+  it('has NO free-text box — the make/model pickers ask that question', async () => {
+    // Removed 2026-08-10: a text field beside the pickers was a second, fuzzier
+    // route to the same answer. `criteria.text` survives in the model and the
+    // RPC still accepts it; nothing on this surface writes it.
+    const { view } = await renderSheet();
+
+    expect(view.queryByTestId('search-text')).toBeNull();
+  });
+
+  it('drives distance from the slider, and "Any distance" clears it', async () => {
+    const { view, onApply } = await renderSheet();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('section-distance'));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByTestId('search-distance')); // stub emits 25
+    });
+    await act(async () => {
+      fireEvent.press(applyButton(view));
+    });
+    expect(onApply.mock.calls[0][0].distanceMiles).toBe(25);
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Any distance'));
+    });
+    await act(async () => {
+      fireEvent.press(applyButton(view));
+    });
+    expect(onApply.mock.calls[1][0].distanceMiles).toBeNull();
+  });
+
+  it('says the radius is measured from the AREA, never from the user', async () => {
+    // The radius is always measured from the bbox centre, which follows every
+    // pan — so "of you" would be false the moment the map moved off the user.
+    const { view } = await renderSheet(jest.fn(), jest.fn(), {
+      ...emptyCriteria(),
+      distanceMiles: 10,
+    });
+    await act(async () => {
+      fireEvent.press(view.getByTestId('section-distance'));
+    });
+
+    expect(view.getByText(/within 10 miles of this area/)).toBeTruthy();
+    expect(view.queryByText(/miles of you/)).toBeNull();
+  });
+});
+
+/**
+ * The morph path — opened FROM a measured pill rect, so dismissing plays the
+ * reverse animation before unmounting. Every test above runs the other branch
+ * (no sourceRect → instant close), which is why an unanimated close and a
+ * wedge-on-interrupt both shipped unnoticed.
+ */
+describe('closing the morph', () => {
+  const PILL_RECT = { x: 16, y: 60, width: 320, height: 48 };
+
+  async function renderMorph() {
+    const onClose = jest.fn();
+    const view = await render(
+      <SearchSheet
+        initialCriteria={emptyCriteria()}
+        region={REGION}
+        sourceRect={PILL_RECT}
+        onApply={jest.fn()}
+        onClose={onClose}
+      />,
+    );
+    return { view, onClose };
+  }
+
+  it('defers the unmount until the reverse animation settles', async () => {
+    const { view, onClose } = await renderMorph();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('search-close'));
+    });
+    // Unmounting on press would cut the animation off at frame one — the whole
+    // point of the morph is that the surface is still on screen shrinking.
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => {
+      flushAnimations();
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('still closes when the animation is INTERRUPTED mid-flight', async () => {
+    const { view, onClose } = await renderMorph();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('search-close'));
+    });
+    // finished === false: another animation took the value over. This used to
+    // reset the latch and leave the surface parked at partial progress —
+    // visually stuck, and dismissable only by pressing × a second time.
+    await act(async () => {
+      flushAnimations(false);
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire onClose twice when × is pressed repeatedly', async () => {
+    const { view, onClose } = await renderMorph();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('search-close'));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByTestId('search-close'));
+    });
+    // One pending animation, not two: the second press hit the closing latch.
+    await act(async () => {
+      flushAnimations();
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

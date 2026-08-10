@@ -64,6 +64,11 @@ describe('fetchSearchPosts (unfiltered)', () => {
       p_max_lng: -0.1,
       p_criteria: {},
       p_limit: 100,
+      // No radius chosen → all three null, so the server falls back to
+      // bbox-only: exactly the behaviour before distance became a real filter.
+      p_origin_lat: null,
+      p_origin_lng: null,
+      p_radius_m: null,
     });
     expect(result.total).toBe(23);
     expect(result.posts[0]).toMatchObject({
@@ -123,7 +128,12 @@ describe('fetchSearchPosts criteria passthrough', () => {
     expect(params.p_criteria).toEqual({ text: 'focus', make: 'Ford', bounty_min: 50000 });
   });
 
-  it('NEVER sends a plate key or the distance (privacy + geo model)', async () => {
+  // SPLIT from a single "NEVER sends a plate key or the distance" test
+  // (2026-08-10): it bundled a PRIVACY guarantee with a GEO-MODEL guarantee,
+  // and the geo half then changed. Rewriting one test for distance would have
+  // meant editing the plate assertion in the same breath. Kept apart so the
+  // privacy one can be left alone.
+  it('NEVER sends a plate key (privacy — SECURITY_AND_TRUST §1)', async () => {
     mockRpc.mockResolvedValue({ data: { total: 0, posts: [] }, error: null });
 
     await fetchSearchPosts(
@@ -132,11 +142,67 @@ describe('fetchSearchPosts criteria passthrough', () => {
     );
 
     const [, params] = mockRpc.mock.calls[0];
-    // The text goes through as a make/model term; there is no plate filter at
-    // all, and distance never crosses the wire.
+    // A plate-SHAPED term goes through as a make/model term and nothing more:
+    // there is no plate filter at any layer, so no caller can confirm that a
+    // specific plate is listed.
     expect(params.p_criteria).not.toHaveProperty('plate');
-    expect(params.p_criteria).not.toHaveProperty('distance_miles');
     expect(Object.keys(params.p_criteria).sort()).toEqual(['make', 'recency_days', 'text']);
+  });
+
+  it('sends the radius as p_radius_m with an origin, never inside p_criteria', async () => {
+    mockRpc.mockResolvedValue({ data: { total: 0, posts: [] }, error: null });
+
+    await fetchSearchPosts(HERTS_BBOX, criteria({ make: 'BMW', distanceMiles: 10 }));
+
+    const [, params] = mockRpc.mock.calls[0];
+    // The bag holds post ATTRIBUTES; a frame of reference is a parameter.
+    expect(params.p_criteria).not.toHaveProperty('distance_miles');
+    expect(Object.keys(params.p_criteria)).toEqual(['make']);
+    // 10 miles → metres, via the shared converter.
+    expect(params.p_radius_m).toBe(16093);
+    // The origin is the BBOX CENTRE — the map centre the user already framed.
+    // Never a device fix: that would be a genuinely new disclosure, and would
+    // also break the map (panning to another city would exclude everything
+    // in view).
+    expect(params.p_origin_lat).toBeCloseTo((51.5 + 52.0) / 2, 6);
+    expect(params.p_origin_lng).toBeCloseTo((-0.6 + -0.1) / 2, 6);
+  });
+
+  it('sends the last-seen window with an EXCLUSIVE upper bound', async () => {
+    mockRpc.mockResolvedValue({ data: { total: 0, posts: [] }, error: null });
+
+    const from = new Date(2026, 4, 1);
+    const to = new Date(2026, 4, 10);
+    await fetchSearchPosts(
+      HERTS_BBOX,
+      criteria({ seenFrom: from.toISOString(), seenTo: to.toISOString() }),
+    );
+
+    const [, params] = mockRpc.mock.calls[0];
+    expect(params.p_criteria.seen_from).toBe(from.toISOString());
+    // The start of 11 May, not 10 May: an inclusive bound would silently drop a
+    // car last seen during the end date.
+    expect(new Date(params.p_criteria.seen_to).getDate()).toBe(11);
+  });
+
+  it('sends the SAME circle to the count as to the results', async () => {
+    // A count that promises N while the map draws N-1 is worse than either
+    // being wrong alone, so the two calls must agree on the geo parameters.
+    const search = criteria({ make: 'BMW', distanceMiles: 25 });
+
+    mockRpc.mockResolvedValue({ data: { total: 0, posts: [] }, error: null });
+    await fetchSearchPosts(HERTS_BBOX, search);
+    const [, postsParams] = mockRpc.mock.calls[0];
+
+    mockRpc.mockClear();
+    mockRpc.mockResolvedValue({ data: 0, error: null });
+    await fetchSearchCount(HERTS_BBOX, search);
+    const [, countParams] = mockRpc.mock.calls[0];
+
+    expect(countParams.p_origin_lat).toBe(postsParams.p_origin_lat);
+    expect(countParams.p_origin_lng).toBe(postsParams.p_origin_lng);
+    expect(countParams.p_radius_m).toBe(postsParams.p_radius_m);
+    expect(countParams.p_criteria).toEqual(postsParams.p_criteria);
   });
 });
 
@@ -152,6 +218,9 @@ describe('fetchSearchCount', () => {
       p_max_lat: 52.0,
       p_max_lng: -0.1,
       p_criteria: { make: 'Ford' },
+      p_origin_lat: null,
+      p_origin_lng: null,
+      p_radius_m: null,
     });
     expect(count).toBe(7);
   });

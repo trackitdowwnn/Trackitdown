@@ -9,10 +9,15 @@
  *        flickers and can't host gorhom sheets on Android; see memory), so it
  *        composes cleanly above the map/feed in the same screen. It edits a DRAFT
  *        (useSearchCriteria) seeded from the applied criteria; nothing touches
- *        the map until "Show N cars". `distanceMiles` only frames the bbox the
- *        count/apply use — the geo filter is always the bbox (searchCriteria
- *        never sends distance to the server). The accordion uses Reanimated
- *        LinearTransition so cards reflow smoothly; reduced-motion snaps.
+ *        the map until "Show N cars". `distanceMiles` both frames the bbox AND
+ *        travels to the server as a radius around the map centre (changed
+ *        2026-08-10 — it used to only frame the camera and filter nothing).
+ *        The accordion uses Reanimated LinearTransition so cards reflow
+ *        smoothly; reduced-motion snaps. Every chip row scrolls horizontally
+ *        rather than wrapping, so a section is always one chip tall and the
+ *        sheet's height stops jumping as filters are chosen; the rows pass
+ *        `bleed` so they reach the card's edge instead of stacking its padding
+ *        on top of the scroller's own gutter.
  * MOTION: when opened with a `sourceRect` (the search pill's measured window
  *        rect), the surface MORPHS from that rect out to full-screen — a
  *        measure-and-grow overlay (Reanimated 4; sharedTransitionTag is
@@ -20,8 +25,13 @@
  *        value drives the box (left/top/width/height/radius), an opaque scrim
  *        (the `overlay` token — also dodges the Android transparent-Modal flicker),
  *        a ghost pill label that fades early, and the content that fades in as
- *        the box nears full size; dismiss reverses it. No sourceRect (the map
- *        pill re-search) or reduced-motion → a plain cross-fade.
+ *        the box nears full size; dismiss reverses it. BOTH call sites pass a
+ *        rect, so both animate — the map pill used to omit it and therefore
+ *        closed with no animation whatever (2026-08-10). Driven by easeOut at
+ *        motion.standard, the same curve as BottomSheet/MapListSheet: the
+ *        earlier springStandard was underdamped and overshot, which the box's
+ *        then-unclamped interpolations turned into visible wobble. Reduced
+ *        motion keeps this path and collapses the duration to zero.
  * LINKS: src/features/search-map/hooks/useSearchCriteria.ts,
  *        src/features/search-map/hooks/useSearchCount.ts;
  *        src/shared/ui (Button, ChoiceChips, MoneyRangeSlider);
@@ -34,7 +44,7 @@
    out of the React Compiler ('use no memo' below) for the same reason. */
 
 import { Feather } from '@expo/vector-icons';
-import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   Pressable,
@@ -54,12 +64,19 @@ import Animated, {
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
-  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { MakeField, ModelField } from '@/features/vehicles';
+import {
+  BODY_TYPE_OPTIONS,
+  BODY_TYPE_UNKNOWN,
+  CAR_COLOURS,
+  MakeField,
+  ModelField,
+} from '@/features/vehicles';
 import { formatPounds } from '@/shared/lib/money';
+import { easeOut } from '@/shared/theme/motionEasing';
 import {
   motion,
   opacity,
@@ -73,7 +90,13 @@ import {
   type Palette,
 } from '@/shared/theme';
 import type { GeoRegion } from '@/shared/types';
-import { Button, ChoiceChips, MoneyRangeSlider } from '@/shared/ui';
+import {
+  Button,
+  ChoiceChips,
+  ChoiceChipsMulti,
+  MoneyRangeSlider,
+  RadiusSlider,
+} from '@/shared/ui';
 
 import { useSearchCount } from '../hooks/useSearchCount';
 import { useSearchCriteria } from '../hooks/useSearchCriteria';
@@ -81,21 +104,28 @@ import { regionAround } from '../lib/regionMath';
 import {
   SEARCH_BOUNTY_MAX_PENCE,
   SEARCH_BOUNTY_MIN_PENCE,
+  distanceLabel,
+  seenRangeSummary,
   type SearchCriteria,
 } from '../lib/searchCriteria';
+import { SeenRangeFields } from './SeenRangeFields';
+import { YearRangeFields } from './YearRangeFields';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /** Bounty grid: £25 steps to £500, then £50 — mirrors the posting bounty step. */
 const BOUNTY_SNAP_STEPS = [{ upToPence: 50000, stepPence: 2500 }, { stepPence: 5000 }];
 
-const DISTANCE_OPTIONS = [
-  { value: '5', label: '5 mi' },
-  { value: '10', label: '10 mi' },
-  { value: '25', label: '25 mi' },
-  { value: '50', label: '50 mi' },
-  { value: 'any', label: 'Any' },
-];
+/** The Distance section's one-tap "clear the radius" row. A slider has no null,
+ *  so "Any" needs its own control — ChoiceChips' own docstring sanctions
+ *  role='button' chips as one-tap actions, and this mirrors the Bounty section,
+ *  which already pairs a slider with a quick-chip row. */
+const DISTANCE_ANY_OPTION = [{ value: 'any', label: 'Any distance' }];
+
+/** Where the slider sits when the user opens Distance with no radius set. Not
+ *  applied until they touch it — `distanceMiles` stays null (= no filter) until
+ *  then, so merely expanding the section never narrows the results. */
+const RADIUS_DEFAULT_MILES = 10;
 
 // Money through the shared formatter — never a hard-coded '£' string.
 const BOUNTY_QUICK_OPTIONS = [
@@ -104,20 +134,58 @@ const BOUNTY_QUICK_OPTIONS = [
   { value: '1000', label: `${formatPounds(100000)}+` },
 ];
 
-// Thin popular-colour row (Airbnb promotes a few facets to visible chips). The
-// values are the canonical swatch names stored in posts.colour.
-const COLOUR_OPTIONS = [
-  { value: 'any', label: 'Any' },
-  { value: 'Black', label: 'Black' },
-  { value: 'Grey', label: 'Grey' },
-  { value: 'White', label: 'White' },
-  { value: 'Silver', label: 'Silver' },
-  { value: 'Blue', label: 'Blue' },
-  { value: 'Red', label: 'Red' },
-];
+// The FULL colour vocabulary, from the same source the posting wizard writes
+// and the alert wizard filters on — previously this was a hand-picked six,
+// so a search could not reach a Green, Gold or Bronze car at all.
+//
+// The two escape values (Multicolour/wrapped, Other) are INCLUDED, which is the
+// opposite call to body type below: a post whose colour is "Other" is otherwise
+// unreachable, and filtering on it finds cars whose colour is genuinely
+// unusual. Filtering on a body type of "Not sure" would only find owners who
+// shrugged, which is not a body type. alertSteps.tsx already encodes that same
+// asymmetry.
+//
+// No "Any" chip: in a multi-select, "any" IS the empty selection, and an "Any"
+// entry inside a checkbox group is a role mismatch. The collapsed section
+// summary says "Any" instead.
+// ⚠️ FUNCTIONS, NOT MODULE-SCOPE CONSTANTS — and they must stay that way.
+//
+// There is an import CYCLE through these barrels:
+//   @/features/vehicles → hooks/useSimilarPosts (imports fetchHomeFeed)
+//   → @/features/search-map → SearchSheet → @/features/vehicles
+// so when this module's body runs, the vehicles barrel is still initialising
+// and CAR_COLOURS / BODY_TYPE_OPTIONS are `undefined`. Evaluating them up here
+// crashes the WHOLE APP at startup with "Cannot read property 'CAR_COLOURS' of
+// undefined" — every route fails to export, not just this screen.
+//
+// Called from render instead, by which point the cycle has resolved. That is
+// also why the pre-existing MakeField/ModelField imports were always safe:
+// they're only touched inside the component.
+//
+// Jest cannot catch a regression here — SearchSheet.test.tsx mocks
+// '@/features/vehicles', which breaks the cycle and makes the module-scope
+// version pass. Only a real bundle shows it.
+const colourOptions = () =>
+  CAR_COLOURS.map((colour) => ({
+    value: colour.name,
+    label: colour.name,
+    // The real hex, so the picker SHOWS the colour rather than only naming it —
+    // matching ColourField in the posting flow. The name stays regardless:
+    // colour is never the sole signal.
+    swatch: colour.hex,
+  }));
 
+const bodyTypeOptions = () =>
+  BODY_TYPE_OPTIONS.filter((option) => option.value !== BODY_TYPE_UNKNOWN).map((option) => ({
+    value: option.value,
+    label: option.label,
+  }));
+
+// 3 days added to match the alert wizard's finer grid — "this week" is a
+// coarse answer when a car was taken last night.
 const RECENCY_OPTIONS = [
   { value: 'any', label: 'Any time' },
+  { value: '3', label: 'Last 3 days' },
   { value: '7', label: 'Last 7 days' },
   { value: '30', label: 'Last 30 days' },
 ];
@@ -125,11 +193,32 @@ const RECENCY_OPTIONS = [
 type SectionKey = 'vehicle' | 'bounty' | 'distance' | 'when';
 
 /** Per-section collapsed summaries (right-hand value on a collapsed card). */
+/** 1–2 values verbatim, 3+ collapsed — a collapsed card shows ONE line. */
+function facetSummary(values: string[], noun: string): string | null {
+  if (values.length === 0) return null;
+  if (values.length <= 2) return values.join(', ');
+  return `${values.length} ${noun}`;
+}
 function vehicleSummary(c: SearchCriteria): string {
-  // Free text lives in the header now — this summarises the make/model/colour
-  // facets only.
-  const parts = [c.colour, c.make, c.model].filter(Boolean);
-  return parts.length > 0 ? parts.join(' ') : 'Any';
+  // Free text lives in the header — this summarises the facets only.
+  const years =
+    c.yearFrom !== null && c.yearTo !== null
+      ? c.yearFrom === c.yearTo
+        ? `${c.yearFrom}`
+        : `${c.yearFrom}–${c.yearTo}`
+      : c.yearFrom !== null
+        ? `${c.yearFrom}+`
+        : c.yearTo !== null
+          ? `up to ${c.yearTo}`
+          : null;
+  const parts = [
+    facetSummary(c.colours, 'colours'),
+    c.make,
+    c.model,
+    facetSummary(c.bodyTypes, 'body types'),
+    years,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : 'Any';
 }
 function bountySummaryLabel(c: SearchCriteria): string {
   const min = c.bountyMinPence > SEARCH_BOUNTY_MIN_PENCE ? c.bountyMinPence : null;
@@ -143,6 +232,12 @@ function distanceSummaryLabel(c: SearchCriteria): string {
   return c.distanceMiles == null ? 'Any' : `${c.distanceMiles} mi`;
 }
 function whenSummaryLabel(c: SearchCriteria): string {
+  // The range wins when set — setWhen guarantees the two are never both set,
+  // so this ordering is a readability choice, not a tie-break.
+  const range = seenRangeSummary(c);
+  if (range) {
+    return range;
+  }
   return c.recencyDays == null ? 'Any time' : `Last ${c.recencyDays} days`;
 }
 
@@ -251,42 +346,52 @@ export function SearchSheet({
   'use no memo';
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  const { criteria, patch, setMake, reset } = useSearchCriteria(initialCriteria);
+  const { criteria, patch, setMake, setWhen, reset } = useSearchCriteria(initialCriteria);
   const reduceMotion = useReducedMotion();
   const { width: screenW, height: screenH } = useWindowDimensions();
   // FULL-SCREEN filter page (Airbnb's mobile search is edge-to-edge, full
   // height). The bar still MORPHS out of the pill rect into this — it just
   // grows all the way to fill the screen.
   const card = { x: 0, y: 0, width: screenW, height: screenH };
-  // Morph only when we have a pill rect AND motion is allowed.
-  const morph = sourceRect != null && !reduceMotion;
+  // Morph whenever we have a pill rect to morph FROM. Reduced motion collapses
+  // the DURATION to zero rather than taking a different branch — the old
+  // `&& !reduceMotion` sent those users down the no-morph path, which is the
+  // one that closes with no animation at all (see requestClose). Same code
+  // path, same guarantees, just instant (matches Toast.tsx / AppTabBar.tsx).
+  const morph = sourceRect != null;
   const progress = useSharedValue(morph ? 0 : 1);
   const closingRef = useRef(false);
 
-  // Open: spring the morph from the pill rect out to full-screen.
+  // TIMING, not spring. springStandard is dampingRatio 0.85 — underdamped, so
+  // it overshoots, and boxStyle's geometry then interpolates PAST the pill rect
+  // (that was the "clunky" wobble). Every other sheet in the app — BottomSheet,
+  // MapListSheet — runs easeOut at motion.standard, and MapListSheet matches
+  // curves deliberately so surfaces "read as one handoff". This puts the one
+  // bespoke sheet back on that vocabulary and removes overshoot as a class.
+  // A NUMBER, not a config object: requestClose depends on it, and a fresh
+  // object literal each render would re-subscribe the BackHandler every render.
+  const morphDuration = reduceMotion ? motion.instant : motion.standard;
+
+  // Open: grow the morph from the pill rect out to full-screen.
   useEffect(() => {
     if (morph) {
-      progress.value = withSpring(1, motion.springStandard);
+      progress.value = withTiming(1, { duration: morphDuration, easing: easeOut });
     }
     // Run once on mount — the source rect / motion decision is fixed per open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset the close latch if a reverse spring is interrupted (so the surface
-  // never becomes undismissable); unmount via onClose when it settles cleanly.
-  const finishClose = useCallback(
-    (finished: boolean) => {
-      if (finished) {
-        onClose();
-      } else {
-        closingRef.current = false;
-      }
-    },
-    [onClose],
-  );
+  // Unmount when the reverse morph settles — INCLUDING when it was interrupted.
+  // `finished` is false if another animation took the value over mid-flight;
+  // treating that as "stay open" left the surface wedged at partial progress,
+  // dismissable only by asking again. The user asked to close; a half-open
+  // sheet is never the right answer, so close either way.
+  const finishClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   // Dismiss: reverse the morph, then unmount (onClose) on settle. Without a
-  // morph, close immediately.
+  // source rect there is nothing to morph back into, so close immediately.
   const requestClose = useCallback(() => {
     if (!morph) {
       onClose();
@@ -296,10 +401,10 @@ export function SearchSheet({
       return;
     }
     closingRef.current = true;
-    progress.value = withSpring(0, motion.springStandard, (finished) => {
-      runOnJS(finishClose)(finished ?? false);
+    progress.value = withTiming(0, { duration: morphDuration, easing: easeOut }, () => {
+      runOnJS(finishClose)();
     });
-  }, [morph, onClose, progress, finishClose]);
+  }, [morph, onClose, progress, finishClose, morphDuration]);
 
   // Android back dismisses the surface (with the reverse morph).
   useEffect(() => {
@@ -313,13 +418,18 @@ export function SearchSheet({
   const boxStyle = useAnimatedStyle(() => {
     const rect = sourceRect ?? card;
     const p = progress.value;
+    // CLAMP on every one, like the three styles below. Without it the geometry
+    // extrapolates linearly outside [0,1] — a box narrower than the pill and
+    // positioned off its rect — which is exactly what an overshooting driver
+    // feeds it. The timing curve above no longer overshoots, but geometry that
+    // only stays sane while its driver behaves is a trap for the next edit.
     return {
-      left: interpolate(p, [0, 1], [rect.x, card.x]),
-      top: interpolate(p, [0, 1], [rect.y, card.y]),
-      width: interpolate(p, [0, 1], [rect.width, card.width]),
-      height: interpolate(p, [0, 1], [rect.height, card.height]),
+      left: interpolate(p, [0, 1], [rect.x, card.x], Extrapolation.CLAMP),
+      top: interpolate(p, [0, 1], [rect.y, card.y], Extrapolation.CLAMP),
+      width: interpolate(p, [0, 1], [rect.width, card.width], Extrapolation.CLAMP),
+      height: interpolate(p, [0, 1], [rect.height, card.height], Extrapolation.CLAMP),
       // Pill-round → square as it fills the screen edge-to-edge.
-      borderRadius: interpolate(p, [0, 1], [rect.height / 2, 0]),
+      borderRadius: interpolate(p, [0, 1], [rect.height / 2, 0], Extrapolation.CLAMP),
     };
   });
   const scrimStyle = useAnimatedStyle(() => ({
@@ -366,7 +476,36 @@ export function SearchSheet({
             : null
       : null;
 
-  const distanceChip = criteria.distanceMiles == null ? 'any' : String(criteria.distanceMiles);
+  // Stable for the same reason as handleBountyChange — RadiusSlider
+  // re-registers its drag gesture if this identity changes mid-drag.
+  const handleDistanceChange = useCallback(
+    (miles: number) => patch({ distanceMiles: miles }),
+    [patch],
+  );
+
+  // Built at RENDER, never at module scope — see the note on these functions.
+  const colours = useMemo(() => colourOptions(), []);
+  const bodyTypes = useMemo(() => bodyTypeOptions(), []);
+
+  // NO preset is active while a date range is set — they are alternatives, and
+  // setWhen guarantees only one is ever populated, so this cannot lie. null is
+  // ChoiceChips' "nothing selected".
+  const whenChip =
+    criteria.seenFrom !== null || criteria.seenTo !== null
+      ? null
+      : criteria.recencyDays == null
+        ? 'any'
+        : String(criteria.recencyDays);
+
+  const handleWhenChip = useCallback(
+    (value: string) => {
+      // "Any time" is also the only way OUT of a date range: DateTimeField's
+      // onChange is non-nullable and has no clear affordance, so this chip is
+      // the escape hatch. setWhen clears both dates on the way through.
+      setWhen({ recencyDays: value === 'any' ? null : Number(value) });
+    },
+    [setWhen],
+  );
 
   const noResults = !counting && count === 0;
   const applyLabel =
@@ -401,6 +540,12 @@ export function SearchSheet({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
+          {/* No free-text field here (removed 2026-08-10, owner's call). The
+              make/model PICKERS in the Vehicle card are the precise way to ask
+              the same question, so a text box beside them was a second, fuzzier
+              route to the same answer. `criteria.text` stays in the model and
+              the RPC still supports it — nothing on this surface writes it. */}
+
           {/* WHERE, first and always visible — not an accordion section: it
               navigates away to the picker rather than editing the draft, so
               collapsing it beside the filter cards would misrepresent it. */}
@@ -440,10 +585,30 @@ export function SearchSheet({
             ) : null}
 
             <Text style={styles.fieldLabel}>Colour</Text>
-            <ChoiceChips
-              options={COLOUR_OPTIONS}
-              value={criteria.colour ?? 'any'}
-              onSelect={(value) => patch({ colour: value === 'any' ? null : value })}
+            <ChoiceChipsMulti
+              options={colours}
+              value={criteria.colours}
+              onChange={(next) => patch({ colours: next })}
+              scrollable
+              bleed={spacing.lg}
+              testID="search-colours"
+            />
+
+            <Text style={styles.fieldLabel}>Body type</Text>
+            <ChoiceChipsMulti
+              options={bodyTypes}
+              value={criteria.bodyTypes}
+              onChange={(next) => patch({ bodyTypes: next })}
+              scrollable
+              bleed={spacing.lg}
+              testID="search-body-types"
+            />
+
+            <Text style={styles.fieldLabel}>Year</Text>
+            <YearRangeFields
+              from={criteria.yearFrom}
+              to={criteria.yearTo}
+              onChange={(years) => patch(years)}
             />
           </SearchSection>
 
@@ -466,6 +631,8 @@ export function SearchSheet({
             />
             <ChoiceChips
               options={BOUNTY_QUICK_OPTIONS}
+              scrollable
+              bleed={spacing.lg}
               value={bountyChip}
               onSelect={(value) =>
                 patch({
@@ -485,10 +652,25 @@ export function SearchSheet({
             reduceMotion={reduceMotion}
             testID="section-distance"
           >
+            <RadiusSlider
+              label="Distance"
+              valueMiles={criteria.distanceMiles ?? RADIUS_DEFAULT_MILES}
+              onChangeMiles={handleDistanceChange}
+              testID="search-distance"
+            />
+            {/* Honest about what the radius is measured FROM: with no device
+                fix the origin is the map centre, and the copy must not claim a
+                proximity to the user the app cannot know. */}
+            <Text style={styles.fieldHint}>
+              {criteria.distanceMiles == null
+                ? 'Showing cars anywhere in view.'
+                : `Only cars ${distanceLabel(criteria.distanceMiles)}.`}
+            </Text>
             <ChoiceChips
-              options={DISTANCE_OPTIONS}
-              value={distanceChip}
-              onSelect={(value) => patch({ distanceMiles: value === 'any' ? null : Number(value) })}
+              options={DISTANCE_ANY_OPTION}
+              value={criteria.distanceMiles == null ? 'any' : null}
+              role="button"
+              onSelect={() => patch({ distanceMiles: null })}
             />
           </SearchSection>
 
@@ -503,8 +685,20 @@ export function SearchSheet({
             <Text style={styles.fieldLabel}>Last seen</Text>
             <ChoiceChips
               options={RECENCY_OPTIONS}
-              value={criteria.recencyDays == null ? 'any' : String(criteria.recencyDays)}
-              onSelect={(value) => patch({ recencyDays: value === 'any' ? null : Number(value) })}
+              scrollable
+              bleed={spacing.lg}
+              value={whenChip}
+              onSelect={handleWhenChip}
+            />
+            {/* ALWAYS visible (2026-08-10, owner's call) — no "Custom range"
+                chip to discover first. Picking a date clears the preset above;
+                "Any time" clears the dates. Both directions run through
+                setWhen, which is what stops the two ever being set at once. */}
+            <Text style={styles.fieldLabel}>Or pick exact dates</Text>
+            <SeenRangeFields
+              from={criteria.seenFrom}
+              to={criteria.seenTo}
+              onChange={setWhen}
             />
           </SearchSection>
 
@@ -743,6 +937,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   fieldLabel: {
     ...typography.label,
+    color: c.textSecondary,
+  },
+  // Says what the radius is measured FROM — quieter than a field label, since
+  // it explains the control above rather than naming the next one.
+  fieldHint: {
+    ...typography.caption,
     color: c.textSecondary,
   },
   // --- Footer (inline, below the last filter card) ---

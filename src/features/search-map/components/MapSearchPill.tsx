@@ -13,7 +13,7 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { memo } from 'react';
+import { memo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -28,11 +28,21 @@ import {
   type Palette,
 } from '@/shared/theme';
 
+import type { SourceRect } from './SearchSheet';
+
 export interface MapSearchPillProps {
   /** The active-search summary, or null/'' when nothing is filtered. */
   summary: string | null;
-  /** Open the search surface. */
-  onPress: () => void;
+  /**
+   * Open the search surface, given this pill's measured WINDOW rect — the
+   * surface morphs out of it and back into it on dismiss.
+   *
+   * Takes the rect (rather than being a bare `() => void`) because without one
+   * SearchSheet has nothing to morph from and closes with NO animation at all
+   * — which is what this screen used to do while the feed's identical pill
+   * animated properly.
+   */
+  onPress: (rect: SourceRect) => void;
   /** Clear the active search (only shown when a summary is present). */
   onClear: () => void;
 }
@@ -45,12 +55,26 @@ export const MapSearchPill = memo(function MapSearchPill({
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const active = Boolean(summary && summary.trim());
+  const pillRef = useRef<View>(null);
+
+  // Measure in WINDOW (absolute) coords on tap, then open — same as
+  // FeedTopBar. Measured per-tap rather than on layout because this pill
+  // floats over the map and its width changes with the summary text.
+  const handlePress = () => {
+    const node = pillRef.current;
+    if (!node) {
+      return;
+    }
+    node.measureInWindow((x, y, width, height) => onPress({ x, y, width, height }));
+  };
+
   return (
     <View style={styles.container}>
       <Pressable
+        ref={pillRef}
         accessibilityRole="button"
         accessibilityLabel={active ? `Search: ${summary}. Edit search` : 'Search make or model'}
-        onPress={onPress}
+        onPress={handlePress}
         style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
       >
         <Feather name="search" size={sizes.iconSm} color={palette.textPrimary} />
