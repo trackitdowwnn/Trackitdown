@@ -20,8 +20,8 @@
 -- enough to cover Manchester + Salford + Stockport + Bury so a radius has
 -- something to REMOVE rather than trivially passing.
 --
--- LINKS: supabase/migrations/20260810100000_search_filters_colours_body_year_
---        distance.sql (the live definition); supabase/tests/
+-- LINKS: supabase/migrations/20260810200000_search_matches_on_coarsened_point.sql
+--        (the LIVE definition of both functions); supabase/tests/
 --        home_feed_verification.sql (the form this follows).
 -- =============================================================================
 
@@ -737,4 +737,69 @@ end $$;
 do $$
 begin
   raise notice 'ALL SEARCH CHECKS PASSED.';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 19 — the bbox is NOT a bisection oracle for a driveway home.
+--
+-- 20260810160000 snapped the pin search_posts emits but still MATCHED on the
+-- exact point, so shrinking the box around a driveway post and watching the
+-- count flip recovered its true location to sub-metre precision. This
+-- simulates that attack directly: a box far tighter than the 0.01° grid,
+-- centred on the EXACT point, must not single the post out.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_driveway uuid := 'a1a1a1a1-0000-0000-0000-000000000006';
+  v_exact  geometry;
+  v_lat    double precision;
+  v_lng    double precision;
+  v_tight  integer;
+  v_grid   integer;
+  v_eps    double precision := 0.0002;   -- ~20m: 50x finer than the grid
+begin
+  select p.last_seen_location::geometry into v_exact
+  from public.posts p
+  where p.id = v_driveway and p.status = 'active' and p.stolen_from = 'driveway';
+  if v_exact is null then
+    raise exception 'CHECK 19 FAILED: the seeded active driveway post is missing.';
+  end if;
+  v_lat := ST_Y(v_exact);
+  v_lng := ST_X(v_exact);
+
+  -- The attacker's probe: a ~20m box hugging the true point.
+  v_tight := public.search_posts_count(v_lat - v_eps, v_lng - v_eps,
+                                       v_lat + v_eps, v_lng + v_eps, '{}'::jsonb);
+
+  -- The same probe one grid cell away, where the SNAPPED point does not land.
+  v_grid := public.search_posts_count(v_lat - v_eps + 0.02, v_lng - v_eps + 0.02,
+                                      v_lat + v_eps + 0.02, v_lng + v_eps + 0.02,
+                                      '{}'::jsonb);
+
+  -- If membership tracked the exact point, the tight box would contain it and
+  -- the offset box would not — that DIFFERENCE is the oracle. Membership now
+  -- runs on the snapped point, which lies on a 0.01° corner, so a 20m box
+  -- around the exact point cannot contain it.
+  if v_tight > 0 then
+    raise exception 'CHECK 19 FAILED: a ~20m bbox centred on the EXACT point of a driveway '
+                    'post returned % row(s). Membership is still tracking the unsnapped '
+                    'point, so the bbox remains a bisection oracle.', v_tight;
+  end if;
+  if v_grid > 0 then
+    raise exception 'CHECK 19 FAILED: unexpected rows in the offset probe (%)', v_grid;
+  end if;
+
+  -- Sanity: a box around the SNAPPED point still finds it, or coarsening has
+  -- simply deleted the post from the map.
+  if public.search_posts_count(
+       ST_Y(ST_SnapToGrid(v_exact, 0.01)) - v_eps, ST_X(ST_SnapToGrid(v_exact, 0.01)) - v_eps,
+       ST_Y(ST_SnapToGrid(v_exact, 0.01)) + v_eps, ST_X(ST_SnapToGrid(v_exact, 0.01)) + v_eps,
+       '{}'::jsonb) = 0 then
+    raise exception 'CHECK 19 FAILED: the driveway post is unreachable even at its snapped '
+                    'point — coarsening must blur it, not delete it.';
+  end if;
+
+  raise notice 'CHECK 19 passed: a sub-grid bbox cannot single out a driveway home; the '
+               'snapped point still finds it.';
 end $$;
