@@ -39,6 +39,7 @@ import {
   type FeedLocationPref,
 } from '@/shared/lib/location/feedLocationStorage';
 import { createLogger, redactLocation } from '@/shared/lib/logger';
+import { markStartup } from '@/shared/lib/startupTrace';
 
 import type { FeedLocation } from '../types';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
@@ -143,6 +144,15 @@ export function useFeedLocation(
     // deviceRef is captured once by design — see its declaration comment.
     [notePermission],
   );
+
+  // The boot phase ends the moment the feed knows WHERE it is, by any route —
+  // a stored preference, a device fix, or the national fallback. Idempotent, so
+  // the later GPS refinements that re-set this do not move the mark.
+  useEffect(() => {
+    if (location) {
+      markStartup('location_ready');
+    }
+  }, [location]);
 
   // Resolve the chain once on mount.
   useEffect(() => {
