@@ -55,6 +55,16 @@ export interface ChoiceChipsProps<V extends string = string> {
    */
   scrollable?: boolean;
   /**
+   * The CONTAINER's own horizontal padding, when `scrollable` sits inside a
+   * padded parent (a card) rather than on a full-bleed screen. The scroller
+   * negates it and re-applies it to the content, so chips reach the container's
+   * true edge while the first one stays aligned with the label above.
+   *
+   * Without it the two paddings STACK and the row is visibly over-indented.
+   * Omit on a full-bleed screen — the default gutter is correct there.
+   */
+  bleed?: number;
+  /**
    * Optional — the chip ROW takes this, the scroller takes `${testID}-scroller`.
    * Opt-in rather than a fixed id because a wizard step can render two chip
    * groups, and a hardcoded id would make both unfindable.
@@ -68,6 +78,7 @@ export function ChoiceChips<V extends string = string>({
   onSelect,
   role = 'radio',
   scrollable = false,
+  bleed,
   testID,
 }: ChoiceChipsProps<V>) {
   const styles = useThemedStyles(makeStyles);
@@ -112,7 +123,10 @@ export function ChoiceChips<V extends string = string>({
       // The gutter lives on the CONTENT, not the scroller, so the first chip
       // starts on the screen margin while the last can scroll under the edge —
       // which is what tells the user there is more to the right.
-      contentContainerStyle={styles.scrollContent}
+      style={bleed === undefined ? undefined : { marginHorizontal: -bleed }}
+      contentContainerStyle={
+        bleed === undefined ? styles.scrollContent : { paddingHorizontal: bleed }
+      }
       testID={testID ? `${testID}-scroller` : undefined}
     >
       {chips}

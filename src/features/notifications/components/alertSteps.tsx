@@ -16,7 +16,9 @@
  *        server matches case-insensitively but still exactly, so a free-typed
  *        "beemer" here would create an alert that silently matches nothing —
  *        worse than no alert, because the user believes they are covered.
- * LINKS: ../lib/alertFlow.tsx (the config); ./AlertZoneMap.tsx, ./RadiusSlider.tsx;
+ * LINKS: ../lib/alertFlow.tsx (the config); ./AlertZoneMap.tsx,
+ *        src/shared/ui/RadiusSlider.tsx (shared with map search since
+ *        2026-08-10; the default label keeps this wizard's copy unchanged);
  *        @/features/vehicles (CAR_COLOURS, BODY_TYPE_OPTIONS);
  *        @/shared/lib/carMakes, carModels.
  */
@@ -31,6 +33,7 @@ import {
   ChoiceChips,
   LocationPicker,
   MoneySlider,
+  RadiusSlider,
   SelectField,
   type SelectOption,
   TextField,
@@ -40,7 +43,6 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { DEFAULT_ALERT_RADIUS_MILES, type AlertAnswers } from '../types';
 import { AlertZoneMap, AlertZoneMapProvider } from './AlertZoneMap';
-import { RadiusSlider } from './RadiusSlider';
 
 type StepProps = WizardStepProps<AlertAnswers>;
 

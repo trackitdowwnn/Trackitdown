@@ -26,7 +26,14 @@ import {
   type SnapStep,
 } from '@/shared/ui/moneySliderMath';
 
-import { MAX_RADIUS_MILES, MIN_RADIUS_MILES } from '../types';
+// The CANONICAL source, aliased to the names this file reads in. It used to
+// come via features/notifications/types.ts, which is itself only a re-export of
+// these two — so moving into shared/ui re-points at the real definition rather
+// than needing a shim (ARCHITECTURE rule 2: shared/ never imports features/).
+import {
+  RADIUS_MAX_MILES as MAX_RADIUS_MILES,
+  RADIUS_MIN_MILES as MIN_RADIUS_MILES,
+} from '@/shared/lib/distance';
 
 /** "Pence" is the shared maths' unit name; here every value is MILES. */
 const RADIUS_CURVE: CurveConfig = {

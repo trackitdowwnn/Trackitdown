@@ -4,10 +4,14 @@
  *        so it should break loudly if someone "tidies" it into even steps.
  *        The reachability of 1 and 50 matters most: a snap grid that can't hit
  *        its own bounds silently makes the advertised 1–50 range a lie.
- * LINKS: ./radiusSliderMath.ts; src/shared/ui/moneySliderMath.ts.
+ * LINKS: ./radiusSliderMath.ts; ./moneySliderMath.ts (the shared curve maths,
+ *        now a sibling rather than a cross-layer import).
  */
 
-import { MAX_RADIUS_MILES, MIN_RADIUS_MILES } from '../types';
+import {
+  RADIUS_MAX_MILES as MAX_RADIUS_MILES,
+  RADIUS_MIN_MILES as MIN_RADIUS_MILES,
+} from '@/shared/lib/distance';
 import {
   clampMiles,
   formatMiles,

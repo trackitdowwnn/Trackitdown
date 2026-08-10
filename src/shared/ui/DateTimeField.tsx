@@ -37,7 +37,7 @@ import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { formatDateTimeLabel } from '../lib';
+import { formatDateLabel, formatDateTimeLabel } from '../lib';
 import {
   opacity,
   radii,
@@ -45,6 +45,7 @@ import {
   spacing,
   typography,
   usePalette,
+  useThemeControls,
   useThemedStyles,
   type Palette,
 } from '../theme';
@@ -91,6 +92,17 @@ export interface DateTimeFieldProps {
   minDate?: Date;
   /** Sheet heading; defaults to the field label. */
   sheetTitle?: string;
+  /**
+   * `datetime` (default) picks a date AND a time, minute-precise — what "when
+   * did you last see it?" needs. `date` stops at the day and labels the trigger
+   * with the date alone.
+   *
+   * Defaults to `datetime` so every existing call site is unchanged. `date`
+   * exists for RANGE BOUNDS (the search sheet's When filter), where a
+   * time-of-day is noise the user has no opinion about — and where showing one
+   * would imply a precision the filter does not actually use.
+   */
+  mode?: 'date' | 'datetime';
 }
 
 /** Clamp into [min, max] and zero seconds — the field is minute-precise. */
@@ -119,14 +131,23 @@ export function DateTimeField({
   maxDate,
   minDate,
   sheetTitle,
+  mode = 'datetime',
 }: DateTimeFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
+  // Drives the iOS spinner's themeVariant — see its use below.
+  const { scheme } = useThemeControls();
   const sheetRef = useRef<BottomSheetRef>(null);
   // iOS spinner edits a draft; only Confirm commits it.
   const [draft, setDraft] = useState<Date>(new Date());
 
-  const formatted = value ? formatDateTimeLabel(value) : null;
+  // Date mode drops the time half from the trigger too — a label reading
+  // "10 May 2026, 00:00" would advertise a precision the picker never asked for.
+  const formatted = value
+    ? mode === 'date'
+      ? formatDateLabel(value)
+      : formatDateTimeLabel(value)
+    : null;
   const message = error ?? helperText;
 
   // iOS has no accessibilityLiveRegion; announce errors explicitly
@@ -186,6 +207,11 @@ export function DateTimeField({
       minimumDate: minDate,
       onValueChange: (_event, pickedDate) => {
         if (!pickedDate) {
+          return;
+        }
+        // Date mode stops here — no second dialog to chain.
+        if (mode === 'date') {
+          commit(pickedDate);
           return;
         }
         DateTimePickerAndroid.open({
@@ -267,13 +293,15 @@ export function DateTimeField({
 
         {Platform.OS === 'ios' ? (
           <>
-            {/* themeVariant, not the device's: the app is light-only (see the
-                note in src/app/_layout.tsx), and on a dark-mode phone this
-                spinner rendered white-on-black inside our light sheet. */}
             <DateTimePicker
-              mode="datetime"
+              mode={mode}
               display="spinner"
-              themeVariant="light"
+              // Follows the ACTIVE scheme. This was pinned to "light" with a
+              // comment saying the app was light-only; ADR-0013 made that false,
+              // and the search sheet's date range is the first surface to hit
+              // this sheet often on iOS — a white spinner slab inside a near-
+              // black sheet.
+              themeVariant={scheme}
               value={draft}
               maximumDate={sheetMax}
               minimumDate={minDate}

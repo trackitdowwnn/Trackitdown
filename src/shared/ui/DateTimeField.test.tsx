@@ -290,5 +290,54 @@ describe('DateTimeField', () => {
       expect(androidOpenCalls).toHaveLength(1);
       expect(androidOpenCalls[0].mode).toBe('date');
     });
+
+    it('mode="date" commits on the date step and never chains a time picker', async () => {
+      const onChange = jest.fn();
+      const { getByLabelText } = await render(
+        <DateTimeField
+          label="From"
+          mode="date"
+          value={null}
+          onChange={onChange}
+          presets={[]}
+        />,
+      );
+      await act(async () => {
+        fireEvent.press(getByLabelText('From, not set, opens date picker'));
+      });
+
+      const picked = new Date('2026-07-07T00:00:00.000Z');
+      await act(async () => {
+        (androidOpenCalls[0].onValueChange as (e: unknown, d?: Date) => void)(
+          { nativeEvent: {} },
+          picked,
+        );
+      });
+
+      // Exactly ONE dialog: a time-of-day would imply a precision a range bound
+      // does not use, and would leave the user a step they cannot answer.
+      expect(androidOpenCalls).toHaveLength(1);
+      expect(onChange).toHaveBeenCalledWith(picked.toISOString());
+    });
+
+    it('still chains date → time by DEFAULT (every existing call site)', async () => {
+      const onChange = jest.fn();
+      const { getByLabelText } = await render(
+        <DateTimeField label="Seen" value={null} onChange={onChange} presets={[]} />,
+      );
+      await act(async () => {
+        fireEvent.press(getByLabelText('Seen, not set, opens date picker'));
+      });
+      await act(async () => {
+        (androidOpenCalls[0].onValueChange as (e: unknown, d?: Date) => void)(
+          { nativeEvent: {} },
+          new Date('2026-07-07T00:00:00.000Z'),
+        );
+      });
+
+      expect(androidOpenCalls).toHaveLength(2);
+      expect(androidOpenCalls[1].mode).toBe('time');
+      expect(onChange).not.toHaveBeenCalled();
+    });
   });
 });
