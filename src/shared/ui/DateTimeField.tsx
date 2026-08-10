@@ -37,7 +37,7 @@ import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { formatDateLabel, formatDateTimeLabel } from '../lib';
+import { formatDateLabelCompact, formatDateTimeLabel } from '../lib';
 import {
   opacity,
   radii,
@@ -143,9 +143,11 @@ export function DateTimeField({
 
   // Date mode drops the time half from the trigger too — a label reading
   // "10 May 2026, 00:00" would advertise a precision the picker never asked for.
+  // Compact in date mode: these fields are half-width range bounds, where
+  // "3 Aug 2026" truncates to "3 Aug 20…". A non-current year is still shown.
   const formatted = value
     ? mode === 'date'
-      ? formatDateLabel(value)
+      ? formatDateLabelCompact(value)
       : formatDateTimeLabel(value)
     : null;
   const message = error ?? helperText;

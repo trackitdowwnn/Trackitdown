@@ -9,7 +9,7 @@
  * LINKS: src/shared/lib/dateTimeLabel.ts.
  */
 
-import { formatDateLabel, formatDateTimeLabel, formatMonthYear } from './dateTimeLabel';
+import { formatDateLabel, formatDateLabelCompact, formatDateTimeLabel, formatMonthYear } from './dateTimeLabel';
 
 // A fixed local "now": Wednesday 8 July 2026, 15:00 local time.
 const NOW = new Date(2026, 6, 8, 15, 0);
@@ -56,5 +56,24 @@ describe('formatMonthYear', () => {
 
   it('throws on unparseable input', () => {
     expect(() => formatMonthYear('nope')).toThrow(/unparseable/);
+  });
+});
+
+describe('formatDateLabelCompact', () => {
+  it('drops the year in the CURRENT year', () => {
+    // The whole point: "3 Aug 2026" truncates to "3 Aug 20…" in a half-width
+    // range-bound field, which is worse than showing no year at all.
+    expect(formatDateLabelCompact('2026-08-03T00:00:00Z', new Date(2026, 7, 10))).toBe('3 Aug');
+  });
+
+  it('KEEPS the year for any other year — there it is the load-bearing part', () => {
+    expect(formatDateLabelCompact('2025-08-03T00:00:00Z', new Date(2026, 7, 10))).toBe(
+      '3 Aug 2025',
+    );
+    expect(formatDateLabelCompact('2027-01-01T00:00:00Z', new Date(2026, 7, 10))).toContain('2027');
+  });
+
+  it('throws on unparseable input, like its siblings', () => {
+    expect(() => formatDateLabelCompact('nope')).toThrow(/unparseable/);
   });
 });

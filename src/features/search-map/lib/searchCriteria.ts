@@ -26,7 +26,7 @@
 
 import { z } from 'zod';
 
-import { formatDateLabel } from '@/shared/lib/dateTimeLabel';
+import { formatDateLabelCompact } from '@/shared/lib/dateTimeLabel';
 import { RADIUS_MAX_MILES, RADIUS_MIN_MILES } from '@/shared/lib/distance';
 import { formatPounds } from '@/shared/lib/money';
 
@@ -375,15 +375,10 @@ function listSummary(values: string[], noun: string): string | null {
 export function seenRangeSummary(criteria: SearchCriteria, now: Date = new Date()): string | null {
   // Drops the YEAR for dates in the current year: "11 Jul – 2 Aug" rather than
   // "11 Jul 2026 – 2 Aug 2026". The map pill is one line beside a back button
-  // and a locate button, and the full form truncated to "…2 Au…" there — a
-  // range you cannot read is not a summary. Any other year keeps its year,
-  // because then it is the load-bearing part.
-  const compact = (iso: string): string => {
-    const date = new Date(iso);
-    return date.getFullYear() === now.getFullYear()
-      ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-      : formatDateLabel(iso);
-  };
+  // and a locate button, and the full form truncated to "…2 Au…" there.
+  // Shared with DateTimeField's date mode, which had the same problem in a
+  // half-width field — one rule, so the sheet and the pill cannot disagree.
+  const compact = (iso: string) => formatDateLabelCompact(iso, now);
 
   const { seenFrom, seenTo } = criteria;
   if (seenFrom !== null && seenTo !== null) {
