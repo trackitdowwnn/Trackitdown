@@ -71,6 +71,25 @@ commenting standards.
     bury a victim's real post during the hours that matter.
   - **Location coarsening.** A `driveway` theft's last-seen point is the
     victim's home, so it is coarsened to ~1km for non-owners (§6, DOMAIN.md).
+  - **Map-search distance filter (2026-08-10).** `search_posts` /
+    `search_posts_count` take a caller-supplied origin and a radius clamped to
+    1–50 miles, mirroring `get_home_feed`. The origin is always the exact
+    **centre of the bbox sent in the same call**, so it is arithmetically
+    REDUNDANT — the four corners already encode it, and the server learns
+    nothing it was not already being told. That, not the origin's provenance,
+    is why it is safe: on the FEED path that centre *is* the device fix, because
+    `HomeFeedScreen` frames the search region around the device's position; on
+    the map it is wherever the user has panned to. It is
+    **transient**: both functions are `stable` and write nothing, and the client
+    logs only `hasOrigin` and the chosen `radiusMiles`, never the coordinates.
+    It is deliberately NOT snapped, unlike `alert_zones.point` below — that snap
+    exists because the value *persists*, and snapping a transient origin would
+    only make the count disagree with the circle the sheet drew.
+    ⚠️ If the origin is ever DECOUPLED from the bbox — sent for a point the
+    caller is not simultaneously querying a rectangle around, e.g. a "cars near
+    me wherever the map is pointing" mode — the redundancy argument above
+    collapses and it becomes a genuinely new disclosure. That needs its own
+    entry here.
 - **OPEN GAP — no ownership check exists anywhere.** Nothing verifies that the
   poster owns the car. The `verification_documents` table, the private
   `verification-documents` bucket and `update_post_verification` remain in the
