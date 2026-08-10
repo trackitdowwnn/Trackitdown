@@ -42,7 +42,7 @@ import { MapCircleButton } from '../components/MapCircleButton';
 import { MapPins } from '../components/MapPins';
 import { MapRecentreButton } from '../components/MapRecentreButton';
 import { MapSearchPill } from '../components/MapSearchPill';
-import { SearchSheet } from '../components/SearchSheet';
+import { SearchSheet, type SourceRect } from '../components/SearchSheet';
 import { useFeedLocation } from '../hooks/useFeedLocation';
 import { useMapSelection, useMapSelectionState } from '../hooks/useMapSelection';
 import { useProgressivePins } from '../hooks/useProgressivePins';
@@ -280,6 +280,11 @@ function MapSearchBody({
   // feed; the map pill re-opens the surface to refine.
   const [appliedCriteria, setAppliedCriteria] = useState<SearchCriteria>(initialCriteria);
   const [searchOpen, setSearchOpen] = useState(false);
+  // The pill's measured rect, so the surface morphs out of it and back into it
+  // (matching the feed). Held rather than recomputed on close: the pill is
+  // unmounted-behind/covered while the surface is open, so it cannot be
+  // re-measured at dismiss time — the rect captured on open IS the exit target.
+  const [searchSourceRect, setSearchSourceRect] = useState<SourceRect | null>(null);
   // Stable so SearchSheet's back-handler effect doesn't re-register each render.
   const closeSearch = useCallback(() => setSearchOpen(false), []);
 
@@ -698,28 +703,32 @@ function MapSearchBody({
             away again immediately. */}
         <MapSearchPill
           summary={isEmptyCriteria(appliedCriteria) ? null : summarise(appliedCriteria)}
-          onPress={() => {
+          onPress={(rect) => {
             if (hasSelection) {
               clear();
               return;
             }
+            setSearchSourceRect(rect);
             setSearchOpen(true);
           }}
           onClear={handleClearSearch}
         />
-      </View>
+        {/* INLINE with the back button and the pill (2026-08-10, owner's call).
+            It used to sit on its own layer below the row, for two reasons that
+            still apply and are handled rather than ignored:
 
-      {/* Its OWN layer, below the top bar — not in that row. Three controls
-          on one line left the pill ~224dp on a 360dp screen, which truncates
-          the label at large text sizes; and this button appears a beat after
-          mount (the silent permission check), which would reflow the pill
-          under the user. Still top-right rather than the reference's
-          bottom-right: the sheet's full snap covers anything down there. */}
-      <View
-        style={[styles.recentre, { top: inset + spacing.md + sizes.control + spacing.sm }]}
-        pointerEvents="box-none"
-      >
-        <MapRecentreButton onLocate={handleRecentre} />
+            1. Three controls on one line leave the pill ~224dp on a 360dp
+               screen, so a long summary truncates. The pill takes the slack
+               (flex) and already clips to one line, and the owner chose a
+               narrower pill over a second row.
+            2. This button renders NOTHING until the silent permission check
+               lands, so appearing late would resize the pill under the user's
+               finger. The fixed-size SLOT below reserves its space either way,
+               which is what makes the inline position safe — do not drop the
+               wrapper and render the button directly. */}
+        <View style={styles.recentreSlot} pointerEvents="box-none">
+          <MapRecentreButton onLocate={handleRecentre} />
+        </View>
       </View>
 
       <MapListSheet
@@ -760,6 +769,7 @@ function MapSearchBody({
         <SearchSheet
           initialCriteria={appliedCriteria}
           region={searchedRegion}
+          sourceRect={searchSourceRect}
           onApply={handleApplySearch}
           onClose={closeSearch}
         />
@@ -788,11 +798,19 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
   },
-  // Recentre sits BELOW the row, right-aligned — see the note at its render.
-  recentre: {
-    position: 'absolute',
-    right: spacing.lg,
-    alignItems: 'flex-end',
+  // Holds the recentre button's place in the top-bar row whether or not it has
+  // rendered yet. Without this the pill would grow to fill the gap and then
+  // shrink a beat later, when the silent permission check lands.
+  // sizes.touchTarget, NOT sizes.control: this must be the SAME box
+  // MapCircleButton draws (44), or the button sits in the corner of an
+  // oversized slot and reads as misaligned with the back button opposite it —
+  // which is exactly what a 52 here did (4px high, and shy of the right edge).
+  // The centring is belt-and-braces should the button's own size ever change.
+  recentreSlot: {
+    width: sizes.touchTarget,
+    height: sizes.touchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pager: {
     position: 'absolute',

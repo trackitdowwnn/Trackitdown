@@ -5,7 +5,12 @@
  * LINKS: docs/ARCHITECTURE.md (shared/lib).
  */
 
-export { formatDateLabel, formatDateTimeLabel, formatMonthYear } from './dateTimeLabel';
+export {
+  formatDateLabel,
+  formatDateLabelCompact,
+  formatDateTimeLabel,
+  formatMonthYear,
+} from './dateTimeLabel';
 export {
   METRES_PER_MILE,
   RADIUS_MAX_MILES,

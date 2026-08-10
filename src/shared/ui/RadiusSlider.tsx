@@ -1,15 +1,22 @@
 /**
- * WHAT:  RadiusSlider — the 1–50 mile alert radius control: a power-curve
- *        track with a tiered snap grid and a live readout that follows the
- *        thumb on the UI thread.
+ * WHAT:  RadiusSlider — the 1–50 mile radius control: a power-curve track with
+ *        a tiered snap grid and a live readout that follows the thumb on the
+ *        UI thread. `label` names it per surface ('Alert radius', 'Distance').
  * WHY:   Modelled on MoneySlider's gesture structure (the house slider), minus
  *        everything money-specific: no typed entry, no transparency panel, no
  *        pence. It is NOT MoneySlider reused directly — that component's
  *        readout divides by 100 to format pounds, so 10 miles would render as
  *        "£0". Only the MATHS is shared, through radiusSliderMath.
  *        The value is always whole miles and always in range.
- * LINKS: ../lib/radiusSliderMath.ts (curve/snap); src/shared/ui/MoneySlider.tsx
- *        (the pattern this follows); ./AlertZoneMap.tsx (the circle it scales).
+ *        Lives in shared/ui, not features/notifications, since 2026-08-10: the
+ *        map search sheet needs the same 1–50 control, and ARCHITECTURE rule 1
+ *        forbids one feature importing another's components. Its own escape
+ *        hatch names this case — "if two features need the same thing
+ *        constantly, it probably belongs in shared/" — which is the move
+ *        shared/lib/distance.ts already made for these very bounds.
+ * LINKS: ./radiusSliderMath.ts (curve/snap); ./MoneySlider.tsx (the pattern
+ *        this follows); src/features/notifications/components/AlertZoneMap.tsx
+ *        (the circle it scales); src/features/search-map (the other consumer).
  */
 
 /* eslint-disable react-hooks/immutability -- Reanimated SharedValues are
@@ -54,8 +61,11 @@ import {
   positionToMiles,
   snapMiles,
   stepAtMiles,
-} from '../lib/radiusSliderMath';
-import { MAX_RADIUS_MILES, MIN_RADIUS_MILES } from '../types';
+} from './radiusSliderMath';
+import {
+  RADIUS_MAX_MILES as MAX_RADIUS_MILES,
+  RADIUS_MIN_MILES as MIN_RADIUS_MILES,
+} from '@/shared/lib/distance';
 
 const THUMB_SIZE = sizes.sliderThumb;
 const TRACK_HEIGHT = sizes.sliderTrack;
@@ -64,6 +74,13 @@ const GRAB_SCALE = motion.grabScale;
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 export interface RadiusSliderProps {
+  /**
+   * The control's visible title, also its accessibility label. Defaults to
+   * 'Alert radius' — the copy it shipped with, so the alert wizard reads
+   * identically — but search sets its own ('Distance'): a search sheet
+   * captioned "Alert radius" would name a feature the user isn't using.
+   */
+  label?: string;
   /** Controlled value in whole miles; out-of-range values are clamped. */
   valueMiles: number;
   /** Fires on every snap crossing while dragging. Keep the reference stable
@@ -74,6 +91,7 @@ export interface RadiusSliderProps {
 }
 
 export function RadiusSlider({
+  label = 'Alert radius',
   valueMiles,
   onChangeMiles,
   disabled = false,
@@ -131,28 +149,73 @@ export function RadiusSlider({
         scheduleOnRN(onChangeMiles, snapped);
       }
     };
-    return Gesture.Pan()
+    // A TAP still jumps the thumb to where you pressed. Kept as its own gesture
+    // rather than as pan's minDistance(0), because a tap cannot fire once the
+    // finger travels — so it can never be triggered by a scroll.
+    // Glide the thumb and the readout onto the value that was actually
+    // COMMITTED. applyTouch deliberately leaves both at the raw touch position
+    // (so a drag tracks the finger), and the pan's onFinalize used to be the
+    // only thing that reconciled them.
+    const settle = () => {
+      'worklet';
+      const timing = { duration: grabMs, easing: easeOut };
+      position.value = withTiming(milesToPosition(lastSnapped.value), timing);
+      displayMiles.value = withTiming(lastSnapped.value, timing);
+    };
+
+    const tap = Gesture.Tap()
       .enabled(!disabled)
-      .minDistance(0)
-      .onBegin((event) => {
+      // maxDistance makes the claim above true BY CONSTRUCTION. RNGH's tap
+      // defaults cap only the DURATION, so without this a fast flick that
+      // began on the track still ends in onEnd and commits a radius — and the
+      // parent ScrollView cannot always save us (already at a scroll boundary,
+      // or a wizard step whose content doesn't overflow).
+      .maxDistance(10)
+      .onEnd((event, success) => {
+        // A tap that was cancelled must commit nothing.
+        if (!success) {
+          return;
+        }
+        applyTouch(event.x);
+        // MUST settle. When the tap wins the race RNGH cancels the pan FIRST,
+        // so pan.onFinalize runs before this handler and its settle is then
+        // overwritten by applyTouch's raw values. Without this the snap is
+        // committed to the parent while the thumb and the "N miles" readout
+        // sit on the unsnapped touch position — a tap at raw 27 commits 30 and
+        // displays 27. The external-value effect cannot rescue it either: it
+        // early-returns because lastSnapped already equals the echoed value.
+        settle();
+      });
+
+    const pan = Gesture.Pan()
+      .enabled(!disabled)
+      // ⚠️ HORIZONTAL INTENT REQUIRED. This was minDistance(0), which activates
+      // the pan on touch-DOWN — so a vertical scroll that merely began on the
+      // track committed a radius the user never chose, and the parent
+      // ScrollView never got the chance to claim the touch that applyTouch's
+      // own comment assumes it can. Verified on device 2026-08-10: a straight
+      // vertical swipe over the track moved 10 -> 15 miles and switched the
+      // filter on. Worse in the alert wizard, where the radius is persisted.
+      .activeOffsetX([-6, 6])
+      .failOffsetY([-10, 10])
+      .onBegin(() => {
         dragging.value = true;
         grabbed.value = withTiming(1, { duration: grabMs });
-        const nextPosition = touchPosition(event.x);
-        if (nextPosition >= 0) {
-          position.value = nextPosition;
-          displayMiles.value = positionToMiles(nextPosition);
-        }
       })
+      // The thumb only jumps to the finger once the gesture has ACTIVATED —
+      // previewing it in onBegin would move the thumb under a scroll that is
+      // about to be handed to the parent.
       .onStart((event) => applyTouch(event.x))
       .onUpdate((event) => applyTouch(event.x))
       .onFinalize(() => {
         dragging.value = false;
         grabbed.value = withTiming(0, { duration: grabMs });
-        const timing = { duration: grabMs, easing: easeOut };
-        position.value = withTiming(milesToPosition(lastSnapped.value), timing);
-        displayMiles.value = withTiming(lastSnapped.value, timing);
+        settle();
         scheduleOnRN(endDrag);
       });
+
+    // Race, not Simultaneous: whichever the user's finger turns out to mean.
+    return Gesture.Race(tap, pan);
   }, [
     disabled,
     grabMs,
@@ -204,7 +267,7 @@ export function RadiusSlider({
   return (
     <View style={[styles.container, disabled && styles.disabled]} testID={testID}>
       <View style={styles.headerRow}>
-        <Text style={styles.label}>Alert radius</Text>
+        <Text style={styles.label}>{label}</Text>
         <AnimatedTextInput
           style={styles.readout}
           editable={false}
@@ -224,7 +287,7 @@ export function RadiusSlider({
           onLayout={handleTrackLayout}
           accessible
           accessibilityRole="adjustable"
-          accessibilityLabel="Alert radius"
+          accessibilityLabel={label}
           accessibilityValue={{
             min: MIN_RADIUS_MILES,
             max: MAX_RADIUS_MILES,

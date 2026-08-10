@@ -63,6 +63,27 @@ export function formatDateLabel(iso: string): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+/**
+ * Date only, dropping the year when it is the CURRENT year: "8 Jul", but
+ * "8 Jul 2025" for any other. @throws on an unparseable timestamp.
+ *
+ * For labels in TIGHT space where the year is usually noise — a half-width
+ * range-bound field, or a one-line summary pill. "8 Jul 2026" truncates to
+ * "8 Jul 20…" in a half-width field, which is worse than no year at all; a
+ * different year is the load-bearing part and is always kept.
+ *
+ * `now` is injectable so tests don't depend on the wall clock.
+ */
+export function formatDateLabelCompact(iso: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`formatDateLabelCompact got an unparseable timestamp: ${iso}`);
+  }
+  return date.getFullYear() === now.getFullYear()
+    ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    : formatDateLabel(iso);
+}
+
 /** Month + year: "July 2026" — for "member since" style labels. @throws on
  *  an unparseable timestamp. */
 export function formatMonthYear(iso: string): string {

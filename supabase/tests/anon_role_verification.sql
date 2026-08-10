@@ -435,3 +435,56 @@ begin
 
   raise notice 'CHECK 11 passed: account_deletions is service-role only (anon/authenticated hold nothing)';
 end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 12 — anon and authenticated CANNOT read posts.last_seen_location.
+--
+-- ⚠️ This was a LIVE leak until 20260810180000: `grant select on public.posts`
+-- was table-wide, so one unauthenticated PostgREST request returned exact
+-- coordinates for every active post — including stolen_from='driveway' posts,
+-- whose point IS the victim's home address. It made the ~1km coarsening in
+-- get_post_detail / get_home_feed / search_posts bypassable, because those RPCs
+-- were never the only way to reach the column.
+--
+-- The RPCs are SECURITY DEFINER and read it as the definer, so they keep
+-- working — which is the point: they stay the ONLY route to a location, and
+-- therefore the only thing deciding how precise it may be.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_role text;
+  v_ok   boolean;
+begin
+  foreach v_role in array array['anon', 'authenticated']
+  loop
+    v_ok := false;
+    begin
+      perform set_config('request.jwt.claims', null, true);
+      execute format('set local role %I', v_role);
+      begin
+        perform last_seen_location from public.posts limit 1;
+      exception
+        when insufficient_privilege then
+          v_ok := true;
+      end;
+      reset role;
+    end;
+
+    if not v_ok then
+      raise exception 'CHECK 12 FAILED: role % can SELECT posts.last_seen_location. A driveway '
+                      'theft''s point is the victim''s home address; only SECURITY DEFINER RPCs '
+                      'may read this column, because only they coarsen it.', v_role;
+    end if;
+  end loop;
+
+  -- ...and the columns the app genuinely needs are still readable, or this
+  -- "fix" would just be an outage. profileApi.countDeletionBlockingPosts reads
+  -- id filtered on owner_id + status.
+  perform set_config('request.jwt.claims', null, true);
+  set local role anon;
+  perform id from public.posts where owner_id is not null and status = 'active' limit 1;
+  reset role;
+
+  raise notice 'CHECK 12 passed: last_seen_location is denied to anon/authenticated; the rest of the row still reads.';
+end $$;

@@ -55,7 +55,15 @@ export function useSearchCount(region: GeoRegion, criteria: SearchCriteria): Use
 
   const bbox = regionToBbox(region);
   const bboxKey = `${bbox.minLat.toFixed(4)},${bbox.minLng.toFixed(4)},${bbox.maxLat.toFixed(4)},${bbox.maxLng.toFixed(4)}`;
-  const criteriaKey = JSON.stringify(toRpcCriteria(criteria));
+  // distanceMiles is appended EXPLICITLY. Since 2026-08-10 the radius is a real
+  // filter carried as an RPC parameter, so toRpcCriteria (the p_criteria bag)
+  // no longer contains it — and a count keyed only on that bag would not
+  // re-fire when the radius moved. It happens to work today because the bbox is
+  // ALSO derived from the radius, but that is a coupling, not a guarantee: the
+  // moment the bbox stops tracking distance, the button would promise a count
+  // for a circle it never asked about. The origin needs no entry — it is the
+  // bbox centre, already covered by bboxKey.
+  const criteriaKey = `${JSON.stringify(toRpcCriteria(criteria))}|r=${criteria.distanceMiles ?? 'any'}`;
 
   useEffect(() => {
     const token = ++tokenRef.current;

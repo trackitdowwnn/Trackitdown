@@ -71,6 +71,45 @@ commenting standards.
     bury a victim's real post during the hours that matter.
   - **Location coarsening.** A `driveway` theft's last-seen point is the
     victim's home, so it is coarsened to ~1km for non-owners (§6, DOMAIN.md).
+    Exactly TWO surfaces emit coordinates, and both snap: `get_post_detail`
+    (since 20260713180000) and `search_posts` (since 20260810160000).
+    `get_home_feed` and `get_nearby_posts` need no snap because they emit no
+    coordinates at all — only `last_seen_area` and a distance. (The
+    `ST_SnapToGrid` inside `get_home_feed` is a *different* rule for a
+    different status: it withholds a **recovered** post's precise point.)
+    The `search_posts` gap was a LIVE leak, not a latent one — posts go
+    straight to `active` on payment, so the earlier "no active driveway post
+    can exist yet" justification was false.
+    **⚠️ OPEN — two ways the exact point is still reachable:**
+    (a) `search_posts` / `search_posts_count` still MATCH on the unsnapped
+    point (`&&` and `ST_DWithin`), so an anonymous caller can bisect the bbox
+    and recover a driveway post's true location to sub-metre precision in a few
+    dozen requests. `get_home_feed`'s recovered branch shows the fix: match and
+    measure on the snapped point, not just emit it.
+    (b) `distance_miles` on the feed is computed from the exact point at 0.1mi
+    precision, so varying the origin trilaterates it — the same attack that
+    branch defends against for recovered posts.
+    Neither is closed. Do not describe driveway coarsening as complete until
+    they are.
+  - **Map-search distance filter (2026-08-10).** `search_posts` /
+    `search_posts_count` take a caller-supplied origin and a radius clamped to
+    1–50 miles, mirroring `get_home_feed`. The origin is always the exact
+    **centre of the bbox sent in the same call**, so it is arithmetically
+    REDUNDANT — the four corners already encode it, and the server learns
+    nothing it was not already being told. That, not the origin's provenance,
+    is why it is safe: on the FEED path that centre *is* the device fix, because
+    `HomeFeedScreen` frames the search region around the device's position; on
+    the map it is wherever the user has panned to. It is
+    **transient**: both functions are `stable` and write nothing, and the client
+    logs only `hasOrigin` and the chosen `radiusMiles`, never the coordinates.
+    It is deliberately NOT snapped, unlike `alert_zones.point` below — that snap
+    exists because the value *persists*, and snapping a transient origin would
+    only make the count disagree with the circle the sheet drew.
+    ⚠️ If the origin is ever DECOUPLED from the bbox — sent for a point the
+    caller is not simultaneously querying a rectangle around, e.g. a "cars near
+    me wherever the map is pointing" mode — the redundancy argument above
+    collapses and it becomes a genuinely new disclosure. That needs its own
+    entry here.
 - **OPEN GAP — no ownership check exists anywhere.** Nothing verifies that the
   poster owns the car. The `verification_documents` table, the private
   `verification-documents` bucket and `update_post_verification` remain in the

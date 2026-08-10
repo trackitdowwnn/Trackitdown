@@ -174,11 +174,23 @@ from (values
   ('a1a1a1a1-0000-0000-0000-00000000000e'::uuid, 2019, 'Hatchback', 'Silver Astra with a dented rear bumper and a faded blue disabled badge holder on the dash.', 'Belongs to my elderly dad. We just want it found - please report anything you see.'),
   ('a1a1a1a1-0000-0000-0000-00000000000f'::uuid, 2018, 'SUV', 'Grey Q3 with black roof rails and a small Audi-dealer sticker in the rear window.', 'Taken from the multi-storey in Stockport. Dashcam clips from that evening would help enormously.'),
   ('a1a1a1a1-0000-0000-0000-000000000010'::uuid, 2021, 'Hatchback', 'White Fiesta with a learner-plate residue mark and a scuffed nearside alloy.', 'My daughters first car. Please keep an eye out around Stockport town centre.'),
-  ('a1a1a1a1-0000-0000-0000-000000000011'::uuid, 2017, 'Coupe', 'Blue GT-R with aftermarket exhaust and a distinctive carbon rear wing.', 'Extremely high-value and very recognisable. Do not approach - report the location to us and the police.'),
+  -- 'Coupé', not 'Coupe' (2026-08-10). BODY_TYPE_OPTIONS stores the accented
+  -- form, so the unaccented seed value was unreachable from the body-type
+  -- filter the search sheet and alert wizard both offer — the same class of
+  -- silent mismatch 20260807110000 was written to fix, one accent instead of
+  -- one case.
+  ('a1a1a1a1-0000-0000-0000-000000000011'::uuid, 2017, 'Coupé', 'Blue GT-R with aftermarket exhaust and a distinctive carbon rear wing.', 'Extremely high-value and very recognisable. Do not approach - report the location to us and the police.'),
   ('a1a1a1a1-0000-0000-0000-000000000012'::uuid, 2022, 'Saloon', 'Black Corolla hybrid with a taxi-style phone mount and a small dent on the offside sill.', 'This is my only way to get to work. Any sighting near Stockport would mean the world.'),
   ('a1a1a1a1-0000-0000-0000-000000000013'::uuid, 2019, 'Hatchback', 'Red Polo with a cracked front grille and a gym-membership sticker in the windscreen.', 'Taken overnight from our street in Bury. Please report anything, however small.'),
   ('a1a1a1a1-0000-0000-0000-000000000014'::uuid, 2018, 'Hatchback', 'White 1 Series with M-Sport badging and a small chip on the bonnet.', 'On finance and uninsured for theft - I really need it back. Thank you for looking out.'),
-  ('a1a1a1a1-0000-0000-0000-000000000015'::uuid, 2021, 'Hatchback', 'Silver Ford Ka with a dented rear arch and a fluffy dice hanging from the mirror.', 'My teenage son saved for this himself. Any sighting around Bury would be amazing.'),
+  -- year DELIBERATELY NULL (2026-08-10). posts.year is nullable — the posting
+  -- wizard's year step is optional and has a "Not sure" escape — and search's
+  -- year filter drops null years on purpose. Every other seeded post carries a
+  -- year, so without this row the "a null year is excluded when a year bound is
+  -- set" check in supabase/tests/search_verification.sql would pass VACUOUSLY,
+  -- proving nothing. That suite asserts this post is present unfiltered and
+  -- absent under a year bound; do not give it a year.
+  ('a1a1a1a1-0000-0000-0000-000000000015'::uuid, null, 'Hatchback', 'Silver Ford Ka with a dented rear arch and a fluffy dice hanging from the mirror.', 'My teenage son saved for this himself. Any sighting around Bury would be amazing.'),
   ('a1a1a1a1-0000-0000-0000-000000000016'::uuid, 2017, 'Saloon', 'Grey A4 with a private-style plate and a roof aerial that has been snapped short.', 'Taken from the driveway overnight. Please just note where you saw it and report here.'),
   -- Recently recovered (owner can still open the detail view) --------------------
   ('a1a1a1a1-0000-0000-0000-000000000017'::uuid, 2018, 'Hatchback', 'Blue Fiesta with a rear-window sticker and a scuffed nearside bumper.', 'Recovered safely thanks to a spotter - thank you to everyone who kept an eye out!'),

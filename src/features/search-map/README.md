@@ -281,21 +281,65 @@ absolute overlay in the same screen) that MORPHS out of the search pill
 box from it to full screen, a ghost pill label fading early, content fading in;
 reduced-motion cross-fades). Header is a title + close. Body is collapsible
 accordion filter cards: **Vehicle** (make/model pickers reused from the posting
-flow + colour chips), **Bounty** (`MoneyRangeSlider` — the range consumer the
-slider's TODO anticipated — + quick chips), **Distance** chips, and **When**
-(recency) chips. A footer live-counts results (`hooks/useSearchCount.ts`,
-debounced) on the shared-`Button` "Show N cars" CTA.
+flow + multi-select colour and body-type chips + a From/To year range),
+**Bounty** (`MoneyRangeSlider` — the range consumer the slider's TODO
+anticipated — + quick chips), **Distance** (`RadiusSlider`, 1–50 continuous, +
+an "Any distance" action chip), and **When** (recency chips plus From/To date
+pickers, always visible). There is deliberately **no free-text box** — the
+make/model pickers ask that question precisely, so a text field beside them was
+a second, fuzzier route to the same answer (`criteria.text` remains in the model
+and the RPC still accepts it; nothing on this surface writes it). A footer
+live-counts results
+(`hooks/useSearchCount.ts`, debounced) on the shared-`Button` "Show N cars" CTA.
+
+The colour and body-type options come from `CAR_COLOURS` and
+`BODY_TYPE_OPTIONS` — the same vocabularies the posting wizard writes and the
+alert wizard filters on — rather than a local literal. Until 2026-08-10 this
+sheet hard-coded six of the fifteen colours, so a Green or Bronze car simply
+could not be searched for. Colour KEEPS its escape values (Multicolour, Other);
+body type DROPS `BODY_TYPE_UNKNOWN`, because filtering on "Not sure" would find
+only the owners who shrugged.
 
 It opens INSTANTLY on the feed (`HomeFeedScreen` hosts it — no navigation);
 "Show N cars" then navigates to the map carrying the criteria + framed region as
 params, so the map skips its location-resolution loader (`MapSearchScreen`'s pill
 re-opens the surface to refine). Applied criteria are STICKY across pans ("Search
 this area" keeps the filter). The criteria model + its server mapping live in
-`lib/searchCriteria.ts` (`toRpcCriteria` drops defaults and NEVER emits plate or
-distance; `parseCriteria` validates a criteria route param fail-soft). Distance
-only FRAMES the initial bbox (`regionAround`) — the geo filter is always the
-bbox — so "Any" frames national. (Free-text make/model search is not exposed in
-the UI; `search_posts` still supports a `text` ILIKE if it's re-added.)
+`lib/searchCriteria.ts` (`toRpcCriteria` drops defaults and NEVER emits a plate
+key — `RPC_CRITERIA_KEYS` makes that structural; `parseCriteria` validates a
+criteria route param fail-soft and migrates the pre-2026-08-10 singular
+`colour`).
+
+**Distance is bbox AND radius (changed 2026-08-10).** It used to only FRAME the
+initial bbox, so "within 5 miles" was a camera instruction that filtered
+nothing. It now does both: `regionAround` still sizes the box (the map stays in
+charge of panning), and the same radius is sent as `p_radius_m` with an origin,
+so the results are genuinely narrowed. Both constraints apply — the circle is
+inscribed in the box, and the extra selectivity is the corners.
+
+**When is either relative or absolute, never both.** The chips set
+`recencyDays` ("within the last N days"); the always-visible From/To pickers set
+`seenFrom` / `seenTo`, an exact window on `posts.last_seen_at` — the thing no
+day-count can express ("the week my car went missing"). Picking a date clears
+the preset; **"Any time" is the only way back out of a range**, because
+`DateTimeField.onChange` is non-nullable and the field has no clear affordance.
+`setWhen` in `useSearchCriteria.ts`
+owns the exclusion, because the server ANDs the two: a state holding both would
+silently intersect them and return fewer cars than either control claims.
+
+The wire value of `seenTo` is **exclusive** — the start of the day *after* the
+one picked (`exclusiveEndIso`), and the predicate is `<`. `last_seen_at` is a
+timestamp while the user picks a date, so an inclusive bound would drop a car
+last seen at 14:00 on the end date: the very day that was asked for, with no
+symptom beyond a few missing rows. Both bounds are anchored to the **local**
+day, so "10 May" doesn't shift with the phone's timezone.
+
+The origin is the **map centre** (the bbox centre `mapApi.geoParams` derives),
+never a raw device fix. That is deliberate twice over: the server learns no
+coordinate the user hasn't put on screen, and a stale device fix would exclude
+everything in view the moment the user panned to another city. When the app has
+no local fix the copy says so — "within 10 miles of **this area**" rather than
+"of you" (`distanceLabel`).
 
 **Plate search — DROPPED (deferred).** `posts.plate` is going dark (plate
 capture was removed from the posting flow).
