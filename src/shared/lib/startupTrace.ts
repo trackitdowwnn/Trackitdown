@@ -21,6 +21,18 @@
  *        only holds if something keeps measuring it. One info line per launch
  *        is well inside the boundaries docs/LOGGING.md asks for.
  *
+ * ⚠️ ONE TRACE PER JS CONTEXT, NOT PER LAUNCH IN DEV. Fast Refresh preserves
+ *        module state, so `flushed` survives a reload and a second trace never
+ *        fires — observed 2026-08-11, where a relaunch produced no trace at
+ *        all. To re-measure in dev you need a full bundle reload (`r` in Metro
+ *        or a cold start after `--clear`), not a hot reload. In production
+ *        every launch is a fresh context, so this does not apply there.
+ *
+ * ⚠️ DEV NUMBERS ARE NOT PRODUCTION NUMBERS. Over Metro, `fonts_ready` is
+ *        dominated by bundle download — it measured ~15.8s on device where a
+ *        release build would be a fraction of that. Read the SHAPE (which
+ *        phase owns the gap), not the totals.
+ *
  * PRIVACY: phase names and millisecond durations only — never a coordinate, an
  *        id, or anything about what was loaded. Nothing here is user data.
  * LINKS: src/shared/lib/logger.ts; docs/LOGGING.md;
