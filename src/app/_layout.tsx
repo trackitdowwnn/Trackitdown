@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { markStartup } from '@/shared/lib/startupTrace';
 import { usePalette, useThemeControls, type Palette } from '@/shared/theme';
 // Direct path, not the theme barrel: this module reaches AsyncStorage and
 // Appearance, and the barrel is imported by ~139 files and nearly every test —
@@ -130,6 +131,11 @@ function RootLayoutContent() {
   // to flash the background between the two.
   const onLayoutRootView = useCallback(() => {
     if (fontsLoaded || fontError) {
+      // Fonts BLOCK first paint by design (the null return below), so this is
+      // the first phase of the boot that anyone waits on. Marked here rather
+      // than in an effect for the same reason the splash handover is: this
+      // fires when the tree has actually drawn.
+      markStartup('fonts_ready');
       void SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsLoaded, fontError]);

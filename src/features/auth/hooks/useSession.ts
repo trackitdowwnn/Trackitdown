@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react';
 
 import { supabase } from '@/shared/api';
+import { markStartup } from '@/shared/lib/startupTrace';
 
 export type SessionState =
   | { status: 'loading'; userId: null }
@@ -25,6 +26,9 @@ export function useSession(): SessionState {
     let cancelled = false;
     const apply = (userId: string | undefined) => {
       if (!cancelled) {
+        // The moment the persisted session is known either way — the end of a
+        // phase that blocks the whole boot and was previously untimed.
+        markStartup('session_ready');
         setState(
           userId ? { status: 'signedIn', userId } : { status: 'signedOut', userId: null },
         );

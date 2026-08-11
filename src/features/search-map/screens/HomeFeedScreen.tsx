@@ -25,6 +25,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
+import { markStartup } from '@/shared/lib/startupTrace';
 import { SaveYourCarCard, useGarageNudgeCard } from '@/features/garage';
 import { useMyProfile } from '@/features/profile';
 import { WatchToggle } from '@/features/watchlist';
@@ -156,6 +157,22 @@ export function HomeFeedScreen() {
       ),
     [display],
   );
+
+  // MOUNT — see the phase's note in startupTrace. Empty deps so it fires once,
+  // as early in this component's life as an effect can.
+  useEffect(() => {
+    markStartup('feed_mounted');
+  }, []);
+
+  // FIRST PAINT — the moment there are actually cars on screen, which is what
+  // the user was waiting for. Not `feed_loaded` (the RPC returning) and not
+  // mount (the skeleton): both would flatter the number. markStartup is
+  // idempotent, so a re-render or a pull-to-refresh cannot re-fire it.
+  useEffect(() => {
+    if (sectionItems.length > 0) {
+      markStartup('feed_first_paint');
+    }
+  }, [sectionItems.length]);
 
   // The garage offer rides BETWEEN rails rather than above them, so the tab
   // opens on cars. Kept as a nullable item (rather than folded into the render)

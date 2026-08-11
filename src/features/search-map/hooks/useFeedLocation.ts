@@ -39,6 +39,7 @@ import {
   type FeedLocationPref,
 } from '@/shared/lib/location/feedLocationStorage';
 import { createLogger, redactLocation } from '@/shared/lib/logger';
+import { markStartup } from '@/shared/lib/startupTrace';
 
 import type { FeedLocation } from '../types';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
@@ -111,26 +112,50 @@ export function useFeedLocation(
       // prompt, the primer path asks. Either way the grant is banked before
       // the position is attempted, because the position is the part that can
       // take ten seconds or never arrive.
+      // PHASE TIMING. The startup trace narrowed the cold start to ~3.2s spent
+      // between session and location, and reading the cached fix first only
+      // took half of that off. A guess at the rest (the reverse geocode) was
+      // measured and proved wrong, so this splits the phase into its actual
+      // steps rather than inviting another guess. Durations only — no
+      // coordinates (docs/LOGGING.md).
+      const startedAt = Date.now();
       const granted = requestPermission
         ? await dev.requestPermission()
         : await dev.hasPermission();
+      const permissionMs = Date.now() - startedAt;
       notePermission(granted);
       if (!granted) {
         return false;
       }
+      const positionStartedAt = Date.now();
       const coord = await dev.getCurrentPosition();
+      const positionMs = Date.now() - positionStartedAt;
+      log.info('location_phase', {
+        permissionMs,
+        positionMs,
+        totalMs: Date.now() - startedAt,
+        located: coord != null,
+      });
       if (!coord) {
         return false;
       }
-      const area = await dev.reverseGeocodeArea(coord);
       if (!mounted.current) {
         return true;
       }
+      // THE POINT FIRST, ITS NAME SECOND. This used to await reverseGeocodeArea
+      // before publishing the location, which put a network round trip on the
+      // critical path of first paint — for a string the FEED DOES NOT USE. The
+      // query needs latitude, longitude and radius; the label is display text
+      // ("Hemel Hempstead") on a section header.
+      //
+      // Safe to fill in afterwards because useHomeFeed's effect deliberately
+      // excludes addressLabel from its dependencies — see the note there — so
+      // the second setLocation cannot trigger a refetch.
       setLocation({
         mode: 'local',
         latitude: coord.latitude,
         longitude: coord.longitude,
-        addressLabel: area ?? '',
+        addressLabel: '',
         radiusMiles: FEED_RADIUS_DEFAULT_MILES,
         fromPreference: false,
       });
@@ -138,17 +163,53 @@ export function useFeedLocation(
         source: requestPermission ? 'primer' : 'device',
         origin: redactLocation(coord.latitude, coord.longitude),
       });
+
+      // Off the critical path. A failure leaves the label empty, which the
+      // header already handles — the feed is fully usable without it.
+      void dev
+        .reverseGeocodeArea(coord)
+        .then((area) => {
+          if (!area || !mounted.current) {
+            return;
+          }
+          setLocation((current) =>
+            current?.mode === 'local' && current.latitude === coord.latitude
+              ? { ...current, addressLabel: area }
+              : // A newer location landed while we were geocoding — that label
+                // belongs to a point the user has moved on from.
+                current,
+          );
+        })
+        .catch(() => {});
       return true;
     },
     // deviceRef is captured once by design — see its declaration comment.
     [notePermission],
   );
 
+  // The boot phase ends the moment the feed knows WHERE it is, by any route —
+  // a stored preference, a device fix, or the national fallback. Idempotent, so
+  // the later GPS refinements that re-set this do not move the mark.
+  useEffect(() => {
+    if (location) {
+      markStartup('location_ready');
+    }
+  }, [location]);
+
   // Resolve the chain once on mount.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Times the two things standing between session_ready and location_ready
+      // that are NOT location work: how late this effect runs, and the
+      // AsyncStorage read it opens with. applyDeviceFix itself measured 337ms
+      // against a ~3,300ms phase, so the cost is one of these.
+      const effectAt = Date.now();
       const pref = await loadFeedLocationPref();
+      log.info('location_chain', {
+        prefReadMs: Date.now() - effectAt,
+        hadPref: pref != null,
+      });
       if (cancelled) {
         return;
       }

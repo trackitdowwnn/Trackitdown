@@ -983,3 +983,55 @@ begin
   delete from public.posts where id = v_post;
   raise notice 'CHECK 22 passed: make/model/colour match case-insensitively in both search functions';
 end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK — a DRIVEWAY theft's distance is measured from the coarsened point.
+--
+-- Neither feed RPC emits coordinates, so distance_miles was the last way in: it
+-- is rounded to 0.1 mile (~160m), and varying the origin across calls
+-- trilaterates a post to roughly street precision — well inside the ~1km grid a
+-- driveway theft is meant to be blurred to. (The radius clamp does NOT defend
+-- this: it bounds the radius, not the precision reported for a post inside it.)
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_driveway uuid := 'a1a1a1a1-0000-0000-0000-000000000006';
+  v_origin geography := ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography;
+  v_exact   numeric;
+  v_snapped numeric;
+  v_reported numeric;
+begin
+  select round((ST_Distance(p.last_seen_location, v_origin) / 1609.344)::numeric, 1),
+         round((ST_Distance(public.post_pin_geog(p.last_seen_location, p.stolen_from),
+                            v_origin) / 1609.344)::numeric, 1)
+    into v_exact, v_snapped
+  from public.posts p
+  where p.id = v_driveway and p.status = 'active' and p.stolen_from = 'driveway';
+
+  if v_exact is null then
+    raise exception 'CHECK FAILED: the seeded active driveway post is missing.';
+  end if;
+  if v_exact = v_snapped then
+    raise exception 'CHECK INCONCLUSIVE: this origin gives the same rounded distance for the '
+                    'exact and snapped points, so it cannot tell them apart. Move the origin.';
+  end if;
+
+  with s as (select jsonb_array_elements(public.get_home_feed(53.4808, -2.2426, 80467) -> 'sections') sec),
+       p as (select jsonb_array_elements(sec -> 'posts') post from s)
+  select (post ->> 'distance_miles')::numeric into v_reported
+  from p where (post ->> 'id')::uuid = v_driveway limit 1;
+
+  if v_reported is null then
+    raise exception 'CHECK FAILED: the driveway post is absent from the feed — coarsening must '
+                    'blur its distance, not remove it.';
+  end if;
+  if v_reported <> v_snapped then
+    raise exception 'CHECK FAILED: feed reported % miles for a driveway post; the coarsened '
+                    'distance is % and the EXACT one is %. Distance is still being measured '
+                    'from the victim''s home.', v_reported, v_snapped, v_exact;
+  end if;
+
+  raise notice 'CHECK passed: a driveway theft''s feed distance comes from the ~1km grid, not '
+               'its exact point.';
+end $$;

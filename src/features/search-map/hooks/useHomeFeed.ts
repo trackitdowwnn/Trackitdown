@@ -22,6 +22,19 @@ import { fetchHomeFeed, fetchNearbyPosts } from '../api/feedApi';
 import { FEED_PAGE_SIZE } from '../lib/feedConfig';
 import { appendHeroPage, heroPostCount } from '../lib/feedSections';
 
+/**
+ * Decimal places the feed's origin is rounded to before it becomes a
+ * dependency. 3dp is ~110m at UK latitudes — finer than a phone's own reported
+ * accuracy, and four orders of magnitude inside the 20-mile radius the feed
+ * asks about. See the note at its use.
+ */
+const FEED_ORIGIN_DP = 3;
+
+/** Round a coordinate to the feed's origin grid; null passes through. */
+export function quantiseCoord(value: number | null): number | null {
+  return value === null ? null : Number(value.toFixed(FEED_ORIGIN_DP));
+}
+
 export type HomeFeedStatus = 'loading' | 'ready' | 'error';
 
 export interface UseHomeFeedResult {
@@ -120,8 +133,21 @@ export function useHomeFeed(location: FeedLocation | null): UseHomeFeedResult {
   // fetch …). Only the fields the query uses are deps; addressLabel changes
   // never refetch.
   const mode = location?.mode ?? null;
-  const lat = location?.mode === 'local' ? location.latitude : null;
-  const lng = location?.mode === 'local' ? location.longitude : null;
+  // QUANTISED, and this is load-bearing. A device fix refines several times in
+  // the seconds after launch, each landing a few dozen metres from the last —
+  // enough to change a raw dependency, nowhere near enough to change a
+  // TWENTY-MILE radius query. Measured on device 2026-08-10: one cold start
+  // fetched the feed four times, three of them for effectively the same point,
+  // burning ~11s of RPC time to compute the same answer. The last of the four
+  // took 316ms, so most of that was the three requests contending with each
+  // other.
+  //
+  // 3dp is ~110m at UK latitudes — below the accuracy a phone reports anyway,
+  // and four orders of magnitude inside the radius being asked for. The
+  // quantised value is used for the QUERY too, not just the dependency, so the
+  // effect and the request can never disagree about which point they mean.
+  const lat = quantiseCoord(location?.mode === 'local' ? location.latitude : null);
+  const lng = quantiseCoord(location?.mode === 'local' ? location.longitude : null);
   const radius = location?.mode === 'local' ? location.radiusMiles : null;
 
   useEffect(() => {
