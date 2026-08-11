@@ -413,8 +413,9 @@ A post carries structured, spotter-useful data beyond make/model/plate:
   **recovered** post's precise point.)
   **⚠️ STILL OPEN:** the search RPCs match on the *unsnapped* point, so the bbox
   is a bisection oracle; and feed `distance_miles` is computed from the exact
-  point, so it trilaterates. Coarsening is NOT complete — see
-  SECURITY_AND_TRUST §2.
+  point, so it trilaterates — CLOSED 2026-08-11 (20260811100000): both feed
+  RPCs now measure distance from the coarsened point via `post_pin_geog`. The
+  search bbox oracle remains OPEN. See SECURITY_AND_TRUST §2.
 - **Guided descriptions** — structured prompts ("how you'd recognise it",
   "how it drives / anything odd") replace the single free-text note for new
   posts; the legacy `owner_note` still renders for older posts.

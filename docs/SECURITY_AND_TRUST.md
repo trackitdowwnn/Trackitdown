@@ -86,11 +86,14 @@ commenting standards.
     and recover a driveway post's true location to sub-metre precision in a few
     dozen requests. `get_home_feed`'s recovered branch shows the fix: match and
     measure on the snapped point, not just emit it.
-    (b) `distance_miles` on the feed is computed from the exact point at 0.1mi
-    precision, so varying the origin trilaterates it — the same attack that
-    branch defends against for recovered posts.
-    Neither is closed. Do not describe driveway coarsening as complete until
-    they are.
+    (b) **CLOSED 2026-08-11** (20260811100000). Feed `distance_miles` was
+    computed from the exact point at 0.1mi precision, so varying the origin
+    trilaterated a home to roughly street precision — inside the ~1km grid it
+    is meant to be blurred to. `get_home_feed` and `get_nearby_posts` now
+    measure from the coarsened point via `post_pin_geog`. (The radius clamp
+    never defended this, despite an old note saying so: it bounds the radius,
+    not the precision reported for a post inside it.)
+    (a) remains OPEN — do not describe driveway coarsening as complete.
   - **Map-search distance filter (2026-08-10).** `search_posts` /
     `search_posts_count` take a caller-supplied origin and a radius clamped to
     1–50 miles, mirroring `get_home_feed`. The origin is always the exact
