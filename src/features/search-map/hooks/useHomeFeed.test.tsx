@@ -111,6 +111,50 @@ describe('loading', () => {
       }),
     );
   });
+
+  it('does NOT reload for GPS jitter — a refinement of a few metres', async () => {
+    // Measured on device: a cold start fetched the feed FOUR times, three of
+    // them for effectively the same point, as the device fix refined. ~11s of
+    // RPC time for the same answer, and the requests contended with each other.
+    // The feed asks about a 20-MILE radius; ~30m cannot change what comes back.
+    mockFetchHomeFeed.mockResolvedValue([fullFirstPage]);
+    const { result, rerender } = await renderHook(
+      ({ loc }: { loc: FeedLocation | null }) => useHomeFeed(loc),
+      { initialProps: { loc: LOCAL as FeedLocation | null } },
+    );
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    const callsAfterFirstLoad = mockFetchHomeFeed.mock.calls.length;
+
+    // ~30m north-east, the scale a phone refines by in the seconds after launch.
+    await rerender({
+      loc: { ...LOCAL, latitude: 53.48029, longitude: -2.23971 } as FeedLocation,
+    });
+    // ...and again, as it settles.
+    await rerender({
+      loc: { ...LOCAL, latitude: 53.48041, longitude: -2.24022 } as FeedLocation,
+    });
+
+    expect(mockFetchHomeFeed.mock.calls.length).toBe(callsAfterFirstLoad);
+  });
+
+  it('DOES reload for a real move', async () => {
+    // The other half: quantising must not make the feed deaf. ~1.5km is a
+    // different place, and the near_you rail would be wrong without a refetch.
+    mockFetchHomeFeed.mockResolvedValue([fullFirstPage]);
+    const { result, rerender } = await renderHook(
+      ({ loc }: { loc: FeedLocation | null }) => useHomeFeed(loc),
+      { initialProps: { loc: LOCAL as FeedLocation | null } },
+    );
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await rerender({ loc: { ...LOCAL, latitude: 53.495 } as FeedLocation });
+
+    await waitFor(() =>
+      expect(mockFetchHomeFeed).toHaveBeenLastCalledWith(
+        expect.objectContaining({ latitude: 53.495 }),
+      ),
+    );
+  });
 });
 
 describe('refresh', () => {
