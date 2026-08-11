@@ -112,14 +112,30 @@ export function useFeedLocation(
       // prompt, the primer path asks. Either way the grant is banked before
       // the position is attempted, because the position is the part that can
       // take ten seconds or never arrive.
+      // PHASE TIMING. The startup trace narrowed the cold start to ~3.2s spent
+      // between session and location, and reading the cached fix first only
+      // took half of that off. A guess at the rest (the reverse geocode) was
+      // measured and proved wrong, so this splits the phase into its actual
+      // steps rather than inviting another guess. Durations only — no
+      // coordinates (docs/LOGGING.md).
+      const startedAt = Date.now();
       const granted = requestPermission
         ? await dev.requestPermission()
         : await dev.hasPermission();
+      const permissionMs = Date.now() - startedAt;
       notePermission(granted);
       if (!granted) {
         return false;
       }
+      const positionStartedAt = Date.now();
       const coord = await dev.getCurrentPosition();
+      const positionMs = Date.now() - positionStartedAt;
+      log.info('location_phase', {
+        permissionMs,
+        positionMs,
+        totalMs: Date.now() - startedAt,
+        located: coord != null,
+      });
       if (!coord) {
         return false;
       }
