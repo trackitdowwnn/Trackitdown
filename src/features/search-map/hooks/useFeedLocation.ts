@@ -123,15 +123,23 @@ export function useFeedLocation(
       if (!coord) {
         return false;
       }
-      const area = await dev.reverseGeocodeArea(coord);
       if (!mounted.current) {
         return true;
       }
+      // THE POINT FIRST, ITS NAME SECOND. This used to await reverseGeocodeArea
+      // before publishing the location, which put a network round trip on the
+      // critical path of first paint — for a string the FEED DOES NOT USE. The
+      // query needs latitude, longitude and radius; the label is display text
+      // ("Hemel Hempstead") on a section header.
+      //
+      // Safe to fill in afterwards because useHomeFeed's effect deliberately
+      // excludes addressLabel from its dependencies — see the note there — so
+      // the second setLocation cannot trigger a refetch.
       setLocation({
         mode: 'local',
         latitude: coord.latitude,
         longitude: coord.longitude,
-        addressLabel: area ?? '',
+        addressLabel: '',
         radiusMiles: FEED_RADIUS_DEFAULT_MILES,
         fromPreference: false,
       });
@@ -139,6 +147,24 @@ export function useFeedLocation(
         source: requestPermission ? 'primer' : 'device',
         origin: redactLocation(coord.latitude, coord.longitude),
       });
+
+      // Off the critical path. A failure leaves the label empty, which the
+      // header already handles — the feed is fully usable without it.
+      void dev
+        .reverseGeocodeArea(coord)
+        .then((area) => {
+          if (!area || !mounted.current) {
+            return;
+          }
+          setLocation((current) =>
+            current?.mode === 'local' && current.latitude === coord.latitude
+              ? { ...current, addressLabel: area }
+              : // A newer location landed while we were geocoding — that label
+                // belongs to a point the user has moved on from.
+                current,
+          );
+        })
+        .catch(() => {});
       return true;
     },
     // deviceRef is captured once by design — see its declaration comment.

@@ -65,6 +65,44 @@ describe('useFeedLocation chain', () => {
     expect(dev.getCurrentPosition).not.toHaveBeenCalled();
   });
 
+  it('publishes the location BEFORE the area name resolves', async () => {
+    // The area label is display text the feed query never uses, and awaiting it
+    // put a network round trip on the critical path of first paint. Measured
+    // 2026-08-11: the location phase still cost ~3.2s once the position itself
+    // came from cache.
+    let nameThePlace: (area: string | null) => void = () => {};
+    const dev = device({
+      hasPermission: jest.fn(async () => true),
+      getCurrentPosition: jest.fn(async () => SALFORD),
+      // A geocode that hangs until the test lets it finish.
+      reverseGeocodeArea: jest.fn(
+        () =>
+          new Promise<string | null>((resolve) => {
+            nameThePlace = resolve;
+          }),
+      ),
+    });
+
+    const { result } = await renderHook(() => useFeedLocation(dev));
+
+    // Usable already: coordinates present, label still blank.
+    await waitFor(() =>
+      expect(result.current.location).toEqual(
+        expect.objectContaining({ mode: 'local', addressLabel: '' }),
+      ),
+    );
+
+    // ...and the name arrives afterwards, without disturbing the coordinates.
+    await act(async () => {
+      nameThePlace('Salford');
+    });
+    await waitFor(() =>
+      expect(result.current.location).toEqual(
+        expect.objectContaining({ addressLabel: 'Salford', latitude: SALFORD.latitude }),
+      ),
+    );
+  });
+
   it('falls to the device fix when permission is already granted', async () => {
     const dev = device({
       hasPermission: jest.fn(async () => true),
