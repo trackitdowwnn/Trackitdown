@@ -158,6 +158,12 @@ export function HomeFeedScreen() {
     [display],
   );
 
+  // MOUNT — see the phase's note in startupTrace. Empty deps so it fires once,
+  // as early in this component's life as an effect can.
+  useEffect(() => {
+    markStartup('feed_mounted');
+  }, []);
+
   // FIRST PAINT — the moment there are actually cars on screen, which is what
   // the user was waiting for. Not `feed_loaded` (the RPC returning) and not
   // mount (the skeleton): both would flatter the number. markStartup is

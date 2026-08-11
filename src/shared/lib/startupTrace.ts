@@ -56,6 +56,13 @@ const log = createLogger('startup');
 const PHASES = [
   'fonts_ready',
   'session_ready',
+  // When the Explore screen itself mounts. Splits the gap between the session
+  // resolving and the feed knowing where it is: everything inside
+  // useFeedLocation measured ~445ms against a ~3,300ms phase, so the rest is
+  // either getting TO this screen (navigator, AuthGate, providers) or
+  // something between mounting and the location effect running. This mark
+  // says which.
+  'feed_mounted',
   'location_ready',
   'feed_loaded',
   'feed_first_paint',
