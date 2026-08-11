@@ -411,11 +411,14 @@ A post carries structured, spotter-useful data beyond make/model/plate:
   `last_seen_area` and a distance but no coordinates. (`get_home_feed`'s own
   `ST_SnapToGrid` is a different rule for a different status — it withholds a
   **recovered** post's precise point.)
-  **⚠️ STILL OPEN:** the search RPCs match on the *unsnapped* point, so the bbox
-  is a bisection oracle; and feed `distance_miles` is computed from the exact
-  point, so it trilaterates — CLOSED 2026-08-11 (20260811100000): both feed
-  RPCs now measure distance from the coarsened point via `post_pin_geog`. The
-  search bbox oracle remains OPEN. See SECURITY_AND_TRUST §2.
+  Two indirect routes to the same address were found and closed in the same
+  week, both of which survived the pin being snapped: the search RPCs MATCHED
+  on the unsnapped point while emitting a snapped one, making the bbox a
+  bisection oracle (closed 20260810200000), and feed `distance_miles` was
+  measured from the exact point, making it trilaterable (closed
+  20260811100000). The lesson is in `post_pin_geog`: a coarsened point is only
+  coarse if everything — membership, distance and emission — reads the same
+  one. See SECURITY_AND_TRUST §2.
 - **Guided descriptions** — structured prompts ("how you'd recognise it",
   "how it drives / anything odd") replace the single free-text note for new
   posts; the legacy `owner_note` still renders for older posts.
