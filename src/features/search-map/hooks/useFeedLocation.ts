@@ -200,7 +200,16 @@ export function useFeedLocation(
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Times the two things standing between session_ready and location_ready
+      // that are NOT location work: how late this effect runs, and the
+      // AsyncStorage read it opens with. applyDeviceFix itself measured 337ms
+      // against a ~3,300ms phase, so the cost is one of these.
+      const effectAt = Date.now();
       const pref = await loadFeedLocationPref();
+      log.info('location_chain', {
+        prefReadMs: Date.now() - effectAt,
+        hadPref: pref != null,
+      });
       if (cancelled) {
         return;
       }
