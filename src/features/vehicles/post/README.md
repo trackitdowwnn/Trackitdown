@@ -85,13 +85,25 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
    fields (`stolenFrom`/`keysTaken`/`descDrives`) are no longer collected in the
    wizard but stay editable post-hoc via the detail's theft-context pencil.
 
-**Phase 3 — Bounty**
-11. **Bounty** — `MoneySlider` with the 95/5 + escrow/refund transparency panel.
+**Phase 3 — Reward** (two steps since 2026-08-20, ADR-0014)
+11. **Pricing mode** — `CardSelect`: *offer a reward* (a bounty) or *no reward,
+    £4.99 to list*. **Deliberately unseeded**, so Next stays disabled until the
+    owner chooses: defaulting to `bounty` makes the £50 minimum feel pre-agreed
+    (the barrier this option exists to remove), and defaulting to `fee` nudges
+    them off a reward that makes their car more likely to be found. The fee card
+    names its price AND says non-refundable — this step is the ONLY pre-payment
+    disclosure surface in the flow, because there is no checkout screen.
+11b. **Bounty** — `MoneySlider` with the 95/5 + escrow/refund transparency panel.
+    **Walked past entirely** when there is no reward to set (the wizard's `when`
+    gating), so it contributes no screen, no review row and no schema check.
+    `bountyAmountPence` keeps its value across a mode switch, so changing your
+    mind restores your own figure rather than resetting the control.
     (Proof-of-ownership / V5C collection was REMOVED from the app — there is no
     verification step.)
 12. **Review** — the framework's built-in review (edit-jump-return per step).
-13. **Submit** — the final CTA reads "Post & pay £<bounty>" (a dynamic
-    `finalCtaLabel` reading the bounty answer — a payment button names its sum).
+13. **Submit** — the final CTA reads "Post & pay £<amount>" — the bounty, or
+    £4.99 in fee mode (a dynamic `finalCtaLabel`; a payment button names its sum
+    in both modes).
     `onComplete` (in `PostACarScreen`) calls `create_post` (draft), then opens
     the escrow `PaymentIntent` (`createBountyPaymentIntent`) and presents Stripe's
     PaymentSheet (`useBountyPayment`). On **paid** it routes to the new post (the
@@ -195,14 +207,20 @@ The escrow-charge slice is built. The contract between this flow and payments:
 
 1. This flow calls `create_post(...)` → `{ post_id, status: 'draft' }`.
 2. `createBountyPaymentIntent(post_id)` invokes the `create-payment-intent` Edge
-   Function, which verifies the caller **owns** the draft, reads the bounty
-   **from the DB** (the client never sends an amount), creates a Stripe
-   PaymentIntent (idempotency key = `post_id`), records a `requires_payment`
-   ledger row, and returns the client secret.
+   Function, which verifies the caller **owns** the draft, reads the price
+   **from the DB** (the client never sends an amount, and never sends the fee —
+   the price is not ours to name), creates a Stripe PaymentIntent (idempotency
+   key = kind + `post_id` + amount), records a `requires_payment` ledger row,
+   and returns the client secret. **Which price** is decided by the post, not by
+   this flow: a null `bounty_amount_pence` means the fee applies (ADR-0014).
+   `buildCreatePostParams` is the single place `pricingMode: 'fee'` becomes the
+   `p_bounty_amount_pence: null` the server reads.
 3. `useBountyPayment` presents Stripe's PaymentSheet with that secret.
 4. The **`stripe-webhook`** function is the authoritative state change: on
-   `payment_intent.succeeded` it flips the ledger to `held` and the post
-   **`draft → pending_verification`** (server-side, idempotent); on
+   `payment_intent.succeeded` it calls ONE dispatcher
+   (`mark_post_payment_succeeded`), which routes by `payments.kind` — a bounty
+   becomes `held`, a listing fee becomes `collected` — and either way the post
+   goes **`draft → active`** (live-on-payment, server-side, idempotent); on
    `payment_intent.payment_failed` it marks the ledger `failed` and leaves the
    draft for retry. The client's "paid" result only routes away.
 

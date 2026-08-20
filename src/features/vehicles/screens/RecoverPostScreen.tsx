@@ -16,17 +16,28 @@
  *        screen must not push toward either; the copy stays even-handed and the
  *        no-spotter option is a peer, not a get-out.
  *
- * MONEY: BOTH endings now actually move money. Until 2026-08-03 only the refund
- *        did: the credited branch showed "we'll get the bounty to them" and
- *        called nothing, stranding the post on `recovery_claimed` — which also
- *        blocked the owner's account deletion forever. Once the claim lands it
- *        CANNOT be undone (`claim_recovery` accepts `active` only), so every
+ * MONEY: on a BOUNTY listing both endings move money. Until 2026-08-03 only the
+ *        refund did: the credited branch showed "we'll get the bounty to them"
+ *        and called nothing, stranding the post on `recovery_claimed` — which
+ *        also blocked the owner's account deletion forever. Once the claim lands
+ *        it CANNOT be undone (`claim_recovery` accepts `active` only), so every
  *        branch after it — including the failures — is worded as "they are
  *        credited, here is where the money is", never as "try again".
+ *
+ *        A NO-REWARD LISTING IS A THIRD PATH (ADR-0014) and moves no money at
+ *        all. `claim_recovery` closes the post itself and answers
+ *        `nextStep: 'done'`, so BOTH endings call neither Edge Function — and
+ *        must not, because refund-recovery 409s on a post that is already
+ *        terminal, which is how a successful recovery once surfaced as an error.
+ *        Every money promise on this screen is therefore branched on `noReward`;
+ *        the pricing mode arrives as the `bounty` route param, since the screen
+ *        reads sightings and never the post itself.
  * LINKS: ../api/recoveryApi.ts (the three calls and why there are three);
  *        src/features/sightings/hooks/usePostSightings.ts;
  *        supabase/migrations/20260802200000_claim_recovery.sql;
- *        docs/DOMAIN.md (lifecycle 4-6, "Single winner").
+ *        supabase/migrations/20260820110000_no_bounty_listing_fee.sql;
+ *        docs/decisions/ADR-0014-no-bounty-listings.md;
+ *        docs/DOMAIN.md (lifecycle 4-6, "Single winner", "Listing pricing").
  */
 
 import { useRouter } from 'expo-router';
@@ -46,12 +57,22 @@ import { ExitAttestation } from '../components/ExitAttestation';
 
 export interface RecoverPostScreenProps {
   postId: string;
+  /**
+   * The listing's bounty in pence, NULL for a no-reward listing (ADR-0014), or
+   * undefined when the caller did not say. Drives the option copy, which
+   * otherwise promises a refund and a payout that a fee listing does not have.
+   * Undefined keeps the bounty wording — the conservative default, since the
+   * server is authoritative about what actually happens either way.
+   */
+  bountyPence?: number | null;
 }
 
 /** The sentinel for "nobody helped" — a real answer, not the absence of one. */
 const NO_SPOTTER = '__none__';
 
-export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
+export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProps) {
+  // ADR-0014: no bounty means no refund to get back and no payout to send.
+  const noReward = bountyPence === null;
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const router = useRouter();
@@ -73,8 +94,18 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
   const finishNoSpotter = useCallback(
     async (attestedSightingIds?: string[]) => {
       if (!claimedRef.current) {
-        await claimRecovery(postId, null);
+        const claim = await claimRecovery(postId, null);
         claimedRef.current = true;
+        // ADR-0014: a no-reward listing has no money leg, so claim_recovery has
+        // ALREADY closed the post and there is no refund to ask for. Calling
+        // refund-recovery anyway would 409 (POST_NOT_CLAIMED, because the post
+        // is no longer recovery_claimed) and show the owner an error toast for
+        // a recovery that in fact succeeded.
+        if (claim.nextStep === 'done') {
+          toast.show('Glad you got it back. Your listing is closed.');
+          router.back();
+          return;
+        }
       }
       const refund = await refundRecovery(postId, attestedSightingIds);
       if (refund.held) {
@@ -109,14 +140,25 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
         // sightings mean the attestation step comes first. A failed
         // pre-flight proceeds — the server gate re-checks and answers
         // ATTESTATION_REQUIRED if it must.
-        try {
-          const check = await exitCheck(postId);
-          if (check.requiresAttestation) {
-            setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
-            return;
+        //
+        // SKIPPED ENTIRELY on a no-reward listing (ADR-0014). `exit_check` is
+        // purely sighting-based and has no pricing awareness, so it would show
+        // ExitAttestation — whose copy is "one thing before your refund",
+        // "they've earned the bounty", "your refund is sent after N hours" — for
+        // a listing with no refund, no bounty and no hold. The server already
+        // returns before the owner-denial gate for these posts, so this only
+        // ever asked a victim to make a formal attestation under a false
+        // premise.
+        if (!noReward) {
+          try {
+            const check = await exitCheck(postId);
+            if (check.requiresAttestation) {
+              setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
+              return;
+            }
+          } catch {
+            // fall through to the claim; the server still enforces
           }
-        } catch {
-          // fall through to the claim; the server still enforces
         }
         await finishNoSpotter();
         return;
@@ -129,6 +171,30 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
         // refund anyway, honour it through the shared ending.
         claimedRef.current = true;
         await finishNoSpotter();
+        return;
+      }
+
+      if (claim.nextStep === 'done') {
+        // ADR-0014: a no-reward listing. The spotter IS credited — that credit
+        // and the reputation it carries ARE the reward here — but there is no
+        // bounty to release, and claim_recovery has already closed the post.
+        // Falling through to the payout block below would call release-payout
+        // (a no-op) and then toast "we'll send the bounty automatically", which
+        // promises the owner and the spotter money that does not exist.
+        claimedRef.current = true;
+        // NOT notifyCredited: that push is a MONEY push ("You've earned £X",
+        // routing to /payouts). Its SQL reads the amount from a held/released
+        // payment and returns {claimed:false} rather than invent a number — a
+        // fee listing's payment is `collected`, so calling it here would send
+        // nothing at all. Left uncalled rather than called-as-a-no-op so the
+        // absence is legible.
+        //
+        // ⚠️ KNOWN GAP, recorded in DOMAIN.md: the spotter is credited and
+        // currently learns it only by opening the app. Closing it needs a
+        // non-money credited push (copy + kind + migration) — deliberately not
+        // smuggled into this change.
+        toast.show('They’re credited. The recovery is added to their spotter record.');
+        router.back();
         return;
       }
 
@@ -180,7 +246,7 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [finishNoSpotter, postId, router, selected, submitting, toast]);
+  }, [finishNoSpotter, noReward, postId, router, selected, submitting, toast]);
 
   /** The attested no-spotter ending — the attestation screen's confirm. */
   const submitAttested = useCallback(
@@ -315,7 +381,9 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
         >
           <Text style={styles.optionTitle}>I found it another way</Text>
           <Text style={styles.optionNote}>
-            The police, or you. Your bounty comes back to you, minus the card fee.
+            {noReward
+              ? 'The police, or you. We’ll just close the listing.'
+              : 'The police, or you. Your bounty comes back to you, minus the card fee.'}
           </Text>
         </Pressable>
       </View>
@@ -331,9 +399,15 @@ export function RecoverPostScreen({ postId }: RecoverPostScreenProps) {
           one way or the other, and it cannot be undone. */}
       <Text style={styles.caption}>
         {selected === NO_SPOTTER
-          ? 'We’ll close the listing and refund your bounty.'
+          ? noReward
+            ? 'We’ll close the listing.'
+            : 'We’ll close the listing and refund your bounty.'
           : selected
-            ? 'We’ll close the listing and send your bounty to that spotter. Only one sighting can be credited.'
+            ? noReward
+              ? // No cash to promise — but the credit is real and is what the
+                // spotter gets, so say that rather than nothing.
+                'We’ll close the listing and credit that spotter. Only one sighting can be credited.'
+              : 'We’ll close the listing and send your bounty to that spotter. Only one sighting can be credited.'
             : 'Choose one to continue.'}
       </Text>
 

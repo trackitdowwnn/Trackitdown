@@ -424,3 +424,119 @@ describe('when the server refuses', () => {
     expect(mockBack).not.toHaveBeenCalled(); // stay put so they can retry
   });
 });
+
+/**
+ * ADR-0014 — a NO-REWARD listing has no money leg. `claim_recovery` closes the
+ * post itself and answers `nextStep: 'done'`.
+ *
+ * These exist because the first implementation shipped without them and the bug
+ * was invisible from the server side: `claim_recovery` was correct, its SQL
+ * check passed, and the CLIENT collapsed 'done' into 'refund'. That sent every
+ * no-reward recovery into refund-recovery, which 409s on a post that is already
+ * terminal — so a recovery that actually SUCCEEDED showed the owner an error.
+ */
+describe('a no-reward listing (nextStep: done)', () => {
+  it('closes a credited recovery without calling refund or payout', async () => {
+    mockClaim.mockResolvedValue({ nextStep: 'done', creditedSightingId: 'sighting-1' });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={null} />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    expect(mockClaim).toHaveBeenCalledWith('p1', 'sighting-1');
+    // The two calls that would 409 / no-op on an already-terminal post.
+    expect(mockRefund).not.toHaveBeenCalled();
+    expect(mockRelease).not.toHaveBeenCalled();
+    // ...and NOT the credited push. `claim_credited_notification` consumes the
+    // one-shot `credited_notified_at` claim BEFORE it checks for a held payment,
+    // so calling it on a fee post burns that claim FOREVER and still sends
+    // nothing — permanently silencing the spotter even after a non-money push
+    // ships. Pinned here so a future "let's tell them" refactor cannot quietly
+    // destroy the claim it will need. See DOMAIN.md's known gap.
+    expect(mockNotifyCredited).not.toHaveBeenCalled();
+    // ...and the owner is told it worked, not that it failed.
+    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+    const said = mockShowToast.mock.calls.map((c) => String(c[0])).join(' | ');
+    expect(said).toMatch(/credited/i);
+    // MONEY: never promise a payment on a listing that has none.
+    expect(said).not.toMatch(/bounty|£/i);
+  });
+
+  it('closes a no-spotter recovery without calling refund', async () => {
+    mockClaim.mockResolvedValue({ nextStep: 'done', creditedSightingId: null });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={null} />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-none'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    expect(mockClaim).toHaveBeenCalledWith('p1', null);
+    expect(mockRefund).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockBack).toHaveBeenCalled());
+    const said = mockShowToast.mock.calls.map((c) => String(c[0])).join(' | ');
+    // The old bug rendered "£0 is on its way back to you" here.
+    expect(said).not.toMatch(/£/);
+  });
+
+  it('skips the attestation pre-flight — there is no refund to hold', async () => {
+    // exit_check is purely sighting-based and would show ExitAttestation, whose
+    // copy is all about a 72-hour refund hold. Asking a victim to attest under
+    // that premise on a listing with no refund is the thing being prevented.
+    mockExitCheck.mockResolvedValue({
+      requiresAttestation: true,
+      sightingIds: ['sighting-1'],
+      windowDays: 14,
+      holdHours: 72,
+    });
+    mockClaim.mockResolvedValue({ nextStep: 'done', creditedSightingId: null });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={null} />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-none'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    expect(mockExitCheck).not.toHaveBeenCalled();
+    expect(mockClaim).toHaveBeenCalledWith('p1', null);
+  });
+
+  it('still runs the attestation pre-flight on a BOUNTY listing', async () => {
+    // The control: the guard above must be scoped to no-reward listings only,
+    // or it would silently disable the owner-denial protection for everyone.
+    mockExitCheck.mockResolvedValue({
+      requiresAttestation: true,
+      sightingIds: ['sighting-1'],
+      windowDays: 14,
+      holdHours: 72,
+    });
+    const { getByText, getByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={50000} />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-none'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+
+    expect(mockExitCheck).toHaveBeenCalledWith('p1');
+    // Attestation required → the claim must NOT have happened yet.
+    expect(mockClaim).not.toHaveBeenCalled();
+  });
+});

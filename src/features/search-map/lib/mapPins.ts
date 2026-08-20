@@ -52,6 +52,15 @@ export const AT_MARKER_LIMIT = 12;
  * decides which marker a tap hits. Same rule, same reason, as the screen's
  * `sortedPosts`.
  */
+/**
+ * Sort key for a bounty that may be absent. -1 is below every real bounty (the
+ * posts CHECK floors them at 5000 pence), so no-reward listings rank last under
+ * the descending comparator without ever producing NaN.
+ */
+function bountyRank(bountyPence: number | null): number {
+  return bountyPence ?? -1;
+}
+
 export function pinsForRegion(posts: MapPost[], region: GeoRegion): MapPinItem[] {
   const bbox = regionToBbox(region);
   const inView = posts.filter(
@@ -64,7 +73,18 @@ export function pinsForRegion(posts: MapPost[], region: GeoRegion): MapPinItem[]
 
   const rankById = new Map(
     [...inView]
-      .sort((a, b) => b.bountyPence - a.bountyPence || a.id.localeCompare(b.id))
+      .sort(
+        (a, b) =>
+          // MONEY/ORDERING: a no-reward listing has a NULL bounty (ADR-0014), and
+          // `b.bountyPence - a.bountyPence` on a null yields NaN — which makes the
+          // comparator INCONSISTENT, not merely wrong. That matters more here than
+          // it looks: `rank` drives marker zIndex (so it decides which marker a tap
+          // hits), the AT_MARKER_LIMIT assistive-tech cap, and progressive mount
+          // order. Sorted last explicitly, keeping the id tie-break, which is itself
+          // load-bearing (server order varies between searches, and paint order must
+          // not).
+          bountyRank(b.bountyPence) - bountyRank(a.bountyPence) || a.id.localeCompare(b.id),
+      )
       .map((post, index) => [post.id, index] as const),
   );
 
@@ -79,12 +99,18 @@ export function pinsForRegion(posts: MapPost[], region: GeoRegion): MapPinItem[]
 }
 
 /**
- * Roughly how wide a marker draws, in points — a £ pill at four digits. Only
- * ever used to keep one off the viewport edge, so an approximation is fine;
- * erring high just nudges a little sooner. A five-digit bounty draws wider and
- * could still lose a point or two at the very edge.
+ * Roughly how wide a marker draws, in points. Only ever used to keep one off the
+ * viewport edge, so an approximation is fine and erring HIGH just nudges a
+ * little sooner — erring low is the failure that matters, because a half-clipped
+ * pill reads as a GROUP of cars (the exact misreading the price-less tier was
+ * removed to stop, see the MapPins header).
+ *
+ * Raised from 72 to 120 on 2026-08-20: 72 sized a "£1,234" pill, but a no-reward
+ * listing prints "No reward" (ADR-0014), which draws ~95dp at typography.mapPin
+ * and ~118dp at the mapPinFontScaleCap of 1.3. At 72 those markers were never
+ * nudged and clipped at the edge.
  */
-const MARKER_WIDTH_DP = 72;
+const MARKER_WIDTH_DP = 120;
 
 /**
  * Shift the anchor of any marker close enough to a LEFT or RIGHT viewport edge

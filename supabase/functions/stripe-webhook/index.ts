@@ -1,12 +1,18 @@
 /**
- * WHAT:  Stripe webhook receiver — the AUTHORITATIVE source of the escrow state
+ * WHAT:  Stripe webhook receiver — the AUTHORITATIVE source of the payment state
  *        change. Verifies the Stripe signature, dedupes the event, and on
- *        payment_intent.succeeded flips the ledger row to 'held' and the post
+ *        payment_intent.succeeded advances the ledger row and the post
  *        draft -> ACTIVE (live-on-payment); on payment_intent.payment_failed
  *        marks the ledger row failed (post left as draft for retry); on
  *        charge.refunded confirms the bounty refund (payment -> refunded, post ->
  *        cancelled) — the deactivate-post function is authoritative, this
  *        reconciles it.
+ *
+ *        The succeeded branch serves BOTH pricing modes through one dispatcher
+ *        RPC: an escrowed bounty becomes 'held', a fixed listing fee becomes
+ *        'collected' (ADR-0014). charge.refunded stays bounty-only — a listing
+ *        fee is never refunded, so no refund event can exist for one, and
+ *        mark_post_payment_refunded's status guard makes a stray one a no-op.
  * WHY:   The client success callback is NOT trusted to move money state — a
  *        cancelled app, a lying client, or a lost network must never leave
  *        escrow and the post out of sync. Stripe calls this endpoint directly;
@@ -19,6 +25,9 @@
  *          (claim_stripe_event, mark_post_payment_held, mark_post_payment_failed);
  *        supabase/migrations/20260730100000_live_on_payment.sql (redefines
  *          mark_post_payment_held: draft -> ACTIVE);
+ *        supabase/migrations/20260820110000_no_bounty_listing_fee.sql
+ *          (mark_post_payment_succeeded — the dispatcher this calls — plus
+ *          mark_listing_fee_collected); docs/decisions/ADR-0014-no-bounty-listings.md;
  *        supabase/migrations/20260729100000_post_refund_cancel.sql
  *          (mark_post_payment_refunded — the charge.refunded branch);
  *        docs/decisions/ADR-0002-stripe-connect.md (webhooks: verify + dedupe +
@@ -100,11 +109,20 @@ Deno.serve(async (request) => {
   try {
     if (event.type === 'payment_intent.succeeded') {
       const intent = event.data.object as Stripe.PaymentIntent;
-      const { error } = await admin.rpc('mark_post_payment_held', {
+      // ONE call, whichever pricing mode the post uses (ADR-0014).
+      // mark_post_payment_succeeded reads payments.kind and delegates —
+      // bounty_escrow -> mark_post_payment_held (-> 'held'), listing_fee ->
+      // mark_listing_fee_collected (-> 'collected'). Dispatching in SQL rather
+      // than here keeps the kind lookup and the money transition inside one
+      // transaction against a locked row, instead of a read-then-act pair with a
+      // window between them. Both delegates stay idempotent and never-regress.
+      const { error } = await admin.rpc('mark_post_payment_succeeded', {
         p_payment_intent_id: intent.id,
       });
       if (error) throw error;
-      console.log('[payments] escrow held', { paymentIntentId: intent.id });
+      console.log('[payments] charge captured', { paymentIntentId: intent.id });
+      // Correct for BOTH kinds: a fee post goes draft -> active exactly as an
+      // escrowed one does, so it must reach spotters the same way.
       wentLiveIntentId = intent.id;
     } else if (event.type === 'payment_intent.payment_failed') {
       const intent = event.data.object as Stripe.PaymentIntent;

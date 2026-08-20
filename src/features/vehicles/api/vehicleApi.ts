@@ -56,7 +56,8 @@ const visibleSchema = z.object({
   make: z.string(),
   model: z.string(),
   colour: z.string(),
-  bounty_amount_pence: z.number().int(),
+  // Nullable since 2026-08-20 (ADR-0014): a no-reward listing has no bounty.
+  bounty_amount_pence: z.number().int().nullable(),
   status: postStatusSchema,
   last_seen_at: z.string().nullable(),
   last_seen_area: z.string().nullable(),

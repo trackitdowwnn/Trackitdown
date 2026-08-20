@@ -40,7 +40,10 @@ export const rpcPostSchema = z.object({
   make: z.string(),
   model: z.string(),
   colour: z.string(),
-  bounty_amount_pence: z.number().int(),
+  // Nullable since 2026-08-20 (ADR-0014): a no-reward listing has no bounty.
+  // The key is still REQUIRED — a server that stopped sending it must fail
+  // loudly rather than quietly render every card as no-reward.
+  bounty_amount_pence: z.number().int().nullable(),
   status: visibleStatusSchema,
   last_seen_at: z.string().nullable(),
   last_seen_area: z.string().nullable(),

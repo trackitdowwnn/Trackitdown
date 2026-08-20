@@ -77,14 +77,27 @@ describe('listMyPosts', () => {
     expect(posts.map((p) => p.status)).toEqual(statuses);
   });
 
-  it('falls back to created_at when last_seen_at is null, and 0 for a null bounty', async () => {
+  it('falls back to created_at when last_seen_at is null', async () => {
     mockRpc.mockResolvedValue({
-      data: [row({ last_seen_at: null, bounty_amount_pence: null })],
+      data: [row({ last_seen_at: null })],
       error: null,
     });
     const [post] = await listMyPosts();
     expect(post.lastSeenAt).toBe('2026-07-08T12:00:00Z');
-    expect(post.bountyPence).toBe(0);
+  });
+
+  // MONEY (ADR-0014): this asserted `0` until 2026-08-20, back when a null
+  // bounty could only mean "column missing from the projection". A null is now
+  // real data — a no-reward listing — and coercing it to 0 would print
+  // "£0 bounty" on the owner's own card. The null must survive the mapping so
+  // BountyTag can render "No reward".
+  it('preserves a null bounty rather than coercing it to 0', async () => {
+    mockRpc.mockResolvedValue({
+      data: [row({ bounty_amount_pence: null })],
+      error: null,
+    });
+    const [post] = await listMyPosts();
+    expect(post.bountyPence).toBeNull();
   });
 
   it('maps a post with no photos to an empty photos array', async () => {

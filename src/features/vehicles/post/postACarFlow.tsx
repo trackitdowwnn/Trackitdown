@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
 // Direct path (not the '@/shared/lib' barrel) to keep this config's module graph
 // off the supabase client, mirroring the dateTimeLabel import above.
-import { formatPounds } from '@/shared/lib/money';
+import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { deriveLocalityForCoord } from '@/shared/lib/location/placeLabels';
 import type { WizardFlow } from '@/shared/wizard';
 
@@ -32,24 +32,29 @@ import {
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
   DEFAULT_BOUNTY_PENCE,
+  PricingModeStep,
 } from './components/postSteps';
 import { buildVehicleSteps } from './lib/vehicleSteps';
 import type { PostACarAnswers } from './types';
 
-/** Seed the slider mid-range so the bounty step starts valid and non-dirty. */
+/** Seed the slider mid-range so the bounty step starts valid and non-dirty.
+ *  pricingMode is deliberately NOT seeded — see the pricing-mode step. */
 export const POST_A_CAR_INITIAL_ANSWERS: Partial<PostACarAnswers> = {
   bountyAmountPence: DEFAULT_BOUNTY_PENCE,
 };
 
 export const postACarFlow: WizardFlow<PostACarAnswers> = {
   id: 'post-a-car',
-  // The final CTA takes the bounty into escrow, so it names the amount the
-  // owner is about to pay ("Post & pay £250") — a payment button must never be
-  // vague about the sum. Reads the current bounty answer (falls back to the
-  // seed so it's never blank). formatPounds here is DISPLAY ONLY; the charge
-  // amount is server-read from posts.bounty_amount_pence, never this label.
+  // The final CTA names the amount the owner is about to pay ("Post & pay
+  // £250" / "Post & pay £4.99") — a payment button must never be vague about
+  // the sum, and that holds for both pricing modes. Reads the current answers
+  // (falls back to the seed so it's never blank). formatPounds here is DISPLAY
+  // ONLY; the charge amount is server-read from the post's own price column,
+  // never this label — see create-payment-intent.
   finalCtaLabel: (answers) =>
-    `Post & pay ${formatPounds(answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE)}`,
+    answers.pricingMode === 'fee'
+      ? `Post & pay ${formatPounds(LISTING_FEE_PENCE)}`
+      : `Post & pay ${formatPounds(answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE)}`,
   review: { title: 'Check your report' },
   phases: [
     {
@@ -137,16 +142,39 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
     },
     {
       id: 'bounty',
-      title: 'Bounty',
+      title: 'Reward',
       intro: {
-        headline: 'Set the reward',
-        body: 'Set a reward for the spotter who finds it.',
+        // Phase copy no longer PRESUMES a reward — "Set the reward" would make
+        // the no-reward option read as the wrong answer to a question already
+        // asked (ADR-0014).
+        headline: 'How you’ll list it',
+        body: 'Offer a reward for whoever finds your car, or list it for a one-off fee.',
       },
       steps: [
+        {
+          id: 'pricing-mode',
+          question: 'Do you want to offer a reward?',
+          component: PricingModeStep,
+          // No default: the owner must choose. Seeding 'bounty' would make the
+          // £50 minimum feel pre-agreed, which is the barrier this change exists
+          // to remove; seeding 'fee' would nudge them off a reward that makes
+          // their car more likely to be found. Next stays disabled until they say.
+          schema: z.object({ pricingMode: z.enum(['bounty', 'fee']) }),
+          reviewLabel: 'Listing',
+          reviewValue: (answers) =>
+            answers.pricingMode === 'fee'
+              ? `No reward · ${formatPounds(LISTING_FEE_PENCE)} fee`
+              : 'Reward offered',
+        },
         {
           id: 'bounty',
           question: 'Set a bounty',
           component: BountyStep,
+          // WALKED PAST entirely when there is no reward to set — the wizard's
+          // own `when` gating, so the step contributes no screen, no review row
+          // and no schema check. bountyAmountPence keeps whatever the slider
+          // last held, so switching back restores the owner's own figure.
+          when: (answers) => answers.pricingMode !== 'fee',
           schema: z.object({
             bountyAmountPence: z.number().int().min(MIN_BOUNTY_PENCE).max(MAX_BOUNTY_PENCE),
           }),

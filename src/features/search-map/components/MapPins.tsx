@@ -45,6 +45,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
+import { bountyLabel, NO_BOUNTY_LABEL } from '@/shared/ui';
 import { AppMapMarker } from '@/shared/ui/AppMap';
 
 import { AT_MARKER_LIMIT } from '../lib/mapPins';
@@ -62,6 +63,19 @@ const MARKER_CENTRE = { x: 0.5, y: 0.5 } as const;
  *  below by bounty rank, floored at 1 (a falsy zIndex is dropped by the iOS
  *  Google marker when it re-creates). */
 const MAX_PIN_Z = 200;
+
+/**
+ * What a pin prints. Short by necessity — the pill sits on map tiles at a capped
+ * font size, so "No reward" is already the longest thing it can carry. NEVER
+ * empty: docs/DESIGN_SYSTEM.md forbids a price-less marker, because a pill with
+ * nothing in it reads as a cluster rather than as a car offering no bounty.
+ *
+ * The word alone, not bountyLabel's full sentence — a pin has no room for
+ * "bounty" after the amount. The spoken label DOES use the shared sentence.
+ */
+function pinBountyText(bountyPence: number | null): string {
+  return bountyPence === null ? NO_BOUNTY_LABEL : formatPounds(bountyPence);
+}
 
 /** A marker that rasterises its custom child AFTER layout, then freezes. */
 function TrackedMarker({
@@ -185,7 +199,7 @@ export const MapPins = memo(function MapPins({
             latitude={pin.post.latitude}
             longitude={pin.post.longitude}
             onPress={() => onPressPost(pin.post.id)}
-            accessibilityLabel={`${formatPounds(pin.post.bountyPence)} bounty — ${pin.post.make} ${pin.post.model}`}
+            accessibilityLabel={`${bountyLabel(pin.post.bountyPence)} — ${pin.post.make} ${pin.post.model}`}
           >
             <View style={[styles.bountyPill, selected && styles.bountyPillSelected]}>
               <Text
@@ -195,7 +209,10 @@ export const MapPins = memo(function MapPins({
                 maxFontSizeMultiplier={mapPinFontScaleCap}
                 style={[styles.bountyText, selected && styles.bountyTextSelected]}
               >
-                {formatPounds(pin.post.bountyPence)}
+                {/* NEVER blank. docs/DESIGN_SYSTEM.md: "never ship a price-less
+                    map marker" — an empty pill reads as a cluster, not as a car
+                    with no reward. A no-reward listing (ADR-0014) says so. */}
+                {pinBountyText(pin.post.bountyPence)}
               </Text>
             </View>
           </TrackedMarker>

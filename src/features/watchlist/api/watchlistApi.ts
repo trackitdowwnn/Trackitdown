@@ -97,7 +97,12 @@ function toEntry(row: WatchRow): WatchlistEntry {
       lastSeenAt: row.last_seen_at ?? row.created_at,
       lastSeenArea: row.last_seen_area ?? undefined,
       distanceMiles: row.distance_miles ?? undefined,
-      bountyPence: row.bounty_amount_pence ?? 0,
+      // PRESERVE the null (ADR-0014). Two different things now arrive as null
+      // here and BOTH must render as "no reward" rather than "£0": a genuine
+      // no-reward listing, and a TOMBSTONE (whose bounty the RPC deliberately
+      // nulls so a closed post exposes less than its active-era payload). The
+      // old `?? 0` printed "£0 bounty" on every tombstone.
+      bountyPence: row.bounty_amount_pence,
     },
   };
 }

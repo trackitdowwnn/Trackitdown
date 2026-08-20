@@ -62,8 +62,19 @@ const mockDeactivate = jest.fn(async () => ({
   result: { refundedPence: 49230, feePence: 770 },
   message: null,
 }));
+// exitCheck MUST be in this mock. Without it the import is `undefined`, so
+// requestDeactivate throws a TypeError that its own catch swallows — every test
+// then exercised the DEGRADED path while passing, and a regression to the
+// ADR-0011 pre-flight would not have been caught on the deactivate exit.
+const mockExitCheck = jest.fn(async () => ({
+  requiresAttestation: false,
+  sightingIds: [] as string[],
+  windowDays: 14,
+  holdHours: 72,
+}));
 jest.mock('@/features/payments', () => ({
   useDeactivatePost: () => ({ deactivate: mockDeactivate, pending: false }),
+  exitCheck: (...args: unknown[]) => mockExitCheck(...(args as [])),
 }));
 
 // The report path calls the flag_post RPC via flagApi — stub it.

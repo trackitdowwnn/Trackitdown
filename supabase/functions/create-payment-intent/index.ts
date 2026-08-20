@@ -1,29 +1,42 @@
 /**
- * WHAT:  Edge Function that opens the bounty escrow charge for a draft post.
- *        Given { postId } from the authenticated owner, it verifies the caller
- *        OWNS that post and it is still a draft, reads the bounty amount FROM
- *        THE DATABASE, creates a Stripe PaymentIntent (captured immediately to
- *        the platform balance = escrow), records the ledger row, and returns the
- *        client secret for the app's PaymentSheet.
+ * WHAT:  Edge Function that opens the CHARGE for a draft post. Given { postId }
+ *        from the authenticated owner, it verifies the caller OWNS that post and
+ *        it is still a draft, reads the amount FROM THE DATABASE, creates a
+ *        Stripe PaymentIntent (captured immediately), records the ledger row, and
+ *        returns the client secret for the app's PaymentSheet.
+ *
+ *        TWO PRICING MODES share this one function (ADR-0014). A post carries
+ *        EITHER a bounty (£50–£5,000, escrowed) OR a fixed listing fee (£4.99,
+ *        platform revenue on capture) — never both, never neither, enforced by
+ *        posts_one_pricing_mode_check. Which of the two columns is non-null IS
+ *        the pricing mode, so this function reads the post and follows it; there
+ *        is no mode flag to pass and nothing for the client to choose here.
  * WHY:   The charge amount and the state machine must live on the server — the
- *        client never says how much to charge (SECURITY_AND_TRUST §4). The
- *        amount is the post's own bounty_amount_pence; ownership is proven from
- *        the caller's JWT, not a client-supplied id. The Stripe idempotency key
- *        is `post-bounty-<postId>-<amountPence>`, so a retry after a declined/
- *        cancelled PaymentSheet reuses the SAME PaymentIntent and never double-
- *        charges (the ledger fn is likewise idempotent) — while a legitimate
- *        in-draft bounty EDIT changes the amount and thus the key, opening a
- *        fresh intent; the stale intent is cancelled at Stripe and its ledger row
- *        superseded to 'failed', so an edit can never strand a captured charge or
- *        leave an abandoned intent able to capture. Escrow model per
- *        ADR-0002: separate charges &
- *        transfers, capture immediately — NO destination charge / application
- *        fee here (payout is a later, separate slice).
+ *        client never says how much to charge, or which price applies
+ *        (SECURITY_AND_TRUST §4). The amount is the post's own
+ *        bounty_amount_pence or listing_fee_pence; ownership is proven from the
+ *        caller's JWT, not a client-supplied id. The Stripe idempotency key is
+ *        `post-bounty-<postId>-<amountPence>` / `post-fee-<postId>-<amountPence>`,
+ *        so a retry after a declined/cancelled PaymentSheet reuses the SAME
+ *        PaymentIntent and never double-charges (the ledger fns are likewise
+ *        idempotent) — while a legitimate in-draft price EDIT changes the amount
+ *        and thus the key, opening a fresh intent; the stale intent is cancelled
+ *        at Stripe and its ledger row superseded to 'failed', so an edit can
+ *        never strand a captured charge or leave an abandoned intent able to
+ *        capture. The two key PREFIXES differ so that a draft which switches
+ *        pricing mode at the same numeric amount still gets a fresh intent.
+ *        Escrow model per ADR-0002: separate charges & transfers, capture
+ *        immediately — NO destination charge / application fee here (payout is a
+ *        later, separate slice). A listing fee has no payout leg at all.
  * LINKS: supabase/functions/_shared/clients.ts, _shared/http.ts;
  *        supabase/migrations/20260726100000_post_payment.sql
  *          (record_post_payment_intent — POST_NOT_DRAFT / BOUNTY_MISMATCH);
+ *        supabase/migrations/20260820110000_no_bounty_listing_fee.sql
+ *          (record_listing_fee_intent — POST_NOT_DRAFT / FEE_MISMATCH);
  *        src/features/payments/api/paymentsApi.ts (the client caller);
- *        docs/decisions/ADR-0002-stripe-connect.md; supabase/functions/README.md.
+ *        docs/decisions/ADR-0002-stripe-connect.md;
+ *        docs/decisions/ADR-0014-no-bounty-listings.md;
+ *        supabase/functions/README.md.
  */
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
@@ -68,7 +81,7 @@ Deno.serve(async (request) => {
   // never anything the client sent.
   const { data: post, error: postError } = await admin
     .from('posts')
-    .select('owner_id, status, bounty_amount_pence')
+    .select('owner_id, status, bounty_amount_pence, listing_fee_pence')
     .eq('id', postId)
     .maybeSingle();
 
@@ -88,7 +101,29 @@ Deno.serve(async (request) => {
     );
   }
 
-  const amountPence = post.bounty_amount_pence as number;
+  // --- Resolve the pricing mode from the post, never from the client ---------
+  // MONEY: exactly one of these two columns is non-null (posts_one_pricing_mode_check),
+  // so this reads the post's own price. A row that somehow had neither would fall
+  // through to `null` and is rejected below rather than charged £0 or NaN.
+  const bountyPence = post.bounty_amount_pence as number | null;
+  const feePence = post.listing_fee_pence as number | null;
+  const isListingFee = bountyPence === null;
+  const amountPence = isListingFee ? feePence : bountyPence;
+
+  if (typeof amountPence !== 'number' || !Number.isInteger(amountPence) || amountPence <= 0) {
+    // Defensive: the table CHECK makes this unreachable. If it ever fires, the
+    // post's money columns are inconsistent and the right move is to refuse the
+    // charge loudly rather than send Stripe an amount we cannot justify.
+    console.error('[payments] post has no usable price', { postId });
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t start your payment. Please try again.', 500);
+  }
+
+  // The two prefixes must differ: a draft that switched pricing mode could
+  // otherwise land on the same key as its abandoned attempt at the same amount
+  // and reuse an intent recorded against the other ledger kind.
+  const idempotencyKey = isListingFee
+    ? `post-fee-${postId}-${amountPence}`
+    : `post-bounty-${postId}-${amountPence}`;
 
   // --- Supersede a stale open intent at a DIFFERENT amount ---------------------
   // If the bounty was edited since an abandoned attempt, an open PaymentIntent at
@@ -129,15 +164,18 @@ Deno.serve(async (request) => {
         // manual-capture authorization would expire long before recovery).
         capture_method: 'automatic',
         automatic_payment_methods: { enabled: true },
-        // The webhook matches the ledger row by intent id; post_id in metadata
-        // is for dashboard/debugging traceability.
-        metadata: { post_id: postId },
+        // The webhook matches the ledger row by intent id; these are for
+        // dashboard/debugging traceability only and are never read back as
+        // authority. `kind` mirrors payments.kind so a charge in the Stripe
+        // dashboard can be told apart from an escrowed bounty without a join.
+        metadata: { post_id: postId, kind: isListingFee ? 'listing_fee' : 'bounty_escrow' },
       },
-      // Idempotency key = post_id + amount: a retry after a cancelled/declined
-      // sheet returns the SAME PaymentIntent (never double-charged); a legitimate
-      // in-draft bounty edit changes the amount, so the key differs and Stripe
-      // opens a fresh intent instead of rejecting the changed-amount replay.
-      { idempotencyKey: `post-bounty-${postId}-${amountPence}` },
+      // Idempotency key = kind + post_id + amount: a retry after a cancelled/
+      // declined sheet returns the SAME PaymentIntent (never double-charged); a
+      // legitimate in-draft price edit changes the amount, so the key differs and
+      // Stripe opens a fresh intent instead of rejecting the changed-amount
+      // replay. See the resolution above for why the kind is part of the key.
+      { idempotencyKey },
     );
   } catch (err) {
     console.error('[payments] PaymentIntent create failed', (err as Error).message);
@@ -145,11 +183,17 @@ Deno.serve(async (request) => {
   }
 
   // --- Record the ledger row (idempotent, server-authoritative amount) --------
-  const { error: recordError } = await admin.rpc('record_post_payment_intent', {
-    p_post_id: postId,
-    p_payment_intent_id: paymentIntent.id,
-    p_amount_pence: amountPence,
-  });
+  // Each record_* function re-validates the amount against the post's OWN price
+  // (BOUNTY_MISMATCH / FEE_MISMATCH) and refuses a post of the other pricing
+  // mode, so the two paths cannot cross even if this branch were wrong.
+  const { error: recordError } = await admin.rpc(
+    isListingFee ? 'record_listing_fee_intent' : 'record_post_payment_intent',
+    {
+      p_post_id: postId,
+      p_payment_intent_id: paymentIntent.id,
+      p_amount_pence: amountPence,
+    },
+  );
   if (recordError) {
     // The charge intent exists but we couldn't record it. Surface a retryable
     // error; the idempotency key means the retry reuses this same intent.

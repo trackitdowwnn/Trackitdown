@@ -252,6 +252,24 @@ commenting standards.
   `btok_` may only be attached where `controller.requirement_collection` is
   `application`, and ours are Express. **This is financial PII in transit and
   must appear in the privacy policy and the Art. 30 record.**
+- **Two pricing modes since 2026-08-20 (ADR-0014), and the amount is
+  server-authoritative in both.** A post carries EITHER a bounty (escrowed) OR a
+  fixed £4.99 listing fee — never both, never neither, enforced by a table CHECK.
+  The client never sends either amount, and specifically **never sends the fee**:
+  `create_post` stamps it from `current_listing_fee_pence()` and
+  `posts.listing_fee_pence` is deliberately absent from the client column grants,
+  so no client can name the price it pays. `record_listing_fee_intent` re-checks
+  the charge against the post's own stamped value (`FEE_MISMATCH`), exactly as
+  the bounty path does (`BOUNTY_MISMATCH`).
+  - **A listing fee reaches `collected` and NEVER `held`.** Every refund and
+    payout query selects `held`, so a fee is outside all of them by
+    construction. Both capture handlers refuse the other kind's rows; the
+    dangerous direction is an escrowed **bounty** wrongly marked `collected`,
+    which would vanish from every refund path — the owner's money silently kept.
+  - The fee is **not refundable** and a fee listing has **no refund hold and no
+    dispute window** (§5's owner-denial control protects a spotter's claim on a
+    bounty; there is none here). Non-refundability is disclosed on the pricing
+    step, before any money moves.
 - Escrow charge on posting; payout of 95% by **transfer**, with our 5%
   retained as the remainder that never leaves the platform balance — **not**
   an `application_fee_amount` (ADR-0002; this line said "application fee"

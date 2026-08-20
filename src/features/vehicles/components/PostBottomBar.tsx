@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatPounds } from '@/shared/lib';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { Button, StatusBadge } from '@/shared/ui';
+import { Button, NO_BOUNTY_LABEL, StatusBadge } from '@/shared/ui';
 
 import type { PostDetail } from '../types';
 
@@ -48,11 +48,25 @@ export function PostBottomBar({ post, onSeen, onManage }: PostBottomBarProps) {
           // amount's baseline rather than its box centre — with a 24pt number
           // beside 12pt text, centring leaves the word visibly high.
           <View style={styles.rewardRow}>
-            {/* Money never truncates — the caption yields first, not the amount. */}
-            <Text style={styles.bounty}>{formatPounds(post.bountyPence)}</Text>
-            <Text numberOfLines={1} style={styles.caption}>
-              reward
-            </Text>
+            {post.bountyPence === null ? (
+              // A no-reward listing (ADR-0014) has no amount to lead with, so the
+              // display-size number would be a hole. It collapses to a single
+              // line — but at `label`, not `caption`: this is the one fact a
+              // spotter reads before tapping the CTA, and dropping it to the
+              // smallest tier in the app would bury it. Matches BountyTag's `md`,
+              // so the bar and the cards speak with one voice.
+              <Text numberOfLines={1} style={styles.rewardNone}>
+                {NO_BOUNTY_LABEL}
+              </Text>
+            ) : (
+              <>
+                {/* Money never truncates — the caption yields first, not the amount. */}
+                <Text style={styles.bounty}>{formatPounds(post.bountyPence)}</Text>
+                <Text numberOfLines={1} style={styles.caption}>
+                  reward
+                </Text>
+              </>
+            )}
           </View>
         )}
       </View>
@@ -91,6 +105,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'baseline',
     gap: spacing.xs,
     flexShrink: 1,
+    // Holds the bar's chrome identical whether the listing shows a
+    // display-size amount or the single "No reward" line, so the sticky bar
+    // does not change height between one post and the next.
+    minHeight: typography.heading.lineHeight,
+  },
+  // The no-reward twin of `bounty` below: same tier family, stepped back to
+  // secondary ink because the accent is reserved for value moments and this is
+  // the absence of one (DESIGN_SYSTEM colour rules; matches BountyTag).
+  rewardNone: {
+    ...typography.label,
+    color: c.textSecondary,
   },
   bounty: {
     ...typography.heading,

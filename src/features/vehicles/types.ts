@@ -69,7 +69,16 @@ export interface PostDetail {
   bodyType?: string;
   distinguishingFeatures?: string;
   ownerNote?: string;
-  bountyPence: number;
+  /**
+   * Integer pence, or NULL for a no-reward listing (ADR-0014). Never 0.
+   *
+   * NULL is also the DISCRIMINATOR for the pricing mode on this screen — there
+   * is deliberately no `listingFeePence` here. The fee is a fixed platform price,
+   * identical on every such listing, so shipping it per-post through
+   * get_post_detail would add a field to a privacy-sensitive RPC to carry a
+   * constant. Copy that needs the amount reads LISTING_FEE_PENCE.
+   */
+  bountyPence: number | null;
   lastSeenAt: string | null;
   lastSeenArea?: string;
   createdAt: string;

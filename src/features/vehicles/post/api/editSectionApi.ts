@@ -135,8 +135,19 @@ export async function saveLastSeen(postId: string, input: LastSeenInput): Promis
   });
 }
 
-/** The bounty (integer pence). Draft only — frozen once escrow is held. MONEY. */
-export async function saveBounty(postId: string, bountyAmountPence: number): Promise<void> {
+/**
+ * The listing's price. Draft only — frozen once the charge is taken. MONEY.
+ *
+ * `null` switches the draft to the NO-REWARD pricing mode (ADR-0014) and the
+ * server stamps the fixed listing fee; a number sets a bounty and clears any
+ * fee. update_post_bounty always writes BOTH price columns, so the pair cannot
+ * drift apart — which is why this stays one function rather than gaining a
+ * sibling for the fee.
+ */
+export async function saveBounty(
+  postId: string,
+  bountyAmountPence: number | null,
+): Promise<void> {
   await callSectionRpc('update_post_bounty', {
     p_post_id: postId,
     p_bounty_amount_pence: bountyAmountPence,

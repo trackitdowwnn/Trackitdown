@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequireAuth } from '@/features/auth';
 import { useDevicePermission } from '@/features/permissions';
+import { bountyParam } from '@/shared/lib/money';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
 import { motion, sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
@@ -617,7 +618,10 @@ function MapSearchBody({
         run: () => {
           router.push({
             pathname: '/report-sighting',
-            params: { postId: post.id, source: 'map', bounty: String(post.bountyPence) },
+            // bountyParam, not String(): a no-reward listing must arrive as an
+            // explicit token, or the success screen promises a bounty that does
+            // not exist (ADR-0014). Same encoder as the post-detail entry.
+            params: { postId: post.id, source: 'map', bounty: bountyParam(post.bountyPence) },
           });
         },
       });

@@ -1,17 +1,25 @@
 /**
- * WHAT:  The three calls that close a recovery — `claim_recovery` (who won),
- *        then ONE of `release-payout` (a spotter was credited) or
- *        `refund-recovery` (the no-spotter ending).
+ * WHAT:  The calls that close a recovery — `claim_recovery` (who won), then
+ *        ONE of `release-payout` (a spotter was credited), `refund-recovery`
+ *        (the no-spotter ending), or NOTHING AT ALL on a no-reward listing.
  * WHY:   DOMAIN.md's lifecycle splits this deliberately, and the client has to
- *        follow the same split. `claim_recovery` records the CLAIM and the
- *        winner but moves no money, landing the post on `recovery_claimed`;
- *        the terminal states mean the money has ALREADY moved
- *        (`recovered` = paid, `recovered_no_spotter` = refunded), so only a
- *        server that has heard back from Stripe may set them.
+ *        follow the same split. On a BOUNTY listing `claim_recovery` records the
+ *        CLAIM and the winner but moves no money, landing the post on
+ *        `recovery_claimed`; the terminal states mean the money has ALREADY
+ *        moved (`recovered` = paid, `recovered_no_spotter` = refunded), so only
+ *        a server that has heard back from Stripe may set them.
  *
  *        So a recovery is two calls, and the RPC tells us which second call to
  *        make via `nextStep` — named by the server rather than re-derived here,
  *        so the client never has to guess the money path from a status.
+ *
+ *        A NO-REWARD LISTING (ADR-0014) has no money leg, so there is nothing
+ *        for a second call to do: `claim_recovery` sets the terminal state
+ *        itself and answers `nextStep: 'done'`. Making a second call anyway is
+ *        not harmless — the post is no longer `recovery_claimed`, so
+ *        refund-recovery answers POST_NOT_CLAIMED and a recovery that SUCCEEDED
+ *        reaches the owner as an error. That is exactly what this file did until
+ *        2026-08-20, by collapsing the unrecognised 'done' into 'refund'.
  *
  *        UNTIL 2026-08-03 THE PAYOUT HALF OF THAT SENTENCE WAS A LIE. Only the
  *        refund branch had a second call; `nextStep: 'payout'` showed a toast
@@ -38,8 +46,16 @@ import { createLogger } from '@/shared/lib/logger';
 
 const log = createLogger('vehicles');
 
-/** What the server says has to happen next to finish the recovery. */
-export type RecoveryNextStep = 'payout' | 'refund';
+/**
+ * What the server says has to happen next to finish the recovery.
+ *
+ * `done` (ADR-0014) means there is NOTHING left to do: a no-reward listing has
+ * no money leg, so `claim_recovery` already put the post in its terminal state
+ * and no second call follows. Calling one anyway is not harmless — the post is
+ * no longer `recovery_claimed`, so `refund-recovery` answers POST_NOT_CLAIMED
+ * and a SUCCESSFUL recovery would surface to the owner as an error.
+ */
+export type RecoveryNextStep = 'payout' | 'refund' | 'done';
 
 export interface ClaimRecoveryResult {
   nextStep: RecoveryNextStep;
@@ -142,7 +158,13 @@ export async function claimRecovery(
   }
 
   const result = data as { nextStep?: string; creditedSightingId?: string | null };
-  const nextStep: RecoveryNextStep = result?.nextStep === 'payout' ? 'payout' : 'refund';
+  // Read all three values explicitly. This used to be
+  // `=== 'payout' ? 'payout' : 'refund'`, which silently turned the new 'done'
+  // into 'refund' — sending a no-reward recovery into refund-recovery, which
+  // 409s on a post that is already terminal. `refund` stays the fallback for an
+  // unrecognised value: it is the branch that re-checks everything server-side.
+  const nextStep: RecoveryNextStep =
+    result?.nextStep === 'payout' ? 'payout' : result?.nextStep === 'done' ? 'done' : 'refund';
   log.info('recovery_claimed', { postId, nextStep });
   return { nextStep, creditedSightingId: result?.creditedSightingId ?? null };
 }

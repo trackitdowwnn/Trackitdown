@@ -1,12 +1,21 @@
 /**
- * WHAT:  Edge Function that deactivates a PAID post and refunds its bounty.
- *        Given { postId } from the authenticated owner, it verifies the caller
- *        OWNS that post and it is in a refund-eligible paid state
- *        (active / pending_verification), finds the HELD escrow charge, computes
- *        the refund as the bounty MINUS the non-recoverable Stripe processing fee
- *        (read authoritatively from the charge's balance transaction), issues a
- *        Stripe refund, and records the money-state transition (payment
- *        held -> refunded, post -> cancelled) via the service-role RPC.
+ * WHAT:  Edge Function that deactivates a PAID post. Given { postId } from the
+ *        authenticated owner, it verifies the caller OWNS that post and it is in
+ *        an eligible paid state (active / pending_verification), then takes one
+ *        of two paths depending on how the post was paid for:
+ *
+ *        BOUNTY POST — finds the HELD escrow charge, computes the refund as the
+ *        bounty MINUS the non-recoverable Stripe processing fee (read
+ *        authoritatively from the charge's balance transaction), issues a Stripe
+ *        refund, and records the money-state transition (payment held ->
+ *        refunded, post -> cancelled) via the service-role RPC. Subject to the
+ *        owner-denial gate first (ADR-0011).
+ *
+ *        NO-BOUNTY (FEE) POST — takes the listing down and moves no money
+ *        (ADR-0014). The fixed fee is not refundable, there is no escrow, and
+ *        therefore no owner-denial gate, no 72-hour hold and no dispute window:
+ *        those exist to protect a spotter's claim on a bounty that does not
+ *        exist here.
  * WHY:   The refund amount and the state machine must live on the server — the
  *        client never says how much to refund (SECURITY_AND_TRUST §4). Ownership
  *        is proven from the caller's JWT, not a client-supplied id. DOMAIN.md
@@ -27,6 +36,9 @@
  *          this mirrors);
  *        supabase/migrations/20260729100000_post_refund_cancel.sql
  *          (mark_post_payment_refunded);
+ *        supabase/migrations/20260820110000_no_bounty_listing_fee.sql
+ *          (cancel_fee_listing — the no-refund exit);
+ *        docs/decisions/ADR-0014-no-bounty-listings.md;
  *        supabase/functions/stripe-webhook/index.ts (charge.refunded confirm);
  *        src/features/payments/api/paymentsApi.ts (the client caller);
  *        docs/decisions/ADR-0002-stripe-connect.md; docs/DOMAIN.md.
@@ -85,7 +97,7 @@ Deno.serve(async (request) => {
   // user can only deactivate THEIR OWN post.
   const { data: post, error: postError } = await admin
     .from('posts')
-    .select('owner_id, status')
+    .select('owner_id, status, bounty_amount_pence')
     .eq('id', postId)
     .maybeSingle();
 
@@ -103,6 +115,50 @@ Deno.serve(async (request) => {
       'This listing can’t be deactivated for a refund.',
       409,
     );
+  }
+
+  // --- NO-BOUNTY LISTINGS: take it down, move no money -------------------------
+  // A fee-priced post has no escrow, so there is nothing to refund and nothing
+  // for a spotter to be denied. That is why this returns BEFORE the owner-denial
+  // gate: the 72-hour hold and the dispute window (ADR-0011) exist to protect a
+  // spotter's claim on a bounty, and there is no bounty here to claim. Running
+  // the gate anyway would delay a takedown by three days to protect nothing.
+  //
+  // The fee itself is NOT refunded (ADR-0014) — it bought the listing and the
+  // listing was delivered. The client discloses this before payment, on the
+  // pricing step; nothing here should be the first time an owner learns it.
+  if (post.bounty_amount_pence === null) {
+    const { error: cancelError } = await admin.rpc('cancel_fee_listing', {
+      p_post_id: postId,
+    });
+    if (cancelError) {
+      // POST_HAS_BOUNTY here means the post is fee-PRICED but carries HELD
+      // escrow — a stale bounty intent captured against it after a draft
+      // pricing switch. Refusing is right (this exit issues no refund), but the
+      // owner is now stuck: this branch is chosen on the price columns, so they
+      // can never reach the refund path either. Logged distinctly so support can
+      // find it, because "Please try again" would loop forever.
+      // Should be unreachable for posts created after 20260820110000 — the
+      // capture handlers now re-check the amount against the post's price.
+      if (cancelError.message?.includes('POST_HAS_BOUNTY')) {
+        console.error('[payments] STRANDED ESCROW on a fee-priced post', { postId });
+        return errorResponse(
+          'ESCROW_NEEDS_REVIEW',
+          'Something needs checking on this listing before it can come down. We’re on it — please contact support.',
+          409,
+        );
+      }
+      console.error('[payments] cancel_fee_listing failed', cancelError.message);
+      return errorResponse(
+        'LOOKUP_FAILED',
+        'We couldn’t deactivate your listing. Please try again.',
+        500,
+      );
+    }
+    console.log('[payments] fee listing deactivated (no refund)', { postId });
+    // Same response SHAPE as the refund path so the client needs no new branch:
+    // held=false, and a zero refund is the honest number for a non-refundable fee.
+    return jsonResponse({ held: false, refundedPence: 0, feePence: 0 });
   }
 
   // --- THE OWNER-DENIAL GATE, before any Stripe call ---------------------------

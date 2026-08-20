@@ -1,7 +1,7 @@
 /**
  * WHAT:  Money formatting and money maths — pence-integer amounts rendered as
  *        GBP strings ("£500", "£1,250.50"), plus the reference 95/5 bounty
- *        split.
+ *        split and the fixed listing-fee price.
  * WHY:   All money in the app is integer pence end-to-end (docs/DOMAIN.md:
  *        bounties, escrow, the 95/5 split) — floats never touch amounts, so
  *        this formatter is the single place pence become display text, and
@@ -10,9 +10,28 @@
  *        fractional amounts keep two decimals. UK-only per the roadmap, so
  *        GBP is fixed.
  * LINKS: docs/DOMAIN.md (Money & fees); docs/TESTING.md (Tier 1: money);
+ *        docs/decisions/ADR-0014-no-bounty-listings.md;
  *        src/shared/ui/BountyTag.tsx, src/shared/ui/MoneySlider.tsx
  *        (consumers).
  */
+
+/**
+ * MONEY: the fixed platform fee for a NO-BOUNTY listing (£4.99), integer pence.
+ *
+ * DISPLAY ONLY, and a MIRROR. The authoritative price is
+ * `public.current_listing_fee_pence()` in
+ * supabase/migrations/20260820110000_no_bounty_listing_fee.sql; create_post
+ * stamps it onto posts.listing_fee_pence and the charge path reads that
+ * snapshot. This constant exists so the wizard can say "Post & pay £4.99"
+ * before a post exists to read a price from — exactly as MIN/MAX_BOUNTY_PENCE
+ * mirror the posts CHECK.
+ *
+ * NEVER wire this into a charge, and if the server price changes, change it
+ * there first: a mismatch shows the user the wrong number but cannot mis-charge
+ * them, because record_listing_fee_intent rejects any amount that disagrees
+ * with the post's own stamped fee (FEE_MISMATCH).
+ */
+export const LISTING_FEE_PENCE = 499;
 
 /** Format integer pence as a GBP string: 50000 → "£500", 125050 → "£1,250.50". */
 export function formatPounds(pence: number): string {
@@ -28,6 +47,31 @@ export function formatPounds(pence: number): string {
   const fraction = remainder === 0 ? '' : `.${String(remainder).padStart(2, '0')}`;
 
   return `${negative ? '-' : ''}£${grouped}${fraction}`;
+}
+
+/**
+ * The explicit token a NO-REWARD listing uses in the `bounty` route param.
+ *
+ * Exported so the writer (the two entry points into /report-sighting) and the
+ * reader (the route file) cannot drift apart on the spelling.
+ */
+export const NO_BOUNTY_PARAM = 'none';
+
+/**
+ * Encode a bounty for the `bounty` route param.
+ *
+ * WHY THIS EXISTS AT ALL: `String(null)` is `"null"`, and `Number("null")` is
+ * NaN — which the route cannot tell apart from the param simply being absent.
+ * Absent means "the caller didn't say", and the sighting-success screen answers
+ * that with "you'll receive the bounty". So without this, a spotter reporting a
+ * no-reward car (ADR-0014) is promised money that will never arrive.
+ *
+ * Lives in shared/lib rather than in either feature because BOTH entry points
+ * into the report flow need it — the post detail and the map's peek card — and
+ * features must not deep-import each other (ARCHITECTURE.md rule 1).
+ */
+export function bountyParam(bountyPence: number | null): string {
+  return bountyPence === null ? NO_BOUNTY_PARAM : String(bountyPence);
 }
 
 /** The two sides of a paid-out bounty. Parts always sum exactly to the input. */

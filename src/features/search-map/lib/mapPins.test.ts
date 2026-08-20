@@ -18,7 +18,7 @@ const post = (
   id: string,
   latitude: number,
   longitude: number,
-  bountyPence = 15000,
+  bountyPence: number | null = 15000,
 ): MapPost => ({
   id,
   photos: [],
@@ -111,6 +111,44 @@ describe('bounty rank (paint order + the AT cap)', () => {
     expect(pins).toHaveLength(1);
     expect(pins[0].key).toBe('near');
     expect(pins[0].rank).toBe(0);
+  });
+
+  // ADR-0014: a no-reward listing has a NULL bounty. `b.bountyPence -
+  // a.bountyPence` on a null yields NaN, which makes the comparator
+  // INCONSISTENT rather than merely wrong — and rank drives marker zIndex (so
+  // it decides which marker a tap hits), the AT cap, and mount order.
+  it('ranks no-reward listings last without producing NaN', () => {
+    const pins = pinsForRegion(
+      [
+        post('noReward', 51.75, -0.34, null),
+        post('small', 51.752, -0.338, 5000),
+        post('big', 51.754, -0.336, 400000),
+      ],
+      REGION,
+    );
+
+    const rankOfKey = Object.fromEntries(pins.map((pin) => [pin.key, pin.rank]));
+    expect(rankOfKey.big).toBe(0);
+    expect(rankOfKey.small).toBe(1);
+    expect(rankOfKey.noReward).toBe(2);
+    // Every rank is a real, distinct integer — a NaN comparator silently
+    // produces duplicates or an input-order-dependent shuffle instead.
+    expect(pins.every((pin) => Number.isInteger(pin.rank))).toBe(true);
+    expect(new Set(pins.map((pin) => pin.rank)).size).toBe(pins.length);
+  });
+
+  it('stays order-independent when several listings have no reward', () => {
+    // The id tie-break is load-bearing: server order varies between searches,
+    // and paint order must not. Nulls must not escape that guarantee.
+    const posts = [
+      post('a', 51.75, -0.34, null),
+      post('b', 51.752, -0.338, null),
+      post('c', 51.754, -0.336, null),
+    ];
+    const rankOf = (input: MapPost[]) =>
+      Object.fromEntries(pinsForRegion(input, REGION).map((pin) => [pin.key, pin.rank]));
+
+    expect(rankOf([...posts].reverse())).toEqual(rankOf(posts));
   });
 });
 
