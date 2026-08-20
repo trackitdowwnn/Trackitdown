@@ -684,7 +684,12 @@ values ('eeee0000-0000-0000-0000-000000000011',
         'Ford', 'Fiesta', 'Blue', now() - interval '1 hour',
         ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography, 'Manchester');
 
-insert into public.alert_zones (id, user_id, label, point, radius_m, enabled, min_bounty_pence)
+-- `name`, NOT `label`: 20260802150000_multi_alert.sql renamed the column and
+-- made it NOT NULL when alerts went multi ("an alert you can have five of needs
+-- a name, not an optional label"). The original definition in
+-- 20260802120000_alert_zones.sql is superseded — read the LATEST migration that
+-- touches a column, not the one that created it.
+insert into public.alert_zones (id, user_id, name, point, radius_m, enabled, min_bounty_pence)
 values ('aaaa0000-0000-0000-0000-000000000001',
         '33333333-3333-3333-3333-333333333333', 'Rich only',
         ST_SetSRID(ST_MakePoint(-2.2426, 53.4808), 4326)::geography, 16093, true, 50000),
