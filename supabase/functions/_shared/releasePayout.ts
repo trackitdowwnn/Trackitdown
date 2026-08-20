@@ -83,7 +83,7 @@ export async function releasePayoutForPost(
   // --- The one acceptable state ----------------------------------------------
   const { data: post, error: postError } = await admin
     .from('posts')
-    .select('owner_id, status')
+    .select('owner_id, status, bounty_amount_pence')
     .eq('id', postId)
     .maybeSingle();
   if (postError || !post) {
@@ -91,6 +91,17 @@ export async function releasePayoutForPost(
     return { status: 'error', code: 'LOOKUP_FAILED' };
   }
   if (post.status !== 'recovery_claimed') {
+    return { status: 'not_claimed' };
+  }
+  // MONEY: a no-bounty listing has nothing to release (ADR-0014). Already
+  // unreachable twice over — claim_recovery lands a fee post on a terminal state
+  // so it is never `recovery_claimed`, and its payment is `collected` rather than
+  // `held` so the escrow lookup below would find nothing — but this is the money
+  // boundary, so it re-checks, exactly as claim_recovery re-checks self-crediting.
+  // Answering `not_claimed` rather than an error is deliberate: this is a no-op,
+  // not a failure, and the webhook's blind auto-release calls it for every post a
+  // newly-payable spotter touched.
+  if (post.bounty_amount_pence === null) {
     return { status: 'not_claimed' };
   }
 

@@ -4,14 +4,14 @@
 
 | Function | Called by | Job |
 | --- | --- | --- |
-| `create-payment-intent` | the app (`supabase.functions.invoke`) | verify the caller owns the draft post, read the bounty **from the DB**, create a Stripe PaymentIntent (captured immediately = escrow), record the ledger row, return the client secret |
-| `deactivate-post` | the app (`supabase.functions.invoke`) | verify the caller owns a **paid** post (`active`/`pending_verification`), find the held escrow, refund the bounty **minus the non-recoverable card fee** (fee read from Stripe), and flip the post `→ cancelled` (payment `held → refunded`) |
+| `create-payment-intent` | the app (`supabase.functions.invoke`) | verify the caller owns the draft post, read the price **from the DB** — the bounty, or the £4.99 listing fee for a no-reward post (ADR-0014) — create a Stripe PaymentIntent (captured immediately), record the ledger row against the matching `kind`, return the client secret |
+| `deactivate-post` | the app (`supabase.functions.invoke`) | verify the caller owns a **paid** post (`active`/`pending_verification`), then: **bounty post** → owner-denial gate, find the held escrow, refund **minus the non-recoverable card fee** (fee read from Stripe), flip `→ cancelled` (payment `held → refunded`); **no-reward post** → delist only (`cancel_fee_listing`), no refund, no hold, no dispute window |
 | `refund-recovery` | the app, after `claim_recovery` returns `refund` | the no-spotter ending: refund the bounty and close the post `→ recovered_no_spotter` |
 | `release-payout` | the app, after `claim_recovery` returns `payout` | the credited ending: transfer 95% to the spotter (ADR-0002 transfer math; one transfer per post, forever) and close the post `→ recovered`. Answers `awaiting_payee` — **not an error** — until they have onboarded |
 | `submit-payout-details` | the app, from our own native form | submit bank details + identity fields via `accounts.update` while the prefill window is open, then open the gate. **Transit only** — nothing stored, nothing logged |
 | `connect-onboarding` | the app, from the payouts surface | answer `details_required` until our form has run (minting a session first would shut the prefill window **forever**), then return an **Account Session** (`onboarding_session`) for the in-app component, or a hosted **link** for `account_update` / as a fallback. Takes no request body — the server decides from the account's own state |
 | `connect-return` | **Stripe's browser**, after hosted onboarding | an HTTPS page that forwards to `trackitdown://payouts?onboarding=…`. Exists because Account Links accept **http/https only** — a custom scheme is rejected with "Not a valid URL". Deployed `--no-verify-jwt`: Stripe's browser has no session |
-| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` flip the post `draft → active` (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts; on `charge.refunded` confirm the refund (`→ cancelled`); on **`account.updated`** copy Stripe's `payouts_enabled` onto the payee row — the ONLY thing that ever makes a spotter payable — then auto-release any waiting credited bounty |
+| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` call the ONE dispatcher `mark_post_payment_succeeded` (routes by `payments.kind`: bounty → `held`, listing fee → `collected`) which flips the post `draft → active` either way (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts; on `charge.refunded` confirm the refund (`→ cancelled`); on **`account.updated`** copy Stripe's `payouts_enabled` onto the payee row — the ONLY thing that ever makes a spotter payable — then auto-release any waiting credited bounty |
 | `create-payout-account` | the app, from the earn-moment form | ADR-0010 credit-time path: create the v2 recipient account from two CLIENT-minted tokens (identity `accttok_`, bank `btok_`), or replace just the bank (RE-BANK). Auto-releases on the spot if Stripe activates immediately |
 | `release-held-refunds` | **Supabase Cron**, hourly (`x-cron-secret`) | the hold sweep (ADR-0011): refund expired undisputed holds under the same idempotency key the immediate exit would have used; retry upheld-dispute payouts through the release core; send dispute outcome pushes. Deployed `--no-verify-jwt`; safe to invoke by hand, twice |
 
@@ -130,18 +130,28 @@ stripe listen --forward-to http://localhost:54321/functions/v1/stripe-webhook
 `STRIPE_WEBHOOK_SECRET` for the local `functions serve` process.
 
 Then in the app (dev build): post a car and pay with a Stripe **test card**:
-- `4242 4242 4242 4242` — succeeds → the webhook flips the post to
-  `pending_verification`.
+- `4242 4242 4242 4242` — succeeds → the webhook flips the post to `active`.
 - `4000 0000 0000 0002` — declined → the draft and the wizard stay intact; the
   owner can retry with no duplicate draft.
 
-To test a **refund**: on a paid post, deactivate it from the post detail — the
-`deactivate-post` function refunds the bounty minus the card fee and flips the
-post to `cancelled`; the refund shows in the Stripe dashboard.
+**Run BOTH pricing modes** (ADR-0014) — they take different code paths from the
+charge onwards, and only one of them is exercised by habit:
+- *Offer a reward* → charges the bounty; the ledger row is `kind=bounty_escrow`
+  and lands on `held`.
+- *No reward, £4.99* → charges 499p; the row is `kind=listing_fee` and lands on
+  **`collected`**, never `held`. If you ever see a fee row at `held`, stop: that
+  is refundable money that should not be.
+
+To test a **refund**: on a paid BOUNTY post, deactivate it from the post detail —
+`deactivate-post` refunds the bounty minus the card fee and flips the post to
+`cancelled`; the refund shows in the Stripe dashboard. Deactivating a **no-reward**
+post is the contrast worth seeing: it delists immediately and issues **no refund
+at all**, and no `refund_holds` row is created.
 
 Verify the DB side with `npm run test:db` (runs
-`supabase/tests/post_payment_verification.sql` and
-`supabase/tests/refund_cancel_verification.sql` against a local reset).
+`supabase/tests/post_payment_verification.sql`,
+`supabase/tests/refund_cancel_verification.sql` and
+`supabase/tests/listing_fee_verification.sql` against a local reset).
 
 ---
 

@@ -51,7 +51,6 @@ import {
 import { Pressable } from 'react-native-gesture-handler';
 
 import { useTimeAgo } from '../hooks';
-import { formatPounds } from '../lib';
 import {
   motion,
   opacity,
@@ -66,7 +65,7 @@ import {
 } from '../theme';
 import type { PostSummary } from '../types';
 import { AppImage } from './AppImage';
-import { BountyTag } from './BountyTag';
+import { BountyTag, bountyLabel } from './BountyTag';
 import { PlateChip, spellPlate } from './PlateChip';
 import { StatusBadge, statusBadgeLabel } from './StatusBadge';
 
@@ -129,7 +128,11 @@ function VehicleCardInner({
   const label = [
     `${post.colour} ${post.make} ${post.model}`,
     post.plate ? `plate ${spellPlate(post.plate)}` : null,
-    `${formatPounds(post.bountyPence)} bounty`,
+    // The SAME function BountyTag renders from, so the screen reader and the
+    // visible text can never disagree — and null-safe, which matters because
+    // formatPounds throws on a non-integer (a no-reward listing, ADR-0014,
+    // would crash the card rather than just mis-label it).
+    bountyLabel(post.bountyPence),
     badgeLabel ? badgeLabel.toLowerCase() : null,
     `last seen ${lastSeen}`,
     post.distanceMiles !== undefined ? `${formatDistance(post.distanceMiles)} away` : null,

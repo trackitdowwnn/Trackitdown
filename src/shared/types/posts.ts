@@ -49,6 +49,14 @@ export interface PostSummary {
   lastSeenArea?: string;
   /** Distance from the viewer, when location is available. */
   distanceMiles?: number;
-  /** Bounty in integer pence (docs/DOMAIN.md: money is never floats). */
-  bountyPence: number;
+  /**
+   * Bounty in integer pence (docs/DOMAIN.md: money is never floats), or NULL
+   * for a no-reward listing paid for with the fixed platform fee (ADR-0014).
+   *
+   * NULL, never 0 — a 0 would render as "£0 bounty" on every card and pin. Do
+   * NOT coalesce this to 0 at a call site to satisfy the compiler; render
+   * NO_BOUNTY_LABEL (or pass the null straight to BountyTag, which owns that
+   * decision). The nullability is deliberately load-bearing.
+   */
+  bountyPence: number | null;
 }

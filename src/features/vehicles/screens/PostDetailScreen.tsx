@@ -30,7 +30,7 @@ import { Bookmark } from 'lucide-react-native';
 import { useRequireAuth } from '@/features/auth';
 import { exitCheck, useDeactivatePost } from '@/features/payments';
 import { useWatchToggle } from '@/features/watchlist';
-import { estimateRefundPence, formatPounds } from '@/shared/lib';
+import { bountyParam, estimateRefundPence, formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import {
@@ -214,7 +214,11 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         run: () => {
           router.push({
             pathname: '/report-sighting',
-            params: { postId, source: 'detail', bounty: String(post.bountyPence) },
+            // 'none' rather than String(null): a null stringifies to "null" and
+          // parses to NaN, which the route cannot tell from an absent param —
+          // and the success screen would then promise "the bounty" on a
+          // no-reward listing (ADR-0014).
+          params: { postId, source: 'detail', bounty: bountyParam(post.bountyPence) },
           });
         },
       });
@@ -243,7 +247,11 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
       const goReport = () =>
         router.push({
           pathname: '/report-sighting',
-          params: { postId, source: 'detail', bounty: String(post.bountyPence) },
+          // 'none' rather than String(null): a null stringifies to "null" and
+          // parses to NaN, which the route cannot tell from an absent param —
+          // and the success screen would then promise "the bounty" on a
+          // no-reward listing (ADR-0014).
+          params: { postId, source: 'detail', bounty: bountyParam(post.bountyPence) },
         });
       requireAuth({
         context: post.viewerHasSighting ? 'message_owner' : 'report_sighting',
@@ -292,6 +300,16 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     holdHours: number;
   } | null>(null);
 
+  // What the deactivate toast says. The server returns the EXACT refunded
+  // amount, and for a no-reward listing that amount is 0 — its fixed fee is not
+  // refundable (ADR-0014). "£0 refunded" would read as a failed refund rather
+  // than as a listing that never had one, so the zero case gets its own sentence
+  // instead of being formatted like money that moved.
+  const deactivatedToast = (refundedPence: number) =>
+    refundedPence > 0
+      ? `Listing deactivated — ${formatPounds(refundedPence)} refunded`
+      : 'Listing deactivated';
+
   // Deactivate + refund. The confirm already fired (the dialog below); this
   // issues the server refund, toasts the EXACT refunded amount, and refetches so
   // the post now reads "Cancelled" and drops off public surfaces.
@@ -301,7 +319,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     }
     const result = await deactivate(postId);
     if (result.outcome === 'done') {
-      toast.show(`Listing deactivated — ${formatPounds(result.result.refundedPence)} refunded`);
+      toast.show(deactivatedToast(result.result.refundedPence));
       retry();
     } else if (result.outcome === 'held') {
       // Reachable only if sightings appeared between the pre-flight and now.
@@ -327,7 +345,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         // The trigger set emptied server-side (sightings aged out) — the
         // refund simply went through.
         setAttestation(null);
-        toast.show(`Listing deactivated — ${formatPounds(result.result.refundedPence)} refunded`);
+        toast.show(deactivatedToast(result.result.refundedPence));
         retry();
       } else if (result.code === 'ATTESTATION_STALE') {
         // A sighting landed mid-confirm. Refresh the set and ask again.
@@ -356,27 +374,48 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // (the gate re-checks), so degrading here costs honesty nothing.
   const requestDeactivate = useCallback(() => {
     void (async () => {
-      try {
-        const check = await exitCheck(postId);
-        if (check.requiresAttestation) {
-          setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
-          return;
+      // SKIPPED on a no-reward listing (ADR-0014): `exit_check` is purely
+      // sighting-based and knows nothing about pricing, so it would open
+      // ExitAttestation — "one thing before your refund", "your refund is sent
+      // after N hours" — for a listing that has no refund and gets no hold.
+      // deactivate-post already returns before the owner-denial gate for these,
+      // so the sheet only ever asked a victim to attest under a false premise.
+      if (visiblePost?.bountyPence !== null) {
+        try {
+          const check = await exitCheck(postId);
+          if (check.requiresAttestation) {
+            setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
+            return;
+          }
+        } catch (err) {
+          log.warn('exit_check pre-flight failed', {
+            code: err instanceof Error ? err.message : 'UNKNOWN',
+          });
         }
-      } catch (err) {
-        log.warn('exit_check pre-flight failed', {
-          code: err instanceof Error ? err.message : 'UNKNOWN',
-        });
       }
       deactivateRef.current?.open();
     })();
-  }, [postId]);
+  }, [postId, visiblePost]);
 
   // No confirm dialog here, unlike deactivate: the recovery screen IS the
   // confirmation, and it asks something a yes/no cannot — WHICH sighting. A
   // dialog first would be a gate in front of a gate.
   const onRecovered = useCallback(() => {
-    router.push({ pathname: '/recover-post', params: { postId } });
-  }, [postId, router]);
+    // Carry the pricing mode: the recovery screen's option copy promises a
+    // refund and a bounty payout, and both are false on a no-reward listing
+    // (ADR-0014). Same encoder as the report-sighting entry, so 'none' can
+    // never be confused with an absent param.
+    // The param is OMITTED rather than defaulted if the post somehow isn't
+    // loaded (unreachable — this fires from the rendered detail body). Omitted
+    // reads as "unknown", which keeps today's behaviour; defaulting to 'none'
+    // would suppress refund copy on a real bounty post, the costlier mistake.
+    router.push({
+      pathname: '/recover-post',
+      params: visiblePost
+        ? { postId, bounty: bountyParam(visiblePost.bountyPence) }
+        : { postId },
+    });
+  }, [postId, router, visiblePost]);
 
   // Retrying a payout. Idempotent server-side (one transfer per post, forever),
   // so this needs no confirm — and `awaiting_payee` is reported as news rather
@@ -583,9 +622,16 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         <ConfirmDialog
           ref={deactivateRef}
           title="Deactivate this listing?"
-          body={`We’ll take it down and refund about ${formatPounds(
-            estimateRefundPence(visiblePost.bountyPence),
-          )} to your card — the bounty minus the non-recoverable card fee. This can’t be undone.`}
+          body={
+            visiblePost.bountyPence === null
+              ? // No bounty means no refund, and the listing fee is not
+                // refundable (ADR-0014). The destructive confirm must not
+                // promise money back that is not coming.
+                'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.'
+              : `We’ll take it down and refund about ${formatPounds(
+                  estimateRefundPence(visiblePost.bountyPence),
+                )} to your card — the bounty minus the non-recoverable card fee. This can’t be undone.`
+          }
           confirmLabel="Yes, deactivate"
           destructive
           onConfirm={onDeactivate}
@@ -620,8 +666,14 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
             onCredit={() => {
               setAttestation(null);
               // Crediting IS the recovery flow — it already knows how to ask
-              // which sighting and to move the money the right way.
-              router.push({ pathname: '/recover-post', params: { postId } });
+              // which sighting and to move the money the right way. Carries the
+              // pricing mode for the same reason as onRecovered above.
+              router.push({
+                pathname: '/recover-post',
+                params: visiblePost
+                  ? { postId, bounty: bountyParam(visiblePost.bountyPence) }
+                  : { postId },
+              });
             }}
             onCancel={() => setAttestation(null)}
           />

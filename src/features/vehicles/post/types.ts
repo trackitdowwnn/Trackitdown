@@ -65,10 +65,27 @@ export interface PostACarAnswers extends VehicleAnswers {
    *  detail's About section. */
   descRecognise: string;
 
-  // --- Phase 3: bounty ------------------------------------------------------
-  /** Integer GBP pence; £50–£5,000 (5000–500000). */
+  // --- Phase 3: reward ------------------------------------------------------
+  /**
+   * How this listing is paid for (ADR-0014). 'bounty' escrows £50–£5,000 and
+   * pays 95% of it to a credited spotter; 'fee' charges the fixed platform fee
+   * once and offers no cash reward.
+   */
+  pricingMode: PricingMode;
+  /**
+   * Integer GBP pence; £50–£5,000 (5000–500000).
+   *
+   * KEPT even while pricingMode is 'fee', and deliberately not nullable here.
+   * The slider always holds a value, so an owner who tries "no reward" and
+   * changes their mind gets their chosen amount back rather than a reset
+   * control. `pricingMode` is the discriminator; buildCreatePostParams is the
+   * one place that turns 'fee' into the null the server actually stores.
+   */
   bountyAmountPence: number;
 }
+
+/** Which of the two pricing modes a listing uses (ADR-0014). */
+export type PricingMode = 'bounty' | 'fee';
 
 /**
  * Positional arguments for the create_post RPC, named exactly as the SQL
@@ -95,7 +112,12 @@ export interface CreatePostParams {
   p_last_seen_area: string;
   /** District-grain place for spotter alerts; null when the geocode failed. */
   p_last_seen_locality: string | null;
-  p_bounty_amount_pence: number;
+  /**
+   * Integer pence, or NULL for a no-reward listing (ADR-0014) — in which case
+   * create_post stamps the fixed listing fee server-side. The client never
+   * sends a fee: the price is not ours to name.
+   */
+  p_bounty_amount_pence: number | null;
   p_photo_urls: string[];
   p_feature_keys: string[] | null;
   /** Owner evidence pairs as a jsonb array; [] when none. Each photo is an

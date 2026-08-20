@@ -75,8 +75,14 @@ export interface ReportSightingScreenProps {
   postId: string;
   /** Where the spotter entered from — the funnel's `source` dimension. */
   source: 'detail' | 'map';
-  /** Bounty in pence, passed by the entry point for the success copy. */
-  bountyPence?: number;
+  /**
+   * Bounty in pence, passed by the entry point for the success copy.
+   * NULL means this listing offers NO cash reward (ADR-0014) — distinct from
+   * `undefined`, which means the caller did not say. The success copy must not
+   * collapse the two: one is "you'll receive the bounty", the other is a
+   * promise of money that will never arrive.
+   */
+  bountyPence?: number | null;
 }
 
 type Phase =
@@ -184,7 +190,7 @@ function SightingSent({
   onDone,
 }: {
   postId: string;
-  bountyPence?: number;
+  bountyPence?: number | null;
   onDone: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
@@ -247,9 +253,14 @@ function SightingSent({
           The owner can now see your report and where the car was spotted.
         </Text>
         <Text style={styles.sentLine}>
-          {bountyPence
-            ? `If your sighting leads to the recovery, you’ll receive the ${formatPounds(bountyPence)} bounty.`
-            : 'If your sighting leads to the recovery, you’ll receive the bounty.'}
+          {/* Three states, and conflating the last two would promise money that
+              is never coming. null = this listing has no cash reward (ADR-0014);
+              undefined = the caller did not say, so stay generic. */}
+          {bountyPence === null
+            ? 'There’s no cash reward on this listing, but if your report leads to the car being found the owner can credit you — and it’s added to your spotter record.'
+            : bountyPence
+              ? `If your sighting leads to the recovery, you’ll receive the ${formatPounds(bountyPence)} bounty.`
+              : 'If your sighting leads to the recovery, you’ll receive the bounty.'}
         </Text>
         <Text style={styles.sentLine}>
           You and the owner can now message each other about this report — if they get in

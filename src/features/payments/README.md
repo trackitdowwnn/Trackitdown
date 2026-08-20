@@ -18,9 +18,23 @@ computes an amount, never decides who is payable, and never holds a secret.
 
 **Escrow (owner).** `create-payment-intent` → PaymentSheet → `stripe-webhook`
 flips `draft → active` on `payment_intent.succeeded`. The client sends a post id
-and nothing else; the server reads the bounty from the database. Refunds go
+and nothing else; the server reads the price from the database. Refunds go
 through `deactivate-post` (owner cancels) or `refund-recovery` (found it
 themselves), both minus the non-recoverable card fee.
+
+**...and since 2026-08-20, TWO PRICING MODES share that path (ADR-0014).** A
+post carries either a bounty (£50–£5,000, escrowed) or a fixed **£4.99 listing
+fee**. Which one is not a flag — it is which of two columns is non-null, and the
+table enforces exactly one. `create-payment-intent` reads the post and follows
+it; `stripe-webhook` calls ONE dispatcher (`mark_post_payment_succeeded`) which
+routes by `payments.kind`.
+
+The rule to hold on to: **a listing fee reaches `collected` and never `held`.**
+Every refund and payout lookup in this feature selects `status = 'held'`, so a
+fee is invisible to all of them *by construction* rather than because someone
+remembered a filter. The mirror is the dangerous one and is guarded too: an
+escrowed bounty wrongly marked `collected` would disappear from every refund
+path — the owner's money silently kept.
 
 **Payout (spotter).** `connect-onboarding` creates an Express account and hands
 back a hosted link; Stripe's `account.updated` webhook writes
@@ -36,6 +50,16 @@ is the NORMAL first outcome, not a failure, and the bounty waits in escrow.
 
 ## Things that will bite you
 
+- **A no-reward listing has no payout leg AT ALL** (ADR-0014). No transfer, no
+  Connect gate, no `release-payout`. `claim_recovery` closes it terminally and
+  answers `nextStep: 'done'`, so it never reaches `recovery_claimed` — the state
+  every payout path keys on. The spotter still gets credited and their
+  `recoveries_credited` still moves: on these listings that IS the reward, and
+  the copy must keep saying so plainly rather than letting anyone expect money.
+- **The listing fee is NOT refundable, and fee listings sit outside ADR-0011.**
+  `deactivate-post` returns early for them: no owner-denial gate, no 72-hour
+  hold, no dispute window — those protect a spotter's claim on a *bounty*, and
+  there is none. `cancel_fee_listing` delists and moves nothing.
 - **`payouts_enabled` has exactly one writer**: the `account.updated` branch of
   `stripe-webhook`. Not the onboarding function, which deliberately records a
   new account as *not* payable — returning from Stripe's flow does not mean

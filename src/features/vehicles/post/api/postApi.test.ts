@@ -85,6 +85,7 @@ function readyAnswers(overrides: Partial<SubmitReadyAnswers> = {}): SubmitReadyA
     keysTaken: 'yes',
     descDrives: 'Slight rattle from the exhaust.',
     descRecognise: 'Blue with a dented nearside rear door.',
+    pricingMode: 'bounty',
     bountyAmountPence: 30000,
     ...overrides,
   };
@@ -113,6 +114,33 @@ describe('buildCreatePostParams', () => {
       p_feature_keys: null,
       p_verification_path: null,
     });
+  });
+
+  // MONEY (ADR-0014): buildCreatePostParams is the ONE place the pricing mode
+  // becomes what the server stores, so these two assertions are the whole
+  // client-side contract for no-reward listings.
+  it('sends a NULL bounty for a no-reward listing, and never a fee amount', () => {
+    const params = buildCreatePostParams(
+      // The slider still holds a value — the owner set one, then chose "no
+      // reward". Sending it would silently re-add the bounty they removed.
+      readyAnswers({ pricingMode: 'fee', bountyAmountPence: 30000 }),
+      { photoUrls: ['a', 'b', 'c'] },
+    );
+
+    expect(params.p_bounty_amount_pence).toBeNull();
+    // The client NEVER names the fee: create_post stamps it from its own
+    // constant. A p_listing_fee_pence appearing here would be a security bug,
+    // not a feature (SECURITY_AND_TRUST §4).
+    expect(params).not.toHaveProperty('p_listing_fee_pence');
+  });
+
+  it('sends the bounty amount when a reward is offered', () => {
+    const params = buildCreatePostParams(
+      readyAnswers({ pricingMode: 'bounty', bountyAmountPence: 45000 }),
+      { photoUrls: ['a', 'b', 'c'] },
+    );
+
+    expect(params.p_bounty_amount_pence).toBe(45000);
   });
 
   // SAFETY: p_last_seen_locality is the ONLY place name a spotter-alert push
@@ -267,6 +295,8 @@ describe('submitPost', () => {
     });
     // Only the genuinely-required answers — no year/bodyType/features/guided
     // prompts/description, exactly as the controller leaves untouched steps.
+    // pricingMode IS required (ADR-0014): it has no default, because both
+    // possible defaults would silently choose a price for the owner.
     const minimal = {
       make: 'BMW',
       model: '320d',
@@ -274,6 +304,7 @@ describe('submitPost', () => {
       photos: readyAnswers().photos,
       lastSeenAt: '2026-07-10T18:00:00Z',
       location: { latitude: 53.48, longitude: -2.24, addressLabel: 'Manchester' },
+      pricingMode: 'bounty' as const,
       bountyAmountPence: 30000,
     };
 

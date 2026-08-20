@@ -74,6 +74,7 @@ for suite in \
   supabase/tests/refund_hold_verification.sql \
   supabase/tests/notification_center_verification.sql \
   supabase/tests/not_credited_verification.sql \
+  supabase/tests/listing_fee_verification.sql \
   supabase/tests/anon_role_verification.sql \
   supabase/tests/search_verification.sql
 do

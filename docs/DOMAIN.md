@@ -13,12 +13,15 @@ document wins — fix the code or update this doc deliberately.
   (No longer "reviews new posts before they go public" — ADR-0007 retired
   pre-publish review. Nothing moderator-facing is built at all; the only flag
   paths that exist are for a post and a message, and nothing consumes either.)
-- **Platform** — us. Retains 5% of each paid bounty. The bounty is captured to
-  our balance at posting and 95% is TRANSFERRED to the spotter on a credited
-  recovery, so our 5% is simply the remainder that never leaves — it is **not**
-  a Stripe `application_fee_amount`, which only exists for the destination
-  charges we deliberately do not use. See ADR-0002 and Bounty rules below.
-  This line said "via Stripe Connect application fees" until 2026-08-03.
+- **Platform** — us. Paid one of two ways, depending on how the post was listed
+  (see *Listing pricing* below). On a **bounty listing** we retain 5% of the
+  bounty: it is captured to our balance at posting and 95% is TRANSFERRED to the
+  spotter on a credited recovery, so our 5% is simply the remainder that never
+  leaves — it is **not** a Stripe `application_fee_amount`, which only exists for
+  the destination charges we deliberately do not use (ADR-0002). On a
+  **no-reward listing** we take a fixed £4.99 fee at posting and nothing else
+  ever moves (ADR-0014). This line said "via Stripe Connect application fees"
+  until 2026-08-03, and described only the bounty model until 2026-08-20.
 
 ## Accounts & sign-in
 
@@ -45,10 +48,16 @@ document wins — fix the code or update this doc deliberately.
 ## The stolen-car post lifecycle
 
 ```
+BOUNTY listing:
 draft → (pay) → active → recovery_claimed → recovered (paid)
                  │            │
                  ├─ cancelled └─ recovered_no_spotter (refund)
                  └─ expired (refund)
+
+NO-REWARD listing (ADR-0014) — no money leg, so no waypoint:
+draft → (pay fee) → active → recovered            (a sighting was credited)
+                     │     └─ recovered_no_spotter (found another way)
+                     └─ cancelled                  (no refund)
 ```
 
 **LIVE-ON-PAYMENT.** A paid post goes straight to **`active`** (publicly live) —
@@ -59,8 +68,9 @@ is **no longer entered** by the normal flow. See *Anti-abuse* below for what
 replaces the old verification gate.
 
 `cancelled` is reachable from a live (`active`) post — the owner can deactivate
-it; the bounty is refunded (minus the non-recoverable card fee). A `draft`
-(unpaid) is deleted/abandoned, not cancelled.
+it. On a bounty listing the bounty is refunded (minus the non-recoverable card
+fee); on a no-reward listing **nothing is refunded** and the listing simply comes
+down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
 
 1. **draft** — owner fills in car details: make/model/colour (required — the
    car's identity), an optional UK number plate, photos, last-seen location and
@@ -189,7 +199,79 @@ travel. Airbnb's wishlist mechanics, translated:
 
 (Approved 2026-07-27 with the collections feature.)
 
+## Listing pricing — two modes (ADR-0014, 2026-08-20)
+
+Every post is paid for at posting time, one of two ways. **Which one is not a
+flag: it is which of two money columns is populated**, and the database enforces
+that exactly one is (`num_nonnulls(bounty_amount_pence, listing_fee_pence) = 1`).
+A post with both would be charged twice; one with neither would be live for free.
+
+| | **Bounty listing** | **No-reward listing** |
+|---|---|---|
+| Owner pays | £50–£5,000, escrowed | **£4.99 fixed fee**, once |
+| Platform keeps | 5% of the bounty, on recovery | the whole fee, on capture |
+| Spotter gets | 95% of the bounty | **credit + reputation only** |
+| Refundable? | yes, minus the card fee | **no** |
+| Ledger state | `requires_payment → held → released \| refunded` | `requires_payment → collected` (terminal) |
+
+**Why a listing fee exists at all:** £50 was the price of admission for a theft
+victim, at the moment they can least afford it and in the hours that matter
+most. Free posting was never the alternative — the card on file is the main
+anti-abuse deterrent left now that pre-publish review is gone (see *Anti-abuse*).
+
+Rules that follow, and are not implementation details:
+
+- **A listing fee never enters `held`.** Every refund and payout path looks for
+  `held`, so a fee is invisible to all of them by construction. The mirror
+  matters more: an escrowed bounty wrongly marked `collected` would vanish from
+  every refund path — the owner's money silently kept — so the guard runs in
+  both directions.
+- **The fee is not refundable, and a no-reward listing sits OUTSIDE the
+  refund-hold and dispute machinery.** Those exist to stop an owner denying a
+  spotter the bounty they earned; with no bounty there is nothing to deny.
+  Taking one down delists it immediately, with no 72-hour hold. The
+  non-refundability is disclosed on the pricing step, before any money moves.
+- **A no-reward post closes TERMINALLY on claim** — straight to `recovered` /
+  `recovered_no_spotter`, never through `recovery_claimed`. That waypoint exists
+  only because a money leg follows; without one the post would park there
+  forever waiting on a payout that never comes, which would also permanently
+  block the owner from deleting their account.
+- **The spotter still gets credited.** One sighting, `recoveries_credited`
+  increments, no money moves. On a no-reward listing that recognition IS the
+  reward, and the listing says so plainly rather than leaving anyone to hope.
+  - ⚠️ **KNOWN GAP — the credited spotter is not TOLD (2026-08-20).** The
+    credited-spotter notification is a money push ("You've earned £X", routed to
+    /payouts) and `claim_credited_notification` reads the amount from a
+    `held`/`released` payment, so it correctly refuses to invent a number for a
+    `collected` fee. It is therefore not called at all on these listings — and
+    because it consumes the one-shot `credited_notified_at` claim BEFORE that
+    check, calling it would burn the claim permanently and still send nothing.
+    So the spotter learns they were credited only by opening the app. **This is
+    also an exception to the persist-then-push rule (ADR-0012): no
+    `notifications` row is written either, so the Inbox is silent too.**
+    It matters more than a missing push normally would, because "recognition is
+    the reward" is the whole basis for keeping these listings outside the
+    ADR-0011 dispute machinery — a reward that is never delivered does not carry
+    that argument. Closing it needs a non-money credited push (its own kind,
+    copy, and a `claim_credited_notification` branch that only claims once the
+    copy can be built). Deliberately not smuggled into the pricing change.
+- **Fully visible everywhere**, with two ranking carve-outs: a **minimum-bounty
+  alert never matches one** (`NULL >= n` is unknown — never `coalesce(…, 0)`
+  it, which would make every no-reward post match every alert), and the
+  **"Highest bounties nearby" carousel excludes them** (Postgres sorts NULLs
+  FIRST under `DESC`, so they would otherwise head a section named for the thing
+  they lack).
+- **NULL, never 0.** A no-reward post's bounty is NULL end-to-end. A 0 renders
+  as "£0 bounty" on every card and pin; the nullability is what makes the type
+  system stop at each read site. Cards read **"No reward"**.
+- The price lives in ONE place, `current_listing_fee_pence()`, and is
+  **snapshotted onto the post** at creation — changing it never re-prices an
+  existing draft. The client never sends a fee.
+
 ## Bounty rules (v1 — deliberately simple)
+
+*(These govern a BOUNTY listing. A no-reward listing has none of them — see
+"Listing pricing" above.)*
 
 - Minimum bounty: £50. Maximum: £5,000 (fraud ceiling — revisit later).
 - **Single winner.** Exactly one sighting can be credited per recovery.
@@ -478,6 +560,12 @@ unpublished, unsearchable, and carries no money or lifecycle state.
   legacy row cannot slip through), or `recovery_claimed`. The user must cancel
   the post or complete its recovery first. The client may pre-check to explain
   this kindly; the server check is the enforcement.
+- **Known over-reach since 2026-08-20 (ADR-0014), left deliberately:** the block
+  is written as "money in escrow" but tests STATUS, so a live **no-reward**
+  listing blocks deletion too — and it holds no escrow at all. Left as-is
+  because the conservative direction is the safe one (a live listing for a
+  stolen car outliving its owner's account is worse than an extra step), and
+  because the owner can always take it down first. Narrow it only deliberately.
 - ~~⚠️ **Known trap (2026-08-03):** "complete its recovery" is currently
   impossible for the credited-spotter branch.~~ **Closed 2026-08-03**, later
   the same day: `release-payout` is called when a spotter is credited, and

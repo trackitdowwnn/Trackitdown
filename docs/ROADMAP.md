@@ -20,9 +20,14 @@ v1 scope, stop and flag it.
       in the Alerts wizard instead. Decide whether to move it into onboarding
       or strike it from this line; today the line overstates what is missing.
 - [x] Post a stolen car: stepper flow (details → photos → last seen →
-      bounty → escrow payment). **The V5C verification upload was REMOVED**
+      reward → payment). **The V5C verification upload was REMOVED**
       with live-on-payment (2026-07-30) — a paid post goes straight to
       `active`. See DOMAIN.md and SECURITY_AND_TRUST.md §2's open gap.
+      **Extended 2026-08-20 — TWO PRICING MODES (ADR-0014).** The reward phase
+      now asks *whether* to offer one before asking how much: a bounty
+      (£50–£5,000, escrowed, 95/5) or a fixed **£4.99 listing fee**, no cash
+      reward. See the scope note below — this is an addition the 2026-08-05
+      review's "Add nothing" instruction did not sanction, taken deliberately.
 - [ ] Moderator queue (simple internal web page) — flags, disputes and
       collusion checks. The *ownership-verification* queue is no longer part
       of the posting path; re-introducing any ownership check depends on this
@@ -225,6 +230,28 @@ taken first, deliberately.
 spotter's half and start measuring* — both already scoped below. Everything
 else proposed failed the "why now rather than post-launch" test and is recorded
 in the deferred list with its reasoning.
+
+> ### One addition taken anyway: no-bounty listings (2026-08-20, ADR-0014)
+>
+> Recorded here rather than quietly folded into the Core-loop line above,
+> because it **breaks the rule this section sets** and the next reader deserves
+> to see that it was a decision and not a drift.
+>
+> **What:** a post can now be listed with no bounty for a fixed **£4.99** fee
+> instead of the 5% of an escrowed £50–£5,000. Non-refundable; the spotter gets
+> credit and reputation, not cash.
+>
+> **Why it did not wait for post-launch:** the £50 floor is a barrier at the
+> *front* of the funnel, so beta data gathered without this option cannot
+> measure what it costs us — every owner it turned away is invisible in the
+> numbers. Ten testers on a £50 minimum tell us about the people who could
+> afford £50. That is the one shape of question the "measure first" instruction
+> cannot answer by waiting.
+>
+> **Honest cost:** it forks every money path in two, permanently (see the ADR's
+> Consequences), and it landed six days before the 2026-08-26 beta. If the beta
+> slips, this is a candidate cause and should be named as one rather than
+> explained away.
 
 ## Loop integrity — two holes found by the 2026-08-05 loop trace
 

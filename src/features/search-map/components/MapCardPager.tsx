@@ -30,12 +30,11 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { WatchToggle } from '@/features/watchlist';
 import { motion, spacing } from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
-import { Button, VehicleCard } from '@/shared/ui';
+import { Button, bountyLabel, VehicleCard } from '@/shared/ui';
 
 import type { MapPost } from '../types';
 
@@ -131,8 +130,11 @@ export const MapCardPager = memo(function MapCardPager({
     const post = posts[selectedIndex];
     if (post.id !== lastAnnouncedId.current) {
       lastAnnouncedId.current = post.id;
+      // The shared sentence — null-safe (formatPounds throws on a non-integer,
+      // so a no-reward listing would otherwise crash the announcement) and the
+      // same wording the card beside it renders.
       AccessibilityInfo.announceForAccessibility(
-        `${post.colour} ${post.make} ${post.model}, ${formatPounds(post.bountyPence)} bounty — swipe for more results`,
+        `${post.colour} ${post.make} ${post.model}, ${bountyLabel(post.bountyPence)} — swipe for more results`,
       );
     }
     if (selectedIndex !== lastReportedIndex.current) {

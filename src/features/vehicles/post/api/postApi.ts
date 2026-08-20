@@ -122,6 +122,14 @@ const submitAnswersSchema = z.object({
   keysTaken: z.enum(['yes', 'no', 'unknown']).nullish(),
   descDrives: z.string().default(''),
   descRecognise: z.string().default(''),
+  // ADR-0014: which price applies. Required — there is no default pricing mode,
+  // because both defaults are wrong (see the pricing-mode step in postACarFlow).
+  pricingMode: z.enum(['bounty', 'fee']),
+  // Still range-checked, and still required even in 'fee' mode: the slider
+  // always holds its seeded value, so an out-of-range figure here means the
+  // answers object is corrupt regardless of which mode was chosen. What 'fee'
+  // changes is whether the value is SENT (see buildCreatePostParams), not
+  // whether it is valid.
   bountyAmountPence: z.number().int().min(5000).max(500000),
 });
 
@@ -189,7 +197,12 @@ export function buildCreatePostParams(
     // alert push may say. Null when the geocode failed — the push then says
     // "your area" rather than falling back to the street-grain label.
     p_last_seen_locality: answers.lastSeenLocality ?? null,
-    p_bounty_amount_pence: answers.bountyAmountPence,
+    // MONEY (ADR-0014): the ONE place the pricing mode becomes what the server
+    // stores. NULL tells create_post "no bounty" and it stamps the fixed listing
+    // fee from its own constant — the client never sends a fee, because the
+    // price is not ours to name (SECURITY_AND_TRUST §4).
+    p_bounty_amount_pence:
+      answers.pricingMode === 'fee' ? null : answers.bountyAmountPence,
     p_photo_urls: uploads.photoUrls,
     // The vehicle_feature chip step was removed (distinctive features replaced it);
     // the RPC param stays for old callers / the post_feature table, always null.

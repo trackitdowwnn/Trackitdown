@@ -19,11 +19,15 @@
 import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { BadgePoundSterling, Megaphone } from 'lucide-react-native';
+
 import { useAlertReach } from '@/features/notifications';
+import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import {
   CardSelect,
+  type CardSelectOption,
   ChoiceChips,
   DateTimeField,
   DEFAULT_DATE_TIME_PRESETS,
@@ -51,7 +55,7 @@ import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
 import { colourChangePatch } from '../lib/carColours';
 import { makeChangePatch } from '@/shared/lib/carModels';
 import type { VehicleAnswers } from '../lib/vehicleSteps';
-import type { PostACarAnswers } from '../types';
+import type { PostACarAnswers, PricingMode } from '../types';
 import { ColourField } from './ColourField';
 import { DistinctiveFeaturesField } from './DistinctiveFeaturesField';
 import { MakeField } from './MakeField';
@@ -74,6 +78,35 @@ type VehicleStepProps = WizardStepProps<VehicleAnswers>;
 export const MIN_BOUNTY_PENCE = 5000;
 export const MAX_BOUNTY_PENCE = 500000;
 export const DEFAULT_BOUNTY_PENCE = 25000;
+
+/**
+ * The two pricing modes (ADR-0014), as option cards.
+ *
+ * COPY RULES, and they are not decoration:
+ *   * The fee card NAMES ITS PRICE. A payment option that hides its cost until
+ *     the sheet opens is the pattern this product does not use — the final CTA
+ *     already names the amount for the same reason.
+ *   * The fee card says NON-REFUNDABLE, here, before any money moves. This step
+ *     is the only pre-payment disclosure surface in the flow (there is no
+ *     checkout screen), so if it is not said here it is not said in time.
+ *   * Neither card judges the choice. The owner is a theft victim deciding what
+ *     they can afford, and "get more attention" framing on the bounty card
+ *     would price guilt into a bad day.
+ */
+const PRICING_OPTIONS: CardSelectOption<PricingMode>[] = [
+  {
+    value: 'bounty',
+    label: 'Offer a reward',
+    description: 'From £50. Held securely and only paid if a spotter finds your car.',
+    icon: BadgePoundSterling,
+  },
+  {
+    value: 'fee',
+    label: `No reward — ${formatPounds(LISTING_FEE_PENCE)} to list`,
+    description: 'A one-off fee, not refundable. Your car still reaches every nearby spotter.',
+    icon: Megaphone,
+  },
+];
 
 // StepSkipButton moved to shared/ui when the garage's plate and nickname steps
 // needed the identical affordance — an optional step without one is a dead end.
@@ -346,6 +379,23 @@ export function DescriptionStep({ answers, setAnswers, onSkip }: StepProps) {
         />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The pricing choice: a reward, or the flat listing fee. Runs BEFORE the bounty
+ * slider, which the flow then walks past entirely when 'fee' is chosen (the
+ * wizard's `when` gating) — so an owner who wants no reward never sees a money
+ * slider at all, which is the point of offering the option.
+ */
+export function PricingModeStep({ answers, setAnswers }: StepProps) {
+  const onSelect = useCallback(
+    (pricingMode: PricingMode) => setAnswers({ pricingMode }),
+    [setAnswers],
+  );
+
+  return (
+    <CardSelect options={PRICING_OPTIONS} value={answers.pricingMode ?? null} onSelect={onSelect} />
   );
 }
 

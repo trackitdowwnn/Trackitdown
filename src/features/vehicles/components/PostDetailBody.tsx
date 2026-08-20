@@ -55,6 +55,7 @@ import {
   Button,
   ConfirmDialog,
   type ConfirmDialogRef,
+  NO_BOUNTY_LABEL,
   PlateChip,
   SafetyNotice,
   SkeletonVehicleCard,
@@ -185,11 +186,24 @@ export function PostDetailBody({
   // dialog), keeping the cluster to facts only.
   const bountyInfoRef = useRef<ConfirmDialogRef>(null);
 
+  // A no-reward listing (ADR-0014) was paid for with the fixed platform fee
+  // instead of a bounty. Derived once here because it changes THREE things on
+  // this screen — the stat band, the explainer behind the ⓘ, and the deactivate
+  // copy — and they must never disagree about which kind of listing this is.
+  const noReward = post.bountyPence === null;
+
   // The refund quoted in the deactivate section is an ESTIMATE (bounty minus
   // the ~card fee); the server computes and returns the exact figure. The
   // confirm dialog itself lives on the screen — the "Manage post" sheet opens
   // the same one, so the destructive copy exists exactly once.
-  const estimatedRefundPence = estimateRefundPence(post.bountyPence);
+  //
+  // NULL for a no-reward listing: there is nothing to refund, so there is no
+  // estimate to quote. estimateRefundPence is never called with a null — it
+  // would compute a nonsense figure for money that was never escrowed.
+  // Narrowed on the field itself rather than via `noReward`, so the compiler can
+  // see the null is gone before estimateRefundPence is called.
+  const estimatedRefundPence =
+    post.bountyPence === null ? null : estimateRefundPence(post.bountyPence);
 
   return (
     <View style={styles.body}>
@@ -234,19 +248,43 @@ export function PostDetailBody({
         <View style={styles.statBand}>
           <View style={styles.statCell}>
             <View style={styles.bountyValueRow}>
-              <Text style={styles.statValueBounty}>{formatPounds(post.bountyPence)}</Text>
+              <Text
+                // "No reward" is ~2x the width of "£500" and the cell is one of
+                // three sharing the band's width, so at the value tier
+                // (typography.title, 24pt) it wraps to two lines and drops the
+                // ⓘ label out of line with "Sightings" and "Last seen". The
+                // no-reward state therefore steps down a tier and holds ONE
+                // line — the band's geometry is what keeps the cluster readable.
+                style={post.bountyPence === null ? styles.statValueNone : styles.statValueBounty}
+                numberOfLines={1}
+              >
+                {/* Narrowed on the field, not via `noReward` — so the compiler
+                    sees the null is gone and no cast is needed. formatPounds
+                    throws on a non-integer, which is why this is a real guard
+                    rather than a formality. */}
+                {post.bountyPence === null ? NO_BOUNTY_LABEL : formatPounds(post.bountyPence)}
+              </Text>
               {onEditBounty ? (
-                <SectionEditButton onPress={onEditBounty} label="Edit bounty" testID="edit-bounty" />
+                <SectionEditButton
+                  onPress={onEditBounty}
+                  // The editor changes the pricing MODE as well as the amount,
+                  // so on a no-reward listing "Edit bounty" would name a thing
+                  // that is not there. The testID stays stable for the tests.
+                  label={noReward ? 'Edit reward' : 'Edit bounty'}
+                  testID="edit-bounty"
+                />
               ) : null}
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="How the bounty works"
+              accessibilityLabel={noReward ? 'How this listing works' : 'How the bounty works'}
               onPress={() => bountyInfoRef.current?.open()}
               hitSlop={spacing.lg}
               style={styles.statLabelRow}
             >
-              <Text style={styles.statLabel}>Bounty</Text>
+              {/* "Bounty" would be a lie under "No reward". "Reward" names the
+                  thing the cell is about in both modes. */}
+              <Text style={styles.statLabel}>{noReward ? 'Reward' : 'Bounty'}</Text>
               <Feather
                 name="info"
                 size={sizes.iconSm}
@@ -541,8 +579,13 @@ export function PostDetailBody({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Got your car back?</Text>
             <Text style={styles.deactivateBody}>
-              Close the listing and either send the bounty to the spotter who found it,
-              or get it back if you found it another way.
+              {noReward
+                ? // Both halves of the bounty sentence are false here: there is
+                  // nothing to send and nothing to get back. What IS true is the
+                  // credit, which on a no-reward listing is the spotter's whole
+                  // reward (ADR-0014) — so it leads.
+                  'Close the listing and credit the spotter who found it. There’s no cash reward to send, but the recovery goes on their spotter record.'
+                : 'Close the listing and either send the bounty to the spotter who found it, or get it back if you found it another way.'}
             </Text>
             <View style={styles.deactivateAction} testID="mark-recovered">
               <Button
@@ -565,12 +608,17 @@ export function PostDetailBody({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Deactivate listing</Text>
             <Text style={styles.deactivateBody}>
-              Take this listing down and get your bounty back. You’ll be refunded about{' '}
-              {formatPounds(estimatedRefundPence)} — the bounty minus the non-recoverable card fee.
+              {estimatedRefundPence === null
+                ? // No bounty means no refund, and the listing fee is not
+                  // refundable (ADR-0014). Said before the tap, not after —
+                  // this is the owner's last chance to learn it, though the
+                  // pricing step disclosed it before they ever paid.
+                  'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.'
+                : `Take this listing down and get your bounty back. You’ll be refunded about ${formatPounds(estimatedRefundPence)} — the bounty minus the non-recoverable card fee.`}
             </Text>
             <View style={styles.deactivateAction} testID="deactivate-listing">
               <Button
-                label="Deactivate & refund"
+                label={estimatedRefundPence === null ? 'Deactivate listing' : 'Deactivate & refund'}
                 variant="secondary"
                 fullWidth={false}
                 onPress={onDeactivate}
@@ -618,8 +666,16 @@ export function PostDetailBody({
           act of help, not a price (emotional translation). */}
       <ConfirmDialog
         ref={bountyInfoRef}
-        title="How the bounty works"
-        body="The bounty is paid to the spotter whose sighting leads to this car's recovery. Money is held safely and only released when the owner confirms the car is back."
+        title={noReward ? 'How this listing works' : 'How the bounty works'}
+        body={
+          noReward
+            ? // Honest with the spotter about what they will and won't get. The
+              // owner paid a flat fee to list, so there is no pot to share — and
+              // saying so plainly is better than a vague "no reward" that leaves
+              // someone hoping. The recognition on offer is real and is named.
+              "There's no cash reward on this listing — the owner paid a flat listing fee instead. If your sighting leads to the car being found, the owner can still credit you, and the recovery is added to your spotter record."
+            : "The bounty is paid to the spotter whose sighting leads to this car's recovery. Money is held safely and only released when the owner confirms the car is back."
+        }
         confirmLabel="Got it"
         acknowledge
         onConfirm={() => {}}
@@ -835,6 +891,19 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   statValueBounty: {
     ...typography.title,
     color: c.accent,
+    includeFontPadding: false,
+  },
+  // The no-reward twin. Two deliberate differences from the value tier above:
+  //   * `heading` (18) not `title` (24), so "No reward" fits one line in a cell
+  //     that is one of three across the band — at 24pt it wraps and the ⓘ label
+  //     falls out of line with the other two stats.
+  //   * `textSecondary`, not `accent`. DESIGN_SYSTEM reserves the accent for
+  //     bounty/value moments; painting the ABSENCE of value in it is exactly the
+  //     dilution that rule exists to prevent. Matches BountyTag's own choice, so
+  //     the card and the detail band say the same thing the same way.
+  statValueNone: {
+    ...typography.heading,
+    color: c.textSecondary,
     includeFontPadding: false,
   },
   // `label` (14/Medium) rather than `caption` (13/Regular) — the labels carry

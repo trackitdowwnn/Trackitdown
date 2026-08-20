@@ -63,7 +63,12 @@ function toSummary(row: MyPostRow): PostSummary {
     // fallback the feed/watchlist use).
     lastSeenAt: row.last_seen_at ?? row.created_at,
     lastSeenArea: row.last_seen_area ?? undefined,
-    bountyPence: row.bounty_amount_pence ?? 0,
+    // PRESERVE the null (ADR-0014). This read `?? 0` until 2026-08-20, back
+    // when a null could only mean "column absent from this projection". Now a
+    // null is real data — a no-reward listing — and coercing it to 0 would print
+    // "£0 bounty" on the owner's own card. BountyTag decides what null looks
+    // like; this layer must not decide it here by accident.
+    bountyPence: row.bounty_amount_pence,
   };
 }
 

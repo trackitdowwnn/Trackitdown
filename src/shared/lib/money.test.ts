@@ -9,7 +9,13 @@
  * LINKS: src/shared/lib/money.ts.
  */
 
-import { bountyBreakdown, formatPounds } from './money';
+import {
+  bountyBreakdown,
+  bountyParam,
+  formatPounds,
+  LISTING_FEE_PENCE,
+  NO_BOUNTY_PARAM,
+} from './money';
 
 describe('formatPounds', () => {
   it.each([
@@ -56,5 +62,45 @@ describe('bountyBreakdown', () => {
   it('rejects floats and negative amounts', () => {
     expect(() => bountyBreakdown(100.5)).toThrow(/integer pence/);
     expect(() => bountyBreakdown(-100)).toThrow(/integer pence/);
+  });
+});
+
+describe('bountyParam', () => {
+  it('encodes a bounty as its pence value', () => {
+    expect(bountyParam(25000)).toBe('25000');
+  });
+
+  // The bug this function exists to prevent: String(null) is "null", Number()
+  // turns that into NaN, and the route cannot tell NaN from an absent param —
+  // so the sighting-success screen fell through to "you'll receive the bounty"
+  // on a listing that has none.
+  it('encodes a no-reward listing as an explicit token, never "null"', () => {
+    expect(bountyParam(null)).toBe(NO_BOUNTY_PARAM);
+    expect(bountyParam(null)).not.toBe('null');
+    expect(Number.isNaN(Number(bountyParam(null)))).toBe(true);
+    // ...and the token must be distinguishable from a real amount, which is the
+    // whole point: the route branches on it BEFORE parsing.
+    expect(bountyParam(null)).not.toBe(bountyParam(25000));
+  });
+});
+
+describe('LISTING_FEE_PENCE', () => {
+  // MONEY (ADR-0014). This constant is a DISPLAY MIRROR of the authoritative
+  // price in public.current_listing_fee_pence(). It cannot mis-charge anyone —
+  // record_listing_fee_intent rejects any amount that disagrees with the post's
+  // own stamped fee — but it can show the wrong number on the pricing card and
+  // the "Post & pay" CTA, which is the last thing an owner reads before paying.
+  it('is £4.99 in integer pence, matching current_listing_fee_pence()', () => {
+    expect(LISTING_FEE_PENCE).toBe(499);
+  });
+
+  it('formats as the exact string the pricing card and CTA show', () => {
+    expect(formatPounds(LISTING_FEE_PENCE)).toBe('£4.99');
+  });
+
+  it('is integer pence, so it survives the money formatter at all', () => {
+    // formatPounds throws on a non-integer; a float here would crash the
+    // pricing step rather than round oddly.
+    expect(Number.isInteger(LISTING_FEE_PENCE)).toBe(true);
   });
 });

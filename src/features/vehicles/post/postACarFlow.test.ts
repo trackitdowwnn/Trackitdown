@@ -27,6 +27,7 @@ jest.mock('./components/postSteps', () => ({
   LastSeenWhenStep: () => null,
   LastSeenWhereStep: () => null,
   DescriptionStep: () => null,
+  PricingModeStep: () => null,
   BountyStep: () => null,
   MIN_BOUNTY_PENCE: 5000,
   MAX_BOUNTY_PENCE: 500000,
@@ -47,17 +48,20 @@ describe('postACarFlow structure', () => {
     expect(postACarFlow.phases).toHaveLength(3);
     expect(postACarFlow.phases.map((p) => p.id)).toEqual(['car', 'when-where', 'bounty']);
     expect(postACarFlow.review).toBeDefined();
-    // The final CTA is dynamic — it names the bounty the owner is about to pay.
+    // The final CTA is dynamic — it names the amount the owner is about to pay,
+    // in BOTH pricing modes. A payment button is never vague about the sum.
     expect(typeof postACarFlow.finalCtaLabel).toBe('function');
     const label = postACarFlow.finalCtaLabel as (a: Partial<PostACarAnswers>) => string;
-    expect(label({ bountyAmountPence: 25000 })).toBe('Post & pay £250');
+    expect(label({ pricingMode: 'bounty', bountyAmountPence: 25000 })).toBe('Post & pay £250');
+    // No-reward listing: the CTA names the FEE, not the slider's retained value.
+    expect(label({ pricingMode: 'fee', bountyAmountPence: 25000 })).toBe('Post & pay £4.99');
     // Falls back to the seeded default when the bounty answer is absent.
     expect(label({})).toMatch(/^Post & pay £/);
   });
 
   it('every step has an id, question, component, schema, and a review value', () => {
     const steps = postACarFlow.phases.flatMap((p) => p.steps);
-    expect(steps).toHaveLength(11);
+    expect(steps).toHaveLength(12);
     for (const step of steps) {
       expect(step.id).toBeTruthy();
       expect(step.question).toBeTruthy();
@@ -69,6 +73,38 @@ describe('postACarFlow structure', () => {
 
   it('seeds a starting bounty so the slider step begins valid', () => {
     expect(passes('bounty', POST_A_CAR_INITIAL_ANSWERS)).toBe(true);
+  });
+
+  // ADR-0014: the pricing choice.
+  it('does NOT seed a pricing mode — the owner must choose', () => {
+    // Both defaults are wrong: 'bounty' makes the £50 minimum feel pre-agreed
+    // (the barrier this change removes), 'fee' nudges them off a reward that
+    // makes their car more likely to be found. So Next stays disabled.
+    expect(POST_A_CAR_INITIAL_ANSWERS.pricingMode).toBeUndefined();
+    expect(passes('pricing-mode', POST_A_CAR_INITIAL_ANSWERS)).toBe(false);
+  });
+
+  it('gates the pricing step on a real choice', () => {
+    expect(passes('pricing-mode', {})).toBe(false);
+    expect(passes('pricing-mode', { pricingMode: 'bounty' })).toBe(true);
+    expect(passes('pricing-mode', { pricingMode: 'fee' })).toBe(true);
+  });
+
+  it('walks past the bounty slider when there is no reward to set', () => {
+    const when = stepById('bounty').when;
+    expect(when).toBeDefined();
+    const visible = (answers: Partial<PostACarAnswers>) => when?.(answers) ?? true;
+    expect(visible({ pricingMode: 'fee' })).toBe(false);
+    expect(visible({ pricingMode: 'bounty' })).toBe(true);
+    // Mode not chosen yet: the step stays visible, so a half-filled flow never
+    // silently skips the money question.
+    expect(visible({})).toBe(true);
+  });
+
+  it('reviews a no-reward listing as the fee, not as a bounty', () => {
+    const review = stepById('pricing-mode').reviewValue;
+    expect(review?.({ pricingMode: 'fee' })).toBe('No reward · £4.99 fee');
+    expect(review?.({ pricingMode: 'bounty' })).toBe('Reward offered');
   });
 });
 
