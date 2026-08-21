@@ -62,11 +62,29 @@ baseline dot** on white. That is the decision.
      masks would have clipped the dot and the crossbar's corner. The pack's
      README anticipates the issue but suggests a 66% fill, which is still too
      generous: the binding constraint is not width but the **diagonal reach of
-     the low-right dot**, which extends 1.272S from centre. The Android layers
-     use a **0.47** fill, computed rather than guessed.
+     the low-right dot**, which extends 1.272S from centre and caps the fill at
+     **~0.48**, computed rather than guessed. (What is actually shipped is
+     smaller still — see the sizing note below.)
    - **Its ink sat 13px right and 19px above the canvas centre.** The geometry
      is expressed about the ink's *own* bounding-box centre, so every target
      centres it optically.
+
+5. **Sizing is a separate decision from fitting** *(2026-08-21, owner: the mark
+   read as crowded)*. Shipped fills are **0.52** on the iOS/web square, down
+   from 0.62, and **0.40** on the Android layers, down from 0.47.
+   - Android is the smaller of the two because the launcher **masks to a circle
+     just 61% of the canvas wide**, so apparent width is `fill / 0.611`. At 0.47
+     the mark spanned 77% of what you actually see; at 0.40 it spans 66% —
+     matching the weight the iOS tile now carries. Fitting the safe zone and
+     looking right are different tests, and only the first was being run.
+   - **The floor on going smaller is legibility, and it is close.** The binding
+     case is the iOS Settings row at 29px, where the stem-to-dot gap is the
+     tightest feature: 0.52 renders it at 1.68px, 0.48 at 1.55px, 0.44 at
+     1.42px — under the 1.5px floor and a failing build. Roughly one more step
+     exists; it was measured before it was needed, not after.
+   - The splash (0.78) and notification glyph (0.72) are deliberately untouched:
+     the splash has no crop and no neighbours, and the glyph is already at the
+     floor.
 
 ## Consequences
 

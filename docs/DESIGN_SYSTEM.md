@@ -179,14 +179,25 @@ a new vector arrives, update both.
 
 - **Android’s 61.1% safe zone** (66 of 108dp) was overflowed by 55px, which
   launcher masks would have clipped. The binding constraint is not the mark’s
-  width but the DIAGONAL reach of the low-right dot, so the Android layers use a
-  0.47 fill — computed, not guessed. The pack’s README suggests 66%; that would
-  be clipped.
+  width but the DIAGONAL reach of the low-right dot, which caps the fill at
+  ~0.48 — computed, not guessed. The pack’s README suggests 66%; that would be
+  clipped.
 - **The ink sat 13px right and 19px above centre.** The geometry is expressed
   about the ink’s own bounding box, so every target centres it optically.
 
+**How big the mark sits on its tile** is a separate decision from whether it
+fits, and the two are set independently per platform: **0.52** on the iOS/web
+square, **0.40** on the Android layers (both reduced on 2026-08-21 — the mark
+read as crowded). Android is smaller for a reason that is not the safe zone:
+the launcher then MASKS to a circle only 61% of the canvas wide, so the mark’s
+apparent width is `fill / 0.611`, not `fill`. 0.40 spans 66% of that visible
+circle, which is the weight the iOS tile carries at 0.52 — the two must move
+together or the same app wears two different-looking icons.
+
 **A legibility floor of 1.5 rendered px** on bar thickness, dot diameter and the
-stem-to-dot gap is checked at each asset’s smallest render size. This is what
+stem-to-dot gap is checked at each asset’s smallest render size. It is also what
+bounds any further shrinking: at 0.52 the iOS Settings row (29px) renders the
+stem-to-dot gap at 1.68px, so there is about one step left and no more. This is what
 killed the previous mark: it looked fine at 1024px and collapsed at 48.
 
 Regenerate with `npm run assets:brand`; `npm run test:assets` asserts the safe

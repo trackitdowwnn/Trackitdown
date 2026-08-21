@@ -92,10 +92,15 @@ export const LEGIBILITY_FLOOR_PX = 1.5;
  *               legibility floor is checked against — not the file size
  *   safeFraction  Android's 61.1% crop, asserted where it applies
  *
- * WHY THE ANDROID FILL IS SO MUCH SMALLER: the binding constraint is not width
- * but the DIAGONAL reach of the dot, which sits low-right. It reaches 1.272S
- * from centre, so a mark 0.47 of the canvas wide already touches the safe
- * circle. The pack's README suggests 66%; that would be clipped.
+ * WHY THE ANDROID FILL IS SMALLER THAN THE iOS ONE, twice over:
+ *   1. THE CROP. The binding constraint is not width but the DIAGONAL reach of
+ *      the dot, which sits low-right and reaches 1.272S from centre — so a mark
+ *      even 0.48 of the canvas wide already touches the safe circle. The pack's
+ *      README suggests 66%; that would be clipped.
+ *   2. THE MASK. Fitting the cap is not the same as looking right. The launcher
+ *      masks to a circle 61% of the canvas wide, so the mark's apparent size is
+ *      fill/0.61, not fill. 0.40 reads as 66% of the visible circle — matching
+ *      the iOS tile's weight, which is why the two were reduced together.
  */
 export const ANDROID_SAFE_FRACTION = 66 / 108; // 0.6111 — the guaranteed-visible circle
 
@@ -103,7 +108,13 @@ export const TARGETS = [
   {
     file: 'icon.png',
     size: 1024,
-    fill: 0.62,
+    // 0.52, down from 0.62 (2026-08-21, owner's call: it read as crowded).
+    // Generous margin is one of the clearest signals of a considered icon.
+    // The FLOOR on going smaller is the iOS Settings row at 29px, where the
+    // stem-to-dot gap is the tightest feature: 0.52 renders it at 1.68px,
+    // 0.48 at 1.55px, and 0.44 at 1.42px — under the 1.5px floor and a failing
+    // build. So there is roughly one more step available here and no more.
+    fill: 0.52,
     ink: INK,
     paper: PAPER, // App Store Connect rejects alpha in the marketing icon.
     minRenderPx: 29, // iOS Settings row, the smallest place it is drawn.
@@ -111,7 +122,12 @@ export const TARGETS = [
   {
     file: 'android-icon-foreground.png',
     size: 1024,
-    fill: 0.47, // <= the safe circle once the dot's diagonal reach is counted.
+    // 0.40, down from 0.47 (2026-08-21). The safe zone caps this at ~0.48, but
+    // fitting the cap is not the same as looking right: the launcher then MASKS
+    // to a circle only 61% of the canvas wide, so a mark at 0.47 filled 77% of
+    // what you actually see. At 0.40 it fills 66% — the same visual weight the
+    // iOS tile now has, which is why the two moved together.
+    fill: 0.4,
     ink: INK,
     paper: null,
     minRenderPx: 48,
@@ -123,7 +139,10 @@ export const TARGETS = [
     // still shows the mark instead of nothing.
     file: 'android-icon-monochrome.png',
     size: 1024,
-    fill: 0.47,
+    // Tracks the foreground EXACTLY — the themed icon is the same mark at the
+    // same size, and a mismatch would show up only for the users who turn
+    // themed icons on, which is the worst possible place to hide one.
+    fill: 0.4,
     ink: INK,
     paper: null,
     minRenderPx: 48,
@@ -142,7 +161,9 @@ export const TARGETS = [
     // tab strip, and a white plate is what browsers expect.
     file: 'favicon.png',
     size: 48,
-    fill: 0.62,
+    // Keeps step with icon.png — same composition on the same white tile, so
+    // the two should never drift apart.
+    fill: 0.52,
     ink: INK,
     paper: PAPER,
     minRenderPx: 48,

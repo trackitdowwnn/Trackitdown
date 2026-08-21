@@ -48,6 +48,23 @@ import { expoFeedDeviceLocation } from '../lib/feedDeviceLocation';
 
 const log = createLogger('search-map');
 
+/**
+ * How long to wait before each attempt at a device fix while the feed is
+ * stranded on national WITH permission granted. Four attempts over ~14s.
+ *
+ * THE FIRST IS ZERO, and that matters: when the OS already has a cached fix
+ * (any launch after the first, or another app has just located) it comes back
+ * immediately, and delaying it would put an artificial pause into the common
+ * path to fix the rare one. The backoff is only for the cold-GPS case.
+ *
+ * Bounded deliberately. Each attempt already races a 10s timeout inside
+ * getCurrentPosition, so an unbounded loop would hold the GPS on indefinitely
+ * for a user who is indoors — a battery bug traded for a feed bug. If none of
+ * these lands, the AppState recovery takes over and costs nothing until the
+ * user returns to the app.
+ */
+const FIX_RETRY_DELAYS_MS = [0, 1_500, 4_000, 8_000] as const;
+
 export interface UseFeedLocationResult {
   /** null while the chain is still resolving (feed shows the skeleton). */
   location: FeedLocation | null;
@@ -78,6 +95,10 @@ export function useFeedLocation(
   // check can resolve stale, moments AFTER a grant landed elsewhere — both
   // left a card reading "Use my location" above a feed already using it.
   const permissionGranted = useRef(false);
+  // The SAME fact as the ref, in reactive form. The ref exists so callbacks can
+  // read it without re-creating; this exists so effects can DEPEND on it. Both
+  // are set together in notePermission and must never diverge.
+  const [hasPermission, setHasPermission] = useState(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -94,6 +115,7 @@ export function useFeedLocation(
     permissionGranted.current = true;
     if (mounted.current) {
       setShowLocationPrimer(false);
+      setHasPermission(true);
     }
   }, []);
 
@@ -230,7 +252,13 @@ export function useFeedLocation(
         // Pitch the permission only when there IS one to pitch. applyDeviceFix
         // already banked the answer, so a granted-but-fixless run (cold GPS)
         // falls through the latch silently — a card whose tap changes nothing
-        // reads as broken, and the retries below cover it anyway.
+        // reads as broken. The granted-but-fixless case is then owned by the
+        // stranded-state retry below.
+        //
+        // That last sentence used to read "the retries below cover it anyway",
+        // and it was false: nothing retried, which is exactly how the feed got
+        // stuck on national for a whole session. Do not weaken it back into a
+        // claim without checking the effect it names still exists.
         pitchPrimer();
       }
     })();
@@ -252,22 +280,82 @@ export function useFeedLocation(
     if (!grantedAtStartup) {
       return;
     }
-    // The ANSWER lands here, whatever the mode: an allow is an allow, and the
-    // card must go the moment it happens rather than when a fix arrives.
+    // The ANSWER, and ONLY the answer: an allow is an allow, and the card must
+    // go the moment it happens rather than when a fix arrives. Attempting the
+    // fix is no longer this effect's job — see the retry below, which owns
+    // every post-grant attempt so there is one place that can give up.
     notePermission(true);
-    if (locationMode !== 'national') {
-      return;
+  }, [grantedAtStartup, notePermission]);
+
+  // THE STRANDED STATE: permission granted, but still national because no fix
+  // has landed. This is the whole first-run bug — on a first-ever grant the OS
+  // has no cached position for the app, so the immediate attempt loses its race
+  // with cold GPS and returns nothing.
+  //
+  // It used to be a dead end. The single post-grant attempt discarded its
+  // result, its effect could never re-run (none of its deps could change
+  // again), and the AppState recovery below was armed only while the primer
+  // was VISIBLE — which the same `notePermission(true)` had just hidden. The
+  // latch that retires the card was also the latch that disarmed the retry, so
+  // the feed stayed on "Recent posts across the UK" for the rest of the
+  // session and only came right on the NEXT launch, once the OS had a fix to
+  // hand back instantly. Hence "only on first start".
+  //
+  // Bounded on purpose: each attempt already races a 10s timeout inside
+  // getCurrentPosition, so this is at most three cold-GPS reads and then it
+  // stops. A feed quietly polling GPS forever is a battery bug, and the
+  // AppState path below is the honest catch-all for the rest.
+  useEffect(() => {
+    if (!hasPermission || locationMode !== 'national') {
+      return undefined;
     }
-    void applyDeviceFix(false);
-  }, [grantedAtStartup, locationMode, applyDeviceFix, notePermission]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+
+    const tryFix = async () => {
+      if (cancelled) {
+        return;
+      }
+      const located = await applyDeviceFix(false);
+      // A success flips locationMode to 'local', which tears this effect down
+      // through its own dependency — no explicit stop needed.
+      if (located || cancelled) {
+        return;
+      }
+      attempt += 1;
+      if (attempt >= FIX_RETRY_DELAYS_MS.length) {
+        log.info('location_retry_exhausted', { attempts: attempt });
+        return;
+      }
+      timer = setTimeout(() => void tryFix(), FIX_RETRY_DELAYS_MS[attempt]);
+    };
+
+    timer = setTimeout(() => void tryFix(), FIX_RETRY_DELAYS_MS[0]);
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [hasPermission, locationMode, applyDeviceFix]);
 
   // Last recovery path: permission granted OUTSIDE the app — in Settings,
   // after a hard OS block — reaches us no other way, and coming back to a feed
   // still begging for a permission you just granted is the same broken read.
   // Armed only while the card is actually up, so the settled case costs
   // nothing; primitive dep (the boolean), never the location object.
+  //
+  // ARMED ON TWO CONDITIONS, not one. The primer being up is the original
+  // case. The second — granted-but-still-national — is the stranded state
+  // above, and it is armed SEPARATELY because the primer is hidden exactly
+  // then: conflating "is the card showing" with "could we still be local"
+  // is what made this recovery unreachable in the case that needed it most.
+  // Once the bounded retry gives up, coming back to the app is what rescues
+  // the session, and a user who wandered off to Settings gets a fix on return.
   useEffect(() => {
-    if (!showLocationPrimer) {
+    const stranded = hasPermission && locationMode === 'national';
+    if (!showLocationPrimer && !stranded) {
       return undefined;
     }
     const subscription = AppState.addEventListener('change', (next) => {
@@ -277,7 +365,7 @@ export function useFeedLocation(
       void applyDeviceFix(false);
     });
     return () => subscription.remove();
-  }, [showLocationPrimer, applyDeviceFix]);
+  }, [showLocationPrimer, hasPermission, locationMode, applyDeviceFix]);
 
   const setArea = useCallback(async (pref: FeedLocationPref) => {
     setLocation({
