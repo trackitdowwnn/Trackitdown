@@ -1,10 +1,10 @@
 /**
- * WHAT:  BrandLoader — THE app's one loading visual: the Trackitdown
- *        wordmark with a calm rotating phrase beneath it, lit by a highlight
- *        that sweeps left to right through the letters. Every blocking wait
- *        shows this same face — the cold-start splash (BrandSplash) and the
- *        in-app FullscreenLoader both render it — so loading always looks
- *        like the app opening, never like a component buffering.
+ * WHAT:  BrandLoader — THE app's one loading visual: the "T" monogram with a
+ *        calm rotating phrase beneath it, lit by a highlight that sweeps left
+ *        to right through the letters. Every blocking wait shows this same
+ *        face — the cold-start splash (BrandSplash) and the in-app
+ *        FullscreenLoader both render it — so loading always looks like the
+ *        app opening, never like a component buffering.
  * WHY:   Spinners and dot-waves say "machine busy"; the line says the same
  *        thing in the product's own voice. The shimmer is what carries the
  *        liveness signal BETWEEN phrase swaps (2026-08-06, at the owner's
@@ -23,20 +23,32 @@
  *        (this app exists because something bad happened to the user).
  * LINKS: src/features/auth/components/BrandSplash.tsx and
  *        src/shared/ui/FullscreenLoader.tsx (the two consumers);
- *        src/shared/ui/BrandMark.tsx (the monogram above the wordmark);
+ *        src/shared/ui/BrandMark.tsx (the monogram);
  *        docs/DESIGN_SYSTEM.md (Loading, Motion, Tone).
  *
- * THE MARK SITS ABOVE THE WORDMARK, and is deliberately STILL (2026-08-21,
- * closing the TODO(art) deferred by ADR-0015). Three decisions, so the next
- * person does not have to re-take them:
- *   * ABOVE, not replacing. The wordmark is how a new user learns the app's
- *     NAME; a lone "T" on a cold-start splash teaches nothing.
- *   * The shimmer does NOT cross it. The sweep is a property of the waiting
- *     LINE — it says "still working" about the phrase it lights. Running it
- *     over a logo would make the logo look like it were loading too, and it
- *     would mean animating the mark's fill on the UI thread for no signal.
- *   * Therefore the reduced-motion branch needs nothing: the mark is static in
- *     both branches, so there is only one composition to reason about.
+ * THE MARK REPLACED THE WORDMARK on 2026-08-21, at the owner's request: mark
+ * and phrase, no "Trackitdown" underneath. This file previously argued the
+ * opposite — that the wordmark is how a new user learns the app's NAME and a
+ * lone "T" teaches nothing — so the trade is recorded rather than quietly
+ * reversed:
+ *   * THE NAME IS NO LONGER SHOWN. It survives only in the block's
+ *     accessibilityLabel ("Trackitdown, loading"), which is now the single
+ *     place the product names itself on a cold start. Do not "tidy" that label
+ *     down to "Loading" — it is carrying the wordmark's whole remaining job.
+ *   * That cost is smallest exactly here: this screen is usually up for under
+ *     half a second, and anyone reaching it has already seen the name on the
+ *     launcher icon they just tapped and the store listing they installed from.
+ *   * The mark also shrank (see MARK_WIDTH) rather than growing to fill the
+ *     space — a smaller mark alone reads as composed; a large one alone reads
+ *     as a placeholder for the wordmark that used to be there.
+ *
+ * THE MARK IS DELIBERATELY STILL (2026-08-21, closing the TODO(art) deferred by
+ * ADR-0015). The shimmer does NOT cross it: the sweep is a property of the
+ * waiting LINE — it says "still working" about the phrase it lights. Running it
+ * over a logo would make the logo look like it were loading too, and would mean
+ * animating the mark's fill on the UI thread for no signal. Therefore the
+ * reduced-motion branch needs nothing: the mark is static in both branches, so
+ * there is only one composition to reason about.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -74,11 +86,16 @@ import { BrandMark } from './BrandMark';
  *  was half of why the first attempt at this was invisible. */
 const SHIMMER_BAND = 0.22;
 
-/** The mark's width above the wordmark. Sized against the wordmark rather than
- *  picked: `typography.display` is 32pt, and a mark ~2x the cap height reads as
- *  the lockup's anchor without dominating a splash that is often on screen for
- *  under half a second. */
-const MARK_WIDTH = 64;
+/** The mark's width. Was 64 — two times `typography.display`'s 32pt — when it
+ *  sat above the wordmark and had to anchor a lockup. With the wordmark gone
+ *  (see the header) there is no lockup to anchor, and 64 alone on the screen
+ *  read as oversized: a mark that large with nothing beside it looks like it is
+ *  standing in for something missing. 56 is the owner's "a little bit smaller".
+ *
+ *  There is no legibility floor to respect here, unlike the launcher icon: this
+ *  is vector, rendered at one known size on a full screen, never masked and
+ *  never downscaled to 29px. Size is purely a composition decision. */
+const MARK_WIDTH = 56;
 
 /** The waiting voice: watchful, communal, hopeful. Keep entries SHORT (one
  *  breath), sentence-cased, ellipsis-terminated; add sparingly. */
@@ -133,14 +150,11 @@ export function BrandLoader({ message, testID }: BrandLoaderProps) {
           (palette.primary) — a PNG would need a tintColor hack. Decorative:
           the block's single progressbar label speaks for it. */}
       <BrandMark size={MARK_WIDTH} />
-      {/* The wordmark is literal Text, not a rendered asset, because the
-          shimmer animates ONE VIEW PER CHARACTER — see the header. */}
-      <Text style={styles.wordmark}>Trackitdown</Text>
       {/* Fixed slot; each line is ABSOLUTE within it so the outgoing and
           incoming phrases overlap in place (in-flow siblings would stack and
           snap). The slot CLIPS: phrases rise into it from below and leave
           through the top, so the movement reads as one line replacing another
-          on a board rather than as text drifting over the wordmark. */}
+          on a board rather than as text drifting up toward the mark. */}
       <View style={styles.messageSlot}>
         <Animated.View
           key={line}
@@ -313,21 +327,14 @@ const makeStyles = (c: Palette) =>
       alignSelf: 'stretch',
       alignItems: 'center',
     },
-    wordmark: {
-      ...typography.display,
-      color: c.primary,
-      // The mark and the wordmark are one lockup, so they sit closer to each
-      // other than the wordmark does to the phrase slot below (spacing.xl).
-      marginTop: spacing.md,
-    },
     messageSlot: {
-      // Two body lines of room so a long status never reflows the wordmark;
-      // stretched wide so the absolute lines have a full line to centre in.
+      // Two body lines of room so a long status never reflows the mark above
+      // it; stretched wide so the absolute lines have a full line to centre in.
       height: typography.body.lineHeight * 2,
       marginTop: spacing.xl,
       alignSelf: 'stretch',
       // The window the phrases travel through. Without this the outgoing line
-      // would fade out ON TOP of the wordmark 24pt above it, since the exit
+      // would fade out ON TOP of the mark 24pt above it, since the exit
       // translates further than the gap.
       overflow: 'hidden',
     },

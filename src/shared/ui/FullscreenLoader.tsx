@@ -1,7 +1,7 @@
 /**
  * WHAT:  FullscreenLoader — the app's ONLY sanctioned blocking loader: a
  *        calm full-opacity page (app background, not a scrim) carrying the
- *        BrandLoader — the SAME wordmark-plus-rotating-phrase face as the
+ *        BrandLoader — the SAME mark-plus-rotating-phrase face as the
  *        cold-start splash, so every wait in the app looks like the app,
  *        with an optional live-updating status message that overrides the
  *        phrases while set.
@@ -139,7 +139,7 @@ export function FullscreenLoader({ visible, message, testID }: FullscreenLoaderP
         >
           <SafeAreaView style={styles.safe}>
             <EnterScale>
-              {/* The one loading face (BrandLoader): wordmark + rotating
+              {/* The one loading face (BrandLoader): the mark + rotating
                   phrase, with `message` overriding the phrases while set.
                   No accessibilityLiveRegion inside: the explicit
                   announceForAccessibility above covers both platforms. */}

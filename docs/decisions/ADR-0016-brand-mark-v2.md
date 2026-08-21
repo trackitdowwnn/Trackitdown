@@ -100,6 +100,9 @@ baseline dot** on white. That is the decision.
 - **Unchanged from ADR-0015 and still true:** assets are generated from numbers
   rather than drawn; `jimp` is a PNG encoder only; anti-aliasing is analytic;
   alpha is straight with ink in every pixel; the iOS Icon Composer bundle stays
-  deleted (with its tinted-variant landmine recorded there); `BrandLoader` still
-  renders the wordmark as text; and `expo-notifications`' near-black `color` on
-  Android's dark shade is still flagged rather than changed.
+  deleted (with its tinted-variant landmine recorded there); and
+  `expo-notifications`' near-black `color` on Android's dark shade is still
+  flagged rather than changed. (`BrandLoader` rendered the wordmark as text when
+  this was written; on 2026-08-21 the wordmark was dropped from the loader
+  entirely at the owner's request — the mark and the waiting phrase now carry it
+  alone. See that file's header for the trade.)
