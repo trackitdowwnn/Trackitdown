@@ -76,9 +76,23 @@ jobs:
         # can prove each function's version actually moved. The CLI has been
         # observed exiting quietly without deploying; a clean exit is not proof.
         run: |
-          curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            "https://api.supabase.com/v1/projects/$PROJECT_REF/functions" \
-            | jq -c 'map({slug, version})' > /tmp/before.json
+          set -euo pipefail
+          # CHECK THE STATUS BEFORE PARSING. Piping an error body straight into
+          # jq reports `Cannot index string with string "slug"`, which sent the
+          # first person to hit it (2026-08-21, a rotated token) looking at the
+          # workflow instead of at their credentials. An auth failure should say
+          # so in one line.
+          HTTP=$(curl -sS -o /tmp/fns.json -w '%{http_code}' \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/functions")
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::Supabase Management API returned HTTP $HTTP"
+            echo "::error::$(head -c 200 /tmp/fns.json)"
+            echo "::error::Check SUPABASE_ACCESS_TOKEN (expired/revoked/mis-pasted)"
+            echo "::error::and SUPABASE_PROJECT_REF. Nothing was deployed."
+            exit 1
+          fi
+          jq -c 'map({slug, version})' /tmp/fns.json > /tmp/before.json
           echo "Before:"; jq -r '.[] | "  \(.slug) v\(.version)"' /tmp/before.json
 
       # --- Database first ------------------------------------------------------
@@ -145,9 +159,16 @@ jobs:
       - name: Verify every function's version moved
         run: |
           set -euo pipefail
-          curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            "https://api.supabase.com/v1/projects/$PROJECT_REF/functions" \
-            | jq -c 'map({slug, version})' > /tmp/after.json
+          HTTP=$(curl -sS -o /tmp/fns2.json -w '%{http_code}' \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/functions")
+          if [ "$HTTP" != "200" ]; then
+            echo "::error::Cannot verify — Management API returned HTTP $HTTP."
+            echo "::error::The deploys above may well have succeeded; this step"
+            echo "::error::could not confirm it. Check the functions by hand."
+            exit 1
+          fi
+          jq -c 'map({slug, version})' /tmp/fns2.json > /tmp/after.json
 
           FAILED=0
           for SLUG in $(ls -d supabase/functions/*/ | xargs -n1 basename | grep -vx '_shared'); do
