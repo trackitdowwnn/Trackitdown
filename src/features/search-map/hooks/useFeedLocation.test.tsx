@@ -286,3 +286,75 @@ describe('requestMyLocation (primer CTA)', () => {
     expect(result.current.showLocationPrimer).toBe(true);
   });
 });
+
+/**
+ * THE FIRST-RUN BUG (2026-08-21). On a first-ever grant the OS has no cached
+ * position, so the immediate post-grant fix loses its race with cold GPS and
+ * returns nothing — and it used to be a DEAD END: the single attempt discarded
+ * its result, its effect could never re-run, and the AppState recovery was
+ * armed only while the primer was visible, which the same grant had just
+ * hidden. The feed stayed on "Recent posts across the UK" for the whole
+ * session and only came right on the next launch, once the OS had a fix to
+ * hand back instantly. Hence "only when the app is first started".
+ */
+describe('a granted permission with no fix yet', () => {
+  it('keeps retrying until a fix lands, instead of stranding the feed national', async () => {
+    jest.useFakeTimers();
+    try {
+      // Cold GPS: the first two reads come back empty, the third succeeds —
+      // exactly the shape of a fix arriving a few seconds after the grant.
+      const getCurrentPosition = jest
+        .fn<Promise<typeof SALFORD | null>, []>()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(SALFORD);
+      const dev = device({
+        hasPermission: jest.fn(async () => true),
+        getCurrentPosition,
+        reverseGeocodeArea: jest.fn(async () => 'Salford'),
+      });
+
+      const { result } = await renderHook(() => useFeedLocation(dev));
+
+      // The mount chain fails its fix and settles national — as before.
+      await waitFor(() => expect(result.current.location?.mode).toBe('national'));
+
+      // Let the backoff run. Without the retry effect this loops forever on
+      // national, which is the bug.
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(20_000);
+      });
+
+      await waitFor(() => expect(result.current.location?.mode).toBe('local'));
+      expect(result.current.location).toEqual(
+        expect.objectContaining({ mode: 'local', latitude: SALFORD.latitude }),
+      );
+      // It stopped once located rather than grinding on.
+      expect(getCurrentPosition.mock.calls.length).toBeLessThanOrEqual(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('gives up after a bounded number of attempts — a feed must not poll GPS forever', async () => {
+    jest.useFakeTimers();
+    try {
+      const getCurrentPosition = jest.fn(async () => null);
+      const dev = device({ hasPermission: jest.fn(async () => true), getCurrentPosition });
+
+      const { result } = await renderHook(() => useFeedLocation(dev));
+      await waitFor(() => expect(result.current.location?.mode).toBe('national'));
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(120_000);
+      });
+
+      // Four attempts (one immediate + three backed off) and then it stops.
+      // An unbounded loop would hold the GPS on for a user who is indoors.
+      expect(getCurrentPosition.mock.calls.length).toBeLessThanOrEqual(5);
+      expect(result.current.location?.mode).toBe('national');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
