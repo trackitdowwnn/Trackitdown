@@ -23,19 +23,20 @@
  *        (this app exists because something bad happened to the user).
  * LINKS: src/features/auth/components/BrandSplash.tsx and
  *        src/shared/ui/FullscreenLoader.tsx (the two consumers);
- *        docs/DESIGN_SYSTEM.md (Loading, Motion, Tone);
- *        scripts/brand/markSpec.mjs (the mark's geometry, should it land here).
+ *        src/shared/ui/BrandMark.tsx (the monogram above the wordmark);
+ *        docs/DESIGN_SYSTEM.md (Loading, Motion, Tone).
  *
- * DEFERRED (2026-08-20, ADR-0015): the brand mark now EXISTS — the alert rings
- * that ship as the app icon — but it is deliberately not in this component yet,
- * because putting it here is a design decision rather than an asset swap:
- *   * above the wordmark, or replacing it?
- *   * does the shimmer cross the mark, or stop at the type?
- *   * how does it read in the reduced-motion branch, which has no shimmer?
- * When it lands it should be a `<BrandMark/>` built on react-native-svg (already
- * a dependency) driven by the SAME numbers as markSpec.mjs, so it is
- * resolution-independent and takes its colour from `palette.primary` — an
- * expo-image PNG would need a tintColor hack and would be soft at display size.
+ * THE MARK SITS ABOVE THE WORDMARK, and is deliberately STILL (2026-08-21,
+ * closing the TODO(art) deferred by ADR-0015). Three decisions, so the next
+ * person does not have to re-take them:
+ *   * ABOVE, not replacing. The wordmark is how a new user learns the app's
+ *     NAME; a lone "T" on a cold-start splash teaches nothing.
+ *   * The shimmer does NOT cross it. The sweep is a property of the waiting
+ *     LINE — it says "still working" about the phrase it lights. Running it
+ *     over a logo would make the logo look like it were loading too, and it
+ *     would mean animating the mark's fill on the UI thread for no signal.
+ *   * Therefore the reduced-motion branch needs nothing: the mark is static in
+ *     both branches, so there is only one composition to reason about.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -63,6 +64,7 @@ import {
   type Palette,
 } from '../theme';
 import { easeOut, linear } from '../theme/motionEasing';
+import { BrandMark } from './BrandMark';
 
 
 /** How much of the line the highlight covers at once, as a fraction of its
@@ -71,6 +73,12 @@ import { easeOut, linear } from '../theme/motionEasing';
  *  phrase pulsing rather than as something travelling through it, and that
  *  was half of why the first attempt at this was invisible. */
 const SHIMMER_BAND = 0.22;
+
+/** The mark's width above the wordmark. Sized against the wordmark rather than
+ *  picked: `typography.display` is 32pt, and a mark ~2x the cap height reads as
+ *  the lockup's anchor without dominating a splash that is often on screen for
+ *  under half a second. */
+const MARK_WIDTH = 64;
 
 /** The waiting voice: watchful, communal, hopeful. Keep entries SHORT (one
  *  breath), sentence-cased, ellipsis-terminated; add sparingly. */
@@ -121,9 +129,12 @@ export function BrandLoader({ message, testID }: BrandLoaderProps) {
       accessibilityRole="progressbar"
       accessibilityLabel={message ? `Trackitdown, ${message}` : 'Trackitdown, loading'}
     >
+      {/* Vector, so it stays crisp at splash size and inverts with the theme
+          (palette.primary) — a PNG would need a tintColor hack. Decorative:
+          the block's single progressbar label speaks for it. */}
+      <BrandMark size={MARK_WIDTH} />
       {/* The wordmark is literal Text, not a rendered asset, because the
-          shimmer animates ONE VIEW PER CHARACTER — see the header. A mark slot
-          would sit here; see the DEFERRED note for why it does not yet. */}
+          shimmer animates ONE VIEW PER CHARACTER — see the header. */}
       <Text style={styles.wordmark}>Trackitdown</Text>
       {/* Fixed slot; each line is ABSOLUTE within it so the outgoing and
           incoming phrases overlap in place (in-flow siblings would stack and
@@ -305,6 +316,9 @@ const makeStyles = (c: Palette) =>
     wordmark: {
       ...typography.display,
       color: c.primary,
+      // The mark and the wordmark are one lockup, so they sit closer to each
+      // other than the wordmark does to the phrase slot below (spacing.xl).
+      marginTop: spacing.md,
     },
     messageSlot: {
       // Two body lines of room so a long status never reflows the wordmark;
