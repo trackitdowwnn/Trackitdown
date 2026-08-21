@@ -1,6 +1,6 @@
 /**
  * WHAT:  BrandSplash — the calm cold-start / session-restore screen: the
- *        shared BrandLoader (wordmark + rotating waiting phrase) centred on
+ *        shared BrandLoader (the mark + rotating waiting phrase) centred on
  *        the app background while the first screen's content loads.
  * WHY:   While the session, the onboarding flag and the first feed load
  *        resolve, the app must show something steady rather than flashing a

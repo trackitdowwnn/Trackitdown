@@ -405,7 +405,7 @@ are build output.
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
-  Blocking waits show ONE face — `BrandLoader` (wordmark + a rotating waiting
+  Blocking waits show ONE face — `BrandLoader` (the mark + a rotating waiting
   phrase), rendered by both the cold-start splash and `FullscreenLoader`. The
   phrase is lit by a highlight sweeping left to right through its letters
   (`motion.loaderShimmer`, 700ms), above a small `ActivityIndicator`. Both,

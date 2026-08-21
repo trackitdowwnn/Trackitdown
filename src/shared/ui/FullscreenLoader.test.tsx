@@ -178,9 +178,10 @@ describe('FullscreenLoader', () => {
     const view = await render(loader(true));
 
     expect(view.getByTestId('fullscreen-loader-mark')).toBeTruthy();
-    // The one loading face: the wordmark plus one of the rotating phrases
-    // (never silence — the phrase swap IS the liveness signal).
-    expect(view.getByText('Trackitdown')).toBeTruthy();
+    // The one loading face: the mark plus one of the rotating phrases (never
+    // silence — the phrase swap IS the liveness signal). The wordmark was
+    // removed 2026-08-21; see BrandLoader's header for the trade.
+    expect(view.queryByText('Trackitdown')).toBeNull();
     const rendered = renderedText(view);
     const phrase = LOADER_PHRASES.find((candidate) => rendered.includes(candidate));
     expect(phrase).toBeDefined();

@@ -65,14 +65,21 @@ afterEach(async () => {
 });
 
 describe('BrandLoader', () => {
-  it('shows the wordmark and one of the waiting phrases', async () => {
+  it('shows the mark and one of the waiting phrases, and NO wordmark', async () => {
     const view = await render(<BrandLoader testID="loader" />);
 
-    expect(view.getByText('Trackitdown')).toBeTruthy();
-    // Wordmark + the phrase, with the phrase spelled out one view per char.
+    // The wordmark was removed 2026-08-21 at the owner's request. Asserted as
+    // an absence because "Trackitdown" under the mark is the obvious thing for
+    // someone to add back while "fixing" the splash, and nothing else here
+    // would notice — the phrase and the a11y label would both still pass.
+    expect(view.queryByText('Trackitdown')).toBeNull();
+
+    // The phrase, spelled out one view per character by the shimmer.
     const rendered = renderedText(view);
     const phrase = LOADER_PHRASES.find((candidate) => rendered.endsWith(candidate));
     expect(phrase).toBeDefined();
+    // The whole visible text IS the phrase now — nothing precedes it.
+    expect(rendered).toBe(phrase);
   });
 
   it('rotates to a different phrase while it waits', async () => {
