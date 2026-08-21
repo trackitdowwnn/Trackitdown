@@ -40,7 +40,7 @@ async function main() {
     const rgba = renderRgba(target);
     const out = path.join(OUT_DIR, target.file);
     await writePng(rgba, out);
-    const kind = target.paper ? 'opaque' : 'transparent';
+    const kind = target.gradient ? 'gradient/opaque' : target.paper ? 'opaque' : 'transparent';
     console.log(`  ${target.file.padEnd(32)} ${target.size}x${target.size}  ${kind}  ${target.ink}`);
   }
   console.log(`\n${TARGETS.length} brand assets written to assets/images/.`);

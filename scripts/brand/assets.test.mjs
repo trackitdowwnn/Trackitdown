@@ -120,6 +120,21 @@ test('no ink escapes the Android safe zone, measured on actual pixels', async ()
   }
 });
 
+test('the opaque tiles are the specified white, not off-white', async () => {
+  // The pack specifies #FFFFFF. An off-white tile looks slightly dirty beside
+  // true-white icons in a grid, and it is the kind of drift that creeps in if
+  // someone reaches for the app's `background` token (#F7F7F7) by habit.
+  for (const target of TARGETS.filter((t) => t.paper)) {
+    const img = await read(target.file);
+    const corner = Jimp.intToRGBA(img.getPixelColor(0, 0));
+    assert.deepEqual(
+      [corner.r, corner.g, corner.b],
+      [255, 255, 255],
+      `${target.file}: tile is rgb(${corner.r},${corner.g},${corner.b}), expected pure white`,
+    );
+  }
+});
+
 test('the committed PNGs match what the generator produces now', async () => {
   // Compares DECODED PIXELS, never file bytes: zlib output is not stable across
   // Node versions, so a byte diff would fail spuriously between a local Node 24

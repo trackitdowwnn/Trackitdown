@@ -1,7 +1,23 @@
 # ADR-0015 — The brand mark: concentric alert rings
 
-**Status:** accepted · **Date:** 2026-08-20 · First visual identity; closes the
-two `TODO(art)` markers' *asset* half and the missing notification icon
+**Status:** ~~accepted~~ **SUPERSEDED by
+[ADR-0016](./ADR-0016-brand-mark-v2.md)** (2026-08-21) · **Date:** 2026-08-20 ·
+First visual identity; closes the two `TODO(art)` markers' *asset* half and the
+missing notification icon
+
+> **The MARK described here was rejected within a day** and replaced by a bold
+> car silhouette on an indigo→violet gradient. In short: it was thin strokes in
+> black on white, and a home screen is scanned by COLOUR before shape, so it had
+> nothing to be scanned for. Apple's own current guidance is to avoid thin lines
+> and pure black/white backgrounds. ADR-0016 has the full reasoning.
+>
+> **What survives, and is still the live design:** everything below about the
+> PIPELINE — assets generated from numbers rather than drawn, `jimp` as a PNG
+> encoder only, analytic anti-aliasing, straight alpha with ink in every pixel,
+> native rendering per target with no downsampling, the Android safe zone, the
+> deleted iOS Icon Composer bundle (including its tinted-variant landmine), and
+> the CI gate. ADR-0016 changed the mark and the renderer's shape primitives;
+> it kept all of this.
 
 ## Context
 
