@@ -60,6 +60,7 @@
     "eslint": "^9.39.4",
     "eslint-config-expo": "~57.0.0",
     "jest": "^29.7.0",
+    "jimp-compact": "0.16.1",
     "jest-expo": "^57.0.1",
     "prettier": "^3.9.4",
     "supabase": "^2.109.1",
@@ -73,7 +74,9 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest",
+    "test:assets": "node --test scripts/brand/*.test.mjs",
     "test:db": "bash scripts/test-db.sh",
+    "assets:brand": "node scripts/generate-brand-assets.mjs",
     "emulator": "powershell -ExecutionPolicy Bypass -File scripts/start-emulator.ps1"
   },
   "private": true,

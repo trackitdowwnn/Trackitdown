@@ -156,6 +156,40 @@ ink since the 2026-07-24 monochrome swap; the owner trail map's sighting
 pins are sage per the sanction above). This is deliberately the opposite of
 a busy/alarming crime map.
 
+## Brand mark
+
+**Concentric alert rings** — a solid centre with rings radiating out, in
+near-black on white. It is the alert-radius circle the map already draws
+(`mapZoneFill` / `mapZoneStroke`), so the icon shows *what the app does* rather
+than being another car silhouette. ADR-0015.
+
+Geometry lives in `scripts/brand/markSpec.mjs` and is normalised to the mark's
+outer radius (R = 1), so it scales to any target:
+
+| band | inner | outer | note |
+|---|---|---|---|
+| centre | 0 | 0.286 | the car |
+| ring 1 | 0.455 | 0.649 | stroke 0.195 |
+| ring 2 | 0.844 | 1.000 | stroke 0.156 |
+
+Strokes **thin** outward and gaps **widen** outward — a wave losing energy as it
+travels. That graduation is the point; three identical rings could not say it.
+
+**Two rings, not three, and this is not negotiable by eye.** Android's adaptive
+icon guarantees only the inner **61.1%** (66 of 108dp) against OEM masks and
+parallax, which at a 48dp launcher cell leaves a 29.3dp circle. A third ring puts
+every element on the ~1.5dp legibility floor at once and merges into a blob.
+
+The mark is placed at **60.2%** of the Android foreground (inside that crop) and
+**70.3%** of the iOS/web square (no crop). One exception, bounded to one asset:
+the **notification glyph** drops to centre-plus-one-ring, because at Android's
+24dp status bar the outer ring falls to ~1.4dp.
+
+Regenerate with `npm run assets:brand`; `npm run test:assets` asserts the safe
+zone, the legibility floor, colour drift against this palette, and that the
+committed PNGs still match the geometry. Do not hand-edit the PNGs — they are
+build output.
+
 ## Typography
 
 - Font: **Satoshi** (Fontshare, FFL licence — `src/assets/fonts/`; loaded via

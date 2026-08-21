@@ -61,11 +61,24 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // ALERTS_CHANNEL_ID in src/features/notifications/lib/pushDevice.ts and the
     // channelId the Edge Functions send — Android silently DROPS a notification
     // whose channel doesn't exist on the device.
-    // NOTE: no custom `icon` yet. Android tints the notification icon, so it
-    // must be a 96x96 WHITE-on-transparent PNG; a coloured one renders as a
-    // white blob. Until that asset exists the Expo default is used, which is
-    // correct-looking rather than wrong.
-    ['expo-notifications', { defaultChannel: 'alerts', color: '#1A1A1A' }],
+    // `icon` is the 96x96 WHITE-on-transparent brand glyph (ADR-0015). Android
+    // TINTS this, so a coloured source renders as a white blob —
+    // scripts/brand/assets.test.mjs asserts every opaque pixel is pure white.
+    // It is the REDUCED mark (centre + ONE ring): at the 24dp status bar the
+    // full two-ring mark's outer ring falls to ~1.4dp and merges into the rest.
+    //
+    // ⚠️ `color` is the accent Android applies behind the small icon, and
+    // near-black on the dark notification shade is close to invisible. That is
+    // PRE-EXISTING and deliberately not changed here — a behaviour change does
+    // not belong inside an asset change. Flagged for its own look.
+    [
+      'expo-notifications',
+      {
+        defaultChannel: 'alerts',
+        icon: './assets/images/notification-icon.png',
+        color: '#1A1A1A',
+      },
+    ],
     // --- Auth (features/auth) -------------------------------------------------
     // Session tokens live in the OS keychain, not AsyncStorage.
     'expo-secure-store',

@@ -52,6 +52,13 @@ jobs:
       - name: File header check
         run: node scripts/check-file-headers.mjs
 
+      # Brand assets (ADR-0015). Two things these catch that nothing else can:
+      # a mark that overflows Android's 61.1% safe zone — clipped only on OTHER
+      # people's phones — and a committed PNG that has drifted from the geometry
+      # it is generated from. Node's built-in runner, no extra dependency.
+      - name: Brand asset check
+        run: npm run test:assets
+
       # Fails the build if any committed file contains obvious secrets.
       # Lightweight guard — not a replacement for proper secret scanning.
       #

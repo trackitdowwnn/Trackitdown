@@ -23,8 +23,19 @@
  *        (this app exists because something bad happened to the user).
  * LINKS: src/features/auth/components/BrandSplash.tsx and
  *        src/shared/ui/FullscreenLoader.tsx (the two consumers);
- *        docs/DESIGN_SYSTEM.md (Loading, Motion, Tone).
- *        TODO(art): swap the wordmark Text for the final logo asset.
+ *        docs/DESIGN_SYSTEM.md (Loading, Motion, Tone);
+ *        scripts/brand/markSpec.mjs (the mark's geometry, should it land here).
+ *
+ * DEFERRED (2026-08-20, ADR-0015): the brand mark now EXISTS — the alert rings
+ * that ship as the app icon — but it is deliberately not in this component yet,
+ * because putting it here is a design decision rather than an asset swap:
+ *   * above the wordmark, or replacing it?
+ *   * does the shimmer cross the mark, or stop at the type?
+ *   * how does it read in the reduced-motion branch, which has no shimmer?
+ * When it lands it should be a `<BrandMark/>` built on react-native-svg (already
+ * a dependency) driven by the SAME numbers as markSpec.mjs, so it is
+ * resolution-independent and takes its colour from `palette.primary` — an
+ * expo-image PNG would need a tintColor hack and would be soft at display size.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -110,7 +121,9 @@ export function BrandLoader({ message, testID }: BrandLoaderProps) {
       accessibilityRole="progressbar"
       accessibilityLabel={message ? `Trackitdown, ${message}` : 'Trackitdown, loading'}
     >
-      {/* TODO(art): logo asset slot. */}
+      {/* The wordmark is literal Text, not a rendered asset, because the
+          shimmer animates ONE VIEW PER CHARACTER — see the header. A mark slot
+          would sit here; see the DEFERRED note for why it does not yet. */}
       <Text style={styles.wordmark}>Trackitdown</Text>
       {/* Fixed slot; each line is ABSOLUTE within it so the outgoing and
           incoming phrases overlap in place (in-flow siblings would stack and
