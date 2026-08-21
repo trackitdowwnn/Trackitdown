@@ -1,0 +1,168 @@
+# WHAT:  Deploys the Supabase half of the app on merge to main — migrations
+#        first, then every Edge Function, in the one order that is safe for
+#        money.
+# WHY:   Nothing deployed the backend. `expo`/EAS ships the client, CI kept main
+#        green, and the Supabase side went out by hand from a laptop — which
+#        meant in practice it often didn't. On 2026-08-21 that surfaced as a
+#        user-facing money bug: the £4.99 listing-fee migration was live in the
+#        database while create-payment-intent still sat at v9 from 16 Aug, four
+#        days behind the commit that taught it about fees. It read a NULL bounty,
+#        handed Stripe `amount: null`, and every no-bounty listing died on
+#        "We couldn't start your payment."
+#
+#        The failure mode is drift between two things that must move together,
+#        so the fix is to move them together automatically. It also removes the
+#        laptop from the path entirely, which matters here: the corporate network
+#        this repo is developed on does TLS interception that the Supabase CLI
+#        cannot negotiate, so hand-deploying is not merely forgettable, it is
+#        sometimes impossible.
+#
+#        AUTO-APPLYING MIGRATIONS is safe *because* ci.yml's `db` job already
+#        applies every migration to a throwaway Postgres and runs the SQL suites
+#        on every PR. Nothing reaches this workflow un-exercised. If that job is
+#        ever weakened, revisit this decision with it.
+# LINKS: .github/workflows/ci.yml (the gate that makes this safe);
+#        scripts/deploy-functions.ps1 (the manual twin, same ordering);
+#        supabase/functions/create-payment-intent/index.ts;
+#        supabase/migrations/20260820110000_no_bounty_listing_fee.sql;
+#        docs/decisions/ADR-0014-no-bounty-listings.md.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy.yml'
+  # Manual re-run, for recovering drift that predates this workflow.
+  workflow_dispatch:
+    inputs:
+      skip_migrations:
+        description: 'Deploy functions only, leave the database alone'
+        type: boolean
+        default: false
+
+# Never let two deploys interleave, and NEVER cancel one in flight: a run
+# halted between the two function waves is exactly the half-deployed state
+# this workflow exists to prevent.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # No `environment:` on purpose — it would need creating in repo settings
+    # before the first run and failing there teaches nothing. Add
+    # `environment: production` later if you want required reviewers gating
+    # money code; repo secrets work either way.
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Record the pre-deploy state
+        # Captured BEFORE anything changes, so the verification step at the end
+        # can prove each function's version actually moved. The CLI has been
+        # observed exiting quietly without deploying; a clean exit is not proof.
+        run: |
+          curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/functions" \
+            | jq -c 'map({slug, version})' > /tmp/before.json
+          echo "Before:"; jq -r '.[] | "  \(.slug) v\(.version)"' /tmp/before.json
+
+      # --- Database first ------------------------------------------------------
+      # Migrations are additive and must land BEFORE the functions that call the
+      # RPCs they add. The reverse order gives you a function calling a function
+      # that does not exist yet.
+      #
+      # Skips LOUDLY rather than failing when SUPABASE_DB_PASSWORD is absent, so
+      # the function half can still deploy. That is the right trade for the case
+      # this was written in — the migrations were already applied by hand and
+      # only the functions had drifted — but it is a hole: a run that skips here
+      # can leave functions AHEAD of the database, which is the mirror image of
+      # the bug this workflow exists to stop. Set the secret.
+      - name: Apply migrations
+        if: ${{ inputs.skip_migrations != true }}
+        run: |
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::warning::SUPABASE_DB_PASSWORD is not set — SKIPPING migrations."
+            echo "::warning::Functions may end up ahead of the database. Add the"
+            echo "::warning::secret (Supabase > Project Settings > Database) and re-run."
+            exit 0
+          fi
+          supabase link --project-ref "$PROJECT_REF"
+          supabase db push
+
+      # --- Functions, in two waves --------------------------------------------
+      # WAVE 1 is everything that RECORDS or SETTLES money (stripe-webhook,
+      # deactivate-post, the payout functions) plus everything else.
+      # WAVE 2 is create-payment-intent alone — the only function that lets a
+      # charge START.
+      #
+      # THE ORDER IS LOAD-BEARING, and the incident that prompted this workflow
+      # is what it guards against. If create-payment-intent goes first, a £4.99
+      # charge succeeds at Stripe while the OLD webhook still calls
+      # mark_post_payment_held — which the current migration makes return
+      # SILENTLY for a listing_fee row (ADR-0014: a fee must never enter escrow).
+      # Card charged, post stuck in 'draft', nothing logged. Worse than the
+      # outage it replaces, and invisible.
+      #
+      # Wave 1 is derived rather than listed, so a NEW function is deployed by
+      # default instead of being silently forgotten. Defaulting to wave 1 is the
+      # safe direction: recording money before initiating it.
+      - name: Deploy functions (wave 1 — everything that records money)
+        run: |
+          set -euo pipefail
+          WAVE1=$(ls -d supabase/functions/*/ \
+            | xargs -n1 basename \
+            | grep -vx '_shared' \
+            | grep -vx 'create-payment-intent' \
+            | tr '\n' ' ')
+          echo "Deploying: $WAVE1"
+          # --use-api bundles server-side (no Docker image pull).
+          # NEVER add --prune: `delete-draft` and `notify-sighting-confirmed`
+          # are deployed with no source in this repo and --prune deletes exactly
+          # those. Remove them deliberately or not at all.
+          supabase functions deploy $WAVE1 --project-ref "$PROJECT_REF" --use-api
+
+      - name: Deploy functions (wave 2 — the one that starts a charge)
+        run: |
+          supabase functions deploy create-payment-intent \
+            --project-ref "$PROJECT_REF" --use-api
+
+      # --- Prove it actually happened -----------------------------------------
+      - name: Verify every function's version moved
+        run: |
+          set -euo pipefail
+          curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            "https://api.supabase.com/v1/projects/$PROJECT_REF/functions" \
+            | jq -c 'map({slug, version})' > /tmp/after.json
+
+          FAILED=0
+          for SLUG in $(ls -d supabase/functions/*/ | xargs -n1 basename | grep -vx '_shared'); do
+            BEFORE=$(jq -r --arg s "$SLUG" '(.[] | select(.slug==$s) | .version) // 0' /tmp/before.json)
+            AFTER=$(jq -r --arg s "$SLUG" '(.[] | select(.slug==$s) | .version) // 0' /tmp/after.json)
+            if [ "$AFTER" -gt "$BEFORE" ]; then
+              echo "  ok    $SLUG  v$BEFORE -> v$AFTER"
+            else
+              echo "  FAIL  $SLUG  stuck at v$AFTER"
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "::error::One or more functions did not deploy. The database may now be"
+            echo "::error::ahead of the functions — the exact drift this workflow prevents."
+            exit 1
+          fi
