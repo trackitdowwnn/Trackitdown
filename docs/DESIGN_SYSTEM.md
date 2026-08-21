@@ -158,37 +158,41 @@ a busy/alarming crime map.
 
 ## Brand mark
 
-**Concentric alert rings** — a solid centre with rings radiating out, in
-near-black on white. It is the alert-radius circle the map already draws
-(`mapZoneFill` / `mapZoneStroke`), so the icon shows *what the app does* rather
-than being another car silhouette. ADR-0015.
+**A "T" monogram with a baseline dot**, black on white — supplied as a finished
+design by the owner (2026-08-21) and used as-is. ADR-0016.
 
-Geometry lives in `scripts/brand/markSpec.mjs` and is normalised to the mark's
-outer radius (R = 1), so it scales to any target:
+| role | value |
+|---|---|
+| the mark | `#000000` |
+| the tile | `#FFFFFF` |
 
-| band | inner | outer | note |
-|---|---|---|---|
-| centre | 0 | 0.286 | the car |
-| ring 1 | 0.455 | 0.649 | stroke 0.195 |
-| ring 2 | 0.844 | 1.000 | stroke 0.156 |
+Note the mark is BLACKER than `primary` (`#1A1A1A`). That is the designer’s
+value, and an icon is not UI — do not "correct" it to the token.
 
-Strokes **thin** outward and gaps **widen** outward — a wave losing energy as it
-travels. That graduation is the point; three identical rings could not say it.
+The master vector is `assets/brand/trackitdown-icon.svg`. Everything shipped is
+GENERATED from a transcription of it in `scripts/brand/markSpec.mjs`, so each
+asset is rendered natively at its own size rather than downscaled from a master.
+A test re-derives the geometry from the SVG, so the two cannot drift apart — if
+a new vector arrives, update both.
 
-**Two rings, not three, and this is not negotiable by eye.** Android's adaptive
-icon guarantees only the inner **61.1%** (66 of 108dp) against OEM masks and
-parallax, which at a 48dp launcher cell leaves a 29.3dp circle. A third ring puts
-every element on the ~1.5dp legibility floor at once and merges into a blob.
+**Two faults in the supplied pack are corrected, and only these two:**
 
-The mark is placed at **60.2%** of the Android foreground (inside that crop) and
-**70.3%** of the iOS/web square (no crop). One exception, bounded to one asset:
-the **notification glyph** drops to centre-plus-one-ring, because at Android's
-24dp status bar the outer ring falls to ~1.4dp.
+- **Android’s 61.1% safe zone** (66 of 108dp) was overflowed by 55px, which
+  launcher masks would have clipped. The binding constraint is not the mark’s
+  width but the DIAGONAL reach of the low-right dot, so the Android layers use a
+  0.47 fill — computed, not guessed. The pack’s README suggests 66%; that would
+  be clipped.
+- **The ink sat 13px right and 19px above centre.** The geometry is expressed
+  about the ink’s own bounding box, so every target centres it optically.
+
+**A legibility floor of 1.5 rendered px** on bar thickness, dot diameter and the
+stem-to-dot gap is checked at each asset’s smallest render size. This is what
+killed the previous mark: it looked fine at 1024px and collapsed at 48.
 
 Regenerate with `npm run assets:brand`; `npm run test:assets` asserts the safe
-zone, the legibility floor, colour drift against this palette, and that the
-committed PNGs still match the geometry. Do not hand-edit the PNGs — they are
-build output.
+zone, the legibility floor, the centring, drift from the master SVG, and that
+the committed PNGs still match the geometry. Do not hand-edit the PNGs — they
+are build output.
 
 ## Typography
 

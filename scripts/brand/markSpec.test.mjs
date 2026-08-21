@@ -1,13 +1,15 @@
 /**
  * WHAT:  Geometry and colour tests for the brand mark. Run: `npm run test:assets`.
- * WHY:   These catch a bad layout BEFORE any pixels exist, and they are the
- *        reason a future radius tweak cannot quietly break the icon. The
- *        legibility floor is the highest-value assertion here: without it,
- *        someone nudges a radius and the icon silently stops reading at 48dp on
- *        a launcher nobody on the team happens to use.
+ * WHY:   These catch a bad layout BEFORE any pixels exist. Two of them guard
+ *        faults that were REAL in the supplied icon pack — ink outside Android's
+ *        crop, and a mark that was not centred — so they are regression tests,
+ *        not hypotheticals. The legibility floor is the highest-value one:
+ *        without it, someone nudges a radius and the mark silently stops reading
+ *        at 48dp on a launcher nobody on the team happens to use.
  * LINKS: scripts/brand/markSpec.mjs (the spec under test);
+ *        assets/brand/trackitdown-icon.svg (the master this transcribes);
  *        scripts/brand/assets.test.mjs (the pixel-level counterpart);
- *        docs/decisions/ADR-0015-brand-mark.md.
+ *        docs/decisions/ADR-0016-brand-mark-v2.md.
  */
 
 import test from 'node:test';
@@ -18,47 +20,117 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ANDROID_SAFE_FRACTION,
-  FULL_MARK,
+  FEATURES,
   INK,
   INK_DARK,
+  INK_NOTIFICATION,
+  LEGIBILITY_FLOOR_PX,
+  MARK,
   PAPER,
-  REDUCED_MARK,
   TARGETS,
   coverage,
+  sdCircle,
+  sdMark,
+  sdRoundedBox,
 } from './markSpec.mjs';
 
 const REPO = path.join(fileURLToPath(new URL('../..', import.meta.url)));
 
-/** A stroke below this many rendered px stops reading as a line. */
-const LEGIBILITY_FLOOR_PX = 1.5;
-
-test('bands are ordered, non-overlapping and separated', () => {
-  for (const [name, mark] of [
-    ['FULL_MARK', FULL_MARK],
-    ['REDUCED_MARK', REDUCED_MARK],
-  ]) {
-    let previousOuter = -Infinity;
-    for (const band of mark) {
-      assert.ok(band.outer > band.inner, `${name}: band has non-positive stroke`);
-      assert.ok(
-        band.inner > previousOuter,
-        `${name}: bands overlap or touch — a gap of zero merges two rings into one`,
-      );
-      previousOuter = band.outer;
+/** The mark's furthest ink from its own centre, in units of S. Sampled rather
+ *  than derived, so it stays correct if the shapes change. */
+function maxReachInS() {
+  const STEP = 0.004;
+  let furthest = 0;
+  for (let y = -1.5; y <= 1.5; y += STEP) {
+    for (let x = -1.5; x <= 1.5; x += STEP) {
+      if (sdMark(x, y, MARK, 0, 0, 1) < 0) {
+        const r = Math.hypot(x, y);
+        if (r > furthest) furthest = r;
+      }
     }
-    assert.equal(previousOuter, 1, `${name}: outermost band must end at R = 1`);
+  }
+  return furthest;
+}
+
+test('the mark is centred on its own ink', () => {
+  // The supplied pack had its ink 13px right and 19px above the canvas centre.
+  // The geometry here is expressed about the ink's OWN centre so every target
+  // centres it optically; this asserts that normalisation held.
+  const STEP = 0.004;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let y = -1.5; y <= 1.5; y += STEP) {
+    for (let x = -1.5; x <= 1.5; x += STEP) {
+      if (sdMark(x, y, MARK, 0, 0, 1) >= 0) continue;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  assert.ok(Math.abs(minX + maxX) < 0.01, `mark is off-centre horizontally by ${(minX + maxX).toFixed(3)}S`);
+  assert.ok(Math.abs(minY + maxY) < 0.01, `mark is off-centre vertically by ${(minY + maxY).toFixed(3)}S`);
+  // ...and it spans exactly the -1..+1 the S unit is defined as.
+  assert.ok(Math.abs(maxX - 1) < 0.01, `half-width should be 1S, measured ${maxX.toFixed(3)}`);
+});
+
+test('the transcription still matches the master SVG', () => {
+  // markSpec is a TRANSCRIPTION of assets/brand/trackitdown-icon.svg. If the
+  // designer supplies a new vector and only one of the two is updated, every
+  // other test here still passes while the app ships the wrong logo. This is
+  // the only check that would notice.
+  const svg = fs.readFileSync(path.join(REPO, 'assets/brand/trackitdown-icon.svg'), 'utf8');
+  const rects = [...svg.matchAll(/<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)" rx="(\d+)"/g)];
+  const circles = [...svg.matchAll(/<circle cx="(\d+)" cy="(\d+)" r="(\d+)"/g)];
+  assert.equal(rects.length, 2, 'expected 2 bars in the master SVG');
+  assert.equal(circles.length, 1, 'expected 1 dot in the master SVG');
+
+  // Re-derive the normalisation the way markSpec did: ink bbox -> centre, S.
+  const inkMinX = Math.min(...rects.map((r) => +r[1]), +circles[0][1] - +circles[0][3]);
+  const inkMaxX = Math.max(...rects.map((r) => +r[1] + +r[3]), +circles[0][1] + +circles[0][3]);
+  const S = (inkMaxX - inkMinX) / 2;
+  const ox = (inkMinX + inkMaxX) / 2;
+
+  rects.forEach((r, i) => {
+    const cx = (+r[1] + +r[3] / 2 - ox) / S;
+    const hw = +r[3] / 2 / S;
+    assert.ok(Math.abs(MARK.bars[i].cx - cx) < 1e-4, `bar ${i} cx drifted from the SVG`);
+    assert.ok(Math.abs(MARK.bars[i].hw - hw) < 1e-4, `bar ${i} hw drifted from the SVG`);
+  });
+  assert.ok(
+    Math.abs(MARK.dots[0].r - +circles[0][3] / S) < 1e-4,
+    'the dot radius drifted from the SVG',
+  );
+});
+
+test('both bars are pills, not merely rounded rectangles', () => {
+  // r === half the thickness is what gives the mark its softness. A smaller
+  // radius is a different logo.
+  for (const [i, bar] of MARK.bars.entries()) {
+    const thinHalf = Math.min(bar.hw, bar.hh);
+    assert.ok(
+      Math.abs(bar.r - thinHalf) < 1e-4,
+      `bar ${i}: r=${bar.r} should equal half its thickness (${thinHalf}) to stay a pill`,
+    );
   }
 });
 
-test('the Android foreground stays inside the 61.1% safe zone', () => {
-  // The margin is not decorative: launchers translate the foreground layer
-  // during parallax, and OEM masks crop to arbitrary shapes. Anything outside
-  // this radius CAN be clipped on someone's phone and never on ours.
+test('nothing escapes the Android safe zone', () => {
+  // The 61.1% guaranteed-visible circle is not decorative: launchers translate
+  // the foreground during parallax and OEM masks crop to arbitrary shapes.
+  // THE SUPPLIED PACK OVERFLOWED IT BY 55px — its README suggests a 66% fill,
+  // which would be clipped, because the binding constraint is not width but the
+  // DIAGONAL reach of the low-right dot.
+  const reachInS = maxReachInS();
   for (const target of TARGETS.filter((t) => t.safeFraction)) {
+    const reach = reachInS * (target.fill / 2); // as a fraction of the canvas
+    const limit = target.safeFraction / 2;
     assert.ok(
-      target.fill <= target.safeFraction,
-      `${target.file}: mark fills ${(target.fill * 100).toFixed(1)}% but the safe zone is ${(
-        target.safeFraction * 100
+      reach <= limit,
+      `${target.file}: ink reaches ${(reach * 100).toFixed(1)}% of the canvas but the safe zone ends at ${(
+        limit * 100
       ).toFixed(1)}%`,
     );
   }
@@ -68,66 +140,52 @@ test('the Android foreground stays inside the 61.1% safe zone', () => {
   );
 });
 
-test('every stroke clears the legibility floor at its smallest render size', () => {
+test('every feature clears the legibility floor at its smallest render size', () => {
   const failures = [];
   for (const target of TARGETS) {
-    const R = (target.fill * target.minRenderPx) / 2;
-    target.mark.forEach((band, i) => {
-      const strokePx = (band.outer - band.inner) * R;
-      if (strokePx < LEGIBILITY_FLOOR_PX) {
-        failures.push(
-          `${target.file} band ${i} renders at ${strokePx.toFixed(2)}px at ${target.minRenderPx}px`,
-        );
-      }
-    });
-    // Gaps matter as much as strokes: two rings 1px apart read as one thick ring.
-    for (let i = 1; i < target.mark.length; i++) {
-      const gapPx = (target.mark[i].inner - target.mark[i - 1].outer) * R;
-      if (gapPx < LEGIBILITY_FLOOR_PX) {
-        failures.push(
-          `${target.file} gap ${i} renders at ${gapPx.toFixed(2)}px at ${target.minRenderPx}px`,
-        );
+    const S = (target.fill * target.minRenderPx) / 2;
+    const measured = {
+      'bar thickness': FEATURES.barThickness * S,
+      'dot diameter': FEATURES.dotDiameter * S,
+      'stem-to-dot gap': FEATURES.stemToDotGap * S,
+    };
+    for (const [name, px] of Object.entries(measured)) {
+      if (px < LEGIBILITY_FLOOR_PX) {
+        failures.push(`${target.file}: ${name} renders at ${px.toFixed(2)}px at ${target.minRenderPx}px`);
       }
     }
   }
   assert.deepEqual(failures, [], `below the ${LEGIBILITY_FLOOR_PX}px floor:\n  ${failures.join('\n  ')}`);
 });
 
-test('the notification glyph is simplified, not just scaled', () => {
-  // At Android's 24dp status bar the full mark's outer ring falls to ~1.4dp.
-  // This asserts the documented exception actually exists rather than someone
-  // having quietly pointed the glyph back at FULL_MARK.
-  const glyph = TARGETS.find((t) => t.file === 'notification-icon.png');
-  assert.equal(glyph.mark, REDUCED_MARK);
-  assert.ok(REDUCED_MARK.length < FULL_MARK.length);
+test('the dot stays clear of the stem', () => {
+  // If this closes, the mark reads as one blob rather than a T with a full stop.
+  assert.ok(FEATURES.stemToDotGap > 0, 'the dot has collided with the stem');
 });
 
-test('colours have not drifted from the theme', () => {
-  // This script is run by bare `node` and cannot import a .ts module, so the
-  // palette is text-scraped. Crude, but it is a drift alarm and that is all it
-  // needs to be — the same zero-dep posture as scripts/check-file-headers.mjs.
-  const src = fs.readFileSync(path.join(REPO, 'src/shared/theme/colors.ts'), 'utf8');
-  const light = src.slice(src.indexOf('export const colors'), src.indexOf('export const darkColors'));
-  const dark = src.slice(src.indexOf('export const darkColors'));
-  const pick = (block, key) => block.match(new RegExp(`\\b${key}:\\s*'(#[0-9A-Fa-f]{6})'`))?.[1];
-
-  assert.equal(INK, pick(light, 'primary'), 'INK must equal colors.primary');
-  assert.equal(PAPER, pick(light, 'surface'), 'PAPER must equal colors.surface');
-  assert.equal(INK_DARK, pick(dark, 'primary'), 'INK_DARK must equal darkColors.primary');
+test('the colours are the ones the pack specified', () => {
+  // From the pack's README: "background #FFFFFF, mark #000000". Pinned so a
+  // change is deliberate. Note the mark is BLACKER than the app's own near-black
+  // colors.primary (#1A1A1A) — that is the designer's value, and an icon is not
+  // UI, so ADR-0006's monochrome rule is respected rather than excepted.
+  assert.equal(INK, '#000000');
+  assert.equal(PAPER, '#FFFFFF');
+  assert.equal(INK_DARK, '#FFFFFF', 'the dark splash must invert or it vanishes on #141414');
+  assert.equal(INK_NOTIFICATION, '#FFFFFF', 'Android tints the small icon; anything else blobs');
 });
 
-test('coverage anti-aliases both edges and saturates between them', () => {
-  // Well inside the band => fully covered; well outside => nothing.
-  assert.equal(coverage(10, 5, 15), 1);
-  assert.equal(coverage(20, 5, 15), 0);
-  assert.equal(coverage(0, 5, 15), 0);
-  // On an edge => half covered, which is what makes the curve smooth.
-  assert.equal(coverage(15, 5, 15), 0.5);
-  assert.equal(coverage(5, 5, 15), 0.5);
-  // A disc (inner 0) has no inner edge to ramp.
-  assert.equal(coverage(0, 0, 10), 1);
-  // Sub-pixel strokes ATTENUATE rather than vanish — the property that keeps
-  // the favicon readable as it shrinks.
-  const thin = coverage(10, 9.8, 10.2);
-  assert.ok(thin > 0 && thin < 1, `sub-pixel stroke should be partial, got ${thin}`);
+test('the SDF primitives behave', () => {
+  assert.equal(sdCircle(0, 0, 0, 0, 10), -10);
+  assert.equal(sdCircle(10, 0, 0, 0, 10), 0);
+  assert.equal(sdCircle(20, 0, 0, 0, 10), 10);
+
+  assert.ok(sdRoundedBox(0, 0, 0, 0, 10, 5, 2) < 0);
+  assert.ok(sdRoundedBox(10, 5, 0, 0, 10, 5, 2) > 0, 'the corner should be cut by the radius');
+  assert.equal(sdRoundedBox(10, 0, 0, 0, 10, 5, 2), 0, 'the flat edge should be exactly on');
+
+  assert.equal(coverage(-5), 1);
+  assert.equal(coverage(5), 0);
+  assert.equal(coverage(0), 0.5);
+  const partial = coverage(0.25);
+  assert.ok(partial > 0 && partial < 1, `sub-pixel edge should be partial, got ${partial}`);
 });
