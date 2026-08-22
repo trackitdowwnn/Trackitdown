@@ -22,26 +22,15 @@ const MIGRATIONS_DIR = join(__dirname, '../migrations');
 /**
  * Kinds the DATABASE permits that the CLIENT deliberately does not handle.
  *
- * Every entry is a gap, not a decision to be comfortable with — the whole point
- * of this file is that a kind on one side only produces a push that arrives and
- * routes nowhere. An entry is only defensible while NOTHING SENDS the kind.
- * Check that before adding one, and delete it the moment the client can route.
+ * EMPTY, and the aim is to keep it that way. An entry is a gap, not a decision
+ * to be comfortable with: the whole point of this file is that a kind on one
+ * side only produces a push that arrives and routes nowhere. It briefly held
+ * `sighting_confirmed`, which the database has permitted since 20260814130000
+ * while the client had nowhere to send the tap — the spotter's own record had
+ * no screen. Building that screen closed it, which is the only ending an entry
+ * here should ever have.
  */
-const NOT_HANDLED_BY_CLIENT = new Set([
-  // 20260814130000 added sighting_confirmed — "the owner confirmed your
-  // sighting" — and its sender, notify-sighting-confirmed, is deployed. Both
-  // came from a body of work built outside this repository and since lost; the
-  // CLIENT half never arrived. It cannot be handled here yet because there is
-  // nowhere to send the tap: the audience is the SPOTTER, and the screen for a
-  // spotter's own record is served by my_sighting_record, which has no caller
-  // anywhere in src/. /sighting/[sightingId] is owner-only and its RPC would
-  // refuse them.
-  //
-  // Safe only because nothing invokes notify-sighting-confirmed: no client
-  // code references it, so no such push is ever sent. If that changes before
-  // the spotter's record screen is rebuilt, this becomes a live bug.
-  'sighting_confirmed',
-]);
+const NOT_HANDLED_BY_CLIENT = new Set<string>([]);
 
 describe('push_sends kind constraint', () => {
   it('lists exactly the kinds the client knows about', () => {

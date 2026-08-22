@@ -22,6 +22,7 @@ export const NOTIFICATION_KINDS = [
   'dispute_rejected',
   'payout_sent',
   'not_credited',
+  'sighting_confirmed',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

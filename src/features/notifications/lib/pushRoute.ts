@@ -48,5 +48,15 @@ export function pushRouteFor(payload: PushPayload): Href {
     case 'closed_uncredited':
     case 'dispute_rejected':
       return `/sighting-dispute?sightingId=${payload.sightingId}`;
+    // "The owner confirmed your sighting" — the spotter's OWN record, not the
+    // post and not the owner-side sighting detail. That screen's RPC is
+    // owner-gated and would refuse them outright, so routing there would send
+    // someone from good news straight into an error.
+    //
+    // The record page takes no parameter: it shows everything they have filed,
+    // newest first, so the confirmed one is at the top and the tap lands
+    // somewhere true even if a second verdict arrived in between.
+    case 'sighting_confirmed':
+      return '/my-sightings';
   }
 }

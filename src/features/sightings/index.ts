@@ -7,6 +7,7 @@
 
 export { ReportSightingScreen, type ReportSightingScreenProps } from './screens/ReportSightingScreen';
 export { PostSightingsScreen, type PostSightingsScreenProps } from './screens/PostSightingsScreen';
+export { MySightingsScreen } from './screens/MySightingsScreen';
 export { SightingDetailScreen, type SightingDetailScreenProps } from './screens/SightingDetailScreen';
 export {
   SightingDisputeScreen,

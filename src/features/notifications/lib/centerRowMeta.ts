@@ -74,6 +74,14 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   // the reader personally won, and colouring this one to match would overclaim.
   // Never needsAttention: there is nothing to do about it.
   not_credited: { Icon: CheckCircle2, tone: 'neutral', needsAttention: false },
+  // The owner looked and said yes. For most spotters this is the ONLY
+  // acknowledgement they will ever get — the bounty goes to one person and the
+  // car goes home once — so it takes the success hue rather than neutral: it
+  // genuinely is the reader's own good news.
+  //
+  // Never needsAttention. It is recognition, not a task, and an accent bar
+  // would turn a thank-you into a chore.
+  sighting_confirmed: { Icon: BadgeCheck, tone: 'success', needsAttention: false },
   // Never rendered — chat is excluded from the center — but the map is total
   // over NotificationKind so a stray row degrades to a sane row, not a crash.
   message: { Icon: MessageCircle, tone: 'neutral', needsAttention: false },

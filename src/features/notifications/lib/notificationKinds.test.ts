@@ -20,9 +20,18 @@ const POST_ID = '11111111-2222-3333-4444-555555555555';
 const THREAD_ID = '66666666-7777-8888-9999-000000000000';
 const SIGHTING_ID = '99999999-8888-7777-6666-555555555555';
 
-/** The dispute-loop kinds key off the spotter's SIGHTING — the post is
- *  invisible to them once closed. */
-const SIGHTING_KEYED = ['closed_uncredited', 'dispute_upheld', 'dispute_rejected'] as const;
+/** Kinds that key off the spotter's SIGHTING rather than the post.
+ *
+ *  The dispute loop, because the post is invisible to them once closed — and
+ *  `sighting_confirmed`, because the audience is the SPOTTER: they cannot open
+ *  the owner-side sighting detail, and carrying a postId would hand them a
+ *  listing they were never shown. */
+const SIGHTING_KEYED = [
+  'closed_uncredited',
+  'dispute_upheld',
+  'dispute_rejected',
+  'sighting_confirmed',
+] as const;
 type SightingKeyed = (typeof SIGHTING_KEYED)[number];
 const isSightingKeyed = (kind: string): kind is SightingKeyed =>
   (SIGHTING_KEYED as readonly string[]).includes(kind);
@@ -46,7 +55,9 @@ describe('notification kinds stay in sync', () => {
           : isSightingKeyed(kind)
             ? ({ type: kind, sightingId: SIGHTING_ID } as const)
             : ({ type: kind, postId: POST_ID } as const);
-      expect(pushRouteFor(payload)).toMatch(/^\/(post\/|chat\/|payouts$|sighting-dispute\?)/);
+      expect(pushRouteFor(payload)).toMatch(
+        /^\/(post\/|chat\/|payouts$|my-sightings$|sighting-dispute\?)/,
+      );
     }
   });
 });
