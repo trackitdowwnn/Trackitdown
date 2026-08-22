@@ -50,6 +50,9 @@ jest.mock('@/shared/ui', () => {
     Button: ({ label }: { label: string }) => <RNText>{label}</RNText>,
     PermissionPrimer: () => null,
     ConfirmDialog: () => null,
+    // The real one renders a RefreshControl, which needs a host scroll view
+    // ancestor; the pull itself is exercised in useMyAlerts.test.tsx.
+    ThemedRefreshControl: () => null,
   };
 });
 

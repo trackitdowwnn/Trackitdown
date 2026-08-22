@@ -79,7 +79,24 @@ function BadgedTabs() {
   // list_my_vehicles per app session (useHasSavedCar dedupes and caches it in
   // savedCarSignal), not one per mount of this layout.
   const savedCar = useHasSavedCar({ enabled: true });
-  const startPostRoute = savedCar === 'some' ? '/report-stolen' : '/post-a-car';
+  // ⚠️ ONLY A CONFIRMED 'none' SKIPS THE CHOOSER. This read
+  // `savedCar === 'some' ? chooser : blank`, so 'unknown' went to the blank
+  // wizard — and 'unknown' is exactly what a GUEST reports. The action below is
+  // auth-gated, so the overwhelmingly common path is: guest taps +, signs in
+  // through the sheet, and `run` fires with a route decided while they were
+  // still signed out. Their saved cars were never offered, which is the bug
+  // reported on 2026-08-22.
+  //
+  // The same read is wrong a second way even when signed in: the garage fetch
+  // is in flight for a beat after sign-in, and 'unknown' during that window
+  // sent people past their own cars.
+  //
+  // Sending 'unknown' to the chooser is safe BECAUSE THE CHOOSER SELF-CORRECTS:
+  // with nothing offerable it replaces itself with /post-a-car (see
+  // ChooseCarToReportScreen's `nothingToOffer`). So the worst case is a brief
+  // spinner for someone who has no cars; the previous worst case was silently
+  // withholding a feature from everyone who had just signed in.
+  const startPostRoute = savedCar === 'none' ? '/post-a-car' : '/report-stolen';
 
   // Session/avatar changes re-render this layout, so the tab bar reacts live:
   // sign-in flips "Profile" → "You", an EditProfile avatar save (shared

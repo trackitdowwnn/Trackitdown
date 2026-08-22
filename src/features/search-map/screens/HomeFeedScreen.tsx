@@ -249,7 +249,16 @@ export function HomeFeedScreen() {
   const onPressPost = useCallback(
     (post: PostSummary) => {
       log.debug('feed_post_press', { postId: post.id });
-      router.push(`/post/${post.id}`);
+      // ?from=feed is what makes this tap COUNT toward the alert-area offer.
+      // The offer means "you are watching cars near you", and only browsing
+      // the feed says that — opening your OWN listing from My Posts is
+      // managing a theft, not watching for one, and it was raising the sheet
+      // at people mid-crisis (reported 2026-08-22).
+      //
+      // OPT-IN rather than opt-out on purpose: seven places navigate to a post,
+      // and a forgotten flag here costs a nudge that fires late. A forgotten
+      // EXCLUSION would have cost the same wrong prompt, silently, again.
+      router.push(`/post/${post.id}?from=feed`);
     },
     [router],
   );

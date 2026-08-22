@@ -38,6 +38,7 @@ import {
   FullscreenLoader,
   PermissionPrimer,
   type PermissionPrimerContent,
+  ThemedRefreshControl,
   useToast,
 } from '@/shared/ui';
 
@@ -172,12 +173,18 @@ export function AlertsScreen() {
     );
   }
 
-  const { alerts } = state;
+  const { alerts, refresh, refreshing } = state;
   const atCap = alerts.length >= MAX_ALERTS_PER_USER;
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        // Alerts change from OFF this screen — a push arrives, an area is
+        // edited elsewhere, a paused alert resumes. The list is otherwise only
+        // as fresh as the last invalidation, and there was no way to ask.
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={refresh} />}
+      >
         <Text style={styles.title} accessibilityRole="header">
           Alerts
         </Text>

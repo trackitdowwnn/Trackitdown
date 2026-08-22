@@ -35,7 +35,7 @@
 
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { StatsSparkline } from '@/features/vehicles';
@@ -51,7 +51,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { EmptyState, RadiusSlider, Screen } from '@/shared/ui';
+import { EmptyState, ErrorState, RadiusSlider, Screen, ThemedRefreshControl } from '@/shared/ui';
 
 import { fetchAreaInsights, type AreaInsights } from '../api/areaInsightsApi';
 import { toMonthlyBars, monthlySummary, recoveryRateLabel } from '../lib/areaInsightsModel';
@@ -67,6 +67,13 @@ export function AreaInsightsScreen() {
   const centre = useDefaultMapCentre();
   const [radiusMiles, setRadiusMiles] = useState(DEFAULT_RADIUS_MILES);
   const [insights, setInsights] = useState<AreaInsights | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  // The radius the figures on screen were computed for. Kept because it is NOT
+  // recoverable from the payload: the RPC quantises the radius it was given, so
+  // `insights.radiusM` and what the slider asked for legitimately differ on a
+  // perfectly good response, and comparing them would show an error forever.
+  const [shownMiles, setShownMiles] = useState<number | null>(null);
 
   const lat = centre.centre?.latitude ?? null;
   const lng = centre.centre?.longitude ?? null;
@@ -76,12 +83,41 @@ export function AreaInsightsScreen() {
     let cancelled = false;
     // Every write is after the await, so this never trips
     // react-hooks/set-state-in-effect.
-    void fetchAreaInsights(lat, lng, milesToMetres(radiusMiles)).then((next) => {
-      if (!cancelled) setInsights(next);
-    });
+    //
+    // The catch is not optional: without it a rejected fetch left `insights`
+    // null forever, which this screen renders as the SKELETON — a permanent
+    // shimmer that looks like slow loading and never resolves, with no retry
+    // anywhere on the page.
+    fetchAreaInsights(lat, lng, milesToMetres(radiusMiles))
+      .then((next) => {
+        if (!cancelled) {
+          setInsights(next);
+          setShownMiles(radiusMiles);
+          setFailed(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
     return () => {
       cancelled = true;
     };
+  }, [lat, lng, radiusMiles]);
+
+  // The pull. Same fetch, but it owns the spinner and it is how someone gets
+  // out of the error state without leaving the screen.
+  const refresh = useCallback(async () => {
+    if (lat === null || lng === null) return;
+    setRefreshing(true);
+    try {
+      setInsights(await fetchAreaInsights(lat, lng, milesToMetres(radiusMiles)));
+      setShownMiles(radiusMiles);
+      setFailed(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      setRefreshing(false);
+    }
   }, [lat, lng, radiusMiles]);
 
   useEffect(() => {
@@ -110,7 +146,10 @@ export function AreaInsightsScreen() {
           onAction={() => router.push('/explore')}
         />
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
+        >
           {/* Whole miles only — the RPC quantises the radius, so sending
               anything else is silently rounded and the number under the slider
               would stop matching the figures above it. */}
@@ -119,7 +158,22 @@ export function AreaInsightsScreen() {
             onChangeMiles={(miles) => setRadiusMiles(Math.round(miles))}
           />
 
-          {insights === null ? (
+          {/* A failed refresh over data that is already up must NOT replace it
+              with an error page: the figures are still true, and losing them
+              because one fetch timed out is worse than a minute of staleness.
+
+              ⚠️ UNLESS THE RADIUS MOVED. Figures fetched for 20 miles sitting
+              under a slider reading 30 are not stale, they are WRONG — this
+              screen exists to say how much theft there is in a stated area, and
+              the stated area would be a different one. That is the same failure
+              the whole-miles comment below guards against. */}
+          {failed && (insights === null || shownMiles !== radiusMiles) ? (
+            <ErrorState
+              title="We couldn’t load this area"
+              body="Check your connection and try again."
+              onRetry={() => void refresh()}
+            />
+          ) : insights === null ? (
             <View style={styles.skeletons}>
               <View style={styles.skeletonBlock} />
               <View style={styles.skeletonBlock} />

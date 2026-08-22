@@ -40,6 +40,7 @@ import {
   EmptyState,
   ErrorState,
   HEADER_BAR_HEIGHT,
+  ThemedRefreshControl,
   useToast,
   type BottomSheetRef,
   type ConfirmDialogRef,
@@ -149,7 +150,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // first over rows it is already removing.
   const [deleting, setDeleting] = useState(false);
 
-  const { status, result, retry } = usePostDetail(postId);
+  const { status, result, retry, refreshing, refresh } = usePostDetail(postId);
 
   // Which section the owner is editing (a full-screen overlay), or null. Cleared
   // on cancel; on save it also refetches the detail so the change shows.
@@ -514,6 +515,13 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         onScroll={onScroll}
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
+        // A listing is the one screen people come BACK to — waiting on a
+        // sighting, watching the bounty, checking whether anything moved. The
+        // 30s poll covers that, but silently and on its own schedule, so
+        // someone staring at "0 sightings" had no way to ask. The pull is the
+        // ask. It also re-fetches from the error state, which previously
+        // needed the Try again button below the fold.
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
         contentContainerStyle={{
           paddingBottom: insets.bottom + sizes.control + spacing.xl,
         }}
