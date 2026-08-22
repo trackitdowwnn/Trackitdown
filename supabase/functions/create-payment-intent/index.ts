@@ -208,15 +208,19 @@ Deno.serve(async (request) => {
     // The charge intent exists but we couldn't record it. Surface a retryable
     // error; the idempotency key means the retry reuses this same intent.
     //
-    // Name the function we ACTUALLY called. This line used to say
-    // "record_post_payment_intent" on both paths, so a fee-listing failure
-    // logged the bounty function's name — which is worse than useless while
-    // reading these logs to work out which of the two pricing paths broke.
-    console.error(
-      `[payments] ${isListingFee ? 'record_listing_fee_intent' : 'record_post_payment_intent'} failed`,
-      recordError.message,
-      { postId, amountPence },
-    );
+    // ONE function serves both prices, so the name is fixed — but the MODE is
+    // logged beside it, which is the part that actually helps when reading these
+    // logs to work out which pricing path broke.
+    //
+    // This briefly named `record_listing_fee_intent` on the fee branch, from a
+    // £4.99 design that only ever existed in this repo. A log line naming a
+    // function the database has not got is worse than a vague one: it sends the
+    // next reader looking for something that was never there.
+    console.error('[payments] record_post_payment_intent failed', recordError.message, {
+      postId,
+      amountPence,
+      mode: isListingFee ? 'listing_fee' : 'bounty_escrow',
+    });
     return errorResponse('LEDGER_ERROR', 'We couldn’t start your payment. Please try again.', 500);
   }
 
