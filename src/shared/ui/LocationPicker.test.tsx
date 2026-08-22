@@ -234,6 +234,70 @@ describe('LocationPicker', () => {
       );
     });
 
+    it('recentres when the centre arrives AFTER mount, still without settling', async () => {
+      // useDefaultMapCentre opens the screen on whatever it has and may resolve
+      // a real fix seconds later — "no cached fix" is not "no location". The
+      // picker's `region` comes from a useState initialiser that has already
+      // run, so without an explicit hand-off a late centre is silently dropped
+      // and the map stays on the whole-UK view for the rest of the session.
+      // That was the post wizard's last-seen bug (2026-08-22).
+      const onLocationChange = jest.fn();
+      const view = await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialCentre={null}
+          locationServices={makeServices()}
+          onLocationChange={onLocationChange}
+        />,
+      );
+      expect(mapProps?.region).toEqual(UK_DEFAULT_REGION);
+
+      await view.rerender(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialCentre={CENTRE}
+          locationServices={makeServices()}
+          onLocationChange={onLocationChange}
+        />,
+      );
+
+      expect(mapProps?.region).toEqual(
+        expect.objectContaining({ latitude: CENTRE.latitude, longitude: CENTRE.longitude }),
+      );
+      // SAFETY: camera only. A late GPS fix must never answer "where did you
+      // last see it" on the reporter's behalf.
+      expect(onLocationChange).not.toHaveBeenCalledWith(
+        expect.objectContaining({ isSettled: true }),
+      );
+    });
+
+    it('a late centre does NOT move the map once a point is settled', async () => {
+      // SAFETY: the gate that stops a slow GPS fix overwriting a point the
+      // reporter already chose. Without it, someone who picks a street and
+      // waits a moment watches the map jump to wherever their phone is.
+      const settled = { latitude: 51.5, longitude: -0.12 };
+      const view = await render(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialLocation={settled}
+          initialCentre={null}
+          locationServices={makeServices()}
+        />,
+      );
+      const before = mapProps?.region;
+
+      await view.rerender(
+        <LocationPicker
+          MapComponent={MockMap}
+          initialLocation={settled}
+          initialCentre={CENTRE}
+          locationServices={makeServices()}
+        />,
+      );
+
+      expect(mapProps?.region).toEqual(before);
+    });
+
     it('lets initialLocation win, and that one DOES settle', async () => {
       const settled = { latitude: 51.5, longitude: -0.12 };
       const onLocationChange = jest.fn();

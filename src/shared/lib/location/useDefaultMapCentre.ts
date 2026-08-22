@@ -6,21 +6,30 @@
  *        a spotter saw was the country and they had to pan or search to their
  *        own street before the step meant anything.
  *
- *        ⚠️ NEVER COLD-PROMPTS, and never waits for a fresh GPS fix.
+ *        ⚠️ NEVER COLD-PROMPTS, and never BLOCKS on a fresh GPS fix.
  *        `getLastKnownPosition` reads permission with the non-prompting call
- *        and returns the OS's CACHED fix immediately. The obvious alternative,
- *        `expoLocationServices.getCurrentPosition`, is wrong twice over: it
- *        calls `requestForegroundPermissionsAsync` internally (firing the OS
- *        dialog the moment someone opens the wizard, which this repo reserves
- *        for a primer CTA), and it waits 3-10s for a fresh fix. The picker's
- *        own "use my current location" button is where that slow accurate path
- *        belongs — the user pressed it and is expecting to wait.
+ *        and returns the OS's CACHED fix immediately. Never use
+ *        `expoLocationServices.getCurrentPosition` here: it calls
+ *        `requestForegroundPermissionsAsync` internally, firing the OS dialog
+ *        the moment someone opens the wizard, and this repo reserves cold
+ *        prompts for a primer CTA.
+ *
+ *        A fresh fix IS now requested — but only via
+ *        `getFreshPositionIfPermitted` (permission-checked, silent), only when
+ *        the cached chain came back empty, and only AFTER the screen has already
+ *        opened. It arrives as a late recentre or not at all; nothing waits on
+ *        it. That was added 2026-08-22 because "no cached fix" is not "no
+ *        location": a fresh install, a reboot or an emulator all return null
+ *        with permission fully granted, and the post wizard's last-seen step was
+ *        opening on the whole of the UK for users who had granted everything.
  *
  *        The feed location is a PREFILL, not a link — changing an alert never
  *        writes back to it, and the two settings stay independent
  *        (feedLocationStorage's own header and the search-map README say the
  *        same). This is the consumer both of them were written for.
- * LINKS: ../screens/AlertWizardScreen.tsx (the only caller);
+ * LINKS: src/features/notifications/screens/AlertWizardScreen.tsx and
+ *        src/features/vehicles/post/components/postSteps.tsx (both callers —
+ *        each holds a placeholder while status is 'resolving');
  *        src/shared/lib/location/feedLocationStorage.ts;
  *        src/features/permissions (checkDevicePermission);
  *        src/features/search-map/hooks/useFeedLocation.ts (same chain, for the feed).
@@ -28,7 +37,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { getLastKnownPosition } from './expoLocationServices';
+import { getFreshPositionIfPermitted, getLastKnownPosition } from './expoLocationServices';
 import { loadFeedLocationPref } from './feedLocationStorage';
 import type { GeoCoord } from '@/shared/types';
 
@@ -102,11 +111,41 @@ export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
     };
 
     timer = setTimeout(() => settle(null), RESOLVE_TIMEOUT_MS);
-    // Never rejects: every step of the chain swallows its own failures, but
-    // catch anyway so a surprise can only cost the fallback, not the wizard.
-    resolveCentre().then(settle, () => settle(null));
+
+    let cancelled = false;
+    void (async () => {
+      // Never rejects: every step of the chain swallows its own failures, but
+      // catch anyway so a surprise can only cost the fallback, not the wizard.
+      const quick = await resolveCentre().catch(() => null);
+      if (cancelled) return;
+      settle(quick);
+      if (quick) return;
+
+      // NOTHING CACHED, BUT PERMISSION MAY STILL BE GRANTED. `getLastKnownPosition`
+      // returns null whenever the OS holds no cached fix — fresh install, recent
+      // reboot, emulator, location just switched on — and the old code read that
+      // as "no location" and opened on the whole UK for users who had granted
+      // everything (2026-08-22, reported on the post wizard's last-seen step).
+      //
+      // So ask for a real fix, but do NOT hold the screen on it: the map is
+      // already up on the UK view by now, and this recentres it if and when the
+      // fix lands. 3-10s on a real handset, and it never prompts (see
+      // getFreshPositionIfPermitted's SAFETY note).
+      //
+      // The camera moves; nothing is SETTLED. A late centre must never become a
+      // chosen point — on the last-seen step that would turn "wherever the phone
+      // was" into a claim other people act on. LocationPicker enforces that end.
+      const fresh = await getFreshPositionIfPermitted().catch(() => null);
+      if (cancelled || !fresh || !mountedRef.current) return;
+      setState((current) =>
+        // Only fills a still-empty centre: if the user's own pick already
+        // resolved through some other path, a late GPS fix must not shove it.
+        current.centre ? current : { status: 'ready', centre: fresh },
+      );
+    })();
 
     return () => {
+      cancelled = true;
       if (timer) clearTimeout(timer);
     };
   }, [enabled]);

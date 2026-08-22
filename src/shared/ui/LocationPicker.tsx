@@ -390,6 +390,32 @@ export function LocationPicker({
     }
   }
 
+  // A LATE CENTRE recentres the camera while the point is still uncommitted.
+  // `region` is seeded by a useState initialiser that runs ONCE, so before this
+  // existed a centre arriving after mount was simply ignored and the map sat on
+  // whatever it opened with for the rest of the session. That is exactly what
+  // useDefaultMapCentre now does: it opens the screen immediately on the cached
+  // fix (often nothing) and may resolve a real one seconds later, because "no
+  // cached fix" is not "no location" — a fresh install or a reboot returns null
+  // with permission fully granted. (2026-08-22: the post wizard's last-seen step
+  // was opening on the whole of the UK for exactly that reason.)
+  //
+  // SAFETY: CAMERA ONLY. `hasSettled` is deliberately NOT set and nothing is
+  // emitted — on the last-seen step a settled point is a claim other people act
+  // on (it drives the alert fan-out and the public map), so it must stay a point
+  // the reporter chose, never wherever their phone happened to be. The gates are
+  // what keep that true: an already-chosen `initialLocation`, a settled point, or
+  // a pan in progress each block the move, so this can never overwrite a choice
+  // or yank the map out from under a gesture.
+  const [appliedCentre, setAppliedCentre] = useState(initialCentre);
+  if (initialCentre !== appliedCentre) {
+    setAppliedCentre(initialCentre);
+    if (initialCentre && initialLocation == null && !hasSettled && !isMoving) {
+      setAnimateMs(motion.mapFly);
+      setRegion(regionFor(initialCentre, fitRadiusMiles));
+    }
+  }
+
   const handleRegionChangeStart = useCallback(() => {
     setIsMoving(true);
     // A fresh pan invalidates any pending/in-flight resolve for the old point.
