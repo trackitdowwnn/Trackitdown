@@ -194,8 +194,8 @@ end $$;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 3 — MONEY. A bounty of 4999 pence (below £50) and 500001 pence (above
--- £5000) both raise BOUNTY_OUT_OF_RANGE.
+-- CHECK 3 — MONEY. A bounty of 999 pence (below the £10 floor) and 500001
+-- pence (above £5,000) both raise BOUNTY_OUT_OF_RANGE.
 -- -----------------------------------------------------------------------------
 do $$
 declare
@@ -211,7 +211,12 @@ begin
     perform public.create_post(
       'BN49 LOW', 'Ford', 'Ka', 'Silver', 2018, null, null, null, null, null,
       null, null, now() - interval '1 day', 53.4808, -2.2426, 'Manchester',
-      4999,
+      -- 999 = one penny under the £10 floor. It was 4999 until 2026-08-22,
+      -- encoding a £50 floor that 20260813120000 moved at the owner's request
+      -- eight days earlier — a migration this repo did not have. A value
+      -- inside the range does not raise here at all: create_post walks on and
+      -- trips a later gate, so the failure names the wrong check.
+      999,
       array['https://example.test/lo/0.jpg',
             'https://example.test/lo/1.jpg',
             'https://example.test/lo/2.jpg'],
@@ -238,7 +243,7 @@ begin
   if not (v_lo and v_hi) then
     raise exception 'CHECK 3 FAILED: out-of-range bounties did not both raise (lo=%, hi=%)', v_lo, v_hi;
   end if;
-  raise notice 'CHECK 3 passed: bounty 4999 and 500001 both raise BOUNTY_OUT_OF_RANGE';
+  raise notice 'CHECK 3 passed: bounty 999 and 500001 both raise BOUNTY_OUT_OF_RANGE';
 end $$;
 
 

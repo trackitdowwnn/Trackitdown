@@ -494,11 +494,27 @@ begin
     end if;
   end loop;
 
-  -- The floor of the allowed bounty range (DOMAIN: minimum £50).
+  -- £50 — a mid-range bounty, and the smallest ROUND one. It was the floor
+  -- until 20260813120000 moved that to £10 at the owner's request; the split
+  -- math is unchanged either way, so this case is kept and the true floor is
+  -- checked below.
   select * into v_split from public.payout_split(5000);
   if v_split.transfer_pence <> 4750 or v_split.fee_pence <> 250 then
     raise exception 'CHECK 13 FAILED: a £50 bounty split %/%, expected 4750/250',
       v_split.transfer_pence, v_split.fee_pence;
+  end if;
+
+  -- THE ACTUAL FLOOR, £10. The smallest lawful bounty must still split into two
+  -- whole pennies that sum back to it: 950 + 50. A rounding rule that only holds
+  -- for large numbers is a rounding rule that fails on the cheapest listings,
+  -- which are now the commonest ones.
+  select * into v_split from public.payout_split(1000);
+  if v_split.transfer_pence <> 950 or v_split.fee_pence <> 50 then
+    raise exception 'CHECK 13 FAILED: a £10 bounty split %/%, expected 950/50',
+      v_split.transfer_pence, v_split.fee_pence;
+  end if;
+  if v_split.transfer_pence + v_split.fee_pence <> 1000 then
+    raise exception 'CHECK 13 FAILED: the £10 split does not sum back to the bounty';
   end if;
   raise notice 'CHECK 13 passed: the 95/5 split is exact and lossless across the bounty range';
 end $$;
