@@ -128,7 +128,11 @@ export interface SightingQuota {
 export interface OwnerSighting {
   id: string;
   createdAt: string;
-  status: 'unverified' | 'helpful' | 'credited';
+  /** 'not_mine' is the owner's "that isn't my car" (20260814100000). It bumps
+   *  no counter and is reversible — mark_sighting_helpful accepts it as a
+   *  source, so an owner may correct a rejection at no cost. Treat it as the
+   *  absence of a confirmation, never as a judgement of the spotter. */
+  status: 'unverified' | 'helpful' | 'not_mine' | 'credited';
   contextFlags: SightingContextFlag[];
   note: string | null;
   areaLabel: string | null;

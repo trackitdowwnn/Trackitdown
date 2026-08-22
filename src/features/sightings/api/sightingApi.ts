@@ -312,7 +312,11 @@ export async function submitSighting(
 const ownerSightingSchema = z.object({
   id: z.guid(),
   created_at: z.string(),
-  status: z.enum(['unverified', 'helpful', 'credited']),
+  // 'not_mine' (20260814100000) is the owner saying "that isn't my car". It is
+  // the ABSENCE of a confirmation, not a penalty: it bumps no counter and is
+  // reversible, because mark_sighting_helpful accepts it as a source. Without
+  // it here, one rejected sighting fails the parse for the whole list.
+  status: z.enum(['unverified', 'helpful', 'not_mine', 'credited']),
   context_flags: z.array(z.enum(SIGHTING_CONTEXT_FLAGS)),
   note: z.string().nullable(),
   area_label: z.string().nullable(),
@@ -458,14 +462,31 @@ export async function fetchPublicSightingEntries(postId: string): Promise<Public
 }
 
 /**
- * Owner marks a sighting helpful (DOMAIN: unverified → helpful only; a
+ * Owner marks a sighting helpful (DOMAIN: unverified OR not_mine → helpful; a
  * credited sighting never re-labels; repeat marks are idempotent server-side
  * so the spotter's counter can only bump once). Returns the resulting status
  * so the timeline can settle without a refetch.
+ *
+ * ⚠️ THE SCHEMA IS `.strict()` ON PURPOSE AND THAT MADE THIS THROW. Between
+ * 20260814140000 landing in the database and 2026-08-22, the RPC returned
+ * `crossedThreshold` and `counted` while this listed two keys — so every tap
+ * raised a ZodError AFTER the server had already recorded the verdict and
+ * bumped the spotter's reputation. The owner saw "we couldn't mark that" for
+ * something that had worked. Keep the strictness (a widened RPC should fail
+ * loudly here); keep this list in step with the RPC when it changes.
  */
-export async function markSightingHelpful(
-  sightingId: string,
-): Promise<{ status: 'helpful' | 'credited'; changed: boolean }> {
+export async function markSightingHelpful(sightingId: string): Promise<{
+  status: 'helpful' | 'credited';
+  changed: boolean;
+  /** The badge rung this tap crossed (1/5/25), or null. Badges are DERIVED
+   *  from a counter, so the RPC holding both sides of the increment is the
+   *  only thing that can know a rung was passed — it cannot be recomputed. */
+  crossedThreshold: number | null;
+  /** false when the verdict was recorded but the reputation point withheld.
+   *  Two different causes produce it and they are DELIBERATELY
+   *  indistinguishable — see the caller. */
+  counted: boolean;
+}> {
   const { data, error } = await supabase.rpc('mark_sighting_helpful', {
     p_sighting_id: sightingId,
   });
@@ -474,9 +495,71 @@ export async function markSightingHelpful(
     throw new Error('We couldn’t mark that sighting. Please try again.');
   }
   const parsed = z
-    .object({ status: z.enum(['helpful', 'credited']), changed: z.boolean() })
+    .object({
+      status: z.enum(['helpful', 'credited']),
+      changed: z.boolean(),
+      crossedThreshold: z.number().int().nullable(),
+      counted: z.boolean(),
+    })
     .strict()
     .parse(data);
-  log.info('sighting_marked_helpful', { sightingId, changed: parsed.changed });
+  log.info('sighting_marked_helpful', {
+    sightingId,
+    changed: parsed.changed,
+    counted: parsed.counted,
+  });
+  return parsed;
+}
+
+/** Thrown when the owner tries to reject a sighting they already confirmed. */
+export class SightingVerdictError extends Error {
+  readonly code: string;
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = 'SightingVerdictError';
+    this.code = code;
+  }
+}
+
+/**
+ * Owner marks a sighting "that isn't my car" (unverified → not_mine).
+ *
+ * ⚠️ THIS IS THE ABSENCE OF A CONFIRMATION, NOT A PENALTY. It bumps no counter
+ * and is fully reversible — mark_sighting_helpful accepts not_mine as a source,
+ * so an owner may correct a rejection at no cost to anyone. Copy built on it
+ * must never read as a judgement of the spotter, who reported in good faith on
+ * a car that looked like the one they were shown.
+ *
+ * ⚠️ helpful → not_mine IS REFUSED (ALREADY_COUNTED), and the reason is
+ * structural rather than fussy: the confirmation has already moved
+ * profiles.sightings_helpful, and this schema has NO decrement anywhere. Taking
+ * a badge back off someone's profile with no explanation is worse than an owner
+ * living with a mis-tap, so the undo window is client-side and this is the
+ * backstop.
+ */
+export async function markSightingNotMine(
+  sightingId: string,
+): Promise<{ status: 'not_mine' | 'credited'; changed: boolean }> {
+  const { data, error } = await supabase.rpc('mark_sighting_not_mine', {
+    p_sighting_id: sightingId,
+  });
+  if (error) {
+    log.warn('mark_sighting_not_mine failed', { code: error.code });
+    if (error.message?.includes('ALREADY_COUNTED')) {
+      throw new SightingVerdictError(
+        'You’ve already marked this one helpful, and that credit can’t be taken back.',
+        'ALREADY_COUNTED',
+      );
+    }
+    throw new SightingVerdictError(
+      'We couldn’t update that sighting. Please try again.',
+      'UNKNOWN',
+    );
+  }
+  const parsed = z
+    .object({ status: z.enum(['not_mine', 'credited']), changed: z.boolean() })
+    .strict()
+    .parse(data);
+  log.info('sighting_marked_not_mine', { sightingId, changed: parsed.changed });
   return parsed;
 }

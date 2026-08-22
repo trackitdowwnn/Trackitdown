@@ -19,6 +19,30 @@ import { NOTIFICATION_KINDS } from '../../src/features/notifications/lib/notific
 
 const MIGRATIONS_DIR = join(__dirname, '../migrations');
 
+/**
+ * Kinds the DATABASE permits that the CLIENT deliberately does not handle.
+ *
+ * Every entry is a gap, not a decision to be comfortable with — the whole point
+ * of this file is that a kind on one side only produces a push that arrives and
+ * routes nowhere. An entry is only defensible while NOTHING SENDS the kind.
+ * Check that before adding one, and delete it the moment the client can route.
+ */
+const NOT_HANDLED_BY_CLIENT = new Set([
+  // 20260814130000 added sighting_confirmed — "the owner confirmed your
+  // sighting" — and its sender, notify-sighting-confirmed, is deployed. Both
+  // came from a body of work built outside this repository and since lost; the
+  // CLIENT half never arrived. It cannot be handled here yet because there is
+  // nowhere to send the tap: the audience is the SPOTTER, and the screen for a
+  // spotter's own record is served by my_sighting_record, which has no caller
+  // anywhere in src/. /sighting/[sightingId] is owner-only and its RPC would
+  // refuse them.
+  //
+  // Safe only because nothing invokes notify-sighting-confirmed: no client
+  // code references it, so no such push is ever sent. If that changes before
+  // the spotter's record screen is rebuilt, this becomes a live bug.
+  'sighting_confirmed',
+]);
+
 describe('push_sends kind constraint', () => {
   it('lists exactly the kinds the client knows about', () => {
     // The LATEST definition wins: a later migration may drop and re-add the
@@ -45,6 +69,13 @@ describe('push_sends kind constraint', () => {
     const kinds = (latest ?? '')
       .split(',')
       .map((value: string) => value.trim().replace(/^'|'$/g, ''));
-    expect([...kinds].sort()).toEqual([...NOTIFICATION_KINDS].sort());
+    // The exception list may not rot: an entry naming a kind the database no
+    // longer has is a stale excuse, and would hide a real divergence.
+    for (const unhandled of NOT_HANDLED_BY_CLIENT) {
+      expect(kinds).toContain(unhandled);
+    }
+
+    const expected = kinds.filter((kind) => !NOT_HANDLED_BY_CLIENT.has(kind));
+    expect([...expected].sort()).toEqual([...NOTIFICATION_KINDS].sort());
   });
 });

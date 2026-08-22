@@ -24,6 +24,10 @@
  */
 
 import { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN, CAR_COLOURS } from '@/features/vehicles';
+import {
+  MAX_BOUNTY_PENCE as BOUNTY_MAX_PENCE,
+  MIN_BOUNTY_PENCE as BOUNTY_MIN_PENCE,
+} from '@/features/vehicles/post/lib/bountyBounds';
 import { CAR_MAKES, POPULAR_MAKES } from '@/shared/lib/carMakes';
 import { modelsForMake } from '@/shared/lib/carModels';
 import { milesToMetres } from '@/shared/lib/distance';
@@ -77,9 +81,17 @@ const RECENCY_CHIPS = [
   { value: '30', label: 'Last month' },
 ];
 
-/** £50 is the post minimum, so a £50 floor filters nothing — it IS "any". */
-const BOUNTY_MIN_PENCE = 5000;
-const BOUNTY_MAX_PENCE = 500000;
+/**
+ * The lowest stop means "any bounty" ONLY because it equals the post floor —
+ * which is why these are IMPORTED rather than restated (see the top of the
+ * file), and why the two numbers must always move together.
+ *
+ * They were literal 5000/500000 here until 2026-08-22, nine days after the post
+ * floor became £10 (20260813120000). Nothing errored: the slider's floor
+ * silently meant "£50 or more", so a spotter who believed they had asked for
+ * everything was never told about £10–£49 listings. Worse than a wrong number,
+ * because it looked right.
+ */
 
 function chipValue(value: string | null): string {
   return value ?? ANY;

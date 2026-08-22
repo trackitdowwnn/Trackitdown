@@ -83,9 +83,13 @@ Deno.serve(async (request) => {
   // `held` simply stops matching this query. That is the idempotency.
   const { data: due, error: dueError } = await admin
     .from('refund_holds')
-    .select('post_id, exit_path, payments!inner(status)')
+    // MONEY: the !inner join filters on kind too — see refundEscrow.ts. This
+    // is the HOURLY CRON, so an unfiltered fee row here is money leaving the
+    // platform on a timer with no human in the loop.
+    .select('post_id, exit_path, payments!inner(status, kind)')
     .lt('expires_at', new Date().toISOString())
-    .eq('payments.status', 'held');
+    .eq('payments.status', 'held')
+    .eq('payments.kind', 'bounty_escrow');
 
   if (dueError) {
     console.error('[payments] hold sweep query failed', dueError.message);

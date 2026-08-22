@@ -54,7 +54,7 @@ describe('postACarFlow structure', () => {
     const label = postACarFlow.finalCtaLabel as (a: Partial<PostACarAnswers>) => string;
     expect(label({ pricingMode: 'bounty', bountyAmountPence: 25000 })).toBe('Post & pay £250');
     // No-reward listing: the CTA names the FEE, not the slider's retained value.
-    expect(label({ pricingMode: 'fee', bountyAmountPence: 25000 })).toBe('Post & pay £4.99');
+    expect(label({ pricingMode: 'fee', bountyAmountPence: 25000 })).toBe('Post & pay £5');
     // Falls back to the seeded default when the bounty answer is absent.
     expect(label({})).toMatch(/^Post & pay £/);
   });
@@ -103,7 +103,7 @@ describe('postACarFlow structure', () => {
 
   it('reviews a no-reward listing as the fee, not as a bounty', () => {
     const review = stepById('pricing-mode').reviewValue;
-    expect(review?.({ pricingMode: 'fee' })).toBe('No reward · £4.99 fee');
+    expect(review?.({ pricingMode: 'fee' })).toBe('No reward · £5 fee');
     expect(review?.({ pricingMode: 'bounty' })).toBe('Reward offered');
   });
 });

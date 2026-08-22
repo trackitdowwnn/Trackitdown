@@ -2,8 +2,8 @@
  * WHAT:  SightingDetailScreen — one sighting examined in full by the post's
  *        OWNER: the evidence photos large, the exact captured point on a
  *        non-interactive map, when/where/chips/note, the spotter's passport
- *        row (tap → PublicProfileSheet), and the two owner actions — message
- *        the spotter and mark the sighting helpful.
+ *        row (tap → PublicProfileSheet), and the owner actions — message the
+ *        spotter, and rule on the sighting either way.
  * WHY:   The timeline skims; this examines. Served from the SAME owner RPC
  *        as the list (usePostSightings) so there is exactly one payload —
  *        and one privacy review surface — for everything an owner can see.
@@ -11,11 +11,20 @@
  *        opens chat by SIGHTING id (the server resolves the spotter);
  *        the profile sheet is fed from the same narrow passport — no uid
  *        ever reaches this client. Mark-helpful is DOMAIN's owner-side
- *        reputation credit: idempotent server-side, one-way, and never
- *        re-labels a credited sighting (the button hides once non-unverified).
+ *        reputation credit: idempotent server-side and never re-labels a
+ *        credited sighting.
+ *
+ *        THE VERDICT GOES BOTH WAYS, and only one direction is reversible.
+ *        "Not my car" (not_mine) bumps NOTHING, so it can be taken back for
+ *        free and the screen offers exactly that. Helpful CANNOT be undone:
+ *        the counter has already moved and this schema has no decrement, so
+ *        the RPC refuses with ALREADY_COUNTED rather than quietly stripping a
+ *        badge off someone's profile. Both are about the CAR; neither is a
+ *        judgement of the spotter, who answered a description in good faith.
  * LINKS: src/app/sighting/[sightingId].tsx (route);
  *        src/features/sightings/hooks/usePostSightings.ts;
- *        src/features/sightings/api/sightingApi.ts (markSightingHelpful);
+ *        src/features/sightings/api/sightingApi.ts (markSightingHelpful,
+ *          markSightingNotMine);
  *        docs/DOMAIN.md (Reputation v1); docs/SECURITY_AND_TRUST.md §1.
  */
 
@@ -54,7 +63,11 @@ import {
 } from '@/shared/ui';
 import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 
-import { markSightingHelpful } from '../api/sightingApi';
+import {
+  markSightingHelpful,
+  markSightingNotMine,
+  SightingVerdictError,
+} from '../api/sightingApi';
 import { usePostSightings } from '../hooks/usePostSightings';
 import { contextSummary } from '../lib/contextLabels';
 import type { OwnerSighting } from '../types';
@@ -144,10 +157,50 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
       const result = await markSightingHelpful(sighting.id);
       setLocalStatus(result.status);
       if (result.changed) {
-        toast.show(`Marked helpful — ${sighting.spotter.firstName} gets the credit.`, 'success');
+        // ⚠️ `counted: false` HAS TWO CAUSES AND THEY MUST READ THE SAME.
+        // One is an honest rule — a spotter earns one point per LISTING, so a
+        // second confirmation on the same car records the verdict and bumps
+        // nothing. The other is a collusion flag. The RPC returns the identical
+        // shape for both ON PURPOSE, because copy that distinguished them would
+        // tell someone which signal caught them, and that is a tutorial in
+        // evading it (_shared/collusion.ts). So this says what is TRUE of both
+        // and no more: it counted as a confirmation, not as a new point.
+        //
+        // Never write "this didn't count because…" here.
+        toast.show(
+          result.counted
+            ? `Marked helpful — ${sighting.spotter.firstName} gets the credit.`
+            : `Marked helpful — ${sighting.spotter.firstName} already has credit for this listing.`,
+          'success',
+        );
       }
     } catch {
       toast.show('We couldn’t mark this helpful just now.', 'error');
+    } finally {
+      setMarking(false);
+    }
+  };
+
+  const markNotMine = async () => {
+    if (!sighting || marking) return;
+    setMarking(true);
+    try {
+      const result = await markSightingNotMine(sighting.id);
+      setLocalStatus(result.status);
+      if (result.changed) {
+        // About the CAR, and reversible. Never "rejected", never anything that
+        // reads as a verdict on the person: they answered a description in good
+        // faith on a car that looked like the one they were shown, and this
+        // costs them nothing — no counter moves either way.
+        toast.show('Marked as not your car. You can change this.', 'success');
+      }
+    } catch (error) {
+      toast.show(
+        error instanceof SightingVerdictError
+          ? error.message
+          : 'We couldn’t update that sighting just now.',
+        'error',
+      );
     } finally {
       setMarking(false);
     }
@@ -308,6 +361,30 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
             variant="subtle"
             loading={marking}
             onPress={() => void markHelpful()}
+          />
+        ) : null}
+        {/* The other half of the verdict. Until this existed, 'unverified'
+            meant both "nobody has looked" and "looked, and no" at once — so
+            the one signal a reputation system most needs, WAS THIS PERSON
+            RIGHT, could not be recorded even in principle.
+
+            Offered from 'not_mine' too, because the correction is free: the
+            RPC accepts not_mine as a source for helpful and nothing was
+            withheld to undo. The reverse is refused (ALREADY_COUNTED) and the
+            copy says why.
+
+            'ghost', quieter than "Mark helpful": rejecting is the lower-stakes
+            act of the two and must not read as the recommended one. The label
+            is about the CAR, never the reporter — they answered a description
+            in good faith. */}
+        {effectiveStatus === 'unverified' || effectiveStatus === 'not_mine' ? (
+          <Button
+            label={effectiveStatus === 'not_mine' ? 'Actually, it was helpful' : 'Not my car'}
+            variant="ghost"
+            loading={marking}
+            onPress={() =>
+              void (effectiveStatus === 'not_mine' ? markHelpful() : markNotMine())
+            }
           />
         ) : null}
         {/* Deliberately BELOW the SafetyNotice, in the quietest variant, and

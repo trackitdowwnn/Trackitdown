@@ -8,10 +8,17 @@
  *        cancelled) — the deactivate-post function is authoritative, this
  *        reconciles it.
  *
- *        The succeeded branch serves BOTH pricing modes through one dispatcher
- *        RPC: an escrowed bounty becomes 'held', a fixed listing fee becomes
- *        'collected' (ADR-0014). charge.refunded stays bounty-only — a listing
- *        fee is never refunded, so no refund event can exist for one, and
+ *        The succeeded branch serves BOTH pricing modes through ONE function,
+ *        mark_post_payment_held, which reads the post: a NULL bounty is a free
+ *        listing whose payments row already carries kind='listing_fee'
+ *        (20260819100000). Both reach 'held' and both take the post live —
+ *        a fee post must reach spotters exactly as an escrowed one does.
+ *
+ *        ⚠️ A FEE IN 'held' IS SEPARATED FROM ESCROW BY kind ALONE, and only
+ *        the Edge Functions apply that filter (refundEscrow, releasePayout,
+ *        release-held-refunds). Lose it in any one of them and a £5 fee becomes
+ *        refundable money on an hourly cron. charge.refunded stays bounty-only:
+ *        a fee is never refunded, so no refund event can exist for one, and
  *        mark_post_payment_refunded's status guard makes a stray one a no-op.
  * WHY:   The client success callback is NOT trusted to move money state — a
  *        cancelled app, a lying client, or a lost network must never leave
@@ -25,9 +32,9 @@
  *          (claim_stripe_event, mark_post_payment_held, mark_post_payment_failed);
  *        supabase/migrations/20260730100000_live_on_payment.sql (redefines
  *          mark_post_payment_held: draft -> ACTIVE);
- *        supabase/migrations/20260820110000_no_bounty_listing_fee.sql
- *          (mark_post_payment_succeeded — the dispatcher this calls — plus
- *          mark_listing_fee_collected); docs/decisions/ADR-0014-no-bounty-listings.md;
+ *        supabase/migrations/20260819100000_a_listing_can_be_free.sql
+ *          (payments.kind, and record_post_payment_intent serving both prices);
+ *        docs/decisions/ADR-0014-no-bounty-listings.md;
  *        supabase/migrations/20260729100000_post_refund_cancel.sql
  *          (mark_post_payment_refunded — the charge.refunded branch);
  *        docs/decisions/ADR-0002-stripe-connect.md (webhooks: verify + dedupe +
@@ -109,14 +116,18 @@ Deno.serve(async (request) => {
   try {
     if (event.type === 'payment_intent.succeeded') {
       const intent = event.data.object as Stripe.PaymentIntent;
-      // ONE call, whichever pricing mode the post uses (ADR-0014).
-      // mark_post_payment_succeeded reads payments.kind and delegates —
-      // bounty_escrow -> mark_post_payment_held (-> 'held'), listing_fee ->
-      // mark_listing_fee_collected (-> 'collected'). Dispatching in SQL rather
-      // than here keeps the kind lookup and the money transition inside one
-      // transaction against a locked row, instead of a read-then-act pair with a
-      // window between them. Both delegates stay idempotent and never-regress.
-      const { error } = await admin.rpc('mark_post_payment_succeeded', {
+      // ⚠️ mark_post_payment_HELD, not mark_post_payment_succeeded. This called
+      // the latter between 2026-08-21 14:22 and 2026-08-22, and that function
+      // exists only in 20260820110000 — a migration this project has never
+      // applied. Every payment_intent.succeeded in that window therefore threw
+      // here: the card was charged and the post stayed in draft. Nothing about
+      // the pricing mode caused it; BOUNTY payments broke too.
+      //
+      // Production dispatches in SQL instead: mark_post_payment_held reads the
+      // post, and a NULL bounty is a free listing whose payments row already
+      // carries kind='listing_fee' (20260819100000). One call, both modes,
+      // idempotent and never-regress.
+      const { error } = await admin.rpc('mark_post_payment_held', {
         p_payment_intent_id: intent.id,
       });
       if (error) throw error;

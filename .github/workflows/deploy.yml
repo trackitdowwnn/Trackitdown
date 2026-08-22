@@ -69,7 +69,12 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # PINNED, not `latest`. Resolving `latest` costs a GitHub API call,
+          # and on 2026-08-22 that call hit a rate limit and failed the deploy
+          # of a webhook HOTFIX — the worst possible moment for a version
+          # lookup to need the network. A pin also means a deploy is
+          # reproducible: the CLI cannot change under a re-run.
+          version: 2.109.1
 
       - name: Record the pre-deploy state
         # Captured BEFORE anything changes, so the verification step at the end

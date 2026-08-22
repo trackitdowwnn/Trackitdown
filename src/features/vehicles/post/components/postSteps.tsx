@@ -22,6 +22,11 @@ import { StyleSheet, View } from 'react-native';
 import { BadgePoundSterling, Megaphone } from 'lucide-react-native';
 
 import { useAlertReach } from '@/features/notifications';
+import {
+  BOUNTY_SNAP_STEPS,
+  MAX_BOUNTY_PENCE,
+  MIN_BOUNTY_PENCE,
+} from '../lib/bountyBounds';
 import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
@@ -74,9 +79,13 @@ type StepProps = WizardStepProps<PostACarAnswers>;
  */
 type VehicleStepProps = WizardStepProps<VehicleAnswers>;
 
-/** Bounty range (pence) — mirrors create_post + the posts CHECK (£50–£5,000). */
-export const MIN_BOUNTY_PENCE = 5000;
-export const MAX_BOUNTY_PENCE = 500000;
+/**
+ * Bounty range (pence) — re-exported from the ONE mirror, not restated. These
+ * were literals here (£50–£5,000) until 2026-08-22, nine days after
+ * 20260813120000 moved the floor to £10 in the database. Nothing errored: an
+ * owner who could only offer £15 simply could not post, and no screen said why.
+ */
+export { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '../lib/bountyBounds';
 export const DEFAULT_BOUNTY_PENCE = 25000;
 
 /**
@@ -426,6 +435,11 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
       onChangePence={onChangePence}
       minPence={MIN_BOUNTY_PENCE}
       maxPence={MAX_BOUNTY_PENCE}
+      // £1 steps below £50, because the floor is £10. On the old £25 grid the
+      // three cheapest selectable bounties would be £10, £25 and £50, which
+      // leaves most of the newly-allowed range unreachable and the floor move
+      // largely decorative.
+      snapSteps={BOUNTY_SNAP_STEPS}
       panel={defaultBountyPanelCopy}
       // "Reaches", never "notifies". The count is zones matching TODAY; push
       // registration, the rolling daily cap and the per-post dedupe all sit

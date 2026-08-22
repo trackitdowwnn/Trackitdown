@@ -16,7 +16,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { SearchSheet } from './SearchSheet';
-import { emptyCriteria } from '../lib/searchCriteria';
+import { emptyCriteria, SEARCH_BOUNTY_MIN_PENCE } from '../lib/searchCriteria';
 
 jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
@@ -292,7 +292,11 @@ describe('assembling criteria', () => {
       fireEvent.press(applyButton(view));
     });
     const [criteria] = onApply.mock.calls[0];
-    expect(criteria.bountyMinPence).toBe(5000);
+    // The FLOOR, not a literal. "Clear all" means "any bounty", and the only
+    // value that means that is the one equal to the post floor — a hard-coded
+    // 5000 here kept passing after the floor moved to £10, while the filter it
+    // described had silently started excluding every £10–£49 listing.
+    expect(criteria.bountyMinPence).toBe(SEARCH_BOUNTY_MIN_PENCE);
   });
 
   it('closes without applying via the ×', async () => {

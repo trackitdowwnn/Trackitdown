@@ -209,10 +209,20 @@ export function PostStatsScreen({ postId }: PostStatsScreenProps) {
     },
   ];
 
+  // The four buckets MUST between them account for sightingsTotal. Until
+  // 2026-08-22 only three were listed, so once a sighting could be marked
+  // "not mine" the breakdown quietly stopped summing to the total printed
+  // directly above it — the kind of arithmetic error that makes a reader
+  // distrust every other number on the page.
+  //
+  // "not yours" rather than "rejected": this records the absence of a
+  // confirmation, not a judgement of the spotter, and the owner is reading
+  // back their own verdict.
   const split = [
     stats.sightingsCredited > 0 ? `${stats.sightingsCredited} credited` : null,
     stats.sightingsHelpful > 0 ? `${stats.sightingsHelpful} helpful` : null,
     stats.sightingsUnverified > 0 ? `${stats.sightingsUnverified} unverified` : null,
+    stats.sightingsNotMine > 0 ? `${stats.sightingsNotMine} not yours` : null,
   ]
     .filter(Boolean)
     .join(' · ');
