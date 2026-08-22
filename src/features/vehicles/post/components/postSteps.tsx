@@ -17,11 +17,12 @@
  */
 
 import { useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BadgePoundSterling, Megaphone } from 'lucide-react-native';
 
-import { useAlertReach } from '@/features/notifications';
+import { reachAtChosen } from '../lib/bountyRecommendation';
+import { useBountyGuidance } from '../hooks/useBountyGuidance';
 import {
   BOUNTY_SNAP_STEPS,
   MAX_BOUNTY_PENCE,
@@ -106,7 +107,10 @@ const PRICING_OPTIONS: CardSelectOption<PricingMode>[] = [
   {
     value: 'bounty',
     label: 'Offer a reward',
-    description: 'From £50. Held securely and only paid if a spotter finds your car.',
+    // The floor, from the ONE mirror — never a literal. This read "From £50"
+    // until 2026-08-22, nine days after 20260813120000 moved it to £10, so the
+    // card was quoting a price the database had stopped enforcing.
+    description: `From ${formatPounds(MIN_BOUNTY_PENCE)}. Held securely and only paid if a spotter finds your car.`,
     icon: BadgePoundSterling,
   },
   {
@@ -409,6 +413,7 @@ export function PricingModeStep({ answers, setAnswers }: StepProps) {
 }
 
 export function BountyStep({ answers, setAnswers }: StepProps) {
+  const styles = useThemedStyles(makeStyles);
   // MoneySlider re-registers its drag gesture if the handler identity changes.
   const onChangePence = useCallback(
     (bountyAmountPence: number) => setAnswers({ bountyAmountPence }),
@@ -422,42 +427,109 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
   //
   // The bounty step runs after when-where, so the coordinates are already in
   // `answers`. Null until that step resolves, which the hook handles.
-  const reach = useAlertReach(
+  const { guidance, recommendation } = useBountyGuidance(
     answers.location?.latitude ?? null,
     answers.location?.longitude ?? null,
-    bountyPence,
   );
+  const reach = reachAtChosen(guidance.rungs, bountyPence);
 
   return (
-    <MoneySlider
-      label="Bounty"
-      valuePence={bountyPence}
-      onChangePence={onChangePence}
-      minPence={MIN_BOUNTY_PENCE}
-      maxPence={MAX_BOUNTY_PENCE}
-      // £1 steps below £50, because the floor is £10. On the old £25 grid the
-      // three cheapest selectable bounties would be £10, £25 and £50, which
-      // leaves most of the newly-allowed range unreachable and the floor move
-      // largely decorative.
-      snapSteps={BOUNTY_SNAP_STEPS}
-      panel={defaultBountyPanelCopy}
-      // "Reaches", never "notifies". The count is zones matching TODAY; push
-      // registration, the rolling daily cap and the per-post dedupe all sit
-      // between it and a notification anyone receives. Null (too few to report,
-      // or no location yet) renders nothing at all — an owner hours from a
-      // theft must not be told "0 spotters are watching".
-      footnote={
-        reach === null
-          ? undefined
-          : `Reaches ${reach} ${reach === 1 ? 'spotter' : 'spotters'} watching this area`
-      }
-    />
+    <View style={styles.bountyStep}>
+      {/* THE GUIDANCE, above the slider so it is read BEFORE a number is
+          chosen rather than judged after. Absent entirely when there is
+          nothing honest to say — a quiet area, too few neighbours, no location
+          yet — because a confident-looking range resting on two data points is
+          worse than silence on a screen about someone's stolen car.
+
+          ⚠️ THE COPY SAYS WHAT A BOUNTY REACHES, NEVER WHAT IT RECOVERS.
+          Nothing in this payload measures outcomes. "Most owners near here"
+          is a statement about other people's choices, not a prediction about
+          this car. */}
+      {recommendation ? (
+        <View style={styles.bountyGuidance}>
+          <Text style={styles.bountyGuidanceLead}>
+            {recommendation.basis === 'reach'
+              ? `Around ${formatPounds(recommendation.midPence)} reaches most spotters reporting near here`
+              : `Most owners near here offer ${formatPounds(recommendation.lowPence)}–${formatPounds(recommendation.highPence)}`}
+          </Text>
+          <Pressable
+            onPress={() => onChangePence(recommendation.midPence)}
+            accessibilityRole="button"
+            accessibilityLabel={`Use ${formatPounds(recommendation.midPence)}`}
+            style={styles.bountyGuidanceAction}
+            testID="bounty-use-suggested"
+          >
+            {/* A recommendation nobody can act on is friction: it names an
+                amount and leaves the owner to hunt for it on a slider. Every
+                value here is snapped to the slider's own grid, so this always
+                lands exactly. */}
+            <Text style={styles.bountyGuidanceActionText}>
+              Use {formatPounds(recommendation.midPence)}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <MoneySlider
+        label="Bounty"
+        valuePence={bountyPence}
+        onChangePence={onChangePence}
+        minPence={MIN_BOUNTY_PENCE}
+        maxPence={MAX_BOUNTY_PENCE}
+        // £1 steps below £50, because the floor is £10. On the old £25 grid the
+        // three cheapest selectable bounties would be £10, £25 and £50, which
+        // leaves most of the newly-allowed range unreachable and the floor move
+        // largely decorative.
+        snapSteps={BOUNTY_SNAP_STEPS}
+        panel={defaultBountyPanelCopy}
+        // "Reaches", never "notifies". The count is zones matching TODAY; push
+        // registration, the rolling daily cap and the per-post dedupe all sit
+        // between it and a notification anyone receives. Null (too few to report,
+        // or no location yet) renders nothing at all — an owner hours from a
+        // theft must not be told "0 spotters are watching".
+        footnote={
+          reach === null
+            ? undefined
+            : `Reaches ${reach} ${reach === 1 ? 'spotter' : 'spotters'} watching this area`
+        }
+      />
+    </View>
   );
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   stack: {
     gap: spacing.xl,
+  },
+  bountyStep: {
+    gap: spacing.lg,
+  },
+  // The guidance sits ABOVE the slider so it is read before a number is chosen,
+  // not used to judge one afterwards. Quiet surface, not a card: it is context
+  // for the control below it, not a thing in its own right.
+  bountyGuidance: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    backgroundColor: c.surfaceSubtle,
+    borderRadius: radii.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  bountyGuidanceLead: {
+    ...typography.caption,
+    color: c.textSecondary,
+    flexShrink: 1,
+  },
+  bountyGuidanceAction: {
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+  },
+  bountyGuidanceActionText: {
+    ...typography.label,
+    color: c.primary,
+    textDecorationLine: 'underline',
   },
   // The centred, underlined "advance without the main input" action (plate:
   // enter manually; marks: none to add), spaced beneath the step's input.
