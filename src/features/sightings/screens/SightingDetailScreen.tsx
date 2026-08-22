@@ -144,7 +144,22 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
       const result = await markSightingHelpful(sighting.id);
       setLocalStatus(result.status);
       if (result.changed) {
-        toast.show(`Marked helpful — ${sighting.spotter.firstName} gets the credit.`, 'success');
+        // ⚠️ `counted: false` HAS TWO CAUSES AND THEY MUST READ THE SAME.
+        // One is an honest rule — a spotter earns one point per LISTING, so a
+        // second confirmation on the same car records the verdict and bumps
+        // nothing. The other is a collusion flag. The RPC returns the identical
+        // shape for both ON PURPOSE, because copy that distinguished them would
+        // tell someone which signal caught them, and that is a tutorial in
+        // evading it (_shared/collusion.ts). So this says what is TRUE of both
+        // and no more: it counted as a confirmation, not as a new point.
+        //
+        // Never write "this didn't count because…" here.
+        toast.show(
+          result.counted
+            ? `Marked helpful — ${sighting.spotter.firstName} gets the credit.`
+            : `Marked helpful — ${sighting.spotter.firstName} already has credit for this listing.`,
+          'success',
+        );
       }
     } catch {
       toast.show('We couldn’t mark this helpful just now.', 'error');

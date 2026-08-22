@@ -1,0 +1,50 @@
+/**
+ * WHAT:  The bounty range, in integer pence. ONE mirror of the database's own
+ *        CHECK, imported everywhere a floor or ceiling is needed.
+ * WHY:   The range is stated in seven places server-side and, before this file,
+ *        in four more on the client — each an independent copy of a number that
+ *        must never disagree. `20260813120000_bounty_minimum_ten` moved the
+ *        floor £50 → £10 at the owner's request on 2026-08-13 and had to touch
+ *        all seven; the client mirror it names lived in a checkout that has
+ *        since been lost, so the app went on enforcing £50 against a database
+ *        that allowed £10 for nine days.
+ *
+ *        Nothing errored. An owner who could only offer £15 simply could not
+ *        post, and no screen said why.
+ * LINKS: supabase/migrations/20260813120000_bounty_minimum_ten.sql (the
+ *          authority: posts_bounty_amount_pence_check);
+ *        supabase/migrations/20260813130000_bounty_floor_completion.sql (the
+ *          three places THAT migration missed — worth reading before moving
+ *          this number again);
+ *        src/shared/lib/money.ts (LISTING_FEE_PENCE, the other price mirror).
+ */
+
+/**
+ * MONEY: the smallest bounty a post may carry, integer pence.
+ *
+ * The floor is a PRODUCT choice, not a fraud control: it only ever encoded
+ * "below this, a bounty is not worth a spotter's trip", and setting that price
+ * on behalf of someone whose car has just been taken is not this platform's
+ * call. £5,000 above IS a fraud control (DOMAIN.md) and is a different kind of
+ * number — do not treat them alike.
+ */
+export const MIN_BOUNTY_PENCE = 1000;
+
+/** MONEY: the largest bounty a post may carry, integer pence. A fraud ceiling
+ *  (DOMAIN.md), unchanged since the schema was written. */
+export const MAX_BOUNTY_PENCE = 500000;
+
+/**
+ * Snap stops for the bounty sliders, coarsening as the amount grows.
+ *
+ * £1 steps below £50 exist BECAUSE the floor is £10: with the old £25 grid the
+ * cheapest three selectable bounties would have been £10, £25 and £50, which
+ * makes most of the newly-allowed range unreachable and the change pointless.
+ */
+// Deliberately NOT `as const`: the sliders take a mutable SnapStep[], and a
+// readonly tuple will not assign to it.
+export const BOUNTY_SNAP_STEPS = [
+  { upToPence: 5000, stepPence: 100 },
+  { upToPence: 50000, stepPence: 2500 },
+  { stepPence: 5000 },
+];
