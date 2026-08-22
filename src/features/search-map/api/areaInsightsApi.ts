@@ -119,15 +119,26 @@ export async function fetchAreaInsights(
     p_radius_m: radiusM,
   });
 
+  // ⚠️ THROW, do not return `enoughData: false`. Both are "we have no figures
+  // for you", but they are different sentences and the screen says them
+  // differently. `enoughData: false` renders "Not enough nearby to say — try a
+  // wider radius", which is a CLAIM ABOUT THE AREA: it says we looked and there
+  // were too few. On a dead network we did not look. Returning the honesty
+  // state here made a transport failure assert something the server never said,
+  // and made the screen’s error branch and its retry unreachable, because
+  // supabase.rpc reports transport failures in `error` rather than throwing.
   if (error) {
     log.warn('area_insights_failed', { code: error.code });
-    return { enoughData: false, radiusM };
+    throw new Error(`area_insights_failed:${error.code ?? 'unknown'}`);
   }
 
+  // Same reasoning, and one more: payloadSchema is .strict(), which is a
+  // privacy control — a server that widened this payload MUST fail loudly here
+  // rather than degrade into a state that looks like a quiet neighbourhood.
   const parsed = payloadSchema.safeParse(data);
   if (!parsed.success) {
     log.warn('area_insights_parse_failed');
-    return { enoughData: false, radiusM };
+    throw new Error('area_insights_parse_failed');
   }
   if (!parsed.data.enough_data) {
     return { enoughData: false, radiusM: parsed.data.radius_m };

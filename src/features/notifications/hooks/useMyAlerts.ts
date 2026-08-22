@@ -14,7 +14,7 @@
  *        (the pattern); ../components/AlertNudgeSheet.tsx (a consumer).
  */
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 // Direct module path, NOT the '@/features/auth' barrel — that barrel exports
 // AuthGate, which reaches AsyncStorage, and this hook IS exported from the
@@ -53,10 +53,17 @@ export function invalidateMyAlerts(): void {
   versionSubscribers.forEach((cb) => cb());
 }
 
-export function useMyAlerts(): MyAlertsState & { refresh: () => void; refreshing: boolean } {
+export function useMyAlerts(): MyAlertsState & {
+  /** Global invalidation — every mounted instance refetches. The retry button. */
+  refresh: () => void;
+  /** The PULL. Local, and a failure keeps the list. */
+  pull: () => Promise<void>;
+  refreshing: boolean;
+} {
   const session = useSession();
   const generation = useSyncExternalStore(subscribeVersion, getVersion);
   const [result, setResult] = useState<FetchResult | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // The state machine is DERIVED below; the effect only records outcomes.
   const key = session.status === 'signedIn' ? `${session.userId}:${generation}` : null;
@@ -78,16 +85,31 @@ export function useMyAlerts(): MyAlertsState & { refresh: () => void; refreshing
 
   const refresh = invalidateMyAlerts;
 
-  // DERIVED, not a second piece of state: a fetch is outstanding exactly when
-  // the recorded result does not answer the current key. That is already how
-  // the state machine below decides what to show, so the pull spinner and the
-  // list can never disagree about whether something is in flight.
+  // ⚠️ THE PULL DOES NOT GO THROUGH invalidateMyAlerts, and that is the point.
   //
-  // Reported ONLY alongside data. The first load has no result yet and renders
-  // the skeleton; a pull spinner over a skeleton is two loading indicators for
-  // one fetch.
-  const inFlight = key !== null && (!result || result.key !== key);
-  const idle = { refresh, refreshing: false };
+  // Invalidation drives the shared effect below, whose failure path records
+  // `outcome: 'error'` — which the state machine turns into a full-page
+  // ErrorState. Routed that way, one failed tug on a train would replace every
+  // alert someone had with an error page. A pull is a request for NEWER facts,
+  // never a reason to throw away the ones already on screen.
+  //
+  // It also keeps the spinner honest: `refreshing` is now true only for a
+  // refetch a person asked for. Derived from the key comparison it also fired
+  // when they flipped an alert switch or deleted one, both of which invalidate,
+  // so the list animated a pull nobody pulled.
+  const pull = useCallback(async () => {
+    if (!key) return;
+    setRefreshing(true);
+    try {
+      setResult({ key, outcome: await fetchMyAlerts() });
+    } catch {
+      // Keep what is on screen. The list is still true, just not newer.
+    } finally {
+      setRefreshing(false);
+    }
+  }, [key]);
+
+  const idle = { refresh, pull, refreshing: false };
 
   if (session.status === 'loading') return { status: 'loading', ...idle };
   if (session.status === 'signedOut') return { status: 'signedOut', ...idle };
@@ -97,10 +119,10 @@ export function useMyAlerts(): MyAlertsState & { refresh: () => void; refreshing
     // saving doesn't bounce the list through a spinner. The userId prefix
     // makes cross-user reuse impossible; a stale error is never reused.
     if (result && result.outcome !== 'error' && result.key.split(':')[0] === session.userId) {
-      return { status: 'ready', alerts: result.outcome, refresh, refreshing: inFlight };
+      return { status: 'ready', alerts: result.outcome, refresh, pull, refreshing };
     }
     return { status: 'loading', ...idle };
   }
   if (result.outcome === 'error') return { status: 'error', ...idle };
-  return { status: 'ready', alerts: result.outcome, refresh, refreshing: inFlight };
+  return { status: 'ready', alerts: result.outcome, refresh, pull, refreshing };
 }

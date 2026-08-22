@@ -164,11 +164,24 @@ spotter who mutes the app is worth zero alerts forever.
   erase their criteria.
 - **AlertNudgeSheet** — the one-time offer of an alert area, for members with
   none. Mounted at the app root and **earned, not scheduled**: it fires as
-  someone LEAVES their third listing, because three listings opened is the
+  someone LEAVES their third listing **opened from the home feed**, because
+  three listings browsed is the
   cheapest honest signal that they are watching cars near them, and the exit is
   the moment that costs them nothing (the same rule as the garage's exit sheet
   — see `features/garage/README.md`). A timer was considered and rejected: a
   clock doesn't know whether you're mid-scroll or reading a listing.
+
+  ⚠️ **Only a feed tap counts** (2026-08-22). Every post view used to, so an
+  owner working through their own listings in My Posts raised an offer reading
+  "want to know when a car goes missing near you?" — at someone whose car had
+  just been stolen. The signal the offer rests on is BROWSING; managing your own
+  theft is not that, and neither is arriving from a chat, a watchlist collection
+  or a recovery flow. The home feed marks its taps with `?from=feed`
+  (`BROWSING_SOURCE`), and `useCountPostViewForAlertNudge` takes a **required**
+  boolean so a caller has to make the claim rather than inherit it — a forgotten
+  flag costs a late nudge, a forgotten exclusion costs the wrong audience again.
+  The map is deliberately NOT counted: arguably it is browsing too, but the
+  narrower rule was the one asked for, and widening it is a product decision.
 
   It was an inline feed card until 2026-08-06. The card was easy to scroll past
   and, at full size, pushed the first real content off the screen; setting an

@@ -27,6 +27,7 @@ import { expoLocationServices } from '@/shared/lib/location/expoLocationServices
 import { createLogger } from '@/shared/lib/logger';
 import { markStartup } from '@/shared/lib/startupTrace';
 import { SaveYourCarCard, useGarageNudgeCard } from '@/features/garage';
+import { BROWSING_SOURCE } from '@/features/notifications/lib/browsingSource';
 import { useMyProfile } from '@/features/profile';
 import { WatchToggle } from '@/features/watchlist';
 import { radii, spacing, typography, usePalette } from '@/shared/theme';
@@ -258,7 +259,7 @@ export function HomeFeedScreen() {
       // OPT-IN rather than opt-out on purpose: seven places navigate to a post,
       // and a forgotten flag here costs a nudge that fires late. A forgotten
       // EXCLUSION would have cost the same wrong prompt, silently, again.
-      router.push(`/post/${post.id}?from=feed`);
+      router.push(`/post/${post.id}?from=${BROWSING_SOURCE}`);
     },
     [router],
   );
