@@ -87,7 +87,7 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
 
 **Phase 3 — Reward** (two steps since 2026-08-20, ADR-0014)
 11. **Pricing mode** — `CardSelect`: *offer a reward* (a bounty) or *no reward,
-    £4.99 to list*. **Deliberately unseeded**, so Next stays disabled until the
+    £5 to list*. **Deliberately unseeded**, so Next stays disabled until the
     owner chooses: defaulting to `bounty` makes the £50 minimum feel pre-agreed
     (the barrier this option exists to remove), and defaulting to `fee` nudges
     them off a reward that makes their car more likely to be found. The fee card
@@ -95,14 +95,30 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
     disclosure surface in the flow, because there is no checkout screen.
 11b. **Bounty** — `MoneySlider` with the 95/5 + escrow/refund transparency panel.
     **Walked past entirely** when there is no reward to set (the wizard's `when`
-    gating), so it contributes no screen, no review row and no schema check.
+    gating), so it contributes no screen and no schema check — and no review
+    row either, which needed `hideReviewWhenSkipped` and did not hold until
+    2026-08-22 (see step 12).
     `bountyAmountPence` keeps its value across a mode switch, so changing your
     mind restores your own figure rather than resetting the control.
     (Proof-of-ownership / V5C collection was REMOVED from the app — there is no
     verification step.)
-12. **Review** — the framework's built-in review (edit-jump-return per step).
+12. **Review** — the framework's built-in review (edit-jump-return per step),
+    with both of its optional slots filled (redesigned 2026-08-22):
+    * `review.header` → **`ReviewListingPreview`**: the cover photo with the
+      car's identity over its lower edge and an Edit that jumps to the photos
+      step. Until this existed the screen described a seven-photo listing as
+      "Photos — 5 added", which says how many were picked and nothing about
+      whether a stranger could recognise the car. ⚠️ Its register is
+      VERIFICATION, not pride, and its copy names recognition — never recovery,
+      which we measure nothing about.
+    * `review.footer` → **`ReviewCostPanel`**: the sum and one honest line on
+      what happens to it. Every figure is borrowed from `shared/lib/money`
+      (`estimateRefundPence` is binding — one function, or two screens disagree
+      about the same number) and is DISPLAY ONLY.
+    * The bounty row is hidden in fee mode via `hideReviewWhenSkipped`. It used
+      to show "Bounty £250" — the seed — directly above "Post & pay £5".
 13. **Submit** — the final CTA reads "Post & pay £<amount>" — the bounty, or
-    £4.99 in fee mode (a dynamic `finalCtaLabel`; a payment button names its sum
+    £5 in fee mode (a dynamic `finalCtaLabel`; a payment button names its sum
     in both modes).
     `onComplete` (in `PostACarScreen`) calls `create_post` (draft), then opens
     the escrow `PaymentIntent` (`createBountyPaymentIntent`) and presents Stripe's

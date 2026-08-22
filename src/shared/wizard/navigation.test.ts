@@ -286,7 +286,7 @@ describe('ctaLabel', () => {
 
 describe('reviewGroups', () => {
   it('groups reviewable steps by phase with their flat indices', () => {
-    const groups = reviewGroups(flow);
+    const groups = reviewGroups(flow, {});
     expect(groups.map((group) => group.title)).toEqual(['About you', 'Preferences']);
     expect(groups[0].items.map((item) => item.flatIndex)).toEqual([1, 2]);
     expect(groups[1].items.map((item) => item.flatIndex)).toEqual([4]);

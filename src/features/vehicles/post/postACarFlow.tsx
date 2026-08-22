@@ -24,6 +24,11 @@ import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { deriveLocalityForCoord } from '@/shared/lib/location/placeLabels';
 import type { WizardFlow } from '@/shared/wizard';
 
+import { ReviewCostPanel } from './components/ReviewCostPanel';
+import {
+  PREVIEW_EDIT_STEP_ID,
+  ReviewListingPreview,
+} from './components/ReviewListingPreview';
 import {
   BountyStep,
   DescriptionStep,
@@ -46,7 +51,7 @@ export const POST_A_CAR_INITIAL_ANSWERS: Partial<PostACarAnswers> = {
 export const postACarFlow: WizardFlow<PostACarAnswers> = {
   id: 'post-a-car',
   // The final CTA names the amount the owner is about to pay ("Post & pay
-  // £250" / "Post & pay £4.99") — a payment button must never be vague about
+  // £250" / "Post & pay £5") — a payment button must never be vague about
   // the sum, and that holds for both pricing modes. Reads the current answers
   // (falls back to the seed so it's never blank). formatPounds here is DISPLAY
   // ONLY; the charge amount is server-read from the post's own price column,
@@ -55,7 +60,22 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
     answers.pricingMode === 'fee'
       ? `Post & pay ${formatPounds(LISTING_FEE_PENCE)}`
       : `Post & pay ${formatPounds(answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE)}`,
-  review: { title: 'Check your report' },
+  review: {
+    title: 'Check your report',
+    // The listing preview leads, because the question this screen really asks
+    // is "would a stranger recognise this car?" and a row reading
+    // "Photos — 5 added" cannot answer it. Edit jumps to the photos step by
+    // id, so this config never has to know its own flat index.
+    header: (answers, editStep) => (
+      <ReviewListingPreview
+        answers={answers}
+        onEditPhotos={() => editStep(PREVIEW_EDIT_STEP_ID)}
+      />
+    ),
+    // The sum, restated where it is committed to. Everything it prints is
+    // borrowed from shared/lib/money — see the panel.
+    footer: (answers) => <ReviewCostPanel answers={answers} />,
+  },
   phases: [
     {
       id: 'car',
@@ -171,10 +191,19 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           question: 'Set a bounty',
           component: BountyStep,
           // WALKED PAST entirely when there is no reward to set — the wizard's
-          // own `when` gating, so the step contributes no screen, no review row
-          // and no schema check. bountyAmountPence keeps whatever the slider
-          // last held, so switching back restores the owner's own figure.
+          // own `when` gating, so the step contributes no screen and no schema
+          // check. bountyAmountPence keeps whatever the slider last held, so
+          // switching back restores the owner's own figure.
           when: (answers) => answers.pricingMode !== 'fee',
+          // ⚠️ And no review row either — which it DID until 2026-08-22, because
+          // reviewGroups filtered on reviewValue alone. bountyAmountPence is
+          // seeded to £250, so a no-reward listing showed "Bounty £250" directly
+          // above "Post & pay £5": a sum nobody chose and nobody would be
+          // charged, on the one screen that has to be exact about money.
+          //
+          // Opt-in rather than the framework default, because a surviving row
+          // is usually right — see `when` in shared/wizard/types.ts.
+          hideReviewWhenSkipped: true,
           schema: z.object({
             bountyAmountPence: z.number().int().min(MIN_BOUNTY_PENCE).max(MAX_BOUNTY_PENCE),
           }),

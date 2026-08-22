@@ -52,6 +52,17 @@ export interface PlateChipProps {
    * result); a handler = "I am inside something tappable, here is its press".
    */
   onPress: (() => void) | null;
+  /**
+   * Render for a chip sitting ON A PHOTOGRAPH.
+   *
+   * ⚠️ The default fill is `surfaceSubtle`, which is #EEEEEE in light and
+   * #2A2A2A in dark — it tracks the PAGE. Over a photo that is exactly the flip
+   * DESIGN_SYSTEM.md forbids for photo chrome: a photograph is as bright in
+   * dark mode as in light, so the chip beside `textOnMedia` text turned from a
+   * light chip into a charcoal one while the text stayed white. This swaps to
+   * the theme-invariant media tokens, which were minted for this.
+   */
+  onMedia?: boolean;
 }
 
 /**
@@ -82,7 +93,7 @@ export function spellPlate(plate: string): string {
  *  is exactly how a character gets transposed. Long-press (not tap) because the
  *  chip sits inside cards whose own tap already means "open this listing"; the
  *  gesture must not steal that. */
-export function PlateChip({ plate, onPress }: PlateChipProps) {
+export function PlateChip({ plate, onPress, onMedia = false }: PlateChipProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   // Optional: this primitive renders in seven components, most of them tested
@@ -145,17 +156,21 @@ export function PlateChip({ plate, onPress }: PlateChipProps) {
       // longer fires when the press lands on the plate, so without this the
       // chip was the one control in the app that navigated with no feedback
       // at all. surfaceSubtlePressed is the token minted for chip fills.
-      style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+      style={({ pressed }) => [
+        styles.chip,
+        onMedia && styles.chipOnMedia,
+        pressed && (onMedia ? styles.chipOnMediaPressed : styles.chipPressed),
+      ]}
     >
       <View style={styles.chipInner}>
-        <Text style={styles.plate}>{plate.toUpperCase()}</Text>
+        <Text style={[styles.plate, onMedia && styles.plateOnMedia]}>{plate.toUpperCase()}</Text>
         {standalone ? (
           // Decorative: the Pressable above is one accessible node and its
           // label already names the plate, so the icon must not be announced
           // as a second thing to read.
           <Copy
             size={COPY_ICON_SIZE}
-            color={palette.textSecondary}
+            color={onMedia ? palette.textOnMedia : palette.textSecondary}
             accessibilityElementsHidden
             importantForAccessibility="no"
           />
@@ -181,6 +196,17 @@ const makeStyles = (c: Palette) =>
     },
     chipPressed: {
       backgroundColor: c.surfaceSubtlePressed,
+    },
+    // Theme-INVARIANT: identical in both schemes, because the photograph under
+    // it is too. See the onMedia prop.
+    chipOnMedia: {
+      backgroundColor: c.surfaceOverMedia,
+    },
+    chipOnMediaPressed: {
+      backgroundColor: c.surfaceOverMediaPressed,
+    },
+    plateOnMedia: {
+      color: c.textOnMedia,
     },
     // Row wrapper rather than styling the Pressable itself: the chip's
     // alignSelf:'flex-start' is what keeps it hugging its text inside centred and

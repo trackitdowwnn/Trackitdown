@@ -27,8 +27,19 @@ earlier answers stay reachable via Back from steps and via the review
 screen's Edit links. Next stays disabled until the step's zod schema
 validates; the review screen's final CTA additionally requires EVERY step
 schema to pass, so answers invalidated later (e.g. a cancelled edit) can
-never be submitted. The final CTA label is per-flow config (e.g. "Publish")
+never be submitted — and since 2026-08-22 the review SAYS which answers it is
+waiting on (`invalidStepIds`), because a greyed-out button over a dozen rows
+named none of them. The final CTA label is per-flow config (e.g. "Publish")
 — never a vague "Finish".
+
+**The review screen has two optional slots** (`review.header`, `review.footer`)
+for flows with something to SHOW or something to CHARGE — `reviewValue` returns
+a string, so a list of rows can only ever describe what was typed. The FEATURE
+builds the element and passes it in; `shared/` stays feature-agnostic
+(ARCHITECTURE rule 2), the same way `VehicleCard` takes `topRightAction`. The
+header slot is handed an `editStep(stepId)` so a flow never does index
+arithmetic against a screen list the framework builds. Flows that pass neither
+render exactly as before — three of the four do.
 
 **State:** one serializable `answers` object driven by a pure navigation
 reducer (`wizardReducer`), so navigation/gating/progress are unit-testable

@@ -106,6 +106,19 @@ export function buildPrefilledPostFlow({
   return {
     flow: {
       ...baseFlow,
+      // The base flow's review preview offers an Edit that jumps to the photos
+      // step — which THIS composition drops whenever the saved car already has
+      // enough, leaving a control that silently did nothing. Append the confirm
+      // step as a fallback (its own Edit expands the flow into the full seven
+      // steps, which is where photos live), rather than replacing the base's
+      // choice: when the photos step did survive it is still the better target.
+      review: baseFlow.review && {
+        ...baseFlow.review,
+        header: (answers, editStep) =>
+          baseFlow.review?.header?.(answers, (stepId) =>
+            editStep([...(Array.isArray(stepId) ? stepId : [stepId]), summaryStep.id]),
+          ),
+      },
       phases: baseFlow.phases.map((phase) =>
         phase.id === 'car'
           ? {

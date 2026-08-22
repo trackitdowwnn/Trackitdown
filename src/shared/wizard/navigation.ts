@@ -197,6 +197,28 @@ export function allStepsValid<TAnswers>(
 }
 
 /**
+ * The ids of required steps whose schema does not accept the answers — i.e.
+ * exactly what `allStepsValid` is refusing on.
+ *
+ * Exists so the review screen can SAY which answer is missing. The final CTA
+ * re-checks every step in the flow and simply disables, which is correct but
+ * was silent: twelve rows, a greyed-out button, and no way to tell which one
+ * it meant. The commonest cause is invisible from the review screen too —
+ * changing the make clears the model, so the row that broke is not the row
+ * they touched.
+ */
+export function invalidStepIds<TAnswers>(
+  flow: WizardFlow<TAnswers>,
+  answers: Partial<TAnswers>,
+): string[] {
+  return flow.phases.flatMap((phase) =>
+    phase.steps.flatMap((step) =>
+      step.optional || step.schema.safeParse(answers).success ? [] : [step.id],
+    ),
+  );
+}
+
+/**
  * Whether the current screen allows advancing. Intros always do; a step
  * gates Next on its own zod schema; the review screen gates the final CTA
  * on EVERY step's schema, so answers invalidated after the fact (e.g. a
@@ -255,22 +277,54 @@ export function ctaLabel<TAnswers>(
   return (screen.kind === 'step' && screen.step.ctaLabel) || 'Next';
 }
 
-/** Steps that appear on the review screen, grouped by phase. */
-export function reviewGroups<TAnswers>(flow: WizardFlow<TAnswers>): {
+/**
+ * Steps that appear on the review screen, grouped by phase.
+ *
+ * Takes ANSWERS as well as the flow because two of the three filters depend on
+ * them: `when` decides whether a step is being walked past, and
+ * `hideReviewWhenSkipped` decides whether that absence should also hide the row.
+ * Empty groups are dropped — a phase heading with nothing under it is a
+ * rendering artefact, and hiding a row can now empty a phase.
+ */
+export function reviewGroups<TAnswers>(
+  flow: WizardFlow<TAnswers>,
+  answers: Partial<TAnswers>,
+): {
   phaseIndex: number;
   title: string;
   items: { step: WizardStep<TAnswers>; flatIndex: number }[];
 }[] {
   const screens = flattenFlow(flow);
-  return flow.phases.map((phase, phaseIndex) => ({
-    phaseIndex,
-    title: phase.title,
-    items: screens.flatMap((screen, flatIndex) =>
-      screen.kind === 'step' &&
-      screen.phaseIndex === phaseIndex &&
-      screen.step.reviewValue
-        ? [{ step: screen.step, flatIndex }]
-        : [],
-    ),
-  }));
+  return flow.phases
+    .map((phase, phaseIndex) => ({
+      phaseIndex,
+      title: phase.title,
+      items: screens.flatMap((screen, flatIndex) => {
+        if (screen.kind !== 'step' || screen.phaseIndex !== phaseIndex) return [];
+        const { step } = screen;
+        if (!step.reviewValue) return [];
+        // Walked past AND opted out — see hideReviewWhenSkipped. Without the
+        // opt-out the row survives on purpose; `when`'s own doc explains why.
+        const skipped = step.when ? !step.when(answers) : false;
+        if (skipped && step.hideReviewWhenSkipped) return [];
+        return [{ step, flatIndex }];
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+/**
+ * The flat screen index of a step, by id — so a flow can send someone to its
+ * own step without doing index arithmetic against a list the framework builds.
+ * Returns null for an unknown id; callers should no-op rather than jump
+ * somewhere arbitrary.
+ */
+export function stepFlatIndex<TAnswers>(
+  flow: WizardFlow<TAnswers>,
+  stepId: string,
+): number | null {
+  const index = flattenFlow(flow).findIndex(
+    (screen) => screen.kind === 'step' && screen.step.id === stepId,
+  );
+  return index === -1 ? null : index;
 }
