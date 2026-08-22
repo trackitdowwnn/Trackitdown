@@ -173,7 +173,7 @@ export function AlertsScreen() {
     );
   }
 
-  const { alerts, refresh, refreshing } = state;
+  const { alerts, pull, refreshing } = state;
   const atCap = alerts.length >= MAX_ALERTS_PER_USER;
 
   return (
@@ -183,7 +183,10 @@ export function AlertsScreen() {
         // Alerts change from OFF this screen — a push arrives, an area is
         // edited elsewhere, a paused alert resumes. The list is otherwise only
         // as fresh as the last invalidation, and there was no way to ask.
-        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={refresh} />}
+        //
+        // `pull`, not `refresh`: the latter invalidates globally and its failure
+        // path swaps the list for an error page. See the hook.
+        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={() => void pull()} />}
       >
         <Text style={styles.title} accessibilityRole="header">
           Alerts

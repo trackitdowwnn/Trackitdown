@@ -47,9 +47,19 @@ export const refreshControlColors = (c: Palette) => ({
   progressBackgroundColor: c.surface,
 });
 
-/** RefreshControl in app colours — primary spinner on a paper card (Android). */
+/**
+ * RefreshControl in app colours — primary spinner on a paper card (Android).
+ *
+ * `progressViewOffset` is exposed because a scroll container that starts at
+ * y=0 UNDER a floating header (PostDetailScreen) otherwise draws the spinner
+ * out of the status bar and through the header’s own buttons. Screens whose
+ * content begins below the safe area do not need it.
+ */
 export function ThemedRefreshControl(
-  props: Pick<RefreshControlProps, 'refreshing' | 'onRefresh' | 'testID'>,
+  props: Pick<
+    RefreshControlProps,
+    'refreshing' | 'onRefresh' | 'testID' | 'progressViewOffset'
+  >,
 ) {
   const palette = usePalette();
   return <RefreshControl {...refreshControlColors(palette)} {...props} />;

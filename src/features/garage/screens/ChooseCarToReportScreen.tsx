@@ -12,12 +12,17 @@
  *        the emotional translation goes further than the reference: zero
  *        decoration, no buttons, no confirm step — the row IS the choice.
  *
- *        This screen is never shown to someone with no saved car: the tab
- *        bar routes straight to the blank wizard unless the cached signal
- *        says there are cars to choose from (see the README's Nudges section
- *        for why this is not the rejected on-entry interstitial).
+ *        ⚠️ CHANGED 2026-08-22. This screen used to be reachable only when the
+ *        cached signal SAID there were cars; now it is the destination for
+ *        everything except a confirmed 'none', including 'unknown'. The old
+ *        reading sent guests to the blank wizard, and since the + button is
+ *        auth-gated, 'unknown' is exactly what a guest reports — so people who
+ *        signed in through the sheet never saw their own cars. So this screen
+ *        MUST cope with having nothing to offer, which is what `nothingToOffer`
+ *        below is for. (See the README's Nudges section for why this is not the
+ *        rejected on-entry interstitial.)
  * LINKS: src/app/report-stolen/index.tsx (the route);
- *        src/app/(tabs)/_layout.tsx (routes here only when cars are known);
+ *        src/app/(tabs)/_layout.tsx (routes here unless 'none' is confirmed);
  *        src/features/garage/screens/ReportSavedCarScreen.tsx (where a
  *          choice lands); src/features/garage/components/GarageCard.tsx (the
  *          management-surface card this deliberately does NOT reuse).
@@ -109,9 +114,17 @@ export function ChooseCarToReportScreen() {
     router.replace('/post-a-car');
   }, [router]);
 
-  // Nothing to choose between — don't strand anyone on an empty chooser. The
-  // tab bar normally routes straight past this screen, so reaching here with no
-  // cars means the garage emptied (or failed) since that decision was made.
+  // Nothing to choose between — don't strand anyone on an empty chooser.
+  //
+  // Since 2026-08-22 this is the ORDINARY path, not the exception: the tab bar
+  // now sends 'unknown' here too, so every guest who signs in through the sheet
+  // and owns no cars arrives, sees a spinner, and is replaced out to the blank
+  // wizard. That redirect is the safety net the tab bar's decision leans on.
+  //
+  // `status === 'error'` deliberately does NOT redirect: the error branch below
+  // offers a retry AND a one-tap "Report a car from scratch", which is more
+  // honest than silently dropping someone's saved cars because one fetch
+  // blipped — the exact loss this whole change was made to stop.
   const nothingToOffer = status === 'ready' && offerable.length === 0;
   useEffect(() => {
     if (nothingToOffer) {

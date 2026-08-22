@@ -521,7 +521,19 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         // someone staring at "0 sightings" had no way to ask. The pull is the
         // ask. It also re-fetches from the error state, which previously
         // needed the Try again button below the fold.
-        refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
+        refreshControl={
+          <ThemedRefreshControl
+            // Gated on having content: `loading` renders PostDetailSkeleton in
+            // THIS scroll view, and a spinner over a skeleton is two loading
+            // indicators for one fetch.
+            refreshing={refreshing && status !== 'loading'}
+            onRefresh={() => void refresh()}
+            // This scroll view is full-bleed from y=0 with AppHeader floating
+            // over it, so without an offset the spinner draws out of the status
+            // bar and through the header’s own back and share buttons.
+            progressViewOffset={insets.top + HEADER_BAR_HEIGHT}
+          />
+        }
         contentContainerStyle={{
           paddingBottom: insets.bottom + sizes.control + spacing.xl,
         }}

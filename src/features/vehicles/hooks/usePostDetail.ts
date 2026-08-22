@@ -125,6 +125,16 @@ export function usePostDetail(postId: string): UsePostDetailResult {
   // it. `lastJson` is null only when nothing has ever loaded, which is the one
   // case where there is nothing to protect and the error is the truth.
   const refresh = useCallback(async () => {
+    // ⚠️ The SAME wait the load effect makes, for the same reason: is_owner is
+    // computed server-side from the caller’s JWT, so a fetch fired while the
+    // session is still restoring comes back anonymous. The pull is reachable
+    // during that window — the RefreshControl sits on the ScrollView that
+    // renders the skeleton — so a cold-start deep link into a listing could be
+    // tugged and hand the OWNER the spotter view. Worse, it would be written to
+    // `lastJson`, so the silent refresh would see no change and leave it there.
+    if (session.status === 'loading') {
+      return;
+    }
     setRefreshing(true);
     try {
       const fresh = await fetchPostDetail(postId);
@@ -141,7 +151,7 @@ export function usePostDetail(postId: string): UsePostDetailResult {
     } finally {
       setRefreshing(false);
     }
-  }, [postId]);
+  }, [postId, session.status]);
 
   return { status, result, retry, refreshing, refresh };
 }

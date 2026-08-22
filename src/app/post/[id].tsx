@@ -10,6 +10,7 @@
 import { useLocalSearchParams } from 'expo-router';
 
 import { useCountPostViewForAlertNudge } from '@/features/notifications/hooks/useCountPostViewForAlertNudge';
+import { isBrowsingSource } from '@/features/notifications/lib/browsingSource';
 import { PostDetailScreen } from '@/features/vehicles';
 
 export default function PostDetailRoute() {
@@ -27,6 +28,6 @@ export default function PostDetailRoute() {
   // The signal the offer rests on is BROWSING. Managing your own theft is not
   // that, and neither is arriving from a chat, a watchlist collection or a
   // recovery flow.
-  useCountPostViewForAlertNudge(from === 'feed');
+  useCountPostViewForAlertNudge(isBrowsingSource(from));
   return <PostDetailScreen postId={id} />;
 }
