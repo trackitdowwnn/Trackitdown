@@ -50,6 +50,18 @@ export interface StatsSparklineProps {
   bars: SparklineBar[];
   /** Drawn height of the tallest bar. */
   height?: number;
+  /**
+   * Overrides the spoken summary below, for a series that is not
+   * sightings-per-day.
+   *
+   * The bars are just keyed counts, so this component draws any series — but
+   * `spokenSummary` is written in one voice ("Sightings on 4 of the last 28
+   * days"), and a screen reader hearing that about a 12-MONTH theft chart would
+   * be told something plainly untrue. Rather than parameterise the noun, the
+   * unit and the date formatting, a caller with a different series supplies its
+   * own sentence. Everything visual stays shared.
+   */
+  summary?: string;
 }
 
 /**
@@ -79,6 +91,7 @@ function spokenSummary(bars: SparklineBar[]): string {
 export function StatsSparkline({
   bars,
   height = sizes.sparklineHeight,
+  summary,
 }: StatsSparklineProps) {
   const palette = usePalette();
   if (bars.length === 0) {
@@ -93,7 +106,7 @@ export function StatsSparkline({
       // which is the part only this chart says.
       accessible
       accessibilityRole="image"
-      accessibilityLabel={spokenSummary(bars)}
+      accessibilityLabel={summary ?? spokenSummary(bars)}
       // The hook the "chart is dropped when it would mislead" tests hang on.
       // They matched the a11y label until 2026-08-08 and silently stopped
       // testing anything when the label's wording changed — a testID cannot

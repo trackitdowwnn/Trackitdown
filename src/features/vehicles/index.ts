@@ -53,3 +53,5 @@ export {
   PostSubmissionError,
   uploadPostPhoto,
 } from './post/api/postApi';
+export { StatsSparkline } from './components/StatsSparkline';
+export type { SparklineBar } from './lib/postStatsModel';
