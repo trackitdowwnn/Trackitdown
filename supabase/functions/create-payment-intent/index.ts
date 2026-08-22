@@ -6,15 +6,15 @@
  *        returns the client secret for the app's PaymentSheet.
  *
  *        TWO PRICING MODES share this one function (ADR-0014). A post carries
- *        EITHER a bounty (£50–£5,000, escrowed) OR a fixed listing fee (£4.99,
- *        platform revenue on capture) — never both, never neither, enforced by
- *        posts_one_pricing_mode_check. Which of the two columns is non-null IS
- *        the pricing mode, so this function reads the post and follows it; there
- *        is no mode flag to pass and nothing for the client to choose here.
+ *        EITHER a bounty (£10–£5,000, escrowed) OR a flat £5 listing fee
+ *        (platform revenue on capture, never refunded). WHETHER THE POST HAS A
+ *        BOUNTY IS the pricing mode — a NULL bounty is a free listing — so this
+ *        function reads the post and follows it; there is no mode flag to pass
+ *        and nothing for the client to choose here.
  * WHY:   The charge amount and the state machine must live on the server — the
  *        client never says how much to charge, or which price applies
  *        (SECURITY_AND_TRUST §4). The amount is the post's own
- *        bounty_amount_pence or listing_fee_pence; ownership is proven from the
+ *        bounty_amount_pence, or the flat fee when that is NULL; ownership is proven from the
  *        caller's JWT, not a client-supplied id. The Stripe idempotency key is
  *        `post-bounty-<postId>-<amountPence>` / `post-fee-<postId>-<amountPence>`,
  *        so a retry after a declined/cancelled PaymentSheet reuses the SAME
@@ -31,8 +31,9 @@
  * LINKS: supabase/functions/_shared/clients.ts, _shared/http.ts;
  *        supabase/migrations/20260726100000_post_payment.sql
  *          (record_post_payment_intent — POST_NOT_DRAFT / BOUNTY_MISMATCH);
- *        supabase/migrations/20260820110000_no_bounty_listing_fee.sql
- *          (record_listing_fee_intent — POST_NOT_DRAFT / FEE_MISMATCH);
+ *        supabase/migrations/20260819100000_a_listing_can_be_free.sql
+ *          (record_post_payment_intent serving BOTH prices, payments.kind, and
+ *           the conditional amount CHECK that pins a fee at exactly 500);
  *        src/features/payments/api/paymentsApi.ts (the client caller);
  *        docs/decisions/ADR-0002-stripe-connect.md;
  *        docs/decisions/ADR-0014-no-bounty-listings.md;
@@ -81,7 +82,7 @@ Deno.serve(async (request) => {
   // never anything the client sent.
   const { data: post, error: postError } = await admin
     .from('posts')
-    .select('owner_id, status, bounty_amount_pence, listing_fee_pence')
+    .select('owner_id, status, bounty_amount_pence')
     .eq('id', postId)
     .maybeSingle();
 
@@ -102,13 +103,21 @@ Deno.serve(async (request) => {
   }
 
   // --- Resolve the pricing mode from the post, never from the client ---------
-  // MONEY: exactly one of these two columns is non-null (posts_one_pricing_mode_check),
-  // so this reads the post's own price. A row that somehow had neither would fall
-  // through to `null` and is rejected below rather than charged £0 or NaN.
+  // MONEY: the pricing mode IS whether the post has a bounty. A NULL bounty is a
+  // FREE LISTING (20260819100000) and owes the flat fee; anything else owes its
+  // own bounty. There is no mode flag and nothing for the client to choose.
+  //
+  // ⚠️ THE FEE IS A CONSTANT HERE, NOT A COLUMN. An earlier version of this file
+  // read posts.listing_fee_pence — a snapshot column belonging to a £4.99 design
+  // that only ever existed in the repo. Selecting it against the real database
+  // errored, and every no-bounty listing died on "We couldn't start your
+  // payment" for four days. The live design keeps one price and enforces it in
+  // the ledger CHECK; this constant is checked against that by
+  // record_post_payment_intent, which raises BOUNTY_MISMATCH on disagreement.
+  const LISTING_FEE_PENCE = 500;
   const bountyPence = post.bounty_amount_pence as number | null;
-  const feePence = post.listing_fee_pence as number | null;
   const isListingFee = bountyPence === null;
-  const amountPence = isListingFee ? feePence : bountyPence;
+  const amountPence = isListingFee ? LISTING_FEE_PENCE : bountyPence;
 
   if (typeof amountPence !== 'number' || !Number.isInteger(amountPence) || amountPence <= 0) {
     // Defensive: the table CHECK makes this unreachable. If it ever fires, the
@@ -183,17 +192,18 @@ Deno.serve(async (request) => {
   }
 
   // --- Record the ledger row (idempotent, server-authoritative amount) --------
-  // Each record_* function re-validates the amount against the post's OWN price
-  // (BOUNTY_MISMATCH / FEE_MISMATCH) and refuses a post of the other pricing
-  // mode, so the two paths cannot cross even if this branch were wrong.
-  const { error: recordError } = await admin.rpc(
-    isListingFee ? 'record_listing_fee_intent' : 'record_post_payment_intent',
-    {
-      p_post_id: postId,
-      p_payment_intent_id: paymentIntent.id,
-      p_amount_pence: amountPence,
-    },
-  );
+  // record_post_payment_intent re-validates the amount against the post's OWN
+  // price and raises BOUNTY_MISMATCH on disagreement — for BOTH modes — so the
+  // branch above cannot mis-charge even if it were wrong.
+  // ONE function for both prices. record_post_payment_intent re-derives the
+  // mode from the post (NULL bounty -> listing_fee, else bounty_escrow), sets
+  // payments.kind from the same branch so the row's lifecycle and its price can
+  // never disagree, and rejects an amount that is not what the post owes.
+  const { error: recordError } = await admin.rpc('record_post_payment_intent', {
+    p_post_id: postId,
+    p_payment_intent_id: paymentIntent.id,
+    p_amount_pence: amountPence,
+  });
   if (recordError) {
     // The charge intent exists but we couldn't record it. Surface a retryable
     // error; the idempotency key means the retry reuses this same intent.

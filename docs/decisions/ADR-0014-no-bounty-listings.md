@@ -1,7 +1,42 @@
 # ADR-0014 — No-bounty listings and the fixed platform fee
 
-**Status:** accepted · **Date:** 2026-08-20 · Extends ADR-0002's charge pattern
-with a second pricing mode; amends DOMAIN.md's "Bounty rules"
+**Status:** accepted, **but implemented differently from what this file
+describes** — see the correction below · **Date:** 2026-08-20, corrected
+2026-08-22 · Extends ADR-0002's charge pattern with a second pricing mode;
+amends DOMAIN.md's "Bounty rules"
+
+## ⚠️ Correction (2026-08-22): the shipped design is not the one below
+
+Everything from "Context" onwards describes an implementation this project has
+**never run**. The database shipped no-bounty listings on **2026-08-19** through
+`20260819100000_a_listing_can_be_free`, a day before this ADR was written, and
+that work existed in a checkout that has since been lost. This repository
+independently built a second version, and the two were only discovered to differ
+when no-bounty listings failed to charge at all — for four days, with the
+user-facing message "We couldn't start your payment."
+
+The live design won on 2026-08-22 because it is what runs. What is actually
+true:
+
+| | described below | **shipped, and live** |
+|---|---|---|
+| fee | £4.99 | **£5.00** |
+| where the price lives | `posts.listing_fee_pence`, snapshotted per draft | **a constant, pinned by a CHECK on `payments.amount_pence`** |
+| bounty floor | £50 | **£10** (moved by `20260813120000`, at the owner's request) |
+| charge function | `record_listing_fee_intent` | `record_post_payment_intent`, serving both prices |
+| capture | `mark_listing_fee_collected` → `collected` | `mark_post_payment_held` → `held` |
+| how a fee is kept out of refunds | **structurally** — it never reaches `held`, which every refund query selects on | **by predicate** — every selector must filter `kind = 'bounty_escrow'` |
+
+**The last row is a real loss and is recorded as one.** The design below made a
+fee invisible to every refund and payout path *by construction*; the shipped one
+relies on three Edge Functions each remembering `kind`. Those filters were
+themselves missing until 2026-08-22 — `a_listing_can_be_free` says they would
+land "in the same change" and they never did, so a £5 fee would have been
+refunded by an hourly cron. If this is ever revisited, that is the property
+worth buying back.
+
+Everything else below still holds: a fee is non-refundable, the spotter gets
+credit and reputation but no cash, and the listing is fully visible.
 
 ## Context
 
