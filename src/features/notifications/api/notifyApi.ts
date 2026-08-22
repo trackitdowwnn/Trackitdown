@@ -1,5 +1,5 @@
 /**
- * WHAT:  Fire-and-forget triggers for the two notifications a user's own
+ * WHAT:  Fire-and-forget triggers for the notifications a user's own
  *        action causes — a sighting they reported, a message they sent.
  * WHY:   One door, so no feature grows its own functions.invoke and its own
  *        idea of what to do when a push fails. These are deliberately VOID and
@@ -25,7 +25,7 @@ import { createLogger } from '@/shared/lib/logger';
 const log = createLogger('notifications');
 
 function dispatch(
-  fn: 'notify-sighting' | 'notify-message' | 'notify-credited',
+  fn: 'notify-sighting' | 'notify-message' | 'notify-credited' | 'notify-sighting-confirmed',
   body: Record<string, string>,
 ): void {
   // The try/catch is NOT redundant with the .catch(): if invoke throws
@@ -63,4 +63,19 @@ export function notifyMessage(messageId: string): void {
  *  carries only the post id. */
 export function notifyCredited(postId: string): void {
   dispatch('notify-credited', { postId });
+}
+
+/**
+ * Tell the SPOTTER the owner confirmed their sighting.
+ *
+ * For most spotters this is the only acknowledgement they will ever get: the
+ * bounty goes to one person and a car goes home once, so "an owner looked at
+ * your photo and said yes" is the whole of the loop for everybody else. It was
+ * silent until 2026-08-22 — the RPC and the kind existed, and nothing sent it.
+ *
+ * Carries only the sighting id; the copy (and the badge line, when the counter
+ * moved) is built in SQL so npm run test:db covers it.
+ */
+export function notifySightingConfirmed(sightingId: string): void {
+  dispatch('notify-sighting-confirmed', { sightingId });
 }

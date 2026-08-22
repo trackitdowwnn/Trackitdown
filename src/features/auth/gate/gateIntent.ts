@@ -27,6 +27,7 @@ export type GateContext =
   | 'watch_post'
   | 'tab_my_cars'
   | 'my_posts'
+  | 'my_sightings'
   | 'tab_inbox'
   | 'tab_profile'
   | 'alert_settings'
@@ -43,6 +44,7 @@ export const GATE_TITLES: Record<GateContext, string> = {
   watch_post: 'Log in to watch this car',
   tab_my_cars: 'Log in to see your cars',
   my_posts: 'Log in to see your posts',
+  my_sightings: 'Log in to see your reports',
   tab_inbox: 'Log in to see your messages',
   tab_profile: 'Log in to see your profile',
   alert_settings: 'Log in to set your alert area',

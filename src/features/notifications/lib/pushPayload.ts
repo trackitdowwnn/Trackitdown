@@ -75,9 +75,18 @@ const notCreditedPayloadSchema = z
   .object({ type: z.literal('not_credited'), postId: z.guid() })
   .strict();
 
+/** The owner confirmed a sighting YOU filed. The SIGHTING id, and only that:
+ *  the audience is the spotter, whose destination is their own record — they
+ *  cannot open the owner-side sighting detail and its RPC would refuse them.
+ *  A postId here would hand them a listing they were never shown. */
+const sightingConfirmedPayloadSchema = z
+  .object({ type: z.literal('sighting_confirmed'), sightingId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
+  sightingConfirmedPayloadSchema,
   messagePayloadSchema,
   recoveryPayloadSchema,
   creditedPayloadSchema,

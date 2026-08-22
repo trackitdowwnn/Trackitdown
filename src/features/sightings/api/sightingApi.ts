@@ -20,7 +20,7 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { z } from 'zod';
 
-import { notifySighting } from '@/features/notifications';
+import { notifySighting, notifySightingConfirmed } from '@/features/notifications';
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 import type { EvidencePhoto } from '@/shared/ui';
@@ -508,7 +508,91 @@ export async function markSightingHelpful(sightingId: string): Promise<{
     changed: parsed.changed,
     counted: parsed.counted,
   });
+
+  // Tell the spotter, but ONLY when this call actually changed something — a
+  // re-mark is idempotent server-side and the claim RPC would refuse anyway
+  // (confirmed_notified_at is already stamped), so dispatching on a no-op just
+  // spends a round trip to be told no.
+  //
+  // Fired even when `counted` is false. The sighting genuinely WAS confirmed,
+  // and staying silent on a capped or flagged pair would leak that something
+  // about them had been judged. The badge line simply does not appear, because
+  // the counter did not move.
+  //
+  // Fire-and-forget by design: whether the spotter's phone buzzes is not a
+  // reason to fail the owner's action.
+  if (parsed.changed && parsed.status === 'helpful') {
+    notifySightingConfirmed(sightingId);
+  }
+
   return parsed;
+}
+
+/**
+ * ONE row of the spotter's OWN record. Deliberately narrow: this is what
+ * my_sighting_record returns and nothing more.
+ *
+ * ⚠️ THE CAR IS ALL THERE IS OF THE POST. Make and colour, as the spotter
+ * already saw them — no owner identity, no location, no plate, no bounty, and
+ * no post id. A spotter's history is not a back door into listings they were
+ * never shown.
+ */
+export interface MySightingRecordEntry {
+  id: string;
+  createdAt: string;
+  status: 'unverified' | 'helpful' | 'not_mine' | 'credited';
+  /** When the owner set the CURRENT verdict, or null if nobody has ruled.
+   *  Overwritten by a correction, so it is not a history. */
+  reviewedAt: string | null;
+  /** The spotter's own coarse label for where they saw it. */
+  areaLabel: string | null;
+  /** Bounded to 32 chars server-side; either half may be '' on a sparse post. */
+  car: { make: string; colour: string };
+}
+
+const mySightingRowSchema = z
+  .object({
+    id: z.guid(),
+    created_at: z.string(),
+    status: z.enum(['unverified', 'helpful', 'not_mine', 'credited']),
+    reviewed_at: z.string().nullable(),
+    area_label: z.string().nullable(),
+    car: z.object({ make: z.string(), colour: z.string() }).strict(),
+  })
+  // PRIVACY: strict, exactly as the owner payload is. This RPC is the one place
+  // a spotter reads rows joined to somebody else's post, so a widened server
+  // payload — a post id, a location, an owner name — must fail loudly here
+  // rather than quietly reach a screen that was never reviewed for it.
+  .strict();
+
+/**
+ * The signed-in spotter's OWN sighting record, newest first.
+ *
+ * ⚠️ THE ONLY SURFACE ON WHICH A not_mine VERDICT IS VISIBLE, and it is visible
+ * to the spotter alone. No stranger-facing surface may show a rejection or
+ * derive an accuracy figure from one: a spotter reports on a description, and
+ * "the owner said no" is not the same as "they were wrong". my_sighting_record's
+ * own comment says this; spotterTrust.ts said it too, before it was lost.
+ */
+export async function fetchMySightingRecord(): Promise<MySightingRecordEntry[]> {
+  const { data, error } = await supabase.rpc('my_sighting_record');
+  if (error) {
+    log.warn('my_sighting_record failed', { code: error.code });
+    throw new Error('We couldn’t load your reports. Please try again.');
+  }
+  const parsed = z
+    .object({ sightings: z.array(mySightingRowSchema) })
+    .strict()
+    .parse(data);
+
+  return parsed.sightings.map((row) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    status: row.status,
+    reviewedAt: row.reviewed_at,
+    areaLabel: row.area_label,
+    car: row.car,
+  }));
 }
 
 /** Thrown when the owner tries to reject a sighting they already confirmed. */

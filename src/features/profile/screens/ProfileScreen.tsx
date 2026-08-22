@@ -34,17 +34,7 @@
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import {
-  Banknote,
-  Bell,
-  Car,
-  FileText,
-  Info,
-  LifeBuoy,
-  Moon,
-  Shield,
-  Sparkles,
-} from 'lucide-react-native';
+import { Banknote, Bell, Binoculars, Car, FileText, Info, LifeBuoy, Moon, Shield, Sparkles } from 'lucide-react-native';
 import { Children, Fragment, useCallback, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -337,6 +327,18 @@ function LoadedProfile({
           title="My Posts"
           onPress={() => router.push('/my-posts')}
           testID="row-my-posts"
+        />
+
+        {/* The other side of the product, and it had no page at all: a spotter
+            could see three lifetime counters here and never learn what became
+            of a single report they filed. Sits directly beneath My Posts
+            because the two are the same question asked from either end — what
+            happened to the thing I put in. */}
+        <ListRow
+          icon={Binoculars}
+          title="My reports"
+          onPress={() => router.push('/my-sightings')}
+          testID="row-my-sightings"
         />
 
         {/* My cars — the garage. The subtitle is the QUIET nudge: it shows only

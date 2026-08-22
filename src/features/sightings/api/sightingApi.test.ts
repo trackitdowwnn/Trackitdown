@@ -16,6 +16,7 @@ import type { EvidencePhoto } from '@/shared/ui';
 import {
   buildCreateSightingParams,
   fetchPostSightings,
+  fetchMySightingRecord,
   fetchSightingQuota,
   markSightingHelpful,
   markSightingNotMine,
@@ -376,6 +377,44 @@ describe('markSightingHelpful', () => {
     expect(result.crossedThreshold).toBeNull();
   });
 
+  it('tells the spotter — but only when the verdict actually changed', async () => {
+    mockRpc.mockResolvedValue({
+      data: { status: 'helpful', changed: true, crossedThreshold: 1, counted: true },
+      error: null,
+    });
+    await markSightingHelpful(SIGHTING_ID);
+    expect(mockInvoke).toHaveBeenCalledWith('notify-sighting-confirmed', {
+      body: { sightingId: SIGHTING_ID },
+    });
+
+    // A re-mark is an idempotent no-op server-side and the claim RPC would
+    // refuse it anyway (confirmed_notified_at is already stamped), so
+    // dispatching would spend a round trip to be told no.
+    mockInvoke.mockClear();
+    mockRpc.mockResolvedValue({
+      data: { status: 'helpful', changed: false, crossedThreshold: null, counted: true },
+      error: null,
+    });
+    await markSightingHelpful(SIGHTING_ID);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('STILL tells the spotter when the point was withheld', async () => {
+    // The sighting genuinely was confirmed. Staying silent on a capped or
+    // collusion-flagged pair would leak that something about them had been
+    // judged — the badge line simply does not appear, because the counter did
+    // not move.
+    mockInvoke.mockClear();
+    mockRpc.mockResolvedValue({
+      data: { status: 'helpful', changed: true, crossedThreshold: null, counted: false },
+      error: null,
+    });
+    await markSightingHelpful(SIGHTING_ID);
+    expect(mockInvoke).toHaveBeenCalledWith('notify-sighting-confirmed', {
+      body: { sightingId: SIGHTING_ID },
+    });
+  });
+
   it('still fails loudly on a payload it does not recognise', async () => {
     // The strictness is the point and must survive: a FURTHER widened RPC
     // should break here, in one place, rather than reach the UI unvalidated.
@@ -384,6 +423,73 @@ describe('markSightingHelpful', () => {
       error: null,
     });
     await expect(markSightingHelpful(SIGHTING_ID)).rejects.toThrow();
+  });
+});
+
+describe('fetchMySightingRecord (PRIVACY strictness)', () => {
+  const row = {
+    id: 'cccccccc-0000-0000-0000-000000000003',
+    created_at: '2026-07-14T12:05:00Z',
+    status: 'unverified',
+    reviewed_at: null,
+    area_label: 'Camden',
+    car: { make: 'Ford', colour: 'Blue' },
+  };
+
+  it('maps the spotter’s own record', async () => {
+    mockRpc.mockResolvedValue({ data: { sightings: [row] }, error: null });
+
+    const entries = await fetchMySightingRecord();
+
+    expect(entries).toEqual([
+      {
+        id: row.id,
+        createdAt: row.created_at,
+        status: 'unverified',
+        reviewedAt: null,
+        areaLabel: 'Camden',
+        car: { make: 'Ford', colour: 'Blue' },
+      },
+    ]);
+  });
+
+  it('carries a not_mine verdict and when it was made', async () => {
+    // This is the ONLY surface on which a rejection is visible, and only to the
+    // spotter. It must parse, or their own history breaks on the one row they
+    // most want an answer about.
+    mockRpc.mockResolvedValue({
+      data: {
+        sightings: [{ ...row, status: 'not_mine', reviewed_at: '2026-07-15T09:00:00Z' }],
+      },
+      error: null,
+    });
+
+    const [entry] = await fetchMySightingRecord();
+    expect(entry.status).toBe('not_mine');
+    expect(entry.reviewedAt).toBe('2026-07-15T09:00:00Z');
+  });
+
+  it('REJECTS a payload carrying anything about the post beyond the car', async () => {
+    // The guarantee this screen rests on. my_sighting_record hands a spotter
+    // rows joined to SOMEBODY ELSE'S post, so a widened server payload — a post
+    // id, a location, an owner's name — must fail loudly here rather than
+    // quietly reach a page that was never reviewed for it.
+    mockRpc.mockResolvedValue({
+      data: { sightings: [{ ...row, post_id: 'leak-me' }] },
+      error: null,
+    });
+    await expect(fetchMySightingRecord()).rejects.toThrow();
+
+    mockRpc.mockResolvedValue({
+      data: { sightings: [{ ...row, car: { ...row.car, plate: 'AB12CDE' } }] },
+      error: null,
+    });
+    await expect(fetchMySightingRecord()).rejects.toThrow();
+  });
+
+  it('returns an empty list rather than throwing on a spotter with no reports', async () => {
+    mockRpc.mockResolvedValue({ data: { sightings: [] }, error: null });
+    await expect(fetchMySightingRecord()).resolves.toEqual([]);
   });
 });
 

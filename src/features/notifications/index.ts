@@ -24,7 +24,12 @@ export { unregisterCurrentPushToken } from './api/pushTokenApi';
 // The ONE way another feature causes a push. All fire-and-forget and never
 // throw — a notification must not be able to fail the action that caused it.
 // Authorisation is enforced server-side by the claim RPCs.
-export { notifyCredited, notifyMessage, notifySighting } from './api/notifyApi';
+export {
+  notifyCredited,
+  notifyMessage,
+  notifySighting,
+  notifySightingConfirmed,
+} from './api/notifyApi';
 
 // The Inbox badge aggregator (chat unread + center unread → one number).
 // Pure module, zero imports — it costs this barrel's weight budget nothing,
