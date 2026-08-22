@@ -47,6 +47,25 @@ jest.mock('../postACarFlow', () => ({
   POST_A_CAR_INITIAL_ANSWERS: {},
 }));
 
+// Bounty guidance is analytics on the success path: fire-and-forget, and
+// deliberately never awaited by the screen. Mocked so this unit neither
+// reaches the network nor pulls the real Supabase client in (which throws
+// without env config), and so the log call can be asserted.
+const mockFetchGuidance = jest.fn(async (_lat: number, _lng: number) => ({
+  rungs: [],
+  local: null,
+}));
+const mockLogRecommendation = jest.fn();
+jest.mock('../api/bountyGuidanceApi', () => ({
+  fetchBountyGuidance: (lat: number, lng: number) => mockFetchGuidance(lat, lng),
+  logBountyRecommendation: (
+    postId: string,
+    chosenPence: number,
+    shown: unknown,
+    localSample: number | null,
+  ) => mockLogRecommendation(postId, chosenPence, shown, localSample),
+}));
+
 const mockSubmitPost = jest.fn();
 jest.mock('../api/postApi', () => ({
   submitPost: (...args: unknown[]) => mockSubmitPost(...args),
@@ -124,6 +143,43 @@ describe('handleComplete', () => {
     expect(mockSubmitPost).toHaveBeenCalledTimes(1); // ← created once, reused on retry
     expect(mockCreateIntent).toHaveBeenCalledTimes(2); // ← intent reopened (server-idempotent)
     expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('records what was advised against what was chosen — once, on first creation', async () => {
+    // The advice half of a join whose outcome half already exists in the
+    // schema. Without it, a future analysis cannot separate "high bounties
+    // recover cars" from "we told people to set high bounties".
+    await mount();
+    await capturedOnComplete({ ...ANSWERS, location: { latitude: 51.5, longitude: -0.12 } });
+
+    expect(mockFetchGuidance).toHaveBeenCalledWith(51.5, -0.12);
+    expect(mockLogRecommendation).toHaveBeenCalledWith('p1', 50000, null, null);
+  });
+
+  it('does NOT log a second row when a declined card is retried', async () => {
+    // One decision, one row. The retry reuses the draft, so logging again would
+    // record the same choice twice and skew the very comparison the table is
+    // for.
+    await mount();
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'cancelled', message: null });
+    const answers = { ...ANSWERS, location: { latitude: 51.5, longitude: -0.12 } };
+    await expect(capturedOnComplete(answers)).rejects.toMatchObject({ code: 'CANCELLED' });
+
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'paid', message: null });
+    await capturedOnComplete(answers);
+
+    expect(mockLogRecommendation).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs nothing for a no-bounty listing — there was no amount to advise on', async () => {
+    await mount();
+    await capturedOnComplete({
+      pricingMode: 'fee',
+      bountyAmountPence: 50000, // the slider always holds a value; the MODE decides
+      location: { latitude: 51.5, longitude: -0.12 },
+    });
+
+    expect(mockLogRecommendation).not.toHaveBeenCalled();
   });
 
   it('surfaces a failed payment and does not route away', async () => {

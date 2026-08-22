@@ -32,6 +32,8 @@ import { successHaptic } from '@/shared/lib/haptics';
 import { useToast } from '@/shared/ui';
 import { WizardScreen, type WizardFlow } from '@/shared/wizard';
 
+import { fetchBountyGuidance, logBountyRecommendation } from '../api/bountyGuidanceApi';
+import { recommendBounty } from '../lib/bountyRecommendation';
 import { submitPost } from '../api/postApi';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
@@ -78,6 +80,43 @@ export function PostACarScreen({
       const result = await submitPost(answers);
       postId = result.postId;
       createdPostIdRef.current = postId;
+
+      // Record what we ADVISED against what they CHOSE, once, on first
+      // creation only — a retry after a declined card must not log a second
+      // row for the same decision.
+      //
+      // ⚠️ WHY THIS EXISTS AT ALL: the outcome half of the join (a credited
+      // sighting on a recovered post) is already computable from the schema.
+      // The advice half was not recorded anywhere, and without it a future
+      // analysis cannot separate "high bounties recover cars" from "we told
+      // people to set high bounties". A NULL recommendation is logged too —
+      // those rows are the control group.
+      //
+      // Fire-and-forget, and the RPC is built to be: it returns SILENTLY when
+      // the caller does not own the post, because an error there would make an
+      // analytics endpoint into an ownership oracle. Nothing here may ever
+      // surface to someone who is one tap from paying.
+      const chosenPence = answers.bountyAmountPence;
+      const lat = answers.location?.latitude;
+      const lng = answers.location?.longitude;
+      if (answers.pricingMode !== 'fee' && chosenPence != null && lat != null && lng != null) {
+        const loggedPostId = postId;
+        // ⚠️ NOT AWAITED, and it must never be. The next line of the caller
+        // opens a PaymentIntent; putting a round trip in front of that would
+        // delay the payment sheet to write an analytics row.
+        //
+        // ⚠️ THE ADVICE IS RE-DERIVED, NOT CAPTURED. recommendBounty is pure
+        // and the RPC is `stable` and grid-snapped, so the same inputs give the
+        // same range the owner was shown minutes earlier on the bounty step.
+        // The honest limit: if a neighbour posted in between, the recorded band
+        // could differ slightly from the one displayed. That is a small,
+        // recorded imprecision — the alternative was threading shown-state
+        // through the wizard, which means setting state from an effect in the
+        // one screen where that is least welcome.
+        void fetchBountyGuidance(lat, lng).then((g) =>
+          logBountyRecommendation(loggedPostId, chosenPence, recommendBounty(g), g.local?.sample ?? null),
+        );
+      }
     }
 
     // 2. Open (or reuse) the escrow PaymentIntent — the server reads the

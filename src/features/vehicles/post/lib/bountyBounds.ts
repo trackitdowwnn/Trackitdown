@@ -48,3 +48,22 @@ export const BOUNTY_SNAP_STEPS = [
   { upToPence: 50000, stepPence: 2500 },
   { stepPence: 5000 },
 ];
+
+/**
+ * Round an amount onto the same grid the sliders snap to, clamped to the range.
+ *
+ * A recommendation the slider cannot land on is worse than none: it tells
+ * someone to pick £237 and then refuses to let them. Any number shown to an
+ * owner as an amount they might choose goes through here first.
+ */
+export function snapBountyPence(pence: number): number {
+  const clamped = Math.min(Math.max(pence, MIN_BOUNTY_PENCE), MAX_BOUNTY_PENCE);
+  const band = BOUNTY_SNAP_STEPS.find(
+    (step) => step.upToPence === undefined || clamped <= step.upToPence,
+  );
+  const step = band?.stepPence ?? 1;
+  const snapped = Math.round(clamped / step) * step;
+  // Re-clamp: rounding at a band edge can step outside the range (a value just
+  // under MAX on a £50 grid rounds up past it).
+  return Math.min(Math.max(snapped, MIN_BOUNTY_PENCE), MAX_BOUNTY_PENCE);
+}
