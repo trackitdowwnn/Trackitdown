@@ -69,7 +69,17 @@ export async function refundHeldEscrow(
     .from('payments')
     .select('stripe_payment_intent_id, amount_pence')
     .eq('post_id', postId)
+    // MONEY: kind, not just status. `payments` carries BOTH shapes since
+    // 20260819100000 — an escrowed bounty and a £5 listing fee — and that
+    // migration's own header says the four refund/payout selectors would be
+    // narrowed to bounty_escrow "in the same change". They never were: that
+    // half was written somewhere this repo has never seen. Without it a fee
+    // reaching 'held' is refunded automatically, by an hourly cron, days
+    // later, with nobody watching — the exact failure that migration was
+    // written to prevent. A fee is revenue on capture: never refunded, never
+    // transferred, no payout leg.
     .eq('status', 'held')
+    .eq('kind', 'bounty_escrow')
     .maybeSingle();
 
   if (heldError) {

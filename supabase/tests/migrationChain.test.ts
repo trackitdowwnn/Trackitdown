@@ -24,7 +24,56 @@ import * as path from 'path';
 
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'migrations');
 
+/**
+ * Drops whose CREATING migration was deliberately deleted from this repo, so
+ * the chain legitimately cannot show a matching create.
+ *
+ * Each MUST be a `drop ... if exists`, which is what makes it a no-op rather
+ * than the failure this test exists to catch. Keep this list tiny: every entry
+ * is a hole in the guard, and the guard is what stopped a whole `db push`
+ * dying mid-chain on 2026-07-29.
+ */
+const ORPHANED_DROPS = new Set([
+  // 20260811120000 created get_post_insights_context and was deleted when the
+  // per-listing Insights page was withdrawn. 20260811130000 exists precisely
+  // BECAUSE deleting a migration does not undo it on a database that ran it —
+  // see that file's own header.
+  'get_post_insights_context(uuid)',
+]);
+
 /** "p_post_id uuid, p_photos jsonb default null" -> "uuid, jsonb" */
+/**
+ * Postgres spells several types more than one way and the catalogue does not
+ * care which was written — so neither may this. Uncanonicalised,
+ * 20260813130000 dropping "timestamp with time zone" reads as a different
+ * signature from 20260813120000 creating "timestamptz", and a sound chain
+ * reports as broken. Same for int/integer, which this repo mixes inside one
+ * function.
+ */
+const TYPE_ALIASES: Record<string, string> = {
+  'timestamp with time zone': 'timestamptz',
+  'timestamp without time zone': 'timestamp',
+  'time with time zone': 'timetz',
+  'double precision': 'float8',
+  int: 'integer',
+  int4: 'integer',
+  int8: 'bigint',
+  bool: 'boolean',
+};
+
+function canonType(raw: string): string {
+  const type = raw.trim().replace(/\s+/g, ' ').toLowerCase();
+  return TYPE_ALIASES[type] ?? type;
+}
+
+/** "uuid, timestamp with time zone" -> "uuid, timestamptz". A DROP may list
+ *  types alone rather than name+type, and this repo writes both forms. */
+function typesOnly(paramList: string): string {
+  const trimmed = paramList.trim();
+  if (trimmed === '') return '';
+  return trimmed.split(',').map(canonType).join(', ');
+}
+
 function toTypeList(paramList: string): string {
   const trimmed = paramList.trim();
   if (trimmed === '') return '';
@@ -34,7 +83,7 @@ function toTypeList(paramList: string): string {
       const words = param.trim().split(/\s+/);
       // First word is the parameter name; type runs until `default`.
       const stop = words.findIndex((word) => word.toLowerCase() === 'default');
-      return words.slice(1, stop === -1 ? undefined : stop).join(' ').toLowerCase();
+      return canonType(words.slice(1, stop === -1 ? undefined : stop).join(' '));
     })
     .join(', ');
 }
@@ -43,6 +92,8 @@ interface FunctionEvent {
   file: string;
   kind: 'create' | 'createOrReplace' | 'drop';
   signature: string;
+  /** DROPs only: the same parameter list read the other way (see below). */
+  alternate?: string;
 }
 
 function readChainEvents(): FunctionEvent[] {
@@ -64,7 +115,12 @@ function readChainEvents(): FunctionEvent[] {
       events.push({
         file,
         kind: 'drop',
-        signature: `${match[1].toLowerCase()}(${match[2].replace(/\s+/g, ' ').trim().toLowerCase()})`,
+        signature: `${match[1].toLowerCase()}(${typesOnly(match[2])})`,
+        // The SAME drop may be written `f(uuid, text)` or `f(p_id uuid, p_x
+        // text)`, and this repo writes both. Recording both readings and
+        // accepting either is what stops a NAMED drop — 20260813130000’s of
+        // update_post — looking like a signature nothing ever created.
+        alternate: `${match[1].toLowerCase()}(${toTypeList(match[2])})`,
       });
     }
 
@@ -88,14 +144,18 @@ describe('migration chain (filename order = apply order)', () => {
 
     for (const event of readChainEvents()) {
       if (event.kind === 'drop') {
-        if (!live.has(event.signature)) {
+        // Either reading of the parameter list may be the one that matches.
+        const matched = [event.signature, event.alternate].find(
+          (candidate) => candidate !== undefined && live.has(candidate),
+        );
+        if (matched === undefined && !ORPHANED_DROPS.has(event.signature)) {
           problems.push(
             `${event.file} drops ${event.signature} but no earlier migration created it — ` +
               'db push would fail here and block every later migration ' +
               '(the 2026-07-29 report-sighting outage). Is the timestamp ordered after its dependency?',
           );
         }
-        live.delete(event.signature);
+        if (matched !== undefined) live.delete(matched);
       } else {
         if (event.kind === 'create' && live.has(event.signature)) {
           problems.push(

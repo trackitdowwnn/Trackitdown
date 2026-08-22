@@ -710,12 +710,20 @@ begin
     from jsonb_object_keys(v_doc) k
     where k not in ('spotters_alerted', 'created_at', 'expires_at',
                     'sightings_total', 'sightings_unverified', 'sightings_helpful',
-                    'sightings_credited', 'first_sighting_at', 'last_sighting_at',
+                    'sightings_credited', 'sightings_not_mine', 'first_sighting_at', 'last_sighting_at',
                     'sightings_by_day', 'conversations', 'messages')
   ) then
-    raise exception 'CHECK 16 FAILED: get_post_stats grew a field this suite has never reviewed: %. If it counts or implies WATCHERS, DOMAIN.md forbids it outright; anything else needs a privacy read before it reaches an owner', (select string_agg(k, ', ') from jsonb_object_keys(v_doc) k where k not in ('spotters_alerted', 'created_at', 'expires_at', 'sightings_total', 'sightings_unverified', 'sightings_helpful', 'sightings_credited', 'first_sighting_at', 'last_sighting_at', 'sightings_by_day', 'conversations', 'messages'));
+    raise exception 'CHECK 16 FAILED: get_post_stats grew a field this suite has never reviewed: %. If it counts or implies WATCHERS, DOMAIN.md forbids it outright; anything else needs a privacy read before it reaches an owner', (select string_agg(k, ', ') from jsonb_object_keys(v_doc) k where k not in ('spotters_alerted', 'created_at', 'expires_at', 'sightings_total', 'sightings_unverified', 'sightings_helpful', 'sightings_credited', 'sightings_not_mine', 'first_sighting_at', 'last_sighting_at', 'sightings_by_day', 'conversations', 'messages'));
   end if;
-  if (select count(*) from jsonb_object_keys(v_doc)) <> 12 then
+  -- PRIVACY READ (2026-08-22) — what this guard demands before a new field
+  -- reaches an owner. sightings_not_mine (20260814140000) counts sightings on
+  -- the READER'S OWN post that the READER THEMSELVES marked "not my car". Their
+  -- own act, on their own listing, already visible per row through
+  -- get_post_sightings: it names no spotter, carries no location and cannot
+  -- imply a watcher. Added because without it the other three buckets stopped
+  -- summing to sightings_total, and a page whose own numbers disagree teaches a
+  -- reader to trust none of them. Cleared.
+  if (select count(*) from jsonb_object_keys(v_doc)) <> 13 then
     raise exception 'CHECK 16 FAILED: expected 12 payload keys, got % -- a field the screen reads was dropped: %', (select count(*) from jsonb_object_keys(v_doc)), v_doc;
   end if;
   if (v_doc ->> 'sightings_total')::int <> 3

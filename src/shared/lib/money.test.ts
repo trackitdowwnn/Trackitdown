@@ -85,17 +85,23 @@ describe('bountyParam', () => {
 });
 
 describe('LISTING_FEE_PENCE', () => {
-  // MONEY (ADR-0014). This constant is a DISPLAY MIRROR of the authoritative
-  // price in public.current_listing_fee_pence(). It cannot mis-charge anyone —
-  // record_listing_fee_intent rejects any amount that disagrees with the post's
-  // own stamped fee — but it can show the wrong number on the pricing card and
-  // the "Post & pay" CTA, which is the last thing an owner reads before paying.
-  it('is £4.99 in integer pence, matching current_listing_fee_pence()', () => {
-    expect(LISTING_FEE_PENCE).toBe(499);
+  // MONEY (ADR-0014). A DISPLAY MIRROR of the authoritative price, which is the
+  // conditional CHECK on payments.amount_pence in 20260819100000: a listing_fee
+  // row must equal exactly 500. It cannot mis-charge anyone —
+  // record_post_payment_intent re-derives what the post owes and raises
+  // BOUNTY_MISMATCH on any disagreement — but it can show the wrong number on
+  // the pricing card and the "Post & pay" CTA, which is the last thing an owner
+  // reads before paying.
+  //
+  // It said 499 until 2026-08-22, mirroring a £4.99 design that lived only in
+  // this repo while the database charged £5. Nothing caught it, because the
+  // repo's own tests agreed with the repo.
+  it('is £5 in integer pence, matching the ledger CHECK in a_listing_can_be_free', () => {
+    expect(LISTING_FEE_PENCE).toBe(500);
   });
 
   it('formats as the exact string the pricing card and CTA show', () => {
-    expect(formatPounds(LISTING_FEE_PENCE)).toBe('£4.99');
+    expect(formatPounds(LISTING_FEE_PENCE)).toBe('£5');
   });
 
   it('is integer pence, so it survives the money formatter at all', () => {

@@ -218,9 +218,10 @@ The escrow-charge slice is built. The contract between this flow and payments:
 3. `useBountyPayment` presents Stripe's PaymentSheet with that secret.
 4. The **`stripe-webhook`** function is the authoritative state change: on
    `payment_intent.succeeded` it calls ONE dispatcher
-   (`mark_post_payment_succeeded`), which routes by `payments.kind` — a bounty
-   becomes `held`, a listing fee becomes `collected` — and either way the post
-   goes **`draft → active`** (live-on-payment, server-side, idempotent); on
+   (`mark_post_payment_held`), which serves both pricing modes — a bounty and a
+   listing fee both reach `held`, told apart only by `payments.kind` — and
+   either way the post goes **`draft → active`** (live-on-payment, server-side,
+   idempotent); on
    `payment_intent.payment_failed` it marks the ledger `failed` and leaves the
    draft for retry. The client's "paid" result only routes away.
 
