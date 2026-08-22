@@ -110,11 +110,13 @@ import {
 } from '../lib/searchCriteria';
 import { SeenRangeFields } from './SeenRangeFields';
 import { YearRangeFields } from './YearRangeFields';
+// Shared with the posting slider, so the amounts a searcher can ask for are
+// exactly the amounts an owner can offer. A local copy drifted the moment the
+// floor moved: this listed £25 steps from £50, leaving the whole £10–£49 band
+// unreachable on a filter whose lowest stop is supposed to mean "any".
+import { BOUNTY_SNAP_STEPS } from '@/features/vehicles/post/lib/bountyBounds';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-/** Bounty grid: £25 steps to £500, then £50 — mirrors the posting bounty step. */
-const BOUNTY_SNAP_STEPS = [{ upToPence: 50000, stepPence: 2500 }, { stepPence: 5000 }];
 
 /** The Distance section's one-tap "clear the radius" row. A slider has no null,
  *  so "Any" needs its own control — ChoiceChips' own docstring sanctions

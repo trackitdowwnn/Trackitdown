@@ -17,6 +17,7 @@ import {
   buildCreateSightingParams,
   fetchPostSightings,
   fetchSightingQuota,
+  markSightingHelpful,
   submitSighting,
   SightingSubmissionError,
 } from './sightingApi';
@@ -323,5 +324,64 @@ describe('fetchPostSightings (PRIVACY strictness)', () => {
     });
     // A widened RPC must fail loudly, never silently reach the owner's UI.
     await expect(fetchPostSightings(POST_ID)).rejects.toThrow();
+  });
+
+  it('parses a not_mine verdict', async () => {
+    // The owner's "that isn't my car" (20260814100000). Absent from the status
+    // enum until 2026-08-22, so ONE rejected sighting would have failed the
+    // parse for the owner's whole list.
+    mockRpc.mockResolvedValue({ data: [{ ...baseRow, status: 'not_mine' }], error: null });
+    const rows = await fetchPostSightings(POST_ID);
+    expect(rows[0].status).toBe('not_mine');
+  });
+});
+
+describe('markSightingHelpful', () => {
+  const SIGHTING_ID = 'cccccccc-0000-0000-0000-000000000003';
+
+  // ⚠️ THIS SUITE EXISTS BECAUSE THERE WAS NONE, and the gap was expensive.
+  // mark_sighting_helpful grew `crossedThreshold` and `counted` in
+  // 20260814140000 while the client parsed `.strict()` for two keys, so from
+  // that migration until 2026-08-22 EVERY tap raised a ZodError — after the
+  // server had already recorded the verdict and bumped the spotter's
+  // reputation. The owner saw "we couldn't mark that sighting" for something
+  // that had, in fact, worked. Nothing failed here, because nothing was here.
+  it('parses the full four-key payload the RPC actually returns', async () => {
+    mockRpc.mockResolvedValue({
+      data: { status: 'helpful', changed: true, crossedThreshold: 5, counted: true },
+      error: null,
+    });
+
+    await expect(markSightingHelpful(SIGHTING_ID)).resolves.toEqual({
+      status: 'helpful',
+      changed: true,
+      crossedThreshold: 5,
+      counted: true,
+    });
+  });
+
+  it('carries counted:false through, without asking why', async () => {
+    // Two causes produce it — the one-point-per-listing cap, and a collusion
+    // flag — and the RPC returns the IDENTICAL shape for both on purpose. The
+    // client must not try to tell them apart; naming the signal that caught
+    // someone is a tutorial in evading it.
+    mockRpc.mockResolvedValue({
+      data: { status: 'helpful', changed: true, crossedThreshold: null, counted: false },
+      error: null,
+    });
+
+    const result = await markSightingHelpful(SIGHTING_ID);
+    expect(result.counted).toBe(false);
+    expect(result.crossedThreshold).toBeNull();
+  });
+
+  it('still fails loudly on a payload it does not recognise', async () => {
+    // The strictness is the point and must survive: a FURTHER widened RPC
+    // should break here, in one place, rather than reach the UI unvalidated.
+    mockRpc.mockResolvedValue({
+      data: { status: 'helpful', changed: true, crossedThreshold: null, counted: true, extra: 1 },
+      error: null,
+    });
+    await expect(markSightingHelpful(SIGHTING_ID)).rejects.toThrow();
   });
 });

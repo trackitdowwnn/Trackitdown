@@ -28,11 +28,20 @@ import { z } from 'zod';
 
 import { formatDateLabelCompact } from '@/shared/lib/dateTimeLabel';
 import { RADIUS_MAX_MILES, RADIUS_MIN_MILES } from '@/shared/lib/distance';
+import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/features/vehicles/post/lib/bountyBounds';
 import { formatPounds } from '@/shared/lib/money';
 
-/** Bounty selectable universe (mirrors the posts.bounty_amount_pence CHECK). */
-export const SEARCH_BOUNTY_MIN_PENCE = 5000;
-export const SEARCH_BOUNTY_MAX_PENCE = 500000;
+/**
+ * Bounty selectable universe — RE-EXPORTED from the one mirror rather than
+ * restated. The floor doubles as the "any bounty" position, which only works
+ * while it equals the post floor: at 5000 against a £10 post floor (which is
+ * what this said until 2026-08-22) a search for "any" silently excluded every
+ * £10–£49 listing, and the filter chip still read "Any".
+ */
+// Aliased consts rather than `export { X as Y } from …`: a re-export creates no
+// LOCAL binding, and this module uses both names in its own body.
+export const SEARCH_BOUNTY_MIN_PENCE = MIN_BOUNTY_PENCE;
+export const SEARCH_BOUNTY_MAX_PENCE = MAX_BOUNTY_PENCE;
 
 /** Year bounds MIRROR posts_year_range_chk (20260713140000_post_detail.sql), the
  *  same way the bounty bounds mirror their CHECK. This is only the "a crafted

@@ -28,6 +28,7 @@ import { supabase, uploadOwnFolderPhoto } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 import type { PhotoTileStatus } from '@/shared/ui';
 
+import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '../lib/bountyBounds';
 import { distinctiveFeaturesSchema } from '../lib/distinctiveFeatures';
 import type { CreatePostParams, CreatePostResult, PostACarAnswers } from '../types';
 
@@ -130,7 +131,7 @@ const submitAnswersSchema = z.object({
   // answers object is corrupt regardless of which mode was chosen. What 'fee'
   // changes is whether the value is SENT (see buildCreatePostParams), not
   // whether it is valid.
-  bountyAmountPence: z.number().int().min(5000).max(500000),
+  bountyAmountPence: z.number().int().min(MIN_BOUNTY_PENCE).max(MAX_BOUNTY_PENCE),
 });
 
 export type SubmitReadyAnswers = z.infer<typeof submitAnswersSchema>;

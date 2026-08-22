@@ -43,6 +43,15 @@ const postStatsSchema = z
     sightings_unverified: z.number().int().nonnegative(),
     sightings_helpful: z.number().int().nonnegative(),
     sightings_credited: z.number().int().nonnegative(),
+    // ⚠️ ADDED 2026-08-22, and its absence is what the `.strict()` above was
+    // for — get_post_stats has returned this since 20260814140000 and this
+    // schema did not know it, so the owner's stats screen threw. The guard
+    // worked; the repo simply did not have the migration that widened the RPC.
+    //
+    // It exists because without it the other three buckets stopped summing to
+    // sightings_total the moment 'not_mine' did, and a page whose own numbers
+    // disagree teaches a reader to trust none of them.
+    sightings_not_mine: z.number().int().nonnegative(),
     first_sighting_at: z.string().nullable(),
     last_sighting_at: z.string().nullable(),
     sightings_by_day: z.array(dayRowSchema),
@@ -69,6 +78,11 @@ export interface PostStats {
   sightingsUnverified: number;
   sightingsHelpful: number;
   sightingsCredited: number;
+  /** The owner's own "that isn't my car" verdicts. Present so the four buckets
+   *  sum to sightingsTotal — they stopped doing so the moment not_mine existed,
+   *  and a page whose own numbers disagree teaches a reader to trust none of
+   *  them. */
+  sightingsNotMine: number;
   firstSightingAt: string | null;
   lastSightingAt: string | null;
   /** Sparse, oldest first: only days that have at least one sighting. */
@@ -98,6 +112,7 @@ export async function fetchPostStats(postId: string): Promise<PostStats | null> 
     sightingsUnverified: row.sightings_unverified,
     sightingsHelpful: row.sightings_helpful,
     sightingsCredited: row.sightings_credited,
+    sightingsNotMine: row.sightings_not_mine,
     firstSightingAt: row.first_sighting_at,
     lastSightingAt: row.last_sighting_at,
     sightingsByDay: row.sightings_by_day,

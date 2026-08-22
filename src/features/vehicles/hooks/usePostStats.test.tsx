@@ -43,6 +43,7 @@ const stats: PostStats = {
   sightingsUnverified: 0,
   sightingsHelpful: 0,
   sightingsCredited: 0,
+  sightingsNotMine: 0,
   firstSightingAt: null,
   lastSightingAt: null,
   sightingsByDay: [],
