@@ -53,7 +53,7 @@ export function invalidateMyAlerts(): void {
   versionSubscribers.forEach((cb) => cb());
 }
 
-export function useMyAlerts(): MyAlertsState & { refresh: () => void } {
+export function useMyAlerts(): MyAlertsState & { refresh: () => void; refreshing: boolean } {
   const session = useSession();
   const generation = useSyncExternalStore(subscribeVersion, getVersion);
   const [result, setResult] = useState<FetchResult | null>(null);
@@ -78,18 +78,29 @@ export function useMyAlerts(): MyAlertsState & { refresh: () => void } {
 
   const refresh = invalidateMyAlerts;
 
-  if (session.status === 'loading') return { status: 'loading', refresh };
-  if (session.status === 'signedOut') return { status: 'signedOut', refresh };
+  // DERIVED, not a second piece of state: a fetch is outstanding exactly when
+  // the recorded result does not answer the current key. That is already how
+  // the state machine below decides what to show, so the pull spinner and the
+  // list can never disagree about whether something is in flight.
+  //
+  // Reported ONLY alongside data. The first load has no result yet and renders
+  // the skeleton; a pull spinner over a skeleton is two loading indicators for
+  // one fetch.
+  const inFlight = key !== null && (!result || result.key !== key);
+  const idle = { refresh, refreshing: false };
+
+  if (session.status === 'loading') return { status: 'loading', ...idle };
+  if (session.status === 'signedOut') return { status: 'signedOut', ...idle };
 
   if (!result || result.key !== key) {
     // Stale-while-revalidate across invalidation bumps for the SAME user, so
     // saving doesn't bounce the list through a spinner. The userId prefix
     // makes cross-user reuse impossible; a stale error is never reused.
     if (result && result.outcome !== 'error' && result.key.split(':')[0] === session.userId) {
-      return { status: 'ready', alerts: result.outcome, refresh };
+      return { status: 'ready', alerts: result.outcome, refresh, refreshing: inFlight };
     }
-    return { status: 'loading', refresh };
+    return { status: 'loading', ...idle };
   }
-  if (result.outcome === 'error') return { status: 'error', refresh };
-  return { status: 'ready', alerts: result.outcome, refresh };
+  if (result.outcome === 'error') return { status: 'error', ...idle };
+  return { status: 'ready', alerts: result.outcome, refresh, refreshing: inFlight };
 }

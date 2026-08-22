@@ -36,14 +36,14 @@ const mockOffered = hasOfferedAlertNudge as jest.MockedFunction<typeof hasOffere
 const mockBump = bumpAlertNudgePostViews as jest.MockedFunction<typeof bumpAlertNudgePostViews>;
 const mockRequest = requestAlertNudge as jest.MockedFunction<typeof requestAlertNudge>;
 
-function Probe() {
-  useCountPostViewForAlertNudge();
+function Probe({ browsing = true }: { browsing?: boolean }) {
+  useCountPostViewForAlertNudge(browsing);
   return null;
 }
 
 /** Mount, then unmount — the unmount is where the counting happens. */
-const viewAndLeave = async () => {
-  const view = await act(async () => render(<Probe />));
+const viewAndLeave = async (browsing = true) => {
+  const view = await act(async () => render(<Probe browsing={browsing} />));
   await act(async () => {
     view.unmount();
   });
@@ -67,6 +67,25 @@ describe('useCountPostViewForAlertNudge', () => {
 
     expect(mockBump).toHaveBeenCalledTimes(1);
     expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('counts NOTHING for a view that is not browsing', async () => {
+    // The offer means "you seem to be watching cars near you". Opening your
+    // OWN listing from My Posts is managing a theft, not watching for one —
+    // and until 2026-08-22 it counted, so the sheet was raised at owners
+    // mid-crisis. Only a home-feed tap passes true.
+    await viewAndLeave(false);
+
+    expect(mockBump).not.toHaveBeenCalled();
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('does not even read storage for a non-browsing view', async () => {
+    // Cheap, and the point: a screen that cannot raise the offer should not
+    // touch the counter at all.
+    await viewAndLeave(false);
+
+    expect(mockOffered).not.toHaveBeenCalled();
   });
 
   it('raises the offer on the third listing', async () => {
