@@ -93,6 +93,40 @@ export async function getLastKnownPosition(): Promise<GeoCoord | null> {
   }
 }
 
+/**
+ * A FRESH fix, but ONLY if permission is already granted — the slow path made
+ * safe to call unattended.
+ *
+ * WHY THIS EXISTS: `getLastKnownPosition` returns null when the OS holds no
+ * cached fix at all, which is not rare — a fresh install, a recent reboot, an
+ * emulator, or location switched on moments ago all produce it WITH permission
+ * fully granted. Callers that treated "no cached fix" as "no location" opened
+ * their map on the whole of the UK for users who had granted everything asked
+ * of them (2026-08-22, reported on the post wizard's last-seen step).
+ *
+ * SAFETY: reads permission with `getForegroundPermissions`, the NON-prompting
+ * call, and returns null unless already granted — so unlike
+ * `locationServices.getCurrentPosition` (which calls
+ * `requestForegroundPermissionsAsync` internally) this can never ambush someone
+ * with the OS dialog. Cold prompts belong to a primer CTA, not a mount.
+ *
+ * It is still SLOW — 3-10s on a real handset. Never block a screen on it; treat
+ * it as an upgrade that may arrive later, or not at all.
+ */
+export async function getFreshPositionIfPermitted(): Promise<GeoCoord | null> {
+  const location = loadExpoLocation();
+  if (!location) return null;
+  try {
+    const permission = await location.getForegroundPermissionsAsync();
+    if (permission.status !== 'granted') return null;
+    const position = await location.getCurrentPositionAsync();
+    if (!position) return null;
+    return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+  } catch {
+    return null;
+  }
+}
+
 export const expoLocationServices: LocationServices = {
   async reverseGeocode(coord) {
     const location = loadExpoLocation();

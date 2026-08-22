@@ -22,9 +22,14 @@ import { useDefaultMapCentre } from './useDefaultMapCentre';
 
 const mockGetLastKnown = jest.fn();
 const mockGetCurrentPosition = jest.fn();
+const mockGetFresh = jest.fn();
 jest.mock('./expoLocationServices', () => ({
   getLastKnownPosition: (...args: unknown[]) => mockGetLastKnown(...args),
-  // Present only so the test can assert it is NEVER used here.
+  // The silent, permission-checked fresh fix. Only reached when the cached
+  // chain came back empty, and never blocking — see the hook's header.
+  getFreshPositionIfPermitted: (...args: unknown[]) => mockGetFresh(...args),
+  // Present only so the test can assert it is NEVER used here: this one calls
+  // requestForegroundPermissionsAsync internally and would cold-prompt.
   expoLocationServices: {
     getCurrentPosition: (...args: unknown[]) => mockGetCurrentPosition(...args),
   },
@@ -47,6 +52,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockGetLastKnown.mockResolvedValue(null);
   mockGetCurrentPosition.mockResolvedValue(null);
+  mockGetFresh.mockResolvedValue(null);
   mockLoadFeedPref.mockResolvedValue(null);
 });
 
@@ -91,6 +97,41 @@ describe('useDefaultMapCentre', () => {
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(result.current.centre).toBeNull();
+  });
+
+  it('upgrades to a fresh fix LATER when nothing was cached', async () => {
+    // REGRESSION (2026-08-22): "no cached fix" is not "no location".
+    // getLastKnownPositionAsync returns null on a fresh install, after a
+    // reboot, or on an emulator — WITH permission fully granted — and this hook
+    // reported null, so the post wizard's last-seen step opened on the whole of
+    // the UK for users who had granted everything asked of them.
+    mockGetFresh.mockResolvedValue(DEVICE);
+
+    const { result } = await renderHook(() => useDefaultMapCentre());
+
+    // Ready straight away on nothing: the screen must NOT be held for 3-10s
+    // waiting on GPS. This is the half that keeps the wizard responsive.
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    // ...and then the real fix lands and the map recentres.
+    await waitFor(() => expect(result.current.centre).toEqual(DEVICE));
+  });
+
+  it('a late fresh fix never overwrites a centre we already had', async () => {
+    // Ordering guard: the cached fix wins and a slow GPS answer arriving
+    // afterwards must not shove the map somewhere else under the user.
+    mockGetLastKnown.mockResolvedValue(DEVICE);
+    mockGetFresh.mockResolvedValue({ latitude: 0, longitude: 0 });
+
+    const { result } = await renderHook(() => useDefaultMapCentre());
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.centre).toEqual(DEVICE);
+    // Not even asked for: the cached chain already answered.
+    expect(mockGetFresh).not.toHaveBeenCalled();
   });
 
   it('is ready immediately, and does nothing, when disabled', async () => {
