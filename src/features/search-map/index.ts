@@ -18,3 +18,4 @@ export type {
   FeedSection,
   FeedSectionLayout,
 } from './types';
+export { AreaInsightsScreen } from './screens/AreaInsightsScreen';
