@@ -18,6 +18,7 @@ import {
   fetchPostSightings,
   fetchSightingQuota,
   markSightingHelpful,
+  markSightingNotMine,
   submitSighting,
   SightingSubmissionError,
 } from './sightingApi';
@@ -383,5 +384,52 @@ describe('markSightingHelpful', () => {
       error: null,
     });
     await expect(markSightingHelpful(SIGHTING_ID)).rejects.toThrow();
+  });
+});
+
+describe('markSightingNotMine', () => {
+  const SIGHTING_ID = 'cccccccc-0000-0000-0000-000000000003';
+
+  it('records the verdict', async () => {
+    mockRpc.mockResolvedValue({ data: { status: 'not_mine', changed: true }, error: null });
+
+    await expect(markSightingNotMine(SIGHTING_ID)).resolves.toEqual({
+      status: 'not_mine',
+      changed: true,
+    });
+    expect(mockRpc).toHaveBeenCalledWith('mark_sighting_not_mine', {
+      p_sighting_id: SIGHTING_ID,
+    });
+  });
+
+  it('is idempotent — a second tap changes nothing', async () => {
+    mockRpc.mockResolvedValue({ data: { status: 'not_mine', changed: false }, error: null });
+    const result = await markSightingNotMine(SIGHTING_ID);
+    expect(result.changed).toBe(false);
+  });
+
+  it('explains ALREADY_COUNTED rather than showing a generic failure', async () => {
+    // helpful → not_mine is REFUSED, and the reason is structural: the
+    // confirmation has already moved profiles.sightings_helpful and this schema
+    // has no decrement anywhere. An owner who mis-tapped deserves to be told
+    // that plainly, not handed "please try again" for something that will never
+    // succeed.
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { message: 'ALREADY_COUNTED', code: 'P0001' },
+    });
+
+    await expect(markSightingNotMine(SIGHTING_ID)).rejects.toMatchObject({
+      code: 'ALREADY_COUNTED',
+      message: expect.stringContaining('can’t be taken back'),
+    });
+  });
+
+  it('does not leak an unknown server token into the UI', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'SOME_NEW_TOKEN', code: 'P0001' } });
+    await expect(markSightingNotMine(SIGHTING_ID)).rejects.toMatchObject({
+      code: 'UNKNOWN',
+      message: expect.stringContaining('Please try again'),
+    });
   });
 });

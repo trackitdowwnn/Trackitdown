@@ -544,9 +544,29 @@ function OwnerEntryRow({
               <Text style={styles.entryWhen} numberOfLines={1}>
                 {when}
               </Text>
+              {/* ⚠️ MAPPED, not a two-way branch. This read `credited ? '✓
+                  Credited' : '✓ Helpful'`, so the moment a sighting could be
+                  marked not_mine it would have rendered a rejected report as
+                  "✓ Helpful" — the exact opposite of the owner's verdict, with
+                  a tick on it.
+
+                  No tick on not_mine: the tick means "confirmed", and this is
+                  the absence of a confirmation. Muted, because it is the
+                  quietest outcome of the three and is not a mark against the
+                  spotter. */}
               {sighting.status !== 'unverified' ? (
-                <Text style={styles.statusTag}>
-                  {sighting.status === 'credited' ? '✓ Credited' : '✓ Helpful'}
+                <Text
+                  style={
+                    sighting.status === 'not_mine'
+                      ? [styles.statusTag, styles.statusTagMuted]
+                      : styles.statusTag
+                  }
+                >
+                  {sighting.status === 'credited'
+                    ? '✓ Credited'
+                    : sighting.status === 'not_mine'
+                      ? 'Not your car'
+                      : '✓ Helpful'}
                 </Text>
               ) : null}
             </View>
@@ -832,6 +852,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   statusTag: {
     ...typography.caption,
     color: c.primary,
+  },
+  /** not_mine only. Secondary ink so the rejected report recedes rather than
+   *  competing with the confirmed ones — it is an outcome, not a warning, and
+   *  the owner may still change it. */
+  statusTagMuted: {
+    color: c.textSecondary,
   },
   entryWhere: {
     // The card's headline (design-refs: quiet time above, the place leading)
