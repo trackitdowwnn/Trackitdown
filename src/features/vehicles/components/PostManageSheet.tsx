@@ -17,7 +17,7 @@
  *        src/shared/ui/BottomSheet.tsx + ListRow.tsx; docs/DESIGN_SYSTEM.md.
  */
 
-import { Ban, Banknote, ChartNoAxesColumn, Eye, Pencil, Share2 } from 'lucide-react-native';
+import { Ban, Banknote, ChartNoAxesColumn, Eye, Pencil, Share2, Trash2 } from 'lucide-react-native';
 import { useImperativeHandle, useRef, type Ref } from 'react';
 
 import { BottomSheet, ListRow, type BottomSheetRef } from '@/shared/ui';
@@ -44,6 +44,16 @@ export interface PostManageSheetProps {
   /** OWNER + PAID only: take the listing down and refund the bounty. Opens the
    *  parent's confirm — never deactivates straight from a row tap. */
   onDeactivate?: () => void;
+  /**
+   * OWNER + DRAFT only: delete the draft for good. Mutually exclusive with
+   * onDeactivate — a draft has no escrow to refund, and a paid listing
+   * cannot be deleted at all.
+   *
+   * Opens the parent's confirm; never deletes straight from a row tap. It is
+   * irreversible and there is no tombstone, so the confirm is the only thing
+   * standing between a mis-tap and a lost draft.
+   */
+  onDeleteDraft?: () => void;
   /**
    * OWNER + `recovery_claimed` only: try sending the credited spotter their
    * bounty again.
@@ -72,6 +82,7 @@ export function PostManageSheet({
   onEditTheftContext,
   onEditDistinctiveFeatures,
   onDeactivate,
+  onDeleteDraft,
   onReleasePayout,
 }: PostManageSheetProps) {
   const sheetRef = useRef<BottomSheetRef>(null);
@@ -159,6 +170,26 @@ export function PostManageSheet({
           destructive
           onPress={run(onDeactivate)}
           testID="manage-deactivate"
+        />
+      ) : null}
+
+      {/* DRAFT ONLY, and mutually exclusive with the row above: a draft has no
+          escrow to refund, and a paid listing cannot be deleted at all. The
+          parent decides which by passing one handler or the other.
+
+          Says "Delete", not "Discard" or "Remove", because it is permanent —
+          there is no tombstone and no undo. A draft was never published, so
+          there is nothing to preserve and nobody to inform; leaving a cancelled
+          row behind would be the clutter the owner is trying to clear, wearing
+          a different label. The parent's confirm is what makes it safe. */}
+      {onDeleteDraft ? (
+        <ListRow
+          icon={Trash2}
+          title="Delete draft"
+          subtitle="Removes it for good. This can’t be undone."
+          destructive
+          onPress={run(onDeleteDraft)}
+          testID="manage-delete-draft"
         />
       ) : null}
     </BottomSheet>

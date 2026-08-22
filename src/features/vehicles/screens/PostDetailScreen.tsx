@@ -101,6 +101,18 @@ function canEditSafeSection(post: PostDetail): boolean {
 function canDeactivate(post: PostDetail): boolean {
   return post.isOwner && (post.status === 'active' || post.status === 'pending_verification');
 }
+/**
+ * The owner can DELETE an unpaid draft. The exact complement of canDeactivate:
+ * a draft has no escrow to refund, and a paid listing can never be deleted —
+ * money that moved must leave a record.
+ *
+ * Deliberately not `!canDeactivate(post)`: the statuses that are neither
+ * (recovered, cancelled, expired…) must offer nothing at all, and writing it as
+ * a negation would quietly hand them a delete the server would refuse.
+ */
+function canDeleteDraft(post: PostDetail): boolean {
+  return post.isOwner && post.status === 'draft';
+}
 /** The owner can mark an ACTIVE post recovered. Narrower than canDeactivate on
  *  purpose: `claim_recovery` accepts `active` and nothing else, so offering
  *  this on a pending_verification post would show a button that always fails. */
@@ -131,6 +143,11 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // and the refund estimate exist in a single place.
   const manageRef = useRef<BottomSheetRef>(null);
   const deactivateRef = useRef<ConfirmDialogRef>(null);
+  const deleteDraftRef = useRef<ConfirmDialogRef>(null);
+  // Guards a double-tap while the delete is in flight. The Edge Function cancels
+  // Stripe intents before deleting, so a second run mid-flight would race the
+  // first over rows it is already removing.
+  const [deleting, setDeleting] = useState(false);
 
   const { status, result, retry } = usePostDetail(postId);
 
@@ -329,6 +346,35 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
       toast.show(result.message, 'error');
     }
   }, [deactivate, deactivating, postId, retry, toast]);
+
+  // Delete an unpaid draft, for good. The confirm has already fired.
+  //
+  // Routes AWAY on success rather than refetching, unlike every other action
+  // here: there is no post left to refetch, and leaving the owner on the detail
+  // screen of something that no longer exists would show them an error for
+  // having succeeded.
+  const onDeleteDraft = useCallback(async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const { deleteDraft } = await import('../api/draftApi');
+      await deleteDraft(postId);
+      toast.show('Draft deleted');
+      router.replace('/my-posts');
+    } catch (error) {
+      // The api maps every server code to copy a person can act on — including
+      // the two that must NOT say "try again": money that moved, and a payment
+      // still settling.
+      toast.show(
+        error instanceof Error && error.message
+          ? error.message
+          : 'We couldn’t delete that draft. Please try again.',
+        'error',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleting, postId, router, toast]);
 
   // The attested exit: same call, carrying exactly what the owner was shown.
   const onAttestedDeactivate = useCallback(
@@ -609,6 +655,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
             canEditSafeSection(visiblePost) ? () => setEditing('distinctive_features') : undefined
           }
           onDeactivate={canDeactivate(visiblePost) ? requestDeactivate : undefined}
+          onDeleteDraft={
+            canDeleteDraft(visiblePost) ? () => deleteDraftRef.current?.open() : undefined
+          }
           onReleasePayout={
             canReleasePayout(visiblePost) ? () => void onReleasePayout() : undefined
           }
@@ -635,6 +684,27 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
           confirmLabel="Yes, deactivate"
           destructive
           onConfirm={onDeactivate}
+        />
+      ) : null}
+
+      {/* The delete confirm. Says "permanently" and "can't be undone" in the
+          body rather than softening it: there is no tombstone, no undo and no
+          support route back — the row is gone. The only reason it can be this
+          blunt is that a draft has been seen by nobody but its owner.
+
+          It does NOT mention payment. A draft may carry an abandoned
+          PaymentIntent, but that is the Edge Function's problem to cancel, and
+          raising it here would make an owner deleting a form think they were
+          about to lose money. If money HAS moved, the server refuses and the
+          error explains it — which is the right moment for that sentence. */}
+      {visiblePost && canDeleteDraft(visiblePost) ? (
+        <ConfirmDialog
+          ref={deleteDraftRef}
+          title="Delete this draft?"
+          body="This removes it permanently. Nobody has seen it and nothing has been charged. This can’t be undone."
+          confirmLabel="Yes, delete"
+          destructive
+          onConfirm={onDeleteDraft}
         />
       ) : null}
 
