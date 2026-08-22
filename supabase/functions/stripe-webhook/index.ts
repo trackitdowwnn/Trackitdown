@@ -8,10 +8,17 @@
  *        cancelled) — the deactivate-post function is authoritative, this
  *        reconciles it.
  *
- *        The succeeded branch serves BOTH pricing modes through one dispatcher
- *        RPC: an escrowed bounty becomes 'held', a fixed listing fee becomes
- *        'collected' (ADR-0014). charge.refunded stays bounty-only — a listing
- *        fee is never refunded, so no refund event can exist for one, and
+ *        The succeeded branch serves BOTH pricing modes through ONE function,
+ *        mark_post_payment_held, which reads the post: a NULL bounty is a free
+ *        listing whose payments row already carries kind='listing_fee'
+ *        (20260819100000). Both reach 'held' and both take the post live —
+ *        a fee post must reach spotters exactly as an escrowed one does.
+ *
+ *        ⚠️ A FEE IN 'held' IS SEPARATED FROM ESCROW BY kind ALONE, and only
+ *        the Edge Functions apply that filter (refundEscrow, releasePayout,
+ *        release-held-refunds). Lose it in any one of them and a £5 fee becomes
+ *        refundable money on an hourly cron. charge.refunded stays bounty-only:
+ *        a fee is never refunded, so no refund event can exist for one, and
  *        mark_post_payment_refunded's status guard makes a stray one a no-op.
  * WHY:   The client success callback is NOT trusted to move money state — a
  *        cancelled app, a lying client, or a lost network must never leave
@@ -25,9 +32,9 @@
  *          (claim_stripe_event, mark_post_payment_held, mark_post_payment_failed);
  *        supabase/migrations/20260730100000_live_on_payment.sql (redefines
  *          mark_post_payment_held: draft -> ACTIVE);
- *        supabase/migrations/20260820110000_no_bounty_listing_fee.sql
- *          (mark_post_payment_succeeded — NOT used: never applied here — plus
- *          mark_listing_fee_collected); docs/decisions/ADR-0014-no-bounty-listings.md;
+ *        supabase/migrations/20260819100000_a_listing_can_be_free.sql
+ *          (payments.kind, and record_post_payment_intent serving both prices);
+ *        docs/decisions/ADR-0014-no-bounty-listings.md;
  *        supabase/migrations/20260729100000_post_refund_cancel.sql
  *          (mark_post_payment_refunded — the charge.refunded branch);
  *        docs/decisions/ADR-0002-stripe-connect.md (webhooks: verify + dedupe +

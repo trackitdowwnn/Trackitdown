@@ -22,19 +22,27 @@ and nothing else; the server reads the price from the database. Refunds go
 through `deactivate-post` (owner cancels) or `refund-recovery` (found it
 themselves), both minus the non-recoverable card fee.
 
-**...and since 2026-08-20, TWO PRICING MODES share that path (ADR-0014).** A
-post carries either a bounty (£50–£5,000, escrowed) or a fixed **£4.99 listing
-fee**. Which one is not a flag — it is which of two columns is non-null, and the
-table enforces exactly one. `create-payment-intent` reads the post and follows
-it; `stripe-webhook` calls ONE dispatcher (`mark_post_payment_succeeded`) which
-routes by `payments.kind`.
+**...and since 2026-08-19, TWO PRICING MODES share that path (ADR-0014).** A
+post carries either a bounty (£10–£5,000, escrowed) or a flat **£5 listing
+fee**. Which one is not a flag: **a NULL bounty IS a free listing.** There is no
+second price column. `create-payment-intent` reads the post and follows it;
+`stripe-webhook` calls ONE function (`mark_post_payment_held`), which serves
+both because `record_post_payment_intent` already stamped `payments.kind` from
+the same branch that priced the charge.
 
-The rule to hold on to: **a listing fee reaches `collected` and never `held`.**
-Every refund and payout lookup in this feature selects `status = 'held'`, so a
-fee is invisible to all of them *by construction* rather than because someone
-remembered a filter. The mirror is the dangerous one and is guarded too: an
-escrowed bounty wrongly marked `collected` would disappear from every refund
-path — the owner's money silently kept.
+⚠️ **The rule to hold on to: a fee sits in `held` NEXT TO escrow, and only
+`payments.kind` tells them apart.** Every refund and payout lookup must filter
+`kind = 'bounty_escrow'` — `_shared/refundEscrow.ts`, `_shared/releasePayout.ts`
+and `release-held-refunds` (the hourly cron) all do. Lose that filter in any one
+of them and a £5 fee becomes refundable money leaving on a timer.
+
+This is weaker than it could be, and it is worth knowing why. A design in which
+a fee reaches a terminal status no refund query can match would make it
+invisible to those paths *by construction* rather than by everyone remembering a
+predicate. This repo actually contained that design; the database had shipped
+this one eight days earlier and nobody noticed until no-bounty listings failed
+to charge at all. The live design won because it is what runs — not because it
+is the better of the two.
 
 **Payout (spotter).** `connect-onboarding` creates an Express account and hands
 back a hosted link; Stripe's `account.updated` webhook writes

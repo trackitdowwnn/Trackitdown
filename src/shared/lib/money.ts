@@ -16,22 +16,30 @@
  */
 
 /**
- * MONEY: the fixed platform fee for a NO-BOUNTY listing (£4.99), integer pence.
+ * MONEY: the fixed platform fee for a NO-BOUNTY listing (£5), integer pence.
  *
- * DISPLAY ONLY, and a MIRROR. The authoritative price is
- * `public.current_listing_fee_pence()` in
- * supabase/migrations/20260820110000_no_bounty_listing_fee.sql; create_post
- * stamps it onto posts.listing_fee_pence and the charge path reads that
- * snapshot. This constant exists so the wizard can say "Post & pay £4.99"
- * before a post exists to read a price from — exactly as MIN/MAX_BOUNTY_PENCE
- * mirror the posts CHECK.
+ * DISPLAY ONLY, and a MIRROR of the CHECK constraint in
+ * supabase/migrations/20260819100000_a_listing_can_be_free.sql:
  *
- * NEVER wire this into a charge, and if the server price changes, change it
- * there first: a mismatch shows the user the wrong number but cannot mis-charge
- * them, because record_listing_fee_intent rejects any amount that disagrees
- * with the post's own stamped fee (FEE_MISMATCH).
+ *     check (case kind when 'listing_fee' then amount_pence = 500 ... end)
+ *
+ * — not a range, one price, so a fee row carrying any other number fails on
+ * write rather than turning up in a reconciliation. This constant exists so the
+ * wizard can say "Post & pay £5" before a post exists to read a price from,
+ * exactly as MIN/MAX_BOUNTY_PENCE mirror the posts CHECK.
+ *
+ * ⚠️ WAS 499 UNTIL 2026-08-22, mirroring a design in this repo that the
+ * database never had. The £4.99 implementation (a posts.listing_fee_pence
+ * snapshot column, current_listing_fee_pence(), record_listing_fee_intent) was
+ * written here while production shipped a different one, and the two were
+ * discovered to have diverged only when no-bounty listings failed to charge at
+ * all. The live design won; see ADR-0014.
+ *
+ * NEVER wire this into a charge. A mismatch shows the user the wrong number but
+ * cannot mis-charge them: record_post_payment_intent re-derives the price from
+ * the post itself and raises BOUNTY_MISMATCH on any disagreement.
  */
-export const LISTING_FEE_PENCE = 499;
+export const LISTING_FEE_PENCE = 500;
 
 /** Format integer pence as a GBP string: 50000 → "£500", 125050 → "£1,250.50". */
 export function formatPounds(pence: number): string {
