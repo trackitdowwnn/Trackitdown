@@ -1,0 +1,34 @@
+-- =============================================================================
+-- WHAT: Drops get_post_insights_context(uuid) — the owner-only helper behind the
+--       withdrawn per-listing Insights page.
+--
+-- WHY:  That page asked "what police-recorded crime happened near this one
+--       listing", answered by data.police.uk through the `area-insights` Edge
+--       Function. It has been withdrawn as the wrong product: scoped to a single
+--       listing, dependent on a third party that rate-limits us and publishes
+--       nothing at all for some police forces, and costing 12 sequential
+--       outbound requests on first load. Per-AREA insights over our OWN posts
+--       replace it.
+--
+--       ⚠️ THE MIGRATION FILE THAT CREATED THIS FUNCTION WAS DELETED, AND THAT
+--       IS WHY THIS FILE HAS TO EXIST. Deleting 20260811120000 removes the
+--       function from a fresh `db reset` but changes nothing on a database that
+--       already applied it — the hosted project still had the function until
+--       this ran. A deleted migration is not an undone migration.
+--
+-- SAFETY NOTE ON DESTRUCTIVE STATEMENTS: one DROP FUNCTION, guarded by
+--   `if exists` so this is idempotent and safe on a database that never had it
+--   (any environment reset after 20260811120000 was deleted). It drops a
+--   READ-ONLY function: get_post_insights_context was `stable`, wrote nothing,
+--   and owned no data. No table, column, policy, index or row is touched, so
+--   there is no user data to preserve. Nothing else references it — its only
+--   caller was the `area-insights` Edge Function, deleted from the project in
+--   the same change.
+--
+-- LINKS: supabase/functions/_shared/clients.ts (createUserClient, added for
+--          that function and removed with it);
+--        supabase/migrations/20260811100000_feed_distance_coarsens_driveway.sql
+--          (post_pin_geog — kept; the coarsening helper is still load-bearing).
+-- =============================================================================
+
+drop function if exists public.get_post_insights_context(uuid);
