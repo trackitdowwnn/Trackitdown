@@ -26,6 +26,7 @@ import { z } from 'zod';
 
 import { supabase, uploadOwnFolderPhoto } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
+import { formatPounds } from '@/shared/lib/money';
 import type { PhotoTileStatus } from '@/shared/ui';
 
 import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '../lib/bountyBounds';
@@ -50,7 +51,9 @@ export const CREATE_POST_ERROR_MESSAGES: Record<string, string> = {
   INVALID_PLATE: 'That number plate doesn’t look right. Check it and try again.',
   PLATE_IN_USE: 'There’s already an active post for this number plate.',
   MISSING_REQUIRED: 'Some required details are missing. Go back and check each step.',
-  BOUNTY_OUT_OF_RANGE: 'The bounty must be between £50 and £5,000.',
+  // Derived, so this can never quote a floor the database has stopped
+  // enforcing — which it did, saying £50 for nine days after it became £10.
+  BOUNTY_OUT_OF_RANGE: `The bounty must be between ${formatPounds(MIN_BOUNTY_PENCE)} and ${formatPounds(MAX_BOUNTY_PENCE)}.`,
   PHOTO_COUNT: 'Add between 3 and 6 photos of your car.',
   INVALID_STOLEN_FROM: 'Where it was taken from wasn’t recognised. Please reselect it.',
   INVALID_KEYS_TAKEN: 'The “keys taken” answer wasn’t recognised. Please reselect it.',
@@ -131,6 +134,19 @@ const submitAnswersSchema = z.object({
   // answers object is corrupt regardless of which mode was chosen. What 'fee'
   // changes is whether the value is SENT (see buildCreatePostParams), not
   // whether it is valid.
+  //
+  // ⚠️ THIS IS DELIBERATELY STRICTER THAN THE REVIEW GATE, which since
+  // 2026-08-23 stops checking the bounty step in fee mode (navigation.ts:
+  // `invalidStepIds` skips a step `when` is walking past). The two answer
+  // different questions: the gate asks "was this question asked?", this asks
+  // "is the object well-formed?" — a corruption canary, not a business rule.
+  //
+  // So a corrupt fee-mode bounty now ENABLES the pay button and fails here
+  // instead of disabling it. That is the better of two bad outcomes: an error
+  // above the footer is visible and the wizard survives for retry, whereas the
+  // gate refusing had no row to point at (the fee-mode bounty row is hidden)
+  // and no screen to fix it on — a dead end with no explanation. Unreachable
+  // through the slider either way.
   bountyAmountPence: z.number().int().min(MIN_BOUNTY_PENCE).max(MAX_BOUNTY_PENCE),
 });
 

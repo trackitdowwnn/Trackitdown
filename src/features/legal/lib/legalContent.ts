@@ -174,7 +174,13 @@ const TERMS: LegalDocument = {
       heading: 'The bounty and how the money works',
       body: [
         'When you publish a listing you pay the bounty up front. It is held by our payment provider and is not ours to spend.',
-        'The bounty is between £50 and £5,000. All amounts are in pounds sterling.',
+        // ⚠️ The floor moved to £10 on 2026-08-13 and this said £50 until
+        // 2026-08-23 — the Terms stated a minimum the app had stopped enforcing,
+        // so a lawful £10 listing was one the document called impossible. Kept
+        // as a LITERAL rather than interpolated from MIN_BOUNTY_PENCE on purpose:
+        // legal text should change by a decision, not as a side effect of a
+        // constant moving. Whoever moves the floor next must come here too.
+        'The bounty is between £10 and £5,000. All amounts are in pounds sterling.',
         'If a sighting leads to your vehicle being recovered, you credit that sighting. The person who reported it receives 95% of the bounty. We keep 5%.',
         'Only one sighting can be credited per recovery. If several people helped, you choose the one that made the difference. We cannot split a bounty.',
         'If you recover the vehicle without anyone’s help, or you cancel the listing, or it expires, the bounty is refunded to you minus the card processing costs, which the card networks do not return to us. That deduction is shown to you before you pay.',

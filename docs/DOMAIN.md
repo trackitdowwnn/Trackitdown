@@ -273,7 +273,8 @@ Rules that follow, and are not implementation details:
 *(These govern a BOUNTY listing. A no-reward listing has none of them — see
 "Listing pricing" above.)*
 
-- Minimum bounty: £50. Maximum: £5,000 (fraud ceiling — revisit later).
+- Minimum bounty: £10 (lowered from £50 on 2026-08-13). Maximum: £5,000
+  (fraud ceiling — revisit later).
 - **Single winner.** Exactly one sighting can be credited per recovery.
   No splitting in v1. If several spotters contributed, the owner picks the
   decisive one. (Splitting is a known v2 candidate; do not build it early.)

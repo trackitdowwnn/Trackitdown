@@ -67,13 +67,13 @@ export interface PostACarAnswers extends VehicleAnswers {
 
   // --- Phase 3: reward ------------------------------------------------------
   /**
-   * How this listing is paid for (ADR-0014). 'bounty' escrows £50–£5,000 and
+   * How this listing is paid for (ADR-0014). 'bounty' escrows £10–£5,000 and
    * pays 95% of it to a credited spotter; 'fee' charges the fixed platform fee
    * once and offers no cash reward.
    */
   pricingMode: PricingMode;
   /**
-   * Integer GBP pence; £50–£5,000 (5000–500000).
+   * Integer GBP pence, bounded by MIN/MAX_BOUNTY_PENCE (the ONE mirror).
    *
    * KEPT even while pricingMode is 'fee', and deliberately not nullable here.
    * The slider always holds a value, so an owner who tries "no reward" and

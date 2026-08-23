@@ -238,7 +238,7 @@ in the deferred list with its reasoning.
 > to see that it was a decision and not a drift.
 >
 > **What:** a post can now be listed with no bounty for a fixed fee (**£4.99**
-> as decided; **£5 since 2026-08-20**) instead of the 5% of an escrowed bounty
+> as decided; **£5 since 2026-08-22**) instead of the 5% of an escrowed bounty
 > (£50–£5,000 then; **£10–£5,000 since 2026-08-13**). Non-refundable; the spotter gets
 > credit and reputation, not cash.
 >

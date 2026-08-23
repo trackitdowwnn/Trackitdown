@@ -156,6 +156,11 @@ export function WizardScreen<TAnswers>({
   // the answers, but this is a plain string, so the announce effect below fires
   // only when the TEXT changes (a move) — not on every keystroke that mutates
   // `answers` while the wording stays put.
+  //
+  // The review branch reads `answers` too (through invalidStepIds), so its text
+  // CAN change without a move — by design: that is how a fixed answer stops
+  // being announced as blocking. It still cannot fire per keystroke, because
+  // the review screen has no inputs.
   const announcement =
     screen.kind === 'intro'
       ? // Intro descriptors only exist for phases that declare an intro.
@@ -165,8 +170,9 @@ export function WizardScreen<TAnswers>({
         : // The review's landing announcement carries the blocking notice with
           // it, as ONE utterance. Announced separately it fired in the same
           // commit as this one (React flushes child effects before parents) and
-          // iOS VoiceOver cut the title off; on Android the notice's own live
-          // region already speaks, so a second call made TalkBack say it twice.
+          // iOS VoiceOver cut the title off; a live region on that Text made
+          // TalkBack say it twice as well. The notice carries no region now —
+          // this call is what covers Android, on mount and on change alike.
           // Folding it in also means a changed count changes this STRING, so it
           // re-announces on both platforms — which the separate call never did
           // on iOS.

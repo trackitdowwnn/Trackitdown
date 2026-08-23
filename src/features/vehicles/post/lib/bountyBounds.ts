@@ -35,6 +35,19 @@ export const MIN_BOUNTY_PENCE = 1000;
 export const MAX_BOUNTY_PENCE = 500000;
 
 /**
+ * Where the bounty slider starts, integer pence.
+ *
+ * Lives HERE rather than beside the slider component so tests can read it
+ * without loading the native graph — the same reason the bounds moved. Two
+ * suites had to mock the component module and invent this number, which is how
+ * a floor of £50 went on being asserted for nine days after it became £10.
+ *
+ * Mid-range on purpose: it seeds the slider valid and non-dirty. It is NOT a
+ * recommendation, and nothing may present it as one.
+ */
+export const DEFAULT_BOUNTY_PENCE = 25000;
+
+/**
  * Snap stops for the bounty sliders, coarsening as the amount grows.
  *
  * £1 steps below £50 exist BECAUSE the floor is £10: with the old £25 grid the

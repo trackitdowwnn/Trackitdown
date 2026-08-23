@@ -18,6 +18,12 @@
 
 import { render } from '@testing-library/react-native';
 
+import {
+  MAX_BOUNTY_PENCE,
+  MIN_BOUNTY_PENCE,
+} from '@/features/vehicles/post/lib/bountyBounds';
+import { formatPounds } from '@/shared/lib/money';
+
 import { LEGAL_DOCUMENTS, legalDocument } from '../lib/legalContent';
 import { LegalDocumentScreen } from './LegalDocumentScreen';
 
@@ -82,9 +88,18 @@ describe('factual claims the code must keep true', () => {
   const terms = JSON.stringify(LEGAL_DOCUMENTS.terms);
   const privacy = JSON.stringify(LEGAL_DOCUMENTS.privacy);
 
-  it('states the bounty range and the split that DOMAIN.md defines', () => {
-    expect(terms).toContain('£50');
-    expect(terms).toContain('£5,000');
+  it('⚠️ states the bounty range the app actually ENFORCES', () => {
+    // Derived from the bounds, not typed here, and this is the whole point.
+    // The floor moved to £10 on 2026-08-13; the Terms went on saying £50 until
+    // 2026-08-23 — a legal document telling people a £10 listing was impossible
+    // while the app happily took one — and this test SAID £50 too, so it agreed
+    // with the mistake instead of catching it.
+    //
+    // The prose stays a literal on purpose (legal text changes by decision, not
+    // as a side effect of a constant). This is the thread between them: move the
+    // floor without opening the Terms and you fail here.
+    expect(terms).toContain(formatPounds(MIN_BOUNTY_PENCE));
+    expect(terms).toContain(formatPounds(MAX_BOUNTY_PENCE));
     expect(terms).toContain('95%');
     expect(terms).toContain('5%');
   });

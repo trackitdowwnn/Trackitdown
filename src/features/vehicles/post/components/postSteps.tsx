@@ -25,6 +25,7 @@ import { reachAtChosen } from '../lib/bountyRecommendation';
 import { useBountyGuidance } from '../hooks/useBountyGuidance';
 import {
   BOUNTY_SNAP_STEPS,
+  DEFAULT_BOUNTY_PENCE,
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
 } from '../lib/bountyBounds';
@@ -86,8 +87,14 @@ type VehicleStepProps = WizardStepProps<VehicleAnswers>;
  * 20260813120000 moved the floor to £10 in the database. Nothing errored: an
  * owner who could only offer £15 simply could not post, and no screen said why.
  */
-export { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '../lib/bountyBounds';
-export const DEFAULT_BOUNTY_PENCE = 25000;
+// Re-exported for the wizard config and the editors, which have always
+// imported them from here. `export ... from` creates no LOCAL binding, so
+// what this file uses itself is imported above.
+export {
+  DEFAULT_BOUNTY_PENCE,
+  MAX_BOUNTY_PENCE,
+  MIN_BOUNTY_PENCE,
+} from '../lib/bountyBounds';
 
 /**
  * The two pricing modes (ADR-0014), as option cards.

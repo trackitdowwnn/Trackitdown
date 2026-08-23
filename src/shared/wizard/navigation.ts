@@ -222,6 +222,11 @@ export function invalidStepIds<TAnswers>(
       // in the notice, and have no row, no Edit control and no reachable
       // screen to fix it on. Post-a-car's bounty step is exactly that shape
       // and is only saved today by its £250 seed happening to be valid.
+      //
+      // A flow's SUBMIT validation may still be stricter than this — post-a-car's
+      // is, and says why. This gate answers "was the question asked?"; a submit
+      // schema may also ask "is the answers object well-formed?". They are not
+      // the same question and are not required to agree.
       if (step.when && !step.when(answers)) return [];
       return step.schema.safeParse(answers).success ? [] : [step.id];
     }),

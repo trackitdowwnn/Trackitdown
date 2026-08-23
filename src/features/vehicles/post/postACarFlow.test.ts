@@ -41,7 +41,6 @@ jest.mock('./components/postSteps', () => ({
   PricingModeStep: () => null,
   BountyStep: () => null,
   ...jest.requireActual('./lib/bountyBounds'),
-  DEFAULT_BOUNTY_PENCE: 25000,
 }));
 
 const stepById = (id: string) => {

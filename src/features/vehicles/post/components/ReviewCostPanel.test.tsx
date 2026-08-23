@@ -39,8 +39,11 @@ jest.mock('./postSteps', () => ({
   DescriptionStep: () => null,
   PricingModeStep: () => null,
   BountyStep: () => null,
+  // Bounds AND the seed, from the real leaf. Inventing any of them here is the
+  // pattern this file's own header condemns — and the one postACarFlow.test.ts
+  // was just fixed for, where a hard-coded MIN_BOUNTY_PENCE meant a money
+  // boundary was checked against a floor the app had stopped enforcing.
   ...jest.requireActual('../lib/bountyBounds'),
-  DEFAULT_BOUNTY_PENCE: 25000,
 }));
 
 /** The label the pay button shows for the same answers. Resolved here rather
@@ -59,7 +62,9 @@ describe('the sum matches the pay button', () => {
     },
     {
       name: 'the seeded reward nobody moved',
-      answers: { pricingMode: 'bounty', ...POST_A_CAR_INITIAL_ANSWERS },
+      // Spread FIRST so this stays correct even if the seed ever gains a
+      // pricingMode of its own (it deliberately has none today).
+      answers: { ...POST_A_CAR_INITIAL_ANSWERS, pricingMode: 'bounty' },
     },
     {
       name: 'a reward with the amount somehow absent',
@@ -123,6 +128,6 @@ describe('what it says about the money', () => {
     const view = await render(<ReviewCostPanel answers={POST_A_CAR_INITIAL_ANSWERS} />);
 
     expect(view.queryByText(/What you/)).toBeNull();
-    expect(view.queryByText(formatPounds(25000))).toBeNull();
+    expect(view.queryByText(formatPounds(POST_A_CAR_INITIAL_ANSWERS.bountyAmountPence!))).toBeNull();
   });
 });

@@ -50,9 +50,9 @@ import type { WizardFlow } from './types';
  * rather than announced from here. Announcing it separately fired in the same
  * commit as the screen title — React flushes child effects before parents — and
  * iOS VoiceOver interrupts an in-flight announcement, so the notice cut off the
- * title at the exact moment it was most needed. On Android it was worse: the
- * live region below already speaks on mount and on change, so the explicit call
- * made TalkBack say it twice.
+ * title at the exact moment it was most needed. A live region on the Text made
+ * TalkBack say it twice on top of that; there is none now, because the folded
+ * announcement covers Android on mount AND on change.
  *
  * One announcement, built from a string, means it also re-announces on BOTH
  * platforms when the count changes — which the separate call never did on iOS.

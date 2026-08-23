@@ -226,7 +226,7 @@ describe('the blocking gate', () => {
     // PRESENCE, so without this an inverted or over-broad gate would ship
     // green — telling someone with a complete listing that something is wrong,
     // on the screen where the pay button lives.
-    expect(view.queryByText(/needs your attention/)).toBeNull();
+    expect(view.queryByText(/needs? your attention/)).toBeNull();
   });
 });
 
