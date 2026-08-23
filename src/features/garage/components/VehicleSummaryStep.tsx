@@ -15,9 +15,11 @@
  *        same moment for the same reason. THE RULES MOVED WITH IT and are
  *        documented there: the hero is display-only (a tappable artifact under
  *        a yes/no question is a tap-to-affirm trap), and photo chrome uses
- *        `mediaScrim`/`textOnMedia` rather than `overlay`/`textOnPrimary`,
+ *        `surfaceOverMedia`/`textOnMedia` rather than `overlay`/`textOnPrimary`,
  *        which track the page and would flip with the scheme while the
- *        photograph does not. This file keeps only what is about a VEHICLE:
+ *        photograph does not. (The strip was a `mediaScrim` until 2026-08-23;
+ *        at 45% it could not carry 14pt text over a white or silver car.)
+ *        This file keeps only what is about a VEHICLE:
  *        which fields make up the identity, and how the counts read.
  * LINKS: src/shared/ui/MediaIdentityCard.tsx (the layout + its rules);
  *        src/features/garage/lib/prefilledPostFlow.tsx (builds the flow that

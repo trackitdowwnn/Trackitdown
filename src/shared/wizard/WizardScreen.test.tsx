@@ -12,7 +12,15 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Alert, BackHandler, Dimensions, Pressable, StyleSheet, Text } from 'react-native';
+import {
+  AccessibilityInfo,
+  Alert,
+  BackHandler,
+  Dimensions,
+  Pressable,
+  StyleSheet,
+  Text,
+} from 'react-native';
 import { z } from 'zod';
 
 import type { WizardFlow, WizardStepProps } from './types';
@@ -195,6 +203,38 @@ describe('WizardScreen wiring', () => {
 
     await press(view, 'Done');
     expect(view.getByText('Check your answers')).toBeTruthy();
+  });
+
+  it('⚠️ announces the review EXACTLY ONCE on landing', async () => {
+    // ReviewStep used to announce the blocking notice itself, in the same commit
+    // as this title — React flushes child effects before parents — and iOS
+    // VoiceOver interrupts an in-flight announcement, so the title was cut off
+    // at the moment it mattered most. The notice now travels INSIDE this string
+    // (see WizardScreen's `announcement`), so there is only ever one utterance.
+    //
+    // Scope note: this walks a fully-answered flow, so it pins the count, not
+    // the concatenation. blockingNotice's own copy is unit-tested in
+    // ReviewStep.test.tsx — a blocked review is not reachable through this
+    // harness, because every step gates its own Next.
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    const { view } = await renderWizard();
+
+    await press(view, 'Get started');
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    await press(view, 'Next');
+    await press(view, 'Continue');
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-colour'));
+    });
+    announce.mockClear();
+    await press(view, 'Next');
+
+    // Everything answered: the title alone, and exactly once.
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith('Check your answers');
+    announce.mockRestore();
   });
 
   it('routes Android hardware back through the wizard: previous screen mid-flow, exit path on the first screen', async () => {

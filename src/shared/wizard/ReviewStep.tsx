@@ -117,13 +117,15 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
 
       {/* BELOW the header, not above it: the preview is a 4:5 hero, roughly a
           viewport tall, and a notice pointing at "the rows below" from above it
-          is a scroll away from everything it means. */}
+          is a scroll away from everything it means.
+
+          NO accessibilityLiveRegion: WizardScreen's landing announcement already
+          carries this sentence, and announceForAccessibility covers both
+          platforms on mount AND on change. A region here made TalkBack say it
+          twice — the same reason FullscreenLoader and Toast carry the explicit
+          call without one. */}
       {notice ? (
-        <Text
-          accessibilityRole="alert"
-          accessibilityLiveRegion="polite"
-          style={styles.blockingNotice}
-        >
+        <Text accessibilityRole="alert" style={styles.blockingNotice}>
           {notice}
         </Text>
       ) : null}
@@ -199,10 +201,15 @@ const makeStyles = (c: Palette) =>
       ...typography.display,
       color: c.textPrimary,
     },
-    // PostDetailBody's section rhythm: divider → 32 → title → 16 → content.
-    // The 32 has to be the group's OWN padding — the container's 24pt gap sits
-    // above the hairline, not below it, so leaning on it (as this did) left the
-    // title 8pt under the rule and the "~32" claim simply untrue.
+    // PostDetailBody's section rhythm, measured: 32 above each divider (the
+    // last row's 8pt padding + the container's 24pt gap) and 32 below it. The 32
+    // below has to be the group's OWN padding — the container gap sits ABOVE the
+    // hairline, so leaning on it left the title 8pt under the rule.
+    //
+    // Exact between groups. The header→first-group boundary is 24/32, because a
+    // preview caption ends that block with no row padding of its own, and
+    // title→first row lands at 24 (this gap plus the row's 8). Both read fine;
+    // noted so the next reader does not take "32/32 everywhere" literally.
     group: {
       gap: spacing.lg,
       paddingTop: spacing.xxl,

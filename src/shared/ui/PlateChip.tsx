@@ -199,8 +199,16 @@ const makeStyles = (c: Palette) =>
     },
     // Theme-INVARIANT: identical in both schemes, because the photograph under
     // it is too. See the onMedia prop.
+    //
+    // ⚠️ THE HAIRLINE IS THE CHIP. On a surfaceOverMedia strip the fill matches
+    // its background exactly, so the radius and padding draw nothing and the
+    // plate collapses into bold white text inline with the meta line — losing
+    // the treatment DESIGN_SYSTEM defines it BY. Same reasoning the map pill
+    // records: "the edge is what makes it a pill rather than floating text."
     chipOnMedia: {
       backgroundColor: c.surfaceOverMedia,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.textOnMedia,
     },
     chipOnMediaPressed: {
       backgroundColor: c.surfaceOverMediaPressed,

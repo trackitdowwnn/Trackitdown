@@ -15,7 +15,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import { z } from 'zod';
 
-import { ReviewStep } from './ReviewStep';
+import { blockingNotice, ReviewStep } from './ReviewStep';
 import type { WizardFlow } from './types';
 
 interface DemoAnswers {
@@ -170,6 +170,20 @@ describe('rows', () => {
     expect(view.getByText('About you')).toBeTruthy();
     // Twice: the phase heading, and the row whose reviewLabel is also 'Reward'.
     expect(view.getAllByText('Reward')).toHaveLength(2);
+  });
+});
+
+describe('blockingNotice', () => {
+  // Exported because WIZARDSCREEN speaks it, folded into the one landing
+  // announcement. Unit-tested here because a blocked review cannot be walked to
+  // through the WizardScreen harness — every step gates its own Next.
+  it('says nothing when nothing is blocking', () => {
+    expect(blockingNotice(0)).toBeNull();
+  });
+
+  it('counts in words a person would use', () => {
+    expect(blockingNotice(1)).toBe('One answer still needs your attention before you can finish.');
+    expect(blockingNotice(3)).toBe('3 answers still need your attention before you can finish.');
   });
 });
 
