@@ -144,8 +144,32 @@ describe('rows', () => {
     );
 
     expect(view.queryByText('Reward')).toBeNull();
-    // The other phase is untouched.
+    // The other phase's ROWS are untouched. Its heading is gone too, but for a
+    // different reason — it is now the only group, see below.
+    expect(view.getByText('Sam')).toBeTruthy();
+    expect(view.getByText('Blue')).toBeTruthy();
+  });
+
+  it('drops a LONE group’s heading, which only restates the screen', async () => {
+    // "Check your car" over "Your car"; "Check your alert" over "Your alert".
+    // Phase names earn their place by separating phases.
+    const flow = buildFlow();
+    flow.phases[1].steps.forEach((step) => {
+      step.reviewValue = undefined;
+    });
+
+    const view = await render(<ReviewStep flow={flow} answers={ANSWERS} onEdit={jest.fn()} />);
+
+    expect(view.queryByText('About you')).toBeNull();
+    expect(view.getByText('Sam')).toBeTruthy();
+  });
+
+  it('keeps headings once there is more than one group to tell apart', async () => {
+    const view = await render(<ReviewStep flow={buildFlow()} answers={ANSWERS} onEdit={jest.fn()} />);
+
     expect(view.getByText('About you')).toBeTruthy();
+    // Twice: the phase heading, and the row whose reviewLabel is also 'Reward'.
+    expect(view.getAllByText('Reward')).toHaveLength(2);
   });
 });
 
@@ -183,7 +207,12 @@ describe('the blocking gate', () => {
       <ReviewStep flow={buildFlow()} answers={ANSWERS} onEdit={jest.fn()} />,
     );
 
-    expect(view.queryByText('Needs an answer')).toBeNull();
+    expect(view.queryByText('Needs another look')).toBeNull();
+    // ⚠️ And no summary line either. Both of the other tests here assert
+    // PRESENCE, so without this an inverted or over-broad gate would ship
+    // green — telling someone with a complete listing that something is wrong,
+    // on the screen where the pay button lives.
+    expect(view.queryByText(/needs your attention/)).toBeNull();
   });
 });
 

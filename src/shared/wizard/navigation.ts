@@ -184,16 +184,14 @@ export function phaseProgress<TAnswers>(
 }
 
 /** Whether every REQUIRED step's schema in the whole flow accepts the answers.
- *  Steps flagged `optional` are skipped here — their schema still gates their
- *  own Next button, but a skipped optional step must never block the final CTA
- *  (e.g. distinctive features: Next needs ≥1, but "None to add" submits marks-less). */
+ *  Derived from `invalidStepIds` so the gate and the message that explains it
+ *  can never drift: a notice disagreeing with a disabled button is worse than
+ *  no notice at all. */
 export function allStepsValid<TAnswers>(
   flow: WizardFlow<TAnswers>,
   answers: Partial<TAnswers>,
 ): boolean {
-  return flow.phases.every((phase) =>
-    phase.steps.every((step) => step.optional || step.schema.safeParse(answers).success),
-  );
+  return invalidStepIds(flow, answers).length === 0;
 }
 
 /**
@@ -212,9 +210,21 @@ export function invalidStepIds<TAnswers>(
   answers: Partial<TAnswers>,
 ): string[] {
   return flow.phases.flatMap((phase) =>
-    phase.steps.flatMap((step) =>
-      step.optional || step.schema.safeParse(answers).success ? [] : [step.id],
-    ),
+    phase.steps.flatMap((step) => {
+      // `optional` — its schema gates its own Next, never the final CTA.
+      if (step.optional) return [];
+      // ⚠️ WALKED PAST BY `when` — the gate must agree with the walk, or it
+      // demands an answer to a question the flow never asked. `when`'s own doc
+      // told flows to pair it with `optional` to avoid this; relying on every
+      // flow to remember made an INVISIBLE DEAD END possible. Since a skipped
+      // step can now also hide its review row (hideReviewWhenSkipped), a
+      // non-optional one that failed would disable the pay button, be counted
+      // in the notice, and have no row, no Edit control and no reachable
+      // screen to fix it on. Post-a-car's bounty step is exactly that shape
+      // and is only saved today by its £250 seed happening to be valid.
+      if (step.when && !step.when(answers)) return [];
+      return step.schema.safeParse(answers).success ? [] : [step.id];
+    }),
   );
 }
 

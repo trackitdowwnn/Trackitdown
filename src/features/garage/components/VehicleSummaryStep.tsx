@@ -39,6 +39,9 @@ export interface VehicleSummaryStepProps {
 }
 
 export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps) {
+  // Hoisted: narrowing does not survive into the closure below, and a `!`
+  // assertion is a worse way to say the same thing.
+  const plate = vehicle.plate;
   const photoCount = vehicle.photos.length;
   const featureCount = vehicle.distinctiveFeatures.length;
   const meta = [
@@ -61,9 +64,7 @@ export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps)
       // page, so in dark mode it turned charcoal beside white text that did
       // not — a flip the photograph underneath never makes.
       metaLeading={
-        vehicle.plate
-          ? (onMedia) => <PlateChip plate={vehicle.plate!} onPress={null} onMedia={onMedia} />
-          : undefined
+        plate ? (onMedia) => <PlateChip plate={plate} onPress={null} onMedia={onMedia} /> : undefined
       }
       metaText={vehicle.colour ?? undefined}
       caption={meta}

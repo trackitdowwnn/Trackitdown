@@ -35,12 +35,34 @@
  *        return behaviour); docs/DESIGN_SYSTEM.md.
  */
 
-import { useCallback, useEffect, useMemo } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useMemo } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { opacity, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { invalidStepIds, resolveQuestion, reviewGroups, stepFlatIndex } from './navigation';
 import type { WizardFlow } from './types';
+
+/**
+ * The sentence shown when the final CTA is refusing, and the one a screen
+ * reader hears.
+ *
+ * ⚠️ Exported and spoken by WIZARDSCREEN, folded into its landing announcement
+ * rather than announced from here. Announcing it separately fired in the same
+ * commit as the screen title — React flushes child effects before parents — and
+ * iOS VoiceOver interrupts an in-flight announcement, so the notice cut off the
+ * title at the exact moment it was most needed. On Android it was worse: the
+ * live region below already speaks on mount and on change, so the explicit call
+ * made TalkBack say it twice.
+ *
+ * One announcement, built from a string, means it also re-announces on BOTH
+ * platforms when the count changes — which the separate call never did on iOS.
+ */
+export function blockingNotice(count: number): string | null {
+  if (count === 0) return null;
+  return count === 1
+    ? 'One answer still needs your attention before you can finish.'
+    : `${count} answers still need your attention before you can finish.`;
+}
 
 export interface ReviewStepProps<TAnswers> {
   flow: WizardFlow<TAnswers>;
@@ -80,22 +102,7 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
   // can finish and a dead end.
   const blocking = useMemo(() => new Set(invalidStepIds(flow, answers)), [flow, answers]);
 
-  const blockingCount = blocking.size;
-  const blockingNotice =
-    blockingCount === 0
-      ? null
-      : blockingCount === 1
-        ? 'One answer still needs your attention before you can finish.'
-        : `${blockingCount} answers still need your attention before you can finish.`;
-
-  // accessibilityLiveRegion covers Android; iOS VoiceOver ignores live regions,
-  // so the announcement is carried explicitly — the same pair WizardScreen uses
-  // for its submit error.
-  useEffect(() => {
-    if (blockingNotice) {
-      AccessibilityInfo.announceForAccessibility(blockingNotice);
-    }
-  }, [blockingNotice]);
+  const notice = blockingNotice(blocking.size);
 
   const header = flow.review?.header?.(answers, editById);
   const footer = flow.review?.footer?.(answers);
@@ -111,22 +118,39 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
       {/* BELOW the header, not above it: the preview is a 4:5 hero, roughly a
           viewport tall, and a notice pointing at "the rows below" from above it
           is a scroll away from everything it means. */}
-      {blockingNotice ? (
+      {notice ? (
         <Text
           accessibilityRole="alert"
           accessibilityLiveRegion="polite"
           style={styles.blockingNotice}
         >
-          {blockingNotice}
+          {notice}
         </Text>
       ) : null}
 
-      {groups.map((group) => (
-        <View key={group.phaseIndex} style={styles.group}>
-          <Text accessibilityRole="header" style={styles.groupTitle}>
-            {group.title}
-          </Text>
-          {group.items.map(({ step, flatIndex }, rowIndex) => {
+      {groups.map((group, groupIndex) => (
+        <View
+          key={group.phaseIndex}
+          style={[
+            styles.group,
+            // Nothing above it to be parted FROM — the container gap already
+            // spaces it off the title. PostDetailBody sets the same precedent
+            // with `sectionFirst`. Without this the rule read as an underline
+            // of the screen headline, and on the two single-group flows it was
+            // the only hairline on the page.
+            groupIndex === 0 && !header ? styles.groupFirst : null,
+          ]}
+        >
+          {/* A lone group heading only ever restates the screen: "Check your
+              car" over "Your car", "Check your alert" over "Your alert". Phase
+              names earn their place by separating phases. */}
+          {groups.length > 1 ? (
+            <Text accessibilityRole="header" style={styles.groupTitle}>
+              {group.title}
+            </Text>
+          ) : null}
+          <View style={styles.items}>
+            {group.items.map(({ step, flatIndex }, rowIndex) => {
             const label = step.reviewLabel ?? resolveQuestion(step.question, answers);
             // The last row draws NO rule: the next group opens with its own
             // hairline, and the two together drew a pair 24pt apart with
@@ -156,7 +180,8 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
                 </Pressable>
               </View>
             );
-          })}
+            })}
+          </View>
         </View>
       ))}
 
@@ -184,6 +209,15 @@ const makeStyles = (c: Palette) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: c.border,
     },
+    groupFirst: {
+      borderTopWidth: 0,
+      paddingTop: 0,
+    },
+    // ⚠️ NO GAP. The group's 16 is for title→rows; letting it apply BETWEEN
+    // rows too put each hairline 8pt under one row and 24pt over the next, so
+    // it read as an underline of the row above rather than a separator between
+    // two. The rows' own symmetric padding is the rhythm.
+    items: {},
     groupTitle: {
       ...typography.heading,
       color: c.textPrimary,
@@ -219,8 +253,11 @@ const makeStyles = (c: Palette) =>
       ...typography.body,
       color: c.danger,
     },
+    // `body`, not `caption`: the sentence explaining why the pay button is
+    // dead should not be the smallest type on the page, and it was set smaller
+    // than the per-row flag it summarises.
     blockingNotice: {
-      ...typography.caption,
+      ...typography.body,
       color: c.danger,
     },
     // The app's 44pt minimum, as a real box rather than hitSlop alone: hitSlop

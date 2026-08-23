@@ -18,12 +18,21 @@
  *        back into the flow they were finishing. Confirming is the footer's
  *        primary; changing anything is the explicit link.
  *
- *        ⚠️ PHOTO CHROME USES `mediaScrim` / `textOnMedia`, NEVER `overlay` /
- *        `textOnPrimary`. The latter track the PAGE and flip with the colour
- *        scheme; a photograph is exactly as bright in dark mode as in light,
- *        so chrome sitting on one must not flip with it (see theme/c.ts). The
+ *        ⚠️ PHOTO CHROME USES `surfaceOverMedia` / `textOnMedia`, NEVER
+ *        `overlay` / `textOnPrimary`. The latter track the PAGE and flip with
+ *        the colour scheme; a photograph is exactly as bright in dark mode as
+ *        in light, so chrome sitting on one must not flip with it. The
  *        full-width strip is deliberate too — a floating pill cannot promise
  *        the text a consistent backing on an arbitrary photo.
+ *
+ *        ⚠️ AND IT IS OPAQUE, not a `mediaScrim`. At rgba(0,0,0,0.45) over a
+ *        white or silver car — the two commonest UK colours — white 14pt text
+ *        composites to about 3.4:1, which fails AA, and one of those runs is
+ *        the interactive Edit. DESIGN_SYSTEM.md files `surfaceOverMedia` as the
+ *        convention for exactly this (camera counters, the photo-count pill);
+ *        `mediaScrim` is for gradients BEHIND chrome, not for carrying it. The
+ *        strip promised "a consistent backing on any photo" and at 0.45 could
+ *        not deliver it.
  *
  *        The no-photo branch puts the identity in standard ink below the
  *        frame: there is nothing to protect the text against, and white on
@@ -103,10 +112,16 @@ export function MediaIdentityCard({
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
 
-  // A separator only when both halves are present, so neither branch renders a
-  // stray "· ".
-  const meta = metaLeading && metaText ? `· ${metaText}` : metaText;
   const leading = metaLeading?.(Boolean(uri));
+  // A separator only when both halves actually RENDER. Keyed off the prop this
+  // tested the function's existence, which is always truthy — so the natural
+  // `(onMedia) => plate ? <Chip/> : null` would have printed "· Blue" beside
+  // nothing.
+  //
+  // Note this unifies the two branches: the original only prefixed on the photo
+  // strip, so a plate-and-no-photo car now reads "AB12 CDE · Blue" below the
+  // frame as well. Deliberate — one card should not punctuate itself two ways.
+  const meta = leading && metaText ? `· ${metaText}` : metaText;
 
   return (
     <View style={styles.block} testID={testID}>
@@ -147,10 +162,14 @@ export function MediaIdentityCard({
           <View
             style={styles.heroPlaceholder}
             accessible
+            accessibilityRole="image"
             accessibilityLabel="No photo added yet"
           >
+            {/* sizes.icon (24) is the tab-bar/action-row size and vanishes in a
+                4:5 frame — a speck reads as broken, not calm. borderStrong so it
+                reads as a frame mark rather than as content. */}
             {PlaceholderIcon ? (
-              <PlaceholderIcon size={sizes.icon} color={palette.textSecondary} />
+              <PlaceholderIcon size={sizes.avatarLg} color={palette.borderStrong} />
             ) : null}
           </View>
         )}
@@ -206,15 +225,16 @@ const makeStyles = (c: Palette) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    // The identity, protected by the app's one overlay tone (photo-chrome
-    // precedent: CameraCapture, PhotoGridPicker). Full-width strip, not a
-    // floating pill — the text needs a consistent backing on any photo.
+    // The identity, on the token minted for chrome over photography — opaque
+    // and identical in both palettes, because the photo underneath is too.
+    // Full-width strip, not a floating pill: the text needs a consistent
+    // backing on any photo, and a translucent one cannot give it (see header).
     identityStrip: {
       position: 'absolute',
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: c.mediaScrim,
+      backgroundColor: c.surfaceOverMedia,
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.md,
       flexDirection: 'row',

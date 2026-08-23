@@ -29,6 +29,10 @@ export {
   type ConfirmDialogRef,
 } from './ConfirmDialog';
 export { ListRow, type ListRowProps } from './ListRow';
+export {
+  MediaIdentityCard,
+  type MediaIdentityCardProps,
+} from './MediaIdentityCard';
 export { NudgeRow, type NudgeRowProps } from './NudgeRow';
 export { ToastProvider, useToast, useOptionalToast, type ToastKind } from './Toast';
 export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
@@ -115,10 +119,6 @@ export {
 export { PlateChip, spellPlate, type PlateChipProps } from './PlateChip';
 export { RadiusSlider, type RadiusSliderProps } from './RadiusSlider';
 export { SafetyNotice, SAFETY_NOTICE_BODY, SAFETY_NOTICE_TITLE } from './SafetyNotice';
-export {
-  MediaIdentityCard,
-  type MediaIdentityCardProps,
-} from './MediaIdentityCard';
 export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';

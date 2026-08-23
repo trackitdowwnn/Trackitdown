@@ -10,12 +10,23 @@
  * LINKS: src/features/vehicles/post/postACarFlow.tsx, docs/TESTING.md.
  */
 
+import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from './lib/bountyBounds';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from './postACarFlow';
 import type { PostACarAnswers } from './types';
 
 // Stub the step components + their exported consts so the config loads without
 // pulling in AppMap / MoneySlider / PhotoGridPicker native deps. (babel-jest
 // hoists these jest.mock calls above the imports above.)
+// ⚠️ THE BOUNDS ARE RE-EXPORTED FROM THE REAL MODULE, NEVER RETYPED.
+// They were literals here — MIN_BOUNTY_PENCE: 5000 — so the "bounty must be
+// within" test below asserted against a floor of £50 that the app stopped
+// enforcing on 2026-08-13. It passed the whole time. A money boundary on the
+// payment path was guarded by a number the test itself invented, and the floor
+// could have gone back to £50 with nothing failing — which is exactly how the
+// original £50/£10 divergence survived nine days.
+//
+// lib/bountyBounds has no imports at all, so requiring it here pulls in none of
+// the native graph this mock exists to avoid.
 jest.mock('./components/postSteps', () => ({
   MakeStep: () => null,
   ModelStep: () => null,
@@ -29,8 +40,7 @@ jest.mock('./components/postSteps', () => ({
   DescriptionStep: () => null,
   PricingModeStep: () => null,
   BountyStep: () => null,
-  MIN_BOUNTY_PENCE: 5000,
-  MAX_BOUNTY_PENCE: 500000,
+  ...jest.requireActual('./lib/bountyBounds'),
   DEFAULT_BOUNTY_PENCE: 25000,
 }));
 
@@ -156,10 +166,17 @@ describe('step gating', () => {
     expect(passes('photos', { photos: Array(7).fill(photo) })).toBe(false);
   });
 
-  it('bounty must be within £50–£5,000', () => {
-    expect(passes('bounty', { bountyAmountPence: 4999 })).toBe(false);
-    expect(passes('bounty', { bountyAmountPence: 25000 })).toBe(true);
-    expect(passes('bounty', { bountyAmountPence: 500001 })).toBe(false);
+  it('bounty must be within the ONE mirror’s bounds', () => {
+    // Asserted against the constants, never literals — see the mock above.
+    expect(passes('bounty', { bountyAmountPence: MIN_BOUNTY_PENCE - 1 })).toBe(false);
+    expect(passes('bounty', { bountyAmountPence: MIN_BOUNTY_PENCE })).toBe(true);
+    expect(passes('bounty', { bountyAmountPence: MAX_BOUNTY_PENCE })).toBe(true);
+    expect(passes('bounty', { bountyAmountPence: MAX_BOUNTY_PENCE + 1 })).toBe(false);
+  });
+
+  it('⚠️ the floor is £10, the figure the database enforces', () => {
+    // Named explicitly so a silent revert to £50 fails HERE and not in support.
+    expect(MIN_BOUNTY_PENCE).toBe(1000);
   });
 
   it('last-seen-where needs a settled location', () => {

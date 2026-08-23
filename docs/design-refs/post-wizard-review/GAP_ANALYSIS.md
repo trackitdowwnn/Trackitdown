@@ -120,15 +120,33 @@ folder — the spec is inferred from published teardowns, and the numbers are
 directional. Adding 5–8 captures of the reference flow would let the next pass
 measure rather than infer, as `post-detail/` did.
 
-## Raised in review and deliberately left
+## Fixed on the second review pass
 
-- **`mediaScrim` at 0.45 is not AA over a bright photo.** White `textOnMedia`
-  over `rgba(0,0,0,0.45)` lands near 2.9:1 on a white or silver car — the two
-  commonest UK colours. Real, and **not fixed here**: `mediaScrim` is the app's
-  shared photo-chrome token (`CameraCapture`, `PhotoGridPicker` use it too), so
-  darkening it for one card would fork the system. It wants a token-level
-  decision — an opaque `surfaceOverMedia` strip or a gradient — across every
-  photo-chrome surface at once.
+- **The identity strip was not AA over a bright photo.** White 14pt text over
+  `mediaScrim` (`rgba(0,0,0,0.45)`) composites to about 3.4:1 on a white or
+  silver car — the two commonest UK colours — and one of those runs is the
+  **interactive Edit**. The first pass recorded this as a token-level issue to
+  defer; that was wrong. `DESIGN_SYSTEM.md` already files `surfaceOverMedia`
+  (opaque `#222222`, identical in both palettes) as the convention for chrome
+  CARRYING text on photography — camera counters, the photo-count pill — while
+  `mediaScrim` is for gradients BEHIND chrome. Using the right token is not
+  forking the system, and it fixes the whole strip at once.
+- **The submit gate ignored `when`.** `allStepsValid` skipped only `optional`
+  steps, so a non-optional step being walked past still had to validate. Once a
+  skipped step could also hide its review row, that combination could disable
+  the pay button, count itself in the notice, and offer no row, no Edit and no
+  reachable screen to fix it on. The gate now agrees with the walk, and
+  `allStepsValid` is derived from `invalidStepIds` so the button and the
+  sentence explaining it cannot drift.
+- **The blocking notice was announced twice, and cut off the screen title.**
+  It now travels inside `WizardScreen`'s single landing announcement.
+- **A money-boundary test was asserting against a stale mock.**
+  `postACarFlow.test.ts` mocked `MIN_BOUNTY_PENCE: 5000` and asserted £49.99
+  was refused — against a floor the app stopped enforcing on 2026-08-13. It
+  passed the whole time. The mock now re-exports the real bounds, and the floor
+  has its own named assertion.
+
+## Raised in review and deliberately left
 - **The caption restates two rows.** The preview says "5 photos and 2
   distinctive features"; the Photos and Distinctive features rows still say
   "5 added" / "2 added" further down. Mild duplication, kept on purpose: the
@@ -139,3 +157,11 @@ measure rather than infer, as `post-detail/` did.
   the fold. Left alone because this heading is shared by all four wizards'
   review screens and changing it is a framework-wide type decision, not a
   post-a-car one.
+- **Expanding from the review still resets to screen 0.** A saved car with
+  enough photos sends the preview's Edit to the confirm step, whose own Edit
+  expands the flow — changing the screen-list identity, which the navigation
+  reducer answers with a full `reset` (a documented SAFETY behaviour, because
+  that path ends in a Stripe charge). Pre-existing, but the preview is now the
+  largest tap target on the screen, so it is a hotter path than it was. Fixing
+  it means teaching `reset` to preserve position across a widening flow, which
+  is a navigation change, not a review-step one.

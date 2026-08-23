@@ -133,7 +133,7 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
 - **One RPC, `create_post` (SECURITY DEFINER)** — the single write boundary.
   Assembles the draft post + photos + feature tags atomically and
   **re-validates server-side** everything the client's zod
-  checked: bounty £50–£5,000, 3–6 photos, required fields, and the
+  checked: bounty £10–£5,000, 3–6 photos, required fields, and the
   `stolen_from`/`keys_taken` enums. (It still enforces plate format +
   one-active-post-per-plate when a plate is given, but the wizard now always
   sends `p_plate: null` — plate capture is deferred.) Hard-codes
@@ -202,7 +202,7 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
   private, own-folder bucket.
 - SECURITY_AND_TRUST §6 — RLS/grants deny-by-default; status & financial columns
   server-owned; SECURITY DEFINER hardening; `create_post` denied to anon.
-- DOMAIN.md — draft → pending_verification → active lifecycle; £50–£5,000 bounty;
+- DOMAIN.md — draft → pending_verification → active lifecycle; £10–£5,000 bounty;
   90-day default expiry. `stolen_from = 'driveway'` marks the last-seen point as
   the owner's home — coarsened for non-owners downstream (already handled in
   `get_post_detail`; the approve-to-active path must coarsen too).

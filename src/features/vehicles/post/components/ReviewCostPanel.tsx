@@ -68,12 +68,14 @@ export function ReviewCostPanel({ answers }: ReviewCostPanelProps) {
     ? // Matches the pricing card's own wording — two screens describing the
       // same fee must not describe it differently.
       'A one-off fee to list. Not refundable.'
-    : // "of it" is load-bearing: card processing costs never come back, so a
-      // flat "it comes back to you" would be untrue. The figure is the exact
-      // one estimateRefundPence gives the slider two screens earlier.
+    : // The gap between the two figures is NAMED. "of it" alone was truthful —
+      // estimateRefundPence already nets the card costs off — but it left the
+      // difference unexplained on the commitment surface, and the natural
+      // misreading is that we keep it. Same clause as defaultBountyPanelCopy,
+      // where they first saw it.
       `Held when your listing goes live. You only pay it if a spotter finds your car; otherwise ${formatPounds(
         estimateRefundPence(bountyPence),
-      )} of it comes back to you.`;
+      )} of it comes back to you — card processing costs are not refundable.`;
 
   return (
     <View style={styles.block} testID="review-cost-panel">
@@ -93,10 +95,10 @@ export function ReviewCostPanel({ answers }: ReviewCostPanelProps) {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    // Matches ReviewStep's own group rhythm — a hairline, then room — so the
-    // money reads as the last section rather than a bolted-on box.
+    // Matches ReviewStep's own group rhythm — a hairline, then 32, then a 16
+    // gap — so the money reads as the last section rather than a bolted-on box.
     block: {
-      gap: spacing.md,
+      gap: spacing.lg,
       paddingTop: spacing.xxl,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: c.border,

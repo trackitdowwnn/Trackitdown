@@ -40,9 +40,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAndroidKeyboardHeight } from '../hooks';
 import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
-import { resolveQuestion } from './navigation';
+import { invalidStepIds, resolveQuestion } from './navigation';
 import { PhaseIntro } from './PhaseIntro';
-import { ReviewStep } from './ReviewStep';
+import { blockingNotice, ReviewStep } from './ReviewStep';
 import { WizardFooter } from './WizardFooter';
 import { WizardHeader } from './WizardHeader';
 import { WizardProgressBar } from './WizardProgressBar';
@@ -162,7 +162,20 @@ export function WizardScreen<TAnswers>({
         (flow.phases[screen.phaseIndex].intro?.headline ?? '')
       : screen.kind === 'step'
         ? resolveQuestion(screen.step.question, answers)
-        : (flow.review?.title ?? 'Check your answers');
+        : // The review's landing announcement carries the blocking notice with
+          // it, as ONE utterance. Announced separately it fired in the same
+          // commit as this one (React flushes child effects before parents) and
+          // iOS VoiceOver cut the title off; on Android the notice's own live
+          // region already speaks, so a second call made TalkBack say it twice.
+          // Folding it in also means a changed count changes this STRING, so it
+          // re-announces on both platforms — which the separate call never did
+          // on iOS.
+          [
+            flow.review?.title ?? 'Check your answers',
+            blockingNotice(invalidStepIds(flow, answers).length),
+          ]
+            .filter(Boolean)
+            .join('. ');
   // Tell screen-reader users what screen they landed on after each move.
   // INVARIANT: adjacent screens must have DISTINCT text — a move to a screen
   // whose text equals the previous one won't re-announce (dep is the string).

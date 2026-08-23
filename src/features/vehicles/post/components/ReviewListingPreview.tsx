@@ -86,13 +86,12 @@ function captionLine(answers: Partial<PostACarAnswers>): string | undefined {
   if (photos === 0 && marks === 0) {
     return undefined;
   }
+  // Each clause only when its count is non-zero. Guarding just the 0/0 case
+  // still printed "Spotters will have 0 photos and 1 distinctive feature to go
+  // on" — the same scolding, one clause narrower.
   const parts = [
-    photos === 1 ? '1 photo' : `${photos} photos`,
-    marks > 0
-      ? marks === 1
-        ? '1 distinctive feature'
-        : `${marks} distinctive features`
-      : null,
+    photos > 0 ? (photos === 1 ? '1 photo' : `${photos} photos`) : null,
+    marks > 0 ? (marks === 1 ? '1 distinctive feature' : `${marks} distinctive features`) : null,
   ].filter((part): part is string => Boolean(part));
   // "Distinctive features", not "marks": every other surface in the app calls
   // them that, including the row a few inches below this one.
