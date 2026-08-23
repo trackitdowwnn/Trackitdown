@@ -341,8 +341,9 @@ difference is the whole of that rule's own reasoning:
 > *adding a car first is strictly slower than reporting*
 
 True for someone with **no** saved car, which is who that rule is about. They
-never see this screen: the **+** goes straight to the blank wizard unless the
-cached signal already says there are cars to choose between. For someone who
+pass through this screen without acting on it: since 2026-08-22 the **+** sends
+everyone except a confirmed `'none'` here, and the screen replaces itself with
+the blank wizard the moment it knows it has nothing to offer. For someone who
 **does** have one, choosing it is strictly **faster** than retyping it — the
 point of the entire feature, and this is the only way most people will find it.
 Same principle, opposite conclusion. **Do not delete this as contradicting the
@@ -350,15 +351,27 @@ exit-sheet rule: they cover disjoint users and can never both fire.**
 
 | | Where | When | Interrupts? |
 |---|---|---|---|
-| **"Which car?"** | `ChooseCarToReportScreen` at `/report-stolen` | Tapping **+** with **≥ 1 saved, unposted car** | It IS the destination — no extra tap for anyone else |
+| **"Which car?"** | `ChooseCarToReportScreen` at `/report-stolen` | Tapping **+** unless the garage is confirmed **empty** | It IS the destination — anyone with nothing to choose is replaced straight out to the wizard |
 
 What keeps it honest:
 
 - **The decision happens before the tap.** `(tabs)/_layout.tsx` reads
-  `useHasSavedCar` and picks the route up front, so there is no spinner and no
-  chooser that turns out to be empty. `'unknown'` — guest, still loading, failed
-  fetch — means the blank wizard: the honest default is the one that always
-  works. This is the one place `enabled` is unconditional, because unlike the
+  `useHasSavedCar` and picks the route up front, so there is no spinner for the
+  common case. ⚠️ **Only a confirmed `'none'` skips the chooser** (changed
+  2026-08-22). `'unknown'` used to mean the blank wizard on the reasoning that
+  "the honest default is the one that always works" — but the **+** is
+  auth-gated, and `'unknown'` is precisely what a **guest** reports, so the
+  overwhelmingly common path was: tap **+**, sign in through the sheet, and get
+  a route chosen while still signed out. Saved cars were never offered. It was
+  wrong a second way even when signed in, because the garage fetch is in flight
+  for a beat after sign-in.
+
+  Sending `'unknown'` to the chooser is safe **because the chooser
+  self-corrects**: `nothingToOffer` replaces it with `/post-a-car`. The cost is
+  a brief spinner for someone with no cars; the cost of the old reading was
+  silently withholding the feature from everyone who had just signed in.
+
+  This is the one place `enabled` is unconditional, because unlike the
   nudges the answer is needed for *every* signed-in user; it is still one
   `list_my_vehicles` per app session, not per mount.
 - **Never a dead end.** "It's a different car" is always present; a failed
