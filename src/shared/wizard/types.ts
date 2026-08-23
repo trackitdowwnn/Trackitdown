@@ -71,8 +71,13 @@ export interface WizardStep<TAnswers> {
    * still works: an edit spur jumps by index and returns to review.
    *
    * A predicate on ANSWERS, re-read on every move, so keep it cheap and free of
-   * side effects. Pair it with `optional`, or the review CTA will demand an
-   * answer to a question the flow never asked.
+   * side effects.
+   *
+   * This used to say "pair it with `optional`, or the review CTA will demand an
+   * answer to a question the flow never asked". It no longer needs to: since
+   * 2026-08-23 the gate itself skips a step being walked past (navigation.ts,
+   * `invalidStepIds`). Relying on every flow author to remember is what made an
+   * invisible dead end possible in the first place.
    */
   when?: (answers: Partial<TAnswers>) => boolean;
   /**
@@ -109,6 +114,21 @@ export interface WizardStep<TAnswers> {
   reviewLabel?: string;
   /** Renders this step's answer as review text; omit to hide from review. */
   reviewValue?: (answers: Partial<TAnswers>) => string;
+  /**
+   * Drop this step's review row while `when` is walking past it.
+   *
+   * DEFAULT FALSE, and read `when` above before setting it: a surviving row is
+   * usually the RIGHT answer, because an answer nobody was asked for is
+   * precisely the one they need a chance to correct. That is the garage plate
+   * step, where a photo scan produced a real registration the owner confirmed.
+   *
+   * Set it only when the hidden answer is a SEED rather than something the
+   * person gave. Post-a-car's bounty is initialised to £250 and skipped
+   * entirely in fee mode, so the review was showing "Bounty £250" directly above
+   * "Post & pay £5" — a sum nobody chose and nobody will be charged, on the one
+   * screen that must be exact about money.
+   */
+  hideReviewWhenSkipped?: boolean;
 }
 
 export interface WizardPhaseIntro {
@@ -140,6 +160,33 @@ export interface WizardFlow<TAnswers> {
   review?: {
     /** Review screen heading; defaults to "Check your answers". */
     title?: string;
+    /**
+     * Rendered ABOVE the answer groups — a preview of the thing being made,
+     * which for a listing is its cover photo and identity. A row reading
+     * "Photos — 5 added" tells someone how many they picked, never whether a
+     * stranger could recognise the car from them.
+     *
+     * The FEATURE builds the element and passes it in; shared/ stays
+     * feature-agnostic (ARCHITECTURE rule 2), the same way VehicleCard takes
+     * `topRightAction`. `editStep` jumps by step id so a flow never has to know
+     * its own index arithmetic.
+     *
+     * Pass an ORDERED LIST when the right target depends on how the flow was
+     * composed, and it jumps to the first id that exists. The prefilled post
+     * flow needs this: it drops the photos step entirely when the saved car
+     * already has enough, so a preview hard-wired to `photos` would render an
+     * Edit control that silently does nothing.
+     */
+    header?: (
+      answers: Partial<TAnswers>,
+      editStep: (stepId: string | string[]) => void,
+    ) => ReactNode;
+    /**
+     * Rendered BELOW the answer groups — what this is about to cost. Optional
+     * because most flows commit nothing: only the two that end in a card charge
+     * use it.
+     */
+    footer?: (answers: Partial<TAnswers>) => ReactNode;
   };
   /**
    * Label of the very last screen's primary button — high-information per

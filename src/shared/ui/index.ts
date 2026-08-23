@@ -29,6 +29,10 @@ export {
   type ConfirmDialogRef,
 } from './ConfirmDialog';
 export { ListRow, type ListRowProps } from './ListRow';
+export {
+  MediaIdentityCard,
+  type MediaIdentityCardProps,
+} from './MediaIdentityCard';
 export { NudgeRow, type NudgeRowProps } from './NudgeRow';
 export { ToastProvider, useToast, useOptionalToast, type ToastKind } from './Toast';
 export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';

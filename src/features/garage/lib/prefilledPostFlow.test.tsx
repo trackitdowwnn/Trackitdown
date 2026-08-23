@@ -37,7 +37,16 @@ jest.mock('@/features/vehicles/post/components/postSteps', () => ({
 const baseFlow = {
   id: 'post-a-car',
   finalCtaLabel: 'Post & pay',
-  review: { title: 'Check your report' },
+  review: {
+    title: 'Check your report',
+    // Stands in for ReviewListingPreview: the real one calls editStep('photos')
+    // when its Edit is pressed. Calling it on render keeps the test synchronous
+    // — what is under test is what the WRAPPER forwards, not the press.
+    header: (_answers: unknown, editStep: (id: string | string[]) => void) => {
+      editStep('photos');
+      return null;
+    },
+  },
   phases: [
     {
       id: 'car',
@@ -131,6 +140,41 @@ describe('collapsed vehicle phase', () => {
     const { flow } = build(vehicle());
 
     expect(carPhase(flow).steps[0].schema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('the review preview’s edit target', () => {
+  // The base flow's preview offers an Edit that jumps to the `photos` step.
+  // This composition DROPS that step whenever the saved car already has enough
+  // photos — so hard-wired, the Edit silently did nothing. The wrapper appends
+  // the confirm step as a fallback candidate.
+  const targetFor = (v: SavedVehicle, expanded = false) => {
+    const { flow } = build(v, expanded);
+    let asked: string | string[] | undefined;
+    flow.review?.header?.({}, (stepId) => {
+      asked = stepId;
+    });
+    return asked;
+  };
+
+  it('⚠️ falls back to the confirm step when the photos step was dropped', () => {
+    // Four photos — the photos step is gone.
+    expect(targetFor(vehicle())).toEqual(['photos', 'vehicle-summary']);
+  });
+
+  it('still prefers the photos step when it survived', () => {
+    // One photo — short of the three needed to post, so the step is kept, and
+    // `photos` wins as the FIRST candidate.
+    const short = vehicle({ photos: [{ url: 'https://x/a.jpg', position: 0 }] });
+    const target = targetFor(short);
+
+    expect(Array.isArray(target) ? target[0] : target).toBe('photos');
+  });
+
+  it('leaves the expanded flow’s header untouched', () => {
+    // Expanded returns baseFlow verbatim: all seven steps are back, so `photos`
+    // exists and needs no fallback.
+    expect(targetFor(vehicle(), true)).toBe('photos');
   });
 });
 

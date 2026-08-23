@@ -15,6 +15,7 @@ import {
   canProceed,
   ctaLabel,
   flattenFlow,
+  invalidStepIds,
   phaseProgress,
   resolveQuestion,
   reviewGroups,
@@ -235,6 +236,37 @@ describe('canProceed (validation gating)', () => {
     expect(canProceed(flow, screens[REVIEW_INDEX], {})).toBe(false);
   });
 
+  it('⚠️ a WALKED-PAST step never blocks the review CTA either', () => {
+    // Distinct from `optional`, and the only executable guard on it. A step
+    // `when` is stepping over was still being validated, so a non-optional one
+    // that failed disabled the pay button — and once such a step can also hide
+    // its review row, there is no row to point at, no Edit, and no screen to fix
+    // it on. Post-a-car's bounty step in fee mode is exactly that shape.
+    const withSkipped: WizardFlow<DemoAnswers> = {
+      ...flow,
+      phases: flow.phases.map((phase) => ({
+        ...phase,
+        steps: phase.steps.map((step) =>
+          // NOT optional — that is the point.
+          step.id === 'colour' ? { ...step, when: () => false } : step,
+        ),
+      })),
+    };
+    const reviewScreen = flattenFlow(withSkipped).find((s) => s.kind === 'review')!;
+    const noColour = { ...completeAnswers, colour: '' };
+
+    expect(canProceed(withSkipped, reviewScreen, noColour)).toBe(true);
+    expect(invalidStepIds(withSkipped, noColour)).not.toContain('colour');
+  });
+
+  it('but a step that is NEITHER optional NOR walked past still blocks it', () => {
+    // The gate did not get weaker: the same failing answer, with `when` absent.
+    expect(invalidStepIds(flow, { ...completeAnswers, colour: '' })).toContain('colour');
+    expect(canProceed(flow, screens[REVIEW_INDEX], { ...completeAnswers, colour: '' })).toBe(
+      false,
+    );
+  });
+
   it('an OPTIONAL step never blocks the review CTA even when its schema fails (skipped)', () => {
     // Make the colour step optional; its schema still needs a colour, but a
     // skipped optional step must not disable the final CTA (the marks-step bug).
@@ -286,7 +318,7 @@ describe('ctaLabel', () => {
 
 describe('reviewGroups', () => {
   it('groups reviewable steps by phase with their flat indices', () => {
-    const groups = reviewGroups(flow);
+    const groups = reviewGroups(flow, {});
     expect(groups.map((group) => group.title)).toEqual(['About you', 'Preferences']);
     expect(groups[0].items.map((item) => item.flatIndex)).toEqual([1, 2]);
     expect(groups[1].items.map((item) => item.flatIndex)).toEqual([4]);

@@ -40,9 +40,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAndroidKeyboardHeight } from '../hooks';
 import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
-import { resolveQuestion } from './navigation';
+import { invalidStepIds, resolveQuestion } from './navigation';
 import { PhaseIntro } from './PhaseIntro';
-import { ReviewStep } from './ReviewStep';
+import { blockingNotice, ReviewStep } from './ReviewStep';
 import { WizardFooter } from './WizardFooter';
 import { WizardHeader } from './WizardHeader';
 import { WizardProgressBar } from './WizardProgressBar';
@@ -156,13 +156,32 @@ export function WizardScreen<TAnswers>({
   // the answers, but this is a plain string, so the announce effect below fires
   // only when the TEXT changes (a move) — not on every keystroke that mutates
   // `answers` while the wording stays put.
+  //
+  // The review branch reads `answers` too (through invalidStepIds), so its text
+  // CAN change without a move — by design: that is how a fixed answer stops
+  // being announced as blocking. It still cannot fire per keystroke, because
+  // the review screen has no inputs.
   const announcement =
     screen.kind === 'intro'
       ? // Intro descriptors only exist for phases that declare an intro.
         (flow.phases[screen.phaseIndex].intro?.headline ?? '')
       : screen.kind === 'step'
         ? resolveQuestion(screen.step.question, answers)
-        : (flow.review?.title ?? 'Check your answers');
+        : // The review's landing announcement carries the blocking notice with
+          // it, as ONE utterance. Announced separately it fired in the same
+          // commit as this one (React flushes child effects before parents) and
+          // iOS VoiceOver cut the title off; a live region on that Text made
+          // TalkBack say it twice as well. The notice carries no region now —
+          // this call is what covers Android, on mount and on change alike.
+          // Folding it in also means a changed count changes this STRING, so it
+          // re-announces on both platforms — which the separate call never did
+          // on iOS.
+          [
+            flow.review?.title ?? 'Check your answers',
+            blockingNotice(invalidStepIds(flow, answers).length),
+          ]
+            .filter(Boolean)
+            .join('. ');
   // Tell screen-reader users what screen they landed on after each move.
   // INVARIANT: adjacent screens must have DISTINCT text — a move to a screen
   // whose text equals the previous one won't re-announce (dep is the string).

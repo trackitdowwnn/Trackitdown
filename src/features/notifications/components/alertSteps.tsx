@@ -221,7 +221,7 @@ export function FiltersStep({ answers, setAnswers }: StepProps) {
       <MoneySlider
         label="Only if the bounty is at least"
         valuePence={bountyPence}
-        // £50 is the floor every post already clears, so treat it as "any"
+        // the lowest stop is the floor every post already clears, so treat it as "any"
         // rather than storing a filter that can never exclude anything.
         onChangePence={(pence) =>
           setAnswers({ minBountyPence: pence <= BOUNTY_MIN_PENCE ? null : pence })

@@ -63,7 +63,7 @@ commenting standards.
   (`draft → active` on payment). Anti-stalking therefore rests on
   accountability and reaction, not prevention:
   - **Not anonymous, not free.** Every post is a real account with a card on
-    file and a £50–£5,000 bounty in escrow. Posting to track a person costs
+    file and a £10–£5,000 bounty in escrow. Posting to track a person costs
     money and is traceable to a payment instrument.
   - **Report → flag → takedown.** `post_flags` captures durable, attributable
     reports (`flag_post`); a moderator takes a post down via the
@@ -254,7 +254,7 @@ commenting standards.
   must appear in the privacy policy and the Art. 30 record.**
 - **Two pricing modes since 2026-08-20 (ADR-0014), and the amount is
   server-authoritative in both.** A post carries EITHER a bounty (escrowed) OR a
-  fixed £4.99 listing fee — never both, never neither, enforced by a table CHECK.
+  fixed £5 listing fee — never both, never neither, enforced by a table CHECK.
   The client never sends either amount, and specifically **never sends the fee**:
   `create_post` stamps it from `current_listing_fee_pence()` and
   `posts.listing_fee_pence` is deliberately absent from the client column grants,

@@ -8,7 +8,8 @@
  *        two questions on separate screens, this shows them STACKED: an editor is
  *        opened to change one known thing, and paging inside an overlay to reach
  *        the slider would be a worse version of the flow the owner already left.
- *        The slider is bounded to £50–£5,000, so any value is valid → Save is
+ *        The slider is bounded by MIN/MAX_BOUNTY_PENCE (the ONE mirror, never a
+ *        literal), so any value is valid → Save is
  *        always available once a mode is chosen. MONEY: re-validated server-side
  *        (BOUNTY_OUT_OF_RANGE), and the fee price is stamped by the server, never
  *        sent from here.

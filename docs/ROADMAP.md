@@ -25,7 +25,7 @@ v1 scope, stop and flag it.
       `active`. See DOMAIN.md and SECURITY_AND_TRUST.md §2's open gap.
       **Extended 2026-08-20 — TWO PRICING MODES (ADR-0014).** The reward phase
       now asks *whether* to offer one before asking how much: a bounty
-      (£50–£5,000, escrowed, 95/5) or a fixed **£4.99 listing fee**, no cash
+      (£10–£5,000, escrowed, 95/5) or a fixed **£5 listing fee**, no cash
       reward. See the scope note below — this is an addition the 2026-08-05
       review's "Add nothing" instruction did not sanction, taken deliberately.
 - [ ] Moderator queue (simple internal web page) — flags, disputes and
@@ -237,8 +237,9 @@ in the deferred list with its reasoning.
 > because it **breaks the rule this section sets** and the next reader deserves
 > to see that it was a decision and not a drift.
 >
-> **What:** a post can now be listed with no bounty for a fixed **£4.99** fee
-> instead of the 5% of an escrowed £50–£5,000. Non-refundable; the spotter gets
+> **What:** a post can now be listed with no bounty for a fixed fee (**£4.99**
+> as decided; **£5 since 2026-08-22**) instead of the 5% of an escrowed bounty
+> (£50–£5,000 then; **£10–£5,000 since 2026-08-13**). Non-refundable; the spotter gets
 > credit and reputation, not cash.
 >
 > **Why it did not wait for post-launch:** the £50 floor is a barrier at the

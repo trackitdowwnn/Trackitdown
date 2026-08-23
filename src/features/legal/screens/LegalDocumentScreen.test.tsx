@@ -18,6 +18,20 @@
 
 import { render } from '@testing-library/react-native';
 
+// Deep import, not the '@/features/vehicles' barrel: that barrel reaches
+// AsyncStorage and this suite will not even load through it. ARCHITECTURE rule 1
+// says features talk via index.ts, and this is the fourth place to reach past it
+// for these constants — alertSteps and searchCriteria already do, from
+// PRODUCTION code. That makes bountyBounds a de-facto shared module owned by one
+// feature; the money constants beside LISTING_FEE_PENCE in shared/lib/money.ts
+// is where they probably belong. Recorded rather than fixed here — moving them
+// touches nine files and is not a review-cycle change.
+import {
+  MAX_BOUNTY_PENCE,
+  MIN_BOUNTY_PENCE,
+} from '@/features/vehicles/post/lib/bountyBounds';
+import { formatPounds } from '@/shared/lib/money';
+
 import { LEGAL_DOCUMENTS, legalDocument } from '../lib/legalContent';
 import { LegalDocumentScreen } from './LegalDocumentScreen';
 
@@ -82,9 +96,22 @@ describe('factual claims the code must keep true', () => {
   const terms = JSON.stringify(LEGAL_DOCUMENTS.terms);
   const privacy = JSON.stringify(LEGAL_DOCUMENTS.privacy);
 
-  it('states the bounty range and the split that DOMAIN.md defines', () => {
-    expect(terms).toContain('£50');
-    expect(terms).toContain('£5,000');
+  it('⚠️ states the bounty range the app actually ENFORCES', () => {
+    // Derived from the bounds, not typed here, and this is the whole point.
+    // The floor moved to £10 on 2026-08-13; the Terms went on saying £50 until
+    // 2026-08-23 — a legal document telling people a £10 listing was impossible
+    // while the app happily took one — and this test SAID £50 too, so it agreed
+    // with the mistake instead of catching it.
+    //
+    // The prose stays a literal on purpose (legal text changes by decision, not
+    // as a side effect of a constant). This is the thread between them: move the
+    // floor without opening the Terms and you fail here.
+    // The whole PHRASE, not the two tokens. A bare toContain('£5') passes on the
+    // '£5,000' already in the sentence, and '£1' passes on '£10' — so two plausible
+    // floors would have slipped through the guard this test exists to be.
+    expect(terms).toContain(
+      `between ${formatPounds(MIN_BOUNTY_PENCE)} and ${formatPounds(MAX_BOUNTY_PENCE)}`,
+    );
     expect(terms).toContain('95%');
     expect(terms).toContain('5%');
   });

@@ -19,7 +19,7 @@ document wins — fix the code or update this doc deliberately.
   spotter on a credited recovery, so our 5% is simply the remainder that never
   leaves — it is **not** a Stripe `application_fee_amount`, which only exists for
   the destination charges we deliberately do not use (ADR-0002). On a
-  **no-reward listing** we take a fixed £4.99 fee at posting and nothing else
+  **no-reward listing** we take a fixed £5 fee at posting and nothing else
   ever moves (ADR-0014). This line said "via Stripe Connect application fees"
   until 2026-08-03, and described only the bounty model until 2026-08-20.
 
@@ -114,7 +114,7 @@ pre-check that would cost the critical first hours:
 - **Accountability, not anonymity.** Every post is a real account + a card on
   file — posting is not free or anonymous, and it's traceable. That's the main
   deterrent for casual abuse.
-- **Escrow forfeiture.** A post taken down is `cancelled` and its £50–£5,000
+- **Escrow forfeiture.** A post taken down is `cancelled` and its £10–£5,000
   bounty refunded — so a bad-faith poster ties up real money and gains nothing.
 - **Report → flag → takedown.** The post detail's "Report this post" writes a
   durable, attributable row to `post_flags` (`flag_post` RPC; auth-gated, one
@@ -208,13 +208,13 @@ A post with both would be charged twice; one with neither would be live for free
 
 | | **Bounty listing** | **No-reward listing** |
 |---|---|---|
-| Owner pays | £50–£5,000, escrowed | **£4.99 fixed fee**, once |
+| Owner pays | £10–£5,000, escrowed | **£5 fixed fee**, once |
 | Platform keeps | 5% of the bounty, on recovery | the whole fee, on capture |
 | Spotter gets | 95% of the bounty | **credit + reputation only** |
 | Refundable? | yes, minus the card fee | **no** |
 | Ledger state | `requires_payment → held → released \| refunded` | `requires_payment → collected` (terminal) |
 
-**Why a listing fee exists at all:** £50 was the price of admission for a theft
+**Why a listing fee exists at all:** £50, the floor before 2026-08-13, was the price of admission for a theft
 victim, at the moment they can least afford it and in the hours that matter
 most. Free posting was never the alternative — the card on file is the main
 anti-abuse deterrent left now that pre-publish review is gone (see *Anti-abuse*).
@@ -273,7 +273,8 @@ Rules that follow, and are not implementation details:
 *(These govern a BOUNTY listing. A no-reward listing has none of them — see
 "Listing pricing" above.)*
 
-- Minimum bounty: £50. Maximum: £5,000 (fraud ceiling — revisit later).
+- Minimum bounty: £10 (lowered from £50 on 2026-08-13). Maximum: £5,000
+  (fraud ceiling — revisit later).
 - **Single winner.** Exactly one sighting can be credited per recovery.
   No splitting in v1. If several spotters contributed, the owner picks the
   decisive one. (Splitting is a known v2 candidate; do not build it early.)
