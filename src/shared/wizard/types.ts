@@ -71,8 +71,13 @@ export interface WizardStep<TAnswers> {
    * still works: an edit spur jumps by index and returns to review.
    *
    * A predicate on ANSWERS, re-read on every move, so keep it cheap and free of
-   * side effects. Pair it with `optional`, or the review CTA will demand an
-   * answer to a question the flow never asked.
+   * side effects.
+   *
+   * This used to say "pair it with `optional`, or the review CTA will demand an
+   * answer to a question the flow never asked". It no longer needs to: since
+   * 2026-08-23 the gate itself skips a step being walked past (navigation.ts,
+   * `invalidStepIds`). Relying on every flow author to remember is what made an
+   * invisible dead end possible in the first place.
    */
   when?: (answers: Partial<TAnswers>) => boolean;
   /**

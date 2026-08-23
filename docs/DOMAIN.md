@@ -214,7 +214,7 @@ A post with both would be charged twice; one with neither would be live for free
 | Refundable? | yes, minus the card fee | **no** |
 | Ledger state | `requires_payment → held → released \| refunded` | `requires_payment → collected` (terminal) |
 
-**Why a listing fee exists at all:** £50 was the price of admission for a theft
+**Why a listing fee exists at all:** £50, the floor before 2026-08-13, was the price of admission for a theft
 victim, at the moment they can least afford it and in the hours that matter
 most. Free posting was never the alternative — the card on file is the main
 anti-abuse deterrent left now that pre-publish review is gone (see *Anti-abuse*).

@@ -82,7 +82,7 @@ type StepProps = WizardStepProps<PostACarAnswers>;
 type VehicleStepProps = WizardStepProps<VehicleAnswers>;
 
 /**
- * Bounty range (pence) — re-exported from the ONE mirror, not restated. These
+ * Bounty range and slider seed (pence) — re-exported from the ONE mirror, not restated. These
  * were literals here (£50–£5,000) until 2026-08-22, nine days after
  * 20260813120000 moved the floor to £10 in the database. Nothing errored: an
  * owner who could only offer £15 simply could not post, and no screen said why.

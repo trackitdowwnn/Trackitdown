@@ -250,6 +250,11 @@ are build output.
 - Sentence case everywhere. No ALL CAPS except number plates, which render
   in a plate-style chip (Black weight, `surfaceSubtle` background; no letter
   spacing since 2026-07-23 — Satoshi's tracking already reads plate-like).
+  On PHOTOGRAPHY the chip takes `onMedia`: `surfaceOverMedia` fill plus a
+  `textOnMedia` hairline (2026-08-23). The fill alone is the identifying
+  treatment on a page, but on a `surfaceOverMedia` strip it matches its own
+  background and the chip disappears into the text beside it — so there, the
+  edge is what makes it a chip, exactly as with the map pill.
 - **Underline = tappable** (formalised 2026-07-14; was already the de facto
   convention in ReadMore/PhotoGridPicker): inline text actions are underlined
   `textPrimary` — no colour needed. Never underline non-tappable text.

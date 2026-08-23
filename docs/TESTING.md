@@ -50,6 +50,16 @@ should be, some are optional.
 - **Stack**: Jest + `jest-expo` preset; React Native Testing Library for
   components/screens; Edge Functions tested with the Supabase CLI local
   stack (`npx supabase start`) or unit-tested with mocked clients.
+- **⚠️ Mocks must `jest.requireActual` shared constants, never retype them.**
+  A module is usually mocked to keep the native graph out of a suite, and it is
+  tempting to inline the two or three constants it also exports. Do not: on
+  2026-08-23 a mock said `MIN_BOUNTY_PENCE: 5000` and the suite asserted that
+  £49.99 was refused — against a floor the app had enforced as £10 since
+  2026-08-13. It passed for ten days, and the floor could have gone back to £50
+  with nothing failing. Spread the real leaf instead
+  (`...jest.requireActual('../lib/bountyBounds')`), and if the constant is
+  trapped in the heavy module, move it to a leaf. **A test that invents the
+  number it checks is guarding nothing.**
 - **Location**: tests live next to the code (`releasePayout.test.ts`
   beside `releasePayout.ts`). Integration tests that need the local
   Supabase stack live in `supabase/tests/`.

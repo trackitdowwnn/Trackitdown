@@ -37,7 +37,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { estimateRefundPence, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
-import { DEFAULT_BOUNTY_PENCE } from './postSteps';
+import { DEFAULT_BOUNTY_PENCE } from '../lib/bountyBounds';
 import type { PostACarAnswers } from '../types';
 
 export interface ReviewCostPanelProps {

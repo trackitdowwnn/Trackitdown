@@ -51,7 +51,7 @@ export interface LegalDocument {
 }
 
 /** Bump when any document below changes materially. */
-export const LEGAL_LAST_UPDATED = '2 August 2026';
+export const LEGAL_LAST_UPDATED = '23 August 2026';
 
 /** The operator. Replace with the registered entity before launch. */
 const OPERATOR = 'Trackitdown';

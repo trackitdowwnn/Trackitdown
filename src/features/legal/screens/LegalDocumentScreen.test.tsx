@@ -18,6 +18,14 @@
 
 import { render } from '@testing-library/react-native';
 
+// Deep import, not the '@/features/vehicles' barrel: that barrel reaches
+// AsyncStorage and this suite will not even load through it. ARCHITECTURE rule 1
+// says features talk via index.ts, and this is the fourth place to reach past it
+// for these constants — alertSteps and searchCriteria already do, from
+// PRODUCTION code. That makes bountyBounds a de-facto shared module owned by one
+// feature; the money constants beside LISTING_FEE_PENCE in shared/lib/money.ts
+// is where they probably belong. Recorded rather than fixed here — moving them
+// touches nine files and is not a review-cycle change.
 import {
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
@@ -98,8 +106,12 @@ describe('factual claims the code must keep true', () => {
     // The prose stays a literal on purpose (legal text changes by decision, not
     // as a side effect of a constant). This is the thread between them: move the
     // floor without opening the Terms and you fail here.
-    expect(terms).toContain(formatPounds(MIN_BOUNTY_PENCE));
-    expect(terms).toContain(formatPounds(MAX_BOUNTY_PENCE));
+    // The whole PHRASE, not the two tokens. A bare toContain('£5') passes on the
+    // '£5,000' already in the sentence, and '£1' passes on '£10' — so two plausible
+    // floors would have slipped through the guard this test exists to be.
+    expect(terms).toContain(
+      `between ${formatPounds(MIN_BOUNTY_PENCE)} and ${formatPounds(MAX_BOUNTY_PENCE)}`,
+    );
     expect(terms).toContain('95%');
     expect(terms).toContain('5%');
   });

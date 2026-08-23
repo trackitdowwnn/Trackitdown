@@ -122,8 +122,9 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
           NO accessibilityLiveRegion: WizardScreen's landing announcement already
           carries this sentence, and announceForAccessibility covers both
           platforms on mount AND on change. A region here made TalkBack say it
-          twice — the same reason FullscreenLoader and Toast carry the explicit
-          call without one. */}
+          twice — the same reason FullscreenLoader announces without one. (Toast
+          keeps BOTH, and is right to: it has no landing announcement to fold
+          into.) */}
       {notice ? (
         <Text accessibilityRole="alert" style={styles.blockingNotice}>
           {notice}
