@@ -1,5 +1,15 @@
 # permissions
 
+⚠️ **`/settings` depends on this feature's startup chain having warmed the
+native modules.** `useStartupPermissionRequests` runs `checkAll()` across all
+four kinds once per cold start, so by the time the Settings screen is reachable
+every module is initialised and its four permission rows resolve instantly. A
+real trace once measured `expo-location`'s FIRST permission call at 2516ms
+(`location_phase { permissionMs: 2516 }`, commit ae85657). If this chain is
+ever made lazy or removed, that cost lands on whichever screen touches location
+first — and `src/features/profile/screens/SettingsScreen.tsx` is now one of
+them, with no loading state of its own.
+
 Startup permission prompts, **native-only**: once per cold start, after the
 app lands in the tabs (new users: right after onboarding), the app checks
 location, camera, photo library, and notification permissions and fires the

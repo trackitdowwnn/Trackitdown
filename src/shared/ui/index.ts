@@ -116,6 +116,7 @@ export {
 // image before you send it" is the only control that exists over what a
 // screenshot contains.
 export { PhotoPreviewModal, type PhotoPreviewModalProps } from './PhotoPreviewModal';
+export { ListRowGroup, type ListRowGroupProps } from './ListRowGroup';
 export { StickyActionBar, type StickyActionBarProps } from './StickyActionBar';
 export {
   PermissionPrimer,

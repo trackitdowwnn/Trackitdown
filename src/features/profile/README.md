@@ -37,6 +37,36 @@ credits someone can never delete their account. See the payout gap below.
 payee half of the money loop does not exist — no Connect onboarding, and
 `release-payout` has no caller), legal URLs (TODO placeholders), support
 email (`support@trackitdown.example` — a reserved TLD, so it goes nowhere).
+
+## Settings (2026-08-24)
+
+`SettingsScreen` — Profile → Settings → "App settings" (`row-settings`),
+route `/settings`. Two groups: **Appearance** (System / Light / Dark radio
+rows) and **Permissions** (notifications, location, camera, photos).
+
+⚠️ **The permission rows are STATUS rows, not switches.** An app cannot grant
+itself a permission; a switch could only deep-link and then snap back, which
+reads as a control that failed. Each row states the truth and opens the OS
+settings page. `useDevicePermission`'s `useFocusEffect` re-check is what makes
+the return trip update the row without a relaunch.
+
+⚠️ **A `denied` permission deep-links even when `canAskAgain` is true**,
+diverging from the house rule. Every other re-prompt sits behind a
+`PermissionPrimer` that has just explained why; a bare settings row has not,
+and on Android a second refusal is permanent.
+
+⚠️ **Appearance reverses an owner call of 2026-08-10** ("a switch, not a
+three-way chooser"). The three-state model and its persistence already existed;
+only the UI was two-state, which meant that once flipped there was no way back
+to following the phone. The reasoning moved with the decision — it is on the
+Appearance group in `SettingsScreen.tsx`, not left beside a row that no longer
+exists. `row-dark-mode` is GONE, not renamed.
+
+**Not here:** "Alerts & notifications" and "Payouts" stayed on the Profile
+root — the first carries a live summary, the second only appears when relevant.
+Per-category push toggles are phase 2 (they need a preferences table, RPCs and
+filtering in `_shared/push.ts`).
+
 ## Report a bug (2026-08-24)
 
 `ReportBugScreen` — Profile → Support & legal → "Report a bug". Message, area,

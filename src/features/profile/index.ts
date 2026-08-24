@@ -20,6 +20,7 @@ export { useProfileTab } from './hooks/useProfileTab';
 export { useMyProfile } from './hooks/useMyProfile';
 export { ProfileScreen } from './screens/ProfileScreen';
 export { ReportBugScreen } from './screens/ReportBugScreen';
+export { SettingsScreen } from './screens/SettingsScreen';
 export { useTrackVisitedTab } from './lib/lastArea';
 export { SpotterStoryScreen } from './screens/SpotterStoryScreen';
 export type { MyProfile, PublicProfile, ReputationCounters } from './types';
