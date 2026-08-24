@@ -14,6 +14,7 @@
  */
 
 import { render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import { ONBOARDING_SLIDES } from '../lib/onboardingSlides';
 import { OnboardingMap, type OnboardingMapStage } from './OnboardingMap';
@@ -34,6 +35,7 @@ describe('stages', () => {
     expect(view.getByTestId('onboarding-map-pins', HIDDEN)).toBeTruthy();
     expect(view.getByTestId('onboarding-map-focal', HIDDEN)).toBeTruthy();
     expect(view.getByTestId('onboarding-map-alert', HIDDEN)).toBeTruthy();
+    expect(view.getByTestId('onboarding-map-alert-far', HIDDEN)).toBeTruthy();
     expect(view.getByTestId('onboarding-map-home', HIDDEN)).toBeTruthy();
   });
 
@@ -43,6 +45,46 @@ describe('stages', () => {
     const view = await render(<OnboardingMap stage={'nonsense' as OnboardingMapStage} />);
 
     expect(view.getByTestId('onboarding-map', HIDDEN)).toBeTruthy();
+  });
+});
+
+describe('⚠️ what each stage actually SHOWS', () => {
+  // The whole point of the component, and it was untested. Every layer is
+  // mounted at every stage, so the previous "is it there?" assertions passed
+  // for the draft that fired the alert a slide late, put the focal pin at the
+  // wrong step, and rendered the post and spot slides identically.
+  const opacityOf = (view: ReturnType<typeof render> extends Promise<infer V> ? V : never, id: string) =>
+    StyleSheet.flatten(view.getByTestId(id, HIDDEN).props.style)?.opacity;
+
+  const shown = async (stage: OnboardingMapStage) => {
+    const view = await render(<OnboardingMap stage={stage} />);
+    return {
+      focal: opacityOf(view, 'onboarding-map-focal'),
+      near: opacityOf(view, 'onboarding-map-alert'),
+      far: opacityOf(view, 'onboarding-map-alert-far'),
+      home: opacityOf(view, 'onboarding-map-home'),
+    };
+  };
+
+  it('scatter: cars nearby, nothing of yours yet', async () => {
+    expect(await shown('scatter')).toEqual({ focal: 0, near: 0, far: 0, home: 0 });
+  });
+
+  it('posted: your car appears and the alert leaves it', async () => {
+    // The alert must be visible HERE, on the slide whose body says people
+    // nearby are told. The draft gated it on the next slide, so the one screen
+    // that claimed it showed no alert at all.
+    expect(await shown('posted')).toEqual({ focal: 1, near: 1, far: 0, home: 0 });
+  });
+
+  it('alerted: the alert reaches the neighbours — a NEW picture', async () => {
+    // Distinct from `posted`. One gate for both rings made these two slides
+    // pixel-identical: four named stages, three pictures.
+    expect(await shown('alerted')).toEqual({ focal: 1, near: 1, far: 1, home: 0 });
+  });
+
+  it('recovered: the alert is over and the car settles', async () => {
+    expect(await shown('recovered')).toEqual({ focal: 1, near: 0, far: 0, home: 1 });
   });
 });
 

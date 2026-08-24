@@ -63,7 +63,7 @@ what the thing *is*.
 |---|---|---|---|
 | Base grid | 4pt | reported | ✅ 4/8/12/16/24/32/48 |
 | Screen gutter | 24 | reported | `spacing.xl` ✅ |
-| Imagery occupies the TOP and bleeds off it; words drop to the lower third | — | measured (`ob1.webp` slides 2–3) | our map takes the upper 55% |
+| Imagery occupies the TOP and bleeds off it; words drop to the lower third | — | measured (`ob1.webp` slides 2–3) | our map takes 55% of the layout below the footer |
 | One circular control bottom-right, Skip bottom-left | — | measured | ✅ `OnboardingRingFab` + ghost Button |
 | Headline alternates weight **mid-sentence** | — | measured | ✅ Black against Regular |
 | Depth from a soft field, not cards | — | measured | ✅ `OnboardingBackdrop` |
@@ -75,7 +75,7 @@ what the thing *is*.
 |---|---|---|---|
 | Photography-first is the language | — | reported | ⚠️ **we own zero image assets** — see GAP_ANALYSIS |
 | The image is the subject, not decoration | — | inferred | our map is the product's subject |
-| It bleeds off the frame edge rather than sitting in a box | — | measured | `slice`, no radius |
+| It bleeds off the frame edge rather than sitting in a box | — | measured | `preserveAspectRatio="none"`, no radius — it stretches rather than cropping, which is the right trade for abstract curves |
 | Text never fights the image for the same pixels | — | inferred | words sit below on `background` |
 | Small text over a photo needs an opaque backing, not a 45% scrim | ~3.4:1 measured in-house 2026-08-23 | measured | `surfaceOverMedia`, never `mediaScrim` |
 
@@ -96,7 +96,7 @@ idly curious, and someone whose car was stolen an hour ago. The register that
 serves both is *calm and factual* — neither cheerful nor grave. Sentence case,
 plain English, short.
 
-The safety line ("Never approach or follow a vehicle.") is the one place the
+The safety line is the one place the
 tone hardens, per `docs/SECURITY_AND_TRUST.md` — safety copy is firm and
 unmissable. Nothing in the imagery may suggest travelling towards a stolen car,
 which is why the alert stage draws **rings, not arrows**.
@@ -105,4 +105,4 @@ which is why the alert stage draws **rings, not arrows**.
 
 | Token | Value | Justification |
 |---|---|---|
-| — | — | **None.** The map is drawn in an internal viewBox (geometry, not design tokens, on the `markGeometry.ts` precedent) and every colour it uses already exists: `mapZoneFill`, `mapZoneStroke`, `surface`, `borderStrong`, `primary`, `background`. |
+| — | — | **None.** The map is drawn in an internal viewBox (geometry, not design tokens, on the `markGeometry.ts` precedent) and every colour it uses already exists: `surfaceSubtle` (the land), `mapZoneStroke` (roads), `surface` + `borderStrong` (pins), `surfaceInverse` (the posted car) and `background` (the fade). |

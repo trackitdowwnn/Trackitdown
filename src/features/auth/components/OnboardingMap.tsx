@@ -61,7 +61,9 @@ import Animated, {
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 import { formatPounds } from '@/shared/lib/money';
+import { NO_BOUNTY_LABEL } from '@/shared/ui/BountyTag';
 import {
+  mapPinFontScaleCap,
   motion,
   radii,
   shadows,
@@ -98,20 +100,43 @@ const FIELD_H = 440;
  * in the app; a literal "£250" here would be the one price string in the
  * codebase nobody could re-point.
  */
-const NEIGHBOURS: { left: `${number}%`; top: `${number}%`; pence: number }[] = [
-  { left: '18%', top: '24%', pence: 15000 },
-  { left: '76%', top: '30%', pence: 40000 },
-  { left: '26%', top: '66%', pence: 10000 },
-  { left: '70%', top: '70%', pence: 30000 },
+const NEIGHBOURS: { left: `${number}%`; top: `${number}%`; pence: number | null }[] = [
+  { left: '18%', top: '24%', pence: 5000 },
+  { left: '76%', top: '30%', pence: 120000 },
+  { left: '26%', top: '52%', pence: 1000 },
+  // ⚠️ A FREE LISTING. ADR-0014 made the reward optional, `NO_BOUNTY_LABEL` is
+  // what the real map prints for one, and a hero showing four priced cars and
+  // no free one silently contradicts the product on the first screen.
+  { left: '70%', top: '56%', pence: null },
 ];
 
-/** The owner's car. Centre-ish and slightly high, so the rings have room. */
-const FOCAL = { left: '50%' as const, top: '42%' as const, pence: 25000 };
+/**
+ * The owner's car. Centre-ish and slightly high, so the rings have room.
+ *
+ * ⚠️ NOT 25000. That is `DEFAULT_BOUNTY_PENCE`, whose own comment says it is
+ * "NOT a recommendation, and nothing may present it as one" — and putting it on
+ * the owner’s car on the first screen, hours before the slider offers the same
+ * number, is the most effective way to present it as one. The spread across
+ * these five pins is deliberate too: £10 to £1,200 against a real £10–£5,000
+ * range, where the draft had four amounts all in the top decile.
+ */
+const FOCAL = { left: '50%' as const, top: '42%' as const, pence: 18000 };
 
 /** Ring diameters as a share of the WIDTH, with aspectRatio 1 so they stay
  *  circles rather than ellipses. 84% clears the furthest neighbour. */
 const RING_INNER = '52%';
 const RING_OUTER = '84%';
+const HOME_RING = '28%';
+/** Half of each ring, to pull its centre onto the focal pin’s row. Percentage
+ *  margins resolve against the parent’s WIDTH, exactly as the widths above do,
+ *  so these are exact rather than approximate. */
+const RING_INNER_PULL = '-26%';
+const RING_OUTER_PULL = '-42%';
+const HOME_RING_PULL = '-14%';
+
+/** Narrowed literals, so RN's style types accept them. */
+const absolutePosition = 'absolute' as const;
+const alignCentre = 'center' as const;
 
 export interface OnboardingMapProps {
   stage: OnboardingMapStage;
@@ -136,11 +161,24 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
   // these a slide late, so the one screen whose words claimed people nearby were
   // alerted showed a single pin and no alert at all — which undercut the whole
   // reason the alert slide could be absorbed into the map.
-  const alertIn = useDerivedValue(() => withTiming(step >= 1 && step < 3 ? 1 : 0, timing), [step]);
+  // ⚠️ TWO RINGS, TWO STEPS, because one gate for both made the post and spot
+  // slides pixel-identical — four named stages, three pictures, and the slide
+  // that got no new picture was the safety one. The inner ring leaves the car
+  // when it is posted; the outer reaches the neighbours as the spotter slide
+  // arrives. Both retract once it is home.
+  const alertNearIn = useDerivedValue(
+    () => withTiming(step >= 1 && step < 3 ? 1 : 0, timing),
+    [step],
+  );
+  const alertFarIn = useDerivedValue(
+    () => withTiming(step >= 2 && step < 3 ? 1 : 0, timing),
+    [step],
+  );
   const homeIn = useDerivedValue(() => withTiming(step >= 3 ? 1 : 0, timing), [step]);
 
   const focalStyle = useAnimatedStyle(() => ({ opacity: focalIn.value }));
-  const alertStyle = useAnimatedStyle(() => ({ opacity: alertIn.value }));
+  const alertNearStyle = useAnimatedStyle(() => ({ opacity: alertNearIn.value }));
+  const alertFarStyle = useAnimatedStyle(() => ({ opacity: alertFarIn.value }));
   const homeStyle = useAnimatedStyle(() => ({ opacity: homeIn.value }));
 
   return (
@@ -162,30 +200,48 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
         viewBox={`0 0 ${FIELD_W} ${FIELD_H}`}
         preserveAspectRatio="none"
       >
+        {/* ⚠️ THE LAND. Without it a `surface` pill sits on `background` at
+            1.04:1 and the picture is five prices floating on a page — nothing
+            for a marker to be a marker ON. The draft had ground but drew it as
+            REPEATED ROUNDED RECTS, which is this app’s loading skeleton; one
+            full-bleed plane cannot be read that way, and it gives the roads
+            and pills the same 1.16:1 the real basemap gives them. */}
+        <Rect x="0" y="0" width={FIELD_W} height={FIELD_H} fill={palette.surfaceSubtle} />
         <Path
           d="M-20 150 C 40 128, 92 192, 152 170 S 264 118, 380 152"
           stroke={palette.mapZoneStroke}
           strokeWidth={1.5}
           fill="none"
+          vectorEffect="non-scaling-stroke"
         />
         <Path
           d="M-20 322 C 62 300, 124 352, 202 330 S 322 288, 380 312"
           stroke={palette.mapZoneStroke}
           strokeWidth={1}
           fill="none"
+          vectorEffect="non-scaling-stroke"
         />
         <Path
           d="M92 -20 C 80 92, 112 182, 100 282 S 122 402, 112 460"
           stroke={palette.mapZoneStroke}
           strokeWidth={1}
           fill="none"
+          vectorEffect="non-scaling-stroke"
         />
       </Svg>
 
       {/* The alert reaching the neighbours. Rings, not arrows: nothing here may
           suggest anyone should travel towards a stolen car. */}
-      <Animated.View style={[styles.ringLayer, alertStyle]} testID="onboarding-map-alert">
+      <Animated.View
+        style={[styles.ringLayer, alertFarStyle]}
+        testID="onboarding-map-alert-far"
+      >
         <View style={[styles.ring, styles.ringOuter]} />
+      </Animated.View>
+      <Animated.View
+        style={[styles.ringLayer, alertNearStyle]}
+        testID="onboarding-map-alert"
+      >
         <View style={[styles.ring, styles.ringInner]} />
       </Animated.View>
 
@@ -232,15 +288,18 @@ function BountyPin({
   styles,
   selected = false,
 }: {
-  pin: { left: `${number}%`; top: `${number}%`; pence: number };
+  pin: { left: `${number}%`; top: `${number}%`; pence: number | null };
   styles: ReturnType<typeof makeStyles>;
   selected?: boolean;
 }) {
   return (
     <View style={[styles.pinSlot, { left: pin.left, top: pin.top }]}>
       <View style={[styles.pill, selected && styles.pillSelected]}>
-        <Text style={[styles.pillText, selected && styles.pillTextSelected]}>
-          {formatPounds(pin.pence)}
+        <Text
+          style={[styles.pillText, selected && styles.pillTextSelected]}
+          maxFontSizeMultiplier={mapPinFontScaleCap}
+        >
+          {pin.pence === null ? NO_BOUNTY_LABEL : formatPounds(pin.pence)}
         </Text>
       </View>
     </View>
@@ -279,36 +338,41 @@ const makeStyles = (c: Palette) =>
     pillTextSelected: {
       color: c.textOnPrimary,
     },
-    // Centred on the focal pin, which sits at 50%/42% — hence the bottom pad
-    // rather than dead centre.
+    // ⚠️ ANCHORED TO THE FOCAL PIN, not centred by eye. Percentage padding
+    // resolves against WIDTH while the pin’s `top` resolves against HEIGHT, so
+    // the two only coincided on a near-square phone band and drifted apart on
+    // anything else — the alert would radiate from beside the car rather than
+    // from it. `marginTop` is a percentage of width too, so -half the ring’s
+    // width lands its centre exactly on the pin’s row.
     ringLayer: {
-      position: 'absolute',
-      top: 0,
+      position: absolutePosition,
       left: 0,
       right: 0,
-      bottom: 0,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingBottom: '16%',
+      top: FOCAL.top,
+      alignItems: alignCentre,
     },
     ring: {
-      position: 'absolute',
+      position: absolutePosition,
       aspectRatio: 1,
       borderRadius: radii.full,
-      borderWidth: 1,
-      // borderStrong, not the zone stroke: at ~2.2:1 on light `background` the
-      // alert beat was a whisper in one theme and clear in the other.
+      borderWidth: 1.5,
+      // ⚠️ NO OPACITY. This style reasoned its way to `borderStrong` and then
+      // put 0.5 on the next line, compositing to 1.60:1 — WORSE than the
+      // `mapZoneStroke` it rejected for being a whisper, and less than half the
+      // 3:1 graphic floor. A whole slide’s job was handed to this graphic.
       borderColor: c.borderStrong,
-      opacity: 0.5,
     },
     ringOuter: {
       width: RING_OUTER,
+      marginTop: RING_OUTER_PULL,
     },
     ringInner: {
       width: RING_INNER,
+      marginTop: RING_INNER_PULL,
     },
     homeRing: {
-      width: '28%',
+      width: HOME_RING,
+      marginTop: HOME_RING_PULL,
       aspectRatio: 1,
       borderRadius: radii.full,
       borderWidth: 1.5,

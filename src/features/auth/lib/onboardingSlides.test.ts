@@ -17,6 +17,8 @@
  *        ../components/OnboardingSlide.tsx; docs/TESTING.md.
  */
 
+import { SAFETY_NOTICE_BODY, SAFETY_RULE_LINE } from '@/shared/ui/SafetyNotice';
+
 import { headlineText, ONBOARDING_SAFETY_LINE, ONBOARDING_SLIDES } from './onboardingSlides';
 
 describe('the copy, character for character', () => {
@@ -65,14 +67,28 @@ describe('the weight contrast', () => {
 });
 
 describe('the safety line', () => {
-  // SAFETY: the report-don't-approach seed. Word-for-word, on the spot-it
-  // slide and nowhere else — repeating it would dilute it, moving it would put
-  // it somewhere the reader has no reason to be looking.
-  it('carries the exact wording, on the spot-it slide alone', () => {
+  // SAFETY: the report-don't-approach seed. On the spot-it slide and nowhere
+  // else — repeating it would dilute it, moving it would put it somewhere the
+  // reader has no reason to be looking.
+  it('carries the shared rule, on the spot-it slide alone', () => {
     const carrying = ONBOARDING_SLIDES.filter((slide) => slide.safetyLine);
     expect(carrying).toHaveLength(1);
     expect(carrying[0].key).toBe('spot');
-    expect(carrying[0].safetyLine).toBe('Never approach or follow a vehicle.');
-    expect(ONBOARDING_SAFETY_LINE).toBe('Never approach or follow a vehicle.');
+    expect(carrying[0].safetyLine).toBe(SAFETY_RULE_LINE);
+  });
+
+  // ⚠️ IDENTITY, not equality to a literal. Writing the words here would be a
+  // FOURTH place they live, which is the drift SafetyNotice's "import, never
+  // retype\" rule exists to stop — and this line WAS a third hand-typed copy
+  // until 2026-08-24, quietly missing "or confront anyone".
+  it('is the shared rule itself, not a copy of it', () => {
+    expect(ONBOARDING_SAFETY_LINE).toBe(SAFETY_RULE_LINE);
+  });
+
+  // The 999 clause belongs at a live sighting, not on an intro screen — but
+  // what is here must still be a prefix of the full notice, never a variant.
+  it('stops short of the full notice without diverging from it', () => {
+    expect(ONBOARDING_SAFETY_LINE).not.toContain('999');
+    expect(SAFETY_NOTICE_BODY).toContain(ONBOARDING_SAFETY_LINE);
   });
 });

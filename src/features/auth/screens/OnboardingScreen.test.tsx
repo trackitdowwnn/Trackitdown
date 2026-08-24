@@ -131,6 +131,16 @@ async function advanceTo(getByTestId: (id: string) => unknown, page: number) {
   }
 }
 
+// ⚠️ RESTORE, not just clear. `jest.clearAllMocks()` resets a spy’s calls but
+// keeps its implementation, and jest-expo sets no `restoreMocks`. The map-hero
+// tests spy on `Dimensions.get`, so without this they pinned the file's
+// fontScale from that point on and every later test rendered through the
+// map-hidden branch — which is exactly how a layout bug in that branch went
+// unnoticed by 126 passing tests.
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
@@ -169,18 +179,41 @@ describe('the map hero', () => {
     expect(view.getByTestId('onboarding-map', HIDDEN)).toBeTruthy();
   });
 
-  it('⚠️ yields the screen once text is scaled past 1.3×', async () => {
-    // DESIGN_SYSTEM's filling-step rule: "big text beats the full-bleed map".
-    // The threshold is STRICT — at exactly 1.3 the headline is already 52pt and
-    // needs the room, and `<=` kept the map for the one scale least able to
-    // afford it.
+  it('still shows at exactly the cap, matching the wizard', async () => {
+    // DESIGN_SYSTEM states the rule as "stops filling ABOVE 1.3×", and
+    // WizardScreen implements it as `<=`. This screen is the rule’s second
+    // consumer; the two must not disagree about the boundary.
     atFontScale(displayFontScaleCap);
+
+    const view = await render(<OnboardingScreen />);
+
+    expect(view.getByTestId('onboarding-map', HIDDEN)).toBeTruthy();
+  });
+
+  it('⚠️ yields the screen once text is scaled past the cap', async () => {
+    atFontScale(displayFontScaleCap + 0.1);
 
     const view = await render(<OnboardingScreen />);
 
     expect(view.queryByTestId('onboarding-map', HIDDEN)).toBeNull();
     // The words are still there, and still the whole point.
     expect(view.getByTestId('onboarding-slide-0')).toBeTruthy();
+  });
+
+  it('⚠️ leaves no dead space when the map is gone', async () => {
+    // The stage must be the FILL, not a 0.45 flex child. Yoga floors a total
+    // grow factor below 1, so a lone 0.45 child took 45% of the free space and
+    // left ~42% of the screen blank under the footer — at exactly the text size
+    // this branch exists to serve, and hidden from every other test in this
+    // file by a leaked Dimensions spy.
+    atFontScale(displayFontScaleCap + 0.1);
+
+    const view = await render(<OnboardingScreen />);
+    const stage = view.getByTestId('onboarding-step-slide');
+
+    expect(StyleSheet.flatten(stage.props.style)).toEqual(
+      expect.objectContaining({ flex: 1 }),
+    );
   });
 });
 

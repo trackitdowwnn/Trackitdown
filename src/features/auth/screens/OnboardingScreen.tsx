@@ -29,13 +29,17 @@
  *        so the flows still match. Advance with the button; Android back steps
  *        back.
  *
- *        NO HERO ABOVE THE WORDS (2026-08-08). A registration plate lived here
- *        for two days and it did not earn the room. What replaced it is
- *        nothing: the headline takes the space at 40pt against the wash, which
- *        is what the design reference's own opening slide does — type-led, no
- *        object. The alternative was per-slide artwork, and this app owns no
- *        illustration assets to do that honestly.
+ *        A HERO RETURNED (2026-08-23), after two were removed — placeholder
+ *        emoji, then a registration plate that "did not earn the room". It is
+ *        `OnboardingMap`, and it differs from both in being the SUBJECT of the
+ *        product rather than an accompaniment: a map of stolen cars is what
+ *        this app IS, so it answers "what is this?" before a word is read.
+ *        Crucially it is NOT remounted per slide — it is a SIBLING of the keyed
+ *        stage below, so the words step over a map that persists and morphs,
+ *        which is the objection that removed the other two. Still no image
+ *        assets: it is drawn, like the wash and the ring.
  * LINKS: src/features/auth/lib/onboardingSlides.ts (copy);
+ *        src/features/auth/components/OnboardingMap.tsx (the hero);
  *        src/features/auth/lib/onboardingStorage.ts (seen flag);
  *        src/shared/wizard/WizardScreen.tsx (the motion this matches);
  *        src/features/auth/components/OnboardingSlide.tsx,
@@ -159,13 +163,16 @@ export function OnboardingScreen() {
   };
 
   // The wizard's filling-step rule, applied here: past 1.3× the hero yields its
-  // room to the copy rather than squeezing it. STRICTLY less-than — at exactly
-  // 1.3 the headline is 52pt and needs the screen, so `<=` kept the map for the
-  // one scale that could least afford it.
-  // `?? 1` because fontScale is not populated on every platform/test host, and
-  // an undefined comparison is false — which would have silently hidden the
-  // hero everywhere rather than only at large text.
-  const mapFits = (fontScale ?? 1) < displayFontScaleCap;
+  // room to the copy rather than squeezing it.
+  //
+  // `<=`, matching WizardScreen and DESIGN_SYSTEM, which states the rule as
+  // "stops filling ABOVE 1.3×". A stricter `<` read better on its own terms
+  // but left the design system wrong for one of its two consumers, which is a
+  // worse trade than 0.4pt of headline.
+  //
+  // `?? 1` because fontScale is not populated on every host, and an undefined
+  // comparison is false — which would silently hide the hero everywhere.
+  const mapFits = (fontScale ?? 1) <= displayFontScaleCap;
 
   return (
     <View style={styles.root}>
@@ -268,14 +275,19 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // The step occupies everything above the footer, and the copy sits low in it
   // so the words land near the control that advances them rather than floating
   // in the middle of an empty screen.
-  // 55/45 against the stage. The map keeps the share OnboardingBackdrop holds
-  // its wash flat through, so the picture lives in the calm band and the wash's
-  // own ramp begins where the map has already faded out.
+  // ⚠️ THE STAGE IS ALWAYS THE FILL; the band carries the ratio.
+  //
+  // Yoga floors the total flex-grow factor to 1 only when the sum is BELOW
+  // one. Written as 0.55/0.45 the two summed to exactly 1 and behaved — until
+  // the map was hidden, when the stage became the lone growing child at 0.45,
+  // was floored to 1, and took 45% of the free space. That left ~42% of the
+  // screen blank under the footer at exactly the text size the gate exists to
+  // serve, while the comment above it claimed the words got the screen.
   mapBand: {
-    flex: ONBOARDING_WASH_HOLD,
+    flex: ONBOARDING_WASH_HOLD / (1 - ONBOARDING_WASH_HOLD),
   },
   stage: {
-    flex: 1 - ONBOARDING_WASH_HOLD,
+    flex: 1,
   },
   stageContent: {
     flexGrow: 1,

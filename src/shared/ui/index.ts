@@ -118,7 +118,12 @@ export {
 } from './PermissionPrimer';
 export { PlateChip, spellPlate, type PlateChipProps } from './PlateChip';
 export { RadiusSlider, type RadiusSliderProps } from './RadiusSlider';
-export { SafetyNotice, SAFETY_NOTICE_BODY, SAFETY_NOTICE_TITLE } from './SafetyNotice';
+export {
+  SafetyNotice,
+  SAFETY_NOTICE_BODY,
+  SAFETY_NOTICE_TITLE,
+  SAFETY_RULE_LINE,
+} from './SafetyNotice';
 export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';

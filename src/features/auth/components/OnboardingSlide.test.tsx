@@ -50,7 +50,7 @@ describe('the spoken label', () => {
     expect(getByTestId('onboarding-slide-2').props.accessibilityLabel).toBe(
       'Slide 3 of 4. Spot it? Report it — from a distance. ' +
         'Snap a photo in the app and we handle the rest. ' +
-        'Never approach or follow a vehicle.',
+        `${ONBOARDING_SAFETY_LINE}`,
     );
   });
 

@@ -12,7 +12,7 @@ it stands between a theft victim and posting their car.
 Four calm slides shown once on first launch (what-this-is → post → spot-and-
 report-from-a-distance → recovered), stepped one at a time. Re-viewable via
 `/onboarding?revisit=1` ("How Trackitdown works" in settings). Local AsyncStorage
-flag `trackitdown.onboarding_seen_v2`.
+flag `trackitdown.onboarding_seen_v1`.
 
 **Restyled 2026-08-08** against `docs/design-refs/onboarding/ob1.webp`. Three
 progress indicators became one: dots, a numbered step rail ("01 Post") and a
@@ -80,8 +80,8 @@ makes monochrome a decision rather than a habit. What was borrowed is the
 anatomy — one soft wash (`OnboardingBackdrop`, drawn with the `react-native-svg`
 already in the tree), a ring control, weight contrast — not the trade dress.
 
-⚠️ Note for anyone bringing photography here later: the map occupies the upper
-55%, which is exactly the band the wash holds flat, and the words sit below it
+⚠️ Note for anyone bringing photography here later: the map takes 55% of the layout below the footer (not of the
+screen — see ONBOARDING_WASH_HOLD) and the words sit below it
 on `background`. **The headline must never move onto the image.** `mediaScrim`
 at 45% was measured on 2026-08-23 at ~3.4:1 for 14pt white over a light
 subject; anything carrying text takes an opaque `surfaceOverMedia`. Keeping the

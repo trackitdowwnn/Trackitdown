@@ -35,7 +35,7 @@ LINKS: REFERENCE_SPEC.md (sibling); `src/features/auth/README.md` § "Onboarding
 
 | # | Current | Reference | Proposal | Effort | Impact |
 |---|---|---|---|---|---|
-| L1 | Words low, nothing above them | Imagery top, bleeding off the frame; words lower third | Map in the upper 55% — the exact band the wash holds flat | M | **L** |
+| L1 | Words low, nothing above them | Imagery top, bleeding off the frame; words lower third | Map takes 55% of the layout below the footer; the wash’s ramp begins beneath it | M | **L** |
 | L2 | 24 gutter, ring bottom-right, Skip bottom-left | Same | none — already matches | — | — |
 | L3 | No relationship between wash and content | Depth from one soft field | Map fades into the wash at its own lower edge; the backdrop is untouched | S | M |
 
@@ -83,10 +83,10 @@ LINKS: REFERENCE_SPEC.md (sibling); `src/features/auth/README.md` § "Onboarding
 
 | # | Finding | Action |
 |---|---|---|
-| H1 | `ONBOARDING_VERSION` was still 1 | Bumped to 2 — a redesign nobody already onboarded would ever see is not worth building |
+| H1 | `ONBOARDING_VERSION` | Bumped to 2, then **reverted**. Re-showing onboarding to the installed base costs a tapped push: `NotificationsHost` drops one permanently while onboarding is up, and those users have alerts configured. New users see the redesign regardless |
 | H2 | Slide copy is pinned character-for-character in three suites | All updated in the same commit, as the tests intend |
 | H3 | The ring FAB's track was `border` on the wash's darker end — 1.15:1 light, 1.19:1 dark | `borderStrong`. The ring read as a floating arc with nothing behind it, so "a quarter through" never landed — which is the control's whole job. Pre-existing |
-| H4 | The 55% band was written twice, as `offset="0.55"` and `flex: 55` | One exported `ONBOARDING_WASH_HOLD`; both derive from it |
+| H4 | ~~The 55% band was written twice~~ — **withdrawn**: `flex: 55` never existed on `main`, the band is new in this commit. A comment and this row both asserted a duplication that had never happened | The shared `ONBOARDING_WASH_HOLD` is still right, but as a deliberate coupling of two DIFFERENT measurements (screen vs. post-footer layout), not a de-duplication |
 | H5 | jest-expo reports `fontScale: 2`, so the map was absent in every test | The new gate tests pin it through `Dimensions.get` — spying the hook itself does nothing, and one test had been passing for the wrong reason |
 
 ## The first draft, and why it was rebuilt
@@ -123,9 +123,11 @@ the concept, reject the execution**, and it was right on every count:
   happened to have washed the ink out that far down. This file and the README
   both state that rule as absolute, and the code broke it. They are now flex
   siblings that cannot overlap at any size on any device.
-- **The 1.3× gate was `<=`,** keeping the map at exactly the scale least able to
-  afford it, and hiding the map rescued nothing because the stage had no scroll
-  either. Strict now, with a `ScrollView` behind it.
+- **The 1.3× gate.** The draft wrote it `<`, reasoning that at exactly 1.3 the
+  headline is 52pt and needs the room. That left `DESIGN_SYSTEM` ("stops
+  filling ABOVE 1.3×") wrong for one of its two consumers, so it matches
+  `WizardScreen`’s `<=` now. Hiding the map also rescued nothing on its own,
+  because the stage had no scroll — it has one now.
 - **The fade shared the field’s cropped viewBox,** so on a 16:9 handset it was
   clipped with a seventh of the map still showing. It has no viewBox now.
 
