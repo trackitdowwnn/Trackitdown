@@ -33,10 +33,23 @@ honest copy; the server re-check is now the real enforcement.
 ⚠️ **Known trap:** crediting a spotter moves a post to `recovery_claimed`,
 and nothing can currently move it out of that state — so an owner who
 credits someone can never delete their account. See the payout gap below.
-**Config:** `config.ts` — `PAYOUTS_ENABLED=false` (the row ships dark; the
-payee half of the money loop does not exist — no Connect onboarding, and
-`release-payout` has no caller), legal URLs (TODO placeholders), support
-email (`support@trackitdown.example` — a reserved TLD, so it goes nowhere).
+**Config:** `config.ts` — `PAYOUTS_ENABLED=true`, legal URLs (TODO
+placeholders), support email (`support@trackitdown.example` — a reserved TLD,
+so it still goes nowhere).
+
+⚠️ **This paragraph was wrong for three weeks and cost a real decision.** It
+said `PAYOUTS_ENABLED=false`, "the payee half of the money loop does not
+exist", "no Connect onboarding" and "`release-payout` has no caller". All four
+stopped being true on **2026-08-03** (`ec9fbcf`, "a screen where a spotter can
+be paid"): the flag is `true`, `supabase/functions/connect-onboarding` exists,
+`release-payout` is invoked from `vehicles/api/recoveryApi.ts:250`, and
+`ROADMAP.md` records "BOTH WIRES CLOSED 2026-08-03".
+
+Corrected 2026-08-24, after this file was read aloud as the current state and
+used to argue the app was further from launch than it is. A stale README is not
+a tidiness problem — it is a confident source of false facts about your own
+codebase, and it is believed precisely because it is in the repo. When you
+change a flag, grep the docs for its name.
 
 ## Settings (2026-08-24)
 
