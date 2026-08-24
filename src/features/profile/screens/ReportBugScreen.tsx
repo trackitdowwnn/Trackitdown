@@ -55,10 +55,11 @@ import {
 } from '@/shared/theme';
 import {
   Button,
-  ChoiceChips,
+  CardSelect,
   PhotoPreviewModal,
   Screen,
   SelectField,
+  StickyActionBar,
   TextField,
   useToast,
   type PickedPhoto,
@@ -191,7 +192,28 @@ export function ReportBugScreen() {
   };
 
   return (
-    <Screen scroll contentContainerStyle={styles.scroll} keyboardAware>
+    <Screen
+      scroll
+      contentContainerStyle={styles.scroll}
+      keyboardAware
+      footer={
+        <StickyActionBar testID="report-bug-footer">
+          {/* `disabled` is emptiness ONLY. Passing `!canSend` made the button
+              disabled AND loading at once, which dims it under its own spinner
+              and announces "dimmed, busy" — Button treats loading as
+              busy-not-unavailable and already blocks the press on either. */}
+          <Button
+            label="Send report"
+            onPress={() => void send()}
+            disabled={message.trim().length === 0}
+            loading={sending}
+          />
+        </StickyActionBar>
+      }
+    >
+      {/* Chrome only — no title competing with the headline below. The
+          reference puts the screen's name in the CONTENT at display size and
+          leaves the bar to hold the way out. */}
       <View style={styles.headerRow}>
         {/* Frozen while sending, because the success path pops: a back tap
             mid-flight would pop a SECOND screen out from under whoever is
@@ -208,74 +230,114 @@ export function ReportBugScreen() {
         >
           <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
         </Pressable>
+      </View>
+
+      <View style={styles.intro}>
         <Text style={styles.title} accessibilityRole="header">
           Report a bug
         </Text>
+        {/* Flat on purpose. "Help us make Trackitdown better" asks someone who
+            has just hit a broken screen to feel warm about doing us a favour;
+            this just says what happens next. */}
+        <Text style={styles.subtitle}>
+          Tell us what went wrong and we’ll take a look.
+        </Text>
       </View>
 
-      <TextField
-        label="What went wrong?"
-        variant="multiline"
-        value={message}
-        onChangeText={setMessage}
-        maxLength={BUG_REPORT_MAX_LENGTH}
-        helperText="Please don’t include a number plate or an address — we don’t need them to fix this."
-        disabled={sending}
-        testID="report-bug-message"
-      />
+      {/* ⚠️ THE ONLY REQUIRED QUESTION, so it gets the same heading the
+          optional ones do. It had none — it lived as a floating label, which
+          rests at body size and shrinks to caption once you type — so the one
+          answer we actually need was quieter than the five we can do without. */}
+      <View style={styles.firstSection}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
+          What went wrong?
+        </Text>
+        <TextField
+          label="Tell us what happened"
+          variant="multiline"
+          value={message}
+          onChangeText={setMessage}
+          maxLength={BUG_REPORT_MAX_LENGTH}
+          helperText="Please don’t include a number plate or an address — we don’t need them to fix this."
+          disabled={sending}
+          testID="report-bug-message"
+        />
+      </View>
 
-      {/* Everything below is optional, and the heading says so once rather than
-          each field repeating "(optional)" — four optional tags in a column
-          reads as a form that does not know what it wants. */}
-      <Text style={styles.sectionTitle} accessibilityRole="header">
+      {/* ⚠️ A BAND OVER EVERYTHING BELOW, not a title for the next question.
+          At `heading` inside a `section` it was structurally identical to the
+          four question headings that follow, so it read as belonging to "Where
+          in the app?" alone and the other four were never told they were
+          optional. `sectionTitle` (20/26) is the token that exists to band a
+          scrolling column, and the extra air separates it from what it covers.
+
+          Said once rather than four "(optional)" tags in a column, which reads
+          as a form that does not know what it wants. */}
+      <Text style={styles.bandTitle} accessibilityRole="header">
         A few details, if you have them
       </Text>
 
-      <SelectField
-        label="Where in the app?"
-        options={BUG_AREAS}
-        value={area}
-        onChange={setArea}
-        disabled={sending}
-        screenTitle="Where in the app?"
-      />
+      <View style={styles.section}>
+        <SelectField
+          label="Where in the app?"
+          options={BUG_AREAS}
+          value={area}
+          onChange={setArea}
+          disabled={sending}
+          screenTitle="Where in the app?"
+        />
+      </View>
 
-      <View style={styles.field}>
-        <Text style={styles.fieldLabel} nativeID="bug-severity-label">
+      {/* ⚠️ CardSelect, not ChoiceChips. Chips are right for an answer of one
+          or two words; these three each need a sentence before they mean
+          anything, and "Annoying" as a bare pill next to "I lost money or
+          data" reads as two options of equal weight when they are anything
+          but. CardSelect is the house component for exactly this — icon,
+          title, one calm line — and it indicates selection by border colour at
+          a constant width, so nothing reflows on tap. */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
           How much did it get in your way?
         </Text>
-        <ChoiceChips
+        <CardSelect
           options={BUG_SEVERITIES}
           value={severity}
           onSelect={setSeverity}
-          testID="report-bug-severity"
         />
       </View>
 
-      <View style={styles.field}>
-        <Text style={styles.fieldLabel} nativeID="bug-frequency-label">
+      {/* Same rows, no icons and no descriptions — the three answers explain
+          themselves in two words. Sharing CardSelect's anatomy keeps the two
+          questions reading as siblings; giving these a padded line of
+          explanation each would be words for the sake of symmetry. */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
           How often does it happen?
         </Text>
-        <ChoiceChips
+        <CardSelect
           options={BUG_FREQUENCIES}
           value={frequency}
           onSelect={setFrequency}
-          testID="report-bug-frequency"
         />
       </View>
 
-      <TextField
-        label="What did you expect instead?"
-        variant="multiline"
-        value={expected}
-        onChangeText={setExpected}
-        maxLength={BUG_REPORT_MAX_LENGTH}
-        disabled={sending}
-        testID="report-bug-expected"
-      />
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
+          What did you expect instead?
+        </Text>
+        <TextField
+          label="In your own words"
+          variant="multiline"
+          value={expected}
+          onChangeText={setExpected}
+          maxLength={BUG_REPORT_MAX_LENGTH}
+          disabled={sending}
+          testID="report-bug-expected"
+        />
+      </View>
 
-      <View style={styles.field}>
-        <Text style={styles.fieldLabel} accessibilityRole="header">
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle} accessibilityRole="header">
           Screenshots
         </Text>
         {/* ⚠️ THE WARNING IS THE MITIGATION. Nothing in this codebase can
@@ -303,6 +365,7 @@ export function ReportBugScreen() {
                 disabled={sending}
                 accessibilityRole="button"
                 accessibilityLabel={`Remove screenshot ${index + 1}`}
+                hitSlop={(sizes.touchTarget - sizes.iconSm * 2) / 2}
                 style={styles.shotRemove}
                 testID={`report-bug-shot-remove-${index}`}
               >
@@ -358,13 +421,6 @@ export function ReportBugScreen() {
         </Text>
       </View>
 
-      <Button
-        label="Send report"
-        onPress={() => void send()}
-        disabled={message.trim().length === 0}
-        loading={sending}
-      />
-
       <PhotoPreviewModal uri={previewUri} onClose={() => setPreviewUri(null)} />
     </Screen>
   );
@@ -409,14 +465,17 @@ function summaryRows({
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    // ⚠️ NO `gap` HERE ANY MORE. A single even gap is what made this read as
+    // a settings list: the headline, six unrelated questions and a disclosure
+    // all sat the same distance apart, so nothing grouped and nothing led.
+    // Each section owns its own top margin now, and the rhythm is the house
+    // one — 32 above a section title, 16 inside it.
     scroll: {
       padding: spacing.xl,
-      gap: spacing.lg,
     },
     headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
     },
     back: {
       width: sizes.touchTarget,
@@ -425,36 +484,79 @@ const makeStyles = (c: Palette) =>
       justifyContent: 'center',
       marginLeft: -(sizes.touchTarget - sizes.icon) / 2,
     },
+    // The headline lives in the CONTENT, not the header bar — that move is what
+    // gives the screen a top, and it is most of what stops this reading as a
+    // settings page.
+    //
+    // ⚠️ `title` (24/30), NOT `display` (32/38 Black), which is what this was
+    // first built with. Every content-level `display` in the app is a QUESTION
+    // or a MOMENT — the wizard's step, the permission primer — whereas this is
+    // a screen name, which is exactly what DESIGN_SYSTEM scopes `title` to. It
+    // was also the loudest type in the app landing on its least celebratory
+    // screen, against a register the owner chose as "calm and matter-of-fact",
+    // and at fontScale 2 it came to 64/76 — around 150pt of headline plus a
+    // sub-line before the first question on a 390×844 phone.
+    intro: {
+      gap: spacing.sm,
+      marginTop: spacing.md,
+      marginBottom: spacing.xxl,
+    },
     title: {
       ...typography.title,
       color: c.textPrimary,
-      flexShrink: 1,
+    },
+    subtitle: {
+      ...typography.body,
+      color: c.textSecondary,
+    },
+    // The house section rhythm (post-wizard-review REFERENCE_SPEC §2):
+    // 32 above the title, 16 between the title and its control.
+    section: {
+      gap: spacing.lg,
+      marginTop: spacing.xxl,
+    },
+    // The first one sits directly under the intro block, which already spent
+    // its own spacing.xxl — no second helping.
+    firstSection: {
+      gap: spacing.lg,
+    },
+    // Bands the optional half of the form. Larger than a question heading so it
+    // reads as covering them rather than as one of them.
+    bandTitle: {
+      ...typography.sectionTitle,
+      color: c.textPrimary,
+      marginTop: spacing.xxl,
     },
     sectionTitle: {
-      ...typography.label,
+      ...typography.heading,
       color: c.textPrimary,
     },
-    field: {
-      gap: spacing.sm,
-    },
-    fieldLabel: {
-      ...typography.caption,
-      color: c.textSecondary,
-    },
-    // Not an error colour: nothing has gone wrong. This is a caution the reader
-    // should act on, and painting it red would make every report with an image
-    // feel like a mistake in progress.
+    // ⚠️ SET AS BODY, NOT AS FINE PRINT. This sentence is the entire control
+    // over what a screenshot contains — nothing here can redact the inside of a
+    // PNG — and it was 13pt grey, which is the same "most important thing
+    // dressed as the least important" mistake the disclosure panel below was
+    // just rescued from.
+    //
+    // Still not `danger`: nothing has gone wrong, and painting it red would
+    // make every report carrying an image feel like a mistake in progress.
     warning: {
-      ...typography.caption,
-      color: c.textSecondary,
+      ...typography.body,
+      color: c.textPrimary,
     },
     shotRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.sm,
     },
+    // ⚠️ PADDED SO THE REMOVE BUTTON STAYS INSIDE ITS PARENT. The button used
+    // to sit at top/right: -spacing.xs, i.e. OUTSIDE these bounds — and Android
+    // delivers no touch (and honours no hitSlop) outside a parent, so the
+    // overhanging half was simply dead. PhotoGridPicker already carries this
+    // scar: "spacing.sm inset keeps the whole hitSlop inside the tile bounds".
     shotWrap: {
       position: 'relative',
+      paddingTop: spacing.sm,
+      paddingRight: spacing.sm,
     },
     shot: {
       width: sizes.featureThumb,
@@ -470,13 +572,16 @@ const makeStyles = (c: Palette) =>
     // Opaque chrome over an unknown image — surfaceOverMedia is the token for
     // anything CARRYING content over a photo; mediaScrim is for gradients
     // behind chrome and does not clear contrast for a glyph.
+    // 36pt of ink with hitSlop taking the TARGET to 44 (DESIGN_SYSTEM's
+    // minimum) — the WatchToggle pattern. A visually larger button would
+    // swallow the thumbnail it sits on.
     shotRemove: {
       position: 'absolute',
-      top: -spacing.xs,
-      right: -spacing.xs,
+      top: 0,
+      right: 0,
       width: sizes.iconSm * 2,
       height: sizes.iconSm * 2,
-      borderRadius: sizes.iconSm,
+      borderRadius: radii.full,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: c.surfaceOverMedia,
@@ -491,20 +596,41 @@ const makeStyles = (c: Palette) =>
       borderColor: c.border,
       backgroundColor: c.surfaceSubtle,
     },
-    // A quiet panel rather than a card: this is a disclosure, not an object the
-    // reader is meant to act on. The extra bottom margin (16 from the scroll
-    // gap + 8 here) stops "here is what we send" from reading as one block with
-    // "Send" — it is the last thing weighed before committing, not a caption
-    // on the button.
+    // ⚠️ WEIGHT WITHOUT AFFORDANCE — and this REVERSES what stood here before,
+    // which read "a quiet panel rather than a card: this is a disclosure, not
+    // an object the reader is meant to act on". That was right about affordance
+    // and wrong about weight. As a hairline and grey text it was the most
+    // important thing on the screen dressed as the least important — literal
+    // fine print under a form, in the one place the app makes a promise about
+    // what it collects.
+    //
+    // So it gets a ground and a radius, and deliberately gets NO shadow, NO
+    // chevron and NO press state: a card that looks tappable with nothing to
+    // tap is its own small lie. It should read as a notice, not a control.
+    // ⚠️ `surface` + a hairline, NOT `surfaceSubtle`, and the reason is that
+    // surfaceSubtle sits BELOW surface in light (#EEEEEE under #F7F7F7) and
+    // ABOVE it in dark (#2A2A2A over #1E1E1E). Built with it, this panel — a
+    // notice nobody can press — was the most-raised thing on the dark screen,
+    // brighter than the CardSelect rows that actually are tappable. The ladder
+    // has to mean the same thing in both palettes.
+    //
+    // It also stops the app's one collection promise sharing a fill with the
+    // empty screenshot tile 32pt above it.
+    //
+    // The hairline is what keeps it a panel rather than a card: the CardSelect
+    // rows share this ground but change border COLOUR when chosen, and this one
+    // never changes, has no icon, no radio and no press state.
     diagnostics: {
       gap: spacing.sm,
-      paddingTop: spacing.md,
-      marginBottom: spacing.sm,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: c.border,
+      marginTop: spacing.xxl,
+      padding: spacing.lg,
+      borderRadius: radii.lg,
+      backgroundColor: c.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
     },
     diagnosticsTitle: {
-      ...typography.label,
+      ...typography.cardTitle,
       color: c.textPrimary,
     },
     diagnosticsRow: {
@@ -516,22 +642,25 @@ const makeStyles = (c: Palette) =>
       alignItems: 'flex-start',
       gap: spacing.lg,
     },
-    // ⚠️ THE LABEL YIELDS, NOT THE VALUE. flexShrink defaults to 0, so without
-    // this the label took all the width it wanted and the value — the thing
-    // actually being disclosed — absorbed the entire squeeze. At 200% text
-    // "App version" left about half the row and "iPhone 14 Pro Max · iOS 18.2.1"
-    // funnelled into a narrow right-hand column, breaking one fact across four
-    // lines with a dangling "·". ListRow has the same precedence: the title
-    // block flexes, the value holds its line.
+    // ⚠️ THE LABEL YIELDS, NOT THE VALUE — and `flexShrink: 1` on BOTH did not
+    // achieve that, which is what stood here and what this comment used to
+    // claim was fixed. flexShrink is PROPORTIONAL, weighted by base width: give
+    // both rows the same factor and the longer string surrenders more of
+    // itself. The longer string is virtually always the value
+    // ("iPhone 14 Pro Max · iOS 18.2.1" against "Device"), so the thing being
+    // disclosed was still the thing being crushed.
+    //
+    // ListRow gets it right and this now copies it exactly: the label takes
+    // `flex: 1` and the value declares NO flex property at all, so Yoga's
+    // default flexShrink of 0 lets it hold its line and wrap on its own terms.
     diagnosticsLabel: {
       ...typography.caption,
       color: c.textSecondary,
-      flexShrink: 1,
+      flex: 1,
     },
     diagnosticsValue: {
       ...typography.caption,
       color: c.textPrimary,
-      flexShrink: 1,
       textAlign: 'right',
     },
     diagnosticsNote: {

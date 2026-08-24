@@ -37,5 +37,33 @@ credits someone can never delete their account. See the payout gap below.
 payee half of the money loop does not exist — no Connect onboarding, and
 `release-payout` has no caller), legal URLs (TODO placeholders), support
 email (`support@trackitdown.example` — a reserved TLD, so it goes nowhere).
+## Report a bug (2026-08-24)
+
+`ReportBugScreen` — Profile → Support & legal → "Report a bug". Message, area,
+severity, frequency, what they expected, up to three screenshots. Writes via
+`submit_bug_report` (SECURITY DEFINER, `reporter_id` pinned to `auth.uid()`,
+5 per rolling hour) into `bug_reports`.
+
+⚠️ **The "Sent with your report" panel is the feature, not decoration.** It
+renders from the same readers that build the payload, so the screen cannot
+claim less than it sends, and the privacy policy names the same fields. **Any
+field added to the payload must appear in that panel in the same change.**
+
+Three things it deliberately does NOT carry, and the reasoning is in
+`supabase/migrations/20260824100000_bug_reports.sql`: no log payloads (the
+breadcrumb trail is event NAMES only — the `data` is where the bare UUIDs
+live), no route (`area` is a closed ten-value vocabulary that cannot hold an
+id), and screenshots only because the user picks, previews and can remove them,
+into a PRIVATE bucket with no client read.
+
+**Files:** `screens/ReportBugScreen.tsx`, `api/bugReportApi.ts`,
+`api/bugScreenshotUpload.ts`, `lib/bugReportOptions.ts`, `lib/bugDiagnostics.ts`,
+`lib/bugBreadcrumbs.ts`, `lib/lastArea.ts` (the tab-name pre-fill, written from
+`app/(tabs)/_layout.tsx`).
+**Design:** `docs/design-refs/report-bug/` — Airbnb-language pass, 2026-08-24.
+⚠️ **No reader exists.** Nothing in the app or repo reads `bug_reports` or the
+`bug-screenshots` bucket; the queue is "open the Supabase SQL console". The
+button is only honest if someone actually looks.
+
 **Out of scope:** blocked-users management, payment methods, vanity profile
 URLs, notification toggles (live in the notifications feature), real auth.

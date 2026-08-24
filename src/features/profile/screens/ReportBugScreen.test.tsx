@@ -14,7 +14,7 @@
  * LINKS: ./ReportBugScreen.tsx; ../api/bugReportApi.ts; ../lib/bugDiagnostics.ts.
  */
 
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import { ReportBugScreen } from './ReportBugScreen';
@@ -376,6 +376,83 @@ describe('the details', () => {
     await waitFor(() =>
       expect(mockShowToast).toHaveBeenCalledWith('Please sign in to send a report.', 'error'),
     );
+  });
+
+  it('⚠️ sends the severity and frequency the reporter picked', async () => {
+    // These two had NO test at all before the redesign — they appeared in the
+    // fixtures only as `null`, so nothing checked that picking one did
+    // anything. Swapping the control from chips to CardSelect is exactly the
+    // change that would have shipped them broken.
+    const { getByRole, getByTestId } = await render(<ReportBugScreen />);
+    await act(async () => {
+      fireEvent.changeText(getByTestId('report-bug-message'), 'x');
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('radio', { name: /I lost money or data/ }));
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('radio', { name: /Every time/ }));
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('button', { name: 'Send report' }));
+    });
+
+    expect(mockSubmit).toHaveBeenCalledWith(
+      'x',
+      FULL,
+      expect.objectContaining({ severity: 'lost', frequency: 'always' }),
+    );
+  });
+
+  it('marks the picked option as checked, not just visually selected', async () => {
+    // CardSelect indicates selection with border colour, which a screen reader
+    // cannot see. The radio semantics are what carry it.
+    const { getByRole } = await render(<ReportBugScreen />);
+
+    const row = getByRole('radio', { name: /Annoying/ });
+    expect(row.props.accessibilityState?.checked).toBe(false);
+
+    await act(async () => {
+      fireEvent.press(row);
+    });
+
+    expect(
+      getByRole('radio', { name: /Annoying/ }).props.accessibilityState?.checked,
+    ).toBe(true);
+  });
+
+  it('explains the severities rather than leaving three bare labels', async () => {
+    // The reason for CardSelect over ChoiceChips: "Annoying" and "I lost money
+    // or data" are not comparable until each says what it means.
+    const { getByText } = await render(<ReportBugScreen />);
+
+    expect(getByText('It worked, but it was wrong or awkward.')).toBeTruthy();
+    expect(getByText('A payment, a post or a sighting went missing or wrong.')).toBeTruthy();
+  });
+
+  it('⚠️ keeps Send in the pinned footer, not at the end of the scroll', async () => {
+    // The form is six questions long; as the last item in the scroll the
+    // primary action sat below the fold and the screen looked unfinished.
+    const { getByRole, getByTestId } = await render(<ReportBugScreen />);
+
+    const footer = getByTestId('report-bug-footer');
+    const button = getByRole('button', { name: 'Send report' });
+
+    // The button is INSIDE the footer subtree — pinning it is the point, and a
+    // second Send elsewhere would mean the old one was never removed.
+    expect(within(footer).getByRole('button', { name: 'Send report' })).toBe(button);
+  });
+
+  it('⚠️ gives the one required question a heading of its own', async () => {
+    // It had none — it lived as a TextField floating label, which rests at body
+    // size and shrinks to caption once you type, so the single answer we
+    // actually need was quieter than the five optional ones beneath it. A
+    // hierarchy defect is invisible to every other test in this file.
+    const { getByRole, getByText } = await render(<ReportBugScreen />);
+
+    expect(getByRole('header', { name: 'What went wrong?' })).toBeTruthy();
+    // And the band that tells the reader the rest can be skipped.
+    expect(getByText('A few details, if you have them')).toBeTruthy();
   });
 
   it('sends anyway when the quota probe itself fails', async () => {

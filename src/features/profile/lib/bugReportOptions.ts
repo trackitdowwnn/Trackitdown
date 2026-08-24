@@ -21,6 +21,16 @@
  *        ./lastArea.ts (supplies the pre-filled default).
  */
 
+import {
+  AlertTriangle,
+  Ban,
+  Frown,
+  Repeat,
+  Shuffle,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react-native';
+
 /** Where in the app the bug was met. Mirrors the `area` CHECK. */
 export type BugArea =
   | 'explore'
@@ -40,9 +50,32 @@ export type BugSeverity = 'annoying' | 'blocked' | 'lost';
 /** Whether it is worth trying to reproduce. Mirrors the `frequency` CHECK. */
 export type BugFrequency = 'always' | 'sometimes' | 'once';
 
+/**
+ * A plain value/label pair.
+ *
+ * ⚠️ KEPT NARROW so these lists stay assignable to `SelectOption` — SelectField
+ * types its own `icon` as a ReactNode, and widening this interface to carry a
+ * LucideIcon made every area list stop type-checking against it. The richer
+ * shape is {@link BugCardOption}, which only the lists that need it use.
+ */
 export interface BugOption<V extends string> {
   value: V;
   label: string;
+}
+
+/**
+ * An option rendered as a CardSelect row: a label, a line explaining it, and a
+ * left-hand icon.
+ *
+ * ⚠️ THE EXTRAS ARE PRESENTATION ONLY. `value` is what reaches the Postgres
+ * CHECK; neither the description nor the icon is ever sent. A description that
+ * reads like a promise ("we'll look at this first") would BE one, so these
+ * describe the reporter's situation rather than what we will do about it.
+ */
+export interface BugCardOption<V extends string> extends BugOption<V> {
+  /** Optional: three self-explaining words do not need a second line. */
+  description?: string;
+  icon?: LucideIcon;
 }
 
 /**
@@ -77,17 +110,40 @@ export const BUG_AREAS: BugOption<BugArea>[] = [
  * question about their own morning and it sorts the queue better than a
  * priority field ever would. `lost` is the one that should page someone.
  */
-export const BUG_SEVERITIES: BugOption<BugSeverity>[] = [
-  { value: 'annoying', label: 'Annoying' },
-  { value: 'blocked', label: 'I couldn’t finish something' },
-  { value: 'lost', label: 'I lost money or data' },
+export const BUG_SEVERITIES: BugCardOption<BugSeverity>[] = [
+  {
+    value: 'annoying',
+    label: 'Annoying',
+    description: 'It worked, but it was wrong or awkward.',
+    icon: Frown,
+  },
+  {
+    value: 'blocked',
+    label: 'I couldn’t finish something',
+    description: 'It stopped me completing what I came to do.',
+    icon: Ban,
+  },
+  {
+    value: 'lost',
+    label: 'I lost money or data',
+    description: 'A payment, a post or a sighting went missing or wrong.',
+    icon: AlertTriangle,
+  },
 ];
 
-/** How often, most reproducible first — the order a triager wants to read. */
-export const BUG_FREQUENCIES: BugOption<BugFrequency>[] = [
-  { value: 'always', label: 'Every time' },
-  { value: 'sometimes', label: 'Sometimes' },
-  { value: 'once', label: 'Just once' },
+/**
+ * How often, most reproducible first — the order a triager wants to read.
+ *
+ * ⚠️ ICONS BUT NO DESCRIPTIONS. Three words each explain themselves, and a
+ * padded line under every one would be words for the sake of symmetry. The
+ * icons are not decoration though: CardSelect indents the title past the icon
+ * slot, so a group without them puts its text rail at 16pt while the severity
+ * group above sits at 40pt — two rails 32pt apart is what reads as half-built.
+ */
+export const BUG_FREQUENCIES: BugCardOption<BugFrequency>[] = [
+  { value: 'always', label: 'Every time', icon: Repeat },
+  { value: 'sometimes', label: 'Sometimes', icon: Shuffle },
+  { value: 'once', label: 'Just once', icon: Zap },
 ];
 
 /**
