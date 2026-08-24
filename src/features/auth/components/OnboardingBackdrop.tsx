@@ -40,6 +40,21 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { usePalette } from '@/shared/theme';
 
+/**
+ * How much of the screen the wash holds FLAT before it starts to ramp, and
+ * the share of the layout the map hero is given.
+ *
+ * ⚠️ THE TWO ARE NOT THE SAME MEASUREMENT, and an earlier version of this
+ * comment claimed they were. The wash is `absoluteFill` over the root, so
+ * 0.55 is of the FULL SCREEN. The map band is 0.55 of what is left after the
+ * footer and the safe-area insets, which on a 390×844 device is about 45% of
+ * the screen. They share a constant because the intent is shared — the ramp
+ * should begin below where the picture has faded out — and the map always
+ * ends first, so the intent holds. It is a deliberate coupling, not an
+ * identity: retuning one does move the other, so read this before you do.
+ */
+export const ONBOARDING_WASH_HOLD = 0.55;
+
 export function OnboardingBackdrop() {
   const palette = usePalette();
 
@@ -56,7 +71,7 @@ export function OnboardingBackdrop() {
           <Stop offset="0" stopColor={palette.background} />
           {/* Held, not ramped, through the upper half: the wash is something
               the lower content sits in, not a tint over the whole screen. */}
-          <Stop offset="0.55" stopColor={palette.background} />
+          <Stop offset={String(ONBOARDING_WASH_HOLD)} stopColor={palette.background} />
           <Stop offset="1" stopColor={palette.surfaceSubtle} />
         </LinearGradient>
       </Defs>

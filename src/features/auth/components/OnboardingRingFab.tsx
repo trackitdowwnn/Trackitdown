@@ -123,11 +123,17 @@ export function OnboardingRingFab({ page, total, onPress }: OnboardingRingFabPro
           {/* Rotate the canvas, not the arc: a static -90° puts 0% at twelve
               o'clock without another animated property to keep in step. */}
           <G rotation={-90} origin={`${RING_SLOT / 2}, ${RING_SLOT / 2}`}>
+            {/* borderStrong, NOT border. The track sits on the wash's darker
+                end, where #DDDDDD on #EEEEEE is 1.15:1 and the dark twin is
+                1.19:1 — so the ring read as a floating arc with nothing behind
+                it, and "a quarter of the way through" never landed. That is the
+                whole job of the control. Same lesson the map pill learned
+                twice (DESIGN_SYSTEM: the edge is what makes it a pill). */}
             <Circle
               cx={RING_SLOT / 2}
               cy={RING_SLOT / 2}
               r={RING_RADIUS}
-              stroke={palette.border}
+              stroke={palette.borderStrong}
               strokeWidth={sizes.fabRing}
               fill="none"
             />

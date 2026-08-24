@@ -49,8 +49,22 @@ import {
  * should say two different things in two places. Import, never retype.
  */
 export const SAFETY_NOTICE_TITLE = 'Stay safe — report, don’t approach';
-export const SAFETY_NOTICE_BODY =
-  'Never approach the vehicle, follow it, or confront anyone. If a crime is in progress, call 999.';
+
+/**
+ * The rule itself, without the 999 clause.
+ *
+ * Exported for ONBOARDING, which shows a one-line pill rather than this
+ * component — a calm register is right on a first screen, and 999 belongs at
+ * the moment of a live sighting, not while someone is reading what the app is.
+ * It was a third hand-typed wording until 2026-08-24 ("Never approach or follow
+ * a vehicle."), which quietly dropped "or confront anyone" and made the app’s
+ * FIRST safety utterance its weakest.
+ *
+ * BODY is built from it, so the two cannot say different things.
+ */
+export const SAFETY_RULE_LINE =
+  'Never approach the vehicle, follow it, or confront anyone.';
+export const SAFETY_NOTICE_BODY = `${SAFETY_RULE_LINE} If a crime is in progress, call 999.`;
 
 const TITLE = SAFETY_NOTICE_TITLE;
 const BODY = SAFETY_NOTICE_BODY;

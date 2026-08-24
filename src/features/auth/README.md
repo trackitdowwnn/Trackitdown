@@ -9,10 +9,10 @@ it stands between a theft victim and posting their car.
 
 ## Onboarding (first slice)
 
-Four calm slides shown once on first launch (post-nothing → alerted →
-spot-and-report-from-a-distance → recovered), stepped one at a time. Re-viewable
-via `/onboarding?revisit=1` ("How Trackitdown works" in settings). Local
-AsyncStorage flag `trackitdown.onboarding_seen_v1`.
+Four calm slides shown once on first launch (what-this-is → post → spot-and-
+report-from-a-distance → recovered), stepped one at a time. Re-viewable via
+`/onboarding?revisit=1` ("How Trackitdown works" in settings). Local AsyncStorage
+flag `trackitdown.onboarding_seen_v1`.
 
 **Restyled 2026-08-08** against `docs/design-refs/onboarding/ob1.webp`. Three
 progress indicators became one: dots, a numbered step rail ("01 Post") and a
@@ -33,22 +33,59 @@ between two settled states, which is a different idea from tracking a finger,
 and running both would put two systems on the same position mid-drag. Advance
 with the ring; Android back steps back.
 
-**No hero above the words.** Two attempts at an accompanying object have come
-and gone. First a placeholder emoji in a grey circle per slide (🚗 📣 📸 🎉),
-which read as unfinished, told four unrelated stories and — on the recovery
-slide — celebrated with confetti at someone whose car had just been stolen.
-Then, from 2026-08-06, a UK registration plate drawn in code and pinned above
-the pager, whose stamped status changed as you swiped: Reported → Broadcast →
-Sighted → Recovered. It lasted two days and did not earn the room; it went on
-2026-08-08 with `OnboardingPlate`, the per-slide `stamp`, and the demonstration
-plate constant. What replaced it is nothing — the headline takes the space at
-40pt, which is what the reference's own opening slide does. Per-slide artwork
-was the alternative, and this app owns no illustration assets to do it honestly.
+**The hero above the words, third attempt (2026-08-23).** Two had come and
+gone. First a placeholder emoji in a grey circle per slide (🚗 📣 📸 🎉), which
+read as unfinished, told four unrelated stories and — on the recovery slide —
+celebrated with confetti at someone whose car had just been stolen. Then, from
+2026-08-06, a UK registration plate drawn in code and pinned above the pager,
+whose stamped status changed as you swiped: Reported → Broadcast → Sighted →
+Recovered. It lasted two days and did not earn the room; it went on 2026-08-08
+with `OnboardingPlate`, the per-slide `stamp`, and the demonstration plate
+constant. For two weeks what replaced it was nothing — the headline took the
+space at 40pt.
+
+What is there now is **`OnboardingMap`**: an abstract map field with pins,
+drawn in SVG. Three things make it a different proposition from the two that
+failed, and if it is ever removed the reason should be measured against them:
+
+1. **It is the subject, not an accompaniment.** A map of stolen cars near you
+   is what the product IS. The emoji were decoration and the plate was an
+   illustration of a step; this is the thing itself.
+2. **It answers the complaint the copy could not.** The flow opened on "Your
+   car, stolen? Post it." — the middle of a story, to a reader who has never
+   heard of us. A map full of pins says "noticeboard for stolen cars" before
+   the first sentence is read.
+3. **It does not remount per slide.** It sits OUTSIDE the keyed stage, so the
+   words step over a map that persists and morphs through four states
+   (`scatter → posted → alerted → recovered`). `OnboardingSlide`'s own header
+   rejects per-slide artwork because "a thing sliding while its own contents
+   did something else" reads wrong — one continuous map is the shape that
+   answers it, and it is why the slides now read as one car's story rather
+   than four pictures.
+
+It is **abstract, not cartographic**, on purpose: a real map means a real
+place, and on first launch we have neither location permission nor any business
+asking. It also still owns no image assets — this is SVG, like the wash and the
+ring — so "no illustration assets to do it honestly" remains true and remains
+the reason there is no photograph here.
+
+**The alert slide was absorbed, not deleted.** "People nearby get alerted." had
+its own screen; the map now shows it, as rings reaching the other pins, and the
+sentence moved into the post slide's body. That kept the flow at four once the
+premise slide was added — a screen whose only job is to say what the picture is
+already doing is a screen to cut.
 
 The reference is lilac and leans on photography. Neither came across: ADR-0006
 makes monochrome a decision rather than a habit. What was borrowed is the
 anatomy — one soft wash (`OnboardingBackdrop`, drawn with the `react-native-svg`
 already in the tree), a ring control, weight contrast — not the trade dress.
+
+⚠️ Note for anyone bringing photography here later: the map takes 55% of the layout below the footer (not of the
+screen — see ONBOARDING_WASH_HOLD) and the words sit below it
+on `background`. **The headline must never move onto the image.** `mediaScrim`
+at 45% was measured on 2026-08-23 at ~3.4:1 for 14pt white over a light
+subject; anything carrying text takes an opaque `surfaceOverMedia`. Keeping the
+two apart is why this layout has no contrast problem to solve.
 
 ## The deferred-auth gate (guest-first)
 
