@@ -73,8 +73,15 @@ for a month, and the transfer that actually pays a spotter went out silently.
   deletion cascades with the profile.
 - Tap-through by kind (`notification_tap {kind}`) finally measures which
   notifications earn their existence, feeding volume-cap tuning.
-- Out of scope, deliberately: per-type preferences (v2), inline actions,
-  swipe-to-dismiss, email digests, realtime.
+- Out of scope, deliberately: inline actions, swipe-to-dismiss, email digests,
+  realtime.
+- ⚠️ **Per-type preferences were "v2" here and landed 2026-08-24.** They are
+  built ON this decision rather than against it: the filter sits on the PUSH
+  side of persist-then-push, so the centre stays complete for a user who has
+  muted a category, exactly as it already did for one who denied push
+  permission at the OS. If that filter ever moves to the row-writing side, this
+  ADR is what it breaks. See
+  `supabase/migrations/20260824170000_notification_preferences.sql`.
 
 ## Rejected alternatives
 

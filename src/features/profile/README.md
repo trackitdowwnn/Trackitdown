@@ -41,8 +41,17 @@ email (`support@trackitdown.example` — a reserved TLD, so it goes nowhere).
 ## Settings (2026-08-24)
 
 `SettingsScreen` — Profile → Settings → "App settings" (`row-settings`),
-route `/settings`. Two groups: **Appearance** (System / Light / Dark radio
-rows) and **Permissions** (notifications, location, camera, photos).
+route `/settings`. Three groups: **Appearance** (System / Light / Dark radio
+rows), **Notifications** (five per-category switches, signed-in only), and
+**Permissions** (notifications, location, camera, photos).
+
+⚠️ **Two notification kinds have no switch, and their absence is the feature.**
+A sighting of your own car, and the 72-hour window to contest a bounty
+decision — whose push is the only door to `/sighting-dispute`. They have no
+category, so there is no column to store a mute in. Shown as a row with no
+control rather than a disabled switch: a stuck switch reads as a bug, and this
+is a decision. `supabase/tests/notificationCategories.test.ts` fails if either
+ever acquires a category.
 
 ⚠️ **The permission rows are STATUS rows, not switches.** An app cannot grant
 itself a permission; a switch could only deep-link and then snap back, which

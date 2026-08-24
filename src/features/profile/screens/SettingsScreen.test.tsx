@@ -46,6 +46,26 @@ jest.mock('@/shared/ui', () => {
   };
 });
 
+// Both mocked at the FEATURE boundary. @/features/notifications and
+// @/features/auth each reach the supabase client and through it AsyncStorage,
+// whose native module is null under jest — the notifications barrel carries a
+// comment about exactly this.
+const mockSession = jest.fn();
+jest.mock('@/features/auth', () => ({
+  useSession: () => mockSession(),
+}));
+
+const mockSetEnabled = jest.fn();
+const mockPreferences: Record<string, boolean> = {};
+jest.mock('@/features/notifications', () => ({
+  ...jest.requireActual('@/features/notifications/lib/notificationPreferences'),
+  useNotificationPreferences: () => ({
+    preferences: mockPreferences,
+    loading: false,
+    setEnabled: (...args: unknown[]) => mockSetEnabled(...args),
+  }),
+}));
+
 // Mocked at the FEATURE boundary (the AlertsScreen precedent), which also
 // sidesteps useDevicePermission's internal useFocusEffect.
 const mockRequest = jest.fn();
@@ -73,6 +93,11 @@ async function renderWithTheme(preference: ThemePreference = 'system') {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+  mockSession.mockReturnValue({ status: 'signedIn', userId: 'user-1' });
+  mockSetEnabled.mockResolvedValue(true);
+  for (const c of ['alerts', 'messages', 'my_sightings', 'money', 'watched']) {
+    mockPreferences[c] = true;
+  }
   for (const kind of ['notifications', 'location', 'camera', 'photos']) {
     mockStatuses[kind] = { state: 'granted', canAskAgain: false };
   }
@@ -117,6 +142,69 @@ describe('Appearance', () => {
 
     fireEvent.press(await view.findByTestId('row-appearance-system'));
     expect(setPreference).toHaveBeenCalledWith('system');
+  });
+});
+
+describe('Notification categories', () => {
+  it('offers a switch per category, reading the stored preference', async () => {
+    mockPreferences.messages = false;
+
+    const { view } = await renderWithTheme();
+    const row = await view.findByTestId('row-notify-messages');
+
+    expect(row.props.accessibilityRole).toBe('switch');
+    expect(row.props.accessibilityState).toMatchObject({ checked: false });
+    expect((await view.findByTestId('row-notify-alerts')).props.accessibilityState).toMatchObject({
+      checked: true,
+    });
+  });
+
+  it('writes the category that was toggled', async () => {
+    const { view } = await renderWithTheme();
+
+    await act(async () => {
+      fireEvent.press(await view.findByTestId('row-notify-money'));
+    });
+
+    expect(mockSetEnabled).toHaveBeenCalledWith('money', false);
+  });
+
+  it('⚠️ says so when the write fails, because the switch has snapped back', async () => {
+    // The hook rolls the switch back on failure. Without a message the user
+    // sees a control that returned to where it was for no stated reason — and
+    // would reasonably believe the mute took effect.
+    mockSetEnabled.mockResolvedValue(false);
+
+    const { view } = await renderWithTheme();
+    await act(async () => {
+      fireEvent.press(await view.findByTestId('row-notify-alerts'));
+    });
+
+    expect(mockShowToast).toHaveBeenCalledWith('Couldn’t save that. Please try again.', 'error');
+  });
+
+  it('⚠️ offers NO switch for the two kinds that may never be muted', async () => {
+    // A sighting of your car, and the 72-hour contest window whose only door is
+    // its push. Stated as a row with no control rather than a disabled switch:
+    // a stuck switch reads as a bug, and this is a decision.
+    const { view } = await renderWithTheme();
+    const row = await view.findByTestId('row-notify-locked');
+
+    expect(row.props.accessibilityState?.checked).toBeUndefined();
+    expect(row.props.accessibilityRole).not.toBe('switch');
+    expect(await view.findByText(/72 hours/)).toBeTruthy();
+  });
+
+  it('hides the whole group from a guest rather than showing dead switches', async () => {
+    // The categories are per-account rows behind an auth-pinned RPC. Appearance
+    // and the permission rows are device-local and still work.
+    mockSession.mockReturnValue({ status: 'signedOut', userId: null });
+
+    const { view } = await renderWithTheme();
+
+    expect(view.queryByTestId('row-notify-alerts')).toBeNull();
+    expect(view.queryByTestId('row-notify-locked')).toBeNull();
+    expect(await view.findByTestId('row-appearance-system')).toBeTruthy();
   });
 });
 

@@ -189,6 +189,12 @@ export async function sendToUsers(
   admin: SupabaseClient,
   userIds: readonly string[],
   content: {
+    /**
+     * The notification kind. REQUIRED, because it is what the per-category
+     * preference filter keys on — an optional kind would let a new caller
+     * quietly opt out of every mute the user has set.
+     */
+    kind: string;
     title: string;
     body: string;
     data: Record<string, unknown>;
@@ -205,8 +211,11 @@ export async function sendToUsers(
   const unique = [...new Set(userIds)];
   if (unique.length === 0) return { accepted: 0, rejected: 0, pruned: 0 };
 
+  const recipients = await filterByPreference(admin, unique, content.kind);
+  if (recipients.length === 0) return { accepted: 0, rejected: 0, pruned: 0 };
+
   const messages: PushMessage[] = [];
-  for (const batch of chunk(unique, MAX_IDS_PER_QUERY)) {
+  for (const batch of chunk(recipients, MAX_IDS_PER_QUERY)) {
     const { data, error } = await admin
       .from('push_tokens')
       .select('token')
@@ -281,11 +290,57 @@ export async function notifyUsers(
   }
 
   return sendToUsers(admin, unique, {
+    kind: content.kind,
     title: content.title,
     body: content.body,
     data: content.data,
     collapseKey: content.collapseKey,
   });
+}
+
+/**
+ * Drop the users who have muted this kind.
+ *
+ * ⚠️ THE ONLY PLACE PREFERENCES ARE CONSULTED, and it sits on the PUSH side of
+ * persist-then-push on purpose. By the time this runs, notifyUsers has already
+ * written the notifications rows — so a muted user still has the event in their
+ * in-app centre, and muting costs the interruption rather than the information.
+ * Moving this check any earlier would start deleting things people asked to be
+ * told about. ADR-0012 is the rule; this is the line it draws.
+ *
+ * ⚠️ FAILS OPEN — a broken lookup sends to EVERYONE rather than to nobody. The
+ * two failure modes are not symmetrical: over-notifying during a database blip
+ * is an annoyance, while under-notifying means a stolen car reported near
+ * someone whose phone stayed silent. The entire product is that second thing
+ * not happening.
+ *
+ * The kind → category map lives in SQL (notification_category) so there is one
+ * definition rather than one per Edge Function.
+ */
+async function filterByPreference(
+  admin: SupabaseClient,
+  userIds: readonly string[],
+  kind: string,
+): Promise<string[]> {
+  const { data, error } = await admin.rpc('push_recipients', {
+    p_user_ids: userIds,
+    p_kind: kind,
+  });
+
+  if (error) {
+    console.error('[notifications] preference filter failed, sending to all', {
+      kind,
+      error: error.message,
+    });
+    return [...userIds];
+  }
+
+  // A set-returning function comes back as bare values or single-key rows
+  // depending on the client version — accept both rather than depending on
+  // which, because getting it wrong silently returns an empty audience.
+  return (data ?? []).map((row: unknown) =>
+    typeof row === 'string' ? row : (row as { id: string }).id,
+  );
 }
 
 /** Delete tokens Expo has told us are dead. Best-effort and idempotent. */

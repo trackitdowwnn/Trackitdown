@@ -14,11 +14,14 @@
  *        it undiscoverable exactly when it matters. The original objection to a
  *        hub was that it would bury those two. It does not.
  *
- *        ⚠️ NO AUTH GATE, deliberately. Everything here is local to the device
- *        — the theme preference is AsyncStorage, the permissions belong to the
- *        OS — so a guest arriving by deep link gets a screen that works rather
- *        than an invitation to sign in for something that has nothing to do
- *        with an account. That also makes it trivially testable.
+ *        ⚠️ NO AUTH GATE ON THE SCREEN, but the Notifications group needs an
+ *        account. Appearance is AsyncStorage and the permissions belong to the
+ *        OS, so a guest arriving by deep link gets a screen that works instead
+ *        of an invitation to sign in for something that has nothing to do with
+ *        an account. Push categories are per-user rows behind an auth-pinned
+ *        RPC, so that group is simply absent for a guest — omission rather than
+ *        a locked-looking group, which is the same rule the permission rows
+ *        follow for an unavailable kind.
  * LINKS: ../components/PermissionRow.tsx (the four permission rows);
  *        src/shared/theme (useThemeControls — the three-state model);
  *        src/app/settings.tsx (the route);
@@ -26,8 +29,11 @@
  */
 
 import { useRouter } from 'expo-router';
-import { Bell, Camera, ChevronLeft, Images, MapPin } from 'lucide-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Bell, Camera, ChevronLeft, Images, Lock, MapPin } from 'lucide-react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+
+import { useSession } from '@/features/auth';
+import { CATEGORY_COPY, useNotificationPreferences } from '@/features/notifications';
 
 import {
   sizes,
@@ -39,7 +45,7 @@ import {
   type Palette,
   type ThemePreference,
 } from '@/shared/theme';
-import { ListRow, ListRowGroup, Screen } from '@/shared/ui';
+import { ListRow, ListRowGroup, Screen, useToast } from '@/shared/ui';
 
 import { PermissionRow } from '../components/PermissionRow';
 
@@ -55,7 +61,24 @@ export function SettingsScreen() {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const router = useRouter();
+  const toast = useToast();
+  const session = useSession();
   const { preference, setPreference } = useThemeControls();
+  const { preferences, setEnabled } = useNotificationPreferences();
+
+  // The categories are per-account, so a guest has nothing to read or write.
+  // Appearance and the permission rows are device-local and still work.
+  const signedIn = session.status === 'signedIn';
+
+  const toggleCategory = async (category: Parameters<typeof setEnabled>[0], next: boolean) => {
+    const ok = await setEnabled(category, next);
+    if (!ok) {
+      // The hook has already put the switch back. Saying so matters: a switch
+      // that silently returns to where it was reads as a broken control, and
+      // the user would otherwise believe a mute took effect that did not.
+      toast.show('Couldn’t save that. Please try again.', 'error');
+    }
+  };
 
   return (
     <Screen scroll contentContainerStyle={styles.scroll}>
@@ -103,6 +126,49 @@ export function SettingsScreen() {
           />
         ))}
       </ListRowGroup>
+
+      {signedIn ? (
+        <ListRowGroup title="Notifications">
+          {CATEGORY_COPY.map((entry) => (
+            <ListRow
+              key={entry.category}
+              title={entry.title}
+              subtitle={entry.subtitle}
+              toggled={preferences[entry.category]}
+              onPress={() => void toggleCategory(entry.category, !preferences[entry.category])}
+              trailing={
+                <Switch
+                  value={preferences[entry.category]}
+                  onValueChange={(next) => void toggleCategory(entry.category, next)}
+                  trackColor={{ true: palette.primary, false: palette.borderStrong }}
+                  thumbColor={palette.surface}
+                  ios_backgroundColor={palette.borderStrong}
+                />
+              }
+              testID={`row-notify-${entry.category}`}
+            />
+          ))}
+
+          {/* ⚠️ NOT A DISABLED SWITCH — a row with no control at all. Two kinds
+              have no preference column to store a mute in, so there is nothing
+              here to render as "off but greyed". Saying so plainly is better
+              than a switch someone can press and watch refuse: a stuck control
+              reads as a bug, and this is a decision.
+
+              Muting either would take something away that cannot be got back
+              from the Inbox. A sighting push is the moment the whole product
+              exists for. And the 72-hour contest window has no in-app door —
+              docs/ROADMAP.md records that /sighting-dispute is reachable ONLY
+              from its push — so silencing it removes a money right rather than
+              a notification. */}
+          <ListRow
+            icon={Lock}
+            title="Always on"
+            subtitle="A sighting of your car, and the 72 hours you have to contest a decision about a bounty. Both are things you can’t get back if you miss them."
+            testID="row-notify-locked"
+          />
+        </ListRowGroup>
+      ) : null}
 
       {/* The subtitles are the primer these rows would otherwise lack — the
           startup chain asks for all four in a row with no explanation attached
