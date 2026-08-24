@@ -1,0 +1,91 @@
+/**
+ * WHAT:  The four pieces of device metadata a bug report carries, and their
+ *        display labels. One function, so the screen and the payload cannot
+ *        disagree about what is being sent.
+ * WHY:   The report screen SHOWS this list before the user submits, and the
+ *        privacy policy names the same four fields. That only stays true if
+ *        there is one source — a screen that renders its own summary and an api
+ *        module that builds its own payload will drift, and the drift would be
+ *        us collecting something we told the user we were not.
+ *
+ *        ⚠️ THIS IS THE WHOLE OF WHAT IS COLLECTED. It is deliberately not
+ *        extensible by accident: adding a field here means adding it to the
+ *        screen's visible list, the migration's columns, and the privacy
+ *        policy's "What we collect". Anything that identifies a post, a
+ *        sighting, a thread or a place does not belong in it at all — see the
+ *        migration header for why logs, screenshots and the current route were
+ *        all rejected.
+ *
+ *        `expo-device` was already a dependency and unused; nothing new is
+ *        added for this. There is no build number because that needs
+ *        expo-application, which is not a dependency and is not worth adding
+ *        for one line of a support row.
+ * LINKS: ../api/bugReportApi.ts (sends it);
+ *        ../screens/ReportBugScreen.tsx (shows it);
+ *        src/features/legal/lib/legalContent.ts (declares it);
+ *        supabase/migrations/20260824100000_bug_reports.sql (stores it).
+ */
+
+import Constants from 'expo-constants';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
+
+/** The platform values the table's CHECK accepts. Mirrors `pushPlatform()`. */
+export type BugReportPlatform = 'ios' | 'android';
+
+export interface BugDiagnostics {
+  appVersion: string | null;
+  platform: BugReportPlatform | null;
+  osVersion: string | null;
+  deviceModel: string | null;
+}
+
+/**
+ * Read the four fields. Every one is nullable and every one is allowed to be
+ * null: a missing device model costs a little triage, and inventing a fallback
+ * string would put a value in the operator's queue that no device ever had.
+ */
+export function readBugDiagnostics(): BugDiagnostics {
+  return {
+    appVersion: Constants.expoConfig?.version ?? null,
+    platform: Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : null,
+    osVersion: Device.osVersion ?? null,
+    deviceModel: Device.modelName ?? null,
+  };
+}
+
+/** One label/value row, for the screen's "Sent with your report" list. */
+export interface DiagnosticLine {
+  label: string;
+  value: string;
+}
+
+/**
+ * The same four fields as human-readable lines.
+ *
+ * A field we could not read is simply absent rather than shown as "Unknown":
+ * the list is a promise about what is being sent, so it must not list something
+ * that is not.
+ */
+export function describeDiagnostics(diagnostics: BugDiagnostics): DiagnosticLine[] {
+  const lines: DiagnosticLine[] = [];
+
+  if (diagnostics.appVersion) {
+    lines.push({ label: 'App version', value: diagnostics.appVersion });
+  }
+
+  // Model and OS read as one fact about the handset ("iPhone 14 · iOS 18.2"),
+  // and either half can be missing.
+  const device = [
+    diagnostics.deviceModel,
+    diagnostics.osVersion
+      ? `${diagnostics.platform === 'ios' ? 'iOS' : 'Android'} ${diagnostics.osVersion}`
+      : null,
+  ].filter((part): part is string => Boolean(part));
+
+  if (device.length > 0) {
+    lines.push({ label: 'Device', value: device.join(' · ') });
+  }
+
+  return lines;
+}

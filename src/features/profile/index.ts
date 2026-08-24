@@ -19,5 +19,6 @@ export { useProfileTab } from './hooks/useProfileTab';
 // never import this feature back (profile already imports garage).
 export { useMyProfile } from './hooks/useMyProfile';
 export { ProfileScreen } from './screens/ProfileScreen';
+export { ReportBugScreen } from './screens/ReportBugScreen';
 export { SpotterStoryScreen } from './screens/SpotterStoryScreen';
 export type { MyProfile, PublicProfile, ReputationCounters } from './types';

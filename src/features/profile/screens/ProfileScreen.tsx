@@ -34,7 +34,19 @@
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Banknote, Bell, Binoculars, Car, FileText, Info, LifeBuoy, Moon, Shield, Sparkles } from 'lucide-react-native';
+import {
+  Banknote,
+  Bell,
+  Binoculars,
+  Bug,
+  Car,
+  FileText,
+  Info,
+  LifeBuoy,
+  Moon,
+  Shield,
+  Sparkles,
+} from 'lucide-react-native';
 import { Children, Fragment, useCallback, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -438,6 +450,15 @@ function LoadedProfile({
             icon={FileText}
             title="Privacy policy"
             onPress={() => router.push(legalHref('privacy'))}
+          />
+          {/* Above Contact support deliberately: this one reaches us, and
+              that one is still a mailto: to SUPPORT_EMAIL, which is the
+              placeholder support@trackitdown.example. */}
+          <ListRow
+            icon={Bug}
+            title="Report a bug"
+            onPress={() => router.push('/report-bug')}
+            testID="row-report-bug"
           />
           <ListRow
             icon={LifeBuoy}

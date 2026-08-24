@@ -51,7 +51,7 @@ export interface LegalDocument {
 }
 
 /** Bump when any document below changes materially. */
-export const LEGAL_LAST_UPDATED = '23 August 2026';
+export const LEGAL_LAST_UPDATED = '24 August 2026';
 
 /** The operator. Replace with the registered entity before launch. */
 const OPERATOR = 'Trackitdown';
@@ -262,6 +262,12 @@ const PRIVACY: LegalDocument = {
         '• Payments: we do not see or store your card details. Stripe processes payments and holds that information.',
         '• Device: a push notification token for each device you sign in on, so we can notify you.',
         '• Activity: counts of sightings reported, sightings marked helpful, and recoveries credited.',
+        // ⚠️ ADDED 2026-08-24 with the in-app bug reporter. Diagnostic data was
+        // a collection category this app did not previously have, and the four
+        // fields named here are exactly the four the report screen shows the
+        // user before they send — see profile/lib/bugDiagnostics.ts. If that
+        // list ever grows, this line grows with it.
+        '• Bug reports: what you write when you report a bug, plus your app version, whether you are on iOS or Android, your OS version and your device model. No screenshots, and nothing identifying the vehicles you have viewed.',
       ],
     },
     {

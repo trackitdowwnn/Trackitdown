@@ -308,6 +308,14 @@ describe('signed in', () => {
     expect(mockPush).toHaveBeenCalledWith('/onboarding?revisit=1');
   });
 
+  // Sits ABOVE "Contact support" on purpose: this one reaches us, and that one
+  // is still a mailto: to the placeholder support@trackitdown.example.
+  it('Report a bug opens the report screen', async () => {
+    const { getByTestId } = await render(<ProfileScreen />);
+    fireEvent.press(getByTestId('row-report-bug'));
+    expect(mockPush).toHaveBeenCalledWith('/report-bug');
+  });
+
   // This row was an inert "Coming soon" placeholder until the notifications
   // feature shipped, and was then TWO rows with the same summary and the same
   // destination until 2026-08-03.
