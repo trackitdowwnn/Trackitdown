@@ -242,13 +242,38 @@ end $$;
 -- CREATE time, so both revokes are load-bearing.
 -- -----------------------------------------------------------------------------
 do $$
+declare
+  v_oid   oid;
+  v_count integer;
 begin
-  if has_function_privilege('anon',
-       'public.submit_bug_report(text, text, text, text, text)', 'EXECUTE') then
+  -- ⚠️ LOOKED UP BY NAME, NOT BY A HARDCODED SIGNATURE — and this check failed
+  -- on its first ever execution for exactly that reason. It named
+  -- `submit_bug_report(text, text, text, text, text)`, which a later migration
+  -- (20260824140000) dropped when it widened the function to eleven arguments.
+  -- has_function_privilege RAISES on a function that does not exist, so this
+  -- aborted the whole run under ON_ERROR_STOP and the eighteen suites sorting
+  -- after this file never got to say anything at all.
+  --
+  -- A signature is the wrong thing for this file to assert. What it cares about
+  -- is that whatever submit_bug_report currently IS, anon cannot execute it —
+  -- and that survives the next widening without anybody remembering to come
+  -- back here. The exact-signature assertion belongs in
+  -- bug_report_details_verification, which owns that migration and checks it.
+  select count(*), min(p.oid) into v_count, v_oid
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'submit_bug_report';
+
+  -- Exactly one overload. Two would make every call ambiguous and could let a
+  -- client reach a version that skips the newer argument checks.
+  if v_count <> 1 then
+    raise exception 'CHECK 7 FAILED: expected exactly one submit_bug_report, found %', v_count;
+  end if;
+
+  if has_function_privilege('anon', v_oid, 'EXECUTE') then
     raise exception 'CHECK 7 FAILED: anon can execute submit_bug_report';
   end if;
-  if not has_function_privilege('authenticated',
-       'public.submit_bug_report(text, text, text, text, text)', 'EXECUTE') then
+  if not has_function_privilege('authenticated', v_oid, 'EXECUTE') then
     raise exception 'CHECK 7 FAILED: authenticated cannot execute submit_bug_report';
   end if;
 end $$;
