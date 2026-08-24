@@ -49,7 +49,13 @@
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, {
   ReduceMotion,
   SlideInLeft,
@@ -57,14 +63,21 @@ import Animated, {
   SlideOutLeft,
   SlideOutRight,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createLogger } from '@/shared/lib/logger';
-import { motion, spacing, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  displayFontScaleCap,
+  motion,
+  spacing,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { Button } from '@/shared/ui/Button';
 
-import { OnboardingBackdrop } from '../components/OnboardingBackdrop';
+import { OnboardingBackdrop, ONBOARDING_WASH_HOLD } from '../components/OnboardingBackdrop';
+import { OnboardingMap } from '../components/OnboardingMap';
 import { OnboardingRingFab, RING_SLOT } from '../components/OnboardingRingFab';
 import { OnboardingSlide } from '../components/OnboardingSlide';
 import { markOnboardingSeenInGate } from '../hooks/useOnboardingGate';
@@ -76,6 +89,8 @@ const log = createLogger('auth');
 export function OnboardingScreen() {
   const styles = useThemedStyles(makeStyles);
   const router = useRouter();
+  const { fontScale } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ revisit?: string }>();
   const revisit = params.revisit === '1';
 
@@ -143,13 +158,47 @@ export function OnboardingScreen() {
     goTo(page + 1);
   };
 
+  // The wizard's filling-step rule, applied here: past 1.3× the hero yields its
+  // room to the copy rather than squeezing it. STRICTLY less-than — at exactly
+  // 1.3 the headline is 52pt and needs the screen, so `<=` kept the map for the
+  // one scale that could least afford it.
+  // `?? 1` because fontScale is not populated on every platform/test host, and
+  // an undefined comparison is false — which would have silently hidden the
+  // hero everywhere rather than only at large text.
+  const mapFits = (fontScale ?? 1) < displayFontScaleCap;
+
   return (
     <View style={styles.root}>
       {/* FIRST in the tree so nothing later can paint over it on Android,
           where z-order follows elevation. */}
       <OnboardingBackdrop />
 
+
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        {/* ⚠️ A SIBLING OF THE STAGE, NOT A LAYER UNDER IT. Absolutely
+            positioned, the map and the copy shared the same pixels and the
+            headline landed inside the image at ordinary text sizes — which the
+            README states as an absolute rule, and which was only survivable
+            because the fade happened to have washed the ink out that far down.
+            As flex siblings they cannot overlap at any size on any device.
+
+            The negative top margin is what lets it still bleed under the status
+            bar, which is where the reference puts its imagery.
+
+            ⚠️ OUTSIDE the keyed stage below, and that is the whole design: the
+            map is the one thing that persists while the words step over it, so
+            the four slides read as one car’s story rather than four pictures.
+            Inside the stage it would remount and slide with the copy — exactly
+            the objection that removed the last two heroes.
+
+            Gone entirely past 1.3× text: the wizard's `fills` rule, "big text
+            beats the full-bleed map". */}
+        {mapFits ? (
+          <View style={[styles.mapBand, { marginTop: -insets.top }]}>
+            <OnboardingMap stage={ONBOARDING_SLIDES[page].mapStage} />
+          </View>
+        ) : null}
+
         {/* `key` is what makes this a transition at all: changing it unmounts
             the old step and mounts a new one, which is what fires the exiting
             and entering animations. Identical mechanism to WizardScreen. */}
@@ -166,7 +215,19 @@ export function OnboardingScreen() {
             .easing(easeOut)
             .reduceMotion(ReduceMotion.System)}
         >
-          <OnboardingSlide slide={ONBOARDING_SLIDES[page]} index={page} total={total} />
+          {/* ⚠️ THE SCROLL RESCUE the wizard's `fills` rule assumes. Hiding
+              the map past 1.3× gives the words the screen, but at 2× a
+              four-line 40pt headline plus a body plus the safety pill still
+              overflows — and a stage that cannot scroll simply loses the
+              bottom of it. `flexGrow: 1` keeps the copy bottom-aligned at
+              ordinary sizes and lets it scroll only when it has to. */}
+          <ScrollView
+            contentContainerStyle={styles.stageContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <OnboardingSlide slide={ONBOARDING_SLIDES[page]} index={page} total={total} />
+          </ScrollView>
         </Animated.View>
 
         {/* Skip left, advance right — the same footer grammar as the wizard's
@@ -207,8 +268,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // The step occupies everything above the footer, and the copy sits low in it
   // so the words land near the control that advances them rather than floating
   // in the middle of an empty screen.
+  // 55/45 against the stage. The map keeps the share OnboardingBackdrop holds
+  // its wash flat through, so the picture lives in the calm band and the wash's
+  // own ramp begins where the map has already faded out.
+  mapBand: {
+    flex: ONBOARDING_WASH_HOLD,
+  },
   stage: {
-    flex: 1,
+    flex: 1 - ONBOARDING_WASH_HOLD,
+  },
+  stageContent: {
+    flexGrow: 1,
     justifyContent: 'flex-end',
     paddingBottom: spacing.xl,
   },

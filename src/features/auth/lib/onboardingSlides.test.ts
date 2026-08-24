@@ -23,8 +23,11 @@ describe('the copy, character for character', () => {
   it('flattens each headline to exactly the sentence it was written as', () => {
     const spoken = ONBOARDING_SLIDES.map((slide) => headlineText(slide.headline));
     expect(spoken).toEqual([
+      // The premise, added 2026-08-23: the flow used to open mid-story on
+      // 'Your car, stolen?', which assumes the reader already knows what this
+      // app is. Nobody seeing this screen does.
+      'Stolen cars, on one map.',
       'Your car, stolen? Post it.',
-      'People nearby get alerted.',
       'Spot it? Report it — from a distance.',
       'Recovered — bounty paid.',
     ]);

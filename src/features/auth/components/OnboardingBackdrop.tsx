@@ -40,6 +40,16 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { usePalette } from '@/shared/theme';
 
+/**
+ * How much of the screen the wash holds FLAT before it starts to ramp — and,
+ * because they must be the same number, the share the map hero occupies.
+ *
+ * Exported so the two cannot drift. It was written twice, as `offset="0.55"`
+ * here and `flex: 55` there, with each file's header commenting at length about
+ * the other — which is the tell.
+ */
+export const ONBOARDING_WASH_HOLD = 0.55;
+
 export function OnboardingBackdrop() {
   const palette = usePalette();
 
@@ -56,7 +66,7 @@ export function OnboardingBackdrop() {
           <Stop offset="0" stopColor={palette.background} />
           {/* Held, not ramped, through the upper half: the wash is something
               the lower content sits in, not a tint over the whole screen. */}
-          <Stop offset="0.55" stopColor={palette.background} />
+          <Stop offset={String(ONBOARDING_WASH_HOLD)} stopColor={palette.background} />
           <Stop offset="1" stopColor={palette.surfaceSubtle} />
         </LinearGradient>
       </Defs>

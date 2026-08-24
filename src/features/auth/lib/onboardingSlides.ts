@@ -49,21 +49,38 @@ export function headlineText(runs: OnboardingHeadline): string {
 
 export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
   {
+    key: 'map',
+    // ⚠️ THE PREMISE, ADDED 2026-08-23. The flow used to open on 'Your car,
+    // stolen? Post it.' — the middle of a story to anyone who has not already
+    // been told what Trackitdown is, which is everyone seeing this screen. The
+    // reference flows we borrow from never need this line because everybody
+    // knows what a holiday let is; nobody knows what this is.
+    //
+    // 'on one map' carries the emphasis because the map is the thing on screen
+    // behind these words, and the sentence should be describing it.
+    headline: [{ text: 'Stolen cars, ' }, { text: 'on one map.', emphasis: true }],
+    // NOT 'near you': the map is abstract precisely because on first launch we
+    // have no location permission and no business asking, so the copy must not
+    // claim a proximity the screen cannot back.
+    body: 'Owners list cars that have gone missing. People passing keep an eye out.',
+    mapStage: 'scatter',
+  },
+  {
     key: 'post',
     // "Your car, stolen?" is the reader's situation and is left plain; the
     // emphasis lands on the instruction, which is the only part they can act on.
     headline: [{ text: 'Your car, stolen?' }, { text: ' Post it.', emphasis: true }],
-    body: 'Post your car’s details and photos with a cash bounty — it takes minutes.',
-  },
-  {
-    key: 'alert',
-    headline: [
-      { text: 'People ' },
-      { text: 'nearby', emphasis: true },
-      { text: ' get ' },
-      { text: 'alerted.', emphasis: true },
-    ],
-    body: 'Spotters in the area get a notification and know exactly what to look for.',
+    // ⚠️ THE ALERT BEAT LIVES HERE NOW (2026-08-23). It had its own slide —
+    // 'People nearby get alerted.' — which the map now SHOWS, as rings reaching
+    // the other pins. A screen whose only job is to say a thing the picture is
+    // already doing is a screen to cut, and cutting it kept the flow at four
+    // once the premise slide was added.
+    // 'We’ll let people nearby know', not 'everyone nearby is alerted': only
+    // people with the app are, and DESIGN_SYSTEM sets the register as "We’ll
+    // notify people nearby" rather than an absolute. It is also the one line
+    // on the flow that leaned towards alarm.
+    body: 'Details, photos and a cash bounty — it takes minutes. We’ll let people nearby know.',
+    mapStage: 'posted',
   },
   {
     key: 'spot',
@@ -75,6 +92,7 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
       { text: 'from a distance.', emphasis: true },
     ],
     body: 'Snap a photo in the app and we handle the rest.',
+    mapStage: 'alerted',
     safetyLine: ONBOARDING_SAFETY_LINE,
   },
   {
@@ -83,5 +101,6 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
     // as weight, which is visible, rather than as a near-black on near-black.
     headline: [{ text: 'Recovered — ' }, { text: 'bounty paid.', emphasis: true }],
     body: 'When a sighting leads to recovery, the spotter earns the bounty.',
+    mapStage: 'recovered',
   },
 ];

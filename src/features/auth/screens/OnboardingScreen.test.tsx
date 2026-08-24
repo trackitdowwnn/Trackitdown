@@ -23,7 +23,10 @@
  */
 
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import * as RN from 'react-native';
 import { BackHandler, StyleSheet } from 'react-native';
+
+import { displayFontScaleCap } from '@/shared/theme';
 
 import { ONBOARDING_SAFETY_LINE, ONBOARDING_SLIDES } from '../lib/onboardingSlides';
 import { ONBOARDING_STORAGE_KEY } from '../lib/onboardingStorage';
@@ -71,6 +74,9 @@ jest.mock('react-native-reanimated', () => {
     // that carries the truth — is a plain prop that survives the mock.
     // OnboardingRingFab.test.tsx is where progress is pinned.
     useAnimatedProps: () => ({}),
+    // The map hero's layers. Opacity is not asserted here — OnboardingMap.test
+    // owns the stages — but the hook must exist or the screen throws on render.
+    useAnimatedStyle: (fn: () => unknown) => fn(),
     useDerivedValue: (fn: () => unknown) => ({ value: fn() }),
     withTiming: (toValue: unknown) => toValue,
     useReducedMotion: () => true,
@@ -137,11 +143,52 @@ beforeEach(async () => {
   });
 });
 
+describe('the map hero', () => {
+  const HIDDEN = { includeHiddenElements: true } as const;
+
+  /**
+   * Both cases pin fontScale explicitly.
+   *
+   * ⚠️ Through `Dimensions.get`, which is what `useWindowDimensions` reads.
+   * Spying on the hook itself does nothing here — the screen holds a direct
+   * binding to it — and jest-expo reports fontScale 2 by default, so the
+   * large-text test passed while proving nothing and the ordinary-size one
+   * could never pass at all.
+   */
+  const atFontScale = (fontScale: number) => {
+    jest
+      .spyOn(RN.Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale });
+  };
+
+  it('is there at ordinary text sizes', async () => {
+    atFontScale(1);
+
+    const view = await render(<OnboardingScreen />);
+
+    expect(view.getByTestId('onboarding-map', HIDDEN)).toBeTruthy();
+  });
+
+  it('⚠️ yields the screen once text is scaled past 1.3×', async () => {
+    // DESIGN_SYSTEM's filling-step rule: "big text beats the full-bleed map".
+    // The threshold is STRICT — at exactly 1.3 the headline is already 52pt and
+    // needs the room, and `<=` kept the map for the one scale least able to
+    // afford it.
+    atFontScale(displayFontScaleCap);
+
+    const view = await render(<OnboardingScreen />);
+
+    expect(view.queryByTestId('onboarding-map', HIDDEN)).toBeNull();
+    // The words are still there, and still the whole point.
+    expect(view.getByTestId('onboarding-slide-0')).toBeTruthy();
+  });
+});
+
 describe('slides', () => {
   it('shows each slide in turn with position + copy in one announced label', async () => {
     const { getByTestId } = await render(<OnboardingScreen />);
     expect(getByTestId('onboarding-slide-0').props.accessibilityLabel).toMatch(
-      /^Slide 1 of 4\. Your car, stolen\? Post it\./,
+      /^Slide 1 of 4\. Stolen cars, on one map\./,
     );
 
     await advanceTo(getByTestId, LAST_PAGE);

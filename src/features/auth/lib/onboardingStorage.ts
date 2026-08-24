@@ -12,8 +12,16 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/** Bump to re-show the intro to every user (e.g. after a slide redesign). */
-export const ONBOARDING_VERSION = 1;
+/**
+ * Bump to re-show the intro to every user (e.g. after a slide redesign).
+ *
+ * v2 (2026-08-23): the map hero arrived and the flow gained an opening slide
+ * that says what the app IS — it used to start mid-story on "Your car,
+ * stolen?". A redesign nobody already onboarded ever sees is not worth
+ * building, and there is nothing to migrate: the old key is simply never read
+ * again.
+ */
+export const ONBOARDING_VERSION = 2;
 
 /** Versioned key: older versions' flags simply stop matching. */
 export const ONBOARDING_STORAGE_KEY = `trackitdown.onboarding_seen_v${ONBOARDING_VERSION}`;
