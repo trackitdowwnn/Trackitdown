@@ -103,9 +103,11 @@ into a PRIVATE bucket with no client read.
 `lib/bugBreadcrumbs.ts`, `lib/lastArea.ts` (the tab-name pre-fill, written from
 `app/(tabs)/_layout.tsx`).
 **Design:** `docs/design-refs/report-bug/` — Airbnb-language pass, 2026-08-24.
-⚠️ **No reader exists.** Nothing in the app or repo reads `bug_reports` or the
-`bug-screenshots` bucket; the queue is "open the Supabase SQL console". The
-button is only honest if someone actually looks.
+⚠️ **No reader exists IN THE APP** — no screen, no Edge Function. The queue is
+the Supabase SQL console, and `docs/OPERATIONS.md` now holds the query and says
+where the private screenshots live. That makes "Thanks — we'll take a look"
+possible; it does not make it automatic. The button is only honest if someone
+actually looks.
 
 **Out of scope:** blocked-users management, payment methods, vanity profile
 URLs, notification toggles (live in the notifications feature), real auth.
