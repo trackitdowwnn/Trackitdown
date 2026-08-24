@@ -8,13 +8,21 @@
  *        module that builds its own payload will drift, and the drift would be
  *        us collecting something we told the user we were not.
  *
- *        ⚠️ THIS IS THE WHOLE OF WHAT IS COLLECTED. It is deliberately not
- *        extensible by accident: adding a field here means adding it to the
- *        screen's visible list, the migration's columns, and the privacy
- *        policy's "What we collect". Anything that identifies a post, a
- *        sighting, a thread or a place does not belong in it at all — see the
- *        migration header for why logs, screenshots and the current route were
- *        all rejected.
+ *        ⚠️ THIS IS THE WHOLE OF THE AUTOMATIC DEVICE METADATA — and, since
+ *        2026-08-24, NOT the whole of what a report carries. It used to be, and
+ *        the sentence saying so had to be corrected the day the form grew:
+ *        a report now also carries what the user chose (area, severity,
+ *        frequency, what they expected, up to three screenshots) and one more
+ *        automatic thing (an event-name breadcrumb trail, ../lib/
+ *        bugBreadcrumbs.ts). If you are auditing what leaves the device, this
+ *        file is one of three places to read, not the only one.
+ *
+ *        It is still deliberately not extensible by accident: adding a field
+ *        here means adding it to the screen's visible list, the migration's
+ *        columns, and the privacy policy's "What we collect". Anything that
+ *        identifies a post, a sighting, a thread or a place does not belong in
+ *        it at all — see the migration header for why log payloads and the
+ *        current route are still refused.
  *
  *        `expo-device` was already a dependency and unused; nothing new is
  *        added for this. There is no build number because that needs

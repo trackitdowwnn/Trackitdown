@@ -50,8 +50,20 @@ function stableHash(input: string): string {
   return (hash >>> 0).toString(36);
 }
 
-/** Resize (long edge → maxEdge, aspect preserved) + compress to JPEG bytes. */
-async function toJpegBytes(
+/**
+ * Resize (long edge → maxEdge, aspect preserved) + compress to JPEG bytes.
+ *
+ * EXPORTED for the bug-report screenshot uploader, which needs this exact
+ * treatment against a DIFFERENT (private) bucket and wants the object PATH
+ * rather than a public URL — so it cannot call `uploadOwnFolderPhoto`, but it
+ * must not reimplement the re-encode.
+ *
+ * SAFETY: the re-encode is the EXIF strip. Everything that picks an image from
+ * the library — including a bug screenshot, where the user may well pick a
+ * photo rather than a capture — has to pass through here, or a source GPS tag
+ * pinpointing someone's home travels with it.
+ */
+export async function toJpegBytes(
   photo: PickedPhoto,
   maxEdge: number,
   compress: number,

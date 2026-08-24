@@ -19,13 +19,13 @@
  *        docs/DESIGN_SYSTEM.md.
  */
 
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, useRouter, useSegments } from 'expo-router';
 import { Bookmark, Compass, MessageCircle, Plus, User } from 'lucide-react-native';
 import { useMemo } from 'react';
 
 import { useRequireAuth, useTabAuthGate } from '@/features/auth';
 import { useHasSavedCar } from '@/features/garage';
-import { useProfileTab } from '@/features/profile';
+import { useProfileTab, useTrackVisitedTab } from '@/features/profile';
 import {
   AppTabBar,
   type AppTabConfig,
@@ -52,6 +52,14 @@ const BASE_TABS: AppTabConfig[] = [
 
 function BadgedTabs() {
   const { badges } = useTabBadges();
+  // Remembers which TAB is active so the bug reporter can pre-select the right
+  // area. ⚠️ The TAB NAME only — never the pathname, which can be /post/<id>
+  // and would tie a bug report to one specific stolen car. See
+  // features/profile/lib/lastArea.ts, which refuses anything it does not
+  // recognise.
+  const segments = useSegments();
+  useTrackVisitedTab(segments[segments.length - 1]);
+
   const router = useRouter();
   const requireAuth = useRequireAuth();
   const profileTab = useProfileTab();

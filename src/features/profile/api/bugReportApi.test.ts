@@ -11,7 +11,7 @@
  *        supabase/migrations/20260824100000_bug_reports.sql; docs/LOGGING.md.
  */
 
-import { BugReportError, submitBugReport } from './bugReportApi';
+import { BugReportError, submitBugReport, type BugReportDetails } from './bugReportApi';
 import type { BugDiagnostics } from '../lib/bugDiagnostics';
 
 const mockRpc = jest.fn();
@@ -38,13 +38,23 @@ const DIAGNOSTICS: BugDiagnostics = {
   deviceModel: 'iPhone 14',
 };
 
+/** Nothing chosen and nothing attached — the shape most cases care about. */
+const BARE: BugReportDetails = {
+  area: null,
+  severity: null,
+  frequency: null,
+  expected: null,
+  breadcrumbs: [],
+  screenshotPaths: [],
+};
+
 beforeEach(() => jest.clearAllMocks());
 
 describe('the payload', () => {
   it('sends the message and the four named diagnostics, and nothing else', async () => {
     mockRpc.mockResolvedValue({ error: null });
 
-    await submitBugReport('  the map went blank  ', DIAGNOSTICS);
+    await submitBugReport('  the map went blank  ', DIAGNOSTICS, BARE);
 
     expect(mockRpc).toHaveBeenCalledWith('submit_bug_report', {
       p_message: 'the map went blank',
@@ -52,26 +62,73 @@ describe('the payload', () => {
       p_platform: 'ios',
       p_os_version: '18.2',
       p_device_model: 'iPhone 14',
+      p_area: null,
+      p_severity: null,
+      p_frequency: null,
+      p_expected: null,
+      p_breadcrumbs: null,
+      p_screenshot_paths: null,
     });
     // ⚠️ Exactly these keys. A reporter id from the client would be an
     // attribution hole, and anything identifying a post, sighting or place has
-    // no business in a support queue.
+    // no business in a support queue. This assertion is the reason a widening
+    // cannot happen quietly: adding a field to the payload fails here first.
     const [, params] = mockRpc.mock.calls[0];
-    // Sorted both sides: "exactly these five keys" is the property worth
-    // pinning, and object-literal order is implementation.
+    // Sorted both sides: "exactly these keys" is the property worth pinning,
+    // and object-literal order is implementation.
     expect(Object.keys(params).sort()).toEqual([
       'p_app_version',
+      'p_area',
+      'p_breadcrumbs',
       'p_device_model',
+      'p_expected',
+      'p_frequency',
       'p_message',
       'p_os_version',
       'p_platform',
+      'p_screenshot_paths',
+      'p_severity',
     ]);
+  });
+
+  it('sends the chosen details and the breadcrumb trail', async () => {
+    mockRpc.mockResolvedValue({ error: null });
+
+    await submitBugReport('the map went blank', DIAGNOSTICS, {
+      area: 'explore',
+      severity: 'blocked',
+      frequency: 'always',
+      expected: '  the map  ',
+      breadcrumbs: ['10:00:00 info map:feed_mounted'],
+      screenshotPaths: ['user-1/abc-0.jpg'],
+    });
+
+    const [, params] = mockRpc.mock.calls[0];
+    expect(params.p_area).toBe('explore');
+    expect(params.p_severity).toBe('blocked');
+    expect(params.p_frequency).toBe('always');
+    expect(params.p_expected).toBe('the map');
+    expect(params.p_breadcrumbs).toEqual(['10:00:00 info map:feed_mounted']);
+    expect(params.p_screenshot_paths).toEqual(['user-1/abc-0.jpg']);
+  });
+
+  it('⚠️ sends an empty trail as null, not as an empty array', async () => {
+    // Different facts. `[]` in the operator's queue reads as "we captured a
+    // trail and it was empty" / "they deliberately attached nothing"; null
+    // reads as "there was none". The queue should not have to guess.
+    mockRpc.mockResolvedValue({ error: null });
+
+    await submitBugReport('x', DIAGNOSTICS, BARE);
+
+    const [, params] = mockRpc.mock.calls[0];
+    expect(params.p_breadcrumbs).toBeNull();
+    expect(params.p_screenshot_paths).toBeNull();
   });
 
   it('passes a missing diagnostic through as null rather than inventing one', async () => {
     mockRpc.mockResolvedValue({ error: null });
 
-    await submitBugReport('x', { ...DIAGNOSTICS, deviceModel: null, osVersion: null });
+    await submitBugReport('x', { ...DIAGNOSTICS, deviceModel: null, osVersion: null }, BARE);
 
     const [, params] = mockRpc.mock.calls[0];
     expect(params.p_device_model).toBeNull();
@@ -89,7 +146,7 @@ describe('what the user is told', () => {
   it.each(refusals)('maps %s to copy a person can act on', async (token, copy) => {
     mockRpc.mockResolvedValue({ error: { message: `error: ${token}`, code: 'P0001' } });
 
-    await expect(submitBugReport('x', DIAGNOSTICS)).rejects.toMatchObject({
+    await expect(submitBugReport('x', DIAGNOSTICS, BARE)).rejects.toMatchObject({
       code: token,
       message: copy,
     });
@@ -98,7 +155,7 @@ describe('what the user is told', () => {
   it('falls back rather than showing a database error', async () => {
     mockRpc.mockResolvedValue({ error: { message: 'duplicate key value violates…', code: '23505' } });
 
-    await expect(submitBugReport('x', DIAGNOSTICS)).rejects.toMatchObject({
+    await expect(submitBugReport('x', DIAGNOSTICS, BARE)).rejects.toMatchObject({
       message: 'We couldn’t send this. Please try again.',
     });
   });
@@ -108,7 +165,7 @@ describe('⚠️ what reaches the logs', () => {
   it('logs the event and NOT the report text', async () => {
     mockRpc.mockResolvedValue({ error: null });
 
-    await submitBugReport('my plate is AB12 CDE and I live at 4 Elm Road', DIAGNOSTICS);
+    await submitBugReport('my plate is AB12 CDE and I live at 4 Elm Road', DIAGNOSTICS, BARE);
 
     expect(mockInfo).toHaveBeenCalledWith('bug_report_sent');
     // No second argument at all — not the text, not its length, not a preview.
@@ -122,7 +179,7 @@ describe('⚠️ what reaches the logs', () => {
       error: { message: 'value too long: my plate is AB12 CDE', code: 'P0001' },
     });
 
-    await expect(submitBugReport('my plate is AB12 CDE', DIAGNOSTICS)).rejects.toThrow(
+    await expect(submitBugReport('my plate is AB12 CDE', DIAGNOSTICS, BARE)).rejects.toThrow(
       BugReportError,
     );
 
@@ -139,7 +196,7 @@ describe('⚠️ what reaches the logs', () => {
     // These three are the user being told something, not a fault to page on.
     mockRpc.mockResolvedValue({ error: { message: 'RATE_LIMITED', code: 'P0001' } });
 
-    await expect(submitBugReport('again', DIAGNOSTICS)).rejects.toThrow(BugReportError);
+    await expect(submitBugReport('again', DIAGNOSTICS, BARE)).rejects.toThrow(BugReportError);
 
     expect(mockWarn).toHaveBeenCalledWith('bug_report_failed', { reason: 'RATE_LIMITED' });
     expect(mockError).not.toHaveBeenCalled();
@@ -155,7 +212,7 @@ describe('⚠️ what reaches the logs', () => {
       error: { message: 'new row violates check constraint: NOT_AUTHENTICATED', code: '23514' },
     });
 
-    await expect(submitBugReport('NOT_AUTHENTICATED', DIAGNOSTICS)).rejects.toThrow(
+    await expect(submitBugReport('NOT_AUTHENTICATED', DIAGNOSTICS, BARE)).rejects.toThrow(
       'We couldn’t send this. Please try again.',
     );
     expect(mockError).toHaveBeenCalledWith('bug_report_failed', { reason: 'UNKNOWN' });

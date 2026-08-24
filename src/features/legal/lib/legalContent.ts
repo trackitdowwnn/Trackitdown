@@ -272,11 +272,18 @@ const PRIVACY: LegalDocument = {
         '• Payments: we do not see or store your card details. Stripe processes payments and holds that information.',
         '• Device: a push notification token for each device you sign in on, so we can notify you.',
         '• Activity: counts of sightings reported, sightings marked helpful, and recoveries credited.',
-        // ⚠️ ADDED 2026-08-24 with the in-app bug reporter. Diagnostic data was
-        // a collection category this app did not previously have, and the four
-        // fields named here are exactly the four the report screen shows the
-        // user before they send — see profile/lib/bugDiagnostics.ts. If that
-        // list ever grows, this line grows with it.
+        // ⚠️ ADDED 2026-08-24 with the in-app bug reporter, and WIDENED the same
+        // day when the form grew. Diagnostic data was a collection category this
+        // app did not previously have, and these three bullets are exactly what
+        // the report screen shows the user before they send — see
+        // profile/lib/bugDiagnostics.ts, bugReportOptions.ts and
+        // bugBreadcrumbs.ts. If that list ever grows, these lines grow with it.
+        //
+        // Split into CHOSEN and AUTOMATIC on purpose. A reader deciding whether
+        // to trust this needs to know which half they control, and burying "we
+        // also send a trail of what the app was doing" inside a sentence about
+        // screenshots they picked themselves would be the kind of true-but-
+        // misleading that a privacy policy exists to avoid.
         //
         // This deliberately names the browsing history where the SCREEN
         // deliberately does not ("nothing from the rest of the app"). Not an
@@ -284,7 +291,9 @@ const PRIVACY: LegalDocument = {
         // exactly what is excluded and is served by the specific promise,
         // whereas raising the idea unprompted mid-flow plants the worry the
         // sentence exists to settle. Keep both — do not "reconcile" them.
-        '• Bug reports: what you write when you report a bug, plus your app version, whether you are on iOS or Android, your OS version and your device model. No screenshots, and nothing identifying the vehicles you have viewed.',
+        '• Bug reports: what you write when you report a bug, plus your app version, whether you are on iOS or Android, your OS version and your device model.',
+        '• Bug reports, if you choose to add them: up to three screenshots you pick yourself, which area of the app the problem was in, how much it got in your way and how often it happens. Screenshots are shown to you before you send and are stored privately — only we can open them.',
+        '• Bug reports, automatically: a list of the last fifty things the app did, as step names only ("opening the map", "sending a sighting"). It never includes what those steps were about — no vehicle, no place, no person, no message.',
       ],
     },
     {

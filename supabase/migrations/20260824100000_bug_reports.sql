@@ -18,7 +18,15 @@
 --            mostly bare UUIDs: a postId in a support queue is a durable pointer
 --            at a live victim's case, resolvable to an exact coordinate by
 --            anyone holding service_role.
---          * NO SCREENSHOTS. They bypass every redaction helper in the codebase.
+--          * NO SCREENSHOTS. ⚠️ SUPERSEDED THE SAME DAY by
+--            20260824140000_bug_report_details.sql, at the owner's request.
+--            The objection below was NOT answered — it is still true that a
+--            screenshot bypasses every redaction helper — it was accepted as a
+--            risk against a set of controls: user-picked only (never automatic),
+--            previewed full-screen before sending, EXIF stripped by re-encode,
+--            and stored in a PRIVATE bucket no client can read. Read that
+--            migration's header before touching any of those four.
+--            They bypass every redaction helper in the codebase.
 --            An owner's sighting-detail screen shows the exact point that
 --            SECURITY_AND_TRUST §2 spends forty lines coarsening for everyone
 --            else.

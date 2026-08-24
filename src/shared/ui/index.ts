@@ -111,6 +111,11 @@ export {
   type PhotoTileStatus,
   type PickedPhoto,
 } from './PhotoGridPicker';
+// Was internal to PhotoGridPicker until the bug reporter needed it: a report's
+// screenshots must be tappable to full screen, because "check what is in the
+// image before you send it" is the only control that exists over what a
+// screenshot contains.
+export { PhotoPreviewModal, type PhotoPreviewModalProps } from './PhotoPreviewModal';
 export {
   PermissionPrimer,
   type PermissionPrimerContent,

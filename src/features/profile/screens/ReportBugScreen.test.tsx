@@ -47,11 +47,41 @@ jest.mock('@/shared/ui', () => {
   };
 });
 
+// useSession reaches the supabase client, which reaches AsyncStorage's native
+// module and fails at import under jest.
+const mockSession = jest.fn();
+jest.mock('@/features/auth', () => ({
+  useSession: () => mockSession(),
+}));
+
+const mockPickImages = jest.fn();
+jest.mock('expo-image-picker', () => ({
+  launchImageLibraryAsync: (...args: unknown[]) => mockPickImages(...args),
+}));
+
+const mockUpload = jest.fn();
+jest.mock('../api/bugScreenshotUpload', () => ({
+  MAX_BUG_SCREENSHOTS: 3,
+  uploadBugScreenshots: (...args: unknown[]) => mockUpload(...args),
+}));
+
+const mockBreadcrumbs = jest.fn();
+jest.mock('../lib/bugBreadcrumbs', () => ({
+  readBreadcrumbs: () => mockBreadcrumbs(),
+}));
+
+const mockLastArea = jest.fn();
+jest.mock('../lib/lastArea', () => ({
+  readLastArea: () => mockLastArea(),
+}));
+
+const mockQuota = jest.fn();
 const mockSubmit = jest.fn();
 // A REAL class: the real module imports the supabase client, which throws at
 // import without env vars, and the screen branches on `instanceof`.
 jest.mock('../api/bugReportApi', () => ({
   BUG_REPORT_MAX_LENGTH: 2000,
+  readBugReportQuota: () => mockQuota(),
   BugReportError: class BugReportError extends Error {
     code: string;
     constructor(message: string, code: string) {
@@ -81,11 +111,27 @@ const FULL = {
   deviceModel: 'iPhone 14',
 };
 
+/** Nothing chosen and nothing attached — what most cases send. */
+const BARE_DETAILS = {
+  area: null,
+  severity: null,
+  frequency: null,
+  expected: null,
+  breadcrumbs: [],
+  screenshotPaths: [],
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockCanGoBack.mockReturnValue(true);
   mockRead.mockReturnValue(FULL);
   mockSubmit.mockResolvedValue(undefined);
+  mockQuota.mockResolvedValue(5);
+  mockUpload.mockResolvedValue([]);
+  mockBreadcrumbs.mockReturnValue([]);
+  mockLastArea.mockReturnValue(null);
+  mockPickImages.mockResolvedValue({ canceled: true });
+  mockSession.mockReturnValue({ status: 'signedIn', userId: 'user-1' });
 });
 
 describe('the disclosure panel', () => {
@@ -138,11 +184,215 @@ describe('the disclosure panel', () => {
     expect(getByText('iPhone 14 · 18.2')).toBeTruthy();
   });
 
-  it('promises no screenshots and nothing from elsewhere in the app', async () => {
+  it('names the breadcrumb trail, which is the part they did not choose', async () => {
+    // Everything else on this screen is something the reporter typed or picked.
+    // The trail is not, so it is the one item that has to be disclosed rather
+    // than merely visible.
     const { getByText } = await render(<ReportBugScreen />);
 
-    expect(getByText(/no screenshots/)).toBeTruthy();
-    expect(getByText(/nothing from the rest of the app/)).toBeTruthy();
+    expect(getByText('Recent activity')).toBeTruthy();
+    expect(getByText('Step names only')).toBeTruthy();
+    expect(getByText(/never what they were about/)).toBeTruthy();
+  });
+
+  it('⚠️ counts attached screenshots in the panel', async () => {
+    // An image is the attachment whose weight is easiest to forget between
+    // picking it and pressing send.
+    mockPickImages.mockResolvedValue({
+      canceled: false,
+      assets: [
+        { uri: 'file://a.jpg', width: 100, height: 200 },
+        { uri: 'file://b.jpg', width: 100, height: 200 },
+      ],
+    });
+
+    const { getByText, getByTestId, queryByText } = await render(<ReportBugScreen />);
+    expect(queryByText('2 images')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('report-bug-shot-add'));
+    });
+
+    expect(getByText('2 images')).toBeTruthy();
+  });
+
+  it('⚠️ warns what a screenshot can contain, and lets them check', async () => {
+    // The ONLY control over what is inside an image. No redaction helper in
+    // this codebase can reach inside a PNG, so the warning plus a tappable
+    // thumbnail IS the mitigation — if either goes, the feature stops being
+    // defensible.
+    mockPickImages.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file://a.jpg', width: 100, height: 200 }],
+    });
+
+    const { getByText, getByTestId } = await render(<ReportBugScreen />);
+
+    expect(getByText(/can show an address or a number plate/)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('report-bug-shot-add'));
+    });
+    expect(getByTestId('report-bug-shot-0')).toBeTruthy();
+  });
+
+  it('shows the chosen area, so the panel matches what travels', async () => {
+    mockLastArea.mockReturnValue('explore');
+
+    const { getByText, getAllByText } = await render(<ReportBugScreen />);
+
+    expect(getByText('Area')).toBeTruthy();
+    // TWICE on purpose, and worth pinning: once in the picker as the current
+    // answer, once in the disclosure as a thing that will travel. They are
+    // different claims — a pre-filled picker says "this is what I assumed",
+    // the panel says "this is what I am sending" — and the second is the one
+    // that has to be true.
+    expect(getAllByText('Explore & map')).toHaveLength(2);
+  });
+});
+
+describe('the details', () => {
+  it('pre-fills the area from the last tab visited', async () => {
+    mockLastArea.mockReturnValue('messages');
+
+    const { getByRole, getByTestId } = await render(<ReportBugScreen />);
+    await act(async () => {
+      fireEvent.changeText(getByTestId('report-bug-message'), 'x');
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('button', { name: 'Send report' }));
+    });
+
+    expect(mockSubmit).toHaveBeenCalledWith(
+      'x',
+      FULL,
+      expect.objectContaining({ area: 'messages' }),
+    );
+  });
+
+  it('sends the breadcrumb trail and the uploaded screenshot paths', async () => {
+    mockBreadcrumbs.mockReturnValue(['10:00:00 info map:feed_mounted']);
+    mockUpload.mockResolvedValue(['user-1/abc-0.jpg']);
+    mockPickImages.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file://a.jpg', width: 100, height: 200 }],
+    });
+
+    const { getByRole, getByTestId } = await render(<ReportBugScreen />);
+    await act(async () => {
+      fireEvent.changeText(getByTestId('report-bug-message'), 'x');
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('report-bug-shot-add'));
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('button', { name: 'Send report' }));
+    });
+
+    expect(mockUpload).toHaveBeenCalledWith('user-1', [
+      { uri: 'file://a.jpg', width: 100, height: 200 },
+    ]);
+    expect(mockSubmit).toHaveBeenCalledWith(
+      'x',
+      FULL,
+      expect.objectContaining({
+        breadcrumbs: ['10:00:00 info map:feed_mounted'],
+        screenshotPaths: ['user-1/abc-0.jpg'],
+      }),
+    );
+  });
+
+  it('a removed screenshot does not travel', async () => {
+    mockPickImages.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file://a.jpg', width: 100, height: 200 }],
+    });
+
+    const { getByRole, getByTestId } = await render(<ReportBugScreen />);
+    await act(async () => {
+      fireEvent.changeText(getByTestId('report-bug-message'), 'x');
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('report-bug-shot-add'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('report-bug-shot-remove-0'));
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('button', { name: 'Send report' }));
+    });
+
+    expect(mockUpload).toHaveBeenCalledWith('user-1', []);
+  });
+
+  it('⚠️ says so before uploading when the hourly limit is already spent', async () => {
+    // Asked BEFORE the uploads, so a rate-limited reporter is not made to wait
+    // for three images and then told it was pointless.
+    mockQuota.mockResolvedValue(0);
+    mockPickImages.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file://a.jpg', width: 100, height: 200 }],
+    });
+
+    const { getByRole, getByTestId } = await render(<ReportBugScreen />);
+    await act(async () => {
+      fireEvent.changeText(getByTestId('report-bug-message'), 'x');
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('report-bug-shot-add'));
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('button', { name: 'Send report' }));
+    });
+
+    expect(mockUpload).not.toHaveBeenCalled();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
+  });
+
+  it('⚠️ refuses rather than sending a report without the attached screenshots', async () => {
+    // Written first as `shots.length > 0 && userId ? upload(...) : []`, which
+    // on a missing session sent the report with NO screenshots while the panel
+    // still listed them — the screen claiming MORE than the payload carried.
+    // That is the same class of failure as claiming less, and just as bad.
+    mockSession.mockReturnValue({ status: 'signedOut', userId: null });
+    mockPickImages.mockResolvedValue({
+      canceled: false,
+      assets: [{ uri: 'file://a.jpg', width: 100, height: 200 }],
+    });
+
+    const { getByRole, getByTestId } = await render(<ReportBugScreen />);
+    await act(async () => {
+      fireEvent.changeText(getByTestId('report-bug-message'), 'x');
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('report-bug-shot-add'));
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('button', { name: 'Send report' }));
+    });
+
+    expect(mockSubmit).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith('Please sign in to send a report.', 'error'),
+    );
+  });
+
+  it('sends anyway when the quota probe itself fails', async () => {
+    // ⚠️ The probe is a courtesy. A broken probe must never be the thing that
+    // stops someone reporting a bug — least of all when the bug they are
+    // reporting might BE the broken probe.
+    mockQuota.mockResolvedValue(null);
+
+    const { getByRole, getByTestId } = await render(<ReportBugScreen />);
+    await act(async () => {
+      fireEvent.changeText(getByTestId('report-bug-message'), 'x');
+    });
+    await act(async () => {
+      fireEvent.press(getByRole('button', { name: 'Send report' }));
+    });
+
+    expect(mockSubmit).toHaveBeenCalled();
   });
 });
 
@@ -170,7 +420,7 @@ describe('sending', () => {
       fireEvent.press(getByRole('button', { name: 'Send report' }));
     });
 
-    expect(mockSubmit).toHaveBeenCalledWith('the map went blank', FULL);
+    expect(mockSubmit).toHaveBeenCalledWith('the map went blank', FULL, BARE_DETAILS);
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
     expect(mockShowToast).toHaveBeenCalledWith('Thanks — we’ll take a look.');
   });
