@@ -86,6 +86,11 @@ import { OnboardingRingFab, RING_SLOT } from '../components/OnboardingRingFab';
 import { OnboardingSlide } from '../components/OnboardingSlide';
 import { markOnboardingSeenInGate } from '../hooks/useOnboardingGate';
 import { ONBOARDING_SLIDES } from '../lib/onboardingSlides';
+import {
+  endOnboardingRun,
+  startOnboardingRun,
+  trackOnboardingStep,
+} from '../lib/onboardingFunnel';
 import { markOnboardingSeen } from '../lib/onboardingStorage';
 
 const log = createLogger('auth');
@@ -108,9 +113,30 @@ export function OnboardingScreen() {
   const lastPage = total - 1;
   const onLastPage = page === lastPage;
 
-  // First funnel: which slides people actually see.
+  // ⚠️ A REVISIT IS NOT A RUN. Re-reading the intro from Profile → "How
+  // Trackitdown works" must not open one: counting it would inflate both ends
+  // of the funnel with people who already finished, and the completion rate —
+  // the one number this exists to produce — would drift upward every time
+  // somebody browsed the tour. Nothing below fires without an open run.
+  useEffect(() => {
+    if (revisit) return;
+    startOnboardingRun();
+    // Ended by `leave`, which every exit path goes through — including the
+    // Android back press out of slide 1, which unmounts this screen.
+    return () => endOnboardingRun();
+  }, [revisit]);
+
+  // The funnel: which slides people actually see. The local log stays — it is
+  // what `__DEV__` "Copy recent logs" reads — and the server call is what a
+  // completion rate can be computed from.
   useEffect(() => {
     log.info('Onboarding slide viewed', { slide: page + 1, revisit });
+    // Guarded HERE as well as inside the funnel, which no-ops with no run open.
+    // Belt and braces on purpose: the funnel's guard is invisible from this
+    // file, so a future reader moving `startOnboardingRun` somewhere else would
+    // silently start counting revisits — and the symptom is a completion rate
+    // that quietly climbs rather than anything that looks broken.
+    if (!revisit) trackOnboardingStep('slide_viewed', page + 1);
   }, [page, revisit]);
 
   const goTo = (target: number) => {
@@ -145,6 +171,7 @@ export function OnboardingScreen() {
       return;
     }
     log.info(`Onboarding ${reason}`, { atSlide: page + 1 });
+    trackOnboardingStep(reason);
     await markOnboardingSeen();
     // Flip the live gate NOW (before navigating) so the always-mounted AuthGate
     // sees 'seen' and lets the redirect stick instead of bouncing back.

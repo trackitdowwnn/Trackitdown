@@ -87,6 +87,42 @@ at 45% was measured on 2026-08-23 at ~3.4:1 for 14pt white over a light
 subject; anything carrying text takes an opaque `surfaceOverMedia`. Keeping the
 two apart is why this layout has no contrast problem to solve.
 
+### The completion funnel (2026-08-24)
+
+`lib/onboardingFunnel.ts` → `record_onboarding_step` →
+`public.onboarding_events`. One row per step reached in one run: each slide
+viewed, then `completed` or `skipped`. The question it answers is the plainest
+one available — of the people who see slide 1, how many reach the end, and
+which slide loses the rest. The intro was redesigned with no measurement on
+either side of the change; this is that measurement, not an experiment.
+
+⚠️ **The only anon-writable endpoint in the app.** Onboarding runs BEFORE
+sign-in, so there is no `auth.uid()` to pin to — and the people worth measuring
+are exactly the ones who never sign in, so buffering until an account exists
+would record only the runs that succeeded. What that costs is stated in the
+migration header: the endpoint can be spammed, and the damage is inflated
+numbers rather than disclosure, because there is nothing here to steal. The
+unique constraint caps one run at (slides + 2) rows.
+
+⚠️ **`run_id` is generated in memory and NEVER persisted.** Not a device id,
+not an install id, not a session. Two runs by the same person are unlinkable,
+and a run is unlinkable to the account they may later create — that is what
+makes collecting it from somebody who has not agreed to anything defensible.
+Writing it to AsyncStorage would turn an anonymous counter into tracking of a
+pre-signup user; `onboardingFunnel.test.ts` fails if `setItem` is ever called.
+
+⚠️ **A revisit is not a run.** Re-reading the intro from Profile → "How
+Trackitdown works" counts nothing, guarded at both the screen and the lib.
+Counting it would drift the completion rate upward every time the tour was
+browsed.
+
+Never throws, never blocks, never awaits: a lost row is a slightly wrong
+number, and the alternative is a spinner or an error over the first thing
+anyone sees.
+
+**Not built:** A/B assignment. Measurement is step one; a split needs live
+users before it can produce a result (advice given 2026-08-24).
+
 ## The deferred-auth gate (guest-first)
 
 `onboarding → the tabs, as a GUEST`. No auth wall anywhere: browsing (feed,

@@ -88,6 +88,17 @@ const mockReplace = jest.fn();
 const mockBack = jest.fn();
 let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
+// The funnel reaches the supabase client, which throws at import without env
+// vars. Mocked at the module boundary, which is also how the calls are asserted.
+const mockStartRun = jest.fn();
+const mockEndRun = jest.fn();
+const mockTrack = jest.fn();
+jest.mock('../lib/onboardingFunnel', () => ({
+  startOnboardingRun: () => mockStartRun(),
+  endOnboardingRun: () => mockEndRun(),
+  trackOnboardingStep: (...args: unknown[]) => mockTrack(...args),
+}));
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     replace: mockReplace,
@@ -375,6 +386,43 @@ describe('Android back', () => {
     expect(handled).toBe(true);
     // Back is a real step backwards, not merely a swallowed event.
     expect(getByTestId('onboarding-slide-1')).toBeTruthy();
+  });
+});
+
+describe('⚠️ the completion funnel', () => {
+  it('opens a run and counts each slide reached', async () => {
+    const { getByTestId } = await render(<OnboardingScreen />);
+
+    expect(mockStartRun).toHaveBeenCalled();
+    expect(mockTrack).toHaveBeenCalledWith('slide_viewed', 1);
+
+    await advanceTo(getByTestId, 2);
+    expect(mockTrack).toHaveBeenCalledWith('slide_viewed', 2);
+  });
+
+  it('records how the run ended', async () => {
+    const { getByText } = await render(<OnboardingScreen />);
+
+    await act(async () => {
+      fireEvent.press(getByText('Skip'));
+    });
+
+    expect(mockTrack).toHaveBeenCalledWith('skipped');
+  });
+
+  it('⚠️ counts NOTHING in revisit mode', async () => {
+    // Re-reading the intro from Profile → "How Trackitdown works" is not a
+    // journey through onboarding. Counting it would inflate both ends of the
+    // funnel with people who already finished, and drift the completion rate —
+    // the one number this exists to produce — upward every time the tour was
+    // browsed.
+    mockParams = { revisit: '1' };
+
+    const { getByTestId } = await render(<OnboardingScreen />);
+    await advanceTo(getByTestId, 2);
+
+    expect(mockStartRun).not.toHaveBeenCalled();
+    expect(mockTrack).not.toHaveBeenCalled();
   });
 });
 

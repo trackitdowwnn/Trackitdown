@@ -294,6 +294,15 @@ const PRIVACY: LegalDocument = {
         '• Bug reports: what you write when you report a bug, plus your app version, whether you are on iOS or Android, your OS version and your device model.',
         '• Bug reports, if you choose to add them: up to three screenshots you pick yourself, which area of the app the problem was in, how much it got in your way and how often it happens. Screenshots are shown to you before you send and are stored privately — only we can open them.',
         '• Bug reports, automatically: a list of the last fifty things the app did, as step names only ("opening the map", "sending a sighting"). It never includes what those steps were about — no vehicle, no place, no person, no message.',
+        // ⚠️ ADDED 2026-08-24 with the onboarding funnel, and listed here even
+        // though it arguably need not be: with no identifier of any kind, this
+        // is anonymous rather than personal data, which puts it outside what a
+        // privacy policy is obliged to cover. It is disclosed anyway because it
+        // is collected BEFORE anyone has an account or has agreed to anything,
+        // and "we did not have to tell you" is a poor answer to somebody who
+        // finds out later. If a future change gives it any identifier, it stops
+        // being optional and this bullet stops being accurate.
+        '• How far you got through the introduction, when you first open the app: which slides you saw and whether you finished or skipped. This is counted, not recorded against you — there is no account yet, and we attach no name, no device identifier and nothing that lets us recognise the same phone twice.',
       ],
     },
     {
