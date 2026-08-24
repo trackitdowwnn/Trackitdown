@@ -74,14 +74,34 @@ export function describeDiagnostics(diagnostics: BugDiagnostics): DiagnosticLine
     lines.push({ label: 'App version', value: diagnostics.appVersion });
   }
 
-  // Model and OS read as one fact about the handset ("iPhone 14 · iOS 18.2"),
-  // and either half can be missing.
-  const device = [
-    diagnostics.deviceModel,
-    diagnostics.osVersion
-      ? `${diagnostics.platform === 'ios' ? 'iOS' : 'Android'} ${diagnostics.osVersion}`
-      : null,
-  ].filter((part): part is string => Boolean(part));
+  // Model, platform and OS read as one fact about the handset
+  // ("iPhone 14 · iOS 18.2"), and any part of it can be missing.
+  //
+  // ⚠️ THE PLATFORM ALWAYS APPEARS WHEN IT IS KNOWN, even with no OS version.
+  // It is sent unconditionally, and folding it into the OS string meant that
+  // on a handset whose osVersion would not read, the screen showed
+  // "iPhone 14" while `p_platform: 'ios'` went to the server. A list that
+  // can say LESS than the payload is the one thing this feature must not do,
+  // and the first version of it did exactly that.
+  const osLabel = diagnostics.platform === null
+    ? null
+    : diagnostics.platform === 'ios'
+      ? 'iOS'
+      : 'Android';
+
+  // ⚠️ THE PARTS ARE BUILT INDEPENDENTLY. Writing this as
+  // `osLabel && osVersion ? '<label> <version>' : osLabel` fixed the platform
+  // case but recreated the same bug pointing the other way: with an unknown
+  // platform and a READABLE osVersion — reachable on web, where Platform.OS is
+  // neither ios nor android but expo-device still parses a version out of the
+  // user agent — the whole branch collapsed to null and the version vanished
+  // from the list while still travelling in the payload. Either half must be
+  // able to appear without the other.
+  const osPart = [osLabel, diagnostics.osVersion].filter(Boolean).join(' ') || null;
+
+  const device = [diagnostics.deviceModel, osPart].filter(
+    (part): part is string => Boolean(part),
+  );
 
   if (device.length > 0) {
     lines.push({ label: 'Device', value: device.join(' · ') });

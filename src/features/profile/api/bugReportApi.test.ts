@@ -21,12 +21,13 @@ jest.mock('@/shared/api', () => ({
 
 const mockInfo = jest.fn();
 const mockWarn = jest.fn();
+const mockError = jest.fn();
 jest.mock('@/shared/lib/logger', () => ({
   createLogger: () => ({
     info: (...args: unknown[]) => mockInfo(...args),
     warn: (...args: unknown[]) => mockWarn(...args),
+    error: (...args: unknown[]) => mockError(...args),
     debug: jest.fn(),
-    error: jest.fn(),
   }),
 }));
 
@@ -56,12 +57,14 @@ describe('the payload', () => {
     // attribution hole, and anything identifying a post, sighting or place has
     // no business in a support queue.
     const [, params] = mockRpc.mock.calls[0];
-    expect(Object.keys(params)).toEqual([
-      'p_message',
+    // Sorted both sides: "exactly these five keys" is the property worth
+    // pinning, and object-literal order is implementation.
+    expect(Object.keys(params).sort()).toEqual([
       'p_app_version',
-      'p_platform',
-      'p_os_version',
       'p_device_model',
+      'p_message',
+      'p_os_version',
+      'p_platform',
     ]);
   });
 
@@ -123,9 +126,38 @@ describe('⚠️ what reaches the logs', () => {
       BugReportError,
     );
 
-    expect(mockWarn).toHaveBeenCalledWith('bug_report_failed', { token: 'UNKNOWN' });
-    const logged = JSON.stringify(mockWarn.mock.calls);
+    // ⚠️ error, NOT warn. An unrecognised failure is a real one, and only
+    // error reaches the crash sink — a bug reporter whose own submissions fail
+    // silently is this feature's worst case.
+    expect(mockError).toHaveBeenCalledWith('bug_report_failed', { reason: 'UNKNOWN' });
+    const logged = JSON.stringify([...mockError.mock.calls, ...mockWarn.mock.calls]);
     expect(logged).not.toContain('AB12');
     expect(logged).not.toContain('value too long');
+  });
+
+  it('keeps a validation rejection at warn', async () => {
+    // These three are the user being told something, not a fault to page on.
+    mockRpc.mockResolvedValue({ error: { message: 'RATE_LIMITED', code: 'P0001' } });
+
+    await expect(submitBugReport('again', DIAGNOSTICS)).rejects.toThrow(BugReportError);
+
+    expect(mockWarn).toHaveBeenCalledWith('bug_report_failed', { reason: 'RATE_LIMITED' });
+    expect(mockError).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ does not let the reporter pick the error copy by typing a token', async () => {
+    // A check-constraint violation (23514) quotes the offending input back, so
+    // its message can contain whatever the reporter typed. The scan this
+    // replaced searched every failure's text and would have matched here —
+    // handing someone who wrote "NOT_AUTHENTICATED" a "please sign in" they
+    // cannot act on, from a submission that was signed in the whole time.
+    mockRpc.mockResolvedValue({
+      error: { message: 'new row violates check constraint: NOT_AUTHENTICATED', code: '23514' },
+    });
+
+    await expect(submitBugReport('NOT_AUTHENTICATED', DIAGNOSTICS)).rejects.toThrow(
+      'We couldn’t send this. Please try again.',
+    );
+    expect(mockError).toHaveBeenCalledWith('bug_report_failed', { reason: 'UNKNOWN' });
   });
 });

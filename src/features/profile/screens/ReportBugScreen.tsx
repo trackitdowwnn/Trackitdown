@@ -76,9 +76,15 @@ export function ReportBugScreen() {
   return (
     <Screen scroll contentContainerStyle={styles.scroll} keyboardAware>
       <View style={styles.headerRow}>
+        {/* Frozen while sending, because the success path pops: a back tap
+            mid-flight would pop a SECOND screen out from under whoever is
+            there when the promise resolves. The field is muted at that point
+            anyway, so a still chevron reads as consistent. */}
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile'))}
+          disabled={sending}
           accessibilityRole="button"
+          accessibilityState={{ disabled: sending }}
           accessibilityLabel="Back"
           style={styles.back}
           testID="report-bug-back"
@@ -101,26 +107,47 @@ export function ReportBugScreen() {
         testID="report-bug-message"
       />
 
-      {lines.length > 0 ? (
-        <View style={styles.diagnostics} testID="report-bug-diagnostics">
-          <Text style={styles.diagnosticsTitle}>Sent with your report</Text>
-          {lines.map((line) => (
-            <View key={line.label} style={styles.diagnosticsRow}>
-              <Text style={styles.diagnosticsLabel}>{line.label}</Text>
-              <Text style={styles.diagnosticsValue}>{line.value}</Text>
-            </View>
-          ))}
-          <Text style={styles.diagnosticsNote}>
-            Your account, so we can reply. Nothing else — no screenshots, and nothing about the cars
-            you’ve looked at.
-          </Text>
-        </View>
-      ) : null}
+      {/* ⚠️ NEVER CONDITIONED AWAY. The whole panel used to hang on
+          `lines.length > 0`, so on a handset where none of the four fields
+          could be read the user was told NOTHING — while their account link
+          still travelled. The one sentence that is always true was the one
+          that could vanish. Only the ROWS are conditional now.
 
+          Rows are `accessible` with a joined label so VoiceOver reads
+          "App version: 1.0.0" as one item; unwrapped, a two-Text row is
+          announced as two fragments and the pairing is lost. */}
+      <View style={styles.diagnostics} testID="report-bug-diagnostics">
+        <Text style={styles.diagnosticsTitle} accessibilityRole="header">
+          Sent with your report
+        </Text>
+        {lines.map((line) => (
+          <View
+            key={line.label}
+            style={styles.diagnosticsRow}
+            accessible
+            accessibilityLabel={`${line.label}: ${line.value}`}
+          >
+            <Text style={styles.diagnosticsLabel}>{line.label}</Text>
+            <Text style={styles.diagnosticsValue}>{line.value}</Text>
+          </View>
+        ))}
+        {/* "nothing from the rest of the app" rather than "nothing about the
+            cars you've looked at": naming the browsing history raises the very
+            worry the sentence exists to settle. */}
+        <Text style={styles.diagnosticsNote}>
+          Your account, so we can reply. Nothing else — no screenshots, and nothing from the rest of
+          the app.
+        </Text>
+      </View>
+
+      {/* `disabled` is emptiness ONLY. Passing `!canSend` made the button
+          disabled AND loading at once, which dims it under its own spinner and
+          announces "dimmed, busy" — Button treats loading as busy-not-
+          unavailable and already blocks the press on either. */}
       <Button
         label="Send report"
         onPress={() => void send()}
-        disabled={!canSend}
+        disabled={message.trim().length === 0}
         loading={sending}
       />
     </Screen>
@@ -151,10 +178,14 @@ const makeStyles = (c: Palette) =>
       flexShrink: 1,
     },
     // A quiet panel rather than a card: this is a disclosure, not an object the
-    // reader is meant to act on.
+    // reader is meant to act on. The extra bottom margin (16 from the scroll
+    // gap + 8 here) stops "here is what we send" from reading as one block with
+    // "Send" — it is the last thing weighed before committing, not a caption
+    // on the button.
     diagnostics: {
       gap: spacing.sm,
       paddingTop: spacing.md,
+      marginBottom: spacing.sm,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: c.border,
     },
@@ -165,11 +196,23 @@ const makeStyles = (c: Palette) =>
     diagnosticsRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
+      // Stated, not inherited: `stretch` renders correctly here only because RN
+      // draws Text from the top of its box, which stops being true the moment a
+      // value wraps.
+      alignItems: 'flex-start',
       gap: spacing.lg,
     },
+    // ⚠️ THE LABEL YIELDS, NOT THE VALUE. flexShrink defaults to 0, so without
+    // this the label took all the width it wanted and the value — the thing
+    // actually being disclosed — absorbed the entire squeeze. At 200% text
+    // "App version" left about half the row and "iPhone 14 Pro Max · iOS 18.2.1"
+    // funnelled into a narrow right-hand column, breaking one fact across four
+    // lines with a dangling "·". ListRow has the same precedence: the title
+    // block flexes, the value holds its line.
     diagnosticsLabel: {
       ...typography.caption,
       color: c.textSecondary,
+      flexShrink: 1,
     },
     diagnosticsValue: {
       ...typography.caption,

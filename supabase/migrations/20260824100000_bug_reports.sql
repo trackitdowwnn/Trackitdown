@@ -81,9 +81,19 @@ create table public.bug_reports (
 comment on table public.bug_reports is
   'One row per in-app bug report. Written ONLY by submit_bug_report (SECURITY DEFINER) / service role. RLS enabled with NO client policies — never client-readable or writable. Carries the reporter''s free text plus four named device fields (app version, platform, OS version, device model) that are shown to the user before sending. Deliberately carries NO logs, NO screenshot and NO route: see the migration header.';
 
--- Triage order. There is no per-user lookup index because nothing reads these
--- by reporter — the queue is read newest-first.
+-- Triage order: the operator reads the queue newest-first.
 create index bug_reports_created_at_idx on public.bug_reports (created_at desc);
+
+-- ⚠️ THE RATE LIMIT READS BY REPORTER ON EVERY SUBMISSION. An earlier comment
+-- here claimed "nothing reads these by reporter", which was false the moment it
+-- was written — submit_bug_report's window count is
+-- `where reporter_id = v_uid and created_at > now() - interval '1 hour'`, and
+-- with only the created_at index that filters every row written in the last
+-- hour. This is the composite that create_sighting's limiter already relies on
+-- (sightings_spotter_created_idx), in the migration this one names as its
+-- template.
+create index bug_reports_reporter_created_idx
+  on public.bug_reports (reporter_id, created_at desc);
 
 alter table public.bug_reports enable row level security;
 
@@ -158,16 +168,35 @@ begin
     raise exception 'RATE_LIMITED';
   end if;
 
+  -- ⚠️ THE DIAGNOSTICS ARE CLAMPED, NOT VALIDATED. The columns CHECK 40/40/80
+  -- characters, and an over-long Device.modelName would otherwise raise a raw
+  -- check violation that the client can only map to its generic fallback — so
+  -- the user retries forever and loses the report over a field they did not
+  -- type and cannot change. The message is the payload; the diagnostics are
+  -- advisory, and a truncated model name still triages.
+  --
+  -- p_platform is NOT clamped: it has a value CHECK, not a length one, and
+  -- coercing a bad platform to one that passes would put a value in the
+  -- operator's queue that no device reported.
+  --
+  -- The third option — `case when p_platform in ('ios','android') then
+  -- p_platform else null end` — would satisfy both rules, since absence is not
+  -- an invented value. It is not taken only because the case is unreachable
+  -- from our own client: readBugDiagnostics types the field as
+  -- BugReportPlatform | null, so nothing we ship can send a third value. A
+  -- direct caller passing 'web' gets a 23514 and the generic fallback, which is
+  -- their own doing rather than a real reporter losing a report. Revisit this
+  -- the moment anything else calls the RPC.
   insert into public.bug_reports (
     reporter_id, message, app_version, platform, os_version, device_model
   )
   values (
     v_uid,
     v_message,
-    nullif(btrim(coalesce(p_app_version, '')), ''),
+    left(nullif(btrim(coalesce(p_app_version, '')), ''), 40),
     nullif(btrim(coalesce(p_platform, '')), ''),
-    nullif(btrim(coalesce(p_os_version, '')), ''),
-    nullif(btrim(coalesce(p_device_model, '')), '')
+    left(nullif(btrim(coalesce(p_os_version, '')), ''), 40),
+    left(nullif(btrim(coalesce(p_device_model, '')), ''), 80)
   );
 end;
 $$;

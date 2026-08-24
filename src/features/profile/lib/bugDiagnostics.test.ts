@@ -36,10 +36,35 @@ describe('readBugDiagnostics', () => {
     // The rule the whole feature rests on. Logs, screenshots and the current
     // route were all rejected for failing exactly this — a postId in a support
     // queue is a durable pointer at a live victim's case.
-    const serialised = JSON.stringify(readBugDiagnostics()).toLowerCase();
+    //
+    // ⚠️ SCANS THE KEY NAMES, SPLIT INTO WORDS. Two wrong versions came first
+    // and both are worth naming, because each looks right:
+    //   * `JSON.stringify(...)` searched for `'"' + forbidden` anchored every
+    //     fragment to the START of a key, so `"postId"`, `"lastRoute"` and
+    //     `"userEmail"` — the three exact leaks the comment above names — all
+    //     sailed through. It could only ever pass.
+    //   * Plain `includes` on the whole key goes the other way: 'platform'
+    //     contains "lat", so it fails on a field that is meant to be here. A
+    //     value scan is out for the same reason — 'android' contains "id".
+    // Split on camel humps AND on _ / - / space, then prefix-match each word:
+    // 'postId' and 'post_id' → ['post','id'], 'latitude' → ['latitude'] which
+    // starts with "lat", 'platform' → itself, which does not. The separators
+    // matter: a hump-only split let 'post_id' and 'user_email' straight past.
+    //
+    // This scans TOP-LEVEL KEY NAMES only. A nested `context: { postId }`
+    // would read as the single word 'context' and slip by — the guard against
+    // that is the sibling test above, which pins the key set to exactly four
+    // and fails on any addition, nested or not. The two are meant to be read
+    // together.
+    const words = Object.keys(readBugDiagnostics()).flatMap((key) =>
+      key
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .toLowerCase()
+        .split(/[s_-]+/),
+    );
 
     for (const forbidden of ['id', 'lat', 'lng', 'coord', 'plate', 'email', 'token', 'route']) {
-      expect(serialised).not.toContain(`"${forbidden}`);
+      expect(words.filter((word) => word.startsWith(forbidden))).toEqual([]);
     }
   });
 });
@@ -53,9 +78,14 @@ describe('describeDiagnostics', () => {
   });
 
   it('says Android when it is Android', () => {
-    const lines = describeDiagnostics({ ...FULL, platform: 'android', deviceModel: 'Pixel 7' });
+    const lines = describeDiagnostics({
+      ...FULL,
+      platform: 'android',
+      osVersion: '15',
+      deviceModel: 'Pixel 7',
+    });
 
-    expect(lines).toContainEqual({ label: 'Device', value: 'Pixel 7 · Android 18.2' });
+    expect(lines).toContainEqual({ label: 'Device', value: 'Pixel 7 · Android 15' });
   });
 
   it('⚠️ omits a field it could not read rather than showing "Unknown"', () => {
@@ -71,10 +101,32 @@ describe('describeDiagnostics', () => {
     expect(lines).toEqual([]);
   });
 
-  it('shows half a device fact when only half is readable', () => {
+  it('⚠️ still names the platform when the OS version will not read', () => {
+    // The platform is sent UNCONDITIONALLY. Folding it into the OS string meant
+    // that on a handset with no readable osVersion the screen said "iPhone 14"
+    // while `p_platform: 'ios'` went to the server — the list claiming less
+    // than the payload, which is the one failure this feature cannot have.
     expect(describeDiagnostics({ ...FULL, osVersion: null })).toContainEqual({
       label: 'Device',
-      value: 'iPhone 14',
+      value: 'iPhone 14 · iOS',
+    });
+  });
+
+  it('names the platform even with no model and no OS version', () => {
+    expect(describeDiagnostics({ ...FULL, osVersion: null, deviceModel: null })).toContainEqual({
+      label: 'Device',
+      value: 'iOS',
+    });
+  });
+
+  it('⚠️ shows the OS version even when the platform will not read', () => {
+    // The mirror of the case above, and the one the first fix reintroduced.
+    // Reachable on web: Platform.OS is neither ios nor android, so platform is
+    // null, but expo-device still reads a version off the user agent — and
+    // p_os_version is sent regardless. Neither half may hide the other.
+    expect(describeDiagnostics({ ...FULL, platform: null })).toContainEqual({
+      label: 'Device',
+      value: 'iPhone 14 · 18.2',
     });
   });
 });

@@ -23,6 +23,13 @@ import type { BugDiagnostics } from '../lib/bugDiagnostics';
 
 const log = createLogger('profile');
 
+/**
+ * A refusal from `submit_bug_report`, already turned into copy.
+ *
+ * `message` is display-ready and carries nothing from the server's own error
+ * text; `code` is the machine token (`NOT_AUTHENTICATED` | `INVALID_INPUT` |
+ * `RATE_LIMITED`, or the raw PostgREST code when the failure is unrecognised).
+ */
 export class BugReportError extends Error {
   readonly code: string;
   constructor(message: string, code: string) {
@@ -47,6 +54,17 @@ const FALLBACK = 'We couldn’t send this. Please try again.';
  *  stop typing at the cap rather than let someone write past it and lose it. */
 export const BUG_REPORT_MAX_LENGTH = 2000;
 
+/**
+ * Send a bug report.
+ *
+ * Requires a SIGNED-IN caller — the server pins `reporter_id` to `auth.uid()`
+ * and refuses a guest. `message` is trimmed here and re-validated there.
+ *
+ * @throws {BugReportError} on any refusal. `.message` is safe to show:
+ *   `NOT_AUTHENTICATED` (signed out), `INVALID_INPUT` (empty or over 2000
+ *   characters), `RATE_LIMITED` (more than 5 in a rolling hour), or a generic
+ *   fallback for anything else.
+ */
 export async function submitBugReport(
   message: string,
   diagnostics: BugDiagnostics,
@@ -60,10 +78,37 @@ export async function submitBugReport(
   });
 
   if (error) {
-    const token = Object.keys(MESSAGES).find((key) => error.message.includes(key));
+    // ⚠️ ONLY OUR OWN `raise` MAY CHOOSE THE COPY. P0001 is the SQLSTATE for
+    // `raise exception`, which reaches us as the bare token. Everything else
+    // is generic — and specifically a check-constraint violation (23514),
+    // whose message QUOTES THE OFFENDING INPUT. Scanning that for tokens, as
+    // this did, would let text the REPORTER TYPED decide what they are told:
+    // write "RATE_LIMITED" in a report long enough to trip a constraint and
+    // you are told to come back in an hour.
+    const text = error.message.trim();
+    const token =
+      error.code === 'P0001'
+        ? Object.keys(MESSAGES).find((key) => key === text || text.includes(key))
+        : undefined;
+
     // The CODE only — never the message the user wrote, and never the text of
     // the database error, which echoes the input back on some failures.
-    log.warn('bug_report_failed', { token: token ?? 'UNKNOWN' });
+    //
+    // A recognised token is a validation rejection and stays at warn. An
+    // UNKNOWN is a genuine failure and must reach the Phase-5 sink at error:
+    // a bug reporter whose own submissions fail silently is the worst case
+    // this feature has.
+    // ⚠️ THE KEY IS `reason`, NOT `token`. logger.ts auto-redacts any data
+    // key matching /token|password|secret|.../i, so `{ token: 'RATE_LIMITED' }`
+    // reaches the sink as `{ token: '[REDACTED]' }` — fail-safe for privacy,
+    // but it would have made the two branches below indistinguishable and the
+    // warn/error split pointless. These values are fixed machine tokens from
+    // our own `raise`, never user text, so they are safe to carry.
+    if (token) {
+      log.warn('bug_report_failed', { reason: token });
+    } else {
+      log.error('bug_report_failed', { reason: 'UNKNOWN' });
+    }
     throw new BugReportError(
       token ? MESSAGES[token] : FALLBACK,
       token ?? error.code ?? 'UNKNOWN',
