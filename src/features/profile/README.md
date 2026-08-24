@@ -73,8 +73,11 @@ exists. `row-dark-mode` is GONE, not renamed.
 
 **Not here:** "Alerts & notifications" and "Payouts" stayed on the Profile
 root — the first carries a live summary, the second only appears when relevant.
-Per-category push toggles are phase 2 (they need a preferences table, RPCs and
-filtering in `_shared/push.ts`).
+
+The five per-category push switches shipped the same day (this paragraph said
+they were "phase 2" until then). They live in `notification_preferences` and
+are applied in `supabase/functions/_shared/push.ts` — see
+`src/features/notifications/lib/notificationPreferences.ts`.
 
 ## Report a bug (2026-08-24)
 

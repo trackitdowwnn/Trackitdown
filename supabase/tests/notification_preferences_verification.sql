@@ -193,6 +193,33 @@ begin
     raise exception 'CHECK 5 FAILED: writing messages also changed alerts';
   end if;
 
+  -- ⚠️ THE SECOND WRITE IS THE IMPORTANT ONE — it takes the DO UPDATE branch,
+  -- and that is the branch that can go wrong. Writing
+  -- `excluded.messages_enabled` in the preserve position would read the TRUE
+  -- from the VALUES list rather than the stored row, silently un-muting every
+  -- category the user had already turned off on their next unrelated toggle.
+  -- Only the insert branch was covered before, where "others stay true" is
+  -- trivially the VALUES list.
+  perform public.set_my_notification_preference('watched', false);
+
+  select messages_enabled into v_enabled
+  from public.notification_preferences where user_id = v_uid;
+  if v_enabled is distinct from false then
+    raise exception 'CHECK 5 FAILED: the second write un-muted the first category';
+  end if;
+
+  select watched_enabled into v_enabled
+  from public.notification_preferences where user_id = v_uid;
+  if v_enabled is distinct from false then
+    raise exception 'CHECK 5 FAILED: the conflict branch did not apply the new value';
+  end if;
+
+  select money_enabled into v_enabled
+  from public.notification_preferences where user_id = v_uid;
+  if v_enabled is distinct from true then
+    raise exception 'CHECK 5 FAILED: the conflict branch disturbed an untouched category';
+  end if;
+
   begin
     perform public.set_my_notification_preference('sighting', false);
   exception when others then
@@ -206,7 +233,10 @@ begin
     v_null := sqlerrm like '%INVALID_INPUT%';
   end;
 
-  perform set_config('request.jwt.claims', '', true);
+  -- NULL rather than '': current auth.uid() nullifs the empty string, but
+  -- older definitions cast ''::json and RAISE — which the handler below would
+  -- swallow into a misleading "a guest was allowed to write".
+  perform set_config('request.jwt.claims', null, true);
   begin
     perform public.set_my_notification_preference('alerts', false);
   exception when others then
@@ -251,7 +281,7 @@ begin
     raise exception 'CHECK 6 FAILED: a user with no row did not read as all-on';
   end if;
 
-  perform set_config('request.jwt.claims', '', true);
+  perform set_config('request.jwt.claims', null, true);
   begin
     perform public.get_my_notification_preferences();
   exception when others then
@@ -278,8 +308,10 @@ declare
   v_policies integer;
 begin
   foreach v_role in array array['anon', 'authenticated'] loop
+    -- TRIGGER included: `revoke all` does remove it, but an assertion that
+    -- omits it would pass a later accidental re-grant.
     foreach v_priv in array array['SELECT', 'INSERT', 'UPDATE', 'DELETE',
-                                  'TRUNCATE', 'REFERENCES'] loop
+                                  'TRUNCATE', 'REFERENCES', 'TRIGGER'] loop
       if has_table_privilege(v_role, 'public.notification_preferences', v_priv) then
         raise exception 'CHECK 7 FAILED: % has % on notification_preferences', v_role, v_priv;
       end if;

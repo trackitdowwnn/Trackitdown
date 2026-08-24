@@ -30,6 +30,7 @@ export { sizes, type SizeToken } from './sizes';
 export { opacity, type OpacityToken } from './opacity';
 export {
   displayFontScaleCap,
+  listRowStackFontScale,
   mapPinFontScaleCap,
   tabLabelFontScaleCap,
   typography,

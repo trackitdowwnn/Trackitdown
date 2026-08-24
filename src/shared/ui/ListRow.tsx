@@ -24,9 +24,10 @@
 
 import { Check, ChevronRight, type LucideIcon } from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import {
+  listRowStackFontScale,
   opacity,
   radii,
   sizes,
@@ -90,6 +91,11 @@ export function ListRow({
   testID,
 }: ListRowProps) {
   const styles = useThemedStyles(makeStyles);
+  // `?? 1` because fontScale is absent in some environments (jest's mock) —
+  // the house guard, same as WizardScreen's. An unknown scale must not cost
+  // every row its side-by-side layout.
+  const { fontScale } = useWindowDimensions();
+  const stacked = (fontScale ?? 1) > listRowStackFontScale;
   const palette = usePalette();
   const titleColor = destructive ? palette.danger : palette.textPrimary;
   const iconColor = destructive ? palette.danger : palette.textSecondary;
@@ -103,7 +109,15 @@ export function ListRow({
         disabled && styles.rowDisabled,
       ]}
       onPress={onPress}
-      disabled={!pressable}
+      // ⚠️ `disabled`, NOT `!pressable`. React Native's Pressable FOLDS this
+      // prop into accessibilityState — "_accessibilityState = disabled != null
+      // ? {..._accessibilityState, disabled}" — which overrides the explicit
+      // `disabled: false` set below. So a row with no onPress (an informational
+      // row: a fact, not a control) was announced as DIMMED by every screen
+      // reader while rendering at full opacity, because rowDisabled is gated on
+      // the disabled PROP. A row with nothing to press is not a broken control,
+      // and it should not sound like one.
+      disabled={disabled}
       // Three different rows, three different roles. A chooser row is a RADIO
       // ("this one of several"), a settings row with a switch is a SWITCH
       // ("on or off"), and anything else that navigates is a button. Getting
@@ -136,8 +150,17 @@ export function ListRow({
             {subtitle}
           </Text>
         ) : null}
+        {/* ⚠️ STACKED ABOVE listRowStackFontScale — and `flexShrink` alone was
+            NOT enough, which the comment this replaces claimed it was. Yoga
+            reads textBlock's `flex: 1` as basis 0, so the value takes its
+            intrinsic width FIRST and the title grows into whatever is left;
+            shrink only happens on overflow and is weighted by basis, which is
+            zero here. At 200% text that rendered "Not allowed" in full beside
+            "Notific…". Nothing announced changes — accessibilityLabel above
+            already joins title, value and subtitle into one string. */}
+        {value && stacked ? <Text style={styles.valueStacked}>{value}</Text> : null}
       </View>
-      {value ? (
+      {value && !stacked ? (
         <Text style={styles.value} numberOfLines={1}>
           {value}
         </Text>
@@ -192,7 +215,26 @@ const makeStyles = (c: Palette) =>
       ...typography.caption,
       color: c.textSecondary,
     },
+    // ⚠️ flexShrink, or the VALUE crushes the TITLE. textBlock is `flex: 1`
+    // and Text defaults to flexShrink 0, so without this the value took
+    // whatever width it wanted and the title — pinned to numberOfLines={1} —
+    // absorbed all of it. At 200% text a permission row rendered "Not allowed"
+    // in full beside a setting called "Notific…", which is the wrong half to
+    // lose: the status is meaningless without the name it belongs to.
+    // flexShrink stops the value pushing the row past its own edge. It does
+    // NOT protect the title — textBlock's `flex: 1` means basis 0, so it has
+    // no shrink weight and the value never yields to it. That is what the
+    // stacking is for; this is only the overflow guard, and an earlier comment
+    // here wrongly claimed it was the whole fix.
     value: {
+      ...typography.caption,
+      color: c.textSecondary,
+      flexShrink: 1,
+    },
+    // Under the title rather than beside it, above the threshold. No
+    // numberOfLines: at that text size the value is the thing that stopped
+    // fitting, so capping it would recreate the problem one line down.
+    valueStacked: {
       ...typography.caption,
       color: c.textSecondary,
     },

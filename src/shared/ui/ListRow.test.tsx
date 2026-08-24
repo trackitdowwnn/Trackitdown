@@ -8,7 +8,7 @@
  */
 
 import { fireEvent, render } from '@testing-library/react-native';
-import { View } from 'react-native';
+import { Dimensions, View } from 'react-native';
 
 import { ListRow } from './ListRow';
 
@@ -97,5 +97,63 @@ describe('ListRow', () => {
     expect(getByTestId('row').props.accessibilityLabel).toBe(
       'Payouts, Action needed, Via Stripe',
     );
+  });
+});
+
+describe('⚠️ the value at large text', () => {
+  /** Drive the text scale. Restored in afterEach — a leaked Dimensions spy
+   *  pins fontScale for every later test in the file, which has bitten this
+   *  codebase before. */
+  const setFontScale = (fontScale: number) =>
+    jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 2, fontScale });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('sits beside the title at normal text size', async () => {
+    setFontScale(1);
+
+    const { getByTestId } = await render(
+      <ListRow title="Notifications" value="Not allowed" onPress={() => {}} testID="row" />,
+    );
+
+    // Beside: the value is a direct child of the ROW, not of the text block.
+    const row = getByTestId('row');
+    const rowChildTexts = row.children.filter(
+      (child) => typeof child !== 'string' && child.type === 'Text',
+    );
+    expect(rowChildTexts).toHaveLength(1);
+  });
+
+  it('⚠️ moves UNDER the title at 200%, so the title is not the half that clips', async () => {
+    // `flexShrink: 1` alone did not achieve this and a comment here once said
+    // it did. Yoga reads the text block's `flex: 1` as basis 0, so it carries
+    // no shrink weight: the value takes its intrinsic width first and the
+    // title absorbs every bit of the squeeze. At this scale that rendered
+    // "Not allowed" in full beside "Notific…".
+    setFontScale(2);
+
+    const { getByTestId } = await render(
+      <ListRow title="Notifications" value="Not allowed" onPress={() => {}} testID="row" />,
+    );
+
+    const row = getByTestId('row');
+    const rowChildTexts = row.children.filter(
+      (child) => typeof child !== 'string' && child.type === 'Text',
+    );
+    // No value beside the title any more — it has moved inside the text block.
+    expect(rowChildTexts).toHaveLength(0);
+  });
+
+  it('says the same thing to a screen reader either way', async () => {
+    // The label joins title, value and subtitle, so the layout switch must be
+    // invisible to assistive tech.
+    setFontScale(2);
+    const { getByTestId } = await render(
+      <ListRow title="Notifications" value="Not allowed" onPress={() => {}} testID="row" />,
+    );
+
+    expect(getByTestId('row').props.accessibilityLabel).toBe('Notifications, Not allowed');
   });
 });

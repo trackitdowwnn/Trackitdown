@@ -212,6 +212,17 @@ export async function sendToUsers(
   if (unique.length === 0) return { accepted: 0, rejected: 0, pruned: 0 };
 
   const recipients = await filterByPreference(admin, unique, content.kind);
+  if (recipients.length < unique.length) {
+    // Counts only, no ids. Without this a `sent: 0` is indistinguishable
+    // between "nobody has a token", "everybody muted it" and "the filter is
+    // broken" — and the third one is the failure that would otherwise be
+    // silent in production.
+    console.log('[notifications] preference filter applied', {
+      kind: content.kind,
+      audience: unique.length,
+      afterFilter: recipients.length,
+    });
+  }
   if (recipients.length === 0) return { accepted: 0, rejected: 0, pruned: 0 };
 
   const messages: PushMessage[] = [];
@@ -322,25 +333,64 @@ async function filterByPreference(
   userIds: readonly string[],
   kind: string,
 ): Promise<string[]> {
-  const { data, error } = await admin.rpc('push_recipients', {
-    p_user_ids: userIds,
-    p_kind: kind,
-  });
+  const recipients: string[] = [];
 
-  if (error) {
-    console.error('[notifications] preference filter failed, sending to all', {
-      kind,
-      error: error.message,
+  // ⚠️ CHUNKED, like the token lookup. PostgREST applies its db-max-rows limit
+  // (1000 by default) to set-returning RPCs, so a single call with a larger
+  // audience comes back TRUNCATED — with no error. The dropped users would be
+  // indistinguishable from users who muted, and the fail-open branch below
+  // would never fire, so a big alert fan-out would just go quieter than it
+  // should. Sending the same batches the token query uses keeps any one call
+  // well under the limit.
+  for (const batch of chunk([...userIds], MAX_IDS_PER_QUERY)) {
+    const { data, error } = await admin.rpc('push_recipients', {
+      p_user_ids: batch,
+      p_kind: kind,
     });
-    return [...userIds];
+
+    // ⚠️ `!Array.isArray`, not `data == null`. Anything non-iterable — a bare
+    // object, a number, whatever a client-library change hands back — made the
+    // `for…of` below throw a TypeError that escaped this function, then
+    // sendToUsers, then notifyUsers, all three of which document that they
+    // never throw. It would have skipped fail-open entirely: the one path left
+    // where a fault silenced people instead of over-notifying them. This also
+    // subsumes the null case.
+    if (error || !Array.isArray(data)) {
+      console.error('[notifications] preference filter failed, sending to all', {
+        kind,
+        error: error?.message ?? 'unusable result',
+      });
+      return [...userIds];
+    }
+
+    for (const row of data) {
+      // ⚠️ ANY UNEXPECTED SHAPE FAILS OPEN. `returns setof uuid` comes back as
+      // bare strings, and that is the live branch. The object branch exists
+      // only because this file cannot be run here — there is no Deno on the
+      // machine it was written on — and the FIRST version of it guessed the
+      // key was `id`. It is not: PostgREST names the column after the
+      // FUNCTION, so `.id` would have been undefined for every row, the
+      // audience would have looked full, `.in('user_id', [undefined])` would
+      // have matched no tokens, and EVERY push in the app would have gone
+      // silent — including the two kinds that may never be muted. Reading the
+      // first value rather than a guessed key removes the guess; bailing to
+      // the full audience removes the consequence of being wrong anyway.
+      const id =
+        typeof row === 'string'
+          ? row
+          : row && typeof row === 'object'
+            ? Object.values(row)[0]
+            : undefined;
+
+      if (typeof id !== 'string') {
+        console.error('[notifications] unexpected push_recipients shape, sending to all', { kind });
+        return [...userIds];
+      }
+      recipients.push(id);
+    }
   }
 
-  // A set-returning function comes back as bare values or single-key rows
-  // depending on the client version — accept both rather than depending on
-  // which, because getting it wrong silently returns an empty audience.
-  return (data ?? []).map((row: unknown) =>
-    typeof row === 'string' ? row : (row as { id: string }).id,
-  );
+  return recipients;
 }
 
 /** Delete tokens Expo has told us are dead. Best-effort and idempotent. */

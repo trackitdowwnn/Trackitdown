@@ -57,11 +57,14 @@ jest.mock('@/features/auth', () => ({
 
 const mockSetEnabled = jest.fn();
 const mockPreferences: Record<string, boolean> = {};
+// Mutable so a test can put the hook back into its pre-read state — the mock
+// factory runs once, so a spy on the module would never be reached.
+const mockLoading = { value: false };
 jest.mock('@/features/notifications', () => ({
   ...jest.requireActual('@/features/notifications/lib/notificationPreferences'),
   useNotificationPreferences: () => ({
     preferences: mockPreferences,
-    loading: false,
+    loading: mockLoading.value,
     setEnabled: (...args: unknown[]) => mockSetEnabled(...args),
   }),
 }));
@@ -95,6 +98,7 @@ beforeEach(() => {
   jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
   mockSession.mockReturnValue({ status: 'signedIn', userId: 'user-1' });
   mockSetEnabled.mockResolvedValue(true);
+  mockLoading.value = false;
   for (const c of ['alerts', 'messages', 'my_sightings', 'money', 'watched']) {
     mockPreferences[c] = true;
   }
@@ -183,16 +187,21 @@ describe('Notification categories', () => {
     expect(mockShowToast).toHaveBeenCalledWith('Couldn’t save that. Please try again.', 'error');
   });
 
-  it('⚠️ offers NO switch for the two kinds that may never be muted', async () => {
-    // A sighting of your car, and the 72-hour contest window whose only door is
-    // its push. Stated as a row with no control rather than a disabled switch:
-    // a stuck switch reads as a bug, and this is a decision.
+  it('⚠️ says which two kinds may never be muted, as a footnote not a row', async () => {
+    // Built as a ListRow first, which was wrong three ways: ListRow hands RN
+    // `disabled={!pressable}` and Pressable folds that into accessibilityState,
+    // so a row with no onPress is ANNOUNCED AS DIMMED — the "stuck control
+    // reads as a bug" reading this text exists to avoid. It also inherited
+    // numberOfLines={2}, which cut the sentence off before the half that
+    // explains anything.
     const { view } = await renderWithTheme();
-    const row = await view.findByTestId('row-notify-locked');
+    const note = await view.findByTestId('notify-always-on');
 
-    expect(row.props.accessibilityState?.checked).toBeUndefined();
-    expect(row.props.accessibilityRole).not.toBe('switch');
+    expect(note.props.accessibilityState?.disabled).toBeFalsy();
+    expect(note.props.accessibilityRole).toBeUndefined();
+    // The WHOLE sentence, including the half that was being clipped.
     expect(await view.findByText(/72 hours/)).toBeTruthy();
+    expect(await view.findByText(/Neither can be got back if you miss it/)).toBeTruthy();
   });
 
   it('hides the whole group from a guest rather than showing dead switches', async () => {
@@ -203,7 +212,7 @@ describe('Notification categories', () => {
     const { view } = await renderWithTheme();
 
     expect(view.queryByTestId('row-notify-alerts')).toBeNull();
-    expect(view.queryByTestId('row-notify-locked')).toBeNull();
+    expect(view.queryByTestId('notify-always-on')).toBeNull();
     expect(await view.findByTestId('row-appearance-system')).toBeTruthy();
   });
 });
@@ -300,5 +309,22 @@ describe('Permissions', () => {
     });
 
     expect(mockShowToast).toHaveBeenCalledWith('Couldn’t open your phone’s settings.', 'error');
+  });
+});
+
+describe('⚠️ before the preferences have been read', () => {
+  it('does not announce a placeholder as a real switch state', async () => {
+    // The switches render from the defaults so the group is never an empty
+    // hole — but `toggled` drives the row's ROLE and STATE, so someone who
+    // muted Messages last week was told "switch, on" while the server had it
+    // off. A stale pixel is a flicker; a stale announcement is a false
+    // statement.
+    mockLoading.value = true;
+
+    const { view } = await renderWithTheme();
+    const row = await view.findByTestId('row-notify-messages');
+
+    expect(row.props.accessibilityRole).not.toBe('switch');
+    expect(row.props.accessibilityState?.checked).toBeUndefined();
   });
 });

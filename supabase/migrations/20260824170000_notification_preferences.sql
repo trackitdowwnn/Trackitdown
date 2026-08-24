@@ -128,6 +128,12 @@ $$;
 comment on function public.notification_category(text) is
   'Maps a notification kind to its mutable preference category, or NULL when the kind may not be muted (sighting, closed_uncredited) or is not yet classified. NULL always means "deliver".';
 
+-- Revoked for consistency with push_recipients below rather than because this
+-- leaks anything — it is a static map with no user data in it. push_recipients
+-- is SECURITY DEFINER and still resolves it.
+revoke execute on function public.notification_category(text) from public, anon, authenticated;
+grant execute on function public.notification_category(text) to service_role;
+
 
 -- =============================================================================
 -- 3. FUNCTION: push_recipients(user_ids, kind)
@@ -146,8 +152,13 @@ security definer
 stable
 set search_path = ''
 as $$
+  -- ⚠️ `coalesce(p_user_ids, '{}')` — the one input that would fail CLOSED.
+  -- unnest(NULL) yields zero rows, so a NULL array would silence everybody
+  -- rather than nobody, inverting this function's whole policy. Unreachable
+  -- from sendToUsers, which always passes an array and returns early when it
+  -- is empty, but the fail-open story should have no exceptions in it.
   select u.id
-  from unnest(p_user_ids) as u(id)
+  from unnest(coalesce(p_user_ids, '{}'::uuid[])) as u(id)
   left join public.notification_preferences p on p.user_id = u.id
   where coalesce(
     case public.notification_category(p_kind)
@@ -254,18 +265,36 @@ begin
     raise exception 'INVALID_INPUT';
   end if;
 
-  insert into public.notification_preferences (user_id)
-  values (v_uid)
-  on conflict (user_id) do nothing;
-
-  update public.notification_preferences
-  set alerts_enabled       = case when p_category = 'alerts'       then p_enabled else alerts_enabled end,
-      messages_enabled     = case when p_category = 'messages'     then p_enabled else messages_enabled end,
-      my_sightings_enabled = case when p_category = 'my_sightings' then p_enabled else my_sightings_enabled end,
-      money_enabled        = case when p_category = 'money'        then p_enabled else money_enabled end,
-      watched_enabled      = case when p_category = 'watched'      then p_enabled else watched_enabled end,
-      updated_at           = now()
-  where user_id = v_uid;
+  -- ⚠️ ONE STATEMENT, not INSERT … DO NOTHING followed by UPDATE. That pair
+  -- reads as atomic and is not: under REPEATABLE READ or SERIALIZABLE the row a
+  -- concurrent inserter created is invisible to this snapshot, DO NOTHING skips
+  -- it, and the UPDATE then matches nothing — returning success having changed
+  -- nothing at all. The client would leave the switch flipped and the user
+  -- would be told a mute took effect that did not. An upsert cannot have that
+  -- gap.
+  insert into public.notification_preferences (
+    user_id, alerts_enabled, messages_enabled, my_sightings_enabled,
+    money_enabled, watched_enabled
+  )
+  -- Spelled as CASE rather than `p_category = 'x' and p_enabled or
+  -- p_category <> 'x'`. That shorthand is correct — AND binds tighter than OR —
+  -- and it is exactly the kind of cleverness a later reader has to stop and
+  -- verify. Every category not being written keeps its default of true.
+  values (
+    v_uid,
+    case when p_category = 'alerts'       then p_enabled else true end,
+    case when p_category = 'messages'     then p_enabled else true end,
+    case when p_category = 'my_sightings' then p_enabled else true end,
+    case when p_category = 'money'        then p_enabled else true end,
+    case when p_category = 'watched'      then p_enabled else true end
+  )
+  on conflict (user_id) do update
+  set alerts_enabled       = case when p_category = 'alerts'       then p_enabled else public.notification_preferences.alerts_enabled end,
+      messages_enabled     = case when p_category = 'messages'     then p_enabled else public.notification_preferences.messages_enabled end,
+      my_sightings_enabled = case when p_category = 'my_sightings' then p_enabled else public.notification_preferences.my_sightings_enabled end,
+      money_enabled        = case when p_category = 'money'        then p_enabled else public.notification_preferences.money_enabled end,
+      watched_enabled      = case when p_category = 'watched'      then p_enabled else public.notification_preferences.watched_enabled end,
+      updated_at           = now();
 end;
 $$;
 

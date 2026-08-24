@@ -401,12 +401,12 @@ function LoadedProfile({
               "App settings" rather than "Settings": this row sits inside a
               group already titled Settings, and a row that repeats its own
               group's name reads as a mistake. The subtitle does the
-              disambiguating, and the name still fits once push categories
-              arrive. */}
+              disambiguating, and the generic name earned itself when the push
+              categories landed the same day. */}
           <ListRow
             icon={SlidersHorizontal}
             title="App settings"
-            subtitle="Appearance and permissions"
+            subtitle="Appearance, notifications and permissions"
             onPress={() => router.push('/settings')}
             testID="row-settings"
           />
@@ -524,10 +524,6 @@ function LoadedProfile({
   );
 }
 
-/** A titled row group: heading-scale title + hairline dividers BETWEEN rows
- *  (reference §1c) — never above the first or below the last. `quiet` keeps
- *  the old small-grey-label look for the dev section, which must stay
- *  visually out of the way. */
 const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,

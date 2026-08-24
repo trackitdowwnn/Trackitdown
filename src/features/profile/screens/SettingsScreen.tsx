@@ -1,6 +1,7 @@
 /**
- * WHAT:  Settings — how the app looks, and what it is allowed to do on this
- *        device. Pushed from Profile → Settings → "App settings".
+ * WHAT:  Settings — how the app looks, which notifications reach the phone,
+ *        and what the app is allowed to do on this device. Pushed from
+ *        Profile → Settings → "App settings".
  * WHY:   The Profile root had been this app's only settings surface, which was
  *        right while there were three rows on it. Appearance needs three of its
  *        own and permissions need four, so the arithmetic that justified
@@ -29,13 +30,14 @@
  */
 
 import { useRouter } from 'expo-router';
-import { Bell, Camera, ChevronLeft, Images, Lock, MapPin } from 'lucide-react-native';
+import { Bell, Camera, ChevronLeft, Images, MapPin } from 'lucide-react-native';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth';
 import { CATEGORY_COPY, useNotificationPreferences } from '@/features/notifications';
 
 import {
+  radii,
   sizes,
   spacing,
   typography,
@@ -64,11 +66,12 @@ export function SettingsScreen() {
   const toast = useToast();
   const session = useSession();
   const { preference, setPreference } = useThemeControls();
-  const { preferences, setEnabled } = useNotificationPreferences();
-
   // The categories are per-account, so a guest has nothing to read or write.
   // Appearance and the permission rows are device-local and still work.
   const signedIn = session.status === 'signedIn';
+  const { preferences, loading: loadingPreferences, setEnabled } = useNotificationPreferences(
+    session.status === 'signedIn' ? session.userId : null,
+  );
 
   const toggleCategory = async (category: Parameters<typeof setEnabled>[0], next: boolean) => {
     const ok = await setEnabled(category, next);
@@ -134,40 +137,59 @@ export function SettingsScreen() {
               key={entry.category}
               title={entry.title}
               subtitle={entry.subtitle}
-              toggled={preferences[entry.category]}
-              onPress={() => void toggleCategory(entry.category, !preferences[entry.category])}
+              // ⚠️ NO `toggled` UNTIL THE READ LANDS. The switches render from
+              // the defaults so the group is never an empty hole, but before
+              // the read those values are a placeholder — and `toggled` drives
+              // the row's ROLE and STATE, so a user who muted Messages last
+              // week was told "switch, on" by their screen reader while the
+              // server had it off. A stale pixel is a flicker; a stale
+              // announcement is a false statement.
+              toggled={loadingPreferences ? undefined : preferences[entry.category]}
+              onPress={
+                loadingPreferences
+                  ? undefined
+                  : () => void toggleCategory(entry.category, !preferences[entry.category])
+              }
               trailing={
-                <Switch
-                  value={preferences[entry.category]}
-                  onValueChange={(next) => void toggleCategory(entry.category, next)}
-                  trackColor={{ true: palette.primary, false: palette.borderStrong }}
-                  thumbColor={palette.surface}
-                  ios_backgroundColor={palette.borderStrong}
-                />
+                loadingPreferences ? (
+                  <View style={styles.switchPlaceholder} />
+                ) : (
+                  <Switch
+                    value={preferences[entry.category]}
+                    onValueChange={(next) => void toggleCategory(entry.category, next)}
+                    trackColor={{ true: palette.primary, false: palette.borderStrong }}
+                    thumbColor={palette.surface}
+                    ios_backgroundColor={palette.borderStrong}
+                  />
+                )
               }
               testID={`row-notify-${entry.category}`}
             />
           ))}
 
-          {/* ⚠️ NOT A DISABLED SWITCH — a row with no control at all. Two kinds
-              have no preference column to store a mute in, so there is nothing
-              here to render as "off but greyed". Saying so plainly is better
-              than a switch someone can press and watch refuse: a stuck control
-              reads as a bug, and this is a decision.
-
-              Muting either would take something away that cannot be got back
-              from the Inbox. A sighting push is the moment the whole product
-              exists for. And the 72-hour contest window has no in-app door —
-              docs/ROADMAP.md records that /sighting-dispute is reachable ONLY
-              from its push — so silencing it removes a money right rather than
-              a notification. */}
-          <ListRow
-            icon={Lock}
-            title="Always on"
-            subtitle="A sighting of your car, and the 72 hours you have to contest a decision about a bounty. Both are things you can’t get back if you miss them."
-            testID="row-notify-locked"
-          />
         </ListRowGroup>
+      ) : null}
+
+      {/* ⚠️ A FOOTNOTE, NOT A ROW — and it was a row first, which was wrong
+          three ways at once. ListRow hands React Native `disabled={!pressable}`,
+          and Pressable folds that into accessibilityState, so a row with no
+          onPress is ANNOUNCED AS DIMMED however it looks — the exact "stuck
+          control reads as a bug" reading this text exists to avoid. It also got
+          ListRow's numberOfLines={2}, which cut the sentence off before the
+          half that explains anything, and an icon indent none of the switches
+          above it had, so it read as their child.
+
+          The content is unchanged and so is the reasoning: two kinds have no
+          preference column to store a mute in. A sighting push is the moment
+          the whole product exists for, and the 72-hour contest window has no
+          in-app door at all — docs/ROADMAP.md records that /sighting-dispute is
+          reachable ONLY from its push — so silencing that one removes a money
+          right rather than a notification. */}
+      {signedIn ? (
+        <Text style={styles.footnote} testID="notify-always-on">
+          Two things stay on whatever you choose here: a sighting of your car, and the 72 hours you
+          have to contest a decision about a bounty. Neither can be got back if you miss it.
+        </Text>
       ) : null}
 
       {/* The subtitles are the primer these rows would otherwise lack — the
@@ -234,6 +256,14 @@ const makeStyles = (c: Palette) =>
       ...typography.title,
       color: c.textPrimary,
       flexShrink: 1,
+    },
+    // Stands in for the Switch until the read lands, at the switch's own
+    // width, so nothing shifts when the real control arrives.
+    switchPlaceholder: {
+      width: sizes.control,
+      height: sizes.skeletonLine * 2,
+      borderRadius: radii.md,
+      backgroundColor: c.surfaceSubtle,
     },
     // Says once what four rows would otherwise each have to imply: these are
     // not switches, and the app is not the thing that decides.
