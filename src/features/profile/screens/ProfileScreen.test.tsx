@@ -287,6 +287,18 @@ describe('signed in', () => {
     expect(getByText('Version 1.2.3')).toBeTruthy();
   });
 
+  it('⚠️ shows NO Contact support row while the address cannot receive mail', async () => {
+    // support@trackitdown.example is on an RFC-2606 reserved domain. The row
+    // used to open a mailto: to it and, failing that, copy the address to the
+    // clipboard — handing somebody trying to reach a human an address that
+    // cannot work, with every appearance of having helped. "Report a bug" is
+    // the only support route until the address is real, and it reaches a table.
+    const { queryByTestId, getByTestId } = await render(<ProfileScreen />);
+
+    expect(queryByTestId('row-contact-support')).toBeNull();
+    expect(getByTestId('row-report-bug')).toBeTruthy();
+  });
+
   it('opens App settings rather than toggling the theme in place', async () => {
     // ⚠️ REPLACES "offers Dark mode as a switch, reading the scheme actually in
     // effect", deleted 2026-08-24 rather than patched. The row it asserted no
