@@ -23,7 +23,10 @@
  */
 
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import * as RN from 'react-native';
 import { BackHandler, StyleSheet } from 'react-native';
+
+import { displayFontScaleCap } from '@/shared/theme';
 
 import { ONBOARDING_SAFETY_LINE, ONBOARDING_SLIDES } from '../lib/onboardingSlides';
 import { ONBOARDING_STORAGE_KEY } from '../lib/onboardingStorage';
@@ -71,6 +74,9 @@ jest.mock('react-native-reanimated', () => {
     // that carries the truth — is a plain prop that survives the mock.
     // OnboardingRingFab.test.tsx is where progress is pinned.
     useAnimatedProps: () => ({}),
+    // The map hero's layers. Opacity is not asserted here — OnboardingMap.test
+    // owns the stages — but the hook must exist or the screen throws on render.
+    useAnimatedStyle: (fn: () => unknown) => fn(),
     useDerivedValue: (fn: () => unknown) => ({ value: fn() }),
     withTiming: (toValue: unknown) => toValue,
     useReducedMotion: () => true,
@@ -82,6 +88,17 @@ const mockReplace = jest.fn();
 const mockBack = jest.fn();
 let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
+// The funnel reaches the supabase client, which throws at import without env
+// vars. Mocked at the module boundary, which is also how the calls are asserted.
+const mockStartRun = jest.fn();
+const mockEndRun = jest.fn();
+const mockTrack = jest.fn();
+jest.mock('../lib/onboardingFunnel', () => ({
+  startOnboardingRun: () => mockStartRun(),
+  endOnboardingRun: () => mockEndRun(),
+  trackOnboardingStep: (...args: unknown[]) => mockTrack(...args),
+}));
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     replace: mockReplace,
@@ -125,6 +142,16 @@ async function advanceTo(getByTestId: (id: string) => unknown, page: number) {
   }
 }
 
+// ⚠️ RESTORE, not just clear. `jest.clearAllMocks()` resets a spy’s calls but
+// keeps its implementation, and jest-expo sets no `restoreMocks`. The map-hero
+// tests spy on `Dimensions.get`, so without this they pinned the file's
+// fontScale from that point on and every later test rendered through the
+// map-hidden branch — which is exactly how a layout bug in that branch went
+// unnoticed by 126 passing tests.
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
@@ -137,11 +164,75 @@ beforeEach(async () => {
   });
 });
 
+describe('the map hero', () => {
+  const HIDDEN = { includeHiddenElements: true } as const;
+
+  /**
+   * Both cases pin fontScale explicitly.
+   *
+   * ⚠️ Through `Dimensions.get`, which is what `useWindowDimensions` reads.
+   * Spying on the hook itself does nothing here — the screen holds a direct
+   * binding to it — and jest-expo reports fontScale 2 by default, so the
+   * large-text test passed while proving nothing and the ordinary-size one
+   * could never pass at all.
+   */
+  const atFontScale = (fontScale: number) => {
+    jest
+      .spyOn(RN.Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale });
+  };
+
+  it('is there at ordinary text sizes', async () => {
+    atFontScale(1);
+
+    const view = await render(<OnboardingScreen />);
+
+    expect(view.getByTestId('onboarding-map', HIDDEN)).toBeTruthy();
+  });
+
+  it('still shows at exactly the cap, matching the wizard', async () => {
+    // DESIGN_SYSTEM states the rule as "stops filling ABOVE 1.3×", and
+    // WizardScreen implements it as `<=`. This screen is the rule’s second
+    // consumer; the two must not disagree about the boundary.
+    atFontScale(displayFontScaleCap);
+
+    const view = await render(<OnboardingScreen />);
+
+    expect(view.getByTestId('onboarding-map', HIDDEN)).toBeTruthy();
+  });
+
+  it('⚠️ yields the screen once text is scaled past the cap', async () => {
+    atFontScale(displayFontScaleCap + 0.1);
+
+    const view = await render(<OnboardingScreen />);
+
+    expect(view.queryByTestId('onboarding-map', HIDDEN)).toBeNull();
+    // The words are still there, and still the whole point.
+    expect(view.getByTestId('onboarding-slide-0')).toBeTruthy();
+  });
+
+  it('⚠️ leaves no dead space when the map is gone', async () => {
+    // The stage must be the FILL, not a 0.45 flex child. Yoga floors a total
+    // grow factor below 1, so a lone 0.45 child took 45% of the free space and
+    // left ~42% of the screen blank under the footer — at exactly the text size
+    // this branch exists to serve, and hidden from every other test in this
+    // file by a leaked Dimensions spy.
+    atFontScale(displayFontScaleCap + 0.1);
+
+    const view = await render(<OnboardingScreen />);
+    const stage = view.getByTestId('onboarding-step-slide');
+
+    expect(StyleSheet.flatten(stage.props.style)).toEqual(
+      expect.objectContaining({ flex: 1 }),
+    );
+  });
+});
+
 describe('slides', () => {
   it('shows each slide in turn with position + copy in one announced label', async () => {
     const { getByTestId } = await render(<OnboardingScreen />);
     expect(getByTestId('onboarding-slide-0').props.accessibilityLabel).toMatch(
-      /^Slide 1 of 4\. Your car, stolen\? Post it\./,
+      /^Slide 1 of 4\. Stolen cars, on one map\./,
     );
 
     await advanceTo(getByTestId, LAST_PAGE);
@@ -295,6 +386,43 @@ describe('Android back', () => {
     expect(handled).toBe(true);
     // Back is a real step backwards, not merely a swallowed event.
     expect(getByTestId('onboarding-slide-1')).toBeTruthy();
+  });
+});
+
+describe('⚠️ the completion funnel', () => {
+  it('opens a run and counts each slide reached', async () => {
+    const { getByTestId } = await render(<OnboardingScreen />);
+
+    expect(mockStartRun).toHaveBeenCalled();
+    expect(mockTrack).toHaveBeenCalledWith('slide_viewed', 1);
+
+    await advanceTo(getByTestId, 2);
+    expect(mockTrack).toHaveBeenCalledWith('slide_viewed', 2);
+  });
+
+  it('records how the run ended', async () => {
+    const { getByText } = await render(<OnboardingScreen />);
+
+    await act(async () => {
+      fireEvent.press(getByText('Skip'));
+    });
+
+    expect(mockTrack).toHaveBeenCalledWith('skipped');
+  });
+
+  it('⚠️ counts NOTHING in revisit mode', async () => {
+    // Re-reading the intro from Profile → "How Trackitdown works" is not a
+    // journey through onboarding. Counting it would inflate both ends of the
+    // funnel with people who already finished, and drift the completion rate —
+    // the one number this exists to produce — upward every time the tour was
+    // browsed.
+    mockParams = { revisit: '1' };
+
+    const { getByTestId } = await render(<OnboardingScreen />);
+    await advanceTo(getByTestId, 2);
+
+    expect(mockStartRun).not.toHaveBeenCalled();
+    expect(mockTrack).not.toHaveBeenCalled();
   });
 });
 

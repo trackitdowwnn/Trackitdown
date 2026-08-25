@@ -111,6 +111,13 @@ export {
   type PhotoTileStatus,
   type PickedPhoto,
 } from './PhotoGridPicker';
+// Was internal to PhotoGridPicker until the bug reporter needed it: a report's
+// screenshots must be tappable to full screen, because "check what is in the
+// image before you send it" is the only control that exists over what a
+// screenshot contains.
+export { PhotoPreviewModal, type PhotoPreviewModalProps } from './PhotoPreviewModal';
+export { ListRowGroup, type ListRowGroupProps } from './ListRowGroup';
+export { StickyActionBar, type StickyActionBarProps } from './StickyActionBar';
 export {
   PermissionPrimer,
   type PermissionPrimerContent,
@@ -118,7 +125,12 @@ export {
 } from './PermissionPrimer';
 export { PlateChip, spellPlate, type PlateChipProps } from './PlateChip';
 export { RadiusSlider, type RadiusSliderProps } from './RadiusSlider';
-export { SafetyNotice, SAFETY_NOTICE_BODY, SAFETY_NOTICE_TITLE } from './SafetyNotice';
+export {
+  SafetyNotice,
+  SAFETY_NOTICE_BODY,
+  SAFETY_NOTICE_TITLE,
+  SAFETY_RULE_LINE,
+} from './SafetyNotice';
 export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';

@@ -9,5 +9,6 @@ export { supabase } from './supabase';
 export {
   POST_PHOTOS_BUCKET,
   isRemotePhoto,
+  toJpegBytes,
   uploadOwnFolderPhoto,
 } from './photoUpload';

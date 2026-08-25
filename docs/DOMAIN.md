@@ -375,6 +375,18 @@ Rules that follow, and are not implementation details:
   surface. Rows carry the copy that was true at write time plus the exact
   typed payload; retention is 90 days (pg_cron); unread is the user's to
   clear — nothing auto-marks-read except tapping the row or its push.
+- **PER-CATEGORY PUSH PREFERENCES (2026-08-24):** five mutable categories —
+  alerts, messages, my_sightings, money, watched — stored in
+  `notification_preferences` and toggled from Settings. ⚠️ They filter the
+  PUSH ONLY. The `notifications` row is still written for every recipient, so
+  muting a category costs the interruption and never the information; the
+  filter lives in `_shared/push.ts`'s send half, on the far side of
+  persist-then-push. Two kinds are deliberately NOT mutable and have no
+  category at all: `sighting` (someone has seen your stolen car — the one
+  notification this product exists to deliver) and `closed_uncredited` (the
+  72-hour contest window, whose push is currently the only door to
+  `/sighting-dispute`). An unclassified future kind defaults to being
+  delivered, never to being dropped.
 - Spotters create up to **5 named alerts** (`MAX_ALERTS_PER_USER`), each a
   location + radius (1–50 miles), built through a short wizard. Every alert can
   be paused without discarding it.

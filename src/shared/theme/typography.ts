@@ -77,3 +77,15 @@ export const tabLabelFontScaleCap = 1.2;
  *  the bounty is fully scalable in the sheet list, in the peek card, and in
  *  the marker's own accessibilityLabel. */
 export const mapPinFontScaleCap = 1.3;
+
+/**
+ * Above this, a ListRow puts its trailing value UNDER the title instead of
+ * beside it.
+ *
+ * ⚠️ A LAYOUT THRESHOLD, NOT A CAP — nothing is stopped from growing. Side by
+ * side, Yoga gives the value its intrinsic width first and the title's
+ * `flex: 1` (basis 0) leaves it no shrink weight at all, so at 200% text a
+ * settings row rendered "Not allowed" in full beside "Notific…". Losing the
+ * NAME of a setting while keeping its status is the wrong half to lose.
+ */
+export const listRowStackFontScale = 1.3;

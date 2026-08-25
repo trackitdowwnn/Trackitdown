@@ -287,25 +287,32 @@ describe('signed in', () => {
     expect(getByText('Version 1.2.3')).toBeTruthy();
   });
 
-  it('offers Dark mode as a switch, reading the scheme actually in effect', async () => {
-    // Bare render → no ThemeProvider → the defaulted context reports 'light',
-    // which is exactly what a phone in light mode would produce. The row must
-    // mirror that rather than the stored preference: the switch has two states
-    // and the preference has three, so before the user ever touches it the only
-    // honest position is whatever is currently on screen.
-    const { getByTestId } = await render(<ProfileScreen />);
-    const row = getByTestId('row-dark-mode');
+  it('opens App settings rather than toggling the theme in place', async () => {
+    // ⚠️ REPLACES "offers Dark mode as a switch, reading the scheme actually in
+    // effect", deleted 2026-08-24 rather than patched. The row it asserted no
+    // longer exists and its ROLE changed — switch to radio — so keeping the old
+    // test alive against a renamed testID would have kept it green while it
+    // asserted something untrue. Appearance is now three radio rows, covered in
+    // SettingsScreen.test.tsx.
+    const { getByTestId, queryByTestId } = await render(<ProfileScreen />);
 
-    expect(row.props.accessibilityState).toMatchObject({ checked: false });
-    // A switch, NOT a radio or a link — a settings toggle read as a radio sends
-    // a screen-reader user hunting for the other options.
-    expect(row.props.accessibilityRole).toBe('switch');
+    expect(queryByTestId('row-dark-mode')).toBeNull();
+    fireEvent.press(getByTestId('row-settings'));
+    expect(mockPush).toHaveBeenCalledWith('/settings');
   });
 
   it('How Trackitdown works re-opens onboarding in revisit mode', async () => {
     const { getByTestId } = await render(<ProfileScreen />);
     fireEvent.press(getByTestId('row-how-it-works'));
     expect(mockPush).toHaveBeenCalledWith('/onboarding?revisit=1');
+  });
+
+  // Sits ABOVE "Contact support" on purpose: this one reaches us, and that one
+  // is still a mailto: to the placeholder support@trackitdown.example.
+  it('Report a bug opens the report screen', async () => {
+    const { getByTestId } = await render(<ProfileScreen />);
+    fireEvent.press(getByTestId('row-report-bug'));
+    expect(mockPush).toHaveBeenCalledWith('/report-bug');
   });
 
   // This row was an inert "Coming soon" placeholder until the notifications

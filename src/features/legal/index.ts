@@ -11,7 +11,6 @@
 export { LegalDocumentScreen } from './screens/LegalDocumentScreen';
 export {
   LEGAL_DOCUMENTS,
-  LEGAL_LAST_UPDATED,
   legalDocument,
   type LegalDocument,
   type LegalDocumentSlug,

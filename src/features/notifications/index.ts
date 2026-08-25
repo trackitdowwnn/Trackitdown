@@ -43,6 +43,23 @@ export { useMyAlerts, invalidateMyAlerts, type MyAlertsState } from './hooks/use
 // The posting wizard's bounty step shows how many spotters a bounty reaches.
 export { useAlertReach } from './hooks/useAlertReach';
 
+// Same weight class as useMyAlerts above (one hook over one api module), and
+// the Settings screen is in another feature, so it goes through the barrel
+// rather than reaching in by path.
+export {
+  useNotificationPreferences,
+  type NotificationPreferencesState,
+} from './hooks/useNotificationPreferences';
+export {
+  CATEGORY_COPY,
+  CATEGORY_KINDS,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  NOTIFICATION_CATEGORIES,
+  UNMUTABLE_KINDS,
+  type NotificationCategory,
+  type NotificationPreferences,
+} from './lib/notificationPreferences';
+
 // ---------------------------------------------------------------------------
 // THIS BARREL IS DELIBERATELY LIGHT. chatApi and sightingApi import it just to
 // call notifySighting/notifyMessage, so anything reaching expo-notifications,

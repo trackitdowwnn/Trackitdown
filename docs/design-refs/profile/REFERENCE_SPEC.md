@@ -57,7 +57,21 @@ src/features/profile/README.md.
 | **2023 era (the richer reference for a root with few settings):** four titled groups, all flat on white — whitespace + bold section headers, no grey grouping fills | headers ~22pt bold | measured | `typography.heading` (18 SemiBold) — ours currently uses `label` 14 grey, see gaps |
 | Row anatomy: leading 24pt outline icon, ~16pt regular label, trailing chevron, hairline divider BETWEEN rows | rows ~47pt | measured | `ListRow` ✅ (52pt, icon, chevron) — minus the dividers |
 | Group order: Settings → Hosting → Support → Legal | — | measured | ours: Settings → Support & legal → Account ≈ same shape |
-| **2025 era:** root collapsed to a sparse hub (Account settings / Get help / View profile rows ~52pt); groups moved one level deeper | — | measured | wrong translation for us — we have 3 settings rows total; a hub would bury them for nothing |
+| **2025 era:** root collapsed to a sparse hub (Account settings / Get help / View profile rows ~52pt); groups moved one level deeper | — | measured | ⚠️ **PARTIALLY REVERSED 2026-08-24** — see below |
+
+> ⚠️ **The hub objection expired, and the row it argued against now exists.**
+> This table originally read *"wrong translation for us — we have 3 settings
+> rows total; a hub would bury them for nothing"*. That was true and is no
+> longer: Appearance needs three rows of its own and device permissions four,
+> so the arithmetic the objection rested on changed.
+>
+> The objection was really about **burying**, and that is what was preserved.
+> Only Appearance moved behind the new "App settings" row. "Alerts &
+> notifications" stayed on the root — its `value` is a live summary rather than
+> a setting — and so did "Payouts", which only appears when it is relevant and
+> would be undiscoverable exactly when it matters. The 2025 reference collapsed
+> the root to three rows and put everything a level deeper; we added one row and
+> moved one group. See `src/features/profile/screens/SettingsScreen.tsx`.
 
 ### 1d. Sign-out & destructive placement
 

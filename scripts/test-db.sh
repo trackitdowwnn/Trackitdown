@@ -57,26 +57,25 @@ fi
 # Fresh state: apply all migrations + seed.sql (requires `npx supabase start`).
 npx supabase db reset
 
-for suite in \
-  supabase/tests/home_feed_verification.sql \
-  supabase/tests/post_detail_verification.sql \
-  supabase/tests/create_post_verification.sql \
-  supabase/tests/sightings_verification.sql \
-  supabase/tests/chat_verification.sql \
-  supabase/tests/watchlist_verification.sql \
-  supabase/tests/post_payment_verification.sql \
-  supabase/tests/refund_cancel_verification.sql \
-  supabase/tests/post_flags_verification.sql \
-  supabase/tests/edit_post_sections_verification.sql \
-  supabase/tests/garage_verification.sql \
-  supabase/tests/alerts_verification.sql \
-  supabase/tests/recovery_verification.sql \
-  supabase/tests/refund_hold_verification.sql \
-  supabase/tests/notification_center_verification.sql \
-  supabase/tests/not_credited_verification.sql \
-  supabase/tests/listing_fee_verification.sql \
-  supabase/tests/anon_role_verification.sql \
-  supabase/tests/search_verification.sql
+# ⚠️ GLOBBED, NOT LISTED. This was a hand-maintained list of 19 paths, and
+# two suites had fallen off it: create_post_distinctive_features (silently
+# never run since it was written) and bug_reports. That is the exact failure
+# this script was created to end — its own header says "a new suite could
+# silently never run" — and docs/TESTING.md has always described the command
+# as running EVERY supabase/tests/*_verification.sql suite. Now it does, so
+# writing a suite is enough to have it run.
+#
+# `nullglob` so an empty directory is an empty loop rather than a psql call
+# against a literal asterisk.
+shopt -s nullglob
+suites=(supabase/tests/*_verification.sql)
+
+if [ ${#suites[@]} -eq 0 ]; then
+  echo "No verification suites found in supabase/tests/." >&2
+  exit 1
+fi
+
+for suite in "${suites[@]}"
 do
   echo "== ${suite}"
   run_suite "${suite}"

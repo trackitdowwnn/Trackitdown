@@ -50,8 +50,16 @@ export interface LegalDocument {
   sections: LegalSection[];
 }
 
-/** Bump when any document below changes materially. */
-export const LEGAL_LAST_UPDATED = '23 August 2026';
+// ⚠️ THERE IS NO SHARED "LAST UPDATED" CONSTANT, DELIBERATELY. Each document
+// below carries its own date. A single `LEGAL_LAST_UPDATED` used to feed all
+// three, so adding a bug-reports bullet to the PRIVACY policy re-dated the
+// TERMS and the SAFETY guidelines as well — announcing a revision to documents
+// whose text had not moved. "Last updated" is what a reader uses to decide
+// whether to re-read something, and the Terms are separately out of date on
+// ADR-0014's no-bounty listings: a fresh date there is worse than a stale one,
+// because it says the staleness was reviewed and stands.
+//
+// Bump the document you actually changed. Nothing consumed the constant.
 
 /** The operator. Replace with the registered entity before launch. */
 const OPERATOR = 'Trackitdown';
@@ -66,7 +74,7 @@ const OPERATOR = 'Trackitdown';
 const SAFETY: LegalDocument = {
   slug: 'safety',
   title: 'Staying safe',
-  lastUpdated: LEGAL_LAST_UPDATED,
+  lastUpdated: '23 August 2026',
   intro: [
     'Trackitdown exists to gather information, not to recover vehicles. Recovery is for the owner and the police.',
     'Read this before you report anything. It is short on purpose.',
@@ -135,7 +143,7 @@ const SAFETY: LegalDocument = {
 const TERMS: LegalDocument = {
   slug: 'terms',
   title: 'Terms of service',
-  lastUpdated: LEGAL_LAST_UPDATED,
+  lastUpdated: '23 August 2026',
   intro: [
     `These terms are an agreement between you and ${OPERATOR}. By creating an account you accept them.`,
     'They are written to be read. Where a term matters to your money or your safety, it is stated plainly rather than buried.',
@@ -243,9 +251,11 @@ const TERMS: LegalDocument = {
 // the Edge Functions and SECURITY_AND_TRUST.md rather than assumed.
 // =============================================================================
 const PRIVACY: LegalDocument = {
+  // The only one this change touched: "What we collect" gained a bug-reports
+  // bullet naming the four diagnostic fields.
   slug: 'privacy',
   title: 'Privacy policy',
-  lastUpdated: LEGAL_LAST_UPDATED,
+  lastUpdated: '24 August 2026',
   intro: [
     `${OPERATOR} is the controller of the personal data described here.`,
     'This app handles location, vehicle details, photographs and payments, so this policy is specific rather than generic. If something below is not clear, ask us before you use the service.',
@@ -262,6 +272,37 @@ const PRIVACY: LegalDocument = {
         '• Payments: we do not see or store your card details. Stripe processes payments and holds that information.',
         '• Device: a push notification token for each device you sign in on, so we can notify you.',
         '• Activity: counts of sightings reported, sightings marked helpful, and recoveries credited.',
+        // ⚠️ ADDED 2026-08-24 with the in-app bug reporter, and WIDENED the same
+        // day when the form grew. Diagnostic data was a collection category this
+        // app did not previously have, and these three bullets are exactly what
+        // the report screen shows the user before they send — see
+        // profile/lib/bugDiagnostics.ts, bugReportOptions.ts and
+        // bugBreadcrumbs.ts. If that list ever grows, these lines grow with it.
+        //
+        // Split into CHOSEN and AUTOMATIC on purpose. A reader deciding whether
+        // to trust this needs to know which half they control, and burying "we
+        // also send a trail of what the app was doing" inside a sentence about
+        // screenshots they picked themselves would be the kind of true-but-
+        // misleading that a privacy policy exists to avoid.
+        //
+        // This deliberately names the browsing history where the SCREEN
+        // deliberately does not ("nothing from the rest of the app"). Not an
+        // oversight in either place: someone reading a policy came to check
+        // exactly what is excluded and is served by the specific promise,
+        // whereas raising the idea unprompted mid-flow plants the worry the
+        // sentence exists to settle. Keep both — do not "reconcile" them.
+        '• Bug reports: what you write when you report a bug, plus your app version, whether you are on iOS or Android, your OS version and your device model.',
+        '• Bug reports, if you choose to add them: up to three screenshots you pick yourself, which area of the app the problem was in, how much it got in your way and how often it happens. Screenshots are shown to you before you send and are stored privately — only we can open them.',
+        '• Bug reports, automatically: a list of the last fifty things the app did, as step names only ("opening the map", "sending a sighting"). It never includes what those steps were about — no vehicle, no place, no person, no message.',
+        // ⚠️ ADDED 2026-08-24 with the onboarding funnel, and listed here even
+        // though it arguably need not be: with no identifier of any kind, this
+        // is anonymous rather than personal data, which puts it outside what a
+        // privacy policy is obliged to cover. It is disclosed anyway because it
+        // is collected BEFORE anyone has an account or has agreed to anything,
+        // and "we did not have to tell you" is a poor answer to somebody who
+        // finds out later. If a future change gives it any identifier, it stops
+        // being optional and this bullet stops being accurate.
+        '• How far you got through the introduction, when you first open the app: which slides you saw and whether you finished or skipped. This is counted, not recorded against you — there is no account yet, and we attach no name, no device identifier and nothing that lets us recognise the same phone twice.',
       ],
     },
     {

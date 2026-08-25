@@ -33,9 +33,94 @@ honest copy; the server re-check is now the real enforcement.
 ⚠️ **Known trap:** crediting a spotter moves a post to `recovery_claimed`,
 and nothing can currently move it out of that state — so an owner who
 credits someone can never delete their account. See the payout gap below.
-**Config:** `config.ts` — `PAYOUTS_ENABLED=false` (the row ships dark; the
-payee half of the money loop does not exist — no Connect onboarding, and
-`release-payout` has no caller), legal URLs (TODO placeholders), support
-email (`support@trackitdown.example` — a reserved TLD, so it goes nowhere).
+**Config:** `config.ts` — `PAYOUTS_ENABLED=true`, legal URLs (TODO
+placeholders), support email (`support@trackitdown.example` — a reserved TLD,
+so it still goes nowhere).
+
+⚠️ **This paragraph was wrong for three weeks and cost a real decision.** It
+said `PAYOUTS_ENABLED=false`, "the payee half of the money loop does not
+exist", "no Connect onboarding" and "`release-payout` has no caller". All four
+stopped being true on **2026-08-03** (`ec9fbcf`, "a screen where a spotter can
+be paid"): the flag is `true`, `supabase/functions/connect-onboarding` exists,
+`release-payout` is invoked from `vehicles/api/recoveryApi.ts:250`, and
+`ROADMAP.md` records "BOTH WIRES CLOSED 2026-08-03".
+
+Corrected 2026-08-24, after this file was read aloud as the current state and
+used to argue the app was further from launch than it is. A stale README is not
+a tidiness problem — it is a confident source of false facts about your own
+codebase, and it is believed precisely because it is in the repo. When you
+change a flag, grep the docs for its name.
+
+## Settings (2026-08-24)
+
+`SettingsScreen` — Profile → Settings → "App settings" (`row-settings`),
+route `/settings`. Three groups: **Appearance** (System / Light / Dark radio
+rows), **Notifications** (five per-category switches, signed-in only), and
+**Permissions** (notifications, location, camera, photos).
+
+⚠️ **Two notification kinds have no switch, and their absence is the feature.**
+A sighting of your own car, and the 72-hour window to contest a bounty
+decision — whose push is the only door to `/sighting-dispute`. They have no
+category, so there is no column to store a mute in. Shown as a row with no
+control rather than a disabled switch: a stuck switch reads as a bug, and this
+is a decision. `supabase/tests/notificationCategories.test.ts` fails if either
+ever acquires a category.
+
+⚠️ **The permission rows are STATUS rows, not switches.** An app cannot grant
+itself a permission; a switch could only deep-link and then snap back, which
+reads as a control that failed. Each row states the truth and opens the OS
+settings page. `useDevicePermission`'s `useFocusEffect` re-check is what makes
+the return trip update the row without a relaunch.
+
+⚠️ **A `denied` permission deep-links even when `canAskAgain` is true**,
+diverging from the house rule. Every other re-prompt sits behind a
+`PermissionPrimer` that has just explained why; a bare settings row has not,
+and on Android a second refusal is permanent.
+
+⚠️ **Appearance reverses an owner call of 2026-08-10** ("a switch, not a
+three-way chooser"). The three-state model and its persistence already existed;
+only the UI was two-state, which meant that once flipped there was no way back
+to following the phone. The reasoning moved with the decision — it is on the
+Appearance group in `SettingsScreen.tsx`, not left beside a row that no longer
+exists. `row-dark-mode` is GONE, not renamed.
+
+**Not here:** "Alerts & notifications" and "Payouts" stayed on the Profile
+root — the first carries a live summary, the second only appears when relevant.
+
+The five per-category push switches shipped the same day (this paragraph said
+they were "phase 2" until then). They live in `notification_preferences` and
+are applied in `supabase/functions/_shared/push.ts` — see
+`src/features/notifications/lib/notificationPreferences.ts`.
+
+## Report a bug (2026-08-24)
+
+`ReportBugScreen` — Profile → Support & legal → "Report a bug". Message, area,
+severity, frequency, what they expected, up to three screenshots. Writes via
+`submit_bug_report` (SECURITY DEFINER, `reporter_id` pinned to `auth.uid()`,
+5 per rolling hour) into `bug_reports`.
+
+⚠️ **The "Sent with your report" panel is the feature, not decoration.** It
+renders from the same readers that build the payload, so the screen cannot
+claim less than it sends, and the privacy policy names the same fields. **Any
+field added to the payload must appear in that panel in the same change.**
+
+Three things it deliberately does NOT carry, and the reasoning is in
+`supabase/migrations/20260824100000_bug_reports.sql`: no log payloads (the
+breadcrumb trail is event NAMES only — the `data` is where the bare UUIDs
+live), no route (`area` is a closed ten-value vocabulary that cannot hold an
+id), and screenshots only because the user picks, previews and can remove them,
+into a PRIVATE bucket with no client read.
+
+**Files:** `screens/ReportBugScreen.tsx`, `api/bugReportApi.ts`,
+`api/bugScreenshotUpload.ts`, `lib/bugReportOptions.ts`, `lib/bugDiagnostics.ts`,
+`lib/bugBreadcrumbs.ts`, `lib/lastArea.ts` (the tab-name pre-fill, written from
+`app/(tabs)/_layout.tsx`).
+**Design:** `docs/design-refs/report-bug/` — Airbnb-language pass, 2026-08-24.
+⚠️ **No reader exists IN THE APP** — no screen, no Edge Function. The queue is
+the Supabase SQL console, and `docs/OPERATIONS.md` now holds the query and says
+where the private screenshots live. That makes "Thanks — we'll take a look"
+possible; it does not make it automatic. The button is only honest if someone
+actually looks.
+
 **Out of scope:** blocked-users management, payment methods, vanity profile
 URLs, notification toggles (live in the notifications feature), real auth.

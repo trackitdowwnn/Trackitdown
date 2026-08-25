@@ -12,7 +12,22 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-/** Bump to re-show the intro to every user (e.g. after a slide redesign). */
+/**
+ * Bump to re-show the intro to every user (e.g. after a slide redesign).
+ *
+ * ⚠️ STAYS AT 1 THROUGH THE 2026-08-23 REDESIGN, deliberately. Bumping it
+ * sends every existing user through onboarding once — and NotificationsHost
+ * refuses to route a tapped push while onboarding is up, dropping it
+ * PERMANENTLY by design ("a first-run user must not be yanked into a post
+ * detail before they have seen what the app is"). That assumption is true of
+ * a new install and false of the installed base: those are people with alerts
+ * configured, and the push they tapped is why they opened the app.
+ *
+ * Losing a time-sensitive spotter alert to show an intro to someone who
+ * already knows what the app is, is the wrong trade. New users — who the
+ * redesign is for — see it anyway, and anyone else can reach it from Profile
+ * → "How Trackitdown works".
+ */
 export const ONBOARDING_VERSION = 1;
 
 /** Versioned key: older versions' flags simply stop matching. */

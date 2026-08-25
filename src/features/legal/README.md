@@ -61,7 +61,10 @@ worse than one that is merely late.
 ## Changing a document
 
 1. Edit `lib/legalContent.ts`.
-2. Bump `LEGAL_LAST_UPDATED` — it is rendered under every title.
+2. Bump THAT DOCUMENT's own `lastUpdated`, and leave the other two alone.
+   There is deliberately no shared constant: one used to feed all three, so a
+   privacy edit re-dated the Terms and the Safety guidelines as well. See the
+   note above the documents in `lib/legalContent.ts`.
 3. If the change is material, tell users in-app before it takes effect (the
    Terms promise this).
 4. Re-publish the web copies so the two agree.

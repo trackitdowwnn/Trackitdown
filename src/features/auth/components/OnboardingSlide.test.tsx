@@ -37,8 +37,9 @@ describe('the spoken label', () => {
   it('announces position, headline and body as one sentence', async () => {
     const { getByTestId } = await renderSlide(0);
     expect(getByTestId('onboarding-slide-0').props.accessibilityLabel).toBe(
-      'Slide 1 of 4. Your car, stolen? Post it. ' +
-        'Post your car’s details and photos with a cash bounty — it takes minutes.',
+      'Slide 1 of 4. Stolen cars, on one map. ' +
+        'Owners list cars that have gone missing. ' +
+        'People passing keep an eye out.',
     );
   });
 
@@ -49,7 +50,7 @@ describe('the spoken label', () => {
     expect(getByTestId('onboarding-slide-2').props.accessibilityLabel).toBe(
       'Slide 3 of 4. Spot it? Report it — from a distance. ' +
         'Snap a photo in the app and we handle the rest. ' +
-        'Never approach or follow a vehicle.',
+        `${ONBOARDING_SAFETY_LINE}`,
     );
   });
 
@@ -63,9 +64,10 @@ describe('the headline weights', () => {
   it('sets emphasised runs in Black and plain runs in Regular', async () => {
     const { getByText } = await renderSlide(1);
 
-    // "People nearby get alerted." — 'nearby' is emphasised, 'People ' is not.
-    const emphasised = getByText('nearby');
-    const plain = getByText('People ');
+    // "Your car, stolen? Post it." — the instruction is emphasised, the
+    // reader's situation is not.
+    const emphasised = getByText(' Post it.');
+    const plain = getByText('Your car, stolen?');
 
     expect(emphasised.props.style).toEqual(
       expect.objectContaining({

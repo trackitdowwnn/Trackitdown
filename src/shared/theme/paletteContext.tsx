@@ -40,8 +40,9 @@ export interface ThemeControls {
 /**
  * Defaulted, not null — for the same reason PaletteContext is.
  *
- * ProfileScreen reads this to label its Appearance row, and its tests (like
- * ~108 others) render bare with no provider. A throwing hook would fail them
+ * SettingsScreen reads this for its Appearance chooser (ProfileScreen did,
+ * until the three-way chooser replaced its two-state switch on 2026-08-24),
+ * and its tests (like ~108 others) render bare with no provider. A throwing hook would fail them
  * all. The default is inert: 'system' is the true default preference, 'light'
  * is what an unresolved scheme renders as, and the setter is a no-op because in
  * the only situation this default is reachable — a test harness — there is

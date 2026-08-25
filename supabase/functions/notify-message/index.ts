@@ -62,6 +62,11 @@ Deno.serve(async (request) => {
     }
 
     const result = await sendToUsers(admin, [claim.user_id as string], {
+      // The only direct sendToUsers caller — chat is deliberately NOT a
+      // notifyUsers path, because the Messages segment is its persistent
+      // surface. So this is the one place the kind has to be stated by hand
+      // rather than inherited from the notifications row.
+      kind: 'message',
       title: claim.title as string,
       body: claim.body as string,
       data: { type: 'message', threadId: claim.thread_id as string },

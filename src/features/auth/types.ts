@@ -7,6 +7,8 @@
  *        src/features/auth/components/OnboardingSlide.tsx.
  */
 
+import type { OnboardingMapStage } from './components/OnboardingMap';
+
 /**
  * One stretch of headline at one weight.
  *
@@ -38,6 +40,16 @@ export interface OnboardingSlideData {
   key: string;
   headline: OnboardingHeadline;
   body: string;
+  /**
+   * Which state the shared map hero shows while this slide is up.
+   *
+   * Art direction as DATA, the way the removed `stamp` field carried the
+   * registration plate's status. The difference from `stamp` is that the map is
+   * NOT remounted per slide — the screen holds one and hands it this — so the
+   * story accumulates rather than cutting between four pictures, which is the
+   * objection that killed the last two heroes.
+   */
+  mapStage: OnboardingMapStage;
   /** Fixed safety wording rendered in SafetyNotice visual language
    *  (docs/SECURITY_AND_TRUST.md) — only the spot-it slide carries one. */
   safetyLine?: string;

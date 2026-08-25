@@ -88,6 +88,13 @@ of the way; our tokens, never their coral.
   one level deep — App-Store findability rule beats their placement (C3).
 - Settings stay grouped-and-flat (2023-era anatomy) rather than the 2025
   hub row — we have three settings rows; a hub would bury them (§1c).
+  ⚠️ **PARTIALLY REVERSED 2026-08-24.** The premise expired: Appearance grew to
+  three rows and device permissions to four, so "three settings rows" stopped
+  describing the screen. One "App settings" row now opens a Settings screen
+  holding those two groups. What the objection was actually protecting is
+  intact — "Alerts & notifications" and "Payouts" both stayed on the root, so
+  nothing that was findable became less so. See §1c and
+  `src/features/profile/screens/SettingsScreen.tsx`.
 - Hero shows FIRST NAME only (passport-style); display name lives on the
   edit screen instead of beside the name (C2).
 - Public sheet drops the highlight sentences — the stat column already

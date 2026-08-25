@@ -34,16 +34,26 @@
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Banknote, Bell, Binoculars, Car, FileText, Info, LifeBuoy, Moon, Shield, Sparkles } from 'lucide-react-native';
-import { Children, Fragment, useCallback, useRef, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import {
+  Banknote,
+  Bell,
+  Binoculars,
+  Bug,
+  Car,
+  FileText,
+  Info,
+  LifeBuoy,
+  Shield,
+  Sparkles,
+  SlidersHorizontal,
+} from 'lucide-react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   spacing,
   typography,
-  usePalette,
-  useThemeControls,
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
@@ -53,6 +63,7 @@ import {
   type ConfirmDialogRef,
   EmptyState,
   ListRow,
+  ListRowGroup,
   useTabBadges,
   useToast,
 } from '@/shared/ui';
@@ -205,14 +216,6 @@ function LoadedProfile({
       refreshPayoutsRow();
     }, [refreshPayoutsRow]),
   );
-  // The CHOICE, not the rendered result: "System" stays the honest answer even
-  // while the app happens to be dark, because the phone owns that half.
-  // The EFFECTIVE scheme, not the stored preference: the switch has two states
-  // and the preference has three, so before it is ever touched the honest
-  // position is whatever the phone is currently producing.
-  const { scheme, setPreference } = useThemeControls();
-  const palette = usePalette();
-
   const alertZoneSummary = (() => {
     if (alertsState.status !== 'ready') return undefined; // say nothing rather than guess
     const { alerts } = alertsState;
@@ -359,7 +362,7 @@ function LoadedProfile({
           testID="row-my-cars"
         />
 
-        <Section title="Settings">
+        <ListRowGroup title="Settings">
           {/* ONE row. "Notifications" and "Alert location" are one setting in
               the user's head — which is the reason they always led to the same
               screen — but two rows carrying the SAME summary read as two
@@ -389,39 +392,36 @@ function LoadedProfile({
               testID="row-payouts"
             />
           ) : null}
-          {/* A switch, not a three-way chooser (owner call 2026-08-10). The
-              switch shows the scheme actually IN EFFECT, so before it is ever
-              touched it simply mirrors the phone — which keeps "follow the
-              system" as the default without spending a row on saying so. The
-              first flip pins the app to that scheme for good; there is no way
-              back to following the phone, which is the honest cost of a
-              two-state control and the reason the state shown is the effective
-              one rather than the stored preference. */}
+          {/* Replaces the Dark mode switch that stood here. Its reasoning —
+              the 2026-08-10 "a switch, not a three-way chooser" call and the
+              cost that call accepted — moved WITH the decision, to the
+              Appearance group in SettingsScreen, rather than being left as a
+              note beside a row that no longer exists.
+
+              "App settings" rather than "Settings": this row sits inside a
+              group already titled Settings, and a row that repeats its own
+              group's name reads as a mistake. The subtitle does the
+              disambiguating, and the generic name earned itself when the push
+              categories landed the same day. */}
           <ListRow
-            icon={Moon}
-            title="Dark mode"
-            toggled={scheme === 'dark'}
-            onPress={() => setPreference(scheme === 'dark' ? 'light' : 'dark')}
-            trailing={
-              <Switch
-                value={scheme === 'dark'}
-                onValueChange={(next) => setPreference(next ? 'dark' : 'light')}
-                trackColor={{ true: palette.primary, false: palette.borderStrong }}
-                thumbColor={palette.surface}
-                ios_backgroundColor={palette.borderStrong}
-              />
-            }
-            testID="row-dark-mode"
+            icon={SlidersHorizontal}
+            title="App settings"
+            subtitle="Appearance, notifications and permissions"
+            onPress={() => router.push('/settings')}
+            testID="row-settings"
           />
+        </ListRowGroup>
+
+        <ListRowGroup title="Support & legal">
+          {/* Moved out of "Settings" (2026-08-24): it opens the onboarding
+              tour, which is help, not a preference. It only sat in Settings
+              because that group was where anything non-list went. */}
           <ListRow
             icon={Info}
             title="How Trackitdown works"
             onPress={() => router.push('/onboarding?revisit=1')}
             testID="row-how-it-works"
           />
-        </Section>
-
-        <Section title="Support & legal">
           {/* In-app, not the browser (2026-08-02): these opened
               `trackitdown.example`, a reserved TLD resolving to nothing. */}
           <ListRow
@@ -439,12 +439,21 @@ function LoadedProfile({
             title="Privacy policy"
             onPress={() => router.push(legalHref('privacy'))}
           />
+          {/* Above Contact support deliberately: this one reaches us, and
+              that one is still a mailto: to SUPPORT_EMAIL, which is the
+              placeholder support@trackitdown.example. */}
+          <ListRow
+            icon={Bug}
+            title="Report a bug"
+            onPress={() => router.push('/report-bug')}
+            testID="row-report-bug"
+          />
           <ListRow
             icon={LifeBuoy}
             title="Contact support"
             onPress={() => void contactSupport()}
           />
-        </Section>
+        </ListRowGroup>
 
         {/* The quiet ungrouped bottom cluster (reference §1d): sign-out as
             underlined text (underline = tappable), deletion beside it in the
@@ -477,14 +486,14 @@ function LoadedProfile({
         </View>
 
         {__DEV__ ? (
-          <Section title="Developer" quiet testID="dev-section">
+          <ListRowGroup title="Developer" quiet testID="dev-section">
             <ListRow title="Copy recent logs" onPress={() => void copyLogs()} testID="row-copy-logs" />
             <ListRow
               title={`Inbox badge +1 (now ${inboxBadge})`}
               onPress={() => setBadge('inbox', inboxBadge + 1)}
             />
             <ListRow title="Clear inbox badge" onPress={() => setBadge('inbox', 0)} />
-          </Section>
+          </ListRowGroup>
         ) : null}
       </ScrollView>
 
@@ -515,38 +524,6 @@ function LoadedProfile({
   );
 }
 
-/** A titled row group: heading-scale title + hairline dividers BETWEEN rows
- *  (reference §1c) — never above the first or below the last. `quiet` keeps
- *  the old small-grey-label look for the dev section, which must stay
- *  visually out of the way. */
-function Section({
-  title,
-  children,
-  quiet = false,
-  testID,
-}: {
-  title: string;
-  children: React.ReactNode;
-  quiet?: boolean;
-  testID?: string;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  const rows = Children.toArray(children); // toArray already drops null/false
-  return (
-    <View style={styles.section} testID={testID}>
-      <Text style={quiet ? styles.sectionTitleQuiet : styles.sectionTitle}>{title}</Text>
-      <View>
-        {rows.map((row, index) => (
-          <Fragment key={index}>
-            {index > 0 && !quiet ? <View style={styles.divider} /> : null}
-            {row}
-          </Fragment>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
@@ -559,29 +536,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   screenTitle: {
     ...typography.title,
     color: c.textPrimary,
-  },
-  section: {
-    gap: spacing.sm,
-  },
-  // Heading-scale ink titles carry the page rhythm (reference §1c); the dev
-  // section keeps the old quiet label so it recedes.
-  sectionTitle: {
-    ...typography.heading,
-    color: c.textPrimary,
-    paddingHorizontal: spacing.md,
-  },
-  sectionTitleQuiet: {
-    ...typography.label,
-    color: c.textSecondary,
-    paddingHorizontal: spacing.md,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: c.border,
-    // Inset = ListRow's pressed-pill radius (radii.md = 12): the hairline
-    // meets the flat edge of the pressed surfaceSubtle pill exactly. If
-    // either token moves, revisit both together.
-    marginHorizontal: spacing.md,
   },
   accountCluster: {
     gap: spacing.xs,

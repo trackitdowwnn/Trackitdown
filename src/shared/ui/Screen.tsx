@@ -90,6 +90,18 @@ export interface ScreenProps {
    * screens here are read-only.
    */
   keyboardAware?: boolean;
+  /**
+   * Pinned below the scroll — a StickyActionBar, usually holding the primary
+   * action so it never scrolls away.
+   *
+   * ⚠️ A FLEX SIBLING, NOT AN OVERLAY, and that is the whole reason it lives
+   * here rather than being dropped on top of a Screen by the caller. An
+   * absolutely-positioned bar sits OUTSIDE the KeyboardAvoidingView, so on iOS
+   * the keyboard rises straight over the top of it and the primary action of a
+   * form is hidden exactly while the form is being filled in. Rendered here it
+   * is inside the lift, which is the same shape WizardScreen's footer uses.
+   */
+  footer?: ReactNode;
 }
 
 export function Screen({
@@ -101,6 +113,7 @@ export function Screen({
   style,
   contentContainerStyle,
   keyboardAware = false,
+  footer,
 }: ScreenProps) {
   const styles = useThemedStyles(makeStyles);
 
@@ -129,14 +142,23 @@ export function Screen({
       ) : (
         <View style={[styles.fill, contentContainerStyle]}>{children}</View>
       )}
+      {footer}
     </>
   );
 
   return (
     <SafeAreaView style={[styles.container, style]} edges={edges}>
       {keyboardAware ? (
-        // iOS needs the view lifted; Android's adjustResize already does it,
-        // and adding padding there double-counts and leaves a gap.
+        // iOS needs the view lifted, so KeyboardAvoidingView does it here.
+        //
+        // ⚠️ ANDROID IS NOT HANDLED HERE, and the comment that used to sit on
+        // this line said adjustResize took care of it — which stopped being
+        // true at Expo SDK 57, where edge-to-edge means the window no longer
+        // resizes for the keyboard. Anything PINNED on Android must lift itself
+        // by the measured height (see useAndroidKeyboardHeight, which
+        // StickyActionBar uses and which returns 0 on iOS precisely because
+        // this wrapper has already done the work there). Do not "simplify" that
+        // away on the strength of the old comment.
         <KeyboardAvoidingView
           style={styles.fill}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}

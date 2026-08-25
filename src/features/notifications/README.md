@@ -327,5 +327,14 @@ product.**
   decision; DOMAIN.md amended to match ROADMAP v2 candidate #4. Re-alerts scale
   with reporter count, not with genuine movement, so a busy post in a dense area
   would spam every zone around it.
-- Multiple zones, quiet hours, a per-type preferences matrix (one master switch
-  now), email notifications.
+- Multiple zones, quiet hours, email notifications.
+  ⚠️ **The per-type preferences matrix SHIPPED 2026-08-24** and this line
+  claimed otherwise until then. Five mutable categories (alerts, messages,
+  my_sightings, money, watched) live in `notification_preferences`, are
+  toggled from Settings, and are applied in `_shared/push.ts` at the ONE point
+  where the push is sent — never where the notifications row is written, so
+  muting costs the interruption and never the information (ADR-0012).
+  `sighting` and `closed_uncredited` have no category and cannot be muted:
+  see `lib/notificationPreferences.ts` for why, and
+  `supabase/tests/notificationCategories.test.ts`, which fails if either ever
+  acquires one.

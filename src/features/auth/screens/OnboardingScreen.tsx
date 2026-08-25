@@ -29,13 +29,17 @@
  *        so the flows still match. Advance with the button; Android back steps
  *        back.
  *
- *        NO HERO ABOVE THE WORDS (2026-08-08). A registration plate lived here
- *        for two days and it did not earn the room. What replaced it is
- *        nothing: the headline takes the space at 40pt against the wash, which
- *        is what the design reference's own opening slide does — type-led, no
- *        object. The alternative was per-slide artwork, and this app owns no
- *        illustration assets to do that honestly.
+ *        A HERO RETURNED (2026-08-23), after two were removed — placeholder
+ *        emoji, then a registration plate that "did not earn the room". It is
+ *        `OnboardingMap`, and it differs from both in being the SUBJECT of the
+ *        product rather than an accompaniment: a map of stolen cars is what
+ *        this app IS, so it answers "what is this?" before a word is read.
+ *        Crucially it is NOT remounted per slide — it is a SIBLING of the keyed
+ *        stage below, so the words step over a map that persists and morphs,
+ *        which is the objection that removed the other two. Still no image
+ *        assets: it is drawn, like the wash and the ring.
  * LINKS: src/features/auth/lib/onboardingSlides.ts (copy);
+ *        src/features/auth/components/OnboardingMap.tsx (the hero);
  *        src/features/auth/lib/onboardingStorage.ts (seen flag);
  *        src/shared/wizard/WizardScreen.tsx (the motion this matches);
  *        src/features/auth/components/OnboardingSlide.tsx,
@@ -49,7 +53,13 @@
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, {
   ReduceMotion,
   SlideInLeft,
@@ -57,18 +67,30 @@ import Animated, {
   SlideOutLeft,
   SlideOutRight,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { createLogger } from '@/shared/lib/logger';
-import { motion, spacing, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  displayFontScaleCap,
+  motion,
+  spacing,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { Button } from '@/shared/ui/Button';
 
-import { OnboardingBackdrop } from '../components/OnboardingBackdrop';
+import { OnboardingBackdrop, ONBOARDING_WASH_HOLD } from '../components/OnboardingBackdrop';
+import { OnboardingMap } from '../components/OnboardingMap';
 import { OnboardingRingFab, RING_SLOT } from '../components/OnboardingRingFab';
 import { OnboardingSlide } from '../components/OnboardingSlide';
 import { markOnboardingSeenInGate } from '../hooks/useOnboardingGate';
 import { ONBOARDING_SLIDES } from '../lib/onboardingSlides';
+import {
+  endOnboardingRun,
+  startOnboardingRun,
+  trackOnboardingStep,
+} from '../lib/onboardingFunnel';
 import { markOnboardingSeen } from '../lib/onboardingStorage';
 
 const log = createLogger('auth');
@@ -76,6 +98,8 @@ const log = createLogger('auth');
 export function OnboardingScreen() {
   const styles = useThemedStyles(makeStyles);
   const router = useRouter();
+  const { fontScale } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ revisit?: string }>();
   const revisit = params.revisit === '1';
 
@@ -89,9 +113,30 @@ export function OnboardingScreen() {
   const lastPage = total - 1;
   const onLastPage = page === lastPage;
 
-  // First funnel: which slides people actually see.
+  // ⚠️ A REVISIT IS NOT A RUN. Re-reading the intro from Profile → "How
+  // Trackitdown works" must not open one: counting it would inflate both ends
+  // of the funnel with people who already finished, and the completion rate —
+  // the one number this exists to produce — would drift upward every time
+  // somebody browsed the tour. Nothing below fires without an open run.
+  useEffect(() => {
+    if (revisit) return;
+    startOnboardingRun();
+    // Ended by `leave`, which every exit path goes through — including the
+    // Android back press out of slide 1, which unmounts this screen.
+    return () => endOnboardingRun();
+  }, [revisit]);
+
+  // The funnel: which slides people actually see. The local log stays — it is
+  // what `__DEV__` "Copy recent logs" reads — and the server call is what a
+  // completion rate can be computed from.
   useEffect(() => {
     log.info('Onboarding slide viewed', { slide: page + 1, revisit });
+    // Guarded HERE as well as inside the funnel, which no-ops with no run open.
+    // Belt and braces on purpose: the funnel's guard is invisible from this
+    // file, so a future reader moving `startOnboardingRun` somewhere else would
+    // silently start counting revisits — and the symptom is a completion rate
+    // that quietly climbs rather than anything that looks broken.
+    if (!revisit) trackOnboardingStep('slide_viewed', page + 1);
   }, [page, revisit]);
 
   const goTo = (target: number) => {
@@ -126,6 +171,7 @@ export function OnboardingScreen() {
       return;
     }
     log.info(`Onboarding ${reason}`, { atSlide: page + 1 });
+    trackOnboardingStep(reason);
     await markOnboardingSeen();
     // Flip the live gate NOW (before navigating) so the always-mounted AuthGate
     // sees 'seen' and lets the redirect stick instead of bouncing back.
@@ -143,13 +189,50 @@ export function OnboardingScreen() {
     goTo(page + 1);
   };
 
+  // The wizard's filling-step rule, applied here: past 1.3× the hero yields its
+  // room to the copy rather than squeezing it.
+  //
+  // `<=`, matching WizardScreen and DESIGN_SYSTEM, which states the rule as
+  // "stops filling ABOVE 1.3×". A stricter `<` read better on its own terms
+  // but left the design system wrong for one of its two consumers, which is a
+  // worse trade than 0.4pt of headline.
+  //
+  // `?? 1` because fontScale is not populated on every host, and an undefined
+  // comparison is false — which would silently hide the hero everywhere.
+  const mapFits = (fontScale ?? 1) <= displayFontScaleCap;
+
   return (
     <View style={styles.root}>
       {/* FIRST in the tree so nothing later can paint over it on Android,
           where z-order follows elevation. */}
       <OnboardingBackdrop />
 
+
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        {/* ⚠️ A SIBLING OF THE STAGE, NOT A LAYER UNDER IT. Absolutely
+            positioned, the map and the copy shared the same pixels and the
+            headline landed inside the image at ordinary text sizes — which the
+            README states as an absolute rule, and which was only survivable
+            because the fade happened to have washed the ink out that far down.
+            As flex siblings they cannot overlap at any size on any device.
+
+            The negative top margin is what lets it still bleed under the status
+            bar, which is where the reference puts its imagery.
+
+            ⚠️ OUTSIDE the keyed stage below, and that is the whole design: the
+            map is the one thing that persists while the words step over it, so
+            the four slides read as one car’s story rather than four pictures.
+            Inside the stage it would remount and slide with the copy — exactly
+            the objection that removed the last two heroes.
+
+            Gone entirely past 1.3× text: the wizard's `fills` rule, "big text
+            beats the full-bleed map". */}
+        {mapFits ? (
+          <View style={[styles.mapBand, { marginTop: -insets.top }]}>
+            <OnboardingMap stage={ONBOARDING_SLIDES[page].mapStage} />
+          </View>
+        ) : null}
+
         {/* `key` is what makes this a transition at all: changing it unmounts
             the old step and mounts a new one, which is what fires the exiting
             and entering animations. Identical mechanism to WizardScreen. */}
@@ -166,7 +249,19 @@ export function OnboardingScreen() {
             .easing(easeOut)
             .reduceMotion(ReduceMotion.System)}
         >
-          <OnboardingSlide slide={ONBOARDING_SLIDES[page]} index={page} total={total} />
+          {/* ⚠️ THE SCROLL RESCUE the wizard's `fills` rule assumes. Hiding
+              the map past 1.3× gives the words the screen, but at 2× a
+              four-line 40pt headline plus a body plus the safety pill still
+              overflows — and a stage that cannot scroll simply loses the
+              bottom of it. `flexGrow: 1` keeps the copy bottom-aligned at
+              ordinary sizes and lets it scroll only when it has to. */}
+          <ScrollView
+            contentContainerStyle={styles.stageContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <OnboardingSlide slide={ONBOARDING_SLIDES[page]} index={page} total={total} />
+          </ScrollView>
         </Animated.View>
 
         {/* Skip left, advance right — the same footer grammar as the wizard's
@@ -207,8 +302,22 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // The step occupies everything above the footer, and the copy sits low in it
   // so the words land near the control that advances them rather than floating
   // in the middle of an empty screen.
+  // ⚠️ THE STAGE IS ALWAYS THE FILL; the band carries the ratio.
+  //
+  // Yoga floors the total flex-grow factor to 1 only when the sum is BELOW
+  // one. Written as 0.55/0.45 the two summed to exactly 1 and behaved — until
+  // the map was hidden, when the stage became the lone growing child at 0.45,
+  // was floored to 1, and took 45% of the free space. That left ~42% of the
+  // screen blank under the footer at exactly the text size the gate exists to
+  // serve, while the comment above it claimed the words got the screen.
+  mapBand: {
+    flex: ONBOARDING_WASH_HOLD / (1 - ONBOARDING_WASH_HOLD),
+  },
   stage: {
     flex: 1,
+  },
+  stageContent: {
+    flexGrow: 1,
     justifyContent: 'flex-end',
     paddingBottom: spacing.xl,
   },
