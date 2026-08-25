@@ -75,15 +75,26 @@ jobs:
           # lookup to need the network. A pin also means a deploy is
           # reproducible: the CLI cannot change under a re-run.
           #
-          # ⚠️ BUMPED 2026-08-25 from 2.109.1, which SILENTLY FAILED TO APPLY
-          # MIGRATIONS. On the deploy of PR #66 its bundled
-          # @supabase/pg-delta@1.0.0-alpha.27 died reading its own generated
-          # certificate ("Failed to read certificate file …
-          # pgdelta-target-ca.crt: ENOENT", "main worker has been destroyed"),
-          # printed the stack trace — and `supabase db push` still EXITED 0.
-          # The step is `bash -e`, so a non-zero exit would have failed it. The
-          # CLI returned success after failing, four migrations did not apply,
-          # and the functions deployed on top of the old schema.
+          # ⚠️ BUMPED 2026-08-25 from 2.109.1 for NOISE, not for a failure —
+          # and the commit that did it said otherwise, so this corrects it.
+          #
+          # On the deploy of PR #66, 2.109.1's bundled
+          # @supabase/pg-delta@1.0.0-alpha.27 printed a stack trace reading its
+          # own generated certificate ("Failed to read certificate file …
+          # pgdelta-target-ca.crt: ENOENT", "main worker has been destroyed").
+          # That looked like a silent failure and was reported as one. It was
+          # not: all four migrations had ALREADY been applied by the time it
+          # printed —
+          #
+          #     Applying migration 20260824100000_bug_reports.sql...
+          #     Applying migration 20260824140000_bug_report_details.sql...
+          #     Applying migration 20260824170000_notification_preferences.sql...
+          #     Applying migration 20260824190000_onboarding_funnel.sql...
+          #
+          # — and the next deploy's verification step confirmed 109 of 109
+          # applied. The trace comes from a secondary path after the push
+          # succeeds. The bump removes the noise so the next reader is not
+          # misled the same way.
           #
           # ⚠️ This now DIFFERS from the `supabase` devDependency (2.109.1) that
           # ci.yml uses, whose own comment claims "no drift between what CI runs
@@ -142,15 +153,19 @@ jobs:
           supabase link --project-ref "$PROJECT_REF"
           supabase db push
 
-      # ⚠️ THE EXIT CODE OF `db push` CANNOT BE TRUSTED, so this step does not
-      # ask it. On 2026-08-25 the CLI crashed mid-push and exited 0; the deploy
-      # went green, four migrations were missing, and the only reason it was
-      # caught at all is that somebody read the log.
+      # ⚠️ READS THE DATABASE, NOT THE LOG — which is the point, and it was
+      # earned twice over on 2026-08-25.
       #
-      # This compares what is APPLIED against the migration FILES in the commit
-      # being deployed, and fails loudly on any gap. It is the one check that
-      # would have turned that silent success into a red X — and it asks the
-      # database rather than the tool, which is the whole point.
+      # That day a stack trace in the `db push` output was twice read as a
+      # failed migration run, and twice it was not: once from a truncated
+      # dashboard query (100 rows, capped) and once from reading the tail of a
+      # step without the four "Applying migration" lines above it. Both alarms
+      # cost more than the thing they were about.
+      #
+      # A log is a story someone has to read correctly. A count is a fact. This
+      # compares what is APPLIED against the migration FILES in the commit being
+      # deployed, and fails loudly on any gap — so nobody has to interpret a
+      # stack trace to know whether the schema moved.
       #
       # Skipped along with the push itself, so `skip_migrations` still means
       # "leave the database alone" rather than "fail because it is behind".
