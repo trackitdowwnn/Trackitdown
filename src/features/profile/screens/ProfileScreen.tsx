@@ -82,7 +82,7 @@ import {
 import { ProfileHeroCard } from '../components/ProfileHeroCard';
 import { legalHref } from '@/shared/lib';
 
-import { PAYOUTS_ENABLED, SUPPORT_EMAIL } from '../config';
+import { PAYOUTS_ENABLED, SUPPORT_EMAIL, supportEmailIsReachable } from '../config';
 import { useMyProfile } from '../hooks/useMyProfile';
 import { DEV_MOCK_PROFILE } from '../lib/devMockProfile';
 import type { MyProfile } from '../types';
@@ -439,20 +439,37 @@ function LoadedProfile({
             title="Privacy policy"
             onPress={() => router.push(legalHref('privacy'))}
           />
-          {/* Above Contact support deliberately: this one reaches us, and
-              that one is still a mailto: to SUPPORT_EMAIL, which is the
-              placeholder support@trackitdown.example. */}
+          {/* Above Contact support deliberately: this one reaches a real
+              table, and for now it is the ONLY support route shown at all. */}
           <ListRow
             icon={Bug}
             title="Report a bug"
             onPress={() => router.push('/report-bug')}
             testID="row-report-bug"
           />
-          <ListRow
-            icon={LifeBuoy}
-            title="Contact support"
-            onPress={() => void contactSupport()}
-          />
+          {/* ⚠️ HIDDEN WHILE THE ADDRESS CANNOT RECEIVE MAIL, which today it
+              cannot: support@trackitdown.example is on an RFC-2606 reserved
+              domain that is guaranteed to bounce. The row opened a mailto: to
+              it and, when no mail app answered, COPIED THAT ADDRESS TO THE
+              CLIPBOARD — handing somebody trying to reach a human an address
+              that cannot work, with every appearance of having helped.
+
+              A dead route shown as a live one is worse than no route: it
+              spends the one bit of effort they were willing to make, and they
+              have no way to tell. Degrade by omission, the same rule the
+              permission rows follow for a kind the platform lacks.
+
+              Nothing to remember: supportEmailIsReachable() is DERIVED from
+              the address, so this row returns by itself the moment
+              SUPPORT_EMAIL is real. */}
+          {supportEmailIsReachable() ? (
+            <ListRow
+              icon={LifeBuoy}
+              title="Contact support"
+              onPress={() => void contactSupport()}
+              testID="row-contact-support"
+            />
+          ) : null}
         </ListRowGroup>
 
         {/* The quiet ungrouped bottom cluster (reference §1d): sign-out as

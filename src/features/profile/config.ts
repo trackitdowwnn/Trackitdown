@@ -21,3 +21,27 @@
 export const PAYOUTS_ENABLED = true;
 
 export const SUPPORT_EMAIL = 'support@trackitdown.example'; // TODO(legal)
+
+/**
+ * Whether {@link SUPPORT_EMAIL} can actually receive mail.
+ *
+ * ⚠️ DERIVED, NOT A FLAG, so nobody has to remember to flip it. RFC 2606 and
+ * RFC 6761 reserve `.example`, `.test`, `.invalid` and `.localhost` precisely
+ * so they can never resolve — an address ending in one is not "a placeholder we
+ * should replace", it is one that is guaranteed to bounce. The moment
+ * SUPPORT_EMAIL becomes a real address this returns true on its own and the
+ * Contact support row comes back.
+ *
+ * WHY IT EXISTS: the row was offering a mailto: to a reserved domain, and its
+ * fallback COPIED THAT ADDRESS TO THE CLIPBOARD — confidently handing someone
+ * trying to reach a human an address that cannot work. A dead route presented
+ * as a live one is worse than no route, because it spends the one bit of effort
+ * they were willing to make. Hiding it leaves "Report a bug", which reaches a
+ * real table.
+ */
+export function supportEmailIsReachable(): boolean {
+  const domain = SUPPORT_EMAIL.split('@')[1]?.toLowerCase() ?? '';
+  return !['.example', '.test', '.invalid', '.localhost'].some((tld) =>
+    domain.endsWith(tld),
+  );
+}
