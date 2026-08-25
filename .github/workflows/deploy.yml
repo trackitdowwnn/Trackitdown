@@ -74,7 +74,26 @@ jobs:
           # of a webhook HOTFIX — the worst possible moment for a version
           # lookup to need the network. A pin also means a deploy is
           # reproducible: the CLI cannot change under a re-run.
-          version: 2.109.1
+          #
+          # ⚠️ BUMPED 2026-08-25 from 2.109.1, which SILENTLY FAILED TO APPLY
+          # MIGRATIONS. On the deploy of PR #66 its bundled
+          # @supabase/pg-delta@1.0.0-alpha.27 died reading its own generated
+          # certificate ("Failed to read certificate file …
+          # pgdelta-target-ca.crt: ENOENT", "main worker has been destroyed"),
+          # printed the stack trace — and `supabase db push` still EXITED 0.
+          # The step is `bash -e`, so a non-zero exit would have failed it. The
+          # CLI returned success after failing, four migrations did not apply,
+          # and the functions deployed on top of the old schema.
+          #
+          # ⚠️ This now DIFFERS from the `supabase` devDependency (2.109.1) that
+          # ci.yml uses, whose own comment claims "no drift between what CI runs
+          # and what a developer runs locally". Deliberate: the bug is in
+          # `db push` against a REMOTE, and CI only ever runs `db reset` against
+          # a local container — where 2.109.1 is fine and just ran 25 suites
+          # green. Bumping the devDependency too would change the tool under the
+          # one gate that makes auto-deploy safe, to fix a bug that gate cannot
+          # hit. Revisit together when there is a reason to move CI.
+          version: 2.115.0
 
       - name: Record the pre-deploy state
         # Captured BEFORE anything changes, so the verification step at the end
@@ -122,6 +141,52 @@ jobs:
           fi
           supabase link --project-ref "$PROJECT_REF"
           supabase db push
+
+      # ⚠️ THE EXIT CODE OF `db push` CANNOT BE TRUSTED, so this step does not
+      # ask it. On 2026-08-25 the CLI crashed mid-push and exited 0; the deploy
+      # went green, four migrations were missing, and the only reason it was
+      # caught at all is that somebody read the log.
+      #
+      # This compares what is APPLIED against the migration FILES in the commit
+      # being deployed, and fails loudly on any gap. It is the one check that
+      # would have turned that silent success into a red X — and it asks the
+      # database rather than the tool, which is the whole point.
+      #
+      # Skipped along with the push itself, so `skip_migrations` still means
+      # "leave the database alone" rather than "fail because it is behind".
+      - name: Verify the migrations actually landed
+        if: ${{ inputs.skip_migrations != true }}
+        run: |
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::warning::No SUPABASE_DB_PASSWORD — nothing was pushed, nothing to verify."
+            exit 0
+          fi
+
+          expected=$(ls supabase/migrations/*.sql | wc -l)
+
+          # `migration list` prints a Local | Remote table; a row with a Remote
+          # version is one the database has. Counting those avoids needing psql
+          # on the runner.
+          applied=$(supabase migration list --linked 2>/dev/null             | awk -F'|' 'NF>=2 && $2 ~ /[0-9]{14}/ {n++} END {print n+0}')
+
+          echo "migration files in this commit: $expected"
+          echo "applied on the remote:          $applied"
+
+          if [ "$applied" -lt "$expected" ]; then
+            echo "::error::$((expected - applied)) migration(s) did NOT apply, and db push reported success."
+            echo "::error::Functions may now be running against an older schema."
+            echo "::error::Do not assume a green deploy applied anything — check the Apply migrations log."
+            supabase migration list --linked || true
+            exit 1
+          fi
+
+          # ⚠️ If `migration list` ever changes its output format, that awk
+          # yields 0 and this step fails every deploy. That is the intended
+          # direction: this exists BECAUSE a false green shipped functions onto
+          # an old schema, and a false red is a loud five-minute fix while a
+          # false green is invisible until something breaks in production.
+
+          echo "All $expected migrations are applied."
 
       # --- Functions, in two waves --------------------------------------------
       # WAVE 1 is everything that RECORDS or SETTLES money (stripe-webhook,
