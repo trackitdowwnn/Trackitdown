@@ -53,6 +53,11 @@ jest.mock('@/shared/ui', () => {
     // The real one renders a RefreshControl, which needs a host scroll view
     // ancestor; the pull itself is exercised in useMyAlerts.test.tsx.
     ThemedRefreshControl: () => null,
+    // ⚠️ This mock is hand-listed, so anything the screen newly imports from
+    // the barrel arrives as undefined and fails with "Element type is invalid"
+    // rather than anything naming the missing export. The real Switch, so the
+    // pause toggle stays pressable and keeps its accessibilityLabel.
+    AppSwitch: jest.requireActual('react-native').Switch,
   };
 });
 

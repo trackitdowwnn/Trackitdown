@@ -36,7 +36,15 @@ export const colors = {
   border: '#DDDDDD',
   // Stronger hairline for small elements that must stay visible (e.g. the
   // wizard's empty progress track) — ≥3:1 on the background.
-  borderStrong: '#949494',
+  //
+  // ⚠️ #8F8F8F, not #949494. The comment above had claimed ≥3:1 since this
+  // token was written and #949494 measured 2.832 on the page — the claim was
+  // the thing that was wrong, and colors.test.ts recorded the gap rather than
+  // fixing it because changing a light token under a dark-mode change would
+  // have been a silent visual edit to 43 call sites. Fixed deliberately
+  // 2026-08-25, on its own, now that five new Switch tracks ship on it:
+  // 3.019 on background, 3.234 on surface. The comment is true now.
+  borderStrong: '#8F8F8F',
   success: '#4F8A5B',
   // Amber for pending/expiring — dot/icon/border only, never body text.
   warning: '#A9762A',

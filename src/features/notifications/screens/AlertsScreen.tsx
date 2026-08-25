@@ -17,7 +17,7 @@
 
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Linking, SafeAreaView, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useDevicePermission } from '@/features/permissions';
 import { createLogger } from '@/shared/lib/logger';
@@ -25,11 +25,11 @@ import {
   radii,
   spacing,
   typography,
-  usePalette,
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
 import {
+  AppSwitch,
   Button,
   ConfirmDialog,
   type ConfirmDialogRef,
@@ -74,7 +74,6 @@ function AlertRow({
   onDelete: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
 
   return (
     <View style={styles.row} testID={`alert-row-${alert.id}`}>
@@ -91,13 +90,12 @@ function AlertRow({
           <Button label="Delete" variant="ghost" fullWidth={false} onPress={onDelete} />
         </View>
       </View>
-      <Switch
+      {/* Keeps its own label: here the switch IS the interactive element,
+          unlike the two sites where a row wraps it. */}
+      <AppSwitch
         accessibilityLabel={`${alert.name} alerts`}
         value={alert.enabled}
         onValueChange={onToggle}
-        trackColor={{ true: palette.primary, false: palette.borderStrong }}
-        thumbColor={palette.surface}
-        ios_backgroundColor={palette.borderStrong}
       />
     </View>
   );
