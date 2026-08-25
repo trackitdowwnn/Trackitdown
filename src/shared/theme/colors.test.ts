@@ -43,6 +43,10 @@ const TEXT_TOKENS = ['textPrimary', 'textSecondary', 'primary', 'accentText', 'd
 /** Non-text graphics (1.4.11) — 3:1. `border` is decorative and exempt. */
 const GRAPHIC_TOKENS = ['borderStrong', 'success', 'warning'] as const;
 
+/** Graphic tokens that must clear 3:1 on the PAGE as well as the card.
+ *  `borderStrong` joined this on 2026-08-25 when it was raised to #8F8F8F. */
+const GRAPHIC_TOKENS_ON_PAGE = ['borderStrong', 'success', 'warning'] as const;
+
 describe.each([
   ['light', colors],
   ['dark', darkColors],
@@ -56,12 +60,12 @@ describe.each([
     expect(contrast(palette[token], palette.surface)).toBeGreaterThanOrEqual(3);
   });
 
-  it.each(['success', 'warning'] as const)('%s also clears 3:1 on the PAGE', (token) => {
-    // Split from the block above because `borderStrong` genuinely does not
-    // clear this in light (2.83 — see the dedicated describe below), whereas
-    // the semantic hues do on both surfaces and the doc table quotes both.
-    // Asserting them here stops a future lightening pass from quietly dropping
-    // one to a card-only value.
+  it.each(GRAPHIC_TOKENS_ON_PAGE)('%s also clears 3:1 on the PAGE', (token) => {
+    // `borderStrong` was excluded from this until 2026-08-25 because it
+    // genuinely did not clear it in light (2.832). Raising it to #8F8F8F fixed
+    // that, so the exception is gone and the dedicated describe below it went
+    // with it. Asserting these on the page stops a future lightening pass from
+    // quietly dropping one to a card-only value.
     expect(contrast(palette[token], palette.background)).toBeGreaterThanOrEqual(3);
   });
 
@@ -94,29 +98,24 @@ describe.each([
   });
 });
 
-describe('borderStrong against the page background', () => {
-  // Split out from the per-palette block above because the two schemes do NOT
-  // currently agree here, and the disagreement is worth stating rather than
-  // hiding behind a relaxed floor.
-  it('clears 3:1 in dark', () => {
-    expect(contrast(darkColors.borderStrong, darkColors.background)).toBeGreaterThanOrEqual(3);
+describe('⚠️ the off-state Switch boundary', () => {
+  // Five new Switch tracks shipped on borderStrong with the Settings screen,
+  // which is what finally made the recorded gap worth spending a visual change
+  // on. The two contrasts a switch depends on:
+  it('the thumb is visible against its own track', () => {
+    // React Native's Switch takes thumbColor={surface} on trackColor={
+    // borderStrong} when off — if these converge the control reads as a blank
+    // pill with no indication of which way it is set.
+    expect(contrast(colors.surface, colors.borderStrong)).toBeGreaterThanOrEqual(3);
+    expect(contrast(darkColors.surface, darkColors.borderStrong)).toBeGreaterThanOrEqual(3);
   });
 
-  it('does NOT yet clear 3:1 in light — a pre-existing gap, recorded not fixed', () => {
-    // colors.ts describes borderStrong as "≥3:1 on the background", but
-    // #949494 on #F7F7F7 measures 2.83. Real, shipped, and NOT introduced by
-    // dark mode — found by pointing this computed test at the existing palette.
-    // Deliberately not fixed here: changing a light-mode token under a
-    // dark-mode change would be a silent visual edit to every wizard progress
-    // track and sparkline in the app. #8F8F8F would clear it (3.02) and is the
-    // proposed fix, pending the owner's call.
-    //
-    // Asserted as the CURRENT value so this test starts failing the moment
-    // someone fixes it — at which point delete this and fold borderStrong back
-    // into the shared graphic-floor assertion above.
-    const measured = contrast(colors.borderStrong, colors.background);
-    expect(measured).toBeGreaterThanOrEqual(2.8);
-    expect(measured).toBeLessThan(3);
+  it('the track is visible against the page it sits on', () => {
+    // This is the one that was failing: 2.832 in light. A settings row sits on
+    // the page background, so an off switch had no boundary clearing 1.4.11 in
+    // either direction.
+    expect(contrast(colors.borderStrong, colors.background)).toBeGreaterThanOrEqual(3);
+    expect(contrast(darkColors.borderStrong, darkColors.background)).toBeGreaterThanOrEqual(3);
   });
 });
 

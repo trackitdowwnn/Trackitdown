@@ -86,10 +86,18 @@ structure per `docs/decisions/ADR-0005-airbnb-orange-theme.md`.)
 Never encode status by colour alone: `StatusBadge` always pairs its dot
 with a text label (colour-blind-safe).
 
-> **Known gap.** `borderStrong` measures **2.83:1** on `background` (it clears
-> 3.03 on `surface`), despite its own token comment claiming ≥3:1 on the
-> background. Real and shipped. `#8F8F8F` would clear it. Recorded in
-> `src/shared/theme/colors.test.ts`, which fails when it is fixed.
+> **Fixed 2026-08-25.** `borderStrong` was **#949494**, measuring **2.83:1**
+> on `background` — below the 3:1 graphic floor, despite its own token comment
+> claiming otherwise. The comment was the part that was wrong, and the gap was
+> recorded rather than fixed because changing a light token under a dark-mode
+> change would have been a silent visual edit to **43 call sites**.
+>
+> Raised to **#8F8F8F**: 3.019 on `background`, 3.234 on `surface`. What made
+> it worth spending the visual change on was the Settings screen shipping five
+> Switch tracks on this token — an off switch needs its thumb visible against
+> its track AND its track visible against the page, and only the first was
+> clearing. `colors.test.ts` now asserts both, and `borderStrong` has been
+> folded back into the shared graphic floor rather than carrying an exception.
 
 ### Dark palette (added 2026-08-09 — `docs/decisions/ADR-0013-dark-mode.md`)
 

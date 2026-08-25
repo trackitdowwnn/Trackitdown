@@ -49,7 +49,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   useAnimatedValue,
   View,
@@ -77,6 +76,7 @@ import type {
   LocationServices,
   LocationValue,
 } from '../types';
+import { AppSwitch } from './AppSwitch';
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
 import { MapCornerMask } from './MapCornerMask';
 import { Button } from './Button';
@@ -681,17 +681,14 @@ export function LocationPicker({
                     <Text style={styles.optionCaption}>{optionSlot.caption}</Text>
                   ) : null}
                 </View>
-                <Switch
+                <AppSwitch
                   // The row owns the semantics now; the Switch is the visual
                   // state, hidden from assistive tech so it is not announced
-                  // twice.
+                  // twice. AppSwitch supplies only the colours, so this stays.
                   importantForAccessibility="no-hide-descendants"
                   accessibilityElementsHidden
                   value={optionSlot.value}
                   onValueChange={optionSlot.onValueChange}
-                  trackColor={{ true: palette.primary, false: palette.borderStrong }}
-                  thumbColor={palette.surface}
-                  ios_backgroundColor={palette.borderStrong}
                 />
               </Pressable>
             ) : null}

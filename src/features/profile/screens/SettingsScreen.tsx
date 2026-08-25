@@ -31,7 +31,7 @@
 
 import { useRouter } from 'expo-router';
 import { Bell, Camera, ChevronLeft, Images, MapPin } from 'lucide-react-native';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth';
 import { CATEGORY_COPY, useNotificationPreferences } from '@/features/notifications';
@@ -47,7 +47,7 @@ import {
   type Palette,
   type ThemePreference,
 } from '@/shared/theme';
-import { ListRow, ListRowGroup, Screen, useToast } from '@/shared/ui';
+import { AppSwitch, ListRow, ListRowGroup, Screen, useToast } from '@/shared/ui';
 
 import { PermissionRow } from '../components/PermissionRow';
 
@@ -154,12 +154,9 @@ export function SettingsScreen() {
                 loadingPreferences ? (
                   <View style={styles.switchPlaceholder} />
                 ) : (
-                  <Switch
+                  <AppSwitch
                     value={preferences[entry.category]}
                     onValueChange={(next) => void toggleCategory(entry.category, next)}
-                    trackColor={{ true: palette.primary, false: palette.borderStrong }}
-                    thumbColor={palette.surface}
-                    ios_backgroundColor={palette.borderStrong}
                   />
                 )
               }
