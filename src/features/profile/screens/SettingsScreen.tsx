@@ -30,9 +30,12 @@
  *        profile redesign, so heading-scale ink group titles, hairlines between
  *        rows only, and flat-on-the-page grouping were already in place. Two
  *        gaps closed: the Notifications group gained the icon rail the
- *        reference runs down every settings row (see CATEGORY_ICONS), and each
- *        footnote is now bundled with the group it explains rather than sitting
- *        equally far from both neighbours (see styles.bundle).
+ *        reference runs down every settings row (see CATEGORY_ICONS), and the
+ *        footnote is bundled with the group it explains rather than sitting
+ *        equally far from both neighbours (see styles.bundle). The Permissions
+ *        footnote was removed entirely on the owner's call the same day — the
+ *        rows state their own answer and offer their own chevron, so it was
+ *        narrating the anatomy.
  *
  *        Appearance keeps NO icons — the documented chooser exception below,
  *        not an oversight; a chooser is a different grammar from a list of
@@ -268,43 +271,36 @@ export function SettingsScreen() {
       {/* The subtitles are the primer these rows would otherwise lack — the
           startup chain asks for all four in a row with no explanation attached
           to any of them, so this may be the first time the user is told why. */}
-      <View style={styles.bundle}>
-        <ListRowGroup title="Permissions">
-          <PermissionRow
-            kind="notifications"
-            icon={Bell}
-            title="Notifications"
-            subtitle="So we can tell you the moment your car is seen."
-            testID="row-permission-notifications"
-          />
-          <PermissionRow
-            kind="location"
-            icon={MapPin}
-            title="Location"
-            subtitle="So we can show cars reported near you."
-            testID="row-permission-location"
-          />
-          <PermissionRow
-            kind="camera"
-            icon={Camera}
-            title="Camera"
-            subtitle="For photographing a car you have spotted."
-            testID="row-permission-camera"
-          />
-          <PermissionRow
-            kind="photos"
-            icon={Images}
-            title="Photos"
-            subtitle="For adding pictures of your own car to a listing."
-            testID="row-permission-photos"
-          />
-        </ListRowGroup>
-
-        <Text style={styles.footnote}>
-          Notifications, location, camera and photos are controlled by your phone. Tapping one takes
-          you to where you can change it.
-        </Text>
-      </View>
+      <ListRowGroup title="Permissions">
+        <PermissionRow
+          kind="notifications"
+          icon={Bell}
+          title="Notifications"
+          subtitle="So we can tell you the moment your car is seen."
+          testID="row-permission-notifications"
+        />
+        <PermissionRow
+          kind="location"
+          icon={MapPin}
+          title="Location"
+          subtitle="So we can show cars reported near you."
+          testID="row-permission-location"
+        />
+        <PermissionRow
+          kind="camera"
+          icon={Camera}
+          title="Camera"
+          subtitle="For photographing a car you have spotted."
+          testID="row-permission-camera"
+        />
+        <PermissionRow
+          kind="photos"
+          icon={Images}
+          title="Photos"
+          subtitle="For adding pictures of your own car to a listing."
+          testID="row-permission-photos"
+        />
+      </ListRowGroup>
     </Screen>
   );
 }
@@ -347,8 +343,16 @@ const makeStyles = (c: Palette) =>
       borderRadius: radii.md,
       backgroundColor: c.surfaceSubtle,
     },
-    // Says once what four rows would otherwise each have to imply: these are
-    // not switches, and the app is not the thing that decides.
+    // ⚠️ ONE CONSUMER SINCE 2026-08-26, and the wording of this note used to
+    // describe the other one. There was a second footnote under Permissions
+    // ("Notifications, location, camera and photos are controlled by your
+    // phone…") saying once what four rows would otherwise each have to imply:
+    // these are not switches, and the app is not the thing that decides. Owner
+    // removed it — the rows already carry a `value` stating the current answer
+    // and a chevron promising somewhere to go, so the sentence was narrating
+    // what the anatomy shows. What remains is the Notifications note, which is
+    // NOT the same kind of thing: it states a fact the UI cannot show, because
+    // the two unmutable kinds have no row to appear on.
     footnote: {
       ...typography.caption,
       color: c.textSecondary,
