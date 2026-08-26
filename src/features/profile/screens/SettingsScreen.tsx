@@ -23,6 +23,23 @@
  *        RPC, so that group is simply absent for a guest — omission rather than
  *        a locked-looking group, which is the same rule the permission rows
  *        follow for an unavailable kind.
+ *
+ *        AIRBNB PASS 2026-08-26 — deliberately small, because the anatomy was
+ *        already right: ListRowGroup and ListRow were built FROM the reference
+ *        (`docs/design-refs/profile/REFERENCE_SPEC.md` §1c) during the July
+ *        profile redesign, so heading-scale ink group titles, hairlines between
+ *        rows only, and flat-on-the-page grouping were already in place. Two
+ *        gaps closed: the Notifications group gained the icon rail the
+ *        reference runs down every settings row (see CATEGORY_ICONS), and each
+ *        footnote is now bundled with the group it explains rather than sitting
+ *        equally far from both neighbours (see styles.bundle).
+ *
+ *        Appearance keeps NO icons — the documented chooser exception below,
+ *        not an oversight; a chooser is a different grammar from a list of
+ *        destinations. The title also stays inline beside the back chevron
+ *        rather than taking the reference's large scroll-away treatment:
+ *        sixteen screens share that header idiom, and matching the reference on
+ *        one of them would only make this screen the odd one out.
  * LINKS: ../components/PermissionRow.tsx (the four permission rows);
  *        src/shared/theme (useThemeControls — the three-state model);
  *        src/app/settings.tsx (the route);
@@ -30,11 +47,27 @@
  */
 
 import { useRouter } from 'expo-router';
-import { Bell, Camera, ChevronLeft, Images, MapPin } from 'lucide-react-native';
+import {
+  Banknote,
+  Bell,
+  Binoculars,
+  Bookmark,
+  Camera,
+  ChevronLeft,
+  Images,
+  MapPin,
+  MessageCircle,
+  Radar,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSession } from '@/features/auth';
-import { CATEGORY_COPY, useNotificationPreferences } from '@/features/notifications';
+import {
+  CATEGORY_COPY,
+  useNotificationPreferences,
+  type NotificationCategory,
+} from '@/features/notifications';
 
 import {
   radii,
@@ -50,6 +83,42 @@ import {
 import { AppSwitch, ListRow, ListRowGroup, Screen, useToast } from '@/shared/ui';
 
 import { PermissionRow } from '../components/PermissionRow';
+
+/**
+ * The icon rail for the Notifications group.
+ *
+ * ⚠️ EVERY GLYPH REUSES A MEANING THE APP HAS ALREADY ESTABLISHED, because a
+ * rail that invents its own vocabulary is worse than no rail: it teaches an
+ * association the rest of the app then contradicts. MessageCircle and Bookmark
+ * are the Inbox and Watchlist tabs; Binoculars and Banknote are ProfileScreen's
+ * own "My sightings" and "Payouts" rows.
+ *
+ * ⚠️ `alerts` IS THE EXCEPTION, AND NOT BY PREFERENCE. Its natural glyph is
+ * `Bell` — what ProfileScreen uses for "Alerts & notifications" — and its
+ * second choice is `MapPin`, the alert-area glyph in AlertMatcherPicker. On
+ * THIS screen both are already spoken for by the Permissions group below: Bell
+ * is the OS notification permission, MapPin the OS location permission. Either
+ * would put one glyph against two different things a few rows apart, which is
+ * exactly the confusion a rail exists to prevent. Radar is unclaimed here and
+ * reads as a watched area.
+ *
+ * A total Record, so adding a sixth category fails the build here rather than
+ * rendering one row with no icon and a title that no longer lines up with its
+ * neighbours.
+ *
+ * ⚠️ EXPORTED FOR ITS TEST, which is the half TypeScript cannot do. The type
+ * guarantees every category HAS an icon; it says nothing about which, so
+ * `alerts: Bell` would compile happily and quietly reintroduce the collision
+ * this map was arranged to avoid. The test pins distinctness and the two
+ * reserved glyphs.
+ */
+export const CATEGORY_ICONS: Record<NotificationCategory, LucideIcon> = {
+  alerts: Radar,
+  messages: MessageCircle,
+  my_sightings: Binoculars,
+  money: Banknote,
+  watched: Bookmark,
+};
 
 /** The three appearance choices, in the order they are offered. */
 const APPEARANCE: { value: ThemePreference; title: string; subtitle?: string }[] = [
@@ -131,102 +200,111 @@ export function SettingsScreen() {
       </ListRowGroup>
 
       {signedIn ? (
-        <ListRowGroup title="Notifications">
-          {CATEGORY_COPY.map((entry) => (
-            <ListRow
-              key={entry.category}
-              title={entry.title}
-              subtitle={entry.subtitle}
-              // ⚠️ NO `toggled` UNTIL THE READ LANDS. The switches render from
-              // the defaults so the group is never an empty hole, but before
-              // the read those values are a placeholder — and `toggled` drives
-              // the row's ROLE and STATE, so a user who muted Messages last
-              // week was told "switch, on" by their screen reader while the
-              // server had it off. A stale pixel is a flicker; a stale
-              // announcement is a false statement.
-              toggled={loadingPreferences ? undefined : preferences[entry.category]}
-              onPress={
-                loadingPreferences
-                  ? undefined
-                  : () => void toggleCategory(entry.category, !preferences[entry.category])
-              }
-              trailing={
-                loadingPreferences ? (
-                  <View style={styles.switchPlaceholder} />
-                ) : (
-                  <AppSwitch
-                    value={preferences[entry.category]}
-                    onValueChange={(next) => void toggleCategory(entry.category, next)}
-                  />
-                )
-              }
-              testID={`row-notify-${entry.category}`}
-            />
-          ))}
+        <View style={styles.bundle}>
+          <ListRowGroup title="Notifications">
+            {CATEGORY_COPY.map((entry) => (
+              <ListRow
+                key={entry.category}
+                icon={CATEGORY_ICONS[entry.category]}
+                title={entry.title}
+                subtitle={entry.subtitle}
+                // ⚠️ NO `toggled` UNTIL THE READ LANDS. The switches render from
+                // the defaults so the group is never an empty hole, but before
+                // the read those values are a placeholder — and `toggled` drives
+                // the row's ROLE and STATE, so a user who muted Messages last
+                // week was told "switch, on" by their screen reader while the
+                // server had it off. A stale pixel is a flicker; a stale
+                // announcement is a false statement.
+                toggled={loadingPreferences ? undefined : preferences[entry.category]}
+                onPress={
+                  loadingPreferences
+                    ? undefined
+                    : () => void toggleCategory(entry.category, !preferences[entry.category])
+                }
+                trailing={
+                  loadingPreferences ? (
+                    <View style={styles.switchPlaceholder} />
+                  ) : (
+                    <AppSwitch
+                      value={preferences[entry.category]}
+                      onValueChange={(next) => void toggleCategory(entry.category, next)}
+                    />
+                  )
+                }
+                testID={`row-notify-${entry.category}`}
+              />
+            ))}
 
-        </ListRowGroup>
-      ) : null}
+          </ListRowGroup>
 
-      {/* ⚠️ A FOOTNOTE, NOT A ROW — and it was a row first, which was wrong
-          three ways at once. ListRow hands React Native `disabled={!pressable}`,
-          and Pressable folds that into accessibilityState, so a row with no
-          onPress is ANNOUNCED AS DIMMED however it looks — the exact "stuck
-          control reads as a bug" reading this text exists to avoid. It also got
-          ListRow's numberOfLines={2}, which cut the sentence off before the
-          half that explains anything, and an icon indent none of the switches
-          above it had, so it read as their child.
+          {/* ⚠️ A FOOTNOTE, NOT A ROW — and it was a row first, which was wrong
+              three ways at once. ListRow hands React Native `disabled={!pressable}`,
+              and Pressable folds that into accessibilityState, so a row with no
+              onPress is ANNOUNCED AS DIMMED however it looks — the exact "stuck
+              control reads as a bug" reading this text exists to avoid. It also got
+              ListRow's numberOfLines={2}, which cut the sentence off before the
+              half that explains anything.
 
-          The content is unchanged and so is the reasoning: two kinds have no
-          preference column to store a mute in. A sighting push is the moment
-          the whole product exists for, and the 72-hour contest window has no
-          in-app door at all — docs/ROADMAP.md records that /sighting-dispute is
-          reachable ONLY from its push — so silencing that one removes a money
-          right rather than a notification. */}
-      {signedIn ? (
-        <Text style={styles.footnote} testID="notify-always-on">
-          Two things stay on whatever you choose here: a sighting of your car, and the 72 hours you
-          have to contest a decision about a bounty. Neither can be got back if you miss it.
-        </Text>
+              ⚠️ THE THIRD REASON EXPIRED ON 2026-08-26 and is kept because it
+              now argues the other way round. It read "an icon indent none of the
+              switches above it had, so it read as their child" — true while the
+              switches had no icons. They have a rail now, so a footnote at the
+              ROW indent would read as a sixth category. It stays at the GROUP
+              title's inset, which is what it actually annotates.
+
+              The content is unchanged and so is the reasoning: two kinds have no
+              preference column to store a mute in. A sighting push is the moment
+              the whole product exists for, and the 72-hour contest window has no
+              in-app door at all — docs/ROADMAP.md records that /sighting-dispute is
+              reachable ONLY from its push — so silencing that one removes a money
+              right rather than a notification. */}
+          <Text style={styles.footnote} testID="notify-always-on">
+            Two things stay on whatever you choose here: a sighting of your car, and the 72 hours you
+            have to contest a decision about a bounty. Neither can be got back if you miss it.
+          </Text>
+        </View>
       ) : null}
 
       {/* The subtitles are the primer these rows would otherwise lack — the
           startup chain asks for all four in a row with no explanation attached
           to any of them, so this may be the first time the user is told why. */}
-      <ListRowGroup title="Permissions">
-        <PermissionRow
-          kind="notifications"
-          icon={Bell}
-          title="Notifications"
-          subtitle="So we can tell you the moment your car is seen."
-          testID="row-permission-notifications"
-        />
-        <PermissionRow
-          kind="location"
-          icon={MapPin}
-          title="Location"
-          subtitle="So we can show cars reported near you."
-          testID="row-permission-location"
-        />
-        <PermissionRow
-          kind="camera"
-          icon={Camera}
-          title="Camera"
-          subtitle="For photographing a car you have spotted."
-          testID="row-permission-camera"
-        />
-        <PermissionRow
-          kind="photos"
-          icon={Images}
-          title="Photos"
-          subtitle="For adding pictures of your own car to a listing."
-          testID="row-permission-photos"
-        />
-      </ListRowGroup>
+      <View style={styles.bundle}>
+        <ListRowGroup title="Permissions">
+          <PermissionRow
+            kind="notifications"
+            icon={Bell}
+            title="Notifications"
+            subtitle="So we can tell you the moment your car is seen."
+            testID="row-permission-notifications"
+          />
+          <PermissionRow
+            kind="location"
+            icon={MapPin}
+            title="Location"
+            subtitle="So we can show cars reported near you."
+            testID="row-permission-location"
+          />
+          <PermissionRow
+            kind="camera"
+            icon={Camera}
+            title="Camera"
+            subtitle="For photographing a car you have spotted."
+            testID="row-permission-camera"
+          />
+          <PermissionRow
+            kind="photos"
+            icon={Images}
+            title="Photos"
+            subtitle="For adding pictures of your own car to a listing."
+            testID="row-permission-photos"
+          />
+        </ListRowGroup>
 
-      <Text style={styles.footnote}>
-        Notifications, location, camera and photos are controlled by your phone. Tapping one takes
-        you to where you can change it.
-      </Text>
+        <Text style={styles.footnote}>
+          Notifications, location, camera and photos are controlled by your phone. Tapping one takes
+          you to where you can change it.
+        </Text>
+      </View>
     </Screen>
   );
 }
@@ -253,6 +331,13 @@ const makeStyles = (c: Palette) =>
       ...typography.title,
       color: c.textPrimary,
       flexShrink: 1,
+    },
+    // A group and the footnote explaining it, held closer to each other than
+    // to the next group (the scroll's spacing.xl). Proximity is the ONLY thing
+    // saying which group a caption belongs to — at an equal gap on both sides
+    // it belongs to neither, which is what it looked like before.
+    bundle: {
+      gap: spacing.sm,
     },
     // Stands in for the Switch until the read lands, at the switch's own
     // width, so nothing shifts when the real control arrives.

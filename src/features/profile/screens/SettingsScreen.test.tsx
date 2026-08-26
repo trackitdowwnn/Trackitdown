@@ -7,17 +7,24 @@
  *        exists. And a permission row must send the user to the right place for
  *        the state it is in: an unexplained OS dialog fired at a denied
  *        permission on Android burns their last chance to grant it.
+ *
+ *        A third was added with the 2026-08-26 icon rail: WHICH glyph each
+ *        notification category gets. TypeScript pins that every category has
+ *        one, and nothing else pins that it is not a glyph the Permissions
+ *        group below is already using for something else.
  * LINKS: ./SettingsScreen.tsx; ../components/PermissionRow.tsx;
  *        src/features/permissions.
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { Bell, MapPin } from 'lucide-react-native';
 import { Linking } from 'react-native';
 
+import { CATEGORY_COPY } from '@/features/notifications';
 import { ThemeControlsContext } from '@/shared/theme/paletteContext';
 import type { ThemePreference } from '@/shared/theme';
 
-import { SettingsScreen } from './SettingsScreen';
+import { CATEGORY_ICONS, SettingsScreen } from './SettingsScreen';
 
 jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
@@ -214,6 +221,41 @@ describe('Notification categories', () => {
     expect(view.queryByTestId('row-notify-alerts')).toBeNull();
     expect(view.queryByTestId('notify-always-on')).toBeNull();
     expect(await view.findByTestId('row-appearance-system')).toBeTruthy();
+  });
+});
+
+describe('⚠️ the notification icon rail', () => {
+  // The Airbnb pass (2026-08-26) gave the Notifications group the leading icon
+  // rail the reference runs down every settings row. TypeScript already
+  // guarantees every category HAS an icon — CATEGORY_ICONS is a total Record —
+  // so these tests cover only the half it cannot: WHICH icon.
+
+  it('gives every category its own glyph, never a shared one', async () => {
+    const glyphs = Object.values(CATEGORY_ICONS);
+
+    expect(new Set(glyphs).size).toBe(glyphs.length);
+  });
+
+  it('⚠️ never reuses the two glyphs the Permissions group owns', async () => {
+    // The reason `alerts` is Radar rather than the obvious Bell. On this one
+    // screen Bell is the OS notification permission and MapPin is the OS
+    // location permission, both a few rows below. Putting either against a push
+    // CATEGORY as well would mean one glyph standing for two different things
+    // within a single scroll — exactly the confusion a rail is meant to remove.
+    // `alerts: Bell` compiles fine, so only this stops it coming back.
+    const glyphs = Object.values(CATEGORY_ICONS);
+
+    expect(glyphs).not.toContain(Bell);
+    expect(glyphs).not.toContain(MapPin);
+  });
+
+  it('covers every category the screen renders', async () => {
+    // Guards the widening case: if CATEGORY_ICONS ever loosens to a Partial,
+    // the total-Record compile error disappears and a row renders with a bare
+    // left edge that no longer lines up with the four beside it.
+    expect(Object.keys(CATEGORY_ICONS).sort()).toEqual(
+      CATEGORY_COPY.map((entry) => entry.category).sort(),
+    );
   });
 });
 
