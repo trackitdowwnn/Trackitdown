@@ -136,7 +136,14 @@ export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';
 export { type SelectOption } from './selectOptions';
-export { StatusBadge, statusBadgeLabel, type StatusBadgeProps } from './StatusBadge';
+export {
+  StatusBadge,
+  StatusPill,
+  statusBadgeLabel,
+  type BadgeTone,
+  type StatusBadgeProps,
+  type StatusPillProps,
+} from './StatusBadge';
 export { StepSkipButton, type StepSkipButtonProps } from './StepSkipButton';
 export { TextField, type TextFieldProps, type TextFieldVariant } from './TextField';
 export { HostTextInput, TextInputHostContext } from './TextInputHost';

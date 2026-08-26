@@ -153,6 +153,64 @@ beforeEach(() => {
   mockSubmitTokens.mockResolvedValue('submitted');
 });
 
+describe('⚠️ the status chip and the trust line (Airbnb pass, 2026-08-26)', () => {
+  it.each([
+    ['notStarted', 'Not set up'],
+    ['unfinished', 'Action needed'],
+    ['verifying', 'Being checked'],
+    ['ready', 'Ready'],
+  ])('marks %s as "%s" before a word of prose is read', async (status, label) => {
+    // The reference marks a payout method's state with a badge; ours said the
+    // same things only in a heading and a paragraph. People open this screen to
+    // check one thing.
+    mockAccountState = { status, settling: false };
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText(label)).toBeTruthy();
+  });
+
+  it('⚠️ never reads as an error, even when something is needed', async () => {
+    // `danger` is deliberately unused here. A red chip on a screen about money
+    // someone is owed says "your money is in trouble" when what is true is
+    // "Stripe needs another field". The rejected paths render their own cards.
+    mockAccountState = { status: 'unfinished', settling: false };
+    const { queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(queryByText(/error|problem|failed|rejected/i)).toBeNull();
+  });
+
+  it('⚠️ does not repeat the bank-details promise while a form is open', async () => {
+    // Caught by an existing test finding the sentence TWICE on one screen. Both
+    // forms carry it beside the fields, which is where a promise about a sort
+    // code belongs; the footnote exists only for the states where no form is
+    // showing, because that is where the reassurance used to vanish entirely —
+    // it lived in the `notStarted` copy alone.
+    mockStart.mockResolvedValue({ status: 'details_required' });
+    const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
+
+    expect(queryByTestId('payouts-trust')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByText('Add your details'));
+    });
+
+    expect(queryByTestId('payouts-trust')).toBeNull();
+  });
+
+  it('⚠️ says "never store", never "never see"', async () => {
+    // The claim that is true. PayoutDetailsForm:154 records the distinction:
+    // the details are POSTed to our own Edge Function on the way to Stripe, so
+    // "never see" is the sentence a regulator would quote back. This footnote
+    // reintroduced it once already, within a minute of being written.
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByTestId } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByTestId('payouts-trust')).toBeTruthy();
+    expect(getByTestId('payouts-trust').props.children).toMatch(/never store them/i);
+    expect(getByTestId('payouts-trust').props.children).not.toMatch(/never see/i);
+  });
+});
+
 describe('what each state says', () => {
   it('invites a guest in rather than showing them an empty setup screen', async () => {
     mockAccountState = { status: 'guest', settling: false };
@@ -165,13 +223,22 @@ describe('what each state says', () => {
   });
 
   it('offers setup when a bounty is waiting for somewhere to land', async () => {
-    const { getByTestId, getByText } = await act(async () => render(<PayoutsScreen />));
+    const { getByTestId, getByText, getByLabelText } = await act(async () => render(<PayoutsScreen />));
     expect(getByTestId('payouts-notStarted')).toBeTruthy();
     // The earn moment: the same sentence the push used, with the same
     // server-derived number. Generic setup copy here would break the thread
     // that brought them.
     expect(getByTestId('payouts-earned')).toBeTruthy();
-    expect(getByText('You’ve earned £190')).toBeTruthy();
+    // ⚠️ THE SENTENCE IS NOW TWO TEXTS, AND THE ACCESSIBLE LABEL IS WHAT PINS
+    // IT. The Airbnb pass (2026-08-26) split "You've earned £190" into a quiet
+    // label and the amount at display scale, so the figure is the first thing
+    // with weight. That is TYPOGRAPHY ONLY: the card is one accessible node
+    // whose label still reads the whole sentence, because three separate stops
+    // would deliver the number without the words that give it meaning.
+    // Asserting the label rather than the visible runs is what keeps this test
+    // about the promise instead of about the layout.
+    expect(getByText('£190')).toBeTruthy();
+    expect(getByLabelText(/You’ve earned £190\. Your sighting led to a recovery/)).toBeTruthy();
   });
 
   it('says NOTHING to set up when nothing is waiting — because there isn’t', async () => {
