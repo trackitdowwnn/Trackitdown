@@ -10,12 +10,14 @@
 
 import type { ReputationCounters } from '../types';
 import {
+  badgeLadder,
   earnedBadges,
   highlights,
   isTrustedSpotter,
   memberSinceLabel,
   nextBadgeGoal,
   passportStats,
+  spotterPoints,
 } from './reputation';
 
 const counters = (
@@ -29,55 +31,107 @@ const counters = (
 });
 
 describe('earnedBadges', () => {
+  // ⚠️ ONE LADDER SINCE 2026-08-26, on CONFIRMED sightings alone. These tests
+  // were nine-badge tests: every threshold against every counter. The collapse
+  // is deliberate and its cost is asserted below rather than left implicit.
   it('zero counters earn nothing', () => {
     expect(earnedBadges(counters(0, 0, 0))).toEqual([]);
   });
 
-  it('thresholds are inclusive: exactly 1, 5, 25 earn', () => {
-    const labels = earnedBadges(counters(1, 5, 25)).map((b) => b.label);
-    expect(labels).toEqual([
-      'First sighting',
-      'First helpful mark',
-      '5 helpful marks',
-      'First recovery',
-      '5 recoveries',
-      '25 recoveries',
+  it('thresholds are inclusive: exactly 1, 3, 10, 25 earn', () => {
+    expect(earnedBadges(counters(0, 1, 0)).map((b) => b.label)).toEqual([
+      'First confirmed sighting',
+    ]);
+    expect(earnedBadges(counters(0, 3, 0)).map((b) => b.label)).toEqual([
+      'First confirmed sighting',
+      '3 confirmed sightings',
+    ]);
+    expect(earnedBadges(counters(0, 25, 0)).map((b) => b.label)).toEqual([
+      'First confirmed sighting',
+      '3 confirmed sightings',
+      '10 confirmed sightings',
+      '25 confirmed sightings',
     ]);
   });
 
-  it('just below a threshold does not earn (4 → only the 1-badge)', () => {
-    const labels = earnedBadges(counters(4, 0, 0)).map((b) => b.label);
-    expect(labels).toEqual(['First sighting']);
+  it('just below a rung does not earn it', () => {
+    expect(earnedBadges(counters(0, 2, 0)).map((b) => b.label)).toEqual([
+      'First confirmed sighting',
+    ]);
+  });
+
+  it('⚠️ REPORTED sightings and RECOVERIES no longer earn badges', () => {
+    // The accepted cost of one ladder: a prolific reporter whose sightings no
+    // owner ever confirmed used to hold three emblems and now holds none.
+    // Nothing is lost from the database — badges have always been derived — but
+    // this is the assertion that makes the trade visible instead of surprising.
+    // Reporting is something you do; a confirmation is something an owner did.
+    expect(earnedBadges(counters(25, 0, 25))).toEqual([]);
+  });
+});
+
+describe('badgeLadder', () => {
+  it('shows the whole ladder, not just what is left', () => {
+    // The reference's lesson (Superhost): published criteria, not a single
+    // hidden next step. A spotter should be able to see that 25 exists.
+    const rungs = badgeLadder(counters(0, 3, 0));
+
+    expect(rungs.map((r) => r.threshold)).toEqual([1, 3, 10, 25]);
+    expect(rungs.map((r) => r.earned)).toEqual([true, true, false, false]);
+  });
+
+  it('marks exactly one rung as next, and only an unearned one', () => {
+    const rungs = badgeLadder(counters(0, 3, 0));
+
+    expect(rungs.filter((r) => r.next).map((r) => r.threshold)).toEqual([10]);
+    expect(rungs.find((r) => r.next)?.earned).toBe(false);
+  });
+
+  it('marks nothing as next once the ladder is finished', () => {
+    expect(badgeLadder(counters(0, 40, 0)).some((r) => r.next)).toBe(false);
+  });
+});
+
+describe('spotterPoints', () => {
+  it('⚠️ counts confirmed sightings only, never reported ones', () => {
+    // Reported sightings are uncapped and unverified; including them would make
+    // the score farmable in exactly the way the confirmed counter is not (the
+    // per-listing cap in 20260814120000).
+    expect(spotterPoints(counters(50, 2, 1))).toBe(2);
   });
 });
 
 describe('nextBadgeGoal', () => {
-  it('fresh account: the nearest goal is any first badge (counter order tie-break)', () => {
+  it('fresh account: the first rung', () => {
     expect(nextBadgeGoal(counters(0, 0, 0))).toEqual({
-      label: 'First sighting',
+      label: 'First confirmed sighting',
       achieved: 0,
       threshold: 1,
     });
   });
 
-  it('picks the goal with the fewest actions remaining across counters', () => {
-    // 4/5 sightings (1 away) beats 0/1 helpful (1 away? no — 1 away too, tie
-    // goes to counter order: sightings first) and 0/1 recoveries.
-    expect(nextBadgeGoal(counters(4, 0, 0))).toEqual({
-      label: '5 sightings',
-      achieved: 4,
-      threshold: 5,
-    });
-    // 23/25 sightings (2 away) loses to 4/5 helpful (1 away).
-    expect(nextBadgeGoal(counters(23, 4, 0))).toEqual({
-      label: '5 helpful marks',
-      achieved: 4,
-      threshold: 5,
+  it('⚠️ climbs one ladder and never changes family mid-climb', () => {
+    // It used to pick the nearest unearned badge ACROSS the three counters,
+    // with a tie-break on counter order — so the goal could swap from
+    // "5 sightings" to "5 helpful marks" between two visits because a different
+    // counter moved. One ladder means the goal only ever goes up.
+    expect(nextBadgeGoal(counters(0, 1, 0))?.threshold).toBe(3);
+    expect(nextBadgeGoal(counters(0, 3, 0))?.threshold).toBe(10);
+    expect(nextBadgeGoal(counters(0, 10, 0))?.threshold).toBe(25);
+  });
+
+  it('⚠️ is unmoved by reported sightings and recoveries', () => {
+    // A spotter with fifty reported sightings and no confirmations is still on
+    // the first rung — the goal measures the same thing the badges do.
+    expect(nextBadgeGoal(counters(50, 0, 12))).toEqual({
+      label: 'First confirmed sighting',
+      achieved: 0,
+      threshold: 1,
     });
   });
 
-  it('everything maxed: no goal', () => {
-    expect(nextBadgeGoal(counters(25, 25, 25))).toBeNull();
+  it('ladder finished: no goal', () => {
+    expect(nextBadgeGoal(counters(0, 25, 0))).toBeNull();
   });
 });
 

@@ -16,7 +16,7 @@
  *        maths); docs/DOMAIN.md (Reputation v1); docs/DESIGN_SYSTEM.md.
  */
 
-import { Eye, KeyRound, type LucideIcon, Sparkles, ThumbsUp } from 'lucide-react-native';
+import { Check, Eye, KeyRound, type LucideIcon, Sparkles, ThumbsUp } from 'lucide-react-native';
 import { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
@@ -41,9 +41,12 @@ import { easeOut } from '@/shared/theme/motionEasing';
 
 import {
   type BadgeState,
+  badgeLadder,
   earnedBadges,
   type HighlightItem,
   highlights,
+  type LadderRung,
+  type NextBadgeGoal,
   nextBadgeGoal,
   spottingSinceLabel,
 } from '../lib/reputation';
@@ -82,6 +85,7 @@ export function ReputationCard({
   const reduceMotion = useReducedMotion();
   const earned = earnedBadges(counters);
   const next = nextBadgeGoal(counters);
+  const ladder = badgeLadder(counters);
   const story = highlights(counters);
   const fresh = story.length === 0;
 
@@ -123,31 +127,90 @@ export function ReputationCard({
         </View>
       )}
 
-      {earned.length > 0 ? (
-        <>
-          <View style={styles.rule} />
-          <EmblemRail badges={earned} />
-        </>
-      ) : null}
+      {/* ⚠️ THE WHOLE LADDER, NOT ONE GOAL (2026-08-26). This was an emblem
+          rail of what had been earned plus a single "Next badge" line, so a
+          spotter could see behind them and one step ahead and nothing else —
+          they could not tell whether 3 was the end. The reference's lesson
+          (Airbnb's Superhost) is PUBLISHED CRITERIA plus progress: the whole
+          requirement is visible, and your position in it is marked.
 
-      {next ? (
-        <View
-          accessible
-          accessibilityRole="progressbar"
-          accessibilityValue={{ min: 0, max: next.threshold, now: next.achieved }}
-          accessibilityLabel={`Next badge: ${next.label}, ${next.achieved} of ${next.threshold}`}
-        >
-          <Text style={styles.quiet} testID="next-badge">
-            Next badge: {next.label}
-          </Text>
-          <ProgressBar
-            achieved={next.achieved}
-            threshold={next.threshold}
-            reduceMotion={reduceMotion}
-          />
-        </View>
-      ) : null}
+          EmblemRail survives untouched because PublicProfileSheet renders it —
+          an owner reading a stranger's passport wants earned trust, not that
+          person's private goals. The ladder is own-view only, which is the same
+          rule that has always kept the progress bar off the public sheet. */}
+      <View style={styles.rule} />
+      <BadgeLadder ladder={ladder} next={next} reduceMotion={reduceMotion} />
     </Animated.View>
+  );
+}
+
+/**
+ * The four rungs, earned and not.
+ *
+ * ⚠️ CALM, NOT GAMEY. DOMAIN.md makes reputation social proof that never
+ * touches payouts, and this card's own note asks for one gentle motion rather
+ * than celebration. So: no confetti, no tiers-to-unlock language, no trophy
+ * iconography — a filled marker for what is done, a hollow one for what is
+ * not, and a single progress bar on the rung actually in play.
+ */
+function BadgeLadder({
+  ladder,
+  next,
+  reduceMotion,
+}: {
+  ladder: LadderRung[];
+  next: NextBadgeGoal | null;
+  reduceMotion: boolean;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
+  return (
+    <View style={styles.ladder} testID="badge-ladder">
+      {ladder.map((rung) => (
+        <View
+          key={rung.threshold}
+          style={styles.rungRow}
+          accessible
+          // ⚠️ THE STATE IS IN THE LABEL, because nothing else carries it: the
+          // filled/hollow marker is colour and shape only, and "3 confirmed
+          // sightings" alone tells a screen-reader user nothing about whether
+          // they have it.
+          accessibilityLabel={
+            rung.earned
+              ? `${rung.label}: earned`
+              : rung.next && next
+                ? `${rung.label}: ${next.achieved} of ${next.threshold}`
+                : `${rung.label}: not yet earned`
+          }
+          testID={`ladder-rung-${rung.threshold}`}
+        >
+          <View style={[styles.rungMark, rung.earned && styles.rungMarkEarned]}>
+            {rung.earned ? <Check size={EMBLEM_GLYPH} color={palette.textOnPrimary} /> : null}
+          </View>
+          <View style={styles.rungBody}>
+            <Text style={rung.earned ? styles.rungLabel : styles.rungLabelQuiet}>
+              {rung.label}
+            </Text>
+            {/* The bar rides ONLY the rung in play. On every other row it would
+                be either full or empty, which is what the marker already
+                says. */}
+            {rung.next && next ? (
+              <>
+                <ProgressBar
+                  achieved={next.achieved}
+                  threshold={next.threshold}
+                  reduceMotion={reduceMotion}
+                />
+                <Text style={styles.quiet} testID="next-badge">
+                  {next.achieved} of {next.threshold}
+                </Text>
+              </>
+            ) : null}
+          </View>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -323,6 +386,52 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   quiet: {
     ...typography.caption,
+    color: c.textSecondary,
+  },
+  ladder: {
+    gap: spacing.md,
+  },
+  rungRow: {
+    flexDirection: 'row',
+    // `flex-start`, not `center`: the rung in play is two lines taller than the
+    // others, and centring would float its marker halfway down the row while
+    // every other marker sits beside its first line.
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  // A hollow ring for a rung not yet reached. `borderStrong`, not `border` —
+  // this is a small graphic carrying meaning, and DESIGN_SYSTEM reserves
+  // borderStrong for exactly that (it must clear 3:1, which `border` does not).
+  rungMark: {
+    width: EMBLEM_DIAMETER,
+    height: EMBLEM_DIAMETER,
+    borderRadius: EMBLEM_DIAMETER / 2,
+    // 2, a literal: the theme has no shared border-WIDTH token (only radii and
+    // colours), and inventing one for a single ring would be a token nothing
+    // else could honestly reuse. A hairline would vanish here — this ring is
+    // the only thing distinguishing an unearned rung from an earned one.
+    borderWidth: 2,
+    borderColor: c.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rungMarkEarned: {
+    backgroundColor: c.primary,
+    borderColor: c.primary,
+  },
+  rungBody: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  rungLabel: {
+    ...typography.body,
+    color: c.textPrimary,
+  },
+  // Not-yet-earned rungs recede rather than disappear: they are the published
+  // criteria, so they must stay readable — `textSecondary` clears AA at 5.1,
+  // where dimming with opacity would not.
+  rungLabelQuiet: {
+    ...typography.body,
     color: c.textSecondary,
   },
 });

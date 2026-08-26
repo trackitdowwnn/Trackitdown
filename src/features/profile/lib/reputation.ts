@@ -1,20 +1,60 @@
 /**
- * WHAT:  Pure Reputation v1 maths — earned badges at the 1/5/25 thresholds,
- *        the single closest next-badge goal, and the member-since formatter.
- * WHY:   Badges are trust signals owners weigh when reading sightings, so
- *        the threshold logic is pinned here as pure functions (docs/DOMAIN.md
- *        Reputation v1: counters + badges at 1/5/25, display-only, never
- *        payout-affecting). Chip labels are deliberately SHORT ("5
- *        sightings", not sentences) and motivation is ONE next goal — the
- *        nearest badge across all counters — never a wall of grey chips.
+ * WHAT:  Pure Reputation v1 maths — the points ladder (badges at 1/3/10/25 on
+ *        confirmed sightings), the whole ladder for display, the next rung,
+ *        the trusted-spotter rule, and the member-since formatter.
+ * WHY:   Badges are trust signals owners weigh when reading sightings, so the
+ *        threshold logic is pinned here as pure functions (docs/DOMAIN.md
+ *        Reputation v1: display-only, never payout-affecting).
+ *
+ *        ⚠️ RESHAPED 2026-08-26 (owner). Was 1/5/25 run against all THREE
+ *        counters — nine badges — with the next goal competing across
+ *        families. Now one ladder on confirmed sightings, because that is the
+ *        counter that means an owner acted; the other two remain as stats.
+ *        The ladder is also written in SQL twice (see BADGE_THRESHOLDS) and
+ *        all three copies must move together.
  * LINKS: docs/DOMAIN.md (Reputation v1);
- *        src/features/profile/components/ReputationCard.tsx (consumer).
+ *        src/features/profile/components/ReputationCard.tsx (consumer);
+ *        supabase/tests/badgeThresholds.test.ts (the cross-boundary pin).
  */
 
 import type { ReputationCounters } from '../types';
 
-/** DOMAIN.md: "Badges at simple thresholds (1 / 5 / 25)." */
-export const BADGE_THRESHOLDS = [1, 5, 25] as const;
+/**
+ * The badge ladder (owner, 2026-08-26 — was 1/5/25 across three counters).
+ *
+ * ⚠️ WRITTEN IN THREE PLACES AND THEY MUST AGREE. This array, the
+ * `unnest(array[…])` inside `mark_sighting_helpful`, and the `case v_count`
+ * arms inside `claim_sighting_confirmed_push` are the same ladder expressed
+ * three times — the second decides which rung a confirmation crossed, the third
+ * writes the words that go in the push. Move one alone and a spotter is told
+ * they earned a badge the app does not show them.
+ * `supabase/tests/badgeThresholds.test.ts` reads both migrations and fails if
+ * they drift, which is the only thing stopping that.
+ */
+export const BADGE_THRESHOLDS = [1, 3, 10, 25] as const;
+
+/** The one counter the ladder is built on: a sighting an owner confirmed. */
+export const POINTS_COUNTER = 'sightingsHelpful' as const;
+
+/** Ladder labels, mirrored EXACTLY by the SQL that writes the push copy. */
+export const BADGE_LABELS: Record<(typeof BADGE_THRESHOLDS)[number], string> = {
+  1: 'First confirmed sighting',
+  3: '3 confirmed sightings',
+  10: '10 confirmed sightings',
+  25: '25 confirmed sightings',
+};
+
+/**
+ * A spotter's points — confirmed sightings, nothing else.
+ *
+ * Named here rather than read inline so the screen says "points" once and the
+ * mapping to a counter lives with the maths. ⚠️ It is `sightingsHelpful` and
+ * NOT a sum: `sightingsReported` is uncapped and unverified, so adding it would
+ * make the score farmable in exactly the way the confirmed counter is not.
+ */
+export function spotterPoints(counters: ReputationCounters): number {
+  return counters[POINTS_COUNTER];
+}
 
 interface CounterKind {
   key: keyof ReputationCounters;
@@ -24,8 +64,12 @@ interface CounterKind {
   shortLabel: string;
   /** Grammatical spoken phrase for a count ("1 recovery credited"). */
   spoken: (count: number) => string;
-  /** Compact chip label per threshold. */
-  badgeLabels: Record<(typeof BADGE_THRESHOLDS)[number], string>;
+  // ⚠️ `badgeLabels` REMOVED 2026-08-26. Each counter used to carry its own
+  // three chip labels because each counter had its own three badges. With a
+  // single ladder on confirmed sightings the labels belong to the ladder
+  // (BADGE_LABELS), and leaving a per-counter copy here would be a second
+  // source of the same words waiting to disagree with the first. These kinds
+  // still describe the STATS — which is all they were ever needed for besides.
 }
 
 export const COUNTER_KINDS: CounterKind[] = [
@@ -34,21 +78,18 @@ export const COUNTER_KINDS: CounterKind[] = [
     statLabel: 'Sightings reported',
     shortLabel: 'Sightings',
     spoken: (count) => `${count} ${count === 1 ? 'sighting' : 'sightings'} reported`,
-    badgeLabels: { 1: 'First sighting', 5: '5 sightings', 25: '25 sightings' },
   },
   {
     key: 'sightingsHelpful',
     statLabel: 'Marked helpful',
     shortLabel: 'Helpful',
     spoken: (count) => `${count} marked helpful`,
-    badgeLabels: { 1: 'First helpful mark', 5: '5 helpful marks', 25: '25 helpful marks' },
   },
   {
     key: 'recoveriesCredited',
     statLabel: 'Recoveries credited',
     shortLabel: 'Recoveries',
     spoken: (count) => `${count} ${count === 1 ? 'recovery' : 'recoveries'} credited`,
-    badgeLabels: { 1: 'First recovery', 5: '5 recoveries', 25: '25 recoveries' },
   },
 ];
 
@@ -60,22 +101,54 @@ export interface BadgeState {
   threshold: (typeof BADGE_THRESHOLDS)[number];
 }
 
-/** Earned badges only, counter order then ascending threshold. */
+/**
+ * Earned badges, ascending.
+ *
+ * ⚠️ ONE LADDER SINCE 2026-08-26, on confirmed sightings alone. It used to run
+ * every threshold against every counter — nine badges — and the cost of
+ * collapsing it is real and was accepted deliberately: a spotter with 25
+ * REPORTED sightings and none confirmed had three emblems and now has none.
+ * Nothing is lost from the database, because badges have always been derived
+ * rather than stored; what changed is what the app is willing to call an
+ * achievement. Reporting a sighting is something you do; having one confirmed
+ * is something an owner did about it.
+ */
 export function earnedBadges(counters: ReputationCounters): BadgeState[] {
-  const earned: BadgeState[] = [];
-  for (const kind of COUNTER_KINDS) {
-    for (const threshold of BADGE_THRESHOLDS) {
-      if (counters[kind.key] >= threshold) {
-        earned.push({
-          key: `${kind.key}-${threshold}`,
-          label: kind.badgeLabels[threshold],
-          counter: kind.key,
-          threshold,
-        });
-      }
-    }
-  }
-  return earned;
+  const points = spotterPoints(counters);
+  return BADGE_THRESHOLDS.filter((threshold) => points >= threshold).map((threshold) => ({
+    key: `${POINTS_COUNTER}-${threshold}`,
+    label: BADGE_LABELS[threshold],
+    counter: POINTS_COUNTER,
+    threshold,
+  }));
+}
+
+export interface LadderRung {
+  threshold: (typeof BADGE_THRESHOLDS)[number];
+  label: string;
+  earned: boolean;
+  /** True for the single nearest unearned rung — the one being worked toward. */
+  next: boolean;
+}
+
+/**
+ * The WHOLE ladder, earned and not.
+ *
+ * The reference's lesson (Airbnb's Superhost) is published criteria plus
+ * visible progress: you can see what you need, not merely what you are missing
+ * next. This screen previously showed one goal, so a spotter could not tell
+ * whether anything existed beyond it — which is precisely the question "and
+ * after 3?" asks.
+ */
+export function badgeLadder(counters: ReputationCounters): LadderRung[] {
+  const points = spotterPoints(counters);
+  const nextThreshold = BADGE_THRESHOLDS.find((threshold) => points < threshold);
+  return BADGE_THRESHOLDS.map((threshold) => ({
+    threshold,
+    label: BADGE_LABELS[threshold],
+    earned: points >= threshold,
+    next: threshold === nextThreshold,
+  }));
 }
 
 // Trusted spotter (docs/DOMAIN.md Reputation v1): the app's headline trust
@@ -84,6 +157,19 @@ export function earnedBadges(counters: ReputationCounters): BadgeState[] {
 // are. Derived from PUBLIC counters, so showing it on PublicProfileSheet
 // adds nothing beyond the existing privacy boundary.
 export const TRUSTED_MIN_RECOVERIES = 1;
+/**
+ * ⚠️ FIVE, AND IT DID NOT MOVE WITH THE BADGE LADDER (2026-08-26).
+ *
+ * `20260814120000_reputation_one_point_per_listing` priced the cheapest farm
+ * against exactly this number — "the cheapest farm is a SINGLE listing
+ * confirmed five times… TRUSTED_MIN_HELPFUL = 5 is met" — and answered it with
+ * the per-listing cap, so each point now costs a separate listing and three
+ * separate listings for one owner→spotter pair is what `confirmation_pair_count`
+ * already refuses to count. The badge rung at 3 is display-only and cheapens a
+ * small signal; lowering THIS would reverse that work outright, because it is
+ * the marker owners actually weigh. Raised deliberately with the owner before
+ * the ladder changed.
+ */
 export const TRUSTED_MIN_HELPFUL = 5;
 
 export function isTrustedSpotter(counters: ReputationCounters): boolean {
@@ -161,22 +247,20 @@ export interface NextBadgeGoal {
   threshold: number;
 }
 
-/** The single NEAREST unearned badge across all counters (fewest actions
- *  remaining; ties go to counter order) — one line of gentle motivation. */
+/**
+ * The next rung, or null once the ladder is finished.
+ *
+ * ⚠️ NO LONGER A COMPETITION BETWEEN COUNTERS. It used to pick the nearest
+ * unearned badge across all three, with a tie-break on counter order — which
+ * meant the goal could jump family between visits as different counters moved.
+ * With one ladder there is exactly one next rung and it only ever goes up.
+ */
 export function nextBadgeGoal(counters: ReputationCounters): NextBadgeGoal | null {
-  let best: NextBadgeGoal | null = null;
-  for (const kind of COUNTER_KINDS) {
-    const value = counters[kind.key];
-    for (const threshold of BADGE_THRESHOLDS) {
-      if (value < threshold) {
-        if (!best || threshold - value < best.threshold - best.achieved) {
-          best = { label: kind.badgeLabels[threshold], achieved: value, threshold };
-        }
-        break; // only the first unearned threshold per counter competes
-      }
-    }
-  }
-  return best;
+  const points = spotterPoints(counters);
+  const threshold = BADGE_THRESHOLDS.find((rung) => points < rung);
+  return threshold === undefined
+    ? null
+    : { label: BADGE_LABELS[threshold], achieved: points, threshold };
 }
 
 /** "2026-07-10T…" → "July 2026", or null when unparseable (UK-only, en-GB). */

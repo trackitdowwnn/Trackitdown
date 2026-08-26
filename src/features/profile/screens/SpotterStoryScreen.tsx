@@ -18,6 +18,7 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequireAuth } from '@/features/auth';
 import {
@@ -35,16 +36,23 @@ import { EmptyState, Screen } from '@/shared/ui';
 import { ReputationCard } from '../components/ReputationCard';
 import { StatColumn } from '../components/StatColumn';
 import { useMyProfile } from '../hooks/useMyProfile';
-import { passportStats } from '../lib/reputation';
+import { passportStats, spotterPoints } from '../lib/reputation';
 import type { MyProfile } from '../types';
 
 export function SpotterStoryScreen() {
   const styles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
   const state = useMyProfile();
   const requireAuth = useRequireAuth();
 
   return (
-    <Screen scroll contentContainerStyle={styles.scroll}>
+    <Screen
+      scroll
+      // The pushed-screen bottom inset, as on Settings, Legal and Payouts —
+      // Screen pads only the top, so the last rung of the ladder sat under the
+      // Android navigation buttons.
+      contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
+    >
       {/* Pushed page, headers hidden app-wide → an on-screen back control
           (system back/swipe still work; this one is for eyes and rotors). */}
       <View style={styles.headerRow}>
@@ -87,8 +95,36 @@ export function SpotterStoryScreen() {
 function StoryContent({ profile }: { profile: MyProfile }) {
   const styles = useThemedStyles(makeStyles);
   const stats = passportStats(profile.counters);
+  const points = spotterPoints(profile.counters);
   return (
     <>
+      {/* ⚠️ THE POINTS ARE THE HERO (2026-08-26). The page opened on a strip of
+          three equal counters, so the number that the badges are actually built
+          from looked like one statistic among three. `points` IS
+          sightingsHelpful — a sighting an owner confirmed — and it is the only
+          one that moves the ladder, so it leads and the other two stay below as
+          the record.
+
+          ⚠️ ONE accessible node, as on the payouts amount: "Points" / "4" read
+          as two stops would deliver the number without the word.
+
+          Shown at zero, unlike the stat strip, because zero points is the
+          honest start of a ladder rather than a sad counter — the card below
+          carries the warm invitation that goes with it. */}
+      <View
+        style={styles.pointsCard}
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={`${points} ${points === 1 ? 'point' : 'points'}`}
+        testID="story-points"
+      >
+        <Text style={styles.pointsLabel}>{points === 1 ? 'Point' : 'Points'}</Text>
+        <Text style={styles.pointsValue}>{points}</Text>
+        <Text style={styles.pointsBody}>
+          One for every sighting an owner confirmed.
+        </Text>
+      </View>
+
       {stats.length > 0 ? (
         <View style={styles.statsCard}>
           <StatColumn stats={stats} horizontal testID="story-stats" />
@@ -152,6 +188,29 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.title,
     color: c.textPrimary,
     flexShrink: 1,
+  },
+  // The page's one inverted block, the same device PayoutsScreen uses for the
+  // amount someone is owed: exactly one object per surface may stand out, and
+  // here it is the number the ladder is built from.
+  pointsCard: {
+    backgroundColor: c.surfaceInverse,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+  },
+  pointsLabel: {
+    ...typography.caption,
+    color: c.textOnPrimary,
+  },
+  pointsValue: {
+    ...typography.display,
+    color: c.textOnPrimary,
+  },
+  pointsBody: {
+    ...typography.body,
+    // On the inverse surface secondary grey would fail contrast, as the same
+    // card on PayoutsScreen already records.
+    color: c.textOnPrimary,
+    marginTop: spacing.xs,
   },
   // The record card matches the narrative card's chrome (surface, radii.lg,
   // soft shadow) so the two read as one family.

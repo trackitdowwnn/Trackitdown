@@ -6,8 +6,9 @@ The Profile tab, composed to the Airbnb profile reference
 check riding its corner, first name, member-since, and the nonzero
 Reputation v1 counters as a passport-style stat column — whole card taps to
 edit), a "Your spotter story" row pushing the narrative reputation card
-(highlights, badges at 1/5/25, next-goal bar — social proof only, never
-payout-affecting), settings groups with heading-scale titles and hairline
+(the points hero, highlights, and the 1/3/10/25 badge ladder on confirmed
+sightings shown whole rather than one goal at a time — social proof only,
+never payout-affecting), settings groups with heading-scale titles and hairline
 dividers, support/legal links, and a quiet ungrouped bottom cluster
 (underlined "Log out", muted "Delete account", app version). Also exports
 `PublicProfileSheet` — the passport owners see for a spotter, a `// SAFETY`

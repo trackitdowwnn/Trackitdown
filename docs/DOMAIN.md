@@ -454,7 +454,21 @@ Rules that follow, and are not implementation details:
 ## Reputation (v1)
 
 - Counters on the profile: sightings reported, sightings marked helpful,
-  recoveries credited. Badges at simple thresholds (1 / 5 / 25).
+  recoveries credited.
+- **Points and badges (revised 2026-08-26).** A spotter's POINTS are
+  `sightings_helpful` — one for each sighting an owner confirmed, capped at one
+  per listing (see the anti-farming note below). Badges are a single ladder on
+  that counter at **1 / 3 / 10 / 25**. Reported sightings and credited
+  recoveries remain counters and stats but no longer earn badges: reporting is
+  something you do, a confirmation is something an owner did about it.
+  ⚠️ The ladder is written in three places — `reputation.ts`,
+  `mark_sighting_helpful` (which rung a confirmation crossed) and
+  `claim_sighting_confirmed_notification` (the words in the push). They must
+  move together; `supabase/tests/badgeThresholds.test.ts` fails if they drift.
+- ⚠️ **Trusted spotter stays at 1 recovery AND 5 helpful, and did NOT move with
+  the badge ladder.** `20260814120000_reputation_one_point_per_listing` priced
+  the cheapest farm against that five. Badges are display-only; the trusted
+  marker is the one owners weigh.
 - Reputation never affects payouts in v1. It is social proof only.
 - **Trusted spotter** (the headline trust marker, shown with the identity on
   own and public profiles — as the avatar-corner check on your own, as the
