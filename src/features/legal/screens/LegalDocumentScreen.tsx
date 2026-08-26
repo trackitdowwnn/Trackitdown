@@ -167,10 +167,15 @@ export function LegalDocumentScreen({ slug }: LegalDocumentScreenProps) {
         <Animated.ScrollView
           ref={scrollRef as never}
           onScroll={onScroll}
-          // 16ms would be one event per frame; 64 is four times a second, which
-          // is far more often than a section boundary can be crossed and a
-          // quarter of the JS traffic.
-          scrollEventThrottle={64}
+          // ⚠️ 16, NOT 64, AND THE REASONING FOR 64 WAS WRONG. It was "four
+          // times a second is plenty to notice a section boundary, at a quarter
+          // of the JS traffic" — but this handler is a Reanimated WORKLET
+          // running on the UI thread, so it costs no JS traffic to throttle in
+          // the first place. All 64 bought was a progress bar updating four
+          // times a second, which reads as stepping rather than filling. The
+          // section label is driven by onScrollEndDrag/onMomentumScrollEnd
+          // instead, which are JS and fire once per gesture regardless of this.
+          scrollEventThrottle={16}
           onScrollEndDrag={(e) => updateCurrentSection(e.nativeEvent.contentOffset.y)}
           onMomentumScrollEnd={(e) => updateCurrentSection(e.nativeEvent.contentOffset.y)}
           contentContainerStyle={[
