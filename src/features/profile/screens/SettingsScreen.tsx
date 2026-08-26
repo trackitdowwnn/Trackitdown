@@ -64,6 +64,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
 import {
@@ -134,6 +135,21 @@ const APPEARANCE: { value: ThemePreference; title: string; subtitle?: string }[]
 export function SettingsScreen() {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
+  // ⚠️ THE BOTTOM INSET IS PAID HERE, NOT BY `Screen`. Screen's `edges` default
+  // to ['top'] deliberately — tab screens let content run under the tab bar —
+  // but this is a PUSHED screen with no tab bar and no footer, so under SDK
+  // 57's edge-to-edge Android the last permission row sat under the navigation
+  // buttons and could not be reached. Padding the scroll CONTENT rather than
+  // adding a 'bottom' edge keeps the page running edge-to-edge behind the bar
+  // while guaranteeing the final row clears it. Same shape as
+  // ReportSightingScreen and PostBottomBar.
+  //
+  // ⚠️ NOT FIXED IN `Screen` ITSELF, though every pushed `Screen scroll` has
+  // this (SpotterStoryScreen is the next one). Screen is shared with tab
+  // screens that must NOT gain the inset, and several callers already add
+  // their own — so a blanket change there would double-pad some and alter
+  // others. That is its own change with its own audit.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const toast = useToast();
   const session = useSession();
@@ -156,7 +172,10 @@ export function SettingsScreen() {
   };
 
   return (
-    <Screen scroll contentContainerStyle={styles.scroll}>
+    <Screen
+      scroll
+      contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
+    >
       <View style={styles.headerRow}>
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile'))}
