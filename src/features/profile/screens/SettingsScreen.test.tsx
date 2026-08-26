@@ -1,12 +1,22 @@
 /**
- * WHAT:  Tests for the Settings screen — the Appearance chooser and the four
- *        permission rows.
- * WHY:   Two things here can go quietly wrong. The Appearance rows must bind to
- *        the stored PREFERENCE rather than the effective scheme, or "System"
- *        becomes unreachable again — which is the whole reason this screen
- *        exists. And a permission row must send the user to the right place for
- *        the state it is in: an unexplained OS dialog fired at a denied
- *        permission on Android burns their last chance to grant it.
+ * WHAT:  Tests for the Settings screen — the Dark mode switch, the notification
+ *        categories, and the four permission rows.
+ * WHY:   Two things here can go quietly wrong. The Dark mode switch must bind
+ *        to the EFFECTIVE scheme, not the stored preference: while preference
+ *        is 'system' it has no light/dark value, so binding to it would show
+ *        OFF on a dark phone — the control contradicting the screen.
+ *
+ *        ⚠️ THAT IS THE REVERSE OF WHAT THIS HEADER SAID UNTIL 2026-08-26, and
+ *        the reversal is deliberate rather than drift. It read "must bind to
+ *        the stored PREFERENCE … or 'System' becomes unreachable again", which
+ *        was true of the three-row chooser that stood here for two days. The
+ *        owner has since chosen a single switch, accepting that 'system'
+ *        becomes unreachable once flipped. A test now pins that acceptance, so
+ *        changing back is a decision rather than an accident.
+ *
+ *        And a permission row must send the user to the right place for the
+ *        state it is in: an unexplained OS dialog fired at a denied permission
+ *        on Android burns their last chance to grant it.
  *
  *        A third was added with the 2026-08-26 icon rail: WHICH glyph each
  *        notification category gets. TypeScript pins that every category has
@@ -20,7 +30,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { Bell, MapPin } from 'lucide-react-native';
 import { Linking } from 'react-native';
 
-import { CATEGORY_COPY } from '@/features/notifications';
+import { CATEGORY_COPY, UNMUTABLE_KINDS } from '@/features/notifications';
 import { ThemeControlsContext } from '@/shared/theme/paletteContext';
 import type { ThemePreference } from '@/shared/theme';
 
@@ -93,8 +103,8 @@ jest.mock('@/features/permissions', () => ({
  * defaulted context's setPreference is a __DEV__ console.warn no-op.
  *
  * `scheme` is separate from `preference` on purpose, and defaults to light. The
- * two only diverge under 'system', which is exactly the case that matters: it
- * is what "Match your phone" pins when switched off.
+ * two only diverge under 'system' — a fresh install on a dark phone — which is
+ * exactly the case the Dark switch has to read correctly.
  */
 async function renderWithTheme(
   preference: ThemePreference = 'system',
@@ -227,21 +237,26 @@ describe('Notification categories', () => {
     expect(mockShowToast).toHaveBeenCalledWith('Couldn’t save that. Please try again.', 'error');
   });
 
-  it('⚠️ says which two kinds may never be muted, as a footnote not a row', async () => {
-    // Built as a ListRow first, which was wrong three ways: ListRow hands RN
-    // `disabled={!pressable}` and Pressable folds that into accessibilityState,
-    // so a row with no onPress is ANNOUNCED AS DIMMED — the "stuck control
-    // reads as a bug" reading this text exists to avoid. It also inherited
-    // numberOfLines={2}, which cut the sentence off before the half that
-    // explains anything.
+  it('⚠️ offers a switch ONLY for kinds that can actually be muted', async () => {
+    // Replaces the test for the "Two things stay on whatever you choose here…"
+    // footnote, removed on the owner's call 2026-08-26.
+    //
+    // ⚠️ WHAT THAT LEAVES IS A DISCLOSURE GAP, NOT A BEHAVIOUR ONE, and this
+    // test pins the half that still matters. `sighting` and `closed_uncredited`
+    // have no category column — notification_category() returns NULL for both —
+    // so they cannot be muted no matter what these switches say. The screen no
+    // longer mentions that, so someone who turns all five off may believe they
+    // have silenced everything, including the push that is the only door to the
+    // 72-hour dispute window. What must NOT happen is a switch appearing that
+    // claims to control one of them; that would turn a silence into a false
+    // promise. UNMUTABLE_KINDS is the source of truth, asserted against the
+    // migration in supabase/tests/notificationCategories.test.ts.
     const { view } = await renderWithTheme();
-    const note = await view.findByTestId('notify-always-on');
 
-    expect(note.props.accessibilityState?.disabled).toBeFalsy();
-    expect(note.props.accessibilityRole).toBeUndefined();
-    // The WHOLE sentence, including the half that was being clipped.
-    expect(await view.findByText(/72 hours/)).toBeTruthy();
-    expect(await view.findByText(/Neither can be got back if you miss it/)).toBeTruthy();
+    for (const kind of UNMUTABLE_KINDS) {
+      expect(view.queryByTestId(`row-notify-${kind}`)).toBeNull();
+    }
+    expect(await view.findByTestId('row-notify-alerts')).toBeTruthy();
   });
 
   it('hides the whole group from a guest rather than showing dead switches', async () => {
@@ -252,7 +267,6 @@ describe('Notification categories', () => {
     const { view } = await renderWithTheme();
 
     expect(view.queryByTestId('row-notify-alerts')).toBeNull();
-    expect(view.queryByTestId('notify-always-on')).toBeNull();
     // Appearance is AsyncStorage-backed and device-local, so it still works for
     // a guest — the point of there being no auth gate on the screen itself.
     expect(await view.findByTestId('row-appearance-dark')).toBeTruthy();
