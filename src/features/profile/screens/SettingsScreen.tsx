@@ -144,10 +144,10 @@ export function SettingsScreen() {
   const router = useRouter();
   const toast = useToast();
   const session = useSession();
-  // `scheme` is read ONLY to pin the current look when "Match your phone" is
-  // switched off — see the note above the Appearance group.
-  const { preference, scheme, setPreference } = useThemeControls();
-  const matchesPhone = preference === 'system';
+  // ⚠️ `scheme` (what is on screen), NOT `preference` (what was chosen). While
+  // preference is 'system' it has no light/dark value for a switch to mirror,
+  // so binding to it would show OFF on a dark phone. See the Appearance note.
+  const { scheme, setPreference } = useThemeControls();
   // The categories are per-account, so a guest has nothing to read or write.
   // Appearance and the permission rows are device-local and still work.
   const signedIn = session.status === 'signedIn';
@@ -185,63 +185,40 @@ export function SettingsScreen() {
         </Text>
       </View>
 
-      {/* ⚠️ TWO SWITCHES FOR A THREE-STATE MODEL, and the nesting is what makes
-          that honest rather than a fudge. History: 2026-08-10 chose "a switch,
-          not a three-way chooser", whose stated cost was that the first flip
-          pinned the app for good — "there is no way back to following the
-          phone". 2026-08-24 answered that with three radio rows. 2026-08-26
-          (owner) asked for switches back.
+      {/* ⚠️ ONE SWITCH, AND IT COSTS 'system'. Owner's call, 2026-08-26, and
+          the fourth position this control has held: 2026-08-10 a single switch;
+          2026-08-24 three radio rows, to buy back "follow the phone";
+          2026-08-26 morning two switches, to have switches AND keep it;
+          2026-08-26 afternoon this — just the toggle.
 
-          A switch per option would have been a radio group in switch clothing:
-          turning Light on must silently turn System off, "off" states nothing
-          on its own, and a screen reader would announce "switch" for a
-          one-of-three choice. So the three states are expressed as two BINARY
-          questions instead — do you follow the phone, and if not, which — which
-          is what iOS itself does, and what each control actually is.
+          ⚠️ THE PRICE IS THE ONE THE ORIGINAL DECISION NAMED, and it is real:
+          a two-state control has no value meaning "follow the phone", so the
+          FIRST FLIP PINS THE APP FOR GOOD. `preference` is still a three-state
+          union and 'system' is still the default a fresh install starts on —
+          but once this switch is touched there is no route back to it short of
+          clearing app data. Nobody should be surprised by that later; it is
+          accepted, not overlooked.
 
-          ⚠️ TURNING "Match your phone" OFF PINS THE CURRENT `scheme`, NOT a
-          fixed default. Off means "stop following", not "go light": jumping the
-          app to light because someone stopped matching a dark phone would be a
-          control changing something it never mentioned. This is the one place
-          `scheme` (what is in effect) is read rather than `preference` (what
-          was chosen), and it is read only to answer "what am I looking at right
-          now" at the moment of pinning.
-
-          The 2026-08-10 cost does NOT come back: "Match your phone" toggles
-          `setPreference('system')` directly, so 'system' stays reachable
-          forever, which is the whole reason this screen exists. */}
+          ⚠️ BOUND TO `scheme`, NOT `preference`, and that is forced rather than
+          chosen. `scheme` is what is ON SCREEN; `preference` is what was
+          chosen, and while it is 'system' it has no light/dark value to mirror.
+          Bind to preference and a user on a dark phone opens a dark app with
+          the switch reading OFF — the control contradicting the screen. So it
+          mirrors the effect and writes a choice, which is exactly the shape
+          2026-08-10 described. */}
       <ListRowGroup title="Appearance">
         <ListRow
-          title="Match your phone"
-          subtitle={matchesPhone ? 'Light or dark, whichever your phone is using' : undefined}
-          toggled={matchesPhone}
-          onPress={() => setPreference(matchesPhone ? scheme : 'system')}
+          title="Dark mode"
+          toggled={scheme === 'dark'}
+          onPress={() => setPreference(scheme === 'dark' ? 'light' : 'dark')}
           trailing={
             <AppSwitch
-              value={matchesPhone}
-              onValueChange={(next) => setPreference(next ? 'system' : scheme)}
+              value={scheme === 'dark'}
+              onValueChange={(next) => setPreference(next ? 'dark' : 'light')}
             />
           }
-          testID="row-appearance-match"
+          testID="row-appearance-dark"
         />
-        {/* Absent, not disabled, while the phone is being matched: there is no
-            answer to give, and a dimmed switch reads as one that is broken —
-            the same omission rule PermissionRow follows for an unavailable
-            kind. */}
-        {matchesPhone ? null : (
-          <ListRow
-            title="Dark mode"
-            toggled={preference === 'dark'}
-            onPress={() => setPreference(preference === 'dark' ? 'light' : 'dark')}
-            trailing={
-              <AppSwitch
-                value={preference === 'dark'}
-                onValueChange={(next) => setPreference(next ? 'dark' : 'light')}
-              />
-            }
-            testID="row-appearance-dark"
-          />
-        )}
       </ListRowGroup>
 
       {signedIn ? (
