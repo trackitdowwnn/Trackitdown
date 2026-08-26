@@ -88,12 +88,21 @@ jest.mock('@/features/permissions', () => ({
   }),
 }));
 
-/** Renders with a real setter so the Appearance choice can be asserted — the
- *  defaulted context's setPreference is a __DEV__ console.warn no-op. */
-async function renderWithTheme(preference: ThemePreference = 'system') {
+/**
+ * Renders with a real setter so the Appearance choice can be asserted — the
+ * defaulted context's setPreference is a __DEV__ console.warn no-op.
+ *
+ * `scheme` is separate from `preference` on purpose, and defaults to light. The
+ * two only diverge under 'system', which is exactly the case that matters: it
+ * is what "Match your phone" pins when switched off.
+ */
+async function renderWithTheme(
+  preference: ThemePreference = 'system',
+  scheme: 'light' | 'dark' = 'light',
+) {
   const setPreference = jest.fn();
   const view = await render(
-    <ThemeControlsContext.Provider value={{ preference, scheme: 'light', setPreference }}>
+    <ThemeControlsContext.Provider value={{ preference, scheme, setPreference }}>
       <SettingsScreen />
     </ThemeControlsContext.Provider>,
   );
@@ -115,44 +124,85 @@ beforeEach(() => {
 });
 
 describe('Appearance', () => {
-  it('⚠️ offers System, which the old two-state switch could not reach', async () => {
-    // The point of the screen. Bound to `preference`, a real three-state union;
-    // the switch it replaced was bound to `scheme`, which has no value meaning
-    // "follow the phone" — so once flipped there was no way back.
+  // Two switches expressing a three-state model (owner, 2026-08-26): "Match
+  // your phone", and — only when that is off — "Dark mode". These tests exist
+  // to keep that translation honest, because the failure modes are all quiet
+  // ones.
+
+  it('⚠️ keeps System reachable, which is the whole reason this screen exists', async () => {
+    // The 2026-08-10 design was a single switch bound to the EFFECTIVE scheme,
+    // and its recorded cost was that the first flip pinned the app for good
+    // with "no way back to following the phone". "Match your phone" sets
+    // 'system' outright, so that door never closes again.
+    const { view, setPreference } = await renderWithTheme('dark');
+
+    fireEvent.press(await view.findByTestId('row-appearance-match'));
+
+    expect(setPreference).toHaveBeenCalledWith('system');
+  });
+
+  it('reports whether the phone is being matched, as a switch', async () => {
     const { view } = await renderWithTheme('system');
-    const row = await view.findByTestId('row-appearance-system');
+    const row = await view.findByTestId('row-appearance-match');
 
-    expect(row.props.accessibilityRole).toBe('radio');
-    // `selected`, not `checked` — ListRow's deliberate split: "radio,
-    // selected" reads as this-one-of-several, while `checked` is reserved for
-    // switch rows. Asserted the wrong way round first.
-    expect(row.props.accessibilityState).toMatchObject({ selected: true });
+    // `checked`, not `selected` — ListRow's deliberate split: `checked` is the
+    // switch state, `selected` is reserved for one-of-several chooser rows.
+    // This group used to be the latter and is now the former.
+    expect(row.props.accessibilityRole).toBe('switch');
+    expect(row.props.accessibilityState).toMatchObject({ checked: true });
   });
 
-  it('marks exactly one choice, and it is the stored preference', async () => {
+  it('⚠️ pins what is ON SCREEN when matching is switched off, not a default', async () => {
+    // Off means "stop following", not "go light". Someone on a dark phone who
+    // stops matching must keep the dark app they were looking at — a control
+    // that changes something it never mentioned is the bug this prevents. It
+    // is the one place `scheme` is read instead of `preference`.
+    const { view, setPreference } = await renderWithTheme('system', 'dark');
+
+    fireEvent.press(await view.findByTestId('row-appearance-match'));
+
+    expect(setPreference).toHaveBeenCalledWith('dark');
+    expect(setPreference).not.toHaveBeenCalledWith('light');
+  });
+
+  it('hides the Dark switch while the phone is being matched', async () => {
+    // Absent rather than disabled: there is no answer to give, and a dimmed
+    // switch reads as a broken one — the omission rule PermissionRow follows.
+    const { view } = await renderWithTheme('system');
+
+    expect(view.queryByTestId('row-appearance-dark')).toBeNull();
+    expect(await view.findByTestId('row-appearance-match')).toBeTruthy();
+  });
+
+  it('offers the Dark switch once matching is off, reading the stored choice', async () => {
     const { view } = await renderWithTheme('dark');
+    const row = await view.findByTestId('row-appearance-dark');
 
-    expect((await view.findByTestId('row-appearance-dark')).props.accessibilityState).toMatchObject(
-      { selected: true },
-    );
-    // `false`, never undefined — a radio group where the others are silent
-    // leaves a screen reader with one row claiming nothing.
-    expect(
-      (await view.findByTestId('row-appearance-system')).props.accessibilityState,
-    ).toMatchObject({ selected: false });
-    expect((await view.findByTestId('row-appearance-light')).props.accessibilityState).toMatchObject(
-      { selected: false },
-    );
+    expect(row.props.accessibilityRole).toBe('switch');
+    expect(row.props.accessibilityState).toMatchObject({ checked: true });
   });
 
-  it('stores the choice that was tapped', async () => {
-    const { view, setPreference } = await renderWithTheme('system');
+  // ⚠️ ONE RENDER PER TEST. These were a single test with two renders, which
+  // left two trees mounted at once and made EVERY later test in the file fail
+  // to find anything — the notification and permission suites all went red for
+  // a fault that was neither of theirs.
+  it('turns dark on from the Dark switch', async () => {
+    const { view, setPreference } = await renderWithTheme('light');
 
     fireEvent.press(await view.findByTestId('row-appearance-dark'));
-    expect(setPreference).toHaveBeenCalledWith('dark');
 
-    fireEvent.press(await view.findByTestId('row-appearance-system'));
-    expect(setPreference).toHaveBeenCalledWith('system');
+    expect(setPreference).toHaveBeenCalledWith('dark');
+  });
+
+  it('turns dark off from the Dark switch, landing on light rather than system', async () => {
+    // 'light', not 'system': the switch answers "which one", and matching the
+    // phone is the OTHER switch's question. Sending 'system' here would make
+    // the upper switch flip itself.
+    const { view, setPreference } = await renderWithTheme('dark');
+
+    fireEvent.press(await view.findByTestId('row-appearance-dark'));
+
+    expect(setPreference).toHaveBeenCalledWith('light');
   });
 });
 
@@ -220,7 +270,9 @@ describe('Notification categories', () => {
 
     expect(view.queryByTestId('row-notify-alerts')).toBeNull();
     expect(view.queryByTestId('notify-always-on')).toBeNull();
-    expect(await view.findByTestId('row-appearance-system')).toBeTruthy();
+    // Appearance is AsyncStorage-backed and device-local, so it still works for
+    // a guest — the point of there being no auth gate on the screen itself.
+    expect(await view.findByTestId('row-appearance-match')).toBeTruthy();
   });
 });
 

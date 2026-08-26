@@ -82,7 +82,6 @@ import {
   useThemeControls,
   useThemedStyles,
   type Palette,
-  type ThemePreference,
 } from '@/shared/theme';
 import { AppSwitch, ListRow, ListRowGroup, Screen, useToast } from '@/shared/ui';
 
@@ -124,14 +123,6 @@ export const CATEGORY_ICONS: Record<NotificationCategory, LucideIcon> = {
   watched: Bookmark,
 };
 
-/** The three appearance choices, in the order they are offered. */
-const APPEARANCE: { value: ThemePreference; title: string; subtitle?: string }[] = [
-  // System first because it is the default and the one people return to.
-  { value: 'system', title: 'System', subtitle: 'Follows your phone' },
-  { value: 'light', title: 'Light' },
-  { value: 'dark', title: 'Dark' },
-];
-
 export function SettingsScreen() {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -153,7 +144,10 @@ export function SettingsScreen() {
   const router = useRouter();
   const toast = useToast();
   const session = useSession();
-  const { preference, setPreference } = useThemeControls();
+  // `scheme` is read ONLY to pin the current look when "Match your phone" is
+  // switched off — see the note above the Appearance group.
+  const { preference, scheme, setPreference } = useThemeControls();
+  const matchesPhone = preference === 'system';
   // The categories are per-account, so a guest has nothing to read or write.
   // Appearance and the permission rows are device-local and still work.
   const signedIn = session.status === 'signedIn';
@@ -191,34 +185,63 @@ export function SettingsScreen() {
         </Text>
       </View>
 
-      {/* ⚠️ THREE ROWS, REVERSING AN OWNER CALL OF 2026-08-10. That call was
-          "a switch, not a three-way chooser", and it was reasoned honestly:
-          a two-state control that mirrors the EFFECTIVE scheme keeps "follow
-          the phone" as the default without spending a row on saying so. Its
-          stated cost was that the first flip pins the app to that scheme for
-          good — "there is no way back to following the phone".
+      {/* ⚠️ TWO SWITCHES FOR A THREE-STATE MODEL, and the nesting is what makes
+          that honest rather than a fudge. History: 2026-08-10 chose "a switch,
+          not a three-way chooser", whose stated cost was that the first flip
+          pinned the app for good — "there is no way back to following the
+          phone". 2026-08-24 answered that with three radio rows. 2026-08-26
+          (owner) asked for switches back.
 
-          That cost was worth paying when there was nowhere to put a third
-          option. This screen is that place. Nothing about the model changes:
-          `preference` has been a three-state union with working persistence
-          since the theme shipped, and `setPreference('system')` already worked
-          — it simply had no caller.
+          A switch per option would have been a radio group in switch clothing:
+          turning Light on must silently turn System off, "off" states nothing
+          on its own, and a screen reader would announce "switch" for a
+          one-of-three choice. So the three states are expressed as two BINARY
+          questions instead — do you follow the phone, and if not, which — which
+          is what iOS itself does, and what each control actually is.
 
-          Bound to `preference` (what they CHOSE), never `scheme` (what is in
-          effect). Binding to scheme is what forced the two-state control in the
-          first place: 'system' has no scheme of its own to mirror. */}
+          ⚠️ TURNING "Match your phone" OFF PINS THE CURRENT `scheme`, NOT a
+          fixed default. Off means "stop following", not "go light": jumping the
+          app to light because someone stopped matching a dark phone would be a
+          control changing something it never mentioned. This is the one place
+          `scheme` (what is in effect) is read rather than `preference` (what
+          was chosen), and it is read only to answer "what am I looking at right
+          now" at the moment of pinning.
+
+          The 2026-08-10 cost does NOT come back: "Match your phone" toggles
+          `setPreference('system')` directly, so 'system' stays reachable
+          forever, which is the whole reason this screen exists. */}
       <ListRowGroup title="Appearance">
-        {APPEARANCE.map((option) => (
+        <ListRow
+          title="Match your phone"
+          subtitle={matchesPhone ? 'Light or dark, whichever your phone is using' : undefined}
+          toggled={matchesPhone}
+          onPress={() => setPreference(matchesPhone ? scheme : 'system')}
+          trailing={
+            <AppSwitch
+              value={matchesPhone}
+              onValueChange={(next) => setPreference(next ? 'system' : scheme)}
+            />
+          }
+          testID="row-appearance-match"
+        />
+        {/* Absent, not disabled, while the phone is being matched: there is no
+            answer to give, and a dimmed switch reads as one that is broken —
+            the same omission rule PermissionRow follows for an unavailable
+            kind. */}
+        {matchesPhone ? null : (
           <ListRow
-            key={option.value}
-            title={option.title}
-            subtitle={option.subtitle}
-            // No icons: three icons in a chooser read as three destinations.
-            selected={preference === option.value}
-            onPress={() => setPreference(option.value)}
-            testID={`row-appearance-${option.value}`}
+            title="Dark mode"
+            toggled={preference === 'dark'}
+            onPress={() => setPreference(preference === 'dark' ? 'light' : 'dark')}
+            trailing={
+              <AppSwitch
+                value={preference === 'dark'}
+                onValueChange={(next) => setPreference(next ? 'dark' : 'light')}
+              />
+            }
+            testID="row-appearance-dark"
           />
-        ))}
+        )}
       </ListRowGroup>
 
       {signedIn ? (
