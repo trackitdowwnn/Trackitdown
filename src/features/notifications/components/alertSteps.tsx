@@ -16,7 +16,8 @@
  *        server matches case-insensitively but still exactly, so a free-typed
  *        "beemer" here would create an alert that silently matches nothing —
  *        worse than no alert, because the user believes they are covered.
- * LINKS: ../lib/alertFlow.tsx (the config); ./AlertZoneMap.tsx,
+ * LINKS: ../lib/alertFlow.tsx (the config); ../lib/alertName.ts
+ *        (suggestAlertName — NameStep's placeholder); ./AlertZoneMap.tsx,
  *        src/shared/ui/RadiusSlider.tsx (shared with map search since
  *        2026-08-10; the default label keeps this wizard's copy unchanged);
  *        @/features/vehicles (CAR_COLOURS, BODY_TYPE_OPTIONS);

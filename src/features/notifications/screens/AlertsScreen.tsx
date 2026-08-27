@@ -30,9 +30,10 @@
  *
  *        ⚠️ AND IT USES `Screen`, not SafeAreaView from react-native, whose
  *        Android implementation is a plain View that applies no inset at all.
- * LINKS: ../hooks/useMyAlerts.ts; ../api/alertsApi.ts; ../lib/alertName.ts
- *        (summariseAlert); ../components/AlertCard.tsx;
+ * LINKS: ../hooks/useMyAlerts.ts; ../api/alertsApi.ts;
+ *        ../components/AlertCard.tsx (the row, and summariseAlert with it);
  *        ../components/AlertZoneThumb.tsx (why the map degrades to a glyph);
+ *        ../components/AlertActionsSheet.tsx; ../components/AlertPermissionBanner.tsx;
  *        ./AlertWizardScreen.tsx; docs/design-refs/alerts/REFERENCE_SPEC.md.
  */
 
@@ -181,6 +182,22 @@ export function AlertsScreen() {
     >
       {header}
 
+      {/* ⚠️ OUTSIDE THE STATE SWITCH, like the header. The permission resolves
+          independently of the alerts fetch, so rendering this only in `ready`
+          pushed the whole list down the moment the fetch landed — for every
+          user with notifications off, and by far more than the 8pt the skeleton
+          was retuned to remove. The screen's header comment says the LIST owns
+          the permission conversation, not the ready state. */}
+      {permission.status && !permissionGranted ? (
+        <View style={styles.bannerWrap}>
+          <AlertPermissionBanner
+            blocked={permissionBlocked}
+            onPress={() => void handleBannerPress()}
+            testID="alerts-permission-banner"
+          />
+        </View>
+      ) : null}
+
       {state.status === 'loading' ? (
         // ⚠️ SKELETONS, NOT A SPINNER — the house rule for lists. It keeps the
         // label the old FullscreenLoader carried, as an accessibility label, so
@@ -199,6 +216,13 @@ export function AlertsScreen() {
                 <View style={[styles.skeletonLine, styles.skeletonLineWide]} />
                 <View style={styles.skeletonLine} />
               </View>
+              {/* ⚠️ THE CONTROLS ARE THE CARD'S TALLEST CHILD, not the
+                  thumbnail — 44 + 4 + 44 = 92 against the thumb's 72. Without a
+                  placeholder for them the skeleton row is 104pt to the real
+                  card's 124, so two rows shifted everything below by 40pt at
+                  the moment the alerts arrived, which is the jump a skeleton
+                  exists to prevent. */}
+              <View style={styles.skeletonControls} />
             </View>
           ))}
         </View>
@@ -235,17 +259,6 @@ export function AlertsScreen() {
             />
           }
         >
-          {/* The permission conversation sits above the list but never replaces
-              it — you can manage alerts with notifications off, they just won't
-              fire, and the banner says exactly that. */}
-          {permission.status && !permissionGranted ? (
-            <AlertPermissionBanner
-              blocked={permissionBlocked}
-              onPress={() => void handleBannerPress()}
-              testID="alerts-permission-banner"
-            />
-          ) : null}
-
           {alerts.length === 0 ? (
             <EmptyState
               title="No alerts yet"
@@ -264,6 +277,9 @@ export function AlertsScreen() {
               // about anything until one exists", so this is the app's core
               // loop having its one conversion moment.
               actionVariant="primary"
+              // The scroll already pads 24; without this the two stack to 48
+              // a side and the body wraps to a narrow centred column.
+              gutter="none"
             />
           ) : (
             // The footnote belongs TO the list, so it lives inside the group at
@@ -362,6 +378,12 @@ const makeStyles = (c: Palette) =>
     // 24 the content jumped 8pt the moment the alerts arrived — which is
     // exactly what a skeleton exists to prevent, and the comment claiming it
     // mirrored the card's geometry was only true of the rows, not the frame.
+    // The banner owns the gutter and the space to whatever follows it; it sits
+    // above the state switch so it cannot shift the list when the fetch lands.
+    bannerWrap: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.lg,
+    },
     body: {
       padding: spacing.xl,
       paddingTop: spacing.lg,
@@ -399,4 +421,10 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.surfaceSubtle,
     },
     skeletonLineWide: { width: '55%' },
+    // Matches AlertCard's `controls` column exactly: two touch targets and the
+    // 4pt between them.
+    skeletonControls: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget * 2 + spacing.xs,
+    },
   });

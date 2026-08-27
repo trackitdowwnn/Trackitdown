@@ -202,10 +202,13 @@ export const sizes = {
   alertThumb: 72,
   /** The zone glyph's rings, drawn when there is no map (the empty state's
    *  illustration, and the thumbnail's fallback). `glyphRing` is the outer
-   *  circle inside a `alertThumb` square; `glyphDot` is the point at its
+   *  circle inside an `alertThumb` square; `alertGlyphDot` is the point at its
    *  centre — the same two marks the real map draws. */
   alertGlyphRing: 44,
   alertGlyphDot: 10,
+  /** The ring's drawn stroke. A stroke, not a spacing value — same reason
+   *  timelineRailStroke and mapPinRing are tokens rather than literals. */
+  alertGlyphStroke: 1,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

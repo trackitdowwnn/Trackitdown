@@ -1,17 +1,23 @@
 /**
  * WHAT:  Config smoke test for the alert wizard — the shape each MATCHER
- *        selection produces, gating, review copy, and the name auto-suggestion
- *        following the last step before `name`.
+ *        selection produces, gating, review copy, and that NO step seeds the
+ *        name.
  * WHY:   MANDATORY for every flow in this codebase. `WizardStep.schema` is a
  *        bare `z.ZodType`, so TypeScript cannot tie its keys to the answers
  *        type: a typo'd key COMPILES and the step then simply never
  *        validates — Next stays dead with no error anywhere. Only a test that
  *        actually runs each schema against real answers catches it.
  *
- *        The per-matcher shapes are asserted because the flow is now BUILT, not
- *        declared: an off-by-one in the "which step seeds the name" slice would
- *        either drop a step or leave an area-only alert unnameable, and both
- *        look fine until the wizard is on screen.
+ *        The per-matcher shapes are asserted because the flow is BUILT, not
+ *        declared: a step dropped from the wrong slice looks fine until the
+ *        wizard is on screen.
+ *
+ *        ⚠️ THE NAME SUGGESTION IS GONE (owner request, 2026-08-27) and this
+ *        file asserts its ABSENCE. It used to hang off whichever step preceded
+ *        `name` — a slice whose off-by-one had already left area-only alerts
+ *        unnameable once — and the field now opens empty, with the suggestion
+ *        demoted to NameStep's placeholder. Six tests for the old hook were
+ *        deleted rather than adapted; do not restore them.
  *        The step components are mocked so this loads without the map, the
  *        slider or the pickers (postACarFlow.test.ts does the same).
  * LINKS: ./alertFlow.tsx, ./alertName.ts, ./alertMatchers.ts;
@@ -208,8 +214,12 @@ describe('⚠️ the name is not pre-filled', () => {
     // that wrong once already (it lived on `filters`, a step that stops
     // existing when bounty is unticked). Now none of them should.
     for (const matchers of [ALL, ['area'], ['area', 'car'], ['area', 'bounty']] as const) {
-      const hooked = stepsFor([...matchers]).filter((step) => step.onContinue);
-      expect(hooked.map((step) => step.id)).toEqual([]);
+      const steps = stepsFor([...matchers]);
+      // ⚠️ Guard against the vacuous form: `[].filter(...)` is also `[]`, so
+      // without this the assertion below would pass if stepsFor ever returned
+      // nothing at all — which is exactly the bug it is meant to catch.
+      expect(steps.length).toBeGreaterThan(0);
+      expect(steps.filter((step) => step.onContinue).map((step) => step.id)).toEqual([]);
     }
   });
 

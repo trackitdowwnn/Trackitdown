@@ -10,8 +10,10 @@
  *        is the whole design. The three sites deliberately differ:
  *          * LocationPicker hides its switch from assistive tech, because the
  *            row wrapping it owns the role.
- *          * AlertsScreen's IS the interactive element and carries its own
- *            accessibilityLabel.
+ *          * AlertCard's is hidden too, since 2026-08-27: the switch is ~31pt
+ *            on iOS, under the touch floor, so a Pressable box wraps it and
+ *            carries the role, the label and the checked state. The switch
+ *            underneath stays interactive purely so dragging still works.
  *          * SettingsScreen's rides in ListRow's `trailing`, which does the
  *            hiding for it.
  *        Baking any a11y default in here would silence one of them or

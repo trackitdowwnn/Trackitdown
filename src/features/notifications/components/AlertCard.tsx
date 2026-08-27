@@ -14,22 +14,22 @@
  *        ·-joined caption. An alert IS a place. See AlertZoneThumb for why it
  *        degrades to a drawn glyph rather than depending on a map rendering.
  *
- *        ⚠️ ONE ACCESSIBILITY ELEMENT, WITH ACTIONS — not three nested
- *        touchables. A Pressable is `accessible` by default and iOS GROUPS its
- *        children into a single selectable component, so a nested Switch and a
- *        nested button are simply unreachable to VoiceOver: pause and delete
- *        would work on Android and not exist on iOS. The card therefore
- *        announces itself once, carries `checked` for the pause state, and
- *        exposes "Pause"/"Resume" and "More options" as screen-reader ACTIONS —
- *        the same answer ListRow gives its `trailing` slot and DESIGN_SYSTEM
- *        gives PlateChip's "Copy plate".
+ *        ⚠️ THE CARD IS A PLAIN VIEW WITH THREE SEPARATE ELEMENTS IN IT, and
+ *        it took two goes to get there. Wrapping the whole card in a Pressable
+ *        made it `accessible`, and iOS GROUPS an accessible element's children
+ *        — so the nested Switch and "⋯" were unreachable to VoiceOver: pause
+ *        and delete worked on Android and did not exist on iOS. Moving them to
+ *        custom `accessibilityActions` fixed VoiceOver and TalkBack and nobody
+ *        else, because Voice Control and Full Keyboard Access navigate the
+ *        TREE, and a tree containing one element gives them nothing to name or
+ *        tab to. Three real, separately-labelled elements is the only shape
+ *        that serves all four.
  *
- *        ⚠️ AND IT STACKS ABOVE listRowStackFontScale. Two fixed-width
- *        neighbours (a 72pt tile and ~95pt of controls) leave the text block
- *        about 127pt on a 390pt phone; `flex: 1` is basis-0, so at 200% the
- *        name renders four characters and an ellipsis. Past the threshold the
- *        controls drop to their own row — the trap ListRow.tsx and
- *        BugDisclosurePanel already document.
+ *        ⚠️ AND IT STACKS ABOVE listRowStackFontScale. The text block sits
+ *        between a 72pt tile and a controls column, and `flex: 1` is basis-0,
+ *        so at 200% the name renders a few characters and an ellipsis. Past
+ *        the threshold the controls drop to their own row — see `leadStacked`
+ *        for the Yoga trap that fix walked into on its first attempt.
  * LINKS: ./AlertZoneThumb.tsx; ./AlertActionsSheet.tsx;
  *        ../screens/AlertsScreen.tsx; ../lib/alertName.ts (summariseAlert).
  */
@@ -37,7 +37,6 @@
 import { MoreHorizontal } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { milesToMetres } from '@/shared/lib/distance';
 import {
   listRowStackFontScale,
   opacity,
@@ -71,40 +70,33 @@ export function AlertCard({ alert, onPress, onToggle, onMore }: AlertCardProps) 
   const { fontScale } = useWindowDimensions();
   const stacked = (fontScale ?? 1) > listRowStackFontScale;
 
-  const pauseLabel = alert.enabled ? 'Pause' : 'Resume';
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      // The name alone is not enough: "Home" tells a screen reader nothing
-      // about what it does. The summary is the same sentence sighted users get.
-      accessibilityLabel={`${alert.name}. ${summariseAlert(alert)}`}
-      accessibilityHint="Opens this alert to edit it"
-      // `checked` is how the pause state reaches a screen reader now that the
-      // switch itself is inside the grouped element.
-      accessibilityState={{ checked: alert.enabled }}
-      accessibilityActions={[
-        { name: 'pause', label: `${pauseLabel} alerts` },
-        { name: 'more', label: 'More options' },
-      ]}
-      onAccessibilityAction={(event) => {
-        if (event.nativeEvent.actionName === 'pause') onToggle(!alert.enabled);
-        if (event.nativeEvent.actionName === 'more') onMore();
-      }}
-      style={({ pressed }) => [
-        styles.card,
-        stacked && styles.cardStacked,
-        pressed && styles.cardPressed,
-      ]}
-      testID={`alert-row-${alert.id}`}
-    >
-      <View style={styles.lead}>
+    <View style={[styles.card, stacked && styles.cardStacked]} testID={`alert-row-${alert.id}`}>
+      {/* The card is a plain View and THIS is the pressable — see the header
+          for why the three controls are three separate elements. */}
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        // The name alone is not enough: "Home" tells a screen reader nothing
+        // about what it does. The summary is the sentence sighted users get,
+        // and "Paused" is appended because an explicit label overrides the
+        // child text — without it the one word of STATUS never reaches anyone.
+        accessibilityLabel={`${alert.name}. ${summariseAlert(alert)}${
+          alert.enabled ? '' : '. Paused'
+        }`}
+        accessibilityHint="Opens this alert to edit it"
+        style={({ pressed }) => [
+          styles.lead,
+          stacked && styles.leadStacked,
+          pressed && styles.leadPressed,
+        ]}
+        testID={`alert-open-${alert.id}`}
+      >
         <AlertZoneThumb
           latitude={alert.latitude}
           longitude={alert.longitude}
           radiusMiles={alert.radiusMiles}
-          radiusMetres={milesToMetres(alert.radiusMiles)}
           dimmed={!alert.enabled}
           testID={`alert-thumb-${alert.id}`}
         />
@@ -122,32 +114,40 @@ export function AlertCard({ alert, onPress, onToggle, onMore }: AlertCardProps) 
             </Text>
           ) : null}
         </View>
-      </View>
+      </Pressable>
 
-      {/* ⚠️ HIDDEN FROM THE A11Y TREE, DELIBERATELY. iOS has already folded
-          these into the card above; leaving them "visible" to the tree would
-          promise focus stops that do not exist. The card's accessibilityActions
-          are how a screen reader reaches both. */}
-      <View
-        style={[styles.controls, stacked && styles.controlsStacked]}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
-        {/* The switch is ~31pt tall on iOS — under the 44 floor — and a near
-            miss would otherwise land on the card and silently open the editor.
-            The box is the target. */}
-        <View style={styles.switchHit}>
-          <AppSwitch value={alert.enabled} onValueChange={onToggle} />
-        </View>
+      <View style={[styles.controls, stacked && styles.controlsStacked]}>
+        {/* ⚠️ THE BOX IS THE TARGET, AND IT HAS TO BE A PRESSABLE TO BE ONE. A
+            plain View with minHeight buys layout height and captures nothing,
+            so the 13pt band around the ~31pt iOS switch fell through to
+            whatever was behind it. AppSwitch stays interactive underneath, so
+            dragging still works and a direct hit is handled by the switch —
+            the deepest responder wins, so neither fires twice. */}
+        <Pressable
+          onPress={() => onToggle(!alert.enabled)}
+          accessibilityRole="switch"
+          accessibilityLabel={`${alert.name} alerts`}
+          accessibilityState={{ checked: alert.enabled }}
+          style={styles.switchHit}
+          testID={`alert-toggle-${alert.id}`}
+        >
+          {/* Hidden so the pair reads as ONE switch: the box above carries the
+              role, the label and the state. */}
+          <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <AppSwitch value={alert.enabled} onValueChange={onToggle} />
+          </View>
+        </Pressable>
         <Pressable
           onPress={onMore}
+          accessibilityRole="button"
+          accessibilityLabel={`More options for ${alert.name}`}
           style={({ pressed }) => [styles.more, pressed && styles.morePressed]}
           testID={`alert-more-${alert.id}`}
         >
           <MoreHorizontal size={sizes.icon} color={palette.textSecondary} />
         </Pressable>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -176,15 +176,27 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'column',
       alignItems: 'stretch',
     },
-    cardPressed: {
-      backgroundColor: c.surfaceSubtle,
-    },
     // The thumbnail and the text always travel together, at both scales.
     lead: {
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
+    },
+    // ⚠️ NEUTRALISE THE BASIS WHEN THE CARD IS A COLUMN. `flex: 1` is
+    // `flexBasis: 0`, which works while the card's main axis is its definite
+    // WIDTH — but `cardStacked` makes the main axis its auto HEIGHT, where
+    // there is no free space to distribute and a basis-0 child resolves to
+    // ZERO. The thumbnail and the text would then overflow the card's bottom
+    // edge, at exactly the font scale this stacking exists to serve. The same
+    // trap alertSteps.tsx and DESIGN_SYSTEM both record for the map step.
+    leadStacked: {
+      flexGrow: 0,
+      flexBasis: 'auto',
+    },
+    leadPressed: {
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.md,
     },
     main: { flex: 1, gap: spacing.xs },
     name: { ...typography.cardTitle, color: c.textPrimary },
@@ -212,7 +224,9 @@ const makeStyles = (c: Palette) =>
       gap: spacing.sm,
     },
     switchHit: {
+      minWidth: sizes.touchTarget,
       minHeight: sizes.touchTarget,
+      alignItems: 'center',
       justifyContent: 'center',
     },
     more: {

@@ -43,7 +43,7 @@
  */
 
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -52,6 +52,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { milesToMetres } from '@/shared/lib/distance';
 import { motion, radii, sizes, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { AppMap, AppMapCircle } from '@/shared/ui/AppMap';
 
@@ -88,7 +89,6 @@ export interface AlertZoneThumbProps {
   latitude: number;
   longitude: number;
   radiusMiles: number;
-  radiusMetres: number;
   /** Paused zone: the circle stays (the area is still theirs) but recedes. */
   dimmed?: boolean;
   testID?: string;
@@ -98,7 +98,6 @@ export function AlertZoneThumb({
   latitude,
   longitude,
   radiusMiles,
-  radiusMetres,
   dimmed = false,
   testID,
 }: AlertZoneThumbProps) {
@@ -148,7 +147,17 @@ export function AlertZoneThumb({
     Number.isFinite(latitude) &&
     Number.isFinite(longitude);
 
-  const span = Math.max(radiusMiles, 0.5) * 2 * FIT_PADDING * DEGREES_PER_MILE;
+  // ⚠️ MEMOISED, and not for render cost. AppMap's fly-to effect depends on the
+  // region's IDENTITY (AppMap.tsx), so a fresh object every render re-runs it —
+  // and its `shownRef` holds the region Google SETTLED on, which is not the one
+  // requested once a square viewport re-fits the bounds, so the epsilon guard
+  // can miss and fire animateToRegion. Android lite mode cannot animate its
+  // camera at all. One stable object per (point, span) and the effect never
+  // runs after mount.
+  const region = useMemo(() => {
+    const span = Math.max(radiusMiles, 0.5) * 2 * FIT_PADDING * DEGREES_PER_MILE;
+    return { latitude, longitude, latitudeDelta: span, longitudeDelta: span };
+  }, [latitude, longitude, radiusMiles]);
 
   return (
     // Decorative: the card already names the alert and reads its summary, and
@@ -171,12 +180,7 @@ export function AlertZoneThumb({
             interactive={false}
             liteMode
             onReady={() => setReady(true)}
-            region={{
-              latitude,
-              longitude,
-              latitudeDelta: span,
-              longitudeDelta: span,
-            }}
+            region={region}
             // instant: the region never changes after mount, so there is no
             // fly-to to animate and AppMap's effect never fires.
             animateDurationMs={motion.instant}
@@ -185,7 +189,7 @@ export function AlertZoneThumb({
           >
             <AppMapCircle
               center={{ latitude, longitude }}
-              radius={radiusMetres}
+              radius={milesToMetres(radiusMiles)}
               fillColor={dimmed ? 'transparent' : palette.mapZoneFill}
               strokeColor={palette.mapZoneStroke}
               strokeWidth={1}

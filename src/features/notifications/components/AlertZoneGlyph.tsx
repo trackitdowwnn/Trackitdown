@@ -72,22 +72,28 @@ const makeStyles = (c: Palette) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    // ⚠️ mapZoneFill FOR THE FILL, borderStrong FOR THE STROKE, and the split
-    // is measured rather than aesthetic. The zone tokens are scoped by
-    // colors.ts to a circle drawn ON A MAP, and they invert with the basemap —
-    // which works here in dark (mapZoneStroke composites to 3.34:1 on
-    // surfaceSubtle) and fails in light, where it lands at 2.15:1, under the
-    // 3:1 floor DESIGN_SYSTEM raised borderStrong itself to clear. borderStrong
-    // is the token whose stated job is "small elements that must stay visible".
-    // The fill keeps the map's own ink, so the glyph still reads as the same
-    // area the map draws.
+    // ⚠️ textSecondary FOR THE STROKE, and it took three goes to get here —
+    // each measured against the ground this actually sits on, `surfaceSubtle`,
+    // rather than the page.
+    //
+    //   mapZoneStroke  2.15 light / 3.34 dark  — the map tokens invert with the
+    //                                            BASEMAP, so light fails
+    //   borderStrong   2.79 light / 2.82 dark  — its 3:1 clearance is measured
+    //                                            on `background` and `surface`,
+    //                                            NOT on surfaceSubtle
+    //   textSecondary  4.66 light / 5.69 dark  ✅
+    //
+    // The fill stays `mapZoneFill` for continuity with the real circle, but be
+    // honest about what it contributes: at 1.22:1 on this plate it is barely
+    // visible, and the ring is carried by its stroke. `mapZoneFill` is
+    // calibrated to sit over map tiles, not over a flat UI surface.
     ring: {
       width: sizes.alertGlyphRing,
       height: sizes.alertGlyphRing,
       borderRadius: radii.full,
       backgroundColor: c.mapZoneFill,
-      borderWidth: 1,
-      borderColor: c.borderStrong,
+      borderWidth: sizes.alertGlyphStroke,
+      borderColor: c.textSecondary,
       alignItems: 'center',
       justifyContent: 'center',
     },

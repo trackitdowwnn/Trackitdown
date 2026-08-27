@@ -3,13 +3,22 @@
  *        ("Blue BMWs near Luton") and the list screen's SUMMARY line
  *        ("10 miles · Blue BMWs · £500+").
  * WHY:   Naming is the last step of the wizard and the one most likely to be
- *        answered with a shrug. A prefilled, editable suggestion means the
- *        common case is one tap, and the list screen never fills up with
- *        "Alert 1", "Alert 2" — which is what makes several alerts navigable
- *        at all.
+ *        answered with a shrug, and the list screen must never fill up with
+ *        "Alert 1", "Alert 2" — a suggestion is what makes several alerts
+ *        navigable at all.
+ *
+ *        ⚠️ THE SUGGESTION IS A PLACEHOLDER, NOT A PREFILL (owner request,
+ *        2026-08-27). It used to be written into the answer on the way into
+ *        the name step, so anyone who wanted their own name had to clear
+ *        someone else's words first. NameStep now passes it as the field's
+ *        `placeholder`, which TextField surfaces only once focused — so it
+ *        guides at the moment someone is deciding what to type and is never
+ *        something to delete.
  *        Pure and dependency-free so the wording is unit-tested rather than
  *        eyeballed on a device.
- * LINKS: ../types.ts (AlertCriteria); ./alertFlow.tsx (the name step's seed);
+ * LINKS: ../types.ts (AlertCriteria);
+ *        ../components/alertSteps.tsx (NameStep — the only consumer of
+ *          suggestAlertName); ./alertFlow.tsx (the name step);
  *        src/features/notifications/screens/AlertsScreen.tsx (shows the name).
  */
 

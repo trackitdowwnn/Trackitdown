@@ -17,7 +17,7 @@
  *        ../components/AlertZoneThumb.tsx (why the map is mocked below).
  */
 
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import { AlertsScreen } from './AlertsScreen';
 
@@ -55,9 +55,11 @@ jest.mock('expo-router', () => ({
   useFocusEffect: () => {},
 }));
 
+const mockSetEnabled = jest.fn();
+const mockDeleteAlert = jest.fn();
 jest.mock('../api/alertsApi', () => ({
-  deleteAlert: jest.fn(),
-  setAlertEnabled: jest.fn(),
+  deleteAlert: (...args: unknown[]) => mockDeleteAlert(...args),
+  setAlertEnabled: (...args: unknown[]) => mockSetEnabled(...args),
 }));
 
 const mockRequireAuth = jest.fn();
@@ -76,6 +78,7 @@ jest.mock('@/shared/ui/AppMap', () => ({
 // screen resolves to, not how any of it looks.
 jest.mock('@/shared/ui', () => {
   const { Text: RNText, View: RNView } = jest.requireActual('react-native');
+  const React = jest.requireActual('react');
   return {
     // ⚠️ ONE shared spy, not a fresh jest.fn() per call — see mockPush above.
     useToast: () => ({ show: mockShowToast }),
@@ -102,7 +105,12 @@ jest.mock('@/shared/ui', () => {
     Button: ({ label, onPress }: { label: string; onPress?: () => void }) => (
       <RNText onPress={onPress}>{label}</RNText>
     ),
-    ConfirmDialog: () => null,
+    // A ref double, so the sheet -> confirm handoff is observable. Rendering
+    // null meant the whole delete path could not fire at all.
+    ConfirmDialog: ({ ref }: { ref?: { current: unknown } }) => {
+      React.useImperativeHandle(ref, () => ({ open: mockConfirmOpen }));
+      return null;
+    },
     Screen: ({ children, footer }: { children?: unknown; footer?: unknown }) => (
       <RNView>
         {children}
@@ -115,7 +123,25 @@ jest.mock('@/shared/ui', () => {
         {title}
       </RNText>
     ),
-    BottomSheet: ({ children }: { children?: unknown }) => <RNView>{children}</RNView>,
+    // ⚠️ IT HONOURS THE REF, and rendering children unconditionally is how the
+    // sheet tests came to pass for the wrong reason: with the contents in the
+    // tree from mount, deleting the `fireEvent.press` that opens it changed
+    // nothing and every assertion still passed. A mock that is always "open"
+    // cannot test opening.
+    BottomSheet: ({
+      ref,
+      children,
+    }: {
+      ref?: { current: { open: () => void; close: () => void } | null };
+      children?: unknown;
+    }) => {
+      const [open, setOpen] = React.useState(false);
+      React.useImperativeHandle(ref, () => ({
+        open: () => setOpen(true),
+        close: () => setOpen(false),
+      }));
+      return open ? <RNView>{children}</RNView> : null;
+    },
     ListRow: ({ title, onPress, testID }: { title: string; onPress?: () => void; testID?: string }) => (
       <RNText onPress={onPress} testID={testID}>
         {title}
@@ -133,6 +159,7 @@ jest.mock('@/shared/ui', () => {
 });
 
 const mockShowToast = jest.fn();
+const mockConfirmOpen = jest.fn();
 
 const alert = (overrides: Record<string, unknown> = {}) => ({
   id: `id-${Math.random()}`,
@@ -339,34 +366,80 @@ describe('the row actions', () => {
     // an irreversible action one mis-tap away on a resting surface.
     const one = alert({ id: 'a1', name: 'Home' });
     mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
-    const { getByTestId } = await render(<AlertsScreen />);
+    const { getByTestId, queryByTestId } = await render(<AlertsScreen />);
 
-    // includeHiddenElements: the controls are hidden from the a11y tree on
-    // purpose — iOS folds them into the card, so the card exposes them as
-    // accessibility ACTIONS instead. See the next test.
-    fireEvent.press(getByTestId('alert-more-a1', { includeHiddenElements: true }));
-    expect(getByTestId('alert-action-delete')).toBeTruthy();
+    // ⚠️ THE NEGATIVE FIRST — it IS the contract. Without it this test passed
+    // with the press deleted entirely, because the sheet mock used to render
+    // its children from mount.
+    expect(queryByTestId('alert-action-delete')).toBeNull();
+
+    fireEvent.press(getByTestId('alert-more-a1'));
+
+    // waitFor: the sheet opens through a ref, so the state update lands after
+    // the press rather than inside it.
+    await waitFor(() => expect(getByTestId('alert-action-delete')).toBeTruthy());
     expect(getByTestId('alert-action-edit')).toBeTruthy();
   });
 
-  it('⚠️ reaches pause and the sheet by screen-reader action', async () => {
-    // THE iOS BUG THIS PINS. A Pressable is `accessible` by default and iOS
-    // GROUPS its children into one element, so a nested Switch and a nested
-    // button are simply unreachable to VoiceOver — pause and delete would work
-    // on Android and not exist on iOS. The card carries them as actions.
+  it('⚠️ delete goes through the confirm dialog, never straight to the API', async () => {
+    // The redesign moved delete behind two new surfaces, and neither was
+    // covered. Deleting an alert is irreversible.
+    const one = alert({ id: 'a1', name: 'Home' });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId } = await render(<AlertsScreen />);
+
+    fireEvent.press(getByTestId('alert-more-a1'));
+    await waitFor(() => expect(getByTestId('alert-action-delete')).toBeTruthy());
+    fireEvent.press(getByTestId('alert-action-delete'));
+
+    // The sheet hands off to ConfirmDialog — nothing is deleted on this tap.
+    expect(mockConfirmOpen).toHaveBeenCalled();
+    expect(mockDeleteAlert).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ exposes open, pause and more as three named elements', async () => {
+    // THE iOS BUG THIS PINS, and the second attempt at fixing it. Wrapping the
+    // whole card in a Pressable made it `accessible`, and iOS GROUPS an
+    // accessible element's children — so the nested Switch and "⋯" were
+    // unreachable to VoiceOver entirely.
+    //
+    // Custom accessibilityActions fixed that for VoiceOver and TalkBack and no
+    // one else: iOS Voice Control and Full Keyboard Access navigate the TREE,
+    // and a tree with one element gives them nothing to say or tab to. Three
+    // real, separately-named elements is what covers all four technologies —
+    // so this asserts the shape, not just that pressing works.
     const one = alert({ id: 'a1', name: 'Home', enabled: true });
     mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
     const { getByTestId } = await render(<AlertsScreen />);
 
-    const card = getByTestId('alert-row-a1');
-    const actions = (card.props.accessibilityActions ?? []) as { name: string }[];
-    expect(actions.map((a) => a.name)).toEqual(['pause', 'more']);
-    // The pause state reaches a screen reader through the card, since the
-    // switch itself is inside the grouped element.
-    expect(card.props.accessibilityState).toMatchObject({ checked: true });
+    const open = getByTestId('alert-open-a1');
+    const toggle = getByTestId('alert-toggle-a1');
+    const more = getByTestId('alert-more-a1');
 
-    fireEvent(card, 'accessibilityAction', { nativeEvent: { actionName: 'more' } });
-    expect(getByTestId('alert-action-delete')).toBeTruthy();
+    // Each one is reachable and says what it is.
+    expect(open.props.accessibilityRole).toBe('button');
+    expect(open.props.accessibilityLabel).toContain('Home');
+    expect(toggle.props.accessibilityRole).toBe('switch');
+    expect(toggle.props.accessibilityLabel).toBe('Home alerts');
+    expect(toggle.props.accessibilityState).toMatchObject({ checked: true });
+    expect(more.props.accessibilityLabel).toBe('More options for Home');
+
+    // And the touch band around the ~31pt switch belongs to the SWITCH, not to
+    // the card — a near miss used to open the editor.
+    fireEvent.press(toggle);
+    expect(mockSetEnabled).toHaveBeenCalledWith('a1', false);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ says "Paused" to a screen reader, not just on screen', async () => {
+    // An explicit accessibilityLabel OVERRIDES the child text, so the visible
+    // "Paused" word never reaches anyone unless the label carries it — and
+    // summariseAlert does not include it.
+    const one = alert({ id: 'a1', name: 'Home', enabled: false });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId } = await render(<AlertsScreen />);
+
+    expect(getByTestId('alert-open-a1').props.accessibilityLabel).toContain('Paused');
   });
 
   it('opens the alert for editing when the card itself is pressed', async () => {
@@ -374,7 +447,7 @@ describe('the row actions', () => {
     mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
     const { getByTestId } = await render(<AlertsScreen />);
 
-    fireEvent.press(getByTestId('alert-row-a1'));
+    fireEvent.press(getByTestId('alert-open-a1'));
     expect(mockPush).toHaveBeenCalledWith('/alerts/a1');
   });
 

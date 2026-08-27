@@ -51,6 +51,16 @@ export interface EmptyStateProps {
    * text. Inside the primitive, it inherits the right measure and rhythm.
    */
   actionVariant?: 'ghost' | 'primary';
+  /**
+   * Who owns the horizontal gutter. Default `'default'` — this pads itself by
+   * 24, which is right when it is dropped into an unpadded screen.
+   *
+   * ⚠️ PASS `'none'` INSIDE AN ALREADY-PADDED SCROLL. Otherwise the two stack
+   * to 48 a side and the body sets a narrow centred column — on a 390pt phone
+   * a 33-word sentence wraps to seven or eight lines. Same trap, same escape,
+   * as NudgeRow's `gutter`.
+   */
+  gutter?: 'default' | 'none';
 }
 
 export function EmptyState({
@@ -60,11 +70,12 @@ export function EmptyState({
   actionLabel,
   onAction,
   actionVariant = 'ghost',
+  gutter = 'default',
 }: EmptyStateProps) {
   const styles = useThemedStyles(makeStyles);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, gutter === 'none' && styles.containerFlush]}>
       {illustration ? <View style={styles.illustration}>{illustration}</View> : null}
       <Text accessibilityRole="header" style={styles.title}>
         {title}
@@ -77,7 +88,7 @@ export function EmptyState({
               different measures. */}
           <Button
             label={actionLabel}
-            variant={actionVariant === 'primary' ? 'primary' : 'ghost'}
+            variant={actionVariant}
             fullWidth={false}
             onPress={onAction}
           />
@@ -95,6 +106,8 @@ const makeStyles = (c: Palette) =>
       paddingVertical: spacing.xxxl,
       gap: spacing.md,
     },
+    // The caller's scroll already owns the gutter — see the `gutter` prop.
+    containerFlush: { paddingHorizontal: 0 },
     illustration: {
       marginBottom: spacing.md,
     },
