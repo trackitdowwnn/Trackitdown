@@ -18,8 +18,19 @@
  *        ⚠️ NEVER CONDITIONED AWAY. The whole panel used to hang on
  *        `lines.length > 0`, so on a handset where none of the device fields
  *        could be read the user was told NOTHING — while their account link
- *        still travelled. The one sentence that is always true was the one that
- *        could vanish. Only the ROWS are conditional.
+ *        still travelled. Two rows are now unconditional for exactly that
+ *        reason — "Your account" and "Recent activity" — so the panel always
+ *        has something true to say even when every device field reads null.
+ *
+ *        ⚠️ THE CLOSING PARAGRAPH IS GONE (owner request, 2026-08-27). It read
+ *        "Your account, so we can reply. A list of what the app was doing — the
+ *        names of the steps only, never what they were about. Nothing else from
+ *        the rest of the app." Its two load-bearing claims did NOT go with it:
+ *        the account is now the first row, and the trail is still described as
+ *        "Step names only". What was lost is the reassurance about what is NOT
+ *        collected, which no row can carry. If a reader ever wonders whether
+ *        the app sends their browsing history, that sentence is where the
+ *        answer used to be.
  * LINKS: ../lib/bugReportFlow.tsx (renders it as the review footer);
  *        ../lib/bugDiagnostics.ts (where the rows come from);
  *        ../api/bugReportApi.ts (what actually gets sent).
@@ -77,7 +88,15 @@ export function bugDisclosureRows({
   area: BugArea | null;
   shots: number;
 }): { label: string; value: string }[] {
-  const rows = [...lines];
+  // ⚠️ THE ACCOUNT ROW REPLACES A PARAGRAPH, and it is not decoration. The
+  // panel used to end with a sentence beginning "Your account, so we can
+  // reply"; the owner asked for that paragraph to go (2026-08-27) and NOTHING
+  // else on this list mentions identity — the device facts, the area, the
+  // screenshots and the trail are all about the report, not the reporter. The
+  // operator's email now carries the reporter's address and user id, so the one
+  // thing that must not become invisible is precisely this. A row says it in
+  // four words instead of three lines.
+  const rows = [{ label: 'Your account', value: 'So we can reply' }, ...lines];
 
   const areaLabel = labelForArea(area);
   if (areaLabel) {
@@ -131,13 +150,6 @@ export function BugDisclosurePanel({ lines, area, shots, testID }: BugDisclosure
           <Text style={stacked ? styles.valueStacked : styles.value}>{line.value}</Text>
         </View>
       ))}
-      {/* "nothing from the rest of the app" rather than "nothing about the cars
-          you've looked at": naming the browsing history raises the very worry
-          the sentence exists to settle. */}
-      <Text style={styles.note}>
-        Your account, so we can reply. A list of what the app was doing — the names of the steps
-        only, never what they were about. Nothing else from the rest of the app.
-      </Text>
     </View>
   );
 }
@@ -230,10 +242,5 @@ const makeStyles = (c: Palette) =>
     valueStacked: {
       ...typography.body,
       color: c.textPrimary,
-    },
-    note: {
-      ...typography.caption,
-      color: c.textSecondary,
-      marginTop: spacing.lg,
     },
   });

@@ -43,15 +43,24 @@ describe('what the panel promises', () => {
   it('⚠️ still promises what it always sends when NO device field reads', async () => {
     // The whole panel used to hang on `lines.length > 0`, so on a handset where
     // nothing could be read the user was told NOTHING — while their account
-    // link still travelled. The one sentence that is always true was the one
-    // that could vanish. Only the ROWS are conditional.
+    // link still travelled.
+    //
+    // ⚠️ THE ACCOUNT ROW IS UNCONDITIONAL, and this is the test that keeps it
+    // so. It replaced a closing paragraph the owner asked to remove
+    // (2026-08-27), and it is the ONLY thing on the panel that mentions
+    // identity — every other row describes the report, not the reporter. The
+    // operator's email carries the reporter's address and user id, so this row
+    // going missing would mean collecting an identity the screen never named.
     const { getByText, getByTestId } = await render(
       <BugDisclosurePanel lines={[]} area={null} shots={0} />,
     );
 
     expect(getByTestId('report-bug-diagnostics')).toBeTruthy();
     expect(getByText('Sent with your report')).toBeTruthy();
-    expect(getByText(/Your account, so we can reply/)).toBeTruthy();
+    expect(getByText('Your account')).toBeTruthy();
+    expect(getByText('So we can reply')).toBeTruthy();
+    // And the trail stays named even with nothing else to show.
+    expect(getByText('Recent activity')).toBeTruthy();
   });
 
   it('names the breadcrumb trail, which is the part they did not choose', async () => {

@@ -296,3 +296,96 @@ begin
   raise notice 'CHECK 7 passed: a null actor or a null id claims nothing';
 end $$;
 rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 8 — the claim carries WHO filed it and how often they have before.
+-- The email could not say who sent a report until 2026-08-27, so an operator
+-- had nothing to reply to — while the app had been telling that reporter their
+-- account travels "so we can reply".
+--
+-- ⚠️ THE UUID ONLY, NEVER THE ADDRESS. Resolving auth.users here would put a
+-- path to every user's email behind a function whose job is bug reports; the
+-- sender uses the admin API instead. This check pins that division.
+-- -----------------------------------------------------------------------------
+begin;
+do $$
+declare
+  v_first  uuid;
+  v_second uuid;
+  v_result jsonb;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+
+  -- One earlier report, so the history line has something to count.
+  select public.submit_bug_report('an earlier report', '1.0.0', 'ios', '18.2',
+    'iPhone 14', null, null, null, null, null, null) into v_first;
+  update public.bug_reports set created_at = now() - interval '2 days'
+   where id = v_first;
+
+  select public.submit_bug_report('the one being emailed', '1.0.0', 'ios',
+    '18.2', 'iPhone 14', null, null, null, null, null, null) into v_second;
+
+  v_result := public.claim_bug_report_email(
+    '11111111-1111-1111-1111-111111111111', v_second);
+
+  if (v_result->>'reporter_id')::uuid <> '11111111-1111-1111-1111-111111111111' then
+    raise exception 'CHECK 8 FAILED: reporter_id missing or wrong, got %',
+      quote_literal(v_result->>'reporter_id');
+  end if;
+  -- Excludes the report being sent, so 1 means exactly one OTHER report.
+  if (v_result->>'prior_reports')::integer <> 1 then
+    raise exception 'CHECK 8 FAILED: prior_reports should be 1, got %',
+      v_result->>'prior_reports';
+  end if;
+  if v_result->>'previous_report_at' is null then
+    raise exception 'CHECK 8 FAILED: previous_report_at not returned';
+  end if;
+  -- ⚠️ No address, and no other report's TEXT. The history is a count and a
+  -- date; carrying the earlier report's words into an email about this one
+  -- would put three reports in a message about one.
+  if v_result::text like '%an earlier report%' then
+    raise exception 'CHECK 8 FAILED: the claim leaked another report''s text';
+  end if;
+
+  raise notice 'CHECK 8 passed: the claim carries the reporter id and a bare history';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 9 — history is scoped to the reporter. A count that included everybody
+-- would tell the operator how busy the whole queue is, on somebody else's row.
+-- -----------------------------------------------------------------------------
+begin;
+do $$
+declare
+  v_b_id   uuid;
+  v_result jsonb;
+begin
+  -- User A files two reports.
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  perform public.submit_bug_report('A one', '1.0.0', 'ios', '18.2', 'iPhone 14',
+    null, null, null, null, null, null);
+  perform public.submit_bug_report('A two', '1.0.0', 'ios', '18.2', 'iPhone 14',
+    null, null, null, null, null, null);
+
+  -- User B files their first.
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  select public.submit_bug_report('B first', '1.0.0', 'ios', '18.2', 'iPhone 14',
+    null, null, null, null, null, null) into v_b_id;
+
+  v_result := public.claim_bug_report_email(
+    '22222222-2222-2222-2222-222222222222', v_b_id);
+
+  if (v_result->>'prior_reports')::integer <> 0 then
+    raise exception 'CHECK 9 FAILED: B''s first report counted % priors — A''s rows leaked in',
+      v_result->>'prior_reports';
+  end if;
+
+  raise notice 'CHECK 9 passed: the history counts only the reporter''s own reports';
+end $$;
+rollback;
