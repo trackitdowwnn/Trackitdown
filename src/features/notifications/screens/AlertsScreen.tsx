@@ -188,7 +188,12 @@ export function AlertsScreen() {
           user with notifications off, and by far more than the 8pt the skeleton
           was retuned to remove. The screen's header comment says the LIST owns
           the permission conversation, not the ready state. */}
-      {permission.status && !permissionGranted ? (
+      {/* ⚠️ SIGNED-OUT IS THE ONE STATE IT MUST SKIP. The permission resolves
+          for anyone holding the phone, so hoisting the banner out of the switch
+          also put it on the logged-out screen — asking a visitor to turn on push
+          for alerts they cannot own, stacked above "Alerts are tied to your
+          account", behind an OS prompt that nothing would then consume. */}
+      {state.status !== 'signedOut' && permission.status && !permissionGranted ? (
         <View style={styles.bannerWrap}>
           <AlertPermissionBanner
             blocked={permissionBlocked}

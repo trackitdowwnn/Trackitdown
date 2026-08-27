@@ -358,6 +358,23 @@ describe('the permission banner', () => {
     const { queryByTestId } = await render(<AlertsScreen />);
     expect(queryByTestId('alerts-permission-banner')).toBeNull();
   });
+
+  it('⚠️ says nothing to a signed-out visitor', async () => {
+    // Hoisting the banner out of the state switch put it on the signed-out
+    // screen too, above "Alerts are tied to your account" — asking someone to
+    // turn on push for alerts they cannot own. Every other test in this
+    // describe runs against `ready`, so nothing caught it.
+    mockAlertsState = { status: 'signedOut', alerts: [], refresh: jest.fn() };
+    mockPermission = {
+      status: { state: 'denied', canAskAgain: true },
+      request: jest.fn(),
+      refresh: jest.fn(),
+    };
+    const { queryByTestId, getByText } = await render(<AlertsScreen />);
+
+    expect(queryByTestId('alerts-permission-banner')).toBeNull();
+    expect(getByText('Set the areas you watch')).toBeTruthy();
+  });
 });
 
 describe('the row actions', () => {
