@@ -243,6 +243,14 @@ are build output.
   - `cardTitle` 16/22, Bold — feed-card titles (added 2026-07-11; body
     size at heavier weight, so photos stay the hero of a card)
   - `body` 16/24, Regular — default text
+  - `prose` 16/26, Regular — **long-form documents only** (added 2026-08-26,
+    from `docs/design-refs/legal/`). Body size at looser leading. `body` is
+    tuned for interface text, which arrives in one- or two-line runs where 1.5
+    is comfortable; legal prose arrives in paragraphs of six or eight lines, and
+    at 1.5 the eye loses its place returning to the left margin. A separate role
+    rather than loosening `body`, which nearly every screen uses — widening it
+    would add two points to every ListRow subtitle and card line in the app to
+    fix a problem three pages have.
   - `caption` 13/18, Regular — metadata, timestamps
   - `label` 14/18, Medium — buttons, form labels
   - `mapPin` 14/18, Bold — **map-pin bounty pills only** (added 2026-08-07);

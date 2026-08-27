@@ -16,7 +16,7 @@
  *        docs/SECURITY_AND_TRUST.md §1; docs/DOMAIN.md (bounty rules).
  */
 
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 
 // Deep import, not the '@/features/vehicles' barrel: that barrel reaches
 // AsyncStorage and this suite will not even load through it. ARCHITECTURE rule 1
@@ -46,6 +46,85 @@ jest.mock('expo-router', () => ({
 }));
 
 beforeEach(() => jest.clearAllMocks());
+
+describe('⚠️ the reading chrome (Airbnb pass, 2026-08-26)', () => {
+  // A full recomposition of a COMPLIANCE surface, so these test that the new
+  // navigation does not cost anything the document already promised.
+
+  it('opens on the document, not on its table of contents', async () => {
+    // The index is collapsed by default, deliberately. Expanded, twenty
+    // headings push the document's own first sentence off the screen — a
+    // consent surface that opens on its contents page rather than its content.
+    const { getByTestId, queryByTestId } = await render(<LegalDocumentScreen slug="privacy" />);
+
+    expect(getByTestId('legal-index-toggle')).toBeTruthy();
+    expect(queryByTestId('legal-index-0')).toBeNull();
+  });
+
+  it('lists every section once opened, in document order', async () => {
+    const { getByTestId, findByTestId } = await render(<LegalDocumentScreen slug="privacy" />);
+
+    fireEvent.press(getByTestId('legal-index-toggle'));
+
+    // ⚠️ EVERY section, not "some". An index that silently omits one is worse
+    // than no index: a reader who cannot find "How long we keep things"
+    // concludes it is not covered, rather than that the list is short.
+    for (let index = 0; index < LEGAL_DOCUMENTS.privacy.sections.length; index++) {
+      expect(await findByTestId(`legal-index-${index}`)).toBeTruthy();
+    }
+  });
+
+  it('tells assistive tech whether the contents are open', async () => {
+    // The chevron carries this visually and cannot carry it otherwise;
+    // "Contents, button" alone leaves a screen-reader user tapping to find out.
+    const { getByTestId, findByTestId } = await render(<LegalDocumentScreen slug="terms" />);
+    const toggle = getByTestId('legal-index-toggle');
+
+    expect(toggle.props.accessibilityState).toMatchObject({ expanded: false });
+
+    fireEvent.press(toggle);
+
+    const reopened = await findByTestId('legal-index-toggle');
+    expect(reopened.props.accessibilityState).toMatchObject({ expanded: true });
+  });
+
+  it('⚠️ renders a bullet as a hanging indent, with the marker out of the prose', async () => {
+    // The previous implementation put "• " inside the paragraph text and gave
+    // the whole Text a paddingLeft, which insets EVERY line — so a wrapped
+    // bullet aligned under the dot, precisely what its comment claimed to
+    // avoid. The marker now lives in its own column, which also keeps it out of
+    // the string a screen reader reads.
+    const bulletSource = LEGAL_DOCUMENTS.safety.sections
+      .flatMap((section) => section.body)
+      .find((paragraph) => paragraph.startsWith('• '));
+    // Guard the fixture: if the copy ever loses its bullets this test would
+    // otherwise pass by testing nothing.
+    expect(bulletSource).toBeDefined();
+
+    const { getByText, queryByText } = await render(<LegalDocumentScreen slug="safety" />);
+
+    expect(getByText(bulletSource!.slice(2))).toBeTruthy();
+    expect(queryByText(bulletSource!)).toBeNull();
+  });
+
+  it('shows no current-section label before anything has been scrolled', async () => {
+    // It reports where you are. At the top you are nowhere in particular, and a
+    // label naming section one while the intro is on screen would be wrong.
+    const { queryByTestId } = await render(<LegalDocumentScreen slug="privacy" />);
+
+    expect(queryByTestId('legal-current-section')).toBeNull();
+  });
+
+  it('keeps the not-found state, which arrives from a route param', async () => {
+    const { getByText, queryByTestId } = await render(<LegalDocumentScreen slug="nonsense" />);
+
+    expect(getByText("We couldn't find that page")).toBeTruthy();
+    // No chrome for a document that does not exist — an index of nothing and a
+    // progress bar for an empty page.
+    expect(queryByTestId('legal-index-toggle')).toBeNull();
+    expect(queryByTestId('legal-scroll')).toBeNull();
+  });
+});
 
 describe('rendering', () => {
   it.each(['safety', 'terms', 'privacy'] as const)('renders the %s document', async (slug) => {
