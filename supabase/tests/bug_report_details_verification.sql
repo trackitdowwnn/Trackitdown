@@ -291,6 +291,11 @@ end $$;
 -- CHECK 8 — the quota probe refuses a guest and reports the remaining
 -- allowance. Advisory, but it must not become an unauthenticated oracle on
 -- whether a given session exists.
+--
+-- ⚠️ THE NUMBERS ARE 3 AND 2 SINCE 20260827160000, when the limit moved from 5
+-- per hour to 3 per rolling 24h. This check lives in a DIFFERENT suite from the
+-- one that pins the limit itself, which is exactly why it was missed and caught
+-- only by CI: the allowance is asserted in two files and both have to move.
 -- -----------------------------------------------------------------------------
 begin;
 do $$
@@ -316,15 +321,15 @@ begin
     '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
 
   select public.bug_report_quota_remaining() into v_remaining;
-  if v_remaining <> 5 then
-    raise exception 'CHECK 8 FAILED: expected 5 remaining for a fresh reporter, got %', v_remaining;
+  if v_remaining <> 3 then
+    raise exception 'CHECK 8 FAILED: expected 3 remaining for a fresh reporter, got %', v_remaining;
   end if;
 
   perform public.submit_bug_report('one', null, null, null, null);
 
   select public.bug_report_quota_remaining() into v_remaining;
-  if v_remaining <> 4 then
-    raise exception 'CHECK 8 FAILED: expected 4 remaining after one report, got %', v_remaining;
+  if v_remaining <> 2 then
+    raise exception 'CHECK 8 FAILED: expected 2 remaining after one report, got %', v_remaining;
   end if;
 end $$;
 rollback;
