@@ -129,10 +129,29 @@ Deno.serve(async (request) => {
     return errorResponse('NOT_AUTHENTICATED', 'Sign in required.', 401);
   }
 
-  // ⚠️ NO BODY IS READ. The caller does not get to say which report to send —
-  // the claim serves the oldest unsent report belonging to THIS actor, so a
-  // forged id from a patched client has nothing to forge.
-  const { data, error } = await admin.rpc('claim_bug_report_email', { p_actor: actor });
+  // ⚠️ THE ID IS REQUIRED, and the first version of this deliberately read no
+  // body at all — the claim picked the oldest unsent report for the actor and
+  // assumed that was the one just filed. On 2026-08-27 it was not: the
+  // operator was emailed reports from an hour earlier while the new ones sat
+  // unsent, and one missed dispatch would have offset every report after it
+  // permanently. Guessing was the bug; the id is now carried end to end.
+  //
+  // Trusting it is safe because the DATABASE re-checks: the claim serves the
+  // row only when its reporter_id is this actor, so a forged id gets the same
+  // answer as a missing one.
+  let reportId: string;
+  try {
+    const body = (await request.json()) as { reportId?: string };
+    if (!body.reportId) throw new Error('reportId required');
+    reportId = body.reportId;
+  } catch {
+    return errorResponse('BAD_REQUEST', 'reportId is required.', 400);
+  }
+
+  const { data, error } = await admin.rpc('claim_bug_report_email', {
+    p_actor: actor,
+    p_report_id: reportId,
+  });
   if (error) {
     console.error('[bug-report] claim failed', error.message);
     return errorResponse('CLAIM_FAILED', 'Could not claim the report.', 500);
@@ -140,7 +159,8 @@ Deno.serve(async (request) => {
 
   const report = data as ClaimedReport | null;
   if (!report?.claimed) {
-    // Nothing to send, not theirs, does not exist — one answer for all three.
+    // Already sent, not theirs, does not exist — one answer for all three, so
+    // this is not an oracle for which of them is true.
     return jsonResponse({ sent: false });
   }
 
