@@ -67,6 +67,9 @@ const BUCKET = 'bug-screenshots';
 interface ClaimedReport {
   claimed: boolean;
   id?: string;
+  reporter_id?: string;
+  prior_reports?: number;
+  previous_report_at?: string | null;
   created_at?: string;
   message?: string;
   expected?: string | null;
@@ -91,27 +94,130 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** `label: value` rows, skipping anything the reporter left unanswered — an
- *  empty row says nothing and makes the real answers harder to find. */
-function factRows(report: ClaimedReport): string {
-  const facts: [string, string | null | undefined][] = [
+/**
+ * A timestamp an operator can read at a glance, in UK time.
+ *
+ * ⚠️ THE ZONE IS NAMED IN THE OUTPUT. The column is timestamptz and the raw
+ * value is UTC, which in British Summer Time is an hour off what the reporter's
+ * phone said — enough to make a trail of events look like it happened before
+ * the thing it followed. Printing the zone is what stops that being a guess.
+ */
+function formatWhen(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Europe/London',
+    timeZoneName: 'short',
+  }).format(date);
+}
+
+/** "3 days ago", for the previous-report line. Rough on purpose — the exact
+ *  timestamp is beside it and the useful signal is the gap, not the instant. */
+function formatAgo(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return null;
+  const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} hr ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
+/**
+ * Everything about the report that is not its free text, as label/value pairs.
+ *
+ * ⚠️ WHO SENT IT COMES FIRST. The email carried no reporter at all until
+ * 2026-08-27, so an operator reading a report had nothing to reply to and no
+ * way to look the person up — while the app had been telling that person their
+ * account travels "so we can reply". Identity leads because replying is the
+ * commonest thing to want to do next.
+ *
+ * Anything the reporter left unanswered is dropped rather than printed empty:
+ * a column of blanks makes the answers that ARE there harder to find.
+ */
+function facts(
+  report: ClaimedReport,
+  reporterEmail: string | null,
+): [string, string | null | undefined][] {
+  const prior = report.prior_reports ?? 0;
+  const previous = formatWhen(report.previous_report_at);
+  const ago = formatAgo(report.previous_report_at);
+
+  return [
+    ['From', reporterEmail],
+    ['Reporter', report.reporter_id],
+    [
+      'History',
+      prior === 0
+        ? 'First report from this account'
+        : `${prior} earlier report${prior === 1 ? '' : 's'}` +
+          (previous ? ` — last ${previous}${ago ? ` (${ago})` : ''}` : ''),
+    ],
+    ['Filed', formatWhen(report.created_at)],
     ['Area', report.area],
     ['Severity', report.severity],
     ['Frequency', report.frequency],
-    ['App version', report.app_version],
-    ['Platform', report.platform],
-    ['OS', report.os_version],
     ['Device', report.device_model],
-    ['Filed', report.created_at],
+    ['Platform', report.platform],
+    ['OS version', report.os_version],
+    ['App version', report.app_version],
+    ['Report id', report.id],
   ];
-  return facts
+}
+
+function factRowsHtml(rows: [string, string | null | undefined][]): string {
+  return rows
     .filter(([, value]) => value)
     .map(
       ([label, value]) =>
-        `<tr><td style="padding:2px 12px 2px 0;color:#666">${label}</td>` +
-        `<td style="padding:2px 0">${escapeHtml(String(value))}</td></tr>`,
+        `<tr><td style="padding:3px 16px 3px 0;color:#666;white-space:nowrap;vertical-align:top">${label}</td>` +
+        `<td style="padding:3px 0">${escapeHtml(String(value))}</td></tr>`,
     )
     .join('');
+}
+
+/**
+ * The plain-text alternative.
+ *
+ * ⚠️ NOT OPTIONAL POLITENESS. A multipart email with a text part is markedly
+ * less likely to be filtered than HTML alone, and this one is sent by a shared
+ * sender to a gmail address — the exact shape spam filters are hardest on. It
+ * also means the report is readable in a client that refuses to render HTML,
+ * which is the client an operator is most likely to be triaging from.
+ */
+function plainText(
+  report: ClaimedReport,
+  rows: [string, string | null | undefined][],
+  links: { label: string; url: string | null }[],
+): string {
+  const lines: string[] = ['BUG REPORT', ''];
+
+  lines.push(report.message ?? '', '');
+  if (report.expected) {
+    lines.push('EXPECTED INSTEAD', report.expected, '');
+  }
+
+  for (const [label, value] of rows) {
+    if (value) lines.push(`${label.padEnd(12)} ${value}`);
+  }
+
+  if (links.length) {
+    lines.push('', 'SCREENSHOTS (links expire in 7 days)');
+    for (const link of links) {
+      lines.push(link.url ? `${link.label}: ${link.url}` : `${link.label}: not linkable`);
+    }
+  }
+
+  const trail = report.breadcrumbs ?? [];
+  if (trail.length) {
+    lines.push('', 'RECENT ACTIVITY (event names only)', ...trail);
+  }
+
+  return lines.join('\n');
 }
 
 Deno.serve(async (request) => {
@@ -164,45 +270,78 @@ Deno.serve(async (request) => {
     return jsonResponse({ sent: false });
   }
 
+  // ⚠️ THE ADDRESS IS RESOLVED HERE, NOT IN SQL. The claim returns the
+  // reporter's UUID only; turning it into an address goes through the auth
+  // admin API rather than a SECURITY DEFINER function reading auth.users,
+  // which would put a path to every user's email behind a function whose job
+  // is bug reports. A failure is not fatal — the id is still in the email and
+  // is enough to look the person up — so this never blocks the send.
+  let reporterEmail: string | null = null;
+  if (report.reporter_id) {
+    try {
+      const { data: user } = await admin.auth.admin.getUserById(report.reporter_id);
+      reporterEmail = user?.user?.email ?? null;
+    } catch {
+      console.error('[bug-report] could not resolve the reporter address');
+    }
+  }
+
   // Sign each screenshot. A path that fails to sign is reported as such rather
   // than dropped: an operator told "3 screenshots" who can see two links would
   // otherwise wonder which one they are missing.
   const paths = report.screenshot_paths ?? [];
-  const links: string[] = [];
+  const links: { label: string; url: string | null }[] = [];
   for (const [index, path] of paths.entries()) {
     const { data: signed } = await admin.storage
       .from(BUCKET)
       .createSignedUrl(path, LINK_TTL_SECONDS);
-    links.push(
-      signed?.signedUrl
-        ? `<li><a href="${signed.signedUrl}">Screenshot ${index + 1}</a> (link expires in 7 days)</li>`
-        : `<li>Screenshot ${index + 1} — could not be linked; open it from the dashboard</li>`,
-    );
+    links.push({ label: `Screenshot ${index + 1}`, url: signed?.signedUrl ?? null });
   }
+  const linksHtml = links
+    .map((link) =>
+      link.url
+        ? `<li><a href="${link.url}">${link.label}</a> <span style="color:#888">(expires in 7 days)</span></li>`
+        : `<li>${link.label} — could not be linked; open it from the dashboard</li>`,
+    )
+    .join('');
 
+  const rows = facts(report, reporterEmail);
   const trail = (report.breadcrumbs ?? []).map((line) => escapeHtml(line)).join('<br>');
+
+  // ⚠️ THE SUBJECT CARRIES THE TRIAGE FIELDS, because a mailbox list view is
+  // mostly subjects and "[Bug] report — the map went blank" tells you nothing
+  // about whether to open it now. Severity and area are exactly the two things
+  // that decide that, and they are the reporter's own words for it.
+  const summary = (report.message ?? '').replace(/\s+/g, ' ').trim();
   const subject =
-    `[Bug] ${report.severity ?? 'report'} — ${(report.message ?? '').slice(0, 60)}` +
-    ((report.message ?? '').length > 60 ? '…' : '');
+    `[Bug${report.severity ? ` · ${report.severity}` : ''}` +
+    `${report.area ? ` · ${report.area}` : ''}] ` +
+    (summary.length > 60 ? `${summary.slice(0, 60)}…` : summary);
 
   const html = `
-    <h2 style="margin:0 0 12px">Bug report</h2>
-    <p style="white-space:pre-wrap;font-size:16px">${escapeHtml(report.message ?? '')}</p>
+    <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px">
+    <h2 style="margin:0 0 4px">Bug report</h2>
+    <p style="margin:0 0 16px;color:#888;font-size:13px">
+      ${escapeHtml(formatWhen(report.created_at) ?? '')}
+    </p>
+    <div style="border-left:3px solid #ddd;padding:2px 0 2px 14px;margin-bottom:18px">
+      <p style="white-space:pre-wrap;font-size:16px;margin:0">${escapeHtml(report.message ?? '')}</p>
+    </div>
     ${
       report.expected
-        ? `<p style="margin-top:16px"><strong>Expected instead</strong><br>
+        ? `<p style="margin:0 0 18px"><strong>Expected instead</strong><br>
            <span style="white-space:pre-wrap">${escapeHtml(report.expected)}</span></p>`
         : ''
     }
-    <table style="margin-top:16px;font-size:14px;border-collapse:collapse">${factRows(report)}</table>
-    ${links.length ? `<h3 style="margin:20px 0 6px">Screenshots</h3><ul>${links.join('')}</ul>` : ''}
+    <table style="font-size:14px;border-collapse:collapse">${factRowsHtml(rows)}</table>
+    ${links.length ? `<h3 style="margin:20px 0 6px">Screenshots</h3><ul style="margin:0;padding-left:20px">${linksHtml}</ul>` : ''}
     ${
       trail
         ? `<h3 style="margin:20px 0 6px">Recent activity</h3>
            <pre style="font-size:12px;color:#444;white-space:pre-wrap">${trail}</pre>`
         : ''
     }
-    <p style="margin-top:20px;font-size:12px;color:#888">Report ${report.id}</p>
+    </div>
   `;
 
   try {
@@ -212,7 +351,20 @@ Deno.serve(async (request) => {
         Authorization: `Bearer ${requireEnv('RESEND_API_KEY')}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: FROM_ADDRESS, to: [TO_ADDRESS], subject, html }),
+      body: JSON.stringify({
+        from: FROM_ADDRESS,
+        to: [TO_ADDRESS],
+        subject,
+        html,
+        // The text alternative — see plainText() for why it is not politeness.
+        text: plainText(report, rows, links),
+        // ⚠️ REPLY GOES TO THE REPORTER. The app tells them their account
+        // travels "so we can reply", and this is what makes that true: hitting
+        // reply reaches the person who wrote it rather than the shared sender,
+        // which nobody reads. Omitted when the address could not be resolved,
+        // because a reply-to pointing at the sending domain is worse than none.
+        ...(reporterEmail ? { reply_to: reporterEmail } : {}),
+      }),
     });
 
     if (!response.ok) {
