@@ -1,23 +1,40 @@
 /**
- * WHAT:  Tests for the Settings screen — the Appearance chooser and the four
- *        permission rows.
- * WHY:   Two things here can go quietly wrong. The Appearance rows must bind to
- *        the stored PREFERENCE rather than the effective scheme, or "System"
- *        becomes unreachable again — which is the whole reason this screen
- *        exists. And a permission row must send the user to the right place for
- *        the state it is in: an unexplained OS dialog fired at a denied
- *        permission on Android burns their last chance to grant it.
+ * WHAT:  Tests for the Settings screen — the Dark mode switch, the notification
+ *        categories, and the four permission rows.
+ * WHY:   Two things here can go quietly wrong. The Dark mode switch must bind
+ *        to the EFFECTIVE scheme, not the stored preference: while preference
+ *        is 'system' it has no light/dark value, so binding to it would show
+ *        OFF on a dark phone — the control contradicting the screen.
+ *
+ *        ⚠️ THAT IS THE REVERSE OF WHAT THIS HEADER SAID UNTIL 2026-08-26, and
+ *        the reversal is deliberate rather than drift. It read "must bind to
+ *        the stored PREFERENCE … or 'System' becomes unreachable again", which
+ *        was true of the three-row chooser that stood here for two days. The
+ *        owner has since chosen a single switch, accepting that 'system'
+ *        becomes unreachable once flipped. A test now pins that acceptance, so
+ *        changing back is a decision rather than an accident.
+ *
+ *        And a permission row must send the user to the right place for the
+ *        state it is in: an unexplained OS dialog fired at a denied permission
+ *        on Android burns their last chance to grant it.
+ *
+ *        A third was added with the 2026-08-26 icon rail: WHICH glyph each
+ *        notification category gets. TypeScript pins that every category has
+ *        one, and nothing else pins that it is not a glyph the Permissions
+ *        group below is already using for something else.
  * LINKS: ./SettingsScreen.tsx; ../components/PermissionRow.tsx;
  *        src/features/permissions.
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { Bell, MapPin } from 'lucide-react-native';
 import { Linking } from 'react-native';
 
+import { CATEGORY_COPY, UNMUTABLE_KINDS } from '@/features/notifications';
 import { ThemeControlsContext } from '@/shared/theme/paletteContext';
 import type { ThemePreference } from '@/shared/theme';
 
-import { SettingsScreen } from './SettingsScreen';
+import { CATEGORY_ICONS, SettingsScreen } from './SettingsScreen';
 
 jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
@@ -81,12 +98,21 @@ jest.mock('@/features/permissions', () => ({
   }),
 }));
 
-/** Renders with a real setter so the Appearance choice can be asserted — the
- *  defaulted context's setPreference is a __DEV__ console.warn no-op. */
-async function renderWithTheme(preference: ThemePreference = 'system') {
+/**
+ * Renders with a real setter so the Appearance choice can be asserted — the
+ * defaulted context's setPreference is a __DEV__ console.warn no-op.
+ *
+ * `scheme` is separate from `preference` on purpose, and defaults to light. The
+ * two only diverge under 'system' — a fresh install on a dark phone — which is
+ * exactly the case the Dark switch has to read correctly.
+ */
+async function renderWithTheme(
+  preference: ThemePreference = 'system',
+  scheme: 'light' | 'dark' = 'light',
+) {
   const setPreference = jest.fn();
   const view = await render(
-    <ThemeControlsContext.Provider value={{ preference, scheme: 'light', setPreference }}>
+    <ThemeControlsContext.Provider value={{ preference, scheme, setPreference }}>
       <SettingsScreen />
     </ThemeControlsContext.Provider>,
   );
@@ -108,44 +134,68 @@ beforeEach(() => {
 });
 
 describe('Appearance', () => {
-  it('⚠️ offers System, which the old two-state switch could not reach', async () => {
-    // The point of the screen. Bound to `preference`, a real three-state union;
-    // the switch it replaced was bound to `scheme`, which has no value meaning
-    // "follow the phone" — so once flipped there was no way back.
-    const { view } = await renderWithTheme('system');
-    const row = await view.findByTestId('row-appearance-system');
+  // One "Dark mode" switch (owner, 2026-08-26). Bound to `scheme` — what is on
+  // screen — because while `preference` is 'system' it has no light/dark value
+  // for a switch to mirror.
 
-    expect(row.props.accessibilityRole).toBe('radio');
-    // `selected`, not `checked` — ListRow's deliberate split: "radio,
-    // selected" reads as this-one-of-several, while `checked` is reserved for
-    // switch rows. Asserted the wrong way round first.
-    expect(row.props.accessibilityState).toMatchObject({ selected: true });
+  it('⚠️ mirrors what is ON SCREEN, not the stored preference', async () => {
+    // A fresh install sits on 'system'. On a dark phone that renders a dark
+    // app, and a switch bound to `preference` would read OFF while the user
+    // looks at a dark screen — the control contradicting the thing it controls.
+    const { view } = await renderWithTheme('system', 'dark');
+    const row = await view.findByTestId('row-appearance-dark');
+
+    expect(row.props.accessibilityRole).toBe('switch');
+    // `checked`, not `selected` — ListRow's split: `checked` is switch state,
+    // `selected` is for one-of-several chooser rows. This group was the latter
+    // between 2026-08-24 and 2026-08-26.
+    expect(row.props.accessibilityState).toMatchObject({ checked: true });
   });
 
-  it('marks exactly one choice, and it is the stored preference', async () => {
-    const { view } = await renderWithTheme('dark');
+  it('reads off on a light phone that has never been touched', async () => {
+    const { view } = await renderWithTheme('system', 'light');
+    const row = await view.findByTestId('row-appearance-dark');
 
-    expect((await view.findByTestId('row-appearance-dark')).props.accessibilityState).toMatchObject(
-      { selected: true },
-    );
-    // `false`, never undefined — a radio group where the others are silent
-    // leaves a screen reader with one row claiming nothing.
-    expect(
-      (await view.findByTestId('row-appearance-system')).props.accessibilityState,
-    ).toMatchObject({ selected: false });
-    expect((await view.findByTestId('row-appearance-light')).props.accessibilityState).toMatchObject(
-      { selected: false },
-    );
+    expect(row.props.accessibilityState).toMatchObject({ checked: false });
   });
 
-  it('stores the choice that was tapped', async () => {
-    const { view, setPreference } = await renderWithTheme('system');
+  it('turns dark on', async () => {
+    const { view, setPreference } = await renderWithTheme('light', 'light');
 
     fireEvent.press(await view.findByTestId('row-appearance-dark'));
-    expect(setPreference).toHaveBeenCalledWith('dark');
 
-    fireEvent.press(await view.findByTestId('row-appearance-system'));
-    expect(setPreference).toHaveBeenCalledWith('system');
+    expect(setPreference).toHaveBeenCalledWith('dark');
+  });
+
+  it('turns dark off', async () => {
+    const { view, setPreference } = await renderWithTheme('dark', 'dark');
+
+    fireEvent.press(await view.findByTestId('row-appearance-dark'));
+
+    expect(setPreference).toHaveBeenCalledWith('light');
+  });
+
+  it('⚠️ writes a PINNED choice, never system — the accepted cost of one switch', async () => {
+    // The recorded price of a two-state control (2026-08-10, re-accepted
+    // 2026-08-26): it has no value meaning "follow the phone", so the first
+    // flip pins the app and there is no route back short of clearing app data.
+    // This test does not object to that; it pins it, so that if 'system' is
+    // ever wanted back the change is deliberate and this test is what fails.
+    const { view, setPreference } = await renderWithTheme('system', 'dark');
+
+    fireEvent.press(await view.findByTestId('row-appearance-dark'));
+
+    expect(setPreference).toHaveBeenCalledWith('light');
+    expect(setPreference).not.toHaveBeenCalledWith('system');
+  });
+
+  it('offers exactly one appearance control', async () => {
+    // Guards the reverse mistake: a "Match your phone" row creeping back in
+    // beside this one would give two switches that can disagree.
+    const { view } = await renderWithTheme();
+
+    expect(view.queryByTestId('row-appearance-match')).toBeNull();
+    expect(await view.findByTestId('row-appearance-dark')).toBeTruthy();
   });
 });
 
@@ -187,21 +237,26 @@ describe('Notification categories', () => {
     expect(mockShowToast).toHaveBeenCalledWith('Couldn’t save that. Please try again.', 'error');
   });
 
-  it('⚠️ says which two kinds may never be muted, as a footnote not a row', async () => {
-    // Built as a ListRow first, which was wrong three ways: ListRow hands RN
-    // `disabled={!pressable}` and Pressable folds that into accessibilityState,
-    // so a row with no onPress is ANNOUNCED AS DIMMED — the "stuck control
-    // reads as a bug" reading this text exists to avoid. It also inherited
-    // numberOfLines={2}, which cut the sentence off before the half that
-    // explains anything.
+  it('⚠️ offers a switch ONLY for kinds that can actually be muted', async () => {
+    // Replaces the test for the "Two things stay on whatever you choose here…"
+    // footnote, removed on the owner's call 2026-08-26.
+    //
+    // ⚠️ WHAT THAT LEAVES IS A DISCLOSURE GAP, NOT A BEHAVIOUR ONE, and this
+    // test pins the half that still matters. `sighting` and `closed_uncredited`
+    // have no category column — notification_category() returns NULL for both —
+    // so they cannot be muted no matter what these switches say. The screen no
+    // longer mentions that, so someone who turns all five off may believe they
+    // have silenced everything, including the push that is the only door to the
+    // 72-hour dispute window. What must NOT happen is a switch appearing that
+    // claims to control one of them; that would turn a silence into a false
+    // promise. UNMUTABLE_KINDS is the source of truth, asserted against the
+    // migration in supabase/tests/notificationCategories.test.ts.
     const { view } = await renderWithTheme();
-    const note = await view.findByTestId('notify-always-on');
 
-    expect(note.props.accessibilityState?.disabled).toBeFalsy();
-    expect(note.props.accessibilityRole).toBeUndefined();
-    // The WHOLE sentence, including the half that was being clipped.
-    expect(await view.findByText(/72 hours/)).toBeTruthy();
-    expect(await view.findByText(/Neither can be got back if you miss it/)).toBeTruthy();
+    for (const kind of UNMUTABLE_KINDS) {
+      expect(view.queryByTestId(`row-notify-${kind}`)).toBeNull();
+    }
+    expect(await view.findByTestId('row-notify-alerts')).toBeTruthy();
   });
 
   it('hides the whole group from a guest rather than showing dead switches', async () => {
@@ -212,8 +267,44 @@ describe('Notification categories', () => {
     const { view } = await renderWithTheme();
 
     expect(view.queryByTestId('row-notify-alerts')).toBeNull();
-    expect(view.queryByTestId('notify-always-on')).toBeNull();
-    expect(await view.findByTestId('row-appearance-system')).toBeTruthy();
+    // Appearance is AsyncStorage-backed and device-local, so it still works for
+    // a guest — the point of there being no auth gate on the screen itself.
+    expect(await view.findByTestId('row-appearance-dark')).toBeTruthy();
+  });
+});
+
+describe('⚠️ the notification icon rail', () => {
+  // The Airbnb pass (2026-08-26) gave the Notifications group the leading icon
+  // rail the reference runs down every settings row. TypeScript already
+  // guarantees every category HAS an icon — CATEGORY_ICONS is a total Record —
+  // so these tests cover only the half it cannot: WHICH icon.
+
+  it('gives every category its own glyph, never a shared one', async () => {
+    const glyphs = Object.values(CATEGORY_ICONS);
+
+    expect(new Set(glyphs).size).toBe(glyphs.length);
+  });
+
+  it('⚠️ never reuses the two glyphs the Permissions group owns', async () => {
+    // The reason `alerts` is Radar rather than the obvious Bell. On this one
+    // screen Bell is the OS notification permission and MapPin is the OS
+    // location permission, both a few rows below. Putting either against a push
+    // CATEGORY as well would mean one glyph standing for two different things
+    // within a single scroll — exactly the confusion a rail is meant to remove.
+    // `alerts: Bell` compiles fine, so only this stops it coming back.
+    const glyphs = Object.values(CATEGORY_ICONS);
+
+    expect(glyphs).not.toContain(Bell);
+    expect(glyphs).not.toContain(MapPin);
+  });
+
+  it('covers every category the screen renders', async () => {
+    // Guards the widening case: if CATEGORY_ICONS ever loosens to a Partial,
+    // the total-Record compile error disappears and a row renders with a bare
+    // left edge that no longer lines up with the four beside it.
+    expect(Object.keys(CATEGORY_ICONS).sort()).toEqual(
+      CATEGORY_COPY.map((entry) => entry.category).sort(),
+    );
   });
 });
 
