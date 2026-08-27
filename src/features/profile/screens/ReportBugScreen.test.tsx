@@ -63,9 +63,12 @@ jest.mock('@/features/auth', () => ({
 
 // Mocked for the same reason bugReportApi is: the real barrel constructs the
 // supabase client at import, which throws without env vars.
+// ⚠️ ARGUMENTS PASS THROUGH. Stubbed as `() => mockNotifyBugReport()` this
+// swallowed them, so the test asserting the dispatch happened passed while the
+// report id — the entire fix for emailing the WRONG report — was never checked.
 const mockNotifyBugReport = jest.fn();
 jest.mock('@/features/notifications', () => ({
-  notifyBugReport: () => mockNotifyBugReport(),
+  notifyBugReport: (...args: unknown[]) => mockNotifyBugReport(...args),
 }));
 
 jest.mock('expo-image-picker', () => ({
@@ -216,7 +219,13 @@ describe('the fast path', () => {
     expect(mockShowToast).not.toHaveBeenCalled();
   });
 
-  it('asks for the report to be emailed, but only once it is saved', async () => {
+  it('⚠️ emails the report it just filed, named by the id the RPC returned', async () => {
+    // THE TEST FOR THE 2026-08-27 INCIDENT. The dispatch used to carry nothing
+    // and the sender claimed the reporter's oldest UNSENT report instead —
+    // which emailed reports from an hour earlier while the new ones sat
+    // unsent, and would have lagged permanently after any missed dispatch.
+    // Passing the wrong id, or none, is the bug; this pins the exact value.
+    mockSubmit.mockResolvedValue('188d2e53-ac42-48ea-bd32-1a43d1a0fbda');
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
@@ -225,10 +234,24 @@ describe('the fast path', () => {
     });
 
     await waitFor(() => expect(mockNotifyBugReport).toHaveBeenCalled());
-    // ⚠️ Carries NOTHING. The Edge Function reads no body and the claim RPC
-    // serves only this caller's own oldest unsent report, so there is no id for
-    // a patched client to forge and the report text makes no second trip.
-    expect(mockNotifyBugReport).toHaveBeenCalledWith();
+    expect(mockNotifyBugReport).toHaveBeenCalledWith('188d2e53-ac42-48ea-bd32-1a43d1a0fbda');
+  });
+
+  it('dispatches nothing when the RPC returned no id, rather than guessing', async () => {
+    // A null id means the email has nothing to name. Dispatching anyway is what
+    // the old design did, and the sender's fallback was to guess by age.
+    mockSubmit.mockResolvedValue(null);
+    const view = await render(<ReportBugScreen />);
+    await walkToReview(view, 'The map went blank when I opened it');
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Send report'));
+    });
+
+    // The report still SAVED and the user is still told so — only the email is
+    // skipped. Losing the notification must never look like losing the report.
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('Report submitted'));
+    expect(mockNotifyBugReport).toHaveBeenCalledWith(null);
   });
 
   it('⚠️ does not ask for an email when the report was never saved', async () => {

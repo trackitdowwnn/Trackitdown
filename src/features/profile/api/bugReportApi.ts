@@ -123,6 +123,13 @@ export async function readBugReportQuota(): Promise<number | null> {
  * Screenshots must already be uploaded: pass their PATHS, which the server
  * verifies live under the caller's own folder.
  *
+ * ⚠️ RETURNS THE NEW REPORT'S ID, which the caller hands to notifyBugReport so
+ * the operator is emailed the report that was actually just filed. Before the
+ * RPC returned it, the email path had to GUESS — it took the oldest unsent
+ * report for that reporter — and on 2026-08-27 that emailed reports from an
+ * hour earlier while the new ones sat unsent. The id is the fix, so it is not
+ * optional decoration: dropping it on the floor here brings the guessing back.
+ *
  * @throws {BugReportError} on any refusal. `.message` is safe to show:
  *   `NOT_AUTHENTICATED` (signed out), `INVALID_INPUT` (empty or over 2000
  *   characters, or a screenshot path that is not the caller's), `RATE_LIMITED`
@@ -132,10 +139,10 @@ export async function submitBugReport(
   message: string,
   diagnostics: BugDiagnostics,
   details: BugReportDetails,
-): Promise<void> {
+): Promise<string | null> {
   const expected = details.expected?.trim();
 
-  const { error } = await supabase.rpc('submit_bug_report', {
+  const { data, error } = await supabase.rpc('submit_bug_report', {
     p_message: message.trim(),
     p_app_version: diagnostics.appVersion,
     p_platform: diagnostics.platform,
@@ -193,4 +200,8 @@ export async function submitBugReport(
   }
 
   log.info('bug_report_sent');
+  // The id, or null if the server gave us nothing recognisable. Null is not an
+  // error — the report IS saved — it only means the email dispatch has nothing
+  // to name, and notifyBugReport skips rather than falling back to a guess.
+  return typeof data === 'string' ? data : null;
 }

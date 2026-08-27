@@ -116,7 +116,7 @@ export function ReportBugScreen() {
 
     const screenshotPaths = await uploadBugScreenshots(userId, answers.shots ?? []);
 
-    await submitBugReport(answers.message?.trim() ?? '', diagnostics, {
+    const reportId = await submitBugReport(answers.message?.trim() ?? '', diagnostics, {
       area: answers.area ?? null,
       severity: answers.severity ?? null,
       frequency: answers.frequency ?? null,
@@ -127,10 +127,13 @@ export function ReportBugScreen() {
 
     // ⚠️ AFTER the RPC, and void. The report is saved by the line above; the
     // email is a side effect of that, never a condition of it. notifyBugReport
-    // cannot throw and carries no arguments — the Edge Function reads no body
-    // and the claim RPC serves only this caller's own oldest unsent report, so
-    // there is nothing here to forge and the text makes no second trip.
-    notifyBugReport();
+    // cannot throw.
+    //
+    // ⚠️ AND IT TAKES THE ID THE RPC JUST RETURNED. Called with nothing, the
+    // sender used to claim the reporter's oldest UNSENT report and assume that
+    // was this one — which on 2026-08-27 emailed reports from an hour earlier.
+    // Only the id travels; the text makes no second trip.
+    notifyBugReport(reportId);
   };
 
   /**

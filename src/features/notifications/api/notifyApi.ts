@@ -88,15 +88,23 @@ export function notifySightingConfirmed(sightingId: string): void {
 /**
  * Email the operator the bug report that was just filed.
  *
- * ⚠️ CARRIES NOTHING. Not the id, not the text — the Edge Function reads no
- * body at all, and the claim RPC behind it serves only the oldest unsent report
- * belonging to the CALLER. There is nothing here for a patched client to forge,
- * and the report's text never makes a second trip over the wire.
+ * ⚠️ THE ID IS THE WHOLE POINT. This carried NOTHING at first: the Edge
+ * Function read no body and the claim served the oldest unsent report for the
+ * caller, on the assumption that was the one just written. On 2026-08-27 it
+ * emailed reports from an hour earlier while the new ones sat unsent, and a
+ * single missed dispatch would have offset every later report permanently.
+ * Only the id travels — never the text, which makes no second trip — and the
+ * claim RPC re-checks that the report belongs to the caller, so a forged id
+ * from a patched client reaches nothing.
+ *
+ * A null id (the RPC returned nothing recognisable) skips the dispatch rather
+ * than falling back to a guess, because the guess is what broke.
  *
  * Void and silent like its siblings: the row is committed before this runs, so
  * whether an email leaves is never the reporter's problem to see an error
  * about — they have done their bit.
  */
-export function notifyBugReport(): void {
-  dispatch('notify-bug-report', {});
+export function notifyBugReport(reportId: string | null): void {
+  if (!reportId) return;
+  dispatch('notify-bug-report', { reportId });
 }
