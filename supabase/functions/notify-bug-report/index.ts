@@ -22,17 +22,31 @@
  *        fire-and-forget. Every failure path here returns rather than throws.
  *
  *        HONEST LIMITATION: client-invoked, so a report whose app dies before
- *        the call is emailed only when the NEXT report drains the backlog (the
- *        claim takes the oldest unsent one). That is the same limitation every
- *        notify-* function in this project carries, and a pg_net trigger on
- *        insert is the proper fix.
- * LINKS: supabase/migrations/20260827100000_bug_report_email.sql (the claim);
- *        src/features/notifications/api/notifyApi.ts (the one door that calls
- *          this); ../_shared/clients.ts; ../_shared/http.ts.
+ *        the call is never emailed at all. The claim is BY ID now, so nothing
+ *        drains it later — that trade was taken deliberately, because the
+ *        draining version emailed the wrong report (2026-08-27). The row is
+ *        still in bug_reports either way; a pg_net trigger on insert is the
+ *        proper fix and would close it for good.
+ * LINKS: ./emailContent.ts (everything that builds the message, and its tests);
+ *        supabase/migrations/20260827140000_bug_report_email_context.sql (the
+ *          claim); src/features/notifications/api/notifyApi.ts (the one door
+ *          that calls this); ../_shared/clients.ts; ../_shared/http.ts.
  */
 
 import { createServiceRoleClient, requireEnv } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+// ⚠️ THE CONTENT BUILDERS LIVE NEXT DOOR SO THEY CAN BE TESTED. They are pure
+// and Deno-free on purpose: a TypeError in one of them stopped every bug-report
+// email on 2026-08-27, and this directory is outside tsconfig and outside lint.
+import {
+  buildSubject,
+  escapeHtml,
+  facts,
+  factRowsHtml,
+  formatWhen,
+  plainText,
+  type ClaimedReport,
+} from './emailContent.ts';
 
 /**
  * Where reports go, and who they come from.
@@ -64,161 +78,6 @@ const LINK_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 const BUCKET = 'bug-screenshots';
 
-interface ClaimedReport {
-  claimed: boolean;
-  id?: string;
-  reporter_id?: string;
-  prior_reports?: number;
-  previous_report_at?: string | null;
-  created_at?: string;
-  message?: string;
-  expected?: string | null;
-  area?: string | null;
-  severity?: string | null;
-  frequency?: string | null;
-  app_version?: string | null;
-  platform?: string | null;
-  os_version?: string | null;
-  device_model?: string | null;
-  breadcrumbs?: string[] | null;
-  screenshot_paths?: string[] | null;
-}
-
-/** Escape anything that lands inside the HTML body. The message is free text a
- *  user typed, so it is the one thing here that can carry markup. */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-/**
- * A timestamp an operator can read at a glance, in UK time.
- *
- * ⚠️ THE ZONE IS NAMED IN THE OUTPUT. The column is timestamptz and the raw
- * value is UTC, which in British Summer Time is an hour off what the reporter's
- * phone said — enough to make a trail of events look like it happened before
- * the thing it followed. Printing the zone is what stops that being a guess.
- */
-function formatWhen(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat('en-GB', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Europe/London',
-    timeZoneName: 'short',
-  }).format(date);
-}
-
-/** "3 days ago", for the previous-report line. Rough on purpose — the exact
- *  timestamp is beside it and the useful signal is the gap, not the instant. */
-function formatAgo(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const then = new Date(value).getTime();
-  if (Number.isNaN(then)) return null;
-  const minutes = Math.max(0, Math.round((Date.now() - then) / 60000));
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} hr ago`;
-  return `${Math.round(hours / 24)} days ago`;
-}
-
-/**
- * Everything about the report that is not its free text, as label/value pairs.
- *
- * ⚠️ WHO SENT IT COMES FIRST. The email carried no reporter at all until
- * 2026-08-27, so an operator reading a report had nothing to reply to and no
- * way to look the person up — while the app had been telling that person their
- * account travels "so we can reply". Identity leads because replying is the
- * commonest thing to want to do next.
- *
- * Anything the reporter left unanswered is dropped rather than printed empty:
- * a column of blanks makes the answers that ARE there harder to find.
- */
-function facts(
-  report: ClaimedReport,
-  reporterEmail: string | null,
-): [string, string | null | undefined][] {
-  const prior = report.prior_reports ?? 0;
-  const previous = formatWhen(report.previous_report_at);
-  const ago = formatAgo(report.previous_report_at);
-
-  return [
-    ['From', reporterEmail],
-    ['Reporter', report.reporter_id],
-    [
-      'History',
-      prior === 0
-        ? 'First report from this account'
-        : `${prior} earlier report${prior === 1 ? '' : 's'}` +
-          (previous ? ` — last ${previous}${ago ? ` (${ago})` : ''}` : ''),
-    ],
-    ['Filed', formatWhen(report.created_at)],
-    ['Area', report.area],
-    ['Severity', report.severity],
-    ['Frequency', report.frequency],
-    ['Device', report.device_model],
-    ['Platform', report.platform],
-    ['OS version', report.os_version],
-    ['App version', report.app_version],
-    ['Report id', report.id],
-  ];
-}
-
-function factRowsHtml(rows: [string, string | null | undefined][]): string {
-  return rows
-    .filter(([, value]) => value)
-    .map(
-      ([label, value]) =>
-        `<tr><td style="padding:3px 16px 3px 0;color:#666;white-space:nowrap;vertical-align:top">${label}</td>` +
-        `<td style="padding:3px 0">${escapeHtml(String(value))}</td></tr>`,
-    )
-    .join('');
-}
-
-/**
- * The plain-text alternative.
- *
- * ⚠️ NOT OPTIONAL POLITENESS. A multipart email with a text part is markedly
- * less likely to be filtered than HTML alone, and this one is sent by a shared
- * sender to a gmail address — the exact shape spam filters are hardest on. It
- * also means the report is readable in a client that refuses to render HTML,
- * which is the client an operator is most likely to be triaging from.
- */
-function plainText(
-  report: ClaimedReport,
-  rows: [string, string | null | undefined][],
-  links: { label: string; url: string | null }[],
-): string {
-  const lines: string[] = ['BUG REPORT', ''];
-
-  lines.push(report.message ?? '', '');
-  if (report.expected) {
-    lines.push('EXPECTED INSTEAD', report.expected, '');
-  }
-
-  for (const [label, value] of rows) {
-    if (value) lines.push(`${label.padEnd(12)} ${value}`);
-  }
-
-  if (links.length) {
-    lines.push('', 'SCREENSHOTS (links expire in 7 days)');
-    for (const link of links) {
-      lines.push(link.url ? `${link.label}: ${link.url}` : `${link.label}: not linkable`);
-    }
-  }
-
-  const trail = report.breadcrumbs ?? [];
-  if (trail.length) {
-    lines.push('', 'RECENT ACTIVITY (event names only)', ...trail);
-  }
-
-  return lines.join('\n');
-}
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return preflightResponse();
@@ -308,15 +167,7 @@ Deno.serve(async (request) => {
   const rows = facts(report, reporterEmail);
   const trail = (report.breadcrumbs ?? []).map((line) => escapeHtml(line)).join('<br>');
 
-  // ⚠️ THE SUBJECT CARRIES THE TRIAGE FIELDS, because a mailbox list view is
-  // mostly subjects and "[Bug] report — the map went blank" tells you nothing
-  // about whether to open it now. Severity and area are exactly the two things
-  // that decide that, and they are the reporter's own words for it.
-  const summary = (report.message ?? '').replace(/\s+/g, ' ').trim();
-  const subject =
-    `[Bug${report.severity ? ` · ${report.severity}` : ''}` +
-    `${report.area ? ` · ${report.area}` : ''}] ` +
-    (summary.length > 60 ? `${summary.slice(0, 60)}…` : summary);
+  const subject = buildSubject(report);
 
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px">
