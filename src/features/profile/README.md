@@ -92,17 +92,34 @@ they were "phase 2" until then). They live in `notification_preferences` and
 are applied in `supabase/functions/_shared/push.ts` — see
 `src/features/notifications/lib/notificationPreferences.ts`.
 
-## Report a bug (2026-08-24)
+## Report a bug (2026-08-24; a wizard since 2026-08-27)
 
-`ReportBugScreen` — Profile → Support & legal → "Report a bug". Message, area,
-severity, frequency, what they expected, up to three screenshots. Writes via
-`submit_bug_report` (SECURITY DEFINER, `reporter_id` pinned to `auth.uid()`,
-5 per rolling hour) into `bug_reports`.
+Profile → Support & legal → "Report a bug". Message, area, severity, frequency,
+what they expected, up to three screenshots. Writes via `submit_bug_report`
+(SECURITY DEFINER, `reporter_id` pinned to `auth.uid()`, 5 per rolling hour)
+into `bug_reports`.
+
+Now the shared wizard framework's **fifth flow** (`lib/bugReportFlow.tsx`):
+three steps — what happened → where and how bad → screenshots — then review.
+`ReportBugScreen` is only the host; it builds the flow, reads the diagnostics
+once, and owns the submit.
+
+⚠️ **Only the first step asks for anything, and that is the design.** The other
+four flows serve someone motivated — posting a car, adding a vehicle, claiming a
+sighting. A bug report is altruistic and filed by someone already annoyed that
+something broke, so every extra screen is a chance to abandon. Steps 2 and 3
+carry permissive schemas AND `optional`, which makes a one-line report
+message → Next → Next → Send. `lib/bugReportFlow.test.tsx` pins that, because
+the failure is silent: nothing errors, people just give up.
 
 ⚠️ **The "Sent with your report" panel is the feature, not decoration.** It
 renders from the same readers that build the payload, so the screen cannot
 claim less than it sends, and the privacy policy names the same fields. **Any
 field added to the payload must appear in that panel in the same change.**
+It now lives in `components/BugDisclosurePanel.tsx` and renders as the review
+screen's footer — a better home than it had: on the old single screen it sat
+far below the fields, and someone who skipped ahead never re-read it. On review
+it is the last thing before "Send report".
 
 Three things it deliberately does NOT carry, and the reasoning is in
 `supabase/migrations/20260824100000_bug_reports.sql`: no log payloads (the
