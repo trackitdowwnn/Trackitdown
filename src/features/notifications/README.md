@@ -146,16 +146,28 @@ spotter who mutes the app is worth zero alerts forever.
 
 ## Screens
 
-- **AlertsScreen** (`/alerts`) — the list: each alert's name, what it watches
-  (`summariseAlert`), a pause switch, edit and delete, plus "Create an alert"
-  (disabled at the cap, which says so). Reached from **both** Profile rows
-  ("Alert location & radius" and "Notifications" are one setting in the user's
-  head) and from the alert-area sheet.
+- **AlertsScreen** (`/alerts`) — the list. Each alert is a card led by its ZONE
+  as a thumbnail (`AlertZoneThumb`), then its name, what it watches
+  (`summariseAlert`), and "Paused" when it is. Pressing the card edits it; the
+  pause switch stays on the row because pausing is the daily action; everything
+  rarer — pause/resume, edit, and a destructive delete — is behind the "⋯"
+  (`AlertActionsSheet`). "Create an alert" stays **tappable at the cap** and
+  says why, per the garage's rule that a dead control explains nothing.
+  Reached from **both** Profile rows ("Alert location & radius" and
+  "Notifications" are one setting in the user's head) and from the alert-area
+  sheet.
   It owns the **per-user** concerns that don't belong on any single alert: the
-  permission primer and the notifications-off notice. An alert can't fix a
-  phone-level block, and asking five times would be absurd.
+  notification permission, as one compact `AlertPermissionBanner`. An alert
+  can't fix a phone-level block, and asking five times would be absurd.
   **The list stays usable when notifications are off at OS level** — you can
-  manage alerts, they just won't fire, and a persistent notice says so.
+  manage alerts, they just won't fire, and the banner says so.
+
+  ⚠️ **The thumbnail is never load-bearing.** `AlertZoneGlyph` — a drawn point
+  and radius in tokens — is the bottom layer of every tile and the map fades in
+  over it, so a missing API key, Expo Go, offline, web and the `SHOW_MAP` kill
+  switch all resolve to the same correct picture. The same glyph is the empty
+  state's illustration, which makes the empty screen a preview of a full one.
+  Redesigned 2026-08-27; see `docs/design-refs/alerts/`.
   Honest states: loading, error, signed out, empty, and at-cap.
 - **AlertWizardScreen** (`/alerts/new`, `/alerts/[alertId]`) — one flow for
   create AND edit, the pattern `AddVehicleScreen` uses. In edit mode it holds a

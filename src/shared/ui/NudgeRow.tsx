@@ -46,6 +46,17 @@ export interface NudgeRowProps {
   onPress: () => void;
   /** Omit for a setup STEP (no ×); pass for a suggestion the user may refuse. */
   onDismiss?: () => void;
+  /**
+   * Who owns the horizontal gutter. Default `'feed'` — the row insets itself by
+   * the 16pt feed exception, which is what every original caller wants.
+   *
+   * ⚠️ PASS `'none'` INSIDE AN ALREADY-PADDED SCROLL. Forms and settings-shaped
+   * screens pad at 24 (DESIGN_SYSTEM), so a self-inseting row lands at 40 and
+   * is visibly narrower than everything beside it. A prop rather than a
+   * negative margin at the call site: the negative margin is a lie in the
+   * layout and silently breaks the day this constant moves.
+   */
+  gutter?: 'feed' | 'none';
   testID?: string;
   dismissTestID?: string;
 }
@@ -56,6 +67,7 @@ export const NudgeRow = memo(function NudgeRow({
   body,
   onPress,
   onDismiss,
+  gutter = 'feed',
   testID,
   dismissTestID,
 }: NudgeRowProps) {
@@ -69,7 +81,11 @@ export const NudgeRow = memo(function NudgeRow({
       // is reached separately as its own control.
       accessibilityLabel={`${title}. ${body}`}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row,
+        gutter === 'none' && styles.rowFlush,
+        pressed && styles.rowPressed,
+      ]}
       testID={testID}
     >
       <Icon size={sizes.icon} color={palette.textPrimary} />
@@ -102,6 +118,10 @@ export const NudgeRow = memo(function NudgeRow({
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    // The caller's scroll already owns the gutter — see the `gutter` prop.
+    rowFlush: {
+      marginHorizontal: 0,
+    },
     row: {
       // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.
       marginHorizontal: spacing.lg,

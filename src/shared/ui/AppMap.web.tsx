@@ -21,6 +21,17 @@ export interface AppMapExtraProps {
   interactive?: boolean;
   /** Ignored on web (kept for prop parity with the native map). */
   showsUserLocation?: boolean;
+  /** Ignored on web (kept for prop parity with the native map). */
+  liteMode?: boolean;
+  /**
+   * Ignored on web (kept for prop parity with the native map).
+   *
+   * ⚠️ NEVER CALLED HERE, and callers must cope. This stub renders a sentence,
+   * not a map, so anything waiting on `onReady` to fade a placeholder out would
+   * wait for ever — which is the correct outcome, because the placeholder is
+   * the only thing worth showing on web.
+   */
+  onReady?: () => void;
 }
 
 /** Web stubs matching the native re-exports — render nothing. */

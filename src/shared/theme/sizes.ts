@@ -190,6 +190,22 @@ export const sizes = {
    *  thumb rail + shutter row as one fixed-height block inside the wizard's
    *  scroll — fixed so the step never reflows as photos arrive. */
   cameraStep: 520,
+  /**
+   * The alert-zone thumbnail on an alert row (added 2026-08-27).
+   *
+   * An alert IS a place, and the list previously showed five identical grey
+   * text blocks. This is the smallest square that can carry a legible radius
+   * circle beside two lines of text without the row growing taller than the
+   * text needs — it matches `avatarLg` on purpose, so a row of alerts and a row
+   * of people share one silhouette.
+   */
+  alertThumb: 72,
+  /** The zone glyph's rings, drawn when there is no map (the empty state's
+   *  illustration, and the thumbnail's fallback). `glyphRing` is the outer
+   *  circle inside a `alertThumb` square; `glyphDot` is the point at its
+   *  centre — the same two marks the real map draws. */
+  alertGlyphRing: 44,
+  alertGlyphDot: 10,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

@@ -20,6 +20,15 @@
  *        to the others on the strength of this comment alone — check first, then
  *        make all four the same.
  *
+ *        ⚠️ A FIFTH CONSUMER EXISTS AND IS THE ONE CASE THAT IS ANSWERED.
+ *        AlertZoneThumb (2026-08-27) clips a rounded tile on Android and does
+ *        NOT need this mask, because it passes AppMap's `liteMode`: lite mode
+ *        draws a BITMAP into an ordinary view rather than into the GLSurfaceView
+ *        this whole file exists to work around, so there is no surface to
+ *        misrender. That is a reason specific to lite mode — it says nothing
+ *        about the three static cards above, which still draw normally. The
+ *        open question stands for them.
+ *
  *        GEOMETRY: a square corner intrudes past a radius-R arc by
  *        R(√2−1)/√2 ≈ 0.29R, so at radii.xl (24) the worst gap is ~7pt and
  *        spacing.md (12) covers it. The frame sits 12pt OUTSIDE the card, so

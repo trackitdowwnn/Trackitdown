@@ -67,6 +67,34 @@ export interface AppMapExtraProps {
    * surfaces draw their own control.
    */
   showsUserLocation?: boolean;
+  /**
+   * Android only: render a static BITMAP of the map instead of driving the full
+   * vector renderer. Default false.
+   *
+   * ⚠️ THIS IS WHAT MAKES MAPS-IN-A-LIST DEFENSIBLE. Google ships lite mode for
+   * exactly this ("useful when you want to provide a number of maps in a
+   * stream") and its own sample puts them in a list. Circles and JSON
+   * `customMapStyle` both still work — only cloud styling, traffic, overlays,
+   * Street View, indoor and gestures are dropped, none of which a thumbnail
+   * uses.
+   *
+   * ⚠️ AND IT ANSWERS MapCornerMask's OPEN QUESTION for its callers. That file
+   * records that clipping a map with overflow:'hidden' misrenders on Android
+   * because react-native-maps draws into a GLSurfaceView. A lite-mode map is a
+   * bitmap in an ordinary view, so a rounded, clipped thumbnail is safe — the
+   * first static map card here about which that question is answered rather
+   * than "believed fine".
+   *
+   * ⚠️ INITIAL-PROPS-ONLY. The native side reads this once, at map creation,
+   * into GoogleMapOptions. Pass a CONSTANT — a value derived from state or
+   * theme will appear to work and silently never change.
+   */
+  liteMode?: boolean;
+  /** The native map finished laying out and has tiles. Used to fade a
+   *  placeholder out from under a thumbnail; never fires if the SDK cannot
+   *  start (no API key, Expo Go on Android), which is why the thing underneath
+   *  must stand on its own. */
+  onReady?: () => void;
 }
 
 export function AppMap({
@@ -78,6 +106,8 @@ export function AppMap({
   onPress,
   interactive = true,
   showsUserLocation = false,
+  liteMode = false,
+  onReady,
 }: MapComponentProps & AppMapExtraProps) {
   const { scheme } = useThemeControls();
   const mapRef = useRef<MapView>(null);
@@ -120,6 +150,9 @@ export function AppMap({
       showsUserLocation={showsUserLocation}
       showsMyLocationButton={false}
       toolbarEnabled={false}
+      // Android-only and read once at creation — see the prop's doc.
+      liteMode={liteMode}
+      onMapReady={onReady}
       // Static-preview mode (post-detail "Last seen here"): every gesture off
       // so the card can't be panned and doesn't steal the page's scroll.
       scrollEnabled={interactive}
