@@ -143,9 +143,15 @@ rollback;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 4 — RATE_LIMITED above 5 per reporter per rolling hour. This is the
+-- CHECK 4 — RATE_LIMITED above 3 per reporter per rolling 24 HOURS. This is the
 -- schema's first PER-ACCOUNT limiter (every other one is per user+target), so
--- it is worth pinning that the sixth call in the window is the one that fails.
+-- it is worth pinning that the fourth call in the window is the one that fails.
+--
+-- ⚠️ THE NUMBERS MOVED ON 2026-08-27, from 5 per hour to 3 per 24 hours, once
+-- every report became an email. The old ceiling allowed 120 a day from one
+-- account. Three was chosen over one deliberately: someone who hits two
+-- separate bugs in a sitting must still be able to report the second, because
+-- they will not come back tomorrow to do it.
 -- -----------------------------------------------------------------------------
 begin;
 do $$
@@ -157,13 +163,13 @@ begin
   perform set_config('request.jwt.claims',
     '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
 
-  -- All five land inside the window: they share the transaction's now().
-  for i in 1..5 loop
+  -- All three land inside the window: they share the transaction's now().
+  for i in 1..3 loop
     perform public.submit_bug_report('report ' || i, null, null, null, null);
   end loop;
 
   begin
-    perform public.submit_bug_report('the sixth', null, null, null, null);
+    perform public.submit_bug_report('the fourth', null, null, null, null);
   exception
     when others then
       v_err := sqlerrm;
@@ -171,16 +177,66 @@ begin
   end;
 
   if not v_refused then
-    raise exception 'CHECK 4 FAILED: expected RATE_LIMITED for the 6th report in the hour, got %',
+    raise exception 'CHECK 4 FAILED: expected RATE_LIMITED for the 4th report in 24h, got %',
       v_err;
   end if;
+
+  raise notice 'CHECK 4 passed: 3 reports per rolling 24h allowed, the 4th raises RATE_LIMITED';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 4b — the courtesy probe agrees with the authority, at every step.
+--
+-- ⚠️ ONE RULE IN TWO PLACES. bug_report_quota_remaining exists so a reporter is
+-- refused BEFORE three screenshots upload rather than after, which means it
+-- carries its own copy of the window and the count. If the two ever drift, the
+-- probe either waves someone through to a refusal they already paid an upload
+-- for, or refuses a report the RPC would have taken.
+-- -----------------------------------------------------------------------------
+begin;
+do $$
+declare
+  i       integer;
+  v_left  integer;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+
+  v_left := public.bug_report_quota_remaining();
+  if v_left <> 3 then
+    raise exception 'CHECK 4b FAILED: a fresh account should have 3, got %', v_left;
+  end if;
+
+  for i in 1..3 loop
+    perform public.submit_bug_report('report ' || i, null, null, null, null);
+    v_left := public.bug_report_quota_remaining();
+    if v_left <> 3 - i then
+      raise exception 'CHECK 4b FAILED: after % reports the probe said %, expected %',
+        i, v_left, 3 - i;
+    end if;
+  end loop;
+
+  -- Never negative: the client gates on `remaining === 0`, and a -1 would read
+  -- as truthy nonsense rather than "you are out".
+  if public.bug_report_quota_remaining() <> 0 then
+    raise exception 'CHECK 4b FAILED: the probe did not floor at 0';
+  end if;
+
+  raise notice 'CHECK 4b passed: the probe counts down 3-2-1-0 in step with the limit';
 end $$;
 rollback;
 
 
 -- -----------------------------------------------------------------------------
 -- CHECK 5 — an OLDER report does not count against the window. The limit is a
--- rolling hour, not a bucket, so five yesterday must not block one today.
+-- ROLLING 24 hours, not a calendar bucket, so three from two days ago must not
+-- block one today.
+--
+-- ⚠️ THE SEED IS 2 DAYS, NOT 2 HOURS. It was 2 hours while the window was an
+-- hour; against a 24-hour window that seed sits INSIDE it, and this check would
+-- have started asserting the opposite of what it was written to prove.
 -- -----------------------------------------------------------------------------
 begin;
 do $$
@@ -188,8 +244,8 @@ declare
   v_n integer;
 begin
   insert into public.bug_reports (reporter_id, message, created_at)
-  select '11111111-1111-1111-1111-111111111111', 'old ' || g, now() - interval '2 hours'
-  from generate_series(1, 5) g;
+  select '11111111-1111-1111-1111-111111111111', 'old ' || g, now() - interval '2 days'
+  from generate_series(1, 3) g;
 
   perform set_config('request.jwt.claims',
     '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
@@ -200,9 +256,11 @@ begin
   from public.bug_reports
   where reporter_id = '11111111-1111-1111-1111-111111111111';
 
-  if v_n <> 6 then
-    raise exception 'CHECK 5 FAILED: expected 6 rows (5 old + 1 new), got %', v_n;
+  if v_n <> 4 then
+    raise exception 'CHECK 5 FAILED: expected 4 rows (3 old + 1 new), got %', v_n;
   end if;
+
+  raise notice 'CHECK 5 passed: reports outside the rolling 24h do not count against it';
 end $$;
 rollback;
 
