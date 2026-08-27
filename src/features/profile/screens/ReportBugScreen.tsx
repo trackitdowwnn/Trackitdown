@@ -46,6 +46,7 @@ import { WizardScreen } from '@/shared/wizard';
 
 import {
   BUG_REPORT_FALLBACK_MESSAGE,
+  BUG_REPORT_RATE_LIMITED_MESSAGE,
   BugReportError,
   readBugReportQuota,
   submitBugReport,
@@ -97,10 +98,10 @@ export function ReportBugScreen() {
     // Advisory only — the RPC still enforces.
     const remaining = await readBugReportQuota();
     if (remaining === 0) {
-      throw new BugReportError(
-        'You’ve sent a few reports already. Please try again in an hour.',
-        'RATE_LIMITED',
-      );
+      // The SAME sentence the server's own refusal produces — imported, not
+      // pasted, so the two can never drift into telling someone different
+      // things about the same limit.
+      throw new BugReportError(BUG_REPORT_RATE_LIMITED_MESSAGE, 'RATE_LIMITED');
     }
 
     // ⚠️ NO SILENT DROP. Written first as

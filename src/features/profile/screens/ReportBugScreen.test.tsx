@@ -101,6 +101,8 @@ jest.mock('../api/bugReportApi', () => ({
   // shown this instead of raw storage text, so a fixture would let the two
   // drift and still pass.
   BUG_REPORT_FALLBACK_MESSAGE: 'We couldn’t send this. Please try again.',
+  BUG_REPORT_RATE_LIMITED_MESSAGE:
+    'Thanks — you’ve sent three reports today. Please send any more tomorrow.',
   readBugReportQuota: () => mockQuota(),
   BugReportError: class BugReportError extends Error {
     code: string;
@@ -301,6 +303,12 @@ describe('⚠️ the two refusals', () => {
     await waitFor(() => expect(mockQuota).toHaveBeenCalled());
     expect(mockUpload).not.toHaveBeenCalled();
     expect(mockSubmit).not.toHaveBeenCalled();
+    // And it names the real window. The local refusal used to carry its own
+    // pasted copy of this sentence, free to drift from the one the server's
+    // own refusal produces — the same defect as the FALLBACK collision.
+    expect(
+      view.getByText('Thanks — you’ve sent three reports today. Please send any more tomorrow.'),
+    ).toBeTruthy();
   });
 
   it('⚠️ refuses rather than sending a report without the attached screenshots', async () => {

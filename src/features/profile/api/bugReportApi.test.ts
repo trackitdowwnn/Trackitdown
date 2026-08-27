@@ -12,6 +12,7 @@
  */
 
 import {
+  BUG_REPORT_RATE_LIMITED_MESSAGE,
   BUG_REPORT_FALLBACK_MESSAGE,
   BugReportError,
   submitBugReport,
@@ -145,7 +146,10 @@ describe('what the user is told', () => {
   const refusals: [string, string][] = [
     ['NOT_AUTHENTICATED', 'Please sign in to send a report.'],
     ['INVALID_INPUT', 'Please write a little about what went wrong.'],
-    ['RATE_LIMITED', 'You’ve sent a few reports already. Please try again in an hour.'],
+    // ⚠️ NAMES THE REAL WINDOW. The limit moved to 3 per rolling 24h on
+    // 2026-08-27; "try again in an hour" would send someone back 23 hours
+    // early to be refused again.
+    ['RATE_LIMITED', 'Thanks — you’ve sent three reports today. Please send any more tomorrow.'],
   ];
 
   it.each(refusals)('maps %s to copy a person can act on', async (token, copy) => {
@@ -232,5 +236,24 @@ describe('the fallback sentence', () => {
     // rather than silently leaving the screen's mock asserting a string the
     // app no longer shows.
     expect(BUG_REPORT_FALLBACK_MESSAGE).toBe('We couldn’t send this. Please try again.');
+  });
+});
+
+describe('the rate-limit sentence', () => {
+  it('⚠️ is the exact string ReportBugScreen.test mocks', () => {
+    // The screen refuses locally too (the advisory probe runs before
+    // screenshots upload) and mocks this module, so its mock carries this
+    // sentence as a literal. Pinned here so changing the copy fails a test
+    // rather than leaving the local refusal and the server's saying different
+    // things about the same limit.
+    expect(BUG_REPORT_RATE_LIMITED_MESSAGE).toBe(
+      'Thanks — you’ve sent three reports today. Please send any more tomorrow.',
+    );
+  });
+
+  it('names the window, so nobody retries 23 hours early', () => {
+    // The old copy said "in an hour" and the window is now a rolling 24.
+    expect(BUG_REPORT_RATE_LIMITED_MESSAGE).not.toContain('hour');
+    expect(BUG_REPORT_RATE_LIMITED_MESSAGE).toContain('tomorrow');
   });
 });

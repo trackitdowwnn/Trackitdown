@@ -52,13 +52,31 @@ export class BugReportError extends Error {
   }
 }
 
+/**
+ * What someone is told when they have used the day's allowance.
+ *
+ * ⚠️ EXPORTED SO THERE IS ONE COPY. ReportBugScreen refuses locally too — the
+ * advisory probe runs before screenshots upload — and it had this sentence
+ * pasted in as a second literal, free to drift from the one the server's
+ * refusal produces. The same mistake as the FALLBACK collision that made a
+ * failure undiagnosable a few hours earlier.
+ */
+export const BUG_REPORT_RATE_LIMITED_MESSAGE =
+  'Thanks — you’ve sent three reports today. Please send any more tomorrow.';
+
 /** What the server can refuse with, and what a person should read instead. */
 const MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'Please sign in to send a report.',
   INVALID_INPUT: 'Please write a little about what went wrong.',
   // Deliberately not "try again later": that invites a retry loop against a
-  // limit measured in hours. It names the window instead.
-  RATE_LIMITED: 'You’ve sent a few reports already. Please try again in an hour.',
+  // limit measured in hours. It names the window instead — and the window is
+  // now 3 per rolling 24 hours (20260827160000), so "in an hour" would have
+  // sent someone back 23 hours early to be refused again.
+  //
+  // "Thanks" is not decoration either: this is the one refusal in the app aimed
+  // at somebody doing us a favour, and the third report of a bad day should not
+  // read as being told off.
+  RATE_LIMITED: BUG_REPORT_RATE_LIMITED_MESSAGE,
 };
 
 /**
