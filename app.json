@@ -46,6 +46,12 @@
         "projectId": "31319e3e-4633-42da-8dcf-640018843b58"
       }
     },
-    "owner": "olliet97"
+    "owner": "olliet97",
+    "updates": {
+      "url": "https://u.expo.dev/31319e3e-4633-42da-8dcf-640018843b58"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }
