@@ -63,6 +63,7 @@ begin
   if v_emailed is null then
     raise exception 'CHECK 1 FAILED: the claim did not stamp emailed_at';
   end if;
+  raise notice 'CHECK 1 passed: the claim returns the report content and stamps emailed_at';
 end $$;
 rollback;
 
@@ -95,6 +96,7 @@ begin
   if (v_second->>'claimed')::boolean then
     raise exception 'CHECK 2 FAILED: the same report was claimed twice';
   end if;
+  raise notice 'CHECK 2 passed: a second claim returns nothing — sending is exactly-once';
 end $$;
 rollback;
 
@@ -133,6 +135,7 @@ begin
   ) then
     raise exception 'CHECK 3 FAILED: user B''s claim consumed user A''s report';
   end if;
+  raise notice 'CHECK 3 passed: a foreign claim returns nothing AND does not consume the owner''s report';
 end $$;
 rollback;
 
@@ -166,6 +169,7 @@ begin
     raise exception 'CHECK 4 FAILED: expected the older report, got %',
       quote_literal(v_result->>'message');
   end if;
+  raise notice 'CHECK 4 passed: the oldest unsent report drains first';
 end $$;
 rollback;
 
@@ -200,6 +204,7 @@ begin
   ) then
     raise exception 'CHECK 5 FAILED: service_role cannot execute claim_bug_report_email';
   end if;
+  raise notice 'CHECK 5 passed: only service_role may execute claim_bug_report_email';
 end $$;
 
 
@@ -224,5 +229,6 @@ begin
   if (v_result->>'claimed')::boolean then
     raise exception 'CHECK 6 FAILED: a null actor claimed a report';
   end if;
+  raise notice 'CHECK 6 passed: a null actor claims nothing';
 end $$;
 rollback;
