@@ -34,15 +34,28 @@
 import { createServiceRoleClient, requireEnv } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 
-/** Where reports go. Interim address, owner-supplied 2026-08-27. */
-const TO_ADDRESS = 'trackitdowwnn@gmail.com';
-
 /**
- * Resend's shared sender. Works with no domain verification, but ONLY to the
- * address that owns the Resend account — which is exactly this one use. Swap
- * both this and TO_ADDRESS when a real domain lands.
+ * Where reports go, and who they come from.
+ *
+ * ⚠️ ENV-FIRST, because both of these are known to be temporary. The
+ * destination is an interim gmail (owner-supplied 2026-08-27) pending "a more
+ * official email later", and the sender depends on which domain is verified in
+ * Resend — this project already sends auth OTPs through Resend, so a verified
+ * domain very likely exists and is a better sender than the shared one. Set
+ * either as a Supabase secret and neither needs a code change or a redeploy:
+ *
+ *     supabase secrets set BUG_REPORT_TO_ADDRESS=bugs@yourdomain.com
+ *     supabase secrets set BUG_REPORT_FROM_ADDRESS='Trackitdown <bugs@yourdomain.com>'
+ *
+ * ⚠️ THE FALLBACK SENDER IS RESTRICTED. onboarding@resend.dev needs no domain
+ * verification but delivers ONLY to the address that owns the Resend account.
+ * If the destination is ever changed to something else while the sender is
+ * still the fallback, Resend refuses and the report is silently not delivered —
+ * which is why the send failure is logged rather than swallowed.
  */
-const FROM_ADDRESS = 'Trackitdown Bugs <onboarding@resend.dev>';
+const TO_ADDRESS = Deno.env.get('BUG_REPORT_TO_ADDRESS') ?? 'trackitdowwnn@gmail.com';
+const FROM_ADDRESS =
+  Deno.env.get('BUG_REPORT_FROM_ADDRESS') ?? 'Trackitdown Bugs <onboarding@resend.dev>';
 
 /** How long a screenshot link works. Long enough to read a report on Monday
  *  that arrived on Friday; short enough that an old mailbox is not an archive
