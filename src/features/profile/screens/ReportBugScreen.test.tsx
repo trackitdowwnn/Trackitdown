@@ -61,6 +61,13 @@ jest.mock('@/features/auth', () => ({
   useSession: () => mockSession(),
 }));
 
+// Mocked for the same reason bugReportApi is: the real barrel constructs the
+// supabase client at import, which throws without env vars.
+const mockNotifyBugReport = jest.fn();
+jest.mock('@/features/notifications', () => ({
+  notifyBugReport: () => mockNotifyBugReport(),
+}));
+
 jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(),
 }));
@@ -177,6 +184,67 @@ describe('the fast path', () => {
       breadcrumbs: [],
       screenshotPaths: [],
     });
+  });
+
+  it('confirms the report was submitted, and only after the RPC returned', async () => {
+    // States what HAPPENED rather than promising what someone will do next.
+    // Ordering matters more than the wording: a toast fired before the await
+    // would tell someone their report landed when it may still fail.
+    const view = await render(<ReportBugScreen />);
+    await walkToReview(view, 'The map went blank when I opened it');
+
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Send report'));
+    });
+
+    await waitFor(() => expect(mockShowToast).toHaveBeenCalledWith('Report submitted'));
+    expect(mockSubmit).toHaveBeenCalled();
+  });
+
+  it('says nothing about success when the send failed', async () => {
+    mockSubmit.mockRejectedValue(new Error('network'));
+    const view = await render(<ReportBugScreen />);
+    await walkToReview(view, 'The map went blank when I opened it');
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Send report'));
+    });
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('asks for the report to be emailed, but only once it is saved', async () => {
+    const view = await render(<ReportBugScreen />);
+    await walkToReview(view, 'The map went blank when I opened it');
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Send report'));
+    });
+
+    await waitFor(() => expect(mockNotifyBugReport).toHaveBeenCalled());
+    // ⚠️ Carries NOTHING. The Edge Function reads no body and the claim RPC
+    // serves only this caller's own oldest unsent report, so there is no id for
+    // a patched client to forge and the report text makes no second trip.
+    expect(mockNotifyBugReport).toHaveBeenCalledWith();
+  });
+
+  it('⚠️ does not ask for an email when the report was never saved', async () => {
+    // The email is a side effect of a saved report. Dispatching it on a failed
+    // submit would mean the claim drains some OTHER unsent report of theirs on
+    // the back of a send that did not happen.
+    mockSubmit.mockRejectedValue(new Error('network'));
+    const view = await render(<ReportBugScreen />);
+    await walkToReview(view, 'The map went blank when I opened it');
+
+    await act(async () => {
+      fireEvent.press(view.getByText('Send report'));
+    });
+
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalled());
+    expect(mockNotifyBugReport).not.toHaveBeenCalled();
   });
 
   it('pre-fills the area from the last tab visited', async () => {

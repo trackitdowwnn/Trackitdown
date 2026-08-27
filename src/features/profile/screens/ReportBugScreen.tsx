@@ -39,6 +39,7 @@ import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 
 import { useSession } from '@/features/auth';
+import { notifyBugReport } from '@/features/notifications';
 import { createLogger } from '@/shared/lib/logger';
 import { useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
@@ -123,6 +124,13 @@ export function ReportBugScreen() {
       breadcrumbs: readBreadcrumbs(),
       screenshotPaths,
     });
+
+    // ⚠️ AFTER the RPC, and void. The report is saved by the line above; the
+    // email is a side effect of that, never a condition of it. notifyBugReport
+    // cannot throw and carries no arguments — the Edge Function reads no body
+    // and the claim RPC serves only this caller's own oldest unsent report, so
+    // there is nothing here to forge and the text makes no second trip.
+    notifyBugReport();
   };
 
   /**
@@ -172,7 +180,12 @@ export function ReportBugScreen() {
     }
 
     try {
-      toast.show('Thanks — we’ll take a look.');
+      // "Report submitted" (owner request), not the old "Thanks — we'll take a
+      // look": this fires the instant the RPC returns, so it should state what
+      // HAPPENED rather than promise what someone will do next. The identical
+      // string on PostDetailScreen is a different action (reporting a listing)
+      // and is deliberately left alone.
+      toast.show('Report submitted');
       if (router.canGoBack()) {
         router.back();
       } else {
