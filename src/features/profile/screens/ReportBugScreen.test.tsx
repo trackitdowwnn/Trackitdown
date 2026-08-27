@@ -87,6 +87,10 @@ const mockSubmit = jest.fn();
 // import without env vars, and the submit branches on `instanceof`.
 jest.mock('../api/bugReportApi', () => ({
   BUG_REPORT_MAX_LENGTH: 2000,
+  // The REAL sentence, not a stand-in: the test below asserts the user is
+  // shown this instead of raw storage text, so a fixture would let the two
+  // drift and still pass.
+  BUG_REPORT_FALLBACK_MESSAGE: 'We couldn’t send this. Please try again.',
   readBugReportQuota: () => mockQuota(),
   BugReportError: class BugReportError extends Error {
     code: string;

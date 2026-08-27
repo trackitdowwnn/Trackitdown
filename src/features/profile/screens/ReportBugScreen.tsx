@@ -39,16 +39,24 @@ import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 
 import { useSession } from '@/features/auth';
+import { createLogger } from '@/shared/lib/logger';
 import { useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
 
-import { BugReportError, readBugReportQuota, submitBugReport } from '../api/bugReportApi';
+import {
+  BUG_REPORT_FALLBACK_MESSAGE,
+  BugReportError,
+  readBugReportQuota,
+  submitBugReport,
+} from '../api/bugReportApi';
 import { uploadBugScreenshots } from '../api/bugScreenshotUpload';
 import { readBreadcrumbs } from '../lib/bugBreadcrumbs';
 import { describeDiagnostics, readBugDiagnostics } from '../lib/bugDiagnostics';
 import type { BugReportAnswers } from '../lib/bugReportAnswers';
 import { buildBugReportFlow } from '../lib/bugReportFlow';
 import { readLastArea } from '../lib/lastArea';
+
+const log = createLogger('profile');
 
 export function ReportBugScreen() {
   const router = useRouter();
@@ -148,9 +156,19 @@ export function ReportBugScreen() {
       await sendReport(answers);
     } catch (err) {
       if (err instanceof BugReportError) throw err;
-      // No `cause`, and nothing from `err` in the string: the upload path
-      // already refuses to log the storage text for the same reason.
-      throw new BugReportError('We couldn’t send this. Please try again.', 'UNKNOWN');
+      // ⚠️ LOGGED, OR THIS PATH IS INVISIBLE. Everything else that can refuse
+      // records why: submitBugReport logs `bug_report_failed` with its reason
+      // token, and uploadBugScreenshots logs `bug_screenshot_upload_failed`.
+      // What reaches HERE is what neither of them caught — chiefly a network
+      // call that THREW rather than returning an error — and it used to reach
+      // the user as a sentence with no trace on the device at all, which made
+      // "it just says try again" undiagnosable.
+      //
+      // The reason token only. Never err.message: the whole point of this catch
+      // is that the text may be a raw Supabase error, and the logger's own rule
+      // for this feature is a fixed token or nothing.
+      log.error('bug_report_failed', { reason: 'SEND_THREW' });
+      throw new BugReportError(BUG_REPORT_FALLBACK_MESSAGE, 'SEND_THREW');
     }
 
     try {

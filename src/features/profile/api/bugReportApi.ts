@@ -61,7 +61,19 @@ const MESSAGES: Record<string, string> = {
   RATE_LIMITED: 'You’ve sent a few reports already. Please try again in an hour.',
 };
 
-const FALLBACK = 'We couldn’t send this. Please try again.';
+/**
+ * What the reporter is told when nothing more specific is known.
+ *
+ * ⚠️ EXPORTED BECAUSE THE SCREEN NEEDS THE SAME SENTENCE. `handleComplete`
+ * converts anything that is not a BugReportError into one, and it was written
+ * with this string copy-pasted — so two different failures (an RPC that
+ * returned an error we don't recognise, and an upload or network call that
+ * THREW) rendered identical text from two literals that could drift apart. One
+ * constant, and the paths are told apart by their log reason instead.
+ */
+export const BUG_REPORT_FALLBACK_MESSAGE = 'We couldn’t send this. Please try again.';
+
+const FALLBACK = BUG_REPORT_FALLBACK_MESSAGE;
 
 /** The longest message the server will accept. Mirrored here so the screen can
  *  stop typing at the cap rather than let someone write past it and lose it. */

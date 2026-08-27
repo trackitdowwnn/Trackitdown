@@ -11,7 +11,12 @@
  *        supabase/migrations/20260824100000_bug_reports.sql; docs/LOGGING.md.
  */
 
-import { BugReportError, submitBugReport, type BugReportDetails } from './bugReportApi';
+import {
+  BUG_REPORT_FALLBACK_MESSAGE,
+  BugReportError,
+  submitBugReport,
+  type BugReportDetails,
+} from './bugReportApi';
 import type { BugDiagnostics } from '../lib/bugDiagnostics';
 
 const mockRpc = jest.fn();
@@ -216,5 +221,16 @@ describe('⚠️ what reaches the logs', () => {
       'We couldn’t send this. Please try again.',
     );
     expect(mockError).toHaveBeenCalledWith('bug_report_failed', { reason: 'UNKNOWN' });
+  });
+});
+
+describe('the fallback sentence', () => {
+  it('⚠️ is the exact string ReportBugScreen.test mocks', () => {
+    // The screen mocks this module (the real one imports the supabase client,
+    // which throws at import without env vars), so its mock carries this
+    // sentence as a literal. Pinned here so changing the copy fails a test
+    // rather than silently leaving the screen's mock asserting a string the
+    // app no longer shows.
+    expect(BUG_REPORT_FALLBACK_MESSAGE).toBe('We couldn’t send this. Please try again.');
   });
 });
