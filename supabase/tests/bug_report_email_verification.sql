@@ -4,45 +4,64 @@
 --
 -- SELF-ASSERTING: each check is a seeded begin…rollback (or a grant assertion)
 -- that RAISES on failure, so the file aborts non-zero the moment a property is
--- violated. Properties: claim_bug_report_email hands back a report's content
--- and stamps it sent, NEVER returns the same report twice, NEVER returns a
--- report belonging to somebody else, drains oldest-first, and is executable by
--- the service role ALONE.
+-- violated. Properties: submit_bug_report returns the id of the row it wrote,
+-- claim_bug_report_email serves THAT report and no other, never serves it
+-- twice, never serves another reporter's, and is executable by the service
+-- role alone.
 --
--- ⚠️ THE ISOLATION CHECK IS THE POINT OF THIS FILE. The sender is invoked BY
--- THE REPORTING CLIENT, so the only thing standing between a patched client and
--- another user's bug report — free text that may name a place, a plate, a
--- person — is this function refusing to serve a row whose reporter_id is not
--- the actor it was given. CHECK 3 is what proves that, and CHECK 5 proves a
--- signed-in client cannot call it at all.
+-- ⚠️ CHECK 4 IS THE REGRESSION TEST FOR A REAL INCIDENT (2026-08-27). The first
+-- design had no id to work with — submit_bug_report returned void — so the
+-- claim took the reporter's OLDEST unsent report and assumed that was the one
+-- just filed. It was not: two reports from an hour earlier were still unsent,
+-- so the operator was emailed those while the new reports sat unsent, and one
+-- missed dispatch would have offset every later report permanently. CHECK 4
+-- seeds exactly that shape and proves the NEW report is what comes back.
+--
+-- ⚠️ CHECK 3 IS THE OTHER HALF. The id now arrives FROM A CLIENT, so it is
+-- exactly the kind of value a patched client could invent. The claim must serve
+-- a row only when its reporter_id is the actor.
 --
 -- Run against a local DB seeded by supabase/seed.sql:
 --     supabase db reset
 --     npm run test:db
 -- =============================================================================
 
-
 -- -----------------------------------------------------------------------------
--- CHECK 1 — a claim returns the report's content and stamps emailed_at.
+-- CHECK 1 — submit returns the id it wrote, and the claim returns that report.
 -- -----------------------------------------------------------------------------
 begin;
 do $$
 declare
-  v_result   jsonb;
-  v_emailed  timestamptz;
+  v_id      uuid;
+  v_result  jsonb;
+  v_emailed timestamptz;
 begin
   perform set_config('request.jwt.claims',
     '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
 
-  perform public.submit_bug_report(
+  select public.submit_bug_report(
     'the map went blank when I opened it', '1.0.0', 'ios', '18.2', 'iPhone 14',
     'explore', 'blocked', 'always', 'it should show pins',
-    array['10:00:00 info map:feed_mounted'], null);
+    array['10:00:00 info map:feed_mounted'], null) into v_id;
 
-  v_result := public.claim_bug_report_email('11111111-1111-1111-1111-111111111111');
+  if v_id is null then
+    raise exception 'CHECK 1 FAILED: submit_bug_report returned no id';
+  end if;
+  -- The id must name the row that was actually written, or everything
+  -- downstream is naming something else.
+  if not exists (select 1 from public.bug_reports b where b.id = v_id
+                   and b.message = 'the map went blank when I opened it') then
+    raise exception 'CHECK 1 FAILED: the returned id does not name the new report';
+  end if;
+
+  v_result := public.claim_bug_report_email(
+    '11111111-1111-1111-1111-111111111111', v_id);
 
   if not (v_result->>'claimed')::boolean then
     raise exception 'CHECK 1 FAILED: a freshly filed report was not claimable';
+  end if;
+  if (v_result->>'id')::uuid <> v_id then
+    raise exception 'CHECK 1 FAILED: the claim returned a different report';
   end if;
   if v_result->>'message' <> 'the map went blank when I opened it' then
     raise exception 'CHECK 1 FAILED: message not returned, got %',
@@ -56,39 +75,36 @@ begin
     raise exception 'CHECK 1 FAILED: triage fields missing from the claim';
   end if;
 
-  select b.emailed_at into v_emailed
-  from public.bug_reports b
-  where b.id = (v_result->>'id')::uuid;
-
+  select b.emailed_at into v_emailed from public.bug_reports b where b.id = v_id;
   if v_emailed is null then
     raise exception 'CHECK 1 FAILED: the claim did not stamp emailed_at';
   end if;
-  raise notice 'CHECK 1 passed: the claim returns the report content and stamps emailed_at';
+
+  raise notice 'CHECK 1 passed: submit returns its id and the claim serves that exact report';
 end $$;
 rollback;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 2 — ⚠️ EXACTLY ONCE. A second claim must not return the same report.
--- A retried invoke, or two app launches racing, must not put the same bug
--- report in the inbox twice — and more importantly must not re-send one whose
--- screenshots have since been read.
+-- CHECK 2 — ⚠️ EXACTLY ONCE. A second claim of the same id returns nothing.
+-- A retried invoke, or two launches racing, must not put the same report in the
+-- inbox twice — and must not re-send one whose screenshots have since been read.
 -- -----------------------------------------------------------------------------
 begin;
 do $$
 declare
+  v_id     uuid;
   v_first  jsonb;
   v_second jsonb;
 begin
   perform set_config('request.jwt.claims',
     '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
 
-  perform public.submit_bug_report(
-    'only once please', '1.0.0', 'ios', '18.2', 'iPhone 14',
-    null, null, null, null, null, null);
+  select public.submit_bug_report('only once please', '1.0.0', 'ios', '18.2',
+    'iPhone 14', null, null, null, null, null, null) into v_id;
 
-  v_first  := public.claim_bug_report_email('11111111-1111-1111-1111-111111111111');
-  v_second := public.claim_bug_report_email('11111111-1111-1111-1111-111111111111');
+  v_first  := public.claim_bug_report_email('11111111-1111-1111-1111-111111111111', v_id);
+  v_second := public.claim_bug_report_email('11111111-1111-1111-1111-111111111111', v_id);
 
   if not (v_first->>'claimed')::boolean then
     raise exception 'CHECK 2 FAILED: the first claim returned nothing';
@@ -96,88 +112,95 @@ begin
   if (v_second->>'claimed')::boolean then
     raise exception 'CHECK 2 FAILED: the same report was claimed twice';
   end if;
-  raise notice 'CHECK 2 passed: a second claim returns nothing — sending is exactly-once';
+
+  raise notice 'CHECK 2 passed: a second claim of the same id returns nothing';
 end $$;
 rollback;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 3 — ⚠️ ISOLATION. One reporter's claim must never return another
--- reporter's report. The sender is client-invoked; this is the whole defence.
+-- CHECK 3 — ⚠️ ISOLATION. A reporter cannot claim another reporter's report by
+-- naming its id. The id comes from a client; this is the whole defence.
 -- -----------------------------------------------------------------------------
 begin;
 do $$
 declare
+  v_a_id   uuid;
   v_result jsonb;
 begin
-  -- User A files a report.
+  -- User A files a report and we learn its real id.
   perform set_config('request.jwt.claims',
     '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
-  perform public.submit_bug_report(
-    'A private report from user A', '1.0.0', 'ios', '18.2', 'iPhone 14',
-    null, null, null, null, null, null);
+  select public.submit_bug_report('A private report from user A', '1.0.0', 'ios',
+    '18.2', 'iPhone 14', null, null, null, null, null, null) into v_a_id;
 
-  -- User B claims. There is nothing of theirs to send, and A's report is not
-  -- theirs to see.
-  v_result := public.claim_bug_report_email('22222222-2222-2222-2222-222222222222');
+  -- User B names it anyway — the exact forgery the actor check exists for.
+  v_result := public.claim_bug_report_email(
+    '22222222-2222-2222-2222-222222222222', v_a_id);
 
   if (v_result->>'claimed')::boolean then
-    raise exception 'CHECK 3 FAILED: user B claimed a report — message %',
+    raise exception 'CHECK 3 FAILED: user B claimed user A''s report — message %',
       quote_literal(v_result->>'message');
   end if;
 
-  -- And A's report must still be unsent: B's failed claim must not have
-  -- consumed it, or A's report silently never arrives.
-  if not exists (
-    select 1 from public.bug_reports b
-    where b.reporter_id = '11111111-1111-1111-1111-111111111111'
-      and b.emailed_at is null
-  ) then
+  -- And it must still be unsent: a foreign claim must not consume it, or A's
+  -- report is silently never delivered.
+  if not exists (select 1 from public.bug_reports b
+                  where b.id = v_a_id and b.emailed_at is null) then
     raise exception 'CHECK 3 FAILED: user B''s claim consumed user A''s report';
   end if;
-  raise notice 'CHECK 3 passed: a foreign claim returns nothing AND does not consume the owner''s report';
+
+  raise notice 'CHECK 3 passed: a foreign id claims nothing AND does not consume the report';
 end $$;
 rollback;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 4 — oldest first, so a backlog drains in order instead of the oldest
--- report starving while newer ones keep arriving.
+-- CHECK 4 — ⚠️ THE INCIDENT. With an OLDER unsent report sitting there, the
+-- claim must return the report whose id was given, not the oldest one.
+-- This is the exact shape that emailed the operator the wrong report.
 -- -----------------------------------------------------------------------------
 begin;
 do $$
 declare
+  v_old_id uuid;
+  v_new_id uuid;
   v_result jsonb;
 begin
   perform set_config('request.jwt.claims',
     '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
 
-  perform public.submit_bug_report(
-    'the older report', '1.0.0', 'ios', '18.2', 'iPhone 14',
-    null, null, null, null, null, null);
-  -- Force a distinct created_at rather than trusting statement timing.
+  select public.submit_bug_report('the older report nobody emailed', '1.0.0',
+    'ios', '18.2', 'iPhone 14', null, null, null, null, null, null) into v_old_id;
+  -- Force a distinct, genuinely older created_at rather than trusting timing.
   update public.bug_reports set created_at = now() - interval '1 hour'
-   where reporter_id = '11111111-1111-1111-1111-111111111111';
+   where id = v_old_id;
 
-  perform public.submit_bug_report(
-    'the newer report', '1.0.0', 'ios', '18.2', 'iPhone 14',
-    null, null, null, null, null, null);
+  select public.submit_bug_report('the report just filed', '1.0.0', 'ios',
+    '18.2', 'iPhone 14', null, null, null, null, null, null) into v_new_id;
 
-  v_result := public.claim_bug_report_email('11111111-1111-1111-1111-111111111111');
+  v_result := public.claim_bug_report_email(
+    '11111111-1111-1111-1111-111111111111', v_new_id);
 
-  if v_result->>'message' <> 'the older report' then
-    raise exception 'CHECK 4 FAILED: expected the older report, got %',
-      quote_literal(v_result->>'message');
+  if v_result->>'message' <> 'the report just filed' then
+    raise exception
+      'CHECK 4 FAILED: claimed by age, not by id — got %', quote_literal(v_result->>'message');
   end if;
-  raise notice 'CHECK 4 passed: the oldest unsent report drains first';
+  -- The older one must be untouched, not quietly consumed alongside.
+  if not exists (select 1 from public.bug_reports b
+                  where b.id = v_old_id and b.emailed_at is null) then
+    raise exception 'CHECK 4 FAILED: the older report was consumed too';
+  end if;
+
+  raise notice 'CHECK 4 passed: an older unsent report does not displace the one named by id';
 end $$;
 rollback;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 5 — ⚠️ SERVICE ROLE ONLY. This function returns the full text of a bug
--- report, out of a table that deliberately has NO client select policy. If a
--- signed-in client could execute it, it would be a read path around that — and
+-- CHECK 5 — ⚠️ SERVICE ROLE ONLY. The claim returns the full text of a bug
+-- report, out of a table that deliberately has NO client select policy. A
+-- signed-in client able to execute it would have a read path around that — and
 -- one that destroys the row's unsent state on the way past.
 -- -----------------------------------------------------------------------------
 do $$
@@ -204,31 +227,72 @@ begin
   ) then
     raise exception 'CHECK 5 FAILED: service_role cannot execute claim_bug_report_email';
   end if;
+
   raise notice 'CHECK 5 passed: only service_role may execute claim_bug_report_email';
 end $$;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 6 — a null actor claims nothing. The Edge Function refuses an
--- unauthenticated caller before it gets here, so this is the belt to that
--- braces: a null must never be read as "match the first row".
+-- CHECK 6 — ⚠️ THE DROP AND RECREATE DID NOT LOSE submit_bug_report'S GRANTS.
+-- Dropping a function drops its grants with it, and the default for a new one
+-- is EXECUTE to PUBLIC — so a careless recreate would hand a guest the reporting
+-- RPC. The function refuses a guest internally too; this is the outer wall.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(grantee, ', ') into v_bad
+  from information_schema.routine_privileges
+  where specific_schema = 'public'
+    and routine_name = 'submit_bug_report'
+    and privilege_type = 'EXECUTE'
+    and grantee in ('PUBLIC', 'anon');
+
+  if v_bad is not null then
+    raise exception 'CHECK 6 FAILED: submit_bug_report is executable by %', v_bad;
+  end if;
+
+  if not exists (
+    select 1 from information_schema.routine_privileges
+    where specific_schema = 'public'
+      and routine_name = 'submit_bug_report'
+      and privilege_type = 'EXECUTE'
+      and grantee = 'authenticated'
+  ) then
+    raise exception 'CHECK 6 FAILED: authenticated lost EXECUTE on submit_bug_report';
+  end if;
+
+  raise notice 'CHECK 6 passed: submit_bug_report kept its grants across the recreate';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 7 — a null actor or a null id claims nothing. The Edge Function refuses
+-- both before it gets here, so this is the belt to that braces: neither may be
+-- read as "match the first row".
 -- -----------------------------------------------------------------------------
 begin;
 do $$
 declare
+  v_id     uuid;
   v_result jsonb;
 begin
   perform set_config('request.jwt.claims',
     '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
-  perform public.submit_bug_report(
-    'someone else''s words', '1.0.0', 'ios', '18.2', 'iPhone 14',
-    null, null, null, null, null, null);
+  select public.submit_bug_report('someone''s words', '1.0.0', 'ios', '18.2',
+    'iPhone 14', null, null, null, null, null, null) into v_id;
 
-  v_result := public.claim_bug_report_email(null);
-
+  v_result := public.claim_bug_report_email(null, v_id);
   if (v_result->>'claimed')::boolean then
-    raise exception 'CHECK 6 FAILED: a null actor claimed a report';
+    raise exception 'CHECK 7 FAILED: a null actor claimed a report';
   end if;
-  raise notice 'CHECK 6 passed: a null actor claims nothing';
+
+  v_result := public.claim_bug_report_email('11111111-1111-1111-1111-111111111111', null);
+  if (v_result->>'claimed')::boolean then
+    raise exception 'CHECK 7 FAILED: a null id claimed a report';
+  end if;
+
+  raise notice 'CHECK 7 passed: a null actor or a null id claims nothing';
 end $$;
 rollback;
