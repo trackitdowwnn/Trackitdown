@@ -52,6 +52,37 @@ export const sizes = {
   /** Small circled icon button (feed see-all chevron, future photo-corner
    *  buttons). Drawn size only — pad the pressable up to touchTarget. */
   circleButtonSm: 28,
+  /**
+   * Bug-report screenshot thumbnail (added 2026-08-27).
+   *
+   * ⚠️ ITS OWN TOKEN, NOT `touchTarget * 2`, which is what it was first. This
+   * file keeps drawn geometry separate from the touch floor on purpose (see the
+   * note above `control`), and deriving a picture size FROM the tap minimum
+   * inverts that — adopt Android's 48dp target one day and every screenshot
+   * silently grows to 96.
+   *
+   * ⚠️ RECOGNISABILITY, NOT LEGIBILITY, and the first version of this comment
+   * claimed the second. No 104pt tile shows an address readably — the tile's
+   * job is to let someone tell their screenshots apart and spot that one of
+   * them is the wrong picture; the ACTUAL check is the tap-through to
+   * PhotoPreviewModal, which is why the step's copy says "tap one to check it".
+   * At 88 the 44pt remove button owned a quarter of the tile, which is what
+   * this size fixes.
+   */
+  screenshotThumb: 104,
+  /**
+   * ⚠️ PORTRAIT, BECAUSE IT IS A SCREENSHOT. A square tile forces a choice
+   * between cropping the frame and shrinking it, and BOTH lose: a 9:19.5 phone
+   * screenshot cropped square shows the middle ~46% (an address in a bottom
+   * sheet disappears), and the same frame letterboxed into a square draws ~48pt
+   * wide with a third of the tile empty down each side. Shipping `cover` was
+   * the first mistake and `contain` on a square was the second. At 104×185 the
+   * whole frame draws ~85pt wide — 3.5× the area — with the letterboxing nearly
+   * gone, so nothing is cropped out of the picture the user is asked to check.
+   *
+   * width/height, per RN's aspectRatio.
+   */
+  screenshotThumbAspect: 9 / 16,
   /** Avatar diameters: list rows / sheets / compact headers / the profile
    *  hero + passport card (the Airbnb passport avatar is 100–104pt;
    *  docs/design-refs/profile/REFERENCE_SPEC.md). */

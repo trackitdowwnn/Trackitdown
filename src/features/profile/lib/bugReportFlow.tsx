@@ -40,9 +40,9 @@ import {
   BugScreenshotsStep,
   BugWhatHappenedStep,
 } from '../components/bugWizardSteps';
+import { BUG_REPORT_MIN_LENGTH } from './bugMessageRules';
 import type { BugReportAnswers } from './bugReportAnswers';
-import { labelForArea } from './bugReportOptions';
-import { BUG_FREQUENCIES, BUG_SEVERITIES } from './bugReportOptions';
+import { BUG_FREQUENCIES, BUG_SEVERITIES, labelForArea } from './bugReportOptions';
 
 /** The chosen option's label, or null when nothing was chosen. */
 const labelFor = (
@@ -50,6 +50,14 @@ const labelFor = (
   value: string | null,
 ): string | null => options.find((option) => option.value === value)?.label ?? null;
 
+/**
+ * Build the flow.
+ *
+ * `lines` are the device facts, already described by `describeDiagnostics` —
+ * passed in rather than read here so the host reads them ONCE and the flow
+ * stays a pure function of its inputs. They are rendered by the review footer,
+ * which is the only reason this takes an argument at all.
+ */
 export function buildBugReportFlow(
   lines: { label: string; value: string }[],
 ): WizardFlow<BugReportAnswers> {
@@ -68,10 +76,39 @@ export function buildBugReportFlow(
             helper: 'Tell us what happened and we’ll take a look.',
             component: BugWhatHappenedStep,
             // The ONLY gate in the flow. `.trim()` so whitespace is not an
-            // answer — a report of " " helps nobody and cannot be triaged.
-            schema: z.object({ message: z.string().trim().min(1) }),
+            // answer — a report of " " helps nobody and cannot be triaged, and
+            // neither can "map broken", which is why the floor is
+            // BUG_REPORT_MIN_LENGTH rather than 1 (owner request, 2026-08-27).
+            //
+            // ⚠️ THE SAME CONSTANT THE COUNTER USES. The step's caption is the
+            // only thing that explains a disabled Next, so a literal here would
+            // eventually leave the button refusing while the caption says the
+            // answer is long enough.
+            schema: z.object({ message: z.string().trim().min(BUG_REPORT_MIN_LENGTH) }),
             reviewLabel: 'What went wrong',
-            reviewValue: (answers) => answers.message?.trim() || 'Not said',
+            // ⚠️ BOTH FREE-TEXT ANSWERS, and the first version of this showed
+            // only the message. `expected` was still SENT — so the second
+            // largest free-text field in the payload, and the one most likely
+            // to carry a plate or an address despite the ask on the step
+            // itself, left the device without ever appearing on the screen
+            // that exists to say what is being sent. On the old single form
+            // both boxes were in the same viewport as the button; splitting
+            // the flow is exactly what made this possible to lose.
+            //
+            // Built by FILTERING rather than by an early return on an empty
+            // message: `if (!message) return 'Not said'` reads as a tidy guard
+            // and quietly drops `expected` — the exact failure this comment is
+            // about, reintroduced one line lower. Unreachable today (step 1 is
+            // the only gate, so review cannot be reached with an empty
+            // message), which is precisely why it would have survived.
+            reviewValue: (answers) => {
+              const message = answers.message?.trim();
+              const expected = answers.expected?.trim();
+              const parts = [message, expected ? `Expected instead: ${expected}` : null].filter(
+                (part): part is string => Boolean(part),
+              );
+              return parts.length > 0 ? parts.join('\n\n') : 'Not said';
+            },
           },
           {
             id: 'context',

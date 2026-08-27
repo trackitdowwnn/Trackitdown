@@ -11,13 +11,33 @@
 
 import { Pressable, StyleSheet, Text } from 'react-native';
 
-import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 
 export interface WizardHeaderProps {
   onExit: () => void;
+  /**
+   * True while the final submit is in flight, when `requestExit` refuses (see
+   * useWizardController) so a discard cannot pop a screen the success handler
+   * is about to pop again.
+   *
+   * ⚠️ THE REFUSAL HAS TO BE VISIBLE. Guarded in the controller alone, the X
+   * still rendered at full strength, still flashed its pressed state on touch,
+   * and still announced "Exit, button, Closes this flow" — a control that
+   * looks, feels and reads as live while doing nothing at all. Same rule the
+   * review screen's Edit links follow.
+   */
+  disabled?: boolean;
 }
 
-export function WizardHeader({ onExit }: WizardHeaderProps) {
+export function WizardHeader({ onExit, disabled = false }: WizardHeaderProps) {
   const styles = useThemedStyles(makeStyles);
 
   return (
@@ -25,9 +45,15 @@ export function WizardHeader({ onExit }: WizardHeaderProps) {
       accessibilityRole="button"
       accessibilityLabel="Exit"
       accessibilityHint="Closes this flow"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
       onPress={onExit}
       hitSlop={spacing.sm}
-      style={({ pressed }) => [styles.exit, pressed && styles.exitPressed]}
+      style={({ pressed }) => [
+        styles.exit,
+        pressed && styles.exitPressed,
+        disabled && styles.exitDisabled,
+      ]}
     >
       <Text style={styles.exitGlyph}>✕</Text>
     </Pressable>
@@ -46,6 +72,9 @@ const makeStyles = (c: Palette) =>
     },
     exitPressed: {
       backgroundColor: c.surfaceSubtle,
+    },
+    exitDisabled: {
+      opacity: opacity.disabled,
     },
     exitGlyph: {
       ...typography.heading,

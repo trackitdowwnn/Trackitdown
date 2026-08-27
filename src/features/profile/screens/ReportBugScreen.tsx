@@ -77,18 +77,15 @@ export function ReportBugScreen() {
   );
 
   /**
-   * ⚠️ THE BODY OF THIS IS UNCHANGED FROM THE SINGLE-SCREEN FORM. Only where it
-   * is called from moved. The wizard controller runs it on the review screen's
-   * final CTA, shows a spinner while it runs, and — critically — STAYS PUT with
-   * the thrown message when it fails, which is the property the old screen had
-   * to arrange by hand: losing what someone just wrote about a bug is its own
-   * bug.
+   * Everything that can refuse, in order. Kept separate from the success path
+   * below so `handleComplete` can promise ONE thing about what it throws.
+   *
+   * ⚠️ THE ORDER IS THE DESIGN. Quota first, so a rate-limited reporter is not
+   * made to upload three images before being told no; session next, so the
+   * upload is never attempted without a folder to write to.
    */
-  const handleComplete = async (answers: Partial<BugReportAnswers>) => {
-    const message = answers.message?.trim() ?? '';
-
-    // Advisory only — the RPC still enforces. Asked BEFORE uploading so a
-    // rate-limited reporter is not made to wait for three images first.
+  const sendReport = async (answers: Partial<BugReportAnswers>) => {
+    // Advisory only — the RPC still enforces.
     const remaining = await readBugReportQuota();
     if (remaining === 0) {
       throw new BugReportError(
@@ -107,9 +104,10 @@ export function ReportBugScreen() {
     if (!userId) {
       throw new BugReportError('Please sign in to send a report.', 'NOT_AUTHENTICATED');
     }
+
     const screenshotPaths = await uploadBugScreenshots(userId, answers.shots ?? []);
 
-    await submitBugReport(message, diagnostics, {
+    await submitBugReport(answers.message?.trim() ?? '', diagnostics, {
       area: answers.area ?? null,
       severity: answers.severity ?? null,
       frequency: answers.frequency ?? null,
@@ -117,12 +115,54 @@ export function ReportBugScreen() {
       breadcrumbs: readBreadcrumbs(),
       screenshotPaths,
     });
+  };
 
-    toast.show('Thanks — we’ll take a look.');
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)/profile');
+  /**
+   * The wizard controller runs this on the review screen's final CTA, shows a
+   * spinner while it runs, and — critically — STAYS PUT with the thrown message
+   * when it fails, which is the property the old screen had to arrange by hand:
+   * losing what someone just wrote about a bug is its own bug.
+   *
+   * ⚠️ ONLY A BugReportError MAY ESCAPE THE SEND, and moving the submit here is
+   * exactly
+   * what put that at risk. The old single screen owned the catch and rendered
+   * `err instanceof BugReportError ? err.message : <generic>`; the controller
+   * renders `err.message` for ANY Error. But `uploadBugScreenshots` is
+   * documented to throw the RAW Supabase StorageError and `toJpegBytes` throws
+   * raw too — so without this wrapper an RLS refusal reached the footer
+   * verbatim as `new row violates row-level security policy for table
+   * "objects"`. That is server error text in front of a user, which is the one
+   * thing bugReportApi's own doctrine forbids (its `.message` is safe to show
+   * BECAUSE it is a BugReportError, built for display).
+   *
+   * ⚠️ AND THE SUCCESS PATH NEEDS ITS OWN CATCH, which is the narrower version
+   * of the same hole. Leaving the toast and the router bare did not protect
+   * them — it exposed them: `advance` catches whatever escapes here, sets
+   * `error` and holds the review screen, so a router that threw would tell
+   * someone their report FAILED, in raw text, after the server had accepted it.
+   * Once the RPC returns, the send is a fact and nothing downstream of it may
+   * say otherwise.
+   */
+  const handleComplete = async (answers: Partial<BugReportAnswers>) => {
+    try {
+      await sendReport(answers);
+    } catch (err) {
+      if (err instanceof BugReportError) throw err;
+      // No `cause`, and nothing from `err` in the string: the upload path
+      // already refuses to log the storage text for the same reason.
+      throw new BugReportError('We couldn’t send this. Please try again.', 'UNKNOWN');
+    }
+
+    try {
+      toast.show('Thanks — we’ll take a look.');
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(tabs)/profile');
+      }
+    } catch {
+      // Swallowed on purpose: routing cannot un-send a sent report, and the
+      // only thing throwing here could achieve is a false failure message.
     }
   };
 

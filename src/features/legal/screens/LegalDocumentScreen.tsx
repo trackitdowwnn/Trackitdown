@@ -46,7 +46,6 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  motion,
   sizes,
   spacing,
   typography,
@@ -69,7 +68,6 @@ export interface LegalDocumentScreenProps {
 
 export function LegalDocumentScreen({ slug }: LegalDocumentScreenProps) {
   const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
   const insets = useSafeAreaInsets();
   const doc = legalDocument(slug);
 

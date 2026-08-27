@@ -217,7 +217,14 @@ export function WizardScreen<TAnswers>({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <WizardHeader onExit={controller.requestExit} />
+          {/* Disabled during the SUBMIT only — the exact case requestExit
+              refuses, read from the controller so the two cannot drift. During
+              a step's onContinue lookup the X stays live, because on iOS it is
+              the only way out of a stalled one. */}
+          <WizardHeader
+            onExit={controller.requestExit}
+            disabled={busy && controller.isLastScreen}
+          />
           <View style={styles.headerProgress}>
             <WizardProgressBar
               fills={controller.progress}
@@ -296,7 +303,12 @@ export function WizardScreen<TAnswers>({
                   </View>
                 </>
               ) : (
-                <ReviewStep flow={flow} answers={answers} onEdit={controller.editStep} />
+                <ReviewStep
+                  flow={flow}
+                  answers={answers}
+                  onEdit={controller.editStep}
+                  busy={busy}
+                />
               )}
             </StepContainer>
           )}

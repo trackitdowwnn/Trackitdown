@@ -16,7 +16,7 @@
  *        the pathname instead, that is the thing this exists to prevent.
  * LINKS: supabase/migrations/20260824140000_bug_report_details.sql (the CHECK
  *          constraints these must match, one for one);
- *        ../screens/ReportBugScreen.tsx (renders them);
+ *        ../components/bugWizardSteps.tsx (renders them);
  *        ../api/bugReportApi.ts (sends them);
  *        ./lastArea.ts (supplies the pre-filled default).
  */

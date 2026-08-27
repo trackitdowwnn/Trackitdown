@@ -69,9 +69,25 @@ export interface ReviewStepProps<TAnswers> {
   answers: Partial<TAnswers>;
   /** Jump to a step (flat screen index) to edit it. */
   onEdit: (flatIndex: number) => void;
+  /**
+   * True while the final submit is in flight.
+   *
+   * ⚠️ THE EDIT LINKS MUST GO DEAD, and they were the last way out of a
+   * submitting flow: the footer Back hides itself and the Android gesture is
+   * swallowed, but Edit sat here fully live. Tapping it during a submit landed
+   * the user on an editable step where anything they typed silently did NOT
+   * travel — `advance` captured `answers` by closure before the await — and
+   * then the success handler routed away from under them.
+   */
+  busy?: boolean;
 }
 
-export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<TAnswers>) {
+export function ReviewStep<TAnswers>({
+  flow,
+  answers,
+  onEdit,
+  busy = false,
+}: ReviewStepProps<TAnswers>) {
   const styles = useThemedStyles(makeStyles);
   // Answers are a dependency now: `when` + `hideReviewWhenSkipped` decide which
   // rows belong, and both read them.
@@ -152,7 +168,13 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
               {group.title}
             </Text>
           ) : null}
-          <View style={styles.items}>
+          {/* ⚠️ NO GAP, and no style at all — this was an empty StyleSheet
+              entry kept alive to hold the comment. The group's 16 is for
+              title→rows; letting it apply BETWEEN rows too put each hairline
+              8pt under one row and 24pt over the next, so it read as an
+              underline of the row above rather than a separator between two.
+              The rows' own symmetric padding is the rhythm. */}
+          <View>
             {group.items.map(({ step, flatIndex }, rowIndex) => {
             const label = step.reviewLabel ?? resolveQuestion(step.question, answers);
             // The last row draws NO rule: the next group opens with its own
@@ -175,11 +197,15 @@ export function ReviewStep<TAnswers>({ flow, answers, onEdit }: ReviewStepProps<
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Edit ${label}`}
+                  accessibilityState={{ disabled: busy }}
+                  disabled={busy}
                   hitSlop={spacing.sm}
                   onPress={() => onEdit(flatIndex)}
                   style={({ pressed }) => [styles.edit, pressed ? styles.editPressed : null]}
                 >
-                  <Text style={styles.editLink}>Edit</Text>
+                  <Text style={[styles.editLink, busy ? styles.editLinkDisabled : null]}>
+                    Edit
+                  </Text>
                 </Pressable>
               </View>
             );
@@ -221,11 +247,6 @@ const makeStyles = (c: Palette) =>
       borderTopWidth: 0,
       paddingTop: 0,
     },
-    // ⚠️ NO GAP. The group's 16 is for title→rows; letting it apply BETWEEN
-    // rows too put each hairline 8pt under one row and 24pt over the next, so
-    // it read as an underline of the row above rather than a separator between
-    // two. The rows' own symmetric padding is the rhythm.
-    items: {},
     groupTitle: {
       ...typography.heading,
       color: c.textPrimary,
@@ -285,5 +306,16 @@ const makeStyles = (c: Palette) =>
     },
     editPressed: {
       opacity: opacity.pressed,
+    },
+    // ⚠️ THE UNDERLINE COMES OFF, and that is the whole change — an opacity
+    // fade was the first attempt and did nothing useful twice over. Underline
+    // is the app's ONE signal that text is tappable (DESIGN_SYSTEM: "never
+    // underline non-tappable text"), so leaving it on an inert link is the
+    // single worst thing this style could do. And `opacity.disabled` and
+    // `opacity.pressed` are both 0.6, so fading it rendered every Edit link
+    // looking permanently mid-touch — the opposite of inert.
+    editLinkDisabled: {
+      color: c.textSecondary,
+      textDecorationLine: 'none',
     },
   });
