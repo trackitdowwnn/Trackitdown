@@ -45,6 +45,7 @@ import {
 import type { WizardStepProps } from '@/shared/wizard';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { suggestAlertName } from '../lib/alertName';
 import { DEFAULT_ALERT_RADIUS_MILES, type AlertAnswers } from '../types';
 import { AlertZoneMap, AlertZoneMapProvider } from './AlertZoneMap';
 
@@ -252,13 +253,37 @@ export function FiltersStep({ answers, setAnswers }: StepProps) {
 
 export function NameStep({ answers, setAnswers }: StepProps) {
   const styles = useThemedStyles(makeStyles);
+
+  // ⚠️ THE SUGGESTION IS THE PLACEHOLDER, NOT THE VALUE (owner request,
+  // 2026-08-27). The field used to open pre-filled with this sentence, which
+  // meant anyone who wanted their own name had to clear someone else's words
+  // first. As a placeholder it still shows what a good name looks like — and
+  // built from THEIR answers, so it beats the generic "Home, Work commute…" it
+  // replaces — while leaving the field genuinely empty.
+  //
+  // TextField only surfaces a placeholder once the field is FOCUSED (the
+  // floating label is the resting state), so this appears exactly when someone
+  // is deciding what to type, and never sits there looking like an answer.
+  const suggestion = suggestAlertName(
+    {
+      make: answers.make ?? null,
+      model: answers.model ?? null,
+      colour: answers.colour ?? null,
+      bodyType: answers.bodyType ?? null,
+      minBountyPence: answers.minBountyPence ?? null,
+      recencyDays: answers.recencyDays ?? null,
+    },
+    answers.placeLabel ?? null,
+    answers.radiusMiles ?? DEFAULT_ALERT_RADIUS_MILES,
+  );
+
   return (
     <View style={styles.stack}>
       <TextField
         label="Alert name"
         value={answers.name ?? ''}
         onChangeText={(name) => setAnswers({ name })}
-        placeholder="Home, Work commute…"
+        placeholder={suggestion}
         autoCapitalize="sentences"
         testID="alert-name"
       />
