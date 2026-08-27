@@ -71,6 +71,7 @@ import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequireAuth } from '@/features/auth';
 import { supabase } from '@/shared/api';
@@ -85,7 +86,15 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { Button, EmptyState, ErrorState, Screen, useToast } from '@/shared/ui';
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  Screen,
+  StatusPill,
+  useToast,
+  type BadgeTone,
+} from '@/shared/ui';
 
 import { PaymentError } from '../api/functionError';
 import {
@@ -146,9 +155,33 @@ const COPY: Record<
   },
 };
 
+/**
+ * The chip beside each state (Airbnb pass, 2026-08-26).
+ *
+ * ⚠️ TONE IS NOT SEVERITY, it is what the spotter should DO. `unfinished` and
+ * `verifying` both sit at `warning`, but for opposite reasons: unfinished is
+ * warning because it is waiting on THEM, verifying because it is waiting on
+ * Stripe and saying "all good" would be a promise we cannot keep — Stripe can
+ * still come back for more. `notStarted` is neutral rather than warning
+ * because nothing has gone wrong: credit-time setup means not-set-up is the
+ * expected state, not a lapse.
+ *
+ * ⚠️ NO TONE READS AS AN ERROR. `danger` is deliberately unused here even for
+ * the rejected paths, which render their own cards above this one. A red chip
+ * on a screen about money someone is owed says "your money is in trouble" when
+ * what is true is "Stripe needs a different form".
+ */
+const STATUS_PILL: Record<keyof typeof COPY, { label: string; tone: BadgeTone }> = {
+  notStarted: { label: 'Not set up', tone: 'neutral' },
+  unfinished: { label: 'Action needed', tone: 'warning' },
+  verifying: { label: 'Being checked', tone: 'warning' },
+  ready: { label: 'Ready', tone: 'success' },
+};
+
 export function PayoutsScreen() {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const toast = useToast();
   const requireAuth = useRequireAuth();
   const { status, settling, refresh, settleReturn } = usePayoutAccount();
@@ -456,7 +489,15 @@ export function PayoutsScreen() {
   return (
     <Screen
       scroll
-      contentContainerStyle={styles.scroll}
+      // ⚠️ THE BOTTOM INSET, as on SettingsScreen and LegalDocumentScreen —
+      // this is the fourth pushed screen found with it and almost certainly not
+      // the last. `Screen` pads only the top by default, deliberately, because
+      // tab screens run under the tab bar; a pushed screen has no tab bar and
+      // nothing else pays it, so under SDK 57's edge-to-edge Android the last
+      // element sits beneath the navigation buttons. Here that element is a
+      // Button — the one that starts the flow — so it was not merely clipped
+      // but unreachable.
+      contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
       // The form is ten fields deep; without this the last two sit under the
       // keyboard and the first tap on Continue is spent dismissing it.
       keyboardAware
@@ -477,15 +518,40 @@ export function PayoutsScreen() {
       {/* The earn moment. The push said "You've earned £X — tell us where to
           send it"; the screen must greet them with the same sentence, not with
           generic setup copy. Rendered for every non-terminal state — the
-          amount is WHY they are here. */}
+          amount is WHY they are here.
+
+          ⚠️ THE FIGURE IS THE HERO SINCE 2026-08-26 (Airbnb pass). It used to
+          be a sentence at title scale — "You've earned £250" — which made the
+          number compete with its own preamble at the same weight. Split into a
+          quiet label and the amount at `display`, so the thing they came to see
+          is the thing they see. Same words, different hierarchy. */}
       {typeof pendingCreditPence === 'number' && status !== 'guest' && status !== 'ready' ? (
         <View style={styles.earnedCard} testID="payouts-earned">
-          <Text style={styles.earnedTitle} accessibilityRole="header">
-            You’ve earned {formatPounds(pendingCreditPence)}
-          </Text>
-          <Text style={styles.earnedBody}>
-            Your sighting led to a recovery. Tell us where to send it.
-          </Text>
+          {/* ⚠️ ONE accessible node, not three. A screen reader reading
+              "You've earned" / "£250" / "Your sighting led to a recovery" as
+              separate stops turns one fact into three, and the amount arrives
+              without the sentence that gives it meaning. The visual split is
+              typographic only. */}
+          <View
+            accessible
+            accessibilityRole="header"
+            // The curly apostrophe, matching the visible text and the house
+            // style — a label that reads differently from the words on screen
+            // is the kind of drift nobody sees until someone compares them.
+            accessibilityLabel={`You’ve earned ${formatPounds(pendingCreditPence)}. Your sighting led to a recovery. Tell us where to send it.`}
+          >
+            {/* ⚠️ NO `accessibilityElementsHidden` ON THE CHILDREN. It was
+                here first and was both redundant and harmful: `accessible` on
+                the wrapper already stops them being focused individually, and
+                the flag additionally removes them from the accessibility tree
+                — which took the visible amount out of RNTL's default queries
+                and would take it from any tooling that reads the same tree. */}
+            <Text style={styles.earnedLabel}>You’ve earned</Text>
+            <Text style={styles.earnedAmount}>{formatPounds(pendingCreditPence)}</Text>
+            <Text style={styles.earnedBody}>
+              Your sighting led to a recovery. Tell us where to send it.
+            </Text>
+          </View>
         </View>
       ) : null}
 
@@ -496,6 +562,32 @@ export function PayoutsScreen() {
           "Nearly there" together for the whole settling window. Priority
           order, early returns, structurally impossible to show two. */}
       {renderBody()}
+
+      {/* Every state in which details are being handed over or held. Absent for
+          a guest (nothing has been asked of them) and once `ready` (the claim
+          has been demonstrated rather than promised). */}
+      {/* ⚠️ "PASS STRAIGHT ON" AND "NEVER STORE", NEVER "NEVER SEE". This line
+          first read "we never see or store them" and a test caught it within
+          the minute — PayoutDetailsForm:154 records why: the details are POSTed
+          to our own Edge Function and held in memory on the way to Stripe, so
+          "never store" is true and "never see" is the sentence a regulator
+          would quote back. Worded to match the form exactly; two promises about
+          the same data in different words is how one of them drifts.
+
+          ⚠️ AND NOT WHILE EITHER FORM IS OPEN, which a second test caught by
+          finding the sentence twice on one screen. Both forms already carry it
+          beside the fields, which is the better place for it — a promise about
+          what happens to a sort code belongs next to the sort code. This
+          footnote exists only for the states where NO form is showing
+          (unfinished, verifying), because that is where the reassurance used to
+          disappear entirely: it lived in the `notStarted` copy alone, so it
+          vanished the moment setup began and never returned while Stripe was
+          holding things up. */}
+      {status !== 'guest' && status !== 'loading' && status !== 'ready' && !showForm && !showBankForm && !connectInstance ? (
+        <Text style={styles.trust} testID="payouts-trust">
+          We pass your bank details straight to Stripe and never store them.
+        </Text>
+      ) : null}
     </Screen>
   );
 
@@ -624,6 +716,23 @@ export function PayoutsScreen() {
     }
     return (
       <View style={styles.card} testID={`payouts-${status}`}>
+        {/* ⚠️ THE CHIP ARRIVES BEFORE THE PROSE, which is the point of it. The
+            reference marks a payout method's state with a badge — Pending,
+            Error, Default — so the state is legible before a word is read.
+            Ours said the same things only in a heading and a paragraph, which
+            is fine to read and slow to scan, and this is a screen people open
+            to check one thing.
+
+            ⚠️ IT DOES NOT REPLACE THE HEADING. "Being checked" is the state;
+            "Stripe is checking your details" is who is doing it and therefore
+            why the app cannot hurry it. Dropping the heading for the chip would
+            trade an explanation for a label on the one screen where people are
+            most inclined to suspect they are being stalled. */}
+        <StatusPill
+          label={STATUS_PILL[status].label}
+          tone={STATUS_PILL[status].tone}
+          testID={`payouts-pill-${status}`}
+        />
         <Text style={styles.cardTitle} accessibilityRole="header">
           {COPY[status].title}
         </Text>
@@ -714,14 +823,35 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     borderRadius: radii.lg,
     backgroundColor: c.surfaceInverse,
   },
-  earnedTitle: {
-    ...typography.title,
+  // A quiet lead-in, so the amount below it is the first thing with weight.
+  earnedLabel: {
+    ...typography.caption,
+    color: c.textOnPrimary,
+  },
+  // ⚠️ `display`, the app's big-moment scale, used here for the one number a
+  // spotter opened this screen to see. DESIGN_SYSTEM reserves it for big
+  // moments and in-page hero values (MoneySlider's readout is the other), which
+  // is exactly what a credited bounty is.
+  earnedAmount: {
+    ...typography.display,
     color: c.textOnPrimary,
   },
   earnedBody: {
     ...typography.body,
     // On the inverse surface, secondary-grey text would fail contrast.
     color: c.textOnPrimary,
+    marginTop: spacing.xs,
+  },
+  // ⚠️ SAYS SOMETHING THE INTERFACE CANNOT SHOW, which is the test for whether
+  // a footnote earns its place. "We never see your bank details" was only ever
+  // in the `notStarted` copy, so the moment someone started the form it
+  // disappeared — leaving the reassurance absent from every state in which they
+  // are actually handing over a sort code. It is the claim this screen most
+  // needs to keep making, and no arrangement of cards and chips can imply it.
+  trust: {
+    ...typography.caption,
+    color: c.textSecondary,
+    paddingHorizontal: spacing.md,
   },
   cardTitle: {
     ...typography.heading,
