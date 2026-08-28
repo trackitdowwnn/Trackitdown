@@ -36,13 +36,6 @@ jest.mock('@/features/auth', () => ({
   useRequireAuth: () => mockRequireAuth,
 }));
 
-// The real colour lookup, reached without the vehicles barrel — see
-// CarColourTile.test.tsx for why the barrel cannot be imported here.
-jest.mock('@/features/vehicles', () => ({
-  swatchForName: jest.requireActual('@/features/vehicles/post/lib/carColours').swatchForName,
-  glyphInkFor: jest.requireActual('@/features/vehicles/post/lib/carColours').glyphInkFor,
-}));
-
 const mockPush = jest.fn();
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({

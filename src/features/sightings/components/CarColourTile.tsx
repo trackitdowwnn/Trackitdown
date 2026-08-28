@@ -22,7 +22,7 @@
  *        Black #1A1A1A on a #1E1E1E card is 1.03:1, so the most commonly picked
  *        colour in the palette rendered as an empty hole. A sample of paint
  *        needs an edge at both ends of the range.
- * LINKS: src/features/vehicles/post/lib/carColours.ts (the palette, the hexes,
+ * LINKS: src/shared/lib/carColours.ts (the palette, the hexes,
  *          `swatchForName` and `glyphInkFor`);
  *        src/features/vehicles/post/components/ColourField.tsx (the same
  *          swatches as a grid, and the border story);
@@ -32,7 +32,7 @@
 import { Car } from 'lucide-react-native';
 import { StyleSheet, View } from 'react-native';
 
-import { glyphInkFor, swatchForName } from '@/features/vehicles';
+import { glyphInkFor, swatchForName } from '@/shared/lib';
 import { radii, sizes, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 
 export interface CarColourTileProps {

@@ -14,9 +14,34 @@
  *        and reviewers must NOT "tokenise" them. `colourFromDvla` is the seam
  *        for the (stubbed) DVLA lookup — its limited vocabulary maps cleanly
  *        onto this set so a returned colour can pre-select a swatch.
+ *
+ *        ⚠️ MOVED HERE FROM features/vehicles/post/lib ON 2026-08-28, joining
+ *        carMakes and carModels — which this file's header had noted were
+ *        already in shared/lib while it "stayed here and is exported rather
+ *        than moved, to keep the posting wizard's imports untouched". Four
+ *        features now read it (vehicles, notifications, search-map, sightings),
+ *        which is well past ARCHITECTURE.md's bar, and reaching it through the
+ *        vehicles barrel cost two real things:
+ *
+ *          * A CYCLE. `@/features/vehicles` → useSimilarPosts →
+ *            `@/features/search-map` → SearchSheet → back, so SearchSheet saw
+ *            `CAR_COLOURS` as `undefined` at module scope and crashed the whole
+ *            app at startup — a bug no test could catch, because the suite
+ *            mocks the barrel and mocking breaks the cycle. Colours are out of
+ *            that loop now; body types are not, so SearchSheet's
+ *            functions-not-constants rule still stands.
+ *          * A TEST TAX. Three suites mocked `@/features/vehicles` and
+ *            `requireActual`'d this deep path just to get a pure lookup, because
+ *            the barrel drags in auth and dies on AsyncStorage's native module.
+ *
+ *        `bodyTypes.ts` deliberately did NOT come along: it imports lucide
+ *        components and `CardSelectOption` from shared/ui, so it is UI, and
+ *        shared/lib does not import shared/ui.
  * LINKS: src/features/vehicles/post/components/ColourField.tsx (renders these);
  *        src/features/vehicles/post/components/postSteps.tsx (ColourStep);
- *        src/features/vehicles/post/lib/carColours.test.ts;
+ *        src/features/sightings/components/CarColourTile.tsx (the swatch as a
+ *          report card's leading tile, and the consumer of `glyphInkFor`);
+ *        ./carColours.test.ts;
  *        docs/DESIGN_SYSTEM.md (Colour, Accessibility — never colour alone).
  */
 

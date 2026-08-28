@@ -20,11 +20,12 @@
  *        (suggestAlertName — NameStep's placeholder); ./AlertZoneMap.tsx,
  *        src/shared/ui/RadiusSlider.tsx (shared with map search since
  *        2026-08-10; the default label keeps this wizard's copy unchanged);
- *        @/features/vehicles (CAR_COLOURS, BODY_TYPE_OPTIONS);
- *        @/shared/lib/carMakes, carModels.
+ *        @/features/vehicles (BODY_TYPE_OPTIONS);
+ *        @/shared/lib (CAR_COLOURS), @/shared/lib/carMakes, carModels.
  */
 
-import { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN, CAR_COLOURS } from '@/features/vehicles';
+import { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN } from '@/features/vehicles';
+import { CAR_COLOURS } from '@/shared/lib';
 import {
   MAX_BOUNTY_PENCE as BOUNTY_MAX_PENCE,
   MIN_BOUNTY_PENCE as BOUNTY_MIN_PENCE,

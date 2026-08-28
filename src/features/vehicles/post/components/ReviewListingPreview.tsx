@@ -32,7 +32,7 @@ import { Car } from 'lucide-react-native';
 import { MediaIdentityCard } from '@/shared/ui';
 
 import { BODY_TYPE_UNKNOWN } from '../lib/bodyTypes';
-import { swatchForName } from '../lib/carColours';
+import { swatchForName } from '@/shared/lib';
 import type { PostACarAnswers } from '../types';
 
 /** The step the preview's Edit jumps to — photos are what it is showing. */

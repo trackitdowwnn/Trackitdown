@@ -7,7 +7,7 @@
  *        and future filters), and a colour-blind spotter reads the NAME — so a
  *        nameless or duplicated swatch, or a note leaking under a plain colour,
  *        is a real defect. The DVLA map is the pre-select seam.
- * LINKS: src/features/vehicles/post/lib/carColours.ts.
+ * LINKS: src/shared/lib/carColours.ts.
  */
 
 import {

@@ -12,7 +12,7 @@
  *        The ink assertions exist because the fill is DATA and does not flip
  *        with the theme, so a themed ink would be white-on-white for five of
  *        the fifteen colours.
- * LINKS: ./CarColourTile.tsx; src/features/vehicles/post/lib/carColours.ts.
+ * LINKS: ./CarColourTile.tsx; src/shared/lib/carColours.ts.
  */
 
 import { render } from '@testing-library/react-native';
@@ -20,14 +20,11 @@ import { StyleSheet } from 'react-native';
 
 import { CarColourTile } from './CarColourTile';
 
-// The real lookup, reached WITHOUT the vehicles barrel — importing that pulls
-// in auth and then AsyncStorage's native module and dies at import (the same
-// trap alertSteps.test.tsx documents). Mocking the lookup itself would leave
-// this suite asserting its own fixture.
-jest.mock('@/features/vehicles', () => ({
-  swatchForName: jest.requireActual('@/features/vehicles/post/lib/carColours').swatchForName,
-  glyphInkFor: jest.requireActual('@/features/vehicles/post/lib/carColours').glyphInkFor,
-}));
+// ⚠️ NO MOCK. This suite used to mock `@/features/vehicles` and
+// `requireActual` a deep path inside it, because reaching a pure colour lookup
+// through a feature barrel dragged in auth and died on AsyncStorage's native
+// module. carColours moved to `@/shared/lib` on 2026-08-28 and the tax went
+// with it — the component now imports the real thing and so does this file.
 
 const fillOf = (element: { props: { style?: unknown } }) =>
   (StyleSheet.flatten(element.props.style) as { backgroundColor?: string }).backgroundColor;

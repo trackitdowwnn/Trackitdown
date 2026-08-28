@@ -24,8 +24,9 @@ import { NameStep } from './alertSteps';
 jest.mock('@/features/vehicles', () => ({
   BODY_TYPE_OPTIONS: [],
   BODY_TYPE_UNKNOWN: '__unknown__',
-  CAR_COLOURS: [],
 }));
+// CAR_COLOURS is no longer in that mock: it moved to @/shared/lib on
+// 2026-08-28, which imports no feature and so needs no stubbing at all.
 jest.mock('@/features/vehicles/post/lib/bountyBounds', () => ({
   MAX_BOUNTY_PENCE: 500000,
   MIN_BOUNTY_PENCE: 1000,

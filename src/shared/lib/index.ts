@@ -6,6 +6,17 @@
  */
 
 export {
+  CAR_COLOURS,
+  colourChangePatch,
+  colourFromDvla,
+  glyphInkFor,
+  isNoteColour,
+  swatchForName,
+  GLYPH_ON_DARK,
+  GLYPH_ON_LIGHT,
+  type CarColour,
+} from './carColours';
+export {
   formatDateLabel,
   formatDateLabelCompact,
   formatDateTimeLabel,

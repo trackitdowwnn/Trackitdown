@@ -34,11 +34,6 @@ import { ReportCard, ReportCardSkeleton } from './ReportCard';
 /** The tests render under the default (light) scheme. */
 const colors = paletteFor('light');
 
-jest.mock('@/features/vehicles', () => ({
-  swatchForName: jest.requireActual('@/features/vehicles/post/lib/carColours').swatchForName,
-  glyphInkFor: jest.requireActual('@/features/vehicles/post/lib/carColours').glyphInkFor,
-}));
-
 /** ⚠️ Through `Dimensions.get` — see the file header. */
 const atFontScale = (fontScale: number) => {
   jest.spyOn(RN.Dimensions, 'get').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale });
