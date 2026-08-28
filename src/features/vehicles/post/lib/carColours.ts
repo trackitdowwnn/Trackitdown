@@ -70,6 +70,28 @@ export const CAR_COLOURS: CarColour[] = [
   { name: 'Other', hex: '#E4E4E4', light: true, note: true, icon: 'more-horizontal' },
 ];
 
+/**
+ * The two inks anything drawn ON TOP OF a swatch may take, selected by `light`.
+ *
+ * ⚠️ THEY LIVE HERE BECAUSE THEY ARE DATA, exactly like the fills above and
+ * exempt from the token rule for the same reason: a swatch does not flip with
+ * the theme, so an ink that did would be white-on-white for the five light
+ * shades. Keeping them beside the `light` flag that chooses between them means
+ * a future palette edit moves fill and ink together — and gives /theme-audit
+ * one sanctioned home for the exemption instead of a second one in a component.
+ *
+ * `carColours.test.ts` computes every pair against the 3:1 floor for graphical
+ * objects, so a new swatch with the wrong `light` flag fails there rather than
+ * shipping illegible.
+ */
+export const GLYPH_ON_DARK = '#FFFFFF';
+export const GLYPH_ON_LIGHT = '#1A1A1A';
+
+/** The ink to draw over `swatch` — see the pair above. */
+export function glyphInkFor(swatch: CarColour): string {
+  return swatch.light ? GLYPH_ON_LIGHT : GLYPH_ON_DARK;
+}
+
 /** Case-exact-ish lookup of a swatch by its canonical name (trimmed, case-insensitive). */
 export function swatchForName(name: string | null | undefined): CarColour | undefined {
   const target = (name ?? '').trim().toLowerCase();

@@ -209,6 +209,26 @@ export const sizes = {
   /** The ring's drawn stroke. A stroke, not a spacing value — same reason
    *  timelineRailStroke and mapPinRing are tokens rather than literals. */
   alertGlyphStroke: 1,
+  /**
+   * The colour tile leading a report card (added 2026-08-27) — the car's own
+   * paint, standing in for the photograph this screen is not allowed to have.
+   *
+   * ⚠️ ITS OWN TOKEN, NOT `avatarLg`, which is the same 72 today. `alertThumb`
+   * exists for exactly this reason one screen over, and `screenshotThumb` spends
+   * a paragraph on it: a car tile is not an avatar, and a file that spells it
+   * `avatarLg` breaks the day the profile photo grows.
+   */
+  carTile: 72,
+  /**
+   * The car silhouette drawn inside a `carTile` (added 2026-08-27).
+   *
+   * Bigger than `icon` (24) on purpose: at 24 the glyph reads as a small badge
+   * sitting on a colour, and the tile's job is the opposite — the COLOUR is the
+   * information and the silhouette only says what kind of thing is that colour.
+   * A stroke-drawn glyph over a solid DATA fill, so it is geometry, not an icon
+   * button; `icon`/`iconSm` are for icons that stand alone.
+   */
+  carTileGlyph: 32,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

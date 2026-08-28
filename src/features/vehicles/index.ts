@@ -23,7 +23,16 @@ export { ModelField } from './post/components/ModelField';
 // come from one list or an alert silently matches nothing). Makes and models
 // already live in shared/lib — these two stayed here and are exported rather
 // than moved, to keep the posting wizard's imports untouched.
-export { CAR_COLOURS, type CarColour } from './post/lib/carColours';
+// `swatchForName` joined them 2026-08-27 for features/sightings, which draws a
+// report's car as its colour: the swatch hex is the only picture that screen is
+// allowed to have. Exported rather than reimplemented so one lookup, one
+// trimming rule and one `light` flag serve the grid and the tile alike.
+export {
+  CAR_COLOURS,
+  swatchForName,
+  glyphInkFor,
+  type CarColour,
+} from './post/lib/carColours';
 export { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN } from './post/lib/bodyTypes';
 export type { PostDetail, PostDetailResult, ClosedReason } from './types';
 // The report-sighting wizard reads the post's registered marks through this
