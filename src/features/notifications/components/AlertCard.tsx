@@ -38,6 +38,7 @@ import { MoreHorizontal } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import {
+  cardSurface,
   listRowStackFontScale,
   opacity,
   radii,
@@ -153,22 +154,14 @@ export function AlertCard({ alert, onPress, onToggle, onMore }: AlertCardProps) 
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    // ⚠️ NO SHADOW, and a hairline instead. Every Airbnb pass on this app has
-    // shipped cards flat (settings, legal, payouts, spotter story, bug report),
-    // and the hairline is what separates the card from the page — which matters
-    // most in dark, where `surface` on `background` is #1E1E1E on #141414.
-    // NOTE: DESIGN_SYSTEM's Card entry still specifies a soft shadow; code and
-    // doc disagree across five screens now, and that is a doc decision, not one
-    // to settle silently here.
+    // The house resting-card box — flat, with a hairline. `cardSurface` owns
+    // that decision and the reasoning; this file owns the layout inside it.
     card: {
+      ...cardSurface(c),
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
       padding: spacing.lg,
-      borderRadius: radii.lg,
-      backgroundColor: c.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.border,
     },
     // Past the threshold the controls take their own row, so the name and
     // summary get the card's full width instead of ~127pt of it.

@@ -46,6 +46,7 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
 import {
+  cardSurface,
   listRowStackFontScale,
   radii,
   sizes,
@@ -261,23 +262,16 @@ function useMarkerOffset(): (markSize: number) => number {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    // ⚠️ `surface` AND A HAIRLINE, NOT `surfaceSubtle` AND NOTHING. This was
-    // the only card in the app filled with the subtle grey, which reads as a
-    // well in the page rather than a thing resting on it. No shadow: every
-    // Airbnb pass on this app has shipped cards flat, and the hairline is what
-    // separates card from page in dark, where `surface` on `background` is
-    // #1E1E1E on #141414. (DESIGN_SYSTEM's Card entry still specifies a soft
-    // shadow; code and doc now disagree across six screens, which is a doc
-    // decision and not one to settle silently here.)
+    // ⚠️ `cardSurface`, NOT `surfaceSubtle` AND NOTHING. This was the only card
+    // in the app filled with the subtle grey, which reads as a well in the page
+    // rather than a thing resting on it. The shared box carries the flat-with-a-
+    // hairline decision and the reasoning behind it.
     card: {
+      ...cardSurface(c),
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
       padding: spacing.lg,
-      borderRadius: radii.lg,
-      backgroundColor: c.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.border,
     },
     cardStacked: {
       flexDirection: 'column',

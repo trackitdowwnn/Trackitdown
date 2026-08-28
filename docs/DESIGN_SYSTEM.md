@@ -294,15 +294,31 @@ are build output.
   elevation there is carried by the surface ladder, not by shadow, so anything
   floating over a busy surface (map chrome) needs a `borderStrong` hairline
   instead.
+  **Shadow means FLOATING, not "is a card"** — map chrome, sheets, slider
+  thumbs, toasts. A card that rests on a page is flat with a hairline; see
+  `cardSurface` under Core components.
 
 ## Core components (live in `src/shared/ui/`)
 
 - **Button** — variants: `primary` (near-black fill), `secondary` (outline),
   `ghost`, `danger`. Height 52, radius `md`, full-width by default.
-- **Card** — white surface, radius `lg`, 16px padding, soft shadow. The
-  vehicle card (photo, plate chip, make/model, bounty in `primary`,
-  distance, last-seen time) is the app's signature element — Airbnb-listing
-  style with a large image and breathing room.
+- **Card** — `surface`, radius `lg`, 16px padding, and **flat: a
+  `hairlineWidth` border, no shadow**. Use `cardSurface(palette)` from
+  `@/shared/theme` rather than hand-rolling the box.
+  **Corrected 2026-08-28.** This entry specified a soft shadow for a long time
+  and the code never agreed: seven redesigns shipped flat, and by the second
+  card to carry a paragraph apologising for it the doc was the thing that was
+  wrong. A shadow is for something that FLOATS over content — map chrome,
+  sheets, slider thumbs, toasts — not for a card resting on a page. The
+  hairline is load-bearing rather than decorative: in dark mode `surface` on
+  `background` is #1E1E1E on #141414, so without an edge a card has no boundary
+  at all.
+  A few older cards (garage, owner, profile hero, reputation) still carry
+  `shadows.soft`; they converge when next touched, and no new card should.
+  The vehicle card is the app's signature element and is a third thing again —
+  **borderless**: no surface, no border, no shadow, because the photo IS the
+  card (photo, plate chip, make/model, bounty in `primary`, distance, last-seen
+  time).
 - **PlateChip** — renders a UK registration in plate styling. **Interactive:**
   long-press copies the plate (light haptic + "Plate copied" toast); a screen
   reader gets the same via a "Copy plate" action. Because it is a `Pressable`
