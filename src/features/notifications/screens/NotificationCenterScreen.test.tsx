@@ -55,6 +55,9 @@ const rowFixture = (overrides: Record<string, unknown> = {}) => ({
   payload: { type: 'alert' as const, postId: POST_ID },
   readAt: null,
   createdAt: new Date().toISOString(),
+  // Null by default: the server withholds the photo whenever the caller has no
+  // standing on that post, which makes pictureless the ordinary row.
+  imageUrl: null,
   ...overrides,
 });
 
@@ -124,6 +127,28 @@ describe('states', () => {
     const { queryByText } = await act(async () => render(<NotificationCenterScreen />));
 
     expect(queryByText('Add your bank details')).toBeNull();
+  });
+
+  it('leads with the car’s photo when the server sent one', async () => {
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-photo', imageUrl: 'https://example.test/car.jpg' }),
+    ]);
+    const { getByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getByTestId('notification-photo-n-photo')).toBeTruthy();
+  });
+
+  it('⚠️ falls back to the icon when there is no photo — the COMMON case', async () => {
+    // image_url is null whenever the caller has no standing on that post, and
+    // for every kind that is about money rather than a car. A pictureless row
+    // must look deliberate, not broken.
+    mockFetch.mockResolvedValue([rowFixture({ id: 'n-plain', imageUrl: null })]);
+    const { queryByTestId, getByTestId } = await act(async () =>
+      render(<NotificationCenterScreen />),
+    );
+
+    expect(queryByTestId('notification-photo-n-plain')).toBeNull();
+    expect(getByTestId('notification-n-plain')).toBeTruthy();
   });
 
   it('⚠️ speaks the same words it shows', async () => {

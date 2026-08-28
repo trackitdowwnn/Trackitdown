@@ -44,7 +44,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { UnreadBadge } from '@/shared/ui';
+import { AppImage, UnreadBadge } from '@/shared/ui';
 
 import type { NotificationRow } from '../api/notificationsApi';
 import { CENTER_ROW_META, type NotificationTone } from '../lib/centerRowMeta';
@@ -77,7 +77,13 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const { fontScale } = useWindowDimensions();
-  const meta = CENTER_ROW_META[row.kind];
+  // ⚠️ A FALLBACK FOR A KIND THIS BUILD HAS NEVER HEARD OF. The server's CHECK
+  // constraint keeps the column inside the known set today, but the set widens
+  // server-first (that is how `payout_sent` arrived), so an older client can be
+  // handed a newer kind. `CENTER_ROW_META[unknown]` is undefined and the very
+  // next line reads `.needsAttention` off it — the whole feed would crash on
+  // one unrecognised row rather than degrading to a plain one.
+  const meta = CENTER_ROW_META[row.kind] ?? CENTER_ROW_META.alert;
   const unread = row.readAt === null;
   const loud = unread && meta.needsAttention;
   // Past the threshold the time drops UNDER the title instead of competing
@@ -106,9 +112,26 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
           text. Absent entirely for read/ordinary rows so the calm default has
           no ghost gutter. */}
       {loud ? <View style={styles.attentionBar} testID={`attention-${row.id}`} /> : null}
-      <View style={styles.lead}>
-        <meta.Icon size={sizes.inboxRowGlyph} color={toneColor(palette, meta.tone)} />
-      </View>
+      {/* ⚠️ THE PHOTOGRAPH WHEN THERE IS ONE, the icon when there is not — and
+          the icon case is ordinary, not exceptional. `image_url` is null
+          whenever the server won't show a photo for that post (the caller has
+          no standing on it) or the row references no post at all. It is NOT
+          null for the money kinds: `credited`, `payout_sent` and
+          `not_credited` go to a spotter with a sighting on that post, so they
+          get the car. Both shapes are the same 64pt box, so the list rhythm
+          never changes between them — only what is inside it. */}
+      {row.imageUrl ? (
+        <AppImage
+          uri={row.imageUrl}
+          recyclingKey={row.id}
+          style={styles.lead}
+          testID={`notification-photo-${row.id}`}
+        />
+      ) : (
+        <View style={styles.lead}>
+          <meta.Icon size={sizes.inboxRowGlyph} color={toneColor(palette, meta.tone)} />
+        </View>
+      )}
       <View style={styles.textColumn}>
         <View style={[styles.topLine, stacked && styles.topLineStacked]}>
           <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>
@@ -237,6 +260,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.surfaceSubtle,
     borderWidth: 1,
     borderColor: c.borderStrong,
+    // Clips a photo to the corners; harmless on the icon shape.
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },

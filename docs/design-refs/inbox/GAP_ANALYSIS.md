@@ -56,6 +56,38 @@ LINKS: ./REFERENCE_SPEC.md; src/app/(tabs)/inbox.tsx;
 
 Also corrected: a dead `leadEmpty` style whose comment contradicted the line above it; a comment claiming `flexBasis: 0` where only `flexShrink` was set; and a claim in `MySightingsScreen` that the inbox aligns its day label to row TEXT — both align to the row's outer edge, reached from opposite directions.
 
+## Second pass — the Notifications face gets the photograph too (2026-08-28)
+
+The first pass left the two faces with the same box but different contents: a
+conversation row led with the car's photograph, a notification row led with an
+icon. That was not a design choice, it was a data limit — `notifications` holds
+a title, a body and a payload of ids, and no image at all.
+
+| # | Gap | Fix | Size | Impact |
+|---|---|---|---|---|
+| 26 | The Notifications face led with an icon where Messages led with a photograph — the two faces still did not look like one list | `image_url` on every feed row: the cover photo of the car the notification is about, in the same 64pt box, with the icon as fallback | L | **Highest** |
+
+⚠️ **THIS ONE NEEDED THE DATABASE, and a client-side join would have failed
+exactly where it mattered.** `post_photos` RLS lets a client read a photo only
+while the parent post is `active`, or if it owns the post. The notifications
+people care about — `credited`, `payout_sent`, `not_credited`, `recovery` —
+arrive *after* the post is recovered, with the spotter reading them. Every one
+of those rows would have come back pictureless, so the money notifications would
+have been the only ones with no photo. Hence `get_notification_feed()`, a
+SECURITY DEFINER read (`supabase/migrations/20260828120000_notification_feed_photo.sql`).
+
+⚠️ **The photo is gated more narrowly than the row it sits on.** The feed rows
+are scoped exactly as `notifications_select_own` already allowed. `image_url` is
+non-null only when the caller owns the post, has a sighting on it, or it is
+still active — the first and last are what `post_photos` RLS already permits,
+and the middle one is the only widening. It is narrow by construction: a spotter
+who reported on a post necessarily saw it while it was public.
+
+⚠️ **A pictureless row is the ORDINARY case, not a failure.** Money kinds have
+no car to show, and any post the caller has no standing on returns null. Both
+shapes are the same 64pt box, so the list rhythm never changes — only what is
+inside it.
+
 ## Consequences accepted, not fixed
 
 ⚠️ **Every inbox focus now costs two RPCs** instead of one full fetch plus a

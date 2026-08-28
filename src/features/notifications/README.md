@@ -313,6 +313,15 @@ same place.
   report through it and set the one `inbox` badge. Chat imports us — never
   the reverse.
 - Freshness: refetch-on-focus + pull-to-refresh (chat's documented choice).
+- ⚠️ **The row leads with the CAR'S PHOTO where there is one** (2026-08-28,
+  second inbox pass), which is why the feed read became
+  `get_notification_feed()` rather than a table select: `post_photos` RLS only
+  lets a client read a photo while the post is `active` or it owns the post, so
+  a client-side join would have left `credited` / `payout_sent` /
+  `not_credited` / `recovery` — the ones that matter — as the only pictureless
+  rows. The RPC gates the photo MORE narrowly than the row: owner, or a spotter
+  with a sighting on that post, or the post is still active. Everything else
+  returns null and falls back to the icon, which is the ordinary case.
 - Look: neutral `surfaceSubtle` icon TILES — 64pt rounded squares
   (`sizes.inboxRowTile`) since the 2026-08-28 Airbnb inbox pass, matching the
   Messages face's car photo so the two halves of the tab share one silhouette.
