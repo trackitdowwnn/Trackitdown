@@ -8,7 +8,17 @@
  *        year-end) are unit tests, not device folklore.
  *        Deliberately NOT chat's messageGroups: that groups sender runs
  *        within a thread; this groups calendar days within a feed.
- * LINKS: ../screens/NotificationCenterScreen.tsx (the only consumer);
+ *
+ *        ⚠️ MOVED HERE FROM features/notifications/lib ON 2026-08-28, when
+ *        `My reports` became a second consumer (owner request: organise the
+ *        cards by date). Two features needing the same thing is
+ *        ARCHITECTURE.md's bar for shared/, and the alternative — sightings
+ *        importing a notifications internal — breaks rule 1. Nothing about the
+ *        grouping changed in the move; the labels a spotter reads on their
+ *        report history are deliberately the SAME calendar words the inbox
+ *        uses, so the two lists do not each invent a vocabulary for "when".
+ * LINKS: src/features/notifications/screens/NotificationCenterScreen.tsx and
+ *        src/features/sightings/screens/MySightingsScreen.tsx (the consumers);
  *        src/features/chat/lib/messageGroups.ts (the sibling it is not).
  */
 

@@ -27,6 +27,19 @@
  *        card — a leading tile, a title, a meta line and a marked outcome — at
  *        the same 24pt gutter and 12pt rhythm as every other list in the app.
  *        The card itself lives in ../components/ReportCard.tsx.
+ *
+ *        ⚠️ GROUPED BY DAY 2026-08-28 (owner request). The list is one flat
+ *        array of headers and rows from `groupByDay`, not a SectionList — the
+ *        inbox already produces exactly this shape, and nesting sections costs
+ *        virtualization for nothing.
+ *
+ *        The owner asked for accordions and this deliberately has none, for two
+ *        reasons worth keeping written down. A per-CARD accordion would open
+ *        onto nothing: `my_sighting_record` returns six fields and the card
+ *        already shows all six, and the payload must not widen. Collapsible
+ *        DAY groups would then be a tap to reveal, usually, a single card,
+ *        because reports are sparse. Airbnb's own history lists don't collapse
+ *        either — they use plain section headers, which is what this is.
  * LINKS: src/app/my-sightings.tsx (route);
  *        src/features/sightings/components/ReportCard.tsx (the row AND its
  *          skeleton — they share styles so the two cannot drift);
@@ -38,15 +51,17 @@
 
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { useCallback, useEffect } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useRequireAuth, useSession } from '@/features/auth';
 import { useEntranceGate } from '@/shared/hooks';
+import { groupByDay } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
+  radii,
   sizes,
   spacing,
   typography,
@@ -56,14 +71,14 @@ import {
 } from '@/shared/theme';
 import { EmptyState, ErrorState, Screen, ThemedRefreshControl } from '@/shared/ui';
 
-import { type MySightingRecordEntry } from '../api/sightingApi';
 import { ReportCard, ReportCardSkeleton } from '../components/ReportCard';
 import { useMySightingRecord } from '../hooks/useMySightingRecord';
 
 const log = createLogger('sightings');
 
-/** Rows past this one enter together — a stagger that keeps counting down a
- *  long list makes the last card arrive a second late. Matches the timeline. */
+/** ITEMS past this one enter together — headers occupy indices too, so in the
+ *  sparse case only ~3 cards get distinct delays. Total stays 6 × listStagger =
+ *  300ms, the house ceiling for a list. Matches the timeline. */
 const STAGGER_CAP = 6;
 
 export function MySightingsScreen() {
@@ -86,8 +101,14 @@ export function MySightingsScreen() {
   // DATA arrives, so the entrance is confined to the first paint.
   const entranceActive = useEntranceGate(status === 'ready');
 
+  // ⚠️ ONE FLAT ARRAY OF HEADERS AND ROWS, not nested sections — a section list
+  // costs virtualization, and `groupByDay` already produces exactly this shape
+  // for the inbox. Grouping only inserts a header when the day label changes,
+  // so it relies on the RPC's newest-first order, which it has.
+  const items = useMemo(() => groupByDay(entries), [entries]);
+
   const renderRow = useCallback(
-    ({ item, index }: { item: MySightingRecordEntry; index: number }) => (
+    ({ item, index }: { item: (typeof items)[number]; index: number }) => (
       <Animated.View
         entering={
           entranceActive
@@ -99,10 +120,19 @@ export function MySightingsScreen() {
             : undefined
         }
       >
-        <ReportCard entry={item} />
+        {item.type === 'header' ? (
+          // The same calendar words the inbox uses — "Today", "Yesterday", then
+          // "23 July". A header is a real heading to a screen reader, so
+          // rotor navigation can jump between days.
+          <Text style={styles.dayHeader} accessibilityRole="header">
+            {item.label}
+          </Text>
+        ) : (
+          <ReportCard entry={item.row} />
+        )}
       </Animated.View>
     ),
-    [entranceActive],
+    [entranceActive, styles.dayHeader],
   );
 
   return (
@@ -130,12 +160,22 @@ export function MySightingsScreen() {
           accessibilityLabel="Loading your reports"
           accessibilityState={{ busy: true }}
         >
+          {/* ⚠️ A DAY HEADER LEADS THE LIST, so one leads the skeleton too.
+              Grouping made item 0 a header, which put the first real card 46pt
+              below where three bare card skeletons had just promised it would
+              be — the same jump this skeleton exists to prevent, reintroduced
+              by the change that added the headers.
+
+              ⚠️ A BAR, NOT THE WORD "Today". Reports are sparse and the newest
+              one usually is not today, so rendering the word would flash a
+              claim that is about to be replaced by a different date. */}
+          <DayHeaderSkeleton />
           {/* ⚠️ THE CARD'S OWN GEOMETRY, imported rather than copied. The old
               skeleton was a `height: 96` literal against a 104pt row, so three
               rows shifted everything below by 24pt the moment the reports
-              landed — the exact jump a skeleton exists to prevent. Re-deriving
-              the number here would only have moved the drift to the font-scale
-              axis; ReportCardSkeleton shares the styles instead. */}
+              landed. Re-deriving the number here would only have moved the
+              drift to the font-scale axis; ReportCardSkeleton shares the
+              styles instead. */}
           {[0, 1, 2].map((key) => (
             <ReportCardSkeleton key={key} />
           ))}
@@ -151,9 +191,9 @@ export function MySightingsScreen() {
         />
       ) : (
         <FlatList
-          data={entries}
+          data={items}
           renderItem={renderRow}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.key}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <ThemedRefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
@@ -161,6 +201,30 @@ export function MySightingsScreen() {
         />
       )}
     </Screen>
+  );
+}
+
+/**
+ * The day label's shape while the record loads — the same box `dayHeader` will
+ * occupy, so the first card does not move when the reports arrive.
+ *
+ * Scales with `fontScale` for the reason ReportCardSkeleton does: the label it
+ * stands in for is Text and grows with the OS setting, and a fixed-height View
+ * does not.
+ */
+function DayHeaderSkeleton() {
+  const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+
+  return (
+    <View style={styles.dayHeaderSkeleton}>
+      <View
+        style={[
+          styles.dayHeaderSkeletonBar,
+          { height: typography.label.lineHeight * (fontScale ?? 1) },
+        ]}
+      />
+    </View>
   );
 }
 
@@ -209,6 +273,44 @@ const makeStyles = (c: Palette) =>
       paddingHorizontal: spacing.xl,
       paddingBottom: spacing.xxl,
       gap: spacing.md,
+    },
+    /**
+     * A day's label, in the same words and the same weight the inbox uses —
+     * `label` at `textSecondary`, quiet enough that the cards stay the thing
+     * you read.
+     *
+     * ⚠️ NO HORIZONTAL PADDING, unlike NotificationCenterScreen's copy of this
+     * style. That list's content container is flush and each row pads itself;
+     * ours already sets the 24pt gutter on `listContent`, so repeating it here
+     * would indent every date 48pt from the edge. Note this aligns the label
+     * with the card's OUTER EDGE, not its text — ReportCard pads itself by 16,
+     * so the card's own content starts 16 further in. The inbox's header lands
+     * on its row's text instead. Ours is the Airbnb arrangement (section labels
+     * align to card edges) and the difference is deliberate.
+     *
+     * The vertical padding rides ON TOP of the list's 12pt gap: 16 above makes
+     * 28 between a card and the next day, and 4 below makes 16 from label to
+     * its first card. ⚠️ `lg` NOT `md` above — at 12 the totals were 24/16, an
+     * 8pt differential against a 12pt inter-card gap, so three rhythms sat too
+     * close to read as "new day" and the label floated between the groups
+     * rather than belonging to the one below it. The inbox renders 32/20 for
+     * the same reason; this is its 12pt differential on our gapped list.
+     */
+    dayHeader: {
+      ...typography.label,
+      color: c.textSecondary,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.xs,
+    },
+    /** Mirrors `dayHeader`'s box exactly — see DayHeaderSkeleton. */
+    dayHeaderSkeleton: {
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.xs,
+    },
+    dayHeaderSkeletonBar: {
+      width: '30%',
+      borderRadius: radii.sm,
+      backgroundColor: c.surfaceSubtle,
     },
     // No top padding: the list above sets none either, so the skeleton and the
     // real list start at the same y and nothing shifts when the data lands.

@@ -12,7 +12,7 @@
  *        machinery pushes use, so a row and its push can never land in
  *        different places.
  * LINKS: ../hooks/useNotificationCenter.ts; ../components/NotificationRowItem;
- *        ../lib/dayGroups.ts; ../lib/pushRoute.ts; src/app/(tabs)/inbox.tsx
+ *        @/shared/lib (groupByDay); ../lib/pushRoute.ts; src/app/(tabs)/inbox.tsx
  *        (the segment host); docs/decisions/ADR-0012-notification-center.md.
  */
 
@@ -23,6 +23,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useEntranceGate } from '@/shared/hooks';
+import { groupByDay } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
@@ -38,7 +39,6 @@ import { EmptyState, ErrorState, ThemedRefreshControl } from '@/shared/ui';
 import type { NotificationRow } from '../api/notificationsApi';
 import { NotificationRowItem } from '../components/NotificationRowItem';
 import { useNotificationCenter } from '../hooks/useNotificationCenter';
-import { groupByDay } from '../lib/dayGroups';
 import { pushRouteFor } from '../lib/pushRoute';
 
 const log = createLogger('notifications');

@@ -160,6 +160,64 @@ describe('MySightingsScreen states', () => {
   });
 });
 
+describe('⚠️ grouped by day', () => {
+  // The owner asked for the cards organised by date. The labels are the inbox's
+  // words on purpose — a spotter should not meet two vocabularies for "when" in
+  // one app.
+  it('heads each day with the calendar word for it', async () => {
+    mockUseRecord.mockReturnValue(
+      ready([
+        entry({ id: 'a', createdAt: new Date().toISOString() }),
+        entry({ id: 'b', createdAt: new Date(Date.now() - DAY_MS).toISOString() }),
+      ]),
+    );
+    const { getByText } = await render(<MySightingsScreen />);
+
+    expect(getByText('Today')).toBeTruthy();
+    expect(getByText('Yesterday')).toBeTruthy();
+  });
+
+  it('⚠️ heads a day ONCE, however many reports it holds', async () => {
+    // groupByDay only emits a header when the label changes, which relies on the
+    // RPC's newest-first order. Three headers for three same-day reports would
+    // be the tell that the order assumption broke.
+    const today = new Date().toISOString();
+    mockUseRecord.mockReturnValue(
+      ready([
+        entry({ id: 'a', createdAt: today, car: { make: 'Ford', colour: 'Blue' } }),
+        entry({ id: 'b', createdAt: today, car: { make: 'VW', colour: 'Silver' } }),
+        entry({ id: 'c', createdAt: today, car: { make: 'BMW', colour: 'Black' } }),
+      ]),
+    );
+    const { getAllByText, getByText } = await render(<MySightingsScreen />);
+
+    expect(getAllByText('Today')).toHaveLength(1);
+    expect(getByText('Blue Ford')).toBeTruthy();
+    expect(getByText('Black BMW')).toBeTruthy();
+  });
+
+  it('names older days by date rather than counting back', async () => {
+    // Past "Yesterday", "6 days ago" stops being a word anyone thinks in.
+    const old = new Date('2026-07-23T10:00:00.000Z');
+    mockUseRecord.mockReturnValue(ready([entry({ createdAt: old.toISOString() })]));
+    const { getByText } = await render(<MySightingsScreen />);
+
+    expect(getByText('23 July')).toBeTruthy();
+  });
+
+  it('⚠️ gives a screen reader a real heading to navigate DAYS by', async () => {
+    // ⚠️ THE DAY, NOT THE PAGE TITLE. The first version of this asserted
+    // `name: 'My reports'`, which passed before day grouping existed and would
+    // keep passing if `accessibilityRole="header"` were deleted from the day
+    // label — so the one new affordance in the change was uncovered.
+    mockUseRecord.mockReturnValue(ready([entry({ createdAt: new Date().toISOString() })]));
+    const { getByRole } = await render(<MySightingsScreen />);
+
+    expect(getByRole('header', { name: 'Today' })).toBeTruthy();
+    expect(getByRole('header', { name: 'My reports' })).toBeTruthy();
+  });
+});
+
 describe('a report', () => {
   it('leads with the car, because that is all the spotter has to recognise it by', async () => {
     const { getByText, getByTestId } = await render(<MySightingsScreen />);
