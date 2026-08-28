@@ -73,6 +73,14 @@ jest.mock('@/shared/ui', () => {
         <Text>{body}</Text>
       </Pressable>
     ),
+    // Promoted to shared/ui on 2026-08-28 (DayHeader when the inbox's Messages
+    // face became the third day-grouped list; CarColourTile when chat needed
+    // the same no-photo fallback). This mock replaces the whole module, so
+    // anything the screen or ReportCard pulls from it has to be named here or
+    // it arrives undefined.
+    DayHeader: ({ label }: { label: string }) => <Text accessibilityRole="header">{label}</Text>,
+    DayHeaderSkeleton: () => <View testID="day-header-skeleton" />,
+    CarColourTile: ({ testID }: { testID?: string }) => <View testID={testID} />,
     ThemedRefreshControl: () => null,
   };
 });

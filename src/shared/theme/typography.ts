@@ -71,8 +71,12 @@ export const typography = {
   /** Number-plate styling: heavy but compact (label-size, no letter spacing
    *  — tightened 2026-07-23 so the chip sits quietly beside titles). */
   plate: { fontSize: 14, lineHeight: 18, fontFamily: fontFamilies.black },
-  /** Tab-bar item labels — the one sanctioned size below caption; nothing
-   *  else should use it (labels under 24pt icons need to stay compact). */
+  /** Tab-bar item labels AND count badges — the one sanctioned size below
+   *  caption; nothing else should use it (labels under 24pt icons need to stay
+   *  compact, and a numeral in a 16pt pill has the same problem).
+   *  ⚠️ "and count badges" added 2026-08-28: AppTabBar's badge had always used
+   *  this token, so the rule as written had never been the rule. `UnreadBadge`
+   *  now shares that geometry, and one 11pt numeral beats inventing a second. */
   tabLabel: { fontSize: 11, lineHeight: 14, fontFamily: fontFamilies.medium },
 } as const satisfies Record<string, TextStyle>;
 

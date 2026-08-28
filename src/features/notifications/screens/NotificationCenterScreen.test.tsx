@@ -98,6 +98,46 @@ describe('states', () => {
     expect(queryByTestId('attention-n-read-credited')).toBeNull();
     expect(queryByTestId('attention-n-alert')).toBeNull();
   });
+
+  it('⚠️ says WHAT needs doing, not just that something does', async () => {
+    // The bar alone was status encoded as colour — forbidden outright by the
+    // design system, and unreadable besides: a 3pt stripe cannot say "your
+    // money is waiting on bank details". The words are the fix; the bar stays
+    // as the peripheral cue.
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-credited', kind: 'credited', payload: { type: 'credited', postId: POST_ID } }),
+    ]);
+    const { getByText } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getByText('Add your bank details')).toBeTruthy();
+  });
+
+  it('drops the label once the row is read, exactly as the bar does', async () => {
+    mockFetch.mockResolvedValue([
+      rowFixture({
+        id: 'n-read-credited',
+        kind: 'credited',
+        payload: { type: 'credited', postId: POST_ID },
+        readAt: new Date().toISOString(),
+      }),
+    ]);
+    const { queryByText } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(queryByText('Add your bank details')).toBeNull();
+  });
+
+  it('⚠️ speaks the same words it shows', async () => {
+    // The label used to append " Needs your attention." — a sentence no sighted
+    // user ever saw, describing a stripe rather than the errand.
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-credited', kind: 'credited', payload: { type: 'credited', postId: POST_ID } }),
+    ]);
+    const { getByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getByTestId('notification-n-credited').props.accessibilityLabel).toContain(
+      'Add your bank details.',
+    );
+  });
 });
 
 describe('read-state transitions', () => {

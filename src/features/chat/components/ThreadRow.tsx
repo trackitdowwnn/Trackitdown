@@ -1,34 +1,62 @@
 /**
- * WHAT:  ThreadRow — one inbox conversation: Avatar with the car's thumbnail
- *        badged over its corner, first name (bold when unread), the
+ * WHAT:  ThreadRow — one inbox conversation: the CAR'S COVER PHOTO leading,
+ *        first name + relative time, a one-line last-message preview, the
  *        anchoring context line ("About your Blue BMW" + the owner's own
- *        PlateChip / "Your sighting · Blue BMW"), a one-line last-message
- *        preview, relative time, and the unread dot.
- * WHY:   Airbnb-style rows anchor a conversation to the THING it's about —
- *        their avatar wears the listing photo; ours wears the car. The badge
- *        makes the anchor visual before the context line is even read, which
- *        is what lets a mixed inbox (my cars + my sightings) scan at a
- *        glance. PRIVACY: the plate renders ONLY on owner rows (their own
- *        plate; inboxModel pins the rule); the badge is the POST's public
- *        cover photo — already visible to both parties — never anything of
- *        the other person's.
+ *        PlateChip / "Your sighting · Blue BMW"), and the unread badge.
+ * WHY:   Airbnb-style rows anchor a conversation to the THING it's about, and
+ *        they give that thing the leading slot at full size — a listing row
+ *        leads with the listing. Ours leads with the car, which is how you
+ *        actually recognise which conversation this is.
+ *
+ *        ⚠️ THIS INVERTED THE PREVIOUS STACK ON 2026-08-28, and the old
+ *        arrangement was defended in this very comment, so the reversal is
+ *        worth stating. The row used to lead with an initial-letter Avatar
+ *        wearing a 24pt car badge on its corner — "the Airbnb context-anchor,
+ *        made visual". The flaw: at 24pt you cannot tell one silver hatchback
+ *        from another, so the anchor anchored nothing and the leading slot was
+ *        spent on a letter. The person's identity is now carried by their NAME
+ *        in the title line, which identifies them better than an initial did.
+ *
+ *        No peer photo is possible and none is missing: the other party's
+ *        avatar path embeds their uid, so the API never returns it (types.ts).
+ *        PRIVACY: the plate renders ONLY on owner rows (their own plate;
+ *        inboxModel pins the rule); the photo is the POST's public cover —
+ *        already visible to both parties — never anything of the other
+ *        person's.
+ *
+ *        ⚠️ ONE SILHOUETTE WITH NotificationRowItem — same tile, gap, gutter,
+ *        padding and reserved badge slot. See that file's header; change one
+ *        and change both.
  * LINKS: src/features/chat/lib/inboxModel.ts (context/unread maths);
- *        src/shared/ui (Avatar, PlateChip, AppImage); docs/DESIGN_SYSTEM.md.
+ *        src/features/notifications/components/NotificationRowItem.tsx (the
+ *          silhouette twin);
+ *        src/shared/ui (CarColourTile, PlateChip, AppImage, UnreadBadge);
+ *        docs/DESIGN_SYSTEM.md.
  */
 
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { timeAgo } from '@/shared/lib/timeAgo';
-import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { AppImage, Avatar, PlateChip } from '@/shared/ui';
+import {
+  listRowStackFontScale,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
+import {
+  AppImage,
+  CarColourTile,
+  PlateChip,
+  PLATE_CHIP_HEIGHT,
+  spellPlate,
+  UnreadBadge,
+} from '@/shared/ui';
 
 import { contextLine, isUnread, previewText } from '../lib/inboxModel';
 import type { InboxThread } from '../types';
-
-/** Drawn size of the car badge over the avatar's corner. Small enough that
- *  the person stays the subject; the 2px surface ring separates it from the
- *  avatar beneath on both light rows and pressed rows. */
-const CAR_BADGE_SIZE = 24;
 
 export interface ThreadRowProps {
   thread: InboxThread;
@@ -37,9 +65,12 @@ export interface ThreadRowProps {
 
 export function ThreadRow({ thread, onPress }: ThreadRowProps) {
   const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+  const scale = fontScale ?? 1;
   const unread = isUnread(thread);
   const context = contextLine(thread);
   const when = timeAgo(thread.lastMessageAt);
+  const stacked = scale > listRowStackFontScale;
 
   return (
     <Pressable
@@ -47,37 +78,74 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
       accessibilityRole="button"
       accessibilityLabel={
         `Conversation with ${thread.other.firstName}. ${context.prefix}. ` +
+        // ⚠️ THE PLATE IS SPOKEN, NOT JUST DRAWN. A sighted owner saw their
+        // registration and a VoiceOver user did not — the label was built from
+        // `prefix` alone while the chip rendered from `plate`. Spelled out
+        // character-group by character-group, because a screen reader reading
+        // "AB12 CDE" as a word is not a registration anyone can write down.
+        (context.plate ? `Plate ${spellPlate(context.plate)}. ` : '') +
         `${previewText(thread)}. ${when}.` +
-        (unread ? ` ${thread.unreadCount} unread.` : '')
+        // Pluralised: the old label read "3 unread." as a bare fragment, and
+        // "1 unread" for a single message.
+        (unread
+          ? ` ${thread.unreadCount} unread ${thread.unreadCount === 1 ? 'message' : 'messages'}.`
+          : '')
       }
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       testID={`thread-row-${thread.threadId}`}
     >
-      {/* Initial-letter avatar only: the other party's avatar path embeds
-          their uid, so it's not returned to the client (see types.ts). The
-          car's cover photo badges its corner — the Airbnb context-anchor,
-          made visual. Both are decorative here; the row's label carries the
-          same information. */}
-      <View style={styles.avatarStack}>
-        <Avatar name={thread.other.firstName} />
-        {thread.post.coverPhotoUrl ? (
-          <View style={styles.carBadge} testID={`thread-car-badge-${thread.threadId}`}>
-            <AppImage
-              uri={thread.post.coverPhotoUrl}
-              recyclingKey={thread.threadId}
-              style={styles.carBadgeImage}
-            />
-          </View>
-        ) : null}
-      </View>
+      {/* ⚠️ THE PHOTO, OR THE PAINT — never an empty grey square.
+          `coverPhotoUrl` is nullable, and a row without one used to fall back
+          to nothing at all. CarColourTile draws the car's actual colour with a
+          silhouette over it, which is the same answer `My reports` reached for
+          the same problem — and the reason that component now lives in
+          shared/ui. */}
+      {thread.post.coverPhotoUrl ? (
+        <AppImage
+          uri={thread.post.coverPhotoUrl}
+          recyclingKey={thread.threadId}
+          style={styles.lead}
+          testID={`thread-car-photo-${thread.threadId}`}
+        />
+      ) : (
+        <CarColourTile
+          colour={thread.post.colour}
+          size={sizes.inboxRowTile}
+          radius={radii.md}
+          glyphSize={sizes.inboxRowGlyph}
+          testID={`thread-car-tile-${thread.threadId}`}
+        />
+      )}
       <View style={styles.body}>
-        <View style={styles.topLine}>
+        <View style={[styles.topLine, stacked && styles.topLineStacked]}>
           <Text style={[styles.name, unread && styles.nameUnread]} numberOfLines={1}>
             {thread.other.firstName}
           </Text>
-          <Text style={styles.time}>{when}</Text>
+          <Text style={styles.time} numberOfLines={1}>
+            {when}
+          </Text>
         </View>
-        <View style={styles.contextLine}>
+        {/* The message now sits ABOVE the context line, and takes `body` rather
+            than `caption`. Once the car is the picture leading the row, what it
+            is about is answered before you read anything — so the words someone
+            actually sent are the more useful second line. */}
+        <Text
+          style={[styles.preview, unread && styles.previewUnread]}
+          numberOfLines={1}
+          testID={`thread-preview-${thread.threadId}`}
+        >
+          {previewText(thread)}
+        </Text>
+        {/* ⚠️ WRAPS. The prefix shrinks beside an intrinsic-width plate chip,
+            and in a column 28pt narrower than before, "About your Blue BMW 3
+            Series" squeezed to nothing at large type. Wrapping lets the chip
+            drop to its own line instead of crushing the words. */}
+        {/* ⚠️ RESERVES THE CHIP'S HEIGHT WHETHER OR NOT THERE IS A CHIP.
+            Owner rows carry a PlateChip (26pt) and spotter rows carry one line
+            of caption (18), so the row height used to depend on which side of
+            the conversation you were — which meant no single skeleton could
+            match, and every owner row resettled when the inbox loaded. */}
+        <View style={[styles.contextLine, { minHeight: PLATE_CHIP_HEIGHT * scale }]}>
           <Text style={styles.context} numberOfLines={1}>
             {context.prefix}
           </Text>
@@ -87,16 +155,70 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
             <PlateChip plate={context.plate} onPress={() => onPress(thread)} />
           ) : null}
         </View>
-        <Text
-          style={[styles.preview, unread && styles.previewUnread]}
-          numberOfLines={1}
-          testID={`thread-preview-${thread.threadId}`}
-        >
-          {previewText(thread)}
-        </Text>
       </View>
-      {unread ? <View style={styles.unreadDot} testID={`thread-unread-${thread.threadId}`} /> : null}
+      <UnreadBadge
+        count={thread.unreadCount}
+        testID={unread ? `thread-unread-${thread.threadId}` : undefined}
+      />
     </Pressable>
+  );
+}
+
+/**
+ * The row's shape while the inbox loads — shares `makeStyles` with the real
+ * row, so the two cannot drift.
+ *
+ * The screen's old hand-copied skeleton had a 48pt circle where the row has a
+ * 64pt tile and two bars where the row has three lines, so the list visibly
+ * resettled the moment threads arrived.
+ */
+export function ThreadRowSkeleton() {
+  const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+  const scale = fontScale ?? 1;
+
+  return (
+    <View style={styles.row}>
+      <View style={styles.lead} />
+      <View style={styles.body}>
+        <View style={styles.topLine}>
+          <View
+            style={[
+              styles.skeletonBar,
+              styles.skeletonName,
+              { height: typography.body.lineHeight * scale },
+            ]}
+          />
+          <View
+            style={[
+              styles.skeletonBar,
+              styles.skeletonTime,
+              { height: typography.caption.lineHeight * scale },
+            ]}
+          />
+        </View>
+        <View
+          style={[
+            styles.skeletonBar,
+            styles.skeletonPreview,
+            { height: typography.body.lineHeight * scale },
+          ]}
+        />
+        {/* The context line's reserved box, with a caption-height bar inside —
+            mirroring the real row, whose chip-or-no-chip line is always
+            PLATE_CHIP_HEIGHT tall. */}
+        <View style={[styles.contextLine, { minHeight: PLATE_CHIP_HEIGHT * scale }]}>
+          <View
+            style={[
+              styles.skeletonBar,
+              styles.skeletonContext,
+              { height: typography.caption.lineHeight * scale },
+            ]}
+          />
+        </View>
+      </View>
+      <UnreadBadge count={0} />
+    </View>
   );
 }
 
@@ -107,32 +229,26 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     gap: spacing.md,
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,
+    // Inert while the 64pt tile sets a 96pt floor, and kept anyway so the two
+    // inbox rows declare the same box — see the silhouette note in the header.
+    minHeight: sizes.touchTarget,
   },
+  // ⚠️ surfaceSubtlePressed, NOT surfaceSubtle — which is PlateChip's own fill.
+  // Pressing an owner's row used to repaint it in the chip's colour, so the
+  // plate stopped looking like a plate for the duration of the touch, and the
+  // design system calls that fill "the identifying treatment on a page".
   rowPressed: {
-    backgroundColor: c.surfaceSubtle,
+    backgroundColor: c.surfaceSubtlePressed,
   },
-  avatarStack: {
-    // Room for the badge to overhang the avatar's corner without clipping.
-    position: 'relative',
-  },
-  carBadge: {
-    position: 'absolute',
-    // Overlap the bottom-right corner, Airbnb-style.
-    right: -spacing.xs,
-    bottom: -spacing.xs,
-    width: CAR_BADGE_SIZE,
-    height: CAR_BADGE_SIZE,
-    borderRadius: radii.sm,
+  // The shared inbox lead — a rounded square, matching the notification face's
+  // icon tile exactly.
+  lead: {
+    width: sizes.inboxRowTile,
+    height: sizes.inboxRowTile,
+    borderRadius: radii.md,
+    // Clips the photo to the corners; also the resting fill behind a slow load.
     overflow: 'hidden',
-    // A surface ring so the badge reads as sitting ON the avatar rather than
-    // merging with it — matches the app's soft, borderless card language.
-    borderWidth: 2,
-    borderColor: c.surface,
     backgroundColor: c.surfaceSubtle,
-  },
-  carBadgeImage: {
-    width: '100%',
-    height: '100%',
   },
   body: {
     flex: 1,
@@ -143,6 +259,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
+  },
+  // Past listRowStackFontScale the time drops under the name rather than
+  // squeezing it to an initial — the behaviour that token was defined for.
+  topLineStacked: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
   },
   name: {
     ...typography.body,
@@ -157,8 +280,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   time: {
     ...typography.caption,
     color: c.textSecondary,
+    // Never shrinks — a truncated timestamp is worse than a truncated name.
+    flexShrink: 0,
   },
   contextLine: {
+    flexWrap: 'wrap',
+    rowGap: spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -168,17 +295,30 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textSecondary,
     flexShrink: 1,
   },
+  // `body`, not `caption`: with the car pictured, the message is the second
+  // most important thing in the row rather than the third.
   preview: {
-    ...typography.caption,
+    ...typography.body,
     color: c.textSecondary,
   },
   previewUnread: {
     color: c.textPrimary,
   },
-  unreadDot: {
-    width: sizes.badgeDot,
-    height: sizes.badgeDot,
-    borderRadius: radii.full,
-    backgroundColor: c.accentText,
+  skeletonBar: {
+    borderRadius: radii.sm,
+    backgroundColor: c.surfaceSubtle,
+  },
+  skeletonName: {
+    flex: 1,
+    maxWidth: '45%',
+  },
+  skeletonTime: {
+    width: sizes.skeletonTimeBar,
+  },
+  skeletonPreview: {
+    width: '85%',
+  },
+  skeletonContext: {
+    width: '60%',
   },
 });

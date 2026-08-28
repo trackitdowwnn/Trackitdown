@@ -52,7 +52,7 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useRequireAuth, useSession } from '@/features/auth';
@@ -61,7 +61,6 @@ import { groupByDay } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
-  radii,
   sizes,
   spacing,
   typography,
@@ -69,7 +68,14 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { EmptyState, ErrorState, Screen, ThemedRefreshControl } from '@/shared/ui';
+import {
+  DayHeader,
+  DayHeaderSkeleton,
+  EmptyState,
+  ErrorState,
+  Screen,
+  ThemedRefreshControl,
+} from '@/shared/ui';
 
 import { ReportCard, ReportCardSkeleton } from '../components/ReportCard';
 import { useMySightingRecord } from '../hooks/useMySightingRecord';
@@ -122,17 +128,17 @@ export function MySightingsScreen() {
       >
         {item.type === 'header' ? (
           // The same calendar words the inbox uses — "Today", "Yesterday", then
-          // "23 July". A header is a real heading to a screen reader, so
-          // rotor navigation can jump between days.
-          <Text style={styles.dayHeader} accessibilityRole="header">
-            {item.label}
-          </Text>
+          // "23 July", and now literally the same component.
+          // `gutter="none"`: this list's contentContainerStyle already sets the
+          // 24pt gutter, so a header that padded itself would indent every date
+          // to 48.
+          <DayHeader label={item.label} gutter="none" />
         ) : (
           <ReportCard entry={item.row} />
         )}
       </Animated.View>
     ),
-    [entranceActive, styles.dayHeader],
+    [entranceActive],
   );
 
   return (
@@ -169,7 +175,7 @@ export function MySightingsScreen() {
               ⚠️ A BAR, NOT THE WORD "Today". Reports are sparse and the newest
               one usually is not today, so rendering the word would flash a
               claim that is about to be replaced by a different date. */}
-          <DayHeaderSkeleton />
+          <DayHeaderSkeleton gutter="none" />
           {/* ⚠️ THE CARD'S OWN GEOMETRY, imported rather than copied. The old
               skeleton was a `height: 96` literal against a 104pt row, so three
               rows shifted everything below by 24pt the moment the reports
@@ -201,30 +207,6 @@ export function MySightingsScreen() {
         />
       )}
     </Screen>
-  );
-}
-
-/**
- * The day label's shape while the record loads — the same box `dayHeader` will
- * occupy, so the first card does not move when the reports arrive.
- *
- * Scales with `fontScale` for the reason ReportCardSkeleton does: the label it
- * stands in for is Text and grows with the OS setting, and a fixed-height View
- * does not.
- */
-function DayHeaderSkeleton() {
-  const styles = useThemedStyles(makeStyles);
-  const { fontScale } = useWindowDimensions();
-
-  return (
-    <View style={styles.dayHeaderSkeleton}>
-      <View
-        style={[
-          styles.dayHeaderSkeletonBar,
-          { height: typography.label.lineHeight * (fontScale ?? 1) },
-        ]}
-      />
-    </View>
   );
 }
 
@@ -274,44 +256,27 @@ const makeStyles = (c: Palette) =>
       paddingBottom: spacing.xxl,
       gap: spacing.md,
     },
-    /**
-     * A day's label, in the same words and the same weight the inbox uses —
-     * `label` at `textSecondary`, quiet enough that the cards stay the thing
-     * you read.
+    /*
+     * The day label and its skeleton moved to src/shared/ui/DayHeader.tsx on
+     * 2026-08-28, when the inbox's Messages face became the third list to group
+     * by day. Both are rendered here with `gutter="none"` — `listContent`
+     * already sets the 24pt gutter, and a self-padding header would indent
+     * every date to 48.
      *
-     * ⚠️ NO HORIZONTAL PADDING, unlike NotificationCenterScreen's copy of this
-     * style. That list's content container is flush and each row pads itself;
-     * ours already sets the 24pt gutter on `listContent`, so repeating it here
-     * would indent every date 48pt from the edge. Note this aligns the label
-     * with the card's OUTER EDGE, not its text — ReportCard pads itself by 16,
-     * so the card's own content starts 16 further in. The inbox's header lands
-     * on its row's text instead. Ours is the Airbnb arrangement (section labels
-     * align to card edges) and the difference is deliberate.
+     * The vertical rhythm the shared component carries rides ON TOP of this
+     * list's 12pt gap: 16 above makes 28 between a card and the next day, and 4
+     * below makes 16 from label to its first card. That 12pt differential is
+     * the point — at `md` above, the totals were 24/16 and the label floated
+     * between two groups instead of belonging to the one beneath it.
      *
-     * The vertical padding rides ON TOP of the list's 12pt gap: 16 above makes
-     * 28 between a card and the next day, and 4 below makes 16 from label to
-     * its first card. ⚠️ `lg` NOT `md` above — at 12 the totals were 24/16, an
-     * 8pt differential against a 12pt inter-card gap, so three rhythms sat too
-     * close to read as "new day" and the label floated between the groups
-     * rather than belonging to the one below it. The inbox renders 32/20 for
-     * the same reason; this is its 12pt differential on our gapped list.
+     * ⚠️ Both here and on the inbox the label lands on the row's OUTER EDGE —
+     * the two are the same arrangement, reached from opposite directions
+     * (the inbox's header pads itself and its rows pad themselves; ours pads
+     * neither because the list already did). ReportCard then insets its own
+     * content by 16, so the label sits left of the card's text — the Airbnb
+     * arrangement, where section labels align to card edges rather than to
+     * what is printed inside them.
      */
-    dayHeader: {
-      ...typography.label,
-      color: c.textSecondary,
-      paddingTop: spacing.lg,
-      paddingBottom: spacing.xs,
-    },
-    /** Mirrors `dayHeader`'s box exactly — see DayHeaderSkeleton. */
-    dayHeaderSkeleton: {
-      paddingTop: spacing.lg,
-      paddingBottom: spacing.xs,
-    },
-    dayHeaderSkeletonBar: {
-      width: '30%',
-      borderRadius: radii.sm,
-      backgroundColor: c.surfaceSubtle,
-    },
     // No top padding: the list above sets none either, so the skeleton and the
     // real list start at the same y and nothing shifts when the data lands.
     skeletons: {

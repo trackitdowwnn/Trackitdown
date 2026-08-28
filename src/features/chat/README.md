@@ -32,14 +32,28 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    never costs a round trip). Per-filter empty copy (an empty Unread is
    good news and reads like it); a truly EMPTY inbox keeps the plain
    invitation with no chips.
-   — FlashList of Airbnb-style rows: Avatar wearing the car's cover photo
-   as a corner badge (the context anchor, made visual; the POST's public
-   photo, never anything of the other person's), first name, context line
-   ("About your Blue BMW · ‹PlateChip›" for owners / "Your sighting ·
-   Blue BMW" for spotters), one-line last-message preview, relative time,
-   unread dot + bold title. Sorted by last activity. Skeleton rows while
-   loading. No swipe actions — no swipe convention exists in the app, and
-   the inbox doesn't introduce one.
+   — FlashList of Airbnb-style rows, GROUPED BY DAY (2026-08-28) under the
+   same calendar labels the Notifications face uses, so one tab does not
+   speak two vocabularies for "when".
+   — The row leads with the CAR'S COVER PHOTO at 64pt (`sizes.inboxRowTile`),
+   falling back to a `CarColourTile` in the car's own paint when the post has
+   no photo. The POST's public photo, never anything of the other person's —
+   the peer avatar is withheld by the API on purpose. Then first name +
+   relative time, the one-line preview, and the context line ("About your
+   Blue BMW · ‹PlateChip›" for owners / "Your sighting · Blue BMW" for
+   spotters). Trailing: `UnreadBadge` — a dot at one unread, a count above,
+   an empty reserved slot when read so the text column never changes width.
+   Unread also bolds the name (family swap, so the row height cannot jump).
+   — ⚠️ Until 2026-08-28 the row led with an initial-letter Avatar wearing the
+   car as a 24pt corner badge. The photo took the leading slot because you
+   cannot recognise a car at 24pt, which was the badge's whole job. See
+   docs/design-refs/inbox/GAP_ANALYSIS.md.
+   — Sorted by last activity, which the day grouping now DEPENDS on: a header
+   opens only when the label changes, so out-of-order rows would repeat a day.
+   Skeleton rows while loading, generated from the real row's own styles.
+   No swipe actions — no swipe convention exists in the app, and the inbox
+   doesn't introduce one (Airbnb's swipe-to-archive has nothing to archive
+   into here: a thread closes with its post).
 
 2. **ChatThreadScreen** (`/chat/[threadId]`, outside tabs)
    — Header: Avatar + first name. For the OWNER the name is tappable →
@@ -122,6 +136,11 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
 - Unread = messages newer than my last_read_at, not sent by me; per-thread
   counts from `get_inbox`; the sum drives the Inbox tab badge via the
   existing TabBadgeProvider.
+- ⚠️ **The route no longer re-reads the hidden half** (2026-08-28). The inbox
+  keeps BOTH faces mounted, so `useInbox` and `useNotificationCenter` each
+  report their own half to `inboxBadge` and the aggregator sums them. The
+  cost of that is two full RPCs per inbox focus instead of one plus a cheap
+  count — acceptable at v1 scale, and worth revisiting with the feed.
 - **notify-message push: SHIPPED** (2026-07-30). This section read "HONEST
   STUB — no push infra exists" until 2026-08-03, three days after it was
   built; a doc that says a shipped thing is missing costs more than one that

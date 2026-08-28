@@ -45,9 +45,16 @@ export function useNotificationCenter() {
   // optimistic marks below use functional updates (two fast taps must not
   // lose one another), and an effect over `rows` reports whatever actually
   // won — the badge cannot drift from what the list shows.
+  //
+  // ⚠️ NOT UNTIL 'ready'. `rows` is [] on the first render, so an unguarded
+  // effect reports a center half of 0 before anything has loaded. That was
+  // harmless while this hook only mounted when its face was opened; since the
+  // inbox keeps BOTH faces mounted (2026-08-28) it would fire on every visit to
+  // the tab and blink the unread count off the tab badge.
   useEffect(() => {
+    if (status !== 'ready') return;
     setBadge('inbox', reportInboxBadge('center', unreadCount(rows)));
-  }, [rows, setBadge]);
+  }, [rows, setBadge, status]);
 
   const publish = useCallback((next: NotificationRow[]) => {
     setRows(next);

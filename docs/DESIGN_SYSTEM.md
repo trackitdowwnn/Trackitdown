@@ -261,8 +261,12 @@ are build output.
     label size one weight up, because a pin fights map tiles and its own
     overlapping neighbours. Capped at `mapPinFontScaleCap` (1.3): uncapped,
     the OS 200% setting doubles every pill and buries the map
-  - `tabLabel` 11/14, Medium — **tab-bar item labels only**; the single
-    sanctioned size below `caption` (matches platform tab conventions)
+  - `tabLabel` 11/14, Medium — **tab-bar item labels and count badges**; the
+    single sanctioned size below `caption` (matches platform tab conventions).
+    **Widened 2026-08-28** from "tab-bar item labels only": `AppTabBar`'s badge
+    numeral had used this token since it was written, so the restriction had
+    never described the code. `UnreadBadge` shares that geometry, and one 11pt
+    numeral in the app beats a second token that would only ever match it
   - `plate` 14/18, Black — number-plate chip (below)
 - On Android, strip `includeFontPadding` on any text a chip/badge sits beside
   (Satoshi's font box is padded asymmetrically, throwing inline chips off

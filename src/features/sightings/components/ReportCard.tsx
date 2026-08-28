@@ -35,7 +35,8 @@
  *        dispute route is reached from a push, and the post itself is not
  *        something this screen is allowed to link to. A card that looks
  *        tappable and is not would be worse than a flat one.
- * LINKS: ./CarColourTile.tsx (the leading visual, and why it exists);
+ * LINKS: src/shared/ui/CarColourTile.tsx (the leading visual, and why it
+ *          exists — moved there 2026-08-28 when chat needed it too);
  *        ../screens/MySightingsScreen.tsx (the only consumer);
  *        ../api/sightingApi.ts (MySightingRecordEntry — read its PRIVACY note
  *          before widening what this row shows).
@@ -56,10 +57,9 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
+import { CarColourTile } from '@/shared/ui';
 
 import type { MySightingRecordEntry } from '../api/sightingApi';
-
-import { CarColourTile } from './CarColourTile';
 
 /**
  * How each verdict reads to THE PERSON WHO REPORTED IT.

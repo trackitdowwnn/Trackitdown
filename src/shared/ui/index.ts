@@ -40,6 +40,14 @@ export { BountyTag, bountyLabel, NO_BOUNTY_LABEL, type BountyTagProps } from './
 export { BrandLoader, LOADER_PHRASES, type BrandLoaderProps } from './BrandLoader';
 export { BrandMark, type BrandMarkProps } from './BrandMark';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
+export { CarColourTile, type CarColourTileProps } from './CarColourTile';
+export {
+  DayHeader,
+  DayHeaderSkeleton,
+  type DayHeaderGutter,
+  type DayHeaderProps,
+} from './DayHeader';
+export { UnreadBadge, type UnreadBadgeProps } from './UnreadBadge';
 export {
   CameraCapture,
   type CameraCaptureProps,
@@ -124,7 +132,7 @@ export {
   type PermissionPrimerContent,
   type PermissionPrimerProps,
 } from './PermissionPrimer';
-export { PlateChip, spellPlate, type PlateChipProps } from './PlateChip';
+export { PlateChip, PLATE_CHIP_HEIGHT, spellPlate, type PlateChipProps } from './PlateChip';
 export { RadiusSlider, type RadiusSliderProps } from './RadiusSlider';
 export {
   SafetyNotice,

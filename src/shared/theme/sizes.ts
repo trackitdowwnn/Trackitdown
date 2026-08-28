@@ -229,6 +229,52 @@ export const sizes = {
    * button; `icon`/`iconSm` are for icons that stand alone.
    */
   carTileGlyph: 32,
+  /**
+   * The leading visual on BOTH inbox faces (added 2026-08-28) — the car photo
+   * on a conversation row, the icon box on a notification row.
+   *
+   * ⚠️ 64, NOT `carTile`/`alertThumb` (72). Those two lead a card, inside a
+   * `cardSurface` box with 16pt padding. This leads a bare row on the 24pt
+   * gutter, and 64 is the size at which the tile sits just under the three-line
+   * text column's intrinsic height — so the TEXT drives the row height and the
+   * tile never does. At 72 a row with no third line grows to fit the picture,
+   * which is the picture deciding the rhythm rather than the content.
+   *
+   * ⚠️ AND NOT `fab`, which is also 64. Tying a list thumbnail to a round
+   * button is the exact mistake `screenshotThumb` spends a paragraph forbidding.
+   */
+  inboxRowTile: 64,
+  /**
+   * The notification glyph drawn inside an `inboxRowTile`. Same 32-in-a-tile
+   * ratio `carTileGlyph` uses, for the same reason: at `icon` (24) the mark
+   * reads as a small badge sitting in a large empty box.
+   */
+  inboxRowGlyph: 32,
+  /** The timestamp bar in an inbox row skeleton. A fixed width because the
+   *  thing it stands in for is a fixed-ish string ("2h ago", "just now") and a
+   *  percentage would make it grow with the screen, which timestamps do not. */
+  skeletonTimeBar: 40,
+  /**
+   * The needs-attention mark beside its label on a notification row, and the
+   * stroke of that ring.
+   *
+   * ⚠️ ITS OWN TOKENS rather than borrowing `progressDot` (a wizard header) and
+   * `timelineDotStroke` (sighting-timeline geometry). Same reason `carTile` is
+   * not `avatarLg`: a shared number is not a shared meaning, and the day a
+   * wizard's progress dot changes size is not the day this ring should.
+   */
+  attentionRing: 8,
+  attentionRingStroke: 1.5,
+  /**
+   * The unread badge's slot on an inbox row — a FIXED width, not a minimum.
+   * Wide enough for the "9+" pill (16pt minimum + spacing.xs either side plus
+   * the numeral), so a dot, a count and an empty slot all end at the same x and
+   * the text column beside them never changes width.
+   */
+  unreadSlot: 26,
+  /** A message bubble's placeholder height while a thread loads. Its own token
+   *  rather than `avatarLg`, which is 72 for reasons about faces. */
+  skeletonBubble: 72,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

@@ -22,11 +22,25 @@
  *        Black #1A1A1A on a #1E1E1E card is 1.03:1, so the most commonly picked
  *        colour in the palette rendered as an empty hole. A sample of paint
  *        needs an edge at both ends of the range.
+ *        ⚠️ MOVED TO shared/ui ON 2026-08-28, when the inbox's conversation
+ *        rows became the second consumer. A thread row leads with the car's
+ *        cover photo, and `coverPhotoUrl` is nullable — so the rows without one
+ *        needed exactly the fallback this already was. The move was FORCED
+ *        rather than chosen: chat may not import sightings (ARCHITECTURE rule
+ *        1), and a second copy of the two-tone and ink logic is precisely what
+ *        that rule exists to prevent.
+ *
+ *        `size`/`radius` are props ONLY because of that move, and they default
+ *        to what the report card already used, so its rendering is unchanged to
+ *        the pixel. A row tile is smaller than a card tile (`inboxRowTile` 64 vs
+ *        `carTile` 72) and squarer, because a bare list row and a padded card
+ *        are different boxes.
  * LINKS: src/shared/lib/carColours.ts (the palette, the hexes,
  *          `swatchForName` and `glyphInkFor`);
  *        src/features/vehicles/post/components/ColourField.tsx (the same
  *          swatches as a grid, and the border story);
- *        ./ReportCard.tsx (the only consumer).
+ *        src/features/sightings/components/ReportCard.tsx and
+ *        src/features/chat/components/ThreadRow.tsx (the consumers).
  */
 
 import { Car } from 'lucide-react-native';
@@ -39,10 +53,30 @@ export interface CarColourTileProps {
   /** The stored colour NAME ("Blue"), not a hex. Unrecognised or blank is a
    *  real state — the RPC coalesces to '' on a sparse post. */
   colour: string | null | undefined;
+  /** Edge length. Defaults to the report card's `carTile` (72). */
+  size?: number;
+  /** Corner radius. Defaults to the report card's `radii.lg`. */
+  radius?: number;
+  /**
+   * The silhouette drawn over the paint. Defaults to `carTileGlyph`, the
+   * card-scale mark.
+   *
+   * ⚠️ A PROP BECAUSE `size` ALONE WAS A TRAP: at `size=64` with a hardcoded
+   * 32pt glyph the mark filled half the tile instead of the card's 44%, and
+   * anyone retuning `carTileGlyph` for the report card would have silently
+   * restyled the inbox.
+   */
+  glyphSize?: number;
   testID?: string;
 }
 
-export function CarColourTile({ colour, testID }: CarColourTileProps) {
+export function CarColourTile({
+  colour,
+  size = sizes.carTile,
+  radius = radii.lg,
+  glyphSize = sizes.carTileGlyph,
+  testID,
+}: CarColourTileProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const swatch = swatchForName(colour);
@@ -51,6 +85,7 @@ export function CarColourTile({ colour, testID }: CarColourTileProps) {
     <View
       style={[
         styles.tile,
+        { width: size, height: size, borderRadius: radius },
         // Swatch fill is DATA (see carColours.ts), never a token. No swatch is
         // the honest blank: a neutral surface, and a themed glyph on it.
         swatch ? { backgroundColor: swatch.hex } : styles.tileUnknown,
@@ -74,10 +109,7 @@ export function CarColourTile({ colour, testID }: CarColourTileProps) {
         // tile's whole job on a row with no photo — and "Other" is #E4E4E4, so
         // the car reads at 13.7:1 on it. A second glyph would have to replace
         // the first rather than join it.
-        <Car
-          size={sizes.carTileGlyph}
-          color={swatch ? glyphInkFor(swatch) : palette.textSecondary}
-        />
+        <Car size={glyphSize} color={swatch ? glyphInkFor(swatch) : palette.textSecondary} />
       )}
     </View>
   );
@@ -86,9 +118,8 @@ export function CarColourTile({ colour, testID }: CarColourTileProps) {
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     tile: {
-      width: sizes.carTile,
-      height: sizes.carTile,
-      borderRadius: radii.lg,
+      // Size and radius come from props (defaulted to carTile / radii.lg) and
+      // are applied inline — a themed StyleSheet cannot vary per instance.
       // `overflow: hidden` so the two-tone half is clipped to the corners.
       overflow: 'hidden',
       alignItems: 'center',
