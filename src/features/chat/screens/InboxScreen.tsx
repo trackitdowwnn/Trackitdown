@@ -32,19 +32,26 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useEntranceGate } from '@/shared/hooks';
-import { motion, radii, sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
-import { ChoiceChips, EmptyState, ErrorState, ThemedRefreshControl } from '@/shared/ui';
+import { motion, sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  ChoiceChips,
+  DayHeader,
+  DayHeaderSkeleton,
+  EmptyState,
+  ErrorState,
+  ThemedRefreshControl,
+} from '@/shared/ui';
 
-import { ThreadRow } from '../components/ThreadRow';
+import { ThreadRow, ThreadRowSkeleton } from '../components/ThreadRow';
 import { useInbox } from '../hooks/useInbox';
 import {
   INBOX_FILTERS,
   emptyFilterCopy,
   filterLabel,
   filterThreads,
+  groupThreadsByDay,
   type InboxFilter,
 } from '../lib/inboxModel';
-import type { InboxThread } from '../types';
 
 export function ChatInboxScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -59,6 +66,9 @@ export function ChatInboxScreen() {
   // half-empty inbox.
   const [filter, setFilter] = useState<InboxFilter>('all');
   const visible = useMemo(() => filterThreads(threads, filter), [threads, filter]);
+  // ⚠️ GROUPED AFTER FILTERING. Grouping the full list and filtering the result
+  // would leave headers standing over days whose only thread the chip removed.
+  const items = useMemo(() => groupThreadsByDay(visible), [visible]);
   const chipOptions = useMemo(
     () => INBOX_FILTERS.map((value) => ({ value, label: filterLabel(value, threads) })),
     [threads],
@@ -71,14 +81,17 @@ export function ChatInboxScreen() {
         testID="inbox-skeleton"
         accessibilityLabel="Loading conversations"
       >
+        {/* The chip row's height is reserved: the real list always shows it
+            once there are threads, and a skeleton without it would promise the
+            first conversation 52pt higher than it lands. */}
+        <View style={styles.chipsRow}>
+          <View style={styles.chipsPlaceholder} />
+        </View>
+        {/* A day header leads the real list, so one leads the skeleton — as a
+            bar, not the word "Today", which the newest thread often isn't. */}
+        <DayHeaderSkeleton />
         {[0, 1, 2].map((n) => (
-          <View key={n} style={styles.skeletonRow}>
-            <View style={styles.skeletonAvatar} />
-            <View style={styles.skeletonBody}>
-              <View style={styles.skeletonLineWide} />
-              <View style={styles.skeletonLine} />
-            </View>
-          </View>
+          <ThreadRowSkeleton key={n} />
         ))}
       </View>
     );
@@ -133,8 +146,13 @@ export function ChatInboxScreen() {
         </Animated.View>
       ) : (
         <FlashList
-          data={visible}
-          keyExtractor={(thread: InboxThread) => thread.threadId}
+          data={items}
+          keyExtractor={(item) => item.key}
+          // ⚠️ MANDATORY, not an optimisation. Without it FlashList recycles a
+          // ~38pt header cell into a ~106pt row and back, which is exactly the
+          // jump this pass exists to remove. The Notifications face has always
+          // done this; the Messages face now needs it for the same reason.
+          getItemType={(item) => item.type}
           renderItem={({ item, index }) => (
             <Animated.View
               entering={
@@ -145,10 +163,14 @@ export function ChatInboxScreen() {
                   : undefined
               }
             >
-              <ThreadRow
-                thread={item}
-                onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
-              />
+              {item.type === 'header' ? (
+                <DayHeader label={item.label} />
+              ) : (
+                <ThreadRow
+                  thread={item.row.thread}
+                  onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
+                />
+              )}
             </Animated.View>
           )}
           refreshControl={
@@ -170,46 +192,35 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flex: 1,
     paddingTop: spacing.md,
   },
+  // ⚠️ NO PADDING OF ITS OWN — EmptyState and ErrorState each pad themselves by
+  // spacing.xl, and this style used to add a second 24, wrapping a 33-word body
+  // to seven lines inside a 48pt-per-side column. Fixed by deleting the padding
+  // here rather than by passing EmptyState's `gutter="none"`, because ErrorState
+  // has no such prop and half the states would have stayed broken.
+  // The `gap` went with it: both primitives own an internal gap: spacing.md, and
+  // this one only ever applied to a single child.
   centered: {
     flex: 1,
     justifyContent: 'center',
-    gap: spacing.lg,
     alignItems: 'center',
-    paddingHorizontal: spacing.xl,
   },
   chipsRow: {
     paddingBottom: spacing.sm,
   },
+  // One list rhythm across both inbox faces. No paddingTop: the day header
+  // supplies spacing.lg above the first group, and a container pad would double
+  // it.
   list: {
-    paddingVertical: spacing.sm,
+    paddingBottom: spacing.xl,
   },
-  skeletonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-  },
-  skeletonAvatar: {
-    width: sizes.avatarMd,
-    height: sizes.avatarMd,
-    borderRadius: radii.full,
-    backgroundColor: c.surfaceSubtle,
-  },
-  skeletonBody: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-  skeletonLineWide: {
-    height: sizes.skeletonLine,
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
-    width: '70%',
-  },
-  skeletonLine: {
-    height: sizes.skeletonLine,
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
-    width: '45%',
+  // The row skeleton moved to ThreadRow.tsx, where it shares the real row's
+  // styles. This block used to hand-copy them and had drifted in three places
+  // at once — a 48pt circle against a 64pt tile, two bars against three lines,
+  // and an 8pt gap against the row's 4.
+  //
+  // What stays is the chip row's reserved height: 44 + the row's own 8, so the
+  // list starts at the same y in both phases.
+  chipsPlaceholder: {
+    height: sizes.touchTarget,
   },
 });

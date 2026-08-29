@@ -40,6 +40,15 @@ export { BountyTag, bountyLabel, NO_BOUNTY_LABEL, type BountyTagProps } from './
 export { BrandLoader, LOADER_PHRASES, type BrandLoaderProps } from './BrandLoader';
 export { BrandMark, type BrandMarkProps } from './BrandMark';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
+export { CarColourTile, type CarColourTileProps } from './CarColourTile';
+export { KeepAliveFace, type KeepAliveFaceProps } from './KeepAliveFace';
+export {
+  DayHeader,
+  DayHeaderSkeleton,
+  type DayHeaderGutter,
+  type DayHeaderProps,
+} from './DayHeader';
+export { UnreadBadge, type UnreadBadgeProps } from './UnreadBadge';
 export {
   CameraCapture,
   type CameraCaptureProps,
@@ -124,7 +133,7 @@ export {
   type PermissionPrimerContent,
   type PermissionPrimerProps,
 } from './PermissionPrimer';
-export { PlateChip, spellPlate, type PlateChipProps } from './PlateChip';
+export { PlateChip, PLATE_CHIP_HEIGHT, spellPlate, type PlateChipProps } from './PlateChip';
 export { RadiusSlider, type RadiusSliderProps } from './RadiusSlider';
 export {
   SafetyNotice,
@@ -136,7 +145,14 @@ export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';
 export { type SelectOption } from './selectOptions';
-export { StatusBadge, statusBadgeLabel, type StatusBadgeProps } from './StatusBadge';
+export {
+  StatusBadge,
+  StatusPill,
+  statusBadgeLabel,
+  type BadgeTone,
+  type StatusBadgeProps,
+  type StatusPillProps,
+} from './StatusBadge';
 export { StepSkipButton, type StepSkipButtonProps } from './StepSkipButton';
 export { TextField, type TextFieldProps, type TextFieldVariant } from './TextField';
 export { HostTextInput, TextInputHostContext } from './TextInputHost';

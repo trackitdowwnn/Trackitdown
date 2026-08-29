@@ -45,6 +45,7 @@ import { useSession } from '@/features/auth';
 // Type-only: erased at runtime, so it does NOT create the require cycle the
 // deferred import below exists to avoid.
 import type { PublicProfileSheetProps } from '@/features/profile';
+import { useAndroidKeyboardHeight } from '@/shared/hooks';
 import {
   motion,
   radii,
@@ -94,6 +95,30 @@ export interface ChatThreadScreenProps {
 export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
+  // ⚠️ ANDROID LIFTS THE COMPOSER ITSELF. Expo SDK 57 forces edge-to-edge, so
+  // the window no longer resizes for the keyboard and KeyboardAvoidingView has
+  // nothing to avoid — `behavior={undefined}` meant the composer sat UNDER the
+  // keyboard on every Android send. The hook returns 0 on iOS, where
+  // KeyboardAvoidingView's 'padding' still does the work.
+  //
+  // ⚠️ THE RAW HEIGHT, NOT height - insets.bottom. This shipped for a few hours
+  // with the subtraction, on the theory that the edge-to-edge keyboard height
+  // includes the nav-bar region this screen's SafeAreaView has already padded.
+  // Every other consumer in the app says otherwise, and they are shipped:
+  // StickyActionBar uses `insets.bottom + spacing.md + keyboardHeight`,
+  // BottomSheet `insets.bottom + spacing.xl + keyboardLift`, WizardScreen
+  // `spacing.sm + keyboardHeight`. All three add the raw value; the first two
+  // also add insets.bottom on top, which they could not do if the height
+  // already contained it.
+  //
+  // Those three apply insets.bottom themselves where this screen gets it from
+  // `SafeAreaView edges={['top','bottom']}` — so matching them means adding the
+  // raw height here. Subtracting made this the only surface in the app that
+  // lifts a nav-bar SHORT, i.e. the composer partly under the keyboard.
+  //
+  // Still device-checkable rather than device-checked: gesture nav and
+  // 3-button nav differ, and Jest cannot see either.
+  const keyboardHeight = useAndroidKeyboardHeight();
   const router = useRouter();
   const session = useSession();
   const meta = useThreadMeta(threadId);
@@ -296,6 +321,33 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
                   </View>
                 </View>
               )
+            ) : meta.status === 'error' ? (
+              /* ⚠️ THE HEADER'S OWN ERROR STATE. `useThreadMeta` can return
+                 'error' as well as 'missing' (a network failure is 'error' —
+                 useThreadMeta.test.tsx pins that), and only 'missing' was ever
+                 branched below. The result was a header block containing a back
+                 button and nothing else, with no way to ask again.
+
+                 NOT a full-screen ErrorState: the MESSAGES load on their own
+                 hook and are usually fine, and SafetyNotice must render on
+                 every thread regardless (security review M1). Only the identity
+                 the failed call would have supplied is missing, so only that
+                 slot degrades. */
+              <View style={styles.headerFallback}>
+                <Text style={styles.headerName} numberOfLines={1}>
+                  Conversation
+                </Text>
+                <Pressable
+                  onPress={meta.retry}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading the conversation details"
+                  hitSlop={spacing.sm}
+                  style={({ pressed }) => [pressed && styles.headerPersonPressed]}
+                  testID="chat-meta-retry"
+                >
+                  <Text style={styles.headerRetry}>Try again</Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
         </View>
@@ -359,7 +411,10 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
         </View>
       ) : (
         <KeyboardAvoidingView
-          style={styles.body}
+          style={[
+            styles.body,
+            Platform.OS === 'android' && { paddingBottom: keyboardHeight },
+          ]}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
           <FlashList
@@ -454,7 +509,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
+    // ⚠️ spacing.xl, matching PostContextStrip directly beneath it. At
+    // spacing.md the two halves of ONE surface had two different left edges,
+    // 12 and 24, which is visible as a step the moment the strip has a
+    // thumbnail.
+    paddingHorizontal: spacing.xl,
     paddingVertical: spacing.sm,
   },
   back: {
@@ -462,6 +521,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     height: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
+    // Pulls the 24pt chevron's optical left edge back to ~22 against the 24pt
+    // text gutter — an icon centred in a 44pt box would otherwise sit 10pt
+    // inside every other left edge on the screen.
+    marginLeft: -spacing.md,
   },
   headerIdentity: {
     flex: 1,
@@ -479,6 +542,20 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   headerPersonPressed: {
     backgroundColor: c.surfaceSubtle,
+  },
+  // The degraded identity slot — see the 'error' branch in the header.
+  headerFallback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  // Underlined because it is tappable; the design system reserves underline
+  // for exactly that.
+  headerRetry: {
+    ...typography.label,
+    color: c.textPrimary,
+    textDecorationLine: 'underline',
   },
   headerText: {
     flex: 1,
@@ -499,12 +576,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   list: {
     paddingVertical: spacing.md,
   },
+  // ⚠️ NO PADDING OF ITS OWN — EmptyState/ErrorState already pad by spacing.xl,
+  // and this added a second 24 per side. Same fix as both inbox faces.
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: spacing.lg,
-    paddingHorizontal: spacing.xl,
   },
   loading: {
     flex: 1,
@@ -513,7 +590,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     gap: spacing.md,
   },
   skeletonBubble: {
-    height: sizes.avatarLg,
+    height: sizes.skeletonBubble,
     width: '70%',
     borderRadius: radii.lg,
     backgroundColor: c.surfaceSubtle,

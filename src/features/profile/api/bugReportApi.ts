@@ -52,16 +52,46 @@ export class BugReportError extends Error {
   }
 }
 
+/**
+ * What someone is told when they have used the day's allowance.
+ *
+ * ⚠️ EXPORTED SO THERE IS ONE COPY. ReportBugScreen refuses locally too — the
+ * advisory probe runs before screenshots upload — and it had this sentence
+ * pasted in as a second literal, free to drift from the one the server's
+ * refusal produces. The same mistake as the FALLBACK collision that made a
+ * failure undiagnosable a few hours earlier.
+ */
+export const BUG_REPORT_RATE_LIMITED_MESSAGE =
+  'Thanks — you’ve sent three reports today. Please send any more tomorrow.';
+
 /** What the server can refuse with, and what a person should read instead. */
 const MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'Please sign in to send a report.',
   INVALID_INPUT: 'Please write a little about what went wrong.',
   // Deliberately not "try again later": that invites a retry loop against a
-  // limit measured in hours. It names the window instead.
-  RATE_LIMITED: 'You’ve sent a few reports already. Please try again in an hour.',
+  // limit measured in hours. It names the window instead — and the window is
+  // now 3 per rolling 24 hours (20260827160000), so "in an hour" would have
+  // sent someone back 23 hours early to be refused again.
+  //
+  // "Thanks" is not decoration either: this is the one refusal in the app aimed
+  // at somebody doing us a favour, and the third report of a bad day should not
+  // read as being told off.
+  RATE_LIMITED: BUG_REPORT_RATE_LIMITED_MESSAGE,
 };
 
-const FALLBACK = 'We couldn’t send this. Please try again.';
+/**
+ * What the reporter is told when nothing more specific is known.
+ *
+ * ⚠️ EXPORTED BECAUSE THE SCREEN NEEDS THE SAME SENTENCE. `handleComplete`
+ * converts anything that is not a BugReportError into one, and it was written
+ * with this string copy-pasted — so two different failures (an RPC that
+ * returned an error we don't recognise, and an upload or network call that
+ * THREW) rendered identical text from two literals that could drift apart. One
+ * constant, and the paths are told apart by their log reason instead.
+ */
+export const BUG_REPORT_FALLBACK_MESSAGE = 'We couldn’t send this. Please try again.';
+
+const FALLBACK = BUG_REPORT_FALLBACK_MESSAGE;
 
 /** The longest message the server will accept. Mirrored here so the screen can
  *  stop typing at the cap rather than let someone write past it and lose it. */
@@ -111,6 +141,13 @@ export async function readBugReportQuota(): Promise<number | null> {
  * Screenshots must already be uploaded: pass their PATHS, which the server
  * verifies live under the caller's own folder.
  *
+ * ⚠️ RETURNS THE NEW REPORT'S ID, which the caller hands to notifyBugReport so
+ * the operator is emailed the report that was actually just filed. Before the
+ * RPC returned it, the email path had to GUESS — it took the oldest unsent
+ * report for that reporter — and on 2026-08-27 that emailed reports from an
+ * hour earlier while the new ones sat unsent. The id is the fix, so it is not
+ * optional decoration: dropping it on the floor here brings the guessing back.
+ *
  * @throws {BugReportError} on any refusal. `.message` is safe to show:
  *   `NOT_AUTHENTICATED` (signed out), `INVALID_INPUT` (empty or over 2000
  *   characters, or a screenshot path that is not the caller's), `RATE_LIMITED`
@@ -120,10 +157,10 @@ export async function submitBugReport(
   message: string,
   diagnostics: BugDiagnostics,
   details: BugReportDetails,
-): Promise<void> {
+): Promise<string | null> {
   const expected = details.expected?.trim();
 
-  const { error } = await supabase.rpc('submit_bug_report', {
+  const { data, error } = await supabase.rpc('submit_bug_report', {
     p_message: message.trim(),
     p_app_version: diagnostics.appVersion,
     p_platform: diagnostics.platform,
@@ -181,4 +218,8 @@ export async function submitBugReport(
   }
 
   log.info('bug_report_sent');
+  // The id, or null if the server gave us nothing recognisable. Null is not an
+  // error — the report IS saved — it only means the email dispatch has nothing
+  // to name, and notifyBugReport skips rather than falling back to a guess.
+  return typeof data === 'string' ? data : null;
 }

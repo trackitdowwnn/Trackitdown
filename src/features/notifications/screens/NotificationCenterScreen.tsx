@@ -12,38 +12,52 @@
  *        machinery pushes use, so a row and its push can never land in
  *        different places.
  * LINKS: ../hooks/useNotificationCenter.ts; ../components/NotificationRowItem;
- *        ../lib/dayGroups.ts; ../lib/pushRoute.ts; src/app/(tabs)/inbox.tsx
+ *        @/shared/lib (groupByDay); ../lib/pushRoute.ts; src/app/(tabs)/inbox.tsx
  *        (the segment host); docs/decisions/ADR-0012-notification-center.md.
  */
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useEntranceGate } from '@/shared/hooks';
+import { groupByDay } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
-  radii,
   sizes,
   spacing,
   typography,
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { EmptyState, ErrorState, ThemedRefreshControl } from '@/shared/ui';
+import {
+  DayHeader,
+  DayHeaderSkeleton,
+  EmptyState,
+  ErrorState,
+  ThemedRefreshControl,
+} from '@/shared/ui';
 
 import type { NotificationRow } from '../api/notificationsApi';
-import { NotificationRowItem } from '../components/NotificationRowItem';
+import { NotificationRowItem, NotificationRowSkeleton } from '../components/NotificationRowItem';
 import { useNotificationCenter } from '../hooks/useNotificationCenter';
-import { groupByDay } from '../lib/dayGroups';
 import { pushRouteFor } from '../lib/pushRoute';
 
 const log = createLogger('notifications');
 
-export function NotificationCenterScreen() {
+export interface NotificationCenterScreenProps {
+  /**
+   * Whether this face is the one on screen. The inbox mounts both and hides
+   * one, so "mounted" and "visible" are no longer the same thing — see the
+   * `center_view` effect below. Defaults true for any other consumer.
+   */
+  active?: boolean;
+}
+
+export function NotificationCenterScreen({ active = true }: NotificationCenterScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const { status, rows, refreshing, markRead, markAllRead, refresh, retry } =
@@ -51,10 +65,21 @@ export function NotificationCenterScreen() {
   // Same entrance the Messages face uses — the two faces move the same way.
   const entranceActive = useEntranceGate(status === 'ready');
 
-  // The funnel's entry point: how often the center is even looked at.
+  // The funnel's entry point: how often the center is even LOOKED AT.
+  //
+  // ⚠️ ON THE false → true EDGE, not on mount. The inbox keeps both faces
+  // mounted (2026-08-28) so switching segments doesn't lose scroll — which
+  // means mounting no longer implies being seen. Left on mount, this would
+  // have fired for every user who opened the tab and never left Messages, and
+  // quietly turned the metric into "opened the inbox".
+  //
+  // The metric therefore changes meaning as of that date: per-VIEW, not
+  // per-mount. Numbers before and after are not comparable.
+  const wasActive = useRef(false);
   useEffect(() => {
-    log.info('center_view');
-  }, []);
+    if (active && !wasActive.current) log.info('center_view');
+    wasActive.current = active;
+  }, [active]);
 
   const items = useMemo(() => groupByDay(rows), [rows]);
   const hasUnread = rows.some((row) => row.readAt === null);
@@ -74,14 +99,16 @@ export function NotificationCenterScreen() {
   if (status === 'loading') {
     return (
       <View style={styles.container} testID="center-skeleton" accessibilityLabel="Loading notifications">
+        {/* ⚠️ THE MARK-ALL ROW'S HEIGHT IS RESERVED HERE TOO. The real list
+            always renders that 52pt row; a skeleton without it would promise
+            the first notification 52pt higher than it lands. */}
+        <View style={styles.headerRow} />
+        {/* A day header leads the real list, so one leads the skeleton — a bar
+            rather than the word, because the newest notification usually is not
+            from today. */}
+        <DayHeaderSkeleton />
         {[0, 1, 2].map((n) => (
-          <View key={n} style={styles.skeletonRow}>
-            <View style={styles.skeletonCircle} />
-            <View style={styles.skeletonBody}>
-              <View style={styles.skeletonLineWide} />
-              <View style={styles.skeletonLine} />
-            </View>
-          </View>
+          <NotificationRowSkeleton key={n} />
         ))}
       </View>
     );
@@ -112,10 +139,16 @@ export function NotificationCenterScreen() {
 
   return (
     <View style={styles.container}>
-      {/* The one header affordance. Rendered only while it can DO something —
-          a permanent disabled "mark all" is furniture. */}
-      {hasUnread ? (
-        <View style={styles.headerRow}>
+      {/* The one header affordance. The LABEL is rendered only while it can DO
+          something — a permanent disabled "mark all" is furniture.
+          ⚠️ THE ROW ITSELF IS ALWAYS RENDERED, though, and that is the point:
+          when the whole row was conditional, marking the last notification read
+          collapsed 52pt and yanked the list up under the reader's thumb — the
+          same class of jump the skeletons exist to prevent, fired by a tap
+          instead of by loading. The row keeps its height; only its contents
+          come and go. */}
+      <View style={styles.headerRow}>
+        {hasUnread ? (
           <Pressable
             onPress={markAllRead}
             accessibilityRole="button"
@@ -124,8 +157,8 @@ export function NotificationCenterScreen() {
           >
             <Text style={styles.markAllLabel}>Mark all as read</Text>
           </Pressable>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
       <FlashList
         data={items}
         keyExtractor={(item) => item.key}
@@ -141,9 +174,7 @@ export function NotificationCenterScreen() {
             }
           >
             {item.type === 'header' ? (
-              <Text style={styles.dayHeader} accessibilityRole="header">
-                {item.label}
-              </Text>
+              <DayHeader label={item.label} />
             ) : (
               <NotificationRowItem row={item.row} onPress={onRowPress} />
             )}
@@ -169,17 +200,25 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // content starts.
     paddingTop: spacing.md,
   },
+  // ⚠️ NO PADDING OF ITS OWN — see the Messages face's copy of this comment.
+  // EmptyState/ErrorState pad themselves; this added a second 24 per side.
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.xl,
   },
   // Same vertical rhythm as the Messages face's chip row (44pt control +
   // spacing.sm), so switching tabs doesn't shift where the list starts.
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    // ⚠️ touchTarget PLUS the padding, because Yoga measures minHeight against
+    // the BORDER box — padding counts toward it. At a bare `touchTarget` this
+    // row was 44 when empty and 52 when it held the 44pt pressable, so the fix
+    // for the jump still jumped, by its own 8pt of padding. 52 is also exactly
+    // the Messages face's chip row (44pt control + spacing.sm), which is what
+    // keeps the two faces' lists starting at the same y.
+    minHeight: sizes.touchTarget + spacing.sm,
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.sm,
   },
@@ -196,45 +235,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textPrimary,
     textDecorationLine: 'underline',
   },
-  // Sentence case, no tracking — the label scale carries the hierarchy
-  // (ALL CAPS is reserved for number plates, design system rule).
-  dayHeader: {
-    ...typography.label,
-    color: c.textSecondary,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xs,
-  },
+  // The day label and the row skeleton both moved out — to shared/ui's
+  // DayHeader (three lists group by day now) and to NotificationRowItem's own
+  // NotificationRowSkeleton (which shares the row's styles, so the two cannot
+  // drift the way this hand-copied block had).
   list: {
     paddingBottom: spacing.xl,
-  },
-  skeletonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-  },
-  skeletonCircle: {
-    width: sizes.avatarMd,
-    height: sizes.avatarMd,
-    borderRadius: radii.full,
-    backgroundColor: c.surfaceSubtle,
-  },
-  skeletonBody: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-  skeletonLineWide: {
-    height: sizes.skeletonLine,
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
-    width: '70%',
-  },
-  skeletonLine: {
-    height: sizes.skeletonLine,
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
-    width: '45%',
   },
 });

@@ -114,6 +114,53 @@ of the way; our tokens, never their coral.
 - White canvas — our warmer `background`/`surface` split is a deliberate
   palette decision (ADR-0005).
 
+## Settings screen pass (2026-08-26)
+
+`/airbnb-redesign` was run again, this time against `SettingsScreen` — the hub
+that §1c above records as the partial reversal of the flat-not-buried call.
+
+**The finding: it already matched.** `ListRowGroup` and `ListRow` were built
+FROM §1c during the July pass, so heading-scale ink group titles, hairlines
+between rows only, 52pt rows (reference ~47pt) with a leading icon and trailing
+chevron, and flat-on-the-page grouping with no grey fills were all in place
+before this pass began. Two gaps remained.
+
+| # | Current | Reference | Change | Effort | Impact |
+|---|---|---|---|---|---|
+| S1 | Appearance and Notifications rows have no icon; Permissions rows do — three groups, two left edges | A consistent 24pt icon rail down every settings row | Icon rail on the five Notifications rows (`CATEGORY_ICONS`). Appearance stays icon-less — the documented chooser exception; a chooser is a different grammar from a list of destinations | S | M |
+| S2 | `styles.scroll` gaps every child by `spacing.xl`, so each footnote sits as far from the group it explains as from the group it does not | Explanatory captions tie to their group | Bundle each group with its footnote at `spacing.sm`, letting `spacing.xl` separate the bundles (`styles.bundle`) | S | M |
+
+⚠️ **The icon rail had one non-obvious constraint.** Every glyph had to reuse a
+meaning the app already carries, or the rail teaches an association the rest of
+the app contradicts. Four were already settled — `MessageCircle` and `Bookmark`
+are the Inbox and Watchlist tabs, `Binoculars` and `Banknote` are
+ProfileScreen's own sightings and payouts rows. `alerts` could not take its
+natural glyph: `Bell` is ProfileScreen's "Alerts & notifications", but on THIS
+screen `Bell` is the OS notification permission and `MapPin` — the alert-area
+glyph in AlertMatcherPicker — is the OS location permission, both a few rows
+below. Either would put one glyph against two different things inside a single
+scroll. `Radar` is unclaimed and reads as a watched area. The type cannot
+express this, so `SettingsScreen.test.tsx` pins distinctness and the two
+reserved glyphs; the guard was verified by reintroducing `alerts: Bell`.
+
+**Deliberately skipped:**
+
+- **The large scroll-away screen title** (§1a), the biggest single visual gap.
+  Sixteen screens share the inline back-chevron-plus-title idiom, and matching
+  the reference on one of them would only make this screen the odd one out.
+  Worth revisiting as a shared `ScreenHeader` extraction, which would fix
+  sixteen copies of the same code rather than diverging one.
+- **Any elevated card.** §4 sanctions exactly one elevated object per surface
+  and Profile spent that on its identity hero. Settings stays flat.
+- **Footnote alignment.** Checked, not assumed: footnotes sit at `spacing.md`
+  (12), matching the GROUP title rather than the icon-row titles at 48. That is
+  correct — they annotate the group. The rail does not disturb it, and the
+  stale comment in `SettingsScreen.tsx` that argued the opposite (written when
+  the switches had no icons) was rewritten in place rather than deleted.
+- **Group order and what lives here vs the Profile root** — settled 2026-08-24.
+- **Copy register.** Settings is neutral/administrative; the subtitles are
+  already house tone and the 72-hour footnote is appropriately grave.
+
 ## The 3 changes that close most of the gap
 
 1. **L2+L4+T2** — the identity hero card with the counters as its stats

@@ -1,17 +1,23 @@
 /**
  * WHAT:  Config smoke test for the alert wizard — the shape each MATCHER
- *        selection produces, gating, review copy, and the name auto-suggestion
- *        following the last step before `name`.
+ *        selection produces, gating, review copy, and that NO step seeds the
+ *        name.
  * WHY:   MANDATORY for every flow in this codebase. `WizardStep.schema` is a
  *        bare `z.ZodType`, so TypeScript cannot tie its keys to the answers
  *        type: a typo'd key COMPILES and the step then simply never
  *        validates — Next stays dead with no error anywhere. Only a test that
  *        actually runs each schema against real answers catches it.
  *
- *        The per-matcher shapes are asserted because the flow is now BUILT, not
- *        declared: an off-by-one in the "which step seeds the name" slice would
- *        either drop a step or leave an area-only alert unnameable, and both
- *        look fine until the wizard is on screen.
+ *        The per-matcher shapes are asserted because the flow is BUILT, not
+ *        declared: a step dropped from the wrong slice looks fine until the
+ *        wizard is on screen.
+ *
+ *        ⚠️ THE NAME SUGGESTION IS GONE (owner request, 2026-08-27) and this
+ *        file asserts its ABSENCE. It used to hang off whichever step preceded
+ *        `name` — a slice whose off-by-one had already left area-only alerts
+ *        unnameable once — and the field now opens empty, with the suggestion
+ *        demoted to NameStep's placeholder. Six tests for the old hook were
+ *        deleted rather than adapted; do not restore them.
  *        The step components are mocked so this loads without the map, the
  *        slider or the pickers (postACarFlow.test.ts does the same).
  * LINKS: ./alertFlow.tsx, ./alertName.ts, ./alertMatchers.ts;
@@ -196,54 +202,39 @@ describe('review copy', () => {
   });
 });
 
-describe('name suggestion', () => {
-  /** Run the seeding hook off whichever step actually carries it. */
-  const seedVia = (matchers: AlertMatcher[], answers: Record<string, unknown>) => {
-    const withHook = stepsFor(matchers).filter((step) => step.onContinue);
-    // Exactly one step seeds the name — more would mean a later step's answer
-    // could never reach the suggestion, because the first one to run sets it.
-    expect(withHook).toHaveLength(1);
-    return withHook[0].onContinue?.(answers) as Promise<{ name: string } | undefined>;
-  };
 
-  it('suggests a name on the way into the name step', async () => {
-    await expect(
-      seedVia(ALL, { ...AREA, radiusMiles: 10, placeLabel: 'Luton', make: 'BMW' }),
-    ).resolves.toEqual({ name: 'BMWs near Luton' });
+describe('⚠️ the name is not pre-filled', () => {
+  // Owner request, 2026-08-27. A `withNameSuggestion` wrapper used to hang an
+  // `onContinue` off whichever step preceded `name` and seed the field with
+  // "5 miles around Luton" — so anyone who wanted their own name had to clear
+  // someone else's words first. `suggestAlertName` survives as NameStep's
+  // PLACEHOLDER, which guides without being something to delete.
+  it('leaves every step free of a seeding hook', () => {
+    // The old design REQUIRED exactly one step to carry an onContinue, and got
+    // that wrong once already (it lived on `filters`, a step that stops
+    // existing when bounty is unticked). Now none of them should.
+    for (const matchers of [ALL, ['area'], ['area', 'car'], ['area', 'bounty']] as const) {
+      const steps = stepsFor([...matchers]);
+      // ⚠️ Guard against the vacuous form: `[].filter(...)` is also `[]`, so
+      // without this the assertion below would pass if stepsFor ever returned
+      // nothing at all — which is exactly the bug it is meant to catch.
+      expect(steps.length).toBeGreaterThan(0);
+      expect(steps.filter((step) => step.onContinue).map((step) => step.id)).toEqual([]);
+    }
   });
 
-  it('hangs the suggestion off the LAST step before the name', () => {
-    // Regression: the hook used to live on `filters` unconditionally. With
-    // bounty unticked that step no longer exists, so a car-only alert would
-    // have reached the name step with nothing suggested.
-    const hooked = (matchers: AlertMatcher[]) =>
-      stepsFor(matchers).find((step) => step.onContinue)?.id;
-    expect(hooked(ALL)).toBe('filters');
-    expect(hooked(['area', 'car'])).toBe('car');
-    expect(hooked(['area', 'bounty'])).toBe('filters');
-    expect(hooked(['area'])).toBe('area');
+  it('still requires a name, so an unnamed alert cannot be saved', () => {
+    // The field opening empty only works because the gate is honest about it —
+    // otherwise an alert would save as "" and the list would show a blank row.
+    const schema = stepById('name').schema;
+    expect(schema.safeParse({ name: '' }).success).toBe(false);
+    expect(schema.safeParse({ name: '   ' }).success).toBe(false);
+    expect(schema.safeParse({ name: 'My commute' }).success).toBe(true);
   });
 
-  it('names an area-only alert from its area', async () => {
-    await expect(
-      seedVia(['area'], { ...AREA, radiusMiles: 25, placeLabel: 'Luton' }),
-    ).resolves.toEqual({ name: '25 miles around Luton' });
-  });
-
-  it('folds the car into the name when only the car is ticked', async () => {
-    await expect(
-      seedVia(['area', 'car'], { ...AREA, radiusMiles: 10, placeLabel: 'Luton', make: 'BMW' }),
-    ).resolves.toEqual({ name: 'BMWs near Luton' });
-  });
-
-  it('never overwrites a name the user already typed', async () => {
-    // Also covers the review-edit spur, where onContinue runs again.
-    await expect(seedVia(ALL, { ...AREA, name: 'My commute', make: 'BMW' })).resolves.toBeUndefined();
-  });
-
-  it('re-suggests when the name has been cleared', async () => {
-    await expect(
-      seedVia(ALL, { ...AREA, name: '   ', radiusMiles: 25, placeLabel: 'Luton' }),
-    ).resolves.toEqual({ name: '25 miles around Luton' });
+  it('no longer claims to have suggested one', () => {
+    // The helper said "We've suggested one." — a plain lie about what is on
+    // screen once the field opens empty.
+    expect(stepById('name').helper).not.toMatch(/suggest/i);
   });
 });

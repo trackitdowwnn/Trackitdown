@@ -25,6 +25,7 @@ export { unregisterCurrentPushToken } from './api/pushTokenApi';
 // throw — a notification must not be able to fail the action that caused it.
 // Authorisation is enforced server-side by the claim RPCs.
 export {
+  notifyBugReport,
   notifyCredited,
   notifyMessage,
   notifySighting,

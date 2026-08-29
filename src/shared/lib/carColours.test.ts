@@ -7,16 +7,35 @@
  *        and future filters), and a colour-blind spotter reads the NAME — so a
  *        nameless or duplicated swatch, or a note leaking under a plain colour,
  *        is a real defect. The DVLA map is the pre-select seam.
- * LINKS: src/features/vehicles/post/lib/carColours.ts.
+ * LINKS: src/shared/lib/carColours.ts.
  */
 
 import {
   CAR_COLOURS,
   colourChangePatch,
   colourFromDvla,
+  glyphInkFor,
   isNoteColour,
   swatchForName,
 } from './carColours';
+
+/** WCAG 2.1 relative luminance for a #rrggbb string — same maths as
+ *  src/shared/theme/colors.test.ts, which is where the pattern comes from. */
+function luminance(hex: string): number {
+  const channel = (n: number) => {
+    const c = n / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrast(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
 
 describe('CAR_COLOURS palette', () => {
   it('gives every swatch a non-empty canonical name (the a11y guarantee)', () => {
@@ -52,6 +71,26 @@ describe('CAR_COLOURS palette', () => {
   it('marks exactly the two escapes as note colours', () => {
     const noteColours = CAR_COLOURS.filter((colour) => colour.note).map((colour) => colour.name);
     expect(noteColours).toEqual(['Multicolour / wrapped', 'Other']);
+  });
+});
+
+describe('⚠️ glyphInkFor — the ink drawn ON a swatch', () => {
+  // COMPUTED, NOT ASSERTED (DESIGN_SYSTEM: contrast is computed). The `light`
+  // flag is the only thing standing between a new swatch and an invisible glyph
+  // — a white car icon on White #F4F5F7 is 1.04:1 — and a component test can
+  // only pin WHICH ink was chosen, never whether that choice was legible. Add a
+  // colour with the flag the wrong way round and this fails here, at the data,
+  // rather than shipping.
+  it.each(CAR_COLOURS.map((colour) => [colour.name, colour] as const))(
+    'clears the 3:1 graphic-object floor on %s',
+    (_name, colour) => {
+      expect(contrast(glyphInkFor(colour), colour.hex)).toBeGreaterThanOrEqual(3);
+    },
+  );
+
+  it('picks the dark ink for pale swatches and the light one for the rest', () => {
+    expect(glyphInkFor(swatchForName('White')!)).toBe('#1A1A1A');
+    expect(glyphInkFor(swatchForName('Black')!)).toBe('#FFFFFF');
   });
 });
 

@@ -83,6 +83,13 @@ car today — the owner has them.").
   fed from the sighting's narrow payload — no uid exists client-side),
   **Message** (by sighting id) and **Mark helpful** (owner-side reputation
   credit; hidden once the status is no longer `unverified`).
+- `MySightingsScreen` (route `src/app/my-sightings.tsx`) — the SPOTTER's own
+  history: every sighting they filed, newest first, with the owner's verdict.
+  Rows are `ReportCard` + `CarColourTile` (a colour tile → car → where/when →
+  a marked outcome), and the tile exists because `my_sighting_record` carries
+  no photo, plate, location or post id — the car's colour is the only picture
+  this surface is allowed. The one place a `not_mine` verdict is ever shown,
+  and only to the spotter themselves.
 - `PostSightingsSection` — the detail page's "Sighting activity" section,
   BOTH faces from one mount: owner preview (3 newest + warm empty + "View
   all") vs `PublicSightingTimeline` — or nothing at all (public sees no
@@ -183,5 +190,9 @@ sighting chains / "car has moved" re-alerts · a PUBLIC map of sighting points
 (deliberately unbuilt — ADR-0008: no coordinate ever reaches a non-owner
 face; the OWNER's interactive trail map shipped 2026-07-30 in
 `SightingsTrailMap`, drawn purely from the owner payload) · video · crediting
-(recovery flow's write) · push delivery · spotter history UI, incl. a
-spotter's view of their own sighting's status (data/RLS ready; screen later).
+(recovery flow's write) · push delivery.
+
+Spotter history UI **shipped** — `MySightingsScreen`, above. Still out: making
+its cards pressable, which would need somewhere to go. The dispute route
+(`SightingDisputeScreen`) is reachable only from a push today, so a spotter who
+dismissed the notification cannot reach it at all.

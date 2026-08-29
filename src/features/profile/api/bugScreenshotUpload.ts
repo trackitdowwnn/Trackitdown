@@ -55,8 +55,14 @@ export const MAX_BUG_SCREENSHOTS = 3;
 const SCREENSHOT_MAX_EDGE = 2000;
 const SCREENSHOT_COMPRESS = 0.9;
 
-/** Stable, non-cryptographic hash (djb2) → base36, so a retry overwrites
- *  rather than orphaning a second copy of the same image. */
+/**
+ * Non-cryptographic hash (djb2) → base36. Keeps the object name derived from
+ * the source rather than random, so a path is inspectable and stable within one
+ * attempt.
+ *
+ * ⚠️ IT NO LONGER MEANS "A RETRY OVERWRITES", which is what this comment used
+ * to claim — see `attemptTag` for why that was never true against this bucket.
+ */
 function stableHash(input: string): string {
   let hash = 5381;
   for (let index = 0; index < input.length; index += 1) {
@@ -83,13 +89,33 @@ export async function uploadBugScreenshots(
 ): Promise<string[]> {
   if (photos.length === 0) return [];
 
+  // ⚠️ ONE TAG PER ATTEMPT — the other half of dropping `upsert`. Without it a
+  // retry rebuilds the identical path from the identical source uri and the
+  // upload is refused as a duplicate, so a report that failed once could never
+  // be sent again. A second attempt writes fresh objects and abandons the
+  // first set, which the header already calls the acceptable trade: orphans are
+  // a tidiness problem, discarding what someone wrote is not.
+  const attemptTag = Date.now().toString(36);
+
   const paths: string[] = [];
   for (const [index, photo] of photos.entries()) {
     const body = await toJpegBytes(photo, SCREENSHOT_MAX_EDGE, SCREENSHOT_COMPRESS);
-    const path = `${userId}/${stableHash(photo.uri)}-${index}.jpg`;
+    const path = `${userId}/${stableHash(photo.uri)}-${index}-${attemptTag}.jpg`;
     const { error } = await supabase.storage
       .from(BUG_SCREENSHOTS_BUCKET)
-      .upload(path, body, { contentType: 'image/jpeg', upsert: true });
+      // ⚠️ NO `upsert: true`, and it was here from the start. This bucket ships
+      // an INSERT policy and DELIBERATELY no UPDATE one — a reporter must not
+      // be able to overwrite evidence of a report they already filed
+      // (20260824140000). Supabase needs INSERT *and* UPDATE to satisfy an
+      // upsert, which is why post-photos and verification-documents each carry
+      // an own-folder UPDATE policy commented "may REPLACE (upsert)" and this
+      // bucket does not. So the flag asked for a permission the bucket refuses
+      // by design, and every attempt to attach a screenshot was rejected by RLS.
+      //
+      // Fixed HERE rather than by adding the UPDATE policy: the missing policy
+      // is the deliberate half, and granting it to make a client flag work
+      // would trade a security property for a convenience nobody asked for.
+      .upload(path, body, { contentType: 'image/jpeg' });
 
     if (error) {
       // The COUNT only. Never the path (it contains the user id), never the

@@ -8,11 +8,17 @@ chrome, navigation, validation gating, segmented progress, phase intro
 screens, and a built-in review step. TypeScript-generic over the flow's
 answers shape so consuming flows get full type safety.
 
-**Who consumes it:** four real flows — post-a-car (details → photos → last
+**Who consumes it:** five real flows — post-a-car (details → photos → last
 seen → bounty; the verification step was removed by ADR-0007), add-a-vehicle
-in the garage, report-a-sighting, and the alert wizard. Read any of those as
-the reference. The dev-only `/wizard-demo` route was deleted 2026-08-01: once
-four genuine consumers existed, a fake one could only drift out of date.
+in the garage, report-a-sighting, the alert wizard, and report-a-bug (added
+2026-08-27). Read any of those as the reference. The dev-only `/wizard-demo`
+route was deleted 2026-08-01: once real consumers existed, a fake one could
+only drift out of date.
+
+⚠️ Report-a-bug is the one to read for a flow that must stay SHORT: it groups
+several questions per step and marks everything after the first `optional`,
+because unlike the other four its user is not motivated — they are annoyed and
+doing you a favour.
 
 **Screen anatomy:** header row with the exit X top-left (dirty answers →
 discard confirmation → `router.back()`) and a compact dot-pill progress
@@ -43,8 +49,10 @@ list the framework builds.
 
 ⚠️ Flows that pass neither slot get no slot CONTENT, but they are not otherwise
 unchanged: the group rhythm, the single-hairline boundaries, the 44pt Edit
-target and the blocking notice are all framework-wide. Three of the four flows
-pass no slots and all three change visually.
+target and the blocking notice are all framework-wide. Three of the five flows
+pass no slots and all three change visually. Report-a-bug passes only
+`footer`, and passes it a disclosure panel rather than a price — the slot is
+"something to SHOW before committing", not "something to charge".
 
 **State:** one serializable `answers` object driven by a pure navigation
 reducer (`wizardReducer`), so navigation/gating/progress are unit-testable

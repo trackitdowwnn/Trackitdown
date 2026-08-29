@@ -8,14 +8,14 @@
  *        missing name label, a light swatch that vanishes, or a note leaking
  *        under a plain colour are real defects — pinned here.
  * LINKS: src/features/vehicles/post/components/ColourField.tsx;
- *        src/features/vehicles/post/lib/carColours.ts.
+ *        src/shared/lib/carColours.ts.
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import { ColourField } from './ColourField';
-import { CAR_COLOURS, colourFromDvla } from '../lib/carColours';
+import { CAR_COLOURS, colourFromDvla } from '@/shared/lib';
 
 jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports

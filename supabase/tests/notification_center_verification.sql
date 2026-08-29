@@ -17,8 +17,14 @@
 -- notification (once-only; title = the RECORDED transfer amount; refuses a
 -- non-released payment) · 7 grants (deny-by-default held; no client write
 -- path into the feed — which is also why kind='message', whitelisted for
--- symmetry only, can never be written by anyone but the service role).
+-- symmetry only, can never be written by anyone but the service role) ·
+-- 9 get_notification_feed (own rows only THROUGH THE FUNCTION — the feed read
+-- is SECURITY DEFINER since 2026-08-28, so CHECK 1's table policy no longer
+-- covers the path the app uses; the image_url gate opens for a spotter with a
+-- sighting on a recovered post and stays shut for a mere watcher; a malformed
+-- payload degrades to a pictureless row instead of blanking the whole feed).
 -- LINKS: supabase/migrations/20260806100000_notification_center.sql;
+--        supabase/migrations/20260828120000_notification_feed_photo.sql;
 --        docs/DOMAIN.md (Notifications; Disputes); docs/TESTING.md;
 --        scripts/test-db.sh.
 --
@@ -455,7 +461,123 @@ begin
   end if;
 end $$;
 
+-- -----------------------------------------------------------------------------
+-- CHECK 9 — get_notification_feed(): the feed read is now a SECURITY DEFINER
+-- function, so `where user_id = auth.uid()` INSIDE it — not the table policy —
+-- is the only thing between a caller and everyone else's inbox. CHECK 1 no
+-- longer covers the path the app actually uses.
+--
+-- Also proves the image_url gate, which is the one place this function is
+-- wider than post_photos RLS: a spotter who reported on a post keeps its photo
+-- after the post stops being 'active'; someone who merely watched it does not.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_feed    jsonb;
+  v_count   int;
+  v_foreign int;
+  v_image   text;
+begin
+  -- A photo on Carl's post, a sighting on it by Alex, and a feed row for Alex
+  -- about it. Then recover the post, so plain RLS would hide the photo from
+  -- everyone but Carl.
+  insert into public.post_photos (id, post_id, url, position)
+  values ('d0d0d0d0-0000-0000-0000-000000000001',
+          'a1a1a1a1-0000-0000-0000-000000000005',
+          'https://example.test/post-photos/33333333/car-0.jpg', 0);
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+  values ('e0e0e0e0-0000-0000-0000-000000000003', 'a1a1a1a1-0000-0000-0000-000000000005',
+          '11111111-1111-1111-1111-111111111111', 'credited', 'Manchester', true);
+  insert into public.notifications (id, user_id, kind, title, body, payload, read_at)
+  values ('f0f0f0f0-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111',
+          'credited', 'You''ve earned £185.00', 'Your sighting led to a recovery.',
+          '{"type":"credited","postId":"a1a1a1a1-0000-0000-0000-000000000005"}', null);
+  update public.posts set status = 'recovered', recovered_at = now()
+   where id = 'a1a1a1a1-0000-0000-0000-000000000005';
+
+  -- (a) Own rows only, through the function.
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  v_feed := public.get_notification_feed();
+  reset role;
+
+  select count(*) into v_count
+    from jsonb_array_elements(v_feed) e
+   where e->>'id' like 'f0f0f0f0-%';
+  if v_count <> 5 then
+    raise exception 'CHECK 9 FAILED: Beth''s feed returned % fixture rows — must be her 5', v_count;
+  end if;
+  select count(*) into v_foreign
+    from jsonb_array_elements(v_feed) e
+   where e->>'id' in ('f0f0f0f0-0000-0000-0000-000000000004',
+                      'f0f0f0f0-0000-0000-0000-000000000007');
+  if v_foreign <> 0 then
+    raise exception 'CHECK 9 FAILED: Beth''s feed leaked % of Alex''s rows', v_foreign;
+  end if;
+
+  -- (b) The gate OPENS for the spotter: Alex reported on the post, so he keeps
+  --     its photo even though the post is no longer active.
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  set local role authenticated;
+  v_feed := public.get_notification_feed();
+  reset role;
+  select e->>'image_url' into v_image
+    from jsonb_array_elements(v_feed) e
+   where e->>'id' = 'f0f0f0f0-0000-0000-0000-000000000007';
+  if v_image is null then
+    raise exception 'CHECK 9 FAILED: a spotter with a sighting lost the photo on a recovered post';
+  end if;
+
+  -- (c) The gate STAYS SHUT for a mere watcher: Beth's row 02 is about the same
+  --     recovered post, and she neither owns it nor reported on it.
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  v_feed := public.get_notification_feed();
+  reset role;
+  select e->>'image_url' into v_image
+    from jsonb_array_elements(v_feed) e
+   where e->>'id' = 'f0f0f0f0-0000-0000-0000-000000000002';
+  if v_image is not null then
+    raise exception 'CHECK 9 FAILED: a watcher with no sighting was shown a recovered post''s photo';
+  end if;
+
+  -- (d) A malformed payload must degrade to a pictureless row, NEVER raise:
+  --     the function is all-or-nothing, so one bad row would blank the feed.
+  update public.notifications
+     set payload = '{"type":"credited","postId":"not-a-uuid"}'
+   where id = 'f0f0f0f0-0000-0000-0000-000000000007';
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  set local role authenticated;
+  begin
+    v_feed := public.get_notification_feed();
+  exception when others then
+    reset role;
+    raise exception 'CHECK 9 FAILED: a malformed payload raised and took the whole feed with it';
+  end;
+  reset role;
+  select e->>'image_url' into v_image
+    from jsonb_array_elements(v_feed) e
+   where e->>'id' = 'f0f0f0f0-0000-0000-0000-000000000007';
+  if v_image is not null then
+    raise exception 'CHECK 9 FAILED: a malformed postId still resolved to a photo';
+  end if;
+
+  -- (e) Grants: anon executes nothing; authenticated needs it.
+  if has_function_privilege('anon', 'public.get_notification_feed()', 'execute') then
+    raise exception 'CHECK 9 FAILED: anon can execute get_notification_feed';
+  end if;
+  if not has_function_privilege('authenticated', 'public.get_notification_feed()', 'execute') then
+    raise exception 'CHECK 9 FAILED: authenticated cannot execute the feed read it depends on';
+  end if;
+end $$;
+
 -- --- housekeeping: leave the database as we found it -------------------------
+delete from public.post_photos
+ where id = 'd0d0d0d0-0000-0000-0000-000000000001';
 delete from public.notifications
  where id in ('f0f0f0f0-0000-0000-0000-000000000001',
               'f0f0f0f0-0000-0000-0000-000000000002',
@@ -470,7 +592,8 @@ delete from public.payments
  where stripe_payment_intent_id in ('pi_test_payout_sent', 'pi_test_payout_held');
 delete from public.sightings
  where id in ('e0e0e0e0-0000-0000-0000-000000000001',
-              'e0e0e0e0-0000-0000-0000-000000000002');
+              'e0e0e0e0-0000-0000-0000-000000000002',
+              'e0e0e0e0-0000-0000-0000-000000000003');
 update public.posts
    set status = 'active', recovered_at = null, recovery_notified_at = null
  where id in ('a1a1a1a1-0000-0000-0000-000000000003',

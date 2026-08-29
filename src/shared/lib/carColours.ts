@@ -14,9 +14,34 @@
  *        and reviewers must NOT "tokenise" them. `colourFromDvla` is the seam
  *        for the (stubbed) DVLA lookup — its limited vocabulary maps cleanly
  *        onto this set so a returned colour can pre-select a swatch.
+ *
+ *        ⚠️ MOVED HERE FROM features/vehicles/post/lib ON 2026-08-28, joining
+ *        carMakes and carModels — which this file's header had noted were
+ *        already in shared/lib while it "stayed here and is exported rather
+ *        than moved, to keep the posting wizard's imports untouched". Four
+ *        features now read it (vehicles, notifications, search-map, sightings),
+ *        which is well past ARCHITECTURE.md's bar, and reaching it through the
+ *        vehicles barrel cost two real things:
+ *
+ *          * A CYCLE. `@/features/vehicles` → useSimilarPosts →
+ *            `@/features/search-map` → SearchSheet → back, so SearchSheet saw
+ *            `CAR_COLOURS` as `undefined` at module scope and crashed the whole
+ *            app at startup — a bug no test could catch, because the suite
+ *            mocks the barrel and mocking breaks the cycle. Colours are out of
+ *            that loop now; body types are not, so SearchSheet's
+ *            functions-not-constants rule still stands.
+ *          * A TEST TAX. Three suites mocked `@/features/vehicles` and
+ *            `requireActual`'d this deep path just to get a pure lookup, because
+ *            the barrel drags in auth and dies on AsyncStorage's native module.
+ *
+ *        `bodyTypes.ts` deliberately did NOT come along: it imports lucide
+ *        components and `CardSelectOption` from shared/ui, so it is UI, and
+ *        shared/lib does not import shared/ui.
  * LINKS: src/features/vehicles/post/components/ColourField.tsx (renders these);
  *        src/features/vehicles/post/components/postSteps.tsx (ColourStep);
- *        src/features/vehicles/post/lib/carColours.test.ts;
+ *        src/features/sightings/components/CarColourTile.tsx (the swatch as a
+ *          report card's leading tile, and the consumer of `glyphInkFor`);
+ *        ./carColours.test.ts;
  *        docs/DESIGN_SYSTEM.md (Colour, Accessibility — never colour alone).
  */
 
@@ -69,6 +94,28 @@ export const CAR_COLOURS: CarColour[] = [
   { name: 'Multicolour / wrapped', hex: '#2B4C7E', secondaryHex: '#C7CCD1', note: true },
   { name: 'Other', hex: '#E4E4E4', light: true, note: true, icon: 'more-horizontal' },
 ];
+
+/**
+ * The two inks anything drawn ON TOP OF a swatch may take, selected by `light`.
+ *
+ * ⚠️ THEY LIVE HERE BECAUSE THEY ARE DATA, exactly like the fills above and
+ * exempt from the token rule for the same reason: a swatch does not flip with
+ * the theme, so an ink that did would be white-on-white for the five light
+ * shades. Keeping them beside the `light` flag that chooses between them means
+ * a future palette edit moves fill and ink together — and gives /theme-audit
+ * one sanctioned home for the exemption instead of a second one in a component.
+ *
+ * `carColours.test.ts` computes every pair against the 3:1 floor for graphical
+ * objects, so a new swatch with the wrong `light` flag fails there rather than
+ * shipping illegible.
+ */
+export const GLYPH_ON_DARK = '#FFFFFF';
+export const GLYPH_ON_LIGHT = '#1A1A1A';
+
+/** The ink to draw over `swatch` — see the pair above. */
+export function glyphInkFor(swatch: CarColour): string {
+  return swatch.light ? GLYPH_ON_LIGHT : GLYPH_ON_DARK;
+}
 
 /** Case-exact-ish lookup of a swatch by its canonical name (trimmed, case-insensitive). */
 export function swatchForName(name: string | null | undefined): CarColour | undefined {

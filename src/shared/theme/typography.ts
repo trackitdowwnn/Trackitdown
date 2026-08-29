@@ -44,6 +44,22 @@ export const typography = {
    *  hero and the title reads as a caption to it, not a heading over it. */
   cardTitle: { fontSize: 16, lineHeight: 22, fontFamily: fontFamilies.bold },
   body: { fontSize: 16, lineHeight: 24, fontFamily: fontFamilies.regular },
+  /**
+   * Long-form documents ONLY — the legal pages today (added 2026-08-26).
+   *
+   * Body size at looser leading: 16/26 rather than 16/24. `body` is tuned for
+   * interface text, which arrives in one- or two-line runs where 1.5 is
+   * comfortable and tighter keeps a row compact. Legal prose arrives in
+   * paragraphs of six or eight lines, and at 1.5 the eye loses its place
+   * returning to the left margin — the single change that most improves
+   * sustained reading.
+   *
+   * ⚠️ A SEPARATE ROLE RATHER THAN LOOSENING `body`, which is used by roughly
+   * every screen in the app: widening its leading would add two points to the
+   * height of every ListRow subtitle, every card line and every empty state, to
+   * fix a problem only three pages have.
+   */
+  prose: { fontSize: 16, lineHeight: 26, fontFamily: fontFamilies.regular },
   caption: { fontSize: 13, lineHeight: 18, fontFamily: fontFamilies.regular },
   label: { fontSize: 14, lineHeight: 18, fontFamily: fontFamilies.medium },
   /** Map-pin bounties — label-size but BOLD. The reference sets its price pins
@@ -55,8 +71,12 @@ export const typography = {
   /** Number-plate styling: heavy but compact (label-size, no letter spacing
    *  — tightened 2026-07-23 so the chip sits quietly beside titles). */
   plate: { fontSize: 14, lineHeight: 18, fontFamily: fontFamilies.black },
-  /** Tab-bar item labels — the one sanctioned size below caption; nothing
-   *  else should use it (labels under 24pt icons need to stay compact). */
+  /** Tab-bar item labels AND count badges — the one sanctioned size below
+   *  caption; nothing else should use it (labels under 24pt icons need to stay
+   *  compact, and a numeral in a 16pt pill has the same problem).
+   *  ⚠️ "and count badges" added 2026-08-28: AppTabBar's badge had always used
+   *  this token, so the rule as written had never been the rule. `UnreadBadge`
+   *  now shares that geometry, and one 11pt numeral beats inventing a second. */
   tabLabel: { fontSize: 11, lineHeight: 14, fontFamily: fontFamilies.medium },
 } as const satisfies Record<string, TextStyle>;
 

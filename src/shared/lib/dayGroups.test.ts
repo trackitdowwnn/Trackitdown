@@ -3,7 +3,9 @@
  *        one header per day change, against an injected clock.
  * WHY:   The boundaries (midnight, year-end) are exactly where a device test
  *        never happens to run. Clock-injected, so they are assertions here.
- * LINKS: ./dayGroups.ts; ../screens/NotificationCenterScreen.tsx.
+ * LINKS: ./dayGroups.ts;
+ *        src/features/notifications/screens/NotificationCenterScreen.tsx;
+ *        src/features/sightings/screens/MySightingsScreen.tsx.
  */
 
 import { groupByDay } from './dayGroups';

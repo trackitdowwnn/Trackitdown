@@ -18,12 +18,16 @@ export { RecoverPostScreen } from './screens/RecoverPostScreen';
 export { PostDetailScreen, type PostDetailScreenProps } from './screens/PostDetailScreen';
 export { MakeField } from './post/components/MakeField';
 export { ModelField } from './post/components/ModelField';
-// Car taxonomy. Was posting-only; features/notifications is now a second
-// consumer (alert criteria filter on the SAME values posts store, so they must
-// come from one list or an alert silently matches nothing). Makes and models
-// already live in shared/lib — these two stayed here and are exported rather
-// than moved, to keep the posting wizard's imports untouched.
-export { CAR_COLOURS, type CarColour } from './post/lib/carColours';
+// Car taxonomy. ⚠️ COLOURS ARE NO LONGER HERE — `CAR_COLOURS` and its helpers
+// moved to `@/shared/lib` on 2026-08-28, next to carMakes and carModels, once a
+// fourth feature needed them. Import them from there; re-exporting through this
+// barrel is what put them inside the vehicles → search-map → vehicles cycle
+// that made SearchSheet read them as `undefined` at startup.
+//
+// Body types stay: they are UI (lucide glyphs + CardSelectOption), so shared/lib
+// is the wrong home. features/notifications and features/search-map both read
+// them from here, on the SAME values posts store — one list, or an alert
+// silently matches nothing.
 export { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN } from './post/lib/bodyTypes';
 export type { PostDetail, PostDetailResult, ClosedReason } from './types';
 // The report-sighting wizard reads the post's registered marks through this

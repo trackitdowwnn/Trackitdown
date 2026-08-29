@@ -48,18 +48,32 @@ export interface CardSelectProps<V extends string = string> {
   /** Currently selected value; null renders no card selected. */
   value: V | null;
   onSelect: (value: V) => void;
+  /**
+   * The QUESTION these options answer.
+   *
+   * ⚠️ Pass it whenever the question lives in a separate heading above the
+   * group. The radiogroup was unnamed, so VoiceOver announced "Annoying, radio
+   * button, 1 of 3" with nothing saying what was being asked — a visible header
+   * is reachable by heading navigation but is never announced WITH the control.
+   */
+  accessibilityLabel?: string;
 }
 
 export function CardSelect<V extends string = string>({
   options,
   value,
   onSelect,
+  accessibilityLabel,
 }: CardSelectProps<V>) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
 
   return (
-    <View style={styles.group} accessibilityRole="radiogroup">
+    <View
+      style={styles.group}
+      accessibilityRole="radiogroup"
+      accessibilityLabel={accessibilityLabel}
+    >
       {options.map((option) => {
         const selected = option.value === value;
         const Icon = option.icon;

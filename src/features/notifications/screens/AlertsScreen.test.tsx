@@ -1,15 +1,23 @@
 /**
  * WHAT:  Tests that AlertsScreen reaches each of its honest states — loading,
- *        error, signed out, empty, populated, and at-cap.
+ *        error, signed out, empty, populated, and at-cap — and that every one
+ *        of them can be escaped.
  * WHY:   The single-zone screen this replaces shipped with its error and
  *        signed-out branches UNREACHABLE (a guard ordering bug), so a failing
  *        RPC looked identical to a slow one, for ever. It passed typecheck,
  *        lint and the whole unit suite; only opening the app caught it. These
  *        assertions exist so the same class of bug can't return here.
- * LINKS: ./AlertsScreen.tsx; ../hooks/useMyAlerts.ts.
+ *
+ *        ⚠️ AND THE 2026-08-27 REDESIGN ADDED A SECOND CLASS OF THE SAME BUG.
+ *        The error and signed-out branches were REACHABLE but rendered a bare
+ *        view with no title and no back chevron — on a pushed route with
+ *        headers hidden app-wide, that is a dead end with only the iOS
+ *        edge-swipe out of it. `alerts-back` is now asserted in every state.
+ * LINKS: ./AlertsScreen.tsx; ../hooks/useMyAlerts.ts;
+ *        ../components/AlertZoneThumb.tsx (why the map is mocked below).
  */
 
-import { render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import { AlertsScreen } from './AlertsScreen';
 
@@ -23,33 +31,122 @@ jest.mock('../hooks/useMyAlerts', () => ({
   invalidateMyAlerts: jest.fn(),
 }));
 
+let mockPermission: Record<string, unknown> = {
+  status: { state: 'granted', canAskAgain: true },
+  request: jest.fn(),
+  refresh: jest.fn(),
+};
 jest.mock('@/features/permissions', () => ({
-  useDevicePermission: () => ({
-    status: { state: 'granted', canAskAgain: true },
-    request: jest.fn(),
-    refresh: jest.fn(),
-  }),
+  useDevicePermission: () => mockPermission,
 }));
 
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }) }));
+// ⚠️ Hoisted, not created inside the factory. The previous version returned a
+// fresh jest.fn() from every useRouter() call, so nothing about navigation
+// could be asserted at all — and the at-cap test now turns on exactly that.
+const mockPush = jest.fn();
+const mockBack = jest.fn();
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush, back: mockBack }),
+  // ⚠️ A NO-OP, NOT `(effect) => effect()`. The real hook runs its callback in
+  // an EFFECT; calling it during render makes AlertZoneThumb's setState a
+  // render-phase update and React bails out with "Too many re-renders". The
+  // thumbnail's default state is already `focused`, which is what a mounted
+  // screen looks like, so running it adds nothing anyway.
+  useFocusEffect: () => {},
+}));
 
+const mockSetEnabled = jest.fn();
+const mockDeleteAlert = jest.fn();
 jest.mock('../api/alertsApi', () => ({
-  deleteAlert: jest.fn(),
-  setAlertEnabled: jest.fn(),
+  deleteAlert: (...args: unknown[]) => mockDeleteAlert(...args),
+  setAlertEnabled: (...args: unknown[]) => mockSetEnabled(...args),
+}));
+
+const mockRequireAuth = jest.fn();
+jest.mock('@/features/auth', () => ({ useRequireAuth: () => mockRequireAuth }));
+
+// ⚠️ THERE IS NO GLOBAL react-native-maps MOCK in this repo — five other suites
+// hand-roll this, and without it the suite dies in the native-module layer
+// rather than anywhere that names the problem. AppMapCircle must be listed too:
+// AlertZoneThumb renders one.
+jest.mock('@/shared/ui/AppMap', () => ({
+  AppMap: 'AppMap',
+  AppMapCircle: 'AppMapCircle',
 }));
 
 // The heavy UI is mocked to plain text: this suite is about which STATE the
 // screen resolves to, not how any of it looks.
 jest.mock('@/shared/ui', () => {
-  const { Text: RNText } = jest.requireActual('react-native');
+  const { Text: RNText, View: RNView } = jest.requireActual('react-native');
+  const React = jest.requireActual('react');
   return {
-    useToast: () => ({ show: jest.fn() }),
-    FullscreenLoader: ({ message }: { message?: string }) => <RNText>{message}</RNText>,
+    // ⚠️ ONE shared spy, not a fresh jest.fn() per call — see mockPush above.
+    useToast: () => ({ show: mockShowToast }),
     ErrorState: ({ title }: { title?: string }) => <RNText>{title}</RNText>,
-    EmptyState: ({ title }: { title?: string }) => <RNText>{title}</RNText>,
-    Button: ({ label }: { label: string }) => <RNText>{label}</RNText>,
-    PermissionPrimer: () => null,
-    ConfirmDialog: () => null,
+    // Renders body and actionLabel too: the redesign's whole point is the empty
+    // state's copy and its one action, and a title-only double asserts neither.
+    EmptyState: ({
+      title,
+      body,
+      actionLabel,
+      onAction,
+    }: {
+      title?: string;
+      body?: string;
+      actionLabel?: string;
+      onAction?: () => void;
+    }) => (
+      <RNView>
+        <RNText>{title}</RNText>
+        {body ? <RNText>{body}</RNText> : null}
+        {actionLabel ? <RNText onPress={onAction}>{actionLabel}</RNText> : null}
+      </RNView>
+    ),
+    Button: ({ label, onPress }: { label: string; onPress?: () => void }) => (
+      <RNText onPress={onPress}>{label}</RNText>
+    ),
+    // A ref double, so the sheet -> confirm handoff is observable. Rendering
+    // null meant the whole delete path could not fire at all.
+    ConfirmDialog: ({ ref }: { ref?: { current: unknown } }) => {
+      React.useImperativeHandle(ref, () => ({ open: mockConfirmOpen }));
+      return null;
+    },
+    Screen: ({ children, footer }: { children?: unknown; footer?: unknown }) => (
+      <RNView>
+        {children}
+        {footer}
+      </RNView>
+    ),
+    StickyActionBar: ({ children }: { children?: unknown }) => <RNView>{children}</RNView>,
+    NudgeRow: ({ title, onPress, testID }: { title: string; onPress: () => void; testID?: string }) => (
+      <RNText onPress={onPress} testID={testID}>
+        {title}
+      </RNText>
+    ),
+    // ⚠️ IT HONOURS THE REF, and rendering children unconditionally is how the
+    // sheet tests came to pass for the wrong reason: with the contents in the
+    // tree from mount, deleting the `fireEvent.press` that opens it changed
+    // nothing and every assertion still passed. A mock that is always "open"
+    // cannot test opening.
+    BottomSheet: ({
+      ref,
+      children,
+    }: {
+      ref?: { current: { open: () => void; close: () => void } | null };
+      children?: unknown;
+    }) => {
+      const [open, setOpen] = React.useState(false);
+      React.useImperativeHandle(ref, () => ({
+        open: () => setOpen(true),
+        close: () => setOpen(false),
+      }));
+      return open ? <RNView>{children}</RNView> : null;
+    },
+    ListRow: ({ title, onPress, testID }: { title: string; onPress?: () => void; testID?: string }) => (
+      <RNText onPress={onPress} testID={testID}>
+        {title}
+      </RNText>
+    ),
     // The real one renders a RefreshControl, which needs a host scroll view
     // ancestor; the pull itself is exercised in useMyAlerts.test.tsx.
     ThemedRefreshControl: () => null,
@@ -60,6 +157,9 @@ jest.mock('@/shared/ui', () => {
     AppSwitch: jest.requireActual('react-native').Switch,
   };
 });
+
+const mockShowToast = jest.fn();
+const mockConfirmOpen = jest.fn();
 
 const alert = (overrides: Record<string, unknown> = {}) => ({
   id: `id-${Math.random()}`,
@@ -84,32 +184,67 @@ const alert = (overrides: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockAlertsState = { status: 'ready', alerts: [], refresh: jest.fn() };
+  mockPermission = {
+    status: { state: 'granted', canAskAgain: true },
+    request: jest.fn(),
+    refresh: jest.fn(),
+  };
 });
 
 describe('AlertsScreen states', () => {
-  it('shows the loader while alerts are loading', async () => {
+  it('shows a skeleton while alerts are loading', async () => {
+    // ⚠️ The string survives the move from FullscreenLoader to skeleton rows,
+    // but it is now an accessibilityLabel — getByText would NOT find it, and
+    // that is the intended trade: no blocking overlay, still announced.
     mockAlertsState = { status: 'loading', refresh: jest.fn() };
-    const { getByText } = await render(<AlertsScreen />);
-    expect(getByText('Loading your alerts')).toBeTruthy();
+    const { getByLabelText } = await render(<AlertsScreen />);
+    expect(getByLabelText('Loading your alerts')).toBeTruthy();
   });
 
   it('surfaces a load failure instead of spinning forever', async () => {
     mockAlertsState = { status: 'error', refresh: jest.fn() };
-    const { getByText, queryByText } = await render(<AlertsScreen />);
+    const { getByText, queryByLabelText } = await render(<AlertsScreen />);
     expect(getByText("We couldn't load your alerts")).toBeTruthy();
-    expect(queryByText('Loading your alerts')).toBeNull();
+    expect(queryByLabelText('Loading your alerts')).toBeNull();
   });
 
-  it('tells a guest why the list is empty instead of spinning forever', async () => {
+  it('tells a guest why the list is empty, and offers the way in', async () => {
     mockAlertsState = { status: 'signedOut', refresh: jest.fn() };
-    const { getByText, queryByText } = await render(<AlertsScreen />);
+    const { getByText, queryByLabelText } = await render(<AlertsScreen />);
     expect(getByText('Set the areas you watch')).toBeTruthy();
-    expect(queryByText('Loading your alerts')).toBeNull();
+    expect(queryByLabelText('Loading your alerts')).toBeNull();
+
+    // Every other signed-out empty state in the app offers "Log in"; this one
+    // used to be a dead end with no way to fix it.
+    fireEvent.press(getByText('Log in'));
+    expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'alert_settings' });
   });
+
+  // ⚠️ ONE RENDER PER TEST, hence it.each rather than a loop inside one case.
+  // Two renders in a single test poison every test declared after them in the
+  // file — they fail with "Unable to find" against a tree that is demonstrably
+  // correct, which costs an hour to diagnose from the symptom.
+  //
+  // Headers are hidden app-wide and this is a pushed route, so a state without
+  // a back control is a dead end on Android — the second form of the bug this
+  // suite was originally written to catch.
+  it.each(['loading', 'error', 'signedOut', 'ready'] as const)(
+    '⚠️ can be escaped from the %s state',
+    async (status) => {
+      mockAlertsState = { status, alerts: [], refresh: jest.fn() };
+      const { getByTestId } = await render(<AlertsScreen />);
+      expect(getByTestId('alerts-back')).toBeTruthy();
+    },
+  );
 
   it('invites a first alert when the list is empty', async () => {
     const { getByText } = await render(<AlertsScreen />);
     expect(getByText('No alerts yet')).toBeTruthy();
+    // ⚠️ The body carries the two facts the old copy left out: how often this
+    // interrupts you, and that the saved area is not your address. Losing
+    // either one quietly is the failure this pins.
+    expect(getByText(/a few a day at most/i)).toBeTruthy();
+    expect(getByText(/rough area rather than your exact address/i)).toBeTruthy();
   });
 
   it('lists each alert by name with what it watches', async () => {
@@ -141,14 +276,202 @@ describe('AlertsScreen states', () => {
     expect(getByText('25 miles · Blue BMWs')).toBeTruthy();
   });
 
-  it('blocks creating a sixth alert and says why', async () => {
+  it('⚠️ draws every alert a zone thumbnail, with or without a map', async () => {
+    // The thumbnail is the redesign: five alerts used to read as five identical
+    // grey text blocks. It must render with the native map mocked away, because
+    // that is also what a missing API key, Expo Go and web all look like.
+    const one = alert({ id: 'a1' });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId } = await render(<AlertsScreen />);
+    // includeHiddenElements, because the thumbnail is deliberately hidden from
+    // the accessibility tree — the card already announces the alert's name and
+    // its summary, and "image" between the two adds nothing.
+    expect(getByTestId('alert-thumb-a1', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('⚠️ explains the cap instead of going dead at it', async () => {
+    // It used to render a DISABLED button reading "Limit reached (5)". The
+    // garage screen — whose cap of 5 this deliberately mirrors — records the
+    // house rule: a dead control explains nothing. This asserts the opposite
+    // contract, so do not "restore" the old one.
     mockAlertsState = {
       status: 'ready',
       alerts: [alert(), alert(), alert(), alert(), alert()],
       refresh: jest.fn(),
     };
-    const { getByText, queryByText } = await render(<AlertsScreen />);
-    expect(getByText('Limit reached (5)')).toBeTruthy();
-    expect(queryByText('Create an alert')).toBeNull();
+    const { getByText } = await render(<AlertsScreen />);
+
+    fireEvent.press(getByText('Create an alert'));
+
+    expect(mockShowToast).toHaveBeenCalledWith(
+      'You can have up to 5 alerts. Delete one to add another.',
+    );
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(getByText("That's all 5 — delete one to add another.")).toBeTruthy();
+  });
+
+  it('opens the wizard below the cap', async () => {
+    mockAlertsState = { status: 'ready', alerts: [alert()], refresh: jest.fn() };
+    const { getByText } = await render(<AlertsScreen />);
+
+    fireEvent.press(getByText('Create an alert'));
+
+    expect(mockPush).toHaveBeenCalledWith('/alerts/new');
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('the permission banner', () => {
+  it('offers to ask when the OS has not been asked yet', async () => {
+    const request = jest.fn().mockResolvedValue({ state: 'granted', canAskAgain: false });
+    mockPermission = {
+      status: { state: 'denied', canAskAgain: true },
+      request,
+      refresh: jest.fn(),
+    };
+    const { getByTestId } = await render(<AlertsScreen />);
+
+    fireEvent.press(getByTestId('alerts-permission-banner'));
+    expect(request).toHaveBeenCalled();
+  });
+
+  it('⚠️ sends a blocked user to Settings instead of asking again', async () => {
+    // canAskAgain false means the OS will never show a prompt again, so an
+    // "allow" button would do nothing at all.
+    const { Linking } = jest.requireActual('react-native');
+    const openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+    const request = jest.fn();
+    mockPermission = {
+      status: { state: 'denied', canAskAgain: false },
+      request,
+      refresh: jest.fn(),
+    };
+    const { getByTestId } = await render(<AlertsScreen />);
+
+    fireEvent.press(getByTestId('alerts-permission-banner'));
+    expect(openSettings).toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+    openSettings.mockRestore();
+  });
+
+  it('says nothing when notifications are already on', async () => {
+    const { queryByTestId } = await render(<AlertsScreen />);
+    expect(queryByTestId('alerts-permission-banner')).toBeNull();
+  });
+
+  it('⚠️ says nothing to a signed-out visitor', async () => {
+    // Hoisting the banner out of the state switch put it on the signed-out
+    // screen too, above "Alerts are tied to your account" — asking someone to
+    // turn on push for alerts they cannot own. Every other test in this
+    // describe runs against `ready`, so nothing caught it.
+    mockAlertsState = { status: 'signedOut', alerts: [], refresh: jest.fn() };
+    mockPermission = {
+      status: { state: 'denied', canAskAgain: true },
+      request: jest.fn(),
+      refresh: jest.fn(),
+    };
+    const { queryByTestId, getByText } = await render(<AlertsScreen />);
+
+    expect(queryByTestId('alerts-permission-banner')).toBeNull();
+    expect(getByText('Set the areas you watch')).toBeTruthy();
+  });
+});
+
+describe('the row actions', () => {
+  it('⚠️ keeps delete behind the sheet, not on the card', async () => {
+    // The card used to carry a ghost "Delete" styled identically to "Edit" —
+    // an irreversible action one mis-tap away on a resting surface.
+    const one = alert({ id: 'a1', name: 'Home' });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId, queryByTestId } = await render(<AlertsScreen />);
+
+    // ⚠️ THE NEGATIVE FIRST — it IS the contract. Without it this test passed
+    // with the press deleted entirely, because the sheet mock used to render
+    // its children from mount.
+    expect(queryByTestId('alert-action-delete')).toBeNull();
+
+    fireEvent.press(getByTestId('alert-more-a1'));
+
+    // waitFor: the sheet opens through a ref, so the state update lands after
+    // the press rather than inside it.
+    await waitFor(() => expect(getByTestId('alert-action-delete')).toBeTruthy());
+    expect(getByTestId('alert-action-edit')).toBeTruthy();
+  });
+
+  it('⚠️ delete goes through the confirm dialog, never straight to the API', async () => {
+    // The redesign moved delete behind two new surfaces, and neither was
+    // covered. Deleting an alert is irreversible.
+    const one = alert({ id: 'a1', name: 'Home' });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId } = await render(<AlertsScreen />);
+
+    fireEvent.press(getByTestId('alert-more-a1'));
+    await waitFor(() => expect(getByTestId('alert-action-delete')).toBeTruthy());
+    fireEvent.press(getByTestId('alert-action-delete'));
+
+    // The sheet hands off to ConfirmDialog — nothing is deleted on this tap.
+    expect(mockConfirmOpen).toHaveBeenCalled();
+    expect(mockDeleteAlert).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ exposes open, pause and more as three named elements', async () => {
+    // THE iOS BUG THIS PINS, and the second attempt at fixing it. Wrapping the
+    // whole card in a Pressable made it `accessible`, and iOS GROUPS an
+    // accessible element's children — so the nested Switch and "⋯" were
+    // unreachable to VoiceOver entirely.
+    //
+    // Custom accessibilityActions fixed that for VoiceOver and TalkBack and no
+    // one else: iOS Voice Control and Full Keyboard Access navigate the TREE,
+    // and a tree with one element gives them nothing to say or tab to. Three
+    // real, separately-named elements is what covers all four technologies —
+    // so this asserts the shape, not just that pressing works.
+    const one = alert({ id: 'a1', name: 'Home', enabled: true });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId } = await render(<AlertsScreen />);
+
+    const open = getByTestId('alert-open-a1');
+    const toggle = getByTestId('alert-toggle-a1');
+    const more = getByTestId('alert-more-a1');
+
+    // Each one is reachable and says what it is.
+    expect(open.props.accessibilityRole).toBe('button');
+    expect(open.props.accessibilityLabel).toContain('Home');
+    expect(toggle.props.accessibilityRole).toBe('switch');
+    expect(toggle.props.accessibilityLabel).toBe('Home alerts');
+    expect(toggle.props.accessibilityState).toMatchObject({ checked: true });
+    expect(more.props.accessibilityLabel).toBe('More options for Home');
+
+    // And the touch band around the ~31pt switch belongs to the SWITCH, not to
+    // the card — a near miss used to open the editor.
+    fireEvent.press(toggle);
+    expect(mockSetEnabled).toHaveBeenCalledWith('a1', false);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ says "Paused" to a screen reader, not just on screen', async () => {
+    // An explicit accessibilityLabel OVERRIDES the child text, so the visible
+    // "Paused" word never reaches anyone unless the label carries it — and
+    // summariseAlert does not include it.
+    const one = alert({ id: 'a1', name: 'Home', enabled: false });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId } = await render(<AlertsScreen />);
+
+    expect(getByTestId('alert-open-a1').props.accessibilityLabel).toContain('Paused');
+  });
+
+  it('opens the alert for editing when the card itself is pressed', async () => {
+    const one = alert({ id: 'a1' });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId } = await render(<AlertsScreen />);
+
+    fireEvent.press(getByTestId('alert-open-a1'));
+    expect(mockPush).toHaveBeenCalledWith('/alerts/a1');
+  });
+
+  it('shows a paused alert as paused', async () => {
+    const one = alert({ id: 'a1', enabled: false });
+    mockAlertsState = { status: 'ready', alerts: [one], refresh: jest.fn() };
+    const { getByTestId } = await render(<AlertsScreen />);
+    expect(getByTestId('alert-paused-a1')).toBeTruthy();
   });
 });

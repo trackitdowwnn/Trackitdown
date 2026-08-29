@@ -55,6 +55,9 @@ const rowFixture = (overrides: Record<string, unknown> = {}) => ({
   payload: { type: 'alert' as const, postId: POST_ID },
   readAt: null,
   createdAt: new Date().toISOString(),
+  // Null by default: the server withholds the photo whenever the caller has no
+  // standing on that post, which makes pictureless the ordinary row.
+  imageUrl: null,
   ...overrides,
 });
 
@@ -97,6 +100,68 @@ describe('states', () => {
     // kinds never get the bar at all.
     expect(queryByTestId('attention-n-read-credited')).toBeNull();
     expect(queryByTestId('attention-n-alert')).toBeNull();
+  });
+
+  it('⚠️ says WHAT needs doing, not just that something does', async () => {
+    // The bar alone was status encoded as colour — forbidden outright by the
+    // design system, and unreadable besides: a 3pt stripe cannot say "your
+    // money is waiting on bank details". The words are the fix; the bar stays
+    // as the peripheral cue.
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-credited', kind: 'credited', payload: { type: 'credited', postId: POST_ID } }),
+    ]);
+    const { getByText } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getByText('Add your bank details')).toBeTruthy();
+  });
+
+  it('drops the label once the row is read, exactly as the bar does', async () => {
+    mockFetch.mockResolvedValue([
+      rowFixture({
+        id: 'n-read-credited',
+        kind: 'credited',
+        payload: { type: 'credited', postId: POST_ID },
+        readAt: new Date().toISOString(),
+      }),
+    ]);
+    const { queryByText } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(queryByText('Add your bank details')).toBeNull();
+  });
+
+  it('leads with the car’s photo when the server sent one', async () => {
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-photo', imageUrl: 'https://example.test/car.jpg' }),
+    ]);
+    const { getByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getByTestId('notification-photo-n-photo')).toBeTruthy();
+  });
+
+  it('⚠️ falls back to the icon when there is no photo — the COMMON case', async () => {
+    // image_url is null whenever the caller has no standing on that post, and
+    // for every kind that is about money rather than a car. A pictureless row
+    // must look deliberate, not broken.
+    mockFetch.mockResolvedValue([rowFixture({ id: 'n-plain', imageUrl: null })]);
+    const { queryByTestId, getByTestId } = await act(async () =>
+      render(<NotificationCenterScreen />),
+    );
+
+    expect(queryByTestId('notification-photo-n-plain')).toBeNull();
+    expect(getByTestId('notification-n-plain')).toBeTruthy();
+  });
+
+  it('⚠️ speaks the same words it shows', async () => {
+    // The label used to append " Needs your attention." — a sentence no sighted
+    // user ever saw, describing a stripe rather than the errand.
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-credited', kind: 'credited', payload: { type: 'credited', postId: POST_ID } }),
+    ]);
+    const { getByTestId } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getByTestId('notification-n-credited').props.accessibilityLabel).toContain(
+      'Add your bank details.',
+    );
   });
 });
 

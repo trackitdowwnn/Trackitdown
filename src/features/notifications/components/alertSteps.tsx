@@ -16,14 +16,16 @@
  *        server matches case-insensitively but still exactly, so a free-typed
  *        "beemer" here would create an alert that silently matches nothing —
  *        worse than no alert, because the user believes they are covered.
- * LINKS: ../lib/alertFlow.tsx (the config); ./AlertZoneMap.tsx,
+ * LINKS: ../lib/alertFlow.tsx (the config); ../lib/alertName.ts
+ *        (suggestAlertName — NameStep's placeholder); ./AlertZoneMap.tsx,
  *        src/shared/ui/RadiusSlider.tsx (shared with map search since
  *        2026-08-10; the default label keeps this wizard's copy unchanged);
- *        @/features/vehicles (CAR_COLOURS, BODY_TYPE_OPTIONS);
- *        @/shared/lib/carMakes, carModels.
+ *        @/features/vehicles (BODY_TYPE_OPTIONS);
+ *        @/shared/lib (CAR_COLOURS), @/shared/lib/carMakes, carModels.
  */
 
-import { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN, CAR_COLOURS } from '@/features/vehicles';
+import { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN } from '@/features/vehicles';
+import { CAR_COLOURS } from '@/shared/lib';
 import {
   MAX_BOUNTY_PENCE as BOUNTY_MAX_PENCE,
   MIN_BOUNTY_PENCE as BOUNTY_MIN_PENCE,
@@ -45,6 +47,7 @@ import {
 import type { WizardStepProps } from '@/shared/wizard';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { suggestAlertName } from '../lib/alertName';
 import { DEFAULT_ALERT_RADIUS_MILES, type AlertAnswers } from '../types';
 import { AlertZoneMap, AlertZoneMapProvider } from './AlertZoneMap';
 
@@ -252,13 +255,37 @@ export function FiltersStep({ answers, setAnswers }: StepProps) {
 
 export function NameStep({ answers, setAnswers }: StepProps) {
   const styles = useThemedStyles(makeStyles);
+
+  // ⚠️ THE SUGGESTION IS THE PLACEHOLDER, NOT THE VALUE (owner request,
+  // 2026-08-27). The field used to open pre-filled with this sentence, which
+  // meant anyone who wanted their own name had to clear someone else's words
+  // first. As a placeholder it still shows what a good name looks like — and
+  // built from THEIR answers, so it beats the generic "Home, Work commute…" it
+  // replaces — while leaving the field genuinely empty.
+  //
+  // TextField only surfaces a placeholder once the field is FOCUSED (the
+  // floating label is the resting state), so this appears exactly when someone
+  // is deciding what to type, and never sits there looking like an answer.
+  const suggestion = suggestAlertName(
+    {
+      make: answers.make ?? null,
+      model: answers.model ?? null,
+      colour: answers.colour ?? null,
+      bodyType: answers.bodyType ?? null,
+      minBountyPence: answers.minBountyPence ?? null,
+      recencyDays: answers.recencyDays ?? null,
+    },
+    answers.placeLabel ?? null,
+    answers.radiusMiles ?? DEFAULT_ALERT_RADIUS_MILES,
+  );
+
   return (
     <View style={styles.stack}>
       <TextField
         label="Alert name"
         value={answers.name ?? ''}
         onChangeText={(name) => setAnswers({ name })}
-        placeholder="Home, Work commute…"
+        placeholder={suggestion}
         autoCapitalize="sentences"
         testID="alert-name"
       />

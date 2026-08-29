@@ -29,7 +29,7 @@ import type { PostStatus } from '../types';
  * palette. Storing a tone keeps that function pure and defers the one thing
  * that has to be deferred (the colour) to `toneColor` inside the component.
  */
-type BadgeTone = 'neutral' | 'warning' | 'success';
+export type BadgeTone = 'neutral' | 'warning' | 'success';
 
 /** Badge copy + dot tone per non-active status (active → no badge). */
 const STATUS_BADGES: Partial<Record<PostStatus, { label: string; tone: BadgeTone }>> = {
@@ -81,17 +81,41 @@ export interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, showLiveWhenActive = false }: StatusBadgeProps) {
-  const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
-
   const badge = resolveBadge(status, showLiveWhenActive);
   if (!badge) {
     return null; // public active (or anything unmapped) shows no badge
   }
+  return <StatusPill label={badge.label} tone={badge.tone} />;
+}
+
+export interface StatusPillProps {
+  label: string;
+  tone: BadgeTone;
+  testID?: string;
+}
+
+/**
+ * The pill itself, for statuses that are NOT a post's.
+ *
+ * ⚠️ EXTRACTED RATHER THAN COPIED (2026-08-26). PayoutsScreen needs the same
+ * dot-and-label anatomy for a Connect account's state — not set up, action
+ * needed, being checked, ready — and `StatusBadge` cannot serve it because its
+ * whole API is a `PostStatus` and a lookup table of post lifecycle labels.
+ * Payments is the second feature needing this shape, which is ARCHITECTURE.md's
+ * bar for shared/.
+ *
+ * Additive on purpose: `StatusBadge` now renders this and its five existing
+ * consumers see no change at all, which is what keeps a shared-component edit
+ * on a release day cheap to review.
+ */
+export function StatusPill({ label, tone, testID }: StatusPillProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+
   return (
-    <View style={styles.badge}>
-      <View style={[styles.dot, { backgroundColor: toneColor(palette, badge.tone) }]} />
-      <Text style={styles.label}>{badge.label}</Text>
+    <View style={styles.badge} testID={testID}>
+      <View style={[styles.dot, { backgroundColor: toneColor(palette, tone) }]} />
+      <Text style={styles.label}>{label}</Text>
     </View>
   );
 }

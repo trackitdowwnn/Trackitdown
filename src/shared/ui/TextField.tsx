@@ -72,6 +72,18 @@ export interface TextFieldProps
   error?: string;
   /** Hint shown below the input when there is no error. */
   helperText?: string;
+  /**
+   * A short count shown at the RIGHT of the message row — words typed,
+   * characters remaining, whatever the field is measuring.
+   *
+   * ⚠️ Shares the row with `helperText`/`error` rather than taking a line of
+   * its own, which is why it is a sibling and not a second message: a count
+   * under a hint under a field turns one control into three stacked lines, and
+   * on a multiline box that pushes the next question off the screen. Kept
+   * secondary-ink and never announced on its own — a screen reader gets the
+   * count from `accessibilityHint` on the input, not from a floating number.
+   */
+  counter?: string;
   /** Keyboard + formatting preset. */
   variant?: TextFieldVariant;
   /** Disables input and mutes the field. */
@@ -104,6 +116,7 @@ export function TextField({
   onChangeText,
   error,
   helperText,
+  counter,
   variant = 'text',
   disabled = false,
   placeholder,
@@ -264,13 +277,30 @@ export function TextField({
         />
       </Animated.View>
 
-      {message ? (
-        <Text
-          style={[styles.message, error ? styles.messageError : styles.messageHelper]}
-          accessibilityLiveRegion={error ? 'polite' : 'none'}
-        >
-          {message}
-        </Text>
+      {message || counter ? (
+        <View style={styles.messageRow}>
+          {message ? (
+            <Text
+              style={[styles.message, error ? styles.messageError : styles.messageHelper]}
+              accessibilityLiveRegion={error ? 'polite' : 'none'}
+            >
+              {message}
+            </Text>
+          ) : null}
+          {counter ? (
+            // Hidden from the a11y tree on purpose: a bare "12 words" read out
+            // between a field and the next question is noise, and a live region
+            // here would fire on EVERY keystroke. The input carries the same
+            // information as a hint, announced once on focus.
+            <Text
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+              style={[styles.message, styles.messageCounter]}
+            >
+              {counter}
+            </Text>
+          ) : null}
+        </View>
       ) : null}
     </View>
   );
@@ -326,13 +356,32 @@ const makeStyles = (c: Palette) =>
     inputPlate: {
       ...typography.plate,
     },
+    // `flex-start`, not `center`: the message can wrap to two or three lines
+    // and the count never does, so centring would float the number against the
+    // middle of a paragraph. Both sit on the first line.
+    messageRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+    },
     message: {
       ...typography.caption,
+      // The message takes the row and the counter keeps its intrinsic width —
+      // the same "the short half holds its line" rule ListRow documents. A
+      // wrapping hint must not squeeze "12 words" into "12\nwords".
+      flex: 1,
     },
     messageHelper: {
       color: c.textSecondary,
     },
     messageError: {
       color: c.danger,
+    },
+    // No flex: it yields nothing and sits hard right, so the number stays put
+    // as the message above it grows and shrinks.
+    messageCounter: {
+      flex: 0,
+      color: c.textSecondary,
+      textAlign: 'right',
     },
   });

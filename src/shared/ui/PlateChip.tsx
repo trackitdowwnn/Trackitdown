@@ -76,6 +76,17 @@ export interface PlateChipProps {
 const SYSTEM_CONFIRMS_CLIPBOARD = Platform.OS === 'android' && Number(Platform.Version) >= 33;
 
 /** "AB12 CDE" → "A B 1 2, C D E" so screen readers spell, not pronounce. */
+/**
+ * The chip's drawn height at 1× — its own padding plus one line of `plate`.
+ *
+ * ⚠️ DERIVED HERE, beside the styles it is derived FROM, so it cannot drift.
+ * A row that puts a chip on a line with plain text needs to reserve this much
+ * whether or not the chip is there, or the row changes height by role — which
+ * is what made owner conversations resettle when the inbox loaded. Callers
+ * multiply by `fontScale`, since the chip grows with the type inside it.
+ */
+export const PLATE_CHIP_HEIGHT = typography.plate.lineHeight + spacing.xs * 2;
+
 export function spellPlate(plate: string): string {
   return plate
     .trim()

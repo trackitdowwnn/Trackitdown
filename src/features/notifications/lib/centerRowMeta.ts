@@ -51,21 +51,59 @@ import type { NotificationKind } from './notificationKinds';
  */
 export type NotificationTone = 'neutral' | 'warning' | 'success' | 'danger';
 
-export interface CenterRowMeta {
+/**
+ * ⚠️ A DISCRIMINATED UNION, so a needs-attention kind CANNOT be added without
+ * its words. The accent bar alone was colour-only status, which the design
+ * system forbids outright — and it was also unreadable: a 3pt warning stripe
+ * says "something", never "what". Making the label part of the same branch as
+ * the flag means the next author to set `needsAttention: true` gets a compile
+ * error until they decide what the row should say, rather than shipping a
+ * silent stripe.
+ */
+export type CenterRowMeta = {
   Icon: LucideIcon;
   /** The icon's meaning — resolved to a palette hue by the row component. */
   tone: NotificationTone;
-  /** Loud-while-unread: the warning accent bar. */
-  needsAttention: boolean;
-}
+} & (
+  | { needsAttention: false }
+  | {
+      /** Loud-while-unread: the warning accent bar AND the label below. */
+      needsAttention: true;
+      /**
+       * The action, in the reader's words, shown on the row and spoken by the
+       * screen reader.
+       *
+       * ⚠️ NAME THE ACTION, NOT THE STATE. "Needs your attention" is what the
+       * bar already failed to say. And no durations: the row is a snapshot that
+       * may be read hours later, so a label promising "72 hours" goes stale
+       * between render and read.
+       */
+      attentionLabel: string;
+    }
+);
 
 export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   alert: { Icon: Bell, tone: 'neutral', needsAttention: false },
   sighting: { Icon: Eye, tone: 'neutral', needsAttention: false },
   recovery: { Icon: CheckCircle2, tone: 'success', needsAttention: false },
-  credited: { Icon: Banknote, tone: 'warning', needsAttention: true },
+  // The money is sitting there and only the reader can unlock it, so the label
+  // is the errand rather than the good news the title already carries.
+  credited: {
+    Icon: Banknote,
+    tone: 'warning',
+    needsAttention: true,
+    attentionLabel: 'Add your bank details',
+  },
   payout_sent: { Icon: Banknote, tone: 'success', needsAttention: false },
-  closed_uncredited: { Icon: Hourglass, tone: 'warning', needsAttention: true },
+  // "Contest" is the word SightingDisputeScreen already uses with these
+  // spotters ("This one can’t be contested any more"), so the row and the
+  // screen it opens speak the same language.
+  closed_uncredited: {
+    Icon: Hourglass,
+    tone: 'warning',
+    needsAttention: true,
+    attentionLabel: 'You can contest this',
+  },
   dispute_upheld: { Icon: BadgeCheck, tone: 'success', needsAttention: false },
   dispute_rejected: { Icon: Scale, tone: 'neutral', needsAttention: false },
   // Good news that isn't YOUR good news: the car went home, someone else was

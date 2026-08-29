@@ -25,7 +25,12 @@ import { createLogger } from '@/shared/lib/logger';
 const log = createLogger('notifications');
 
 function dispatch(
-  fn: 'notify-sighting' | 'notify-message' | 'notify-credited' | 'notify-sighting-confirmed',
+  fn:
+    | 'notify-sighting'
+    | 'notify-message'
+    | 'notify-credited'
+    | 'notify-sighting-confirmed'
+    | 'notify-bug-report',
   body: Record<string, string>,
 ): void {
   // The try/catch is NOT redundant with the .catch(): if invoke throws
@@ -78,4 +83,28 @@ export function notifyCredited(postId: string): void {
  */
 export function notifySightingConfirmed(sightingId: string): void {
   dispatch('notify-sighting-confirmed', { sightingId });
+}
+
+/**
+ * Email the operator the bug report that was just filed.
+ *
+ * ⚠️ THE ID IS THE WHOLE POINT. This carried NOTHING at first: the Edge
+ * Function read no body and the claim served the oldest unsent report for the
+ * caller, on the assumption that was the one just written. On 2026-08-27 it
+ * emailed reports from an hour earlier while the new ones sat unsent, and a
+ * single missed dispatch would have offset every later report permanently.
+ * Only the id travels — never the text, which makes no second trip — and the
+ * claim RPC re-checks that the report belongs to the caller, so a forged id
+ * from a patched client reaches nothing.
+ *
+ * A null id (the RPC returned nothing recognisable) skips the dispatch rather
+ * than falling back to a guess, because the guess is what broke.
+ *
+ * Void and silent like its siblings: the row is committed before this runs, so
+ * whether an email leaves is never the reporter's problem to see an error
+ * about — they have done their bit.
+ */
+export function notifyBugReport(reportId: string | null): void {
+  if (!reportId) return;
+  dispatch('notify-bug-report', { reportId });
 }

@@ -68,13 +68,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  BODY_TYPE_OPTIONS,
-  BODY_TYPE_UNKNOWN,
-  CAR_COLOURS,
-  MakeField,
-  ModelField,
-} from '@/features/vehicles';
+import { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN, MakeField, ModelField } from '@/features/vehicles';
+import { CAR_COLOURS } from '@/shared/lib';
 import { formatPounds } from '@/shared/lib/money';
 import { easeOut } from '@/shared/theme/motionEasing';
 import {
@@ -156,9 +151,14 @@ const BOUNTY_QUICK_OPTIONS = [
 //   @/features/vehicles → hooks/useSimilarPosts (imports fetchHomeFeed)
 //   → @/features/search-map → SearchSheet → @/features/vehicles
 // so when this module's body runs, the vehicles barrel is still initialising
-// and CAR_COLOURS / BODY_TYPE_OPTIONS are `undefined`. Evaluating them up here
-// crashes the WHOLE APP at startup with "Cannot read property 'CAR_COLOURS' of
-// undefined" — every route fails to export, not just this screen.
+// and BODY_TYPE_OPTIONS is `undefined`. Evaluating it up here crashes the WHOLE
+// APP at startup with "Cannot read property of undefined" — every route fails
+// to export, not just this screen.
+//
+// CAR_COLOURS came out of the cycle on 2026-08-28 when it moved to
+// `@/shared/lib`, which imports no feature. `colourOptions` stays a function
+// anyway: it sits beside `bodyTypeOptions`, which is still exposed, and a pair
+// where only one is safe is a trap for whoever edits next.
 //
 // Called from render instead, by which point the cycle has resolved. That is
 // also why the pre-existing MakeField/ModelField imports were always safe:

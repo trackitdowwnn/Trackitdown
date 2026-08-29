@@ -59,7 +59,7 @@ import {
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
-import { colourChangePatch } from '../lib/carColours';
+import { colourChangePatch } from '@/shared/lib';
 import { makeChangePatch } from '@/shared/lib/carModels';
 import type { VehicleAnswers } from '../lib/vehicleSteps';
 import type { PostACarAnswers, PricingMode } from '../types';

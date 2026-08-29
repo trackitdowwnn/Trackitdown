@@ -15,7 +15,7 @@
  *        (a clean enum); the note is stored separately (→ owner_note) so it
  *        never pollutes the colour value. The note lives in a focused sheet
  *        opened on selection (no inline input), keeping the grid uncluttered.
- * LINKS: src/features/vehicles/post/lib/carColours.ts (palette + helpers);
+ * LINKS: src/shared/lib/carColours.ts (palette + helpers);
  *        src/features/vehicles/post/components/postSteps.tsx (ColourStep);
  *        src/shared/ui/{BottomSheet,TextField,Button}.tsx (the note sheet);
  *        docs/DESIGN_SYSTEM.md (Colour, Motion, Accessibility).
@@ -47,7 +47,7 @@ import {
 } from '@/shared/theme';
 import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
-import { CAR_COLOURS, type CarColour, isNoteColour } from '../lib/carColours';
+import { CAR_COLOURS, type CarColour, isNoteColour } from '@/shared/lib';
 
 /* eslint-disable react-hooks/immutability -- Reanimated SharedValues are
    deliberately mutable (scale.value is written from the press handler to drive

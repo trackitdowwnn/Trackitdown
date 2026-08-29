@@ -146,16 +146,28 @@ spotter who mutes the app is worth zero alerts forever.
 
 ## Screens
 
-- **AlertsScreen** (`/alerts`) — the list: each alert's name, what it watches
-  (`summariseAlert`), a pause switch, edit and delete, plus "Create an alert"
-  (disabled at the cap, which says so). Reached from **both** Profile rows
-  ("Alert location & radius" and "Notifications" are one setting in the user's
-  head) and from the alert-area sheet.
+- **AlertsScreen** (`/alerts`) — the list. Each alert is a card led by its ZONE
+  as a thumbnail (`AlertZoneThumb`), then its name, what it watches
+  (`summariseAlert`), and "Paused" when it is. Pressing the card edits it; the
+  pause switch stays on the row because pausing is the daily action; everything
+  rarer — pause/resume, edit, and a destructive delete — is behind the "⋯"
+  (`AlertActionsSheet`). "Create an alert" stays **tappable at the cap** and
+  says why, per the garage's rule that a dead control explains nothing.
+  Reached from **both** Profile rows ("Alert location & radius" and
+  "Notifications" are one setting in the user's head) and from the alert-area
+  sheet.
   It owns the **per-user** concerns that don't belong on any single alert: the
-  permission primer and the notifications-off notice. An alert can't fix a
-  phone-level block, and asking five times would be absurd.
+  notification permission, as one compact `AlertPermissionBanner`. An alert
+  can't fix a phone-level block, and asking five times would be absurd.
   **The list stays usable when notifications are off at OS level** — you can
-  manage alerts, they just won't fire, and a persistent notice says so.
+  manage alerts, they just won't fire, and the banner says so.
+
+  ⚠️ **The thumbnail is never load-bearing.** `AlertZoneGlyph` — a drawn point
+  and radius in tokens — is the bottom layer of every tile and the map fades in
+  over it, so a missing API key, Expo Go, offline, web and the `SHOW_MAP` kill
+  switch all resolve to the same correct picture. The same glyph is the empty
+  state's illustration, which makes the empty screen a preview of a full one.
+  Redesigned 2026-08-27; see `docs/design-refs/alerts/`.
   Honest states: loading, error, signed out, empty, and at-cap.
 - **AlertWizardScreen** (`/alerts/new`, `/alerts/[alertId]`) — one flow for
   create AND edit, the pattern `AddVehicleScreen` uses. In edit mode it holds a
@@ -301,9 +313,32 @@ same place.
   report through it and set the one `inbox` badge. Chat imports us — never
   the reverse.
 - Freshness: refetch-on-focus + pull-to-refresh (chat's documented choice).
-- Look: neutral `surfaceSubtle` icon circles, meaning carried by icon shape +
-  the three semantic hues (`lib/centerRowMeta.ts` — the one mapping);
-  `credited` and `closed_uncredited` keep a warning accent bar while unread.
+- ⚠️ **The row leads with the CAR'S PHOTO where there is one** (2026-08-28,
+  second inbox pass), which is why the feed read became
+  `get_notification_feed()` rather than a table select: `post_photos` RLS only
+  lets a client read a photo while the post is `active` or it owns the post, so
+  a client-side join would have left `credited` / `payout_sent` /
+  `not_credited` / `recovery` — the ones that matter — as the only pictureless
+  rows. The RPC gates the photo MORE narrowly than the row: owner, or a spotter
+  with a sighting on that post, or the post is still active. Everything else
+  returns null and falls back to the icon, which is the ordinary case.
+- Look: neutral `surfaceSubtle` icon TILES — 64pt rounded squares
+  (`sizes.inboxRowTile`) since the 2026-08-28 Airbnb inbox pass, matching the
+  Messages face's car photo so the two halves of the tab share one silhouette.
+  They were 48pt circles; circles mean people, and neither inbox face is about
+  a person's photograph. Meaning is carried by icon shape + the three semantic
+  hues (`lib/centerRowMeta.ts` — the one mapping).
+- ⚠️ `credited` and `closed_uncredited` keep the warning accent bar while
+  unread AND now carry a LABEL saying what to do ("Add your bank details",
+  "You can contest this"). The bar alone was status encoded as colour, which
+  DESIGN_SYSTEM forbids, and a 3pt stripe cannot say what is needed. The label
+  is part of `CenterRowMeta`'s discriminated union, so a new needs-attention
+  kind cannot compile without someone choosing its words.
+- ⚠️ Both inbox faces stay MOUNTED (2026-08-28), so this screen's
+  `center_view` log fires on becoming visible rather than on mount — the
+  metric is per-view from that date and is not comparable with earlier
+  numbers. `useNotificationCenter` also holds its badge report until
+  `status === 'ready'`, or every inbox open would blink the count to zero.
 - Retention: 90 days, pg_cron `purge-old-notifications` (daily 03:30).
 - New with the center: the `payout_sent` kind — "On its way — £X" from the
   RECORDED transfer amount, fired by the release core via

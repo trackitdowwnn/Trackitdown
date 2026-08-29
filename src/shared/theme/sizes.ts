@@ -52,6 +52,37 @@ export const sizes = {
   /** Small circled icon button (feed see-all chevron, future photo-corner
    *  buttons). Drawn size only — pad the pressable up to touchTarget. */
   circleButtonSm: 28,
+  /**
+   * Bug-report screenshot thumbnail (added 2026-08-27).
+   *
+   * ⚠️ ITS OWN TOKEN, NOT `touchTarget * 2`, which is what it was first. This
+   * file keeps drawn geometry separate from the touch floor on purpose (see the
+   * note above `control`), and deriving a picture size FROM the tap minimum
+   * inverts that — adopt Android's 48dp target one day and every screenshot
+   * silently grows to 96.
+   *
+   * ⚠️ RECOGNISABILITY, NOT LEGIBILITY, and the first version of this comment
+   * claimed the second. No 104pt tile shows an address readably — the tile's
+   * job is to let someone tell their screenshots apart and spot that one of
+   * them is the wrong picture; the ACTUAL check is the tap-through to
+   * PhotoPreviewModal, which is why the step's copy says "tap one to check it".
+   * At 88 the 44pt remove button owned a quarter of the tile, which is what
+   * this size fixes.
+   */
+  screenshotThumb: 104,
+  /**
+   * ⚠️ PORTRAIT, BECAUSE IT IS A SCREENSHOT. A square tile forces a choice
+   * between cropping the frame and shrinking it, and BOTH lose: a 9:19.5 phone
+   * screenshot cropped square shows the middle ~46% (an address in a bottom
+   * sheet disappears), and the same frame letterboxed into a square draws ~48pt
+   * wide with a third of the tile empty down each side. Shipping `cover` was
+   * the first mistake and `contain` on a square was the second. At 104×185 the
+   * whole frame draws ~85pt wide — 3.5× the area — with the letterboxing nearly
+   * gone, so nothing is cropped out of the picture the user is asked to check.
+   *
+   * width/height, per RN's aspectRatio.
+   */
+  screenshotThumbAspect: 9 / 16,
   /** Avatar diameters: list rows / sheets / compact headers / the profile
    *  hero + passport card (the Airbnb passport avatar is 100–104pt;
    *  docs/design-refs/profile/REFERENCE_SPEC.md). */
@@ -159,6 +190,91 @@ export const sizes = {
    *  thumb rail + shutter row as one fixed-height block inside the wizard's
    *  scroll — fixed so the step never reflows as photos arrive. */
   cameraStep: 520,
+  /**
+   * The alert-zone thumbnail on an alert row (added 2026-08-27).
+   *
+   * An alert IS a place, and the list previously showed five identical grey
+   * text blocks. This is the smallest square that can carry a legible radius
+   * circle beside two lines of text without the row growing taller than the
+   * text needs — it matches `avatarLg` on purpose, so a row of alerts and a row
+   * of people share one silhouette.
+   */
+  alertThumb: 72,
+  /** The zone glyph's rings, drawn when there is no map (the empty state's
+   *  illustration, and the thumbnail's fallback). `glyphRing` is the outer
+   *  circle inside an `alertThumb` square; `alertGlyphDot` is the point at its
+   *  centre — the same two marks the real map draws. */
+  alertGlyphRing: 44,
+  alertGlyphDot: 10,
+  /** The ring's drawn stroke. A stroke, not a spacing value — same reason
+   *  timelineRailStroke and mapPinRing are tokens rather than literals. */
+  alertGlyphStroke: 1,
+  /**
+   * The colour tile leading a report card (added 2026-08-27) — the car's own
+   * paint, standing in for the photograph this screen is not allowed to have.
+   *
+   * ⚠️ ITS OWN TOKEN, NOT `avatarLg`, which is the same 72 today. `alertThumb`
+   * exists for exactly this reason one screen over, and `screenshotThumb` spends
+   * a paragraph on it: a car tile is not an avatar, and a file that spells it
+   * `avatarLg` breaks the day the profile photo grows.
+   */
+  carTile: 72,
+  /**
+   * The car silhouette drawn inside a `carTile` (added 2026-08-27).
+   *
+   * Bigger than `icon` (24) on purpose: at 24 the glyph reads as a small badge
+   * sitting on a colour, and the tile's job is the opposite — the COLOUR is the
+   * information and the silhouette only says what kind of thing is that colour.
+   * A stroke-drawn glyph over a solid DATA fill, so it is geometry, not an icon
+   * button; `icon`/`iconSm` are for icons that stand alone.
+   */
+  carTileGlyph: 32,
+  /**
+   * The leading visual on BOTH inbox faces (added 2026-08-28) — the car photo
+   * on a conversation row, the icon box on a notification row.
+   *
+   * ⚠️ 64, NOT `carTile`/`alertThumb` (72). Those two lead a card, inside a
+   * `cardSurface` box with 16pt padding. This leads a bare row on the 24pt
+   * gutter, and 64 is the size at which the tile sits just under the three-line
+   * text column's intrinsic height — so the TEXT drives the row height and the
+   * tile never does. At 72 a row with no third line grows to fit the picture,
+   * which is the picture deciding the rhythm rather than the content.
+   *
+   * ⚠️ AND NOT `fab`, which is also 64. Tying a list thumbnail to a round
+   * button is the exact mistake `screenshotThumb` spends a paragraph forbidding.
+   */
+  inboxRowTile: 64,
+  /**
+   * The notification glyph drawn inside an `inboxRowTile`. Same 32-in-a-tile
+   * ratio `carTileGlyph` uses, for the same reason: at `icon` (24) the mark
+   * reads as a small badge sitting in a large empty box.
+   */
+  inboxRowGlyph: 32,
+  /** The timestamp bar in an inbox row skeleton. A fixed width because the
+   *  thing it stands in for is a fixed-ish string ("2h ago", "just now") and a
+   *  percentage would make it grow with the screen, which timestamps do not. */
+  skeletonTimeBar: 40,
+  /**
+   * The needs-attention mark beside its label on a notification row, and the
+   * stroke of that ring.
+   *
+   * ⚠️ ITS OWN TOKENS rather than borrowing `progressDot` (a wizard header) and
+   * `timelineDotStroke` (sighting-timeline geometry). Same reason `carTile` is
+   * not `avatarLg`: a shared number is not a shared meaning, and the day a
+   * wizard's progress dot changes size is not the day this ring should.
+   */
+  attentionRing: 8,
+  attentionRingStroke: 1.5,
+  /**
+   * The unread badge's slot on an inbox row — a FIXED width, not a minimum.
+   * Wide enough for the "9+" pill (16pt minimum + spacing.xs either side plus
+   * the numeral), so a dot, a count and an empty slot all end at the same x and
+   * the text column beside them never changes width.
+   */
+  unreadSlot: 26,
+  /** A message bubble's placeholder height while a thread loads. Its own token
+   *  rather than `avatarLg`, which is 72 for reasons about faces. */
+  skeletonBubble: 72,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

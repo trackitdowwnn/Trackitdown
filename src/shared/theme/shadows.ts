@@ -28,7 +28,7 @@
  * (background < surface < surfaceSubtle), not by shadow.
  *
  * A deliberate non-token literal, in the same spirit as the documented
- * exemption in src/features/vehicles/post/lib/carColours.ts.
+ * exemption in src/shared/lib/carColours.ts.
  */
 const SHADOW_CAST = '#000000';
 

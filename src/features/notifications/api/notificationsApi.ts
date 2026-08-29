@@ -9,10 +9,23 @@
  *        and routes with the same tested machinery pushes use
  *        (parsePushPayload → pushRouteFor) and can never disagree with them.
  *
- *        Reads go straight through RLS (select-own); every WRITE is an RPC —
- *        the client holds no update grant, so "mark read" is the only
- *        mutation it can ever express, and only about its own rows.
+ *        ⚠️ THE FEED READ IS NOW AN RPC TOO (2026-08-28), and only because of
+ *        the photograph. Rows still come back scoped to the caller — the
+ *        function selects `user_id = auth.uid()`, which is what
+ *        notifications_select_own already allowed — but a plain table select
+ *        cannot reach a cover photo: `post_photos` RLS permits a client to
+ *        read one only while the parent post is 'active' or it owns the post,
+ *        and by the time `credited` / `payout_sent` / `not_credited` /
+ *        `recovery` arrive the post is recovered and the reader is the spotter.
+ *        A client-side join would have left the money notifications — the ones
+ *        that matter — as the only pictureless rows in the list.
+ *
+ *        Every WRITE is still an RPC — the client holds no update grant, so
+ *        "mark read" is the only mutation it can ever express, and only about
+ *        its own rows.
  * LINKS: supabase/migrations/20260806100000_notification_center.sql;
+ *        supabase/migrations/20260828120000_notification_feed_photo.sql
+ *          (get_notification_feed, and why the photo is gated separately);
  *        ../lib/pushPayload.ts (parsePushPayload — the payload fence);
  *        ../lib/notificationKinds.ts; ../hooks/useNotificationCenter.ts;
  *        docs/decisions/ADR-0012-notification-center.md.
@@ -37,32 +50,58 @@ export interface NotificationRow {
   payload: PushPayload | null;
   readAt: string | null;
   createdAt: string;
+  /**
+   * Cover photo of the car this row is about, or null.
+   *
+   * ⚠️ NULL IS A NORMAL STATE, not a failure — the server returns it whenever
+   * the caller has no standing to see that post's photo, or the row references
+   * no post at all. The row falls back to its icon tile; it never shows a
+   * broken or empty frame.
+   *
+   * ⚠️ THE MONEY KINDS DO GET A PHOTO. `credited`, `payout_sent` and
+   * `not_credited` all carry a postId and go to a spotter who has a sighting on
+   * that post, so the RPC's gate opens for them — which is the entire reason
+   * the RPC exists rather than a client-side join. Do not "tidy" this into
+   * "money rows have no photo"; that was written here once and was wrong.
+   */
+  imageUrl: string | null;
 }
 
-/** The feed is a window, not an archive: retention is 90 days server-side,
- *  and one page of the newest rows is the whole v1 surface. */
-const FEED_LIMIT = 100;
-
+/**
+ * The feed is a window, not an archive: retention is 90 days server-side, and
+ * one page of the newest rows is the whole v1 surface.
+ *
+ * ⚠️ THE 100 NOW LIVES IN THE RPC, not here. It used to be a client `.limit()`;
+ * keeping a matching constant on this side would be two numbers that must agree
+ * and no mechanism to make them, which is how a client quietly starts asking
+ * for a page the server does not serve. Change it in the migration.
+ */
 export async function fetchNotifications(): Promise<NotificationRow[]> {
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('id, kind, title, body, payload, read_at, created_at')
-    .order('created_at', { ascending: false })
-    .limit(FEED_LIMIT);
+  const { data, error } = await supabase.rpc('get_notification_feed');
 
   if (error) {
     log.warn('notifications load failed', { code: error.code });
     throw new Error('Could not load notifications');
   }
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    kind: row.kind as NotificationKind,
-    title: row.title as string,
-    body: row.body as string,
-    payload: parsePushPayload(row.payload),
-    readAt: (row.read_at as string | null) ?? null,
-    createdAt: row.created_at as string,
-  }));
+
+  // jsonb array in, typed rows out. A shape that isn't an array is a server
+  // contract break, not a user-facing state: treat it as an empty feed rather
+  // than crashing the screen.
+  const rows: unknown[] = Array.isArray(data) ? data : [];
+
+  return rows.map((entry) => {
+    const row = entry as Record<string, unknown>;
+    return {
+      id: row.id as string,
+      kind: row.kind as NotificationKind,
+      title: row.title as string,
+      body: row.body as string,
+      payload: parsePushPayload(row.payload),
+      readAt: (row.read_at as string | null) ?? null,
+      createdAt: row.created_at as string,
+      imageUrl: (row.image_url as string | null) ?? null,
+    };
+  });
 }
 
 /** Mark one row read (tap). Idempotent server-side; failures are logged and

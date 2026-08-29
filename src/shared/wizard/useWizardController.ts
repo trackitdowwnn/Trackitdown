@@ -180,6 +180,25 @@ export function useWizardController<TAnswers>(
   }, [busy, screens, nav.index, isLastScreen, onComplete, answers, next]);
 
   const requestExit = useCallback(() => {
+    // ⚠️ NOT WHILE SUBMITTING, and this is a double-pop bug, not tidiness. The
+    // footer Back hides itself while an action is in flight and the Android
+    // hardware back swallows the gesture, but the header X funnels straight in
+    // here with no guard of its own: press Send → spinner → X → Discard →
+    // onExit() pops, then the submit resolves and the flow's own onComplete
+    // pops a SECOND screen out from under whoever is now on top. The old
+    // bug-report form guarded this by hand with `disabled={sending}` on its
+    // back chevron; guarding it here means no flow has to remember.
+    //
+    // ⚠️ AND ONLY ON THE LAST SCREEN — `busy` alone was too wide, and the cost
+    // landed on a different flow entirely. `busy` is also true during a step's
+    // `onContinue`, two of which are reverse-geocodes with no timeout
+    // (postACarFlow, reportSightingFlow → placeLabels.ts, which catches but
+    // cannot detect a hang). With Back hidden and the Android gesture
+    // swallowed, the X is iOS's ONLY way out of a stalled lookup, and a wider
+    // guard took it away. Leaving during an `onContinue` is harmless anyway: it
+    // strands a `next()` dispatch against an unmounted reducer and routes
+    // nowhere. Only the final submit has an onComplete that pops.
+    if (busy && isLastScreen) return;
     if (!dirtyRef.current) {
       onExit();
       return;
@@ -191,7 +210,7 @@ export function useWizardController<TAnswers>(
       { text: 'Keep editing', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: onExit },
     ]);
-  }, [onExit]);
+  }, [busy, isLastScreen, onExit]);
 
   return {
     screens,
@@ -213,6 +232,15 @@ export function useWizardController<TAnswers>(
     requestExit,
     canGoNext: canProceed(flow, screens[nav.index], answers),
     isFirstScreen: nav.index === 0,
+    /**
+     * True on the screen whose primary button SUBMITS (review, or the last step
+     * in a flow with no review) — and false while editing from review.
+     *
+     * Exported so the chrome can disable the exit under exactly the condition
+     * `requestExit` refuses. Recomputing `screen.kind === 'review'` up there
+     * would agree today and diverge the moment a flow ships without a review.
+     */
+    isLastScreen,
     ctaLabel: ctaLabel(flow, screens, nav, answers),
     /** Fill fraction (0–1) per phase segment. */
     progress: phaseProgress(flow, nav.index),

@@ -27,8 +27,9 @@
  *        always-passing schema: ticking "A specific car" and then leaving it on
  *        "any make" is a real answer, not an error to block on.
  * LINKS: ../components/AlertMatcherPicker.tsx (the screen that chooses these);
- *        ../components/alertSteps.tsx (the components); ./alertName.ts (the
- *        name suggestion); ./alertMatchers.ts (criteria ↔ matchers);
+ *        ../components/alertSteps.tsx (the components — and where ./alertName.ts's
+ *        suggestion is now used, as NameStep's placeholder);
+ *        ./alertMatchers.ts (criteria ↔ matchers);
  *        ../screens/AlertWizardScreen.tsx (renders this);
  *        src/features/garage/lib/addVehicleFlow.tsx (the shape).
  */
@@ -48,7 +49,6 @@ import {
   type AlertAnswers,
   type AlertMatcher,
 } from '../types';
-import { suggestAlertName } from './alertName';
 
 /** Re-exported so this config still reads as the one place the flow's defaults
  *  live. It is DEFINED in ../types because alertSteps needs it too, and
@@ -77,41 +77,19 @@ function describeFilters(answers: Partial<AlertAnswers>): string {
   return parts.length > 0 ? parts.join(' · ') : 'No extra filters';
 }
 
-/**
- * Seed the name from everything chosen so far, on the way INTO the name step.
+/*
+ * ⚠️ THE NAME IS NO LONGER PRE-FILLED (owner request, 2026-08-27). A
+ * `withNameSuggestion` wrapper used to hang off whichever step preceded `name`
+ * and seed the field with "5 miles around Luton" / "Blue BMWs near Luton" via
+ * an `onContinue`. It is gone: the field now opens empty.
  *
- * This MUST hang off whichever step immediately precedes `name`, which depends
- * on the matchers — it used to live on `filters`, a step that no longer always
- * exists. Attaching it to every step instead would be worse than useless: the
- * first one to run would set a name, and the `if (name) return` guard would
- * then stop every later step from folding its own answer in, so an alert
- * narrowed to blue BMWs would still be called "5 miles around Luton".
- *
- * `||` not `??` so a cleared field re-suggests, and an existing name (an edit,
- * or a name typed then revisited via the review spur) is never overwritten.
+ * `suggestAlertName` did NOT go with it — NameStep shows the same sentence as
+ * the field's PLACEHOLDER instead. That is the whole point of the change: a
+ * placeholder guides without being something to delete, and because TextField
+ * only surfaces a placeholder once the field is focused, it appears at the
+ * moment the user is deciding what to type rather than sitting there looking
+ * like an answer.
  */
-function withNameSuggestion(step: WizardStep<AlertAnswers>): WizardStep<AlertAnswers> {
-  return {
-    ...step,
-    onContinue: async (answers) => {
-      if (answers.name?.trim()) return;
-      return {
-        name: suggestAlertName(
-          {
-            make: answers.make ?? null,
-            model: answers.model ?? null,
-            colour: answers.colour ?? null,
-            bodyType: answers.bodyType ?? null,
-            minBountyPence: answers.minBountyPence ?? null,
-            recencyDays: answers.recencyDays ?? null,
-          },
-          answers.placeLabel ?? null,
-          answers.radiusMiles ?? DEFAULT_ALERT_RADIUS_MILES,
-        ),
-      };
-    },
-  };
-}
 
 // Area is ONE step: the circle scaling live with the slider is the payoff
 // visual, and splitting it would show a circle the user cannot change, then a
@@ -168,7 +146,9 @@ const FILTERS_STEP: WizardStep<AlertAnswers> = {
 const NAME_STEP: WizardStep<AlertAnswers> = {
   id: 'name',
   question: 'Name this alert',
-  helper: "So you can tell it apart from your others. We've suggested one.",
+  // ⚠️ NO LONGER "We've suggested one." — the field opens empty, so the old
+  // helper would have been a plain lie about what is on screen.
+  helper: 'So you can tell it apart from your others.',
   component: NameStep,
   schema: z.object({ name: z.string().trim().min(1).max(MAX_ALERT_NAME_LENGTH) }),
   reviewLabel: 'Name',
@@ -185,13 +165,9 @@ export function buildAlertFlow(matchers: readonly AlertMatcher[]): WizardFlow<Al
   if (matchers.includes('car')) criteriaSteps.push(CAR_STEP);
   if (matchers.includes('bounty')) criteriaSteps.push(FILTERS_STEP);
 
-  // The name is seeded by whichever step sits immediately before it: the last
-  // criteria step when there is one, otherwise the area step (an area-only
-  // alert is "5 miles around Luton", which is all there is to say about it).
-  const leadingSteps =
-    criteriaSteps.length > 0
-      ? [AREA_STEP, ...criteriaSteps.slice(0, -1), withNameSuggestion(criteriaSteps[criteriaSteps.length - 1])]
-      : [withNameSuggestion(AREA_STEP)];
+  // Plain order now — nothing seeds the name on the way through. See the note
+  // above `NAME_STEP`.
+  const leadingSteps = [AREA_STEP, ...criteriaSteps];
 
   return {
     id: 'alert',

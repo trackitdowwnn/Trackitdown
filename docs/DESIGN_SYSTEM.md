@@ -238,19 +238,35 @@ are build output.
   - `display` 32/38, Black — big moments ("Car recovered 🎉")
   - `title` 24/30, Bold — screen titles
   - `sectionTitle` 20/26, Bold — feed section headers (added 2026-07-11;
-    sits between heading and title so scrolling feeds read in clear bands)
+    sits between heading and title so scrolling feeds read in clear bands).
+    **Not for DAY/DATE group labels** (carve-out added 2026-08-28): the inbox
+    and My reports both label calendar groups with `label` at `textSecondary`,
+    because a bold 20pt band between sparse cards out-shouts the cards it is
+    meant to organise. A date is a divider, not a section title.
   - `heading` 18/24, Bold — in-screen headings
   - `cardTitle` 16/22, Bold — feed-card titles (added 2026-07-11; body
     size at heavier weight, so photos stay the hero of a card)
   - `body` 16/24, Regular — default text
+  - `prose` 16/26, Regular — **long-form documents only** (added 2026-08-26,
+    from `docs/design-refs/legal/`). Body size at looser leading. `body` is
+    tuned for interface text, which arrives in one- or two-line runs where 1.5
+    is comfortable; legal prose arrives in paragraphs of six or eight lines, and
+    at 1.5 the eye loses its place returning to the left margin. A separate role
+    rather than loosening `body`, which nearly every screen uses — widening it
+    would add two points to every ListRow subtitle and card line in the app to
+    fix a problem three pages have.
   - `caption` 13/18, Regular — metadata, timestamps
   - `label` 14/18, Medium — buttons, form labels
   - `mapPin` 14/18, Bold — **map-pin bounty pills only** (added 2026-08-07);
     label size one weight up, because a pin fights map tiles and its own
     overlapping neighbours. Capped at `mapPinFontScaleCap` (1.3): uncapped,
     the OS 200% setting doubles every pill and buries the map
-  - `tabLabel` 11/14, Medium — **tab-bar item labels only**; the single
-    sanctioned size below `caption` (matches platform tab conventions)
+  - `tabLabel` 11/14, Medium — **tab-bar item labels and count badges**; the
+    single sanctioned size below `caption` (matches platform tab conventions).
+    **Widened 2026-08-28** from "tab-bar item labels only": `AppTabBar`'s badge
+    numeral had used this token since it was written, so the restriction had
+    never described the code. `UnreadBadge` shares that geometry, and one 11pt
+    numeral in the app beats a second token that would only ever match it
   - `plate` 14/18, Black — number-plate chip (below)
 - On Android, strip `includeFontPadding` on any text a chip/badge sits beside
   (Satoshi's font box is padded asymmetrically, throwing inline chips off
@@ -286,15 +302,31 @@ are build output.
   elevation there is carried by the surface ladder, not by shadow, so anything
   floating over a busy surface (map chrome) needs a `borderStrong` hairline
   instead.
+  **Shadow means FLOATING, not "is a card"** — map chrome, sheets, slider
+  thumbs, toasts. A card that rests on a page is flat with a hairline; see
+  `cardSurface` under Core components.
 
 ## Core components (live in `src/shared/ui/`)
 
 - **Button** — variants: `primary` (near-black fill), `secondary` (outline),
   `ghost`, `danger`. Height 52, radius `md`, full-width by default.
-- **Card** — white surface, radius `lg`, 16px padding, soft shadow. The
-  vehicle card (photo, plate chip, make/model, bounty in `primary`,
-  distance, last-seen time) is the app's signature element — Airbnb-listing
-  style with a large image and breathing room.
+- **Card** — `surface`, radius `lg`, 16px padding, and **flat: a
+  `hairlineWidth` border, no shadow**. Use `cardSurface(palette)` from
+  `@/shared/theme` rather than hand-rolling the box.
+  **Corrected 2026-08-28.** This entry specified a soft shadow for a long time
+  and the code never agreed: seven redesigns shipped flat, and by the second
+  card to carry a paragraph apologising for it the doc was the thing that was
+  wrong. A shadow is for something that FLOATS over content — map chrome,
+  sheets, slider thumbs, toasts — not for a card resting on a page. The
+  hairline is load-bearing rather than decorative: in dark mode `surface` on
+  `background` is #1E1E1E on #141414, so without an edge a card has no boundary
+  at all.
+  A few older cards (garage, owner, profile hero, reputation) still carry
+  `shadows.soft`; they converge when next touched, and no new card should.
+  The vehicle card is the app's signature element and is a third thing again —
+  **borderless**: no surface, no border, no shadow, because the photo IS the
+  card (photo, plate chip, make/model, bounty in `primary`, distance, last-seen
+  time).
 - **PlateChip** — renders a UK registration in plate styling. **Interactive:**
   long-press copies the plate (light haptic + "Plate copied" toast); a screen
   reader gets the same via a "Copy plate" action. Because it is a `Pressable`
