@@ -25,7 +25,7 @@ import type { PostStatus } from '../types';
 /**
  * The dot's MEANING, not its hex. The table below is read by
  * `statusBadgeLabel`, which is exported, hook-free, and called from render-less
- * places (VehicleCard's a11y string, PostContextStrip) — so it cannot reach a
+ * places (VehicleCard's a11y string, chat's ThreadHeader) — so it cannot reach a
  * palette. Storing a tone keeps that function pure and defers the one thing
  * that has to be deferred (the colour) to `toneColor` inside the component.
  */

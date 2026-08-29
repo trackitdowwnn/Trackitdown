@@ -10,7 +10,7 @@
  *        supabase/migrations/20260715120000_chat.sql (the system message).
  */
 
-import { quickRepliesFor } from './quickReplies';
+import { quickRepliesFor, shouldShowQuickReplies } from './quickReplies';
 
 describe('quickRepliesFor', () => {
   it('owners get sighting-response openers', () => {
@@ -85,5 +85,66 @@ describe('quickRepliesFor', () => {
         }
       }
     }
+  });
+});
+
+describe('⚠️ shouldShowQuickReplies — the row earns its 52pt, then gives it back', () => {
+  const ME = 'me';
+  const msg = (kind: string, senderId: string | null) => ({ kind, senderId });
+
+  it('offers openers on a thread I have not spoken in', () => {
+    expect(
+      shouldShowQuickReplies({ outgoing: [], draft: '', messages: [msg('system', null)], myId: ME }),
+    ).toBe(true);
+  });
+
+  it('⚠️ the system safety message is not me speaking', () => {
+    // Every thread opens with one. If it counted, the row would never show at
+    // all — which is the failure this predicate exists to avoid.
+    expect(shouldShowQuickReplies({ outgoing: [], draft: '', messages: [msg('system', ME)], myId: ME })).toBe(
+      true,
+    );
+  });
+
+  it('steps aside once I have sent something', () => {
+    expect(shouldShowQuickReplies({ outgoing: [], draft: '', messages: [msg('user', ME)], myId: ME })).toBe(
+      false,
+    );
+  });
+
+  it('stays for me while only THEY have spoken — my first reply is the point', () => {
+    expect(shouldShowQuickReplies({ outgoing: [], draft: '', messages: [msg('user', 'them')], myId: ME })).toBe(
+      true,
+    );
+  });
+
+  it('hides the moment I start typing', () => {
+    expect(shouldShowQuickReplies({ outgoing: [], draft: 'th', messages: [], myId: ME })).toBe(false);
+    // Whitespace is not typing.
+    expect(shouldShowQuickReplies({ outgoing: [], draft: '   ', messages: [], myId: ME })).toBe(true);
+  });
+
+  it('⚠️ counts a message that is still in flight', () => {
+    // A sent message lands in `outgoing` immediately and only reaches
+    // `messages` when the RPC confirms. Reading `messages` alone meant the row
+    // faded back in the instant the draft cleared and out again on
+    // confirmation — the exact composer jump the transition exists to prevent,
+    // on every send.
+    expect(
+      shouldShowQuickReplies({ outgoing: [{ localId: 'l1' }], draft: '', messages: [], myId: ME }),
+    ).toBe(false);
+  });
+
+  it('⚠️ stays hidden when a send FAILED, rather than reappearing over the failure', () => {
+    // A failed send never reaches `messages`, so without this the row came back
+    // for good and sat under a bubble reading "Not sent".
+    expect(
+      shouldShowQuickReplies({
+        outgoing: [{ localId: 'l1', state: 'failed' }],
+        draft: '',
+        messages: [],
+        myId: ME,
+      }),
+    ).toBe(false);
   });
 });

@@ -24,7 +24,7 @@ import {
 
 import { opacity, radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
-import type { MessageGroupPos } from '../lib/messageGroups';
+import { blockPaddingTop, type MessageGroupPos } from '../lib/messageGroups';
 import type { ChatMessage, OutgoingMessage } from '../types';
 
 /** Bubbles never span the full column — the asymmetry is what reads as a
@@ -63,8 +63,12 @@ export interface MessageBubbleProps {
   message: ChatMessage;
   mine: boolean;
   showTime: boolean;
-  /** Position in a same-sender run — drives the grouped-corner treatment. */
+  /** Position in a same-sender run — drives the grouped-corner treatment AND
+   *  the gap above (see messageGroups.blockPaddingTop). */
   groupPos?: MessageGroupPos;
+  /** True when a day rule or system message sits directly above, which already
+   *  pads by 16 — the bubble then adds nothing of its own. */
+  afterSeparator?: boolean;
   /** Renders a quiet "Seen" beneath — set on AT MOST one bubble per thread
    *  (messageGroups.latestSeenOutboundId picks it). */
   seen?: boolean;
@@ -79,6 +83,7 @@ export function MessageBubble({
   mine,
   showTime,
   groupPos = 'single',
+  afterSeparator = false,
   seen = false,
   otherName,
   onReport,
@@ -95,11 +100,25 @@ export function MessageBubble({
   };
 
   return (
-    <View style={[styles.messageBlock, mine ? styles.blockMine : styles.blockTheirs]}>
+    <View
+      style={[
+        styles.messageBlock,
+        mine ? styles.blockMine : styles.blockTheirs,
+        { paddingTop: blockPaddingTop(groupPos, afterSeparator) },
+      ]}
+    >
       {showTime ? <Text style={styles.time}>{timeCaption(message.createdAt)}</Text> : null}
       <Pressable
         onLongPress={report}
-        accessibilityLabel={`${mine ? 'You' : (otherName ?? 'They')}: ${message.content}`}
+        // ⚠️ THE TIME IS IN EVERY LABEL, though it is drawn above only one
+        // bubble per group. Sighted readers infer a message's time from the
+        // caption above its run; a screen-reader user moving bubble by bubble
+        // never meets that caption, so before this they could not get the time
+        // of any message that did not happen to lead a group.
+        accessibilityLabel={
+          `${mine ? 'You' : (otherName ?? 'They')}: ${message.content}, ` +
+          `${timeCaption(message.createdAt)}`
+        }
         accessibilityHint={reportable ? 'Long-press or use the report action' : undefined}
         accessibilityActions={reportable ? [{ name: 'report', label: 'Report this message' }] : undefined}
         onAccessibilityAction={reportable ? handleAccessibilityAction : undefined}
@@ -135,7 +154,8 @@ export function OutgoingBubble({ message, onRetry }: OutgoingBubbleProps) {
   const styles = useThemedStyles(makeStyles);
   const failed = message.state === 'failed';
   return (
-    <View style={[styles.messageBlock, styles.blockMine]}>
+    // Always the newest thing in the thread, so it always starts a run.
+    <View style={[styles.messageBlock, styles.blockMine, { paddingTop: spacing.md }]}>
       <Pressable
         disabled={!failed}
         onPress={() => onRetry(message.localId)}
@@ -186,9 +206,14 @@ export function DaySeparator({ label }: { label: string }) {
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
+  // ⚠️ TOP-ONLY PADDING, supplied per bubble by blockPaddingTop — a symmetric
+  // paddingVertical here is what made every bubble 8pt from its neighbour
+  // whatever the grouping said, so the tightened corners had nothing to tighten
+  // toward. Bottom stays 0; the list's own contentContainer gives the first and
+  // last their air.
   messageBlock: {
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xs,
+    paddingBottom: 0,
     gap: spacing.xs,
   },
   blockMine: {
@@ -197,11 +222,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   blockTheirs: {
     alignItems: 'flex-start',
   },
+  /**
+   * ⚠️ SIDE-ALIGNED, NOT CENTRED. A centred grey caption is visually the same
+   * object as a DaySeparator's label — and DaySeparator was given its rules
+   * precisely so the two jobs would stop looking alike. Letting the time
+   * inherit the block's flex-end/flex-start finishes that thought: a day
+   * belongs to the thread, a time belongs to whoever spoke.
+   */
   time: {
     ...typography.caption,
     color: c.textSecondary,
-    alignSelf: 'center',
-    paddingVertical: spacing.xs,
+    paddingBottom: spacing.xs,
   },
   bubble: {
     maxWidth: BUBBLE_MAX_WIDTH,
@@ -212,8 +243,23 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   bubbleMine: {
     backgroundColor: c.primary,
   },
+  /**
+   * ⚠️ A SURFACE WITH AN EDGE, NOT A GREY SMEAR. `surfaceSubtle` on the page's
+   * `background` is #EEEEEE on #F7F7F7 — about 1.06:1 — so an incoming bubble
+   * had almost no boundary at all, while mine is a hard near-black. That
+   * asymmetry is most of why the thread read as plain: one side was a shape and
+   * the other was a stain. It is the same defect the inbox pass caught on the
+   * notification tile.
+   *
+   * The hairline is load-bearing rather than decorative, and dark mode is why:
+   * `surface` #1E1E1E on `background` #141414 is 1.1:1, so without an edge the
+   * bubble has no boundary there either. Flat + hairline is the house card
+   * recipe; a shadow would mean it floats, and it does not.
+   */
   bubbleTheirs: {
-    backgroundColor: c.surfaceSubtle,
+    backgroundColor: c.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.border,
   },
   bubblePending: {
     opacity: opacity.inactive,

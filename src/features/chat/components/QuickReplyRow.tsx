@@ -4,9 +4,12 @@
  *        (who puts it in the input, editable) — this component never sends.
  * WHY:   Reply speed decides outcomes (Airbnb's messaging data; truer here,
  *        where the first reply to a sighting is time-critical). The row
- *        appears only while the input is EMPTY: once someone is typing they
- *        have found their words, and the row would push the thread up for
- *        nothing. ChoiceChips isn't reused because these are one-tap ACTIONS
+ *        appears while the input is EMPTY **and before you have sent anything
+ *        in this thread** (`shouldShowQuickReplies`): once someone is typing,
+ *        or once they have spoken, they have found their words and the row
+ *        would push the thread up for nothing. An empty draft is the RESTING
+ *        state, so gating on that alone made the row permanent chrome.
+ *        ChoiceChips isn't reused because these are one-tap ACTIONS
  *        in a horizontal scroller, not a persistent selection — role="button"
  *        per chip, no selected state, no wrap.
  * LINKS: src/features/chat/lib/quickReplies.ts (the sets + safety rules);
@@ -71,7 +74,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   row: {
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
+    // xs, not sm: the chips keep their own 44pt minHeight, so this row's
+    // padding was 8pt of pure chrome on a screen that is 46% chrome. The touch
+    // target is untouched; only the band around it shrinks.
+    paddingVertical: spacing.xs,
   },
   chip: {
     minHeight: sizes.touchTarget,

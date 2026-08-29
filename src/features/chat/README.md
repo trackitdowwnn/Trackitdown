@@ -56,21 +56,39 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    into here: a thread closes with its post).
 
 2. **ChatThreadScreen** (`/chat/[threadId]`, outside tabs)
-   — Header: Avatar + first name. For the OWNER the name is tappable →
-   PublicProfileSheet (the narrow first-name + reputation passport; its
-   first wiring); for a SPOTTER it is plain text — owner identity is never
-   exposed (DOMAIN.md). The data comes from the `get_thread_peer` RPC,
+   — Header: first name + the car (see the ⚠️ merge note below). For the
+   OWNER a profile button opens the PublicProfileSheet (the narrow
+   first-name + reputation passport); for a SPOTTER **the button is not
+   rendered at all** — owner identity is never exposed (DOMAIN.md), and
+   before 2026-08-29 the two sides showed a visually identical block that
+   simply did nothing on one of them. The server is the enforcement either
+   way: `get_thread_peer` returns `peer: null` unless the caller owns the
+   post. The data comes from that RPC,
    which keeps the peer's uid SERVER-side (a uid in app code pivots via
    the permissive profiles select to display_name/avatar_path — security
    review H1); the sheet returns no avatar for the same reason. Only the
    sheet COMPONENT is deferred-imported, to avoid closing a require cycle
    (chat → profile → garage → vehicles → chat; same precedent as
    PostSightingsScreen).
-   — Tappable post-context strip (thumbnail, make/model, shared
-   StatusBadge for closed states / "Still missing" for active, an
-   underlined View cue) → post detail.
+   — ⚠️ **ONE HEADER ROW SINCE 2026-08-29** (`ThreadHeader`). The person
+   header and the post-context strip were two rows of identity for one
+   conversation, on a screen measured at 46% chrome with fewer than four
+   bubbles visible once the keyboard was up. Now: back · the car's photo
+   (44pt, `CarColourTile` when the post has none) · their first name ·
+   "Blue BMW 3 Series · Still missing" · an owner-only profile button.
+   The photo taps through to the post; the button opens the passport.
+   The peer's ROLE WORD is no longer drawn — it lives in the
+   accessibility label, being derivable (an owner only ever talks to
+   spotters) where "Still missing" is not. 393.5pt of chrome → 249.5.
+   See docs/design-refs/chat/GAP_ANALYSIS.md for the arithmetic.
    — Messages: bottom-start FlashList; our bubbles right (primary),
-   theirs left (surfaceSubtle); GROUPED corners within a same-sender run
+   theirs left (`surface` + a hairline — at `surfaceSubtle` an incoming
+   bubble was 1.06:1 against the page and had no boundary at all);
+   GROUPED corners within a same-sender run, and since 2026-08-29 the
+   SPACING groups too (`blockPaddingTop`: 4 within a run, 12 between, 0
+   under a separator — before that every bubble was 8pt from its
+   neighbour whatever the grouping said, so the corners tightened and
+   nothing drew closer);
    (messageGroups.groupPos — runs break on sender change, day, time
    caption, system message); day separators + timestamps on >15-min gaps;
    system messages centred and quiet (never a fake bubble). New arrivals
@@ -85,10 +103,17 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    the caption claims no more ("Seen", never "Seen at 14:32"). No new
    writes, no migration — the markers were always on the thread row.
    — **Quick replies** (lib/quickReplies): role-aware one-tap openers in a
-   horizontal row above the composer, shown only while the input is EMPTY.
-   Picking one FILLS the draft, editable — never auto-sent. Static curated
-   sets; the // SAFETY register (no meeting/following/waiting/watching/
-   approaching, however softly) is pinned by a lexicon test.
+   horizontal row above the composer, shown while the input is EMPTY **and
+   before you have sent anything in this thread** (`shouldShowQuickReplies`,
+   2026-08-29). An empty draft IS the resting state, so the row used to be
+   permanent chrome — 52pt spent forever on four canned phrases. The file's
+   own charter names the moment they are for ("first-reply-first"), and once
+   you have spoken you have found your words. ⚠️ The predicate checks
+   `kind === 'user'`, because every thread opens with a SYSTEM safety message
+   and counting it would hide the row for ever. Picking one FILLS the draft,
+   editable — never auto-sent. Static curated sets; the // SAFETY register (no
+   meeting/following/waiting/watching/approaching, however softly) is pinned by
+   a lexicon test.
    — Input: multiline TextField + send button (enabled on content),
    keyboard-aware.
    — Long-press a message → "Report this message" → flags table.
@@ -166,7 +191,12 @@ avatar + reputation (existing boundary; never surname/email).
 ## Rules applied
 
 DOMAIN Chat (sighting-gated, system safety first message, no cold DMs,
-read-only after post close) · SECURITY_AND_TRUST §6 (deny-by-default RLS,
+read-only after post close) · SECURITY_AND_TRUST **§1** (the pinned
+collapsible SafetyNotice on every thread — pinned, undismissable,
+`role="alert"`, the visible half is the actionable instruction, the label is
+the full notice in both states; a 2026-08-29 attempt to shrink its band to
+36pt was reverted when a review showed the compensating hitSlop was dead —
+the sibling drawn after it claims the touch) · §6 (deny-by-default RLS,
 absence tests) + §3 (no content in push/logs).
 
 ## Out of scope

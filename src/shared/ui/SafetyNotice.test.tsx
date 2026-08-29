@@ -16,6 +16,9 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { sizes } from '@/shared/theme';
 
 import { SAFETY_NOTICE_BODY, SafetyNotice } from './SafetyNotice';
 
@@ -38,6 +41,25 @@ describe('SafetyNotice (collapsible)', () => {
     expect(getByRole('alert')).toBeTruthy();
     // The ACTIONABLE half stays on screen — only the elaboration folds.
     expect(getByText(/report, don’t approach/i)).toBeTruthy();
+  });
+
+  it('⚠️ DRAWS a full touch target, rather than claiming one', async () => {
+    // This briefly shipped as a 36pt band with hitSlop making up a nominal 44.
+    // The lower slop was dead — hit-testing walks siblings in reverse draw
+    // order, and the container drawn after this strip claimed anything below
+    // it — so the real target was 40 on the one control that is a sighted
+    // user's only route to the "call 999" clause.
+    //
+    // Asserting the PROP would not have caught that, and could not fail for any
+    // reason that mattered. Assert the geometry that composes the target.
+    const { getByTestId } = await render(<SafetyNotice collapsible />);
+    const style = StyleSheet.flatten(getByTestId('safety-notice-collapsible').props.style) as {
+      paddingVertical: number;
+    };
+
+    expect(style.paddingVertical * 2 + sizes.safetyStripRow).toBeGreaterThanOrEqual(
+      sizes.touchTarget,
+    );
   });
 
   it('reads the FULL notice to a screen reader even when collapsed', async () => {

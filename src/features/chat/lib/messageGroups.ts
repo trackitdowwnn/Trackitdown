@@ -22,6 +22,9 @@
  *        docs/DESIGN_SYSTEM.md (calm, quiet metadata).
  */
 
+// Its own module, not the @/shared/theme barrel — see blockPaddingTop.
+import { spacing } from '@/shared/theme/spacing';
+
 import { TIME_GAP_MINUTES, type ChatMessage, type OutgoingMessage } from '../types';
 
 /** Where a user bubble sits in a same-sender run — drives which corners are
@@ -42,6 +45,53 @@ export type ChatListItem =
   /** Optimistic outgoing (always mine, always newest; state drives the
    *  pending/failed treatment instead of a timestamp). */
   | { type: 'outgoing'; message: OutgoingMessage };
+
+/**
+ * The gap ABOVE a bubble, so that grouping is something you can see.
+ *
+ * ⚠️ THE GROUPED CORNERS WERE INVISIBLE WITHOUT THIS. Every bubble sat in a
+ * symmetric `paddingVertical: spacing.xs`, so any two bubbles were 8pt apart
+ * whether or not they belonged to the same run — the corners tightened, and
+ * nothing drew closer. A burst of three messages therefore read as three
+ * separate events, which is most of why the thread read as a list rather than
+ * a conversation.
+ *
+ * 4 within a run against 12 between runs: a 3:1 ratio, enough that a run reads
+ * as one thought. Top-only, because the list's own `paddingVertical` gives the
+ * first and last their air.
+ *
+ * ⚠️ ZERO AFTER A SEPARATOR. A day rule and a system message already pad
+ * themselves by 16; adding a bubble's own gap on top would make the thing that
+ * divides days look like it belongs to the message beneath it.
+ *
+ * Lives here rather than in the component because this file's charter is that
+ * grouping maths must be hammerable without rendering — same reason
+ * `groupPos` is computed here (precedent: photoGridModel, moneySliderMath).
+ *
+ * ⚠️ `spacing` is imported from its own module, NOT the `@/shared/theme`
+ * barrel, which pulls Reanimated in through `motion` — this is a plain logic
+ * file and its tests should not need a native mock to run.
+ */
+export function blockPaddingTop(groupPos: MessageGroupPos, afterSeparator: boolean): number {
+  if (afterSeparator) return 0;
+  return groupPos === 'middle' || groupPos === 'last' ? spacing.xs : spacing.md;
+}
+
+/**
+ * Whether the item above index `i` already supplies the gap — a day rule or a
+ * system message (both pad themselves by 16), or the top of the list (where the
+ * FlashList's own contentContainer padding does the job).
+ *
+ * Here rather than in the renderer so `blockPaddingTop`'s other argument is as
+ * testable as the first.
+ */
+export function separatorAbove(items: ChatListItem[], i: number): boolean {
+  if (i <= 0) return true;
+  const previous = items[i - 1];
+  if (!previous) return true;
+  if (previous.type === 'day') return true;
+  return previous.type === 'message' && previous.message.kind === 'system';
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

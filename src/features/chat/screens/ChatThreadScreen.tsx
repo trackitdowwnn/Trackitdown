@@ -1,12 +1,19 @@
 /**
- * WHAT:  ChatThreadScreen — one conversation: the header BLOCK (back, Avatar,
- *        first name + their role, tappable → the peer's public profile sheet,
- *        and the tappable post-context strip, sharing one surface), the pinned
- *        collapsible SafetyNotice, the message list (grouped bubbles / system /
- *        day separators / the single "Seen" from messageGroups), the
- *        role-aware quick-reply row, the keyboard-aware composer — removed
- *        and replaced by the quiet ClosedThreadBanner when the post has
- *        left 'active' — and the long-press → report-message sheet.
+ * WHAT:  ChatThreadScreen — one conversation: ThreadHeader (one row: back, the
+ *        car's photo, who you're talking to, the car and its state, and an
+ *        owner-only way into their profile), the pinned collapsible
+ *        SafetyNotice, the message list (grouped bubbles / system / day
+ *        separators / the single "Seen" from messageGroups), the role-aware
+ *        quick-reply row, the keyboard-aware composer — removed and replaced by
+ *        the quiet ClosedThreadBanner when the post has left 'active' — and the
+ *        long-press → report-message sheet.
+ *
+ *        ⚠️ THE CHROME WAS 46% OF THE SCREEN (2026-08-29). A person header sat
+ *        above a car strip — two rows of identity for one conversation — and
+ *        with the keyboard up fewer than four messages were visible. The header
+ *        merge, a tighter safety strip and a quick-reply row that steps aside
+ *        after the first reply take it to roughly 29%. See
+ *        docs/design-refs/chat/GAP_ANALYSIS.md for the arithmetic.
  * WHY:   The screen stays a composer of tested parts: useThreadMessages owns
  *        realtime + optimistic sending, messageGroups owns ordering/Seen
  *        maths, quickReplies owns the copy and its safety rules, and the
@@ -25,7 +32,6 @@
  *        quickReplies.ts; docs/DOMAIN.md (Chat).
  */
 
-import { Feather } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { type ComponentType, useEffect, useMemo, useRef, useState } from 'react';
@@ -33,13 +39,17 @@ import {
   AccessibilityInfo,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, {
+  FadeInDown,
+  FadeOut,
+  LinearTransition,
+  ReduceMotion,
+} from 'react-native-reanimated';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
 // Type-only: erased at runtime, so it does NOT create the require cycle the
@@ -52,12 +62,10 @@ import {
   sizes,
   spacing,
   typography,
-  usePalette,
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
 import {
-  Avatar,
   BottomSheet,
   Button,
   ErrorState,
@@ -67,7 +75,8 @@ import {
 } from '@/shared/ui';
 
 import { flagMessage } from '../api/chatApi';
-import { ClosedThreadBanner, PostContextStrip } from '../components/PostContextStrip';
+import { ClosedThreadBanner } from '../components/ClosedThreadBanner';
+import { ThreadHeader } from '../components/ThreadHeader';
 import {
   DaySeparator,
   MessageBubble,
@@ -83,9 +92,10 @@ import {
   buildChatList,
   chatItemKey,
   latestSeenOutboundId,
+  separatorAbove,
   type ChatListItem,
 } from '../lib/messageGroups';
-import { quickRepliesFor } from '../lib/quickReplies';
+import { quickRepliesFor, shouldShowQuickReplies } from '../lib/quickReplies';
 import { MAX_MESSAGE_LENGTH, type ChatMessage } from '../types';
 
 export interface ChatThreadScreenProps {
@@ -94,7 +104,6 @@ export interface ChatThreadScreenProps {
 
 export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
   // ⚠️ ANDROID LIFTS THE COMPOSER ITSELF. Expo SDK 57 forces edge-to-edge, so
   // the window no longer resizes for the keyboard and KeyboardAvoidingView has
   // nothing to avoid — `behavior={undefined}` meant the composer sat UNDER the
@@ -119,6 +128,9 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   // Still device-checkable rather than device-checked: gesture nav and
   // 3-button nav differ, and Jest cannot see either.
   const keyboardHeight = useAndroidKeyboardHeight();
+  // The header pads the status bar itself, so the chrome is one continuous
+  // surface from the top of the screen rather than a tone step under it.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const session = useSession();
   const meta = useThreadMeta(threadId);
@@ -230,18 +242,18 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
 
   const closed = meta.thread ? meta.thread.post.status !== 'active' : false;
   const otherName = meta.thread?.other.firstName;
-  // Who the OTHER person is, in one word under their name. `role` is MINE, so
-  // theirs is the opposite — and it is the single most useful thing to know at
-  // a glance here: whether you are reading the person who lost the car or the
-  // person who spotted it.
-  const peerRoleLabel = meta.thread?.role === 'owner' ? 'Spotter' : 'Owner';
+  // ⚠️ THE PEER'S ROLE WORD IS NO LONGER DRAWN. It used to sit under their name
+  // as "Spotter"/"Owner"; the merged header's second line carries the car and
+  // its state instead, which is why the conversation exists, and the role went
+  // into ThreadHeader's accessibility label. It is derivable anyway — an owner
+  // only ever talks to spotters — and it never changes within one person's app.
 
   // iOS ignores accessibilityLiveRegion, so announce send failures explicitly.
   useEffect(() => {
     if (sendError) AccessibilityInfo.announceForAccessibility(sendError);
   }, [sendError]);
 
-  const renderItem = ({ item }: { item: ChatListItem }) => {
+  const renderItem = ({ item, index }: { item: ChatListItem; index: number }) => {
     if (item.type === 'day') return <DaySeparator label={item.label} />;
     if (item.type === 'outgoing') {
       return (
@@ -258,6 +270,9 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
           mine={item.mine}
           showTime={item.showTime}
           groupPos={item.groupPos}
+          // A day rule and a system message already pad 16 below themselves;
+          // the bubble beneath one adds nothing of its own.
+          afterSeparator={separatorAbove(items, index)}
           seen={item.message.id === seenId}
           otherName={otherName}
           onReport={openReport}
@@ -267,97 +282,27 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      {/* ONE header block: the person and the car they're talking about are a
-          single unit of context, so they share a surface and end on a single
-          hairline. (They used to be two slabs on two different backgrounds
-          with a rule between them, which read as unrelated furniture.) */}
-      <View style={styles.headerBlock}>
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={spacing.sm}
-            style={styles.back}
-            testID="chat-back"
-          >
-            <Feather name="chevron-left" size={sizes.icon} color={palette.textPrimary} />
-          </Pressable>
-          {/* Initial-letter avatar only — the other party's avatar path embeds
-              their uid, so it isn't returned to the client (see chat types).
-              For the OWNER the name is tappable → the spotter's first-name +
-              reputation passport (the same one a sighting shows). A spotter's
-              header is plain text: owner identity is never exposed. */}
-          <View style={styles.headerIdentity}>
-            {meta.thread ? (
-              peer?.peer ? (
-                <Pressable
-                  onPress={() => void openPeerProfile()}
-                  accessibilityRole="button"
-                  accessibilityLabel={`View ${meta.thread.other.firstName}’s profile`}
-                  style={({ pressed }) => [
-                    styles.headerPerson,
-                    pressed && styles.headerPersonPressed,
-                  ]}
-                  testID="chat-peer-profile"
-                >
-                  <Avatar name={meta.thread.other.firstName} />
-                  <View style={styles.headerText}>
-                    <Text style={styles.headerName} numberOfLines={1}>
-                      {meta.thread.other.firstName}
-                    </Text>
-                    <Text style={styles.headerRole}>{peerRoleLabel}</Text>
-                  </View>
-                </Pressable>
-              ) : (
-                <View style={styles.headerPerson}>
-                  <Avatar name={meta.thread.other.firstName} />
-                  <View style={styles.headerText}>
-                    <Text style={styles.headerName} numberOfLines={1}>
-                      {meta.thread.other.firstName}
-                    </Text>
-                    <Text style={styles.headerRole}>{peerRoleLabel}</Text>
-                  </View>
-                </View>
-              )
-            ) : meta.status === 'error' ? (
-              /* ⚠️ THE HEADER'S OWN ERROR STATE. `useThreadMeta` can return
-                 'error' as well as 'missing' (a network failure is 'error' —
-                 useThreadMeta.test.tsx pins that), and only 'missing' was ever
-                 branched below. The result was a header block containing a back
-                 button and nothing else, with no way to ask again.
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      {/* ⚠️ ONE ROW OF CHROME, and it carries the status bar itself.
+          A person header sat above a car strip — two rows of identity for one
+          conversation — and this screen was measured at 46% chrome, with fewer
+          than four messages visible once the keyboard was up.
 
-                 NOT a full-screen ErrorState: the MESSAGES load on their own
-                 hook and are usually fine, and SafetyNotice must render on
-                 every thread regardless (security review M1). Only the identity
-                 the failed call would have supplied is missing, so only that
-                 slot degrades. */
-              <View style={styles.headerFallback}>
-                <Text style={styles.headerName} numberOfLines={1}>
-                  Conversation
-                </Text>
-                <Pressable
-                  onPress={meta.retry}
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry loading the conversation details"
-                  hitSlop={spacing.sm}
-                  style={({ pressed }) => [pressed && styles.headerPersonPressed]}
-                  testID="chat-meta-retry"
-                >
-                  <Text style={styles.headerRetry}>Try again</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-        </View>
-
-        {meta.thread ? (
-          <PostContextStrip
-            thread={meta.thread}
-            onPress={(postId) => router.push(`/post/${postId}`)}
-          />
-        ) : null}
+          The SafeAreaView no longer claims the top edge; headerBlock pads by
+          insets.top instead (AppHeader does the same). Otherwise `background`
+          sat behind the status bar and `surface` began below it — a visible
+          tone step at the very top, which is part of what made the chrome read
+          as a stack of slabs rather than one object. */}
+      <View style={[styles.headerBlock, { paddingTop: insets.top }]}>
+        <ThreadHeader
+          thread={meta.thread}
+          status={meta.status}
+          profileAvailable={Boolean(peer?.peer)}
+          onBack={() => router.back()}
+          onOpenPost={(postId) => router.push(`/post/${postId}`)}
+          onOpenProfile={() => void openPeerProfile()}
+          onRetry={meta.retry}
+        />
       </View>
 
       {/* SECURITY_AND_TRUST §1: the SafetyNotice appears on every chat thread —
@@ -440,15 +385,35 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
           {closed ? (
             <ClosedThreadBanner status={meta.thread?.post.status ?? 'closed'} />
           ) : (
-            <>
-              {/* One-tap openers, shown only while the input is EMPTY: once
-                  someone is typing they've found their words. Picking one
+            /* ⚠️ THE COMPOSER SLIDES INSTEAD OF JUMPING. The quick-reply row
+               had an entrance and no exit, so the 52pt beneath it vanished in
+               one frame and the composer snapped down — on a screen whose whole
+               job is typing. LinearTransition on the wrapper is what makes the
+               composer travel rather than teleport; ReduceMotion.System honours
+               the OS setting on both. */
+            <Animated.View
+              layout={LinearTransition.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+            >
+              {/* One-tap openers for the moment the thread opens — while the
+                  input is empty AND before you have said anything yourself.
+                  Once you are typing, or once you have spoken, you have found
+                  your words and the row stops earning its 52pt. Picking one
                   FILLS the draft (editable) — it never sends. */}
-              {meta.thread && draft.trim().length === 0 ? (
-                <QuickReplyRow
-                  replies={quickRepliesFor(meta.thread.role)}
-                  onPick={setDraft}
-                />
+              {meta.thread &&
+              shouldShowQuickReplies({
+                draft,
+                messages,
+                outgoing,
+                myId: session.userId ?? '',
+              }) ? (
+                <Animated.View
+                  exiting={FadeOut.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+                >
+                  <QuickReplyRow
+                    replies={quickRepliesFor(meta.thread.role)}
+                    onPick={setDraft}
+                  />
+                </Animated.View>
               ) : null}
               <MessageInputBar
                 value={draft}
@@ -460,7 +425,7 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
                 }}
                 maxLength={MAX_MESSAGE_LENGTH}
               />
-            </>
+            </Animated.View>
           )}
         </KeyboardAvoidingView>
       )}
@@ -482,6 +447,16 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
           </View>
         ) : (
           <View style={styles.sheetBody}>
+            {/* ⚠️ SHOW WHICH MESSAGE. Bubbles in a run now sit 4pt apart, so a
+                mis-aimed long-press flags the neighbour — and until this line
+                the sheet gave no way to tell, on the only moderation route a
+                person has. On screen only: flagMessage sends the id and logs no
+                content, which is unchanged. */}
+            {reporting ? (
+              <Text style={styles.sheetQuote} numberOfLines={1} testID="report-quote">
+                “{reporting.content}”
+              </Text>
+            ) : null}
             <Text style={styles.sheetText}>
               This sends the message to our moderation team. The other person isn’t told.
             </Text>
@@ -505,76 +480,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: c.border,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    // ⚠️ spacing.xl, matching PostContextStrip directly beneath it. At
-    // spacing.md the two halves of ONE surface had two different left edges,
-    // 12 and 24, which is visible as a step the moment the strip has a
-    // thumbnail.
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-  },
-  back: {
-    width: sizes.touchTarget,
-    height: sizes.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-    // Pulls the 24pt chevron's optical left edge back to ~22 against the 24pt
-    // text gutter — an icon centred in a 44pt box would otherwise sit 10pt
-    // inside every other left edge on the screen.
-    marginLeft: -spacing.md,
-  },
-  headerIdentity: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerPerson: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    // Breathing room that doubles as the touch target's slack.
-    paddingVertical: spacing.xs,
-    paddingRight: spacing.md,
-    borderRadius: radii.md,
-  },
-  headerPersonPressed: {
-    backgroundColor: c.surfaceSubtle,
-  },
-  // The degraded identity slot — see the 'error' branch in the header.
-  headerFallback: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  // Underlined because it is tappable; the design system reserves underline
-  // for exactly that.
-  headerRetry: {
-    ...typography.label,
-    color: c.textPrimary,
-    textDecorationLine: 'underline',
-  },
-  headerText: {
-    flex: 1,
-  },
-  // cardTitle, not heading: with the role line beneath it, 18/24 Bold made the
-  // identity block top-heavy against a 13pt caption.
-  headerName: {
-    ...typography.cardTitle,
-    color: c.textPrimary,
-  },
-  headerRole: {
-    ...typography.caption,
-    color: c.textSecondary,
-  },
   body: {
     flex: 1,
   },
+  // sm, not md: the 8pt the safety strip needed back came from here, where
+  // nothing depends on it — the first and last bubbles keep air, and a message
+  // list is not improved by 4 more points of nothing at each end.
   list: {
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
   },
   // ⚠️ NO PADDING OF ITS OWN — EmptyState/ErrorState already pad by spacing.xl,
   // and this added a second 24 per side. Same fix as both inbox faces.
@@ -613,5 +526,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   sheetText: {
     ...typography.body,
     color: c.textSecondary,
+  },
+  /** The message being reported, quoted back so you can see you got the right
+   *  one. Full-strength ink: it is the subject of the decision, not chrome. */
+  sheetQuote: {
+    ...typography.body,
+    color: c.textPrimary,
   },
 });

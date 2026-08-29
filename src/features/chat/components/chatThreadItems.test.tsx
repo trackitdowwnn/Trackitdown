@@ -10,13 +10,13 @@
  *        noise. Every fireEvent is wrapped in await act(async) — sync act
  *        overlaps the async render and poisons later queries (house rule).
  * LINKS: src/features/chat/components/chatThreadItems.tsx,
- *        src/features/chat/components/PostContextStrip.tsx, docs/TESTING.md.
+ *        src/features/chat/components/ClosedThreadBanner.tsx, docs/TESTING.md.
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import type { ChatMessage, OutgoingMessage } from '../types';
-import { ClosedThreadBanner } from './PostContextStrip';
+import { ClosedThreadBanner } from './ClosedThreadBanner';
 import { DaySeparator, MessageBubble, OutgoingBubble, SystemMessage } from './chatThreadItems';
 
 const message = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
@@ -41,6 +41,31 @@ describe('SystemMessage', () => {
     const { getByTestId, getByText } = await render(<SystemMessage message={system} />);
     expect(getByTestId('system-s1')).toBeTruthy();
     expect(getByText('Safety first: …')).toBeTruthy();
+  });
+});
+
+describe('⚠️ what a screen reader hears on a bubble', () => {
+  // The time is DRAWN above only one bubble per group. A sighted reader infers
+  // the rest from that caption; someone moving bubble by bubble never meets it,
+  // so before this they could not get the time of any message that did not
+  // happen to lead a group.
+  it('carries the time on every bubble, not just the group leader', async () => {
+    const { getByTestId } = await render(
+      <MessageBubble message={message()} mine={false} showTime={false} otherName="Sam" />,
+    );
+
+    const label = getByTestId('bubble-m1').props.accessibilityLabel as string;
+    expect(label).toContain('Sam: spotted it on the high street');
+    // Locale-formatted, so assert the shape rather than a literal string.
+    expect(label).toMatch(/\d{1,2}[:.]\d{2}/);
+  });
+
+  it('names the speaker as "You" on my own message', async () => {
+    const { getByTestId } = await render(
+      <MessageBubble message={message({ senderId: 'me' })} mine showTime={false} />,
+    );
+
+    expect(getByTestId('bubble-m1').props.accessibilityLabel).toContain('You: ');
   });
 });
 

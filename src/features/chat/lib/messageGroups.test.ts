@@ -10,7 +10,14 @@
  */
 
 import type { ChatMessage, OutgoingMessage } from '../types';
-import { buildChatList, chatItemKey, dayLabel, latestSeenOutboundId } from './messageGroups';
+import {
+  blockPaddingTop,
+  buildChatList,
+  chatItemKey,
+  dayLabel,
+  latestSeenOutboundId,
+  separatorAbove,
+} from './messageGroups';
 
 const NOW = new Date('2026-07-15T18:00:00Z');
 const ME = 'me';
@@ -224,5 +231,63 @@ describe('latestSeenOutboundId', () => {
       ...mine,
     ];
     expect(latestSeenOutboundId(mixed, ME, '2026-07-15T14:00:00Z')).toBe('m3');
+  });
+});
+
+describe('⚠️ blockPaddingTop — grouping you can SEE', () => {
+  // The grouped corners were invisible before this: every bubble sat in a
+  // symmetric 8pt, so the corners tightened and nothing drew closer. A burst of
+  // three messages read as three separate events.
+  it('draws a run together and pushes runs apart', () => {
+    expect(blockPaddingTop('middle', false)).toBe(4);
+    expect(blockPaddingTop('last', false)).toBe(4);
+    expect(blockPaddingTop('first', false)).toBe(12);
+    expect(blockPaddingTop('single', false)).toBe(12);
+  });
+
+  it('is a 3:1 ratio — the thing that makes a run read as one thought', () => {
+    expect(blockPaddingTop('first', false) / blockPaddingTop('middle', false)).toBe(3);
+  });
+
+  it('⚠️ adds nothing under a separator, which already pads itself', () => {
+    // A day rule pads 16 below itself. A bubble adding its own 12 on top would
+    // make the thing that divides days look like it belongs to the message
+    // beneath it.
+    for (const pos of ['single', 'first', 'middle', 'last'] as const) {
+      expect(blockPaddingTop(pos, true)).toBe(0);
+    }
+  });
+});
+
+describe('separatorAbove', () => {
+  const items = buildChatList(
+    [message('a', '2026-07-15T09:00:00Z'), message('sys', '2026-07-15T09:01:00Z', null)],
+    [],
+    ME,
+  );
+
+  it('treats the top of the list as already spaced', () => {
+    expect(separatorAbove(items, 0)).toBe(true);
+  });
+
+  it('sees a day rule above the first message', () => {
+    // buildChatList always opens with a day item.
+    expect(items[0]?.type).toBe('day');
+    expect(separatorAbove(items, 1)).toBe(true);
+  });
+
+  it('sees a system message as a separator too', () => {
+    const afterSystem = items.length;
+    expect(separatorAbove([...items, message('b', '2026-07-15T09:02:00Z')] as never, afterSystem))
+      .toBe(true);
+  });
+
+  it('is false between two ordinary bubbles', () => {
+    const pair = buildChatList(
+      [message('a', '2026-07-15T09:00:00Z'), message('b', '2026-07-15T09:01:00Z')],
+      [],
+      ME,
+    );
+    expect(separatorAbove(pair, 2)).toBe(false);
   });
 });

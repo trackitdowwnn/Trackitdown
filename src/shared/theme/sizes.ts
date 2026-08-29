@@ -275,6 +275,29 @@ export const sizes = {
   /** A message bubble's placeholder height while a thread loads. Its own token
    *  rather than `avatarLg`, which is 72 for reasons about faces. */
   skeletonBubble: 72,
+  /**
+   * The collapsed SafetyNotice's row on a chat thread — a floor, not a fit.
+   *
+   * ⚠️ A NUMBER, NOT A DERIVATION. It used to be written
+   * `touchTarget - 2 * spacing.sm`, which silently stopped meaning anything the
+   * moment that padding changed.
+   *
+   * ⚠️ AND IT IS NOT "two lines of label" — that would be 36 (14/18 × 2), a
+   * claim this comment made for a few hours until a review did the arithmetic.
+   * 28 is one line plus air; the row GROWS past it whenever the title wraps,
+   * which at large type it should.
+   */
+  safetyStripRow: 28,
+  /**
+   * The car's tile in a chat thread's header (added 2026-08-29).
+   *
+   * ⚠️ 44, NOT `inboxRowTile` (64) — the inbox tile leads a list row where the
+   * picture is how you pick one conversation out of many. In a thread you are
+   * already inside the conversation: the tile is confirming which car, beside a
+   * 44pt back button, in a row whose whole purpose was to stop being 136pt
+   * tall. It matches the touch targets either side of it.
+   */
+  threadHeaderTile: 44,
 } as const;
 
 export type SizeToken = keyof typeof sizes;
