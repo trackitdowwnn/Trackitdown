@@ -41,6 +41,7 @@ export { BrandLoader, LOADER_PHRASES, type BrandLoaderProps } from './BrandLoade
 export { BrandMark, type BrandMarkProps } from './BrandMark';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { CarColourTile, type CarColourTileProps } from './CarColourTile';
+export { KeepAliveFace, type KeepAliveFaceProps } from './KeepAliveFace';
 export {
   DayHeader,
   DayHeaderSkeleton,

@@ -31,7 +31,7 @@
  *        faces report into); docs/design-refs/inbox/.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -44,7 +44,7 @@ import {
 } from '@/features/notifications/lib/inboxSegmentStorage';
 import { NotificationCenterScreen } from '@/features/notifications/screens/NotificationCenterScreen';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { EmptyState, SurfaceTabs } from '@/shared/ui';
+import { EmptyState, KeepAliveFace, SurfaceTabs } from '@/shared/ui';
 
 const SEGMENTS: { value: InboxSegment; label: string }[] = [
   { value: 'messages', label: 'Messages' },
@@ -136,48 +136,31 @@ export default function InboxRoute() {
           its entrance animation while invisible — a Messages-first user will
           never see the Notifications list animate in. Accepted deliberately. */}
       <View style={styles.faces}>
-        <Face active={segment === 'messages'} testID="inbox-face-messages">
+        <KeepAliveFace active={segment === 'messages'} testID="inbox-face-messages">
           <ChatInboxScreen />
-        </Face>
-        <Face active={segment === 'notifications'} testID="inbox-face-notifications">
+        </KeepAliveFace>
+        <KeepAliveFace
+          active={segment === 'notifications'}
+          testID="inbox-face-notifications"
+        >
           <NotificationCenterScreen active={segment === 'notifications'} />
-        </Face>
+        </KeepAliveFace>
       </View>
     </SafeAreaView>
   );
 }
 
-/**
- * One inbox face, kept mounted whether or not it is the one being looked at.
+/*
+ * The keep-alive wrapper moved to src/shared/ui/KeepAliveFace.tsx.
  *
- * Local to this route on purpose: there is exactly one segment host in the app,
- * and ARCHITECTURE prefers feature-local until a second consumer turns up.
+ * ⚠️ NOT because a second consumer appeared — there is still exactly one
+ * segment host — but because it could not be TESTED here, and its contract is
+ * three props of which two are single-platform. expo-router's `require.context`
+ * bundles every `.tsx` under the app root (only `+api`, `+html` and
+ * `+middleware` are excluded), so a test file beside a route pulls the test
+ * library into the app bundle and `expo export` fails. That is also why this
+ * directory has no tests at all.
  */
-function Face({
-  active,
-  children,
-  testID,
-}: {
-  active: boolean;
-  children: ReactNode;
-  testID?: string;
-}) {
-  const styles = useThemedStyles(makeStyles);
-
-  return (
-    <View
-      style={[styles.face, !active && styles.faceHidden]}
-      pointerEvents={active ? 'auto' : 'none'}
-      // iOS
-      accessibilityElementsHidden={!active}
-      // Android
-      importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
-      testID={testID}
-    >
-      {children}
-    </View>
-  );
-}
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   faces: {
