@@ -130,6 +130,12 @@ per-row `hitSlop` override on a shared component. Flagged for its own look.
    `importantForAccessibility` is Android-only, so one missing prop leaves a
    whole invisible list readable on that platform and perfect-looking to a
    sighted reviewer.
+   ⚠️ **The regression half of this is now automated** (`src/app/(tabs)/inbox.test.tsx`,
+   2026-08-29): both single-platform props and `pointerEvents` are asserted on
+   whichever face is inactive, and an accessibility-aware query is asserted NOT
+   to reach the hidden face's content. Deleting either prop now fails a test
+   rather than half the users. The device pass is still worth doing once — a
+   test cannot tell you what the announcement actually sounds like.
 5. **Switch segments with a scrolled list** — the position must survive, and
    neither list should re-animate.
 6. **All states per face**: loading, error, empty, populated, signed out; plus a

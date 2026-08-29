@@ -136,10 +136,10 @@ export default function InboxRoute() {
           its entrance animation while invisible — a Messages-first user will
           never see the Notifications list animate in. Accepted deliberately. */}
       <View style={styles.faces}>
-        <Face active={segment === 'messages'}>
+        <Face active={segment === 'messages'} testID="inbox-face-messages">
           <ChatInboxScreen />
         </Face>
-        <Face active={segment === 'notifications'}>
+        <Face active={segment === 'notifications'} testID="inbox-face-notifications">
           <NotificationCenterScreen active={segment === 'notifications'} />
         </Face>
       </View>
@@ -153,7 +153,15 @@ export default function InboxRoute() {
  * Local to this route on purpose: there is exactly one segment host in the app,
  * and ARCHITECTURE prefers feature-local until a second consumer turns up.
  */
-function Face({ active, children }: { active: boolean; children: ReactNode }) {
+function Face({
+  active,
+  children,
+  testID,
+}: {
+  active: boolean;
+  children: ReactNode;
+  testID?: string;
+}) {
   const styles = useThemedStyles(makeStyles);
 
   return (
@@ -164,6 +172,7 @@ function Face({ active, children }: { active: boolean; children: ReactNode }) {
       accessibilityElementsHidden={!active}
       // Android
       importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+      testID={testID}
     >
       {children}
     </View>
