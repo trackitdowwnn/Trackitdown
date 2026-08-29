@@ -39,7 +39,7 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useSession } from '@/features/auth';
 // Type-only: erased at runtime, so it does NOT create the require cycle the
@@ -101,14 +101,24 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   // keyboard on every Android send. The hook returns 0 on iOS, where
   // KeyboardAvoidingView's 'padding' still does the work.
   //
-  // ⚠️ MINUS insets.bottom, and the subtraction is load-bearing: this screen's
-  // SafeAreaView already applies the bottom inset, while the edge-to-edge
-  // keyboard height INCLUDES the nav-bar region. Adding the raw height would
-  // float the composer a nav-bar above the keyboard. Needs a real device on
-  // both gesture and 3-button navigation — Jest cannot see this.
-  const insets = useSafeAreaInsets();
+  // ⚠️ THE RAW HEIGHT, NOT height - insets.bottom. This shipped for a few hours
+  // with the subtraction, on the theory that the edge-to-edge keyboard height
+  // includes the nav-bar region this screen's SafeAreaView has already padded.
+  // Every other consumer in the app says otherwise, and they are shipped:
+  // StickyActionBar uses `insets.bottom + spacing.md + keyboardHeight`,
+  // BottomSheet `insets.bottom + spacing.xl + keyboardLift`, WizardScreen
+  // `spacing.sm + keyboardHeight`. All three add the raw value; the first two
+  // also add insets.bottom on top, which they could not do if the height
+  // already contained it.
+  //
+  // Those three apply insets.bottom themselves where this screen gets it from
+  // `SafeAreaView edges={['top','bottom']}` — so matching them means adding the
+  // raw height here. Subtracting made this the only surface in the app that
+  // lifts a nav-bar SHORT, i.e. the composer partly under the keyboard.
+  //
+  // Still device-checkable rather than device-checked: gesture nav and
+  // 3-button nav differ, and Jest cannot see either.
   const keyboardHeight = useAndroidKeyboardHeight();
-  const androidKeyboardLift = Math.max(0, keyboardHeight - insets.bottom);
   const router = useRouter();
   const session = useSession();
   const meta = useThreadMeta(threadId);
@@ -403,7 +413,7 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
         <KeyboardAvoidingView
           style={[
             styles.body,
-            Platform.OS === 'android' && { paddingBottom: androidKeyboardLift },
+            Platform.OS === 'android' && { paddingBottom: keyboardHeight },
           ]}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
