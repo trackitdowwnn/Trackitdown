@@ -181,7 +181,14 @@ function ReadyIdentity({
             within one person's app, so it is the cheapest of the three to move
             into the accessibility label. "Still missing" is not: it is why the
             conversation is happening. */}
-        <Text style={styles.subtitle} numberOfLines={1}>
+        {/* ⚠️ TWO LINES, not one. At 200% type `caption` renders around 26pt
+            and roughly fifteen characters survive on a 390pt phone — "Blue BMW
+            3 Se…" — so the state, which the comment above calls the reason the
+            conversation exists, disappears at exactly the accessibility setting
+            where it matters. The safety strip reached the same conclusion
+            earlier today: let it grow rather than truncate the load-bearing
+            half. The row is content, not chrome. */}
+        <Text style={styles.subtitle} numberOfLines={2}>
           {car} · {state}
         </Text>
       </View>
@@ -206,12 +213,18 @@ function DegradedIdentity({ onRetry }: { onRetry?: () => void }) {
         <Text style={styles.name} numberOfLines={1}>
           Conversation
         </Text>
+        {/* ⚠️ A REAL 44pt BOX, not hitSlop. This was `label` (18pt) plus 8pt of
+            slop — 34, under the floor — and the message list is drawn AFTER the
+            header block, so the downward half of that slop is claimed by the
+            sibling before it ever reaches here. Exactly the defect a review
+            caught on the safety strip earlier today, in this same feature. It
+            is also the sole route back from a metadata failure. */}
         {onRetry ? (
           <Pressable
             onPress={onRetry}
             accessibilityRole="button"
             accessibilityLabel="Retry loading the conversation details"
-            hitSlop={spacing.sm}
+            style={styles.retryTarget}
             testID="chat-meta-retry"
           >
             <Text style={styles.retry}>Try again</Text>
@@ -289,6 +302,11 @@ const makeStyles = (c: Palette) =>
     subtitle: {
       ...typography.caption,
       color: c.textSecondary,
+    },
+    retryTarget: {
+      minHeight: sizes.touchTarget,
+      justifyContent: 'center',
+      alignSelf: 'flex-start',
     },
     retry: {
       ...typography.label,

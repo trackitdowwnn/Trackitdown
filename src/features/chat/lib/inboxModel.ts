@@ -86,8 +86,15 @@ export function contextLine(thread: InboxThread): ContextLine {
   return { prefix: `Your sighting · ${carLabel(thread.post)}`, plate: null };
 }
 
-/** Row preview: the denormalised last message, or a calm fallback (the
- *  system first message always sets one, so this is belt-and-braces). */
+/**
+ * Row preview: the denormalised last message, or a calm fallback.
+ *
+ * ⚠️ THE FALLBACK IS THE LIVE PATH NOW, not belt-and-braces as this said until
+ * 2026-08-29. Threads used to open with a system message that seeded a preview,
+ * so NULL was theoretical; `open_thread` no longer writes one, and a thread
+ * nobody has spoken in genuinely has no preview. The migration that made that
+ * change cites this fallback as the reason it was safe to do.
+ */
 export function previewText(thread: InboxThread): string {
   return thread.lastMessagePreview ?? 'No messages yet';
 }

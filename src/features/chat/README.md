@@ -198,8 +198,10 @@ SECURITY_AND_TRUST **§1** — ⚠️ **amended 2026-08-29**: the SafetyNotice a
 the automatic "Safety first…" system message were both removed from chat by
 owner decision, and §1 was rewritten to match rather than left contradicting
 the code. Threads opened before that date keep their stored system message;
-nothing was deleted. The notice remains on the five non-chat surfaces, and
-the quick-reply safety register is untouched · §6 (deny-by-default RLS,
+nothing was deleted. The rule still reaches five surfaces — the component on
+four (sighting wizard, post sightings, sighting detail, post detail) and the
+COPY on onboarding, which renders `SAFETY_RULE_LINE` as a pill — and the
+quick-reply safety register is untouched · §6 (deny-by-default RLS,
 absence tests) + §3 (no content in push/logs).
 
 ## Out of scope

@@ -174,12 +174,27 @@ declare
   v_sys constant text :=
     'Safety first: report from a distance and never arrange to meet or attempt a recovery yourselves — recovery is for the owner and police. If a crime is in progress, call 999.';
   v_tid uuid;
+  v_doc jsonb;
+  v_prev text;
   v_m   public.messages%rowtype;
 begin
   -- The pre-seeded thread on recovered post 0017 (see SETUP) models exactly
   -- this: created while the post was active, back when open_thread wrote it.
   select id into v_tid from public.threads
   where post_id = 'a1a1a1a1-0000-0000-0000-000000000017';
+
+  -- ⚠️ RUN THE NEW CODE PATH OVER IT FIRST, or this block proves only that the
+  -- SETUP insert worked and the schema still accepts system rows — which is not
+  -- the claim. `open_thread` on an EXISTING thread returns created=false and
+  -- must leave the stored message and preview exactly as they were.
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}',
+    true);
+  v_doc := public.open_thread('a1a1a1a1-0000-0000-0000-000000000017');
+  if (v_doc ->> 'created')::boolean then
+    raise exception 'CHECK 1b FAILED: re-opening an existing thread reported created=true: %', v_doc;
+  end if;
 
   select * into v_m from public.messages
   where thread_id = v_tid and kind = 'system';
@@ -194,7 +209,14 @@ begin
     raise exception 'CHECK 1b FAILED: the stored safety line drifted: %', v_m.content;
   end if;
 
-  raise notice 'CHECK 1b passed: existing threads keep the system message they were created with';
+  -- The new function sets the preview to NULL on creation; re-opening an
+  -- existing thread must not reach for it.
+  select last_message_preview into v_prev from public.threads where id = v_tid;
+  if v_prev is null or v_prev <> left(v_sys, 140) then
+    raise exception 'CHECK 1b FAILED: an existing thread lost its preview: %', v_prev;
+  end if;
+
+  raise notice 'CHECK 1b passed: re-opening an existing thread leaves its message and preview intact';
 end $$;
 
 
@@ -388,9 +410,11 @@ begin
     raise exception 'CHECK 4 FAILED: last_message_at was not bumped';
   end if;
 
+  -- 2, not 3: the thread opened EMPTY (2026-08-29), so the only messages here
+  -- are the two the participants sent.
   select count(*) into v_n from public.messages where thread_id = v_tid;
-  if v_n <> 3 then
-    raise exception 'CHECK 4 FAILED: expected 3 messages (system + 2 user), got %', v_n;
+  if v_n <> 2 then
+    raise exception 'CHECK 4 FAILED: expected 2 user messages, got %', v_n;
   end if;
 
   raise notice 'CHECK 4 passed: both participants send; content trimmed, sender pinned, preview denormalised';
@@ -645,8 +669,8 @@ end $$;
 -- -----------------------------------------------------------------------------
 -- CHECK 7 — get_inbox + unread + mark_thread_read + PRIVACY (H1 + L1). Alex has
 -- 3 threads (0001 active, 0006 active, 0017 recovered) newest-activity-first.
--- His 0001 row: role='owner', unread=1 (Beth's message; his reply + the
--- read-at-open system message don't count), a correct post block WITH plate
+-- His 0001 row: role='owner', unread=1 (Beth's message; his own reply doesn't
+-- count, and there is no longer a system message either), a correct post WITH plate
 -- (owner sees it — L1), and an OTHER block that is EXACTLY {first_name} — NO
 -- avatar_path key (H1). The whole payload leaks NEITHER participant's uid.
 -- mark_thread_read zeroes HIS count. Beth's 0001 row: role='spotter', unread=1
@@ -921,8 +945,9 @@ end $$;
 
 -- -----------------------------------------------------------------------------
 -- CHECK 10 — RLS + grants under the REAL authenticated role. Participants
--- (Alex, Beth) each see exactly their 3 threads / 5 messages (0001: system+2;
--- 0006: system; 0017: system); the THIRD user (Carl) sees ZERO of both. Direct
+-- (Alex, Beth) each see exactly their 3 threads / 3 messages (0001: 2 user;
+-- 0006: none; 0017: 1 pre-seeded system — threads no longer open with one);
+-- the THIRD user (Carl) sees ZERO of both. Direct
 -- writes (insert thread, insert message, update thread, delete message) are
 -- grant-denied 42501 even for a participant, and flags is invisible EVEN TO ITS
 -- OWN REPORTER (no client SELECT path).
@@ -945,8 +970,8 @@ begin
   select count(*) into v_t from public.threads;
   select count(*) into v_m from public.messages;
   reset role;
-  if v_t <> 3 or v_m <> 5 then
-    raise exception 'CHECK 10 FAILED: Beth should see 3 threads / 5 messages, saw % / %', v_t, v_m;
+  if v_t <> 3 or v_m <> 3 then
+    raise exception 'CHECK 10 FAILED: Beth should see 3 threads / 3 messages, saw % / %', v_t, v_m;
   end if;
 
   perform set_config(
@@ -957,8 +982,8 @@ begin
   select count(*) into v_t from public.threads;
   select count(*) into v_m from public.messages;
   reset role;
-  if v_t <> 3 or v_m <> 5 then
-    raise exception 'CHECK 10 FAILED: Alex should see 3 threads / 5 messages, saw % / %', v_t, v_m;
+  if v_t <> 3 or v_m <> 3 then
+    raise exception 'CHECK 10 FAILED: Alex should see 3 threads / 3 messages, saw % / %', v_t, v_m;
   end if;
 
   perform set_config(

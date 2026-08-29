@@ -9,10 +9,22 @@ commenting standards.
 
 - Every sighting flow and alert notification displays the SafetyNotice
   component: **report from a distance; never approach the vehicle, follow it,
-  or confront anyone; if a crime is in progress call 999.** Its surfaces are
-  sighting detail, post detail, the sighting wizard, post sightings, and
-  onboarding — everywhere someone is deciding whether to go and look at a car,
-  which is the decision this rule exists to reach.
+  or confront anyone; if a crime is in progress call 999.**
+  - **Five surfaces, in two forms.** The COMPONENT renders on four —
+    `sightingSteps.tsx` (the sighting wizard), `PostSightingsScreen.tsx`,
+    `SightingDetailScreen.tsx`, `PostDetailBody.tsx` (post detail) — which
+    `grep -rn "<SafetyNotice" src` will confirm. Onboarding is the fifth and
+    carries the COPY rather than the component: `onboardingSlides.ts` imports
+    `SAFETY_RULE_LINE` from `SafetyNotice.tsx` and `OnboardingSlide.tsx`
+    renders it as a warning-bordered pill, with the 999 clause deliberately
+    omitted at that stage. Between them they cover the moment someone is
+    deciding whether to go and look at a car, which is the decision this rule
+    exists to reach.
+  - ⚠️ **Do not audit this list with `grep "<SafetyNotice"` alone.** On
+    2026-08-29 I did exactly that, concluded onboarding was not a safety
+    surface, and wrote that into this paragraph — deleting a true statement
+    about coverage in the same change that reduced coverage. The copy travels
+    through a prop, so the component name never appears at the render site.
   - ⚠️ **THE CHAT THREAD NO LONGER SHOWS IT (owner decision, 2026-08-29),** and
     the automatic "Safety first…" system message that opened every conversation
     was removed with it (`20260829120000_thread_without_system_message.sql`).
@@ -26,8 +38,16 @@ commenting standards.
   - What did NOT change: the quick-reply safety register (no reply may suggest
     meeting, following, waiting, watching or approaching) and its lexicon test;
     the ban on features that facilitate pursuit, below; and the notice on all
-    five remaining surfaces. Pinned by `src/shared/ui/SafetyNotice.test.tsx`
-    and `src/features/chat/lib/quickReplies.test.ts`.
+    five remaining surfaces.
+  - ⚠️ **What is actually pinned by a test, precisely.**
+    `SafetyNotice.test.tsx` pins the COPY and the collapsible behaviour in
+    isolation; `quickReplies.test.ts` pins the reply lexicon. RENDER
+    assertions exist only for post detail (`PostDetailBody.test.tsx`) and
+    onboarding (`onboardingSlides.test.ts`, `OnboardingSlide.test.tsx`,
+    `OnboardingScreen.test.tsx`). **Sighting detail, post sightings and the
+    sighting wizard have no test asserting the notice renders at all** — three
+    of the five surfaces this rule now leans on are unguarded. Stated rather
+    than glossed; closing it is a one-line assertion per suite.
 - We never build features that facilitate pursuit: no live navigation
   toward a sighted car, no "car is moving" live tracking, no directions
   from spotter to vehicle.

@@ -64,11 +64,14 @@ export function quickRepliesFor(role: ChatRole): readonly string[] {
  * The cost is paid exactly once per thread, at the moment it is most useful —
  * an owner's first reply to a sighting, which is the time-critical one.
  *
- * ⚠️ `kind === 'user'` IS LOAD-BEARING. The server puts a system safety message
- * at the top of every thread with `senderId: null`; without the kind check a
- * null senderId could never match, but a future system message attributed to
- * anyone would silently count as "I have spoken" and hide the row forever.
- * messageGroups.latestSeenOutboundId makes the same check for the same reason.
+ * ⚠️ `kind === 'user'` IS LOAD-BEARING, and it now guards HISTORY rather than
+ * the present — which is exactly when a guard is easiest to delete by mistake.
+ * Threads created before 2026-08-29 open with a system safety message whose
+ * `senderId` is null; new ones open empty. Without the kind check a null sender
+ * could never match anyway, but a future system message attributed to somebody
+ * would silently count as "I have spoken" and hide the row forever on every
+ * legacy thread. messageGroups.latestSeenOutboundId makes the same check for
+ * the same reason.
  *
  * ⚠️ `outgoing` COUNTS, and leaving it out was a bug for a few hours. A sent
  * message lands in `outgoing` immediately and only reaches `messages` when the

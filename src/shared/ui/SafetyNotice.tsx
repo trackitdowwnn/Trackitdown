@@ -4,26 +4,30 @@
  *        in progress. Optionally `collapsible`, which pins it as a single
  *        titled line that expands to the full body on tap.
  * WHY:   SECURITY_AND_TRUST §1 requires the SAME safety message on every
- *        sighting flow, alert, chat thread, and the post-detail page. Making
- *        it one component with non-overridable copy guarantees the wording
- *        never drifts — this is a product-safety requirement, not decoration.
+ *        sighting flow and alert. Making it one component with non-overridable
+ *        copy guarantees the wording never drifts — this is a product-safety
+ *        requirement, not decoration.
  *
- *        The collapsible form exists for CHAT (2026-08-05), where the notice
- *        is pinned above a live conversation rather than read once in a flow:
- *        at full height it cost ~100dp of every thread forever, which with the
- *        keyboard open left barely two visible messages. Three things make the
- *        shrink safe rather than a quiet weakening:
- *          · it is not dismissible — collapsed is still PRESENT, on screen, on
- *            every thread, exactly as §1 requires;
- *          · the accessibility label is the FULL title + body in both states,
- *            so nothing is hidden from a screen reader at any point;
- *          · role stays `alert`, and the title itself — the actionable half,
- *            "report, don't approach" — is the part that stays visible.
- *        Only the elaboration folds away. Default is the full banner, so
- *        every existing consumer is untouched.
+ *        ⚠️ CHAT IS NO LONGER A CONSUMER (2026-08-29, owner decision; §1 and
+ *        DOMAIN.md were amended the same day). The `collapsible` form was built
+ *        for it on 2026-08-05 and now has NO consumers at all. It is kept
+ *        deliberately rather than deleted, because §1 records the decision and
+ *        a future surface may want a pinned-above-live-content form again — but
+ *        do not restore it to chat on the strength of this file. Read §1 first.
+ *
+ *        What `collapsible` guarantees, if it is ever used again: not
+ *        dismissible; the accessibility label is the FULL title + body in both
+ *        states; role stays `alert`; and the visible half is the actionable
+ *        instruction, with only the elaboration folding. Default is the full
+ *        banner, so every current consumer is untouched.
+ *
+ *        Current render sites: the sighting wizard, post sightings, sighting
+ *        detail, post detail. Onboarding carries the COPY instead — it imports
+ *        SAFETY_RULE_LINE and renders its own pill, 999 clause omitted at that
+ *        stage — so grepping for this component name under-counts coverage.
  * LINKS: docs/SECURITY_AND_TRUST.md §1; docs/DOMAIN.md (sighting rules);
  *        src/features/vehicles (post detail); src/features/sightings;
- *        src/features/chat/screens/ChatThreadScreen.tsx (the collapsible one).
+ *        src/features/auth/lib/onboardingSlides.ts (SAFETY_RULE_LINE).
  */
 
 import { Feather } from '@expo/vector-icons';

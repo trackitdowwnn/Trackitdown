@@ -276,7 +276,11 @@ export const sizes = {
    *  rather than `avatarLg`, which is 72 for reasons about faces. */
   skeletonBubble: 72,
   /**
-   * The collapsed SafetyNotice's row on a chat thread — a floor, not a fit.
+   * The collapsed SafetyNotice's row — a floor, not a fit.
+   *
+   * ⚠️ Its only consumer was the chat thread, which dropped the notice on
+   * 2026-08-29, so this token is currently unused. Kept with the variant it
+   * belongs to rather than deleted separately — see SafetyNotice.tsx.
    *
    * ⚠️ A NUMBER, NOT A DERIVATION. It used to be written
    * `touchTarget - 2 * spacing.sm`, which silently stopped meaning anything the

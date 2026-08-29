@@ -10,9 +10,12 @@
  *        each of those is asserted rather than assumed. The failure this
  *        guards against isn't a crash; it's a later redesign quietly turning a
  *        requirement into a hint.
+ *        ⚠️ The collapsible form has had NO consumers since 2026-08-29, when
+ *        chat dropped it (owner decision, §1 amended). These tests are kept so
+ *        the guarantees stay pinned if a future surface adopts it — a variant
+ *        that is dead AND untested is the one that comes back wrong.
  * LINKS: src/shared/ui/SafetyNotice.tsx, docs/SECURITY_AND_TRUST.md §1,
- *        src/features/chat/screens/ChatThreadScreen.tsx (the only collapsible
- *        consumer).
+ *        docs/DOMAIN.md (Chat).
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';

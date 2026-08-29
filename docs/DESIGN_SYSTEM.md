@@ -340,11 +340,15 @@ are build output.
 - **SafetyNotice** — reusable banner with the "report, don't approach"
   copy; required on sighting flows (see SECURITY_AND_TRUST.md). Passing
   `collapsible` pins it as a single titled line that expands on tap — for
-  surfaces where it sits above LIVE content for a whole session (chat) rather
-  than being read once in a flow, where full height cost ~100dp of every
-  thread. It is never dismissible in either form, keeps `role="alert"`, and
-  its accessibility label is the complete title + body whether open or shut,
-  so the shrink is visual only. Chat is the only sanctioned consumer.
+  surfaces where it sits above LIVE content for a whole session rather than
+  being read once in a flow. It is never dismissible in either form, keeps
+  `role="alert"`, and its accessibility label is the complete title + body
+  whether open or shut, so the shrink is visual only.
+  ⚠️ **`collapsible` has no consumers as of 2026-08-29.** It was built for chat,
+  and chat dropped the notice entirely (owner decision — SECURITY_AND_TRUST §1
+  and DOMAIN.md amended the same day). Kept, and still tested, so the
+  guarantees hold if a surface adopts it again; do not restore it to chat on
+  the strength of this entry.
 - **ListRow** — the settings-style row: optional icon, title, optional
   value/subtitle, chevron when pressable, destructive variant. Passing
   `selected` turns it into a **chooser** row: the chevron becomes a check (an

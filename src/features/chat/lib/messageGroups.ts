@@ -246,3 +246,23 @@ export function chatItemKey(item: ChatListItem): string {
   if (item.type === 'outgoing') return `out-${item.message.localId}`;
   return item.message.id;
 }
+
+/**
+ * Where one pending message sits in the run of unsent ones.
+ *
+ * They are all mine and all newest, so position is just index within
+ * `outgoing` — but they still need it: a burst of three sends used to render
+ * 12pt apart with full corners, then snap to 4pt with tightened corners one at
+ * a time as the server confirmed each. Reflowing on confirmation is the same
+ * lie as animating the swap, which this feature already refuses to tell.
+ */
+export function outgoingGroupPos(
+  outgoing: readonly OutgoingMessage[],
+  localId: string,
+): MessageGroupPos {
+  const i = outgoing.findIndex((m) => m.localId === localId);
+  if (i < 0 || outgoing.length <= 1) return 'single';
+  if (i === 0) return 'first';
+  if (i === outgoing.length - 1) return 'last';
+  return 'middle';
+}

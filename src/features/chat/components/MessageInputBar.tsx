@@ -87,7 +87,13 @@ export function MessageInputBar({ value, onChangeText, onSend, maxLength }: Mess
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
+  // ⚠️ A TOP HAIRLINE. The bar is `background` — the same fill as the page —
+  // so without an edge the newest bubble and the input box read as touching,
+  // and the screen runs as one continuous field from the header to the bottom
+  // inset. AppTabBar sets the precedent: a bar, a hairline top edge, no shadow.
   bar: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: c.border,
     flexDirection: 'row',
     // Bottom-aligned so a growing pill rises while the send button stays put
     // on the baseline — the button must not drift up the screen as you type.

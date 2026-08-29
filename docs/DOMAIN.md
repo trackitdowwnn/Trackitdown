@@ -448,8 +448,20 @@ Rules that follow, and are not implementation details:
   (recovered/expired/removed), its threads become READ-ONLY: history stays
   visible to both participants, new sends are rejected server-side.
   (Approved 2026-07-15 with the chat feature.)
-- Chat carries an automatic first message reminding both parties of the
-  safety rules and that arranging meetups is discouraged.
+- ⚠️ **Chat NO LONGER carries an automatic first message** (owner decision,
+  2026-08-29). It used to open every thread with a paragraph reminding both
+  parties of the safety rules and that arranging meetups is discouraged; that
+  paragraph, and the safety banner pinned above the conversation, were both
+  removed from chat. `20260829120000_thread_without_system_message.sql` stops
+  it for NEW threads; threads created before that date keep the message they
+  already have, and nothing was deleted.
+  - Amended here as well as in SECURITY_AND_TRUST §1 because **this document
+    wins when the two disagree** (see the preamble), so leaving the old rule
+    standing here would have told the next reader the code was broken and
+    invited them to put it back.
+  - Still true: the quick-reply safety register (no reply may suggest meeting,
+    following, waiting, watching or approaching), the ban on features that
+    facilitate pursuit, and the SafetyNotice on its five non-chat surfaces.
 
 ## Reputation (v1)
 

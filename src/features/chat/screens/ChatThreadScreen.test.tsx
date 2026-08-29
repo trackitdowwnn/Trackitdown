@@ -1,7 +1,8 @@
 /**
- * WHAT:  Tests for the one branch of the conversation screen that had none —
- *        what happens when `useThreadMeta` fails rather than reporting the
- *        thread missing.
+ * WHAT:  Tests for the conversation screen's two states that most need pinning:
+ *        the metadata-error branch, and a healthy thread — where the absence of
+ *        the safety notice and the presence of the empty state are both product
+ *        decisions rather than accidents.
  * WHY:   ⚠️ THIS BRANCH DID NOT EXIST UNTIL 2026-08-28 and its absence was
  *        silent. The screen only ever handled `'missing'`, so a network failure
  *        loading the thread's metadata (`useThreadMeta.test.tsx` pins that this
@@ -105,21 +106,6 @@ describe('⚠️ when the thread’s details fail to load', () => {
     expect(mockRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('⚠️ no longer shows a safety notice — removed from THIS screen on 2026-08-29', async () => {
-    // Owner decision, with SECURITY_AND_TRUST §1 amended the same day. Asserted
-    // rather than merely deleted, because the previous test asserted the
-    // opposite as a security requirement: whoever reads this next should see
-    // that the absence is a decision, not an oversight, and should find the
-    // reasoning in §1 and in docs/design-refs/chat/GAP_ANALYSIS.md.
-    //
-    // ⚠️ The rule still holds on sighting detail, post detail, the sighting
-    // wizard, post sightings and onboarding. This is not the precedent for
-    // removing it from those.
-    const { queryByText } = await act(async () => render(<ChatThreadScreen threadId="t1" />));
-
-    expect(queryByText(SAFETY_NOTICE_TITLE)).toBeNull();
-  });
-
   it('degrades only the identity slot, leaving the conversation usable', async () => {
     // The point of the meta-error branch: the messages load on their own hook
     // and are usually fine, so a metadata failure must not replace the screen.
@@ -134,5 +120,68 @@ describe('⚠️ when the thread’s details fail to load', () => {
     const { queryByText } = await act(async () => render(<ChatThreadScreen threadId="t1" />));
 
     expect(queryByText('This conversation isn’t available')).toBeNull();
+  });
+});
+
+describe('a healthy thread', () => {
+  // ⚠️ A SEPARATE DESCRIBE, because the file's beforeEach pins meta to 'error'.
+  // The safety-notice assertion previously lived in that block, so the product
+  // decision — no notice on a WORKING thread — was never actually exercised.
+  beforeEach(() => {
+    mockUseThreadMeta.mockReturnValue({
+      status: 'ready',
+      thread: {
+        threadId: 't1',
+        postId: 'p1',
+        role: 'spotter',
+        lastMessageAt: '2026-07-15T10:00:00Z',
+        lastMessagePreview: null,
+        unreadCount: 0,
+        post: {
+          make: 'BMW',
+          model: '3 Series',
+          colour: 'Blue',
+          plate: null,
+          status: 'active',
+          coverPhotoUrl: null,
+        },
+        other: { firstName: 'Sam' },
+      },
+      retry: mockRetry,
+    });
+  });
+
+  it('⚠️ shows no safety notice — removed from THIS screen on 2026-08-29', async () => {
+    // Owner decision, with DOMAIN.md (Chat) and SECURITY_AND_TRUST §1 amended
+    // the same day. Asserted rather than merely deleted, because the test this
+    // replaces asserted the OPPOSITE as a security requirement: whoever reads
+    // it next should meet a decision, not an oversight.
+    //
+    // ⚠️ The rule still reaches five surfaces — the component on the sighting
+    // wizard, post sightings, sighting detail and post detail, and the copy on
+    // onboarding. This is not the precedent for removing it from those.
+    const { queryByText } = await act(async () => render(<ChatThreadScreen threadId="t1" />));
+
+    expect(queryByText(SAFETY_NOTICE_TITLE)).toBeNull();
+  });
+
+  it('⚠️ says so when nobody has written yet, rather than showing a blank', async () => {
+    // A thread could never be empty before the system message was removed, so
+    // this screen had no empty state. Without one the first thing a spotter
+    // sees after "Message the owner" is a blank rectangle.
+    const { getByTestId, getByText } = await act(async () =>
+      render(<ChatThreadScreen threadId="t1" />),
+    );
+
+    expect(getByTestId('thread-empty')).toBeTruthy();
+    expect(getByText('No messages yet')).toBeTruthy();
+  });
+
+  it('⚠️ asks a SPOTTER what they saw', async () => {
+    // Role-aware: an owner did not see anything, and owners reach empty threads
+    // too (the inbox lists them via previewText's null fallback).
+    const { getByText } = await act(async () => render(<ChatThreadScreen threadId="t1" />));
+
+    expect(getByText('Say what you saw, and where.')).toBeTruthy();
   });
 });

@@ -1,18 +1,22 @@
 /**
  * WHAT:  ChatThreadScreen — one conversation: ThreadHeader (one row: back, the
  *        car's photo, who you're talking to, the car and its state, and an
- *        owner-only way into their profile), the pinned collapsible
- *        SafetyNotice, the message list (grouped bubbles / system / day
- *        separators / the single "Seen" from messageGroups), the role-aware
+ *        owner-only way into their profile), the message list (grouped bubbles
+ *        / system / day separators / the single "Seen" from messageGroups, and
+ *        an empty state for a thread nobody has written in), the role-aware
  *        quick-reply row, the keyboard-aware composer — removed and replaced by
  *        the quiet ClosedThreadBanner when the post has left 'active' — and the
  *        long-press → report-message sheet.
  *
+ *        ⚠️ NO SAFETY NOTICE ON THIS SCREEN since 2026-08-29 (owner decision).
+ *        See the inline note where it used to render, and DOMAIN.md (Chat) /
+ *        SECURITY_AND_TRUST §1, both amended the same day.
+ *
  *        ⚠️ THE CHROME WAS 46% OF THE SCREEN (2026-08-29). A person header sat
  *        above a car strip — two rows of identity for one conversation — and
  *        with the keyboard up fewer than four messages were visible. The header
- *        merge, a tighter safety strip and a quick-reply row that steps aside
- *        after the first reply take it to roughly 29%. See
+ *        merge, the removed safety strip and a quick-reply row that steps aside
+ *        after the first reply take it to roughly 25%. See
  *        docs/design-refs/chat/GAP_ANALYSIS.md for the arithmetic.
  * WHY:   The screen stays a composer of tested parts: useThreadMessages owns
  *        realtime + optimistic sending, messageGroups owns ordering/Seen
@@ -68,6 +72,7 @@ import {
 import {
   BottomSheet,
   Button,
+  EmptyState,
   ErrorState,
   useToast,
   type BottomSheetRef,
@@ -91,6 +96,7 @@ import {
   buildChatList,
   chatItemKey,
   latestSeenOutboundId,
+  outgoingGroupPos,
   separatorAbove,
   type ChatListItem,
 } from '../lib/messageGroups';
@@ -255,9 +261,12 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   const renderItem = ({ item, index }: { item: ChatListItem; index: number }) => {
     if (item.type === 'day') return <DaySeparator label={item.label} />;
     if (item.type === 'outgoing') {
+      // A burst of unsent messages is a run of mine, so it groups like one —
+      // otherwise each bubble visibly reflows when the server confirms it.
+      const position = outgoingGroupPos(outgoing, item.message.localId);
       return (
         <Animated.View entering={arrivalEntering(item)}>
-          <OutgoingBubble message={item.message} onRetry={retrySend} />
+          <OutgoingBubble message={item.message} groupPos={position} onRetry={retrySend} />
         </Animated.View>
       );
     }
@@ -310,11 +319,13 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
           server's opening system message carried the same rules; the owner
           asked for both to go.
 
-          ⚠️ THE RULE STILL HOLDS EVERYWHERE ELSE. The notice remains on
-          sighting detail, post detail, the sighting wizard, post sightings and
-          onboarding — the surfaces where somebody is deciding whether to go and
-          look at a car, which is the decision the rule exists to reach. Do not
-          treat this file as the precedent for removing it from those.
+          ⚠️ THE RULE STILL HOLDS EVERYWHERE ELSE — five surfaces: the
+          component on the sighting wizard, post sightings, sighting detail and
+          post detail, and the COPY on onboarding, which renders
+          SAFETY_RULE_LINE as its own pill. Between them they cover the moment
+          somebody is deciding whether to go and look at a car, which is the
+          decision the rule exists to reach. Do not treat this file as the
+          precedent for removing it from those.
 
           The quick-reply safety register is untouched: no reply may suggest
           meeting, following, waiting, watching or approaching, and
@@ -385,9 +396,26 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
             // then get out of the way.
             ListEmptyComponent={
               <View style={styles.empty} testID="thread-empty">
-                <Text style={styles.emptyText}>
-                  No messages yet. Say what you saw, and where.
-                </Text>
+                {/* ⚠️ THE PRIMITIVE, not a hand-rolled caption. `EmptyState`'s
+                    illustration and action are already optional, so "plain" is
+                    its default rather than a reason to bypass it — and rolling
+                    it by hand had put the screen's only content in `caption`
+                    at `textSecondary`, which on THIS screen is also the day
+                    label, the time, "Seen", the system message and the delivery
+                    state. The one thing that is not metadata was rendered in
+                    the metadata style.
+
+                    ⚠️ ROLE-AWARE, because an owner did not see anything. Owners
+                    reach empty threads too — the inbox lists them via
+                    previewText's "No messages yet" fallback. */}
+                <EmptyState
+                  title="No messages yet"
+                  body={
+                    meta.thread?.role === 'owner'
+                      ? 'Ask them what they saw, and where.'
+                      : 'Say what you saw, and where.'
+                  }
+                />
               </View>
             }
             testID="thread-list"
@@ -492,19 +520,33 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.background,
   },
   // Person + car as one surface, closed by one hairline.
+  //
+  // ⚠️ borderStrong, NOT border. `surface` on `background` separates by fill at
+  // about 1.07:1 light and 1.10:1 dark, so the edge IS the boundary — and at
+  // `border` that edge is only 1.27:1, under the 3:1 graphic floor. This is the
+  // same defect this pass fixed on incoming bubbles and on the safety strip,
+  // and it became the whole story when the strip was removed: its bottom
+  // hairline went with it, leaving one weak stroke to divide chrome from
+  // conversation on the entire screen. Precedent: DESIGN_SYSTEM escalates
+  // floating map chrome to borderStrong for exactly this reason.
   headerBlock: {
     backgroundColor: c.surface,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: c.border,
+    borderBottomColor: c.borderStrong,
   },
   body: {
     flex: 1,
   },
-  // sm, not md: the 8pt the safety strip needed back came from here, where
-  // nothing depends on it — the first and last bubbles keep air, and a message
-  // list is not improved by 4 more points of nothing at each end.
+  // ⚠️ lg (16), and the loan it was taken for no longer exists. This was cut to
+  // `sm` to fund 8pt for the safety strip; the strip has since been removed, so
+  // the creditor is gone. It is repaid with interest rather than merely
+  // restored, because at 8 the arithmetic was backwards: `blockPaddingTop` puts
+  // 12pt BETWEEN TWO TURNS of conversation, so content-to-chrome was tighter
+  // than content-to-content. 16 also matches what the day separator and system
+  // message claim for themselves, making the ladder 4 (within a run) < 12
+  // (between runs) < 16 (separators, and the list's own edges).
   list: {
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.lg,
   },
   // ⚠️ NO PADDING OF ITS OWN — EmptyState/ErrorState already pad by spacing.xl,
   // and this added a second 24 per side. Same fix as both inbox faces.
@@ -544,16 +586,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.body,
     color: c.textSecondary,
   },
-  /** A thread nobody has written in yet — see the ListEmptyComponent note. */
+  /** A thread nobody has written in yet — see the ListEmptyComponent note.
+   *  No gutter of its own: EmptyState pads itself by spacing.xl, and the two
+   *  other empty faces on this screen (both ErrorState) sit in `centered`. */
   empty: {
-    paddingHorizontal: spacing.xxl,
-    paddingVertical: spacing.xxl,
-    alignItems: 'center',
-  },
-  emptyText: {
-    ...typography.caption,
-    color: c.textSecondary,
-    textAlign: 'center',
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   /** The message being reported, quoted back so you can see you got the right
    *  one. Full-strength ink: it is the subject of the decision, not chrome. */

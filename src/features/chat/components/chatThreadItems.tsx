@@ -147,15 +147,32 @@ export function MessageBubble({
 
 export interface OutgoingBubbleProps {
   message: OutgoingMessage;
+  /** Position within the outgoing run — all mine, all newest, so it is just
+   *  the index within `outgoing`. Keeps a burst of sends grouped the same way
+   *  it will be once the server confirms it. */
+  groupPos?: MessageGroupPos;
   onRetry: (localId: string) => void;
 }
 
-export function OutgoingBubble({ message, onRetry }: OutgoingBubbleProps) {
+export function OutgoingBubble({ message, groupPos = 'single', onRetry }: OutgoingBubbleProps) {
   const styles = useThemedStyles(makeStyles);
   const failed = message.state === 'failed';
   return (
-    // Always the newest thing in the thread, so it always starts a run.
-    <View style={[styles.messageBlock, styles.blockMine, { paddingTop: spacing.md }]}>
+    // ⚠️ GROUPED LIKE ANY OTHER RUN OF MINE. This used to hard-code 12pt and
+    // skip groupedCorners entirely, on the reasoning that it is "always the
+    // newest thing". True, but a BURST of sends is a run: three pending bubbles
+    // sat 12pt apart with full corners, then each confirmation swapped in a
+    // MessageBubble at 4pt with tightened corners — the spacing halved and the
+    // corners snapped, once per message. Visibly reflowing on confirmation is
+    // the same class of lie as animating the swap, which this file already
+    // refuses to do.
+    <View
+      style={[
+        styles.messageBlock,
+        styles.blockMine,
+        { paddingTop: blockPaddingTop(groupPos, false) },
+      ]}
+    >
       <Pressable
         disabled={!failed}
         onPress={() => onRetry(message.localId)}
@@ -163,7 +180,12 @@ export function OutgoingBubble({ message, onRetry }: OutgoingBubbleProps) {
         accessibilityLabel={
           failed ? `Not sent: ${message.content}. Tap to retry.` : `Sending: ${message.content}`
         }
-        style={[styles.bubble, styles.bubbleMine, !failed && styles.bubblePending]}
+        style={[
+          styles.bubble,
+          styles.bubbleMine,
+          groupedCorners(true, groupPos),
+          !failed && styles.bubblePending,
+        ]}
         testID={`outgoing-${message.localId}`}
       >
         <Text style={styles.textMine}>{message.content}</Text>
@@ -251,10 +273,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
    * the other was a stain. It is the same defect the inbox pass caught on the
    * notification tile.
    *
-   * The hairline is load-bearing rather than decorative, and dark mode is why:
-   * `surface` #1E1E1E on `background` #141414 is 1.1:1, so without an edge the
-   * bubble has no boundary there either. Flat + hairline is the house card
-   * recipe; a shadow would mean it floats, and it does not.
+   * The hairline is load-bearing rather than decorative, and it is needed in
+   * BOTH schemes — most in LIGHT, in fact: `surface` on `background` separates
+   * by fill at only ~1.07:1 light and ~1.10:1 dark, so neither theme gives the
+   * bubble a boundary without an edge. (This comment said "dark mode is why"
+   * until a review measured it; the attribution was backwards.) Flat + hairline
+   * is the house card recipe; a shadow would mean it floats, and it does not.
    */
   bubbleTheirs: {
     backgroundColor: c.surface,

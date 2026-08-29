@@ -17,13 +17,19 @@ iPhone 14 Pro, 852pt, insets 59/34, open thread, notice collapsed:
 | top inset | 59 | 59 |
 | header row | 72 | **60.5** (one row) |
 | car strip | 64 | — (merged) |
-| SafetyNotice | 44 | 44 (see #12) |
+| SafetyNotice | 44 | **0** — removed entirely, see #19 |
 | QuickReplyRow | 60 | **0** after the first reply (52 before it) |
 | composer | 60 | 60 |
 | bottom inset | 34 | 34 |
-| **chrome** | **393.5 (46%)** | **257.5 (30%)** |
-| conversation | 458 | **594.5 (+30%)** |
-| **with the keyboard up** | **216 ≈ 3.8 bubbles** | **~292 ≈ 5 turns (+35%)** |
+| **chrome** | **393.5 (46%)** | **213.5 (25%)** |
+| conversation | 458 | **638.5 (+39%)** |
+| **with the keyboard up** | **216 ≈ 3.8 bubbles** | **~336 ≈ 6 turns (+56%)** |
+
+⚠️ **This table was wrong for an hour and said 30%.** #4 (the safety strip
+shrink) was reverted and then #19 removed the strip altogether, and the totals
+above were not recomputed either time — in a file whose own closing line reads
+"a wrong number in a safety file is worse than no number, because the next
+person reads it instead of measuring". Recomputed 2026-08-29 after review.
 
 No animation is required to obtain any of that.
 
@@ -73,10 +79,19 @@ than either choice on its own. The test that asserted the notice's presence now
 asserts its absence, with the reasoning, so the next reader sees a decision
 rather than an oversight.
 
-⚠️ **Scope, deliberately narrow.** The notice remains on sighting detail, post
-detail, the sighting wizard, post sightings and onboarding — the surfaces where
-someone is deciding whether to go and look at a car, which is the decision the
-rule exists to reach. The quick-reply safety register (no meeting, following,
+⚠️ **Scope, deliberately narrow.** The safety rule still reaches five surfaces:
+the COMPONENT renders on four (the sighting wizard, post sightings, sighting
+detail, post detail) and onboarding carries the COPY — `onboardingSlides.ts`
+imports `SAFETY_RULE_LINE` and `OnboardingSlide.tsx` renders it as a
+warning-bordered pill, 999 clause deliberately omitted at that stage. Between
+them they cover the moment someone is deciding whether to go and look at a car.
+
+⚠️ **I got that wrong once, in the safety doc, while reducing safety coverage.**
+Auditing with `grep "<SafetyNotice"` I concluded onboarding was not a surface
+and wrote that into §1 — deleting a true statement about coverage in the same
+change that removed a surface. The copy travels through a prop, so the component
+name never appears at the render site. Both reviewers caught it independently.
+The lesson is in §1 now: that grep is not the audit. The quick-reply safety register (no meeting, following,
 waiting, watching, approaching) and its lexicon test are untouched, as is the
 ban on features that facilitate pursuit.
 
