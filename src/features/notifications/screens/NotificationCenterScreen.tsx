@@ -25,14 +25,7 @@ import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 import { useEntranceGate } from '@/shared/hooks';
 import { groupByDay } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
-import {
-  motion,
-  sizes,
-  spacing,
-  typography,
-  useThemedStyles,
-  type Palette,
-} from '@/shared/theme';
+import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import {
   DayHeader,
   DayHeaderSkeleton,
@@ -99,10 +92,6 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
   if (status === 'loading') {
     return (
       <View style={styles.container} testID="center-skeleton" accessibilityLabel="Loading notifications">
-        {/* ⚠️ THE MARK-ALL ROW'S HEIGHT IS RESERVED HERE TOO. The real list
-            always renders that 52pt row; a skeleton without it would promise
-            the first notification 52pt higher than it lands. */}
-        <View style={styles.headerRow} />
         {/* A day header leads the real list, so one leads the skeleton — a bar
             rather than the word, because the newest notification usually is not
             from today. */}
@@ -139,26 +128,20 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
 
   return (
     <View style={styles.container}>
-      {/* The one header affordance. The LABEL is rendered only while it can DO
-          something — a permanent disabled "mark all" is furniture.
-          ⚠️ THE ROW ITSELF IS ALWAYS RENDERED, though, and that is the point:
-          when the whole row was conditional, marking the last notification read
-          collapsed 52pt and yanked the list up under the reader's thumb — the
-          same class of jump the skeletons exist to prevent, fired by a tap
-          instead of by loading. The row keeps its height; only its contents
-          come and go. */}
-      <View style={styles.headerRow}>
-        {hasUnread ? (
-          <Pressable
-            onPress={markAllRead}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.markAll, pressed && styles.markAllPressed]}
-            testID="mark-all-read"
-          >
-            <Text style={styles.markAllLabel}>Mark all as read</Text>
-          </Pressable>
-        ) : null}
-      </View>
+      {/* ⚠️ NO HEADER BAND. "Mark all as read" rides on the first day header's
+          own line (below) instead of owning a row.
+
+          It had a row of its own, rendered only while there was something to
+          mark — so clearing the last unread collapsed 52pt and yanked the list
+          under the reader's thumb. Reserving that height permanently fixed the
+          jump and replaced it with something worse: 52pt of nothing at the top
+          of the list on every single visit, since most of the time there IS
+          nothing unread. A jump happens once, on a tap you chose; dead space
+          is there every time you open the tab.
+
+          On the header's line, the action needs no band, and the header is
+          always present — so nothing moves whether the action is there or
+          not. */}
       <FlashList
         data={items}
         keyExtractor={(item) => item.key}
@@ -174,7 +157,25 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
             }
           >
             {item.type === 'header' ? (
-              <DayHeader label={item.label} />
+              <DayHeader
+                label={item.label}
+                // Only the first header carries it, and only while there is
+                // something to mark. hitSlop, not a taller box: the touch
+                // target reaches 44 without the header growing.
+                trailing={
+                  index === 0 && hasUnread ? (
+                    <Pressable
+                      onPress={markAllRead}
+                      accessibilityRole="button"
+                      hitSlop={spacing.md}
+                      style={({ pressed }) => pressed && styles.markAllPressed}
+                      testID="mark-all-read"
+                    >
+                      <Text style={styles.markAllLabel}>Mark all as read</Text>
+                    </Pressable>
+                  ) : undefined
+                }
+              />
             ) : (
               <NotificationRowItem row={item.row} onPress={onRowPress} />
             )}
@@ -206,26 +207,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  // Same vertical rhythm as the Messages face's chip row (44pt control +
-  // spacing.sm), so switching tabs doesn't shift where the list starts.
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    // ⚠️ touchTarget PLUS the padding, because Yoga measures minHeight against
-    // the BORDER box — padding counts toward it. At a bare `touchTarget` this
-    // row was 44 when empty and 52 when it held the 44pt pressable, so the fix
-    // for the jump still jumped, by its own 8pt of padding. 52 is also exactly
-    // the Messages face's chip row (44pt control + spacing.sm), which is what
-    // keeps the two faces' lists starting at the same y.
-    minHeight: sizes.touchTarget + spacing.sm,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.sm,
-  },
-  markAll: {
-    minHeight: sizes.touchTarget,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
   },
   markAllPressed: {
     opacity: 0.6,

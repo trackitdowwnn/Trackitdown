@@ -20,7 +20,7 @@ LINKS: ./REFERENCE_SPEC.md; src/app/(tabs)/inbox.tsx;
 | 8 | ⚠️ Read rows were 20pt wider than unread ones | The dot was a conditional row child, so its 8pt + 12pt gap appeared and vanished | A straight column | `UnreadBadge` always occupies `badgePill` (16) | S | Medium | ✅ |
 | 9 | Skeletons promised the wrong layout | 48pt circle vs a 64pt tile; 2 bars vs 3 lines; `gap: sm` vs `xs` | The row's own geometry | `ThreadRowSkeleton` / `NotificationRowSkeleton` share their row's `makeStyles` | M | High | ✅ |
 | 10 | Empty and error states were padded to 48/side | Screen `centered` added 24 on top of the primitives' 24 | One gutter | Deleted the screens' padding (not `gutter="none"` — `ErrorState` has no such prop) | S | Medium | ✅ |
-| 11 | The mark-all row jumped the list 52pt | Rendered only while `hasUnread` | Stable chrome | Row always renders; only its contents are conditional | S | Medium | ✅ |
+| 11 | The mark-all row jumped the list 52pt | Rendered only while `hasUnread` | Stable chrome | ⚠️ **Reverted — see #27.** The action moved onto the first day header's line; there is no row | S | Medium | ✅ |
 | 12 | The conversation header had two left edges | Header 12, `PostContextStrip` 24, inside one surface | One gutter | 24 throughout, with the chevron optically inset | S | Medium | ✅ |
 | 13 | A metadata failure rendered a bare header | Only `'missing'` was branched; `'error'` fell through | Every failure is recoverable | A `headerFallback` with "Conversation" + "Try again" | S | High | ✅ |
 | 14 | Android's composer sat under the keyboard | `behavior={undefined}`, and SDK 57 edge-to-edge no longer resizes the window | The composer stays visible | `useAndroidKeyboardHeight` minus the safe-area inset | S | **High** | ✅ |
@@ -87,6 +87,23 @@ who reported on a post necessarily saw it while it was public.
 no car to show, and any post the caller has no standing on returns null. Both
 shapes are the same 64pt box, so the list rhythm never changes — only what is
 inside it.
+
+## Reported by the owner, after using it (2026-08-29)
+
+| # | Finding | Fix |
+|---|---|---|
+| 27 | **"Unwanted padding on the notifications page."** Correct, and it was #11's fix: reserving the mark-all row's height stopped the jump by making 52pt of empty band permanent. Above the first notification sat 12 (container) + **52 (empty)** + 20 (day header) + 16 (row) = 100pt of chrome, and most of the time there is nothing unread, so most of the time that 52 was nothing at all | The action moved onto the first day header's line via a new `DayHeader.trailing` slot, with `hitSlop` reaching the 44pt target so the header does not grow. No band, and nothing to jump: the header is always there whether or not the action is |
+
+⚠️ **A jump you cause once is cheaper than space you pay for every time.** #11
+traded a one-off shift, on a tap the reader chose to make, for dead space on
+every single visit to the tab. That was the wrong way round, and it took using
+the app to see it — the gap analysis had recorded it as fixed.
+
+⚠️ **The two faces no longer start at the same y**, which #3 had deliberately
+aligned. Messages keeps its 52pt filter-chip row because those chips are
+content; Notifications has no equivalent and should not grow a band to match
+one. Parity between the faces was always in service of "one tab, one place" —
+holding it with an empty box served the letter of that and not the point.
 
 ## Consequences accepted, not fixed
 

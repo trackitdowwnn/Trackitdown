@@ -33,6 +33,7 @@
  *        docs/DESIGN_SYSTEM.md (the carve-out).
  */
 
+import type { ReactNode } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
@@ -44,20 +45,28 @@ export interface DayHeaderProps {
   /** The calendar word, from `groupByDay`. */
   label: string;
   gutter?: DayHeaderGutter;
+  /**
+   * Optional action on the header's own line, right-aligned.
+   *
+   * ⚠️ IT MUST NOT BE TALLER THAN THE LABEL. The whole reason this slot exists
+   * is to carry an action WITHOUT giving it a band of its own, so a control
+   * that grows the header defeats it — use a text button with `hitSlop` to
+   * reach the 44pt touch target rather than a 44pt-tall box.
+   */
+  trailing?: ReactNode;
   testID?: string;
 }
 
-export function DayHeader({ label, gutter = 'default', testID }: DayHeaderProps) {
+export function DayHeader({ label, gutter = 'default', trailing, testID }: DayHeaderProps) {
   const styles = useThemedStyles(makeStyles);
 
   return (
-    <Text
-      style={[styles.label, gutter === 'none' && styles.flush]}
-      accessibilityRole="header"
-      testID={testID}
-    >
-      {label}
-    </Text>
+    <View style={[styles.row, gutter === 'none' && styles.flush]} testID={testID}>
+      <Text style={styles.label} accessibilityRole="header">
+        {label}
+      </Text>
+      {trailing}
+    </View>
   );
 }
 
@@ -93,14 +102,23 @@ export function DayHeaderSkeleton({
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    label: {
-      ...typography.label,
-      color: c.textSecondary,
+    // The box: the padding lives here rather than on the Text so an action can
+    // share the line without a band of its own.
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
       paddingHorizontal: spacing.xl,
       // 16 above and 4 below: the label belongs to the group BENEATH it, and an
       // even split would leave it floating between two days.
       paddingTop: spacing.lg,
       paddingBottom: spacing.xs,
+    },
+    label: {
+      ...typography.label,
+      color: c.textSecondary,
+      flexShrink: 1,
     },
     skeletonBox: {
       paddingHorizontal: spacing.xl,

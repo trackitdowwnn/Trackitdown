@@ -16,6 +16,7 @@
  */
 
 import { render } from '@testing-library/react-native';
+import { Text } from 'react-native';
 
 import { DayHeader, DayHeaderSkeleton } from './DayHeader';
 
@@ -39,6 +40,31 @@ describe('DayHeader', () => {
     const flat = (style: unknown) => StyleSheetFlatten(style);
     expect(flat(padded.getByTestId('h').props.style).paddingHorizontal).toBe(24);
     expect(flat(flush.getByTestId('h').props.style).paddingHorizontal).toBe(0);
+  });
+});
+
+describe('the trailing slot', () => {
+  it('puts an action on the header’s own line', async () => {
+    const { getByText } = await render(
+      <DayHeader label="Today" trailing={<Text>Mark all as read</Text>} />,
+    );
+
+    expect(getByText('Today')).toBeTruthy();
+    expect(getByText('Mark all as read')).toBeTruthy();
+  });
+
+  it('⚠️ does not change the header’s box when the action is absent', async () => {
+    // The slot exists so an action needs no band of its own. If adding or
+    // removing it changed the header's padding, the list would still shift —
+    // which is the whole thing this replaced.
+    const withAction = await render(
+      <DayHeader label="Today" trailing={<Text>Act</Text>} testID="h" />,
+    );
+    const without = await render(<DayHeader label="Today" testID="h" />);
+
+    expect(StyleSheetFlatten(withAction.getByTestId('h').props.style)).toEqual(
+      StyleSheetFlatten(without.getByTestId('h').props.style),
+    );
   });
 });
 
