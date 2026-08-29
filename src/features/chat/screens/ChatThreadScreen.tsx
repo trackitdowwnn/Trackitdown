@@ -69,7 +69,6 @@ import {
   BottomSheet,
   Button,
   ErrorState,
-  SafetyNotice,
   useToast,
   type BottomSheetRef,
 } from '@/shared/ui';
@@ -305,20 +304,21 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
         />
       </View>
 
-      {/* SECURITY_AND_TRUST §1: the SafetyNotice appears on every chat thread —
-          pinned here, not only as the system first message (which scrolls out
-          of a long, paginated thread). UNCONDITIONAL: meta comes from
-          get_inbox while messages load separately, and a transient meta
-          failure must never produce a conversation without the notice
-          (security review M1). It needs nothing from meta anyway.
+      {/* ⚠️ NO SAFETY NOTICE ON THIS SCREEN as of 2026-08-29 — owner decision,
+          and SECURITY_AND_TRUST §1 was amended the same day rather than left to
+          contradict the code. It had been pinned here unconditionally, and the
+          server's opening system message carried the same rules; the owner
+          asked for both to go.
 
-          COLLAPSIBLE here and nowhere else: this is the one surface where the
-          notice sits above LIVE content for a whole session rather than being
-          read once in a flow, and at full height it cost ~100dp of every
-          thread — with the keyboard up, most of the conversation. It is still
-          pinned, still undismissable, and still reads in full to a screen
-          reader; only the elaboration folds. */}
-      <SafetyNotice collapsible />
+          ⚠️ THE RULE STILL HOLDS EVERYWHERE ELSE. The notice remains on
+          sighting detail, post detail, the sighting wizard, post sightings and
+          onboarding — the surfaces where somebody is deciding whether to go and
+          look at a car, which is the decision the rule exists to reach. Do not
+          treat this file as the precedent for removing it from those.
+
+          The quick-reply safety register is untouched: no reply may suggest
+          meeting, following, waiting, watching or approaching, and
+          quickReplies.test.ts still enforces that lexicon. */}
 
       {meta.status === 'missing' ? (
         <View style={styles.centered}>
@@ -373,6 +373,23 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
             onStartReached={hasOlder ? () => void loadOlder() : undefined}
             onStartReachedThreshold={0.4}
             contentContainerStyle={styles.list}
+            // ⚠️ A THREAD CAN NOW BE EMPTY, and before 2026-08-29 it could not:
+            // the server opened every one with a system safety message, so this
+            // screen never needed an empty state and did not have one. With
+            // that message gone, the first thing a spotter saw after tapping
+            // "Message the owner" would have been a blank rectangle.
+            //
+            // Deliberately plain — no illustration, no encouragement. The
+            // person is one tap from writing to a stranger about their stolen
+            // car; the screen's job here is to say the floor is not broken and
+            // then get out of the way.
+            ListEmptyComponent={
+              <View style={styles.empty} testID="thread-empty">
+                <Text style={styles.emptyText}>
+                  No messages yet. Say what you saw, and where.
+                </Text>
+              </View>
+            }
             testID="thread-list"
           />
 
@@ -526,6 +543,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   sheetText: {
     ...typography.body,
     color: c.textSecondary,
+  },
+  /** A thread nobody has written in yet — see the ListEmptyComponent note. */
+  empty: {
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xxl,
+    alignItems: 'center',
+  },
+  emptyText: {
+    ...typography.caption,
+    color: c.textSecondary,
+    textAlign: 'center',
   },
   /** The message being reported, quoted back so you can see you got the right
    *  one. Full-strength ink: it is the subject of the decision, not chrome. */

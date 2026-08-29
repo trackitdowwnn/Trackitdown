@@ -105,14 +105,27 @@ describe('⚠️ when the thread’s details fail to load', () => {
     expect(mockRetry).toHaveBeenCalledTimes(1);
   });
 
-  it('⚠️ keeps the safety notice, which is unconditional by security rule M1', async () => {
-    // The notice must appear on every thread regardless of what else failed —
-    // it needs nothing from the metadata anyway. This is why the branch
-    // degrades only the identity slot rather than replacing the screen.
-    const { getByText } = await act(async () => render(<ChatThreadScreen threadId="t1" />));
+  it('⚠️ no longer shows a safety notice — removed from THIS screen on 2026-08-29', async () => {
+    // Owner decision, with SECURITY_AND_TRUST §1 amended the same day. Asserted
+    // rather than merely deleted, because the previous test asserted the
+    // opposite as a security requirement: whoever reads this next should see
+    // that the absence is a decision, not an oversight, and should find the
+    // reasoning in §1 and in docs/design-refs/chat/GAP_ANALYSIS.md.
+    //
+    // ⚠️ The rule still holds on sighting detail, post detail, the sighting
+    // wizard, post sightings and onboarding. This is not the precedent for
+    // removing it from those.
+    const { queryByText } = await act(async () => render(<ChatThreadScreen threadId="t1" />));
 
-    // Collapsed, so the title is what shows; the elaboration folds.
-    expect(getByText(SAFETY_NOTICE_TITLE)).toBeTruthy();
+    expect(queryByText(SAFETY_NOTICE_TITLE)).toBeNull();
+  });
+
+  it('degrades only the identity slot, leaving the conversation usable', async () => {
+    // The point of the meta-error branch: the messages load on their own hook
+    // and are usually fine, so a metadata failure must not replace the screen.
+    const { getByTestId } = await act(async () => render(<ChatThreadScreen threadId="t1" />));
+
+    expect(getByTestId('thread-list')).toBeTruthy();
   });
 
   it('does not claim the conversation is unavailable — that is a different state', async () => {

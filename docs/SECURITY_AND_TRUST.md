@@ -7,18 +7,27 @@ commenting standards.
 
 ## 1. User safety — "report, don't approach"
 
-- Every sighting flow, alert notification, and chat thread displays the
-  SafetyNotice component: **report from a distance; never approach the
-  vehicle, follow it, or confront anyone; if a crime is in progress call
-  999.**
-  - A chat thread uses the `collapsible` form (2026-08-05): pinned as one
-    line, expanding on tap. This satisfies the rule rather than bending it —
-    it is not dismissible, it keeps `role="alert"`, the visible half is the
-    actionable instruction ("report, don't approach"), and the accessibility
-    label is the full message in both states, so nothing is ever hidden from
-    a screen reader. Only the elaboration folds, and only where the notice
-    sits above a live conversation for the whole session. Pinned by
-    `src/shared/ui/SafetyNotice.test.tsx`.
+- Every sighting flow and alert notification displays the SafetyNotice
+  component: **report from a distance; never approach the vehicle, follow it,
+  or confront anyone; if a crime is in progress call 999.** Its surfaces are
+  sighting detail, post detail, the sighting wizard, post sightings, and
+  onboarding — everywhere someone is deciding whether to go and look at a car,
+  which is the decision this rule exists to reach.
+  - ⚠️ **THE CHAT THREAD NO LONGER SHOWS IT (owner decision, 2026-08-29),** and
+    the automatic "Safety first…" system message that opened every conversation
+    was removed with it (`20260829120000_thread_without_system_message.sql`).
+    Threads created before that date keep the message they already have;
+    nothing was deleted.
+  - This paragraph previously required the notice on a chat thread and
+    described the `collapsible` form added on 2026-08-05 to satisfy it. That
+    requirement is withdrawn, not quietly dropped: it is recorded here so the
+    code and the doc agree, and so the next reader can see it was decided
+    rather than lost. The `collapsible` variant has no consumers as a result.
+  - What did NOT change: the quick-reply safety register (no reply may suggest
+    meeting, following, waiting, watching or approaching) and its lexicon test;
+    the ban on features that facilitate pursuit, below; and the notice on all
+    five remaining surfaces. Pinned by `src/shared/ui/SafetyNotice.test.tsx`
+    and `src/features/chat/lib/quickReplies.test.ts`.
 - We never build features that facilitate pursuit: no live navigation
   toward a sighted car, no "car is moving" live tracking, no directions
   from spotter to vehicle.

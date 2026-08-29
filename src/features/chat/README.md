@@ -109,8 +109,11 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    permanent chrome — 52pt spent forever on four canned phrases. The file's
    own charter names the moment they are for ("first-reply-first"), and once
    you have spoken you have found your words. ⚠️ The predicate checks
-   `kind === 'user'`, because every thread opens with a SYSTEM safety message
-   and counting it would hide the row for ever. Picking one FILLS the draft,
+   `kind === 'user'`, because threads opened before 2026-08-29 START with a
+   SYSTEM safety message and counting it would hide the row for ever on every
+   one of them. (New threads open empty, so the check protects history rather
+   than the present — which is exactly when a check is easiest to delete by
+   mistake.) Picking one FILLS the draft,
    editable — never auto-sent. Static curated sets; the // SAFETY register (no
    meeting/following/waiting/watching/approaching, however softly) is pinned by
    a lexicon test.
@@ -190,13 +193,13 @@ avatar + reputation (existing boundary; never surname/email).
 
 ## Rules applied
 
-DOMAIN Chat (sighting-gated, system safety first message, no cold DMs,
-read-only after post close) · SECURITY_AND_TRUST **§1** (the pinned
-collapsible SafetyNotice on every thread — pinned, undismissable,
-`role="alert"`, the visible half is the actionable instruction, the label is
-the full notice in both states; a 2026-08-29 attempt to shrink its band to
-36pt was reverted when a review showed the compensating hitSlop was dead —
-the sibling drawn after it claims the touch) · §6 (deny-by-default RLS,
+DOMAIN Chat (sighting-gated, no cold DMs, read-only after post close) ·
+SECURITY_AND_TRUST **§1** — ⚠️ **amended 2026-08-29**: the SafetyNotice and
+the automatic "Safety first…" system message were both removed from chat by
+owner decision, and §1 was rewritten to match rather than left contradicting
+the code. Threads opened before that date keep their stored system message;
+nothing was deleted. The notice remains on the five non-chat surfaces, and
+the quick-reply safety register is untouched · §6 (deny-by-default RLS,
 absence tests) + §3 (no content in push/logs).
 
 ## Out of scope

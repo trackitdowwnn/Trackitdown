@@ -116,13 +116,10 @@ end $$;
 -- -----------------------------------------------------------------------------
 do $$
 declare
-  v_sys constant text :=
-    'Safety first: report from a distance and never arrange to meet or attempt a recovery yourselves — recovery is for the owner and police. If a crime is in progress, call 999.';
   v_doc jsonb;
   v_tid uuid;
   v_t   public.threads%rowtype;
   v_n   int;
-  v_m   public.messages%rowtype;
 begin
   perform set_config(
     'request.jwt.claims',
@@ -142,30 +139,70 @@ begin
   if v_t.spotter_id <> '22222222-2222-2222-2222-222222222222' then
     raise exception 'CHECK 1 FAILED: spotter_id wrong: %', v_t.spotter_id;
   end if;
-  if v_t.last_message_preview <> left(v_sys, 140) then
-    raise exception 'CHECK 1 FAILED: preview not the 140-char truncation of the safety line: %', v_t.last_message_preview;
+  -- ⚠️ NULL PREVIEW, NOT THE SAFETY LINE (2026-08-29). open_thread no longer
+  -- writes the system message, so there is nothing to seed a preview from until
+  -- somebody speaks. The client renders "No messages yet" for a NULL.
+  if v_t.last_message_preview is not null then
+    raise exception 'CHECK 1 FAILED: a new thread must have NO preview, got %', v_t.last_message_preview;
+  end if;
+  -- last_message_at still gets now(), so a fresh thread sorts to the top of both
+  -- inboxes rather than falling to the bottom as a NULL.
+  if v_t.last_message_at is null then
+    raise exception 'CHECK 1 FAILED: last_message_at must still be set on creation';
   end if;
 
+  -- ⚠️ A NEW THREAD IS EMPTY. It used to carry exactly one system message; the
+  -- owner removed it on 2026-08-29 (SECURITY_AND_TRUST §1 amended the same
+  -- day). Threads created BEFORE that keep theirs — nothing was deleted — which
+  -- CHECK 1b covers.
   select count(*) into v_n from public.messages where thread_id = v_tid;
-  if v_n <> 1 then
-    raise exception 'CHECK 1 FAILED: expected exactly 1 (system) message, got %', v_n;
+  if v_n <> 0 then
+    raise exception 'CHECK 1 FAILED: a new thread must open EMPTY, got % message(s)', v_n;
   end if;
-  select * into v_m from public.messages where thread_id = v_tid;
-  if v_m.kind <> 'system' or v_m.sender_id is not null then
-    raise exception 'CHECK 1 FAILED: first message must be kind=system with NULL sender (kind=%, sender=%)', v_m.kind, v_m.sender_id;
+
+  raise notice 'CHECK 1 passed: spotter open -> pinned thread, empty, no preview';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 1b — the removal was not retroactive. A thread that already carries the
+-- old system message still has it, and it still reads as a system message with
+-- a NULL sender. Nothing in the 2026-08-29 change deletes history.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_sys constant text :=
+    'Safety first: report from a distance and never arrange to meet or attempt a recovery yourselves — recovery is for the owner and police. If a crime is in progress, call 999.';
+  v_tid uuid;
+  v_m   public.messages%rowtype;
+begin
+  -- The pre-seeded thread on recovered post 0017 (see SETUP) models exactly
+  -- this: created while the post was active, back when open_thread wrote it.
+  select id into v_tid from public.threads
+  where post_id = 'a1a1a1a1-0000-0000-0000-000000000017';
+
+  select * into v_m from public.messages
+  where thread_id = v_tid and kind = 'system';
+
+  if v_m.id is null then
+    raise exception 'CHECK 1b FAILED: an existing thread lost its system message — the change must not be retroactive';
+  end if;
+  if v_m.sender_id is not null then
+    raise exception 'CHECK 1b FAILED: a system message must have a NULL sender, got %', v_m.sender_id;
   end if;
   if v_m.content <> v_sys then
-    raise exception 'CHECK 1 FAILED: system message text drifted from the safety line: %', v_m.content;
+    raise exception 'CHECK 1b FAILED: the stored safety line drifted: %', v_m.content;
   end if;
 
-  raise notice 'CHECK 1 passed: spotter open -> pinned thread + exactly one exact system safety message';
+  raise notice 'CHECK 1b passed: existing threads keep the system message they were created with';
 end $$;
 
 
 -- -----------------------------------------------------------------------------
 -- CHECK 2 — idempotent open. Re-opening the SAME (0001, Beth) pair — spotter
 -- (implicit AND explicit self id) and OWNER naming the spotter — returns the
--- SAME thread with created=false, and the system message count stays at ONE.
+-- SAME thread with created=false, and the thread stays EMPTY (no open ever
+-- writes a message since 2026-08-29).
 -- -----------------------------------------------------------------------------
 do $$
 declare
@@ -202,13 +239,16 @@ begin
     raise exception 'CHECK 2 FAILED (owner open): expected same id + created=false, got %', v_doc;
   end if;
 
+  -- ⚠️ STILL ZERO, and this is the assertion that would catch a re-open
+  -- accidentally writing a message: the count must not CHANGE, and since
+  -- 2026-08-29 the correct count for a thread opened in this suite is 0.
   select count(*) into v_n from public.messages
-  where thread_id = v_tid and kind = 'system';
-  if v_n <> 1 then
-    raise exception 'CHECK 2 FAILED: duplicate opens multiplied the system message (count=%)', v_n;
+  where thread_id = v_tid;
+  if v_n <> 0 then
+    raise exception 'CHECK 2 FAILED: a duplicate open wrote message(s) into the thread (count=%)', v_n;
   end if;
 
-  raise notice 'CHECK 2 passed: duplicate opens return the same thread, created=false, one system message';
+  raise notice 'CHECK 2 passed: duplicate opens return the same thread, created=false, still empty';
 end $$;
 
 
@@ -361,7 +401,7 @@ end $$;
 -- CHECK 5 — open_thread_for_sighting: the OWNER's entry point. Alex holds only
 -- Beth's SIGHTING ids (never her uid — §1). (1) He CREATES the ACTIVE post
 -- 0006's thread with a sighting id: created=true, spotter resolved server-side,
--- one system message. (2) Idempotent within the path (re-call -> created=false).
+-- and the thread opens empty. (2) Idempotent within the path (-> created=false).
 -- (3) Cross-path idempotence: Beth's open_thread on 0006, and Alex's
 -- for_sighting on 0001's ALREADY-OPEN thread, both return the existing ids
 -- created=false. (4) History return on a CLOSED post: for_sighting/open_thread
@@ -405,9 +445,11 @@ begin
      or v_t.spotter_id <> '22222222-2222-2222-2222-222222222222' then
     raise exception 'CHECK 5 FAILED: resolved pair wrong (post=%, owner=%, spotter=%)', v_t.post_id, v_t.owner_id, v_t.spotter_id;
   end if;
+  -- Zero since 2026-08-29: open_thread_for_sighting delegates to open_thread,
+  -- which no longer writes the system message.
   select count(*) into v_n from public.messages where thread_id = v_tid;
-  if v_n <> 1 then
-    raise exception 'CHECK 5 FAILED: expected exactly 1 system message on the new thread, got %', v_n;
+  if v_n <> 0 then
+    raise exception 'CHECK 5 FAILED: expected an EMPTY new thread, got % message(s)', v_n;
   end if;
 
   -- (2) Idempotent within the path.

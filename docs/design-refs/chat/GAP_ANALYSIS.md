@@ -59,6 +59,38 @@ No animation is required to obtain any of that.
 A wrong number in a safety file is worse than no number, because the next
 person reads it instead of measuring.
 
+## Owner decision, after using it (2026-08-29)
+
+| # | Change | What it touched |
+|---|---|---|
+| 19 | **The SafetyNotice is gone from the chat thread**, and the automatic "Safety first…" system message with it | `ChatThreadScreen.tsx`; `20260829120000_thread_without_system_message.sql` |
+
+⚠️ **This relaxes the app's one documented safety control, and the doc moved
+with it.** `SECURITY_AND_TRUST.md` §1 named the chat thread specifically and a
+security review had made the notice unconditional. §1 is rewritten rather than
+quietly ignored — a repo that asserts a control it does not implement is worse
+than either choice on its own. The test that asserted the notice's presence now
+asserts its absence, with the reasoning, so the next reader sees a decision
+rather than an oversight.
+
+⚠️ **Scope, deliberately narrow.** The notice remains on sighting detail, post
+detail, the sighting wizard, post sightings and onboarding — the surfaces where
+someone is deciding whether to go and look at a car, which is the decision the
+rule exists to reach. The quick-reply safety register (no meeting, following,
+waiting, watching, approaching) and its lexicon test are untouched, as is the
+ban on features that facilitate pursuit.
+
+⚠️ **Nothing was deleted from history.** The migration changes `open_thread`
+for new threads only; every existing conversation keeps its stored system
+message. `chat_verification.sql` gained CHECK 1b to assert exactly that, because
+"we did not do the destructive thing" is the kind of claim that needs a test.
+
+⚠️ **A consequence, handled: a thread can now be empty.** It never could be
+before — the server opened every one with that message — so the screen had no
+empty state. Without one, the first thing a spotter saw after tapping "Message
+the owner" would have been a blank rectangle. It now says "No messages yet. Say
+what you saw, and where."
+
 ## Deliberately not done
 
 | # | Thing | Why not |
