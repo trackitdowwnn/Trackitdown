@@ -55,12 +55,18 @@ jobs:
       # Every RPC src/ calls must be declared by a migration. Catches a client
       # calling a function no migration creates — which typecheck cannot see,
       # because supabase.rpc() takes a string, and Jest cannot see, because
-      # every test mocks the client. --offline is load-bearing: this step reads
-      # the repo only and must never be able to reach the production project.
-      # The deployed-vs-repo half needs credentials and is run by hand
-      # (`npm run preflight`), never from CI.
+      # every test mocks the client. The `:ci` script is `--offline`, which is
+      # load-bearing: this step reads the repo only and must never be able to
+      # reach the production project. The deployed-vs-repo half needs
+      # credentials and is run by hand (`npm run preflight`), never from CI.
+      #
+      # ⚠️ A SEPARATE SCRIPT, not `npm run preflight -- --offline`. The local
+      # one passes `--use-system-ca` (this repo is developed behind TLS
+      # interception), and that flag does not exist before Node 22 — this
+      # runner is on 20, where it is `node: bad option` and exit 9. The offline
+      # path makes no network call, so it needs no CA configuration at all.
       - name: RPC surface check
-        run: npm run preflight -- --offline
+        run: npm run preflight:ci
 
       # Brand assets (ADR-0015). Two things these catch that nothing else can:
       # a mark that overflows Android's 61.1% safe zone — clipped only on OTHER

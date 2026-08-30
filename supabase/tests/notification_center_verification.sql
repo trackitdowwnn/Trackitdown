@@ -485,9 +485,26 @@ begin
   values ('d0d0d0d0-0000-0000-0000-000000000001',
           'a1a1a1a1-0000-0000-0000-000000000005',
           'https://example.test/post-photos/33333333/car-0.jpg', 0);
+  -- ⚠️ 'unverified', NOT 'credited'. Two reasons, and the second is the point.
+  --
+  -- Mechanically: sightings_one_credited_per_post_uidx is a PARTIAL unique
+  -- index (`where status = 'credited'`), and CHECK 6 above already credited a
+  -- sighting on this same post — its row is not cleaned up until the
+  -- housekeeping at the end of this file. A second credited row here raised
+  -- 23505, and because test-db.sh runs under ON_ERROR_STOP the whole suite
+  -- aborted at this line: CHECK 9's own assertions never ran, and neither did
+  -- anything after it. That is how this check sat red from 2026-08-29 without
+  -- once reporting what it was actually for.
+  --
+  -- Substantively: the photo gate does not look at status at all — it asks
+  -- `s2.post_id = p.id and s2.spotter_id = auth.uid()` and nothing more
+  -- (20260828120000, the `or exists` arm). Asserting the gate with an
+  -- UNVERIFIED sighting is therefore the stronger test: it proves a spotter
+  -- keeps the photo because they REPORTED on the post, not because they won
+  -- the bounty. A credited row passed for the wrong reason.
   insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
   values ('e0e0e0e0-0000-0000-0000-000000000003', 'a1a1a1a1-0000-0000-0000-000000000005',
-          '11111111-1111-1111-1111-111111111111', 'credited', 'Manchester', true);
+          '11111111-1111-1111-1111-111111111111', 'unverified', 'Manchester', true);
   insert into public.notifications (id, user_id, kind, title, body, payload, read_at)
   values ('f0f0f0f0-0000-0000-0000-000000000007', '11111111-1111-1111-1111-111111111111',
           'credited', 'You''ve earned £185.00', 'Your sighting led to a recovery.',
