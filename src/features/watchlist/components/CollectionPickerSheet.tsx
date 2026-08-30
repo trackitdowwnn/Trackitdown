@@ -127,6 +127,10 @@ export function CollectionPickerSheet() {
     <BottomSheet ref={sheetRef} title="Save to a list" onDismiss={onDismiss}>
       {mode === 'create' ? (
         <View style={styles.createBody} testID="collection-picker-create">
+          {/* ⚠️ NO helperText (owner request, 2026-08-30). It read "Somewhere
+              you'd actually spot a car — 'My commute', 'Near work'." The field
+              is one line in a sheet the reader opened deliberately; the hint
+              was explaining something the label already says. */}
           <TextField
             label="List name"
             value={name}
@@ -134,15 +138,22 @@ export function CollectionPickerSheet() {
             autoFocus
             maxLength={40}
             returnKeyType="done"
-            helperText="Somewhere you’d actually spot a car — “My commute”, “Near work”."
             onSubmitEditing={() => void createAndFile()}
           />
-          <Button
-            label="Create and save here"
-            onPress={() => void createAndFile()}
-            disabled={busy || name.trim().length === 0}
-          />
-          <Button label="Back" variant="ghost" onPress={() => setMode('list')} disabled={busy} />
+          {/* The actions are their own group. Without this the field would sit
+              12pt above "Create and save here" — the same gap the two buttons
+              share — so the input would read as the top of the button stack
+              rather than the thing the buttons act on. TextField's whole
+              message row is conditional, so removing the hint took away 26pt
+              (its 18pt line plus the field's own 8pt gap) and left nothing. */}
+          <View style={styles.createActions}>
+            <Button
+              label="Create and save here"
+              onPress={() => void createAndFile()}
+              disabled={busy || name.trim().length === 0}
+            />
+            <Button label="Back" variant="ghost" onPress={() => setMode('list')} disabled={busy} />
+          </View>
         </View>
       ) : (
         <View style={styles.content} testID="collection-picker">
@@ -203,7 +214,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   content: {
     gap: spacing.sm,
   },
+  // 24 between the field and the actions, 12 within the action stack: the
+  // input is one thing and the buttons are another, and the difference is what
+  // makes them read that way. A single flat gap here would put the field, the
+  // primary and the ghost all the same distance apart.
   createBody: {
+    gap: spacing.xl,
+  },
+  createActions: {
     gap: spacing.md,
   },
   list: {
