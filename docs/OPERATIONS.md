@@ -2,10 +2,10 @@
 
 WHAT: The queries that read everything this app collects and nothing in it
       displays. Run them in the Supabase SQL editor.
-WHY:  Six tables collect things a person is waiting on, and **no code anywhere
+WHY:  Seven tables collect things a person is waiting on, and **no code anywhere
       reads any of them**. `bug_reports`, `post_flags`, `flags`,
-      `refund_disputes`, `payout_reviews`, `onboarding_events` — no screen, no
-      Edge Function, no script. `SECURITY_AND_TRUST.md` §2 says "there is no
+      `refund_disputes`, `payout_reviews`, `onboarding_events`,
+      `telemetry_events` — no screen, no Edge Function, no script. `SECURITY_AND_TRUST.md` §2 says "there is no
       moderator tooling at all" and `DOMAIN.md` says it twice more, so this is
       known — but a queue nobody reads is not a deferred feature, it is a
       promise the app is already making.
@@ -154,11 +154,73 @@ order by e.step, e.platform;
 
 Completion rate is `completed ÷ (runs that saw slide 1)`.
 
-⚠️ **These counts can be inflated by anyone.** `record_onboarding_step` is the
-app's only anon-writable endpoint — it has to be, because onboarding runs before
-sign-in. One run is capped at (slides + 2) rows, but nothing stops a script
-minting run ids. If a number looks implausible, suspect that before believing
-it. Full reasoning in `20260824190000_onboarding_funnel.sql`.
+⚠️ **These counts can be inflated by anyone.** `record_onboarding_step` is one
+of the app's two anon-writable endpoints — it has to be, because onboarding runs
+before sign-in. One run is capped at (slides + 2) rows, but nothing stops a
+script minting run ids. If a number looks implausible, suspect that before
+believing it. Full reasoning in `20260824190000_onboarding_funnel.sql`.
+
+---
+
+## 6. The funnel — everything else
+
+Landed 2026-08-30, closing ROADMAP critical path #2. 86 snake_case events were
+already instrumented across the app as `log.info('event_name', {...})`; until
+this, none of them left the Metro console, because nothing ever registered a
+sink. Sessions are anonymous and unlinkable by design — no user id, and the
+session id is generated in memory and never written to the device. See
+`src/shared/lib/telemetry.ts`.
+
+Which events fire, and how often:
+
+```sql
+select
+  t.feature,
+  t.event,
+  count(*)                    as events,
+  count(distinct t.session_id) as sessions
+from public.telemetry_events t
+where t.level = 'info'
+  and t.at > now() - interval '7 days'
+group by t.feature, t.event
+order by events desc;
+```
+
+What is failing, worst first:
+
+```sql
+select
+  t.feature,
+  t.event,
+  t.app_version,
+  count(*) as errors
+from public.telemetry_events t
+where t.level = 'error'
+  and t.at > now() - interval '7 days'
+group by t.feature, t.event, t.app_version
+order by errors desc;
+```
+
+One session in order — the closest thing to watching somebody use the app:
+
+```sql
+select t.at, t.feature, t.event, t.props
+from public.telemetry_events t
+where t.session_id = '00000000-0000-0000-0000-000000000000'
+order by t.at;
+```
+
+⚠️ **These counts can be inflated by anyone too**, and for the same reason:
+`record_telemetry_events` is the second anon-writable endpoint, because much of
+the funnel worth measuring happens before sign-in. One call is capped at 50
+events; nothing caps the number of calls. Full reasoning in
+`20260830120000_telemetry_sink.sql`.
+
+⚠️ **A quiet event is not the same as an absent one.** Events emitted before
+`installTelemetrySink()` runs are never captured, and the last events of a
+session only arrive if the app reaches `background` — so a hard crash loses the
+tail. Do not read "no `checkout_started` rows" as "nobody started checkout"
+without checking that the event fires at all.
 
 ---
 

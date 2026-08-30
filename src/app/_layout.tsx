@@ -30,6 +30,10 @@ import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { markStartup } from '@/shared/lib/startupTrace';
+// Direct path, not the shared/lib barrel: the barrel is imported by a large
+// share of the tree and its tests, and this module reaches AppState, the
+// Supabase client and expo-constants. Same call as ThemeProvider below.
+import { installTelemetrySink } from '@/shared/lib/telemetry';
 import { usePalette, useThemeControls, type Palette } from '@/shared/theme';
 // Direct path, not the theme barrel: this module reaches AsyncStorage and
 // Appearance, and the barrel is imported by ~139 files and nearly every test —
@@ -64,6 +68,17 @@ const pushAnimation = Platform.select({
 // effect after it. A rejection is ignored — the only cause is the splash
 // already being gone, which is precisely the state we wanted.
 void SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// ROADMAP critical path #2. Registers the ONE sink that turns the 86 funnel
+// events already instrumented across the app into rows somebody can query —
+// no call site changes, because logger.ts was built for this.
+//
+// Module scope, like the splash call above, and for the same reason: it must
+// run before the first render rather than in an effect after it. Events emitted
+// during startup — markStartup below, AuthGate's decision, the first feed load
+// — are exactly the ones a funnel needs, and an effect would miss them.
+// Idempotent, so Fast Refresh does not mint a second session.
+installTelemetrySink();
 
 /**
  * The navigator's own theme, built from OUR tokens rather than handed

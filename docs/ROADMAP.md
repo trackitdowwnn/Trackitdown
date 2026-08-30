@@ -174,16 +174,26 @@ v1 scope, stop and flag it.
 - [x] EAS build profiles (development / preview / production) — eas.json
 - [x] GitHub Actions CI (lint, typecheck, test) — .github/workflows/ci.yml,
       `checks` + a `db` job running every SQL suite
-- [ ] Sentry crash reporting; basic analytics (PostHog or similar).
-      **⛳ CRITICAL PATH ITEM #2 (2026-08-05 review) — and far cheaper than it
-      looks.** 70 `log.info` funnel events are ALREADY instrumented across the
-      app (`gate_shown`, `feed_load`, `otp_verified`, `garage_nudge_shown`,
-      `center_view`, …) and every one of them dies in the Metro console,
-      because no sink is ever registered. `logger.ts` was built for exactly
-      this: registering one sink turns all 70 on with zero call-site changes,
-      and nothing may import Sentry directly except that sink. Until this
-      lands, every product judgement in this file is a guess — including the
-      ones the 2026-08-05 review itself made.
+- [x] ~~basic analytics~~ **DONE 2026-08-30.** ⛳ Was CRITICAL PATH ITEM #2
+      (2026-08-05 review), and it was as cheap as this entry predicted. The
+      count was 86 events, not 70. `src/shared/lib/telemetry.ts` registers one
+      sink at `_layout.tsx` module scope and all 86 turned on with **zero
+      call-site changes**, exactly as `logger.ts` was built for.
+      The destination is `public.telemetry_events` — a table in the database
+      you already have, not a new vendor: no account, no SDK, no third party
+      receiving your users' behaviour, and the queries are the SQL you already
+      write (`OPERATIONS.md` §6). Sessions carry no user id and the session id
+      never touches the device, following `onboarding_events`.
+      ⚠️ Two limits worth knowing before trusting a number: the endpoint is
+      anon-writable, so counts can be inflated; and a hard crash loses the tail
+      of a session, because the last flush needs `background`. Both are stated
+      in `OPERATIONS.md` §6 next to the queries themselves.
+- [ ] Sentry crash reporting.
+      Split from the analytics half above on 2026-08-30, because they are two
+      jobs: this one is stack traces from a crash the app did not survive, and
+      the sink above cannot do it — the process is gone before a flush. Not
+      urgent for a ten-person beta you can ask directly. When it lands it is a
+      SECOND `addLogSink` call, and nothing may import Sentry except that sink.
 - [x] ~~DVLA Vehicle Enquiry API: plate → make/model/colour auto-fill **in the
       GARAGE**~~ — **CUT FROM v1 by the 2026-08-05 review.** Rescoped once
       already (2026-08-01) when ADR-0007 killed the verification cross-check

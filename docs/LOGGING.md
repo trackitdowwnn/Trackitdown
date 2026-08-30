@@ -117,7 +117,30 @@ clipboard so device-only issues can be pasted straight into
 ## Production behaviour
 
 - `debug` is dropped entirely (guarded by `__DEV__`).
-- `error` (and optionally `warn`) forward to Sentry via the logger's
-  pluggable sink — wired in Phase 5 by adding a sink, with zero changes
-  to call sites. This is why nothing should ever import Sentry directly
-  except the sink.
+- **A sink is registered** (`src/shared/lib/telemetry.ts`, since 2026-08-30),
+  and it sends two things to `public.telemetry_events`: every `error`, and
+  every `info` whose message is a **snake_case event name**. Nothing else
+  leaves the device — `warn` and prose `info` stay in the console and the ring
+  buffer.
+
+  ⚠️ **That convention is now load-bearing.** `log.info('feed_load', …)` is an
+  event and is recorded; `log.info('Sighting submitted', …)` is prose and is
+  not. Both were previously identical in effect, so this is a new rule rather
+  than a documented one — if you want a new log line counted, name it
+  `snake_case`.
+
+  ⚠️ **`data` is filtered before it is sent.** Scalars only, at most 8 keys,
+  strings truncated at 200 characters, and keys matching
+  `lat|lng|coord|plate|email|phone|address|postcode|token|secret|password` are
+  dropped outright. On a stolen-car app a coordinate or a plate must never
+  leave the device. This is a backstop, not a licence — the rule in the privacy
+  section still stands: do not log the value in the first place.
+
+  ⚠️ **Never call the logger from the sink**, or from anything the sink calls
+  during a flush. It is invoked *by* `emit`, so one log line in a failure path
+  is an infinite loop. `telemetry.ts` refuses its own feature tag as a second
+  belt, but the first rule is simply not to log there.
+- Sentry is still unwired, and remains the right answer for **crashes** — a
+  different job, because the process is gone before a flush can run. When it
+  lands it is a second sink, and nothing should ever import Sentry directly
+  except that sink.

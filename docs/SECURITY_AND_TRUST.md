@@ -260,6 +260,33 @@ commenting standards.
   never logged in full (redactEmail).
 - Spotter GPS is captured **only** at the moment of reporting a sighting —
   no background location tracking anywhere in the app.
+- **Analytics carry no identifier, and that is deliberate.** Two tables collect
+  behaviour — `onboarding_events` (2026-08-24) and `telemetry_events`
+  (2026-08-30) — and neither has a `user_id`, a device id, or an install id.
+  Each row carries an id generated **in memory** at the start of a run or a
+  session and thrown away at the end, so two runs by the same person are
+  unlinkable, and a run is unlinkable to an account that person later creates.
+  Both are read by `service_role` only: RLS is enabled with no client policies
+  and both tables carry an explicit `revoke all` from `anon`/`authenticated`.
+  - ⚠️ **These are the app's only two anon-writable endpoints**
+    (`record_onboarding_step`, `record_telemetry_events`), and that is inherent
+    to the question rather than a shortcut: onboarding and much of the funnel
+    happen before sign-in, and buffering until an account exists would record
+    only the journeys that succeeded — the one population that cannot explain
+    why people leave. The cost is that counts can be **inflated** by anyone; it
+    is a data-quality problem, not a disclosure one, because neither table
+    holds anything about anybody.
+  - ⚠️ **If you ever persist either id to the device, stop.** That single
+    change turns an anonymous counter into tracking of a person who has agreed
+    to nothing, and every argument above stops holding.
+  - `telemetry_events.props` is the only place free-form data could enter. It
+    is constrained server-side (scalars only, 8 keys, 200-char strings, via a
+    trigger) and filtered client-side by a key denylist covering coordinates,
+    plates, emails, addresses and postcodes — see `src/shared/lib/telemetry.ts`.
+    Adding a `user_id` later is one migration; **un-collecting behaviour you
+    already gathered is not possible**, which is why the reversible choice is
+    the default here. If that changes, it should change deliberately and be
+    recorded in this section, not arrive as a side effect.
 - Closed posts are hidden from search; their sighting location history is
   purged after 90 days.
 - Photos are stripped of EXIF metadata server-side before display; the

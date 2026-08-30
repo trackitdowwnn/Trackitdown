@@ -181,5 +181,155 @@ rollback;
 
 
 -- =============================================================================
+-- CHECK 7 — OPERATIONS.md §6, the telemetry funnel.
+-- =============================================================================
+-- Same contract as CHECK 6: the runbook's queries must actually run and must
+-- actually count. A funnel query that silently returns nothing is worse than no
+-- query, because the answer "no events" is indistinguishable from "the query is
+-- broken" — and that is the reading somebody will act on.
+begin;
+do $$
+declare
+  v_session uuid := '11111111-1111-4111-8111-111111111111';
+  v_other   uuid := '22222222-2222-4222-8222-222222222222';
+  v_events  integer;
+  v_errors  integer;
+  v_ordered integer;
+begin
+  perform public.record_telemetry_events(v_session, jsonb_build_array(
+    jsonb_build_object('event', 'feed_load', 'feature', 'search-map', 'level', 'info',
+                       'props', jsonb_build_object('count', 12), 'platform', 'ios',
+                       'app_version', '1.0.0'),
+    jsonb_build_object('event', 'gate_shown', 'feature', 'auth', 'level', 'info',
+                       'platform', 'ios', 'app_version', '1.0.0'),
+    jsonb_build_object('event', 'error_upload_failed', 'feature', 'sightings',
+                       'level', 'error', 'platform', 'ios', 'app_version', '1.0.0')
+  ));
+  perform public.record_telemetry_events(v_other, jsonb_build_array(
+    jsonb_build_object('event', 'feed_load', 'feature', 'search-map', 'level', 'info',
+                       'platform', 'android', 'app_version', '1.0.0')
+  ));
+
+  -- Query 1: which events fire. feed_load is two events across two sessions.
+  select sessions into v_events from (
+    select t.feature, t.event, count(*) as events, count(distinct t.session_id) as sessions
+    from public.telemetry_events t
+    where t.level = 'info' and t.at > now() - interval '7 days'
+    group by t.feature, t.event
+  ) q where q.event = 'feed_load';
+
+  -- Query 2: what is failing.
+  select errors into v_errors from (
+    select t.feature, t.event, t.app_version, count(*) as errors
+    from public.telemetry_events t
+    where t.level = 'error' and t.at > now() - interval '7 days'
+    group by t.feature, t.event, t.app_version
+  ) q where q.event = 'error_upload_failed';
+
+  -- Query 3: one session in order.
+  select count(*) into v_ordered from (
+    select t.at, t.feature, t.event, t.props
+    from public.telemetry_events t
+    where t.session_id = v_session
+    order by t.at
+  ) q;
+
+  if v_events <> 2 then
+    raise exception 'CHECK 7 FAILED: the funnel query counted % of 2 sessions', v_events;
+  end if;
+  if v_errors <> 1 then
+    raise exception 'CHECK 7 FAILED: the error query counted % of 1', v_errors;
+  end if;
+  if v_ordered <> 3 then
+    raise exception 'CHECK 7 FAILED: the session query returned % of 3 rows', v_ordered;
+  end if;
+end $$;
+rollback;
+
+
+-- =============================================================================
+-- CHECK 8 — the props contract holds, and one bad event does not lose a batch.
+-- =============================================================================
+-- ⚠️ THIS IS THE SAFETY CHECK. props is the only place unconstrained data could
+-- enter telemetry_events, and on a stolen-car app the thing that must never
+-- land there is a coordinate or a plate. The CLIENT applies a key denylist
+-- (telemetry.ts), but the client is not the boundary — these are the server's
+-- own rules, asserted here because nothing else executes them.
+begin;
+do $$
+declare
+  v_session uuid := '33333333-3333-4333-8333-333333333333';
+  v_written integer;
+  v_rows    integer;
+begin
+  -- Three of these four are malformed. The valid one must still land: a batch
+  -- is fire-and-forget, and one bad event discarding 49 good ones would lose
+  -- data silently at exactly the moment something is already wrong.
+  select public.record_telemetry_events(v_session, jsonb_build_array(
+    -- Valid.
+    jsonb_build_object('event', 'feed_load', 'feature', 'search-map', 'level', 'info'),
+    -- Nested props: rejected by the trigger.
+    jsonb_build_object('event', 'nested_bag', 'feature', 'search-map', 'level', 'info',
+                       'props', jsonb_build_object('inner', jsonb_build_object('a', 1))),
+    -- Prose event name: rejected by the CHECK constraint.
+    jsonb_build_object('event', 'Not An Event Name', 'feature', 'search-map', 'level', 'info'),
+    -- Unknown level: rejected by the CHECK constraint.
+    jsonb_build_object('event', 'bad_level', 'feature', 'search-map', 'level', 'trace')
+  )) into v_written;
+
+  if v_written <> 1 then
+    raise exception 'CHECK 8 FAILED: expected 1 of 4 events written, got %', v_written;
+  end if;
+
+  select count(*) into v_rows from public.telemetry_events where session_id = v_session;
+  if v_rows <> 1 then
+    raise exception 'CHECK 8 FAILED: expected 1 row for the session, got %', v_rows;
+  end if;
+
+  -- A string over 200 chars is the other way to smuggle a payload in.
+  select public.record_telemetry_events(v_session, jsonb_build_array(
+    jsonb_build_object('event', 'long_value', 'feature', 'search-map', 'level', 'info',
+                       'props', jsonb_build_object('note', repeat('x', 201)))
+  )) into v_written;
+  if v_written <> 0 then
+    raise exception 'CHECK 8 FAILED: a 201-char props value was accepted';
+  end if;
+
+  -- More than 8 keys.
+  select public.record_telemetry_events(v_session, jsonb_build_array(
+    jsonb_build_object('event', 'wide_bag', 'feature', 'search-map', 'level', 'info',
+                       'props', jsonb_build_object('a',1,'b',2,'c',3,'d',4,'e',5,'f',6,'g',7,'h',8,'i',9))
+  )) into v_written;
+  if v_written <> 0 then
+    raise exception 'CHECK 8 FAILED: a 9-key props bag was accepted';
+  end if;
+end $$;
+rollback;
+
+
+-- =============================================================================
+-- CHECK 9 — telemetry_events is operator-only for reads.
+-- =============================================================================
+-- anon may CALL the RPC and must still hold nothing on the table itself. This
+-- is the property the migration's explicit `revoke all` exists to create, and
+-- the one that silently breaks if somebody adds a per-table grant later.
+do $$
+declare
+  v_grants text;
+begin
+  select string_agg(distinct privilege_type, ',' order by privilege_type)
+    into v_grants
+  from information_schema.role_table_grants
+  where table_schema = 'public'
+    and table_name = 'telemetry_events'
+    and grantee in ('anon', 'authenticated');
+
+  if v_grants is not null then
+    raise exception 'CHECK 9 FAILED: anon/authenticated hold % on telemetry_events', v_grants;
+  end if;
+end $$;
+
+
+-- =============================================================================
 -- END — all checks passed if this file completed without raising.
 -- =============================================================================
