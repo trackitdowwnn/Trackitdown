@@ -52,6 +52,16 @@ jobs:
       - name: File header check
         run: node scripts/check-file-headers.mjs
 
+      # Every RPC src/ calls must be declared by a migration. Catches a client
+      # calling a function no migration creates — which typecheck cannot see,
+      # because supabase.rpc() takes a string, and Jest cannot see, because
+      # every test mocks the client. --offline is load-bearing: this step reads
+      # the repo only and must never be able to reach the production project.
+      # The deployed-vs-repo half needs credentials and is run by hand
+      # (`npm run preflight`), never from CI.
+      - name: RPC surface check
+        run: npm run preflight -- --offline
+
       # Brand assets (ADR-0015). Two things these catch that nothing else can:
       # a mark that overflows Android's 61.1% safe zone — clipped only on OTHER
       # people's phones — and a committed PNG that has drifted from the geometry

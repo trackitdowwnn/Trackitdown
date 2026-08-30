@@ -77,6 +77,7 @@
     "test": "jest",
     "test:assets": "node --test scripts/brand/*.test.mjs",
     "test:db": "bash scripts/test-db.sh",
+    "preflight": "node --use-system-ca scripts/preflight.mjs",
     "assets:brand": "node scripts/generate-brand-assets.mjs",
     "emulator": "powershell -ExecutionPolicy Bypass -File scripts/start-emulator.ps1"
   },
