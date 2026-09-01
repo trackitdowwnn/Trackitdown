@@ -55,11 +55,22 @@ export interface LegalDocument {
 // three, so adding a bug-reports bullet to the PRIVACY policy re-dated the
 // TERMS and the SAFETY guidelines as well — announcing a revision to documents
 // whose text had not moved. "Last updated" is what a reader uses to decide
-// whether to re-read something, and the Terms are separately out of date on
-// ADR-0014's no-bounty listings: a fresh date there is worse than a stale one,
-// because it says the staleness was reviewed and stands.
+// whether to re-read something.
 //
 // Bump the document you actually changed. Nothing consumed the constant.
+//
+// ⚠️ THIS NOTE USED TO END: "and the Terms are separately out of date on
+// ADR-0014's no-bounty listings: a fresh date there is worse than a stale one,
+// because it says the staleness was reviewed and stands." That was true from
+// 2026-08-19 to 2026-09-01 — thirteen days in which a £5 charge was taken under
+// a document that never mentioned it. FIXED 2026-09-01: the money section now
+// carries both pricing modes and says plainly that the fee is not refundable,
+// so the Terms date moved for the first time on merit rather than by accident.
+//
+// Worth keeping the shape of that failure written down: the gap was KNOWN, it
+// was recorded in this very comment, and it still survived a Terms revision on
+// 2026-08-23 — because a note explaining why something is wrong reads, to the
+// next person, as a decision rather than a debt.
 
 /** The operator. Replace with the registered entity before launch. */
 const OPERATOR = 'Trackitdown';
@@ -143,7 +154,7 @@ const SAFETY: LegalDocument = {
 const TERMS: LegalDocument = {
   slug: 'terms',
   title: 'Terms of service',
-  lastUpdated: '23 August 2026',
+  lastUpdated: '1 September 2026',
   intro: [
     `These terms are an agreement between you and ${OPERATOR}. By creating an account you accept them.`,
     'They are written to be read. Where a term matters to your money or your safety, it is stated plainly rather than buried.',
@@ -179,9 +190,20 @@ const TERMS: LegalDocument = {
       ],
     },
     {
-      heading: 'The bounty and how the money works',
+      heading: 'What it costs, and how the money works',
       body: [
-        'When you publish a listing you pay the bounty up front. It is held by our payment provider and is not ours to spend.',
+        // ⚠️ ADDED 2026-09-01. ADR-0014 shipped a SECOND PRICING MODE on
+        // 2026-08-19 and these Terms described only the bounty for thirteen
+        // days — so a £5 charge was being taken under a document that did not
+        // mention it. legalContent.ts's own header had flagged the gap
+        // ("the Terms are separately out of date on ADR-0014's no-bounty
+        // listings") and it survived a Terms revision on 2026-08-23 anyway.
+        //
+        // The fee is a LITERAL here, like the £10 floor below and for the same
+        // reason: legal text must change by a decision, not as a side effect of
+        // LISTING_FEE_PENCE moving. Whoever changes the price comes here too.
+        'There are two ways to publish a listing, and you choose which when you post: offer a bounty, or pay a fixed listing fee.',
+        'When you offer a bounty you pay it up front. It is held by our payment provider and is not ours to spend.',
         // ⚠️ The floor moved to £10 on 2026-08-13 and this said £50 until
         // 2026-08-23 — the Terms stated a minimum the app had stopped enforcing,
         // so a lawful £10 listing was one the document called impossible. Kept
@@ -191,8 +213,26 @@ const TERMS: LegalDocument = {
         'The bounty is between £10 and £5,000. All amounts are in pounds sterling.',
         'If a sighting leads to your vehicle being recovered, you credit that sighting. The person who reported it receives 95% of the bounty. We keep 5%.',
         'Only one sighting can be credited per recovery. If several people helped, you choose the one that made the difference. We cannot split a bounty.',
-        'If you recover the vehicle without anyone’s help, or you cancel the listing, or it expires, the bounty is refunded to you minus the card processing costs, which the card networks do not return to us. That deduction is shown to you before you pay.',
-        'A listing lasts 90 days unless you cancel or renew it.',
+        'If you recover the vehicle without anyone’s help, or you cancel the listing, the bounty is refunded to you minus the card processing costs, which the card networks do not return to us. That deduction is shown to you before you pay.',
+        // ⚠️ THE FEE IS NON-REFUNDABLE AND THAT MUST BE STATED PLAINLY. You
+        // cannot take a non-refundable payment under a document that does not
+        // say it is non-refundable, and this is the term a reader is most
+        // likely to be surprised by. ADR-0014: "a fee is non-refundable".
+        'The listing fee is £5. It is not refundable — not if you cancel, not if you recover the vehicle another way, and not if nobody ever reports a sighting. It pays for the listing itself, not for a result, and we tell you so before you pay.',
+        'A fee listing looks like any other and reaches the same people. What it does not carry is a cash reward: if someone’s sighting leads to your vehicle being recovered you still credit them, and it counts towards their record, but there is no bounty for us to pay them.',
+        // ⚠️ THE 90-DAY EXPIRY PROMISE IS GONE, 2026-09-01. It said "A listing
+        // lasts 90 days unless you cancel or renew it", and the refund line
+        // above said the bounty comes back "or it expires". NOTHING IMPLEMENTS
+        // EXPIRY — ROADMAP records passive expiry as deliberately CUT ("we are
+        // cutting the PROMISE, not building the machine"), and the Terms were
+        // missed in that cut. A term nobody keeps is worse than no term: an
+        // owner could rely on it. The refund right it appeared to give is
+        // preserved in full by cancel-with-refund, which does work.
+        //
+        // ⚠️ create_post still stamps expires_at +90 days and post detail still
+        // SHOWS that date. That is a live bug (a date nothing acts on), not a
+        // term — it is tracked separately and must not be written back in here.
+        'A listing stays live until you cancel it or the vehicle is recovered. We do not close it automatically.',
       ],
     },
     {
@@ -200,6 +240,7 @@ const TERMS: LegalDocument = {
       body: [
         'Report only what you actually saw. Reporting a sighting you have invented, or one arranged with the owner, is fraud. We will withhold payment and may report it.',
         'Being credited is the owner’s decision. Reporting a sighting does not entitle you to the bounty, and a sighting that turns out to be the wrong car is not a failure — it is how this works.',
+        'Not every listing carries a bounty. Some owners pay a listing fee instead, and those listings say so before you report anything. Being credited on one still counts towards your record, but there is no money attached to it.',
         'To be paid you must complete identity checks with our payment provider, Stripe. We cannot pay you until you do. Payments are made by Stripe to the account you give them, and their timescales apply.',
         'You are responsible for any tax due on a bounty you receive. If you are unsure, speak to HMRC or an accountant.',
       ],

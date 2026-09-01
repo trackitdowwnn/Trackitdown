@@ -30,7 +30,7 @@ import {
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
 } from '@/features/vehicles/post/lib/bountyBounds';
-import { formatPounds } from '@/shared/lib/money';
+import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 
 import { LEGAL_DOCUMENTS, legalDocument } from '../lib/legalContent';
 import { LegalDocumentScreen } from './LegalDocumentScreen';
@@ -193,6 +193,40 @@ describe('factual claims the code must keep true', () => {
     );
     expect(terms).toContain('95%');
     expect(terms).toContain('5%');
+  });
+
+  it('⚠️ states the listing fee, and that it is NOT refundable', () => {
+    // ADR-0014 shipped a second pricing mode on 2026-08-19 and the Terms
+    // described only the bounty until 2026-09-01 — thirteen days of taking a £5
+    // charge under a document that never mentioned it. The gap was KNOWN and
+    // written into legalContent.ts's own header, and it still survived a Terms
+    // revision on 2026-08-23, because a note explaining why something is wrong
+    // reads as a decision rather than a debt. A test does not read that way.
+    //
+    // ⚠️ THE WHOLE PHRASE, for the reason the bounty test above spells out and
+    // more sharply here: the fee IS £5, and a bare toContain('£5') passes on
+    // the '£5,000' ceiling already in this section. Anchoring on the sentence
+    // is the only version of this assertion that can fail.
+    expect(terms).toContain(`The listing fee is ${formatPounds(LISTING_FEE_PENCE)}.`);
+    // Non-refundability is the term a reader is most likely to be surprised by,
+    // so it is the one that must survive an edit.
+    expect(terms).toContain('It is not refundable');
+    // And the spotter's side: credit and record, but no money.
+    expect(terms).toMatch(/no bounty for us to pay them|there is no money attached/i);
+  });
+
+  it('⚠️ does not promise an expiry the app never performs', () => {
+    // The Terms said "A listing lasts 90 days unless you cancel or renew it"
+    // and that the bounty comes back "or it expires". ROADMAP records passive
+    // expiry as deliberately CUT — "we are cutting the PROMISE, not building
+    // the machine" — and the Terms were missed in that cut, leaving a term an
+    // owner could rely on and we would breach.
+    //
+    // ⚠️ create_post still stamps expires_at and post detail still SHOWS it.
+    // That is a live bug tracked separately; if it is ever FIXED, this test is
+    // the thing that should be revisited, not silently deleted.
+    expect(terms).not.toMatch(/lasts 90 days|or it expires/i);
+    expect(terms).toContain('We do not close it automatically.');
   });
 
   it('does NOT promise a full refund — card fees are withheld', () => {
