@@ -122,11 +122,20 @@ v1 scope, stop and flag it.
          at the earn moment and routes them to `/payouts`;
          `_shared/recoveryAnnounce.ts` sends `payout_sent` and `recovery`,
          called from `releasePayout`, `refund-recovery` and
-         `release-held-refunds`. What is STILL missing is the **spotter-facing
-         sightings surface**: `/post-sightings` and `/sighting/[id]` are
-         owner-only, so a spotter cannot browse the reports they filed — and
-         `/sighting-dispute` has no in-app door at all, only a push route. A
-         spotter who declined notifications can never contest a denial.
+         `release-held-refunds`. ~~What is STILL missing is the
+         **spotter-facing sightings surface**~~ — **the dispute half is DONE
+         2026-09-01.** `My reports` now shows an in-app door on any report a
+         refund hold names, so a spotter who declined notifications can contest
+         a denial: `my_sighting_record` carries a per-row `dispute` object
+         mirroring `my_dispute_context`'s gate, and `ReportCard` renders one
+         labelled row — never a whole-card press — only where the door opens.
+         ⚠️ The gate is now written in TWO places; `refund_hold_verification`
+         CHECK 11 asserts they agree, because the failure mode is a button that
+         leads straight to `DISPUTE_NOT_AVAILABLE`.
+         What remains here is narrower than this entry used to claim:
+         `/post-sightings` and `/sighting/[id]` are still owner-only, so a
+         spotter cannot browse the full detail of a report they filed — only
+         the summary `My reports` shows.
 - [~] Reputation counters + 1/5/25 badges on profiles. Counters and badge
       maths are BUILT and server-maintained (`sightings_reported`,
       `sightings_helpful`; ReputationCard + lib/reputation.ts). The third,

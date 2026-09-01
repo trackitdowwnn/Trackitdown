@@ -13,9 +13,14 @@
  *            notification the whole product exists to deliver.
  *          * `closed_uncredited` — a post you reported on closed without
  *            crediting you, and you have 72 HOURS to contest it.
- *            docs/ROADMAP.md records that /sighting-dispute has no in-app door
- *            at all, only the push route, so muting this makes a money right
- *            unreachable. Until that screen has a door, the push IS the door.
+ *            ⚠️ THE REASON CHANGED ON 2026-09-01 AND THE DECISION DID NOT.
+ *            This used to read "the push IS the door", because
+ *            /sighting-dispute had no in-app route at all. It has one now:
+ *            `My reports` shows it on any report a refund hold names. That
+ *            makes muting survivable, not safe — the door is PASSIVE, and a
+ *            72-hour window only helps someone who happens to go and look
+ *            inside it. Muting would still cost most people the money.
+ *            So it stays absent, on the clock rather than on reachability.
  *        They have no category, so there is no column to store a mute in and
  *        no switch a future screen could accidentally offer. The Settings
  *        screen states this rather than hiding it.

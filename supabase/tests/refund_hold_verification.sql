@@ -17,7 +17,9 @@
 -- refusal is the same token · 7 my_dispute_context own-only ·
 -- 8 resolve rejected stamps; upheld credits + counter + post back on the
 -- money rails + sibling auto-reject; DISPUTE_NOT_OPEN replay ·
--- 9 no-resurrection (NO_HOLD) + no self-credit · 10 grants + NO MONEY MOVED.
+-- 9 no-resurrection (NO_HOLD) + no self-credit · 10 grants + NO MONEY MOVED ·
+-- 11 my_sighting_record's `dispute` agrees with my_dispute_context's gate, so
+-- the in-app door never opens onto DISPUTE_NOT_AVAILABLE.
 -- LINKS: supabase/migrations/20260805100000_refund_holds_and_disputes.sql;
 --        docs/DOMAIN.md (Disputes); docs/TESTING.md; scripts/test-db.sh.
 --
@@ -44,7 +46,11 @@ delete from public.sightings
               'd0d0d0d0-0000-0000-0000-000000000002',
               'd0d0d0d0-0000-0000-0000-000000000003',
               'd0d0d0d0-0000-0000-0000-000000000004',
-              'd0d0d0d0-0000-0000-0000-000000000005');
+              'd0d0d0d0-0000-0000-0000-000000000005',
+              -- CHECK 11's throwaway: a sighting on the held post that the hold
+              -- does NOT name. Deleted inside the check too, but listed here so
+              -- a mid-check failure cannot leak it into the next run.
+              'd0d0d0d0-0000-0000-0000-000000000009');
 update public.posts set status = 'active', recovered_at = null
  where id in ('a1a1a1a1-0000-0000-0000-000000000003',
               'a1a1a1a1-0000-0000-0000-000000000005');
@@ -488,6 +494,74 @@ begin
   end if;
 end $$;
 
+-- -----------------------------------------------------------------------------
+-- CHECK 11 — my_sighting_record's `dispute` object AGREES with
+-- my_dispute_context's gate. Added 2026-09-01 with the in-app dispute door.
+-- -----------------------------------------------------------------------------
+-- ⚠️ THIS IS THE CHECK THAT MATTERS FOR THE DOOR. `My reports` decides whether
+-- to show a way in from `available`, and the dispute screen then re-reads
+-- my_dispute_context and refuses with DISPUTE_NOT_AVAILABLE if it disagrees.
+-- Two functions, one rule, duplicated by hand — so the failure mode is a button
+-- that leads somewhere it is immediately thrown out of, which reads to a
+-- spotter as the product breaking at the one moment they are already unhappy.
+--
+-- The gate is: caller owns the sighting AND a refund_holds row exists for its
+-- post AND the sighting is named in that hold's sighting_ids. It is the third
+-- clause that gets dropped by accident, so it is asserted explicitly below.
+do $$
+declare
+  v_rec       jsonb;
+  v_available boolean;
+  v_status    text;
+  v_other     boolean;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  set local role authenticated;
+  v_rec := public.my_sighting_record();
+  reset role;
+
+  -- ...0001 is the disputable one: held post, named in sighting_ids, and CHECK 6
+  -- filed an open dispute on it.
+  select (e->'dispute'->>'available')::boolean, e->'dispute'->>'status'
+    into v_available, v_status
+  from jsonb_array_elements(v_rec->'sightings') e
+  where e->>'id' = 'd0d0d0d0-0000-0000-0000-000000000001';
+
+  if v_available is distinct from true then
+    raise exception 'CHECK 11 FAILED: a held, named sighting reports available=% — the door would never appear', v_available;
+  end if;
+  if v_status is distinct from 'open' then
+    raise exception 'CHECK 11 FAILED: own open dispute reads as % on My reports', v_status;
+  end if;
+
+  -- ⚠️ THE THIRD CLAUSE. Same post, same owner attestation, but this sighting is
+  -- NOT in the hold's sighting_ids — my_dispute_context refuses it (CHECK 7),
+  -- so My reports must not offer a door either.
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+  values ('d0d0d0d0-0000-0000-0000-000000000009',
+          (select post_id from public.refund_holds
+            where 'd0d0d0d0-0000-0000-0000-000000000001'::uuid = any (sighting_ids)),
+          '33333333-3333-3333-3333-333333333333', 'unverified', 'Manchester', true);
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  set local role authenticated;
+  v_rec := public.my_sighting_record();
+  reset role;
+
+  select (e->'dispute'->>'available')::boolean into v_other
+  from jsonb_array_elements(v_rec->'sightings') e
+  where e->>'id' = 'd0d0d0d0-0000-0000-0000-000000000009';
+
+  if v_other is distinct from false then
+    raise exception 'CHECK 11 FAILED: a sighting the hold does NOT name reports available=% — the door would open onto DISPUTE_NOT_AVAILABLE', v_other;
+  end if;
+
+  delete from public.sightings where id = 'd0d0d0d0-0000-0000-0000-000000000009';
+end $$;
+
+
 -- --- housekeeping: leave the database as we found it -------------------------
 delete from public.refund_disputes
  where post_id in ('a1a1a1a1-0000-0000-0000-000000000003',
@@ -501,7 +575,11 @@ delete from public.sightings
               'd0d0d0d0-0000-0000-0000-000000000002',
               'd0d0d0d0-0000-0000-0000-000000000003',
               'd0d0d0d0-0000-0000-0000-000000000004',
-              'd0d0d0d0-0000-0000-0000-000000000005');
+              'd0d0d0d0-0000-0000-0000-000000000005',
+              -- CHECK 11's throwaway: a sighting on the held post that the hold
+              -- does NOT name. Deleted inside the check too, but listed here so
+              -- a mid-check failure cannot leak it into the next run.
+              'd0d0d0d0-0000-0000-0000-000000000009');
 update public.posts set status = 'active', recovered_at = null
  where id in ('a1a1a1a1-0000-0000-0000-000000000003',
               'a1a1a1a1-0000-0000-0000-000000000005');
