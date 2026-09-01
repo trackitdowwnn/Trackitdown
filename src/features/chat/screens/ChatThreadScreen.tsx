@@ -38,7 +38,7 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { type ComponentType, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentType, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   KeyboardAvoidingView,
@@ -78,7 +78,7 @@ import {
   type BottomSheetRef,
 } from '@/shared/ui';
 
-import { flagMessage } from '../api/chatApi';
+import { blockThreadPeer, ChatActionError, flagMessage } from '../api/chatApi';
 import { ClosedThreadBanner } from '../components/ClosedThreadBanner';
 import { ThreadHeader } from '../components/ThreadHeader';
 import {
@@ -155,6 +155,10 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   const [reporting, setReporting] = useState<ChatMessage | null>(null);
   const [reported, setReported] = useState(false);
   const sheetRef = useRef<BottomSheetRef>(null);
+  const [justBlocked, setJustBlocked] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const blockSheetRef = useRef<BottomSheetRef>(null);
+  const blockInFlight = useRef(false);
   const toast = useToast();
 
   const items = useMemo(
@@ -245,7 +249,57 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
     }
   };
 
-  const closed = meta.thread ? meta.thread.post.status !== 'active' : false;
+  /**
+   * Blocks the other participant. Consequential and not undoable from here —
+   * unblocking lives in Settings — so it goes through a confirmation rather
+   * than firing on a header tap.
+   *
+   * ⚠️ NOTHING IS SENT TO THE OTHER PERSON. No message, no push, no system
+   * line in the thread. ADR-0017 §5: we never announce a block.
+   */
+  const confirmBlock = useCallback(async () => {
+    // ⚠️ A REF, NOT THE `blocking` STATE. Two presses in the same tick both read
+    // the value from the render they were dispatched in, so a state guard sees
+    // false twice and fires twice — a sibling screen's test caught exactly
+    // that. `blocking` still drives the label and the disabled state; this is
+    // what actually guards re-entry.
+    if (blockInFlight.current) return;
+    blockInFlight.current = true;
+    setBlocking(true);
+    try {
+      await blockThreadPeer(threadId);
+      setJustBlocked(true);
+      blockSheetRef.current?.close();
+    } catch (error) {
+      // Narrowed, not `error.message`: chatApi maps machine tokens to calm
+      // copy, and anything else must not reach a person verbatim.
+      toast.show(
+        error instanceof ChatActionError ? error.message : 'We couldn’t do that. Please try again.',
+        'error',
+      );
+    } finally {
+      blockInFlight.current = false;
+      setBlocking(false);
+    }
+  }, [threadId, toast]);
+
+  const postClosed = meta.thread ? meta.thread.post.status !== 'active' : false;
+  /**
+   * The composer is gone for either reason, and the two are deliberately one
+   * flag: the server refuses a send in both cases, so a screen that let you
+   * type in one of them would be lying about a different thing each time.
+   *
+   * ⚠️ `peer` is null while it loads, so this starts false and the composer is
+   * briefly live on a blocked thread. That is the right way round: the send
+   * itself is refused server-side (the messages trigger), so the worst case is
+   * one wasted message, whereas defaulting to frozen would hide the composer
+   * on every thread for a moment on every open.
+   */
+  // Optimistic, because useThreadPeer has no refresh and the server is the
+  // truth on the next open anyway. Blocking is not undoable from this screen,
+  // so there is no state to reconcile back — only forward.
+  const blocked = (peer?.blocked ?? false) || justBlocked;
+  const closed = postClosed || blocked;
   const otherName = meta.thread?.other.firstName;
   // ⚠️ THE PEER'S ROLE WORD IS NO LONGER DRAWN. It used to sit under their name
   // as "Spotter"/"Owner"; the merged header's second line carries the car and
@@ -306,6 +360,8 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
           thread={meta.thread}
           status={meta.status}
           profileAvailable={Boolean(peer?.peer)}
+          blocked={blocked}
+          onBlock={() => blockSheetRef.current?.open()}
           onBack={() => router.back()}
           onOpenPost={(postId) => router.push(`/post/${postId}`)}
           onOpenProfile={() => void openPeerProfile()}
@@ -428,7 +484,10 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
           ) : null}
 
           {closed ? (
-            <ClosedThreadBanner status={meta.thread?.post.status ?? 'closed'} />
+            <ClosedThreadBanner
+              status={meta.thread?.post.status ?? 'closed'}
+              blocked={blocked}
+            />
           ) : (
             /* ⚠️ THE COMPOSER SLIDES INSTEAD OF JUMPING. The quick-reply row
                had an entrance and no exit, so the 52pt beneath it vanished in
@@ -480,6 +539,36 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
       {PeerSheet ? (
         <PeerSheet ref={peerSheetRef} profile={peerProfile} onDismiss={() => setPeerProfile(null)} />
       ) : null}
+
+      {/* Block sheet. Confirmed rather than fired from the header tap: it stops
+          a conversation that may be the owner's only lead on their car, and it
+          cannot be undone from this screen. */}
+      <BottomSheet ref={blockSheetRef} title={`Block ${otherName ?? 'this person'}?`}>
+        <View style={styles.sheetBody}>
+          <Text style={styles.sheetText}>
+            {/* Says exactly what happens, including the two things people
+                assume wrongly: the messages do not disappear, and the other
+                person is not told. */}
+            Neither of you will be able to send messages. You’ll both still be able to read
+            this conversation, and they won’t be told.
+          </Text>
+          <Text style={styles.sheetText}>
+            You can undo this in Settings, under Blocked accounts.
+          </Text>
+          <Button
+            label={blocking ? 'Blocking…' : 'Block'}
+            variant="danger"
+            disabled={blocking}
+            onPress={() => void confirmBlock()}
+          />
+          <Button
+            label="Cancel"
+            variant="ghost"
+            disabled={blocking}
+            onPress={() => blockSheetRef.current?.close()}
+          />
+        </View>
+      </BottomSheet>
 
       {/* Report sheet — the flag action (moderation queue reads the table). */}
       <BottomSheet ref={sheetRef} title="Report this message" onDismiss={() => setReporting(null)}>
