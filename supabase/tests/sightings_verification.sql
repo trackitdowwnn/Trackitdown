@@ -1517,10 +1517,10 @@ begin
   values (v_old,    v_post, '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', false),
          (v_open,   v_post, '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', false),
          (v_recent, v_post, '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', false);
-  insert into public.sighting_photos (sighting_id, path, lat, lng, accuracy_m, captured_at)
-  values (v_old,    'p/1.jpg', 53.4808, -2.2426, 12, now()),
-         (v_open,   'p/2.jpg', 53.4808, -2.2426, 12, now()),
-         (v_recent, 'p/3.jpg', 53.4808, -2.2426, 12, now());
+  insert into public.sighting_photos (sighting_id, path, lat, lng, accuracy_m, captured_at, position)
+  values (v_old,    'p/1.jpg', 53.4808, -2.2426, 12, now(), 0),
+         (v_open,   'p/2.jpg', 53.4808, -2.2426, 12, now(), 0),
+         (v_recent, 'p/3.jpg', 53.4808, -2.2426, 12, now(), 0);
 
   select closed_at into v_prev from public.posts where id = v_post;
 
