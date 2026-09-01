@@ -323,8 +323,40 @@ commenting standards.
     schedules the purge itself. If the sweep stops firing, retention stops
     silently. A pg_cron entry pointing at the RPC directly would decouple them —
     a dashboard action, as the existing job was.
-- Photos are stripped of EXIF metadata server-side before display; the
-  original capture location is kept only in the sighting record itself.
+- ⚠️ **OPEN GAP — EXIF stripping is CLIENT-SIDE, and this line used to claim it
+  was server-side.** Corrected 2026-09-01. The false version had stood since
+  the file was written, and it is the worst kind of documentation error: it
+  tells a reader the control exists, so nobody looks.
+
+  What is true: `photoUpload.uploadOwnFolderPhoto` and `sightingApi`'s image
+  pipeline both re-encode a picked image to a fresh JPEG, and **that re-encode
+  is a genuine EXIF strip** — including any GPS that would pinpoint an owner's
+  home. `photoUpload.ts`'s own header says so, and correctly calls
+  server-side stripping "a tracked cross-cutting gap".
+
+  What is not true is that anything enforces it:
+  - `post-photos` is a **PUBLIC** bucket, and URLs are plain `getPublicUrl`
+    values — no transform, so nothing re-encodes on the way out either.
+  - `post_photos_insert_own_folder` lets any signed-in user write directly to
+    their own folder. That policy is right and must stay, but it means the
+    app's re-encode is a convention, not a boundary: a scripted upload with a
+    real session token puts the original bytes in a public bucket.
+
+  **The realistic harm is the owner's own home address.** Someone photographs
+  their car on the driveway; the object is world-readable by URL; the EXIF
+  carries the coordinates. That is the same thing CHECK 12 in
+  `anon_role_verification` protects `posts.last_seen_location` from, arrived at
+  by a different route.
+
+  Sighting photos are less exposed on this axis — they live in the PRIVATE
+  `sighting-photos` bucket, and their capture GPS is deliberately shared with
+  the owner as structured evidence anyway (and is purged after 90 days, above).
+
+  Closing it properly means one of: re-encoding server-side after upload (a
+  storage webhook into an Edge Function), or making the bucket private and
+  serving signed transform URLs. Serving through Supabase's image transform
+  alone is NOT sufficient — the untransformed object stays fetchable at its own
+  URL.
 
 ## 4. Payments (Stripe Connect)
 
