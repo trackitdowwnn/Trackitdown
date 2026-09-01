@@ -31,10 +31,25 @@
  *        fixed-height View does not. Sharing the styles and the `stacked` flag
  *        is the only version of this that cannot drift.
  *
- *        ⚠️ NOT PRESSABLE, deliberately. The card has nowhere to go: the
- *        dispute route is reached from a push, and the post itself is not
- *        something this screen is allowed to link to. A card that looks
- *        tappable and is not would be worse than a flat one.
+ *        ⚠️ THE CARD ITSELF IS STILL NOT PRESSABLE, and that reasoning stands:
+ *        the post is not something this screen is allowed to link to, and a
+ *        card that looks tappable and is not would be worse than a flat one.
+ *        Most reports still have nowhere to go and stay exactly as flat as they
+ *        were.
+ *
+ *        ⚠️ WHAT CHANGED 2026-09-01 is that SOME reports now do. `/sighting-
+ *        dispute` was reachable only from a push, so a spotter who declined
+ *        notifications could never contest a denial (ROADMAP's last open item
+ *        on the critical path). Where a refund hold names this sighting, the
+ *        card grows ONE labelled row — never a whole-card press — so only the
+ *        reports that can actually open something carry a control.
+ *
+ *        That is also why the card is now a COLUMN wrapping a row: the door has
+ *        to be a SIBLING of the text block, because `main` carries the
+ *        accessibility grouping and a control inside a grouped element is
+ *        unreachable to VoiceOver (AlertCard's header records that bug in
+ *        full). The grouping moved from the card onto `main` in the same pass,
+ *        so a doorless card reads as one utterance exactly as before.
  * LINKS: src/shared/ui/CarColourTile.tsx (the leading visual, and why it
  *          exists — moved there 2026-08-28 when chat needed it too);
  *        ../screens/MySightingsScreen.tsx (the only consumer);
@@ -42,8 +57,8 @@
  *          before widening what this row shows).
  */
 
-import { Check } from 'lucide-react-native';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Check, ChevronRight } from 'lucide-react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
 import {
@@ -109,11 +124,47 @@ function describeReportedCar(car: MySightingRecordEntry['car']): string {
   return [car.colour, car.make].filter(Boolean).join(' ') || 'a car';
 }
 
-export interface ReportCardProps {
-  entry: MySightingRecordEntry;
+/**
+ * What the dispute door says, per state. Only `available` reports get one.
+ *
+ * ⚠️ THE COPY FOLLOWS SightingDisputeScreen'S HONESTY RULE: filing is "tell
+ * us", never "appeal" — there was no verdict to appeal, the post simply closed
+ * without crediting anybody. Anything framed as contesting a decision would
+ * promise an adversarial process this product does not have.
+ *
+ * A filed dispute keeps the door open but stops inviting: the spotter has said
+ * their piece and the screen is now where they read the answer.
+ */
+function disputeDoor(
+  dispute: NonNullable<MySightingRecordEntry['dispute']>,
+): { label: string; hint: string } | null {
+  if (!dispute.available) return null;
+  switch (dispute.status) {
+    case 'open':
+      return { label: 'We’re looking at this', hint: 'Opens what you told us' };
+    case 'upheld':
+      return { label: 'You were right — see what happens next', hint: 'Opens the outcome' };
+    case 'rejected':
+      return { label: 'See the outcome', hint: 'Opens the outcome' };
+    default:
+      return {
+        label: 'Tell us if this was your sighting',
+        hint: 'Opens a form to tell us what you saw',
+      };
+  }
 }
 
-export function ReportCard({ entry }: ReportCardProps) {
+export interface ReportCardProps {
+  entry: MySightingRecordEntry;
+  /**
+   * Opens /sighting-dispute for this report. Optional: a screen that passes
+   * nothing gets today's flat, controlless card, which is still the right
+   * shape for every report with no hold against it.
+   */
+  onOpenDispute?: (sightingId: string) => void;
+}
+
+export function ReportCard({ entry, onOpenDispute }: ReportCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const stacked = useStackedRow();
@@ -124,6 +175,8 @@ export function ReportCard({ entry }: ReportCardProps) {
   const verdict = VERDICT[entry.status];
   const car = describeReportedCar(entry.car);
 
+  const door = entry.dispute && onOpenDispute ? disputeDoor(entry.dispute) : null;
+
   const when = entry.areaLabel ? `${entry.areaLabel} · ${reported}` : reported;
   // WHEN they ruled, only once they have. NULL reviewed_at means nobody has
   // looked, which must never be dressed up as a decision.
@@ -131,7 +184,7 @@ export function ReportCard({ entry }: ReportCardProps) {
 
   return (
     <View
-      style={[styles.card, stacked && styles.cardStacked]}
+      style={styles.card}
       testID={`my-sighting-${entry.id}`}
       // ⚠️ ONE UTTERANCE, NOT THREE. Ungrouped, a screen reader read the car,
       // then a ·-joined fragment, then a verdict, as three unrelated strings
@@ -139,14 +192,33 @@ export function ReportCard({ entry }: ReportCardProps) {
       // safe here only because the card holds no controls — see the header for
       // why it is not pressable, and AlertCard for what grouping costs when it
       // is.
-      accessible
-      accessibilityLabel={`${car}, reported ${
-        entry.areaLabel ? `in ${entry.areaLabel} ` : ''
-      }${reported}. ${verdict.label}${entry.reviewedAt ? `, ${ruled}` : ''}`}
+      // ⚠️ THE GROUPING MOVED OFF THE CARD AND ONTO THE TEXT BLOCK, because the
+      // card can now hold a control. iOS groups an `accessible` element's
+      // children, so a button in here would be unreachable to VoiceOver while
+      // working fine on Android — the exact bug AlertCard's header records, and
+      // why its card is a plain View with separately-labelled parts. Custom
+      // accessibilityActions would not save it either: Voice Control and Full
+      // Keyboard Access navigate the TREE, and a tree of one element gives them
+      // nothing to tab to.
+      //
+      // The one utterance is preserved by grouping `main` instead, so a card
+      // with no door reads exactly as it did. The tile is safe to leave outside
+      // it: CarColourTile renders no text and sets no accessibility props, so it
+      // is not a focus stop.
     >
+      <View
+        style={[styles.row, stacked && styles.rowStacked]}
+        testID={`my-sighting-row-${entry.id}`}
+      >
       <CarColourTile colour={entry.car.colour} testID={`my-sighting-tile-${entry.id}`} />
 
-      <View style={[styles.main, stacked && styles.mainStacked]}>
+      <View
+        style={[styles.main, stacked && styles.mainStacked]}
+        accessible
+        accessibilityLabel={`${car}, reported ${
+          entry.areaLabel ? `in ${entry.areaLabel} ` : ''
+        }${reported}. ${verdict.label}${entry.reviewedAt ? `, ${ruled}` : ''}`}
+      >
         <Text style={styles.car} numberOfLines={1}>
           {car}
         </Text>
@@ -188,6 +260,34 @@ export function ReportCard({ entry }: ReportCardProps) {
           </Text>
         </View>
       </View>
+      </View>
+
+      {/* ⚠️ THE DOOR, and the reason this card stopped being flat. Until now
+          /sighting-dispute was reachable ONLY from a push, so a spotter who
+          declined notifications could never contest a denial — the header above
+          said the card had "nowhere to go", and this is the somewhere.
+
+          A SEPARATE, LABELLED ELEMENT rather than the whole card being
+          pressable: most reports have no hold against them and never will, and
+          a card that looks tappable and is not would be worse than a flat one
+          (the original reasoning, still true). Only the reports that can
+          actually open something gain a control. */}
+      {door ? (
+        <Pressable
+          onPress={() => onOpenDispute?.(entry.id)}
+          accessibilityRole="button"
+          // The label has to carry WHICH report, because this button sits
+          // outside the grouped text block and a screen reader arriving here
+          // from below has not heard the car yet.
+          accessibilityLabel={`${door.label}. ${car}, reported ${reported}`}
+          accessibilityHint={door.hint}
+          style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
+          testID={`my-sighting-dispute-${entry.id}`}
+        >
+          <Text style={styles.doorLabel}>{door.label}</Text>
+          <ChevronRight size={sizes.iconSm} color={palette.textSecondary} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -204,9 +304,13 @@ export function ReportCardSkeleton() {
   const scale = fontScale ?? 1;
 
   return (
-    <View style={[styles.card, stacked && styles.cardStacked]} testID="report-card-skeleton">
-      <View style={styles.skeletonTile} />
-      <View style={[styles.main, stacked && styles.mainStacked]}>
+    <View style={styles.card} testID="report-card-skeleton">
+      <View
+        style={[styles.row, stacked && styles.rowStacked]}
+        testID="report-card-skeleton-row"
+      >
+        <View style={styles.skeletonTile} />
+        <View style={[styles.main, stacked && styles.mainStacked]}>
         {/* ⚠️ THE REAL LINE HEIGHTS, SCALED — not `sizes.skeletonLine`, which is
             a fixed 12 and is right for a skeleton that only has to look like a
             line. This one's contract is HEIGHT PARITY with the card beside it,
@@ -221,13 +325,14 @@ export function ReportCardSkeleton() {
             { height: typography.caption.lineHeight * scale },
           ]}
         />
-        <View
-          style={[
-            styles.skeletonLine,
-            styles.skeletonLineVerdict,
-            { height: typography.label.lineHeight * scale },
-          ]}
-        />
+          <View
+            style={[
+              styles.skeletonLine,
+              styles.skeletonLineVerdict,
+              { height: typography.label.lineHeight * scale },
+            ]}
+          />
+        </View>
       </View>
     </View>
   );
@@ -266,16 +371,52 @@ const makeStyles = (c: Palette) =>
     // in the app filled with the subtle grey, which reads as a well in the page
     // rather than a thing resting on it. The shared box carries the flat-with-a-
     // hairline decision and the reasoning behind it.
+    // ⚠️ THE CARD IS A COLUMN AND THE TILE+TEXT ROW IS A CHILD OF IT, since
+    // 2026-09-01. It used to BE the row. The dispute door has to be a sibling
+    // of the text block rather than inside it — `main` carries the
+    // accessibility grouping, and a control inside a grouped element is
+    // unreachable to VoiceOver — so the card needed a second slot underneath.
+    // With one child the `gap` is inert, so a card with no door is unchanged.
     card: {
       ...cardSurface(c),
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-      padding: spacing.lg,
     },
-    cardStacked: {
+    rowStacked: {
       flexDirection: 'column',
       alignItems: 'flex-start',
+    },
+    // The door reads as a row in the card, not a button on it: a filled Button
+    // here would shout louder than the verdict above it, and on a screen whose
+    // whole job is to state outcomes calmly that is the wrong emphasis. The
+    // separator is what makes it a distinct region rather than a fourth line of
+    // metadata.
+    door: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      // Full-width, and at least a 44pt target — the row is the hit area, so it
+      // must clear the floor on its own rather than relying on hitSlop, which
+      // the notifications pass proved is claimed by the next sibling in reverse
+      // draw order.
+      minHeight: sizes.touchTarget,
+      paddingTop: spacing.md,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
+    doorPressed: {
+      opacity: 0.6,
+    },
+    doorLabel: {
+      ...typography.label,
+      color: c.textPrimary,
+      flex: 1,
     },
     main: { flex: 1, gap: spacing.xs },
     // ⚠️ NEUTRALISE THE BASIS WHEN THE CARD IS A COLUMN. `flex: 1` is

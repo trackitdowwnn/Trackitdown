@@ -22,6 +22,18 @@
  *        no owner, no location, no plate, no post id — so this page cannot be
  *        used to reach a listing they were never shown.
  *
+ *        ⚠️ THE DISPUTE DOOR, 2026-09-01. `/sighting-dispute` used to be
+ *        reachable ONLY from the `closed_uncredited` push, which meant a
+ *        spotter who declined notifications could never contest a denial —
+ *        ROADMAP's last open item on the critical path. Reports that a refund
+ *        hold names now carry one labelled row that opens it.
+ *
+ *        That did NOT widen the payload's wall. `dispute` is three facts about
+ *        the spotter's own standing — is there a hold naming this sighting,
+ *        did they file, when does the window close — and nothing about the
+ *        post. The hold's existence was already pushed to them; being told it
+ *        only by a push was the bug.
+ *
  *        ⚠️ REDESIGNED 2026-08-27 (owner request, Airbnb language). The rows
  *        were three lines of text in a subtle grey box; they are now the house
  *        card — a leading tile, a title, a meta line and a marked outcome — at
@@ -99,6 +111,26 @@ export function MySightingsScreen() {
     log.info('my_sightings_viewed');
   }, []);
 
+  /**
+   * The in-app door to /sighting-dispute, which until 2026-09-01 was reachable
+   * ONLY from a push — so a spotter who declined notifications could never
+   * contest a denial (ROADMAP's last open item on the critical path).
+   *
+   * ⚠️ NO GUARD HERE ON WHETHER THE DISPUTE IS AVAILABLE. ReportCard renders
+   * the door only when the server said `available`, and the dispute screen
+   * re-reads its own truth from `my_dispute_context` on arrival — which is the
+   * authority, and which refuses with DISPUTE_NOT_AVAILABLE if the window has
+   * closed in between. Two places deciding would mean two places to get it
+   * wrong; this one just carries the id.
+   */
+  const openDispute = useCallback(
+    (sightingId: string) => {
+      log.info('dispute_opened_from_reports');
+      router.push(`/sighting-dispute?sightingId=${sightingId}`);
+    },
+    [router],
+  );
+
   // ⚠️ GATED, BECAUSE THIS IS A FlatList. The mapped lists this idiom came from
   // (alerts, the sighting timeline) mount each row once; a virtualized cell is
   // RECYCLED, so an ungated `entering` re-fires every time a row scrolls back
@@ -134,11 +166,11 @@ export function MySightingsScreen() {
           // to 48.
           <DayHeader label={item.label} gutter="none" />
         ) : (
-          <ReportCard entry={item.row} />
+          <ReportCard entry={item.row} onOpenDispute={openDispute} />
         )}
       </Animated.View>
     ),
-    [entranceActive],
+    [entranceActive, openDispute],
   );
 
   return (

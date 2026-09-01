@@ -537,6 +537,32 @@ export async function markSightingHelpful(sightingId: string): Promise<{
  * no post id. A spotter's history is not a back door into listings they were
  * never shown.
  */
+/**
+ * The spotter's OWN standing on this report's dispute, and nothing about the
+ * post beyond it.
+ *
+ * ⚠️ `available` MIRRORS `my_dispute_context`'s gate exactly: a refund hold
+ * exists on the post AND names this sighting in `sighting_ids`. It is here so
+ * `My reports` can show the door only where the door opens — without it the
+ * screen would have to route every card at `/sighting-dispute` and let a
+ * `DISPUTE_NOT_AVAILABLE` refusal do the filtering, which is a dead end dressed
+ * up as a button.
+ *
+ * ⚠️ THIS DOES NOT WIDEN WHAT THE SPOTTER LEARNS ABOUT THE POST. No owner, no
+ * location, no plate, no post id — the same wall the rest of this payload
+ * keeps. A hold's existence is already told to this spotter by the
+ * `closed_uncredited` push; all this does is stop that push being the ONLY way
+ * to hear it.
+ */
+export interface MySightingDispute {
+  /** Whether /sighting-dispute will load for this sighting. */
+  available: boolean;
+  /** Their own filing, if they have made one. */
+  status: 'open' | 'upheld' | 'rejected' | null;
+  /** When the 72-hour window closes, or null once it no longer matters. */
+  windowEndsAt: string | null;
+}
+
 export interface MySightingRecordEntry {
   id: string;
   createdAt: string;
@@ -548,6 +574,18 @@ export interface MySightingRecordEntry {
   areaLabel: string | null;
   /** Bounded to 32 chars server-side; either half may be '' on a sparse post. */
   car: { make: string; colour: string };
+  /**
+   * ⚠️ OPTIONAL BECAUSE THE SERVER MAY BE OLDER THAN THIS BUNDLE, and that is
+   * a deployment fact rather than a modelling one. The row schema below is
+   * `.strict()` on purpose, so a payload carrying a key this client does not
+   * know FAILS — which means a widened `my_sighting_record` would break `My
+   * reports` for every phone still on the previous bundle. Declaring the field
+   * optional here first makes the client tolerate both servers, so the client
+   * can ship AHEAD of the migration and the order is safe in one direction.
+   * Undefined means "this server does not send it yet", which reads the same
+   * as "no dispute" on the screen.
+   */
+  dispute?: MySightingDispute;
 }
 
 const mySightingRowSchema = z
@@ -558,6 +596,18 @@ const mySightingRowSchema = z
     reviewed_at: z.string().nullable(),
     area_label: z.string().nullable(),
     car: z.object({ make: z.string(), colour: z.string() }).strict(),
+    // `.optional()` is what lets this bundle run against a server that predates
+    // the dispute fields — see MySightingRecordEntry.dispute. `.nullable()` too
+    // because jsonb_build_object emits SQL NULL as JSON null, not absence.
+    dispute: z
+      .object({
+        available: z.boolean(),
+        status: z.enum(['open', 'upheld', 'rejected']).nullable(),
+        window_ends_at: z.string().nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   // PRIVACY: strict, exactly as the owner payload is. This RPC is the one place
   // a spotter reads rows joined to somebody else's post, so a widened server
@@ -592,6 +642,18 @@ export async function fetchMySightingRecord(): Promise<MySightingRecordEntry[]> 
     reviewedAt: row.reviewed_at,
     areaLabel: row.area_label,
     car: row.car,
+    // Absent (old server) and null (no hold) collapse to the same thing here:
+    // the screen has no door to show. Only a present, `available` object is a
+    // door, and the mapping keeps that decision in one place.
+    ...(row.dispute
+      ? {
+          dispute: {
+            available: row.dispute.available,
+            status: row.dispute.status,
+            windowEndsAt: row.dispute.window_ends_at,
+          },
+        }
+      : {}),
   }));
 }
 
