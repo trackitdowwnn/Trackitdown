@@ -508,11 +508,21 @@ end $$;
 -- The gate is: caller owns the sighting AND a refund_holds row exists for its
 -- post AND the sighting is named in that hold's sighting_ids. It is the third
 -- clause that gets dropped by accident, so it is asserted explicitly below.
+-- ⚠️ READS THE EXPECTED STATUS FROM refund_disputes RATHER THAN NAMING ONE.
+-- The first version of this check asserted 'open', inheriting the dispute CHECK
+-- 6 files — and CHECK 8, in between, RESOLVES it to 'upheld'. It failed on its
+-- first CI run with "own open dispute reads as upheld", which was the check
+-- being wrong, not the code. Asserting the MAPPING (my_sighting_record.status
+-- equals the spotter's actual refund_disputes.status) tests the contract this
+-- migration introduced and cannot be broken by a neighbouring check mutating
+-- the fixture. The same mistake as CHECK 9's collision on 2026-08-30: state
+-- assumed from an earlier check that a later one had already changed.
 do $$
 declare
   v_rec       jsonb;
   v_available boolean;
   v_status    text;
+  v_expected  text;
   v_other     boolean;
 begin
   perform set_config('request.jwt.claims',
@@ -528,11 +538,20 @@ begin
   from jsonb_array_elements(v_rec->'sightings') e
   where e->>'id' = 'd0d0d0d0-0000-0000-0000-000000000001';
 
+  select d.status into v_expected
+    from public.refund_disputes d
+   where d.sighting_id = 'd0d0d0d0-0000-0000-0000-000000000001';
+
   if v_available is distinct from true then
     raise exception 'CHECK 11 FAILED: a held, named sighting reports available=% — the door would never appear', v_available;
   end if;
-  if v_status is distinct from 'open' then
-    raise exception 'CHECK 11 FAILED: own open dispute reads as % on My reports', v_status;
+  -- Guard the fixture: if nothing filed a dispute this would compare null to
+  -- null and pass while asserting nothing.
+  if v_expected is null then
+    raise exception 'CHECK 11 FAILED: no dispute on the fixture sighting — this check would prove nothing';
+  end if;
+  if v_status is distinct from v_expected then
+    raise exception 'CHECK 11 FAILED: My reports shows dispute status % but refund_disputes says %', v_status, v_expected;
   end if;
 
   -- ⚠️ THE THIRD CLAUSE. Same post, same owner attestation, but this sighting is
