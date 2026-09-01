@@ -212,7 +212,17 @@ function scanMigrations() {
   const declared = new Map(); // name -> { params, file }
   if (!existsSync(dir)) return declared;
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
-    const text = readFileSync(join(dir, file), "utf8");
+    // ⚠️ COMMENTS STRIPPED BEFORE MATCHING, not just inside the captured arg
+    // list. The first version stripped them only in paramNames, which fixed
+    // commas in prose but left the scan itself reading comment text — so a
+    // migration whose HEADER discusses `create or replace function
+    // send_message(...)` was parsed as a redeclaration of it. Being the newest
+    // file, that phantom won, its "arguments" were a paragraph of English, and
+    // the probe reported a perfectly healthy send_message as MISSING.
+    //
+    // A false MISSING is the worst output this tool has: it sends someone
+    // hunting a bug in production code that is fine.
+    const text = stripSqlComments(readFileSync(join(dir, file), "utf8"));
     for (const m of text.matchAll(FN_RE)) {
       declared.set(m[1], { params: paramNames(m[2]), file });
     }
