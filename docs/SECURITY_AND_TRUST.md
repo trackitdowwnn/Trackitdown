@@ -421,7 +421,30 @@ commenting standards.
   privilege checked before any policy runs. A role holding it empties the table
   regardless of every policy on it.
 
-  > ### ⚠️ OPEN GAP — anon holds TRUNCATE on 24 tables
+  > ### ✅ CLOSED 2026-09-01 — anon held TRUNCATE on 24 tables
+  >
+  > `20260901130000_revoke_anon_truncate.sql` revokes `TRUNCATE`, `REFERENCES`
+  > and `TRIGGER` from `anon` and `authenticated` on **every** table in
+  > `public`, and `anon_role_verification.sql` **CHECK 13** now fails the build
+  > if any table grants them again. The history below is kept because the shape
+  > of the failure is the useful part: it was found by a suite's first-ever run,
+  > fixed on four tables, correctly recorded as open on the other 24 — and then
+  > sat that way for a month, because a documented gap reads as a decision.
+  >
+  > ⚠️ THE CAUSE IS NOT FIXED AND CANNOT BE, FROM HERE. The
+  > `ALTER DEFAULT PRIVILEGES` that grants this is set by Supabase's project
+  > bootstrap, not by any migration in this repo, so its grantor role is not
+  > ours to assume — **every new `CREATE TABLE` still gets these privileges.**
+  > CHECK 13 is the guard: add a table without an explicit revoke and CI goes
+  > red. That is why the check matters more than the migration did.
+  >
+  > The revoke is surgical rather than `revoke all` + re-grant (the shape
+  > `20260802170000` used on the four tables it owned): across 36 tables in
+  > every feature, re-deriving each one's real DML needs would be a large and
+  > silent way to break the app — a missed `grant select` is a screen that
+  > returns nothing, with RLS-shaped symptoms and no error.
+  >
+  > <details><summary>The original gap, as recorded</summary>
   >
   > This project ships `ALTER DEFAULT PRIVILEGES … GRANT ALL ON TABLES TO anon,
   > authenticated`, so **every `CREATE TABLE` silently grants both roles
@@ -447,6 +470,8 @@ commenting standards.
   > Postgres credentials, so there is no route to issue it from outside. It
   > becomes exploitable the moment anything runs dynamic SQL as the caller.
   > A privilege nothing uses costs nothing to drop, so drop it.
+  >
+  > </details>
 
 ## 7. Moderation
 

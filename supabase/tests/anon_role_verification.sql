@@ -488,3 +488,48 @@ begin
 
   raise notice 'CHECK 12 passed: last_seen_location is denied to anon/authenticated; the rest of the row still reads.';
 end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 13 — NO public table grants TRUNCATE, REFERENCES or TRIGGER to a
+-- client role. Added 2026-09-01 with 20260901130000.
+-- -----------------------------------------------------------------------------
+-- ⚠️ THIS CHECK EXISTS BECAUSE THE MIGRATION CANNOT FIX THE CAUSE. Supabase's
+-- project bootstrap ships `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES TO
+-- anon, authenticated`, so every future CREATE TABLE re-opens the hole; that
+-- default is set outside this repo and its grantor role is not ours to assume.
+-- So the migration cleans up what exists and THIS asserts the invariant, which
+-- means the next table added without an explicit revoke turns CI red instead of
+-- sitting unnoticed. 20260802170000 closed four tables on 2026-07-31 and the
+-- remaining 24 sat open for a month precisely because nothing asserted it.
+--
+-- TRUNCATE IS NOT SUBJECT TO RLS — it is a table-level privilege checked before
+-- any policy runs, so one statement bypasses every policy on the table. On
+-- public.payments that is the record of whose money is whose.
+do $$
+declare
+  v_bad text;
+begin
+  select string_agg(format('%s(%s to %s)', table_name, privilege_type, grantee), ', '
+                    order by table_name, privilege_type, grantee)
+    into v_bad
+  from information_schema.role_table_grants
+  where table_schema = 'public'
+    and grantee in ('anon', 'authenticated')
+    and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER');
+
+  if v_bad is not null then
+    raise exception 'CHECK 13 FAILED: client roles hold table-level privileges that bypass RLS: %. '
+                    'Add `revoke truncate, references, trigger on public.<table> from anon, '
+                    'authenticated;` to the migration that creates the table.', v_bad;
+  end if;
+
+  -- ...and the DML the app actually runs still works, or this would be an
+  -- outage rather than a fix. anon reads active posts on the logged-out feed.
+  perform set_config('request.jwt.claims', null, true);
+  set local role anon;
+  perform id from public.posts where status = 'active' limit 1;
+  reset role;
+
+  raise notice 'CHECK 13 passed: no public table grants TRUNCATE/REFERENCES/TRIGGER to anon or authenticated.';
+end $$;
