@@ -244,14 +244,33 @@ commenting standards.
       public place — per ADR-0003 these are camera-only shots of the CAR, not
       the spotter — and Art. 17(3)(e) covers evidence for legal claims. Flagged
       as a judgement call, not a certainty.
-  - **STILL OPEN — `delete_vehicle` / `update_vehicle` orphan objects.** Both
-    remove rows only; the JPEGs stay in the public `post-photos` bucket and
-    remain reachable by URL indefinitely. Any fix must first check
-    `post_photos.url` / `post_distinctive_feature.photo_url` for the same
-    object: the garage and posts deliberately SHARE objects, so deleting one
-    blindly would blank the hero image of a live stolen-car listing. (Account
-    deletion is safe from that trap because the whole account's posts cascade
-    with it.)
+  - **CLOSED 2026-09-01 — `delete_vehicle` / `update_vehicle` orphan objects.**
+    Was: both remove rows only, and the JPEGs stayed in the public
+    `post-photos` bucket reachable by URL indefinitely, so a person told their
+    photographs were deleted still had them online.
+
+    `20260901160000` adds `orphaned_photos` and an AFTER DELETE trigger on all
+    four tables that hold such a URL (`post_photos`, `vehicle_photos`, and the
+    two `distinctive_feature` tables), queueing the storage path. The hourly
+    sweep (`release-held-refunds`) removes the objects **through the storage
+    API** — never by deleting `storage.objects` rows, per the rule
+    `delete-account` set out: a row delete leaves the bytes behind as an orphan
+    no listing can find again.
+
+    ⚠️ **The shared-object trap this entry warned about is handled at DRAIN
+    time, not at enqueue.** A post snapshots a garage vehicle's URLs, so one
+    object is routinely named by both. `claim_orphaned_photos` re-checks all
+    four tables and hands back only paths nothing still references; a shared
+    path is dropped from the queue and re-queued later if it is ever genuinely
+    orphaned. `orphaned_photos_verification` CHECKS 4 and 5 are that guarantee,
+    and they are the most important checks in the file — over-deleting is
+    irreversible and the victim is a stranger.
+
+    ⚠️ **Claim and forget are separate calls.** Dropping the queue row when the
+    path is handed out would lose it permanently if the storage call then
+    failed — stranding exactly the orphan this feature exists to remove.
+    Removal is also inherited from the sweep's health: if that stops firing,
+    erasure stops silently, the same caveat the retention purges carry.
   - Deleting a saved car never touches a post made from it — posts hold their
     own snapshot (DOMAIN.md, "Garage").
 - Auth is passwordless (email OTP + Apple/Google — DOMAIN.md). Session tokens

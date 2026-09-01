@@ -62,7 +62,15 @@ Deno.serve(async (request) => {
     return errorResponse('NOT_AUTHENTICATED', 'Not allowed.', 401);
   }
   const stripe = createStripeClient();
-  const summary = { refunded: 0, paid: 0, notified: 0, skipped: 0, purged: 0, locationsPurged: 0 };
+  const summary = {
+    refunded: 0,
+    paid: 0,
+    notified: 0,
+    skipped: 0,
+    purged: 0,
+    locationsPurged: 0,
+    photosRemoved: 0,
+  };
 
   // --- Phase 0: feed retention (ADR-0012 §8) ---------------------------------
   // 90 days, anchored HERE so retention runs wherever the sweep runs; the
@@ -106,6 +114,58 @@ Deno.serve(async (request) => {
     }
   } catch (err) {
     console.error('[sightings] location purge failed', (err as Error).message);
+  }
+
+  // --- Phase 0c: orphaned photo objects -------------------------------------
+  // ⚠️ THE ERASURE HALF THAT SQL CANNOT DO. delete_vehicle removes rows and the
+  // photo rows cascade, but the JPEGs sat in the PUBLIC post-photos bucket
+  // forever — a UK GDPR gap open since 2026-08-01. 20260901160000 queues the
+  // paths; only a storage-API call can remove the bytes, and this is the one
+  // process that runs on a clock.
+  //
+  // ⚠️ THROUGH THE STORAGE API, NEVER BY DELETING storage.objects ROWS — the
+  // rule delete-account's header sets out: a row delete removes the record and
+  // leaves the bytes, creating an orphan that no listing can ever find again.
+  //
+  // ⚠️ CLAIM → REMOVE → FORGET, IN THAT ORDER, AND FORGET ONLY ON SUCCESS. If
+  // the queue row were dropped at claim time, a failure in between would lose
+  // the path permanently and strand the object — the exact orphan this feature
+  // exists to prevent, manufactured by the thing meant to fix it. Claiming is
+  // idempotent, so a failed sweep just retries next hour.
+  //
+  // The claim re-checks all four photo tables before handing anything back: a
+  // post created from a garage vehicle snapshots the same URLs, so deleting on
+  // the vehicle's word alone would blank a live listing's hero image.
+  try {
+    const { data: claimed, error: claimError } = await admin.rpc('claim_orphaned_photos', {
+      p_limit: 100,
+    });
+    if (claimError) {
+      console.error('[storage] orphan claim failed', claimError.message);
+    } else {
+      const paths = (claimed ?? []) as string[];
+      if (paths.length > 0) {
+        const { error: removeError } = await admin.storage.from('post-photos').remove(paths);
+        if (removeError) {
+          // Left queued deliberately — see the claim/forget note above.
+          console.error('[storage] orphan remove failed', removeError.message);
+        } else {
+          const { error: forgetError } = await admin.rpc('forget_orphaned_photos', {
+            p_paths: paths,
+          });
+          if (forgetError) {
+            // The objects are gone; the queue rows are not. Next run's claim
+            // finds them unreferenced again, removes nothing (already absent —
+            // `remove` is a no-op on a missing object) and forgets them.
+            console.error('[storage] orphan forget failed', forgetError.message);
+          } else {
+            summary.photosRemoved = paths.length;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[storage] orphan sweep failed', (err as Error).message);
   }
 
   // --- Phase 1: expired, undisputed holds → the owner's refund ---------------
