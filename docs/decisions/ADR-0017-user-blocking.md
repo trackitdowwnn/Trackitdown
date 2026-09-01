@@ -1,6 +1,7 @@
 # ADR-0017 — User blocking
 
-**Status:** PROPOSED — needs an owner decision on §3 before any code ·
+**Status:** accepted — Q1(a) freeze, Q2(a) sightings stay, Q3(a) reporting stays
+(owner decision, 2026-09-01) ·
 **Date:** 2026-09-01 · Closes the last of ROADMAP's `[~] Flagging … + user
 blocking`, and the one item the whole-app review calls a **submission blocker**
 
@@ -44,10 +45,34 @@ payload deliberately carries no owner identity.
 blocked_id, created_at)`, primary key on the pair, both FKs cascading on profile
 deletion. No status column, no soft delete: unblocking is a `delete`.
 
-**2. Enforcement is server-side, in SECURITY DEFINER functions.** Not RLS —
-the relationship is between two rows in `profiles`, and every surface above
-already goes through a definer function that knows both parties. A client-side
-filter would be theatre; RLS on `threads` would not cover `create_sighting`.
+**2. Enforcement is server-side, in BEFORE INSERT triggers on `threads` and
+`messages`.** Not RLS (the relationship is between two rows in `profiles`, and
+RLS on `threads` would not cover the message path), and — after a false start —
+not a check inside `open_thread` and `send_message` either.
+
+⚠️ **That false start is worth recording, because it nearly shipped.** The first
+draft added four lines to `send_message`. But `create or replace function`
+requires the *whole* body, so adding four lines meant hand-copying two hundred —
+and the copy silently dropped the `pg_advisory_xact_lock` guarding the rate
+limit, renamed `POST_CLOSED` to `THREAD_CLOSED` (which the client maps), and
+returned a different payload shape than `chatApi` parses. None of that is
+visible in review, because the diff reads as "a function was replaced".
+
+Triggers state the rule as an invariant instead — *no thread and no message may
+exist between blocked accounts* — with three advantages:
+
+- No existing function body is touched, so nothing can be lost in a copy.
+- **A future rewrite cannot drop it.** `open_thread` has already been replaced
+  twice; an inline check would have to be carried forward by hand each time.
+  That is the exact mechanism by which ADR-0014's `kind` filters went missing
+  for four days and an hourly cron refunded platform fees.
+- `open_thread` and `open_thread_for_sighting` are covered from one place.
+
+It also lands the freeze correctly by accident of `open_thread`'s existing
+shape: that function returns an existing thread *before* reaching its insert, so
+a blocked pair keeps read access to history and simply cannot create anything
+new — which is exactly Q1 (a), and matches the comment already there saying
+"returning an existing thread is ungated so history stays reachable".
 
 **3. Blocking is not flagging and must not be conflated.** A flag asks us to
 look at something. A block asks for nothing and tells us nothing — it is not
@@ -65,7 +90,11 @@ same `NOT_PARTICIPANT` a stranger gets, so the endpoint cannot be used as an
 oracle for "has this person blocked me". Same reasoning as
 `my_dispute_context`'s single refusal token.
 
-## §3 — The three questions that need an owner decision
+## §3 — The three questions, and how they were decided
+
+**Decided 2026-09-01: the recommended set — (a), (a), (a).** The alternatives are
+kept below because each was live, and because the reasoning for refusing them is
+the reasoning that keeps blocking narrow.
 
 Each has a defensible answer both ways, and each has consequences that are not
 recoverable by a later migration.
