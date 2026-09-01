@@ -1491,28 +1491,39 @@ end $$;
 -- ⚠️ THE PROMISE IS PUBLISHED. legalContent.ts, "How long we keep it": "The
 -- detailed location history attached to a closed listing's sightings is deleted
 -- after 90 days." Between 2026-07-14 and 2026-09-01 nothing performed it, and
--- the documents are about to go live at trackitdown.co.uk — so the assertion
--- has to cover BOTH failure directions, because each is its own kind of bad:
+-- the documents are about to go live at trackitdown.co.uk — so this covers BOTH
+-- failure directions, because each is its own kind of bad:
 --
 --   * purges too little  -> we publish a retention promise we do not keep.
 --   * purges too much    -> we destroy an OPEN investigation's evidence, or a
 --                           spotter's own record of where they were.
 --
--- The over-purge cases are the ones with no undo, so there are three of them.
+-- The over-purge cases have no undo, so there are three of them.
+--
+-- ⚠️ WRAPPED IN begin/rollback, AND THE TRIGGER IS DISABLED INSIDE IT.
+-- posts.closed_at is trigger-maintained: set_post_closed_at() nulls it on any
+-- write to a post that is not in a closed state, so a plain
+-- `update posts set closed_at = now() - interval '91 days'` is silently undone
+-- and the purge then finds nothing — which is exactly how the first version of
+-- this check failed, reporting "0 rows purged, expected at least 3".
+-- 20260722100000's own backfill hit the same wall and solved it the same way,
+-- with a comment saying so. The transaction is what makes it safe: the trigger
+-- state, the fixture rows and closed_at all roll back even if a raise fires.
+begin;
+alter table public.posts disable trigger posts_set_closed_at;
 do $$
 declare
-  v_post     uuid := 'a1a1a1a1-0000-0000-0000-000000000001';
-  v_old      uuid := 'ca5e0000-0000-0000-0000-000000000001';
-  v_open     uuid := 'ca5e0000-0000-0000-0000-000000000002';
-  v_recent   uuid := 'ca5e0000-0000-0000-0000-000000000003';
-  v_purged   integer;
-  v_lat      double precision;
-  v_area     text;
-  v_photos   integer;
-  v_prev     timestamptz;
+  v_post   uuid := 'a1a1a1a1-0000-0000-0000-000000000001';
+  v_old    uuid := 'ca5e0000-0000-0000-0000-000000000001';
+  v_open   uuid := 'ca5e0000-0000-0000-0000-000000000002';
+  v_recent uuid := 'ca5e0000-0000-0000-0000-000000000003';
+  v_purged integer;
+  v_lat    double precision;
+  v_area   text;
+  v_photos integer;
 begin
-  -- Three sightings on one post, each with a located photo. The post's
-  -- closed_at is moved between calls, so the only variable is the clock.
+  -- Three sightings on one post, each with a located photo. Only the clock
+  -- varies between calls.
   insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
   values (v_old,    v_post, '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', false),
          (v_open,   v_post, '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', false),
@@ -1522,9 +1533,7 @@ begin
          (v_open,   'p/2.jpg', 53.4808, -2.2426, 12, now(), 0),
          (v_recent, 'p/3.jpg', 53.4808, -2.2426, 12, now(), 0);
 
-  select closed_at into v_prev from public.posts where id = v_post;
-
-  -- (a) OPEN post: closed_at null. Nothing may be touched, however old the
+  -- (a) OPEN post: closed_at null. Nothing may be touched however old the
   --     sighting is — this is a live case and the coordinates are the evidence.
   update public.posts set closed_at = null where id = v_post;
   v_purged := public.purge_sighting_location_history();
@@ -1533,7 +1542,7 @@ begin
     raise exception 'CHECK 25 FAILED: purged the location of a sighting on an OPEN post — that is live evidence';
   end if;
 
-  -- (b) Closed 89 days ago: still inside the window, still untouched.
+  -- (b) Closed 89 days ago: inside the window, untouched.
   update public.posts set closed_at = now() - interval '89 days' where id = v_post;
   v_purged := public.purge_sighting_location_history();
   select lat into v_lat from public.sighting_photos where sighting_id = v_recent;
@@ -1556,9 +1565,9 @@ begin
   end if;
 
   -- (d) THE PHOTOS THEMSELVES SURVIVE. The policy's deletion section is
-  --     explicit that sighting photos outlive even account deletion, because
-  --     they are evidence in someone else's case. A located photo becomes an
-  --     unlocated photo; it does not disappear.
+  --     explicit that sighting photos outlive even ACCOUNT deletion, being
+  --     evidence in someone else's case. A located photo becomes an unlocated
+  --     photo; it does not disappear.
   select count(*) into v_photos
     from public.sighting_photos where sighting_id in (v_old, v_open, v_recent);
   if v_photos <> 3 then
@@ -1578,7 +1587,6 @@ begin
     raise exception 'CHECK 25 FAILED: re-running purged % more rows — it is not idempotent', v_purged;
   end if;
 
-  update public.posts set closed_at = v_prev where id = v_post;
-  delete from public.sightings where id in (v_old, v_open, v_recent);
-  raise notice 'CHECK 25 passed: 90-day location purge nulls coordinates on closed posts only, keeps photos and area labels, and is idempotent.';
+  raise notice 'CHECK 25 passed: the 90-day location purge nulls coordinates on closed posts only, keeps photos and area labels, and is idempotent.';
 end $$;
+rollback;
