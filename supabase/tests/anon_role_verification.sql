@@ -510,13 +510,41 @@ do $$
 declare
   v_bad text;
 begin
-  select string_agg(format('%s(%s to %s)', table_name, privilege_type, grantee), ', '
-                    order by table_name, privilege_type, grantee)
+  select string_agg(format('%s(%s to %s)', g.table_name, g.privilege_type, g.grantee), ', '
+                    order by g.table_name, g.privilege_type, g.grantee)
     into v_bad
-  from information_schema.role_table_grants
-  where table_schema = 'public'
-    and grantee in ('anon', 'authenticated')
-    and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER');
+  from information_schema.role_table_grants g
+  where g.table_schema = 'public'
+    and g.grantee in ('anon', 'authenticated')
+    and g.privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER')
+    -- ⚠️ EXTENSION-OWNED OBJECTS ARE NOT OURS AND CANNOT BE FIXED HERE. This
+    -- check's first run flagged three: spatial_ref_sys, geometry_columns and
+    -- geography_columns, all created by `create extension postgis`
+    -- (20260711130000) into the public schema. Their grants were made by
+    -- whoever installed the extension, so a migration running as our role
+    -- cannot revoke them — 20260901130000's loop reached spatial_ref_sys and
+    -- silently changed nothing.
+    --
+    -- Excluded rather than tolerated with a hardcoded name list: any future
+    -- extension lands the same way, and a list of three names would send the
+    -- next person hunting for a fix that does not exist. The risk is also not
+    -- ours to carry — spatial_ref_sys is the public EPSG table, it holds
+    -- nothing about any user, and truncating it breaks PostGIS rather than
+    -- leaking anything.
+    --
+    -- ⚠️ THIS MUST STAY NARROW. It excludes objects with a pg_depend extension
+    -- dependency and nothing else, so a table WE create can never slip through
+    -- it — which is the entire value of this check.
+    and not exists (
+      select 1
+        from pg_depend d
+        join pg_class c on c.oid = d.objid
+        join pg_namespace n on n.oid = c.relnamespace
+       where d.classid = 'pg_class'::regclass
+         and d.deptype = 'e'
+         and n.nspname = g.table_schema
+         and c.relname = g.table_name
+    );
 
   if v_bad is not null then
     raise exception 'CHECK 13 FAILED: client roles hold table-level privileges that bypass RLS: %. '
