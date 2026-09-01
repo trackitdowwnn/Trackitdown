@@ -70,6 +70,7 @@ import {
   MapPin,
   MessageCircle,
   Radar,
+  UserX,
   type LucideIcon,
 } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -299,6 +300,22 @@ export function SettingsScreen() {
           title="Photos"
           subtitle="For adding pictures of your own car to a listing."
           testID="row-permission-photos"
+        />
+      </ListRowGroup>
+
+      {/* ⚠️ THE ONLY WAY TO UNDO A BLOCK. It is made in a chat thread, where
+          the header action then disappears — so without this row blocking is a
+          one-way door, and App Store guideline 1.2 wants a control rather than
+          a trap. Its own group: it is neither a permission nor a notification
+          preference, and burying it in either would make it unfindable at the
+          moment somebody wants it. */}
+      <ListRowGroup title="Safety">
+        <ListRow
+          icon={UserX}
+          title="Blocked accounts"
+          subtitle="People you’ve stopped messages from."
+          onPress={() => router.push('/blocked-accounts')}
+          testID="row-blocked-accounts"
         />
       </ListRowGroup>
     </Screen>

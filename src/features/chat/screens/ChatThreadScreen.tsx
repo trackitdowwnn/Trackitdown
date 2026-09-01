@@ -158,6 +158,7 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
   const [justBlocked, setJustBlocked] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const blockSheetRef = useRef<BottomSheetRef>(null);
+  const blockInFlight = useRef(false);
   const toast = useToast();
 
   const items = useMemo(
@@ -257,7 +258,13 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
    * line in the thread. ADR-0017 §5: we never announce a block.
    */
   const confirmBlock = useCallback(async () => {
-    if (blocking) return;
+    // ⚠️ A REF, NOT THE `blocking` STATE. Two presses in the same tick both read
+    // the value from the render they were dispatched in, so a state guard sees
+    // false twice and fires twice — a sibling screen's test caught exactly
+    // that. `blocking` still drives the label and the disabled state; this is
+    // what actually guards re-entry.
+    if (blockInFlight.current) return;
+    blockInFlight.current = true;
     setBlocking(true);
     try {
       await blockThreadPeer(threadId);
@@ -271,9 +278,10 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
         'error',
       );
     } finally {
+      blockInFlight.current = false;
       setBlocking(false);
     }
-  }, [blocking, threadId, toast]);
+  }, [threadId, toast]);
 
   const postClosed = meta.thread ? meta.thread.post.status !== 'active' : false;
   /**
