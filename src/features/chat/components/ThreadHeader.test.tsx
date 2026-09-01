@@ -49,6 +49,8 @@ const props = {
   onOpenPost: noop,
   onOpenProfile: noop,
   onRetry: noop,
+  onBlock: noop,
+  blocked: false,
 };
 
 describe('the two targets', () => {
@@ -203,5 +205,60 @@ describe('the car', () => {
 
     expect(getByTestId('chat-car-photo')).toBeTruthy();
     expect(queryByTestId('chat-car-tile')).toBeNull();
+  });
+});
+
+/**
+ * ⚠️ THE BLOCK ENTRY POINT. App Store guideline 1.2 wants a way to block a
+ * person, and this header is the only screen where the two accounts meet — so
+ * if these fail, the app is unsubmittable rather than merely worse.
+ */
+describe('⚠️ the block action', () => {
+  // ⚠️ it.each, NOT a loop with unmount() inside one test. The loop version
+  // passed alone and failed the NEXT test in the file — two renders and a
+  // manual unmount in a single case interfere with RNTL's own cleanup. One
+  // case per role also names which role broke when it does.
+  it.each(['owner', 'spotter'] as const)(
+    'is offered to a %s, unlike the profile button beside it',
+    async (role) => {
+      // An owner may need to block a spotter as readily as the reverse, and the
+      // guideline does not care which of them is which. The profile button is
+      // owner-only; this one must not inherit that.
+      const { getByTestId } = await render(
+        <ThreadHeader {...props} thread={{ ...thread(), role }} />,
+      );
+
+      expect(getByTestId('chat-block')).toBeTruthy();
+    },
+  );
+
+  it('names the person, and says what blocking does', async () => {
+    // "More options" next to a name is a guessing game for a screen reader
+    // user, and this action is consequential enough to say what it is.
+    const { getByTestId } = await render(<ThreadHeader {...props} thread={thread()} />);
+
+    const button = getByTestId('chat-block');
+    expect(button.props.accessibilityRole).toBe('button');
+    expect(button.props.accessibilityLabel).toMatch(/^Block /);
+    expect(button.props.accessibilityHint).toMatch(/settings/i);
+  });
+
+  it('disappears once blocked, rather than sitting there greyed out', async () => {
+    // A disabled "Block" on an already-blocked thread reads as a failed
+    // action; the banner under the messages is already saying the true thing.
+    const { queryByTestId } = await render(
+      <ThreadHeader {...props} thread={thread()} blocked />,
+    );
+
+    expect(queryByTestId('chat-block', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('does not appear before the thread has loaded', async () => {
+    // There is nobody to block yet, and the label would have no name in it.
+    const { queryByTestId } = await render(
+      <ThreadHeader {...props} thread={null} status="loading" />,
+    );
+
+    expect(queryByTestId('chat-block', { includeHiddenElements: true })).toBeNull();
   });
 });

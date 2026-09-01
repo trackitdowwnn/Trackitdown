@@ -44,6 +44,7 @@ jest.mock('../api/chatApi', () => ({
 
 const OWNER_VIEW: ThreadPeer = {
   theirLastReadAt: '2026-07-15T10:00:00Z',
+  blocked: false,
   peer: {
     firstName: 'Sam',
     avatarUrl: null,
@@ -78,7 +79,7 @@ describe('useThreadPeer', () => {
   });
 
   it('a spotter view carries the marker with no profile', async () => {
-    const spotterView: ThreadPeer = { theirLastReadAt: '2026-07-15T10:00:00Z', peer: null };
+    const spotterView: ThreadPeer = { theirLastReadAt: '2026-07-15T10:00:00Z', blocked: false, peer: null };
     mockFetch.mockResolvedValue(spotterView);
     const { result, unmount } = await renderHook(() => useThreadPeer('t1'));
 
@@ -117,7 +118,7 @@ describe('useThreadPeer', () => {
     mockFetch.mockImplementationOnce(
       () => new Promise<ThreadPeer>((resolve) => (releaseA = resolve)),
     );
-    const bView: ThreadPeer = { theirLastReadAt: '2026-07-15T13:00:00Z', peer: null };
+    const bView: ThreadPeer = { theirLastReadAt: '2026-07-15T13:00:00Z', blocked: false, peer: null };
 
     const { result, rerender, unmount } = await renderHook(
       ({ id }: { id: string }) => useThreadPeer(id),

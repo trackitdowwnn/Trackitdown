@@ -259,12 +259,30 @@ export interface ThreadPeer {
    *  post's OWNER. A spotter always gets null: owner identity is never
    *  exposed (DOMAIN.md; security review M2). */
   peer: PublicProfile | null;
+  /**
+   * Whether contact is blocked, in EITHER direction — the thread is frozen
+   * read-only (ADR-0017 Q1).
+   *
+   * ⚠️ DELIBERATELY UNATTRIBUTED. The server does not say who blocked whom, and
+   * this must not start asking: a blocked person seeing "they blocked you"
+   * learns something about who that person is, and on a stolen-car app that is
+   * exactly what the silence is protecting. Both sides see the same frozen
+   * thread, which is indistinguishable from the other person having stopped
+   * replying.
+   */
+  blocked: boolean;
 }
 
 // .strict(): a widened RPC leaking a uid, display_name, or avatar_path must
 // fail loudly client-side, exactly like get_inbox's `other` block.
+//
+// ⚠️ The OUTER object is deliberately NOT strict (only `peer` is), which is why
+// `blocked` could be added server-side without breaking older bundles. It is
+// still `.optional()` here so this bundle also works against a server that
+// predates 20260901150000 — an OTA can reach a phone before a migration lands.
 const threadPeerResultSchema = z.object({
   their_last_read_at: z.string(),
+  blocked: z.boolean().optional(),
   peer: z
     .object({
       first_name: z.string(),
@@ -291,6 +309,9 @@ export async function fetchThreadPeer(threadId: string): Promise<ThreadPeer> {
   const parsed = threadPeerResultSchema.parse(data);
   return {
     theirLastReadAt: parsed.their_last_read_at,
+    // Absent means an older server, which had no blocking at all — so "not
+    // blocked" is the honest reading, and it degrades to today's behaviour.
+    blocked: parsed.blocked ?? false,
     peer: parsed.peer
       ? {
           firstName: parsed.peer.first_name,
@@ -304,6 +325,29 @@ export async function fetchThreadPeer(threadId: string): Promise<ThreadPeer> {
         }
       : null,
   };
+}
+
+// --- Blocking (RPC) -----------------------------------------------------------------
+
+/**
+ * Blocks the other participant of this thread. After it returns, neither side
+ * can send and no new thread can open between them; the history stays.
+ *
+ * ⚠️ TAKES A THREAD ID BECAUSE THIS CLIENT HAS NO PEER UID, and that is the
+ * point rather than an inconvenience — see fetchThreadPeer's PRIVACY note. The
+ * server resolves the other party from the thread it already owns, so adding
+ * blocking did not require handing a uid to the client.
+ *
+ * ⚠️ NOT REPORTED TO THE OTHER PERSON, and the caller must not tell them
+ * either: no message is inserted, no push is sent. ADR-0017 keeps a block
+ * indistinguishable from silence.
+ */
+export async function blockThreadPeer(threadId: string): Promise<void> {
+  const { error } = await supabase.rpc('block_user', { p_thread_id: threadId });
+  if (error) throw toChatError(error, 'block_user');
+  // The thread id is safe to log — it is already in every other chat event —
+  // and there is no peer identity here to leak.
+  log.info('thread_peer_blocked', { threadId });
 }
 
 // --- Messages read (RLS-scoped) ---------------------------------------------------

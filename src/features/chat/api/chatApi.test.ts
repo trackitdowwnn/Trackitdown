@@ -274,6 +274,9 @@ describe('fetchThreadPeer', () => {
     expect(mockRpc).toHaveBeenCalledWith('get_thread_peer', { p_thread_id: 't1' });
     expect(result).toEqual({
       theirLastReadAt: '2026-07-15T10:00:00Z',
+      // Absent from the RPC stub above, so this also pins the 
+      // fallback that lets this bundle run against a pre-blocking server.
+      blocked: false,
       peer: {
         firstName: 'Sam',
         // Withheld by design: the storage path embeds the uid this RPC
@@ -293,7 +296,7 @@ describe('fetchThreadPeer', () => {
 
     const result = await fetchThreadPeer('t1');
 
-    expect(result).toEqual({ theirLastReadAt: '2026-07-15T10:00:00Z', peer: null });
+    expect(result).toEqual({ theirLastReadAt: '2026-07-15T10:00:00Z', blocked: false, peer: null });
   });
 
   it('PRIVACY: a widened peer block fails loudly — a leaked uid never passes', async () => {

@@ -84,11 +84,29 @@ information about who they are.
 party can reach the other. A block that only stopped inbound contact would let
 the blocker keep messaging someone who wanted them gone.
 
-**5. Silent to the blocked party.** No push, no error naming a block. Refusals
-reuse the existing single-token pattern — a blocked `open_thread` returns the
-same `NOT_PARTICIPANT` a stranger gets, so the endpoint cannot be used as an
-oracle for "has this person blocked me". Same reasoning as
-`my_dispute_context`'s single refusal token.
+**5. Never announced, never attributed — but not perfectly concealed, and the
+difference matters.** No push, no notification, no error naming a block, and no
+endpoint that confirms one on demand: refusals reuse the existing single-token
+pattern, so a blocked `open_thread` returns the same `NOT_PARTICIPANT` a
+stranger gets (the `my_dispute_context` reasoning).
+
+⚠️ **An earlier draft of this ADR claimed the blocked party "cannot tell a block
+from the other person simply having stopped replying". That is false, and it was
+worth catching before it became a promise.** The freeze disables their composer,
+and a disabled composer is not silence — anyone who tries to reply can see that
+something changed. The guarantee is narrower and should be stated as what it is:
+
+- We never **announce** a block. Nothing pushes, nothing appears in a feed.
+- We never **attribute** one. `get_thread_peer` returns a bare boolean; it does
+  not say who blocked whom, so neither party learns it from us. A frozen thread
+  is equally consistent with either side having blocked.
+- We never **confirm** one to a probe. Every refusal is the token a stranger
+  gets, so blocking cannot be tested for against an arbitrary account.
+
+What we cannot do is hide from someone that *a* block exists between them and a
+specific person they already know. The alternative — leaving the composer live
+and failing the send — is worse on both counts: it reveals the same thing a
+moment later, and it does so by wasting the message they just typed.
 
 ## §3 — The three questions, and how they were decided
 

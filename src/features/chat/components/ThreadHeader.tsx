@@ -62,6 +62,14 @@ export interface ThreadHeaderProps {
   onOpenPost: (postId: string) => void;
   onOpenProfile: () => void;
   onRetry: () => void;
+  /**
+   * Opens the block confirmation. Present for BOTH roles — an owner may need
+   * to block a spotter as readily as the other way round, and guideline 1.2
+   * does not care which of them is which.
+   */
+  onBlock: () => void;
+  /** Already blocked: the action becomes unavailable rather than repeating. */
+  blocked: boolean;
 }
 
 export function ThreadHeader({
@@ -72,6 +80,8 @@ export function ThreadHeader({
   onOpenPost,
   onOpenProfile,
   onRetry,
+  onBlock,
+  blocked,
 }: ThreadHeaderProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -121,6 +131,31 @@ export function ThreadHeader({
             size={sizes.icon}
             color={profileAvailable ? palette.textPrimary : palette.textSecondary}
           />
+        </Pressable>
+      ) : null}
+
+      {/* ⚠️ THE BLOCK ENTRY POINT, and the only one — App Store guideline 1.2
+          wants a way to block a person, and this is the one screen where the
+          two accounts actually meet. It sits in BOTH roles, unlike the profile
+          button beside it: an owner may need to block a spotter as readily as
+          the reverse.
+
+          Hidden once blocked rather than shown disabled. A greyed "Block" on an
+          already-blocked thread reads as a failed action, and the banner below
+          the messages is already saying the true thing. */}
+      {thread && !blocked ? (
+        <Pressable
+          onPress={onBlock}
+          accessibilityRole="button"
+          // Names the person, because "More options" beside a name is a
+          // guessing game for a screen reader user, and this action is
+          // consequential enough that it should say what it is.
+          accessibilityLabel={`Block ${thread.other.firstName}`}
+          accessibilityHint="Stops messages between you. You can undo this in Settings."
+          style={({ pressed }) => [styles.profile, pressed && styles.pressed]}
+          testID="chat-block"
+        >
+          <Feather name="slash" size={sizes.icon} color={palette.textSecondary} />
         </Pressable>
       ) : null}
     </View>
