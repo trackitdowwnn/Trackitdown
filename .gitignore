@@ -75,3 +75,8 @@ Thumbs.db
 # TypeScript
 # ---------------------------------------------------------------------------
 *.tsbuildinfo
+
+# Generated legal pages (scripts/export-legal.mjs) — regenerate, never commit:
+# they are a build artefact of src/features/legal/lib/legalContent.ts, and a
+# committed copy is a second source of truth for a document users agreed to.
+dist-legal/
