@@ -288,7 +288,22 @@ commenting standards.
     the default here. If that changes, it should change deliberately and be
     recorded in this section, not arrive as a side effect.
 - Closed posts are hidden from search; their sighting location history is
-  purged after 90 days.
+  purged after 90 days — `purge_sighting_location_history()`, which nulls
+  `sighting_photos.lat/lng/accuracy_m` for photos whose post closed over 90 days
+  ago, asserted by `sightings_verification.sql` CHECK 25.
+  - ⚠️ **This line asserted the purge from 2026-07-14 and nothing performed it
+    until 2026-09-01.** The privacy policy made the same promise to users. It
+    was written as a fact here, and in the `sightings` table's own header as
+    "a separate retention job", and neither reading tells you it did not exist —
+    which is why the check matters more than the function.
+  - It nulls the coordinates only. The photo row, the image, and the coarse
+    `sightings.area_label` all stay: the promise is about *detailed* location,
+    and `area_label` is what a spotter sees on their own `My reports`.
+  - ⚠️ **Scheduling is the remaining weakness.** pg_cron runs
+    `release-held-refunds` hourly and that function calls this; nothing
+    schedules the purge itself. If the sweep stops firing, retention stops
+    silently. A pg_cron entry pointing at the RPC directly would decouple them —
+    a dashboard action, as the existing job was.
 - Photos are stripped of EXIF metadata server-side before display; the
   original capture location is kept only in the sighting record itself.
 

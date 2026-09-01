@@ -1482,3 +1482,103 @@ begin
 
   raise notice 'Housekeeping 2: removed % context-v2 sighting(s), rolled the counter back, dropped the fixture marks', v_n;
 end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 25 — purge_sighting_location_history() keeps the privacy policy's
+-- retention promise, and keeps only that. Added 2026-09-01.
+-- -----------------------------------------------------------------------------
+-- ⚠️ THE PROMISE IS PUBLISHED. legalContent.ts, "How long we keep it": "The
+-- detailed location history attached to a closed listing's sightings is deleted
+-- after 90 days." Between 2026-07-14 and 2026-09-01 nothing performed it, and
+-- the documents are about to go live at trackitdown.co.uk — so the assertion
+-- has to cover BOTH failure directions, because each is its own kind of bad:
+--
+--   * purges too little  -> we publish a retention promise we do not keep.
+--   * purges too much    -> we destroy an OPEN investigation's evidence, or a
+--                           spotter's own record of where they were.
+--
+-- The over-purge cases are the ones with no undo, so there are three of them.
+do $$
+declare
+  v_post     uuid := 'a1a1a1a1-0000-0000-0000-000000000001';
+  v_old      uuid := 'ca5e0000-0000-0000-0000-000000000001';
+  v_open     uuid := 'ca5e0000-0000-0000-0000-000000000002';
+  v_recent   uuid := 'ca5e0000-0000-0000-0000-000000000003';
+  v_purged   integer;
+  v_lat      double precision;
+  v_area     text;
+  v_photos   integer;
+  v_prev     timestamptz;
+begin
+  -- Three sightings on one post, each with a located photo. The post's
+  -- closed_at is moved between calls, so the only variable is the clock.
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+  values (v_old,    v_post, '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', false),
+         (v_open,   v_post, '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', false),
+         (v_recent, v_post, '22222222-2222-2222-2222-222222222222', 'unverified', 'Ancoats', false);
+  insert into public.sighting_photos (sighting_id, path, lat, lng, accuracy_m, captured_at)
+  values (v_old,    'p/1.jpg', 53.4808, -2.2426, 12, now()),
+         (v_open,   'p/2.jpg', 53.4808, -2.2426, 12, now()),
+         (v_recent, 'p/3.jpg', 53.4808, -2.2426, 12, now());
+
+  select closed_at into v_prev from public.posts where id = v_post;
+
+  -- (a) OPEN post: closed_at null. Nothing may be touched, however old the
+  --     sighting is — this is a live case and the coordinates are the evidence.
+  update public.posts set closed_at = null where id = v_post;
+  v_purged := public.purge_sighting_location_history();
+  select lat into v_lat from public.sighting_photos where sighting_id = v_open;
+  if v_lat is null then
+    raise exception 'CHECK 25 FAILED: purged the location of a sighting on an OPEN post — that is live evidence';
+  end if;
+
+  -- (b) Closed 89 days ago: still inside the window, still untouched.
+  update public.posts set closed_at = now() - interval '89 days' where id = v_post;
+  v_purged := public.purge_sighting_location_history();
+  select lat into v_lat from public.sighting_photos where sighting_id = v_recent;
+  if v_lat is null then
+    raise exception 'CHECK 25 FAILED: purged at 89 days — the promise is 90';
+  end if;
+
+  -- (c) Closed 91 days ago: the coordinates go.
+  update public.posts set closed_at = now() - interval '91 days' where id = v_post;
+  v_purged := public.purge_sighting_location_history();
+  if v_purged < 3 then
+    raise exception 'CHECK 25 FAILED: reported % rows purged past 90 days, expected at least 3', v_purged;
+  end if;
+  select count(*) into v_photos
+    from public.sighting_photos
+   where sighting_id in (v_old, v_open, v_recent)
+     and (lat is not null or lng is not null or accuracy_m is not null);
+  if v_photos <> 0 then
+    raise exception 'CHECK 25 FAILED: % located photo(s) survived the purge', v_photos;
+  end if;
+
+  -- (d) THE PHOTOS THEMSELVES SURVIVE. The policy's deletion section is
+  --     explicit that sighting photos outlive even account deletion, because
+  --     they are evidence in someone else's case. A located photo becomes an
+  --     unlocated photo; it does not disappear.
+  select count(*) into v_photos
+    from public.sighting_photos where sighting_id in (v_old, v_open, v_recent);
+  if v_photos <> 3 then
+    raise exception 'CHECK 25 FAILED: the purge deleted photo rows — it must only null coordinates (% left of 3)', v_photos;
+  end if;
+
+  -- (e) THE COARSE AREA LABEL SURVIVES. It is what the spotter sees on their
+  --     own My reports, and the promise is about DETAILED location.
+  select area_label into v_area from public.sightings where id = v_old;
+  if v_area is distinct from 'Ancoats' then
+    raise exception 'CHECK 25 FAILED: purged the coarse area_label — that is the spotter''s own record, not detailed location';
+  end if;
+
+  -- (f) Idempotent: a second run finds nothing left to do.
+  v_purged := public.purge_sighting_location_history();
+  if v_purged <> 0 then
+    raise exception 'CHECK 25 FAILED: re-running purged % more rows — it is not idempotent', v_purged;
+  end if;
+
+  update public.posts set closed_at = v_prev where id = v_post;
+  delete from public.sightings where id in (v_old, v_open, v_recent);
+  raise notice 'CHECK 25 passed: 90-day location purge nulls coordinates on closed posts only, keeps photos and area labels, and is idempotent.';
+end $$;

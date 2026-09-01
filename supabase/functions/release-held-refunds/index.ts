@@ -62,7 +62,7 @@ Deno.serve(async (request) => {
     return errorResponse('NOT_AUTHENTICATED', 'Not allowed.', 401);
   }
   const stripe = createStripeClient();
-  const summary = { refunded: 0, paid: 0, notified: 0, skipped: 0, purged: 0 };
+  const summary = { refunded: 0, paid: 0, notified: 0, skipped: 0, purged: 0, locationsPurged: 0 };
 
   // --- Phase 0: feed retention (ADR-0012 §8) ---------------------------------
   // 90 days, anchored HERE so retention runs wherever the sweep runs; the
@@ -76,6 +76,36 @@ Deno.serve(async (request) => {
     }
   } catch (err) {
     console.error('[notifications] purge failed', (err as Error).message);
+  }
+
+  // --- Phase 0b: sighting location retention --------------------------------
+  // ⚠️ THIS ONE KEEPS A PROMISE THE PRIVACY POLICY MAKES. "The detailed
+  // location history attached to a closed listing's sightings is deleted after
+  // 90 days" — and until 2026-09-01 nothing performed it. Nulls the
+  // capture-time GPS on photos whose post closed over 90 days ago; the photo,
+  // the image and the coarse area_label all stay.
+  //
+  // Anchored here for the same reason as the notification purge above: pg_cron
+  // schedules THIS FUNCTION, not the purge RPCs, so the hourly sweep is the
+  // only thing that runs them on a clock. That also means retention stops
+  // silently if this function stops firing — worth monitoring precisely because
+  // what it silently stops is a published commitment about location data. A
+  // pg_cron entry calling the RPC directly would decouple the two.
+  //
+  // Counted separately from `purged` so a log line can tell which retention job
+  // did what; failure is logged and swallowed, like everything else in the
+  // sweep, because a retention error must not block refunds and payouts.
+  try {
+    const { data: locationsPurged, error: locationError } = await admin.rpc(
+      'purge_sighting_location_history',
+    );
+    if (locationError) {
+      console.error('[sightings] location purge failed', locationError.message);
+    } else {
+      summary.locationsPurged = typeof locationsPurged === 'number' ? locationsPurged : 0;
+    }
+  } catch (err) {
+    console.error('[sightings] location purge failed', (err as Error).message);
   }
 
   // --- Phase 1: expired, undisputed holds → the owner's refund ---------------
