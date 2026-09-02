@@ -71,7 +71,16 @@ export function buildPrefilledPostFlow({
   onEdit,
 }: PrefilledPostFlowOptions): PrefilledPostFlow {
   const answers = toAnswers(vehicle);
-  const initialAnswers = { ...baseInitialAnswers, ...answers };
+  // ⚠️ fromVehicleId RIDES THE ANSWERS, and it must survive BOTH branches
+  // below — the confirm-step shortcut and the expanded "edit everything" flow.
+  // It is provenance, not a value the owner chose, so expanding the wizard to
+  // correct a colour must not silently unlink the post from the car.
+  //
+  // Setting it here is what finally arms delete_vehicle's active-post guard
+  // (review #17): posts.vehicle_id has existed since 2026-08-01 with nothing
+  // writing it, so an owner could delete a car that was currently reported
+  // stolen with money in escrow.
+  const initialAnswers = { ...baseInitialAnswers, ...answers, fromVehicleId: vehicle.id };
 
   if (expanded) {
     // The full flow, seeded — every prefilled value editable, exactly as if they

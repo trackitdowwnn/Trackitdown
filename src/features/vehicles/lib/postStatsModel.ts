@@ -40,24 +40,25 @@ export function wholeDaysBetween(fromIso: string, toMs: number): number {
   return Math.max(0, Math.floor((toMs - from) / MS_PER_DAY));
 }
 
-/**
- * Days remaining until expiry, or null when there is no clock.
+/*
+ * ⚠️ `daysRemaining` WAS HERE, AND IS DELETED (2026-09-02, review finding #18).
  *
- * Null for a post that never went live (drafts carry no expires_at) — the
- * screen omits the line entirely rather than printing "0 days left", which
- * would read as "about to be deleted" to someone whose car is still missing.
- * A past expiry is 0, never negative.
+ * It computed the days left until posts.expires_at, which create_post stamps at
+ * +90 days and which NOTHING has ever acted on: passive expiry was cut
+ * deliberately ("we are cutting the PROMISE, not building the machine"). So the
+ * date never arrives, the listing never closes, and PostStatsScreen counted
+ * down to nothing. The Terms already say the true thing — a listing stays live
+ * until you cancel it or the car is recovered.
+ *
+ * It was careful code: rounding up so six hours left still read as a day,
+ * flooring at 0 rather than going negative, null for a draft with no clock.
+ * That is what made it worth deleting rather than fixing — well-tested
+ * arithmetic over a meaningless number reads as maintained, and three passing
+ * tests were the strongest evidence that the countdown was real.
+ *
+ * An owner IS now asked whether the car is still missing, on a schedule, from
+ * the listing itself (ADR-0019). That is the honest replacement.
  */
-export function daysRemaining(expiresIso: string | null, nowMs: number): number | null {
-  if (!expiresIso) {
-    return null;
-  }
-  const expires = Date.parse(expiresIso);
-  if (!Number.isFinite(expires)) {
-    return null;
-  }
-  return Math.max(0, Math.ceil((expires - nowMs) / MS_PER_DAY));
-}
 
 /** One bar: a day, its count, and its height as a 0..1 fraction of the tallest. */
 export interface SparklineBar {

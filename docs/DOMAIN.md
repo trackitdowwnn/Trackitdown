@@ -99,8 +99,15 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
 6. **recovered_no_spotter** — recovered without a credited sighting. Bounty
    is refunded to the owner (minus non-recoverable card processing costs,
    which the UI must disclose at posting time).
-7. **cancelled / expired** — owner cancels, or the post hits its expiry
-   (default 90 days, owner can renew). Bounty refunded as above.
+7. **cancelled** — the owner cancels. Bounty refunded as above.
+   **expired** — *retired state, like `rejected` below.* Nothing enters it and
+   nothing ever has: passive expiry was cut deliberately (see "There is still
+   no passive expiry" further down — every refund is a human act). This line
+   promised "default 90 days, owner can renew" until 2026-09-02; there was
+   never a renewal, and `create_post` stopped stamping `expires_at` on the same
+   day, because a date nothing acts on was being counted down in front of
+   owners whose cars were still missing (review finding #18). Liveness is now
+   a question the owner is **asked** — ADR-0019 — not a clock.
 8. **rejected** — *retired state* (was "pre-publish review failed"). With no
    pre-publish gate, nothing enters it; a live post that turns out to be
    abusive is **taken down** instead — set `cancelled` with the bounty refunded
