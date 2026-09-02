@@ -27,6 +27,10 @@ export const NOTIFICATION_KINDS = [
   'payout_sent',
   'not_credited',
   'sighting_confirmed',
+  // "Is your car still missing?" — the ADR-0019 liveness check, to the OWNER
+  // about their own post. The only kind in this list that asks a question
+  // rather than reporting something that happened (2026-09-02).
+  'still_missing',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

@@ -70,6 +70,7 @@ Deno.serve(async (request) => {
     purged: 0,
     locationsPurged: 0,
     photosRemoved: 0,
+    stillMissingAsked: 0,
   };
 
   // --- Phase 0: feed retention (ADR-0012 §8) ---------------------------------
@@ -360,15 +361,74 @@ Deno.serve(async (request) => {
     console.error('[notifications] announce sweep failed', (err as Error).message);
   }
 
+  // --- Phase 4: the liveness check (ADR-0019) --------------------------------
+  // "Is your {car} still missing?" to owners who have gone quiet. The 2026-08-05
+  // loop trace found that nothing in the system ever asks: a post sits `active`
+  // forever, escrow sits `held` forever, and an owner who recovered their car
+  // off-platform strands a spotter's effort and real money without ever meaning
+  // to.
+  //
+  // ⚠️ THIS MOVES NO MONEY AND CHANGES NO STATUS, and that separation is the
+  // whole design. Passive expiry stays cut (DOMAIN.md: "every refund is a human
+  // act") — all this does is ask a question whose answers both lead somewhere a
+  // person already drives. The claim caps itself at three asks per case.
+  //
+  // ⚠️ THE CLAIM IS BURNED BEFORE THE SEND, which is the OPPOSITE of the rule
+  // claim_credited_notification was rewritten for on 2026-09-02 — deliberately.
+  // There, a failed send meant the spotter never learned they were credited, so
+  // the claim had to survive. Here the ask has already landed where it matters:
+  // `still_missing_asked_at` is what raises the in-app banner, and the banner
+  // is the door. A lost push costs a reminder, not the question.
+  try {
+    const { data: asks, error: askError } = await admin.rpc('claim_still_missing_checks', {
+      p_limit: 200,
+    });
+    if (askError) {
+      console.error('[posts] still-missing claim failed', askError.message);
+    } else {
+      const rows = (asks ?? []) as {
+        post_id: string;
+        user_id: string;
+        title: string;
+        body: string;
+      }[];
+      for (const row of rows) {
+        // Per-item, like every other queue here: one owner's failed push must
+        // not stop the rest.
+        try {
+          await notifyUsers(admin, [row.user_id], {
+            kind: 'still_missing',
+            title: row.title,
+            body: row.body,
+            data: { type: 'still_missing', postId: row.post_id },
+            // One live ask per post: a second banner for the same car replaces
+            // the first rather than stacking beside it.
+            collapseKey: `still-missing-${row.post_id}`,
+          });
+          summary.stillMissingAsked += 1;
+        } catch (err) {
+          console.error('[posts] still-missing send failed', (err as Error).message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[posts] still-missing sweep failed', (err as Error).message);
+  }
+
   // ⚠️ RECORDED LAST, AND ONLY ON THE WAY OUT. A row in sweep_runs means this
   // function got all the way through — which is the property worth knowing,
   // because a run that dies half way leaves retention and erasure half-done
   // while an "it was invoked" marker would call that healthy.
   //
-  // This sweep now carries three jobs that fail SILENTLY if it stops: the
+  // This sweep now carries FOUR jobs that fail SILENTLY if it stops: the
   // notification purge, the 90-day location purge (a promise published on the
-  // website) and the orphaned-photo removal (GDPR erasure). Before this, the
-  // only evidence any of them ran was a console line nobody reads.
+  // website), the orphaned-photo removal (GDPR erasure) and — since
+  // 2026-09-02 — the ADR-0019 liveness check. Before this, the only evidence
+  // any of them ran was a console line nobody reads.
+  //
+  // ⚠️ Four is more than this function was designed to carry, and it still has
+  // no ALERTING — sweep_health() must be asked, it never speaks. That is review
+  // finding #10 and it is still open.
   //
   // Swallowed like everything else here: a monitoring write must never be the
   // thing that fails a sweep. The cost of losing one row is a slightly stale

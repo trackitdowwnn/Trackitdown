@@ -70,14 +70,19 @@ describe('notification_category', () => {
     expect(sqlMap).toEqual(clientMap);
   });
 
-  it('⚠️ leaves `sighting` and `closed_uncredited` with no category at all', () => {
+  it('⚠️ leaves the three consequential kinds with no category at all', () => {
     // Not "maps them to a locked category" — ABSENT, so no column exists to
     // store a mute in and no switch can be built on top of one. A regression
     // here would be someone adding a row to the SQL CASE with the best
     // intentions.
     expect(sqlMap.sighting).toBeUndefined();
     expect(sqlMap.closed_uncredited).toBeUndefined();
-    expect(UNMUTABLE_KINDS).toEqual(['sighting', 'closed_uncredited']);
+    // still_missing (ADR-0019) joined them on 2026-09-02. Its protection is the
+    // CAP — three asks per case, ever — rather than a toggle: a mutable version
+    // would need a `my_posts` category that does not exist, and a switch a
+    // distressed owner never finds is not protection.
+    expect(sqlMap.still_missing).toBeUndefined();
+    expect(UNMUTABLE_KINDS).toEqual(['sighting', 'closed_uncredited', 'still_missing']);
   });
 
   it('accounts for every kind the app can send, exactly once', () => {

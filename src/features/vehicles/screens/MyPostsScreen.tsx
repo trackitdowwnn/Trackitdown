@@ -16,7 +16,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, Hourglass } from 'lucide-react-native';
 import { useCallback } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -26,6 +26,7 @@ import type { PostSummary } from '@/shared/types';
 import {
   EmptyState,
   ErrorState,
+  NudgeRow,
   Screen,
   SkeletonVehicleCard,
   ThemedRefreshControl,
@@ -33,6 +34,7 @@ import {
 } from '@/shared/ui';
 
 import { useMyPosts } from '../hooks/useMyPosts';
+import { useStillMissingAsks } from '../hooks/useStillMissingAsk';
 
 export function MyPostsScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -40,6 +42,10 @@ export function MyPostsScreen() {
   const requireAuth = useRequireAuth();
   const router = useRouter();
   const { status, posts, refreshing, refresh, retry } = useMyPosts();
+  // ADR-0019's second door. The banner on the post is the first, but it is only
+  // reachable by someone who already thought to open that listing — and the
+  // owner this asks about is the one who has stopped thinking about it.
+  const stillMissingAsks = useStillMissingAsks();
 
   const renderCard = useCallback(
     ({ item }: { item: PostSummary }) => (
@@ -92,6 +98,25 @@ export function MyPostsScreen() {
           renderItem={renderCard}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            stillMissingAsks.length > 0 ? (
+              <View style={styles.nudge}>
+                <NudgeRow
+                  icon={Hourglass}
+                  title="Is your car still missing?"
+                  // Plural is rare — it needs two live listings AND silence on
+                  // both — but "the first of 2" is honest about where the tap
+                  // lands, which "2 listings" would not be.
+                  body={
+                    stillMissingAsks.length === 1
+                      ? 'Tap to answer'
+                      : `Tap to answer the first of ${stillMissingAsks.length}`
+                  }
+                  onPress={() => router.push(`/post/${stillMissingAsks[0].postId}`)}
+                />
+              </View>
+            ) : null
+          }
           refreshControl={
             <ThemedRefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
           }
@@ -148,6 +173,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   cardRow: {
     paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  // No horizontal padding: NudgeRow owns its own 16pt gutter by default, which
+  // is the same inset cardRow applies, so the two line up.
+  nudge: {
     marginBottom: spacing.xl,
   },
 });

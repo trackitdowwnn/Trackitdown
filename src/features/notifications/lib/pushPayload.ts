@@ -93,6 +93,15 @@ const sightingConfirmedPayloadSchema = z
   .object({ type: z.literal('sighting_confirmed'), sightingId: z.guid() })
   .strict();
 
+/** "Is your {car} still missing?" — the ADR-0019 liveness check. The POST id:
+ *  the audience is the owner, the destination is their own listing, and the
+ *  banner with both answers is already on it. Carries no ask_count and no
+ *  deadline, because there is no deadline — nothing expires, nothing refunds,
+ *  and a number here would imply a consequence the system does not have. */
+const stillMissingPayloadSchema = z
+  .object({ type: z.literal('still_missing'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -106,6 +115,7 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   disputeRejectedPayloadSchema,
   payoutSentPayloadSchema,
   notCreditedPayloadSchema,
+  stillMissingPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

@@ -54,10 +54,13 @@ import { PostBottomBar } from '../components/PostBottomBar';
 import { PostDetailBody } from '../components/PostDetailBody';
 import { PostHero } from '../components/PostHero';
 import { PostManageSheet } from '../components/PostManageSheet';
+import { StillMissingBanner } from '../components/StillMissingBanner';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
+import { useStillMissingAsk } from '../hooks/useStillMissingAsk';
 import { closedStateCopy } from '../lib/closedState';
 import { buildSharePayload } from '../lib/postShare';
+import { StillMissingError } from '../lib/stillMissingError';
 import type { PostDetail, PostDetailResult } from '../types';
 
 const log = createLogger('vehicles');
@@ -158,6 +161,8 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // Guards a double-tap on "Send the bounty". The transfer itself is idempotent
   // server-side, so this is about not firing two requests, not about safety.
   const [releasing, setReleasing] = useState(false);
+  // Same guard for "Yes, still missing" (ADR-0019).
+  const [confirmingMissing, setConfirmingMissing] = useState(false);
 
   const heroHeight = Math.round(width * HERO_RATIO);
   // The sheet's rounded top overlaps the hero, so the VISUAL hero bottom —
@@ -174,6 +179,11 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   });
 
   const visiblePost = status === 'ready' && result?.kind === 'visible' ? result.post : null;
+
+  // The ADR-0019 liveness ask. Only ever open on the owner's own live listing —
+  // the RPC is scoped to auth.uid() and status='active', so a spotter's copy of
+  // this screen can never raise it.
+  const { open: stillMissingOpen, confirm: confirmStillMissing } = useStillMissingAsk(postId);
 
   // The "More stolen cars nearby" rail — waits for the post (its coords
   // centre the query), quietly empty on failure.
@@ -464,6 +474,29 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     });
   }, [postId, router, visiblePost]);
 
+  // "Yes, still missing" (ADR-0019). Resets the liveness clock and nothing
+  // else: no status moves, no money moves, and the only visible effect is that
+  // the banner goes away. "I've found it" is not handled here — it is
+  // onRecovered above, unchanged, because the recovery flow is still the one
+  // thing that decides where escrow goes.
+  const onStillMissing = useCallback(async () => {
+    if (confirmingMissing) {
+      return;
+    }
+    setConfirmingMissing(true);
+    try {
+      await confirmStillMissing();
+      toast.show('Thanks — we’ll keep it listed.');
+    } catch (error) {
+      toast.show(
+        error instanceof StillMissingError ? error.message : 'We couldn’t save that. Please try again.',
+        'error',
+      );
+    } finally {
+      setConfirmingMissing(false);
+    }
+  }, [confirmStillMissing, confirmingMissing, toast]);
+
   // Retrying a payout. Idempotent server-side (one transfer per post, forever),
   // so this needs no confirm — and `awaiting_payee` is reported as news rather
   // than as a failure, because it is: the spotter simply has not onboarded yet.
@@ -555,6 +588,19 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
             {/* The content sheet: rounded top corners riding up over the
                 hero's bottom edge (REFERENCE_SPEC §1). */}
             <View style={styles.sheet}>
+              {/* Above the body, not buried in it: this is a question we are
+                  asking, and it has to be answerable without scrolling past
+                  the car. Owner-only by construction — the RPC behind
+                  stillMissingOpen is scoped to auth.uid(). */}
+              {stillMissingOpen ? (
+                <View style={styles.stillMissing}>
+                  <StillMissingBanner
+                    onStillMissing={onStillMissing}
+                    onFound={onRecovered}
+                    busy={confirmingMissing}
+                  />
+                </View>
+              ) : null}
               <PostDetailBody
                 post={result.post}
                 onOpenMap={() => onOpenMap(result.post)}
@@ -818,6 +864,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: c.background,
+  },
+  stillMissing: {
+    // 24px gutter, matching stateBlock: post detail is a text/detail screen,
+    // not a feed surface. Top padding clears the sheet's rounded shoulder.
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
   },
   sheet: {
     marginTop: -radii.xl,

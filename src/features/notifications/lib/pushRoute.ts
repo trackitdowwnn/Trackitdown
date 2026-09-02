@@ -30,6 +30,12 @@ export function pushRouteFor(payload: PushPayload): Href {
     // the dispute screen: the post WAS credited, so there is nothing to
     // contest, and the thing they actually want to see is that it went home.
     case 'not_credited':
+    // "Is your car still missing?" — the post is where the question is
+    // ANSWERED: the owner banner carries both buttons, and it is there whether
+    // or not this push ever arrived. The push is a reminder that the door
+    // exists, never the only way through it (the lesson of the push-only
+    // dispute screen).
+    case 'still_missing':
       return `/post/${payload.postId}`;
     case 'message':
       return `/chat/${payload.threadId}`;
