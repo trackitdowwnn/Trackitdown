@@ -52,6 +52,15 @@ jobs:
       - name: File header check
         run: node scripts/check-file-headers.mjs
 
+      # Every image upload must re-encode first, because the re-encode IS the
+      # only EXIF strip this app has — post-photos is a PUBLIC bucket and
+      # nothing on the server strips anything (SECURITY_AND_TRUST §3). Four
+      # upload paths already exist, each having independently arrived at the
+      # same re-encode; a fifth that skipped it would put a photograph's
+      # home GPS in a world-readable object, silently.
+      - name: EXIF strip check
+        run: node scripts/check-exif-strip.mjs
+
       # Every RPC src/ calls must be declared by a migration. Catches a client
       # calling a function no migration creates — which typecheck cannot see,
       # because supabase.rpc() takes a string, and Jest cannot see, because
