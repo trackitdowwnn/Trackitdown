@@ -20,8 +20,14 @@ import { z } from 'zod';
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 
+import { CollectionError } from '../lib/collectionError';
 import { MAX_COLLECTIONS } from '../types';
 import type { CollectionId, WatchlistCollection } from '../types';
+
+// Re-exported so the api module stays the one import for callers that raise and
+// catch in the same breath; the class itself lives in lib/ so a component can
+// narrow on it without pulling the supabase client in.
+export { CollectionError };
 
 const log = createLogger('watchlist');
 
@@ -37,18 +43,6 @@ const COLLECTION_ERROR_MESSAGES: Record<string, string> = {
   // existence of someone else's list.
   COLLECTION_NOT_FOUND: 'We couldn’t find that list.',
 };
-
-/** A collections failure whose `message` is already safe to show. */
-export class CollectionError extends Error {
-  /** The server's raised code (e.g. COLLECTION_NAME_TAKEN), or 'RPC_ERROR'. */
-  readonly code: string;
-
-  constructor(message: string, code: string) {
-    super(message);
-    this.name = 'CollectionError';
-    this.code = code;
-  }
-}
 
 const collectionRowSchema = z.object({
   id: z.guid(),
@@ -83,7 +77,14 @@ export async function listMyCollections(): Promise<WatchlistCollection[]> {
     .order('created_at', { ascending: true });
   if (error) {
     log.error('collections_load failed', { code: error.code });
-    throw error;
+    // ⚠️ WRAPPED, NOT RE-THROWN. CollectionPickerSheet toasts `error.message`
+    // when the throw is an Error, and a raw PostgREST error is one — so this
+    // put a server string in front of a person. The code stays in the log;
+    // only the copy is ours. Same reasoning as garageApi's list read.
+    throw new CollectionError(
+      'We couldn’t load your lists. Please try again.',
+      'RPC_ERROR',
+    );
   }
   const rows = z.array(collectionRowSchema).parse(data ?? []);
   log.info('collections_load', { count: rows.length });

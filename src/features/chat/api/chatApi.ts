@@ -65,7 +65,13 @@ export class ChatActionError extends Error {
  *  Postgres messages can echo input, so only known tokens are logged. */
 function toChatError(error: { message: string; code?: string }, action: string): ChatActionError {
   const token = error.message.split(':')[0].trim();
-  const known = token in CHAT_ERROR_MESSAGES;
+  // ⚠️ Object.hasOwn, NOT `in`. `in` walks the prototype chain, so a Postgres
+  // message beginning `constructor` or `toString` reported as KNOWN — which
+  // defeated the rule three lines above (only known tokens are logged, because
+  // an unknown one can echo input) AND put a Function into the user-facing
+  // message. 15 other sites in this codebase already do it this way;
+  // profileApi.ts:249 carries the explanation.
+  const known = Object.hasOwn(CHAT_ERROR_MESSAGES, token);
   log.warn(`${action} rejected`, { code: error.code, reason: known ? token : undefined });
   return new ChatActionError(
     known ? CHAT_ERROR_MESSAGES[token] : CHAT_FALLBACK,

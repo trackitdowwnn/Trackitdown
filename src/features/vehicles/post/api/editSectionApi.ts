@@ -74,7 +74,10 @@ async function resolvePhotoUrls(
 async function callSectionRpc(fn: string, params: Record<string, unknown>): Promise<void> {
   const { error } = await supabase.rpc(fn, params);
   if (error) {
-    const known = error.message in CREATE_POST_ERROR_MESSAGES;
+    // ⚠️ Object.hasOwn, NOT `in` — `in` walks the prototype chain, so a
+    // Postgres message of `toString` would report as known and hand a Function
+    // to PostSubmissionError. See profileApi.ts:249.
+    const known = Object.hasOwn(CREATE_POST_ERROR_MESSAGES, error.message);
     const message = known ? CREATE_POST_ERROR_MESSAGES[error.message] : SAVE_FALLBACK;
     log.warn(`${fn} rejected`, { code: error.code, reason: known ? error.message : undefined });
     throw new PostSubmissionError(message, known ? error.message : 'RPC_ERROR');

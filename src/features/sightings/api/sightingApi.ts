@@ -282,7 +282,12 @@ export async function submitSighting(
     // The RPC's message STARTS with the machine token; validation tokens
     // carry a ': detail' suffix (e.g. 'INVALID_PHOTOS: …') — match the prefix.
     const token = error.message.split(':')[0].trim();
-    const known = token in CREATE_SIGHTING_ERROR_MESSAGES;
+    // ⚠️ Object.hasOwn, NOT `in`: `in` walks the prototype chain, so a
+    // message beginning `constructor` or `toString` reported as KNOWN — which
+    // defeats the very rule two lines below (unknown messages can echo input,
+    // so only known tokens are logged) and puts a Function into the copy a
+    // person reads.
+    const known = Object.hasOwn(CREATE_SIGHTING_ERROR_MESSAGES, token);
     const message = known ? CREATE_SIGHTING_ERROR_MESSAGES[token] : CREATE_SIGHTING_FALLBACK;
     // Unknown Postgres messages can echo input — logged only when known.
     log.warn('create_sighting rejected', { code: error.code, reason: known ? token : undefined });

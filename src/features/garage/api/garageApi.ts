@@ -114,7 +114,16 @@ export async function listMyVehicles(): Promise<SavedVehicle[]> {
   const { data, error } = await supabase.rpc('list_my_vehicles');
   if (error) {
     log.error('garage_load failed', { code: error.code });
-    throw error;
+    // ⚠️ WRAPPED, NOT RE-THROWN. MyCarsScreen toasts `err.message` when the
+    // throw is an Error, and a raw PostgREST error IS one — so a bare re-throw
+    // put a server string in front of a person. That has happened before:
+    // ReportBugScreen wraps unknown throws precisely because an RLS refusal
+    // once reached a user as "new row violates row-level security policy for
+    // table \"objects\"". The code is still logged; only the copy is ours.
+    throw new VehicleSaveError(
+      'We couldn’t load your cars. Please try again.',
+      'RPC_ERROR',
+    );
   }
   const rows = z.array(vehicleRowSchema).parse(data ?? []);
   const vehicles = rows.map(toSavedVehicle);

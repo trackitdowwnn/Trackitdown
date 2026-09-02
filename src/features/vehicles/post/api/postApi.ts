@@ -256,7 +256,11 @@ export async function createPost(params: CreatePostParams): Promise<CreatePostRe
   log.debug('create_post start');
   const { data, error } = await supabase.rpc('create_post', params);
   if (error) {
-    const known = error.message in CREATE_POST_ERROR_MESSAGES;
+    // ⚠️ Object.hasOwn, NOT `in` — `in` walks the prototype chain, so a
+    // Postgres message of `constructor` reported as known, defeating the
+    // echo-protection described just below and putting a Function into the
+    // message. See profileApi.ts:249.
+    const known = Object.hasOwn(CREATE_POST_ERROR_MESSAGES, error.message);
     const message = known ? CREATE_POST_ERROR_MESSAGES[error.message] : CREATE_POST_FALLBACK;
     // Log the code always; the RPC message only when it's a known enum. An
     // unmapped Postgres message can echo input (a CHECK embedding the bounty/

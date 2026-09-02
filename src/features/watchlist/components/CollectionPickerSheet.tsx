@@ -28,6 +28,7 @@ import type { BottomSheetRef } from '@/shared/ui';
 
 import { moveWatch } from '../api/collectionsApi';
 import { useCollections } from '../hooks/useCollections';
+import { CollectionError } from '../lib/collectionError';
 import { setMruCollection } from '../lib/mruCollection';
 import { clearCollectionPicker, useCollectionPickerIntent } from '../lib/pickerIntent';
 import { MAX_COLLECTIONS } from '../types';
@@ -94,10 +95,16 @@ export function CollectionPickerSheet() {
         }
         close();
       } catch (error) {
-        // The message is already user-facing (CollectionError). The car is
-        // still saved where it was, so this is a failed MOVE, not a failed
-        // save — the copy must not imply the car was lost.
-        toast.show(error instanceof Error ? error.message : 'Please try again.', 'error');
+        // The car is still saved where it was, so this is a failed MOVE, not a
+        // failed save — the copy must not imply the car was lost.
+        //
+        // ⚠️ NARROWED TO CollectionError, NOT `instanceof Error`. Only that
+        // class carries copy this app wrote; a raw PostgREST error is an Error
+        // too, so the old guard could put an RLS refusal in front of a person.
+        toast.show(
+          error instanceof CollectionError ? error.message : 'We couldn’t move that car.',
+          'error',
+        );
       } finally {
         setBusy(false);
       }
@@ -116,7 +123,11 @@ export function CollectionPickerSheet() {
       await file(collection.id, collection.name);
     } catch (error) {
       setBusy(false);
-      toast.show(error instanceof Error ? error.message : 'Please try again.', 'error');
+      // ⚠️ Same narrowing as `file` above — only our own copy reaches the toast.
+      toast.show(
+        error instanceof CollectionError ? error.message : 'We couldn’t create that list.',
+        'error',
+      );
     }
   }, [busy, create, name, file, toast]);
 

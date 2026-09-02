@@ -59,6 +59,7 @@ import { deleteVehicle } from '../api/garageApi';
 import { GARAGE_PHOTO_ASPECT_RATIO, GarageCard } from '../components/GarageCard';
 import { useMyVehicles } from '../hooks/useMyVehicles';
 import { vehicleDisplayName } from '../lib/vehicleAnswers';
+import { VehicleSaveError } from '../lib/vehicleSaveError';
 import { MAX_VEHICLES, type SavedVehicle } from '../types';
 
 const log = createLogger('garage');
@@ -110,7 +111,17 @@ export function MyCarsScreen() {
     } catch (err) {
       // deleteVehicle maps the server code (incl. VEHICLE_HAS_ACTIVE_POST) to
       // copy; show it rather than a generic failure.
-      toast.show(err instanceof Error ? err.message : 'We couldn’t remove that car.', 'error');
+      //
+      // ⚠️ NARROWED TO VehicleSaveError, NOT `instanceof Error`. Every Error is
+      // an Error — including a raw PostgREST one — so the old guard would show
+      // a person whatever the server said. That is not hypothetical: an RLS
+      // refusal once reached a user as "new row violates row-level security
+      // policy for table \"objects\"", which is why ReportBugScreen wraps
+      // unknown throws. Only copy this app wrote reaches the toast.
+      toast.show(
+        err instanceof VehicleSaveError ? err.message : 'We couldn’t remove that car.',
+        'error',
+      );
     }
   }, [acting, refresh, toast]);
 

@@ -159,6 +159,22 @@ describe('sendMessage', () => {
     });
   });
 
+  it('treats a prototype key as UNKNOWN, not as a known token', async () => {
+    // `token in MAP` walked the prototype chain, so a Postgres message
+    // beginning `toString` reported as known — which put a FUNCTION into the
+    // user-facing message AND logged a token that can echo input, defeating the
+    // one rule toChatError exists to enforce. Object.hasOwn is the fix.
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'toString: nope' } });
+
+    const error = await sendMessage(THREAD, 'anyone there?').catch((err: unknown) => err);
+
+    expect(error).toMatchObject({ code: 'RPC_ERROR' });
+    expect(typeof (error as ChatActionError).message).toBe('string');
+    expect((error as ChatActionError).message).not.toContain('function');
+    // The unknown token must not be echoed into the logs either.
+    expect(JSON.stringify(mockLogWarn.mock.calls)).not.toContain('toString');
+  });
+
   it('PRIVACY: never logs message content — lengths and ids only', async () => {
     mockRpc.mockResolvedValue({ data: messageRow, error: null });
     await sendMessage(THREAD, 'super secret content');

@@ -13,6 +13,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
+import { CollectionError } from '../lib/collectionError';
 import { getMruTarget, resetMruCollectionForTests } from '../lib/mruCollection';
 import {
   getCollectionPickerIntent,
@@ -68,6 +69,10 @@ const mockMoveWatch = jest.fn(async (_postId: string, _collectionId: string | nu
 jest.mock('../api/collectionsApi', () => ({
   moveWatch: (postId: string, collectionId: string | null) => mockMoveWatch(postId, collectionId),
 }));
+// ⚠️ lib/collectionError is deliberately NOT mocked. The sheet narrows its
+// toasts on `instanceof CollectionError`, so a stub class here would let these
+// tests pass while the shipped guard rejected the very errors it exists to show
+// — TESTING.md's mocked-constant lesson, applied to a class.
 
 const COMMUTE = { id: 'cccccccc-0000-0000-0000-00000000000c', name: 'My commute', createdAt: 'x' };
 const NEAR_WORK = { id: 'dddddddd-0000-0000-0000-00000000000d', name: 'Near work', createdAt: 'y' };
@@ -183,7 +188,9 @@ describe('re-filing', () => {
   });
 
   it('a failed move says so without claiming the car was lost', async () => {
-    mockMoveWatch.mockRejectedValue(new Error('We couldn’t find that list.'));
+    mockMoveWatch.mockRejectedValue(
+      new CollectionError('We couldn’t find that list.', 'COLLECTION_NOT_FOUND'),
+    );
     const { getByTestId } = await mountWithIntent();
 
     await act(async () => {
@@ -193,6 +200,24 @@ describe('re-filing', () => {
     expect(mockToastShow).toHaveBeenCalledWith('We couldn’t find that list.', 'error');
     // Still open: the user can pick somewhere else. The car remains saved
     // where it was either way.
+    expect(mockClose).not.toHaveBeenCalled();
+  });
+
+  it('a raw server error is never shown to the user', async () => {
+    // A PostgREST/RLS failure is an Error like any other, so an `instanceof
+    // Error` guard would print it. It has happened before: an RLS refusal once
+    // reached a user as 'new row violates row-level security policy for table
+    // "objects"'. Only copy this app wrote may reach a toast.
+    mockMoveWatch.mockRejectedValue(
+      new Error('new row violates row-level security policy for table "watchlist_items"'),
+    );
+    const { getByTestId } = await mountWithIntent();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('row-My commute'));
+    });
+
+    expect(mockToastShow).toHaveBeenCalledWith('We couldn’t move that car.', 'error');
     expect(mockClose).not.toHaveBeenCalled();
   });
 });
@@ -232,7 +257,9 @@ describe('creating a list inline', () => {
   });
 
   it('a rejected name keeps the field open with the reason', async () => {
-    mockCreate.mockRejectedValue(new Error('You already have a list with that name.'));
+    mockCreate.mockRejectedValue(
+      new CollectionError('You already have a list with that name.', 'COLLECTION_NAME_TAKEN'),
+    );
     const { getByTestId } = await mountWithIntent();
 
     await act(async () => {

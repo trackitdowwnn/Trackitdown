@@ -12,6 +12,8 @@
  * LINKS: src/features/garage/api/garageApi.ts, docs/TESTING.md.
  */
 
+import { VehicleSaveError } from '../lib/vehicleSaveError';
+
 import { addVehicle, deleteVehicle, listMyVehicles } from './garageApi';
 
 const mockRpc = jest.fn();
@@ -138,6 +140,21 @@ describe('listMyVehicles', () => {
   it('fails loudly on a shape drift rather than rendering garbage', async () => {
     mockRpc.mockResolvedValue({ data: [row({ id: 'not-a-uuid' })], error: null });
     await expect(listMyVehicles()).rejects.toThrow();
+  });
+
+  it('wraps an RPC failure so the server string cannot reach the user', async () => {
+    // MyCarsScreen toasts this error's message. A bare re-throw would put a
+    // PostgREST/RLS string in front of a person — which has happened before.
+    const raw = 'new row violates row-level security policy for table "objects"';
+    mockRpc.mockResolvedValue({ data: null, error: { message: raw, code: '42501' } });
+
+    const error = await listMyVehicles().catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(VehicleSaveError);
+    expect((error as VehicleSaveError).message).toBe(
+      'We couldn’t load your cars. Please try again.',
+    );
+    expect((error as VehicleSaveError).message).not.toContain('row-level security');
   });
 
   it('returns [] when the RPC returns null (guest / empty garage)', async () => {

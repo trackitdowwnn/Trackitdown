@@ -84,6 +84,21 @@ describe('listMyCollections', () => {
 
     await expect(listMyCollections()).rejects.toThrow();
   });
+
+  it('wraps a select failure so the server string cannot reach the user', async () => {
+    // CollectionPickerSheet toasts this error's message, so a bare re-throw
+    // would show a PostgREST/RLS string to a person.
+    const raw = 'permission denied for table watchlist_collections';
+    mockOrder.mockResolvedValue({ data: null, error: { message: raw, code: '42501' } });
+
+    const error = await listMyCollections().catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(CollectionError);
+    expect((error as CollectionError).message).toBe(
+      'We couldn’t load your lists. Please try again.',
+    );
+    expect((error as CollectionError).message).not.toContain('permission denied');
+  });
 });
 
 describe('createCollection', () => {
