@@ -167,6 +167,12 @@ export async function releasePayoutForPost(
     // later, with nobody watching — the exact failure that migration was
     // written to prevent. A fee is revenue on capture: never refunded, never
     // transferred, no payout leg.
+    //
+    // ⚠️ SINCE ADR-0018 (2026-09-02) THE `kind` FILTER IS A SECOND LOCK, NOT
+    // THE ONLY ONE. A captured listing fee now lands in `collected`, so it is
+    // not in the set `status = 'held'` selects at all. Kept DELIBERATELY: do
+    // not remove it as dead weight — it is what still holds if anything ever
+    // puts a fee back into `held`.
     .eq('status', 'held')
     .eq('kind', 'bounty_escrow')
     .maybeSingle();
