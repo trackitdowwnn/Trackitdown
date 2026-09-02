@@ -239,6 +239,24 @@ Rules that follow, and are not implementation details:
 - **The spotter still gets credited.** One sighting, `recoveries_credited`
   increments, no money moves. On a no-reward listing that recognition IS the
   reward, and the listing says so plainly rather than leaving anyone to hope.
+  - ✅ **CLOSED 2026-09-02 — the credited spotter is now told.**
+    `claim_credited_notification` builds the copy for whichever branch applies
+    and **only then claims**, so a rewardless credit no longer burns the
+    one-shot and sends nothing. A fee listing produces the `credited_no_reward`
+    kind — *"Your sighting found the car / The owner credited your report. It
+    counts towards your record."* — which routes to `/my-sightings` rather than
+    `/payouts` (there is no payout to arrange) and sits under the
+    `my_sightings` preference rather than `money` (there is no money in it).
+    It is persisted like every other kind, so the Inbox is no longer silent.
+
+    ⚠️ The payment lookup gained `kind = 'bounty_escrow'` in the same change.
+    Without it a £5 fee row would have been read as a bounty and produced
+    *"You've earned £4.75"* on a listing carrying no reward — inventing exactly
+    the number the original refused to invent. ADR-0014 records those filters
+    going missing elsewhere for four days.
+
+    <details><summary>The gap as it stood, 2026-08-20 to 2026-09-02</summary>
+
   - ⚠️ **KNOWN GAP — the credited spotter is not TOLD (2026-08-20).** The
     credited-spotter notification is a money push ("You've earned £X", routed to
     /payouts) and `claim_credited_notification` reads the amount from a
@@ -255,6 +273,8 @@ Rules that follow, and are not implementation details:
     that argument. Closing it needs a non-money credited push (its own kind,
     copy, and a `claim_credited_notification` branch that only claims once the
     copy can be built). Deliberately not smuggled into the pricing change.
+
+    </details>
 - **Fully visible everywhere**, with two ranking carve-outs: a **minimum-bounty
   alert never matches one** (`NULL >= n` is unknown — never `coalesce(…, 0)`
   it, which would make every no-reward post match every alert), and the

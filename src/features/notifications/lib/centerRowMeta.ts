@@ -34,6 +34,7 @@ import {
   BadgeCheck,
   Banknote,
   Bell,
+  Binoculars,
   CheckCircle2,
   Eye,
   Hourglass,
@@ -94,6 +95,12 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
     needsAttention: true,
     attentionLabel: 'Add your bank details',
   },
+  // ⚠️ NOT Banknote, AND NOT `needsAttention`. Its sibling `credited` is an
+  // errand — the money is sitting there and only the reader can unlock it. This
+  // one has no money and nothing to do: the credit already happened and it
+  // already counts. An action chip here would invent a task, and a banknote
+  // would imply a payment that is never coming.
+  credited_no_reward: { Icon: Binoculars, tone: 'success', needsAttention: false },
   payout_sent: { Icon: Banknote, tone: 'success', needsAttention: false },
   // "Contest" is the word SightingDisputeScreen already uses with these
   // spotters ("This one can’t be contested any more"), so the row and the

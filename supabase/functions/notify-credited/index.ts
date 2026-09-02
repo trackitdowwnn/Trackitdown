@@ -67,11 +67,19 @@ Deno.serve(async (request) => {
 
     // Persist-then-push (THE RULE): a spotter with push denied learns they
     // earned money from the center — previously they learned it never.
+    // ⚠️ THE KIND COMES FROM THE CLAIM, NOT FROM HERE. Since 2026-09-02 there
+    // are two credited outcomes: a bounty listing sends 'credited' ("You've
+    // earned £X", → /payouts) and a £5 fee listing sends 'credited_no_reward'
+    // ("Your sighting found the car", → /my-sightings). Only the database knows
+    // which, because only it has looked at the payment. Hardcoding 'credited'
+    // here — as this did — would route a spotter with no payout to the payouts
+    // screen and file it under the money preference they may have muted.
+    const kind = claim.kind as 'credited' | 'credited_no_reward';
     const result = await notifyUsers(admin, [claim.user_id as string], {
-      kind: 'credited',
+      kind,
       title: claim.title as string,
       body: claim.body as string,
-      data: { type: 'credited', postId: claim.post_id as string },
+      data: { type: kind, postId: claim.post_id as string },
       // One credit per post, ever — the collapse key is belt and braces
       // against a replayed delivery, not against volume.
       collapseKey: `credited:${claim.post_id as string}`,

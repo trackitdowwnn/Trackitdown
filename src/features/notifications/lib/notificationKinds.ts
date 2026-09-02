@@ -17,6 +17,10 @@ export const NOTIFICATION_KINDS = [
   'message',
   'recovery',
   'credited',
+  // A credit on a £5 fee listing: real recognition, no money. Its own kind so
+  // it can route to My reports rather than Payouts, and sit under the
+  // my_sightings preference rather than money (2026-09-02).
+  'credited_no_reward',
   'closed_uncredited',
   'dispute_upheld',
   'dispute_rejected',

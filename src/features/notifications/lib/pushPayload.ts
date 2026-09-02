@@ -44,6 +44,16 @@ const creditedPayloadSchema = z
   .object({ type: z.literal('credited'), postId: z.guid() })
   .strict();
 
+/** Credited on a listing that carries NO cash reward (ADR-0014's £5 fee mode).
+ *  Its own kind rather than a flag on `credited`, because the two land on
+ *  different screens: there is no payout to arrange, so the tap opens
+ *  /my-sightings where the credit is actually visible. Same postId shape as its
+ *  sibling — there is no amount to carry, and inventing one is the mistake the
+ *  server-side branch exists to avoid. */
+const creditedNoRewardPayloadSchema = z
+  .object({ type: z.literal('credited_no_reward'), postId: z.guid() })
+  .strict();
+
 /** A post you sighted closed without crediting anyone — the 72-hour window to
  *  contest is open. The sighting id, not the post id: the post is invisible
  *  to the spotter once closed, and the dispute screen keys off THEIR sighting. */
@@ -90,6 +100,7 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   messagePayloadSchema,
   recoveryPayloadSchema,
   creditedPayloadSchema,
+  creditedNoRewardPayloadSchema,
   closedUncreditedPayloadSchema,
   disputeUpheldPayloadSchema,
   disputeRejectedPayloadSchema,

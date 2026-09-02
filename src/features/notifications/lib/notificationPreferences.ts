@@ -65,7 +65,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
 export const CATEGORY_KINDS: Record<NotificationCategory, NotificationKind[]> = {
   alerts: ['alert'],
   messages: ['message'],
-  my_sightings: ['sighting_confirmed', 'not_credited'],
+  my_sightings: ['sighting_confirmed', 'not_credited', 'credited_no_reward'],
   money: ['credited', 'payout_sent', 'dispute_upheld', 'dispute_rejected'],
   watched: ['recovery'],
 };

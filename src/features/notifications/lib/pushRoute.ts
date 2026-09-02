@@ -57,6 +57,12 @@ export function pushRouteFor(payload: PushPayload): Href {
     // newest first, so the confirmed one is at the top and the tap lands
     // somewhere true even if a second verdict arrived in between.
     case 'sighting_confirmed':
+    // ⚠️ NOT /payouts, unlike its sibling `credited`. A credit on a £5 fee
+    // listing carries no money, so the payouts screen would show this spotter
+    // nothing and imply something is coming. Their record IS the reward here —
+    // DOMAIN's "recognition is the reward" — so the tap lands where the credit
+    // is actually visible.
+    case 'credited_no_reward':
       return '/my-sightings';
   }
 }
