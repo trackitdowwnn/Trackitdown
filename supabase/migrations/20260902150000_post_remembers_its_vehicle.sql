@@ -164,10 +164,15 @@ begin
   -- report because a garage row was deleted mid-flow would be the wrong trade.
   -- NULL is exactly the state every post has had until now.
   if p_vehicle_id is not null then
+    -- ⚠️ vehicles.USER_ID, not owner_id. posts uses owner_id and vehicles uses
+    -- user_id, and a plpgsql body is not checked for column existence at
+    -- CREATE time — so the wrong name here applies cleanly and then throws
+    -- "column v.owner_id does not exist" at runtime, on every prefilled post.
+    -- CI's db job caught exactly that on the first push of this migration.
     select v.id into v_vehicle_id
       from public.vehicles v
      where v.id = p_vehicle_id
-       and v.owner_id = v_owner;
+       and v.user_id = v_owner;
   end if;
 
   -- --- OPTIONAL PLATE: canon first; a plate that strips to nothing is NULL -----
