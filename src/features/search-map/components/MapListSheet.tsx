@@ -35,6 +35,9 @@ import {
 import { easeOut } from '@/shared/theme/motionEasing';
 import { EmptyState, ErrorState, SkeletonVehicleCard, VehicleCard } from '@/shared/ui';
 
+// `export … from` below re-exports these without binding them locally, and
+// SNAP_POINTS needs the value.
+import { MAP_SHEET_SNAP_PERCENTS } from '../lib/mapSheetGeometry';
 import type { MapPost } from '../types';
 
 /** Peek height as a fraction of the screen: the handle, the count, and the top
@@ -42,29 +45,18 @@ import type { MapPost } from '../types';
  *  title only at its low snap, but our header chrome is ~64dp against its
  *  ~128dp, and 64dp of empty padding to hide a card is a worse trade than a
  *  sliver that says "there is a list here". Entry moves off peek anyway. */
-/** Exported because the map insets its camera by the sheet's height — results
- *  framed under the sheet may as well not exist — and now ZOOMS with it, so
- *  the screen has to turn a snap index into a fraction of the screen. */
-export const MAP_SHEET_SNAP_PERCENTS = [15, 48, 88] as const;
-export const MAP_SHEET_PEEK_PERCENT = MAP_SHEET_SNAP_PERCENTS[0];
-
-/**
- * How far the sheet has risen ABOVE peek, as a fraction of the screen — the
- * camera inset the sheet-driven ZOOM uses. Zero at peek.
- *
- * NOT the same number as how much the sheet OCCLUDES (that is the screen's
- * insetsForSheet, and it is 15% at peek): framing and zooming want different
- * insets. Framing must dodge the sheet or it centres results behind it. Zooming
- * measured off the reference does not: docs/design-refs/map/ holds the same map
- * at two snap positions, and the camera scale between them is 0.59 where exact
- * ground-preservation would give 0.50. Solving for what IS preserved puts the
- * bottom edge ~14.6% of the screen below the sheet's top — its peek height. So
- * the reference frames the whole map at peek and insets only by the excess.
- */
-export function sheetZoomFraction(index: number): number {
-  const percent = MAP_SHEET_SNAP_PERCENTS[index] ?? MAP_SHEET_PEEK_PERCENT;
-  return Math.max(0, percent - MAP_SHEET_PEEK_PERCENT) / 100;
-}
+/** ⚠️ MOVED to ../lib/mapSheetGeometry on 2026-09-02 and RE-EXPORTED here, so
+ *  every existing importer is unchanged. The screen insets its camera by the
+ *  sheet's height and now zooms with it, so it needs these numbers — but
+ *  reaching them through this module also loads the vehicle card, and through
+ *  it the supabase client. That is what made MapSearchScreen untestable:
+ *  stubbing this component to keep the native list out of jest also made
+ *  MAP_SHEET_SNAP_PERCENTS undefined. Geometry is not a component concern. */
+export {
+  MAP_SHEET_PEEK_PERCENT,
+  MAP_SHEET_SNAP_PERCENTS,
+  sheetZoomFraction,
+} from '../lib/mapSheetGeometry';
 /** Peek shows the handle + label; half is browsing; full is list mode. */
 const SNAP_POINTS = MAP_SHEET_SNAP_PERCENTS.map((percent) => `${percent}%`);
 /** Skeleton rows shown while a search runs (no spinners on the list). */
