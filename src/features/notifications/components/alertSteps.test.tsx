@@ -27,10 +27,11 @@ jest.mock('@/features/vehicles', () => ({
 }));
 // CAR_COLOURS is no longer in that mock: it moved to @/shared/lib on
 // 2026-08-28, which imports no feature and so needs no stubbing at all.
-jest.mock('@/features/vehicles/post/lib/bountyBounds', () => ({
-  MAX_BOUNTY_PENCE: 500000,
-  MIN_BOUNTY_PENCE: 1000,
-}));
+// ⚠️ bountyBounds is deliberately NOT mocked. It was, with the two numbers
+// retyped by hand — and that is precisely the anti-pattern TESTING.md records
+// an incident about: a mocked constant hid a floor that had been £10 for nine
+// days while the app went on enforcing £50. The module imports nothing, so
+// there was never anything to stub around; the real values are free.
 jest.mock('@/shared/lib/carMakes', () => ({ CAR_MAKES: [], POPULAR_MAKES: [] }));
 jest.mock('@/shared/lib/carModels', () => ({ modelsForMake: () => [] }));
 jest.mock('@/shared/lib/location/expoLocationServices', () => ({ expoLocationServices: {} }));

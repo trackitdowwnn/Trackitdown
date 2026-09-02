@@ -1,0 +1,32 @@
+{
+  "//": [
+    "WHAT: typechecks the Jest suites under supabase/tests, which the root",
+    "      tsconfig excludes.",
+    "WHY:  the whole-app review's finding #31 — these four suites ran",
+    "      UNTYPECHECKED. They are the mirror tests that pin the client's",
+    "      notification kinds and categories to the migrations, so a drift they",
+    "      exist to catch could be introduced by a type error in the catcher.",
+    "",
+    "      A SEPARATE config rather than deleting the root exclude: these files",
+    "      legitimately read the filesystem, so they need @types/node — and",
+    "      adding 'node' to the ROOT types would make fs and path importable",
+    "      from src/, in a React Native app where they do not exist at runtime.",
+    "      That is the exact mistake that sent the EXIF guard to scripts/.",
+    "",
+    "      ⚠️ THREE of the review's five, not five. push.test.ts and",
+    "      emailContent.test.ts both import modules under supabase/functions,",
+    "      which is DENO — npm: specifiers, Deno.serve, URL imports — and tsc",
+    "      cannot read them without a Deno-flavoured config of its own. Pulling",
+    "      push.test.ts in here produces errors about the module under test",
+    "      rather than the test, which is noise, not coverage. Those two stay",
+    "      untypechecked and the reason is now written down.",
+    "RUN:  npm run typecheck (which runs this too), or npm run typecheck:tests."
+  ],
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["jest", "node"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["push.test.ts"]
+}
