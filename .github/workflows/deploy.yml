@@ -241,19 +241,61 @@ jobs:
             --project-ref "$PROJECT_REF" --use-api
 
       # --- Prove it actually happened -----------------------------------------
+      # ⚠️ POLLED, NOT READ ONCE — because reading once produced a FALSE RED on
+      # 2026-09-02, on this pipeline, about create-payment-intent. The CLI
+      # printed "Deployed Functions: create-payment-intent" at 10:14:00.807 and
+      # this step queried the Management API at 10:14:01.257. 450ms. The API
+      # still reported the old version, the step said "stuck at v36", and the
+      # next run proved the deploy HAD landed by starting from v37.
+      #
+      # Only ever ONE function can lose that race — whichever is deployed last.
+      # Wave 1 finishes seconds before this runs, so its fifteen have settled;
+      # wave 2 deploys create-payment-intent alone and immediately before the
+      # check. That the loser is always the function that STARTS A CHARGE, and
+      # the very function ADR-0014 records going stale for four days, is exactly
+      # the sort of coincidence that gets a real failure dismissed as "probably
+      # the flaky one again".
+      #
+      # A false green here is invisible and a false red is loud — that trade is
+      # right and is not being changed. What changes is that the step now gives
+      # the API a few seconds to catch up before it believes the bad news.
       - name: Verify every function's version moved
         run: |
           set -euo pipefail
-          HTTP=$(curl -sS -o /tmp/fns2.json -w '%{http_code}' \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            "https://api.supabase.com/v1/projects/$PROJECT_REF/functions")
-          if [ "$HTTP" != "200" ]; then
-            echo "::error::Cannot verify — Management API returned HTTP $HTTP."
-            echo "::error::The deploys above may well have succeeded; this step"
-            echo "::error::could not confirm it. Check the functions by hand."
-            exit 1
-          fi
-          jq -c 'map({slug, version})' /tmp/fns2.json > /tmp/after.json
+
+          fetch_after() {
+            HTTP=$(curl -sS -o /tmp/fns2.json -w '%{http_code}' \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+              "https://api.supabase.com/v1/projects/$PROJECT_REF/functions")
+            if [ "$HTTP" != "200" ]; then
+              echo "::error::Cannot verify — Management API returned HTTP $HTTP."
+              echo "::error::The deploys above may well have succeeded; this step"
+              echo "::error::could not confirm it. Check the functions by hand."
+              exit 1
+            fi
+            jq -c 'map({slug, version})' /tmp/fns2.json > /tmp/after.json
+          }
+
+          stale_slugs() {
+            for SLUG in $(ls -d supabase/functions/*/ | xargs -n1 basename | grep -vx '_shared'); do
+              BEFORE=$(jq -r --arg s "$SLUG" '(.[] | select(.slug==$s) | .version) // 0' /tmp/before.json)
+              AFTER=$(jq -r --arg s "$SLUG" '(.[] | select(.slug==$s) | .version) // 0' /tmp/after.json)
+              if [ "$AFTER" -le "$BEFORE" ]; then echo "$SLUG"; fi
+            done
+          }
+
+          # Up to ~30s. Generous on purpose: the cost of waiting is half a
+          # minute on a job that already takes one, and the cost of not waiting
+          # is a red pipeline on a money deploy that actually succeeded.
+          for ATTEMPT in 1 2 3 4 5 6; do
+            fetch_after
+            STALE=$(stale_slugs || true)
+            if [ -z "$STALE" ]; then break; fi
+            if [ "$ATTEMPT" -lt 6 ]; then
+              echo "  … still stale after attempt $ATTEMPT: $(echo "$STALE" | tr '\n' ' ')— waiting 5s"
+              sleep 5
+            fi
+          done
 
           FAILED=0
           for SLUG in $(ls -d supabase/functions/*/ | xargs -n1 basename | grep -vx '_shared'); do
@@ -268,7 +310,9 @@ jobs:
           done
 
           if [ "$FAILED" -ne 0 ]; then
-            echo "::error::One or more functions did not deploy. The database may now be"
-            echo "::error::ahead of the functions — the exact drift this workflow prevents."
+            echo "::error::One or more functions did not deploy after ~30s of polling."
+            echo "::error::The database may now be ahead of the functions — the exact"
+            echo "::error::drift this workflow prevents. This is NOT the settle-time"
+            echo "::error::race fixed on 2026-09-02; treat it as a real failure."
             exit 1
           fi
