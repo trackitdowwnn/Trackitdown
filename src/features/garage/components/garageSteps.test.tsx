@@ -34,6 +34,59 @@ describe('PlateStep', () => {
     expect(setAnswers).toHaveBeenCalledWith({ plate: 'AB12CDE' });
   });
 
+  // ⚠️ A WARNING, NEVER A GATE (whole-app review #33). isValidPlate was written
+  // and tested and then called by nothing; wiring it as a hard check would put
+  // a wall in front of every plate our FORMATS list does not know — and
+  // personalised, Northern Irish, pre-2001 and imported plates are all real.
+  describe('the format warning', () => {
+    it('stays quiet while the plate is valid', async () => {
+      const { queryByTestId } = await act(async () =>
+        render(<PlateStep answers={{ plate: 'AB12 CDE' }} setAnswers={jest.fn()} />),
+      );
+      expect(queryByTestId('plate-format-warning')).toBeNull();
+    });
+
+    it('stays quiet mid-type — two characters is not a wrong answer', async () => {
+      const { queryByTestId } = await act(async () =>
+        render(<PlateStep answers={{ plate: 'AB' }} setAnswers={jest.fn()} />),
+      );
+      expect(queryByTestId('plate-format-warning')).toBeNull();
+    });
+
+    it('asks a question when the shape is unfamiliar', async () => {
+      const { getByTestId } = await act(async () =>
+        render(<PlateStep answers={{ plate: 'ZZZZZZZ9' }} setAnswers={jest.fn()} />),
+      );
+      // Phrased as a question, because it may well be right and we are the
+      // ones who might be wrong.
+      expect(getByTestId('plate-format-warning')).toBeTruthy();
+    });
+
+    it('⚠️ still lets the owner continue, and still offers the skip', async () => {
+      const onSkip = jest.fn();
+      const { getByTestId } = await act(async () =>
+        render(
+          <PlateStep answers={{ plate: 'ZZZZZZZ9' }} setAnswers={jest.fn()} onSkip={onSkip} />,
+        ),
+      );
+      // The whole decision in one assertion: an unrecognised plate disables
+      // nothing. A car with a plate we do not recognise is still a car that
+      // has been stolen.
+      expect(getByTestId('plate-format-warning')).toBeTruthy();
+      await act(async () => {
+        fireEvent.press(getByTestId('plate-skip'));
+      });
+      expect(onSkip).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores spacing and case, as the canonical form does', async () => {
+      const { queryByTestId } = await act(async () =>
+        render(<PlateStep answers={{ plate: 'ab12cde' }} setAnswers={jest.fn()} />),
+      );
+      expect(queryByTestId('plate-format-warning')).toBeNull();
+    });
+  });
+
   it('offers a skip, so an owner without their plate is never stuck', async () => {
     const onSkip = jest.fn();
     const { getByTestId } = await act(async () =>
