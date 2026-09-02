@@ -41,9 +41,20 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Two invocations, not one: the root config typechecks the app, and
+      # supabase/tests has its own because those suites read the filesystem and
+      # need @types/node — which must NOT be visible from src/, where fs and
+      # path do not exist at runtime. Review finding #31; the reasoning is in
+      # supabase/tests/tsconfig.json.
       - name: Typecheck
         run: npm run typecheck
 
+      # ⚠️ --coverage is now load-bearing. Until 2026-09-02 this computed
+      # coverage and threw it away: there was no coverageThreshold and no
+      # collectCoverageFrom, so nothing could ever fail on it and untested
+      # files were invisible to the number (review finding #32). Both are now
+      # in package.json, and the floors are a RATCHET set just under the real
+      # figures — raise them when coverage rises, never lower them to go green.
       - name: Test
         run: npm test -- --ci --coverage
 

@@ -4,6 +4,15 @@ Testing philosophy: an AI writes most of this code quickly — tests are how
 we keep it honest. Coverage is tiered: some things MUST be tested, some
 should be, some are optional.
 
+**The coverage floor** (added 2026-09-02, review finding #32): CI ran
+`--coverage` from the start and threw the result away — no `coverageThreshold`,
+no `collectCoverageFrom`, so nothing could fail on it and a file with no tests
+at all was invisible to the number. Both are now set in `package.json`, over
+all of `src/`. The floors are a **ratchet** parked just under the real figures
+(statements 75, branches 68, functions 71, lines 76 against 76.9 / 70.4 / 73.0
+/ 77.8). Raise them when coverage rises. Lowering one to go green is the move
+this paragraph exists to make visible.
+
 ## Tier 1 — MUST be tested (blocks merge)
 
 - **Every `// MONEY:` line's behaviour**: escrow charge on posting, the
@@ -14,7 +23,12 @@ should be, some are optional.
   transition succeeds; every disallowed one is rejected server-side
   (e.g. payout on a post not in `recovery_claimed`, activating a post
   that never passed verification).
-- **Bounty validation**: min £50 / max £5,000 enforced server-side.
+- **Bounty validation**: min **£10** / max £5,000 enforced server-side.
+  (This line said £50 until 2026-09-02, nineteen days after the floor moved
+  — the same drift it warns about below, in the document that warns about
+  it. The numbers live in `src/features/vehicles/post/lib/bountyBounds.ts`
+  and `posts_bounty_amount_pence_check`; `bountyBounds.test.ts` fails if
+  the two stop agreeing.)
 - **Sighting rate limit**: 4th sighting on the same post in a day is
   rejected.
 - **`// SAFETY:` code**: e.g. sighting flows render SafetyNotice; posts
