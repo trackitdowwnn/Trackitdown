@@ -91,8 +91,16 @@ begin
   -- escrow for a spotter who may never be found; a fee is ours the moment it
   -- captures and has no second leg. Writing both to `held` is what forced five
   -- separate queries to re-derive the difference from `kind` (ADR-0018).
+  -- ⚠️ THE CASTS ARE REQUIRED, AND THEIR ABSENCE IS NOT A COMPILE ERROR. A
+  -- CASE over bare literals resolves to `text`, and assigning text to a
+  -- payment_status column raises at RUNTIME — so `create or replace` would
+  -- succeed, the migration would apply cleanly, and then EVERY charge-success
+  -- webhook would fail. CI's db job caught this; a direct push would not have.
   update public.payments
-     set status = case when v_kind = 'listing_fee' then 'collected' else 'held' end
+     set status = case
+                    when v_kind = 'listing_fee' then 'collected'::public.payment_status
+                    else 'held'::public.payment_status
+                  end
    where stripe_payment_intent_id = p_payment_intent_id
      and status in ('requires_payment', 'failed');
 
@@ -131,7 +139,7 @@ begin
    where kind = 'listing_fee' and status = 'held';
 
   update public.payments
-     set status = 'collected'
+     set status = 'collected'::public.payment_status
    where kind = 'listing_fee'
      and status = 'held';
   get diagnostics v_moved = row_count;
