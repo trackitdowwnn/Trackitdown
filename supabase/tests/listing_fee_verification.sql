@@ -254,8 +254,15 @@ begin
   if v_status <> 'active' then
     raise exception 'CHECK 5 FAILED: a paid free listing sits at %, expected active', v_status;
   end if;
-  if v_pay <> 'held' then
-    raise exception 'CHECK 5 FAILED: the captured fee sits at %, expected held', v_pay;
+  -- ⚠️ EXPECTATION CHANGED 2026-09-02 BY ADR-0018, from `held` to `collected`.
+  -- This is a deliberate contract change, not a test bent to fit code: a fee
+  -- sitting in `held` was what forced five separate money selectors to filter
+  -- `kind = 'bounty_escrow'` to avoid refunding it, and ADR-0014 records those
+  -- filters going missing for four days while an hourly cron refunded fees.
+  -- `held` now means escrow and only escrow, so a fee is unreachable by those
+  -- queries by construction. fee_collected_verification asserts that half.
+  if v_pay <> 'collected' then
+    raise exception 'CHECK 5 FAILED: the captured fee sits at %, expected collected (ADR-0018 — a fee must never enter `held`, which every refund query selects on)', v_pay;
   end if;
 
   -- Never-regress: a replayed webhook must not undo anything.
@@ -330,11 +337,20 @@ begin
 
   -- Fee-PRICED but escrow-FUNDED: a stale bounty intent that captured after a
   -- draft pricing switch.
+  -- ⚠️ THE RELABEL NOW HAPPENS BEFORE CAPTURE, and that is the realistic
+  -- order rather than a workaround. Since ADR-0018 `mark_post_payment_held`
+  -- reads `kind` to decide the terminal state, so capturing as a fee and
+  -- relabelling afterwards produced kind='bounty_escrow' with
+  -- status='collected' — a row the real system cannot make, and one
+  -- fee_collected_verification CHECK 5 asserts never exists. The scenario this
+  -- check describes ("a stale bounty intent that captured after a draft
+  -- pricing switch") is escrow-kinded BEFORE the webhook lands, so building it
+  -- that way exercises the capture path too instead of hand-setting a state.
   v_fee := pg_temp.seed_free_listing();
   perform public.record_post_payment_intent(v_fee, 'pi_f', 500);
-  perform public.mark_post_payment_held('pi_f');
   update public.payments set kind = 'bounty_escrow', amount_pence = 25000
    where stripe_payment_intent_id = 'pi_f';
+  perform public.mark_post_payment_held('pi_f');
   begin
     perform public.cancel_fee_listing(v_fee);
     raise exception 'CHECK 7 FAILED: a post carrying held escrow was cancelled with no refund';

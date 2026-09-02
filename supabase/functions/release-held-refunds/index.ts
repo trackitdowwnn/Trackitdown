@@ -179,6 +179,11 @@ Deno.serve(async (request) => {
     .select('post_id, exit_path, payments!inner(status, kind)')
     .lt('expires_at', new Date().toISOString())
     .eq('payments.status', 'held')
+    // ⚠️ SINCE ADR-0018 a captured fee lands in `collected`, so the
+    // `payments.status = held` join above already excludes it. This filter is
+    // kept as the second lock — and it matters most HERE, because this is the
+    // unattended hourly path where a fee slipping through would be refunded
+    // days later with nobody watching.
     .eq('payments.kind', 'bounty_escrow');
 
   if (dueError) {

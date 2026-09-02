@@ -96,6 +96,12 @@ begin
   -- function refused to invent. The kind filter is what stops that, and
   -- ADR-0014 records those filters going missing elsewhere for four days.
   -- ---------------------------------------------------------------------
+  -- ⚠️ SEEDED AT `held`, WHICH ADR-0018 MADE IMPOSSIBLE — AND THAT IS THE
+  -- POINT. Since 2026-09-02 a captured fee lands in `collected`, so seeding it
+  -- there would make this check pass for the STRUCTURAL reason and stop
+  -- exercising the `kind` filter at all. Seeding the impossible state is what
+  -- proves the second lock still holds: if a fee ever finds its way back into
+  -- `held`, the filter must still keep it out of the money copy.
   insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
   values (v_post, 'pi_test_credited_fee', 'held', 500, 'listing_fee');
 
