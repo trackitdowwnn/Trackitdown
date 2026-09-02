@@ -224,6 +224,49 @@ without checking that the event fires at all.
 
 ---
 
+## 7. Is the hourly sweep still running?
+
+⚠️ **Ask this first when anything looks stale.** `release-held-refunds` is the
+only scheduled process in the system, and it now carries four jobs, three of
+which fail *silently*:
+
+| Job | What its silence costs |
+|---|---|
+| Refunds and payouts | Money strands. Loud eventually — someone complains |
+| `purge_old_notifications` | Retention stops |
+| `purge_sighting_location_history` | **A promise published on the website** stops being kept |
+| Orphaned photo removal | **UK GDPR erasure** stops — deleted cars keep their photos |
+
+Only the first is self-reporting. The other three would sit broken indefinitely.
+
+```sql
+select public.sweep_health();
+```
+
+Returns `last_run_at`, `age_minutes`, a `healthy` flag and the counters from
+that run. `healthy` goes false after **3 hours** — three consecutive misses, not
+one, because a single miss is ordinary (a deploy, a cold start) and a check that
+cries wolf gets ignored.
+
+`last_run_at: null` means it has never completed a run since 2026-09-02. That is
+a different problem from "ran a while ago" and usually means the pg_cron job or
+its Vault secret is wrong, not that the function is broken.
+
+The recent history, when you want to see a trend rather than a moment:
+
+```sql
+select s.ran_at, s.summary
+from public.sweep_runs s
+order by s.ran_at desc
+limit 24;
+```
+
+⚠️ **Nothing alerts on this.** It is a query, not a pager. Making it one needs
+somewhere to send it, which is an ops decision nobody has taken — but a table
+you can query today beats a dashboard that does not exist.
+
+---
+
 ## What this file is not
 
 A moderation tool. There is no way here to action anything — no resolving a

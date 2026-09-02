@@ -333,3 +333,74 @@ end $$;
 -- =============================================================================
 -- END — all checks passed if this file completed without raising.
 -- =============================================================================
+
+
+-- =============================================================================
+-- CHECK 10 — OPERATIONS.md §7, sweep health. Added 2026-09-02.
+-- =============================================================================
+-- ⚠️ THIS QUERY IS THE ONLY THING THAT WOULD TELL ANYONE RETENTION HAD STOPPED.
+-- release-held-refunds carries four jobs; three of them — the notification
+-- purge, the 90-day location purge (a promise published on the website) and
+-- orphaned-photo removal (GDPR erasure) — fail in total silence if it stops
+-- firing. A broken health query would therefore be worse than none, because it
+-- is the thing someone reaches for when they already suspect a problem.
+--
+-- Both directions are asserted. A check that only proves "healthy when fresh"
+-- would pass just as happily if `healthy` were hardcoded true.
+begin;
+do $$
+declare
+  v_doc jsonb;
+begin
+  delete from public.sweep_runs;
+
+  -- (a) Never run. Must be distinguishable from "ran a while ago": it points at
+  --     the cron job or its Vault secret, not at the function.
+  v_doc := public.sweep_health();
+  if v_doc->'last_run_at' <> 'null'::jsonb then
+    raise exception 'CHECK 10 FAILED: an empty table did not report last_run_at null';
+  end if;
+  if (v_doc->>'healthy')::boolean is distinct from false then
+    raise exception 'CHECK 10 FAILED: a sweep that has never run reported healthy';
+  end if;
+
+  -- (b) A fresh completed run is healthy, and carries its counters back.
+  perform public.record_sweep_run(jsonb_build_object('refunded', 2, 'locationsPurged', 7));
+  v_doc := public.sweep_health();
+  if (v_doc->>'healthy')::boolean is distinct from true then
+    raise exception 'CHECK 10 FAILED: a run seconds ago was not healthy';
+  end if;
+  if (v_doc->'last_summary'->>'locationsPurged') <> '7' then
+    raise exception 'CHECK 10 FAILED: the counters did not survive the round trip: %', v_doc;
+  end if;
+
+  -- (c) ⚠️ THE THRESHOLD. One missed hour is ordinary and must NOT alarm;
+  --     three is a fault. A check that cries wolf is how the SQL suites came to
+  --     sit red for a month.
+  update public.sweep_runs set ran_at = now() - interval '90 minutes';
+  if (public.sweep_health()->>'healthy')::boolean is distinct from true then
+    raise exception 'CHECK 10 FAILED: 90 minutes was reported unhealthy — one missed run must not alarm';
+  end if;
+
+  update public.sweep_runs set ran_at = now() - interval '4 hours';
+  if (public.sweep_health()->>'healthy')::boolean is distinct from false then
+    raise exception 'CHECK 10 FAILED: 4 hours was reported healthy — retention could be stopped and nothing would say so';
+  end if;
+
+  -- (d) Self-trimming, because a table that proves the scheduler ran must not
+  --     depend on the scheduler to stay bounded.
+  insert into public.sweep_runs (ran_at, summary)
+  values (now() - interval '100 days', '{}'::jsonb);
+  perform public.record_sweep_run('{}'::jsonb);
+  if exists (select 1 from public.sweep_runs where ran_at < now() - interval '90 days') then
+    raise exception 'CHECK 10 FAILED: rows older than 90 days survived a recorded run';
+  end if;
+
+  -- (e) A malformed summary must never fail a sweep — the write is monitoring,
+  --     and monitoring must not be the thing that breaks a refund.
+  perform public.record_sweep_run('"not an object"'::jsonb);
+  perform public.record_sweep_run(null);
+
+  raise notice 'CHECK 10 passed: sweep_health distinguishes never-run, fresh, one miss and three; the table self-trims; a bad summary cannot fail a run.';
+end $$;
+rollback;

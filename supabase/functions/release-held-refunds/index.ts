@@ -355,6 +355,28 @@ Deno.serve(async (request) => {
     console.error('[notifications] announce sweep failed', (err as Error).message);
   }
 
+  // ⚠️ RECORDED LAST, AND ONLY ON THE WAY OUT. A row in sweep_runs means this
+  // function got all the way through — which is the property worth knowing,
+  // because a run that dies half way leaves retention and erasure half-done
+  // while an "it was invoked" marker would call that healthy.
+  //
+  // This sweep now carries three jobs that fail SILENTLY if it stops: the
+  // notification purge, the 90-day location purge (a promise published on the
+  // website) and the orphaned-photo removal (GDPR erasure). Before this, the
+  // only evidence any of them ran was a console line nobody reads.
+  //
+  // Swallowed like everything else here: a monitoring write must never be the
+  // thing that fails a sweep. The cost of losing one row is a slightly stale
+  // health reading; the cost of throwing is a refund that did not happen.
+  try {
+    const { error: recordError } = await admin.rpc('record_sweep_run', { p_summary: summary });
+    if (recordError) {
+      console.error('[ops] sweep run not recorded', recordError.message);
+    }
+  } catch (err) {
+    console.error('[ops] sweep run not recorded', (err as Error).message);
+  }
+
   console.log('[payments] hold sweep done', summary);
   return jsonResponse(summary);
 });
