@@ -404,7 +404,16 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
               ? { sightingIds: check.sightingIds, holdHours: check.holdHours }
               : null,
           );
-        } catch {
+        } catch (err) {
+          // ⚠️ SILENT UNTIL 2026-09-02, and this is the branch that DROPS an
+          // attestation requirement. The server re-checks on the next attempt,
+          // so nothing is bypassed — but the owner is handed a clean sheet
+          // after being told to attest, and until now no trace of that existed
+          // anywhere. Matches the pre-flight's log below.
+          log.warn('exit_check refresh failed, attestation cleared', {
+            postId,
+            code: err instanceof Error ? err.message : 'UNKNOWN',
+          });
           setAttestation(null);
         }
       } else {

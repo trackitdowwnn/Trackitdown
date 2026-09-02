@@ -196,15 +196,25 @@ export async function refundRecovery(
 
   if (error) {
     let code = 'UNKNOWN';
+    // ⚠️ The transport status is captured SEPARATELY from the code, because a
+    // non-JSON body loses the code entirely and this used to log `UNKNOWN` and
+    // nothing else — on a REFUND. "The refund failed, we don't know why" is not
+    // a diagnosis, and 502-from-the-gateway and 401-bad-JWT are different
+    // incidents with the same log line.
+    let status: number | undefined;
     if (error instanceof FunctionsHttpError) {
+      status = error.context.status;
       try {
         const body = (await error.context.json()) as { code?: string };
         code = body.code ?? 'UNKNOWN';
       } catch {
-        // Non-JSON body (a gateway page); the fallback copy covers it.
+        // Non-JSON body (a gateway page). The fallback copy covers the USER;
+        // `status` above is what covers us.
       }
     }
-    log.warn('refund_recovery failed', { postId, code });
+    // Status and code only — never the body. An Edge Function error body can
+    // carry a Postgres message, and this line goes to the telemetry sink.
+    log.warn('refund_recovery failed', { postId, code, status });
     throw new RecoveryError(messageFor(REFUND_MESSAGES, code), code);
   }
 
@@ -253,15 +263,20 @@ export async function releasePayout(postId: string): Promise<ReleasePayoutResult
 
   if (error) {
     let code = 'UNKNOWN';
+    // Same reasoning as refundRecovery above: the transport status survives a
+    // body we cannot parse, so a failed PAYOUT is diagnosable rather than just
+    // 'UNKNOWN'. Status and code only — never the body.
+    let transportStatus: number | undefined;
     if (error instanceof FunctionsHttpError) {
+      transportStatus = error.context.status;
       try {
         const body = (await error.context.json()) as { code?: string };
         code = body.code ?? 'UNKNOWN';
       } catch {
-        // Non-JSON body (a gateway page); the fallback copy covers it.
+        // Non-JSON body (a gateway page); the fallback copy covers the user.
       }
     }
-    log.warn('release_payout failed', { postId, code });
+    log.warn('release_payout failed', { postId, code, status: transportStatus });
     throw new RecoveryError(
       Object.hasOwn(PAYOUT_MESSAGES, code) ? PAYOUT_MESSAGES[code] : PAYOUT_FALLBACK,
       code,

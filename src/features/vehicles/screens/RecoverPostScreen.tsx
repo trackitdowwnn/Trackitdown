@@ -49,6 +49,7 @@ import { notifyCredited } from '@/features/notifications';
 import { exitCheck } from '@/features/payments';
 import { usePostSightings } from '@/features/sightings';
 import { formatPounds } from '@/shared/lib/money';
+import { createLogger } from '@/shared/lib/logger';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
 
@@ -69,6 +70,11 @@ export interface RecoverPostScreenProps {
 
 /** The sentinel for "nobody helped" — a real answer, not the absence of one. */
 const NO_SPOTTER = '__none__';
+
+// Ids and codes only — never a plate, a location or a spotter name
+// (docs/LOGGING.md). This screen sits on the recovery-claim path, so its
+// failures are money failures and both exitCheck catches below report.
+const log = createLogger('vehicles');
 
 export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProps) {
   // ADR-0014: no bounty means no refund to get back and no payout to send.
@@ -156,8 +162,16 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
               setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
               return;
             }
-          } catch {
-            // fall through to the claim; the server still enforces
+          } catch (err) {
+            // Fall through to the claim — the server still enforces the gate,
+            // so nothing is bypassed. ⚠️ But this was SILENT until 2026-09-02:
+            // the pre-flight that decides whether to ask for an attestation
+            // could fail on every attempt and leave no trace at all, on the
+            // path that ends in a refund.
+            log.warn('exit_check pre-flight failed', {
+              postId,
+              code: err instanceof Error ? err.message : 'UNKNOWN',
+            });
           }
         }
         await finishNoSpotter();
@@ -271,8 +285,15 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
             }
             await finishNoSpotter();
             return;
-          } catch {
-            // fall through to the generic toast below
+          } catch (err) {
+            // Fall through to the generic toast below. ⚠️ Also silent until
+            // 2026-09-02 — and this is the STALE-attestation retry, so a
+            // failure here is the owner being told to attest again and then
+            // shown a generic error, with nothing recorded about why.
+            log.warn('exit_check refresh failed after ATTESTATION_STALE', {
+              postId,
+              code: err instanceof Error ? err.message : 'UNKNOWN',
+            });
           }
         }
         toast.show(
