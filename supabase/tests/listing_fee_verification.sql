@@ -254,8 +254,15 @@ begin
   if v_status <> 'active' then
     raise exception 'CHECK 5 FAILED: a paid free listing sits at %, expected active', v_status;
   end if;
-  if v_pay <> 'held' then
-    raise exception 'CHECK 5 FAILED: the captured fee sits at %, expected held', v_pay;
+  -- ⚠️ EXPECTATION CHANGED 2026-09-02 BY ADR-0018, from `held` to `collected`.
+  -- This is a deliberate contract change, not a test bent to fit code: a fee
+  -- sitting in `held` was what forced five separate money selectors to filter
+  -- `kind = 'bounty_escrow'` to avoid refunding it, and ADR-0014 records those
+  -- filters going missing for four days while an hourly cron refunded fees.
+  -- `held` now means escrow and only escrow, so a fee is unreachable by those
+  -- queries by construction. fee_collected_verification asserts that half.
+  if v_pay <> 'collected' then
+    raise exception 'CHECK 5 FAILED: the captured fee sits at %, expected collected (ADR-0018 — a fee must never enter `held`, which every refund query selects on)', v_pay;
   end if;
 
   -- Never-regress: a replayed webhook must not undo anything.

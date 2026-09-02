@@ -135,4 +135,61 @@ begin
 end $$;
 
 
+-- -----------------------------------------------------------------------------
+-- CHECK 7 — ⚠️ A COLLECTED FEE NO LONGER BLOCKS ACCOUNT DELETION.
+-- -----------------------------------------------------------------------------
+-- An unlooked-for consequence of ADR-0018, and a good one, so it is pinned
+-- rather than left to be discovered.
+--
+-- `delete-account` refuses while any of the user's payments is `held` — "money
+-- still in motion blocks deletion", which is right for escrow: a spotter may
+-- still be owed it. A LISTING FEE is not in motion. It is ours the moment it
+-- captures and is never coming back to anyone. But it used to sit in `held`
+-- too, so a user whose only listing was fee-priced could be refused erasure
+-- indefinitely by money that had already finished moving — a UK GDPR problem
+-- created by a status name.
+--
+-- This asserts the query that gate uses, not the Edge Function itself (Deno is
+-- not reachable from psql). If the gate's shape ever changes, this check goes
+-- stale rather than wrong — but the property it names is the one that matters.
+begin;
+do $$
+declare
+  v_post  uuid := 'a1a1a1a1-0000-0000-0000-000000000003';
+  v_owner uuid := '22222222-2222-2222-2222-222222222222';
+  v_blocking integer;
+begin
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
+  values (v_post, 'pi_test_fee_deletion', 'collected', 500, 'listing_fee');
+
+  select count(*) into v_blocking
+    from public.payments p
+    join public.posts po on po.id = p.post_id
+   where p.status = 'held'
+     and po.owner_id = v_owner;
+
+  if v_blocking <> 0 then
+    raise exception 'CHECK 7 FAILED: a captured fee still blocks account deletion — erasure refused over money that has finished moving';
+  end if;
+
+  -- ...and real escrow STILL blocks it, or this check has quietly disarmed the
+  -- guard rather than narrowed it.
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
+  values (v_post, 'pi_test_escrow_deletion', 'held', 20000, 'bounty_escrow');
+
+  select count(*) into v_blocking
+    from public.payments p
+    join public.posts po on po.id = p.post_id
+   where p.status = 'held'
+     and po.owner_id = v_owner;
+
+  if v_blocking < 1 then
+    raise exception 'CHECK 7 FAILED: live escrow no longer blocks account deletion — a spotter could be owed money by an account that has gone';
+  end if;
+
+  raise notice 'CHECK 7 passed: a collected fee does not block erasure; held escrow still does.';
+end $$;
+rollback;
+
+
 select 'fee_collected_verification: ALL CHECKS PASSED' as result;
