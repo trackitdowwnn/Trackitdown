@@ -23,6 +23,8 @@ let capturedOnComplete: (answers: Record<string, unknown>) => Promise<void>;
 // Captured too: onExit is the ONLY path the wizard uses to leave the flow, so
 // driving it is how the abandon signal gets asserted.
 let capturedOnExit: () => void;
+let capturedOnSaveAndExit: ((a: Record<string, unknown>) => void) | undefined;
+let capturedInitialAnswers: Record<string, unknown> | undefined;
 
 /** Mount the screen and flush the commit so the captured props are assigned. */
 async function mount(props: React.ComponentProps<typeof PostACarScreen> = {}) {
@@ -34,11 +36,27 @@ jest.mock('@/shared/wizard', () => ({
   WizardScreen: (props: {
     onComplete: (a: Record<string, unknown>) => Promise<void>;
     onExit: () => void;
+    onSaveAndExit?: (a: Record<string, unknown>) => void;
+    initialAnswers?: Record<string, unknown>;
   }) => {
     capturedOnComplete = props.onComplete;
     capturedOnExit = props.onExit;
+    capturedOnSaveAndExit = props.onSaveAndExit;
+    capturedInitialAnswers = props.initialAnswers;
     return null;
   },
+}));
+
+// ⚠️ Mocked at the module, not at AsyncStorage: the screen only has to decide
+// WHEN to save, restore and clear — what gets written is postDraftStorage's own
+// suite, and reaching the native module here would fail at import.
+const mockLoadDraft = jest.fn(async () => null as Record<string, unknown> | null);
+const mockSaveDraft = jest.fn(async (_answers: Record<string, unknown>) => {});
+const mockClearDraft = jest.fn(async () => {});
+jest.mock('../lib/postDraftStorage', () => ({
+  loadPostDraft: () => mockLoadDraft(),
+  savePostDraft: (a: Record<string, unknown>) => mockSaveDraft(a),
+  clearPostDraft: () => mockClearDraft(),
 }));
 
 // Keep the flow config (and its heavy UI step imports) out of this unit.
@@ -248,5 +266,50 @@ describe('onAbandon — the "they were only exploring" signal', () => {
     });
 
     expect(mockBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ Review #19 — save & exit. The screen owns three decisions: restore on open,
+// offer the save, and clear once the report exists on the server. What gets
+// written is postDraftStorage's own suite.
+// ---------------------------------------------------------------------------
+describe('the saved draft', () => {
+  it('restores it over the seeds, so an unreached step keeps its default', async () => {
+    // The draft holds only whitelisted keys, so anything the flow expects to
+    // exist (the bounty seed) must survive a draft that never got that far.
+    mockLoadDraft.mockResolvedValue({ make: 'BMW', colour: 'Blue' });
+    await mount();
+
+    expect(capturedInitialAnswers).toMatchObject({ make: 'BMW', colour: 'Blue' });
+  });
+
+  it('offers save & exit to the wizard', async () => {
+    await mount();
+    expect(capturedOnSaveAndExit).toBeDefined();
+  });
+
+  it('⚠️ ignores a saved draft when the caller supplied answers', async () => {
+    // The garage's prefilled path: "report THIS saved car". A stale draft about
+    // a different car must never overwrite the one they just chose.
+    mockLoadDraft.mockResolvedValue({ make: 'BMW' });
+    await mount({ initialAnswers: { make: 'Audi' } });
+
+    expect(mockLoadDraft).not.toHaveBeenCalled();
+    expect(capturedInitialAnswers).toMatchObject({ make: 'Audi' });
+  });
+
+  it('⚠️ clears it the moment the post exists, not after payment', async () => {
+    // From creation the report lives on the server with its own manage/delete
+    // path; a local copy would be a second, diverging record. And a retry after
+    // a failed payment reuses the draft id, not the answers — so a surviving
+    // draft could only resurface as a stale duplicate of a listed car.
+    mockPayBounty.mockResolvedValue({ outcome: 'cancelled', message: null });
+    await mount();
+
+    await expect(capturedOnComplete(ANSWERS)).rejects.toBeDefined();
+
+    expect(mockSubmitPost).toHaveBeenCalledTimes(1);
+    expect(mockClearDraft).toHaveBeenCalled();
   });
 });
