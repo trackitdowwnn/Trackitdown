@@ -15,12 +15,13 @@
  *        src/shared/ui/SelectField.tsx (+ SelectScreen) — the picker.
  */
 
+import { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { radii, sizes, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { SelectField, type SelectOption } from '@/shared/ui';
 
-import { CAR_MAKES, POPULAR_MAKES, makeSection } from '@/shared/lib/carMakes';
+import { CAR_MAKES, POPULAR_MAKES, canonicaliseMake, makeSection } from '@/shared/lib/carMakes';
 
 /** Placeholder for a real make logo — a monogram of the make's first letter. */
 function Monogram({ letter }: { letter: string }) {
@@ -49,6 +50,25 @@ export interface MakeFieldProps {
 }
 
 export function MakeField({ value, onChange, error }: MakeFieldProps) {
+  /**
+   * ⚠️ EVERY MAKE THIS APP STORES PASSES THROUGH HERE — the posting wizard and
+   * the search/alert sheet both render this one field — which is why
+   * canonicalisation belongs at this seam and nowhere else (review #20).
+   *
+   * A post says what the owner typed and an alert says what the spotter typed;
+   * the server matches them with `lower(btrim(...))` and nothing more. So "VW"
+   * never met "Volkswagen", and hand-typed "Skoda" never met the list's
+   * "Škoda" — the alert simply stayed silent, which is the failure mode this
+   * whole feature exists to prevent.
+   *
+   * A picked option is already canonical, so this only ever changes a
+   * FREE-TYPED entry — and returns anything it does not recognise untouched.
+   */
+  const onChangeCanonical = useCallback(
+    (make: string) => onChange(canonicaliseMake(make)),
+    [onChange],
+  );
+
   return (
     <SelectField
       label="Make"
@@ -57,7 +77,7 @@ export function MakeField({ value, onChange, error }: MakeFieldProps) {
       searchPlaceholder="Search car makes"
       options={MAKE_OPTIONS}
       value={value}
-      onChange={onChange}
+      onChange={onChangeCanonical}
       error={error}
       // Browse-first: the list leads; the keyboard rises only on tap.
       autoFocusSearch={false}

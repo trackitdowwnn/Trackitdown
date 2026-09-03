@@ -117,3 +117,39 @@ export function makeChangePatch(
 ): { make: string; model?: string } {
   return nextMake === currentMake ? { make: nextMake } : { make: nextMake, model: '' };
 }
+
+/**
+ * The model as this app should store it, or the input trimmed if the list for
+ * that make recognises nothing.
+ *
+ * ⚠️ NO ALIAS TABLE, unlike makes. Model names are far more varied than brand
+ * names and there is no equivalent of "VW means Volkswagen" — an alias list
+ * here would be guesswork, and guessing rewrites what someone typed about
+ * their own car. This does one thing: match the list for that make ignoring
+ * case, spacing and accents, so "golf" and "3 series" store as "Golf" and
+ * "3 Series" and meet a spotter's alert.
+ *
+ * ⚠️ THE MAKE MUST BE CANONICAL FIRST. MODELS is keyed by the exact make
+ * label, so `modelsForMake('VW')` is empty and nothing here can match —
+ * canonicaliseMake runs at the same seam (MakeField) for that reason.
+ */
+export function canonicaliseModel(make: string, input: string): string {
+  const trimmed = input.replace(/\s+/g, ' ').trim();
+  if (trimmed === '') {
+    return '';
+  }
+  const folded = fold(trimmed);
+  const listed = modelsForMake(make).find((model) => fold(model.label) === folded);
+  return listed?.label ?? trimmed;
+}
+
+/** Lower-cased, diacritics stripped, whitespace collapsed — the comparison key.
+ *  Mirrors carMakes' foldMake; kept local so neither file imports the other. */
+function fold(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}

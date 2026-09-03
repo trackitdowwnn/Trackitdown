@@ -156,10 +156,16 @@ map the same day.)
 `search_posts_count` compare make/model/colour as `lower(btrim(...))` on both
 sides, identically to `match_alert_zones` — search and alerts must never
 disagree about what "a BMW" means. This is load-bearing because
-`posts.make/model/colour` have no CHECK and no normalisation: the owner's typed
-"bmw" must match the picker's canonical "BMW", or their stolen car is invisible
-to the spotter who asked for exactly that car. (Regressed and repaired
-2026-08-07; guarded by CHECK 22 in `home_feed_verification.sql`.)
+`posts.make/model/colour` have no CHECK: the owner's typed "bmw" must match the
+picker's canonical "BMW", or their stolen car is invisible to the spotter who
+asked for exactly that car. (Regressed and repaired 2026-08-07; guarded by
+CHECK 22 in `home_feed_verification.sql`.)
+
+Since 2026-09-03 make and model are also **canonicalised on write** by the
+client (`canonicaliseMake` / `canonicaliseModel`), so `VW` and `Volkswagen` are
+one string by the time the server sees them. The server-side folding above is
+unchanged and still load-bearing — it covers colour, every row written before
+that date, and anything a future write path forgets.
 
 **Watchlist visibility carve-out.** A user who watched a post while it was
 public may learn its OUTCOME after it closes — watching a car and never
@@ -433,9 +439,22 @@ Rules that follow, and are not implementation details:
   - The pickers offer only canonical values, never free text: a free-typed
     "beemer" would create an alert that silently matches nothing, which is
     worse than no alert because the spotter believes they are covered.
-  - Known limit: case-folding does not equate `VW` with `Volkswagen`, or
-    `Golf` with `Golf GTI`. The real fix is normalising make/model/colour on
-    write — not yet done.
+  - **Normalised on write since 2026-09-03** (review finding #20). `VW` now
+    stores as `Volkswagen` and hand-typed `Skoda` as `Škoda` — the accented
+    labels were the worse half, being a guaranteed miss rather than a likely
+    one, since a UK keyboard types neither. `canonicaliseMake` /
+    `canonicaliseModel` run at the ONE seam every make and model passes
+    through (`MakeField` / `ModelField`, shared by the posting wizard and the
+    search sheet), so both sides of the match store the same string and the
+    server needs no alias knowledge — its `lower(btrim(...))` is then enough.
+    Deliberately in TypeScript only: a SQL copy of the alias table would be two
+    mirrors that must agree, which is how the £50/£10 bounty floor diverged for
+    nine days.
+  - Still true: it does not equate `Golf` with `Golf GTI`, and it is not a
+    fuzzy matcher — an alias table is names people actually use, never guessed
+    typos, because rewriting what an owner typed about their own car is a worse
+    failure than not matching. Rows written before 2026-09-03 keep what was
+    typed; nothing backfills them.
   - **Recency filters `last_seen_at`, not post age.** It correctly excludes
     reports of older thefts, but most reports are recent, so it narrows less
     than it appears to. The UI says so.
