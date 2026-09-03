@@ -17,10 +17,12 @@
  *        ../api/sightingApi.ts (MySightingRecordEntry); docs/TESTING.md.
  */
 
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import * as RN from 'react-native';
 
 import type { MySightingRecordEntry } from '../api/sightingApi';
+
+import { SightingWithdrawError } from '../lib/sightingWithdrawError';
 
 import { MySightingsScreen } from './MySightingsScreen';
 
@@ -42,10 +44,27 @@ jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, back: mockBack }),
 }));
 
+// ⚠️ The api module reaches the supabase client, which throws at import
+// without env — but SightingWithdrawError is NOT mocked with it. It lives in
+// lib/ precisely so the screen's `instanceof` narrowing can be tested against
+// the REAL class: a stub here would let these pass while the shipped guard
+// rejected the very error it exists to show.
+const mockWithdraw = jest.fn(async (_sightingId: string) => {});
+jest.mock('../api/sightingApi', () => ({
+  withdrawSighting: (sightingId: string) => mockWithdraw(sightingId),
+}));
+
+const mockToastShow = jest.fn();
 jest.mock('@/shared/ui', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const { View, Text, Pressable } = require('react-native');
   return {
+    useToast: () => ({ show: mockToastShow }),
+    // The confirm is fired straight through: what these tests are about is what
+    // the screen does WITH a confirmation, and the dialog has its own suite.
+    ConfirmDialog: ({ onConfirm }: { onConfirm: () => void }) => (
+      <Pressable testID="confirm-withdraw" onPress={onConfirm} />
+    ),
     Screen: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
     EmptyState: ({
       title,
@@ -296,5 +315,121 @@ describe('⚠️ the verdict copy', () => {
     const { getByText } = await render(<MySightingsScreen />);
 
     expect(getByText(label)).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ⚠️ Review finding #21. Sightings were CREATE-ONLY: a spotter who reported the
+// wrong car — which the Terms explicitly call a normal outcome, not a failure —
+// had no way to say so, and the report stood in front of the owner forever.
+// ---------------------------------------------------------------------------
+describe('taking a report back', () => {
+  beforeEach(() => {
+    mockWithdraw.mockClear().mockResolvedValue(undefined);
+    mockToastShow.mockClear();
+  });
+
+  it('offers the way back only while nobody has ruled', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+
+    expect(getByTestId('my-sighting-withdraw-s1')).toBeTruthy();
+  });
+
+  it.each(['helpful', 'not_mine', 'credited'] as const)(
+    '⚠️ hides it once the owner has ruled %s',
+    async (status) => {
+      // The server refuses these outright — withdrawing after a verdict would
+      // erase the owner's decision, and on `credited` one that moved money.
+      // The control is hidden so the app never offers what it cannot do.
+      mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status })]));
+      const { queryByTestId } = await render(<MySightingsScreen />);
+
+      expect(queryByTestId('my-sighting-withdraw-s1')).toBeNull();
+    },
+  );
+
+  it('⚠️ confirms before withdrawing — it cannot be undone', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+
+    await act(async () => {
+      fireEvent.press(getByTestId('my-sighting-withdraw-s1'));
+    });
+
+    // The tap alone must not call the server: withdrawing a REAL sighting by
+    // mistake destroys the spotter's only claim on a bounty, and the rolling
+    // rate limit counts the withdrawn row, so the slot is spent either way.
+    expect(mockWithdraw).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-withdraw'));
+    });
+    expect(mockWithdraw).toHaveBeenCalledWith('s1');
+  });
+
+  it('says what happened, in the owner’s terms', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+
+    await act(async () => {
+      fireEvent.press(getByTestId('my-sighting-withdraw-s1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-withdraw'));
+    });
+
+    expect(mockToastShow).toHaveBeenCalledWith('Report taken back. The owner no longer sees it.');
+  });
+
+  it('⚠️ shows OUR copy when the owner ruled between render and tap', async () => {
+    // The real race this design has: the control was correctly offered, and by
+    // the time it was tapped the server had a verdict. Its refusal must reach
+    // the spotter as an explanation, never as a raw PostgREST string.
+    mockWithdraw.mockRejectedValue(
+      new SightingWithdrawError(
+        'This one can’t be taken back — the owner has already looked at it.',
+        'SIGHTING_NOT_WITHDRAWABLE',
+      ),
+    );
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+
+    await act(async () => {
+      fireEvent.press(getByTestId('my-sighting-withdraw-s1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-withdraw'));
+    });
+
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'This one can’t be taken back — the owner has already looked at it.',
+      'error',
+    );
+  });
+
+  it('⚠️ never shows a raw server error', async () => {
+    mockWithdraw.mockRejectedValue(new Error('permission denied for table sightings'));
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+
+    await act(async () => {
+      fireEvent.press(getByTestId('my-sighting-withdraw-s1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-withdraw'));
+    });
+
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'We couldn’t withdraw that report. Please try again.',
+      'error',
+    );
+  });
+
+  it('reads a withdrawn report as the spotter’s own act, not a verdict', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ status: 'withdrawn' })]));
+    const { getByText } = await render(<MySightingsScreen />);
+
+    expect(getByText('You took this back')).toBeTruthy();
   });
 });
