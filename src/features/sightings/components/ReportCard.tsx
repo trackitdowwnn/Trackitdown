@@ -31,11 +31,26 @@
  *        fixed-height View does not. Sharing the styles and the `stacked` flag
  *        is the only version of this that cannot drift.
  *
- *        ⚠️ THE CARD ITSELF IS STILL NOT PRESSABLE, and that reasoning stands:
- *        the post is not something this screen is allowed to link to, and a
- *        card that looks tappable and is not would be worse than a flat one.
- *        Most reports still have nowhere to go and stay exactly as flat as they
- *        were.
+ *        ⚠️ THE CARD IS PRESSABLE SINCE 2026-09-03, AND ONLY SOMETIMES. This
+ *        header said "the post is not something this screen is allowed to link
+ *        to" — half of which stopped being true. The rule was always about
+ *        CLOSED posts: a spotter cannot see one, which is why the
+ *        `closed_uncredited` push routes to the dispute screen. An ACTIVE post
+ *        is public — on the map, in search, anon-readable — so handing a
+ *        spotter the id of a car they themselves photographed reveals nothing
+ *        that search would not.
+ *
+ *        So `my_sighting_record` now sends `post_id` for active posts ONLY, and
+ *        the text block becomes the press target when it arrives. A closed
+ *        report gets no id, no chevron and no press, and stays exactly as flat
+ *        as it has always been — the other half of the old reasoning, which
+ *        does stand: a card that looks tappable and is not is worse than a flat
+ *        one. (Review finding #16: the screen was a dead end.)
+ *
+ *        The press sits on `main` — the element that already carried
+ *        `accessible` — rather than wrapping the card. A Pressable with a label
+ *        reads as ONE node and IS the control; a Pressable wrapped around a
+ *        grouped child would give VoiceOver two stops for one thing.
  *
  *        ⚠️ WHAT CHANGED 2026-09-01 is that SOME reports now do. `/sighting-
  *        dispute` was reachable only from a push, so a spotter who declined
@@ -63,6 +78,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import { useTimeAgo } from '@/shared/hooks';
 import {
   cardSurface,
+  opacity,
   listRowStackFontScale,
   radii,
   sizes,
@@ -174,9 +190,17 @@ export interface ReportCardProps {
    * would erase the owner's decision, and on `credited` one that moved money.
    */
   onWithdraw?: (sightingId: string) => void;
+  /**
+   * Opens the post this report is about (review #16 — the card used to be a
+   * dead end). Rendered ONLY when `entry.postId` is present, which the server
+   * sends only while the post is still active: a closed listing stays
+   * unreachable from a spotter's history, and a card that looked tappable and
+   * was not would be worse than a flat one.
+   */
+  onOpenPost?: (postId: string) => void;
 }
 
-export function ReportCard({ entry, onOpenDispute, onWithdraw }: ReportCardProps) {
+export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: ReportCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const stacked = useStackedRow();
@@ -193,6 +217,12 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw }: ReportCardProps
   // else with one opaque token. An owner ruling between render and tap is a
   // real race, and the copy for it is written for exactly that.
   const canWithdraw = entry.status === 'unverified' && onWithdraw !== undefined;
+  // ⚠️ Null for every CLOSED listing, because the server sends no id for one —
+  // that is the privacy rule, enforced where it belongs rather than here. This
+  // only asks "did we get an id, and can the screen use it".
+  const postId = entry.postId;
+  const openPost =
+    postId && onOpenPost ? () => onOpenPost(postId) : null;
 
   const when = entry.areaLabel ? `${entry.areaLabel} · ${reported}` : reported;
   // WHEN they ruled, only once they have. NULL reviewed_at means nobody has
@@ -229,9 +259,28 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw }: ReportCardProps
       >
       <CarColourTile colour={entry.car.colour} testID={`my-sighting-tile-${entry.id}`} />
 
-      <View
-        style={[styles.main, stacked && styles.mainStacked]}
+      {/* ⚠️ THE TEXT BLOCK IS THE PRESS TARGET, not the whole card, and it is
+          a Pressable ONLY when there is a post to open (review #16). Keeping
+          the press on the element that already carried `accessible` preserves
+          the single utterance — a Pressable with a label reads as one node AND
+          is a control, where a wrapping Pressable around a grouped child would
+          give VoiceOver two stops for one thing.
+
+          `openPost` is null whenever the server sent no id, which is every
+          closed listing. Those cards stay exactly as flat as they have always
+          been, which is the point: a card that looks tappable and is not would
+          be worse than a flat one. */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.main,
+          stacked && styles.mainStacked,
+          openPost && pressed && styles.mainPressed,
+        ]}
         accessible
+        accessibilityRole={openPost ? 'button' : undefined}
+        accessibilityHint={openPost ? 'Opens the listing' : undefined}
+        onPress={openPost ?? undefined}
+        testID={openPost ? `my-sighting-open-${entry.id}` : undefined}
         accessibilityLabel={`${car}, reported ${
           entry.areaLabel ? `in ${entry.areaLabel} ` : ''
         }${reported}. ${verdict.label}${entry.reviewedAt ? `, ${ruled}` : ''}`}
@@ -276,7 +325,17 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw }: ReportCardProps
             {ruledSuffix ? <Text style={styles.verdictWhen}>{ruledSuffix}</Text> : null}
           </Text>
         </View>
-      </View>
+      </Pressable>
+      {/* The affordance, so "tappable" is visible and not just true. Outside
+          the labelled block: it is decoration, and a screen reader has already
+          been told this opens the listing. */}
+      {openPost ? (
+        <ChevronRight
+          size={sizes.iconSm}
+          color={palette.textSecondary}
+          style={{ marginTop: markerOffset(sizes.iconSm) }}
+        />
+      ) : null}
       </View>
 
       {/* ⚠️ THE DOOR, and the reason this card stopped being flat. Until now
@@ -461,6 +520,9 @@ const makeStyles = (c: Palette) =>
       flex: 1,
     },
     main: { flex: 1, gap: spacing.xs },
+    // Opacity, not the 0.98 scale VehicleCard uses: this is a text block inside
+    // a row, and scaling it would shift the chevron and the tile beside it.
+    mainPressed: { opacity: opacity.pressed },
     // ⚠️ NEUTRALISE THE BASIS WHEN THE CARD IS A COLUMN. `flex: 1` is
     // `flexBasis: 0`, which works while the card's main axis is its definite
     // WIDTH — but `cardStacked` makes the main axis its auto HEIGHT, where

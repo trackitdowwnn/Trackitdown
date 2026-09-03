@@ -447,10 +447,41 @@ describe('fetchMySightingRecord (PRIVACY strictness)', () => {
         createdAt: row.created_at,
         status: 'unverified',
         reviewedAt: null,
+        // Absent from the fixture (an older server) collapses to null, exactly
+        // as a CLOSED post does — the screen never has to tell them apart.
+        postId: null,
         areaLabel: 'Camden',
         car: { make: 'Ford', colour: 'Blue' },
       },
     ]);
+  });
+
+  // ⚠️ Review finding #16, the API half. The `active`-only rule lives in the
+  // RPC; what this pins is that the client passes the id through when given one
+  // and collapses both "closed" and "old server" to null.
+  it('carries the post id when the post is still live', async () => {
+    mockRpc.mockResolvedValue({
+      data: { sightings: [{ ...row, post_id: 'aaaaaaaa-0000-0000-0000-00000000000a' }] },
+      error: null,
+    });
+
+    const [entry] = await fetchMySightingRecord();
+
+    expect(entry.postId).toBe('aaaaaaaa-0000-0000-0000-00000000000a');
+  });
+
+  it('⚠️ collapses a closed post to null rather than a missing key', async () => {
+    // The server sends explicit null for a closed listing. The screen decides
+    // "no press target" from a single falsy check, so null and absent must not
+    // behave differently.
+    mockRpc.mockResolvedValue({
+      data: { sightings: [{ ...row, post_id: null }] },
+      error: null,
+    });
+
+    const [entry] = await fetchMySightingRecord();
+
+    expect(entry.postId).toBeNull();
   });
 
   it('carries a not_mine verdict and when it was made', async () => {

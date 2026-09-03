@@ -18,9 +18,18 @@
  *        is written to that: a rejection reads as an outcome, never as a mark
  *        against them.
  *
- *        The payload carries the car as they already saw it and nothing else —
- *        no owner, no location, no plate, no post id — so this page cannot be
- *        used to reach a listing they were never shown.
+ *        The payload carries the car as they already saw it and little else —
+ *        no owner, no location, no plate — so this page cannot be used to reach
+ *        a listing they were never shown.
+ *
+ *        ⚠️ IT DOES CARRY A POST ID SINCE 2026-09-03, AND ONLY FOR ACTIVE
+ *        POSTS. This header said "no post id" flatly, and the rule underneath
+ *        that was always about CLOSED listings: a spotter cannot see one, which
+ *        is why `closed_uncredited` routes to the dispute screen rather than
+ *        the post. An ACTIVE post is public — map, search, anon-readable — so
+ *        opening a car the spotter themselves photographed reveals nothing that
+ *        search would not. A closed report gets null, no chevron and no press
+ *        (review finding #16: this screen was a dead end).
  *
  *        ⚠️ THE DISPUTE DOOR, 2026-09-01. `/sighting-dispute` used to be
  *        reachable ONLY from the `closed_uncredited` push, which meant a
@@ -138,6 +147,24 @@ export function MySightingsScreen() {
   );
 
   /**
+   * Opening the car a report was about (review #16 — this screen was a dead
+   * end: a verdict, and nowhere to go with it).
+   *
+   * ⚠️ NO GUARD HERE, for the same reason openDispute has none. The server
+   * sends `postId` only while the post is still ACTIVE, and a closed one comes
+   * back null — so ReportCard has no press target to render and this is never
+   * reached. The rule lives in `my_sighting_record`, which is the authority;
+   * two places deciding would be two places to get it wrong.
+   */
+  const openPost = useCallback(
+    (postId: string) => {
+      log.info('post_opened_from_reports');
+      router.push(`/post/${postId}`);
+    },
+    [router],
+  );
+
+  /**
    * Taking a report back (review #21 — sightings were create-only).
    *
    * ⚠️ CONFIRMED FIRST, because it cannot be undone: `withdraw_sighting` is a
@@ -215,11 +242,12 @@ export function MySightingsScreen() {
             entry={item.row}
             onOpenDispute={openDispute}
             onWithdraw={requestWithdraw}
+            onOpenPost={openPost}
           />
         )}
       </Animated.View>
     ),
-    [entranceActive, openDispute, requestWithdraw],
+    [entranceActive, openDispute, requestWithdraw, openPost],
   );
 
   return (

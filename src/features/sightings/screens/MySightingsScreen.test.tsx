@@ -433,3 +433,39 @@ describe('taking a report back', () => {
     expect(getByText('You took this back')).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// ⚠️ Review finding #16. The screen showed a verdict and offered nowhere to go.
+// The rule chosen: openable while the post is LIVE, unreachable once it closes
+// — which is the privacy rule the payload has always kept, not a new one.
+// ---------------------------------------------------------------------------
+describe('opening the car a report was about', () => {
+  it('opens the post when the server sent an id', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', postId: 'p1' })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+
+    fireEvent.press(getByTestId('my-sighting-open-s1'));
+    expect(mockPush).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('⚠️ stays flat when the post has closed (no id)', async () => {
+    // The server sends null for a closed post, so there is nothing to press.
+    // This is the wall that makes closed_uncredited route to the dispute
+    // screen rather than the post, and it must not move.
+    mockUseRecord.mockReturnValue(
+      ready([entry({ id: 's1', postId: null, status: 'not_mine' })]),
+    );
+    const { queryByTestId } = await render(<MySightingsScreen />);
+
+    expect(queryByTestId('my-sighting-open-s1')).toBeNull();
+  });
+
+  it('stays flat against a server that predates the field', async () => {
+    // `postId` absent entirely — an older server. Reads the same as "closed":
+    // no press target, exactly today's behaviour.
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1' })]));
+    const { queryByTestId } = await render(<MySightingsScreen />);
+
+    expect(queryByTestId('my-sighting-open-s1')).toBeNull();
+  });
+});
