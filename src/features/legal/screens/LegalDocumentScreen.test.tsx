@@ -29,7 +29,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import {
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
-} from '@/features/vehicles/post/lib/bountyBounds';
+} from '@/shared/lib/bountyBounds';
 import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 
 import { LEGAL_DOCUMENTS, legalDocument } from '../lib/legalContent';

@@ -31,7 +31,7 @@
  *        docs/TESTING.md (Tier 1: money paths).
  */
 
-import { PaymentError } from './functionError';
+import { PaymentError } from '@/shared/lib/functionError';
 import type { PayoutDetails } from './payoutsApi';
 
 const mockCreateToken = jest.fn();

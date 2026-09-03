@@ -27,7 +27,7 @@
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 
-import { PaymentError, parseFunctionError } from './functionError';
+import { PaymentError, parseFunctionError } from '@/shared/lib/functionError';
 
 const log = createLogger('payments');
 

@@ -27,7 +27,7 @@ import { expoLocationServices } from '@/shared/lib/location/expoLocationServices
 import { createLogger } from '@/shared/lib/logger';
 import { markStartup } from '@/shared/lib/startupTrace';
 import { SaveYourCarCard, useGarageNudgeCard } from '@/features/garage';
-import { BROWSING_SOURCE } from '@/features/notifications/lib/browsingSource';
+import { BROWSING_SOURCE } from '@/shared/lib/browsingSource';
 import { useMyProfile } from '@/features/profile';
 import { WatchToggle } from '@/features/watchlist';
 import { radii, spacing, typography, usePalette } from '@/shared/theme';

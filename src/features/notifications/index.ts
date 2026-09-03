@@ -41,8 +41,17 @@ export { reportInboxBadge, resetInboxBadge } from './lib/inboxBadge';
 // deps are React, the api layer and useSession — imported by MODULE path, not
 // the auth barrel, precisely to keep this file within the budget below.
 export { useMyAlerts, invalidateMyAlerts, type MyAlertsState } from './hooks/useMyAlerts';
-// The posting wizard's bounty step shows how many spotters a bounty reaches.
-export { useAlertReach } from './hooks/useAlertReach';
+// (`useAlertReach` was exported here until 2026-09-03. Its one consumer — the
+// wizard's bounty step — was replaced by useBountyGuidance, which answers the
+// same question without a round trip per drag, and nothing has imported the
+// hook since. Deleted with the export.)
+
+// (`browsingSource` moved to @/shared/lib on 2026-09-03. Two constants and a
+// type guard with no imports of their own, needed by the feed to tag where a
+// post-view came from and by this feature's nudge to read it — so it was one
+// feature reaching into another for a value neither owns. Routing it through
+// this barrel instead would have dragged the notifications graph into
+// search-map's screen tests, which is the weight budget below.)
 
 // Same weight class as useMyAlerts above (one hook over one api module), and
 // the Settings screen is in another feature, so it goes through the barrel

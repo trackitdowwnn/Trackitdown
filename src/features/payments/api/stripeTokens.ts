@@ -35,7 +35,7 @@
 
 import { createToken } from '@stripe/stripe-react-native';
 
-import { PaymentError } from './functionError';
+import { PaymentError } from '@/shared/lib/functionError';
 import type { PayoutDetails } from './payoutsApi';
 
 const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';

@@ -12,7 +12,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { PaymentError } from '../api/functionError';
+import { PaymentError } from '@/shared/lib/functionError';
 import { PayoutsScreen } from './PayoutsScreen';
 
 jest.mock('react-native-safe-area-context', () =>

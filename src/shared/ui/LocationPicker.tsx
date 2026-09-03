@@ -22,7 +22,7 @@
  *        - `isSettled` is the validity gate: a never-touched default map is not
  *          settled, so the wizard's Next stays disabled until the user actually
  *          pans, searches, or locates. Plug the emitted value into a wizard
- *          answers slice and gate with `settledLocationSchema`.
+ *          answers slice and gate it with the step's own schema.
  *        - The pan is a visual-only interaction, so the SEARCH path is the
  *          accessible path: the pill opens search, address changes announce
  *          politely (once per settle, never per pan frame).
@@ -208,10 +208,12 @@ export const locationValueSchema = z.object({
   isSettled: z.boolean(),
 });
 
-/** Wizard gate: a location is only valid once the user has settled on one. */
-export const settledLocationSchema = locationValueSchema.refine((value) => value.isSettled, {
-  message: 'Choose where it was last seen',
-});
+/*
+ * `settledLocationSchema` was here and is DELETED (2026-09-03, review Tier 3).
+ * It was barrel-exported and referenced NOWHERE — not by a wizard step, not by
+ * a test, only by this file's own header telling readers to use it. The wizard
+ * gates its location step with its own schema.
+ */
 
 /**
  * How much wider than the circle to frame the map. `regionAround` spans the

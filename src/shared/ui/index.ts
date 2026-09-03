@@ -94,7 +94,6 @@ export {
   UK_DEFAULT_REGION,
   locationValueSchema,
   noopLocationServices,
-  settledLocationSchema,
   type LocationOptionSlot,
   type LocationPickerMap,
   type LocationPickerModalProps,

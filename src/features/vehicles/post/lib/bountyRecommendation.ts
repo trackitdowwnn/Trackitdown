@@ -26,7 +26,7 @@
  *        src/features/vehicles/post/components/postSteps.tsx (the consumer).
  */
 
-import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE, snapBountyPence } from './bountyBounds';
+import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE, snapBountyPence } from '@/shared/lib/bountyBounds';
 
 /** One point on the reach curve: what this amount reaches, today, near here. */
 export interface ReachRung {

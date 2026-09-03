@@ -15,9 +15,9 @@
 
 import { useState } from 'react';
 
-import { saveDistinctiveFeatures } from '@/features/vehicles/post/api/editSectionApi';
-import { DistinctiveFeaturesField } from '@/features/vehicles/post/components/DistinctiveFeaturesField';
-import type { DistinctiveFeature } from '@/features/vehicles/post/lib/distinctiveFeatures';
+import { saveDistinctiveFeatures } from '../../post/api/editSectionApi';
+import { DistinctiveFeaturesField } from '../../post/components/DistinctiveFeaturesField';
+import type { DistinctiveFeature } from '../../post/lib/distinctiveFeatures';
 
 import type { PostDetail } from '../../types';
 import { PostSectionEditor } from './PostSectionEditor';

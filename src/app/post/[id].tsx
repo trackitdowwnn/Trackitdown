@@ -10,7 +10,7 @@
 import { useLocalSearchParams } from 'expo-router';
 
 import { useCountPostViewForAlertNudge } from '@/features/notifications/hooks/useCountPostViewForAlertNudge';
-import { isBrowsingSource } from '@/features/notifications/lib/browsingSource';
+import { isBrowsingSource } from '@/shared/lib/browsingSource';
 import { PostDetailScreen } from '@/features/vehicles';
 
 export default function PostDetailRoute() {

@@ -187,7 +187,10 @@ export function ChatInboxScreen() {
   );
 }
 
-const makeStyles = (c: Palette) => StyleSheet.create({
+// `_c`, not `c`: useThemedStyles requires the palette parameter, and this sheet
+// happens to use none of it. The underscore says "deliberately unused" to
+// noUnusedParameters rather than the flag saying it for us.
+const makeStyles = (_c: Palette) => StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: spacing.md,

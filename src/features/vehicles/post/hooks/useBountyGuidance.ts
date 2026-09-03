@@ -18,9 +18,11 @@
  *        for a number an owner is about to spend money against; overstating
  *        would be a promise we cannot keep.
  * LINKS: ../api/bountyGuidanceApi.ts; ../lib/bountyRecommendation.ts;
- *        supabase/migrations/20260813100000_bounty_guidance.sql;
- *        src/features/notifications/hooks/useAlertReach.ts (the single-point
- *          hook this supersedes for the posting flow).
+ *        supabase/migrations/20260813100000_bounty_guidance.sql.
+ *
+ * (The superseded `useAlertReach` was deleted on 2026-09-03 — it had had no
+ * caller since this hook replaced it, and a tested dead hook reads as a live
+ * one.)
  */
 
 import { useEffect, useMemo, useState } from 'react';

@@ -23,13 +23,13 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { saveBounty } from '@/features/vehicles/post/api/editSectionApi';
+import { saveBounty } from '../../post/api/editSectionApi';
 import {
   BountyStep,
   DEFAULT_BOUNTY_PENCE,
   PricingModeStep,
-} from '@/features/vehicles/post/components/postSteps';
-import type { PostACarAnswers } from '@/features/vehicles/post';
+} from '../../post/components/postSteps';
+import type { PostACarAnswers } from '../../post';
 import { spacing } from '@/shared/theme';
 
 import type { PostDetail } from '../../types';

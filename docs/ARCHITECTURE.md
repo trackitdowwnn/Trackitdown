@@ -54,10 +54,25 @@ src/features/sightings/
 
 ## The rules
 
+> **Rules 1 and 2 are ENFORCED since 2026-09-03** — `no-restricted-imports` in
+> `eslint.config.js`, so CI fails on a violation. Until then they were honour
+> system, and the honour system had quietly lost in six places. Rule 1 has one
+> sanctioned `eslint-disable`, in `useMyAlerts` (the auth barrel drags
+> AsyncStorage into two plain api modules); it names its reason. Rule 2 had
+> zero violations and still does.
+
 1. **Features never deep-import each other.** `features/chat` may import
    from `features/sightings` **only via** `features/sightings/index.ts`.
    If two features need the same thing constantly, it probably belongs in
    `shared/`.
+   *This is not theoretical — enforcing it moved three things down to
+   `shared/lib` on the first day: `bountyBounds` (three features reached past
+   the vehicles barrel for the bounty range), `browsingSource`, and
+   `functionError`, which decodes any Edge Function error and had nothing
+   payments-specific about it.*
+   A feature importing ITSELF uses relative paths, and nested sub-features
+   (`vehicles/post`) are the same feature — reach them with `../`, not the
+   `@/features` alias.
 2. **`shared/` never imports from `features/`.** Dependency direction is
    one-way: `app/ → features/ → shared/`.
 3. **Route files in `app/` are thin.** They import a screen from a feature

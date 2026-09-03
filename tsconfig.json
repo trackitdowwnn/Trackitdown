@@ -2,6 +2,16 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // Both were OFF until 2026-09-03 (review finding, Tier 3b). Turning them on
+    // cost two underscore renames and nothing else — so this is a RATCHET
+    // against future dead code, not a cleanup.
+    //
+    // ⚠️ It does NOT catch the dead-code list the review actually found. These
+    // flags see unused LOCALS and IMPORTS; every item on that list is an unused
+    // EXPORT, which the compiler cannot call dead because something might
+    // import it. Removing those still takes a reader.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "types": ["jest", "react"],
     "paths": {
       "@/*": [

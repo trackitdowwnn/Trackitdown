@@ -13,9 +13,9 @@
 
 import { useState } from 'react';
 
-import { saveTheftContext } from '@/features/vehicles/post/api/editSectionApi';
-import { TheftContextStep } from '@/features/vehicles/post/components/postSteps';
-import type { PostACarAnswers } from '@/features/vehicles/post';
+import { saveTheftContext } from '../../post/api/editSectionApi';
+import { TheftContextStep } from '../../post/components/postSteps';
+import type { PostACarAnswers } from '../../post';
 
 import type { PostDetail } from '../../types';
 import { PostSectionEditor } from './PostSectionEditor';
