@@ -279,6 +279,22 @@ commenting standards.
   never logged in full (redactEmail).
 - Spotter GPS is captured **only** at the moment of reporting a sighting —
   no background location tracking anywhere in the app.
+- **An unfinished post-a-car report is saved on the device** (2026-09-03,
+  review #19 — a nine-step flow ending in a card charge previously lost
+  everything to a phone call). It lives in AsyncStorage, and **it contains the
+  last-seen location**, which on a driveway theft is the owner's home.
+  - The rule above about plaintext AsyncStorage is about **session tokens** —
+    credentials that unlock an account. This is the owner's own data, about
+    their own theft, on their own device, and the post publishes it minutes
+    later anyway.
+  - SecureStore is not the alternative: iOS caps a value at ~2KB and this
+    object exceeds it (the same cap `shared/api/supabase.ts` records).
+  - The mitigations are **expiry and clearing**, not the medium: a draft older
+    than 14 days is dropped on read, and it is deleted the moment the post is
+    created server-side.
+  - **Photos are never written** — they are cache uris that may already point
+    at nothing, and an explicit whitelist (`PERSISTED_KEYS`) means a future
+    answer field is persisted only by decision, never by default.
 - **Analytics carry no identifier, and that is deliberate.** Two tables collect
   behaviour — `onboarding_events` (2026-08-24) and `telemetry_events`
   (2026-08-30) — and neither has a `user_id`, a device id, or an install id.

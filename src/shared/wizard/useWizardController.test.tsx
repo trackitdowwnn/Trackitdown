@@ -309,3 +309,94 @@ describe('useWizardController — async actions', () => {
     expect(result.current.canGoNext).toBe(true); // can retry immediately
   });
 });
+
+// ---------------------------------------------------------------------------
+// ⚠️ Review #19. This hook carried a TODO(draft-persistence) at the exit prompt
+// from the day it was written — "discard is the only exit" — and the flow it
+// most mattered for is nine steps ending in a Stripe charge. An owner whose car
+// was taken that morning lost all of it to a phone call.
+// ---------------------------------------------------------------------------
+describe('save & exit', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  async function renderWithSave(onExit: () => void, onSaveAndExit: (a: unknown) => void) {
+    return renderHook(() =>
+      useWizardController<Answers>(flow, { onExit, onSaveAndExit }),
+    );
+  }
+
+  it('offers a third way out, with Discard still the destructive one', async () => {
+    let buttons: AlertButton[] = [];
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, alertButtons) => {
+      buttons = alertButtons ?? [];
+    });
+    const { result } = await renderWithSave(jest.fn(), jest.fn());
+
+    await act(async () => result.current.setAnswers({ name: 'J' }));
+    await act(async () => result.current.requestExit());
+
+    expect(buttons.map((button) => button.text)).toEqual([
+      'Keep editing',
+      'Discard',
+      'Save & exit',
+    ]);
+    // The safe option must not be the one styled as dangerous.
+    expect(buttons.find((b) => b.text === 'Discard')?.style).toBe('destructive');
+    expect(buttons.find((b) => b.text === 'Save & exit')?.style).toBeUndefined();
+  });
+
+  it('hands over the CURRENT answers, then leaves', async () => {
+    const onExit = jest.fn();
+    const onSaveAndExit = jest.fn();
+    let buttons: AlertButton[] = [];
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, alertButtons) => {
+      buttons = alertButtons ?? [];
+    });
+    const { result } = await renderWithSave(onExit, onSaveAndExit);
+
+    await act(async () => result.current.setAnswers({ name: 'Jane' }));
+    await act(async () => result.current.requestExit());
+    await act(async () => buttons.find((b) => b.text === 'Save & exit')?.onPress?.());
+
+    // ⚠️ The newest answers, not the ones closed over when the prompt was
+    // built: requestExit is memoised without `answers` (it is handed to a
+    // header button and the Android back handler), so the callback reads a ref.
+    expect(onSaveAndExit).toHaveBeenCalledWith(expect.objectContaining({ name: 'Jane' }));
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ leaves even when the save fails', async () => {
+    // An exit the owner has already asked for must happen. A rejected write
+    // that stranded them in the wizard would be a trap.
+    const onExit = jest.fn();
+    let buttons: AlertButton[] = [];
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, alertButtons) => {
+      buttons = alertButtons ?? [];
+    });
+    const { result } = await renderWithSave(onExit, () => Promise.reject(new Error('disk full')));
+
+    await act(async () => result.current.setAnswers({ name: 'J' }));
+    await act(async () => result.current.requestExit());
+    await act(async () => buttons.find((b) => b.text === 'Save & exit')?.onPress?.());
+
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ a flow without it keeps the old two-way prompt exactly', async () => {
+    // Report-a-sighting and add-a-vehicle are short; a draft there would be
+    // more machinery than the thing it saves, and offering "Save" where
+    // nothing saves would be a lie.
+    let buttons: AlertButton[] = [];
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, alertButtons) => {
+      buttons = alertButtons ?? [];
+    });
+    const { result } = await renderController(jest.fn());
+
+    await act(async () => result.current.setAnswers({ name: 'J' }));
+    await act(async () => result.current.requestExit());
+
+    expect(buttons.map((button) => button.text)).toEqual(['Keep editing', 'Discard']);
+  });
+});

@@ -25,7 +25,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { PaymentError, createBountyPaymentIntent, useBountyPayment } from '@/features/payments';
 import { successHaptic } from '@/shared/lib/haptics';
@@ -34,6 +34,7 @@ import { WizardScreen, type WizardFlow } from '@/shared/wizard';
 
 import { fetchBountyGuidance, logBountyRecommendation } from '../api/bountyGuidanceApi';
 import { recommendBounty } from '../lib/bountyRecommendation';
+import { clearPostDraft, loadPostDraft, savePostDraft } from '../lib/postDraftStorage';
 import { submitPost } from '../api/postApi';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
@@ -72,6 +73,40 @@ export function PostACarScreen({
   // the server idempotency key) never double-charges.
   const createdPostIdRef = useRef<string | null>(null);
 
+  /**
+   * A saved draft, restored once on open (review #19).
+   *
+   * ⚠️ 'checking' IS ITS OWN STATE, and the wizard does not mount until it
+   * resolves. Mounting on the defaults and then swapping answers underneath
+   * would restart the flow at step one with values the owner never typed, and
+   * `useWizardController` seeds from `initialAnswers` ONCE — a later change to
+   * that prop is ignored by design, so a late restore would silently do
+   * nothing at all.
+   *
+   * ⚠️ SKIPPED ENTIRELY when the caller supplied answers: that is the garage's
+   * prefilled path (report THIS saved car), and a stale draft about a different
+   * car must never overwrite the one they just chose.
+   */
+  const [draft, setDraft] = useState<{ answers: Partial<PostACarAnswers> } | 'checking' | null>(
+    initialAnswers ? null : 'checking',
+  );
+
+  useEffect(() => {
+    if (initialAnswers) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const saved = await loadPostDraft();
+      if (!cancelled) {
+        setDraft(saved ? { answers: saved } : null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialAnswers]);
+
   const handleComplete = async (answers: Partial<PostACarAnswers>) => {
     // 1. Create the draft ONCE. On a retry the id is already known — skip
     //    submitPost (and its uploads) and go straight to payment.
@@ -80,6 +115,14 @@ export function PostACarScreen({
       const result = await submitPost(answers);
       postId = result.postId;
       createdPostIdRef.current = postId;
+
+      // ⚠️ CLEARED THE MOMENT THE POST EXISTS, not after payment (review #19).
+      // From here the report lives on the server as a draft post with its own
+      // manage/delete path, so a local copy is a second, diverging record of
+      // the same thing — and if payment then fails, the retry reuses
+      // createdPostIdRef rather than the answers, so the draft could only
+      // resurface as a stale duplicate of a car already listed.
+      void clearPostDraft();
 
       // Record what we ADVISED against what they CHOSE, once, on first
       // creation only — a retry after a declined card must not log a second
@@ -139,10 +182,23 @@ export function PostACarScreen({
     router.replace(`/post/${postId}`);
   };
 
+  // ⚠️ NOTHING RENDERS UNTIL THE DRAFT CHECK RESOLVES, and it is a blank rather
+  // than a spinner: the read is one AsyncStorage hit and typically lands in the
+  // same frame, so a loader would be a flash of chrome nobody asked for. The
+  // wizard's own entrance animation then plays once, over the right answers.
+  if (draft === 'checking') {
+    return null;
+  }
+
   return (
     <WizardScreen
       flow={flow ?? postACarFlow}
-      initialAnswers={initialAnswers ?? POST_A_CAR_INITIAL_ANSWERS}
+      // A restored draft overlays the seeds rather than replacing them: it holds
+      // only the whitelisted keys, so the bounty seed (and anything else the
+      // flow expects to exist) survives a draft that never reached that step.
+      initialAnswers={
+        initialAnswers ?? { ...POST_A_CAR_INITIAL_ANSWERS, ...(draft?.answers ?? {}) }
+      }
       onExit={() => {
         // requestExit is the ONLY route to onExit, and the success path leaves
         // via router.replace without touching it — so reaching here means the
@@ -155,6 +211,10 @@ export function PostACarScreen({
         router.back();
       }}
       onComplete={handleComplete}
+      // ⚠️ ONLY THIS FLOW GETS IT. Nine steps ending in a card charge is the
+      // one place in the app where losing the answers is a real loss; report-a-
+      // sighting and add-a-vehicle keep the plain discard prompt.
+      onSaveAndExit={savePostDraft}
     />
   );
 }

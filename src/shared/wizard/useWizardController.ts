@@ -30,6 +30,20 @@ export interface WizardControllerOptions<TAnswers> {
   /** Called when the user leaves the flow (X, confirmed discard). */
   onExit: () => void;
   /**
+   * Persist the answers so far, then leave (review #19).
+   *
+   * ⚠️ OPTIONAL, AND ITS ABSENCE IS THE OLD BEHAVIOUR EXACTLY. A flow that
+   * passes nothing gets the two-way discard prompt this hook has always shown
+   * — which is right for the short flows (report a sighting, add a vehicle),
+   * where a draft would be more machinery than the thing it saves. Only the
+   * nine-step posting wizard, which ends in a card charge, offers a third way
+   * out.
+   *
+   * Rejections are swallowed by the caller, not here: an exit the owner has
+   * already asked for must happen whether or not the write succeeded.
+   */
+  onSaveAndExit?: (answers: Partial<TAnswers>) => void | Promise<void>;
+  /**
    * The final screen's async submit. Runs when the user presses the primary
    * button on the last screen; while it runs the button shows a spinner. On
    * rejection the wizard stays fully intact (answers + position) and the
@@ -56,7 +70,7 @@ function toErrorMessage(err: unknown): string {
 
 export function useWizardController<TAnswers>(
   flow: WizardFlow<TAnswers>,
-  { onExit, onComplete, initialAnswers }: WizardControllerOptions<TAnswers>,
+  { onExit, onComplete, onSaveAndExit, initialAnswers }: WizardControllerOptions<TAnswers>,
 ) {
   const screens = useMemo(() => flattenFlow(flow), [flow]);
   const [nav, dispatch] = useReducer(wizardReducer, INITIAL_NAV_STATE);
@@ -90,6 +104,13 @@ export function useWizardController<TAnswers>(
   // Answers as they were when a review edit began; backing out of the edit
   // restores this, so "Back" truly cancels instead of leaving a half-edit.
   const editSnapshotRef = useRef<Partial<TAnswers> | null>(null);
+  // ⚠️ A REF, NOT THE `answers` STATE, for requestExit's save (review #19).
+  // requestExit is memoised and is handed to a header button AND to the Android
+  // back handler; taking `answers` as a dependency would rebuild it on every
+  // keystroke and re-register both. The ref is what the ALERT CALLBACK reads,
+  // and that fires long after render, so it must be the newest value rather
+  // than the one closed over when the prompt was built.
+  const answersRef = useRef<Partial<TAnswers>>({});
 
   const setAnswers = useCallback((patch: Partial<TAnswers>) => {
     dirtyRef.current = true;
@@ -98,6 +119,15 @@ export function useWizardController<TAnswers>(
     setError(null);
     setAnswersState((current) => ({ ...current, ...patch }));
   }, []);
+
+  // ⚠️ ONE SYNC POINT, not a write inside setAnswers. Every path that changes
+  // answers goes through setAnswersState — the initial value, a step's edit,
+  // and the snapshot restore when a review edit is backed out of — so mirroring
+  // the STATE is the only version that cannot drift from it. Patching the ref
+  // in setAnswers alone would have missed the first two.
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   // Which screens the walk should stop on. Recomputed from the CURRENT answers
   // on every move, because that is the whole point: a step steps aside the
@@ -203,14 +233,44 @@ export function useWizardController<TAnswers>(
       onExit();
       return;
     }
-    // TODO(draft-persistence): when save & exit lands, offer "Save & exit"
-    // here — serialize `answers` and hand it to the flow's persistence layer
-    // before calling onExit. Until then, discard is the only exit.
+    // ⚠️ SAVE & EXIT LANDED 2026-09-03 (review #19) — this is the TODO that
+    // stood here since the framework was written, and the prompt below is the
+    // only place a flow's answers can leave the wizard other than by submit.
+    //
+    // A flow WITHOUT onSaveAndExit keeps the exact two-way prompt it always
+    // had. That is deliberate: the short flows have nothing worth a draft, and
+    // offering "Save" where nothing saves would be a lie.
+    if (onSaveAndExit) {
+      Alert.alert('Leave this report?', 'We can keep what you’ve entered for next time.', [
+        { text: 'Keep editing', style: 'cancel' },
+        // ⚠️ Destructive is on DISCARD, not on saving — the safe option must
+        // not be the one styled as dangerous. Order matters too: on iOS the
+        // cancel button is pinned, and "Discard" sits furthest from the thumb.
+        { text: 'Discard', style: 'destructive', onPress: onExit },
+        {
+          text: 'Save & exit',
+          onPress: () => {
+            // Fire and leave. Awaiting a write before honouring an exit the
+            // owner has already asked for would hold the screen open on a slow
+            // disk, and a failed save must not trap them either.
+            //
+            // ⚠️ CAUGHT HERE, not left to the caller. `void` on a rejected
+            // promise is still an UNHANDLED REJECTION — the app's own storage
+            // layer swallows its errors, but this hook is shared and must not
+            // assume that of every flow that ever passes this prop. A test
+            // caught it doing exactly that.
+            Promise.resolve(onSaveAndExit(answersRef.current)).catch(() => {});
+            onExit();
+          },
+        },
+      ]);
+      return;
+    }
     Alert.alert('Discard your answers?', "You'll lose what you've entered so far.", [
       { text: 'Keep editing', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: onExit },
     ]);
-  }, [busy, isLastScreen, onExit]);
+  }, [busy, isLastScreen, onExit, onSaveAndExit]);
 
   return {
     screens,

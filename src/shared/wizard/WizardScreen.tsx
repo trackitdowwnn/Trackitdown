@@ -109,7 +109,14 @@ export interface WizardScreenProps<TAnswers> {
    * retry; on success onComplete routes away (the flow does not auto-navigate).
    */
   onComplete: (answers: Partial<TAnswers>) => void | Promise<void>;
-  /** Pre-filled answers (sensible defaults, or a future saved draft). */
+  /**
+   * Offer "Save & exit" on the leave prompt, and persist with this (review
+   * #19). Omit it and the prompt stays the two-way discard it has always been —
+   * which is right for the short flows, where a draft would be more machinery
+   * than the thing it saves.
+   */
+  onSaveAndExit?: (answers: Partial<TAnswers>) => void | Promise<void>;
+  /** Pre-filled answers (sensible defaults, or a saved draft). */
   initialAnswers?: Partial<TAnswers>;
 }
 
@@ -117,10 +124,11 @@ export function WizardScreen<TAnswers>({
   flow,
   onExit,
   onComplete,
+  onSaveAndExit,
   initialAnswers,
 }: WizardScreenProps<TAnswers>) {
   const styles = useThemedStyles(makeStyles);
-  const controller = useWizardController(flow, { onExit, onComplete, initialAnswers });
+  const controller = useWizardController(flow, { onExit, onComplete, onSaveAndExit, initialAnswers });
   const {
     screen,
     screenIndex,
