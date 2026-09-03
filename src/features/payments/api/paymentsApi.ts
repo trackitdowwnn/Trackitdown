@@ -21,7 +21,7 @@
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 
-import { PaymentError, parseFunctionError } from './functionError';
+import { PaymentError, parseFunctionError } from '@/shared/lib/functionError';
 
 // Re-exported so every existing `import { PaymentError } from './paymentsApi'`
 // and `instanceof PaymentError` caller is untouched by the 2026-08-03 split.

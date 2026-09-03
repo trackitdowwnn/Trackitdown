@@ -14,9 +14,9 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { saveLastSeen } from '@/features/vehicles/post/api/editSectionApi';
-import { LastSeenWhenStep, LastSeenWhereStep } from '@/features/vehicles/post/components/postSteps';
-import type { PostACarAnswers } from '@/features/vehicles/post';
+import { saveLastSeen } from '../../post/api/editSectionApi';
+import { LastSeenWhenStep, LastSeenWhereStep } from '../../post/components/postSteps';
+import type { PostACarAnswers } from '../../post';
 import { deriveLocalityForCoord } from '@/shared/lib/location/placeLabels';
 import { spacing } from '@/shared/theme';
 

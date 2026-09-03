@@ -12,7 +12,7 @@
 
 import { useState } from 'react';
 
-import { saveDescription } from '@/features/vehicles/post/api/editSectionApi';
+import { saveDescription } from '../../post/api/editSectionApi';
 import { TextField } from '@/shared/ui';
 
 import type { PostDetail } from '../../types';

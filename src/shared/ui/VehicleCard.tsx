@@ -394,7 +394,9 @@ function PhotoCarousel({ post, staticOnly = false }: { post: PostSummary; static
         ))}
       </ScrollView>
       <View style={styles.dots} pointerEvents="none">
-        {photos.map((photo, index) => (
+        {/* `_photo`: the dots are keyed and positioned by INDEX; unlike the
+            carousel above, the photo itself is not read here. */}
+        {photos.map((_photo, index) => (
           <View
             key={`${post.id}-${index}`}
             testID={`carousel-dot-${index}`}

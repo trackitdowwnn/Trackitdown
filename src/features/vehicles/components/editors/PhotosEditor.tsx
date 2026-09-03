@@ -12,9 +12,9 @@
 
 import { useState } from 'react';
 
-import { savePhotos } from '@/features/vehicles/post/api/editSectionApi';
-import { PhotosStep } from '@/features/vehicles/post/components/postSteps';
-import type { PostACarAnswers } from '@/features/vehicles/post';
+import { savePhotos } from '../../post/api/editSectionApi';
+import { PhotosStep } from '../../post/components/postSteps';
+import type { PostACarAnswers } from '../../post';
 
 import type { PostDetail } from '../../types';
 import { PostSectionEditor } from './PostSectionEditor';

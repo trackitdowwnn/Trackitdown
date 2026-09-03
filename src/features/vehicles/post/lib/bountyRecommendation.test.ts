@@ -10,7 +10,7 @@
  *        supabase/migrations/20260813100000_bounty_guidance.sql.
  */
 
-import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE, snapBountyPence } from './bountyBounds';
+import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE, snapBountyPence } from '@/shared/lib/bountyBounds';
 import { recommendBounty, reachAtChosen, type ReachRung } from './bountyRecommendation';
 
 /** The RPC's eight rungs, with a curve that flattens after £250. */

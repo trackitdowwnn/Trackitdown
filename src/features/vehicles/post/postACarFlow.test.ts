@@ -10,7 +10,7 @@
  * LINKS: src/features/vehicles/post/postACarFlow.tsx, docs/TESTING.md.
  */
 
-import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from './lib/bountyBounds';
+import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from './postACarFlow';
 import type { PostACarAnswers } from './types';
 
@@ -40,7 +40,7 @@ jest.mock('./components/postSteps', () => ({
   DescriptionStep: () => null,
   PricingModeStep: () => null,
   BountyStep: () => null,
-  ...jest.requireActual('./lib/bountyBounds'),
+  ...jest.requireActual('@/shared/lib/bountyBounds'),
 }));
 
 const stepById = (id: string) => {

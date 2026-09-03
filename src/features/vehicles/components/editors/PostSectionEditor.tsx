@@ -23,7 +23,7 @@
 import { type ReactNode, useContext, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { PostSubmissionError } from '@/features/vehicles/post';
+import { PostSubmissionError } from '../../post';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, Screen, useToast } from '@/shared/ui';
 

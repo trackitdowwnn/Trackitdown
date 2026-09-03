@@ -96,7 +96,7 @@ import {
   type BadgeTone,
 } from '@/shared/ui';
 
-import { PaymentError } from '../api/functionError';
+import { PaymentError } from '@/shared/lib/functionError';
 import {
   fetchMyPendingCredit,
   startConnectOnboarding,

@@ -15,15 +15,15 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { saveCarDetails } from '@/features/vehicles/post/api/editSectionApi';
+import { saveCarDetails } from '../../post/api/editSectionApi';
 import {
   BodyTypeStep,
   ColourStep,
   MakeStep,
   ModelStep,
   YearStep,
-} from '@/features/vehicles/post/components/postSteps';
-import type { PostACarAnswers } from '@/features/vehicles/post';
+} from '../../post/components/postSteps';
+import type { PostACarAnswers } from '../../post';
 import { spacing } from '@/shared/theme';
 
 import type { PostDetail } from '../../types';

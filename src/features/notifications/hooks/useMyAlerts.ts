@@ -19,6 +19,15 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 // Direct module path, NOT the '@/features/auth' barrel — that barrel exports
 // AuthGate, which reaches AsyncStorage, and this hook IS exported from the
 // notifications barrel that chatApi/sightingApi import. See index.ts.
+//
+// ⚠️ THE ONE SANCTIONED EXCEPTION to ARCHITECTURE.md rule 1, and it is load-
+// bearing rather than lazy. Routing this through the auth barrel was tried on
+// 2026-09-03 when the rule was first enforced: six suites died on
+// "[@RNC/AsyncStorage]: NativeModule: AsyncStorage is null", because the barrel
+// pulls AuthGate and this hook rides the notifications barrel into chatApi and
+// sightingApi. The disable is narrow — one line, one symbol — and the reason is
+// the paragraph above it.
+// eslint-disable-next-line no-restricted-imports -- see above: the auth barrel drags AsyncStorage into two plain api modules
 import { useSession } from '@/features/auth/hooks/useSession';
 
 import { fetchMyAlerts } from '../api/alertsApi';

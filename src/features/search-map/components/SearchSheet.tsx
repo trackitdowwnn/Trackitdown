@@ -109,7 +109,7 @@ import { YearRangeFields } from './YearRangeFields';
 // exactly the amounts an owner can offer. A local copy drifted the moment the
 // floor moved: this listed £25 steps from £50, leaving the whole £10–£49 band
 // unreachable on a filter whose lowest stop is supposed to mean "any".
-import { BOUNTY_SNAP_STEPS } from '@/features/vehicles/post/lib/bountyBounds';
+import { BOUNTY_SNAP_STEPS } from '@/shared/lib/bountyBounds';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 

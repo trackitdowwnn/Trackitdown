@@ -14,7 +14,7 @@
 
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
-import { PaymentError } from './functionError';
+import { PaymentError } from '@/shared/lib/functionError';
 import {
   fetchMyPayoutAccount,
   fetchPayoutsRelevant,

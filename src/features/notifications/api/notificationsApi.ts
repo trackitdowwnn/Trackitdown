@@ -141,12 +141,13 @@ export async function markNotificationsReadByPayload(
   }
 }
 
-/** The badge's half of the world. Cheap: a partial-index count. */
-export async function fetchUnreadNotificationsCount(): Promise<number> {
-  const { data, error } = await supabase.rpc('unread_notifications_count');
-  if (error) {
-    log.warn('unread_notifications_count failed', { code: error.code });
-    return 0;
-  }
-  return typeof data === 'number' ? data : 0;
-}
+/*
+ * `fetchUnreadNotificationsCount` was here and is DELETED (2026-09-03, review
+ * Tier 3). It had no callers at all once the inbox keep-alive landed and began
+ * deriving the badge from the rows it already holds — a second round trip for a
+ * number the client could count.
+ *
+ * The `unread_notifications_count` RPC still exists server-side; nothing in the
+ * app calls it. Left in place deliberately: dropping a function is a migration
+ * against production, and it is a harmless read.
+ */

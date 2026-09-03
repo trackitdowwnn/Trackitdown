@@ -43,7 +43,7 @@ jest.mock('./postSteps', () => ({
   // pattern this file's own header condemns — and the one postACarFlow.test.ts
   // was just fixed for, where a hard-coded MIN_BOUNTY_PENCE meant a money
   // boundary was checked against a floor the app had stopped enforcing.
-  ...jest.requireActual('../lib/bountyBounds'),
+  ...jest.requireActual('@/shared/lib/bountyBounds'),
 }));
 
 /** The label the pay button shows for the same answers. Resolved here rather

@@ -22,11 +22,11 @@
  *        both.
  * LINKS: supabase/functions/delete-draft/index.ts (the codes mapped here);
  *        supabase/migrations/20260816110000_a_draft_delete_must_prove_the_intents_are_dead.sql;
- *        src/features/payments/api/functionError.ts (parseFunctionError);
+ *        src/shared/lib/functionError.ts (parseFunctionError);
  *        src/features/vehicles/components/PostManageSheet.tsx (the caller).
  */
 
-import { parseFunctionError } from '@/features/payments/api/functionError';
+import { parseFunctionError } from '@/shared/lib/functionError';
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 

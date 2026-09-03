@@ -28,7 +28,7 @@ import {
   DEFAULT_BOUNTY_PENCE,
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
-} from '../lib/bountyBounds';
+} from '@/shared/lib/bountyBounds';
 import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
@@ -94,7 +94,7 @@ export {
   DEFAULT_BOUNTY_PENCE,
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
-} from '../lib/bountyBounds';
+} from '@/shared/lib/bountyBounds';
 
 /**
  * The two pricing modes (ADR-0014), as option cards.

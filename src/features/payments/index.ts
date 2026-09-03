@@ -29,6 +29,12 @@ export {
   type BountyPaymentResult,
 } from './hooks/useBountyPayment';
 export { useDeactivatePost, type DeactivateOutcome } from './hooks/useDeactivatePost';
+// (`functionError` moved to @/shared/lib on 2026-09-03. It decodes ANY Edge
+// Function's { error, code } body — nothing about it is payments-specific — and
+// `vehicles` needs it for delete-draft. Re-exporting it here instead would have
+// pulled this whole barrel, and with it the Stripe native module, into a plain
+// api module: draftApi's tests died on 'StripeSdk could not be found' the moment
+// that was tried. PaymentError went with it and is re-exported below.)
 export {
   PAYOUT_ONBOARDING_ERROR_MESSAGES,
   fetchMyPayoutAccount,

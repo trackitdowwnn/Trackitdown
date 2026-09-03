@@ -28,7 +28,7 @@ import { z } from 'zod';
 
 import { formatDateLabelCompact } from '@/shared/lib/dateTimeLabel';
 import { RADIUS_MAX_MILES, RADIUS_MIN_MILES } from '@/shared/lib/distance';
-import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/features/vehicles/post/lib/bountyBounds';
+import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
 import { formatPounds } from '@/shared/lib/money';
 
 /**

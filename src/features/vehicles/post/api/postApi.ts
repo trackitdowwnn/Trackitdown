@@ -29,7 +29,7 @@ import { createLogger } from '@/shared/lib/logger';
 import { formatPounds } from '@/shared/lib/money';
 import type { PhotoTileStatus } from '@/shared/ui';
 
-import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '../lib/bountyBounds';
+import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
 import { distinctiveFeaturesSchema } from '../lib/distinctiveFeatures';
 import type { CreatePostParams, CreatePostResult, PostACarAnswers } from '../types';
 

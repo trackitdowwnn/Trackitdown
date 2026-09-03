@@ -29,7 +29,7 @@ import { CAR_COLOURS } from '@/shared/lib';
 import {
   MAX_BOUNTY_PENCE as BOUNTY_MAX_PENCE,
   MIN_BOUNTY_PENCE as BOUNTY_MIN_PENCE,
-} from '@/features/vehicles/post/lib/bountyBounds';
+} from '@/shared/lib/bountyBounds';
 import { CAR_MAKES, POPULAR_MAKES } from '@/shared/lib/carMakes';
 import { modelsForMake } from '@/shared/lib/carModels';
 import { milesToMetres } from '@/shared/lib/distance';
