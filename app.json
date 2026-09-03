@@ -7,6 +7,9 @@
     "icon": "./assets/images/icon.png",
     "scheme": "trackitdown",
     "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.olliet97.trackitdown"
+    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
