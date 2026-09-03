@@ -585,6 +585,16 @@ export interface MySightingRecordEntry {
   /** When the owner set the CURRENT verdict, or null if nobody has ruled.
    *  Overwritten by a correction, so it is not a history. */
   reviewedAt: string | null;
+  /**
+   * The post this report is about — present ONLY while that post is still
+   * active, and null/undefined otherwise (review #16).
+   *
+   * ⚠️ Absence is the ordinary case, not a failure: a closed listing is
+   * deliberately unreachable from a spotter's history, which is why the
+   * `closed_uncredited` push routes to the dispute screen and not to the post.
+   * Undefined additionally means "this server predates the field".
+   */
+  postId?: string | null;
   /** The spotter's own coarse label for where they saw it. */
   areaLabel: string | null;
   /** Bounded to 32 chars server-side; either half may be '' on a sparse post. */
@@ -613,6 +623,12 @@ const mySightingRowSchema = z
     // empty My-reports page rather than one withdrawn row. Same client-ahead
     // ordering the dispute fields used below, and safe in one direction only.
     status: z.enum(['unverified', 'helpful', 'not_mine', 'credited', 'withdrawn']),
+    // The post, but ONLY while it is still active — the server sends null for a
+    // closed one, which is the privacy rule this payload has always kept
+    // (review #16). `.optional()` for the same reason `dispute` is: this bundle
+    // must run against a server that predates the field, and `.strict()` would
+    // otherwise fail the whole record.
+    post_id: z.guid().nullable().optional(),
     reviewed_at: z.string().nullable(),
     area_label: z.string().nullable(),
     car: z.object({ make: z.string(), colour: z.string() }).strict(),
@@ -660,6 +676,10 @@ export async function fetchMySightingRecord(): Promise<MySightingRecordEntry[]> 
     createdAt: row.created_at,
     status: row.status,
     reviewedAt: row.reviewed_at,
+    // Absent (old server) and null (post closed) collapse to the same thing,
+    // exactly as `dispute` does below: no id means no card to open, and the
+    // screen never has to know which of the two it was.
+    postId: row.post_id ?? null,
     areaLabel: row.area_label,
     car: row.car,
     // Absent (old server) and null (no hold) collapse to the same thing here:
