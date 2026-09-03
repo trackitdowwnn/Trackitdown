@@ -132,7 +132,10 @@ export interface OwnerSighting {
    *  no counter and is reversible — mark_sighting_helpful accepts it as a
    *  source, so an owner may correct a rejection at no cost. Treat it as the
    *  absence of a confirmation, never as a judgement of the spotter. */
-  status: 'unverified' | 'helpful' | 'not_mine' | 'credited';
+  /** 'withdrawn' should never reach an owner — get_post_sightings filters it —
+   *  but it is in the union because the row schema accepts it, and a status the
+   *  parse rejects fails the WHOLE list rather than one row. */
+  status: 'unverified' | 'helpful' | 'not_mine' | 'credited' | 'withdrawn';
   contextFlags: SightingContextFlag[];
   note: string | null;
   areaLabel: string | null;

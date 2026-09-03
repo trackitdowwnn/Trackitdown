@@ -110,6 +110,12 @@ const VERDICT: Record<
   // The one moment this screen ever has to deliver, so it gets the only mark on
   // the card that is not a dot.
   credited: { label: 'Credited — this one led to the recovery', tone: 'good', celebrated: true },
+  // ⚠️ The only row here that is not a VERDICT — it is the spotter's own act,
+  // so the copy says what THEY did rather than what was decided about them.
+  // `plain`, never `pending` or a warning tone: taking back a report you know
+  // to be wrong is the right thing to do, and the card must not scold anyone
+  // for doing it.
+  withdrawn: { label: 'You took this back', tone: 'plain' },
 };
 
 /**
@@ -162,9 +168,15 @@ export interface ReportCardProps {
    * shape for every report with no hold against it.
    */
   onOpenDispute?: (sightingId: string) => void;
+  /**
+   * Takes the report back (review #21). Offered ONLY while nobody has ruled on
+   * it — the server permits `unverified` alone, because after a verdict this
+   * would erase the owner's decision, and on `credited` one that moved money.
+   */
+  onWithdraw?: (sightingId: string) => void;
 }
 
-export function ReportCard({ entry, onOpenDispute }: ReportCardProps) {
+export function ReportCard({ entry, onOpenDispute, onWithdraw }: ReportCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const stacked = useStackedRow();
@@ -176,6 +188,11 @@ export function ReportCard({ entry, onOpenDispute }: ReportCardProps) {
   const car = describeReportedCar(entry.car);
 
   const door = entry.dispute && onOpenDispute ? disputeDoor(entry.dispute) : null;
+  // ⚠️ Gated on `unverified` CLIENT-side purely so the control is not offered
+  // where it cannot work — the server is the actual gate and refuses anything
+  // else with one opaque token. An owner ruling between render and tap is a
+  // real race, and the copy for it is written for exactly that.
+  const canWithdraw = entry.status === 'unverified' && onWithdraw !== undefined;
 
   const when = entry.areaLabel ? `${entry.areaLabel} · ${reported}` : reported;
   // WHEN they ruled, only once they have. NULL reviewed_at means nobody has
@@ -286,6 +303,31 @@ export function ReportCard({ entry, onOpenDispute }: ReportCardProps) {
         >
           <Text style={styles.doorLabel}>{door.label}</Text>
           <ChevronRight size={sizes.iconSm} color={palette.textSecondary} />
+        </Pressable>
+      ) : null}
+
+      {/* ⚠️ THE WAY BACK (review #21). Sightings were create-only: a spotter
+          who reported the wrong car — which the Terms explicitly call a normal
+          outcome, not a failure — had no way to say so, and the report stood in
+          front of the owner forever.
+
+          NO CHEVRON, unlike the dispute door: that one opens a screen, this one
+          performs an action, and borrowing its affordance would promise a place
+          to go. Quiet by design — it sits below the verdict, in secondary ink,
+          because most reports are correct and this must not read as an
+          invitation to doubt yourself. */}
+      {canWithdraw ? (
+        <Pressable
+          onPress={() => onWithdraw?.(entry.id)}
+          accessibilityRole="button"
+          // Carries the car for the same reason the door's label does: a screen
+          // reader arriving here has not heard which report this is.
+          accessibilityLabel={`Take back this report. ${car}, reported ${reported}`}
+          accessibilityHint="Withdraws it, so the owner no longer sees it"
+          style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
+          testID={`my-sighting-withdraw-${entry.id}`}
+        >
+          <Text style={styles.doorLabel}>Take this back</Text>
         </Pressable>
       ) : null}
     </View>

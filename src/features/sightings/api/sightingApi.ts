@@ -22,6 +22,7 @@ import { z } from 'zod';
 
 import { notifySighting, notifySightingConfirmed } from '@/features/notifications';
 import { supabase } from '@/shared/api';
+import { SightingWithdrawError } from '../lib/sightingWithdrawError';
 import { createLogger } from '@/shared/lib/logger';
 import type { EvidencePhoto } from '@/shared/ui';
 
@@ -321,7 +322,13 @@ const ownerSightingSchema = z.object({
   // the ABSENCE of a confirmation, not a penalty: it bumps no counter and is
   // reversible, because mark_sighting_helpful accepts it as a source. Without
   // it here, one rejected sighting fails the parse for the whole list.
-  status: z.enum(['unverified', 'helpful', 'not_mine', 'credited']),
+  // 'withdrawn' (20260903100000) should NEVER arrive here — get_post_sightings
+  // filters it out, because withdrawing means "do not act on this" and showing
+  // it to the owner would keep the retracted claim in front of the one person
+  // it misleads. It is listed anyway for the reason the paragraph above gives:
+  // a status this enum does not know fails the parse for the WHOLE list, so the
+  // cost of being wrong here is an owner's entire sightings page.
+  status: z.enum(['unverified', 'helpful', 'not_mine', 'credited', 'withdrawn']),
   context_flags: z.array(z.enum(SIGHTING_CONTEXT_FLAGS)),
   note: z.string().nullable(),
   area_label: z.string().nullable(),
@@ -571,7 +578,10 @@ export interface MySightingDispute {
 export interface MySightingRecordEntry {
   id: string;
   createdAt: string;
-  status: 'unverified' | 'helpful' | 'not_mine' | 'credited';
+  /** 'withdrawn' is the SPOTTER's own retraction (20260903100000) — visible
+   *  only here, on their own record, and nowhere the owner or the public map
+   *  can see. */
+  status: 'unverified' | 'helpful' | 'not_mine' | 'credited' | 'withdrawn';
   /** When the owner set the CURRENT verdict, or null if nobody has ruled.
    *  Overwritten by a correction, so it is not a history. */
   reviewedAt: string | null;
@@ -597,7 +607,12 @@ const mySightingRowSchema = z
   .object({
     id: z.guid(),
     created_at: z.string(),
-    status: z.enum(['unverified', 'helpful', 'not_mine', 'credited']),
+    // ⚠️ 'withdrawn' MUST be here before the server can ever emit it. This
+    // schema is `.strict()` and one unknown status fails the parse for the
+    // WHOLE record, so a client that does not know the value would show an
+    // empty My-reports page rather than one withdrawn row. Same client-ahead
+    // ordering the dispute fields used below, and safe in one direction only.
+    status: z.enum(['unverified', 'helpful', 'not_mine', 'credited', 'withdrawn']),
     reviewed_at: z.string().nullable(),
     area_label: z.string().nullable(),
     car: z.object({ make: z.string(), colour: z.string() }).strict(),
@@ -713,4 +728,40 @@ export async function markSightingNotMine(
     .parse(data);
   log.info('sighting_marked_not_mine', { sightingId, changed: parsed.changed });
   return parsed;
+}
+
+// Re-exported so this stays the one import for callers that raise and catch in
+// the same breath; the class lives in lib/ so a screen can narrow on it without
+// pulling the supabase client into every test that mocks the data layer.
+export { SightingWithdrawError };
+
+/**
+ * Take back a sighting the spotter filed by mistake (review #21).
+ *
+ * ⚠️ ONLY WHILE NOBODY HAS RULED ON IT. The server permits this on
+ * `unverified` alone — after a verdict, withdrawing would erase the owner's
+ * decision, and on `credited` one that moved money. The single
+ * SIGHTING_NOT_WITHDRAWABLE token covers missing / not-yours / already-ruled
+ * alike, so this file cannot tell them apart either: the copy says the one
+ * true thing for all three.
+ */
+export async function withdrawSighting(sightingId: string): Promise<void> {
+  const { error } = await supabase.rpc('withdraw_sighting', {
+    p_sighting_id: sightingId,
+  });
+  if (error) {
+    const notWithdrawable = error.message.includes('SIGHTING_NOT_WITHDRAWABLE');
+    log.warn('withdraw_sighting failed', {
+      sightingId,
+      code: error.code,
+      reason: notWithdrawable ? 'SIGHTING_NOT_WITHDRAWABLE' : undefined,
+    });
+    throw new SightingWithdrawError(
+      notWithdrawable
+        ? 'This one can’t be taken back — the owner has already looked at it.'
+        : 'We couldn’t withdraw that report. Please try again.',
+      notWithdrawable ? 'SIGHTING_NOT_WITHDRAWABLE' : 'UNKNOWN',
+    );
+  }
+  log.info('sighting_withdrawn', { sightingId });
 }
