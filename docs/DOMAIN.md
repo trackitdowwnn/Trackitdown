@@ -31,6 +31,12 @@ reverse.
 
 ### Last reconciled against the schema: 2026-09-03
 
+> **Kept current the same day.** `My reports` gained a door to the live listing
+> (finding #16) hours after this table was written, and the rule was recorded
+> under *Sighting rules* in the same session rather than at the next audit.
+> That is the whole point of the pass: the drift it corrected was never one
+> large mistake, it was a habit of finishing the code and stopping.
+
 What was checked, and what moved:
 
 | Claim | Was | Is |
@@ -426,6 +432,15 @@ Rules that follow, and are not implementation details:
 
 ## Sighting rules
 
+- **A spotter can reopen the car they reported — while the listing is live**
+  (shipped 2026-09-03, review finding #16: `My reports` showed a verdict and
+  offered nowhere to go). `my_sighting_record` carries `post_id` **only while
+  that post is `active`**; a closed one yields NULL and stays unreachable.
+  That is not a new rule, it is the existing one stated precisely: a closed
+  listing is invisible to a spotter, which is why `closed_uncredited` routes to
+  the dispute screen rather than to the post. An ACTIVE post is public — map,
+  search, anon-readable — so the id of a car they photographed themselves
+  reveals nothing search would not.
 - **A spotter can take a report back, but only before anyone has ruled on it**
   (shipped 2026-09-03, review finding #21 — sightings were create-only until
   then, and someone who reported the wrong car had no way to say so). The
