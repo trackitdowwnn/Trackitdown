@@ -11,7 +11,7 @@
  * LINKS: src/shared/lib/carModels.ts.
  */
 
-import { makeChangePatch, modelsForMake, popularModelsForMake } from './carModels';
+import { canonicaliseModel, makeChangePatch, modelsForMake, popularModelsForMake } from './carModels';
 
 describe('modelsForMake', () => {
   it('populates models for a seeded make', async () => {
@@ -48,5 +48,39 @@ describe('makeChangePatch (make→model dependency)', () => {
   it('keeps the model when the same make is re-picked', async () => {
     expect(makeChangePatch('BMW', 'BMW')).toEqual({ make: 'BMW' });
     expect(makeChangePatch('BMW', 'BMW')).not.toHaveProperty('model');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review finding #20, the model half. Same failure as makes: a free-typed
+// "golf" never met a spotter's alert for a "Golf", because the server compares
+// lower(btrim(...)) and nothing else normalises either side.
+// ---------------------------------------------------------------------------
+describe('canonicaliseModel', () => {
+  it('fixes case and spacing against that make’s list', () => {
+    expect(canonicaliseModel('Volkswagen', 'golf')).toBe('Golf');
+    expect(canonicaliseModel('BMW', '3  series')).toBe('3 Series');
+  });
+
+  it('⚠️ NEVER traps a model the list does not carry', () => {
+    // The lists under-offer by design, and a stolen car with an unlisted model
+    // must still be reportable. Returned as typed, only tidied.
+    expect(canonicaliseModel('Volkswagen', 'Corrado')).toBe('Corrado');
+    expect(canonicaliseModel('Volkswagen', '  Corrado  ')).toBe('Corrado');
+    expect(canonicaliseModel('Volkswagen', '')).toBe('');
+  });
+
+  it('⚠️ is inert when the make is not canonical, which is why makes go first', () => {
+    // MODELS is keyed by the exact make label, so modelsForMake('VW') is empty
+    // and there is nothing here to match against. canonicaliseMake runs at the
+    // same seam (MakeField) precisely so this never has to cope.
+    expect(canonicaliseModel('VW', 'golf')).toBe('golf');
+    expect(canonicaliseModel('', 'golf')).toBe('golf');
+  });
+
+  it('is idempotent for every seeded model', () => {
+    for (const model of modelsForMake('Volkswagen')) {
+      expect(canonicaliseModel('Volkswagen', model.label)).toBe(model.label);
+    }
   });
 });

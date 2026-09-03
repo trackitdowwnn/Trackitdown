@@ -21,7 +21,7 @@
 
 import { EmptyState, SelectField, TextField, type SelectOption } from '@/shared/ui';
 
-import { modelsForMake, popularModelsForMake } from '@/shared/lib/carModels';
+import { canonicaliseModel, modelsForMake, popularModelsForMake } from '@/shared/lib/carModels';
 
 export interface ModelFieldProps {
   /** The make chosen in the previous step — drives which models are offered. */
@@ -43,6 +43,13 @@ export function ModelField({ make, value, onChange, error }: ModelFieldProps) {
       />
     );
   }
+
+  // ⚠️ Free-typed models are canonicalised against THIS make's list (review
+  // #20), so "golf" stores as "Golf" and meets a spotter's alert instead of
+  // silently missing it. Only the SelectField path needs it — the TextField
+  // fallback below runs when the list is empty, where there is nothing to match
+  // against and nothing to correct towards.
+  const onChangeCanonical = (model: string) => onChange(canonicaliseModel(make, model));
 
   const models = modelsForMake(make);
   const options: SelectOption<string>[] = models
@@ -70,7 +77,7 @@ export function ModelField({ make, value, onChange, error }: ModelFieldProps) {
       searchPlaceholder={`Search ${make} models`}
       options={options}
       value={value}
-      onChange={onChange}
+      onChange={onChangeCanonical}
       error={error}
       // Browse-first + free-text fallback, matching the make picker: typing a
       // model with no exact match surfaces a "Use "<query>"" row.
