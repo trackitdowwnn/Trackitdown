@@ -227,7 +227,7 @@ without checking that the event fires at all.
 ## 7. Is the hourly sweep still running?
 
 ⚠️ **Ask this first when anything looks stale.** `release-held-refunds` is the
-only scheduled process in the system, and it now carries four jobs, three of
+only scheduled process in the system, and it now carries five jobs, four of
 which fail *silently*:
 
 | Job | What its silence costs |
@@ -236,8 +236,13 @@ which fail *silently*:
 | `purge_old_notifications` | Retention stops |
 | `purge_sighting_location_history` | **A promise published on the website** stops being kept |
 | Orphaned photo removal | **UK GDPR erasure** stops — deleted cars keep their photos |
+| `claim_still_missing_checks` | Owners are never asked, so abandoned posts stay abandoned (ADR-0019) |
 
-Only the first is self-reporting. The other three would sit broken indefinitely.
+Only the first is self-reporting. The other four would sit broken indefinitely.
+
+The last one fails *quietly but harmlessly*: the ask is a database row, so a
+sweep that stops simply means nobody is asked until it starts again. Nothing
+expires and no money moves either way — that is the design, not a mitigation.
 
 ```sql
 select public.sweep_health();

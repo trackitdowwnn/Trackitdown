@@ -20,6 +20,13 @@ jest.mock('../hooks/useMyPosts', () => ({
   useMyPosts: () => mockUseMyPosts(),
 }));
 
+// ADR-0019's nudge. Mocked at the HOOK, so the api module — and with it the
+// supabase client — never enters this suite's import graph.
+const mockUseStillMissingAsks = jest.fn(() => [] as { postId: string }[]);
+jest.mock('../hooks/useStillMissingAsk', () => ({
+  useStillMissingAsks: () => mockUseStillMissingAsks(),
+}));
+
 const mockUseSession = jest.fn();
 const mockRequireAuth = jest.fn();
 jest.mock('@/features/auth', () => ({
@@ -65,6 +72,12 @@ jest.mock('@/shared/ui', () => {
     ErrorState: ({ onRetry }: { onRetry?: () => void }) => (
       <Pressable testID="error-retry" onPress={onRetry}>
         <Text>error</Text>
+      </Pressable>
+    ),
+    NudgeRow: ({ title, body, onPress }: { title: string; body: string; onPress: () => void }) => (
+      <Pressable testID="still-missing-nudge" onPress={onPress}>
+        <Text>{title}</Text>
+        <Text>{body}</Text>
       </Pressable>
     ),
     ThemedRefreshControl: () => null,
@@ -129,5 +142,40 @@ describe('MyPostsScreen', () => {
     const { getByTestId } = await render(<MyPostsScreen />);
     fireEvent.press(getByTestId('card-p1'));
     expect(mockPush).toHaveBeenCalledWith('/post/p1');
+  });
+
+  // ADR-0019's second door: someone who has drifted away from a listing opens
+  // this page, not the listing.
+  describe('the "still missing?" nudge', () => {
+    beforeEach(() => {
+      mockPush.mockClear();
+      mockUseStillMissingAsks.mockReturnValue([]);
+    });
+
+    it('is absent when nothing is outstanding', async () => {
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post] });
+      const { queryByTestId } = await render(<MyPostsScreen />);
+      expect(queryByTestId('still-missing-nudge')).toBeNull();
+    });
+
+    it('opens the post that is being asked about', async () => {
+      mockUseStillMissingAsks.mockReturnValue([{ postId: 'p1' }]);
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post] });
+      const { getByTestId, getByText } = await render(<MyPostsScreen />);
+      expect(getByText('Tap to answer')).toBeTruthy();
+      fireEvent.press(getByTestId('still-missing-nudge'));
+      expect(mockPush).toHaveBeenCalledWith('/post/p1');
+    });
+
+    it('says where the tap lands when more than one is outstanding', async () => {
+      // Rare — it needs two live listings AND silence on both — but "2
+      // listings" would imply a list this tap does not open.
+      mockUseStillMissingAsks.mockReturnValue([{ postId: 'p1' }, { postId: 'p2' }]);
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post] });
+      const { getByText, getByTestId } = await render(<MyPostsScreen />);
+      expect(getByText('Tap to answer the first of 2')).toBeTruthy();
+      fireEvent.press(getByTestId('still-missing-nudge'));
+      expect(mockPush).toHaveBeenCalledWith('/post/p1');
+    });
   });
 });

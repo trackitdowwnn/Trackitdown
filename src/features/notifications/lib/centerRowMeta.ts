@@ -102,6 +102,15 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   // would imply a payment that is never coming.
   credited_no_reward: { Icon: Binoculars, tone: 'success', needsAttention: false },
   payout_sent: { Icon: Banknote, tone: 'success', needsAttention: false },
+  // The one row in the centre that asks rather than tells, so it is the one
+  // row that legitimately carries an action chip. `warning`, not `danger`:
+  // nothing is wrong and nothing expires — we have simply not heard from them.
+  still_missing: {
+    Icon: Hourglass,
+    tone: 'warning',
+    needsAttention: true,
+    attentionLabel: 'Answer',
+  },
   // "Contest" is the word SightingDisputeScreen already uses with these
   // spotters ("This one can’t be contested any more"), so the row and the
   // screen it opens speak the same language.

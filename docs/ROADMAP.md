@@ -280,7 +280,22 @@ answered *nothing*. This asked "does the loop close", and found two places
 where it does not. Both are silent — nobody sees an error, the app just stops
 having anything to say.
 
-- **THE ABANDONED POST.** Nothing in the system requires an owner to ever
+- ~~**THE ABANDONED POST.**~~ **PARTLY CLOSED 2026-09-02 (ADR-0019).** The ask
+  shipped: a post active and unconfirmed for 14 days earns "is your {car} still
+  missing?", re-asked every 7 days, capped at 3, sent by the hourly sweep that
+  already exists. *Still missing* resets the clock; *I've found it* routes into
+  the unchanged recovery flow. It moves no money and changes no status — the
+  verification suite's load-bearing check is that `posts.status` and every
+  `payments` row are untouched after a full cycle.
+  ⚠️ **What is NOT closed:** the spotter's recourse. Dormancy — closing a silent
+  post to new sightings — is deferred, with the analysis recorded in ADR-0019
+  rather than re-litigated later: 95 sites select `status = 'active'`, which
+  argues for a new enum value (exclusion by construction, the ADR-0018
+  property), but `send_message` would freeze the chat to the very owner we are
+  trying to reach and `plate_available` would release the plate of a car that is
+  still missing. Deferred until the telemetry sink has counted how many owners
+  actually go silent through all three asks. The original finding follows.
+  Nothing in the system requires an owner to ever
   finish. A post sits `active` indefinitely (nothing sets `expired`), escrow
   sits `held` indefinitely, and a spotter who filed a real sighting has no
   recourse — because `create_refund_hold`, and therefore the whole dispute

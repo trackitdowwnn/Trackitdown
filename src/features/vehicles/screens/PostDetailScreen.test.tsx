@@ -38,6 +38,18 @@ jest.mock('../hooks/usePostDetail', () => ({
   usePostDetail: () => mockUsePostDetail(),
 }));
 
+// ADR-0019's liveness banner. Mocked at the HOOK, which also keeps the
+// stillMissingApi module — and the supabase client it constructs — out of this
+// suite's import graph. Closed by default; the banner tests open it.
+const mockStillMissingConfirm = jest.fn(async () => {});
+let mockStillMissingOpen = false;
+jest.mock('../hooks/useStillMissingAsk', () => ({
+  useStillMissingAsk: () => ({
+    open: mockStillMissingOpen,
+    confirm: mockStillMissingConfirm,
+  }),
+}));
+
 // The similar-posts rail has its own hook test; empty here so the screen
 // tests exercise the detail itself (also keeps supabase out of the import
 // graph via the search-map barrel).
@@ -378,6 +390,71 @@ describe('PostDetailScreen', () => {
         wrapper: ToastProvider,
       });
       expect(queryByTestId('manage-view-sightings')).toBeNull();
+    });
+  });
+
+  // ADR-0019. The banner is the DOOR — the push is only a reminder it exists —
+  // so what matters here is that it appears without one and that both answers
+  // go somewhere true.
+  describe('the "still missing?" banner', () => {
+    beforeEach(() => {
+      mockPush.mockClear();
+      mockStillMissingConfirm.mockClear();
+      mockStillMissingOpen = false;
+    });
+
+    it('is absent while no ask is open', async () => {
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
+      const { queryByTestId } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      expect(queryByTestId('still-missing-banner')).toBeNull();
+    });
+
+    it('appears with both answers when an ask is open', async () => {
+      mockStillMissingOpen = true;
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
+      const { getByTestId, getByText } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      expect(getByTestId('still-missing-banner')).toBeTruthy();
+      expect(getByText('Yes, still missing')).toBeTruthy();
+      expect(getByText('I’ve found it')).toBeTruthy();
+    });
+
+    it('"still missing" confirms and moves nothing else', async () => {
+      mockStillMissingOpen = true;
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
+      const { getByText } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      await act(async () => {
+        fireEvent.press(getByText('Yes, still missing'));
+      });
+      expect(mockStillMissingConfirm).toHaveBeenCalledTimes(1);
+      // ⚠️ The whole point of ADR-0019: answering the question navigates
+      // nowhere, closes nothing and moves no money.
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('"I\'ve found it" goes to the recovery flow, carrying the pricing mode', async () => {
+      mockStillMissingOpen = true;
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
+      const { getByText } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      await act(async () => {
+        fireEvent.press(getByText('I’ve found it'));
+      });
+      // The SAME handler the manage sheet uses — the escrow decision stays one
+      // human path, not a second one grown beside it.
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pathname: '/recover-post',
+          params: expect.objectContaining({ postId: 'p1' }),
+        }),
+      );
+      expect(mockStillMissingConfirm).not.toHaveBeenCalled();
     });
   });
 });
