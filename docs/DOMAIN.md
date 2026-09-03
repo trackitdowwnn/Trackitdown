@@ -1,7 +1,56 @@
 # Domain — How Trackitdown Works (Plain English)
 
-This is the business logic. When code and this document disagree, this
-document wins — fix the code or update this doc deliberately.
+This is the business logic.
+
+⚠️ **HOW TO USE THIS WHEN IT DISAGREES WITH THE CODE (rewritten 2026-09-03).**
+
+This file used to say *"When code and this document disagree, this document
+wins — fix the code or update this doc deliberately."* That rule was written
+for a document that was ahead of the code, and it stopped being true. A
+whole-app review on 2026-08-30 catalogued **18 contradictions**, all in one
+direction — features that shipped without the doc catching up — and concluded
+that applying the old rule literally *"would delete five shipped features and
+reinstate four removed controls"*. A precedence rule that would destroy working
+code is not a safety net; it is a loaded gun.
+
+The honest split:
+
+- **The SCHEMA is authoritative on what IS.** `supabase/migrations/` and the
+  RPC bodies are the state of the system. If this file describes a column,
+  status or gate that the schema does not have, this file is wrong.
+- **This file is authoritative on what was INTENDED, and why.** Where the code
+  does something this document forbids — money moving on a timer, a plate in a
+  push, a spotter's location shown to an owner — that is a bug in the code, and
+  this file is the reason it is a bug.
+
+So: a disagreement is a **finding to investigate**, never a licence to change
+either side automatically. Read the migration, decide which is wrong, fix that
+one, and date the change. The project records decisions superbly and completions
+badly; assume the code shipped and the doc was missed before assuming the
+reverse.
+
+### Last reconciled against the schema: 2026-09-03
+
+What was checked, and what moved:
+
+| Claim | Was | Is |
+|---|---|---|
+| Gallery evidence (ADR-0003) | "not yet built" in 4 places | shipped 2026-08-01; all four corrected |
+| `expired` post status | a leg on the lifecycle diagram | retired — nothing has ever set it |
+| `expires_at` | stamped +90 days, shown as a countdown | no longer stamped (finding #18) |
+| `features/moderation/` | in ARCHITECTURE's tree | has never existed |
+| `confirm-recovery` Edge Function | in ARCHITECTURE's tree | has never existed |
+| Moderator dashboard + audit log | described in S&T §7 as if present | neither is built; §7 now says so |
+| User blocking | absent from DOMAIN | shipped 2026-09-01 (ADR-0017) |
+| Withdrawing a sighting | absent | shipped 2026-09-03 |
+| The liveness check | absent | shipped 2026-09-03 (ADR-0019) |
+| Beta target 2026-08-26 | slip unrecorded | recorded in ROADMAP |
+
+Not everything the 2026-08-30 review predicted was still wrong: `borderStrong`
+had already been fixed on 2026-08-25, `TESTING.md`'s £50 bounty floor was
+corrected on 2026-09-02, and ROADMAP's deferred-features list was accurate. A
+reconciliation pass should expect to close some findings by verifying they are
+no longer true.
 
 ## Actors
 
@@ -52,7 +101,14 @@ BOUNTY listing:
 draft → (pay) → active → recovery_claimed → recovered (paid)
                  │            │
                  ├─ cancelled └─ recovered_no_spotter (refund)
-                 └─ expired (refund)
+                 │
+                 └─ ⚠️ NO `expired` LEG. This diagram showed one until
+                    2026-09-03 and nothing has ever taken it: passive expiry
+                    was cut deliberately (see "There is still no passive
+                    expiry" at the end of this file). `expired` is a retired
+                    enum value. A post leaves `active` only when a HUMAN
+                    acts — the owner cancels or claims recovery — and since
+                    ADR-0019 we ASK them, on a schedule, rather than waiting.
 
 NO-REWARD listing (ADR-0014) — no money leg, so no waypoint:
 draft → (pay fee) → active → recovered            (a sighting was credited)
@@ -112,6 +168,37 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
    pre-publish gate, nothing enters it; a live post that turns out to be
    abusive is **taken down** instead — set `cancelled` with the bounty refunded
    (the deactivate/refund path), see *Anti-abuse*.
+
+### Staying live is now a question, not a timer (ADR-0019, 2026-09-03)
+
+Nothing in the system used to require an owner to ever finish. A post sat
+`active` indefinitely, escrow sat `held` indefinitely, and a spotter who filed
+a real sighting had no recourse — the whole dispute mechanism is only reachable
+through owner-initiated closures. An owner who recovered off-platform and never
+opened the app again stranded a spotter's effort and real money, quietly.
+
+So the app **asks**. A post active and unconfirmed for **14 days** earns *"Is
+your {car} still missing?"*, re-asked every **7 days**, at most **3 times**.
+
+- *Still missing* resets the clock and the counter — answering earns a full
+  fresh cycle, not a shrinking allowance.
+- *I've found it* opens the existing recovery flow, unchanged.
+- Silence changes nothing at all.
+
+⚠️ **It moves no money and changes no status.** That is the point, and it is
+what keeps "every refund is a human act" true. The ask reaches the owner as a
+push AND as a banner on the listing itself — the banner is the door, because
+the person this asks about is by definition the one who has stopped opening the
+app.
+
+⚠️ **Dormancy is deliberately NOT built.** Closing a silent post to new
+sightings is the natural next step and ADR-0019 records the analysis rather
+than leaving it to be re-derived: it wants a new `post_status`, which would
+exclude dormant posts from 95 `status = 'active'` queries by construction —
+but `send_message` would then freeze the chat to the very owner we are trying
+to reach, and `plate_available` would release the plate of a car that is still
+missing. It waits until the telemetry sink has counted how many owners actually
+go silent through all three asks.
 
 ### Anti-abuse (what replaces the verification gate)
 
@@ -339,13 +426,28 @@ Rules that follow, and are not implementation details:
 
 ## Sighting rules
 
+- **A spotter can take a report back, but only before anyone has ruled on it**
+  (shipped 2026-09-03, review finding #21 — sightings were create-only until
+  then, and someone who reported the wrong car had no way to say so). The
+  status becomes `withdrawn`; it is never deleted.
+  - **Only from `unverified`.** After the owner has ruled, withdrawing would
+    erase their verdict — and on `credited`, one that moved money.
+  - It disappears from the owner's list and the public map, and stays on the
+    spotter's own record as *"You took this back"* — their act, not a verdict.
+  - It does **not** free a rate-limit slot: the rolling 24h count is by
+    `created_at` regardless of status, so file-withdraw-file-withdraw buys
+    nothing.
+  - `sightings_reported` decreases with it. That counter is the spotter's
+    standing as an OWNER sees it, so a retracted report must not inflate it.
 - A sighting = photo(s) + auto-captured GPS location + timestamp + optional
   note. Location and time come from the device at capture; **at least one
   photo must be a live in-app capture** — that capture is the evidence a
   spotter was actually there, and the only photos that carry location/time
   evidence weight.
-- **Gallery photos: supplementary only (ADR-0003, approved 2026-07-15;
-  build pending — the app is camera-only until it ships).** A spotter who
+- **Gallery photos: supplementary only (ADR-0003, approved 2026-07-15,
+  SHIPPED 2026-08-01 in `20260801180000_sighting_photo_source.sql`).** This
+  line read "build pending — the app is camera-only until it ships" for
+  thirty-three days after it shipped. A spotter who
   photographed the car before opening the app may attach gallery photos as
   context, but: the ≥1-live-capture rule is enforced server-side in
   `create_sighting`; every photo carries a `source` flag; gallery photos are
@@ -488,10 +590,20 @@ Rules that follow, and are not implementation details:
 
 ## Chat
 
+- **Either party can block the other** (shipped 2026-09-01, ADR-0017 — the App
+  Store's guideline 1.2 expects UGC plus private messaging to offer report
+  **and** block, and this was the one genuine submission blocker in the
+  2026-08-30 review). Blocking is per-person, not per-thread: it is offered
+  from the thread because a client never holds the other party's uid, and
+  `block_user` takes a *thread* id for exactly that reason. Lifted from
+  Settings. The composer is disabled on both sides — a blocked party can
+  plainly tell they were blocked, and ADR-0017 was amended to say so after
+  first claiming otherwise.
 - A chat thread opens between owner and a spotter only after that spotter
   has reported a sighting on the owner's post. No cold DMs.
 - One thread per (post, spotter) pair. When the post leaves `active`
-  (recovered/expired/removed), its threads become READ-ONLY: history stays
+  (recovered / cancelled — never `expired`, which nothing sets), its threads
+  become READ-ONLY: history stays
   visible to both participants, new sends are rejected server-side.
   (Approved 2026-07-15 with the chat feature.)
 - ⚠️ **Chat NO LONGER carries an automatic first message** (owner decision,

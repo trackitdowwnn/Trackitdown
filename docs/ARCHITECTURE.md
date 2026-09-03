@@ -11,16 +11,24 @@ in one folder.
 trackitdown/
 ├── app/                      # Expo Router route files ONLY (thin wrappers)
 ├── src/
-│   ├── features/
+│   ├── features/            # ⚠️ RECONCILED 2026-09-03 against `ls src/features`
 │   │   ├── auth/             # sign up, sign in, session, onboarding
-│   │   ├── vehicles/         # posting a stolen car, verification, post detail
-│   │   ├── sightings/        # reporting + viewing sightings
-│   │   ├── search-map/       # map + list search of active stolen cars
-│   │   ├── notifications/    # push registration, alert radius settings
-│   │   ├── payments/         # bounty escrow, payouts, Stripe Connect UI
 │   │   ├── chat/             # owner ↔ spotter messaging (Supabase Realtime)
+│   │   ├── garage/           # saved cars, and posting one in a couple of taps
+│   │   ├── legal/            # terms / privacy / safety, in-app and exported
+│   │   ├── notifications/    # push registration, alerts, notification centre
+│   │   ├── payments/         # bounty escrow, payouts, Stripe Connect UI
+│   │   ├── permissions/      # device permission state (location, camera, push)
 │   │   ├── profile/          # user profile, reputation, badges
-│   │   └── moderation/       # admin review queues (verification, reports)
+│   │   ├── search-map/       # map + list search of active stolen cars
+│   │   ├── sightings/        # reporting + viewing sightings
+│   │   ├── vehicles/         # posting a stolen car, post detail, recovery
+│   │   └── watchlist/        # saved posts and the named lists they file into
+│   │                         # ⚠️ NO `moderation/`. This tree listed one until
+│   │                         #   2026-09-03 and it has never existed — there is
+│   │                         #   no role, no queue reader and no route (review
+│   │                         #   finding #22). OPERATIONS.md §1–5 is the only
+│   │                         #   thing that reads those tables, by hand.
 │   └── shared/
 │       ├── ui/               # design-system components (Button, Card, …)
 │       ├── theme/            # tokens: colors, spacing, typography, radii
@@ -32,8 +40,14 @@ trackitdown/
 │                             #   (phases → steps; powers stepper flows)
 ├── supabase/
 │   ├── migrations/           # SQL migrations (source of truth for schema)
-│   └── functions/            # Edge Functions (stripe-webhook, notify-spotters,
-│                             #   confirm-recovery, release-payout, …)
+│   └── functions/            # Edge Functions — 19. The money ones are
+│                             #   stripe-webhook, create-payment-intent,
+│                             #   refund-recovery, release-payout and
+│                             #   release-held-refunds (the ONLY scheduled
+│                             #   process in the system — OPERATIONS §7).
+│                             #   ⚠️ `confirm-recovery` was listed here until
+│                             #   2026-09-03 and has never existed; recovery is
+│                             #   claim_recovery (SQL) + refund-recovery.
 ├── docs/                     # the documents referenced by CLAUDE.md
 └── .claude/agents/           # Claude Code subagents
 ```

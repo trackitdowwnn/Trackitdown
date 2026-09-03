@@ -336,6 +336,28 @@ having anything to say.
 
 ## Beta target — 2026-08-26 (set by the 2026-08-05 review)
 
+> ⚠️ **THE DATE PASSED. Recorded 2026-09-03, eight days late, because it was
+> not recorded at the time — which the 2026-08-30 whole-app review called out
+> as its single most important finding.** No beta has been run and no tester
+> has seen the app.
+>
+> **Items 1 and 2 of the critical path below are DONE.** The telemetry sink
+> registered on 2026-08-30; the dispute door landed 2026-09-01. Item 3 — "build
+> and hand it to ten people" — has not started, and nothing technical is
+> blocking it.
+>
+> What the last week actually went on, honestly: closing the review's findings.
+> User blocking (ADR-0017), the £5 fee separation (ADR-0018), the abandoned-post
+> liveness check (ADR-0019), the post↔vehicle link, make/model canonicalisation,
+> withdrawing a sighting, and a run of test and hygiene work. All of it real,
+> none of it item 3.
+>
+> The owner's stated position on 2026-08-31, kept here so it is not mistaken
+> for drift: *"Nothing — I just want to keep building."* The beta is deferred
+> by choice, not by a blocker. The remaining hard gates are Tier 0 and none of
+> them is code: a domain, a mailbox, and `account.updated` enabled by hand in
+> the Stripe dashboard.
+
 Ten testers, one city, closed track. **Run it on Stripe TEST MODE**: testers use
 test cards, the full escrow → recover → payout loop runs end to end, and no real
 money is held. That single choice defers all three items that have been sitting
@@ -350,15 +372,18 @@ The critical path, in order:
 1. ~~**Feed photos in production**~~ — **DONE 2026-08-06**, see the Search item
    above. This was the "nothing else matters while it's broken" item; it is no
    longer broken, and item 2 is now the head of the path.
-2. **Spotter "My reports" surface + the dispute door**, then **one telemetry
-   sink**. Ship together: 70 funnel events are already instrumented and every
-   one of them dies in the Metro console, so the day testers arrive is too late
-   to start measuring.
+2. ~~**Spotter "My reports" surface + the dispute door**, then **one telemetry
+   sink**~~ — **DONE.** The sink registered 2026-08-30 (86 events, not 70, and
+   they no longer die in the Metro console); the dispute door landed
+   2026-09-01, so `/sighting-dispute` is reachable without a push.
 3. **Build and hand it to ten people.** Then stop and read what comes back
-   before writing another line.
+   before writing another line. ⚠️ **STILL THE HEAD OF THE PATH, and the only
+   item on it.** Nothing technical blocks it.
 
-NOT on the path, deliberately: user blocking (submission blocker, not a beta
-one), the moderator dashboard (a console is fine for ten testers), and design
+NOT on the path, deliberately: ~~user blocking~~ (shipped 2026-09-01 anyway —
+ADR-0017 — because it was the one true App Store submission blocker), the
+moderator dashboard (a console is fine for ten testers, and OPERATIONS.md §1–5
+is that console), and design
 passes on the five screens that have never had one — testers will point at the
 two that actually matter, and guessing at the other three is the trap a
 no-deadline project sets.
@@ -369,8 +394,9 @@ no-deadline project sets.
 - **Multi-region / multi-currency** — UK + GBP only. No i18n scaffolding.
 - **Gallery-ONLY sightings** — every sighting requires ≥1 live in-app
   capture, permanently (anti-fraud). Gallery photos as labelled
-  SUPPLEMENTARY evidence were approved 2026-07-15 (ADR-0003) but are not
-  built yet — see "Deferred from built v1 features".
+  SUPPLEMENTARY evidence (ADR-0003, approved 2026-07-15) **shipped
+  2026-08-01** in `20260801180000_sighting_photo_source.sql`. The gallery-only
+  prohibition is what remains permanent, and `create_sighting` enforces it.
 - **Live tracking / navigation toward a sighted car** — never, at any
   version. This is a safety rule, not a scope decision.
 - **Automatic ANPR / plate-recognition scanning** — big legal/privacy
@@ -402,11 +428,12 @@ no-deadline project sets.
   "received" needs a lighter signal than a reply.
 - **Offline queueing for sighting reports** — v1 is retry-in-flow only; a
   report drafted with no signal is not persisted across app restarts.
-- **Gallery photos as supplementary sighting evidence** (ADR-0003) —
-  migration adding `sighting_photos.source` + the ≥1-live-capture rule in
-  `create_sighting`, gallery pick/upload with EXIF stripped, owner-facing
-  "added from photo library" labels, tests, security review. Decision is
-  recorded; nothing is built.
+- ~~**Gallery photos as supplementary sighting evidence** (ADR-0003)~~ —
+  **SHIPPED 2026-08-01**, `20260801180000_sighting_photo_source.sql`:
+  `sighting_photos.source`, the ≥1-live-capture rule in `create_sighting`, and
+  the rule that a gallery photo may carry NO lat/lng (payout blindness by
+  construction). This entry said "nothing is built" for thirty-three days
+  after it was, in the section whose job is to say what is not built.
 - ~~**watched-post-recovered push**~~ — **SHIPPED.** Corrected 2026-08-05
   after a review found this entry still reading "unbuilt" for the third time.
   It is built and wired: `_shared/recoveryAnnounce.ts` exports

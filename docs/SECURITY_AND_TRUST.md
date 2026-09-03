@@ -442,7 +442,8 @@ commenting standards.
 
 - No gallery-ONLY sightings: every sighting requires ≥1 live in-app capture
   + server timestamp. Gallery photos are permitted ONLY as labelled
-  supplementary evidence per ADR-0003 (approved 2026-07-15, not yet built),
+  supplementary evidence per ADR-0003 (approved 2026-07-15, SHIPPED
+  2026-08-01 — this said "not yet built" until 2026-09-03),
   gated on the server-enforced ≥1-live-capture rule in `create_sighting`;
   they carry no location/time evidence weight and never feed payout.
 - Rate limits: 3 sightings per spotter per post per day; posting requires
@@ -541,8 +542,29 @@ commenting standards.
 
 ## 7. Moderation
 
-- Moderator dashboard (v1: a simple internal Expo web or Next.js page) has
-  queues for: ownership verification, flagged sightings/photos, disputes,
-  and collusion flags.
-- Every moderator action writes an audit log row (who, what, when, why).
-- Any user can flag a post, sighting, photo, or message in two taps.
+⚠️ **RECONCILED 2026-09-03.** The first two bullets below were written in the
+future tense and read as present tense for months. Neither is built. The
+section now says what exists, and what does not, in that order — because a
+security document describing controls that do not run is worse than one that
+admits the gap.
+
+**What exists:**
+
+- Any user can flag a post, sighting, photo, or message in two taps. Those
+  flags land in `post_flags` and `flags`.
+- The queues are readable **by hand**, via the SQL in `OPERATIONS.md` §1–5.
+  ⚠️ That file is the ONLY reader: no code anywhere reads `bug_reports`,
+  `post_flags`, `flags`, `refund_disputes`, `payout_reviews`,
+  `onboarding_events` or `telemetry_events`.
+- Collusion holds (§4) are resolved by hand in the Supabase console —
+  `approved` unblocks the next payout run, `rejected` keeps the escrow held.
+
+**What does NOT exist** (review finding #22):
+
+- ⚠️ **No moderator dashboard**, and no `features/moderation/` — no role, no
+  claim, no queue screen, no route. The internal Expo/Next page described here
+  was never started.
+- ⚠️ **No moderator audit log.** Nothing records who resolved what, when, or
+  why. A console action leaves no trace beyond the row it changed.
+- No ownership-verification queue — verification itself was removed by
+  ADR-0007, so there is nothing to queue.
