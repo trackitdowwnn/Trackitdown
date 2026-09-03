@@ -181,6 +181,32 @@ describe('buildCreatePostParams', () => {
     expect(params.p_verification_path).toBeNull(); // proof-of-ownership removed — always null
   });
 
+  // ⚠️ Review finding #17. posts.vehicle_id existed from 2026-08-01 with
+  // NOTHING writing it, so delete_vehicle's "refuses while this car has a live
+  // listing" guard never once fired: an owner could delete a car that was
+  // currently reported stolen with money still in escrow. This is the client
+  // half of arming it.
+  describe('the garage link', () => {
+    it('carries the vehicle a prefilled post came from', () => {
+      const params = buildCreatePostParams(
+        readyAnswers({ fromVehicleId: 'aaaaaaaa-0000-0000-0000-00000000000a' }),
+        { photoUrls: ['a', 'b', 'c'] },
+      );
+
+      expect(params.p_vehicle_id).toBe('aaaaaaaa-0000-0000-0000-00000000000a');
+    });
+
+    it('sends null for a post typed from scratch', () => {
+      // The overwhelmingly common case, and it must stay a value rather than
+      // an absent key — PostgREST sends named arguments, and an omitted one
+      // would take the SQL default rather than being explicit.
+      const params = buildCreatePostParams(readyAnswers(), { photoUrls: ['a', 'b', 'c'] });
+
+      expect(params.p_vehicle_id).toBeNull();
+      expect('p_vehicle_id' in params).toBe(true);
+    });
+  });
+
   it('maps the description step to desc_recognise (blank → null)', () => {
     const uploads = { photoUrls: ['a', 'b', 'c'] };
     expect(

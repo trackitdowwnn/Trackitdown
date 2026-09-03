@@ -148,6 +148,15 @@ const submitAnswersSchema = z.object({
   // and no screen to fix it on — a dead end with no explanation. Unreachable
   // through the slider either way.
   bountyAmountPence: z.number().int().min(MIN_BOUNTY_PENCE).max(MAX_BOUNTY_PENCE),
+  /**
+   * The garage vehicle this wizard was prefilled from, if any.
+   *
+   * `.optional()` and never required: the overwhelming majority of posts are
+   * typed from scratch and carry nothing here, and a post must NEVER fail to
+   * submit over provenance. Set by buildPrefilledPostFlow; the server checks
+   * ownership and ignores an id that is not the caller's.
+   */
+  fromVehicleId: z.string().optional(),
 });
 
 export type SubmitReadyAnswers = z.infer<typeof submitAnswersSchema>;
@@ -232,6 +241,15 @@ export function buildCreatePostParams(
     // Proof-of-ownership (V5C) collection was removed from the app; create_post
     // treats the path as optional, so it is always null now.
     p_verification_path: null,
+    // ⚠️ THE LINK THAT WAS NEVER WIRED (review #17). posts.vehicle_id has
+    // existed since 2026-08-01 and nothing has ever written it, so
+    // delete_vehicle's "refuses while this car has a live listing" guard has
+    // never once fired — an owner could delete a car that was currently
+    // reported stolen with money still in escrow.
+    //
+    // Provenance only: nothing displays it, and the post keeps its own full
+    // snapshot, so deleting the garage car later cannot alter this listing.
+    p_vehicle_id: answers.fromVehicleId ?? null,
   };
 }
 

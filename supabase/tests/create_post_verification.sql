@@ -105,8 +105,15 @@ begin
   if v_post.owner_id <> '22222222-2222-2222-2222-222222222222' then
     raise exception 'CHECK 1 FAILED: owner_id not pinned to caller, got %', v_post.owner_id;
   end if;
-  if v_post.expires_at is null or v_post.expires_at <= now() then
-    raise exception 'CHECK 1 FAILED: expires_at should be ~90d in the future, got %', v_post.expires_at;
+  -- ⚠️ INVERTED ON 2026-09-02 (review finding #18). This asserted expires_at was
+  -- ~90 days in the future, and it passed for two months while being the wrong
+  -- question: NOTHING ever read that date for a decision. Passive expiry was
+  -- cut deliberately (DOMAIN.md), so the day never arrived and the listing
+  -- never closed — meanwhile post detail counted down to it in front of an
+  -- owner whose car was still missing. create_post no longer stamps it, and
+  -- this is now what stops the stamp coming back.
+  if v_post.expires_at is not null then
+    raise exception 'CHECK 1 FAILED: create_post stamped expires_at = %. Nothing acts on that date, so writing it puts a countdown to nothing in front of an owner. Liveness is the ADR-0019 question instead', v_post.expires_at;
   end if;
   -- Plate normalised to upper-case.
   if v_post.plate <> 'LT70 ABC' then

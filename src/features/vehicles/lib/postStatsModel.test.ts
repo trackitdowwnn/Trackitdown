@@ -1,5 +1,5 @@
 /**
- * WHAT:  Tests the stats arithmetic — listing age, days remaining, and the
+ * WHAT:  Tests the stats arithmetic — listing age and the
  *        sparse→dense→normalised sparkline.
  * WHY:   Every case here is a real listing, and all of them are invisible
  *        until they are wrong. A listing posted this morning (age 0), one
@@ -12,7 +12,6 @@
  */
 
 import {
-  daysRemaining,
   SPARKLINE_DAYS,
   toSparkline,
   wholeDaysBetween,
@@ -44,21 +43,11 @@ describe('wholeDaysBetween', () => {
   });
 });
 
-describe('daysRemaining', () => {
-  it('rounds UP, so a listing with 6 hours left still has a day', () => {
-    expect(daysRemaining('2026-08-07T20:00:00Z', NOW)).toBe(1);
-  });
-
-  // A draft has no clock. "0 days left" would read as "about to be deleted"
-  // to someone whose car is still missing; the screen omits the line instead.
-  it('is null when there is no expiry at all', () => {
-    expect(daysRemaining(null, NOW)).toBeNull();
-  });
-
-  it('floors an expired listing at 0 rather than going negative', () => {
-    expect(daysRemaining('2026-08-01T00:00:00Z', NOW)).toBe(0);
-  });
-});
+// `daysRemaining` and its three tests were deleted on 2026-09-02 with the
+// countdown they served (review finding #18): expires_at is stamped at +90
+// days and nothing has ever acted on it, so the line counted down to a date
+// that never arrives. Well-tested arithmetic over a number that means nothing
+// is still a lie, and the tests made it look maintained.
 
 describe('toSparkline', () => {
   it('returns nothing at all when there are no sightings', () => {

@@ -141,25 +141,32 @@ describe('a listing with nothing yet — the common case', () => {
     expect(queryByText('Conversations')).toBeNull();
   });
 
-  it('tells them how long it has been live and how long is left', async () => {
+  it('tells them how long it has been live', async () => {
     const { getByText, getByLabelText } = await render(<PostStatsScreen postId="p1" />);
 
     // The age is a stat-band cell now (number over label), not a sentence —
     // so the spoken label is what a reader actually gets.
     expect(getByLabelText('Live for 12 days')).toBeTruthy();
     expect(getByText('days live')).toBeTruthy();
-    expect(getByText(/78 days left/)).toBeTruthy();
   });
 
-  // A draft never went live, so it has no clock. "0 days left" would read as
-  // "about to be deleted" to someone whose car is still missing.
-  it('omits the countdown entirely when there is no expiry', async () => {
-    mockState = { status: 'ready', stats: stats({ expiresAt: null }) };
+  // ⚠️ THE COUNTDOWN IS GONE, AND MUST NOT COME BACK (review finding #18).
+  // create_post stamps expires_at at +90 days and nothing has ever acted on it
+  // — passive expiry was cut deliberately — so "78 days left on this listing"
+  // counted down to a date that never arrives, on a screen belonging to someone
+  // whose car is still missing. The Terms already say the true thing: a listing
+  // stays live until you cancel it or the car is recovered.
+  //
+  // The stats payload still CARRIES expiresAt (it mirrors the RPC, and the
+  // schema pin depends on that). This asserts nothing renders it.
+  it('⚠️ never shows a countdown, even with an expiry in the payload', async () => {
+    mockState = { status: 'ready', stats: stats({ expiresAt: '2026-10-24T00:00:00Z' }) };
 
     const { queryByText, getByLabelText } = await render(<PostStatsScreen postId="p1" />);
 
     expect(getByLabelText('Live for 12 days')).toBeTruthy();
     expect(queryByText(/days left/)).toBeNull();
+    expect(queryByText(/left on this listing/)).toBeNull();
   });
 
   // Degrade by omission (profile/REFERENCE_SPEC): the band drops the cell it

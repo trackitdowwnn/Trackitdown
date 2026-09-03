@@ -1,8 +1,13 @@
 /**
  * WHAT:  PostStatsScreen — what has actually happened to ONE of the owner's
  *        listings: how many spotters the alert reached, how long it has been
- *        live and how long is left, the sightings split by status, the per-day
- *        trend, and whether anyone has been in touch.
+ *        live, the sightings split by status, the per-day trend, and whether
+ *        anyone has been in touch.
+ *
+ *        NO COUNTDOWN. "N days left on this listing" was here until 2026-09-02
+ *        and was a lie: expires_at is stamped at +90 days and nothing acts on
+ *        it (review #18). Liveness is now a question the owner is ASKED, on the
+ *        listing itself — ADR-0019 — rather than a clock nobody set.
  * WHY:   The owner can see their post and their sightings, but nothing told
  *        them whether the thing is WORKING. All of this already existed across
  *        four tables and had never been assembled.
@@ -55,7 +60,7 @@ import { EmptyState, ErrorState, Screen } from '@/shared/ui';
 import { StatBand, type StatBandCell } from '../components/StatBand';
 import { StatsSparkline } from '../components/StatsSparkline';
 import { usePostStats } from '../hooks/usePostStats';
-import { daysRemaining, toSparkline, wholeDaysBetween } from '../lib/postStatsModel';
+import { toSparkline, wholeDaysBetween } from '../lib/postStatsModel';
 
 export interface PostStatsScreenProps {
   postId: string;
@@ -182,7 +187,6 @@ export function PostStatsScreen({ postId }: PostStatsScreenProps) {
   }
 
   const daysLive = wholeDaysBetween(stats.createdAt, now);
-  const left = daysRemaining(stats.expiresAt, now);
   const bars = toSparkline(stats.sightingsByDay, now);
 
   // Degrade by omission: only the cells that have something to say. The alert
@@ -233,14 +237,21 @@ export function PostStatsScreen({ postId }: PostStatsScreenProps) {
 
       <Section first>
         <StatBand cells={cells} />
-        {/* The deadline nobody is otherwise shown. Omitted entirely when there
-            is no clock (a draft never went live) — "0 days left" would read as
-            "about to be deleted" to someone whose car is still missing. */}
-        {left === null ? null : (
-          <Text style={styles.quiet}>
-            {left === 1 ? '1 day left on this listing' : `${left} days left on this listing`}
-          </Text>
-        )}
+        {/* ⚠️ "N days left on this listing" WAS HERE, AND IT WAS A LIE.
+            create_post stamps expires_at at +90 days and nothing has ever acted
+            on it: passive expiry was cut deliberately ("we are cutting the
+            PROMISE, not building the machine"), so the date never arrives, the
+            listing never closes, and the countdown counted down to nothing.
+
+            The Terms already say the true thing — "A listing stays live until
+            you cancel it or the vehicle is recovered. We do not close it
+            automatically." — and legalContent carries a note calling this
+            display a live bug tracked separately. This is that fix.
+
+            An owner IS now asked, on a real schedule, whether the car is still
+            missing (ADR-0019). That is the honest version of this line, it
+            lives on the listing itself, and a second clock beside it —
+            counting to a date that does not exist — would undo it. */}
       </Section>
 
       <Section title="Sightings">

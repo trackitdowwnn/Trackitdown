@@ -202,6 +202,25 @@ describe('prefilled answers', () => {
   });
 });
 
+// ⚠️ Review finding #17. posts.vehicle_id existed from 2026-08-01 and NOTHING
+// wrote it, so delete_vehicle's "refuses while this car has a live listing"
+// guard never fired once — an owner could delete a car that was currently
+// reported stolen with money in escrow. This is where the link is set.
+describe('the garage link', () => {
+  it('records which saved car the post was prefilled from', () => {
+    const v = vehicle();
+    expect(build(v).initialAnswers.fromVehicleId).toBe(v.id);
+  });
+
+  it('⚠️ survives expanding the wizard to edit everything', () => {
+    // The branch that would break silently. Expanding is the escape hatch for
+    // correcting a colour or a photo — it must not quietly unlink the post
+    // from the car, because provenance is not a value the owner chose.
+    const v = vehicle();
+    expect(build(v, true).initialAnswers.fromVehicleId).toBe(v.id);
+  });
+});
+
 describe('Edit keeps every prefilled value changeable', () => {
   it('expanded restores the FULL flow with the same answers', () => {
     const v = vehicle();

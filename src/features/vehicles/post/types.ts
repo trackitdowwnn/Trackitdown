@@ -82,6 +82,16 @@ export interface PostACarAnswers extends VehicleAnswers {
    * one place that turns 'fee' into the null the server actually stores.
    */
   bountyAmountPence: number;
+  /**
+   * The garage vehicle this wizard was prefilled from, or undefined for a post
+   * typed from scratch.
+   *
+   * NOT a question anyone is asked — no step reads or writes it. It rides the
+   * answers because that is what survives the whole wizard, including the
+   * expanded "edit everything" branch, and buildCreatePostParams is the one
+   * place that turns it into the RPC's p_vehicle_id.
+   */
+  fromVehicleId?: string;
 }
 
 /** Which of the two pricing modes a listing uses (ADR-0014). */
@@ -124,6 +134,17 @@ export interface CreatePostParams {
    *  already-uploaded public URL (own-folder), paired with its description. */
   p_distinctive_features: { photo_url: string; description: string }[];
   p_verification_path: string | null;
+  /**
+   * PROVENANCE: the garage vehicle this post was prefilled from, or null for a
+   * post typed from scratch.
+   *
+   * Never displayed. It arms `delete_vehicle`'s active-post guard and
+   * `list_my_vehicles.is_currently_posted`, both of which were dead code from
+   * 2026-08-01 to 2026-09-02 because nothing ever wrote the column — so an
+   * owner could delete a car that was currently reported stolen with money in
+   * escrow. The server IGNORES an id the caller does not own.
+   */
+  p_vehicle_id: string | null;
 }
 
 /** What create_post returns on success. */
