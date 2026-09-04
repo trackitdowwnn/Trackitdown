@@ -103,9 +103,20 @@ rounded-top sheet overlapping the hero.)
 (`estimateRefundPence`, `src/shared/lib/money.ts`) exist exactly once. The quoted figure is an ESTIMATE;
 the post-refund toast shows the server's exact amount.
 
-**Share / flag** — share via React Native's `Share` (`lib/postShare.ts`,
-placeholder URL, `// TODO` deep links). Flag is real: `ConfirmDialog` →
-`flag_post` RPC → `post_flags` (`20260730110000_post_flags.sql`).
+**Share / flag** — share via React Native's `Share` (`lib/postShare.ts`). The
+payload is the car: colour, make/model, plate and last-seen area.
+
+⚠️ **It carries NO link, and that is current fact rather than an unfinished
+TODO.** Until 2026-09-04 every share appended `https://trackitdown.app/post/<id>`
+— a domain we do not own, resolving to a browser error. The recipient of a
+stolen-car share is a stranger being asked to help; handing them a broken link
+spends exactly the trust the share was asking for, so a dead link is strictly
+worse than none. `shared/lib/publicSite.ts` now owns the question, returns
+`null`, and the builder omits the URL and says "Reported on Trackitdown."
+instead — attribution without a promise. A tripwire test fails the day
+`PUBLIC_WEB_ORIGIN` is set, to force whoever sets it to confirm something
+actually serves `/post/<id>` first. Flag is real: `ConfirmDialog` → `flag_post`
+RPC → `post_flags` (`20260730110000_post_flags.sql`).
 
 **Data** — one `get_post_detail(p_post_id)` RPC (SECURITY DEFINER). **SAFETY:**
 it gates visibility itself (RLS is bypassed) — active posts are public; the
