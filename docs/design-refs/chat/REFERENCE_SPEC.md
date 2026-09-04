@@ -16,9 +16,26 @@ LINKS: ./GAP_ANALYSIS.md; src/features/chat/screens/ChatThreadScreen.tsx;
 ## Sources & confidence
 
 ⚠️ **NO SCREENSHOTS.** The owner chose on 2026-08-29 to proceed on web research
-alone, as with `alerts/`, `report-bug/` and `inbox/`. Every measurement of
-Airbnb below is **reported** or **inferred**; the pt values are OUR translation
-of a described structure, never their numbers.
+alone, as with `alerts/`, `report-bug/` and `inbox/`, and chose the same again
+on 2026-09-04 for the WhatsApp pass. Every measurement of another product below
+is **reported** or **inferred**; the pt values are OUR translation of a described
+structure, never their numbers.
+
+⚠️ **A SECOND REFERENCE PRODUCT LANDED 2026-09-04**: **WhatsApp**, at the owner's
+request, scoped to the conversation and the Messages list. It is not an Airbnb
+screen and the two disagree about where a timestamp lives and what a day
+separator is. Where they conflict, **WhatsApp wins for the bubble's meta and the
+day separator**; everything else in this file is still measured against Airbnb.
+Rows it supersedes are struck through rather than deleted, so a reader can tell
+a reversal from a gap. The full record is in `GAP_ANALYSIS.md` § "Second pass".
+
+⚠️ **ITS TRADE DRESS IS EXCLUDED ON THE USUAL BASIS** — the green above all, plus
+its typeface and icon set. ADR-0006 makes this app monochrome and the owner
+confirmed it holds. We take structure, rhythm, anatomy, motion feel. Note what
+that removes: after the green and the tail (owner's call), and with peer avatars
+permanently impossible, **most of what makes WhatsApp recognisable was off the
+table before the pass began** — which is why it amounts to four changes and a
+long list of noes rather than a redesign.
 
 ⚠️ **THE ANALOGUE IS CLOSE, WHICH IS THE TRAP.** Airbnb's thread is a near-twin
 in structure — two parties, one listing, one conversation — and diverges in the
@@ -130,7 +147,7 @@ a stain, which is most of what "the bubbles look plain" meant.
 | Photo and video in messages (2025) | `ChatMessage` has no attachment field, and the moderation, storage and safety consequences are a product decision, not a design pass's |
 | Threaded replies, edit, unsend | All need schema |
 | Reactions | Same, and the register is wrong — this is not a chat with a friend |
-| Read receipts per message | We have one thread-level marker and render one honest "Seen" |
+| Read receipts per message | We have one thread-level marker and render one honest "Seen". ⚠️ Re-examined 2026-09-04 for WhatsApp's double tick and refused again, on stronger grounds: a glyph would be legal under the never-colour-alone rule, but a tick on one bubble and not its neighbours asserts a PER-MESSAGE fact the schema does not carry. The word is the only true rendering |
 | Typing indicators | Airbnb has none either, and it would mean a realtime channel the feature deliberately avoids |
 | Phone-number masking | A real idea, and out of scope for a design pass — flagged for its own look |
 | A "Details" text link | The car photo already is the link; a word beside it would be a second one |
@@ -143,4 +160,6 @@ a stain, which is most of what "the bubbles look plain" meant.
 | `sizes.threadHeaderTile` | 44 | The car in a thread header. Not `inboxRowTile` (64): a list row uses the picture to tell conversations apart, a thread is already inside one, and it should match the 44pt controls either side |
 | `sizes.safetyStripRow` | 28 | The collapsed safety row. Replaces `touchTarget - 2 * spacing.sm`, a derivation that silently stopped meaning anything when the padding changed |
 | `blockPaddingTop()` | 4 / 12 / 0 | Not a token but the same kind of decision: within-run, between-run, and after a separator that already pads itself |
-| (no new radii, colour or type) | — | The existing scale covers everything; the incoming bubble uses `surface` + the standard hairline |
+| `colors.textOnPrimaryMuted` | `#949494` / `#5E5E5E` | ⚠️ **Added 2026-09-04 for the in-bubble timestamp.** `textOnPrimary` was the only sanctioned ink on a `primary` fill, and at ~17:1 it makes metadata shout as loudly as the message; every other surface has `textSecondary` for exactly this. Cannot be one value — `primary` inverts between schemes. **Not an opacity**: white at `opacity.inactive` over `#1A1A1A` is ~3.4:1 and at 0.6 is ~4.30:1, both under the text floor, and `colors.test.ts` cannot re-derive a runtime alpha. Measured 5.74:1 / 5.79:1 |
+| `formatClock()` | — | Not a token, but the same kind of decision: the inbox row was about to be the THIRD hand-rolled copy of one `toLocaleTimeString` call. Extracted to `shared/lib/dateTimeLabel.ts`; `formatDateTimeLabel` and the bubble's meta both consume it, and a test pins that they agree |
+| (no new radii or type) | — | The existing scale covers everything; the incoming bubble and the day chip both use `surface` + the standard hairline |

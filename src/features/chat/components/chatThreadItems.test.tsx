@@ -51,7 +51,7 @@ describe('⚠️ what a screen reader hears on a bubble', () => {
   // happen to lead a group.
   it('carries the time on every bubble, not just the group leader', async () => {
     const { getByTestId } = await render(
-      <MessageBubble message={message()} mine={false} showTime={false} otherName="Sam" />,
+      <MessageBubble message={message()} mine={false} otherName="Sam" />,
     );
 
     const label = getByTestId('bubble-m1').props.accessibilityLabel as string;
@@ -62,7 +62,7 @@ describe('⚠️ what a screen reader hears on a bubble', () => {
 
   it('names the speaker as "You" on my own message', async () => {
     const { getByTestId } = await render(
-      <MessageBubble message={message({ senderId: 'me' })} mine showTime={false} />,
+      <MessageBubble message={message({ senderId: 'me' })} mine />,
     );
 
     expect(getByTestId('bubble-m1').props.accessibilityLabel).toContain('You: ');
@@ -77,7 +77,7 @@ describe('MessageBubble', () => {
       <MessageBubble
         message={theirs}
         mine={false}
-        showTime={false}
+       
         otherName="Sam"
         onReport={onLongPress}
       />,
@@ -92,7 +92,7 @@ describe('MessageBubble', () => {
       <MessageBubble
         message={message({ id: 'm2', senderId: 'me' })}
         mine
-        showTime={false}
+       
         onReport={onLongPress}
       />,
     );
@@ -100,19 +100,44 @@ describe('MessageBubble', () => {
     expect(onLongPress).not.toHaveBeenCalled();
   });
 
-  it('shows the time caption when the group rule says so', async () => {
-    const { getByText } = await render(
-      <MessageBubble message={message()} mine={false} showTime />,
-    );
+  // ⚠️ REPLACES 'shows the time caption when the group rule says so' AND
+  // 'hides the time caption otherwise' (2026-09-04). Both drove a `showTime`
+  // prop that no longer exists: the time moved INSIDE the bubble and every
+  // bubble now carries its own, so there is no longer a state in which one is
+  // hidden. `messageGroups` still computes showTime as the run-breaker; it just
+  // draws nothing, which is why messageGroups.test.ts is untouched.
+  it('every bubble carries its own time, whatever the grouping says', async () => {
     // 12:00Z renders in device-local time — assert presence, not the value.
-    expect(getByText(/\d{1,2}[:.]\d{2}/)).toBeTruthy();
+    const first = await render(<MessageBubble message={message()} mine={false} groupPos="first" />);
+    expect(first.getByText(/\d{1,2}[:.]\d{2}/)).toBeTruthy();
+
+    // The case that used to render nothing: a continuation deep inside a run.
+    const middle = await render(
+      <MessageBubble message={message({ id: 'm3' })} mine={false} groupPos="middle" />,
+    );
+    expect(middle.getByText(/\d{1,2}[:.]\d{2}/)).toBeTruthy();
   });
 
-  it('hides the time caption otherwise', async () => {
-    const { queryByText } = await render(
-      <MessageBubble message={message({ id: 'm3' })} mine={false} showTime={false} />,
-    );
-    expect(queryByText(/\d{1,2}[:.]\d{2}/)).toBeNull();
+  // ⚠️ THE THREAD-LEVEL MARKER MUST NOT BE RENDERED AS A PER-MESSAGE ONE. It
+  // rides the time rather than replacing it, and it stays a WORD — a tick on
+  // one bubble and not its neighbours would assert a per-message fact the data
+  // does not carry.
+  it('wears "Seen" beside its time, and only where it is set', async () => {
+    const seen = await render(<MessageBubble message={message()} mine seen />);
+    expect(seen.getByTestId('seen-m1')).toHaveTextContent(/\d{1,2}[:.]\d{2} · Seen/);
+
+    const unseen = await render(<MessageBubble message={message({ id: 'm4' })} mine />);
+    expect(unseen.queryByTestId('seen-m4')).toBeNull();
+    expect(unseen.queryByText(/Seen/)).toBeNull();
+  });
+
+  // ⚠️ ONE NODE. The meta Text is a descendant of the bubble's Pressable now,
+  // so without `accessible` a screen reader reads the time twice — once from
+  // the label, once from the child.
+  it('is a single accessibility node, so the time is not read twice', async () => {
+    const { getByTestId } = await render(<MessageBubble message={message()} mine={false} />);
+
+    expect(getByTestId('bubble-m1').props.accessible).toBe(true);
   });
 });
 

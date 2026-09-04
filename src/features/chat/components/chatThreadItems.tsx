@@ -1,13 +1,24 @@
 /**
  * WHAT:  The thread's render pieces — MessageBubble (mine right on primary,
- *        theirs left on surfaceSubtle, optional time caption, long-press →
- *        report), OutgoingBubble (pending "Sending…" / failed "Not sent —
- *        tap to retry", text always retained), SystemMessage (centred,
- *        quiet — never a fake user bubble), and DaySeparator.
- * WHY:   Calm bubbles per the design system: no tails, radius `lg`, times
- *        appear only where messageGroups says a gap earns one. The failed
- *        state is deliberately louder than anything else here — losing a
- *        user's words silently is the one unforgivable chat sin.
+ *        theirs left on surface, its own time inside it bottom-right,
+ *        long-press → report), OutgoingBubble (pending "Sending…" / failed
+ *        "Not sent — tap to retry", text always retained), SystemMessage
+ *        (centred, quiet — never a fake user bubble), and DaySeparator (a
+ *        centred chip).
+ * WHY:   Calm bubbles per the design system: radius `lg`, and NO TAILS — the
+ *        grouped corners carry run position instead, which is the job a tail
+ *        does elsewhere. The failed state is deliberately louder than anything
+ *        else here: losing a user's words silently is the one unforgivable
+ *        chat sin.
+ *
+ *        ⚠️ A WHATSAPP STRUCTURE PASS LANDED 2026-09-04 (owner request), and
+ *        two of its decisions reversed things recorded here. Times MOVED from
+ *        a sparse caption above the group to inside every bubble; the day
+ *        separator stopped being a ruled divider. Both are argued at their own
+ *        definitions below. What was NOT taken, and why, is in
+ *        docs/design-refs/chat/GAP_ANALYSIS.md — tails, near-pill radii and
+ *        per-message ticks each have a reason on file, and the tick one is a
+ *        data claim rather than a taste.
  * LINKS: src/features/chat/lib/messageGroups.ts (what renders when);
  *        docs/DESIGN_SYSTEM.md (colours, radii, tone);
  *        docs/DOMAIN.md (Chat: the system safety message).
@@ -62,7 +73,10 @@ const timeCaption = formatClock;
 export interface MessageBubbleProps {
   message: ChatMessage;
   mine: boolean;
-  showTime: boolean;
+  /* ⚠️ NO `showTime` (2026-09-04). Every bubble now draws its own time inside
+     itself, so there is nothing left for a caller to gate. `messageGroups`
+     still COMPUTES showTime — it is the run-breaker, and a >15-minute gap is
+     still a real conversational boundary — it just no longer draws anything. */
   /** Position in a same-sender run — drives the grouped-corner treatment AND
    *  the gap above (see messageGroups.blockPaddingTop). */
   groupPos?: MessageGroupPos;
@@ -81,7 +95,6 @@ export interface MessageBubbleProps {
 export function MessageBubble({
   message,
   mine,
-  showTime,
   groupPos = 'single',
   afterSeparator = false,
   seen = false,
@@ -107,14 +120,17 @@ export function MessageBubble({
         { paddingTop: blockPaddingTop(groupPos, afterSeparator) },
       ]}
     >
-      {showTime ? <Text style={styles.time}>{timeCaption(message.createdAt)}</Text> : null}
       <Pressable
         onLongPress={report}
-        // ⚠️ THE TIME IS IN EVERY LABEL, though it is drawn above only one
-        // bubble per group. Sighted readers infer a message's time from the
-        // caption above its run; a screen-reader user moving bubble by bubble
-        // never meets that caption, so before this they could not get the time
-        // of any message that did not happen to lead a group.
+        // ⚠️ EXPLICITLY ONE NODE. The meta `Text` is now a descendant of this
+        // Pressable, so without `accessible` a screen reader can announce the
+        // time twice — once from this label, once from the child. Do NOT reach
+        // for accessibilityElementsHidden on the meta instead: RNTL excludes
+        // hidden nodes by default, which would make it untestable.
+        accessible
+        // The time is in every label, as it has been since the caption only
+        // ever appeared above one bubble per run. It is now also DRAWN on every
+        // bubble, so the two finally agree.
         accessibilityLabel={
           `${mine ? 'You' : (otherName ?? 'They')}: ${message.content}, ` +
           `${timeCaption(message.createdAt)}`
@@ -130,15 +146,21 @@ export function MessageBubble({
         testID={`bubble-${message.id}`}
       >
         <Text style={mine ? styles.textMine : styles.textTheirs}>{message.content}</Text>
-      </Pressable>
-      {seen ? (
-        // The thread-level read stamp, worn by the newest covered message —
-        // deliberately "Seen", not "Seen at 14:32": the marker means "they
-        // had the thread open", and the caption must not claim more.
-        <Text style={styles.seen} testID={`seen-${message.id}`}>
-          Seen
+        {/* ⚠️ "Seen" RIDES THE META, it is not a caption below the bubble any
+            more. Same claim as before and no larger: the marker is
+            THREAD-level, so this says "they had the thread open", never
+            "this message was read". That is also why there is no tick — a
+            tick on one bubble and not its neighbours asserts a per-message
+            fact the data does not carry, at every glance. The word is the
+            only rendering that is true. */}
+        <Text
+          style={[styles.meta, mine ? styles.metaMine : styles.metaTheirs]}
+          testID={seen ? `seen-${message.id}` : undefined}
+        >
+          {timeCaption(message.createdAt)}
+          {seen ? ' · Seen' : ''}
         </Text>
-      ) : null}
+      </Pressable>
     </View>
   );
 }
@@ -189,10 +211,26 @@ export function OutgoingBubble({ message, groupPos = 'single', onRetry }: Outgoi
         testID={`outgoing-${message.localId}`}
       >
         <Text style={styles.textMine}>{message.content}</Text>
+        {/* ⚠️ "Sending…" LIVES IN THE META SLOT, where the confirmed bubble
+            will put its time. That is the point: the optimistic→persisted swap
+            becomes a text substitution inside a box that already exists, with
+            no reflow. This file already refuses to ANIMATE that swap because a
+            double pop reads as a double send; a silent relayout is the same
+            lie told more slowly. A FAILED send keeps its own loud caption
+            below — see below. */}
+        {!failed ? (
+          <Text style={[styles.meta, styles.metaMine]}>Sending…</Text>
+        ) : null}
       </Pressable>
-      <Text style={[styles.deliveryState, failed && styles.deliveryFailed]}>
-        {failed ? 'Not sent — tap the message to retry' : 'Sending…'}
-      </Text>
+      {/* ⚠️ FAILURE STAYS FULL-WIDTH AND LOUD, outside the bubble. It is thirty
+          characters of instruction, it is the one state a person must act on,
+          and losing someone's words silently is the one unforgivable chat sin.
+          It does not go in a corner in `caption` to match the others. */}
+      {failed ? (
+        <Text style={[styles.deliveryState, styles.deliveryFailed]}>
+          Not sent — tap the message to retry
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -273,11 +311,60 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textSecondary,
     paddingBottom: spacing.xs,
   },
+  /**
+   * ⚠️ A WRAPPING ROW, NOT A COLUMN (2026-09-04) — this is what puts the time
+   * inside the bubble, and the geometry is the whole trick.
+   *
+   * React Native has no `float`, so the reference's behaviour (meta rides the
+   * last text line if it fits, drops to its own line if not) has to come out of
+   * Yoga. It does: `flexWrap` lets the two children share a line or split, and
+   * the meta's `marginStart: 'auto'` pins it to the bubble's inner trailing
+   * edge in whichever case happens. `alignItems: 'flex-end'` bottom-aligns the
+   * 18pt meta box against the 24pt text line so it reads as sitting ON the
+   * baseline rather than floating.
+   *
+   * Three alternatives were rejected. Absolute-positioning the meta over
+   * invisible trailing spacer characters puts fake characters into user content
+   * and breaks at large type and in RTL. Giving the meta its own row
+   * unconditionally adds ~18pt to EVERY bubble, and turns a one-word "Yes" into
+   * a two-row box with an empty second line. Nesting the meta in the same
+   * `<Text>` as the content gets the nicest flow but inherits `body`'s 24pt
+   * line-height and cannot right-align to the bubble edge.
+   *
+   * ⚠️ `marginStart`, NOT `marginLeft` — RTL.
+   *
+   * ⚠️ paddingHorizontal is `md` (12), down from `lg` (16), because the bubble
+   * now carries a trailing element and 16 either side of that reads loose.
+   * VERTICAL padding stays 12: it is what keeps the long-press target ≥48pt
+   * tall, and long-press is the only moderation route a person has.
+   */
   bubble: {
     maxWidth: BUBBLE_MAX_WIDTH,
     borderRadius: radii.lg,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    columnGap: spacing.sm,
+  },
+  /**
+   * The bubble's own timestamp, and its send/seen state when it has one.
+   *
+   * ⚠️ `textOnPrimaryMuted` INSIDE MINE, `textSecondary` inside theirs. On a
+   * `primary` fill the only other sanctioned ink is `textOnPrimary` at ~17:1,
+   * which makes a timestamp shout as loudly as the message. See the token's own
+   * note for why this is not an opacity.
+   */
+  meta: {
+    ...typography.caption,
+    marginStart: 'auto',
+  },
+  metaMine: {
+    color: c.textOnPrimaryMuted,
+  },
+  metaTheirs: {
+    color: c.textSecondary,
   },
   bubbleMine: {
     backgroundColor: c.primary,

@@ -112,7 +112,7 @@ what you saw, and where."
 |---|---|---|
 | A | Collapse-on-scroll header | ⚠️ **The gesture runs backwards.** A thread opens at the bottom (`maintainVisibleContentPosition`), so the only scroll is upward into history — exactly when you most need to know which car and who. And with the header already at 60.5, collapsing to back+name saves **half a point** |
 | B | A "Details" link top-right | The car photo already is that link; a word beside it would be a second one, and it would cost the subtitle 50pt of a 375pt row |
-| C | `radii.xl` bubbles | At 24 a single-line 48pt bubble is a near-pill, and it would be the only 24pt radius on a screen of 16s |
+| C | `radii.xl` bubbles | ~~At 24 a single-line 48pt bubble is a near-pill, and it would be the only 24pt radius on a screen of 16s~~ ⚠️ **This reason went stale — see "Second pass" for the one that replaces it.** Still not done |
 | D | Shrinking the composer | It is the one thing here that must stay comfortable to hit while distressed |
 | E | Promoting `ThreadHeader` to shared/ui | One consumer |
 | F | Any new gesture on bubbles | Long-press is the report path, and it is the only moderation route a person has |
@@ -138,3 +138,76 @@ what you saw, and where."
    you is whether it still *feels* unmissable. Look at it.
 6. All states: loading, meta error, missing, closed thread, failed send, and a
    thread whose post has no photo.
+
+---
+
+## Second pass — the WhatsApp structure pass (2026-09-04)
+
+Everything above is measured against Airbnb's guest–host messaging. The owner
+then asked for the messaging screens in **WhatsApp's design language**, scoped to
+the conversation and the Messages list. Their decisions, made before any code:
+**stay fully monochrome**, **no screenshots** (web research only), **no tails**,
+**a plain tinted ground rather than a pattern**, **the time inside the bubble**,
+**keep the inbox row's third line**.
+
+⚠️ **This pass has no evidence behind it, and that is worth stating.** The
+onboarding rebuild was justified by a number (1 completed run against 6 skipped).
+This one is taste — a legitimate reason on one's own product. Chat already emits
+`thread_opened` and `message_sent`, and since the telemetry sink landed those
+reach `record_telemetry_events`, so ten testers would give this screen real data
+within days.
+
+### What the reference actually had to offer
+
+WhatsApp's structural signature, ranked by recognisability: **(1)** the tail,
+**(2)** the green, **(3)** inline bottom-right meta with the last line reserving
+space for it, **(4)** a floating centred date chip on a wallpaper, **(5)**
+avatar-led two-line rows with the unread pill bottom-right, **(6)** an
+icon-dense composer, **(7)** near-pill bubble radius.
+
+1 and 2 were ruled out by the owner and by ADR-0006. 5's avatar is **impossible**
+— `chatApi` `.strict()`-parses the peer block and a test fails if `avatar_path`
+appears, because the path embeds the peer's uid. 6 is empty once attachments,
+camera, mic and emoji are all out of scope by spec and schema. 7 fails on
+geometry (below). **That leaves 3 and 4**, which is what shipped, plus two
+adjacent wins the pass surfaced on the way past.
+
+| Was | Now | Why |
+|---|---|---|
+| Conversation on `background` | On `surfaceSubtle` | The structural half of a wallpaper. Incoming bubble separation went ~1.07:1 → ~1.16:1 light and ~1.10:1 → ~1.16:1 dark. ⚠️ Forced the loading skeleton to `surfaceSubtlePressed` — it had been `surfaceSubtle`, which is now the ground |
+| Ruled divider for the day | A centred `surface`+hairline chip | Same recipe as an incoming bubble, which is what the reference does; centring, `caption` and `radii.full` keep them apart. +8pt per separator, accepted |
+| Sparse time caption above a run | Every bubble carries its own time, bottom-right inside it | Also closes a real defect: most messages showed no time at all to a sighted reader, and gap #9 had fixed that only in the a11y label |
+| `Seen` as its own caption below the bubble | Rides the meta: `14:32 · Seen` | Same thread-level claim, one row less |
+| `Sending…` as its own caption | Occupies the meta slot the time will fill | The optimistic→persisted swap becomes a text substitution with **no reflow**, which serves item G rather than fighting it |
+| Inbox row `timeAgo` ("2h ago") | A clock ("14:32") | `InboxScreen` already day-groups, so `timeAgo` was a second answer: "2h ago" under **Today** is redundant, "3d ago" under **23 July** contradicts it |
+| Composer `arrow-up` | `send` | The up-arrow is now the LLM prompt-box convention; every messaging app uses a directional glyph |
+
+**Chrome budget untouched at 25.1%** — nothing here is chrome.
+
+**One new token**: `textOnPrimaryMuted` (5.74:1 light / 5.79:1 dark, re-derived in
+`colors.test.ts`). `textOnPrimary` at ~17:1 was the only sanctioned ink on a
+`primary` fill, and it makes a timestamp shout as loudly as the message. ⚠️ Not
+an opacity: white at `opacity.inactive` over `#1A1A1A` is ~3.4:1 and at 0.6 is
+~4.30:1 — both under the floor, and `colors.test.ts` cannot see a runtime alpha.
+
+### Added to "Deliberately not done"
+
+| | | Why |
+|---|---|---|
+| H | **Bubble tails** | Owner's call, and the system already answers it: run-facing corners tighten to `radii.sm` and block padding is 4pt within a run against 12pt between. The corner is doing the tail's job |
+| I | **`radii.full` bubbles** — ⚠️ **the replacement reason for item C** | C's original argument has gone stale: WhatsApp's 2026 redesign moved deliberately *toward* the near-pill, and `radii.full` is already on this screen (the composer), so it is not a novel radius. It still fails for a better reason — **RN clamps `9999` to half the box height, so the radius varies with CONTENT**: ~24pt on a one-line bubble, ~36pt on a three-line one. Tightening one corner to `radii.sm` against a 36pt sibling is not a legible relationship. With no tail, the corner *is* our entire grouping signal |
+| J | **Per-message ticks** | ⚠️ A data claim, not a taste. A glyph would be legal under the never-colour-alone rule and is still wrong: our marker is THREAD-level, so a tick on one bubble and not its neighbours asserts a per-message fact the schema does not carry. `messageGroups.ts` already forbids the rendering claiming more than the marker. The word "Seen" is the only true rendering |
+| K | **A patterned wallpaper** | Ours would have to be monochrome, and a patterned grey field is this app's LOADING SKELETON — the charge that killed the first onboarding hero. Wrong register too: doodles behind a conversation about a stolen car. Note the reference's wallpaper mainly exists to make a GREEN bubble read as an object; ours is `primary` near-black at ~16:1 and already unmistakable |
+| L | **Moving the unread badge bottom-right** | `sizes.unreadSlot` is a FIXED 26pt slot, and `ThreadRow` shares one silhouette with `NotificationRowItem`. Costs the Notifications face for cosmetics |
+| M | **Two-line inbox rows** | Owner's call, and the right one: the context line is what we have INSTEAD of an avatar. Drop it and an owner with three posted cars cannot tell three threads apart |
+| N | **`✓ your reply` preview prefix** | Schema, not design. `InboxThread` carries no sender field; it needs a new column on `get_inbox` |
+| O | **Hiding send until there is text** | The reference can, because a mic occupies that slot when the box is empty. We have nothing to swap to, so the pill's width would jump on the first keystroke — item D in a new costume |
+
+### Consequence accepted, not fixed
+
+⚠️ **The two inbox faces now format time differently.** Messages draws a clock;
+Notifications still draws `timeAgo`, under the same `DayHeader` vocabulary in the
+same tab. The clock argument applies to `NotificationRowItem` word for word, but
+this pass was scoped to Messages, and redesigning the other face on the way past
+would have been unrequested. Recorded in `ThreadRow.tsx`'s header so whoever
+aligns them knows it is wanted.

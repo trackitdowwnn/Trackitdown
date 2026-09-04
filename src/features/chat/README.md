@@ -39,7 +39,12 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    falling back to a `CarColourTile` in the car's own paint when the post has
    no photo. The POST's public photo, never anything of the other person's —
    the peer avatar is withheld by the API on purpose. Then first name +
-   relative time, the one-line preview, and the context line ("About your
+   the clock time (⚠️ a CLOCK since 2026-09-04, not "2h ago": the list is
+   already day-grouped by `DayHeader`, so a relative stamp was a second
+   answer to a question already answered — "2h ago" under **Today** is
+   redundant and "3d ago" under **23 July** contradicts it. The a11y label
+   keeps the DAY, because a screen-reader user never meets the header),
+   the one-line preview, and the context line ("About your
    Blue BMW · ‹PlateChip›" for owners / "Your sighting · Blue BMW" for
    spotters). Trailing: `UnreadBadge` — a dot at one unread, a count above,
    an empty reserved slot when read so the text column never changes width.
@@ -89,19 +94,30 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    under a separator — before that every bubble was 8pt from its
    neighbour whatever the grouping said, so the corners tightened and
    nothing drew closer);
-   (messageGroups.groupPos — runs break on sender change, day, time
-   caption, system message); day separators + timestamps on >15-min gaps;
-   system messages centred and quiet (never a fake bubble). New arrivals
+   (messageGroups.groupPos — runs break on sender change, day, a >15-min
+   gap, system message); ⚠️ **every bubble carries its own time, inside it,
+   bottom-right** (2026-09-04, WhatsApp pass) — it used to be a sparse
+   caption above the group, which meant most messages showed no time at all
+   to a sighted reader. `showTime` still exists in `messageGroups` as the
+   RUN-BREAKER; it just draws nothing now. Day separators are a centred chip
+   rather than a ruled divider; system messages centred and quiet (never a
+   fake bubble). New arrivals
    and optimistic sends fade in (motion.fast, ReduceMotion.System);
    confirmed sends replace their optimistic bubble WITHOUT animating (a
    double pop reads as a double send).
-   — **Seen** (thread-level read receipt): one quiet "Seen" under the
-   newest of MY messages the peer's marker covers
+   — **Seen** (thread-level read receipt): one quiet "Seen" riding the
+   meta of the newest of MY messages the peer's marker covers — "14:32 ·
+   Seen" (⚠️ it was a caption BELOW the bubble until 2026-09-04)
    (messageGroups.latestSeenOutboundId over useThreadPeer). Mutual,
    always on, no toggle (v1 call, 2026-07-28). Point-in-time by design:
    the marker means "last had the thread open", refreshed on focus, and
-   the caption claims no more ("Seen", never "Seen at 14:32"). No new
+   the caption claims no more ("Seen", never "Seen at 14:32" — the time
+   beside it is the MESSAGE's own, not the moment it was read). No new
    writes, no migration — the markers were always on the thread row.
+   ⚠️ **And no ticks.** WhatsApp's double tick was re-examined on
+   2026-09-04 and refused: a glyph would be legal under the
+   never-colour-alone rule, but a tick on one bubble and not its
+   neighbours asserts a PER-MESSAGE fact this schema does not carry.
    — **Quick replies** (lib/quickReplies): role-aware one-tap openers in a
    horizontal row above the composer, shown while the input is EMPTY **and
    before you have sent anything in this thread** (`shouldShowQuickReplies`,

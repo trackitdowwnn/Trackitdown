@@ -164,9 +164,13 @@ describe('groupPos — the grouped-corner runs', () => {
     expect(positionsOf(items)).toEqual(['single', 'first', 'last']);
   });
 
-  it('a time caption breaks the run — the two cues never fight', () => {
-    // >15 min gap earns a time caption; the bubble under it must open a
-    // fresh run so the caption never sits over a tightened corner.
+  it('a long gap breaks the run', () => {
+    // ⚠️ RENAMED 2026-09-04, same assertion. It used to be justified by a
+    // drawn caption — ">15 min earns a time caption, so the bubble under it
+    // must open a fresh run and the caption never sits over a tightened
+    // corner". The caption is gone (every bubble now carries its own time),
+    // and the rule survives it: a half-hour gap IS a conversational boundary,
+    // and the padding ladder is what shows it now.
     const items = buildChatList(
       [
         message('a', '2026-07-15T10:00:00Z'),

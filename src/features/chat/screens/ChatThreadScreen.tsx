@@ -330,7 +330,6 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
         <MessageBubble
           message={item.message}
           mine={item.mine}
-          showTime={item.showTime}
           groupPos={item.groupPos}
           // A day rule and a system message already pad 16 below themselves;
           // the bubble beneath one adds nothing of its own.

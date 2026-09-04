@@ -39,6 +39,15 @@ export type ChatListItem =
       type: 'message';
       message: ChatMessage;
       mine: boolean;
+      /**
+       * ⚠️ NOTHING DRAWS THIS ANY MORE (2026-09-04). It used to gate a time
+       * caption above the group; every bubble now carries its own time inside
+       * itself, so the caption is gone and `MessageBubble` has no `showTime`
+       * prop. It is kept because it is ALSO the run-breaker below, and a
+       * >15-minute gap is a real conversational boundary whether or not
+       * anything prints because of it — the padding ladder is its visible cue
+       * now. Deleting it would weld two messages three hours apart into one run.
+       */
       showTime: boolean;
       groupPos: MessageGroupPos;
     }
@@ -168,7 +177,7 @@ export function buildChatList(
  * three quick messages read as one thought, not three announcements).
  *
  * A run breaks on anything that already breaks the eye: a different sender, a
- * day separator, a time caption (showTime), or a system message. Meaning the
+ * day separator, a long gap (showTime), or a system message. Meaning the
  * time caption ALWAYS sits above a fully-rounded top corner — the two cues
  * never fight.
  */
