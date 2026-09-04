@@ -15,16 +15,32 @@
  *        ⚠️ ONE SILHOUETTE WITH ThreadRow, deliberately and structurally
  *        (2026-08-28, Airbnb inbox pass). The two faces of the inbox are two
  *        lists in one tab, and a reader switching between them must not feel
- *        they changed app. Both are now: an `inboxRowTile` lead, a flex text
- *        column of title+time / content / context, and a reserved
- *        `UnreadBadge` slot — same gutter, same gap, same padding. Change the
- *        box here and the conversation row has to change with it.
+ *        they changed app. Both are now: a round `inboxRowTile` lead, a flex
+ *        text column of title / content / context, and a trailing META COLUMN
+ *        holding the time above the `UnreadBadge` — same gutter, same gap, same
+ *        padding. Change the box here and the conversation row has to change
+ *        with it.
  *
- *        ⚠️ A ROUNDED SQUARE, NOT A CIRCLE, since the same pass. Circles mean
+ *        ⚠️ ONE THING THEY STILL DISAGREE ON: this row's time is `timeAgo`
+ *        ("2h ago") while ThreadRow's is a clock ("14:32"). Both sit under the
+ *        same `DayHeader`, so the clock argument applies here too and the
+ *        alignment is wanted — it was simply not in the scope the owner set.
+ *
+ *        ⚠️ A CIRCLE SINCE 2026-09-04, REVERSING THE PARAGRAPH THAT USED TO
+ *        STAND HERE. It read: "A ROUNDED SQUARE, NOT A CIRCLE. Circles mean
  *        people; this app's inbox has no photographs of people in it (the peer
  *        avatar is deliberately withheld) and every row is about an event or a
- *        car. Squaring the tile is what let the conversation row lead with a
- *        car photo without the two lists diverging.
+ *        car." That argument is still true as far as it goes, and it was
+ *        overridden on purpose: the owner asked for the Messages list to read
+ *        as a messaging app, and the round lead is the strongest signal of that
+ *        available to a row whose picture can never be a face. The tile follows
+ *        ThreadRow here rather than leading — the silhouette rule below is what
+ *        forces it, and two faces of one tab disagreeing about the shape of
+ *        their lead would be worse than either shape.
+ *
+ *        What survives from the old reasoning: the lead is still never a
+ *        PERSON. It is a car, or an event icon. The circle is borrowed
+ *        geometry, not a claim about whose face this is.
  * LINKS: ../lib/centerRowMeta.ts (the one look-up table, and the labels);
  *        ../api/notificationsApi.ts (NotificationRow);
  *        src/features/chat/components/ThreadRow.tsx (the silhouette twin);
@@ -35,7 +51,6 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 
 import { timeAgo } from '@/shared/lib/timeAgo';
 import {
-  listRowStackFontScale,
   radii,
   sizes,
   spacing,
@@ -76,7 +91,6 @@ function toneColor(c: Palette, tone: NotificationTone): string {
 export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  const { fontScale } = useWindowDimensions();
   // ⚠️ A FALLBACK FOR A KIND THIS BUILD HAS NEVER HEARD OF. The server's CHECK
   // constraint keeps the column inside the known set today, but the set widens
   // server-first (that is how `payout_sent` arrived), so an older client can be
@@ -86,10 +100,6 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   const meta = CENTER_ROW_META[row.kind] ?? CENTER_ROW_META.alert;
   const unread = row.readAt === null;
   const loud = unread && meta.needsAttention;
-  // Past the threshold the time drops UNDER the title instead of competing
-  // with it for one line — the same call AlertCard and ReportCard make, and
-  // the behaviour `listRowStackFontScale` was defined to describe.
-  const stacked = (fontScale ?? 1) > listRowStackFontScale;
 
   // The badge, the weight and the bar are visual; the LABEL is where a screen-
   // reader user learns the same facts (ThreadRow's precedent).
@@ -133,14 +143,9 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
         </View>
       )}
       <View style={styles.textColumn}>
-        <View style={[styles.topLine, stacked && styles.topLineStacked]}>
-          <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>
-            {row.title}
-          </Text>
-          <Text style={styles.time} numberOfLines={1}>
-            {timeAgo(row.createdAt)}
-          </Text>
-        </View>
+        <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>
+          {row.title}
+        </Text>
         <Text style={styles.body} numberOfLines={2}>
           {row.body}
         </Text>
@@ -163,7 +168,19 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
           </View>
         ) : null}
       </View>
-      <UnreadBadge count={unread ? 1 : 0} testID={unread ? `unread-${row.id}` : undefined} />
+      {/* ⚠️ FOLLOWS ThreadRow (2026-09-04): time above, unread below, as one
+          trailing column. The silhouette rule in this file's header is why —
+          the conversation face moved its time out of the title line into a
+          stacked meta column, and two faces of one tab cannot disagree about
+          where a timestamp lives. `topLineStacked` retires with it: the time
+          no longer competes with the TITLE, which is what that behaviour
+          existed to protect. */}
+      <View style={styles.meta}>
+        <Text style={styles.time} numberOfLines={1}>
+          {timeAgo(row.createdAt)}
+        </Text>
+        <UnreadBadge count={unread ? 1 : 0} testID={unread ? `unread-${row.id}` : undefined} />
+      </View>
     </Pressable>
   );
 }
@@ -190,22 +207,15 @@ export function NotificationRowSkeleton() {
     <View style={styles.row}>
       <View style={styles.lead} />
       <View style={styles.textColumn}>
-        <View style={styles.topLine}>
-          <View
-            style={[
-              styles.skeletonBar,
-              styles.skeletonTitle,
-              { height: typography.body.lineHeight * scale },
-            ]}
-          />
-          <View
-            style={[
-              styles.skeletonBar,
-              styles.skeletonTime,
-              { height: typography.caption.lineHeight * scale },
-            ]}
-          />
-        </View>
+        {/* Title alone — the time moved to the trailing column with the badge,
+            and the skeleton follows it there. */}
+        <View
+          style={[
+            styles.skeletonBar,
+            styles.skeletonTitle,
+            { height: typography.body.lineHeight * scale },
+          ]}
+        />
         <View
           style={[
             styles.skeletonBar,
@@ -214,8 +224,18 @@ export function NotificationRowSkeleton() {
           ]}
         />
       </View>
-      {/* The same reserved slot a real row keeps, so nothing shifts sideways. */}
-      <UnreadBadge count={0} />
+      {/* The same trailing column a real row keeps — a time bar over the
+          badge's reserved slot — so nothing shifts sideways when it loads. */}
+      <View style={styles.meta}>
+        <View
+          style={[
+            styles.skeletonBar,
+            styles.skeletonTime,
+            { height: typography.caption.lineHeight * scale },
+          ]}
+        />
+        <UnreadBadge count={0} />
+      </View>
     </View>
   );
 }
@@ -226,7 +246,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
+    // md (12), matching ThreadRow — see its note on row density.
+    paddingVertical: spacing.md,
     minHeight: sizes.touchTarget,
   },
   // ⚠️ surfaceSubtlePressed, NOT surfaceSubtle — which is the fill of the tile
@@ -245,7 +266,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     borderRadius: radii.full,
     backgroundColor: c.warning,
   },
-  // The shared inbox lead: a rounded SQUARE, matching ThreadRow's car photo.
+  // The shared inbox lead: a CIRCLE since 2026-09-04, matching ThreadRow's car
+  // photo. See the header for what that reversed and why.
   //
   // ⚠️ IT NEEDS THE EDGE TO EXIST AT ALL. `surfaceSubtle` on `background` is
   // #EEEEEE on #F7F7F7 — 1.08:1 — and #2A2A2A on #141414 in dark, 1.28:1. Both
@@ -256,11 +278,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   lead: {
     width: sizes.inboxRowTile,
     height: sizes.inboxRowTile,
-    borderRadius: radii.md,
+    borderRadius: radii.full,
     backgroundColor: c.surfaceSubtle,
     borderWidth: 1,
     borderColor: c.borderStrong,
-    // Clips a photo to the corners; harmless on the icon shape.
+    // Clips a photo to the circle; harmless on the icon shape.
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -269,18 +291,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flex: 1,
     gap: spacing.xs,
   },
-  topLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  // Past listRowStackFontScale the time gets its own line rather than
-  // squeezing the title to two characters.
-  topLineStacked: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+  // Time above, unread below — the trailing column ThreadRow uses. Identical
+  // style there; see the silhouette note in the header.
+  meta: {
+    alignItems: 'flex-end',
     gap: spacing.xs,
+    flexShrink: 0,
   },
   // ⚠️ `body`, matching ThreadRow's name — NOT `label`. The two faces shared a
   // box but not a type ramp, so switching segments changed every text size on
