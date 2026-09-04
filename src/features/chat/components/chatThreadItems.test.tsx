@@ -122,9 +122,18 @@ describe('MessageBubble', () => {
   // rides the time rather than replacing it, and it stays a WORD — a tick on
   // one bubble and not its neighbours would assert a per-message fact the data
   // does not carry.
+  // ⚠️ TWO SEPARATE ASSERTIONS, NOT ONE ANCHORED REGEX, and CI is why. The
+  // first version matched /\d{2} · Seen/ — which passes on a 24-hour machine
+  // and fails on a 12-hour one, where the string is "12:00 PM · Seen" and the
+  // meridiem sits between the two halves. The time's FORMAT belongs to the
+  // device locale and this file must not assume one; what it is entitled to
+  // assert is that a time is present and that "· Seen" rides it.
   it('wears "Seen" beside its time, and only where it is set', async () => {
     const seen = await render(<MessageBubble message={message()} mine seen />);
-    expect(seen.getByTestId('seen-m1')).toHaveTextContent(/\d{1,2}[:.]\d{2} · Seen/);
+    const meta = seen.getByTestId('seen-m1');
+
+    expect(meta).toHaveTextContent(/\d{1,2}[:.]\d{2}/);
+    expect(meta).toHaveTextContent(/· Seen$/);
 
     const unseen = await render(<MessageBubble message={message({ id: 'm4' })} mine />);
     expect(unseen.queryByTestId('seen-m4')).toBeNull();
