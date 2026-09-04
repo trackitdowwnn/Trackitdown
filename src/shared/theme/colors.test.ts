@@ -132,6 +132,32 @@ describe('⚠️ the off-state Switch boundary', () => {
 // nothing meets: if `borderStrong` is ever raised far enough to clear 3:1 here,
 // this fails, and the right response is to delete the block and the warnings it
 // documents — not to loosen it.
+// ⚠️ THE SECOND VOICE INSIDE A PRIMARY FILL. `textOnPrimaryMuted` exists so a
+// chat bubble can carry its own timestamp without the metadata shouting as loud
+// as the message. It is the only ink besides `textOnPrimary` sanctioned on a
+// `primary` surface, so it must clear the TEXT floor, not the graphic one — it
+// renders words.
+describe('⚠️ metadata inside a primary fill', () => {
+  it.each([
+    ['light', colors],
+    ['dark', darkColors],
+  ])('%s: textOnPrimaryMuted is readable on primary', (_scheme, palette) => {
+    expect(contrast(palette.textOnPrimaryMuted, palette.primary)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([
+    ['light', colors],
+    ['dark', darkColors],
+  ])('%s: and is genuinely quieter than textOnPrimary', (_scheme, palette) => {
+    // The whole reason it exists. If a future value change makes it as loud as
+    // the full-strength ink, the token has stopped doing its job and should be
+    // deleted rather than left as a synonym.
+    expect(contrast(palette.textOnPrimaryMuted, palette.primary)).toBeLessThan(
+      contrast(palette.textOnPrimary, palette.primary),
+    );
+  });
+});
+
 describe('⚠️ what may be drawn on surfaceSubtle', () => {
   const SUBTLE_FLOOR = 3;
 
