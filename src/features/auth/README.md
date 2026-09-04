@@ -17,13 +17,45 @@ flag `trackitdown.onboarding_seen_v1`.
 **Restyled 2026-08-08** against `docs/design-refs/onboarding/ob1.webp`. Three
 progress indicators became one: dots, a numbered step rail ("01 Post") and a
 separate button collapsed into a single **ring FAB** (`OnboardingRingFab`) that
-is both the progress and the control. The step names went with them — they
+was both the progress and the control. The step names went with them — they
 restated the headline directly above. Skip moved from top-right into the footer
 beside the ring, matching `shared/wizard/WizardFooter`'s grammar. The last slide
-alone keeps a full-width button: "Get started" is a commitment and should be
+alone kept a full-width button: "Get started" is a commitment and should be
 read, not inferred from an arrow. Headlines now alternate **weight**
 mid-sentence (Satoshi-Black against Regular) where they used to mark a trailing
 phrase in an accent colour that, at #1A1A1A on #222222, was invisible.
+
+⚠️ **The footer half of that pass was reversed on 2026-09-03 — see below.** The
+headline weight alternation and the deletion of the step rail stand; the ring
+FAB, the footer Skip and the last-slide control swap do not.
+
+**Rebuilt 2026-09-03** against `docs/design-refs/onboarding/ob2-life360-gold.jpg`
+— and the reason is a number, not a preference. The funnel had recorded seven
+finished runs: **one completed, six skipped.** A ring that is simultaneously the
+progress and the only way forward asks a first-time reader to work out that a
+circle with a gap in it is a button, on the screen where they know least about
+us. So:
+
+- **One full-width `Button` on every slide**, changing only its LABEL
+  ("Continue" → "Get started"). The 08-08 pass swapped the control's IDENTITY on
+  the last slide; the same reasoning that made "Get started" worth reading makes
+  "Continue" worth reading too.
+- **Progress moved out of the control** into `OnboardingDots` — a plain row
+  above the button, hidden on the last slide because there is no next step to
+  report. The reference has no progress at all (it is one upsell screen, not
+  four), so this is the one place we deliberately add to it: dropping the ring
+  without replacing its signal would leave a four-step sequence with no sense of
+  its own length.
+- **Skip became `OnboardingCloseButton`** — an X in the top-right over the
+  hero, which is where the reference puts dismissal and what empties the footer
+  for the full-width button. ⚠️ It is an absolute overlay, NOT part of the map
+  band: above 1.3× text the hero is not rendered at all, and a Skip nested
+  inside it would take the only way out of the intro with it. It also **stays on
+  the last slide** now, where the old Skip was hidden — an X in the opposite
+  corner does not compete with "Get started" the way a second worded button did,
+  and the funnel still tells the two apart.
+- `OnboardingRingFab` and `sizes.fab` / `fabRing` / `fabRingGap` were deleted
+  with it; it had no other consumer.
 
 **It steps; it does not swipe.** Slides move with the same Reanimated layout
 animations as `shared/wizard/WizardScreen` — same SlideIn/SlideOut pair, same
@@ -31,7 +63,7 @@ animations as `shared/wizard/WizardScreen` — same SlideIn/SlideOut pair, same
 meant knowingly giving up the horizontal pager: layout animations move a step
 between two settled states, which is a different idea from tracking a finger,
 and running both would put two systems on the same position mid-drag. Advance
-with the ring; Android back steps back.
+with the button; Android back steps back.
 
 **The hero above the words, third attempt (2026-08-23).** Two had come and
 gone. First a placeholder emoji in a grey circle per slide (🚗 📣 📸 🎉), which
@@ -63,11 +95,28 @@ failed, and if it is ever removed the reason should be measured against them:
    answers it, and it is why the slides now read as one car's story rather
    than four pictures.
 
+**The sighting trail (2026-09-03).** The Life360 reference's map is one
+connected picture because a line runs through it; ours was five prices arranged
+on a field with nothing for the eye to follow between them. So the hero gained a
+dashed trail with report dots on it, arriving in two legs — the reports on the
+spot slide, the last leg into the car on the recovery slide.
+
+Two things about it are load-bearing. It is **the car's history, not a route to
+it**: this file's standing rule is "rings, not arrows — nothing here may suggest
+anyone should travel towards a stolen car", and the trail obeys it by recording
+where the car HAS BEEN SEEN, which is exactly what a spotter's reports build.
+Nothing on the map marks the viewer, so there is no line from them to anywhere.
+And it is **dashed as a claim, not a texture**: we know the points, never the
+journey between them, which is the same thing `SightingTimeline`'s dashed
+uncertainty segment says. The last leg also gave the recovery slide the only
+mark it ADDS — both alert rings retract there, so before it that slide was the
+one step whose picture purely subtracted.
+
 It is **abstract, not cartographic**, on purpose: a real map means a real
 place, and on first launch we have neither location permission nor any business
-asking. It also still owns no image assets — this is SVG, like the wash and the
-ring — so "no illustration assets to do it honestly" remains true and remains
-the reason there is no photograph here.
+asking. It also still owns no image assets — this is SVG, like the wash — so
+"no illustration assets to do it honestly" remains true and remains the reason
+there is no photograph here.
 
 **The alert slide was absorbed, not deleted.** "People nearby get alerted." had
 its own screen; the map now shows it, as rings reaching the other pins, and the
@@ -78,7 +127,8 @@ already doing is a screen to cut.
 The reference is lilac and leans on photography. Neither came across: ADR-0006
 makes monochrome a decision rather than a habit. What was borrowed is the
 anatomy — one soft wash (`OnboardingBackdrop`, drawn with the `react-native-svg`
-already in the tree), a ring control, weight contrast — not the trade dress.
+already in the tree), a single dominant control, weight contrast — not the
+trade dress.
 
 ⚠️ Note for anyone bringing photography here later: the map takes 55% of the layout below the footer (not of the
 screen — see ONBOARDING_WASH_HOLD) and the words sit below it

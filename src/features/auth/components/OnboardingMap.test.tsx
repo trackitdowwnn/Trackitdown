@@ -21,8 +21,10 @@ import { OnboardingMap, type OnboardingMapStage } from './OnboardingMap';
 
 const STAGES: OnboardingMapStage[] = ['scatter', 'posted', 'alerted', 'recovered'];
 
-/** The map is decorative, so every query needs the hidden-elements flag — the
- *  same way OnboardingRingFab's arc is reached. */
+/** The map is decorative — `accessibilityElementsHidden` plus
+ *  `no-hide-descendants` — so it is out of the queryable tree entirely and
+ *  every query here needs the hidden-elements flag to reach it. That it is
+ *  unreachable WITHOUT the flag is itself asserted, below. */
 const HIDDEN = { includeHiddenElements: true } as const;
 
 describe('stages', () => {
@@ -63,28 +65,89 @@ describe('⚠️ what each stage actually SHOWS', () => {
       near: opacityOf(view, 'onboarding-map-alert'),
       far: opacityOf(view, 'onboarding-map-alert-far'),
       home: opacityOf(view, 'onboarding-map-home'),
+      trail: opacityOf(view, 'onboarding-map-trail'),
+      trailHome: opacityOf(view, 'onboarding-map-trail-home'),
     };
   };
 
   it('scatter: cars nearby, nothing of yours yet', async () => {
-    expect(await shown('scatter')).toEqual({ focal: 0, near: 0, far: 0, home: 0 });
+    expect(await shown('scatter')).toEqual({
+      focal: 0,
+      near: 0,
+      far: 0,
+      home: 0,
+      trail: 0,
+      trailHome: 0,
+    });
   });
 
   it('posted: your car appears and the alert leaves it', async () => {
     // The alert must be visible HERE, on the slide whose body says people
     // nearby are told. The draft gated it on the next slide, so the one screen
     // that claimed it showed no alert at all.
-    expect(await shown('posted')).toEqual({ focal: 1, near: 1, far: 0, home: 0 });
+    //
+    // ⚠️ AND STILL NO TRAIL. Sightings are what people do AFTER they are
+    // alerted; a report on the screen that announces the post would be a
+    // sighting of a car nobody had been told about.
+    expect(await shown('posted')).toEqual({
+      focal: 1,
+      near: 1,
+      far: 0,
+      home: 0,
+      trail: 0,
+      trailHome: 0,
+    });
   });
 
   it('alerted: the alert reaches the neighbours — a NEW picture', async () => {
     // Distinct from `posted`. One gate for both rings made these two slides
     // pixel-identical: four named stages, three pictures.
-    expect(await shown('alerted')).toEqual({ focal: 1, near: 1, far: 1, home: 0 });
+    expect(await shown('alerted')).toEqual({
+      focal: 1,
+      near: 1,
+      far: 1,
+      home: 0,
+      trail: 1,
+      trailHome: 0,
+    });
   });
 
   it('recovered: the alert is over and the car settles', async () => {
-    expect(await shown('recovered')).toEqual({ focal: 1, near: 0, far: 0, home: 1 });
+    expect(await shown('recovered')).toEqual({
+      focal: 1,
+      near: 0,
+      far: 0,
+      home: 1,
+      trail: 1,
+      trailHome: 1,
+    });
+  });
+
+  // ⚠️ THE INVARIANT BEHIND ALL FOUR, stated once so a future stage cannot
+  // quietly break it: the picture only ever GAINS as the story moves, except
+  // the alert rings, which are a moment rather than a state. The recovery slide
+  // is the one this protects — before the trail's last leg existed it was the
+  // only step whose picture purely subtracted, which is a strange note to end
+  // an intro on.
+  it('never leaves a slide with less than the one before, rings aside', async () => {
+    const marks = (s: Awaited<ReturnType<typeof shown>>): number[] => [
+      s.focal,
+      s.home,
+      s.trail,
+      s.trailHome,
+    ];
+    const story = [
+      marks(await shown('scatter')),
+      marks(await shown('posted')),
+      marks(await shown('alerted')),
+      marks(await shown('recovered')),
+    ];
+
+    for (let i = 1; i < story.length; i += 1) {
+      story[i].forEach((value, layer) => {
+        expect(value).toBeGreaterThanOrEqual(story[i - 1][layer]);
+      });
+    }
   });
 });
 
@@ -99,7 +162,7 @@ describe('accessibility', () => {
     expect(view.getByTestId('onboarding-map', HIDDEN)).toBeTruthy();
   });
 
-  it('is not touchable, so it cannot eat the Skip or the ring', async () => {
+  it('is not touchable, so it cannot eat the X or the button', async () => {
     const view = await render(<OnboardingMap stage="scatter" />);
 
     expect(view.getByTestId('onboarding-map', HIDDEN).props.pointerEvents).toBe('none');

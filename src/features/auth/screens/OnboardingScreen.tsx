@@ -1,8 +1,8 @@
 /**
- * WHAT:  OnboardingScreen — the first-launch intro. Four text slides, stepped
- *        one at a time: Skip on the left, a circular next control on the right
- *        whose ring tracks progress, and one full-width "Get started" on the
- *        last slide.
+ * WHAT:  OnboardingScreen — the first-launch intro. Four text slides over a map
+ *        that persists between them, stepped one at a time: an X top-right to
+ *        skip, on every slide, and a footer holding progress dots above one
+ *        full-width button — "Continue", and "Get started" on the last slide.
  * WHY:   A stolen-car app needs trust fast: the intro teaches the loop
  *        (post → alert → spot safely → paid) in four calm screens and plants
  *        the report-don't-approach safety rule before the user ever sees a
@@ -37,13 +37,22 @@
  *        Crucially it is NOT remounted per slide — it is a SIBLING of the keyed
  *        stage below, so the words step over a map that persists and morphs,
  *        which is the objection that removed the other two. Still no image
- *        assets: it is drawn, like the wash and the ring.
+ *        assets: it is drawn, like the wash.
+ *
+ *        THE CONTROLS WERE REBUILT (2026-09-03) against a second reference,
+ *        `docs/design-refs/onboarding/ob2-life360-gold.jpg`. The ring FAB that
+ *        fused progress and advance is gone — the funnel had one completed run
+ *        against six skipped, and a circle-with-a-gap is a lot to ask a
+ *        first-time reader to decode. Progress moved into `OnboardingDots`,
+ *        advance into one full-width `Button`, and Skip became the X over the
+ *        hero. See features/auth/README.md for the full record.
  * LINKS: src/features/auth/lib/onboardingSlides.ts (copy);
  *        src/features/auth/components/OnboardingMap.tsx (the hero);
  *        src/features/auth/lib/onboardingStorage.ts (seen flag);
  *        src/shared/wizard/WizardScreen.tsx (the motion this matches);
  *        src/features/auth/components/OnboardingSlide.tsx,
- *        OnboardingRingFab.tsx, OnboardingBackdrop.tsx;
+ *        OnboardingDots.tsx, OnboardingCloseButton.tsx,
+ *        OnboardingBackdrop.tsx;
  *        docs/DESIGN_SYSTEM.md (Motion, Tone); docs/LOGGING.md.
  *
  * Usage (route file):
@@ -73,6 +82,7 @@ import { createLogger } from '@/shared/lib/logger';
 import {
   displayFontScaleCap,
   motion,
+  sizes,
   spacing,
   useThemedStyles,
   type Palette,
@@ -81,8 +91,9 @@ import { easeOut } from '@/shared/theme/motionEasing';
 import { Button } from '@/shared/ui/Button';
 
 import { OnboardingBackdrop, ONBOARDING_WASH_HOLD } from '../components/OnboardingBackdrop';
+import { OnboardingCloseButton } from '../components/OnboardingCloseButton';
+import { OnboardingDots } from '../components/OnboardingDots';
 import { OnboardingMap } from '../components/OnboardingMap';
-import { OnboardingRingFab, RING_SLOT } from '../components/OnboardingRingFab';
 import { OnboardingSlide } from '../components/OnboardingSlide';
 import { markOnboardingSeenInGate } from '../hooks/useOnboardingGate';
 import { ONBOARDING_SLIDES } from '../lib/onboardingSlides';
@@ -256,32 +267,69 @@ export function OnboardingScreen() {
               bottom of it. `flexGrow: 1` keeps the copy bottom-aligned at
               ordinary sizes and lets it scroll only when it has to. */}
           <ScrollView
-            contentContainerStyle={styles.stageContent}
+            // ⚠️ THE EXTRA TOP PADDING IS NOT COSMETIC. With the band gone the
+            // stage starts at the top of the SafeAreaView, directly under the
+            // floating X — and `justifyContent: 'flex-end'` stops applying the
+            // moment the copy is taller than the scroll view, which at 2× is
+            // exactly when it happens. The headline then begins at y=0 and
+            // scrolls UNDER a chip that does not scroll with it. Reserving the
+            // chip's own height plus its inset is what keeps the first line
+            // readable at the text size the hero was dropped to serve.
+            contentContainerStyle={[
+              styles.stageContent,
+              !mapFits && styles.stageContentBelowClose,
+            ]}
             showsVerticalScrollIndicator={false}
             bounces={false}
+            testID="onboarding-stage-scroll"
           >
             <OnboardingSlide slide={ONBOARDING_SLIDES[page]} index={page} total={total} />
           </ScrollView>
         </Animated.View>
 
-        {/* Skip left, advance right — the same footer grammar as the wizard's
-            (shared/wizard/WizardFooter), so the two stepped flows read as one
-            system. minHeight holds the row steady across the last-slide swap
-            from a 78pt ring to a 52pt button. */}
-        <View style={[styles.footer, onLastPage && styles.footerSingle]} testID="onboarding-footer">
-          {onLastPage ? (
-            <Button label="Get started" onPress={() => void leave('completed')} />
-          ) : (
-            <>
-              <Button
-                label="Skip"
-                variant="ghost"
-                fullWidth={false}
-                onPress={() => void leave('skipped')}
-              />
-              <OnboardingRingFab page={page} total={total} onPress={advance} />
-            </>
-          )}
+        {/* ⚠️ AN OVERLAY, NOT A CHILD OF THE MAP BAND — and that is not a
+            layout preference, it is the only version that survives. Past 1.3×
+            text the band is not rendered at all, and an X living inside it
+            would take the ONLY way out of the intro with it: a reader at large
+            type would be locked into four slides with no skip.
+
+            Absolute so it floats over the hero exactly as the reference's does,
+            and so it costs the copy beneath it no vertical space.
+
+            ⚠️ LAST IN THE TREE, THOUGH IT DRAWS AT THE TOP. Source order is
+            reading order: mounted before the stage, a screen reader announced
+            "Skip, button" ahead of the headline on every slide — offering the
+            way out before saying what was being left. Absolute positioning and
+            `zIndex` are unaffected by the move. */}
+        <View style={styles.closeSlot} pointerEvents="box-none">
+          <OnboardingCloseButton onPress={() => void leave('skipped')} />
+        </View>
+
+        {/* ⚠️ REBUILT 2026-09-03 to the Life360 reference (owner request):
+            dots over a full-width button, replacing the ring FAB and the ghost
+            Skip that sat opposite it.
+
+            The reference has NO progress indicator, because it is one upsell
+            screen rather than a sequence — so its footer is a single pill
+            button and nothing else. Ours is one of four, and the ring it
+            replaces FUSED progress with advance. The dots are that signal put
+            back (owner call): the reference's button, plus the thing the
+            reference does not need.
+
+            Skip did not disappear, it MOVED — it is the X over the map now, so
+            this row holds one control and the eye has one place to go.
+
+            The last slide keeps its own label: "Get started" is a different
+            promise from "Continue", and it is the one press that means the
+            intro is finished rather than advanced. */}
+        <View style={styles.footer} testID="onboarding-footer">
+          {!onLastPage ? <OnboardingDots page={page} total={total} /> : null}
+          {/* ⚠️ `advance` on BOTH, not a ternary picking `leave` on the last
+              slide. `advance` already ends the run when there is no next page,
+              and duplicating that here made the branch in `advance` dead while
+              allocating a fresh closure every render. One control, one
+              handler; only the LABEL changes. */}
+          <Button label={onLastPage ? 'Get started' : 'Continue'} onPress={advance} />
         </View>
       </SafeAreaView>
     </View>
@@ -321,25 +369,48 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     justifyContent: 'flex-end',
     paddingBottom: spacing.xl,
   },
-  // Skip left, ring right. minHeight is the ring's slot so the last-slide swap
-  // to a 52pt button changes the control in place instead of jolting the page.
+  // Only when the map band is gone: the X's own square, plus the inset it sits
+  // at, plus the same gap again beneath it — so overflowing copy starts clear
+  // of the chip rather than under it. With the band present the hero already
+  // holds this room and the copy never reaches up here.
+  stageContentBelowClose: {
+    paddingTop: sizes.touchTarget + spacing.md * 2,
+  },
+  // ⚠️ A COLUMN NOW, dots over one full-width button (2026-09-03 reference
+  // rebuild). It was a row — Skip left, ring right — and both of those controls
+  // are gone: Skip moved to the X over the map, the ring's progress moved into
+  // the dots.
+  //
+  // Column matters mechanically, not just visually: Button's `fullWidth` is
+  // `alignSelf: 'stretch'`, which stretches the CROSS axis. In a row that is
+  // the vertical, so the button hugged its own text and grew tall instead of
+  // spanning the footer — the reason the old last-slide style had to flip
+  // direction. In a column, stretch means width, which is what is wanted on
+  // every slide now.
+  //
+  // No `minHeight`: with one control of one height on every slide there is no
+  // swap to hold the row steady across. The dots row is the only thing that
+  // appears and disappears, and `gap` reserves nothing when it is absent —
+  // which is right, because the last slide's button should sit where the
+  // others' does, not 20pt lower.
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: RING_SLOT,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: spacing.lg,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
+    // `xl`, matching the horizontal gutter. It was `lg`, which left the CTA
+    // closer to the screen edge below it than to either side of it — and on
+    // Android, where there is no bottom safe-area inset to make up the
+    // difference, 16pt is the whole gap.
+    paddingBottom: spacing.xl,
   },
-  // The last slide holds ONE full-width button, and the direction has to flip
-  // for it. Button's `fullWidth` is alignSelf: 'stretch', which stretches the
-  // CROSS axis — in a row that is the vertical, so "Get started" would have
-  // hugged its own text and grown to the ring's 78pt height instead of
-  // spanning the footer. In column, stretch means width, which is what was
-  // wanted. justifyContent then centres it in the height the row reserved.
-  footerSingle: {
-    flexDirection: 'column',
-    justifyContent: 'center',
+  // Top-right over the hero, matching the reference. `insets` are applied by
+  // SafeAreaView above, so `top` is measured from below the status bar.
+  closeSlot: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.xl,
+    zIndex: 1,
   },
 });

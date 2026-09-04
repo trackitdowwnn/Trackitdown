@@ -1,8 +1,9 @@
 /**
  * WHAT:  The onboarding hero — a small piece of the app's own map, with bounty
- *        pins, changing state as the slides step: cars scattered nearby, one
- *        posted, the alert reaching the others, that one home again. Built from
- *        components and tokens; no image assets.
+ *        pins and a sighting trail, changing state as the slides step: cars
+ *        scattered nearby, one posted, the alert reaching the others and the
+ *        reports coming back, that one home again. Built from components and
+ *        tokens; no image assets.
  * WHY:   Onboarding's job is to say what this app IS, and the answer is a map
  *        of stolen cars near you. Two earlier heroes were removed for being
  *        decoration beside the words — a placeholder emoji per slide, then a
@@ -57,6 +58,7 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   withTiming,
+  type DerivedValue,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
@@ -67,6 +69,7 @@ import {
   motion,
   radii,
   shadows,
+  sizes,
   spacing,
   typography,
   usePalette,
@@ -90,6 +93,14 @@ const STAGE_ORDER: OnboardingMapStage[] = ['scatter', 'posted', 'alerted', 'reco
 const FIELD_W = 360;
 const FIELD_H = 440;
 
+/** A point on the field, as percentages of the band — the space bounty pins and
+ *  trail dots share, and the only one in this file that cannot be distorted by
+ *  the stretch. */
+type FieldPoint = { left: `${number}%`; top: `${number}%` };
+
+/** A pin: a point, plus what it is worth. `null` is a listing with no reward. */
+type BountyPoint = FieldPoint & { pence: number | null };
+
 /**
  * Cars nearby. Placed to look incidental rather than gridded, and spread so the
  * widest alert ring encloses all of them — the first draft's rings reached one
@@ -100,7 +111,7 @@ const FIELD_H = 440;
  * in the app; a literal "£250" here would be the one price string in the
  * codebase nobody could re-point.
  */
-const NEIGHBOURS: { left: `${number}%`; top: `${number}%`; pence: number | null }[] = [
+const NEIGHBOURS: BountyPoint[] = [
   { left: '18%', top: '24%', pence: 5000 },
   { left: '76%', top: '30%', pence: 120000 },
   { left: '26%', top: '52%', pence: 1000 },
@@ -120,7 +131,7 @@ const NEIGHBOURS: { left: `${number}%`; top: `${number}%`; pence: number | null 
  * these five pins is deliberate too: £10 to £1,200 against a real £10–£5,000
  * range, where the draft had four amounts all in the top decile.
  */
-const FOCAL = { left: '50%' as const, top: '42%' as const, pence: 18000 };
+const FOCAL: BountyPoint = { left: '50%', top: '42%', pence: 18000 };
 
 /** Ring diameters as a share of the WIDTH, with aspectRatio 1 so they stay
  *  circles rather than ellipses. 84% clears the furthest neighbour. */
@@ -133,6 +144,91 @@ const HOME_RING = '28%';
 const RING_INNER_PULL = '-26%';
 const RING_OUTER_PULL = '-42%';
 const HOME_RING_PULL = '-14%';
+
+/**
+ * ⚠️ THE SIGHTING TRAIL — the one thing the reference has that the first hero
+ * did not (`docs/design-refs/onboarding/ob2-life360-gold.jpg`, owner call
+ * 2026-09-03: "bounty amounts, as now, plus a path"). Its map is one connected
+ * picture because a line runs through it; ours was five prices arranged on a
+ * field, and the eye had nothing to follow between them.
+ *
+ * ⚠️ IT IS THE CAR'S HISTORY, NOT A ROUTE TO IT. This file's own rule — "rings,
+ * not arrows: nothing here may suggest anyone should travel towards a stolen
+ * car" — is the reason the trail runs the direction it does. It is a record of
+ * where the car HAS BEEN SEEN, ending at the car, which is exactly what a
+ * spotter's reports build in this product. Nothing on this map marks the
+ * viewer, so there is no line from them to anywhere; a viewer reading these
+ * dots is reading the past, not being given a destination.
+ *
+ * ⚠️ DASHED, and that is a claim rather than a texture. We know the points,
+ * never the journey between them — a sighting trail is four reports and a lot
+ * of guessing. `SightingTimeline` draws its uncertainty segment dashed for the
+ * same reason, so this is the app's existing vocabulary for "we are joining
+ * these up, not asserting the line".
+ *
+ * ⚠️ IN VIEWBOX UNITS, WHILE THE DOTS ARE PERCENTAGES — the split the file
+ * already makes for the field vs the pins, and for the same reason. The path
+ * lives inside the stretched field so it keeps the shape it was drawn with
+ * against the roads it runs among; the dots must stay ROUND, and a circle in a
+ * `preserveAspectRatio="none"` viewBox is an ellipse on every handset that is
+ * not 360×440. Each dot's percentage is its point's field coordinate over
+ * FIELD_W / FIELD_H, and the two spaces coincide BECAUSE the field is stretched
+ * rather than fitted.
+ *
+ * ⚠️ THAT CORRESPONDENCE HOLDS FOR PERCENTAGES, NOT FOR THE PILLS. `pinSlot`
+ * offsets its pill by translateX(-28)/translateY(-12), which are POINTS, while
+ * everything here is in stretched viewBox units — so the clearances below were
+ * checked at a 360×440 band and are only nominal on any other. They are wide
+ * enough to survive it: the mid-left pin's box is ~28 units clear of the trail
+ * and the top-left pin's ~54. Anything tighter than that must not be reasoned
+ * about this way.
+ *
+ * The route threads the corridor between the top-left pin and the mid-left one,
+ * and ends UNDER the focal pill: the last leg has no dot because its endpoint
+ * is the car itself. That endpoint (168, 184) stays covered on any band
+ * narrower than ~840pt, which is every phone and tablet we ship to.
+ */
+const TRAIL_REPORTED = 'M 36 214 C 58 210, 62 190, 84 184';
+const TRAIL_HOME = 'M 84 184 C 112 178, 128 190, 168 192';
+
+/**
+ * Each leg's sighting dots, as `x / FIELD_W` and `y / FIELD_H`. The shared
+ * point (84, 184) belongs to the first leg, so the legs never double one.
+ *
+ * ⚠️ EVERY DOT CLEARS BOTH ROADS, and getting there took two goes — so the
+ * numbers are written down rather than left to be re-derived. Each dot's ring
+ * is drawn in the FIELD'S OWN COLOUR and painted after the roads, so a dot
+ * sitting on one does not overlap it, it deletes a bite out of it.
+ *
+ * The first draft put the shared point at (96, 172), ~3.6 units from the
+ * VERTICAL road. Moving it left to (84, 168) cleared that one by 15 — and put
+ * it 1.4 units from the UPPER road, which curves through y≈167 at x=84 and
+ * y≈175 at x=121. One bite became two.
+ *
+ * ⚠️ THE UPPER ROAD IS THE HARD CONSTRAINT, because the trail's upper run
+ * shadows it — the two stay within 2–9 units of each other from x=84 to x=150,
+ * so no amount of sliding dots ALONG the curve escapes it. The fix is to drop
+ * the whole upper run ~16 units below it. Clearances now, against a ring whose
+ * half-extent is ~5.5 horizontally and ~7 vertically:
+ *
+ *     (84, 184)    upper road y≈166.7  →  17.3     vertical road x≈99.6 → 15.6
+ *     (121.5, 185) upper road y≈174.6  →  10.4     vertical road x≈99.7 → 21.8
+ *     (60, 199.75) upper road y≈158    →  42
+ *     (36, 214)    upper road y≈150    →  64
+ *
+ * A leg CROSSING a road is fine and still happens; a dot parked on one is not.
+ */
+const TRAIL_DOTS_REPORTED: FieldPoint[] = [
+  { left: '10%', top: '48.6%' }, // 36, 214
+  { left: '16.7%', top: '45.4%' }, // 60, 199.75 — the curve's midpoint
+  { left: '23.3%', top: '41.8%' }, // 84, 184
+];
+const TRAIL_DOTS_HOME: FieldPoint[] = [
+  { left: '33.8%', top: '42%' }, // 121.5, 185 — the curve's midpoint
+];
+
+/** A report dot plus its ring, which is the box that gets centred on the point. */
+const TRAIL_DOT_SLOT = sizes.onboardingTrailDot + sizes.onboardingTrailDotRing * 2;
 
 /** Narrowed literals, so RN's style types accept them. */
 const absolutePosition = 'absolute' as const;
@@ -175,6 +271,20 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
     [step],
   );
   const homeIn = useDerivedValue(() => withTiming(step >= 3 ? 1 : 0, timing), [step]);
+  // ⚠️ THE TRAIL ARRIVES ON THE SPOT SLIDE, NOT THE POST ONE. Reports exist
+  // because somebody was alerted and then looked; drawing them beside "your car
+  // is posted" would show sightings of a car nobody had been told about yet.
+  // `<number>` explicitly on both: these two are the only ones PASSED anywhere,
+  // and inference narrows them to `0 | 1`, which a `DerivedValue<number>` prop
+  // then refuses (shared values are invariant — `set` makes them writable).
+  const trailIn = useDerivedValue<number>(() => withTiming(step >= 2 ? 1 : 0, timing), [step]);
+  // The last leg lands with the recovery, and it is the only mark that slide
+  // ADDS besides the home ring. Both alert rings retract there, so without this
+  // the final picture would be the only one that just loses things.
+  const trailHomeIn = useDerivedValue<number>(
+    () => withTiming(step >= 3 ? 1 : 0, timing),
+    [step],
+  );
 
   const focalStyle = useAnimatedStyle(() => ({ opacity: focalIn.value }));
   const alertNearStyle = useAnimatedStyle(() => ({ opacity: alertNearIn.value }));
@@ -230,6 +340,23 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
         />
       </Svg>
 
+      {/* Where the car has been seen. ABOVE the field and BELOW the pins: the
+          trail is something the markers stand on, like the roads it runs among,
+          and its last leg has to disappear under the focal pill rather than
+          crossing it. */}
+      <TrailLeg
+        path={TRAIL_REPORTED}
+        dots={TRAIL_DOTS_REPORTED}
+        progress={trailIn}
+        testID="onboarding-map-trail"
+      />
+      <TrailLeg
+        path={TRAIL_HOME}
+        dots={TRAIL_DOTS_HOME}
+        progress={trailHomeIn}
+        testID="onboarding-map-trail-home"
+      />
+
       {/* The alert reaching the neighbours. Rings, not arrows: nothing here may
           suggest anyone should travel towards a stolen car. */}
       <Animated.View
@@ -278,6 +405,68 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
   );
 }
 
+/**
+ * One leg of the sighting trail: the dashed run and the reports on it, fading
+ * in together as a single unit.
+ *
+ * ⚠️ THE PATH IS `vectorEffect="non-scaling-stroke"`, matching the roads, so the
+ * trail keeps its 2pt weight whatever the band's aspect does to the field. The
+ * DASH lengths are user units and so do stretch with it — accepted, because a
+ * dash rhythm that varies by a few points across handsets is invisible, while a
+ * stroke that halves in thickness is the difference between a trail and a
+ * scratch.
+ */
+interface TrailLegProps {
+  path: string;
+  dots: FieldPoint[];
+  /** Owned by the map, because WHICH STEP a leg belongs to is the map's story
+   *  to tell; the leg only turns it into opacity. */
+  progress: DerivedValue<number>;
+  testID: string;
+}
+
+function TrailLeg({ path, dots, progress, testID }: TrailLegProps) {
+  // Its own sheet and palette, unlike BountyPin, which is handed the parent's.
+  // This one already calls hooks, so there is nothing to save by threading them
+  // — and a component that takes `styles: ReturnType<typeof makeStyles>` is
+  // coupled to every unrelated key in it.
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+  const style = useAnimatedStyle(() => ({ opacity: progress.value }));
+
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, style]} testID={testID}>
+      <Svg
+        style={StyleSheet.absoluteFill}
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${FIELD_W} ${FIELD_H}`}
+        preserveAspectRatio="none"
+      >
+        <Path
+          d={path}
+          // textSecondary, not borderStrong — see `ring` in the sheet below for
+          // the ratios; this stroke stands on the same field.
+          stroke={palette.textSecondary}
+          strokeWidth={sizes.onboardingTrailStroke}
+          strokeLinecap="round"
+          strokeDasharray={`${sizes.onboardingTrailDash} ${sizes.onboardingTrailGap}`}
+          fill="none"
+          vectorEffect="non-scaling-stroke"
+        />
+      </Svg>
+      {dots.map((dot) => (
+        <View
+          key={dot.left + dot.top}
+          style={[styles.trailDotRing, { left: dot.left, top: dot.top }]}
+        >
+          <View style={styles.trailDot} />
+        </View>
+      ))}
+    </Animated.View>
+  );
+}
+
 /** One car on the map — MapPins' bounty pill, one size down. The selected one
  *  INVERTS to `surfaceInverse` rather than merely darkening: on a dark scheme a
  *  dark bubble measures ~1.2:1 and vanishes, which is the same reason the real
@@ -288,7 +477,7 @@ function BountyPin({
   styles,
   selected = false,
 }: {
-  pin: { left: `${number}%`; top: `${number}%`; pence: number | null };
+  pin: BountyPoint;
   styles: ReturnType<typeof makeStyles>;
   selected?: boolean;
 }) {
@@ -322,6 +511,14 @@ const makeStyles = (c: Palette) =>
       paddingHorizontal: spacing.sm,
       paddingVertical: 2,
       borderWidth: 1,
+      // ⚠️ STILL `borderStrong`, while the rings and the trail beside it moved
+      // to `textSecondary` — deliberately, not an oversight the 2026-09-04 pass
+      // missed. Those graphics are the SOLE carrier of their own shape, so they
+      // owe the full 3:1. This edge is not: the pill has a `surface` fill and a
+      // shadow, and DESIGN_SYSTEM sanctions `borderStrong` at 2.61:1 for
+      // precisely this element on the real map. Same distinction
+      // ChoiceChipsMulti draws when it says the ring is doing ALL the work.
+      // Do not unify these.
       borderColor: c.borderStrong,
       ...shadows.soft,
     },
@@ -355,12 +552,20 @@ const makeStyles = (c: Palette) =>
       position: absolutePosition,
       aspectRatio: 1,
       borderRadius: radii.full,
-      borderWidth: 1.5,
+      borderWidth: sizes.onboardingRingStroke,
       // ⚠️ NO OPACITY. This style reasoned its way to `borderStrong` and then
       // put 0.5 on the next line, compositing to 1.60:1 — WORSE than the
       // `mapZoneStroke` it rejected for being a whisper, and less than half the
       // 3:1 graphic floor. A whole slide’s job was handed to this graphic.
-      borderColor: c.borderStrong,
+      //
+      // ⚠️ AND `borderStrong` WAS STILL NOT ENOUGH (2026-09-04 review). It is
+      // the app's graphic-floor token, but colors.test.ts only ever asserts it
+      // against `background` and `surface`; this field is `surfaceSubtle`, one
+      // step further down, where it measures 2.79:1 light / 2.81:1 dark and
+      // misses the same 3:1 floor the paragraph above is about. CI could not
+      // see it. `textSecondary` clears it at 4.66:1 / 5.69:1 — the ratios and
+      // the reasoning ChoiceChipsMulti's swatch ring already records.
+      borderColor: c.textSecondary,
     },
     ringOuter: {
       width: RING_OUTER,
@@ -370,12 +575,40 @@ const makeStyles = (c: Palette) =>
       width: RING_INNER,
       marginTop: RING_INNER_PULL,
     },
+    // ⚠️ A RING IN THE FIELD'S OWN COLOUR, exactly as SightingTimeline rings its
+    // sighting dots in the page colour "so they sit crisply ON the rail". Here
+    // the rail is dashed and the ground is `surfaceSubtle`, so the ring is
+    // `surfaceSubtle` — it punches the dash out from under each report instead
+    // of letting the line run through it, which is what stops four dots on a
+    // dashed curve reading as a longer dash.
+    trailDotRing: {
+      position: absolutePosition,
+      width: TRAIL_DOT_SLOT,
+      height: TRAIL_DOT_SLOT,
+      borderRadius: radii.full,
+      backgroundColor: c.surfaceSubtle,
+      alignItems: alignCentre,
+      justifyContent: alignCentre,
+      // The slot's origin is its top-left, and the point it marks is its
+      // CENTRE — the same correction pinSlot makes, in the same direction.
+      transform: [{ translateX: -TRAIL_DOT_SLOT / 2 }, { translateY: -TRAIL_DOT_SLOT / 2 }],
+    },
+    // `surfaceInverse`, the same ink the focal pill uses, and for the file's
+    // existing reason: a `surface` fill is DARKER than this field in dark mode,
+    // so it would read as a hole punched in the map rather than a report on it.
+    trailDot: {
+      width: sizes.onboardingTrailDot,
+      height: sizes.onboardingTrailDot,
+      borderRadius: radii.full,
+      backgroundColor: c.surfaceInverse,
+    },
     homeRing: {
       width: HOME_RING,
       marginTop: HOME_RING_PULL,
       aspectRatio: 1,
       borderRadius: radii.full,
-      borderWidth: 1.5,
-      borderColor: c.borderStrong,
+      borderWidth: sizes.onboardingRingStroke,
+      // Same field, same floor, same fix as `ring` above.
+      borderColor: c.textSecondary,
     },
   });

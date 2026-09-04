@@ -1,8 +1,9 @@
 /**
  * WHAT:  Wiring tests for OnboardingScreen — the four slides and their position
- *        labels, the pinned safety copy, the ring-FAB → "Get started" control
- *        swap, Skip visibility/placement/persistence, completion, Android back
- *        behaviour, revisit mode, and the slide-view funnel logging.
+ *        labels, the pinned safety copy, the single full-width control and its
+ *        "Continue" → "Get started" relabel, the progress dots, the X's
+ *        visibility/placement/persistence, completion, Android back behaviour,
+ *        revisit mode, and the slide-view funnel logging.
  * WHY:   This is the app's front door and first funnel; a wiring slip here
  *        strands new users before auth or loses the skip/complete signal.
  *        Animation internals are mocked at the boundary — the same builder
@@ -15,18 +16,18 @@
  *        four slides in the tree, so a test could reach slide 4 by firing a
  *        `momentumScrollEnd` at the pager and could assert on any slide at any
  *        moment. Stepping is now an unmount/mount keyed on the page, so the
- *        only way forward is the way a user has: press the control. `advanceTo`
+ *        only way forward is the way a user has: press the control. `advanceBy`
  *        is that, and it is deliberately the ONLY way this suite moves — a
  *        helper that reached into state would stop these tests from proving the
  *        control still advances the screen.
  * LINKS: src/features/auth/screens/OnboardingScreen.tsx; docs/TESTING.md.
  */
 
-import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within, type RenderResult } from '@testing-library/react-native';
 import * as RN from 'react-native';
 import { BackHandler, StyleSheet } from 'react-native';
 
-import { displayFontScaleCap } from '@/shared/theme';
+import { displayFontScaleCap, sizes } from '@/shared/theme';
 
 import { ONBOARDING_SAFETY_LINE, ONBOARDING_SLIDES } from '../lib/onboardingSlides';
 import { ONBOARDING_STORAGE_KEY } from '../lib/onboardingStorage';
@@ -69,11 +70,6 @@ jest.mock('react-native-reanimated', () => {
     SlideInRight: builder(),
     SlideOutLeft: builder(),
     SlideOutRight: builder(),
-    // The ring's arc. Returning {} is right for THIS suite: the animated value
-    // is never asserted here, and the ring's static strokeDashoffset — the one
-    // that carries the truth — is a plain prop that survives the mock.
-    // OnboardingRingFab.test.tsx is where progress is pinned.
-    useAnimatedProps: () => ({}),
     // The map hero's layers. Opacity is not asserted here — OnboardingMap.test
     // owns the stages — but the hook must exist or the screen throws on render.
     useAnimatedStyle: (fn: () => unknown) => fn(),
@@ -128,16 +124,29 @@ const LAST_PAGE = ONBOARDING_SLIDES.length - 1;
 let backHandlers: (() => boolean)[];
 
 /**
- * Walk forward the only way a user can: by pressing the ring.
+ * Walk forward the only way a user can: by pressing the button.
  *
- * ⚠️ The control is re-queried on every press, never cached. It UNMOUNTS on the
- * last step (the footer swaps to "Get started"), and a held reference would go
- * on firing at a node that has left the tree — passing while proving nothing.
+ * ⚠️ BY ROLE AND NAME, not testID (2026-09-03). The ring FAB carried
+ * `onboarding-cta`; the reference rebuild replaced it with the shared `Button`,
+ * which takes no testID — and rather than widen a component used app-wide just
+ * to be findable here, this presses what a user presses: the control named
+ * "Continue".
+ *
+ * ⚠️ Re-queried on every press, never cached. The control's LABEL changes on
+ * the last step ("Continue" → "Get started"), and a held reference would go on
+ * firing at a node that has left the tree — passing while proving nothing.
+ *
+ * ⚠️ `advanceBy`, NOT `advanceTo`. It presses n times from wherever the screen
+ * currently is; it does not navigate to page n. The two only coincide when the
+ * caller is on slide 1, which every caller but one is — and the exception
+ * (`LAST_PAGE - 1` from slide 1, meaning "two more") is exactly the reading the
+ * old name got wrong. Named for what it does, so reordering a test cannot
+ * silently assert a different slide.
  */
-async function advanceTo(getByTestId: (id: string) => unknown, page: number) {
-  for (let step = 0; step < page; step += 1) {
+async function advanceBy(getByRole: RenderResult['getByRole'], steps: number) {
+  for (let step = 0; step < steps; step += 1) {
     await act(async () => {
-      fireEvent.press(getByTestId('onboarding-cta') as never);
+      fireEvent.press(getByRole('button', { name: 'Continue' }));
     });
   }
 }
@@ -230,12 +239,12 @@ describe('the map hero', () => {
 
 describe('slides', () => {
   it('shows each slide in turn with position + copy in one announced label', async () => {
-    const { getByTestId } = await render(<OnboardingScreen />);
+    const { getByTestId, getByRole } = await render(<OnboardingScreen />);
     expect(getByTestId('onboarding-slide-0').props.accessibilityLabel).toMatch(
       /^Slide 1 of 4\. Stolen cars, on one map\./,
     );
 
-    await advanceTo(getByTestId, LAST_PAGE);
+    await advanceBy(getByRole, LAST_PAGE);
 
     expect(getByTestId(`onboarding-slide-${LAST_PAGE}`).props.accessibilityLabel).toMatch(
       /^Slide 4 of 4\./,
@@ -246,11 +255,11 @@ describe('slides', () => {
   // and if that ever came back every "is it gone?" assertion in this file would
   // start passing for the wrong reason.
   it('mounts only the current slide', async () => {
-    const { getByTestId, queryByTestId } = await render(<OnboardingScreen />);
+    const { getByTestId, queryByTestId, getByRole } = await render(<OnboardingScreen />);
     expect(getByTestId('onboarding-slide-0')).toBeTruthy();
     expect(queryByTestId('onboarding-slide-1')).toBeNull();
 
-    await advanceTo(getByTestId, 1);
+    await advanceBy(getByRole, 1);
 
     expect(getByTestId('onboarding-slide-1')).toBeTruthy();
     expect(queryByTestId('onboarding-slide-0')).toBeNull();
@@ -258,8 +267,8 @@ describe('slides', () => {
 
   it('slide 3 carries the exact safety wording', async () => {
     // SAFETY: pinned word-for-word — the report-don't-approach seed.
-    const { getByTestId, getByText } = await render(<OnboardingScreen />);
-    await advanceTo(getByTestId, 2);
+    const { getByTestId, getByText, getByRole } = await render(<OnboardingScreen />);
+    await advanceBy(getByRole, 2);
     expect(getByTestId('onboarding-slide-2').props.accessibilityLabel).toContain(
       ONBOARDING_SAFETY_LINE,
     );
@@ -268,50 +277,76 @@ describe('slides', () => {
 });
 
 describe('progress and the CTA', () => {
-  // The control does not change LABEL any more, it changes IDENTITY: a ring
-  // FAB for slides 1–3, then one full-width "Get started". Asserting the ring
-  // is GONE is the half that pins the design decision — a screen that showed
-  // both would otherwise pass on the "Get started" lookup alone.
-  it('swaps the ring FAB for a full-width Get started on the last slide', async () => {
-    const { getByTestId, queryByTestId, getByRole, queryByRole } = await render(
-      <OnboardingScreen />,
-    );
-    expect(getByTestId('onboarding-cta').props.accessibilityLabel).toBe('Next');
+  // ⚠️ REBUILT 2026-09-03 to the Life360 reference. The control was a ring FAB
+  // for slides 1–3 that swapped IDENTITY for a full-width button on the last;
+  // it is now one full-width button throughout that changes LABEL. What pins
+  // that decision is the COUNT, for the reason set out in the test below — a
+  // screen that somehow showed two controls would pass the "Continue" lookup
+  // on its own.
+  it('is one full-width button throughout, relabelled on the last slide', async () => {
+    const { getByTestId, getByRole, queryByRole } = await render(<OnboardingScreen />);
+    expect(getByRole('button', { name: 'Continue' })).toBeTruthy();
     expect(queryByRole('button', { name: 'Get started' })).toBeNull();
+    // ⚠️ COUNT THE FOOTER'S CONTROLS, do not assert the old ring's testID is
+    // absent. `onboarding-cta` no longer exists anywhere in the repo, so a
+    // queryByTestId for it cannot fail and guards nothing — TESTING.md's "a
+    // test that invents the number it checks". One button is the actual claim:
+    // it fails the day a second control comes back to this row.
+    expect(within(getByTestId('onboarding-footer')).getAllByRole('button')).toHaveLength(1);
 
-    await advanceTo(getByTestId, LAST_PAGE);
+    await advanceBy(getByRole, LAST_PAGE);
 
+    // "Get started" is a different promise from "Continue": it is the press
+    // that FINISHES the intro rather than advancing it, and the funnel records
+    // the two differently.
     expect(getByRole('button', { name: 'Get started' })).toBeTruthy();
-    expect(queryByTestId('onboarding-cta')).toBeNull();
+    expect(queryByRole('button', { name: 'Continue' })).toBeNull();
   });
 
-  // Button's `fullWidth` is alignSelf: 'stretch', which stretches the CROSS
-  // axis — so in the footer's row direction "Get started" would hug its own
-  // text and grow to the ring's height instead of spanning the width. The
-  // direction has to flip with the control, and nothing else here would notice
-  // if it stopped.
-  it('lays the last slide out for one full-width button, not a row', async () => {
-    const { getByTestId } = await render(<OnboardingScreen />);
-    const footer = getByTestId('onboarding-footer');
-    expect(StyleSheet.flatten(footer.props.style).flexDirection).toBe('row');
+  // The dots are the progress the reference does not carry, because it is one
+  // screen rather than a sequence. They replace the ring's arc.
+  it('shows progress as dots, and drops them on the last slide', async () => {
+    const { getByTestId, queryByTestId, getByRole } = await render(<OnboardingScreen />);
+    expect(getByTestId('onboarding-dots').props.accessibilityLabel).toBe('Step 1 of 4');
 
-    await advanceTo(getByTestId, LAST_PAGE);
+    await advanceBy(getByRole, 1);
+    expect(getByTestId('onboarding-dots').props.accessibilityLabel).toBe('Step 2 of 4');
+
+    // Nothing left to be a step THROUGH once "Get started" is the only move.
+    await advanceBy(getByRole, LAST_PAGE - 1);
+    expect(queryByTestId('onboarding-dots')).toBeNull();
+  });
+
+  // ⚠️ COLUMN ON EVERY SLIDE, and this is mechanical rather than cosmetic.
+  // Button's `fullWidth` is `alignSelf: 'stretch'`, which stretches the CROSS
+  // axis: in a row that is the VERTICAL, so the button would hug its own text
+  // and grow tall instead of spanning the width. The old footer was a row and
+  // had to flip direction for the last slide; one direction throughout is what
+  // makes the button full-width everywhere. Nothing else here would notice if
+  // it reverted.
+  it('lays the footer out as a column on every slide', async () => {
+    const { getByTestId, getByRole } = await render(<OnboardingScreen />);
+    expect(StyleSheet.flatten(getByTestId('onboarding-footer').props.style).flexDirection).toBe(
+      'column',
+    );
+
+    await advanceBy(getByRole, LAST_PAGE);
 
     expect(StyleSheet.flatten(getByTestId('onboarding-footer').props.style).flexDirection).toBe(
       'column',
     );
   });
 
-  it('pressing Next moves on without finishing', async () => {
-    const { getByTestId } = await render(<OnboardingScreen />);
-    await advanceTo(getByTestId, 1);
+  it('pressing Continue moves on without finishing', async () => {
+    const { getByTestId, getByRole } = await render(<OnboardingScreen />);
+    await advanceBy(getByRole, 1);
     expect(getByTestId('onboarding-slide-1')).toBeTruthy();
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('button-only walkthrough reaches the end and completes', async () => {
-    const { getByTestId, getByRole } = await render(<OnboardingScreen />);
-    await advanceTo(getByTestId, LAST_PAGE);
+    const { getByRole } = await render(<OnboardingScreen />);
+    await advanceBy(getByRole, LAST_PAGE);
     await act(async () => {
       fireEvent.press(getByRole('button', { name: 'Get started' }));
     });
@@ -319,8 +354,8 @@ describe('progress and the CTA', () => {
   });
 
   it('Get started on the last slide persists the flag and enters the app as a guest', async () => {
-    const { getByTestId, getByRole } = await render(<OnboardingScreen />);
-    await advanceTo(getByTestId, LAST_PAGE);
+    const { getByRole } = await render(<OnboardingScreen />);
+    await advanceBy(getByRole, LAST_PAGE);
     await act(async () => {
       fireEvent.press(getByRole('button', { name: 'Get started' }));
     });
@@ -335,10 +370,13 @@ describe('progress and the CTA', () => {
 });
 
 describe('skip', () => {
-  it('shows on early slides, persists the flag, and enters the app as a guest', async () => {
-    const { getByText } = await render(<OnboardingScreen />);
+  // ⚠️ Queried by ROLE, not text: since 2026-09-03 Skip is an X glyph over the
+  // map, not a worded button. Its accessibility label is still "Skip" because
+  // that is the ACTION — "Close" would suggest a dialog the reader had opened.
+  it('persists the flag and enters the app as a guest', async () => {
+    const { getByRole } = await render(<OnboardingScreen />);
     await act(async () => {
-      fireEvent.press(getByText('Skip'));
+      fireEvent.press(getByRole('button', { name: 'Skip' }));
     });
     await waitFor(() =>
       expect(AsyncStorage.setItem).toHaveBeenCalledWith(ONBOARDING_STORAGE_KEY, 'true'),
@@ -349,21 +387,76 @@ describe('skip', () => {
     });
   });
 
-  it('disappears on the last slide', async () => {
-    const { getByTestId, queryByText } = await render(<OnboardingScreen />);
-    await advanceTo(getByTestId, LAST_PAGE);
-    expect(queryByText('Skip')).toBeNull();
+  // ⚠️ IT STAYS ON THE LAST SLIDE NOW, which is a deliberate reversal. The old
+  // Skip was hidden there because "Get started" sat in its place and two worded
+  // buttons would have competed. The X is chrome in the opposite corner, so it
+  // does not compete — and someone who reaches slide 4 and does not want to
+  // continue keeps the escape they had on every slide before it.
+  //
+  // The funnel keeps the distinction that makes this worth having: bailing on
+  // slide 4 records `skipped`, pressing Get started records `completed`.
+  it('stays available on the last slide, and still records a skip', async () => {
+    const { getByRole } = await render(<OnboardingScreen />);
+    await advanceBy(getByRole, LAST_PAGE);
+
+    await act(async () => {
+      fireEvent.press(getByRole('button', { name: 'Skip' }));
+    });
+
+    expect(mockTrack).toHaveBeenCalledWith('skipped');
+    expect(mockLogInfo).toHaveBeenCalledWith('Onboarding skipped', { atSlide: LAST_PAGE + 1 });
   });
 
-  // Skip and the next control are ONE footer row (2026-08-08); Skip used to sit
-  // in its own strip at the top-right. Asserted as containment rather than
-  // position — the design decision is "these two live together", and nothing
-  // else in this suite would notice if Skip drifted back up.
-  it('sits in the footer beside the next control, not in its own row', async () => {
+  // ⚠️ IT MUST NOT LIVE IN THE MAP BAND. Past 1.3× text the hero is not
+  // rendered at all, and a Skip nested inside it would take the only way out of
+  // the intro with it — a reader at large type locked into four slides. It is
+  // an absolute overlay for exactly this reason, and this is the test that says
+  // so: at 2× the map is gone and Skip is not.
+  it('survives the map being dropped at large text sizes', async () => {
+    jest
+      .spyOn(RN.Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 2 });
+
+    const { getByRole, queryByTestId } = await render(<OnboardingScreen />);
+
+    expect(queryByTestId('onboarding-map')).toBeNull();
+    expect(getByRole('button', { name: 'Skip' })).toBeTruthy();
+  });
+
+  // ⚠️ PRESENT IS NOT THE SAME AS NOT-IN-THE-WAY, which the test above does not
+  // distinguish. With the band gone the stage starts at the top of the screen
+  // directly under the floating X, and `justifyContent: 'flex-end'` stops
+  // applying the moment the copy outgrows the scroll view — which at 2× is
+  // precisely when it does. The headline then begins at y=0 and scrolls UNDER a
+  // chip that does not scroll with it. The reserved room is the fix, so it is
+  // the thing asserted.
+  it('reserves room for the X once the map is gone', async () => {
+    jest
+      .spyOn(RN.Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 2 });
+
     const { getByTestId } = await render(<OnboardingScreen />);
-    const footer = within(getByTestId('onboarding-footer'));
-    expect(footer.getByText('Skip')).toBeTruthy();
-    expect(footer.getByTestId('onboarding-cta')).toBeTruthy();
+    const big = StyleSheet.flatten(
+      getByTestId('onboarding-stage-scroll').props.contentContainerStyle,
+    );
+
+    expect(big.paddingTop).toBeGreaterThanOrEqual(sizes.touchTarget);
+  });
+
+  // fontScale pinned explicitly, for the reason the map-hero block records: the
+  // host's default is not 1, so "no padding" has to be asserted at a size that
+  // actually renders the band.
+  it('reserves none of it while the hero still holds that room', async () => {
+    jest
+      .spyOn(RN.Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
+
+    const { getByTestId } = await render(<OnboardingScreen />);
+    const normal = StyleSheet.flatten(
+      getByTestId('onboarding-stage-scroll').props.contentContainerStyle,
+    );
+
+    expect(normal.paddingTop).toBeUndefined();
   });
 });
 
@@ -375,8 +468,8 @@ describe('Android back', () => {
   });
 
   it('goes back a slide from later slides', async () => {
-    const { getByTestId } = await render(<OnboardingScreen />);
-    await advanceTo(getByTestId, 2);
+    const { getByTestId, getByRole } = await render(<OnboardingScreen />);
+    await advanceBy(getByRole, 2);
 
     let handled: boolean | undefined;
     await act(async () => {
@@ -391,20 +484,20 @@ describe('Android back', () => {
 
 describe('⚠️ the completion funnel', () => {
   it('opens a run and counts each slide reached', async () => {
-    const { getByTestId } = await render(<OnboardingScreen />);
+    const { getByRole } = await render(<OnboardingScreen />);
 
     expect(mockStartRun).toHaveBeenCalled();
     expect(mockTrack).toHaveBeenCalledWith('slide_viewed', 1);
 
-    await advanceTo(getByTestId, 2);
+    await advanceBy(getByRole, 2);
     expect(mockTrack).toHaveBeenCalledWith('slide_viewed', 2);
   });
 
   it('records how the run ended', async () => {
-    const { getByText } = await render(<OnboardingScreen />);
+    const { getByRole } = await render(<OnboardingScreen />);
 
     await act(async () => {
-      fireEvent.press(getByText('Skip'));
+      fireEvent.press(getByRole('button', { name: 'Skip' }));
     });
 
     expect(mockTrack).toHaveBeenCalledWith('skipped');
@@ -418,8 +511,8 @@ describe('⚠️ the completion funnel', () => {
     // browsed.
     mockParams = { revisit: '1' };
 
-    const { getByTestId } = await render(<OnboardingScreen />);
-    await advanceTo(getByTestId, 2);
+    const { getByRole } = await render(<OnboardingScreen />);
+    await advanceBy(getByRole, 2);
 
     expect(mockStartRun).not.toHaveBeenCalled();
     expect(mockTrack).not.toHaveBeenCalled();
@@ -429,9 +522,9 @@ describe('⚠️ the completion funnel', () => {
 describe('revisit mode (settings re-view)', () => {
   it('exits via back without touching the flag', async () => {
     mockParams = { revisit: '1' };
-    const { getByText } = await render(<OnboardingScreen />);
+    const { getByRole } = await render(<OnboardingScreen />);
     await act(async () => {
-      fireEvent.press(getByText('Skip'));
+      fireEvent.press(getByRole('button', { name: 'Skip' }));
     });
     expect(mockBack).toHaveBeenCalled();
     expect(mockReplace).not.toHaveBeenCalled();
@@ -441,13 +534,13 @@ describe('revisit mode (settings re-view)', () => {
 
 describe('funnel logging', () => {
   it('logs each newly reached slide', async () => {
-    const { getByTestId } = await render(<OnboardingScreen />);
+    const { getByRole } = await render(<OnboardingScreen />);
     expect(mockLogInfo).toHaveBeenCalledWith('Onboarding slide viewed', {
       slide: 1,
       revisit: false,
     });
 
-    await advanceTo(getByTestId, 1);
+    await advanceBy(getByRole, 1);
 
     expect(mockLogInfo).toHaveBeenCalledWith('Onboarding slide viewed', {
       slide: 2,

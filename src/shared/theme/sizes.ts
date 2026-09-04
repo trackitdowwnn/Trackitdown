@@ -151,6 +151,28 @@ export const sizes = {
   mapPinOrigin: 12,
   mapPinConfirm: 16,
   mapPinRing: 2,
+  /**
+   * The onboarding hero's sighting trail: the dashed run of reports closing on
+   * the posted car, and the dots marking each one.
+   *
+   * ⚠️ ITS OWN TOKENS rather than `timelineDot`/`timelineDash`, which mean the
+   * same thing. Those are the sighting timeline's LIST geometry — sized against
+   * a 24px rail column running beside text. These are drawn into a 360×440
+   * illustration that is then stretched to whatever band the handset gives it.
+   * Same concept, different constraint, and the day the timeline's dot grows to
+   * suit a text row is not the day this one should.
+   */
+  onboardingTrailDot: 8,
+  onboardingTrailDotRing: 2,
+  onboardingTrailStroke: 2,
+  /** The hero's alert and home rings. Was a bare `1.5` written twice in the
+   *  file that minted every other number here — lighter than the trail, which
+   *  is the point: the rings are a moment, the trail is the record. */
+  onboardingRingStroke: 1.5,
+  /** Dash rhythm (on/off, svg units) — see the trail's own note in
+   *  OnboardingMap for why it is dashed rather than solid. */
+  onboardingTrailDash: 6,
+  onboardingTrailGap: 5,
   /** The stats screen's sightings-per-day chart. `Min` is the floor a day WITH
    *  sightings never draws below — without it a quiet day beside a busy one
    *  rounds to a hairline and reads as empty. `Empty` is the stub an EMPTY day
@@ -167,23 +189,12 @@ export const sizes = {
    *  content lands in place instead of shifting the page under a reader. */
   statsSkeletonHead: 96,
   statsSkeletonBlock: 180,
-  /** The onboarding circular next control and its progress ring.
-   *
-   *  `fab` is the drawn circle: it must clear `touchTarget` (44) with room to
-   *  spare, and `control` (52) is deliberately NOT reused — that is a BAR
-   *  height, and tying a round control to a rectangular one means the next
-   *  person to change button height silently resizes this. 64 sits on the 4pt
-   *  grid and holds its own against a 40pt headline.
-   *
-   *  `fabRing` is the arc stroke. At the ~78pt outer diameter a 2pt stroke
-   *  (colourSwatchRing, tabAvatarRing) disappears; 3 reads as a deliberate arc
-   *  without becoming a band — the same call attentionBar made.
-   *
-   *  `fabRingGap` separates fill edge from ring, so the arc reads as progress
-   *  AROUND the button rather than a border ON it. */
-  fab: 64,
-  fabRing: 3,
-  fabRingGap: 4,
+  /* `fab` / `fabRing` / `fabRingGap` lived here for the onboarding ring FAB —
+   * a circular next control carrying its own progress arc. The Life360 rebuild
+   * (2026-09-03) replaced it with a full-width Button and a row of dots, and
+   * these were its ONLY consumers, so they went with it. Nothing else in the
+   * app is round-and-64; if a FAB returns, it should argue its own size from
+   * its own context rather than inherit a dead one. */
   /** Non-interactive context pill height (timeline cards). */
   pillHeight: 24,
   /** The camera-as-step canvas (report-sighting photos step): viewfinder +
