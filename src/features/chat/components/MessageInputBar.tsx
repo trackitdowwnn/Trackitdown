@@ -80,7 +80,13 @@ export function MessageInputBar({ value, onChangeText, onSend, maxLength }: Mess
         ]}
         testID="send-button"
       >
-        <Feather name="arrow-up" size={sizes.icon} color={palette.textOnPrimary} />
+        {/* ⚠️ `send`, NOT `arrow-up` (2026-09-04). The up-arrow has become the
+            LLM prompt-box convention — ChatGPT, Claude, every assistant box —
+            while every messaging app (WhatsApp, iMessage, Signal, Telegram)
+            uses a directional send glyph. The two now carry different
+            connotations, and this is a person writing to a stranger about
+            their stolen car, not a prompt. */}
+        <Feather name="send" size={sizes.icon} color={palette.textOnPrimary} />
       </Pressable>
     </View>
   );

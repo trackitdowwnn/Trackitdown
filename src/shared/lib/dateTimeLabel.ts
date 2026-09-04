@@ -23,6 +23,27 @@ function startOfLocalDay(date: Date): number {
 }
 
 /**
+ * Clock time alone: "14:30" (device locale — a UK phone renders 24-hour, a US
+ * one renders "2:30 PM"; deliberately not a fixed format).
+ *
+ * ⚠️ EXTRACTED 2026-09-04 BECAUSE IT WAS ABOUT TO BE WRITTEN A THIRD TIME.
+ * `formatDateTimeLabel` below and `chatThreadItems.timeCaption` had each
+ * hand-rolled this exact `toLocaleTimeString` call, and the inbox row needed
+ * it too. Three copies of one format string is where the locale behaviour
+ * starts drifting between the screen that shows a message and the screen that
+ * lists it.
+ *
+ * @throws If `iso` is not a parseable timestamp.
+ */
+export function formatClock(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`formatClock got an unparseable timestamp: ${iso}`);
+  }
+  return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
  * "Today, 14:30" / "Yesterday, 09:00" / "Mon 6 Jul, 14:30" (device locale).
  *
  * @throws If `iso` is not a parseable timestamp.
@@ -33,7 +54,7 @@ export function formatDateTimeLabel(iso: string, now: Date = new Date()): string
     throw new Error(`formatDateTimeLabel got an unparseable timestamp: ${iso}`);
   }
 
-  const time = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const time = formatClock(iso);
   const dayDelta = Math.round((startOfLocalDay(now) - startOfLocalDay(date)) / DAY_MS);
 
   if (dayDelta === 0) {

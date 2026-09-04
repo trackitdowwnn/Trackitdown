@@ -22,6 +22,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { formatClock } from '@/shared/lib/dateTimeLabel';
 import { opacity, radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { blockPaddingTop, type MessageGroupPos } from '../lib/messageGroups';
@@ -52,10 +53,9 @@ function groupedCorners(mine: boolean, groupPos: MessageGroupPos): ViewStyle | n
   return { [towardPrevious]: radii.sm, [towardNext]: radii.sm };
 }
 
-/** Local time for the small caption above a group ("14:32", device locale). */
-function timeCaption(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
+/** Local time for a bubble's meta ("14:32", device locale). Shared with the
+ *  inbox row and `formatDateTimeLabel` — see the note on `formatClock`. */
+const timeCaption = formatClock;
 
 // --- Persisted user message -----------------------------------------------------
 
@@ -211,18 +211,35 @@ export function SystemMessage({ message }: { message: ChatMessage }) {
 }
 
 /**
- * A ruled divider, not a floating caption. Day labels and the time captions
- * above a message group were both bare centred grey text, so two different
- * jobs — "a new day starts here" and "this group is N hours later" — looked
- * identical. The rules give the day its own weight; time stays plain.
+ * A floating chip, centred over the conversation.
+ *
+ * ⚠️ IT WAS A RULED DIVIDER UNTIL 2026-09-04, and the reason it stopped being
+ * one is worth keeping. The rules were added because a day label and a time
+ * caption were both bare centred grey text — two different jobs that looked
+ * identical. The chip solves that same problem better: a filled, rounded object
+ * is not the same kind of thing as a bare caption at all, so the two can no
+ * longer be confused even at a glance. And the rules had a cost the chip does
+ * not — they drew a full-width line across a conversation, which reads as a
+ * section break in a surface whose whole point is that it is continuous.
+ *
+ * ⚠️ THE SAME RECIPE AS AN INCOMING BUBBLE — `surface` with a hairline — and
+ * that is deliberate rather than lazy. It is what the reference does: the date
+ * chip is the same material as the incoming bubble, one being a small centred
+ * instance of the other. Three things keep them apart: it is centred rather
+ * than side-aligned, `caption` rather than `body`, and `radii.full` rather than
+ * `radii.lg`. Shape does the work, so the fill does not have to.
+ *
+ * ⚠️ THE HAIRLINE IS NOT DECORATION. On the conversation's `surfaceSubtle`
+ * ground a `surface` fill separates by about 1.16:1 — the same reason the
+ * incoming bubble carries one. Remove it and the chip is a floating word.
  */
 export function DaySeparator({ label }: { label: string }) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.dayBlock}>
-      <View style={styles.dayRule} />
-      <Text style={styles.dayText}>{label}</Text>
-      <View style={styles.dayRule} />
+      <View style={styles.dayChip}>
+        <Text style={styles.dayText}>{label}</Text>
+      </View>
     </View>
   );
 }
@@ -317,17 +334,26 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textSecondary,
     textAlign: 'center',
   },
+  // The block keeps its `lg` padding, so the chip costs +8pt per separator over
+  // the rules it replaced (50 → 58). Trimming the block to hold at 50 would
+  // falsify three comments that state this number — blockPaddingTop's,
+  // separatorAbove's, and ChatThreadScreen's renderItem note — and day
+  // separators are rare. Eight points is cheaper than three drifted comments.
   dayBlock: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
   },
-  dayRule: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: c.border,
+  // ⚠️ `alignSelf`-free: the chip centres via the block's alignItems, so it
+  // shrink-wraps its label instead of stretching. A stretched chip would be a
+  // full-width bar, which is the ruled divider's problem in a new shape.
+  dayChip: {
+    backgroundColor: c.surface,
+    borderRadius: radii.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
   dayText: {
     ...typography.caption,

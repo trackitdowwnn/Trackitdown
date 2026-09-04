@@ -604,9 +604,26 @@ export function ChatThreadScreen({ threadId }: ChatThreadScreenProps) {
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
+  // ⚠️ `surfaceSubtle`, NOT `background` (2026-09-04). This is the structural
+  // half of what a messaging app's wallpaper does: give the bubbles something
+  // to sit ON. The chat README's own complaint was that an incoming bubble
+  // "had almost no boundary at all" — `surface` on `background` is ~1.07:1
+  // light and ~1.10:1 dark. Against this ground it is ~1.16:1 in BOTH schemes,
+  // which is a real improvement in the darker one too, where `surface` is
+  // actually darker than `surfaceSubtle` and the bubble reads as a recess.
+  //
+  // ⚠️ IT DOES NOT REPLACE THE HAIRLINE. 1.16:1 is nowhere near the 3:1 graphic
+  // floor; the incoming bubble's edge is still what makes it a shape. Do not
+  // delete that border on the strength of this fill.
+  //
+  // ⚠️ NO PATTERN, and that is a decision rather than an unfinished job. The
+  // reference's wallpaper is a drawn motif; ours would have to be monochrome,
+  // and a patterned grey field at the top of a screen is this app's LOADING
+  // SKELETON — the exact charge that killed the first onboarding hero. It is
+  // also the wrong register: doodles behind a conversation about a stolen car.
   container: {
     flex: 1,
-    backgroundColor: c.background,
+    backgroundColor: c.surfaceSubtle,
   },
   // Person + car as one surface, closed by one hairline.
   //
@@ -650,11 +667,20 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.md,
   },
+  // ⚠️ `surfaceSubtlePressed`, and it MOVED here because the ground did. These
+  // were `surfaceSubtle` — which is now the conversation's own fill, so they
+  // would have been invisible. One step down keeps them at about the subtlety
+  // they had (1.14:1 light / 1.19:1 dark, against 1.08 / 1.28 before).
+  //
+  // A pressed token used at rest is a stretch, and it is the honest one here:
+  // the alternative is `surface`, which is what a real incoming bubble is, so
+  // the skeleton would read as messages that had already arrived. If this ever
+  // grates, mint a token — do not reach for `surface`.
   skeletonBubble: {
     height: sizes.skeletonBubble,
     width: '70%',
     borderRadius: radii.lg,
-    backgroundColor: c.surfaceSubtle,
+    backgroundColor: c.surfaceSubtlePressed,
   },
   skeletonMine: {
     alignSelf: 'flex-end',
