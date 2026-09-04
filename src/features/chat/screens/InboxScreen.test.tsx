@@ -1,7 +1,6 @@
 /**
- * WHAT:  Tests for the Messages face of the inbox — its five states, the day
- *        grouping, and the interaction between the filter chips and that
- *        grouping.
+ * WHAT:  Tests for the Messages face of the inbox — its five states, the flat
+ *        row list and its per-row date stamp, and the filter chips.
  * WHY:   ⚠️ THIS SCREEN SHIPPED WITH NO TESTS AT ALL and was then restructured
  *        (2026-08-28, Airbnb inbox pass: day headers, a rebuilt row, a shared
  *        skeleton). Nothing pinned its states or its copy — including
@@ -9,15 +8,17 @@
  *        pleasant, and the per-filter empty copy that is the only way OUT of an
  *        empty filter.
  *
- *        The grouping assertions matter more than they look: `groupByDay` only
- *        opens a header when the label CHANGES, so it silently depends on the
- *        list arriving newest-first, and grouping must happen AFTER filtering
- *        or a chip leaves headers standing over days it emptied.
+ *        ⚠️ THE GROUPING WENT ON 2026-09-04. The paragraph that stood here
+ *        explained why grouping had to happen AFTER filtering, or a chip left
+ *        headers over days it emptied. Both the hazard and its guard left with
+ *        the headers; what replaced them is asserted below.
  * LINKS: ./InboxScreen.tsx; ../lib/inboxModel.ts; src/shared/lib/dayGroups.ts;
  *        docs/TESTING.md.
  */
 
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
+
+import { formatListStamp } from '@/shared/lib/dateTimeLabel';
 
 import type { InboxThread } from '../types';
 
@@ -116,23 +117,31 @@ describe('states', () => {
   });
 });
 
-describe('⚠️ grouped by day', () => {
-  it('heads each day with the calendar word for it', async () => {
+// ⚠️ THIS BLOCK USED TO BE "grouped by day" AND ASSERTED THE OPPOSITE. The
+// list was headed by `DayHeader`s until 2026-09-04; the owner asked for the
+// messaging-app structure, where a flat recency-ordered list is the point and
+// each row's own stamp carries the day a header used to. Both inbox faces
+// dropped grouping together, which is how "one tab, one vocabulary" survives —
+// the rule was never "both must group", it was "both must do the same thing".
+describe('⚠️ flat, with the day on the row', () => {
+  it('heads nothing — no calendar words above the rows', async () => {
     mockUseInbox.mockReturnValue(
       ready([
         thread({ threadId: 'a', lastMessageAt: new Date().toISOString() }),
         thread({ threadId: 'b', lastMessageAt: new Date(Date.now() - DAY_MS).toISOString() }),
       ]),
     );
-    const { getByText } = await act(async () => render(<ChatInboxScreen />));
+    const { queryByText, getByTestId } = await act(async () => render(<ChatInboxScreen />));
 
-    expect(getByText('Today')).toBeTruthy();
-    expect(getByText('Yesterday')).toBeTruthy();
+    // "Today" was a header; nothing prints it now. "Yesterday" survives, but as
+    // the older ROW's own stamp rather than a heading over it.
+    expect(queryByText('Today')).toBeNull();
+    expect(within(getByTestId('thread-meta-b')).getByText('Yesterday')).toBeTruthy();
   });
 
-  it('⚠️ heads a day ONCE, however many conversations it holds', async () => {
-    // Three headers for three same-day threads would be the tell that the
-    // newest-first assumption broke.
+  it('gives every row its own stamp, however many share a day', async () => {
+    // Under grouping, three same-day threads shared one header and showed three
+    // bare clocks. Flat, each row answers "when" by itself.
     const now = new Date().toISOString();
     mockUseInbox.mockReturnValue(
       ready([
@@ -141,25 +150,34 @@ describe('⚠️ grouped by day', () => {
         thread({ threadId: 'c', lastMessageAt: now, other: { firstName: 'Ben' } }),
       ]),
     );
-    const { getAllByText, getByText } = await act(async () => render(<ChatInboxScreen />));
+    const { getByText, getByTestId } = await act(async () => render(<ChatInboxScreen />));
 
-    expect(getAllByText('Today')).toHaveLength(1);
     expect(getByText('Ada')).toBeTruthy();
     expect(getByText('Ben')).toBeTruthy();
+    const clock = formatListStamp(now);
+    for (const id of ['a', 'b', 'c']) {
+      expect(within(getByTestId(`thread-meta-${id}`)).getByText(clock)).toBeTruthy();
+    }
   });
 
-  it('uses the same words the Notifications face uses — one tab, one vocabulary', async () => {
+  // ⚠️ THE LADDER IS THE WHOLE REASON THIS IS NOT JUST A CLOCK. A bare "14:32"
+  // on a thread from July would be actively misleading, which is the failure a
+  // day header used to prevent.
+  it('degrades from a clock to a date as a thread ages', async () => {
     mockUseInbox.mockReturnValue(
-      ready([thread({ lastMessageAt: new Date('2026-07-23T10:00:00.000Z').toISOString() })]),
+      ready([thread({ threadId: 'old', lastMessageAt: '2026-07-23T10:00:00.000Z' })]),
     );
-    const { getByText } = await act(async () => render(<ChatInboxScreen />));
+    const { getByTestId } = await act(async () => render(<ChatInboxScreen />));
+    const meta = within(getByTestId('thread-meta-old'));
 
-    expect(getByText('23 July')).toBeTruthy();
+    expect(meta.getByText(formatListStamp('2026-07-23T10:00:00.000Z'))).toBeTruthy();
+    expect(meta.queryByText(/^\d{1,2}[:.]\d{2}$/)).toBeNull();
   });
 
-  it('⚠️ groups AFTER filtering, so a chip never strands an empty day header', async () => {
-    // Filtering a grouped list instead of grouping a filtered one leaves
-    // "Yesterday" standing over nothing.
+  it('a chip that empties a day leaves nothing standing behind it', async () => {
+    // The hazard this replaces: filtering a GROUPED list left "Yesterday"
+    // heading nothing. There is no structure to strand now, and this is what
+    // says so.
     mockUseInbox.mockReturnValue(
       ready([
         thread({ threadId: 'a', unreadCount: 2, lastMessageAt: new Date().toISOString() }),
@@ -170,15 +188,18 @@ describe('⚠️ grouped by day', () => {
         }),
       ]),
     );
-    const { getByText, queryByText } = await act(async () => render(<ChatInboxScreen />));
+    const { getByText, queryByText, queryByTestId } = await act(async () =>
+      render(<ChatInboxScreen />),
+    );
 
-    expect(getByText('Yesterday')).toBeTruthy();
+    expect(queryByTestId('thread-meta-b')).toBeTruthy();
     // The chip counts unread THREADS, not unread messages — one here.
     await act(async () => {
       fireEvent.press(getByText('Unread (1)'));
     });
 
-    expect(getByText('Today')).toBeTruthy();
+    expect(queryByTestId('thread-meta-a')).toBeTruthy();
+    expect(queryByTestId('thread-meta-b')).toBeNull();
     expect(queryByText('Yesterday')).toBeNull();
   });
 

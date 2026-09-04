@@ -19,45 +19,24 @@
  *        docs/DESIGN_SYSTEM.md (PlateChip norms).
  */
 
-import { groupByDay } from '@/shared/lib';
 
 import type { InboxThread } from '../types';
 
-/**
- * The Messages list as a flat array of day headers and thread rows — the same
- * shape the Notifications face renders, so the two halves of one tab group
- * time the same way and use the same words for it ("Today", "Yesterday",
- * "23 July").
+/* The Messages list is a FLAT array of threads as of 2026-09-04.
  *
- * ⚠️ AN ADAPTER, NOT A WIDENED `groupByDay`. The shared helper wants
- * `{ id, createdAt }`; a thread has `threadId` and `lastMessageAt`. Teaching
- * the shared module about accessor functions would put a generic in front of
- * three consumers and its own test suite to save one map() here.
+ * What stood here was `groupThreadsByDay` and its `InboxDayRow` adapter, which
+ * turned the list into day headers interleaved with rows so the two inbox faces
+ * grouped time the same way and used the same words for it. Both faces dropped
+ * grouping together — each row now carries its own `formatListStamp` — so the
+ * adapter had no consumer left and went with it.
  *
- * ⚠️ GROUP AFTER FILTERING, never before — grouping a full list and then
- * filtering rows out strands headers over days with nothing under them.
+ * Two rules died with it and are recorded because they were load-bearing while
+ * they lived: group AFTER filtering (or a chip strands a header over a day it
+ * emptied), and newest-first input (`groupByDay` opens a header only when the
+ * label CHANGES, so out-of-order input printed a day twice).
  *
- * ⚠️ NEWEST-FIRST IS LOAD-BEARING. `groupByDay` only opens a new header when
- * the label CHANGES, so out-of-order input produces the same day twice. Holds
- * today because `fetchInbox` sorts by last activity and `filterThreads`
- * preserves order — both of which are now this function's problem too.
+ * `groupByDay` in shared/lib is untouched — MySightingsScreen still uses it.
  */
-export interface InboxDayRow {
-  id: string;
-  createdAt: string;
-  thread: InboxThread;
-}
-
-export function groupThreadsByDay(threads: InboxThread[], now?: Date) {
-  return groupByDay<InboxDayRow>(
-    threads.map((thread) => ({
-      id: thread.threadId,
-      createdAt: thread.lastMessageAt,
-      thread,
-    })),
-    now,
-  );
-}
 
 /** The inbox filter chips, in display order. */
 export type InboxFilter = 'all' | 'unread' | 'my_cars' | 'my_sightings';

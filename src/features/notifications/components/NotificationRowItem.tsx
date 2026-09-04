@@ -21,10 +21,12 @@
  *        padding. Change the box here and the conversation row has to change
  *        with it.
  *
- *        ⚠️ ONE THING THEY STILL DISAGREE ON: this row's time is `timeAgo`
- *        ("2h ago") while ThreadRow's is a clock ("14:32"). Both sit under the
- *        same `DayHeader`, so the clock argument applies here too and the
- *        alignment is wanted — it was simply not in the scope the owner set.
+ *        ⚠️ AND THEY AGREE ON TIME AGAIN as of 2026-09-04. This row drew
+ *        `timeAgo` ("2h ago") while ThreadRow drew a clock — a gap recorded
+ *        here as wanted-but-out-of-scope. Both lists then went FLAT, and with
+ *        no header above a row to say the day, both had to move to the shared
+ *        `formatListStamp` ladder: the clock today, "Yesterday" yesterday, a
+ *        date before that.
  *
  *        ⚠️ A CIRCLE SINCE 2026-09-04, REVERSING THE PARAGRAPH THAT USED TO
  *        STAND HERE. It read: "A ROUNDED SQUARE, NOT A CIRCLE. Circles mean
@@ -49,6 +51,7 @@
 
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
+import { formatListStamp } from '@/shared/lib/dateTimeLabel';
 import { timeAgo } from '@/shared/lib/timeAgo';
 import {
   radii,
@@ -177,7 +180,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
           existed to protect. */}
       <View style={styles.meta}>
         <Text style={styles.time} numberOfLines={1}>
-          {timeAgo(row.createdAt)}
+          {formatListStamp(row.createdAt)}
         </Text>
         <UnreadBadge count={unread ? 1 : 0} testID={unread ? `unread-${row.id}` : undefined} />
       </View>
