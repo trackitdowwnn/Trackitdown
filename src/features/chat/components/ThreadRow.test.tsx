@@ -14,6 +14,9 @@
  */
 
 import { fireEvent, render, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { radii } from '@/shared/theme';
 
 import { formatClock } from '@/shared/lib/dateTimeLabel';
 
@@ -62,6 +65,39 @@ describe('the leading visual', () => {
 
     expect(getByTestId('thread-car-tile-t1')).toBeTruthy();
     expect(queryByTestId('thread-car-photo-t1')).toBeNull();
+  });
+});
+
+// ⚠️ THESE PIN A SHAPE THAT HAS NOW BEEN REVERSED TWICE, which is the only
+// reason they earn their place — TESTING.md is right that asserting a prop
+// usually guards nothing. The lead went square (2026-08-28) then round
+// (2026-09-04), and the time went from the name's line into a trailing column
+// on the same date. Both are decisions a later tidy-up would undo without
+// realising it had chosen anything.
+//
+// ⚠️ AND THEY ONLY COVER HALF THE INVARIANT. `NotificationRowItem` is supposed
+// to be the same silhouette — both file headers say "change one and change
+// both" — but it has NO TEST FILE AT ALL, so nothing catches the two faces
+// drifting apart. That is a real gap, stated here rather than papered over.
+describe('the row shape the inbox pass settled on', () => {
+  it('leads with a ROUND tile, not the rounded square it used to be', async () => {
+    const { getByTestId } = await render(<ThreadRow thread={withPhoto()} onPress={jest.fn()} />);
+    const lead = StyleSheet.flatten(getByTestId('thread-car-photo-t1').props.style);
+
+    expect(lead.borderRadius).toBe(radii.full);
+  });
+
+  it('keeps the time and the unread badge together in one trailing column', async () => {
+    // They used to be two separate right-hand objects at two different heights
+    // — the time on the name's line, the badge centred in a side slot. If this
+    // fails, someone has put the time back beside the name.
+    const { getByTestId } = await render(
+      <ThreadRow thread={thread({ unreadCount: 3 })} onPress={jest.fn()} />,
+    );
+    const meta = within(getByTestId('thread-meta-t1'));
+
+    expect(meta.getByText(formatClock(new Date().toISOString()))).toBeTruthy();
+    expect(meta.getByText('3')).toBeTruthy();
   });
 });
 

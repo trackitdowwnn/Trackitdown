@@ -24,19 +24,16 @@
  *        already visible to both parties — never anything of the other
  *        person's.
  *
- *        ⚠️ ONE SILHOUETTE WITH NotificationRowItem — same tile, gap, gutter,
- *        padding and reserved badge slot. See that file's header; change one
- *        and change both. The silhouette is GEOMETRY, and the 2026-09-04 clock
- *        change did not touch it.
+ *        ⚠️ ONE SILHOUETTE WITH NotificationRowItem — same round tile, gap,
+ *        gutter, padding, and the same trailing meta column (time over badge).
+ *        See that file's header; change one and change both. The 2026-09-04
+ *        row pass changed all of those, and changed them in both files.
  *
- *        ⚠️ THE TWO FACES NOW FORMAT TIME DIFFERENTLY, and it is a known,
- *        deliberate gap rather than an oversight. This row draws a clock;
- *        NotificationRowItem still draws `timeAgo`. Both sit under the same
- *        DayHeader vocabulary in the same tab, so the argument for the clock
- *        applies there word for word — but the WhatsApp pass was scoped to
- *        Messages by the owner, and changing the other face on the way past
- *        would have been an unrequested redesign of a screen nobody reviewed.
- *        If you are here to align them, this is the note saying it is wanted.
+ *        ⚠️ THE TWO FACES STILL FORMAT TIME DIFFERENTLY, and it is a known gap
+ *        rather than an oversight. This row draws a clock; NotificationRowItem
+ *        still draws `timeAgo`. Both sit under the same DayHeader vocabulary,
+ *        so the clock argument applies there word for word — the alignment is
+ *        wanted, it was just outside the scope the owner set.
  * LINKS: src/features/chat/lib/inboxModel.ts (context/unread maths);
  *        src/features/notifications/components/NotificationRowItem.tsx (the
  *          silhouette twin);
@@ -48,7 +45,6 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 
 import { formatClock, formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
 import {
-  listRowStackFontScale,
   radii,
   sizes,
   spacing,
@@ -90,7 +86,6 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
   // in every bubble's label. Sighted readers get the drawn header; everyone
   // else gets it in the sentence.
   const spokenWhen = formatDateTimeLabel(thread.lastMessageAt);
-  const stacked = scale > listRowStackFontScale;
 
   return (
     <Pressable
@@ -131,20 +126,15 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
         <CarColourTile
           colour={thread.post.colour}
           size={sizes.inboxRowTile}
-          radius={radii.md}
+          radius={radii.full}
           glyphSize={sizes.inboxRowGlyph}
           testID={`thread-car-tile-${thread.threadId}`}
         />
       )}
       <View style={styles.body}>
-        <View style={[styles.topLine, stacked && styles.topLineStacked]}>
-          <Text style={[styles.name, unread && styles.nameUnread]} numberOfLines={1}>
-            {thread.other.firstName}
-          </Text>
-          <Text style={styles.time} numberOfLines={1}>
-            {when}
-          </Text>
-        </View>
+        <Text style={[styles.name, unread && styles.nameUnread]} numberOfLines={1}>
+          {thread.other.firstName}
+        </Text>
         {/* The message now sits ABOVE the context line, and takes `body` rather
             than `caption`. Once the car is the picture leading the row, what it
             is about is answered before you read anything — so the words someone
@@ -176,10 +166,27 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
           ) : null}
         </View>
       </View>
-      <UnreadBadge
-        count={thread.unreadCount}
-        testID={unread ? `thread-unread-${thread.threadId}` : undefined}
-      />
+      {/* ⚠️ THE TIME AND THE BADGE ARE ONE TRAILING COLUMN (2026-09-04). The
+          time used to share the top line with the name and the badge sat in a
+          vertically-centred slot at the row's end — two separate right-hand
+          objects at two different heights. Stacking them is the messaging-app
+          anatomy: when it happened on top, and how much of it is unread,
+          reading downward in one place.
+
+          It also retires `topLineStacked`. That existed because the time
+          competed with the NAME for the top line and squeezed it toward an
+          initial at large type. In its own column it no longer touches the
+          name at all — it competes with the body as a whole, whose preview and
+          name already truncate at one line by design. */}
+      <View style={styles.meta} testID={`thread-meta-${thread.threadId}`}>
+        <Text style={styles.time} numberOfLines={1}>
+          {when}
+        </Text>
+        <UnreadBadge
+          count={thread.unreadCount}
+          testID={unread ? `thread-unread-${thread.threadId}` : undefined}
+        />
+      </View>
     </Pressable>
   );
 }
@@ -201,22 +208,15 @@ export function ThreadRowSkeleton() {
     <View style={styles.row}>
       <View style={styles.lead} />
       <View style={styles.body}>
-        <View style={styles.topLine}>
-          <View
-            style={[
-              styles.skeletonBar,
-              styles.skeletonName,
-              { height: typography.body.lineHeight * scale },
-            ]}
-          />
-          <View
-            style={[
-              styles.skeletonBar,
-              styles.skeletonTime,
-              { height: typography.caption.lineHeight * scale },
-            ]}
-          />
-        </View>
+        {/* The name alone now — the time moved out to the trailing column with
+            the badge, so the skeleton's top line follows it there. */}
+        <View
+          style={[
+            styles.skeletonBar,
+            styles.skeletonName,
+            { height: typography.body.lineHeight * scale },
+          ]}
+        />
         <View
           style={[
             styles.skeletonBar,
@@ -237,7 +237,19 @@ export function ThreadRowSkeleton() {
           />
         </View>
       </View>
-      <UnreadBadge count={0} />
+      {/* The trailing column, matching the real row: a time bar over the
+          badge's reserved slot, so the skeleton and the row it stands in for
+          are the same shape at the same width. */}
+      <View style={styles.meta}>
+        <View
+          style={[
+            styles.skeletonBar,
+            styles.skeletonTime,
+            { height: typography.caption.lineHeight * scale },
+          ]}
+        />
+        <UnreadBadge count={0} />
+      </View>
     </View>
   );
 }
@@ -247,7 +259,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: spacing.lg,
+    // md (12), down from lg (16) on 2026-09-04 — tighter rows put more
+    // conversations on screen, which is the density a messaging list is judged
+    // by. The 64pt lead still sets the real floor, so nothing clips.
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
     // Inert while the 64pt tile sets a 96pt floor, and kept anyway so the two
     // inbox rows declare the same box — see the silhouette note in the header.
@@ -262,11 +277,22 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   // The shared inbox lead — a rounded square, matching the notification face's
   // icon tile exactly.
+  // ⚠️ A CIRCLE SINCE 2026-09-04 (`radii.full`, was `radii.md`). It is the
+  // strongest single "this is a messaging app" signal available to a list row
+  // whose lead can never be a face — and the shape is the one part of that
+  // convention we CAN take, since the picture itself has to stay the car.
+  //
+  // ⚠️ IT CROPS THE PHOTO HARDER, and that is the cost. A 4:3 cover photo loses
+  // its corners to a 64pt circle. Accepted because the row's job is to say
+  // WHICH conversation this is, and a car's colour and silhouette survive the
+  // crop — the reason this slot holds the car at full size rather than a 24pt
+  // badge is unchanged. If a future photo crop makes cars unidentifiable here,
+  // this is the line to revisit, not the tile size.
   lead: {
     width: sizes.inboxRowTile,
     height: sizes.inboxRowTile,
-    borderRadius: radii.md,
-    // Clips the photo to the corners; also the resting fill behind a slow load.
+    borderRadius: radii.full,
+    // Clips the photo to the circle; also the resting fill behind a slow load.
     overflow: 'hidden',
     backgroundColor: c.surfaceSubtle,
   },
@@ -274,18 +300,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flex: 1,
     gap: spacing.xs,
   },
-  topLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  // Past listRowStackFontScale the time drops under the name rather than
-  // squeezing it to an initial — the behaviour that token was defined for.
-  topLineStacked: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+  // Time above, unread below — see the note at the render site. `flexShrink: 0`
+  // because a truncated timestamp is worse than a truncated preview, and the
+  // preview is already one line.
+  meta: {
+    alignItems: 'flex-end',
     gap: spacing.xs,
+    flexShrink: 0,
   },
   name: {
     ...typography.body,
