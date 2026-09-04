@@ -20,6 +20,7 @@ export { groupByDay, type DayGrouped } from './dayGroups';
 export {
   formatDateLabel,
   formatDateLabelCompact,
+  formatClock,
   formatDateTimeLabel,
   formatMonthYear,
 } from './dateTimeLabel';

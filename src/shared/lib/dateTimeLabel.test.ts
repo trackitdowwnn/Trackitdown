@@ -9,7 +9,13 @@
  * LINKS: src/shared/lib/dateTimeLabel.ts.
  */
 
-import { formatDateLabel, formatDateLabelCompact, formatDateTimeLabel, formatMonthYear } from './dateTimeLabel';
+import {
+  formatClock,
+  formatDateLabel,
+  formatDateLabelCompact,
+  formatDateTimeLabel,
+  formatMonthYear,
+} from './dateTimeLabel';
 
 // A fixed local "now": Wednesday 8 July 2026, 15:00 local time.
 const NOW = new Date(2026, 6, 8, 15, 0);
@@ -35,6 +41,36 @@ describe('formatDateTimeLabel', () => {
 
   it('throws on unparseable input', () => {
     expect(() => formatDateTimeLabel('not a date', NOW)).toThrow(/unparseable/);
+  });
+});
+
+describe('formatClock', () => {
+  it('renders the time with minutes, and nothing else', () => {
+    const clock = formatClock(localIso(2026, 6, 8, 14, 30));
+
+    expect(clock).toMatch(/^\d{1,2}[:.]\d{2}(\s?[AaPp][Mm])?$/);
+    // No day words, no date — that is the whole distinction from
+    // formatDateTimeLabel, and the reason the inbox row can use it under a
+    // DayHeader that has already said the day.
+    expect(clock).not.toMatch(/Today|Yesterday|Jul|2026/);
+  });
+
+  it('keeps a leading-zero minute', () => {
+    // "14:5" would be wrong and is the obvious way to get this wrong.
+    expect(formatClock(localIso(2026, 6, 8, 14, 5))).toMatch(/[:.]05/);
+  });
+
+  // ⚠️ The whole point of extracting it: three call sites had hand-rolled this
+  // same toLocaleTimeString, and the one thing that must not drift between the
+  // screen showing a message and the screen listing it is the time on it.
+  it('is the same string formatDateTimeLabel appends', () => {
+    const iso = localIso(2026, 6, 8, 14, 30);
+
+    expect(formatDateTimeLabel(iso, NOW)).toBe(`Today, ${formatClock(iso)}`);
+  });
+
+  it('throws on unparseable input', () => {
+    expect(() => formatClock('not a date')).toThrow(/unparseable/);
   });
 });
 

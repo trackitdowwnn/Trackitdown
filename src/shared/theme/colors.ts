@@ -55,6 +55,26 @@ export const colors = {
   danger: '#C0281E',
   dangerPressed: '#A21F16',
   textOnPrimary: '#FFFFFF',
+  /**
+   * Secondary ink ON a `primary` fill — metadata inside a near-black object.
+   *
+   * ⚠️ IT EXISTS BECAUSE `textOnPrimary` IS THE ONLY INK WE HAD THERE, and at
+   * 16.9:1 it makes a timestamp shout as loudly as the message it annotates.
+   * The chat bubble needs a quiet second voice inside itself; `textSecondary`
+   * is the equivalent on every other surface and there was no counterpart here.
+   *
+   * ⚠️ IT CANNOT BE ONE SHARED VALUE, because `primary` INVERTS between schemes
+   * (#1A1A1A light, #F2F2F2 dark). A grey that is muted on near-black is
+   * invisible on near-white. Both palettes carry their own.
+   *
+   * ⚠️ AND IT IS NOT AN OPACITY. White at `opacity.inactive` over #1A1A1A
+   * computes to ~3.4:1 and at 0.6 to ~4.30:1 — both under the 4.5 text floor,
+   * and `colors.test.ts` cannot re-derive a runtime alpha, so the miss would be
+   * invisible to CI. A token can be measured; a composite cannot.
+   *
+   * ADR-0006 is untouched: it forbids a non-monochrome HUE, and this is a grey.
+   */
+  textOnPrimaryMuted: '#949494',
   // The rare dark floating surface (feed map pill, photo viewer). Same ink as
   // textPrimary but named as a SURFACE so a text-colour tweak never silently
   // restyles a fill.
@@ -141,6 +161,9 @@ export const darkColors = {
   dangerPressed: '#D9544A',
   // Near-BLACK on the near-white primary fill — the flip of light mode's white.
   textOnPrimary: '#141414',
+  // The flip of light mode's #949494: a mid grey dark enough to be quiet on a
+  // near-WHITE fill. See the light palette for why this cannot be shared.
+  textOnPrimaryMuted: '#5E5E5E',
   // "The inverse of the PAGE" — so on a dark page it becomes near-white. The
   // decisive case is the map pin: the dark basemap makes a dark pin bubble
   // vanish (~1.2:1), so pins must invert. Chrome that sits on PHOTOGRAPHY does

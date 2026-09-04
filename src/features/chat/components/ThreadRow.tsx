@@ -1,6 +1,6 @@
 /**
  * WHAT:  ThreadRow — one inbox conversation: the CAR'S COVER PHOTO leading,
- *        first name + relative time, a one-line last-message preview, the
+ *        first name + the clock time, a one-line last-message preview, the
  *        anchoring context line ("About your Blue BMW" + the owner's own
  *        PlateChip / "Your sighting · Blue BMW"), and the unread badge.
  * WHY:   Airbnb-style rows anchor a conversation to the THING it's about, and
@@ -26,7 +26,17 @@
  *
  *        ⚠️ ONE SILHOUETTE WITH NotificationRowItem — same tile, gap, gutter,
  *        padding and reserved badge slot. See that file's header; change one
- *        and change both.
+ *        and change both. The silhouette is GEOMETRY, and the 2026-09-04 clock
+ *        change did not touch it.
+ *
+ *        ⚠️ THE TWO FACES NOW FORMAT TIME DIFFERENTLY, and it is a known,
+ *        deliberate gap rather than an oversight. This row draws a clock;
+ *        NotificationRowItem still draws `timeAgo`. Both sit under the same
+ *        DayHeader vocabulary in the same tab, so the argument for the clock
+ *        applies there word for word — but the WhatsApp pass was scoped to
+ *        Messages by the owner, and changing the other face on the way past
+ *        would have been an unrequested redesign of a screen nobody reviewed.
+ *        If you are here to align them, this is the note saying it is wanted.
  * LINKS: src/features/chat/lib/inboxModel.ts (context/unread maths);
  *        src/features/notifications/components/NotificationRowItem.tsx (the
  *          silhouette twin);
@@ -36,7 +46,7 @@
 
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { timeAgo } from '@/shared/lib/timeAgo';
+import { formatClock, formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
 import {
   listRowStackFontScale,
   radii,
@@ -69,7 +79,17 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
   const scale = fontScale ?? 1;
   const unread = isUnread(thread);
   const context = contextLine(thread);
-  const when = timeAgo(thread.lastMessageAt);
+  // ⚠️ A CLOCK, NOT "2h ago" (2026-09-04). InboxScreen already groups this list
+  // by day with a DayHeader above it, so `timeAgo` was a second answer to a
+  // question already answered — "2h ago" under **Today** is redundant
+  // precision, and "3d ago" under **23 July** is two different answers at once.
+  // The header supplies the day; the row supplies the time.
+  const when = formatClock(thread.lastMessageAt);
+  // ⚠️ THE LABEL KEEPS THE DAY, because a screen-reader user moving row by row
+  // never meets the DayHeader above them — the same argument that put the time
+  // in every bubble's label. Sighted readers get the drawn header; everyone
+  // else gets it in the sentence.
+  const spokenWhen = formatDateTimeLabel(thread.lastMessageAt);
   const stacked = scale > listRowStackFontScale;
 
   return (
@@ -84,7 +104,7 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
         // character-group by character-group, because a screen reader reading
         // "AB12 CDE" as a word is not a registration anyone can write down.
         (context.plate ? `Plate ${spellPlate(context.plate)}. ` : '') +
-        `${previewText(thread)}. ${when}.` +
+        `${previewText(thread)}. ${spokenWhen}.` +
         // Pluralised: the old label read "3 unread." as a bare fragment, and
         // "1 unread" for a single message.
         (unread

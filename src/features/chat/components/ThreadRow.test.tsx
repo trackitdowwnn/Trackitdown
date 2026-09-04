@@ -13,7 +13,9 @@
  *        src/shared/ui/UnreadBadge.tsx; docs/TESTING.md.
  */
 
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
+
+import { formatClock } from '@/shared/lib/dateTimeLabel';
 
 import type { InboxThread } from '../types';
 
@@ -133,10 +135,30 @@ describe('what a screen reader hears', () => {
       <ThreadRow thread={thread({ role: 'spotter' })} onPress={jest.fn()} />,
     );
 
+    // The fixture's timestamp is `now`, so the spoken form is always "Today,
+    // HH:MM" — built from the same formatter the row uses rather than typed
+    // out, because a literal clock time here would fail once an hour.
     expect(getByTestId('thread-row-t1').props.accessibilityLabel).toBe(
       'Conversation with Sam. Your sighting · Blue BMW 3 Series. ' +
-        'Still parked outside number 12. just now.',
+        `Still parked outside number 12. Today, ${formatClock(new Date().toISOString())}.`,
     );
+  });
+
+  // ⚠️ THE LABEL SAYS THE DAY; THE ROW DRAWS ONLY THE CLOCK. That asymmetry is
+  // the point (2026-09-04): a sighted reader gets the day from the DayHeader
+  // above the row, and a screen-reader user moving row by row never meets it.
+  // If these two ever converge, one of the two audiences has lost the day.
+  it('speaks the day the drawn row leaves to its header', async () => {
+    const { getByTestId } = await render(
+      <ThreadRow thread={thread({ role: 'spotter' })} onPress={jest.fn()} />,
+    );
+    const row = getByTestId('thread-row-t1');
+    const clock = formatClock(new Date().toISOString());
+
+    expect(row.props.accessibilityLabel).toContain(`Today, ${clock}`);
+    // Drawn: the clock alone, and nothing relative.
+    expect(within(row).getByText(clock)).toBeTruthy();
+    expect(within(row).queryByText(/ago/)).toBeNull();
   });
 
   it('⚠️ speaks the plate an owner can SEE, spelled out', async () => {
