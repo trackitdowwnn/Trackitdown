@@ -19,9 +19,12 @@ LINKS: REFERENCE_SPEC.md (sibling); `src/features/auth/README.md` § "Onboarding
   had to answer them: per-slide emoji in grey circles (🚗 📣 📸 🎉 — the 🎉
   celebrating at someone whose car had just been stolen), then a code-drawn UK
   registration plate that "lasted two days and did not earn the room".
-- **The 2026-08-08 restyle is not undone.** The ring FAB, Skip's position, the
+- ~~**The 2026-08-08 restyle is not undone.** The ring FAB, Skip's position, the
   stepped (not swiped) transitions and the weight-contrast headlines are all
-  documented decisions and all still right.
+  documented decisions and all still right.~~
+  ⛔ **Half true as of 2026-09-03 — see "Second pass" at the foot of this file.**
+  The stepped transitions and the weight-contrast headlines stand. The ring FAB
+  and Skip's position were both reversed.
 
 ## The 3 changes that close most of the gap
 
@@ -45,7 +48,7 @@ LINKS: REFERENCE_SPEC.md (sibling); `src/features/auth/README.md` § "Onboarding
 |---|---|---|---|---|---|
 | C1 | No hero at all | A photograph, full-bleed | `OnboardingMap` — curved roads in SVG under the app's real bounty pills | L | **L** |
 | C2 | — | Image is the subject | Pins ARE `MapPins`' pill: `surface` fill, `radii.full`, `borderStrong` hairline, amount in `typography.mapPin`; the focal one inverts to `surfaceInverse` and grows, as the selected pin does | S | M |
-| C3 | Ring FAB fuses progress + control | One circular control | none — better than the reference, keep | — | — |
+| C3 | ~~Ring FAB fuses progress + control~~ | ~~One circular control~~ | ⛔ ~~none — better than the reference, keep~~ **Reversed 2026-09-03**: split back into dots + a full-width button. "Better than the reference" was an argument from taste; the funnel said 1 completed / 6 skipped. See "Second pass" | — | — |
 | C4 | — | — | Map yields the screen **at and above 1.3× text scale**, applying the wizard's `fills` rule | S | M |
 | C5 | Map and copy shared the same pixels | Text never fights the image | Flex siblings that cannot overlap; the map bleeds under the status bar via a negative top margin | M | **L** |
 
@@ -159,3 +162,46 @@ recovery slide (M3).
 asking anything. Dropping straight into the feed would suit the language better
 than any slideshow, but it is a product decision about activation, not a visual
 one, and the owner asked for the slideshow to stay and do its job better.
+
+## Second pass — the `ob2` rebuild (2026-09-03)
+
+Everything above is measured against `ob1.webp`. The owner then supplied
+`ob2-life360-gold.jpg` and asked for the carousel rebuilt to it. Two of that
+file's "matched" items were reversed as a result, so the record needs the
+reversal as much as it needed the original decision.
+
+**What forced it was the funnel, not the reference.** `onboarding_events` had
+seven real runs in it: **one completed, six skipped.** With a sample that small
+nothing is proven, but the direction is the one thing a first-run screen cannot
+afford to guess at, and the suspect was obvious — the ring FAB asked a reader
+to recognise a circle with a gap in it as the way forward, on the screen where
+they know least about us.
+
+| Was | Now | Why |
+|---|---|---|
+| Ring FAB (progress + control fused), full-width button on the last slide only | One full-width `Button` on every slide, label "Continue" → "Get started" | The 08-08 pass argued "Get started" should be read rather than inferred from an arrow. The same argument applies to "Continue" |
+| Progress carried by the ring's arc | `OnboardingDots` above the button, hidden on the last slide | The reference has no progress at all — it is one screen, not four. Dropping the ring without replacing its signal would leave a four-step sequence with no sense of its length |
+| Ghost "Skip", footer bottom-left, hidden on the last slide | `OnboardingCloseButton` — an X, top-right, over the hero, on **every** slide | Where the reference puts dismissal, and it empties the footer for the CTA. ⚠️ Kept on the last slide because an X in the opposite corner does not compete with "Get started" the way a second worded button did |
+| Five bounty pins on a field | The same pins **plus a dashed sighting trail with report dots** | Owner's call: "bounty amounts, as now, plus a path." Their map is one connected picture because a line runs through it; ours had nothing for the eye to follow between the prices |
+
+**⚠️ The X is an absolute overlay, not part of the map band**, and that is the
+one placement detail worth defending in review. Above 1.3× text the hero is not
+rendered at all (`displayFontScaleCap`), so a Skip nested inside it would take
+the only way out of the intro with it — a reader at large type locked into four
+slides. `OnboardingScreen.test.tsx` pins this at 2× explicitly.
+
+**⚠️ The trail is the car's history, not a route to it.** `OnboardingMap`'s
+standing rule is "rings, not arrows — nothing here may suggest anyone should
+travel towards a stolen car". The trail obeys it by recording where the car has
+BEEN SEEN, which is what a spotter's reports actually build; nothing on the map
+marks the viewer, so there is no line from them to anywhere. It is dashed
+because we know the points and never the journey between them — the same claim
+`SightingTimeline`'s dashed uncertainty segment makes.
+
+**Deliberately skipped from `ob2`:** its warm gradient (ADR-0006 is a
+monochrome theme) and its eyebrow badge above the headline (it would reinstate
+the "01 Post" step rail deleted on 2026-08-08 for restating the headline
+directly below it).
+
+**Removed:** `OnboardingRingFab` and its test, and `sizes.fab` / `fabRing` /
+`fabRingGap` — the FAB was their only consumer.

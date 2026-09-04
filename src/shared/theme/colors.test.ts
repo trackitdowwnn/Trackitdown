@@ -119,6 +119,53 @@ describe('⚠️ the off-state Switch boundary', () => {
   });
 });
 
+// ⚠️ THE THIRD SURFACE, added 2026-09-04 after `borderStrong` was reached for
+// twice on ground this file never checked. Both the onboarding alert rings and
+// its progress dots argued their way to `borderStrong` BECAUSE it reads as the
+// app's graphic-floor token — and both were wrong, in both schemes, with every
+// test in this file green. The floor `borderStrong` clears is measured against
+// `background` and `surface`; `surfaceSubtle` is one step further down and it
+// does not clear there.
+//
+// This block exists so the next component gets told, rather than shipping and
+// being caught in review. It pins the CEILING rather than asserting a floor
+// nothing meets: if `borderStrong` is ever raised far enough to clear 3:1 here,
+// this fails, and the right response is to delete the block and the warnings it
+// documents — not to loosen it.
+describe('⚠️ what may be drawn on surfaceSubtle', () => {
+  const SUBTLE_FLOOR = 3;
+
+  it.each([
+    ['light', colors],
+    ['dark', darkColors],
+  ])('%s: borderStrong does NOT clear the graphic floor there', (_scheme, palette) => {
+    // 2.789 light / 2.815 dark. Recorded, not tolerated: use textSecondary.
+    expect(contrast(palette.borderStrong, palette.surfaceSubtle)).toBeLessThan(SUBTLE_FLOOR);
+  });
+
+  it.each([
+    ['light', colors],
+    ['dark', darkColors],
+  ])('%s: textSecondary is the token that does', (_scheme, palette) => {
+    // 4.662 / 5.689 — the pairing ChoiceChipsMulti, OnboardingMap and
+    // OnboardingDots all rely on. If this ever fails, three components lose
+    // their edge at once.
+    expect(contrast(palette.textSecondary, palette.surfaceSubtle)).toBeGreaterThanOrEqual(
+      SUBTLE_FLOOR,
+    );
+  });
+
+  it.each([
+    ['light', colors],
+    ['dark', darkColors],
+  ])('%s: the status graphics still carry on it', (_scheme, palette) => {
+    // These are drawn on chips and subtle fills all over the app, so unlike
+    // borderStrong they are expected to hold here.
+    expect(contrast(palette.success, palette.surfaceSubtle)).toBeGreaterThanOrEqual(SUBTLE_FLOOR);
+    expect(contrast(palette.warning, palette.surfaceSubtle)).toBeGreaterThanOrEqual(SUBTLE_FLOOR);
+  });
+});
+
 describe('paletteFor', () => {
   it('returns the dark palette only for an explicit dark scheme', () => {
     expect(paletteFor('dark')).toBe(darkColors);
