@@ -202,9 +202,13 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   }, [visiblePost, postId]);
 
   const onShare = useCallback((post: PostDetail) => {
-    const { message, url } = buildSharePayload(post);
+    // ⚠️ SPREAD, don't pass `url` as undefined. There is no website yet, so
+    // buildSharePayload omits the key entirely; handing iOS `{ url: undefined }`
+    // is not the same as handing it `{ message }`, and the difference shows up
+    // in the share sheet rather than in a type error.
+    const payload = buildSharePayload(post);
     // Share sheet cancel / no target rejects — nothing to recover from.
-    void Share.share({ message, url }).catch(() => {});
+    void Share.share({ ...payload }).catch(() => {});
   }, []);
 
   // Header watch toggle: AppHeaderButton chrome (matches share, rides the
