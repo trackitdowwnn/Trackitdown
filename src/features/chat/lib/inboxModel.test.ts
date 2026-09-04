@@ -15,7 +15,6 @@ import {
   emptyFilterCopy,
   filterLabel,
   filterThreads,
-  groupThreadsByDay,
   isUnread,
   previewText,
   totalUnread,
@@ -148,56 +147,10 @@ describe('emptyFilterCopy', () => {
   });
 });
 
-describe('⚠️ groupThreadsByDay', () => {
-  // The Messages face groups by the same calendar words the Notifications face
-  // uses, so one tab does not speak two vocabularies for "when".
-  const NOW = new Date('2026-07-15T18:00:00Z');
+/* The groupThreadsByDay suite stood here until 2026-09-04. Both inbox faces
+ * went to a FLAT list, each row carrying its own date stamp, so the adapter it
+ * covered no longer exists. Its assertions live on in spirit in
+ * InboxScreen.test.tsx, which now pins the stamp ladder that replaced the day
+ * headers.
+ */
 
-  it('heads a day ONCE, however many conversations it holds', () => {
-    const items = groupThreadsByDay(
-      [
-        thread({ threadId: 'a', lastMessageAt: '2026-07-15T17:00:00Z' }),
-        thread({ threadId: 'b', lastMessageAt: '2026-07-15T09:00:00Z' }),
-      ],
-      NOW,
-    );
-
-    expect(items.filter((item) => item.type === 'header')).toHaveLength(1);
-    expect(items.map((item) => item.type)).toEqual(['header', 'row', 'row']);
-  });
-
-  it('opens a new header when the day changes', () => {
-    const items = groupThreadsByDay(
-      [
-        thread({ threadId: 'a', lastMessageAt: '2026-07-15T17:00:00Z' }),
-        thread({ threadId: 'b', lastMessageAt: '2026-07-14T17:00:00Z' }),
-      ],
-      NOW,
-    );
-
-    expect(items.filter((item) => item.type === 'header').map((item) => item.label)).toEqual([
-      'Today',
-      'Yesterday',
-    ]);
-  });
-
-  it('carries the whole thread through, not just its id', () => {
-    // The row renders from `item.row.thread`; an adapter that dropped the
-    // thread would typecheck and then render an empty row.
-    const items = groupThreadsByDay([thread({ threadId: 'a' })], NOW);
-    const row = items.find((item) => item.type === 'row');
-
-    expect(row?.type === 'row' && row.row.thread.other.firstName).toBe('Sam');
-    expect(row?.type === 'row' && row.row.thread.post.make).toBe('BMW');
-  });
-
-  it('keys rows by threadId, so a header can never collide with a row', () => {
-    const items = groupThreadsByDay([thread({ threadId: 'abc' })], NOW);
-
-    expect(items.map((item) => item.key)).toEqual(['header-Today', 'abc']);
-  });
-
-  it('an empty inbox groups to nothing at all — no orphan header', () => {
-    expect(groupThreadsByDay([], NOW)).toEqual([]);
-  });
-});

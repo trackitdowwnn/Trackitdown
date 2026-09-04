@@ -74,6 +74,37 @@ export function formatDateTimeLabel(iso: string, now: Date = new Date()): string
   return `${day}, ${time}`;
 }
 
+/**
+ * A LIST ROW'S stamp: "14:32" today, "Yesterday" yesterday, "6 Jul" before
+ * that, "6 Jul 2025" in another year.
+ *
+ * ⚠️ IT CARRIES THE DAY BECAUSE NOTHING ELSE DOES ANY MORE (2026-09-04). Both
+ * inbox faces used to group their rows under `DayHeader`s, so a row only had to
+ * say the time and the header above it supplied the day. The lists are flat
+ * now, which is why one value has to answer both questions at once — and why
+ * this is a single formatter shared by both faces rather than each inventing
+ * its own ladder.
+ *
+ * ⚠️ IT DEGRADES BY PRECISION, not by format. Today you want the time; a week
+ * ago the time is noise and the date is the answer. "Yesterday" gets a word
+ * because it is the one boundary people reason about by name. That ladder is
+ * the reason this is not just `formatClock` — a bare "14:32" on a thread from
+ * March is actively misleading.
+ *
+ * @throws If `iso` is not a parseable timestamp.
+ */
+export function formatListStamp(iso: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`formatListStamp got an unparseable timestamp: ${iso}`);
+  }
+
+  const dayDelta = Math.round((startOfLocalDay(now) - startOfLocalDay(date)) / DAY_MS);
+  if (dayDelta === 0) return formatClock(iso);
+  if (dayDelta === 1) return 'Yesterday';
+  return formatDateLabelCompact(iso, now);
+}
+
 /** Date only, no time: "8 Jul 2026" — for record-style labels (post detail's
  *  "Posted" / "Active until"). @throws on an unparseable timestamp. */
 export function formatDateLabel(iso: string): string {

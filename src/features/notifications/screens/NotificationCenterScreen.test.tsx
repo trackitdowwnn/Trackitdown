@@ -75,9 +75,13 @@ describe('states', () => {
     expect(getByText(/alerts, sightings and payout updates/i)).toBeTruthy();
   });
 
-  it('renders rows under day headers, unread dot showing', async () => {
-    const { getByText, getByTestId } = await act(async () => render(<NotificationCenterScreen />));
-    expect(getByText('Today')).toBeTruthy();
+  // ⚠️ WAS 'renders rows under day headers'. The list went flat on 2026-09-04
+  // alongside the Messages face — each row's own stamp carries the day now, so
+  // there is no "Today" heading to find. Both faces dropped grouping together,
+  // which is how "one tab, one vocabulary" survives the change.
+  it('renders rows with no day heading, unread dot showing', async () => {
+    const { queryByText, getByTestId } = await act(async () => render(<NotificationCenterScreen />));
+    expect(queryByText('Today')).toBeNull();
     expect(getByTestId('unread-n-1')).toBeTruthy();
   });
 

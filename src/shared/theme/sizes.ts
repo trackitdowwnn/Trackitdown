@@ -244,23 +244,34 @@ export const sizes = {
    * The leading visual on BOTH inbox faces (added 2026-08-28) — the car photo
    * on a conversation row, the icon box on a notification row.
    *
-   * ⚠️ 64, NOT `carTile`/`alertThumb` (72). Those two lead a card, inside a
-   * `cardSurface` box with 16pt padding. This leads a bare row on the 24pt
-   * gutter, and 64 is the size at which the tile sits just under the three-line
-   * text column's intrinsic height — so the TEXT drives the row height and the
-   * tile never does. At 72 a row with no third line grows to fit the picture,
-   * which is the picture deciding the rhythm rather than the content.
+   * ⚠️ 48 SINCE 2026-09-04, down from 64 (owner's call: "make the icons
+   * smaller"). The rule the old value protected still holds and is why it did
+   * not go lower: the tile must sit UNDER the text column's intrinsic height so
+   * the TEXT drives the row height and the picture never does. Dropping to 48
+   * moves further inside that bound, not outside it, so the rhythm is still the
+   * content's.
    *
-   * ⚠️ AND NOT `fab`, which is also 64. Tying a list thumbnail to a round
-   * button is the exact mistake `screenshotThumb` spends a paragraph forbidding.
+   * ⚠️ NOT `avatarMd`, which is also 48. That is a person's photograph; this
+   * leads a row with a car or an event icon in it, and the two are free to
+   * diverge — the same rule `screenshotThumb` and `carTile` spend paragraphs on.
+   *
+   * ⚠️ AND STILL NOT `carTile`/`alertThumb` (72). Those lead a card inside a
+   * `cardSurface` box with 16pt padding; this leads a bare row on the 24pt
+   * gutter.
+   *
+   * ⚠️ 44 IS THE FLOOR IF THIS EVER SHRINKS AGAIN. Below a touch target the
+   * picture stops being something you can recognise a car in, which is the
+   * whole reason the leading slot holds the car rather than an initial — see
+   * ThreadRow's header for the 24pt badge that failed exactly that way.
    */
-  inboxRowTile: 64,
+  inboxRowTile: 48,
   /**
-   * The notification glyph drawn inside an `inboxRowTile`. Same 32-in-a-tile
-   * ratio `carTileGlyph` uses, for the same reason: at `icon` (24) the mark
-   * reads as a small badge sitting in a large empty box.
+   * The notification glyph drawn inside an `inboxRowTile`. Held at the same
+   * half-of-tile ratio `carTileGlyph` uses (32-in-64), so shrinking the tile to
+   * 48 takes the glyph to 24 with it — at 32 the mark would now crowd its box
+   * instead of sitting in it.
    */
-  inboxRowGlyph: 32,
+  inboxRowGlyph: 24,
   /** The timestamp bar in an inbox row skeleton. A fixed width because the
    *  thing it stands in for is a fixed-ish string ("2h ago", "just now") and a
    *  percentage would make it grow with the screen, which timestamps do not. */

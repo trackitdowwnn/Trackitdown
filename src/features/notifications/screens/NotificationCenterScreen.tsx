@@ -1,7 +1,7 @@
 /**
  * WHAT:  NotificationCenterScreen — the Inbox tab's second face: the
- *        persistent feed of everything notification-worthy, newest first,
- *        day-grouped, with "Mark all as read" and tap-through to each row's
+ *        persistent feed of everything notification-worthy, newest first, in
+ *        one flat list, with "Mark all as read" and tap-through to each row's
  *        destination.
  * WHY:   Pushes were fire-and-forget; this is where they stop disappearing.
  *        Behaviour rules (Airbnb's, adopted): opening the segment NEVER
@@ -12,23 +12,20 @@
  *        machinery pushes use, so a row and its push can never land in
  *        different places.
  * LINKS: ../hooks/useNotificationCenter.ts; ../components/NotificationRowItem;
- *        @/shared/lib (groupByDay); ../lib/pushRoute.ts; src/app/(tabs)/inbox.tsx
+ *        ../lib/pushRoute.ts; src/app/(tabs)/inbox.tsx
  *        (the segment host); docs/decisions/ADR-0012-notification-center.md.
  */
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useEntranceGate } from '@/shared/hooks';
-import { groupByDay } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import {
-  DayHeader,
-  DayHeaderSkeleton,
   EmptyState,
   ErrorState,
   ThemedRefreshControl,
@@ -74,7 +71,8 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
     wasActive.current = active;
   }, [active]);
 
-  const items = useMemo(() => groupByDay(rows), [rows]);
+  // Flat: the rows themselves, newest first. No day grouping since 2026-09-04.
+  const items = rows;
   const hasUnread = rows.some((row) => row.readAt === null);
 
   const onRowPress = (row: NotificationRow) => {
@@ -92,11 +90,9 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
   if (status === 'loading') {
     return (
       <View style={styles.container} testID="center-skeleton" accessibilityLabel="Loading notifications">
-        {/* A day header leads the real list, so one leads the skeleton — a bar
-            rather than the word, because the newest notification usually is not
-            from today. */}
-        <DayHeaderSkeleton />
-        {[0, 1, 2].map((n) => (
+        {/* No day header any more — the real list leads with a row, so the
+            skeleton does too. */}
+        {[0, 1, 2, 3].map((n) => (
           <NotificationRowSkeleton key={n} />
         ))}
       </View>
@@ -128,24 +124,47 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
 
   return (
     <View style={styles.container}>
-      {/* ⚠️ NO HEADER BAND. "Mark all as read" rides on the first day header's
-          own line (below) instead of owning a row.
+      {/* ⚠️ "Mark all as read" LOST ITS HOME ON 2026-09-04 and this is the
+          third one it has had. The day headers went (flat list, owner's call)
+          and it had been riding the first header's line, which needed no band
+          because the header was always there.
 
-          It had a row of its own, rendered only while there was something to
-          mark — so clearing the last unread collapsed 52pt and yanked the list
-          under the reader's thumb. Reserving that height permanently fixed the
-          jump and replaced it with something worse: 52pt of nothing at the top
-          of the list on every single visit, since most of the time there IS
-          nothing unread. A jump happens once, on a tap you chose; dead space
-          is there every time you open the tab.
+          The two remaining options are both ones this screen has already
+          rejected, and the old note ranked them: a row rendered only while
+          there is something to mark JUMPS when you clear the last unread; a
+          permanently reserved row is dead space on every visit, since most of
+          the time there is nothing unread. Its own words — "a jump happens
+          once, on a tap you chose; dead space is there every time you open the
+          tab" — pick the first, so that is what it goes back to.
 
-          On the header's line, the action needs no band, and the header is
-          always present — so nothing moves whether the action is there or
-          not. */}
+          Two things soften it against the version that was rejected: the strip
+          is a caption action rather than a 52pt band, so the collapse is ~32pt
+          not 52; and it sits ABOVE the scroll rather than inside it, so the
+          list's own offset never changes underneath a reader mid-scroll. */}
+      {hasUnread ? (
+        <View style={styles.markAllRow}>
+          <Pressable
+            onPress={markAllRead}
+            accessibilityRole="button"
+            hitSlop={spacing.md}
+            style={({ pressed }) => pressed && styles.markAllPressed}
+            testID="mark-all-read"
+          >
+            <Text style={styles.markAllLabel}>Mark all as read</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {/* ⚠️ FLAT SINCE 2026-09-04, matching the Messages face. Both lists
+          dropped their day grouping together, which is what keeps "one tab,
+          one vocabulary" true — the rule was never "both must group", it was
+          "both must do the same thing", and each row's own `formatListStamp`
+          now carries the day the header used to.
+
+          `getItemType` went with the headers: it was mandatory while ~38pt
+          headers recycled into ~106pt rows, and there is one cell type now. */}
       <FlashList
         data={items}
-        keyExtractor={(item) => item.key}
-        getItemType={(item) => item.type}
+        keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => (
           <Animated.View
             entering={
@@ -156,29 +175,7 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
                 : undefined
             }
           >
-            {item.type === 'header' ? (
-              <DayHeader
-                label={item.label}
-                // Only the first header carries it, and only while there is
-                // something to mark. hitSlop, not a taller box: the touch
-                // target reaches 44 without the header growing.
-                trailing={
-                  index === 0 && hasUnread ? (
-                    <Pressable
-                      onPress={markAllRead}
-                      accessibilityRole="button"
-                      hitSlop={spacing.md}
-                      style={({ pressed }) => pressed && styles.markAllPressed}
-                      testID="mark-all-read"
-                    >
-                      <Text style={styles.markAllLabel}>Mark all as read</Text>
-                    </Pressable>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <NotificationRowItem row={item.row} onPress={onRowPress} />
-            )}
+            <NotificationRowItem row={item} onPress={onRowPress} />
           </Animated.View>
         )}
         refreshControl={
@@ -208,6 +205,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // A caption-height strip, not a band: it appears and disappears with the
+  // unread state, so its collapse must cost as little as possible.
+  markAllRow: {
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.sm,
+  },
   markAllPressed: {
     opacity: 0.6,
   },
@@ -216,10 +220,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textPrimary,
     textDecorationLine: 'underline',
   },
-  // The day label and the row skeleton both moved out — to shared/ui's
-  // DayHeader (three lists group by day now) and to NotificationRowItem's own
-  // NotificationRowSkeleton (which shares the row's styles, so the two cannot
-  // drift the way this hand-copied block had).
+  // The row skeleton lives in NotificationRowItem (it shares the row's own
+  // styles, so the two cannot drift the way this hand-copied block had). The
+  // day label that used to be named here went with the grouping on 2026-09-04;
+  // `shared/ui/DayHeader` still exists and is still used by MySightingsScreen.
   list: {
     paddingBottom: spacing.xl,
   },

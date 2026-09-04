@@ -35,8 +35,6 @@ import { useEntranceGate } from '@/shared/hooks';
 import { motion, sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
 import {
   ChoiceChips,
-  DayHeader,
-  DayHeaderSkeleton,
   EmptyState,
   ErrorState,
   ThemedRefreshControl,
@@ -49,7 +47,6 @@ import {
   emptyFilterCopy,
   filterLabel,
   filterThreads,
-  groupThreadsByDay,
   type InboxFilter,
 } from '../lib/inboxModel';
 
@@ -65,10 +62,12 @@ export function ChatInboxScreen() {
   // and reopening the app onto a stale "Unread" filter would read as a
   // half-empty inbox.
   const [filter, setFilter] = useState<InboxFilter>('all');
-  const visible = useMemo(() => filterThreads(threads, filter), [threads, filter]);
-  // ⚠️ GROUPED AFTER FILTERING. Grouping the full list and filtering the result
-  // would leave headers standing over days whose only thread the chip removed.
-  const items = useMemo(() => groupThreadsByDay(visible), [visible]);
+  // The list IS the filtered threads now — no day grouping, so there is no
+  // second structure to keep in step with the chips. (The note that used to
+  // stand here warned about grouping before filtering, which would leave
+  // headers standing over days whose only thread the chip had removed. That
+  // hazard left with the headers.)
+  const items = useMemo(() => filterThreads(threads, filter), [threads, filter]);
   const chipOptions = useMemo(
     () => INBOX_FILTERS.map((value) => ({ value, label: filterLabel(value, threads) })),
     [threads],
@@ -87,10 +86,10 @@ export function ChatInboxScreen() {
         <View style={styles.chipsRow}>
           <View style={styles.chipsPlaceholder} />
         </View>
-        {/* A day header leads the real list, so one leads the skeleton — as a
-            bar, not the word "Today", which the newest thread often isn't. */}
-        <DayHeaderSkeleton />
-        {[0, 1, 2].map((n) => (
+        {/* No day header any more — the real list leads with a row, so the
+            skeleton does too. One more skeleton row takes the space the header
+            used to, so the block still fills the same band. */}
+        {[0, 1, 2, 3].map((n) => (
           <ThreadRowSkeleton key={n} />
         ))}
       </View>
@@ -133,7 +132,7 @@ export function ChatInboxScreen() {
       <View style={styles.chipsRow}>
         <ChoiceChips options={chipOptions} value={filter} onSelect={setFilter} scrollable />
       </View>
-      {visible.length === 0 ? (
+      {items.length === 0 ? (
         // Chips stay mounted: the way OUT of an empty filter is the chips
         // themselves. keyed by filter so switching between two empty filters
         // still reads as a change.
@@ -145,14 +144,21 @@ export function ChatInboxScreen() {
           <EmptyState title={empty.title} body={empty.body} />
         </Animated.View>
       ) : (
+        /* ⚠️ A FLAT LIST SINCE 2026-09-04 — no day headers. Owner's call, and
+            the structure it borrows depends on it: a messaging list is a
+            recency-ordered stack of conversations where each row's own stamp
+            says when, so a header saying the same thing above it is a second
+            answer to an answered question. `formatListStamp` is what took the
+            job over, degrading from a clock to "Yesterday" to a date.
+
+            ⚠️ `getItemType` WENT WITH THE HEADERS, and its old comment called
+            it "MANDATORY, not an optimisation" — correctly, while the list
+            interleaved ~38pt headers with ~106pt rows. Every cell is now a
+            ThreadRow, so there is one type and nothing to tell FlashList
+            apart. Restore it the moment anything else enters this list. */
         <FlashList
           data={items}
-          keyExtractor={(item) => item.key}
-          // ⚠️ MANDATORY, not an optimisation. Without it FlashList recycles a
-          // ~38pt header cell into a ~106pt row and back, which is exactly the
-          // jump this pass exists to remove. The Notifications face has always
-          // done this; the Messages face now needs it for the same reason.
-          getItemType={(item) => item.type}
+          keyExtractor={(item) => item.threadId}
           renderItem={({ item, index }) => (
             <Animated.View
               entering={
@@ -163,14 +169,10 @@ export function ChatInboxScreen() {
                   : undefined
               }
             >
-              {item.type === 'header' ? (
-                <DayHeader label={item.label} />
-              ) : (
-                <ThreadRow
-                  thread={item.row.thread}
-                  onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
-                />
-              )}
+              <ThreadRow
+                thread={item}
+                onPress={(thread) => router.push(`/chat/${thread.threadId}`)}
+              />
             </Animated.View>
           )}
           refreshControl={

@@ -29,11 +29,12 @@
  *        See that file's header; change one and change both. The 2026-09-04
  *        row pass changed all of those, and changed them in both files.
  *
- *        ⚠️ THE TWO FACES STILL FORMAT TIME DIFFERENTLY, and it is a known gap
- *        rather than an oversight. This row draws a clock; NotificationRowItem
- *        still draws `timeAgo`. Both sit under the same DayHeader vocabulary,
- *        so the clock argument applies there word for word — the alignment is
- *        wanted, it was just outside the scope the owner set.
+ *        ⚠️ THE TWO FACES AGREE AGAIN as of 2026-09-04: both lists went FLAT
+ *        (no day headers) and both rows now draw `formatListStamp`, which
+ *        degrades from a clock to "Yesterday" to a date. The gap that stood
+ *        here — this row on a clock, NotificationRowItem on `timeAgo` — closed
+ *        when the headers went, because with nothing above the row to say the
+ *        day, one shared ladder had to carry it on both faces.
  * LINKS: src/features/chat/lib/inboxModel.ts (context/unread maths);
  *        src/features/notifications/components/NotificationRowItem.tsx (the
  *          silhouette twin);
@@ -43,7 +44,7 @@
 
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { formatClock, formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
+import { formatDateTimeLabel, formatListStamp } from '@/shared/lib/dateTimeLabel';
 import {
   radii,
   sizes,
@@ -75,16 +76,17 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
   const scale = fontScale ?? 1;
   const unread = isUnread(thread);
   const context = contextLine(thread);
-  // ⚠️ A CLOCK, NOT "2h ago" (2026-09-04). InboxScreen already groups this list
-  // by day with a DayHeader above it, so `timeAgo` was a second answer to a
-  // question already answered — "2h ago" under **Today** is redundant
-  // precision, and "3d ago" under **23 July** is two different answers at once.
-  // The header supplies the day; the row supplies the time.
-  const when = formatClock(thread.lastMessageAt);
-  // ⚠️ THE LABEL KEEPS THE DAY, because a screen-reader user moving row by row
-  // never meets the DayHeader above them — the same argument that put the time
-  // in every bubble's label. Sighted readers get the drawn header; everyone
-  // else gets it in the sentence.
+  // ⚠️ ONE VALUE ANSWERING "WHEN", because nothing above the row does it any
+  // more. This was `timeAgo` ("2h ago"), then briefly a bare clock while the
+  // list still carried day headers; the headers went on 2026-09-04 and the
+  // stamp had to take the whole job. It degrades by precision — the clock
+  // today, "Yesterday" yesterday, a date before that — because "14:32" on a
+  // thread from July would be worse than the relative stamp it replaced.
+  const when = formatListStamp(thread.lastMessageAt);
+  // ⚠️ THE LABEL IS STILL RICHER THAN THE ROW, on purpose. The drawn stamp
+  // sheds the time as a thread ages; the spoken one keeps day AND time at every
+  // age ("Mon 6 Jul, 14:30"), because a screen-reader user cannot glance at the
+  // rows above to place this one in a sequence.
   const spokenWhen = formatDateTimeLabel(thread.lastMessageAt);
 
   return (
