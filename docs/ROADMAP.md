@@ -357,6 +357,42 @@ having anything to say.
 > by choice, not by a blocker. The remaining hard gates are Tier 0 and none of
 > them is code: a domain, a mailbox, and `account.updated` enabled by hand in
 > the Stripe dashboard.
+>
+> ---
+>
+> **2026-09-03 to 09-05 — four design passes, and this file said not to.**
+> Recorded because the entry above exists to stop exactly this going unrecorded.
+> Shipped: the onboarding carousel rebuilt against a Life360 reference (#90),
+> dead share links removed (#91, a Tier 0 item), and a three-part WhatsApp
+> structure pass over the chat thread and both inbox faces (#92–#94), plus the
+> review fixes those needed (#95).
+>
+> ⚠️ **THE "NOT ON THE PATH" LIST BELOW NAMES THIS.** It reads: *"design passes
+> on the five screens that have never had one — testers will point at the two
+> that actually matter, and guessing at the other three is the trap a
+> no-deadline project sets."* Chat and the inbox had both had a pass on
+> 2026-08-28/29; these were second and third passes over the same screens.
+> #91 is the only item of the six that was on any list.
+>
+> ⚠️ **AND THE PACE COST SOMETHING MEASURABLE.** Five PRs merged in 24 hours,
+> only the first reviewed. The review that finally ran on 09-05 found, in work
+> already live on the owner's device: the user's own message text at 3.49:1
+> against a 4.5 floor while sending, "Seen" silently unavailable to screen
+> readers, both inbox rows regressed at 200% type, and a test asserting a React
+> Native default that passed while the thing it guarded was broken. The one pass
+> that WAS reviewed pre-merge (#90) found three Criticals of the same kind. That
+> is a rate, not bad luck.
+>
+> The onboarding funnel is the one thing here with evidence behind it: 1
+> completed run against 6 skipped is what prompted #90. Nothing else in the four
+> passes had a number.
+>
+> ⚠️ **ITEM 3 NEEDS A FRESH BUILD, NOT JUST AN OTA.** Discovered 2026-09-05: the
+> newest preview APK embeds `e654c39` (29 Aug), so a new tester's FIRST LAUNCH
+> runs that bundle — the old onboarding — and `onboarding_events` would record
+> against the design #90 replaced. Onboarding runs once. An OTA cannot reach a
+> first launch, because the first launch is what it has not reached yet. Build
+> from `main` immediately before handing anything out.
 
 Ten testers, one city, closed track. **Run it on Stripe TEST MODE**: testers use
 test cards, the full escrow → recover → payout loop runs end to end, and no real
