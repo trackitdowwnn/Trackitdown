@@ -100,11 +100,15 @@ describe('⚠️ what each stage actually SHOWS', () => {
   });
 
   it('alerted: the alert reaches the neighbours — a NEW picture', async () => {
-    // Distinct from `posted`. One gate for both rings made these two slides
-    // pixel-identical: four named stages, three pictures.
+    // Distinct from `posted`, and since 2026-09-05 by SUBSTITUTION rather than
+    // addition: the outer ring REPLACES the inner one, so the alert reads as a
+    // pulse propagating outward instead of a bullseye stacking up under the
+    // trail on the busiest slide. (The two-ring version answered "the post and
+    // spot slides were pixel-identical" by putting both rings up at once; one
+    // ring per step answers it with less ink.)
     expect(await shown('alerted')).toEqual({
       focal: 1,
-      near: 1,
+      near: 0,
       far: 1,
       home: 0,
       trail: 1,
