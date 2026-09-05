@@ -14,6 +14,9 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { colors } from '@/shared/theme/colors';
 
 import type { ChatMessage, OutgoingMessage } from '../types';
 import { ClosedThreadBanner } from './ClosedThreadBanner';
@@ -177,6 +180,27 @@ describe('OutgoingBubble', () => {
     expect(getByText('Sending…')).toBeTruthy();
     await press(getByTestId('outgoing-L1'), 'press');
     expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  // ⚠️ A CONTRAST BUG CI STRUCTURALLY CANNOT SEE, shipped 2026-09-04 and caught
+  // a day later. The pending bubble wears `opacity.inactive` on the WHOLE
+  // container, so a muted token inside it is dimmed twice: composited through
+  // 0.5, `textOnPrimaryMuted` measured 2.08:1 light / 2.97:1 dark against the
+  // bubble's own composited fill — under the 4.5 text floor, on the label that
+  // says whether a message has sent.
+  //
+  // `colors.test.ts` re-derives token PAIRINGS and cannot evaluate a runtime
+  // alpha, which is precisely what `textOnPrimaryMuted`'s own comment warns
+  // about. So the guard has to live here, at the call site: the pending meta
+  // takes the FULL-strength ink and lets the container dim it once.
+  it('⚠️ does not dim "Sending…" twice — full ink inside an already-dimmed bubble', async () => {
+    const { getByText } = await render(
+      <OutgoingBubble message={outgoing('pending')} onRetry={jest.fn()} />,
+    );
+    const colour = StyleSheet.flatten(getByText('Sending…').props.style).color;
+
+    expect(colour).toBe(colors.textOnPrimary);
+    expect(colour).not.toBe(colors.textOnPrimaryMuted);
   });
 });
 

@@ -218,8 +218,21 @@ export function OutgoingBubble({ message, groupPos = 'single', onRetry }: Outgoi
             double pop reads as a double send; a silent relayout is the same
             lie told more slowly. A FAILED send keeps its own loud caption
             below — see below. */}
+        {/* ⚠️ FULL-STRENGTH INK, NOT `metaMine`. A pending bubble already wears
+            `opacity.inactive` on the WHOLE container, so a muted token inside
+            it is dimmed twice: `textOnPrimaryMuted` composited through 0.5
+            measures 2.08:1 light / 2.97:1 dark against the bubble's own
+            composited fill — far under the 4.5 text floor, on the label that
+            says whether a message has sent.
+
+            This is the exact hazard `textOnPrimaryMuted`'s own comment warns
+            about ("a token can be measured; a composite cannot") — and
+            `colors.test.ts` re-derives token PAIRINGS, so it cannot see a
+            runtime alpha and did not catch it. Let the container do the
+            dimming once: 3.49:1 / 5.03:1, the same as the message text beside
+            it. */}
         {!failed ? (
-          <Text style={[styles.meta, styles.metaMine]}>Sending…</Text>
+          <Text style={[styles.meta, styles.metaPending]}>Sending…</Text>
         ) : null}
       </Pressable>
       {/* ⚠️ FAILURE STAYS FULL-WIDTH AND LOUD, outside the bubble. It is thirty
@@ -365,6 +378,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   metaTheirs: {
     color: c.textSecondary,
+  },
+  // Inside a bubble that is already dimmed as a whole — see the note at the
+  // render site. Never `textOnPrimaryMuted`: two dimmings compound.
+  metaPending: {
+    color: c.textOnPrimary,
   },
   bubbleMine: {
     backgroundColor: c.primary,
