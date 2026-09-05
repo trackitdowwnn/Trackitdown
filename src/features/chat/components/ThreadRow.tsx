@@ -46,6 +46,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 
 import { formatDateTimeLabel, formatListStamp } from '@/shared/lib/dateTimeLabel';
 import {
+  listRowStackFontScale,
   radii,
   sizes,
   spacing,
@@ -88,6 +89,9 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
   // age ("Mon 6 Jul, 14:30"), because a screen-reader user cannot glance at the
   // rows above to place this one in a sequence.
   const spokenWhen = formatDateTimeLabel(thread.lastMessageAt);
+  // ⚠️ RESTORED 2026-09-05. Deleting this cost the preview ~two thirds of its
+  // width at 2x text — see the note at the meta column.
+  const stacked = scale > listRowStackFontScale;
 
   return (
     <Pressable
@@ -148,6 +152,9 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
         >
           {previewText(thread)}
         </Text>
+        {/* Past `listRowStackFontScale` the stamp lives here instead of in the
+            trailing column — see the note below the body. */}
+        {stacked ? <Text style={styles.timeStacked}>{when}</Text> : null}
         {/* ⚠️ WRAPS. The prefix shrinks beside an intrinsic-width plate chip,
             and in a column 28pt narrower than before, "About your Blue BMW 3
             Series" squeezed to nothing at large type. Wrapping lets the chip
@@ -175,15 +182,26 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
           anatomy: when it happened on top, and how much of it is unread,
           reading downward in one place.
 
-          It also retires `topLineStacked`. That existed because the time
-          competed with the NAME for the top line and squeezed it toward an
-          initial at large type. In its own column it no longer touches the
-          name at all — it competes with the body as a whole, whose preview and
-          name already truncate at one line by design. */}
+          ⚠️ BUT NOT PAST `listRowStackFontScale`, and the first version of this
+          got that wrong. It retired the old stacked behaviour on the reasoning
+          that the stamp "no longer touches the name — it competes with the body
+          as a whole, whose preview and name already truncate at one line by
+          design". That is false: truncating at one line does not help when the
+          LINE is 150pt. At 2× text the stamp measures ~120pt, and with the body
+          on `flex: 1` (basis 0) Yoga hands the trailing column its INTRINSIC
+          width first — the exact failure `shared/ui/ListRow` spends a paragraph
+          documenting. The preview came out at roughly nine characters, worse
+          than before this pass, at the setting where it matters most.
+
+          Above the threshold the stamp drops INTO the text column as its own
+          line and only the badge stays trailing. `sizes.unreadSlot` is a fixed
+          26, so the right edge holds either way. */}
       <View style={styles.meta} testID={`thread-meta-${thread.threadId}`}>
-        <Text style={styles.time} numberOfLines={1}>
-          {when}
-        </Text>
+        {!stacked ? (
+          <Text style={styles.time} numberOfLines={1}>
+            {when}
+          </Text>
+        ) : null}
         <UnreadBadge
           count={thread.unreadCount}
           testID={unread ? `thread-unread-${thread.threadId}` : undefined}
@@ -198,7 +216,7 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
  * row, so the two cannot drift.
  *
  * The screen's old hand-copied skeleton had a 48pt circle where the row has a
- * 64pt tile and two bars where the row has three lines, so the list visibly
+ * 48pt one and two bars where the row has three lines, so the list visibly
  * resettled the moment threads arrived.
  */
 export function ThreadRowSkeleton() {
@@ -263,10 +281,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     gap: spacing.md,
     // md (12), down from lg (16) on 2026-09-04 — tighter rows put more
     // conversations on screen, which is the density a messaging list is judged
-    // by. The 64pt lead still sets the real floor, so nothing clips.
+    // by. The lead still sets the real floor, so nothing clips.
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
-    // Inert while the 64pt tile sets a 96pt floor, and kept anyway so the two
+    // Inert while the 48pt tile sets a 72pt floor, and kept anyway so the two
     // inbox rows declare the same box — see the silhouette note in the header.
     minHeight: sizes.touchTarget,
   },
@@ -285,7 +303,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // convention we CAN take, since the picture itself has to stay the car.
   //
   // ⚠️ IT CROPS THE PHOTO HARDER, and that is the cost. A 4:3 cover photo loses
-  // its corners to a 64pt circle. Accepted because the row's job is to say
+  // its corners to a 48pt circle. Accepted because the row's job is to say
   // WHICH conversation this is, and a car's colour and silhouette survive the
   // crop — the reason this slot holds the car at full size rather than a 24pt
   // badge is unchanged. If a future photo crop makes cars unidentifiable here,
@@ -297,6 +315,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // Clips the photo to the circle; also the resting fill behind a slow load.
     overflow: 'hidden',
     backgroundColor: c.surfaceSubtle,
+    // ⚠️ THE RING IS NOT DECORATION. Without it this row had THREE circle
+    // treatments in one tab: a bare photo here, a ringed CarColourTile on the
+    // fallback branch two lines up, and a ringed one on every notification row.
+    // The skeleton was worse — surfaceSubtle on background is 1.08:1, so it
+    // drew nothing at all while its twin drew a visible ring.
+    borderWidth: 1,
+    borderColor: c.borderStrong,
   },
   body: {
     flex: 1,
@@ -304,11 +329,18 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   // Time above, unread below — see the note at the render site. `flexShrink: 0`
   // because a truncated timestamp is worse than a truncated preview, and the
-  // preview is already one line.
+  // preview is already one line. Past `listRowStackFontScale` the time is not
+  // in here at all, so the column narrows to the badge's fixed 26.
   meta: {
     alignItems: 'flex-end',
     gap: spacing.xs,
     flexShrink: 0,
+  },
+  // The stamp's large-type home: the last line of the text column, where it has
+  // the full column width instead of taking ~120pt of it away.
+  timeStacked: {
+    ...typography.caption,
+    color: c.textSecondary,
   },
   name: {
     ...typography.body,

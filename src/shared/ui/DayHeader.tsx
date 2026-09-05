@@ -2,7 +2,7 @@
  * WHAT:  DayHeader — the calendar label that divides a feed into days ("Today",
  *        "Yesterday", "23 July"), plus DayHeaderSkeleton, the box it occupies
  *        while the feed loads.
- * WHY:   Three lists now group by day — the inbox's notifications face, the
+ * WHY:   ONE list groups by day (the inbox faces stopped on 2026-09-04) — the inbox's notifications face, the
  *        messages face, and My reports — and each had hand-rolled the same
  *        five style properties. The third copy is where a shared component
  *        stops being premature.
@@ -12,7 +12,7 @@
  *        configurable: a bold 20pt band between sparse rows out-shouts the rows
  *        it is meant to organise. A date is a divider, not a section title.
  *
- *        ⚠️ THE GUTTER IS A PROP because the three consumers genuinely differ.
+ *        ⚠️ THE GUTTER IS A PROP because its remaining consumer genuinely differ.
  *        A flush list whose rows pad themselves (both inbox faces) needs the
  *        header to carry the 24; a list whose CONTENT CONTAINER already pads
  *        (My reports) would otherwise indent every date to 48. Getting this

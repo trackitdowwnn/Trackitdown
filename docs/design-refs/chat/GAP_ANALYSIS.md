@@ -203,11 +203,20 @@ an opacity: white at `opacity.inactive` over `#1A1A1A` is ~3.4:1 and at 0.6 is
 | N | **`✓ your reply` preview prefix** | Schema, not design. `InboxThread` carries no sender field; it needs a new column on `get_inbox` |
 | O | **Hiding send until there is text** | The reference can, because a mic occupies that slot when the box is empty. We have nothing to swap to, so the pill's width would jump on the first keystroke — item D in a new costume |
 
-### Consequence accepted, not fixed
+### ~~Consequence accepted, not fixed~~ — resolved 2026-09-04/05
 
-⚠️ **The two inbox faces now format time differently.** Messages draws a clock;
-Notifications still draws `timeAgo`, under the same `DayHeader` vocabulary in the
-same tab. The clock argument applies to `NotificationRowItem` word for word, but
-this pass was scoped to Messages, and redesigning the other face on the way past
-would have been unrequested. Recorded in `ThreadRow.tsx`'s header so whoever
-aligns them knows it is wanted.
+⚠️ ~~**The two inbox faces now format time differently.** Messages draws a clock;
+Notifications still draws `timeAgo`.~~
+
+**Closed in two halves.** The DRAWN half went when both lists were flattened —
+with no header above a row to say the day, one shared `formatListStamp` ladder
+had to serve both faces. The SPOKEN half survived it unnoticed for a day:
+`NotificationRowItem`'s accessibility label was still built from `timeAgo` while
+its row drew the stamp, so the divergence had simply moved one layer down where
+nobody looks. Caught by the code review of 2026-09-05 and moved to
+`formatDateTimeLabel`, matching `ThreadRow`.
+
+⚠️ Worth keeping as a pattern rather than an anecdote: **a fix applied to the
+drawn layer is not finished until the spoken layer is checked.** The same review
+found "Seen" had gone silent for the same reason — it moved inside a bubble
+whose explicit `accessibilityLabel` replaces everything its children say.

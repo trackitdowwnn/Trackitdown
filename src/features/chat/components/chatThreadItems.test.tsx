@@ -143,13 +143,23 @@ describe('MessageBubble', () => {
     expect(unseen.queryByText(/Seen/)).toBeNull();
   });
 
-  // ⚠️ ONE NODE. The meta Text is a descendant of the bubble's Pressable now,
-  // so without `accessible` a screen reader reads the time twice — once from
-  // the label, once from the child.
-  it('is a single accessibility node, so the time is not read twice', async () => {
-    const { getByTestId } = await render(<MessageBubble message={message()} mine={false} />);
+  // ⚠️ REPLACES A TEST THAT COULD NOT FAIL. It asserted
+  // `props.accessible === true` to prove the bubble was one node — but RN's
+  // Pressable sets `accessible: accessible !== false` itself, so that passed
+  // with the prop deleted and with the label broken. It restated a framework
+  // default.
+  //
+  // ⚠️ WHAT ACTUALLY NEEDED GUARDING: the bubble's explicit accessibilityLabel
+  // REPLACES everything its children contribute. "Seen" moved inside the
+  // bubble on 2026-09-04 and went silent — a read receipt only sighted users
+  // could get — because nobody added it to the label. Anything DRAWN inside
+  // this bubble has to be repeated in the label, and this is what says so.
+  it('⚠️ speaks "Seen", which drawing it inside the bubble silently stopped', async () => {
+    const seen = await render(<MessageBubble message={message()} mine seen />);
+    expect(seen.getByTestId('bubble-m1').props.accessibilityLabel).toMatch(/\. Seen$/);
 
-    expect(getByTestId('bubble-m1').props.accessible).toBe(true);
+    const unseen = await render(<MessageBubble message={message({ id: 'm5' })} mine />);
+    expect(unseen.getByTestId('bubble-m5').props.accessibilityLabel).not.toMatch(/Seen/);
   });
 });
 

@@ -34,7 +34,7 @@ import {
 } from 'react-native';
 
 import { formatClock } from '@/shared/lib/dateTimeLabel';
-import { opacity, radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import { radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { blockPaddingTop, type MessageGroupPos } from '../lib/messageGroups';
 import type { ChatMessage, OutgoingMessage } from '../types';
@@ -122,18 +122,21 @@ export function MessageBubble({
     >
       <Pressable
         onLongPress={report}
-        // ⚠️ EXPLICITLY ONE NODE. The meta `Text` is now a descendant of this
-        // Pressable, so without `accessible` a screen reader can announce the
-        // time twice — once from this label, once from the child. Do NOT reach
-        // for accessibilityElementsHidden on the meta instead: RNTL excludes
-        // hidden nodes by default, which would make it untestable.
-        accessible
-        // The time is in every label, as it has been since the caption only
-        // ever appeared above one bubble per run. It is now also DRAWN on every
-        // bubble, so the two finally agree.
+        // ⚠️ THIS LABEL IS THE ONLY THING A SCREEN READER HEARS FROM THE BUBBLE.
+        // Pressable is accessible by default (`accessible: accessible !== false`
+        // in RN's own source), so an explicit label here REPLACES everything
+        // its children would otherwise have contributed. Anything drawn inside
+        // must be repeated here or it is sighted-only.
+        //
+        // ⚠️ "Seen" LEARNED THAT THE HARD WAY. It used to be a sibling Text
+        // below the bubble — its own node, announced on its own. Folding it
+        // into the meta made it a descendant, and it went silent: a read
+        // receipt only sighted users could get. It is in the label now, and
+        // `chatThreadItems.test.tsx` pins that it stays.
         accessibilityLabel={
           `${mine ? 'You' : (otherName ?? 'They')}: ${message.content}, ` +
-          `${timeCaption(message.createdAt)}`
+          `${timeCaption(message.createdAt)}` +
+          (seen ? '. Seen' : '')
         }
         accessibilityHint={reportable ? 'Long-press or use the report action' : undefined}
         accessibilityActions={reportable ? [{ name: 'report', label: 'Report this message' }] : undefined}
@@ -196,8 +199,13 @@ export function OutgoingBubble({ message, groupPos = 'single', onRetry }: Outgoi
       ]}
     >
       <Pressable
-        disabled={!failed}
-        onPress={() => onRetry(message.localId)}
+        // ⚠️ NO `disabled` PROP. A bubble is not a control, and RN folds
+        // `disabled` into `accessibilityState` — so every PENDING message was
+        // announced as "Sending: hello, dimmed". `shared/ui/ListRow` documents
+        // this exact trap ("announced as DIMMED by every screen reader while
+        // rendering at full opacity"). Gating the handler is inert in the same
+        // way and says nothing.
+        onPress={failed ? () => onRetry(message.localId) : undefined}
         accessibilityRole={failed ? 'button' : undefined}
         accessibilityLabel={
           failed ? `Not sent: ${message.content}. Tap to retry.` : `Sending: ${message.content}`
@@ -218,19 +226,17 @@ export function OutgoingBubble({ message, groupPos = 'single', onRetry }: Outgoi
             double pop reads as a double send; a silent relayout is the same
             lie told more slowly. A FAILED send keeps its own loud caption
             below — see below. */}
-        {/* ⚠️ FULL-STRENGTH INK, NOT `metaMine`. A pending bubble already wears
-            `opacity.inactive` on the WHOLE container, so a muted token inside
-            it is dimmed twice: `textOnPrimaryMuted` composited through 0.5
-            measures 2.08:1 light / 2.97:1 dark against the bubble's own
-            composited fill — far under the 4.5 text floor, on the label that
-            says whether a message has sent.
+        {/* ⚠️ FULL-STRENGTH INK, NOT `metaMine`, and it stays that way even now
+            the pending bubble is a FILL rather than an opacity (see
+            `bubblePending`). `textOnPrimaryMuted` on `primaryPressed` measures
+            4.17:1 light / 4.46:1 dark — both still under the 4.5 floor. The
+            muted ink is only safe on a settled `primary`.
 
-            This is the exact hazard `textOnPrimaryMuted`'s own comment warns
-            about ("a token can be measured; a composite cannot") — and
-            `colors.test.ts` re-derives token PAIRINGS, so it cannot see a
-            runtime alpha and did not catch it. Let the container do the
-            dimming once: 3.49:1 / 5.03:1, the same as the message text beside
-            it. */}
+            History, because this took two goes: the label first shipped muted
+            inside a bubble dimmed by `opacity.inactive`, compositing to 2.08:1.
+            Raising the ink fixed the label and left the message CONTENT beside
+            it at 3.49:1, which the opacity had been doing all along. Replacing
+            the opacity with a fill fixed both. */}
         {!failed ? (
           <Text style={[styles.meta, styles.metaPending]}>Sending…</Text>
         ) : null}
@@ -312,18 +318,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   blockTheirs: {
     alignItems: 'flex-start',
   },
-  /**
-   * ⚠️ SIDE-ALIGNED, NOT CENTRED. A centred grey caption is visually the same
-   * object as a DaySeparator's label — and DaySeparator was given its rules
-   * precisely so the two jobs would stop looking alike. Letting the time
-   * inherit the block's flex-end/flex-start finishes that thought: a day
-   * belongs to the thread, a time belongs to whoever spoke.
+  /*  and  styles lived here until 2026-09-05, for a caption above
+   * the group and a Seen line below the bubble. Both moved INSIDE the bubble
+   * as one meta row; neither style had a reference left. The reasoning that
+   * mattered survives in the  block below.
    */
-  time: {
-    ...typography.caption,
-    color: c.textSecondary,
-    paddingBottom: spacing.xs,
-  },
   /**
    * ⚠️ A WRAPPING ROW, NOT A COLUMN (2026-09-04) — this is what puts the time
    * inside the bubble, and the geometry is the whole trick.
@@ -407,8 +406,30 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: c.border,
   },
+  /**
+   * ⚠️ A FILL, NOT AN OPACITY (2026-09-05). This was
+   * `opacity: opacity.inactive`, which composites the WHOLE subtree — fill and
+   * text as one layer — so a pending bubble rendered the user's own words at
+   * **3.49:1** in light against a 4.5 floor, for as long as the send took. On a
+   * slow connection that is seconds, on the screen where somebody is telling
+   * the owner of a stolen car where it is.
+   *
+   * `opacity.inactive` is documented as "resting state of paired indicators
+   * (inactive carousel dots)" — a DECORATION token. Dimming a box of readable
+   * text with it was always outside that, and the alpha is invisible to
+   * `colors.test.ts`, which can only re-derive token pairings.
+   *
+   * `primaryPressed` says the same thing structurally — a near-black bubble
+   * that has not settled — while keeping `textOnPrimary` at 12.6:1 light and
+   * 12.7:1 dark. The state itself is carried by the WORD "Sending…", which it
+   * has to be anyway: never encode by colour alone.
+   *
+   * ⚠️ `metaPending` MUST STAY full-strength. `textOnPrimaryMuted` on this fill
+   * measures 4.17:1 light / 4.46:1 dark — both still under the floor. The muted
+   * ink is only safe on a settled `primary`.
+   */
   bubblePending: {
-    opacity: opacity.inactive,
+    backgroundColor: c.primaryPressed,
   },
   textMine: {
     ...typography.body,
@@ -422,10 +443,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textSecondary,
   },
-  seen: {
-    ...typography.caption,
-    color: c.textSecondary,
-  },
+  /* `seen` lived here — a caption BELOW the bubble — until 2026-09-04, when it
+   * moved into the meta row inside it. `time` went the same way from above the
+   * group. Neither style had a reference left; the reasoning that mattered
+   * survives in the `meta` block above. */
   deliveryFailed: {
     color: c.danger,
   },
@@ -456,7 +477,18 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.surface,
     borderRadius: radii.full,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.border,
+    // ⚠️ `borderStrong`, NOT `border`. On the conversation's `surfaceSubtle`
+    // ground `border` measures 1.17:1 light / 1.14:1 dark — it draws nothing at
+    // all, so the chip was a floating word with an invisible pill around it.
+    // That is exactly the confusion the ruled divider existed to prevent: a
+    // centred `caption` in `textSecondary` is also precisely what
+    // `SystemMessage` is, and shape was supposed to be what told them apart.
+    //
+    // `borderStrong` gives 2.79:1 / 2.81:1. Under the 3:1 graphic floor, and
+    // sanctioned here for the reason the map pill takes it: this edge is a
+    // SHAPE cue on an object already locatable by its own text, not the sole
+    // carrier of the object.
+    borderColor: c.borderStrong,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },

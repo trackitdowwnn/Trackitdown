@@ -322,12 +322,19 @@ same place.
   rows. The RPC gates the photo MORE narrowly than the row: owner, or a spotter
   with a sighting on that post, or the post is still active. Everything else
   returns null and falls back to the icon, which is the ordinary case.
-- Look: neutral `surfaceSubtle` icon TILES — 64pt rounded squares
-  (`sizes.inboxRowTile`) since the 2026-08-28 Airbnb inbox pass, matching the
-  Messages face's car photo so the two halves of the tab share one silhouette.
-  They were 48pt circles; circles mean people, and neither inbox face is about
-  a person's photograph. Meaning is carried by icon shape + the three semantic
-  hues (`lib/centerRowMeta.ts` — the one mapping).
+- Look: neutral `surfaceSubtle` icon TILES — **48pt circles** since the
+  2026-09-04 WhatsApp pass, matching the Messages face's car photo so the two
+  halves of the tab share one silhouette. Meaning is carried by icon shape +
+  the three semantic hues (`lib/centerRowMeta.ts` — the one mapping).
+
+  ⚠️ **That is a round trip, and both ends were argued.** They were 48pt
+  circles, became 64pt rounded squares on 2026-08-28 ("circles mean people, and
+  neither inbox face is about a person's photograph"), and are circles again —
+  smaller — because the owner asked for the Messages list to read as a
+  messaging app and the round lead is the strongest signal available to a row
+  whose picture can never be a face. The 08-28 argument still stands on its own
+  terms; it was overridden, not refuted. What survives it: the lead is never a
+  PERSON. It is a car or an event icon.
 - ⚠️ `credited` and `closed_uncredited` keep the warning accent bar while
   unread AND now carry a LABEL saying what to do ("Add your bank details",
   "You can contest this"). The bar alone was status encoded as colour, which

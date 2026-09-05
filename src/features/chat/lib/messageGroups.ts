@@ -29,7 +29,7 @@ import { TIME_GAP_MINUTES, type ChatMessage, type OutgoingMessage } from '../typ
 
 /** Where a user bubble sits in a same-sender run — drives which corners are
  *  tightened (Airbnb's grouped-bubble anatomy). Runs break on sender change,
- *  day change, a time caption, and system messages. */
+ *  day change, a long gap, and system messages. */
 export type MessageGroupPos = 'single' | 'first' | 'middle' | 'last';
 
 /** One render item for the thread's list (reading order). */
@@ -177,9 +177,13 @@ export function buildChatList(
  * three quick messages read as one thought, not three announcements).
  *
  * A run breaks on anything that already breaks the eye: a different sender, a
- * day separator, a long gap (showTime), or a system message. Meaning the
- * time caption ALWAYS sits above a fully-rounded top corner — the two cues
- * never fight.
+ * day separator, a long gap (showTime), or a system message.
+ *
+ * ⚠️ NOTHING IS DRAWN FOR THE GAP any more. This used to end "meaning the time
+ * caption ALWAYS sits above a fully-rounded top corner — the two cues never
+ * fight", which was true while a >15-minute gap printed a caption above the
+ * run. The caption moved inside every bubble on 2026-09-04, so the break and
+ * its 12pt of air are now the whole cue, and there is no second one to fight.
  */
 function assignGroupPositions(items: ChatListItem[]): void {
   let run: Extract<ChatListItem, { type: 'message' }>[] = [];

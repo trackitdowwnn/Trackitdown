@@ -1,7 +1,7 @@
 /**
- * WHAT:  One notification feed row — icon in a neutral tile, title + relative
- *        time, body (2 lines max), the needs-attention label, and the unread
- *        badge.
+ * WHAT:  One notification feed row — icon in a round tile, title, body (2
+ *        lines max), the needs-attention label, and a trailing column holding
+ *        the date stamp over the unread badge.
  * WHY:   The Airbnb-calm row: the icon SHAPE says what happened (hue assists,
  *        never carries alone), unread is a quiet badge and weight rather than a
  *        coloured background, and the two kinds that genuinely need the user
@@ -51,9 +51,9 @@
 
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { formatListStamp } from '@/shared/lib/dateTimeLabel';
-import { timeAgo } from '@/shared/lib/timeAgo';
+import { formatDateTimeLabel, formatListStamp } from '@/shared/lib/dateTimeLabel';
 import {
+  listRowStackFontScale,
   radii,
   sizes,
   spacing,
@@ -102,6 +102,9 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   // one unrecognised row rather than degrading to a plain one.
   const meta = CENTER_ROW_META[row.kind] ?? CENTER_ROW_META.alert;
   const unread = row.readAt === null;
+  const { fontScale } = useWindowDimensions();
+  // ⚠️ RESTORED 2026-09-05 alongside ThreadRow — see the meta column note.
+  const stacked = (fontScale ?? 1) > listRowStackFontScale;
   const loud = unread && meta.needsAttention;
 
   // The badge, the weight and the bar are visual; the LABEL is where a screen-
@@ -110,7 +113,11 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   // attention." — a sentence no sighted user ever saw, describing a stripe
   // rather than the errand. Reader and screen now say the same thing.
   const accessibilityLabel =
-    `${row.title}. ${row.body}. ${timeAgo(row.createdAt)}.` +
+    // ⚠️ SPOKEN AS DAY + TIME, matching ThreadRow (2026-09-05). This said
+    // `timeAgo` while the row DREW formatListStamp, so the two faces of one
+    // tab still disagreed about time — the divergence the flat pass claimed to
+    // have closed, moved one layer down where nobody looks.
+    `${row.title}. ${row.body}. ${formatDateTimeLabel(row.createdAt)}.` +
     (loud ? ` ${meta.attentionLabel}.` : unread ? ' Unread.' : '');
 
   return (
@@ -131,7 +138,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
           no standing on it) or the row references no post at all. It is NOT
           null for the money kinds: `credited`, `payout_sent` and
           `not_credited` go to a spotter with a sighting on that post, so they
-          get the car. Both shapes are the same 64pt box, so the list rhythm
+          get the car. Both shapes are the same 48pt box, so the list rhythm
           never changes between them — only what is inside it. */}
       {row.imageUrl ? (
         <AppImage
@@ -170,18 +177,32 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
             <Text style={styles.attentionLabel}>{meta.attentionLabel}</Text>
           </View>
         ) : null}
+        {/* Past listRowStackFontScale the stamp lives here — see the meta note. */}
+        {stacked ? (
+          <Text style={styles.timeStacked}>{formatListStamp(row.createdAt)}</Text>
+        ) : null}
       </View>
       {/* ⚠️ FOLLOWS ThreadRow (2026-09-04): time above, unread below, as one
           trailing column. The silhouette rule in this file's header is why —
           the conversation face moved its time out of the title line into a
           stacked meta column, and two faces of one tab cannot disagree about
-          where a timestamp lives. `topLineStacked` retires with it: the time
-          no longer competes with the TITLE, which is what that behaviour
-          existed to protect. */}
+          where a timestamp lives.
+
+          ⚠️ AND IT STACKS PAST `listRowStackFontScale`, restored 2026-09-05.
+          Retiring that behaviour was wrong on both faces: with the body on
+          `flex: 1` (basis 0), Yoga gives this column its INTRINSIC width first,
+          so at 2× text a ~120pt stamp took most of the row and the body fell to
+          roughly nine characters. That also invalidated the arithmetic the
+          no-`numberOfLines` decision below rests on — "at 200% the text column
+          is ~238pt" was measured before this column existed. Above the
+          threshold the stamp drops into the text column and only the badge
+          stays here. */}
       <View style={styles.meta}>
-        <Text style={styles.time} numberOfLines={1}>
-          {formatListStamp(row.createdAt)}
-        </Text>
+        {!stacked ? (
+          <Text style={styles.time} numberOfLines={1}>
+            {formatListStamp(row.createdAt)}
+          </Text>
+        ) : null}
         <UnreadBadge count={unread ? 1 : 0} testID={unread ? `unread-${row.id}` : undefined} />
       </View>
     </Pressable>
@@ -294,6 +315,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flex: 1,
     gap: spacing.xs,
   },
+  // The stamp's large-type home: the last line of the text column.
+  timeStacked: {
+    ...typography.caption,
+    color: c.textSecondary,
+  },
   // Time above, unread below — the trailing column ThreadRow uses. Identical
   // style there; see the silhouette note in the header.
   meta: {
@@ -304,7 +330,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // ⚠️ `body`, matching ThreadRow's name — NOT `label`. The two faces shared a
   // box but not a type ramp, so switching segments changed every text size on
   // screen, and the notification row came out 10pt shorter than a conversation
-  // row. It also made the 64pt tile, not the text, decide the row height, which
+  // row. It also made the 48pt tile, not the text, decide the row height, which
   // is the one thing `inboxRowTile`'s own doc comment says it must not do.
   title: {
     ...typography.body,

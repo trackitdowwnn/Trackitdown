@@ -14,6 +14,7 @@ import {
   formatDateLabel,
   formatDateLabelCompact,
   formatDateTimeLabel,
+  formatListStamp,
   formatMonthYear,
 } from './dateTimeLabel';
 
@@ -71,6 +72,50 @@ describe('formatClock', () => {
 
   it('throws on unparseable input', () => {
     expect(() => formatClock('not a date')).toThrow(/unparseable/);
+  });
+});
+
+// ⚠️ THE WHOLE INBOX HANGS ON THIS AND IT SHIPPED UNTESTED. Both faces dropped
+// their day headers on 2026-09-04 and handed the job to this ladder; the only
+// coverage was `InboxScreen.test.tsx`, which builds its expectation by CALLING
+// the function under test — tautological for every branch except the literal
+// "Yesterday". Nothing pinned the two branches the JSDoc promises.
+describe('formatListStamp', () => {
+  it('today is the clock, and nothing else', () => {
+    const iso = localIso(2026, 6, 8, 14, 30);
+    expect(formatListStamp(iso, NOW)).toBe(formatClock(iso));
+  });
+
+  it('yesterday is the word', () => {
+    expect(formatListStamp(localIso(2026, 6, 7, 9, 0), NOW)).toBe('Yesterday');
+  });
+
+  // ⚠️ THE BRANCH THAT MATTERS MOST. A bare clock on an old thread would be
+  // actively misleading — that is the failure the day header used to prevent,
+  // and the reason this is a ladder rather than `formatClock`.
+  it('older than that is a date, never a time', () => {
+    const stamp = formatListStamp(localIso(2026, 6, 6, 9, 0), NOW);
+
+    expect(stamp).toBe('6 Jul');
+    expect(stamp).not.toMatch(/\d{1,2}[:.]\d{2}/);
+  });
+
+  it('keeps the year when it is not this one', () => {
+    expect(formatListStamp(localIso(2025, 6, 6, 9, 0), NOW)).toBe('6 Jul 2025');
+  });
+
+  it('throws on unparseable input, like its siblings', () => {
+    expect(() => formatListStamp('not a date', NOW)).toThrow(/unparseable/);
+  });
+
+  // Local-midnight boundaries, because the ladder is computed from
+  // startOfLocalDay differences rather than elapsed hours.
+  it.each([
+    ['one minute past midnight today', localIso(2026, 6, 8, 0, 1), 'clock'],
+    ['one minute to midnight yesterday', localIso(2026, 6, 7, 23, 59), 'Yesterday'],
+  ])('%s', (_name, iso, expected) => {
+    const stamp = formatListStamp(iso, NOW);
+    expect(expected === 'clock' ? formatClock(iso) : expected).toBe(stamp);
   });
 });
 
