@@ -136,7 +136,7 @@ describe('⚠️ flat, with the day on the row', () => {
     // "Today" was a header; nothing prints it now. "Yesterday" survives, but as
     // the older ROW's own stamp rather than a heading over it.
     expect(queryByText('Today')).toBeNull();
-    expect(within(getByTestId('thread-meta-b')).getByText('Yesterday')).toBeTruthy();
+    expect(within(getByTestId('thread-row-b')).getByText('Yesterday')).toBeTruthy();
   });
 
   it('gives every row its own stamp, however many share a day', async () => {
@@ -156,7 +156,7 @@ describe('⚠️ flat, with the day on the row', () => {
     expect(getByText('Ben')).toBeTruthy();
     const clock = formatListStamp(now);
     for (const id of ['a', 'b', 'c']) {
-      expect(within(getByTestId(`thread-meta-${id}`)).getByText(clock)).toBeTruthy();
+      expect(within(getByTestId(`thread-row-${id}`)).getByText(clock)).toBeTruthy();
     }
   });
 
@@ -168,7 +168,7 @@ describe('⚠️ flat, with the day on the row', () => {
       ready([thread({ threadId: 'old', lastMessageAt: '2026-07-23T10:00:00.000Z' })]),
     );
     const { getByTestId } = await act(async () => render(<ChatInboxScreen />));
-    const meta = within(getByTestId('thread-meta-old'));
+    const meta = within(getByTestId('thread-row-old'));
 
     expect(meta.getByText(formatListStamp('2026-07-23T10:00:00.000Z'))).toBeTruthy();
     expect(meta.queryByText(/^\d{1,2}[:.]\d{2}$/)).toBeNull();

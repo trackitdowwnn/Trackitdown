@@ -24,7 +24,15 @@ import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useEntranceGate } from '@/shared/hooks';
 import { createLogger } from '@/shared/lib/logger';
-import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  motion,
+  opacity,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   EmptyState,
   ErrorState,
@@ -72,7 +80,7 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
   }, [active]);
 
   // Flat: the rows themselves, newest first. No day grouping since 2026-09-04.
-  const items = rows;
+
   const hasUnread = rows.some((row) => row.readAt === null);
 
   const onRowPress = (row: NotificationRow) => {
@@ -146,8 +154,7 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
           <Pressable
             onPress={markAllRead}
             accessibilityRole="button"
-            hitSlop={spacing.md}
-            style={({ pressed }) => pressed && styles.markAllPressed}
+            style={({ pressed }) => [styles.markAllHit, pressed && styles.markAllPressed]}
             testID="mark-all-read"
           >
             <Text style={styles.markAllLabel}>Mark all as read</Text>
@@ -163,7 +170,7 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
           `getItemType` went with the headers: it was mandatory while ~38pt
           headers recycled into ~106pt rows, and there is one cell type now. */}
       <FlashList
-        data={items}
+        data={rows}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index }) => (
           <Animated.View
@@ -212,8 +219,25 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.sm,
   },
+  /**
+   * ⚠️ A REAL 44pt BOX, NOT `hitSlop`. The first version wrapped 18pt of
+   * `label` text and added `hitSlop={spacing.md}` for a nominal 42 — under the
+   * target, and ThreadHeader fixed this exact defect in this exact feature.
+   * Its note carries the second reason too: hit-testing walks siblings in
+   * reverse draw order, and the FlashList is drawn AFTER this strip, so the
+   * downward slop would have been claimed by the list and the real target was
+   * smaller still.
+   *
+   * `alignSelf` keeps the box hugging the text on the right rather than
+   * stretching the full width and swallowing taps meant for the list.
+   */
+  markAllHit: {
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    alignSelf: 'flex-end',
+  },
   markAllPressed: {
-    opacity: 0.6,
+    opacity: opacity.pressed,
   },
   markAllLabel: {
     ...typography.label,

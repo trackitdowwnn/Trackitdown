@@ -35,15 +35,15 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    — FlashList of Airbnb-style rows, GROUPED BY DAY (2026-08-28) under the
    same calendar labels the Notifications face uses, so one tab does not
    speak two vocabularies for "when".
-   — The row leads with the CAR'S COVER PHOTO at 64pt (`sizes.inboxRowTile`),
+   — The row leads with the CAR'S COVER PHOTO in a 48pt circle (`sizes.inboxRowTile`),
    falling back to a `CarColourTile` in the car's own paint when the post has
    no photo. The POST's public photo, never anything of the other person's —
    the peer avatar is withheld by the API on purpose. Then first name +
-   the clock time (⚠️ a CLOCK since 2026-09-04, not "2h ago": the list is
-   already day-grouped by `DayHeader`, so a relative stamp was a second
-   answer to a question already answered — "2h ago" under **Today** is
-   redundant and "3d ago" under **23 July** contradicts it. The a11y label
-   keeps the DAY, because a screen-reader user never meets the header),
+   the date stamp (⚠️ `formatListStamp` since 2026-09-04, not "2h ago": the
+   list is FLAT now, so the row carries the day itself — the clock today,
+   "Yesterday" yesterday, a date before that. The a11y label keeps day AND
+   time at every age, because a screen-reader user cannot glance at the rows
+   above to place this one),
    the one-line preview, and the context line ("About your
    Blue BMW · ‹PlateChip›" for owners / "Your sighting · Blue BMW" for
    spotters). Trailing: `UnreadBadge` — a dot at one unread, a count above,
@@ -53,8 +53,9 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    car as a 24pt corner badge. The photo took the leading slot because you
    cannot recognise a car at 24pt, which was the badge's whole job. See
    docs/design-refs/inbox/GAP_ANALYSIS.md.
-   — Sorted by last activity, which the day grouping now DEPENDS on: a header
-   opens only when the label changes, so out-of-order rows would repeat a day.
+   — Sorted by last activity. The day grouping that DEPENDED on that ordering
+   went on 2026-09-04; recency order is still what a messaging list means, it
+   is just no longer load-bearing for a header.
    Skeleton rows while loading, generated from the real row's own styles.
    No swipe actions — no swipe convention exists in the app, and the inbox
    doesn't introduce one (Airbnb's swipe-to-archive has nothing to archive

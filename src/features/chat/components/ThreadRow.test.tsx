@@ -14,6 +14,7 @@
  */
 
 import { fireEvent, render, within } from '@testing-library/react-native';
+import * as RN from 'react-native';
 import { StyleSheet } from 'react-native';
 
 import { radii } from '@/shared/theme';
@@ -87,10 +88,22 @@ describe('the row shape the inbox pass settled on', () => {
     expect(lead.borderRadius).toBe(radii.full);
   });
 
+  // ⚠️ fontScale PINNED. jest-expo reports 2 by default, which is ABOVE
+  // `listRowStackFontScale` — so without this the suite silently tests only the
+  // large-type branch, and the ordinary layout would go uncovered. The
+  // onboarding suite learned the same lesson about the same default.
+  const atScale = (fontScale: number) =>
+    jest
+      .spyOn(RN.Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale });
+
+  afterEach(() => jest.restoreAllMocks());
+
   it('keeps the time and the unread badge together in one trailing column', async () => {
     // They used to be two separate right-hand objects at two different heights
     // — the time on the name's line, the badge centred in a side slot. If this
     // fails, someone has put the time back beside the name.
+    atScale(1);
     const { getByTestId } = await render(
       <ThreadRow thread={thread({ unreadCount: 3 })} onPress={jest.fn()} />,
     );
@@ -98,6 +111,27 @@ describe('the row shape the inbox pass settled on', () => {
 
     expect(meta.getByText(formatClock(new Date().toISOString()))).toBeTruthy();
     expect(meta.getByText('3')).toBeTruthy();
+  });
+
+  // ⚠️ THE REGRESSION THIS EXISTS TO CATCH. The trailing column is
+  // `flexShrink: 0` and the body is `flex: 1` (basis 0), so Yoga hands the
+  // column its INTRINSIC width first. At 2× text a "6 Jul 2025" stamp is
+  // ~120pt of a 390pt row and the preview collapses to about nine characters.
+  // Past `listRowStackFontScale` the stamp therefore leaves the column and only
+  // the badge stays. A version of this row shipped without the guard on
+  // 2026-09-04; this is what would have caught it.
+  it('⚠️ moves the stamp out of the trailing column at large text sizes', async () => {
+    atScale(2);
+    const { getByTestId } = await render(
+      <ThreadRow thread={thread({ unreadCount: 3 })} onPress={jest.fn()} />,
+    );
+    const stamp = formatClock(new Date().toISOString());
+
+    // Still on the row — just not squeezing the body from the right.
+    expect(within(getByTestId('thread-row-t1')).getByText(stamp)).toBeTruthy();
+    expect(within(getByTestId('thread-meta-t1')).queryByText(stamp)).toBeNull();
+    // The badge does not move: its slot is a fixed width either way.
+    expect(within(getByTestId('thread-meta-t1')).getByText('3')).toBeTruthy();
   });
 });
 

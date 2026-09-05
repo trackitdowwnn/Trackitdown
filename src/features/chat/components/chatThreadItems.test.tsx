@@ -14,6 +14,9 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { colors } from '@/shared/theme/colors';
 
 import type { ChatMessage, OutgoingMessage } from '../types';
 import { ClosedThreadBanner } from './ClosedThreadBanner';
@@ -140,13 +143,23 @@ describe('MessageBubble', () => {
     expect(unseen.queryByText(/Seen/)).toBeNull();
   });
 
-  // ⚠️ ONE NODE. The meta Text is a descendant of the bubble's Pressable now,
-  // so without `accessible` a screen reader reads the time twice — once from
-  // the label, once from the child.
-  it('is a single accessibility node, so the time is not read twice', async () => {
-    const { getByTestId } = await render(<MessageBubble message={message()} mine={false} />);
+  // ⚠️ REPLACES A TEST THAT COULD NOT FAIL. It asserted
+  // `props.accessible === true` to prove the bubble was one node — but RN's
+  // Pressable sets `accessible: accessible !== false` itself, so that passed
+  // with the prop deleted and with the label broken. It restated a framework
+  // default.
+  //
+  // ⚠️ WHAT ACTUALLY NEEDED GUARDING: the bubble's explicit accessibilityLabel
+  // REPLACES everything its children contribute. "Seen" moved inside the
+  // bubble on 2026-09-04 and went silent — a read receipt only sighted users
+  // could get — because nobody added it to the label. Anything DRAWN inside
+  // this bubble has to be repeated in the label, and this is what says so.
+  it('⚠️ speaks "Seen", which drawing it inside the bubble silently stopped', async () => {
+    const seen = await render(<MessageBubble message={message()} mine seen />);
+    expect(seen.getByTestId('bubble-m1').props.accessibilityLabel).toMatch(/\. Seen$/);
 
-    expect(getByTestId('bubble-m1').props.accessible).toBe(true);
+    const unseen = await render(<MessageBubble message={message({ id: 'm5' })} mine />);
+    expect(unseen.getByTestId('bubble-m5').props.accessibilityLabel).not.toMatch(/Seen/);
   });
 });
 
@@ -177,6 +190,27 @@ describe('OutgoingBubble', () => {
     expect(getByText('Sending…')).toBeTruthy();
     await press(getByTestId('outgoing-L1'), 'press');
     expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  // ⚠️ A CONTRAST BUG CI STRUCTURALLY CANNOT SEE, shipped 2026-09-04 and caught
+  // a day later. The pending bubble wears `opacity.inactive` on the WHOLE
+  // container, so a muted token inside it is dimmed twice: composited through
+  // 0.5, `textOnPrimaryMuted` measured 2.08:1 light / 2.97:1 dark against the
+  // bubble's own composited fill — under the 4.5 text floor, on the label that
+  // says whether a message has sent.
+  //
+  // `colors.test.ts` re-derives token PAIRINGS and cannot evaluate a runtime
+  // alpha, which is precisely what `textOnPrimaryMuted`'s own comment warns
+  // about. So the guard has to live here, at the call site: the pending meta
+  // takes the FULL-strength ink and lets the container dim it once.
+  it('⚠️ does not dim "Sending…" twice — full ink inside an already-dimmed bubble', async () => {
+    const { getByText } = await render(
+      <OutgoingBubble message={outgoing('pending')} onRetry={jest.fn()} />,
+    );
+    const colour = StyleSheet.flatten(getByText('Sending…').props.style).color;
+
+    expect(colour).toBe(colors.textOnPrimary);
+    expect(colour).not.toBe(colors.textOnPrimaryMuted);
   });
 });
 
