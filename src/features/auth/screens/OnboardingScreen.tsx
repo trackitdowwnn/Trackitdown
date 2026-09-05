@@ -323,7 +323,16 @@ export function OnboardingScreen() {
             promise from "Continue", and it is the one press that means the
             intro is finished rather than advanced. */}
         <View style={styles.footer} testID="onboarding-footer">
-          {!onLastPage ? <OnboardingDots page={page} total={total} /> : null}
+          {/* ⚠️ ON EVERY SLIDE, THE LAST ONE INCLUDED (2026-09-05). The dots
+              were hidden on slide 4 — "nothing left to be a step THROUGH" —
+              which meant a four-step sequence dropped its length signal at
+              exactly the step where it completes. "4 of 4" is the payoff of
+              having dots at all: the reader arrives and SEES they arrived.
+              Not a reversal of the funnel-protected rebuild — dots, one
+              full-width button and the X all stand; this completes it. The
+              button does not move: fixed paddingBottom anchors it, and the
+              footer's extra height comes out of the stage above. */}
+          <OnboardingDots page={page} total={total} />
           {/* ⚠️ `advance` on BOTH, not a ternary picking `leave` on the last
               slide. `advance` already ends the run when there is no next page,
               and duplicating that here made the branch in `advance` dead while
@@ -388,11 +397,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // direction. In a column, stretch means width, which is what is wanted on
   // every slide now.
   //
-  // No `minHeight`: with one control of one height on every slide there is no
-  // swap to hold the row steady across. The dots row is the only thing that
-  // appears and disappears, and `gap` reserves nothing when it is absent —
-  // which is right, because the last slide's button should sit where the
-  // others' does, not 20pt lower.
+  // No `minHeight`: with one control of one height on every slide, and the
+  // dots now present on every slide too (2026-09-05), nothing in this footer
+  // ever appears or disappears — the box is simply constant, which is what a
+  // minHeight would have been simulating.
   footer: {
     flexDirection: 'column',
     alignItems: 'stretch',

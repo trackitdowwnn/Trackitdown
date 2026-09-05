@@ -41,8 +41,12 @@ us. So:
   the last slide; the same reasoning that made "Get started" worth reading makes
   "Continue" worth reading too.
 - **Progress moved out of the control** into `OnboardingDots` — a plain row
-  above the button, hidden on the last slide because there is no next step to
-  report. The reference has no progress at all (it is one upsell screen, not
+  above the button, on every slide. (⚠️ It shipped hidden on the last slide —
+  "no next step to report" — and the 2026-09-05 polish pass reversed that: the
+  dots' job is POSITION, not next-ness, and "4 of 4" is the payoff of having
+  them. Dropping the signal at the step where the sequence completes was the
+  one place the rebuild undercut itself.) The reference has no progress at all
+  (it is one upsell screen, not
   four), so this is the one place we deliberately add to it: dropping the ring
   without replacing its signal would leave a four-step sequence with no sense of
   its own length.

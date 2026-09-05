@@ -57,8 +57,8 @@ import Animated, {
   ReduceMotion,
   useAnimatedStyle,
   useDerivedValue,
+  withDelay,
   withTiming,
-  type DerivedValue,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
@@ -114,11 +114,17 @@ type BountyPoint = FieldPoint & { pence: number | null };
 const NEIGHBOURS: BountyPoint[] = [
   { left: '18%', top: '24%', pence: 5000 },
   { left: '76%', top: '30%', pence: 120000 },
-  { left: '26%', top: '52%', pence: 1000 },
   // ⚠️ A FREE LISTING. ADR-0014 made the reward optional, `NO_BOUNTY_LABEL` is
-  // what the real map prints for one, and a hero showing four priced cars and
-  // no free one silently contradicts the product on the first screen.
+  // what the real map prints for one, and a hero showing only priced cars
+  // silently contradicts the product on the first screen.
   { left: '70%', top: '56%', pence: null },
+  // ⚠️ THREE NEIGHBOURS, NOT FOUR (2026-09-05). A £10 pin sat at 26%/52% until
+  // the owner's polish pass: four amounts on the opening slide read as a PRICE
+  // LIST before a price means anything here, under a headline whose whole
+  // message is cars-not-money. The spread argument survives without it — the
+  // low anchor is now "No reward" (lower than any amount) plus £50, so the
+  // "four amounts all in the top decile" failure is not recreated. Its removal
+  // also frees the exact corridor the lengthened sighting trail crosses.
 ];
 
 /**
@@ -128,8 +134,8 @@ const NEIGHBOURS: BountyPoint[] = [
  * "NOT a recommendation, and nothing may present it as one" — and putting it on
  * the owner’s car on the first screen, hours before the slider offers the same
  * number, is the most effective way to present it as one. The spread across
- * these five pins is deliberate too: £10 to £1,200 against a real £10–£5,000
- * range, where the draft had four amounts all in the top decile.
+ * the four pins is deliberate too: "No reward" to £1,200 against a real
+ * £10–£5,000 range, where the first draft had every amount in the top decile.
  */
 const FOCAL: BountyPoint = { left: '50%', top: '42%', pence: 18000 };
 
@@ -179,48 +185,55 @@ const HOME_RING_PULL = '-14%';
  * offsets its pill by translateX(-28)/translateY(-12), which are POINTS, while
  * everything here is in stretched viewBox units — so the clearances below were
  * checked at a 360×440 band and are only nominal on any other. They are wide
- * enough to survive it: the mid-left pin's box is ~28 units clear of the trail
- * and the top-left pin's ~54. Anything tighter than that must not be reasoned
- * about this way.
+ * enough to survive it: the nearest pill box (the top-left pin's, y ending
+ * ≈117.6) sits ~66 units above the trail's highest point at (84, 184), and the
+ * "No reward" pin is ~168 units to its right. Anything tighter than that must
+ * not be reasoned about this way.
  *
- * The route threads the corridor between the top-left pin and the mid-left one,
+ * The route climbs the lower-left quarter — the corridor the £10 pin vacated —
  * and ends UNDER the focal pill: the last leg has no dot because its endpoint
  * is the car itself. That endpoint (168, 184) stays covered on any band
  * narrower than ~840pt, which is every phone and tablet we ship to.
  */
-const TRAIL_REPORTED = 'M 36 214 C 58 210, 62 190, 84 184';
+const TRAIL_REPORTED = 'M 24 258 C 40 232, 42 193, 84 184';
 const TRAIL_HOME = 'M 84 184 C 112 178, 128 190, 168 192';
 
 /**
  * Each leg's sighting dots, as `x / FIELD_W` and `y / FIELD_H`. The shared
  * point (84, 184) belongs to the first leg, so the legs never double one.
  *
- * ⚠️ EVERY DOT CLEARS BOTH ROADS, and getting there took two goes — so the
- * numbers are written down rather than left to be re-derived. Each dot's ring
- * is drawn in the FIELD'S OWN COLOUR and painted after the roads, so a dot
- * sitting on one does not overlap it, it deletes a bite out of it.
+ * ⚠️ THE APPROACH WAS LENGTHENED ON 2026-09-05 (owner polish pass). Leg 1 began
+ * at (36, 214) — a ~60pt shallow wiggle beside the focal pill, with only ~26
+ * units of vertical travel across four dots. Placed by arithmetic, it survived
+ * every clearance check and still read as noise the first time anyone saw it
+ * rendered: a journey needs somewhere to have come FROM. It now starts at
+ * (24, 258), low on the field near the fade's edge, and climbs ~74 units on a
+ * real diagonal before handing over to leg 2.
  *
- * The first draft put the shared point at (96, 172), ~3.6 units from the
- * VERTICAL road. Moving it left to (84, 168) cleared that one by 15 — and put
- * it 1.4 units from the UPPER road, which curves through y≈167 at x=84 and
- * y≈175 at x=121. One bite became two.
+ * ⚠️ THE JOIN IS TANGENT-EXACT, not merely close. Leg 1's end tangent is
+ * (42, −9) and leg 2's start tangent (28, −6) — both slope −0.214 — so the two
+ * paths render as ONE stroke. They stay two `Path`s because the stage gating
+ * and the two testIDs need them separable.
  *
- * ⚠️ THE UPPER ROAD IS THE HARD CONSTRAINT, because the trail's upper run
- * shadows it — the two stay within 2–9 units of each other from x=84 to x=150,
- * so no amount of sliding dots ALONG the curve escapes it. The fix is to drop
- * the whole upper run ~16 units below it. Clearances now, against a ring whose
- * half-extent is ~5.5 horizontally and ~7 vertically:
+ * ⚠️ EVERY DOT CLEARS EVERY ROAD, and the numbers are written down rather than
+ * left to be re-derived (this file's own rule, learned over two earlier goes —
+ * the first draft's shared point sat 3.6 units off the vertical road, and the
+ * fix put it 1.4 off the upper one). Each dot's ring is drawn in the FIELD'S
+ * OWN COLOUR after the roads, so a dot on a road does not overlap it, it
+ * deletes a bite out of it. Minimum distances, dense-sampled against all three
+ * roads including their S-segments, vs a ring half-extent of ~5.5 × ~7:
  *
- *     (84, 184)    upper road y≈166.7  →  17.3     vertical road x≈99.6 → 15.6
- *     (121.5, 185) upper road y≈174.6  →  10.4     vertical road x≈99.7 → 21.8
- *     (60, 199.75) upper road y≈158    →  42
- *     (36, 214)    upper road y≈150    →  64
+ *     (24, 258)      lower 58.5   vertical 77.9   upper 106.5
+ *     (44.25, 214.6) upper 58.8   vertical 58.1
+ *     (84, 184)      upper 16.6   vertical 16.5
+ *     (121.5, 185)   upper 10.4   vertical 20.8   ← the binding one, unchanged
  *
- * A leg CROSSING a road is fine and still happens; a dot parked on one is not.
+ * The leg-1 PATH's own closest approach to any road is 16.5 (vertical). A leg
+ * CROSSING a road is fine and still happens; a dot parked on one is not.
  */
 const TRAIL_DOTS_REPORTED: FieldPoint[] = [
-  { left: '10%', top: '48.6%' }, // 36, 214
-  { left: '16.7%', top: '45.4%' }, // 60, 199.75 — the curve's midpoint
+  { left: '6.7%', top: '58.6%' }, // 24, 258 — just above the fade's onset
+  { left: '12.3%', top: '48.8%' }, // 44.25, 214.6 — the curve's midpoint
   { left: '23.3%', top: '41.8%' }, // 84, 184
 ];
 const TRAIL_DOTS_HOME: FieldPoint[] = [
@@ -238,18 +251,20 @@ export interface OnboardingMapProps {
   stage: OnboardingMapStage;
 }
 
+/** One clock and one curve for every layer, matching the slide transition, so
+ *  the whole screen arrives together. Module-scope so TrailLeg shares it
+ *  literally rather than by copy. */
+const STAGE_TIMING = {
+  duration: motion.standard,
+  easing: easeOut,
+  reduceMotion: ReduceMotion.System,
+} as const;
+
 export function OnboardingMap({ stage }: OnboardingMapProps) {
   const palette = usePalette();
   const styles = useThemedStyles(makeStyles);
   const step = Math.max(0, STAGE_ORDER.indexOf(stage));
-
-  // One clock and one curve for every layer, matching the slide transition and
-  // the ring sweep, so the whole screen arrives together.
-  const timing = {
-    duration: motion.standard,
-    easing: easeOut,
-    reduceMotion: ReduceMotion.System,
-  } as const;
+  const timing = STAGE_TIMING;
 
   const focalIn = useDerivedValue(() => withTiming(step >= 1 ? 1 : 0, timing), [step]);
   // ⚠️ FROM THE POST, not from the spot slide. The alert goes out when the car
@@ -257,13 +272,20 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
   // these a slide late, so the one screen whose words claimed people nearby were
   // alerted showed a single pin and no alert at all — which undercut the whole
   // reason the alert slide could be absorbed into the map.
-  // ⚠️ TWO RINGS, TWO STEPS, because one gate for both made the post and spot
-  // slides pixel-identical — four named stages, three pictures, and the slide
-  // that got no new picture was the safety one. The inner ring leaves the car
-  // when it is posted; the outer reaches the neighbours as the spotter slide
-  // arrives. Both retract once it is home.
+  // ⚠️ ONE RING PER STEP, NOT A BULLSEYE (2026-09-05, owner polish pass). The
+  // first cut kept BOTH rings up through the spot slide, which put two
+  // concentric `textSecondary` circles under the trail, four dots, five pills
+  // and the safety pill — the busiest slide wearing the heaviest graphic. Since
+  // the contrast fix flattened every mark to one ink, hierarchy has to come
+  // from GEOMETRY, and the cheapest geometry is fewer rings: the inner ring
+  // shows on the post slide, the outer replaces it on the spot slide, so the
+  // alert reads as one pulse propagating outward rather than a static target.
+  //
+  // The original two-ring reason — "one gate for both made the post and spot
+  // slides pixel-identical" — is still answered: posted = inner ring; alerted =
+  // outer ring + the trail arriving. Four stages, four pictures.
   const alertNearIn = useDerivedValue(
-    () => withTiming(step >= 1 && step < 3 ? 1 : 0, timing),
+    () => withTiming(step >= 1 && step < 2 ? 1 : 0, timing),
     [step],
   );
   const alertFarIn = useDerivedValue(
@@ -274,22 +296,34 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
   // ⚠️ THE TRAIL ARRIVES ON THE SPOT SLIDE, NOT THE POST ONE. Reports exist
   // because somebody was alerted and then looked; drawing them beside "your car
   // is posted" would show sightings of a car nobody had been told about yet.
-  // `<number>` explicitly on both: these two are the only ones PASSED anywhere,
-  // and inference narrows them to `0 | 1`, which a `DerivedValue<number>` prop
-  // then refuses (shared values are invariant — `set` makes them writable).
-  const trailIn = useDerivedValue<number>(() => withTiming(step >= 2 ? 1 : 0, timing), [step]);
-  // The last leg lands with the recovery, and it is the only mark that slide
-  // ADDS besides the home ring. Both alert rings retract there, so without this
-  // the final picture would be the only one that just loses things.
-  const trailHomeIn = useDerivedValue<number>(
-    () => withTiming(step >= 3 ? 1 : 0, timing),
-    [step],
-  );
+  // (The gates themselves now live at the TrailLeg call sites as booleans —
+  // each leg owns its own fade and stagger; see TrailLeg's header.)
 
   const focalStyle = useAnimatedStyle(() => ({ opacity: focalIn.value }));
-  const alertNearStyle = useAnimatedStyle(() => ({ opacity: alertNearIn.value }));
-  const alertFarStyle = useAnimatedStyle(() => ({ opacity: alertFarIn.value }));
-  const homeStyle = useAnimatedStyle(() => ({ opacity: homeIn.value }));
+  // ⚠️ THE RINGS MOVE, A LITTLE (2026-09-05, owner polish pass). Scale rides
+  // the SAME derived value as the fade — zero new clocks, zero new curves, and
+  // under ReduceMotion the timing collapses and the ring simply appears at
+  // rest, exactly as before. The direction is the meaning: an alert EXPANDS
+  // outward (0.85 → 1, and shrinks back as it retracts); home SETTLES inward
+  // (1.12 → 1) — the one note of arrival the recovery slide is allowed, well
+  // short of the springBouncy this file bans.
+  //
+  // Scaling the LAYER is geometrically exact, not an approximation: the layer
+  // has zero intrinsic height (its ring child is absolute), so its transform
+  // origin is its own top-centre — which is precisely where the negative
+  // margins pull the ring's centre. The ring scales about its own middle.
+  const alertNearStyle = useAnimatedStyle(() => ({
+    opacity: alertNearIn.value,
+    transform: [{ scale: 0.85 + 0.15 * alertNearIn.value }],
+  }));
+  const alertFarStyle = useAnimatedStyle(() => ({
+    opacity: alertFarIn.value,
+    transform: [{ scale: 0.85 + 0.15 * alertFarIn.value }],
+  }));
+  const homeStyle = useAnimatedStyle(() => ({
+    opacity: homeIn.value,
+    transform: [{ scale: 1.12 - 0.12 * homeIn.value }],
+  }));
 
   return (
     <View
@@ -347,13 +381,13 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
       <TrailLeg
         path={TRAIL_REPORTED}
         dots={TRAIL_DOTS_REPORTED}
-        progress={trailIn}
+        shown={step >= 2}
         testID="onboarding-map-trail"
       />
       <TrailLeg
         path={TRAIL_HOME}
         dots={TRAIL_DOTS_HOME}
-        progress={trailHomeIn}
+        shown={step >= 3}
         testID="onboarding-map-trail-home"
       />
 
@@ -390,12 +424,22 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
       {/* The map dissolving into the page at its own lower edge, so the band
           ends softly instead of being sliced. NO viewBox: a vertical gradient
           has no aspect to preserve, and sharing the field's cropped one is what
-          left the fade clipped on a 16:9 handset. */}
+          left the fade clipped on a 16:9 handset.
+
+          ⚠️ ONSET 0.62, NOT 0.55 (2026-09-05). The earlier onset dissolved the
+          band's lower third early, and on the short-copy slides (1 and 4) that
+          left a long empty wash between the faded field and the bottom-aligned
+          headline. Holding the field ~7% longer shortens the void. These stops
+          are DELIBERATELY independent of ONBOARDING_WASH_HOLD — that constant
+          couples the band's flex to the backdrop's ramp and must not move; this
+          gradient is the map's own edge, free to be tuned alone. It also puts
+          the trail's lowest dot (58.6% of the band) fully ABOVE the fade rather
+          than 9% inside it. */}
       <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
         <Defs>
           <LinearGradient id="onboardingMapFade" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.55" stopColor={palette.background} stopOpacity="0" />
-            <Stop offset="0.85" stopColor={palette.background} stopOpacity="0.75" />
+            <Stop offset="0.62" stopColor={palette.background} stopOpacity="0" />
+            <Stop offset="0.88" stopColor={palette.background} stopOpacity="0.75" />
             <Stop offset="1" stopColor={palette.background} stopOpacity="1" />
           </LinearGradient>
         </Defs>
@@ -419,20 +463,23 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
 interface TrailLegProps {
   path: string;
   dots: FieldPoint[];
-  /** Owned by the map, because WHICH STEP a leg belongs to is the map's story
-   *  to tell; the leg only turns it into opacity. */
-  progress: DerivedValue<number>;
+  /** Whether this leg's stage has arrived. WHICH step that is stays the map's
+   *  story to tell; HOW the leg arrives — its fade, and the dots' stagger — is
+   *  the leg's own (2026-09-05, owner polish pass). A boolean rather than a
+   *  DerivedValue because the leg now runs more than one animation off it. */
+  shown: boolean;
   testID: string;
 }
 
-function TrailLeg({ path, dots, progress, testID }: TrailLegProps) {
-  // Its own sheet and palette, unlike BountyPin, which is handed the parent's.
-  // This one already calls hooks, so there is nothing to save by threading them
-  // — and a component that takes `styles: ReturnType<typeof makeStyles>` is
-  // coupled to every unrelated key in it.
-  const styles = useThemedStyles(makeStyles);
+function TrailLeg({ path, dots, shown, testID }: TrailLegProps) {
+  // Its own palette, unlike BountyPin, which is handed the parent's styles.
+  // This one already calls hooks, so there is nothing to save by threading —
+  // the dots draw themselves in TrailDot below for the same reason.
   const palette = usePalette();
-  const style = useAnimatedStyle(() => ({ opacity: progress.value }));
+  // The leg's own fade rides the shared stage clock, so the PATH still arrives
+  // with everything else — only the dots run behind it.
+  const shownIn = useDerivedValue(() => withTiming(shown ? 1 : 0, STAGE_TIMING), [shown]);
+  const style = useAnimatedStyle(() => ({ opacity: shownIn.value }));
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, style]} testID={testID}>
@@ -455,14 +502,65 @@ function TrailLeg({ path, dots, progress, testID }: TrailLegProps) {
           vectorEffect="non-scaling-stroke"
         />
       </Svg>
-      {dots.map((dot) => (
-        <View
+      {dots.map((dot, index) => (
+        <TrailDot
           key={dot.left + dot.top}
-          style={[styles.trailDotRing, { left: dot.left, top: dot.top }]}
-        >
-          <View style={styles.trailDot} />
-        </View>
+          dot={dot}
+          index={index}
+          shown={shown}
+          testID={`${testID}-dot-${index}`}
+        />
       ))}
+    </Animated.View>
+  );
+}
+
+/**
+ * One report on the trail, arriving in sequence.
+ *
+ * ⚠️ THE STAGGER IS THE PRODUCT MECHANISM DRAWN, not decoration: reports come
+ * in one at a time, oldest first, and this is the one place the intro shows it.
+ * Delay is `motion.listStagger` per index — the same rhythm every staggered
+ * list entrance in the app uses — with `motion.fast` fades, so the last dot has
+ * landed by ~300ms, inside the list-stagger budget. On the way OUT the delay is
+ * zero: departures are not a story.
+ *
+ * ⚠️ `ReduceMotion.System` ON THE DELAY AS WELL AS THE TIMING. Reanimated only
+ * collapses what it is told to; a reduced-motion user must get the dots at
+ * once, not a slower version of the sequence.
+ *
+ * Its own component because hooks cannot run inside `dots.map`.
+ */
+function TrailDot({
+  dot,
+  index,
+  shown,
+  testID,
+}: {
+  dot: FieldPoint;
+  index: number;
+  shown: boolean;
+  testID: string;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const dotIn = useDerivedValue(() => {
+    const fade = withTiming(shown ? 1 : 0, {
+      duration: motion.fast,
+      easing: easeOut,
+      reduceMotion: ReduceMotion.System,
+    });
+    return shown
+      ? withDelay(index * motion.listStagger, fade, ReduceMotion.System)
+      : fade;
+  }, [shown, index]);
+  const style = useAnimatedStyle(() => ({ opacity: dotIn.value }));
+
+  return (
+    <Animated.View
+      style={[styles.trailDotRing, { left: dot.left, top: dot.top }, style]}
+      testID={testID}
+    >
+      <View style={styles.trailDot} />
     </Animated.View>
   );
 }
