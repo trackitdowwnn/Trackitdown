@@ -57,8 +57,8 @@ import Animated, {
   ReduceMotion,
   useAnimatedStyle,
   useDerivedValue,
+  withDelay,
   withTiming,
-  type DerivedValue,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
@@ -134,8 +134,8 @@ const NEIGHBOURS: BountyPoint[] = [
  * "NOT a recommendation, and nothing may present it as one" — and putting it on
  * the owner’s car on the first screen, hours before the slider offers the same
  * number, is the most effective way to present it as one. The spread across
- * these five pins is deliberate too: £10 to £1,200 against a real £10–£5,000
- * range, where the draft had four amounts all in the top decile.
+ * the four pins is deliberate too: "No reward" to £1,200 against a real
+ * £10–£5,000 range, where the first draft had every amount in the top decile.
  */
 const FOCAL: BountyPoint = { left: '50%', top: '42%', pence: 18000 };
 
@@ -251,18 +251,20 @@ export interface OnboardingMapProps {
   stage: OnboardingMapStage;
 }
 
+/** One clock and one curve for every layer, matching the slide transition, so
+ *  the whole screen arrives together. Module-scope so TrailLeg shares it
+ *  literally rather than by copy. */
+const STAGE_TIMING = {
+  duration: motion.standard,
+  easing: easeOut,
+  reduceMotion: ReduceMotion.System,
+} as const;
+
 export function OnboardingMap({ stage }: OnboardingMapProps) {
   const palette = usePalette();
   const styles = useThemedStyles(makeStyles);
   const step = Math.max(0, STAGE_ORDER.indexOf(stage));
-
-  // One clock and one curve for every layer, matching the slide transition and
-  // the ring sweep, so the whole screen arrives together.
-  const timing = {
-    duration: motion.standard,
-    easing: easeOut,
-    reduceMotion: ReduceMotion.System,
-  } as const;
+  const timing = STAGE_TIMING;
 
   const focalIn = useDerivedValue(() => withTiming(step >= 1 ? 1 : 0, timing), [step]);
   // ⚠️ FROM THE POST, not from the spot slide. The alert goes out when the car
@@ -294,22 +296,34 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
   // ⚠️ THE TRAIL ARRIVES ON THE SPOT SLIDE, NOT THE POST ONE. Reports exist
   // because somebody was alerted and then looked; drawing them beside "your car
   // is posted" would show sightings of a car nobody had been told about yet.
-  // `<number>` explicitly on both: these two are the only ones PASSED anywhere,
-  // and inference narrows them to `0 | 1`, which a `DerivedValue<number>` prop
-  // then refuses (shared values are invariant — `set` makes them writable).
-  const trailIn = useDerivedValue<number>(() => withTiming(step >= 2 ? 1 : 0, timing), [step]);
-  // The last leg lands with the recovery, and it is the only mark that slide
-  // ADDS besides the home ring. Both alert rings retract there, so without this
-  // the final picture would be the only one that just loses things.
-  const trailHomeIn = useDerivedValue<number>(
-    () => withTiming(step >= 3 ? 1 : 0, timing),
-    [step],
-  );
+  // (The gates themselves now live at the TrailLeg call sites as booleans —
+  // each leg owns its own fade and stagger; see TrailLeg's header.)
 
   const focalStyle = useAnimatedStyle(() => ({ opacity: focalIn.value }));
-  const alertNearStyle = useAnimatedStyle(() => ({ opacity: alertNearIn.value }));
-  const alertFarStyle = useAnimatedStyle(() => ({ opacity: alertFarIn.value }));
-  const homeStyle = useAnimatedStyle(() => ({ opacity: homeIn.value }));
+  // ⚠️ THE RINGS MOVE, A LITTLE (2026-09-05, owner polish pass). Scale rides
+  // the SAME derived value as the fade — zero new clocks, zero new curves, and
+  // under ReduceMotion the timing collapses and the ring simply appears at
+  // rest, exactly as before. The direction is the meaning: an alert EXPANDS
+  // outward (0.85 → 1, and shrinks back as it retracts); home SETTLES inward
+  // (1.12 → 1) — the one note of arrival the recovery slide is allowed, well
+  // short of the springBouncy this file bans.
+  //
+  // Scaling the LAYER is geometrically exact, not an approximation: the layer
+  // has zero intrinsic height (its ring child is absolute), so its transform
+  // origin is its own top-centre — which is precisely where the negative
+  // margins pull the ring's centre. The ring scales about its own middle.
+  const alertNearStyle = useAnimatedStyle(() => ({
+    opacity: alertNearIn.value,
+    transform: [{ scale: 0.85 + 0.15 * alertNearIn.value }],
+  }));
+  const alertFarStyle = useAnimatedStyle(() => ({
+    opacity: alertFarIn.value,
+    transform: [{ scale: 0.85 + 0.15 * alertFarIn.value }],
+  }));
+  const homeStyle = useAnimatedStyle(() => ({
+    opacity: homeIn.value,
+    transform: [{ scale: 1.12 - 0.12 * homeIn.value }],
+  }));
 
   return (
     <View
@@ -367,13 +381,13 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
       <TrailLeg
         path={TRAIL_REPORTED}
         dots={TRAIL_DOTS_REPORTED}
-        progress={trailIn}
+        shown={step >= 2}
         testID="onboarding-map-trail"
       />
       <TrailLeg
         path={TRAIL_HOME}
         dots={TRAIL_DOTS_HOME}
-        progress={trailHomeIn}
+        shown={step >= 3}
         testID="onboarding-map-trail-home"
       />
 
@@ -449,20 +463,23 @@ export function OnboardingMap({ stage }: OnboardingMapProps) {
 interface TrailLegProps {
   path: string;
   dots: FieldPoint[];
-  /** Owned by the map, because WHICH STEP a leg belongs to is the map's story
-   *  to tell; the leg only turns it into opacity. */
-  progress: DerivedValue<number>;
+  /** Whether this leg's stage has arrived. WHICH step that is stays the map's
+   *  story to tell; HOW the leg arrives — its fade, and the dots' stagger — is
+   *  the leg's own (2026-09-05, owner polish pass). A boolean rather than a
+   *  DerivedValue because the leg now runs more than one animation off it. */
+  shown: boolean;
   testID: string;
 }
 
-function TrailLeg({ path, dots, progress, testID }: TrailLegProps) {
-  // Its own sheet and palette, unlike BountyPin, which is handed the parent's.
-  // This one already calls hooks, so there is nothing to save by threading them
-  // — and a component that takes `styles: ReturnType<typeof makeStyles>` is
-  // coupled to every unrelated key in it.
-  const styles = useThemedStyles(makeStyles);
+function TrailLeg({ path, dots, shown, testID }: TrailLegProps) {
+  // Its own palette, unlike BountyPin, which is handed the parent's styles.
+  // This one already calls hooks, so there is nothing to save by threading —
+  // the dots draw themselves in TrailDot below for the same reason.
   const palette = usePalette();
-  const style = useAnimatedStyle(() => ({ opacity: progress.value }));
+  // The leg's own fade rides the shared stage clock, so the PATH still arrives
+  // with everything else — only the dots run behind it.
+  const shownIn = useDerivedValue(() => withTiming(shown ? 1 : 0, STAGE_TIMING), [shown]);
+  const style = useAnimatedStyle(() => ({ opacity: shownIn.value }));
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, style]} testID={testID}>
@@ -485,14 +502,65 @@ function TrailLeg({ path, dots, progress, testID }: TrailLegProps) {
           vectorEffect="non-scaling-stroke"
         />
       </Svg>
-      {dots.map((dot) => (
-        <View
+      {dots.map((dot, index) => (
+        <TrailDot
           key={dot.left + dot.top}
-          style={[styles.trailDotRing, { left: dot.left, top: dot.top }]}
-        >
-          <View style={styles.trailDot} />
-        </View>
+          dot={dot}
+          index={index}
+          shown={shown}
+          testID={`${testID}-dot-${index}`}
+        />
       ))}
+    </Animated.View>
+  );
+}
+
+/**
+ * One report on the trail, arriving in sequence.
+ *
+ * ⚠️ THE STAGGER IS THE PRODUCT MECHANISM DRAWN, not decoration: reports come
+ * in one at a time, oldest first, and this is the one place the intro shows it.
+ * Delay is `motion.listStagger` per index — the same rhythm every staggered
+ * list entrance in the app uses — with `motion.fast` fades, so the last dot has
+ * landed by ~300ms, inside the list-stagger budget. On the way OUT the delay is
+ * zero: departures are not a story.
+ *
+ * ⚠️ `ReduceMotion.System` ON THE DELAY AS WELL AS THE TIMING. Reanimated only
+ * collapses what it is told to; a reduced-motion user must get the dots at
+ * once, not a slower version of the sequence.
+ *
+ * Its own component because hooks cannot run inside `dots.map`.
+ */
+function TrailDot({
+  dot,
+  index,
+  shown,
+  testID,
+}: {
+  dot: FieldPoint;
+  index: number;
+  shown: boolean;
+  testID: string;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const dotIn = useDerivedValue(() => {
+    const fade = withTiming(shown ? 1 : 0, {
+      duration: motion.fast,
+      easing: easeOut,
+      reduceMotion: ReduceMotion.System,
+    });
+    return shown
+      ? withDelay(index * motion.listStagger, fade, ReduceMotion.System)
+      : fade;
+  }, [shown, index]);
+  const style = useAnimatedStyle(() => ({ opacity: dotIn.value }));
+
+  return (
+    <Animated.View
+      style={[styles.trailDotRing, { left: dot.left, top: dot.top }, style]}
+      testID={testID}
+    >
+      <View style={styles.trailDot} />
     </Animated.View>
   );
 }

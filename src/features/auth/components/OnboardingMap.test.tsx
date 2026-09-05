@@ -155,6 +155,33 @@ describe('⚠️ what each stage actually SHOWS', () => {
   });
 });
 
+describe('the trail dots', () => {
+  // ⚠️ THE STAGGER MUST NOT STRAND A DOT. Each dot fades behind a withDelay,
+  // and a wrong exit path (delaying the way OUT, or gating on a stale index)
+  // would leave a dot visible on a stage that dropped its leg — or invisible
+  // on one that has it. The mock collapses delays, so this pins steady state:
+  // every dot fully present when its leg is, fully absent when it is not.
+  it('all land with their leg, and none before it', async () => {
+    const recovered = await render(<OnboardingMap stage="recovered" />);
+    for (const id of [
+      'onboarding-map-trail-dot-0',
+      'onboarding-map-trail-dot-1',
+      'onboarding-map-trail-dot-2',
+      'onboarding-map-trail-home-dot-0',
+    ]) {
+      expect(
+        StyleSheet.flatten(recovered.getByTestId(id, HIDDEN).props.style)?.opacity,
+      ).toBe(1);
+    }
+
+    const posted = await render(<OnboardingMap stage="posted" />);
+    expect(
+      StyleSheet.flatten(posted.getByTestId('onboarding-map-trail-dot-0', HIDDEN).props.style)
+        ?.opacity,
+    ).toBe(0);
+  });
+});
+
 describe('accessibility', () => {
   it('⚠️ says nothing — the slide announces the whole screen', async () => {
     // Reachable ONLY with includeHiddenElements, which is the proof it is out

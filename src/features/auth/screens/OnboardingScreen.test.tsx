@@ -74,6 +74,11 @@ jest.mock('react-native-reanimated', () => {
     // owns the stages — but the hook must exist or the screen throws on render.
     useAnimatedStyle: (fn: () => unknown) => fn(),
     useDerivedValue: (fn: () => unknown) => ({ value: fn() }),
+    // The trail dots' stagger. Passthrough, same as the official mock — added
+    // when TrailDot arrived, because this inline mock predates it and the
+    // walkthrough tests only dodged the missing function by running at the
+    // host's default fontScale 2, where the map band never mounts.
+    withDelay: (_delayMs: unknown, animation: unknown) => animation,
     withTiming: (toValue: unknown) => toValue,
     useReducedMotion: () => true,
     useSharedValue: (initial: unknown) => ({ value: initial }),
