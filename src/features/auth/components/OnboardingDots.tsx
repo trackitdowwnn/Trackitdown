@@ -97,7 +97,11 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: spacing.xs,
+      // ⚠️ `sm`, MATCHING WizardProgressBar's row gap. This shipped as `xs`,
+      // which was exactly the silent drift this component's own header promises
+      // the shared geometry tokens prevent — the sizes were shared, the gap was
+      // not. Fixed 2026-09-05; the two dot rows now breathe the same.
+      gap: spacing.sm,
     },
     dot: {
       width: sizes.progressDot,

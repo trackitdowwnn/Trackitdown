@@ -310,16 +310,21 @@ describe('progress and the CTA', () => {
 
   // The dots are the progress the reference does not carry, because it is one
   // screen rather than a sequence. They replace the ring's arc.
-  it('shows progress as dots, and drops them on the last slide', async () => {
-    const { getByTestId, queryByTestId, getByRole } = await render(<OnboardingScreen />);
+  // ⚠️ WAS 'shows progress as dots, and drops them on the last slide' — a
+  // reversal (2026-09-05, owner polish pass). Hiding them on slide 4 meant a
+  // four-step sequence dropped its length signal at exactly the step where it
+  // completes; "4 of 4" is the payoff of having dots at all. The old reason
+  // ("nothing left to be a step THROUGH") described the button's job, not the
+  // dots' — theirs is position, and slide 4 is a position.
+  it('shows progress as dots on every slide, the last one included', async () => {
+    const { getByTestId, getByRole } = await render(<OnboardingScreen />);
     expect(getByTestId('onboarding-dots').props.accessibilityLabel).toBe('Step 1 of 4');
 
     await advanceBy(getByRole, 1);
     expect(getByTestId('onboarding-dots').props.accessibilityLabel).toBe('Step 2 of 4');
 
-    // Nothing left to be a step THROUGH once "Get started" is the only move.
     await advanceBy(getByRole, LAST_PAGE - 1);
-    expect(queryByTestId('onboarding-dots')).toBeNull();
+    expect(getByTestId('onboarding-dots').props.accessibilityLabel).toBe('Step 4 of 4');
   });
 
   // ⚠️ COLUMN ON EVERY SLIDE, and this is mechanical rather than cosmetic.
