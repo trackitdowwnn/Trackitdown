@@ -94,7 +94,11 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
     // posting tells a theft victim, at the moment they can least afford it,
     // that money is required. The pricing step’s own copy rules forbid exactly
     // that framing.
-    body: 'Details, photos, and a reward if you want one — it takes minutes. We’ll let people nearby know.',
+    // ⚠️ NO "it takes minutes" (cut 2026-09-05, owner polish pass). It was the
+    // flow's one salesy note — a time promise a 13-step wizard then has to
+    // keep — and this body was the only one carrying three ideas. The register
+    // is calm and factual; a duration claim is neither.
+    body: 'Details, photos, and a reward if you want one. We’ll let people nearby know.',
     mapStage: 'posted',
   },
   {
@@ -118,9 +122,13 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
     // ⚠️ NOT "earns the bounty". The spotter receives 95%, it requires the
     // owner to CREDIT that specific sighting rather than following from
     // recovery, and on a no-reward listing there is credit and reputation but
-    // no cash. "Paid the reward" drops the automatic-and-whole implication
+    // no cash. "Gets the reward" drops the automatic-and-whole implication
     // without putting a percentage on an intro screen.
-    body: 'When a sighting leads to recovery, the spotter is paid the reward.',
+    // ⚠️ "gets", NOT "is paid" (2026-09-05): the headline directly above
+    // already says "bounty paid", and "paid … paid" twice in ~15 words was the
+    // screen's one clumsy note. "Reward" stays — ADR-0014's user-facing word;
+    // "bounty" appears only in the headline's fixed phrase.
+    body: 'When a sighting leads to recovery, the spotter gets the reward.',
     mapStage: 'recovered',
   },
 ];

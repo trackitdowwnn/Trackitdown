@@ -205,3 +205,43 @@ directly below it).
 
 **Removed:** `OnboardingRingFab` and its test, and `sizes.fab` / `fabRing` /
 `fabRingGap` — the FAB was their only consumer.
+
+## Third pass — the polish pass (2026-09-05)
+
+The owner installed build `796296a4` fresh — the only viewing a first launch
+ever gets — and flagged all four areas: the hero, spacing/rhythm, the words,
+and the controls, choosing "open to structural changes" over polish-only. This
+is what a screen assembled by arithmetic looks like the first time somebody
+actually watches it.
+
+**The diagnosis that held up:** since the 2026-09-04 contrast fix flattened
+every hero mark to one `textSecondary` ink, the map's hierarchy had to come
+from GEOMETRY — and the busiest slide (spot: two concentric rings + trail +
+four dots + pills + the safety pill) was wearing the most of it. And the map's
+story moved only by opacity: rings that mean "outward" arrived flat, reports
+that mean "one, then another" arrived at once.
+
+| Was | Now | Why |
+|---|---|---|
+| Both alert rings up through the spot slide | Inner ring on the post slide, outer REPLACES it on the spot slide | One pulse propagating outward, not a bullseye stacking under the trail. "Four stages, four pictures" still holds — by substitution rather than addition |
+| Four neighbour pins (£50, £1,200, £10, "No reward") | Three — the £10 pin cut | Four amounts on the opening slide read as a price list before a price means anything, under a headline whose message is cars-not-money. The low anchor is now "No reward" + £50 |
+| Trail leg 1 a ~60pt shallow wiggle beside the focal pill | Starts at (24, 258) near the fade's edge and climbs ~74 units diagonally; tangent-exact join (both slopes −0.214) | A journey needs somewhere to have come from. Clearances re-derived dense-sampled with S-segments and written into the file per its own rule |
+| Everything cross-fades, nothing moves | Alert rings scale 0.85→1 with their fade (shrink back on retract); home ring settles 1.12→1; trail dots stagger in oldest-first at `motion.listStagger`/`motion.fast`, zero delay on exit | The motion rules ban SPECTACLE, not one-shot communicative movement. Same clock, same curve, `ReduceMotion.System` on delays as well as timings |
+| Fade onset 0.55 | 0.62 | The early onset dissolved the band's lower third and left a long empty wash under the field on the short-copy slides. Independent of `ONBOARDING_WASH_HOLD`, which must not move |
+| Slide 2: "…if you want one — it takes minutes. We'll…" | "…if you want one. We'll…" | The flow's one salesy note — a time promise a 13-step wizard then has to keep |
+| Slide 4: "…the spotter is paid the reward." | "…the spotter gets the reward." | "bounty paid" sits directly above; "paid … paid" in ~15 words was the screen's one clumsy note |
+| Dots hidden on the last slide | Dots on every slide | Their job is POSITION, not next-ness; "4 of 4" is the payoff of having them. The one place the 09-03 rebuild undercut itself |
+| Dot row gap `xs` | `sm` | WizardProgressBar's row gap — the exact silent drift the component's own header promises the shared tokens prevent |
+
+**Refused: a trail draw-on.** Implementable (an over-stroked mask path with
+`strokeDashoffset` via `useAnimatedProps`), and refused on meaning rather than
+effort: the dash exists because "we know the points, never the journey — we are
+joining these up, not asserting the line." A draw-on animates exactly the
+journey the dash disclaims. The events (dots) animate; the inference (line)
+does not. Revisit only if the stagger still feels dead on a device.
+
+**Untouched, deliberately:** the footer structure, full-width button and X
+(funnel-protected); `ONBOARDING_WASH_HOLD` and the band's 55% (coupled, sized
+for slide 3 at 1.3×); the 1.3× map gate; the pin pills' `borderStrong` edge
+(recorded exception); all four headlines and the safety line; the ring/trail
+colour tokens — "lighter" came from geometry, never from tokens or opacity.

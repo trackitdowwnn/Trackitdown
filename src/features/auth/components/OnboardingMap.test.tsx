@@ -100,11 +100,15 @@ describe('⚠️ what each stage actually SHOWS', () => {
   });
 
   it('alerted: the alert reaches the neighbours — a NEW picture', async () => {
-    // Distinct from `posted`. One gate for both rings made these two slides
-    // pixel-identical: four named stages, three pictures.
+    // Distinct from `posted`, and since 2026-09-05 by SUBSTITUTION rather than
+    // addition: the outer ring REPLACES the inner one, so the alert reads as a
+    // pulse propagating outward instead of a bullseye stacking up under the
+    // trail on the busiest slide. (The two-ring version answered "the post and
+    // spot slides were pixel-identical" by putting both rings up at once; one
+    // ring per step answers it with less ink.)
     expect(await shown('alerted')).toEqual({
       focal: 1,
-      near: 1,
+      near: 0,
       far: 1,
       home: 0,
       trail: 1,
@@ -148,6 +152,33 @@ describe('⚠️ what each stage actually SHOWS', () => {
         expect(value).toBeGreaterThanOrEqual(story[i - 1][layer]);
       });
     }
+  });
+});
+
+describe('the trail dots', () => {
+  // ⚠️ THE STAGGER MUST NOT STRAND A DOT. Each dot fades behind a withDelay,
+  // and a wrong exit path (delaying the way OUT, or gating on a stale index)
+  // would leave a dot visible on a stage that dropped its leg — or invisible
+  // on one that has it. The mock collapses delays, so this pins steady state:
+  // every dot fully present when its leg is, fully absent when it is not.
+  it('all land with their leg, and none before it', async () => {
+    const recovered = await render(<OnboardingMap stage="recovered" />);
+    for (const id of [
+      'onboarding-map-trail-dot-0',
+      'onboarding-map-trail-dot-1',
+      'onboarding-map-trail-dot-2',
+      'onboarding-map-trail-home-dot-0',
+    ]) {
+      expect(
+        StyleSheet.flatten(recovered.getByTestId(id, HIDDEN).props.style)?.opacity,
+      ).toBe(1);
+    }
+
+    const posted = await render(<OnboardingMap stage="posted" />);
+    expect(
+      StyleSheet.flatten(posted.getByTestId('onboarding-map-trail-dot-0', HIDDEN).props.style)
+        ?.opacity,
+    ).toBe(0);
   });
 });
 
