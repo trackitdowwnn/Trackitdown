@@ -273,6 +273,21 @@ commenting standards.
     erasure stops silently, the same caveat the retention purges carry.
   - Deleting a saved car never touches a post made from it — posts hold their
     own snapshot (DOMAIN.md, "Garage").
+  - **Cancelled-post deletion and the ledger snapshot (2026-09-21, recorded
+    retention decision).** Deleting a cancelled post (owner action, or the
+    30-day purge — DOMAIN.md lifecycle item 7) hard-deletes the post and its
+    cascades, and queues BOTH photo buckets for the storage sweep
+    (`orphaned_photos` for post photos, `orphaned_sighting_photos` —
+    `20260921110000` — for the private sighting bucket, which previously had
+    no removal path at all). The payments row is **detached, not deleted**,
+    and its `post_snapshot` retains the post's identity (plate, owner id,
+    make/model/colour, dates) plus any settled refund-hold / dispute /
+    payout-review rows, indefinitely, on a table with **zero client access**.
+    Basis: Art. 17(3)(b)/(e) — the financial record and its fraud/dispute
+    evidence must survive the content's erasure (the same reasoning as
+    `device_links` and `account_deletions`). This is deliberately MORE than
+    the bare ledger needs; if minimisation is later preferred, trim the
+    snapshot in `delete_cancelled_post`, not the detach.
 - Auth is passwordless (email OTP + Apple/Google — DOMAIN.md). Session tokens
   (access + refresh) are stored in the OS keychain via expo-secure-store,
   encrypted at rest — never in plaintext AsyncStorage. Emails are personal data:

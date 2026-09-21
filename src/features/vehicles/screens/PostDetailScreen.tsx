@@ -106,16 +106,29 @@ function canDeactivate(post: PostDetail): boolean {
   return post.isOwner && (post.status === 'active' || post.status === 'pending_verification');
 }
 /**
- * The owner can DELETE an unpaid draft. The exact complement of canDeactivate:
- * a draft has no escrow to refund, and a paid listing can never be deleted —
- * money that moved must leave a record.
+ * The owner can DELETE an unpaid draft. A draft has no escrow to refund, so
+ * its delete removes the ledger rows outright; a paid post keeps its money
+ * record forever (see canDeletePost below — its delete detaches the ledger
+ * rather than deleting it).
  *
  * Deliberately not `!canDeactivate(post)`: the statuses that are neither
- * (recovered, cancelled, expired…) must offer nothing at all, and writing it as
- * a negation would quietly hand them a delete the server would refuse.
+ * (recovered, expired…) must offer nothing at all, and writing it as a
+ * negation would quietly hand them a delete the server would refuse.
  */
 function canDeleteDraft(post: PostDetail): boolean {
   return post.isOwner && post.status === 'draft';
+}
+/**
+ * The owner can DELETE a cancelled post — the third mutually-exclusive
+ * destructive action. "A paid listing can never be deleted" softened on
+ * 2026-09-21 to "a paid listing's LEDGER can never be deleted": the server
+ * detaches the money record and removes the post, and refuses while a refund
+ * or dispute is still settling. A cancelled post left alone is deleted
+ * automatically 30 days after it closed, so this button is "now", not "ever".
+ * Server-enforced (delete_cancelled_post); this only decides what shows.
+ */
+function canDeletePost(post: PostDetail): boolean {
+  return post.isOwner && post.status === 'cancelled';
 }
 /** The owner can mark an ACTIVE post recovered. Narrower than canDeactivate on
  *  purpose: `claim_recovery` accepts `active` and nothing else, so offering
@@ -148,10 +161,18 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const manageRef = useRef<BottomSheetRef>(null);
   const deactivateRef = useRef<ConfirmDialogRef>(null);
   const deleteDraftRef = useRef<ConfirmDialogRef>(null);
+  const deletePostRef = useRef<ConfirmDialogRef>(null);
   // Guards a double-tap while the delete is in flight. The Edge Function cancels
   // Stripe intents before deleting, so a second run mid-flight would race the
   // first over rows it is already removing.
   const [deleting, setDeleting] = useState(false);
+  // Raised by a CLEAN deactivation, consumed by the effect below: the delete
+  // offer can only open once the refetch shows the post as `cancelled`,
+  // because that is when its ConfirmDialog mounts. A ref + effect rather than
+  // a direct open() so the offer survives however long the refetch takes — a
+  // ref, not state, because consuming it must not itself schedule a render
+  // (react-hooks/set-state-in-effect).
+  const offerDeleteRef = useRef(false);
 
   const { status, result, retry, refreshing, refresh } = usePostDetail(postId);
 
@@ -200,6 +221,17 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
       log.info('post_view', { postId, mode: visiblePost.isOwner ? 'owner' : 'spotter' });
     }
   }, [visiblePost, postId]);
+
+  // The post-cancel delete offer ("If a user cancels a post they should have
+  // an option that comes up to delete it"). Fires once, only after the
+  // deactivation's refetch has landed — that render is what mounts the delete
+  // confirm, so the ref is live by the time this effect runs.
+  useEffect(() => {
+    if (offerDeleteRef.current && visiblePost && canDeletePost(visiblePost)) {
+      offerDeleteRef.current = false;
+      deletePostRef.current?.open();
+    }
+  }, [visiblePost]);
 
   const onShare = useCallback((post: PostDetail) => {
     // ⚠️ SPREAD, don't pass `url` as undefined. There is no website yet, so
@@ -353,6 +385,11 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     if (result.outcome === 'done') {
       toast.show(deactivatedToast(result.result.refundedPence));
       retry();
+      // A clean cancel is the one moment the delete offer is asked for
+      // unprompted (the effect above opens it once the refetch shows
+      // `cancelled`). NOT on 'held': that refund is still in flight, and the
+      // server would refuse the delete anyway.
+      offerDeleteRef.current = true;
     } else if (result.outcome === 'held') {
       // Reachable only if sightings appeared between the pre-flight and now.
       toast.show(heldToast(result.refundAfter));
@@ -391,6 +428,33 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     }
   }, [deleting, postId, router, toast]);
 
+  // Delete a cancelled post, for good. The confirm has already fired — either
+  // the offer that follows a clean cancel, or the manage sheet's row on a post
+  // cancelled some other day. Routes away on success for the same reason the
+  // draft delete does: there is nothing left to refetch.
+  const onDeletePost = useCallback(async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const { deleteCancelledPost } = await import('../api/deletePostApi');
+      await deleteCancelledPost(postId);
+      toast.show('Post deleted');
+      router.replace('/my-posts');
+    } catch (error) {
+      // The api maps every server code to copy a person can act on — including
+      // the three that must NOT say "try again": a refund still settling, a
+      // dispute in review, and a payout review.
+      toast.show(
+        error instanceof Error && error.message
+          ? error.message
+          : 'We couldn’t delete that post. Please try again.',
+        'error',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleting, postId, router, toast]);
+
   // The attested exit: same call, carrying exactly what the owner was shown.
   const onAttestedDeactivate = useCallback(
     async (attestedSightingIds: string[]) => {
@@ -404,10 +468,12 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         retry();
       } else if (result.outcome === 'done') {
         // The trigger set emptied server-side (sightings aged out) — the
-        // refund simply went through.
+        // refund simply went through. A clean cancel, so the delete offer
+        // applies here exactly as in onDeactivate.
         setAttestation(null);
         toast.show(deactivatedToast(result.result.refundedPence));
         retry();
+        offerDeleteRef.current = true;
       } else if (result.code === 'ATTESTATION_STALE') {
         // A sighting landed mid-confirm. Refresh the set and ask again.
         toast.show(result.message, 'error');
@@ -737,6 +803,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
           onDeleteDraft={
             canDeleteDraft(visiblePost) ? () => deleteDraftRef.current?.open() : undefined
           }
+          onDeletePost={
+            canDeletePost(visiblePost) ? () => deletePostRef.current?.open() : undefined
+          }
           onReleasePayout={
             canReleasePayout(visiblePost) ? () => void onReleasePayout() : undefined
           }
@@ -784,6 +853,27 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
           confirmLabel="Yes, delete"
           destructive
           onConfirm={onDeleteDraft}
+        />
+      ) : null}
+
+      {/* The ONE cancelled-post delete confirm — opened by the offer that
+          follows a clean deactivation AND by the manage sheet's row, so the
+          copy lives in a single place, like the deactivate confirm above.
+          "Keep it" (not "Cancel") because in the post-cancel moment the
+          question is genuinely either/or, and both answers are fine — the body
+          says so by naming the 30-day cleanup rather than pretending keeping
+          it is forever. It does NOT mention money: by the time this post is
+          deletable the refund story is already finished, and if it is not,
+          the server refuses with the sentence that explains it. */}
+      {visiblePost && canDeletePost(visiblePost) ? (
+        <ConfirmDialog
+          ref={deletePostRef}
+          title="Delete this post?"
+          body="This removes the listing and its sighting history permanently. If you keep it, it stays in My Posts and is deleted automatically after 30 days. This can’t be undone."
+          confirmLabel="Yes, delete"
+          cancelLabel="Keep it"
+          destructive
+          onConfirm={onDeletePost}
         />
       ) : null}
 
