@@ -251,6 +251,19 @@ one on screen. `hooks/useSortAnchor.ts` freezes the anchor while a card is
 open. Pausing the search protects MEMBERSHIP; freezing the anchor protects
 ORDER; a selected card needs both.
 
+**Section stats** (2026-09-21) — each feed section header carries, beside the
+"See all" chevron, a chart button that opens `AreaInsightsScreen` scoped to
+THAT section's area: "Near you" sends the feed's own point + radius; a
+"Recently stolen in <Area>" carousel sends the town name, which the stats
+screen forward-geocodes at `AREA_ENTRY_RADIUS_MILES` (5 — shared with the
+map's "See all → <Area>" framing in `lib/feedSections.ts`, so the two never
+disagree about what a named area means). Highest rewards / Recently recovered
+cover the same circle as Near you and get no button; the national fallback has
+no area. This replaced a single "Thefts near you" row pinned above the whole
+feed, which read as a banner and could only answer for the feed's whole
+radius. A town the geocoder cannot place is said plainly ("We couldn't place
+<Area>") rather than silently answered with the device's own area.
+
 **Entry** — the Map/search pill frames the feed's resolved location at its
 radius; "See all → <Area>" forward-geocodes the town and centres there. Those
 give the map somewhere to START, but the camera then RE-FRAMES ONCE around the

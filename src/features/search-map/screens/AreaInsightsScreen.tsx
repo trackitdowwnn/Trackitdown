@@ -27,7 +27,22 @@
  *           bare "3 driveway" over a silent denominator reads as "3 of the
  *           thefts here" when the truth is "3 of the 6 people who filled this
  *           in".
- * LINKS: src/app/area-insights.tsx (route);
+ * SCOPE (2026-09-21): opened from a feed SECTION's stats button, so it is
+ *        told which area to answer for. Three ways in, tried in this order:
+ *          · `lat`/`lng` (+ `radiusMiles`) — Near you: the feed's own circle,
+ *            so the figures cover exactly the cards the reader just scrolled.
+ *          · `area` — a named town ("Recently stolen in St Albans"): forward-
+ *            geocoded here, exactly as the map resolves "See all → <area>",
+ *            at the shared town-sized AREA_ENTRY_RADIUS_MILES. A geocode miss
+ *            is said plainly rather than silently answering for somewhere
+ *            else — a number about the wrong place is worse than none.
+ *          · neither — the device's default centre, so any older entry (a
+ *            deep link, a stale route) still lands somewhere true.
+ *        The title names the scope ("Thefts in St Albans" / "Thefts near
+ *        you") because a figure with no place attached is not a figure.
+ * LINKS: src/app/area-insights.tsx (route + param parsing);
+ *        src/features/search-map/screens/HomeFeedScreen.tsx (openStats);
+ *        src/features/search-map/lib/feedSections.ts (AREA_ENTRY_RADIUS_MILES);
  *        src/features/search-map/api/areaInsightsApi.ts;
  *        supabase/migrations/20260811160000_area_insights_bucket_floor_owner.sql;
  *        src/features/vehicles/screens/PostStatsScreen.tsx (the pattern).
@@ -39,6 +54,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { StatsSparkline } from '@/features/vehicles';
+import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import { metresToMiles, milesToMetres } from '@/shared/lib/distance';
 import { createLogger } from '@/shared/lib/logger';
@@ -62,18 +78,49 @@ import {
 
 import { fetchAreaInsights, type AreaInsights } from '../api/areaInsightsApi';
 import { toMonthlyBars, monthlySummary, recoveryRateLabel } from '../lib/areaInsightsModel';
+import { AREA_ENTRY_RADIUS_MILES } from '../lib/feedSections';
 
 const log = createLogger('search-map');
 
 /** The feed's own default. "Round here" is already defined once. */
 const DEFAULT_RADIUS_MILES = 20;
 
-export function AreaInsightsScreen() {
+export interface AreaInsightsScreenProps {
+  /** A named town to answer for — geocoded here. Wins over nothing; loses
+   *  to an explicit point. */
+  area?: string;
+  /** An explicit centre (the feed's own). Wins over `area`. */
+  lat?: number;
+  lng?: number;
+  /** The starting radius. Defaults: town-sized for `area`, the feed's 20 for
+   *  everything else. The slider takes over from there. */
+  radiusMiles?: number;
+}
+
+/** What geocoding the `area` prop produced, or is still producing. */
+type GeocodeState =
+  | { status: 'idle' }
+  | { status: 'resolving' }
+  | { status: 'resolved'; latitude: number; longitude: number }
+  | { status: 'missed' };
+
+export function AreaInsightsScreen({
+  area,
+  lat: latProp,
+  lng: lngProp,
+  radiusMiles: radiusProp,
+}: AreaInsightsScreenProps = {}) {
   const styles = useThemedStyles(makeStyles);
   const router = useRouter();
-  const centre = useDefaultMapCentre();
+  // Called unconditionally (hooks rule); its answer is used only when neither
+  // a point nor an area came in through the route.
+  const defaultCentre = useDefaultMapCentre();
   const toast = useToast();
-  const [radiusMiles, setRadiusMiles] = useState(DEFAULT_RADIUS_MILES);
+  const hasPoint = latProp !== undefined && lngProp !== undefined;
+  const [radiusMiles, setRadiusMiles] = useState(
+    radiusProp ?? (area && !hasPoint ? AREA_ENTRY_RADIUS_MILES : DEFAULT_RADIUS_MILES),
+  );
+  const [geocode, setGeocode] = useState<GeocodeState>({ status: 'idle' });
   const [insights, setInsights] = useState<AreaInsights | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [generation, setGeneration] = useState(0);
@@ -89,8 +136,67 @@ export function AreaInsightsScreen() {
   // presented as a failure.
   const [failedMiles, setFailedMiles] = useState<number | null>(null);
 
-  const lat = centre.centre?.latitude ?? null;
-  const lng = centre.centre?.longitude ?? null;
+  // Resolve the named area to a point, the way the map does for "See all →
+  // <area>". Cancelled-guarded: a fast back-and-forth between two sections
+  // must not let the slower town's coordinates land under the faster's title.
+  // Every write is after the await, so react-hooks/set-state-in-effect is
+  // not tripped.
+  useEffect(() => {
+    if (!area || hasPoint) return;
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => {
+        if (!cancelled) setGeocode({ status: 'resolving' });
+        return expoLocationServices.forwardGeocode(area);
+      })
+      .then((hits) => {
+        if (cancelled) return;
+        setGeocode(
+          hits.length > 0
+            ? { status: 'resolved', latitude: hits[0].latitude, longitude: hits[0].longitude }
+            : { status: 'missed' },
+        );
+      })
+      .catch(() => {
+        // Geocoding is a network call; a failure is the same answer as a
+        // miss from the reader's side — we cannot place the town.
+        if (!cancelled) setGeocode({ status: 'missed' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [area, hasPoint]);
+
+  // The centre, by precedence: an explicit point, the geocoded area, the
+  // device default. `resolving` covers both the geocode and the default
+  // centre's own lookup so the skeleton shows for either.
+  const scope: 'feed' | 'area' | 'default' = hasPoint ? 'feed' : area ? 'area' : 'default';
+  const resolving =
+    scope === 'area'
+      ? geocode.status === 'idle' || geocode.status === 'resolving'
+      : scope === 'default' && defaultCentre.status === 'resolving';
+  const areaMissed = scope === 'area' && geocode.status === 'missed';
+  const lat =
+    scope === 'feed'
+      ? (latProp as number)
+      : scope === 'area'
+        ? geocode.status === 'resolved'
+          ? geocode.latitude
+          : null
+        : (defaultCentre.centre?.latitude ?? null);
+  const lng =
+    scope === 'feed'
+      ? (lngProp as number)
+      : scope === 'area'
+        ? geocode.status === 'resolved'
+          ? geocode.longitude
+          : null
+        : (defaultCentre.centre?.longitude ?? null);
+
+  // "Thefts in St Albans" / "Thefts near you": a figure with no place
+  // attached is not a figure. The area name is user-authored text
+  // (posts.last_seen_area), rendered as-is here and never logged.
+  const title = area ? `Thefts in ${area}` : 'Thefts near you';
 
   // Read inside the fetch callbacks to decide whether a failure needs saying
   // out loud. Refs rather than effect deps — depending on either would refetch
@@ -166,23 +272,37 @@ export function AreaInsightsScreen() {
   const showSpinner = refreshing && haveCurrent;
 
   useEffect(() => {
-    log.info('area_insights_viewed');
-  }, []);
+    // The scope, never the area NAME: last_seen_area is user-authored text.
+    log.info('area_insights_viewed', { scope });
+  }, [scope]);
 
   return (
     <Screen>
       <View style={styles.headerRow}>
         <BackButton />
+        {/* Uncapped, like PostStatsScreen: "Thefts in Newcastle-under-Lyme"
+            must wrap rather than lose the place — a figure with its place
+            ellipsised is the same failure as a figure with none. */}
         <Text style={styles.title} accessibilityRole="header">
-          Thefts near you
+          {title}
         </Text>
       </View>
 
-      {centre.status === 'resolving' ? (
-        <View style={styles.skeletons}>
-          <View style={styles.skeletonBlock} />
-          <View style={styles.skeletonBlock} />
-        </View>
+      {resolving ? (
+        <StatsSkeleton label={`Loading ${title.toLowerCase()}`} />
+      ) : areaMissed ? (
+        // Honest, not helpful-by-accident: falling back to the device centre
+        // here would show a different place's numbers under this town's name.
+        // The action DOES the alternative rather than describing it: the map
+        // resolves a named area itself, so the reader lands somewhere useful
+        // in one tap. `replace`, not push — this screen has nothing to come
+        // back to.
+        <EmptyState
+          title={`We couldn’t place ${area}`}
+          body="We couldn’t work out where that is. You can still look for it on the map."
+          actionLabel="Show on the map"
+          onAction={() => router.replace({ pathname: '/search-map', params: { area } })}
+        />
       ) : lat === null || lng === null ? (
         <EmptyState
           title="We need an area first"
@@ -223,6 +343,9 @@ export function AreaInsightsScreen() {
               <EmptyState
                 title="Not enough nearby to say"
                 body={`We only show this once there are enough reports in an area to be meaningful. Try a wider radius than ${Math.round(metresToMiles(insights.radiusM))} miles.`}
+                // Inside the ScrollView's own xl gutter — EmptyState's default
+                // would stack to 48pt a side and wrap the body to 8 lines.
+                gutter="none"
               />
             ) : (
               <Insights data={insights} />
@@ -234,16 +357,7 @@ export function AreaInsightsScreen() {
               onRetry={refresh}
             />
           ) : (
-            <View
-              style={styles.skeletons}
-              accessible
-              accessibilityRole="progressbar"
-              accessibilityLabel="Loading thefts near you"
-              testID="area-insights-skeleton"
-            >
-              <View style={styles.skeletonHead} />
-              <View style={styles.skeletonBlock} />
-            </View>
+            <StatsSkeleton label={`Loading ${title.toLowerCase()}`} />
           )}
         </ScrollView>
       )}
@@ -405,6 +519,24 @@ function Row({
   );
 }
 
+/** The one loading placeholder, used while the town is being placed AND
+ *  while the figures load — so both waits are announced the same way. */
+function StatsSkeleton({ label }: { label: string }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View
+      style={styles.skeletons}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
+      testID="area-insights-skeleton"
+    >
+      <View style={styles.skeletonHead} />
+      <View style={styles.skeletonBlock} />
+    </View>
+  );
+}
+
 function BackButton() {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -428,7 +560,9 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      paddingHorizontal: spacing.lg,
+      // xl, matching the content gutter below (and PostStatsScreen, the
+      // pattern): the back glyph and the figures share one left edge.
+      paddingHorizontal: spacing.xl,
       paddingTop: spacing.lg,
       paddingBottom: spacing.md,
     },

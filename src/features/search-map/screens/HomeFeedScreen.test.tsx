@@ -226,3 +226,77 @@ describe('section chevrons', () => {
     });
   });
 });
+
+describe('section stats', () => {
+  // Stats moved from one whole-feed "Thefts near you" row to a button on each
+  // section header (2026-09-21), scoped to THAT section's area. These pin
+  // three things: which sections offer it, what scope each sends, and that
+  // the old row is gone rather than merely joined.
+  it('the old whole-feed insights row is gone', async () => {
+    mockFeed = { ...mockFeed, sections: [feedSection('near_you', 'Near you')] };
+    const view = await render(<HomeFeedScreen />);
+    expect(view.queryByTestId('feed-area-insights')).toBeNull();
+    expect(view.queryByText('Thefts near you')).toBeNull();
+  });
+
+  it('"Near <Area>" sends the feed\'s own point and radius', async () => {
+    mockFeed = { ...mockFeed, sections: [feedSection('near_you', 'Near you')] };
+
+    const view = await render(<HomeFeedScreen />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Thefts near you'));
+    });
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/area-insights',
+      params: { lat: '51.77', lng: '-0.34', radiusMiles: '20' },
+    });
+  });
+
+  it('an area carousel sends its NAME, and nothing about the feed circle', async () => {
+    mockFeed = {
+      ...mockFeed,
+      sections: [
+        {
+          ...feedSection('area_st-albans', 'Recently stolen in St Albans'),
+          area: 'St Albans',
+        },
+      ],
+    };
+
+    const view = await render(<HomeFeedScreen />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Thefts in St Albans'));
+    });
+
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/area-insights',
+      params: { area: 'St Albans' },
+    });
+  });
+
+  it('offers no stats button on sections whose area is the feed\'s own', async () => {
+    // Highest rewards / Recently recovered cover the same circle as Near you;
+    // a button there would open identical figures under a different heading.
+    mockFeed = {
+      ...mockFeed,
+      sections: [
+        feedSection('near_you', 'Near you'),
+        feedSection('highest_bounties', 'Highest rewards nearby'),
+        feedSection('recently_recovered', 'Recently recovered near you'),
+      ],
+    };
+    const view = await render(<HomeFeedScreen />);
+    expect(view.getByLabelText('Thefts near you')).toBeTruthy();
+    expect(view.queryByTestId('stats-highest_bounties')).toBeNull();
+    expect(view.queryByTestId('stats-recently_recovered')).toBeNull();
+  });
+
+  it('offers no stats on Near you while browsing nationally', async () => {
+    // National mode has no point to send; the RPC needs one.
+    mockLocation = { ...LOCAL_LOCATION, location: { mode: 'national' } };
+    mockFeed = { ...mockFeed, sections: [feedSection('near_you', 'Near you')] };
+    const view = await render(<HomeFeedScreen />);
+    expect(view.queryByTestId('stats-near-you')).toBeNull();
+  });
+});

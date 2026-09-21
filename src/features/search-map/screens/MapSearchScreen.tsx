@@ -50,6 +50,7 @@ import { useProgressivePins } from '../hooks/useProgressivePins';
 import { useSortAnchor } from '../hooks/useSortAnchor';
 import { useViewportPosts } from '../hooks/useViewportPosts';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
+import { AREA_ENTRY_RADIUS_MILES } from '../lib/feedSections';
 import {
   type SearchCriteria,
   emptyCriteria,
@@ -82,8 +83,6 @@ const UK_REGION: GeoRegion = {
   longitudeDelta: 9,
 };
 
-/** Framing for an area entry ("See all → St Albans"). */
-const AREA_ENTRY_RADIUS_MILES = 5;
 
 export function MapSearchScreen() {
   const styles = useThemedStyles(makeStyles);

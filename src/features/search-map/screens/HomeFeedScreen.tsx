@@ -21,7 +21,7 @@ import { FlashList } from '@shopify/flash-list';
 import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { NativeScrollEvent, NativeSyntheticEvent, ViewToken } from 'react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
@@ -30,7 +30,7 @@ import { SaveYourCarCard, useGarageNudgeCard } from '@/features/garage';
 import { BROWSING_SOURCE } from '@/shared/lib/browsingSource';
 import { useMyProfile } from '@/features/profile';
 import { WatchToggle } from '@/features/watchlist';
-import { radii, spacing, typography, usePalette } from '@/shared/theme';
+import { spacing } from '@/shared/theme';
 import type { GeoRegion, PostSummary } from '@/shared/types';
 import {
   EmptyState,
@@ -89,7 +89,6 @@ const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50 };
 
 export function HomeFeedScreen() {
   const router = useRouter();
-  const palette = usePalette();
   // No requestMyLocation here any more: the primer row opens the PICKER, whose
   // own current-location button owns the permission prompt (the feed must never
   // cold-fire it). The hook still exposes it for a future one-tap caller.
@@ -212,6 +211,27 @@ export function HomeFeedScreen() {
       router.push({ pathname: '/search-map', params });
     },
     [router],
+  );
+
+  // The stats screen, scoped to ONE section's area. A named area travels as
+  // its name and the stats screen geocodes it (the same resolution the map
+  // does for "See all → <area>"); Near you travels as the feed's own point
+  // and radius, so the figures answer for exactly the circle the cards came
+  // from. Nothing is sent when the feed is national — the near_you header
+  // does not offer the button in that mode.
+  const openStats = useCallback(
+    (options: { area?: string }) => {
+      const params: Record<string, string> = {};
+      if (options.area) {
+        params.area = options.area;
+      } else if (location?.mode === 'local') {
+        params.lat = String(location.latitude);
+        params.lng = String(location.longitude);
+        params.radiusMiles = String(location.radiusMiles || FEED_RADIUS_DEFAULT_MILES);
+      }
+      router.push({ pathname: '/area-insights', params });
+    },
+    [router, location],
   );
 
   // The region the search surface frames + counts against: the feed's current
@@ -351,11 +371,23 @@ export function HomeFeedScreen() {
           // one). near_you has no named area, so it frames the map on the
           // region the feed is already searching. Changing area moved to the
           // search surface, where location belongs.
+          //
+          // The stats button rides beside it on the sections that name an
+          // area of their own: Near you (the feed's circle) and each
+          // "Recently stolen in <town>" carousel (that town). Highest rewards
+          // and Recently recovered cover the same circle as Near you, so a
+          // button there would open identical figures under a different
+          // heading; the national fallback has no area at all.
           if (item.section.id === NEAR_YOU_SECTION_ID) {
             return (
               <FeedSectionHeader
                 title={nearYouTitle}
                 onSeeAll={() => openMap({ region: searchRegion })}
+                onStats={location?.mode === 'local' ? () => openStats({}) : undefined}
+                // Announced as the title of the screen it opens, so what a
+                // screen reader hears is what the reader lands on.
+                statsAccessibilityLabel="Thefts near you"
+                statsTestID="stats-near-you"
               />
             );
           }
@@ -365,6 +397,13 @@ export function HomeFeedScreen() {
               onSeeAll={
                 item.section.area ? () => openMap({ area: item.section.area }) : undefined
               }
+              onStats={
+                item.section.area ? () => openStats({ area: item.section.area }) : undefined
+              }
+              statsAccessibilityLabel={
+                item.section.area ? `Thefts in ${item.section.area}` : undefined
+              }
+              statsTestID={item.section.area ? `stats-${item.section.id}` : undefined}
             />
           );
         case 'heroCard':
@@ -392,7 +431,17 @@ export function HomeFeedScreen() {
           );
       }
     },
-    [openMap, onPressPost, nearYouTitle, searchRegion, loadMore, loadingMore, renderNudge],
+    [
+      openMap,
+      openStats,
+      location?.mode,
+      onPressPost,
+      nearYouTitle,
+      searchRegion,
+      loadMore,
+      loadingMore,
+      renderNudge,
+    ],
   );
 
   const areaLabel =
@@ -405,28 +454,10 @@ export function HomeFeedScreen() {
           answered — so it must not sit under the content it invalidates. The
           garage and alert offers ride between rails instead (see `items`). */}
       {showLocationPrimer ? <LocationPrimerCard onSetArea={() => setPickerOpen(true)} /> : null}
-      {/* Area insights — the shape of what the cards below show one at a time.
-          Deliberately BELOW the location primer and above everything else: it
-          is about the area, so it is meaningless until the area is right, and
-          the primer is the correction that makes it so.
-
-          Hidden entirely without a local area. The RPC needs a point, and an
-          entry that leads to "we need an area first" is a promise the row
-          should not have made. */}
-      {!showLocationPrimer && location?.mode === 'local' ? (
-        <Pressable
-          onPress={() => router.push('/area-insights')}
-          accessibilityRole="button"
-          accessibilityLabel="Thefts near you"
-          style={[styles.insightsRow, { backgroundColor: palette.surfaceSubtle }]}
-          testID="feed-area-insights"
-        >
-          <Text style={[styles.insightsLead, { color: palette.textPrimary }]}>Thefts near you</Text>
-          <Text style={[styles.insightsHint, { color: palette.textSecondary }]}>
-            How many, which cars, and whether they come back
-          </Text>
-        </Pressable>
-      ) : null}
+      {/* No area-insights row here any more (2026-09-21). It sat above the
+          whole feed as a banner and could only ever answer for the feed's
+          whole radius; stats now live on each section header (the chart
+          button beside See all), scoped to that section's own area. */}
       {/* …except when there are no rails to ride between. */}
       {nudgeInHeader ? renderNudge() : null}
       {display.kind === 'good-news-empty' && location?.mode === 'local' ? (
@@ -564,22 +595,6 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: spacing.xxxl + spacing.xxl, // clear the floating Map pill
   },
-  // A quiet row, not a card: it is a doorway to context, and dressing it up
-  // would have it competing with the stolen cars underneath — which are the
-  // reason anyone opened this tab.
-  // Geometry only — this sheet is module-level and has no palette. The three
-  // colours are applied inline at the call site from usePalette(), so the row
-  // follows whichever theme is in effect rather than one baked at import.
-  insightsRow: {
-    borderRadius: radii.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    gap: spacing.xs,
-  },
-  insightsLead: typography.cardTitle,
-  insightsHint: typography.caption,
   heroCard: {
     // Feed gutter: 16 per the DESIGN_SYSTEM feed-surface exception.
     paddingHorizontal: spacing.lg,
