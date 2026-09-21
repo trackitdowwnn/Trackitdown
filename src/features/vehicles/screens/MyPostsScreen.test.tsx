@@ -110,7 +110,7 @@ describe('MyPostsScreen', () => {
     mockUseSession.mockReturnValue({ status: 'signedOut', userId: null });
     mockUseMyPosts.mockReturnValue(base());
     const { getByText, getByTestId } = await render(<MyPostsScreen />);
-    expect(getByText('Your posts live here')).toBeTruthy();
+    expect(getByText('Your listings live here')).toBeTruthy();
     fireEvent.press(getByTestId('empty-action'));
     expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'my_posts' });
   });
@@ -132,7 +132,7 @@ describe('MyPostsScreen', () => {
   it('offers a warm empty state that routes to post-a-car', async () => {
     mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [] });
     const { getByText, getByTestId } = await render(<MyPostsScreen />);
-    expect(getByText('No posts yet')).toBeTruthy();
+    expect(getByText('No listings yet')).toBeTruthy();
     fireEvent.press(getByTestId('empty-action'));
     expect(mockPush).toHaveBeenCalledWith('/post-a-car');
   });

@@ -33,21 +33,21 @@ const log = createLogger('vehicles');
 
 /** Codes delete-post returns → user-facing copy. */
 export const DELETE_POST_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in.',
-  POST_NOT_FOUND: 'We couldn’t find that post.',
+  NOT_AUTHENTICATED: 'You need to log in.',
+  POST_NOT_FOUND: 'We couldn’t find that listing.',
   POST_NOT_CANCELLED: 'Only a cancelled listing can be deleted. Deactivate it first.',
   MONEY_IN_FLIGHT:
-    'Your refund is still being processed. You can delete this post once it’s done.',
-  DISPUTE_OPEN: 'A sighting on this post is being reviewed, so it can’t be deleted yet.',
+    'Your refund is still being processed. You can delete this listing once it’s done.',
+  DISPUTE_OPEN: 'A sighting on this listing is being reviewed, so it can’t be deleted yet.',
   INTENT_NOT_CANCELLED:
-    'A payment on this post is still being processed. Please try again in a moment.',
+    'A payment on this listing is still being processed. Please try again in a moment.',
   PAYMENT_REVIEW_OPEN:
-    'A payment on this post is being reviewed. Contact support and we’ll sort it.',
-  LOOKUP_FAILED: 'We couldn’t delete that post. Please try again.',
-  DELETE_FAILED: 'We couldn’t delete that post. Please try again.',
+    'A payment on this listing is being reviewed. Contact support and we’ll sort it.',
+  LOOKUP_FAILED: 'We couldn’t delete that listing. Please try again.',
+  DELETE_FAILED: 'We couldn’t delete that listing. Please try again.',
 };
 
-const DELETE_POST_FALLBACK = 'We couldn’t delete that post. Please try again.';
+const DELETE_POST_FALLBACK = 'We couldn’t delete that listing. Please try again.';
 
 /**
  * Permanently delete an owner's own CANCELLED listing. Throws PaymentError

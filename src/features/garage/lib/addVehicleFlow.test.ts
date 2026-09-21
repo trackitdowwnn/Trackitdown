@@ -102,7 +102,7 @@ describe('the plate step steps aside once the scan has answered it', () => {
   });
 
   it('saves rather than pays — the CTA promises no charge', () => {
-    expect(flow.finalCtaLabel).toBe('Save to my garage');
+    expect(flow.finalCtaLabel).toBe('Save to My cars');
   });
 });
 

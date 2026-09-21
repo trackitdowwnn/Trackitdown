@@ -259,8 +259,8 @@ function SightingSent({
           {bountyPence === null
             ? 'There’s no cash reward on this listing, but if your report leads to the car being found the owner can credit you — and it’s added to your spotter record.'
             : bountyPence
-              ? `If your sighting leads to the recovery, you’ll receive the ${formatPounds(bountyPence)} bounty.`
-              : 'If your sighting leads to the recovery, you’ll receive the bounty.'}
+              ? `If your sighting leads to the recovery, you’ll receive the ${formatPounds(bountyPence)} reward.`
+              : 'If your sighting leads to the recovery, you’ll receive the reward.'}
         </Text>
         <Text style={styles.sentLine}>
           You and the owner can now message each other about this report — if they get in

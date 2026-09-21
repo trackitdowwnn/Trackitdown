@@ -104,7 +104,7 @@ export function ReportSavedCarScreen({ vehicleId }: ReportSavedCarScreenProps) {
         <View style={styles.state}>
           <EmptyState
             title="We couldn't find that car"
-            body="It may have been removed from your garage. You can still report a car stolen from scratch."
+            body="It may have been removed from My cars. You can still report a car stolen from scratch."
             actionLabel="Report a stolen car"
             onAction={() => router.replace(BLANK_POST_AFTER_PREFILL_FAILURE)}
           />

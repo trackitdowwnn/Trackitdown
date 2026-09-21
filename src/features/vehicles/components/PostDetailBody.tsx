@@ -267,24 +267,24 @@ export function PostDetailBody({
               {onEditBounty ? (
                 <SectionEditButton
                   onPress={onEditBounty}
-                  // The editor changes the pricing MODE as well as the amount,
-                  // so on a no-reward listing "Edit bounty" would name a thing
-                  // that is not there. The testID stays stable for the tests.
-                  label={noReward ? 'Edit reward' : 'Edit bounty'}
+                  // "Reward" in both modes since the 2026-09-21 glossary pass
+                  // (ADR-0014: reward is the user-facing word). The testID
+                  // stays stable for the tests.
+                  label="Edit reward"
                   testID="edit-bounty"
                 />
               ) : null}
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={noReward ? 'How this listing works' : 'How the bounty works'}
+              accessibilityLabel={noReward ? 'How this listing works' : 'How the reward works'}
               onPress={() => bountyInfoRef.current?.open()}
               hitSlop={spacing.lg}
               style={styles.statLabelRow}
             >
-              {/* "Bounty" would be a lie under "No reward". "Reward" names the
-                  thing the cell is about in both modes. */}
-              <Text style={styles.statLabel}>{noReward ? 'Reward' : 'Bounty'}</Text>
+              {/* "Reward" names the thing the cell is about in both modes —
+                  and it is the user-facing word (ADR-0014). */}
+              <Text style={styles.statLabel}>Reward</Text>
               <Feather
                 name="info"
                 size={sizes.iconSm}
@@ -585,7 +585,7 @@ export function PostDetailBody({
                   // credit, which on a no-reward listing is the spotter's whole
                   // reward (ADR-0014) — so it leads.
                   'Close the listing and credit the spotter who found it. There’s no cash reward to send, but the recovery goes on their spotter record.'
-                : 'Close the listing and either send the bounty to the spotter who found it, or get it back if you found it another way.'}
+                : 'Close the listing and either send the reward to the spotter who found it, or get it back if you found it another way.'}
             </Text>
             <View style={styles.deactivateAction} testID="mark-recovered">
               <Button
@@ -614,7 +614,7 @@ export function PostDetailBody({
                   // this is the owner's last chance to learn it, though the
                   // pricing step disclosed it before they ever paid.
                   'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.'
-                : `Take this listing down and get your bounty back. You’ll be refunded about ${formatPounds(estimatedRefundPence)} — the bounty minus the non-recoverable card fee.`}
+                : `Take this listing down and get your reward back. You’ll be refunded about ${formatPounds(estimatedRefundPence)} — the reward minus the non-recoverable card fee.`}
             </Text>
             <View style={styles.deactivateAction} testID="deactivate-listing">
               <Button
@@ -666,7 +666,7 @@ export function PostDetailBody({
           act of help, not a price (emotional translation). */}
       <ConfirmDialog
         ref={bountyInfoRef}
-        title={noReward ? 'How this listing works' : 'How the bounty works'}
+        title={noReward ? 'How this listing works' : 'How the reward works'}
         body={
           noReward
             ? // Honest with the spotter about what they will and won't get. The
@@ -674,7 +674,7 @@ export function PostDetailBody({
               // saying so plainly is better than a vague "no reward" that leaves
               // someone hoping. The recognition on offer is real and is named.
               "There's no cash reward on this listing — the owner paid a flat listing fee instead. If your sighting leads to the car being found, the owner can still credit you, and the recovery is added to your spotter record."
-            : "The bounty is paid to the spotter whose sighting leads to this car's recovery. Money is held safely and only released when the owner confirms the car is back."
+            : "The reward is paid to the spotter whose sighting leads to this car's recovery. Money is held safely and only released when the owner confirms the car is back."
         }
         confirmLabel="Got it"
         acknowledge
@@ -687,7 +687,7 @@ export function PostDetailBody({
       <View style={styles.section}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Report this post"
+          accessibilityLabel="Report this listing"
           onPress={onReport}
           style={styles.reportRow}
           hitSlop={spacing.sm}
@@ -698,7 +698,7 @@ export function PostDetailBody({
             color={palette.textPrimary}
             importantForAccessibility="no"
           />
-          <Text style={styles.reportLabel}>Report this post</Text>
+          <Text style={styles.reportLabel}>Report this listing</Text>
         </Pressable>
       </View>
 

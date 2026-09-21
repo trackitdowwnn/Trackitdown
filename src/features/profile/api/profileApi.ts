@@ -211,8 +211,8 @@ export class AccountDeletionError extends Error {
  *  screen. */
 const DELETION_MESSAGES: Record<string, string> = {
   ACCOUNT_HAS_ESCROW:
-    'You have a live listing with a bounty in escrow. Cancel it first, then delete your account.',
-  NOT_AUTHENTICATED: 'Please sign in again, then try deleting your account.',
+    'You have a live listing with a reward held in escrow. Cancel it first, then delete your account.',
+  NOT_AUTHENTICATED: 'Please log in again, then try deleting your account.',
 };
 const DELETION_FALLBACK = "We couldn't delete your account. Please try again.";
 

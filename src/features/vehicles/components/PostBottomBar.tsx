@@ -71,7 +71,7 @@ export function PostBottomBar({ post, onSeen, onManage }: PostBottomBarProps) {
         )}
       </View>
       {post.isOwner ? (
-        <Button label="Manage post" variant="secondary" fullWidth={false} onPress={onManage} />
+        <Button label="Manage listing" variant="secondary" fullWidth={false} onPress={onManage} />
       ) : (
         <Button label="I've seen this car" fullWidth={false} onPress={onSeen} />
       )}

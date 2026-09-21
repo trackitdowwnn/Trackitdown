@@ -248,7 +248,7 @@ describe('SearchSheet footer', () => {
     mockCountState = { count: 0, counting: false };
     const { view, onApply } = await renderSheet();
 
-    expect(view.getByText(/try widening the bounty or distance/)).toBeTruthy();
+    expect(view.getByText(/try widening the reward or distance/)).toBeTruthy();
     expect(applyButton(view).props.accessibilityState).toMatchObject({
       disabled: true,
     });

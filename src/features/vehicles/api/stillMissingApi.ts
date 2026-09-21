@@ -34,7 +34,7 @@ const log = createLogger('posts');
 export { StillMissingError };
 
 const STILL_MISSING_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'Please sign in and try again.',
+  NOT_AUTHENTICATED: 'Please log in and try again.',
   // One opaque server token covers missing / not-yours / not-active, so the
   // copy has to cover all three without guessing which it was.
   POST_NOT_FOUND: 'We couldn’t update that listing.',

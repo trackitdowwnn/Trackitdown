@@ -44,7 +44,7 @@ const log = createLogger('vehicles');
  *     the copy asks for it with a reason rather than a shrug.
  */
 export const DELETE_DRAFT_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in.',
+  NOT_AUTHENTICATED: 'You need to log in.',
   POST_NOT_FOUND: 'We couldn’t find that draft.',
   POST_NOT_DRAFT: 'This listing has already been submitted and can’t be deleted.',
   PAYMENT_EXISTS:

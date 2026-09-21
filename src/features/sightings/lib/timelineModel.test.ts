@@ -233,8 +233,8 @@ describe('anchor nodes', () => {
       label: 'Recovered 🎉',
       tone: 'celebrate',
     });
-    expect(terminalAnchor('expired')).toEqual({ label: 'Post expired', tone: 'quiet' });
-    expect(terminalAnchor('cancelled')).toEqual({ label: 'Post closed', tone: 'quiet' });
+    expect(terminalAnchor('expired')).toEqual({ label: 'Listing expired', tone: 'quiet' });
+    expect(terminalAnchor('cancelled')).toEqual({ label: 'Listing closed', tone: 'quiet' });
   });
 
   it('an open arc has NO terminal: active and in-flight claims stay unterminated', () => {

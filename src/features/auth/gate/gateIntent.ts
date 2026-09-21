@@ -37,14 +37,14 @@ export type GateContext =
  *  wall (DESIGN_SYSTEM tone). */
 export const GATE_TITLES: Record<GateContext, string> = {
   report_sighting: 'Log in to report a sighting',
-  report_post: 'Log in to report this post',
+  report_post: 'Log in to report this listing',
   message_owner: 'Log in to message the owner',
   post_car: 'Log in to post your car',
   edit_profile: 'Log in to edit your profile',
   watch_post: 'Log in to watch this car',
   tab_my_cars: 'Log in to see your cars',
-  my_posts: 'Log in to see your posts',
-  my_sightings: 'Log in to see your reports',
+  my_posts: 'Log in to see your listings',
+  my_sightings: 'Log in to see your sightings',
   tab_inbox: 'Log in to see your messages',
   tab_profile: 'Log in to see your profile',
   alert_settings: 'Log in to set your alert area',

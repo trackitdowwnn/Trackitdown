@@ -1,8 +1,8 @@
 /**
  * WHAT:  Tests for PostBottomBar — the spotter sees the bounty + "I've seen
- *        this car"; the owner sees "Your listing" + "Manage post". Mode drives
+ *        this car"; the owner sees "Your listing" + "Manage listing". Mode drives
  *        which action fires.
- * WHY:   is_owner decides the whole bar; a spotter shown "Manage post" (or an
+ * WHY:   is_owner decides the whole bar; a spotter shown "Manage listing" (or an
  *        owner shown the sighting CTA on their own car) is a broken flow.
  * LINKS: src/features/vehicles/components/PostBottomBar.tsx, docs/TESTING.md.
  */
@@ -46,14 +46,14 @@ describe('PostBottomBar', () => {
 
     expect(getByText('£500')).toBeTruthy();
     expect(getByText('reward')).toBeTruthy();
-    expect(queryByText('Manage post')).toBeNull();
+    expect(queryByText('Manage listing')).toBeNull();
 
     fireEvent.press(getByText("I've seen this car"));
     expect(onSeen).toHaveBeenCalledTimes(1);
     expect(onManage).not.toHaveBeenCalled();
   });
 
-  it('owner mode: "Your listing" + "Manage post", firing onManage', async () => {
+  it('owner mode: "Your listing" + "Manage listing", firing onManage', async () => {
     const onSeen = jest.fn();
     const onManage = jest.fn();
     const { getByText, queryByText } = await render(
@@ -63,7 +63,7 @@ describe('PostBottomBar', () => {
     expect(getByText('Your listing')).toBeTruthy();
     expect(queryByText("I've seen this car")).toBeNull();
 
-    fireEvent.press(getByText('Manage post'));
+    fireEvent.press(getByText('Manage listing'));
     expect(onManage).toHaveBeenCalledTimes(1);
     expect(onSeen).not.toHaveBeenCalled();
   });

@@ -106,8 +106,8 @@ export function CollectionsGridScreen() {
       ) : entries.length === 0 && collections.length === 0 ? (
         <EmptyState
           title="Keeping an eye out"
-          body="Tap the bookmark on any post to follow it here."
-          actionLabel="Explore posts"
+          body="Tap the bookmark on any listing to follow it here."
+          actionLabel="Explore listings"
           onAction={() => router.push('/(tabs)/explore')}
         />
       ) : (

@@ -186,7 +186,7 @@ export function MySightingsScreen() {
     }
     try {
       await withdrawSighting(withdrawing);
-      toast.show('Report taken back. The owner no longer sees it.');
+      toast.show('Sighting withdrawn — the owner no longer sees it.');
       void refresh();
     } catch (error) {
       // ⚠️ Narrowed to our own class: a raw PostgREST message must never reach
@@ -256,7 +256,7 @@ export function MySightingsScreen() {
       <View style={styles.headerRow}>
         <BackButton />
         <Text style={styles.title} accessibilityRole="header">
-          My reports
+          My sightings
         </Text>
       </View>
 

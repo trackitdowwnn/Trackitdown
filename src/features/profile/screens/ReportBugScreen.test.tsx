@@ -568,7 +568,7 @@ describe('⚠️ when the send fails', () => {
     });
 
     await waitFor(() => expect(mockQuota).toHaveBeenCalled());
-    expect(view.getByText('Please sign in to send a report.')).toBeTruthy();
+    expect(view.getByText('Please log in to send a report.')).toBeTruthy();
   });
 
   it('⚠️ freezes the exit while sending, so success cannot pop twice', async () => {

@@ -127,7 +127,7 @@ const COPY: Record<
     // nothing waiting gets the nothing-to-set-up state instead (see
     // renderBody). The title asks; the button answers. Repeating the button's
     // words as the heading reads as a form with a stutter.
-    title: 'Where should your bounties go?',
+    title: 'Where should your rewards go?',
     // "Straight to Stripe" became literally true with client-side tokenisation
     // (ADR-0010): the details never touch our server. And not "you only do it
     // once": this screen itself models Stripe coming back for more.
@@ -136,7 +136,7 @@ const COPY: Record<
   },
   unfinished: {
     title: 'Pick up where you left off',
-    body: 'Stripe still needs a few details before a bounty can reach you. Your progress is saved.',
+    body: 'Stripe still needs a few details before a reward can reach you. Your progress is saved.',
     action: 'Continue setting up',
   },
   verifying: {
@@ -150,7 +150,7 @@ const COPY: Record<
     // sighting is credited (or the moment this account becomes payable, if the
     // credit came first). Before that, this line carefully said "once the
     // owner releases them" — and now saying that would be the stale claim.
-    body: 'Bounties you earn are sent to your account automatically. Nothing to do here unless your bank details change.',
+    body: 'Rewards you earn are sent to your account automatically. Nothing to do here unless your bank details change.',
     action: 'Update bank details',
   },
 };
@@ -357,7 +357,7 @@ export function PayoutsScreen() {
         const { data: userData } = await supabase.auth.getUser();
         const email = userData.user?.email;
         if (!email) {
-          throw new PaymentError('Please sign in again, then try once more.', 'NOT_AUTHENTICATED');
+          throw new PaymentError('Please log in again, then try once more.', 'NOT_AUTHENTICATED');
         }
 
         const accountToken = await createIdentityToken(details, email);
@@ -408,7 +408,7 @@ export function PayoutsScreen() {
         await submitPayoutTokens({ bankToken });
         setShowBankForm(false);
         setBankRejected(false);
-        toast.show('Done — bounties will go to your new account.');
+        toast.show('Done — rewards will go to your new account.');
         refresh();
       } catch (error) {
         // A refusal our three fields cannot explain (an account Stripe cannot
@@ -597,7 +597,7 @@ export function PayoutsScreen() {
       return (
         <EmptyState
           title="Get paid for what you spot"
-          body="Log in to set up payouts, so a bounty has somewhere to land."
+          body="Log in to set up payouts, so a reward has somewhere to land."
           actionLabel="Log in"
           onAction={() => requireAuth({ context: 'payouts' })}
         />
@@ -709,7 +709,7 @@ export function PayoutsScreen() {
         return (
           <EmptyState
             title="Nothing to set up"
-            body="When a sighting of yours leads to a recovery, we’ll let you know you’ve earned the bounty — and ask where to send it. That’s the whole setup."
+            body="When a sighting of yours leads to a recovery, we’ll let you know you’ve earned the reward — and ask where to send it. That’s the whole setup."
           />
         );
       }

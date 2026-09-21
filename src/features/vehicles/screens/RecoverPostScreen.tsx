@@ -240,7 +240,7 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
                 // "Automatically" became TRUE on 2026-08-04: the webhook (and
                 // the account-creation path) release the moment the payee is
                 // payable, through the same gated core as the manual retry.
-                'They’re credited. We’ll send the bounty automatically once they’ve added their bank details.',
+                'They’re credited. We’ll send the reward automatically once they’ve added their bank details.',
         );
       } catch (payoutError) {
         // The credit stands; only the transfer is outstanding, and it can be
@@ -248,7 +248,7 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         toast.show(
           payoutError instanceof RecoveryError
             ? payoutError.message
-            : 'They’re credited. You can send the bounty from your listing.',
+            : 'They’re credited. You can send the reward from your listing.',
         );
       }
       router.back();
@@ -404,7 +404,7 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           <Text style={styles.optionNote}>
             {noReward
               ? 'The police, or you. We’ll just close the listing.'
-              : 'The police, or you. Your bounty comes back to you, minus the card fee.'}
+              : 'The police, or you. Your reward comes back to you, minus the card fee.'}
           </Text>
         </Pressable>
       </View>
@@ -422,13 +422,13 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         {selected === NO_SPOTTER
           ? noReward
             ? 'We’ll close the listing.'
-            : 'We’ll close the listing and refund your bounty.'
+            : 'We’ll close the listing and refund your reward.'
           : selected
             ? noReward
               ? // No cash to promise — but the credit is real and is what the
                 // spotter gets, so say that rather than nothing.
                 'We’ll close the listing and credit that spotter. Only one sighting can be credited.'
-              : 'We’ll close the listing and send your bounty to that spotter. Only one sighting can be credited.'
+              : 'We’ll close the listing and send your reward to that spotter. Only one sighting can be credited.'
             : 'Choose one to continue.'}
       </Text>
 

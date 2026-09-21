@@ -302,10 +302,10 @@ export function CollectionScreen({ collectionId }: CollectionScreenProps) {
           }
           body={
             collectionId === null
-              ? 'Tap the bookmark on any post to follow it here.'
+              ? 'Tap the bookmark on any listing to follow it here.'
               : 'Save a car, then tap Change on the confirmation to file it here.'
           }
-          actionLabel="Explore posts"
+          actionLabel="Explore listings"
           onAction={() => router.push('/(tabs)/explore')}
         />
       ) : (

@@ -248,7 +248,7 @@ function LoadedProfile({
       // push): switch tabs, don't grow a stack behind them.
       router.navigate('/(tabs)/explore');
     } catch {
-      toast.show("Couldn't sign out — try again.", 'error');
+      toast.show("Couldn't log out — try again.", 'error');
     }
   };
 
@@ -327,7 +327,7 @@ function LoadedProfile({
         {/* Your own stolen-car listings (view + open to edit per section). */}
         <ListRow
           icon={FileText}
-          title="My Posts"
+          title="My listings"
           onPress={() => router.push('/my-posts')}
           testID="row-my-posts"
         />
@@ -524,7 +524,7 @@ function LoadedProfile({
       <ConfirmDialog
         ref={deleteConfirmRef}
         title="Delete your account?"
-        body="Your posts will be closed and your data deleted as described in our privacy policy. This can't be undone."
+        body="Your listings will be closed and your data deleted as described in our privacy policy. This can't be undone."
         confirmLabel="Delete account"
         destructive
         onConfirm={() => void confirmDelete()}
@@ -532,7 +532,7 @@ function LoadedProfile({
       <ConfirmDialog
         ref={deleteBlockedRef}
         title="Can't delete just yet"
-        body="You have a post with a bounty still held. Cancel the post or complete its recovery first — then you can delete your account."
+        body="You have a listing with a reward still held. Cancel it or complete its recovery first — then you can delete your account."
         confirmLabel="Got it"
         acknowledge
         onConfirm={() => {}}

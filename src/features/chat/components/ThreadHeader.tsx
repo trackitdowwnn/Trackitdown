@@ -183,7 +183,7 @@ function ReadyIdentity({
       accessibilityRole="button"
       // ⚠️ THE ROLE WORD LIVES HERE, not on screen — see the subtitle comment.
       accessibilityLabel={
-        `View the post: ${car}. ${state}. ` +
+        `View the listing: ${car}. ${state}. ` +
         `You are talking to ${thread.other.firstName}, the ${thread.role}.`
       }
       style={({ pressed }) => [styles.identity, pressed && styles.pressed]}

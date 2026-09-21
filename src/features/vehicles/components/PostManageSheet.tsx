@@ -168,7 +168,7 @@ export function PostManageSheet({
       {onReleasePayout ? (
         <ListRow
           icon={Banknote}
-          title="Send the bounty"
+          title="Send the reward"
           subtitle="Try again to pay the spotter you credited."
           onPress={run(onReleasePayout)}
           testID="manage-release-payout"
@@ -201,7 +201,7 @@ export function PostManageSheet({
         <ListRow
           icon={Trash2}
           title="Delete draft"
-          subtitle="Removes it for good. This can’t be undone."
+          subtitle="Deletes it for good. This can’t be undone."
           destructive
           onPress={run(onDeleteDraft)}
           testID="manage-delete-draft"
@@ -215,8 +215,8 @@ export function PostManageSheet({
       {onDeletePost ? (
         <ListRow
           icon={Trash2}
-          title="Delete post"
-          subtitle="Removes it for good — otherwise it’s deleted automatically after 30 days."
+          title="Delete listing"
+          subtitle="Deletes it for good — or it goes automatically after 30 days."
           destructive
           onPress={run(onDeletePost)}
           testID="manage-delete-post"

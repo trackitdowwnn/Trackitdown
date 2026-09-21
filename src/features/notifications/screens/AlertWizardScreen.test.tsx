@@ -189,7 +189,7 @@ describe('the matcher picker', () => {
 
   it('builds both criteria steps when both are ticked', async () => {
     const screen = await render(<AlertWizardScreen />);
-    await choose(screen, ['A specific car', 'A minimum bounty']);
+    await choose(screen, ['A specific car', 'A minimum reward']);
     expect(lastFlowStepIds).toEqual(['area', 'car', 'filters', 'name']);
   });
 });
@@ -349,7 +349,7 @@ describe('editing', () => {
     expect(screen.getByLabelText('A specific car').props.accessibilityState).toMatchObject({
       checked: true,
     });
-    expect(screen.getByLabelText('A minimum bounty').props.accessibilityState).toMatchObject({
+    expect(screen.getByLabelText('A minimum reward').props.accessibilityState).toMatchObject({
       checked: false,
     });
   });

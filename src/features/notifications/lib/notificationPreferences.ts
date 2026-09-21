@@ -124,7 +124,7 @@ export const CATEGORY_COPY: CategoryCopy[] = [
   {
     category: 'money',
     title: 'Payouts',
-    subtitle: 'When you earn a bounty and when the transfer goes out.',
+    subtitle: 'When you earn a reward and when the transfer goes out.',
   },
   {
     category: 'watched',

@@ -176,7 +176,7 @@ export function MyCarsScreen() {
         <View style={styles.stateBlock}>
           <EmptyState
             title="Your cars live here"
-            body="Save your vehicles so reporting one stolen is a couple of taps."
+            body="Save your cars so reporting one stolen is a couple of taps."
             actionLabel="Log in"
             onAction={() => requireAuth({ context: 'tab_my_cars' })}
           />
@@ -277,7 +277,7 @@ export function MyCarsScreen() {
               through a destructive confirm only to fail is the wrong order. */}
           <ListRow
             icon={Trash2}
-            title="Remove from garage"
+            title="Remove from My cars"
             subtitle={
               acting?.isCurrentlyPosted
                 ? 'Available once this car’s listing is closed'
@@ -300,7 +300,7 @@ export function MyCarsScreen() {
       <ConfirmDialog
         ref={removeRef}
         title="Remove this car?"
-        body="It'll be taken out of your garage. Any listing you've already made from it is unaffected."
+        body="It'll be taken out of My cars. Any listing you've made from it is unaffected."
         confirmLabel="Remove"
         destructive
         onConfirm={onRemoveConfirmed}

@@ -144,7 +144,7 @@ describe('the payload', () => {
 
 describe('what the user is told', () => {
   const refusals: [string, string][] = [
-    ['NOT_AUTHENTICATED', 'Please sign in to send a report.'],
+    ['NOT_AUTHENTICATED', 'Please log in to send a report.'],
     ['INVALID_INPUT', 'Please write a little about what went wrong.'],
     // ⚠️ NAMES THE REAL WINDOW. The limit moved to 3 per rolling 24h on
     // 2026-08-27; "try again in an hour" would send someone back 23 hours

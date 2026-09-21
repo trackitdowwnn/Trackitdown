@@ -41,10 +41,10 @@ const log = createLogger('chat');
 
 /** RPC machine tokens → calm, user-facing copy. */
 export const CHAT_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in to message.',
-  NO_SIGHTING: 'Conversations open once a sighting has been reported on the post.',
+  NOT_AUTHENTICATED: 'You need to log in to message.',
+  NO_SIGHTING: 'Conversations open once a sighting has been reported on the listing.',
   NOT_PARTICIPANT: 'This conversation isn’t available.',
-  POST_CLOSED: 'This post has closed, so the conversation is now read-only.',
+  POST_CLOSED: 'This listing has closed, so the conversation is now read-only.',
   INVALID_INPUT: 'That didn’t look right. Please check and try again.',
 };
 

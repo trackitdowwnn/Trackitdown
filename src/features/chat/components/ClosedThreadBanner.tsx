@@ -50,7 +50,7 @@ export function ClosedThreadBanner({
           ? 'Messages are turned off in this conversation. You can still read it.'
           : recovered
             ? 'This car was recovered — the conversation is closed, but you can still read it.'
-            : 'This post has closed — the conversation is read-only now.'}
+            : 'This listing has closed — the conversation is read-only now.'}
       </Text>
     </View>
   );

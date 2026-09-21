@@ -99,8 +99,8 @@ describe('CollectionsGridScreen', () => {
   it('empty: keeps the invitation the flat list used to show', async () => {
     const { getByText } = await act(async () => render(<CollectionsGridScreen />));
 
-    expect(getByText('Tap the bookmark on any post to follow it here.')).toBeTruthy();
-    fireEvent.press(getByText('Explore posts'));
+    expect(getByText('Tap the bookmark on any listing to follow it here.')).toBeTruthy();
+    fireEvent.press(getByText('Explore listings'));
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/explore');
   });
 

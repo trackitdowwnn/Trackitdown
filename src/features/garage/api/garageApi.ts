@@ -41,7 +41,7 @@ const SAVE_FALLBACK = 'We couldn’t save your car. Please try again.';
  * shared validation raises, so the wording is kept consistent by hand.
  */
 const GARAGE_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'Please sign in to save a car.',
+  NOT_AUTHENTICATED: 'Please log in to save a car.',
   MISSING_REQUIRED: 'Please add the make, model and colour.',
   INVALID_PLATE: 'That number plate doesn’t look right.',
   PHOTO_COUNT: 'You can add up to 6 photos.',
@@ -51,7 +51,7 @@ const GARAGE_ERROR_MESSAGES: Record<string, string> = {
   INVALID_DISTINCTIVE_PHOTO_URL:
     'One of your feature photos didn’t upload properly. Please try again.',
   VEHICLE_LIMIT_REACHED: 'You can save up to 5 cars. Remove one to add another.',
-  PLATE_ALREADY_SAVED: 'That car is already in your garage.',
+  PLATE_ALREADY_SAVED: 'That car is already in My cars.',
   VEHICLE_NOT_FOUND: 'We couldn’t find that car.',
   VEHICLE_HAS_ACTIVE_POST:
     'This car is currently reported stolen. You can remove it once that listing is closed.',

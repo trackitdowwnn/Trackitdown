@@ -136,12 +136,12 @@ export function emptyFilterCopy(filter: InboxFilter): { title: string; body: str
     case 'my_cars':
       return {
         title: 'No messages about your cars',
-        body: 'When a spotter reports a sighting on one of your posts, their conversation shows here.',
+        body: 'When a spotter reports a sighting on one of your listings, their conversation shows here.',
       };
     case 'my_sightings':
       return {
         title: 'No messages about your sightings',
-        body: 'Report a sighting on a post and the owner can message you here.',
+        body: 'Report a sighting on a listing and the owner can message you here.',
       };
     default:
       // Unreachable from the UI (the screen shows filter-empties only when

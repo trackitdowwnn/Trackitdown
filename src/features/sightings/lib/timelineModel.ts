@@ -87,9 +87,9 @@ export function terminalAnchor(status: PostStatus): TimelineTerminalAnchor | nul
     case 'recovered_no_spotter':
       return { label: 'Recovered 🎉', tone: 'celebrate' };
     case 'expired':
-      return { label: 'Post expired', tone: 'quiet' };
+      return { label: 'Listing expired', tone: 'quiet' };
     case 'cancelled':
-      return { label: 'Post closed', tone: 'quiet' };
+      return { label: 'Listing closed', tone: 'quiet' };
     default:
       return null;
   }

@@ -173,7 +173,7 @@ describe('PostDetailBody', () => {
   it('renders the owner card with name and this post’s sighting stat', async () => {
     const { getByText } = await renderBody({ ...base, sightingCount: 2 });
     expect(getByText('Alex')).toBeTruthy();
-    expect(getByText('Sightings on this post')).toBeTruthy();
+    expect(getByText('Sightings on this listing')).toBeTruthy();
   });
 
   it('keeps the sighting-activity line HIDDEN while the aggregate is zero (dormant)', async () => {
@@ -204,9 +204,9 @@ describe('PostDetailBody', () => {
     const { getByLabelText, getByText } = await renderBody(base);
     // The bottom-sheet jest mock mounts dialog content eagerly, so this pins
     // presence + pressability rather than open/closed visibility.
-    fireEvent.press(getByLabelText('How the bounty works'));
+    fireEvent.press(getByLabelText('How the reward works'));
     expect(getByText(/paid to the spotter whose sighting leads/)).toBeTruthy();
-    expect(getByText('How the bounty works')).toBeTruthy();
+    expect(getByText('How the reward works')).toBeTruthy();
   });
 
   it('renders the similar-posts rail with cards, and hides it when empty', async () => {
@@ -253,7 +253,7 @@ describe('PostDetailBody', () => {
   it('renders the underlined report row and fires onReport', async () => {
     const onReport = jest.fn();
     const { getByText } = await renderBody(base, { onReport });
-    fireEvent.press(getByText('Report this post'));
+    fireEvent.press(getByText('Report this listing'));
     expect(onReport).toHaveBeenCalledTimes(1);
   });
 

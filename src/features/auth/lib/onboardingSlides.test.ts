@@ -31,7 +31,7 @@ describe('the copy, character for character', () => {
       'Stolen cars, on one map.',
       'Your car, stolen? Post it.',
       'Spot it? Report it — from a distance.',
-      'Recovered — bounty paid.',
+      'Recovered — reward paid.',
     ]);
   });
 
