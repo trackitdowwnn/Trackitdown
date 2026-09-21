@@ -166,7 +166,15 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
    right after a cancel, and "Delete post" stays in Manage post; whatever the
    owner leaves is deleted automatically **30 days after closing**
    (`purge_cancelled_posts`, run by the hourly sweep — 30 days so the
-   watchlist tombstone window below always lapses first). Deletion is a hard
+   watchlist tombstone window below always lapses first). **The owner is
+   warned first**: at 27 days the sweep sends `deletion_soon` (unmutable, once
+   per post ever — `claim_cancelled_deletion_warnings` stamps
+   `deletion_warned_at`), and the purge structurally refuses any post whose
+   warning is under **72 hours** old — the "about 3 days" the push promises,
+   exact even for a late-warned post — so no post is ever auto-deleted
+   unwarned, including a backlog at rollout, which is warned on the first
+   sweep and deleted three days later. The warning binds only the automatic
+   purge; the owner's own delete needs no warning. Deletion is a hard
    delete (`delete_cancelled_post`, service-role only): sightings, chats and
    photos cascade, but the **payments row survives, detached** — `post_id`
    nulled, `post_snapshot` keeping the post's identity and any settled

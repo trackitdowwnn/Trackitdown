@@ -31,6 +31,12 @@ export const NOTIFICATION_KINDS = [
   // about their own post. The only kind in this list that asks a question
   // rather than reporting something that happened (2026-09-02).
   'still_missing',
+  // "Your cancelled listing is deleted soon" — the notice the 30-day purge is
+  // required to wait for (purge_cancelled_posts refuses a post whose warning
+  // is under 72h old). To the OWNER, about their own cancelled post; sent
+  // once per post, ever. Reports a fact, offers no lever — a cancelled post
+  // cannot be kept past 30 days (2026-09-21).
+  'deletion_soon',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

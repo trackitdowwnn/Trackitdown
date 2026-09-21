@@ -78,13 +78,16 @@ export const CATEGORY_KINDS: Record<NotificationCategory, NotificationKind[]> = 
  */
 export const UNMUTABLE_KINDS: readonly NotificationKind[] = (() => {
   const mapped = new Set(Object.values(CATEGORY_KINDS).flat());
-  // still_missing joins these two for the reason they are here: a consequence
-  // is attached. Its protection is the CAP — three asks per case, ever — not a
+  // still_missing joins these for the reason they are here: a consequence is
+  // attached. Its protection is the CAP — three asks per case, ever — not a
   // toggle, and a mutable version would need a `my_posts` category that does
-  // not exist. Mirrors notification_category returning NULL for it.
-  return (['sighting', 'closed_uncredited', 'still_missing'] as NotificationKind[]).filter(
-    (kind) => !mapped.has(kind),
-  );
+  // not exist. deletion_soon likewise: it is the notice the 30-day purge is
+  // required to wait for, sent once per post ever, and a toggle that silenced
+  // it would turn a guaranteed warning back into silence. Both mirror
+  // notification_category returning NULL.
+  return (
+    ['sighting', 'closed_uncredited', 'still_missing', 'deletion_soon'] as NotificationKind[]
+  ).filter((kind) => !mapped.has(kind));
 })();
 
 export interface CategoryCopy {

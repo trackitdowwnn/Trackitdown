@@ -1,9 +1,14 @@
 /**
  * WHAT:  The hold sweep — the cron target that finishes what the 72-hour
- *        window started. Phase 1: expired, undisputed holds get the refund
- *        the owner asked for. Phase 2: upheld disputes get the spotter paid
- *        (through the existing release core) and every resolved dispute gets
- *        its outcome push.
+ *        window started, and the one process in the system that runs on a
+ *        clock, so every timed job hangs off it. Phase 0/0b/0c: retention
+ *        (notification purge, 90-day location purge, orphaned photo bytes in
+ *        both buckets). Phase 0d-warn/0d: the cancelled-post deletion warning
+ *        and the 30-day purge it precedes. Phase 1: expired, undisputed holds
+ *        get the refund the owner asked for. Phase 2: upheld disputes get the
+ *        spotter paid (through the existing release core) and every resolved
+ *        dispute gets its outcome push. Phase 4: the ADR-0019 "still missing?"
+ *        liveness ask.
  * WHY:   A hold is a promise with a date on it: "your refund is sent after
  *        {date} unless a sighting is contested". Nothing else in the system
  *        acts on the clock — there is no scheduler anywhere until this — so
@@ -71,6 +76,7 @@ Deno.serve(async (request) => {
     locationsPurged: 0,
     photosRemoved: 0,
     sightingPhotosRemoved: 0,
+    deletionWarningsSent: 0,
     cancelledPostsPurged: 0,
     cancelledPostsSkipped: 0,
     stillMissingAsked: 0,
@@ -209,6 +215,56 @@ Deno.serve(async (request) => {
     }
   } catch (err) {
     console.error('[storage] sighting orphan sweep failed', (err as Error).message);
+  }
+
+  // --- Phase 0d-warn: the warning before the purge ----------------------------
+  // Owners of cancelled posts 27+ days past closing are told, once, that the
+  // post is deleted in about 3 days (kind `deletion_soon`, unmutable — a
+  // data-retention notice about their own content). The purge below refuses
+  // any post whose warning is under 72 hours old, so this phase running FIRST
+  // is a courtesy, not the guarantee — the guarantee is in SQL.
+  //
+  // ⚠️ THE CLAIM IS BURNED BEFORE THE SEND, like still_missing and for the
+  // same shape of reason: a lost push costs one reminder on a post that was
+  // already told its fate in the delete confirm, while a claim that survived
+  // failure would need a success-conditional un-stamp that every retry path
+  // then has to get right. The 72-hour purge wait still runs from the stamp,
+  // so even a lost push buys the owner the full notice window.
+  try {
+    const { data: warns, error: warnError } = await admin.rpc(
+      'claim_cancelled_deletion_warnings',
+      { p_limit: 200 },
+    );
+    if (warnError) {
+      console.error('[posts] deletion-warning claim failed', warnError.message);
+    } else {
+      const rows = (warns ?? []) as {
+        post_id: string;
+        user_id: string;
+        title: string;
+        body: string;
+      }[];
+      for (const row of rows) {
+        // Per-item, like every other queue here: one owner's failed push must
+        // not stop the rest.
+        try {
+          await notifyUsers(admin, [row.user_id], {
+            kind: 'deletion_soon',
+            title: row.title,
+            body: row.body,
+            data: { type: 'deletion_soon', postId: row.post_id },
+            // One warning per post, ever — a duplicate delivery replaces
+            // rather than stacks.
+            collapseKey: `deletion-soon-${row.post_id}`,
+          });
+          summary.deletionWarningsSent += 1;
+        } catch (err) {
+          console.error('[posts] deletion warning send failed', (err as Error).message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[posts] deletion warning sweep failed', (err as Error).message);
   }
 
   // --- Phase 0d: cancelled-post retention ------------------------------------
@@ -493,14 +549,14 @@ Deno.serve(async (request) => {
   // because a run that dies half way leaves retention and erasure half-done
   // while an "it was invoked" marker would call that healthy.
   //
-  // This sweep now carries FIVE jobs that fail SILENTLY if it stops: the
+  // This sweep now carries SIX jobs that fail SILENTLY if it stops: the
   // notification purge, the 90-day location purge (a promise published on the
   // website), the orphaned-photo removal (GDPR erasure), the ADR-0019
-  // liveness check (2026-09-02) and — since 2026-09-21 — the 30-day
-  // cancelled-post purge. Before this, the only evidence any of them ran was
-  // a console line nobody reads.
+  // liveness check (2026-09-02), and — since 2026-09-21 — the 30-day
+  // cancelled-post purge and the deletion warning that precedes it. Before
+  // this, the only evidence any of them ran was a console line nobody reads.
   //
-  // ⚠️ Five is more than this function was designed to carry, and it still has
+  // ⚠️ Six is more than this function was designed to carry, and it still has
   // no ALERTING — sweep_health() must be asked, it never speaks. That is review
   // finding #10 and it is still open.
   //

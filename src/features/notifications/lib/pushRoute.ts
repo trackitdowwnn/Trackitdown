@@ -36,6 +36,11 @@ export function pushRouteFor(payload: PushPayload): Href {
     // exists, never the only way through it (the lesson of the push-only
     // dispute screen).
     case 'still_missing':
+    // "Deleted in about 3 days" — the post itself, where "delete it now" is
+    // one tap away in Manage post. After the purge lands, the detail screen's
+    // own not-found state is the honest answer; routing to My Posts instead
+    // would hide WHICH listing this was about while it still exists.
+    case 'deletion_soon':
       return `/post/${payload.postId}`;
     case 'message':
       return `/chat/${payload.threadId}`;

@@ -70,7 +70,7 @@ describe('notification_category', () => {
     expect(sqlMap).toEqual(clientMap);
   });
 
-  it('⚠️ leaves the three consequential kinds with no category at all', () => {
+  it('⚠️ leaves the four consequential kinds with no category at all', () => {
     // Not "maps them to a locked category" — ABSENT, so no column exists to
     // store a mute in and no switch can be built on top of one. A regression
     // here would be someone adding a row to the SQL CASE with the best
@@ -82,7 +82,18 @@ describe('notification_category', () => {
     // would need a `my_posts` category that does not exist, and a switch a
     // distressed owner never finds is not protection.
     expect(sqlMap.still_missing).toBeUndefined();
-    expect(UNMUTABLE_KINDS).toEqual(['sighting', 'closed_uncredited', 'still_missing']);
+    // deletion_soon (2026-09-21): the notice the 30-day cancelled-post purge
+    // is REQUIRED to wait for (purge_cancelled_posts refuses a post whose
+    // warning is under 72h old). A toggle that silenced it would turn that
+    // guaranteed warning back into silence; its cap is one send per post,
+    // ever — the stamp never clears and the post is gone days later.
+    expect(sqlMap.deletion_soon).toBeUndefined();
+    expect(UNMUTABLE_KINDS).toEqual([
+      'sighting',
+      'closed_uncredited',
+      'still_missing',
+      'deletion_soon',
+    ]);
   });
 
   it('accounts for every kind the app can send, exactly once', () => {

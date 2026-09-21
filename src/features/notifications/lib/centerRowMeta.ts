@@ -40,6 +40,7 @@ import {
   Hourglass,
   MessageCircle,
   Scale,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -111,6 +112,11 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
     needsAttention: true,
     attentionLabel: 'Answer',
   },
+  // "Your cancelled listing is deleted soon." Neutral, never needsAttention:
+  // nothing is wrong and nothing is asked — the cleanup happens either way,
+  // and an action chip would invent a task where the body says "nothing you
+  // need to do". Trash2 because deletion is literally what it reports.
+  deletion_soon: { Icon: Trash2, tone: 'neutral', needsAttention: false },
   // "Contest" is the word SightingDisputeScreen already uses with these
   // spotters ("This one can’t be contested any more"), so the row and the
   // screen it opens speak the same language.
