@@ -335,8 +335,18 @@ are build output.
   `onPress` prop — pass an explicit `null` only when nothing tappable encloses
   it. A chip left without a handler inside a card turns the plate into a dead
   patch that swallows the card's tap.
-- **BountyTag** — `primary`, e.g. "£500 bounty", always formatted from
+- **BountyTag** — `primary`, e.g. "£500 reward", always formatted from
   pence via the shared money formatter.
+- **StatBand** — the stat row: equal-width cells split by vertical
+  hairlines, each a `sectionTitle` number over a `caption` label (~2:1, the
+  measured reference ratio). Degrades by omission — pass only the cells you
+  have; zero cells renders nothing. Promoted to `shared/ui` 2026-09-21 when
+  the theft-stats page became its second consumer after per-listing
+  Activity. **Stat pages are flat**: one hero figure, a StatBand beneath it,
+  then hairline-divided sections at divider → 32 → title → 16 → content →
+  32 (PostStatsScreen, AreaInsightsScreen). Never a stack of `surfaceSubtle`
+  tiles — boxes read as a performance dashboard, the one register these
+  pages must not borrow.
 - **SafetyNotice** — reusable banner with the "report, don't approach"
   copy; required on sighting flows (see SECURITY_AND_TRUST.md). Passing
   `collapsible` pins it as a single titled line that expands on tap — for

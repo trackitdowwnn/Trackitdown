@@ -50,7 +50,13 @@ describe('monthlySummary', () => {
       { month: '2026-03', count: 7 },
     ]);
     expect(summary).toContain('2 of the last 12 months');
-    expect(summary).toContain('Busiest month 7');
+    // Named, not numbered: "Busiest month 7" under an axis-less chart could
+    // be July or seven cars.
+    expect(summary).toContain('The busiest was March, with 7.');
+  });
+
+  it('falls back to the count alone when a month string is malformed', () => {
+    expect(monthlySummary([{ month: 'bad', count: 4 }])).toContain('The busiest month had 4.');
   });
 
   it('says so plainly when nothing happened', () => {

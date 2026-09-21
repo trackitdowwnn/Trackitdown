@@ -57,6 +57,33 @@ jest.mock('@/shared/ui', () => {
 
 const NOT_ENOUGH = { enoughData: false as const, radiusM: milesToMetres(5) };
 
+/** A full answer, for the layout tests. Round numbers so the assertions read. */
+const FULL = {
+  enoughData: true as const,
+  radiusM: milesToMetres(20),
+  total: 180,
+  total7d: 3,
+  total30d: 14,
+  total90d: 41,
+  total365d: 180,
+  monthly: Array.from({ length: 12 }, (_, i) => ({ month: `2026-${String(i + 1).padStart(2, '0')}`, count: i })),
+  topMakes: [
+    { make: 'ford', count: 6 },
+    { make: 'bmw', count: 4 },
+  ],
+  topModels: [{ make: 'ford', model: 'fiesta', count: 3 }],
+  recovered: 7,
+  closedTotal: 10,
+  takenFrom: {
+    buckets: [
+      { key: 'driveway', label: 'From a driveway', count: 3 },
+      { key: 'street', label: 'From the street', count: 2 },
+    ],
+    recorded: 6,
+  },
+  keysTaken: { buckets: [], recorded: 0 },
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockCentreState = { status: 'ready', centre: null };
@@ -127,6 +154,118 @@ describe('scope: a named area', () => {
       resolve([{ latitude: 51.75, longitude: -0.33 }]);
     });
     await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+  });
+});
+
+describe('scope: the feed\'s area, by name', () => {
+  it('titles itself "Thefts near <label>" when the feed sent its area name', async () => {
+    const view = await render(
+      <AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} label="St Albans" />,
+    );
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    expect(view.getByRole('header', { name: 'Thefts near St Albans' })).toBeTruthy();
+    // The label is display only: the fetch still uses the point it was given.
+    expect(mockFetch).toHaveBeenCalledWith(51.77, -0.34, milesToMetres(20));
+    expect(mockForwardGeocode).not.toHaveBeenCalled();
+  });
+});
+
+describe('the layout (2026-09-21 redesign)', () => {
+  beforeEach(() => {
+    mockFetch.mockResolvedValue(FULL);
+  });
+
+  it('leads with ONE hero sentence — the 30-day count — not a row of tiles', async () => {
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    expect(view.getByTestId('stats-hero')).toHaveTextContent(
+      '14 cars reported stolen in the last 30 days',
+    );
+    // The other windows sit in the quiet band beneath, value over label.
+    expect(view.getByTestId('stat-7d')).toHaveTextContent(/^3/);
+    expect(view.getByTestId('stat-90d')).toHaveTextContent(/^41/);
+    expect(view.getByTestId('stat-365d')).toHaveTextContent(/^180/);
+  });
+
+  it('singular when it is one car', async () => {
+    mockFetch.mockResolvedValue({ ...FULL, total30d: 1 });
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    expect(view.getByTestId('stats-hero')).toHaveTextContent(
+      '1 car reported stolen in the last 30 days',
+    );
+  });
+
+  it('states the radius as one quiet line and discloses the slider on "Change"', async () => {
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    // One text node — "within 20 miles · Change" — so one screen-reader stop.
+    expect(view.getByTestId('stats-change-radius')).toHaveTextContent('within 20 miles · Change');
+    // Closed by default: the figure is the point of the page.
+    expect(view.queryByTestId('stats-radius-slider')).toBeNull();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('stats-change-radius'));
+    });
+    expect(view.getByTestId('stats-radius-slider')).toBeTruthy();
+    // Relabelled — it used to read "Alert radius", a leak from the alerts feature.
+    expect(view.queryByText('Alert radius')).toBeNull();
+    expect(view.getByText('Done')).toBeTruthy();
+  });
+
+  it('opens a named area at the town-sized radius, said in the line', async () => {
+    mockForwardGeocode.mockResolvedValue([{ latitude: 51.75, longitude: -0.33 }]);
+    const view = await render(<AreaInsightsScreen area="St Albans" />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    expect(view.getByTestId('stats-change-radius')).toHaveTextContent(
+      `within ${AREA_ENTRY_RADIUS_MILES} miles · Change`,
+    );
+  });
+
+  it('values lead their labels in the breakdown rows, with the denominator said once', async () => {
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    expect(view.getByText('From a driveway')).toBeTruthy();
+    expect(view.getByText('3 of 6')).toBeTruthy();
+    expect(view.getByText(/Of the 6 listings where this was recorded/)).toBeTruthy();
+    // The keys block has no buckets, so it is absent entirely — no empty shell.
+    expect(view.queryByText('Were the keys taken?')).toBeNull();
+    expect(view.getByText('70% came back')).toBeTruthy();
+  });
+
+  it('shows the radius control open when there is not enough data — it is the way out', async () => {
+    mockFetch.mockResolvedValue(NOT_ENOUGH);
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByText('Not enough nearby to say')).toBeTruthy());
+    expect(view.getByTestId('stats-radius-slider')).toBeTruthy();
+    // Pinned open: no toggle at all — an underlined "Done" that did nothing
+    // would break "underline = tappable" and announce as a dead button.
+    expect(view.queryByTestId('stats-change-radius')).toBeNull();
+    expect(view.queryByText('Done')).toBeNull();
+    expect(view.getByText('within 20 miles')).toBeTruthy();
+  });
+
+  it('says the "it\'s optional" aside once, not under every block', async () => {
+    mockFetch.mockResolvedValue({
+      ...FULL,
+      keysTaken: {
+        buckets: [{ key: 'yes', label: 'Keys were taken', count: 2 }],
+        recorded: 4,
+      },
+    });
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    expect(view.getByText(/Of the 6 listings where this was recorded/)).toBeTruthy();
+    expect(view.getByText(/Of the 4 listings where this was recorded/)).toBeTruthy();
+    expect(view.getAllByText(/It’s optional, so most listings leave it blank/)).toHaveLength(1);
+  });
+
+  it('reads "No cars" rather than "0 cars" for a quiet month', async () => {
+    mockFetch.mockResolvedValue({ ...FULL, total30d: 0 });
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    expect(view.getByTestId('stats-hero')).toHaveTextContent(
+      'No cars reported stolen in the last 30 days',
+    );
   });
 });
 

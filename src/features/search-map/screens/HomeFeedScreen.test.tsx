@@ -244,12 +244,13 @@ describe('section stats', () => {
 
     const view = await render(<HomeFeedScreen />);
     await act(async () => {
-      fireEvent.press(view.getByLabelText('Thefts near you'));
+      fireEvent.press(view.getByLabelText('Thefts near St Albans'));
     });
 
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/area-insights',
-      params: { lat: '51.77', lng: '-0.34', radiusMiles: '20' },
+      // The area's NAME rides along, so the page can say where "near" is.
+      params: { lat: '51.77', lng: '-0.34', radiusMiles: '20', label: 'St Albans' },
     });
   });
 
@@ -287,7 +288,7 @@ describe('section stats', () => {
       ],
     };
     const view = await render(<HomeFeedScreen />);
-    expect(view.getByLabelText('Thefts near you')).toBeTruthy();
+    expect(view.getByLabelText('Thefts near St Albans')).toBeTruthy();
     expect(view.queryByTestId('stats-highest_bounties')).toBeNull();
     expect(view.queryByTestId('stats-recently_recovered')).toBeNull();
   });

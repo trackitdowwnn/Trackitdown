@@ -55,9 +55,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { timeAgo } from '@/shared/lib';
 import { displayFontScaleCap, radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
-import { EmptyState, ErrorState, Screen } from '@/shared/ui';
+import { EmptyState, ErrorState, Screen, StatBand, type StatBandCell } from '@/shared/ui';
 
-import { StatBand, type StatBandCell } from '../components/StatBand';
 import { StatsSparkline } from '../components/StatsSparkline';
 import { usePostStats } from '../hooks/usePostStats';
 import { toSparkline, wholeDaysBetween } from '../lib/postStatsModel';

@@ -262,7 +262,21 @@ cover the same circle as Near you and get no button; the national fallback has
 no area. This replaced a single "Thefts near you" row pinned above the whole
 feed, which read as a banner and could only answer for the feed's whole
 radius. A town the geocoder cannot place is said plainly ("We couldn't place
-<Area>") rather than silently answered with the device's own area.
+<Area>") rather than silently answered with the device's own area. The feed's
+own area NAME travels too (`label`), so the page is titled "Thefts near St
+Albans", not "near you".
+
+**The stats page itself** (`AreaInsightsScreen`, redesigned 2026-09-21 via
+`/airbnb-redesign`) follows the reference's stat pattern already measured for
+PostStatsScreen: ONE hero sentence (the 30-day count), a shared `StatBand`
+beneath it (7 days / 90 days / 12 months), then flat hairline-divided sections
+— chart, most-taken makes, recovery rate, how taken — with values leading
+their labels and one quiet caveat per section. The radius is a disclosed
+"within N miles · Change" line rather than a pinned slider (and no longer
+labelled "Alert radius"). Calm and factual by decision: no severity colour, no
+trend arrows, no benchmarks against other areas — Airbnb's own insights
+register is upbeat and competitive, and this page is about crime near
+someone's home.
 
 **Entry** — the Map/search pill frames the feed's resolved location at its
 radius; "See all → <Area>" forward-geocodes the town and centres there. Those

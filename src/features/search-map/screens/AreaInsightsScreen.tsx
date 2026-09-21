@@ -1,11 +1,25 @@
 /**
  * WHAT:  AreaInsightsScreen — how many cars have been reported stolen around
- *        here: four time windows, a 12-month chart, the makes and models taken
- *        most, a recovery rate, and how they were taken.
+ *        here: one hero figure (the last 30 days) over a quiet stat row (7
+ *        days / 90 days / 12 months), then flat sections — a 12-month chart,
+ *        the makes and models taken most, a recovery rate, and how they were
+ *        taken — with the radius as a disclosed "within N miles · Change" line.
  * WHY:   The feed shows what is happening near someone one card at a time.
  *        Nothing told them the SHAPE of it — whether this month is normal for
  *        here, which cars go, whether they come back. All of it already existed
  *        in `posts` and had never been assembled.
+ *
+ *        REDESIGNED 2026-09-21 (/airbnb-redesign) after the owner found it
+ *        "confusing and not easy to read". It opened with a slider labelled
+ *        "Alert radius" and four equal grey tiles — no headline, three visual
+ *        grammars (tiles, chart, rows), and six caveat captions louder than the
+ *        facts. Now it follows the reference's stat pattern, already measured
+ *        for PostStatsScreen: ONE loud statistic, everything else quiet; flat
+ *        hairline-divided sections at divider → 32 → title → 16 → content → 32;
+ *        values leading their labels; one quiet caveat per section. Calm and
+ *        factual — no severity colour, no trend arrows — because the register
+ *        Airbnb's own insights pages use (upbeat, benchmarked) is wrong for a
+ *        page about crime near someone's home.
  *
  * ⚠️ EVERY NUMBER HERE IS A COUNT OVER OTHER PEOPLE'S THEFTS, and the RPC behind
  *        it was rewritten three times to make that safe: membership is tested on
@@ -59,6 +73,8 @@ import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import { metresToMiles, milesToMetres } from '@/shared/lib/distance';
 import { createLogger } from '@/shared/lib/logger';
 import {
+  displayFontScaleCap,
+  opacity,
   radii,
   sizes,
   spacing,
@@ -72,6 +88,8 @@ import {
   ErrorState,
   RadiusSlider,
   Screen,
+  StatBand,
+  type StatBandCell,
   ThemedRefreshControl,
   useToast,
 } from '@/shared/ui';
@@ -89,6 +107,9 @@ export interface AreaInsightsScreenProps {
   /** A named town to answer for — geocoded here. Wins over nothing; loses
    *  to an explicit point. */
   area?: string;
+  /** The feed area's human name, sent alongside an explicit point so the
+   *  page can say "Thefts near St Albans". Display only — never a scope. */
+  label?: string;
   /** An explicit centre (the feed's own). Wins over `area`. */
   lat?: number;
   lng?: number;
@@ -106,6 +127,7 @@ type GeocodeState =
 
 export function AreaInsightsScreen({
   area,
+  label,
   lat: latProp,
   lng: lngProp,
   radiusMiles: radiusProp,
@@ -116,11 +138,25 @@ export function AreaInsightsScreen({
   // a point nor an area came in through the route.
   const defaultCentre = useDefaultMapCentre();
   const toast = useToast();
+  // Read by the fetch effect through a ref, NOT as a dependency: the effect's
+  // deps are exactly "what changes the question" (centre, radius, a pull), and
+  // the toast is not one of them. Listing it would make any re-render that
+  // hands back a new toast object refetch — and refetching resets the figures
+  // to the skeleton, which is how opening the radius control could blank the
+  // page it was opened from.
+  const toastRef = useRef(toast);
+  useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
   const hasPoint = latProp !== undefined && lngProp !== undefined;
   const [radiusMiles, setRadiusMiles] = useState(
     radiusProp ?? (area && !hasPoint ? AREA_ENTRY_RADIUS_MILES : DEFAULT_RADIUS_MILES),
   );
   const [geocode, setGeocode] = useState<GeocodeState>({ status: 'idle' });
+  // The radius control is disclosed, not pinned: the figure is the hero and
+  // "within N miles · Change" beneath it is enough until someone wants to
+  // move it. Default closed on every entry.
+  const [radiusOpen, setRadiusOpen] = useState(false);
   const [insights, setInsights] = useState<AreaInsights | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [generation, setGeneration] = useState(0);
@@ -193,10 +229,15 @@ export function AreaInsightsScreen({
           : null
         : (defaultCentre.centre?.longitude ?? null);
 
-  // "Thefts in St Albans" / "Thefts near you": a figure with no place
-  // attached is not a figure. The area name is user-authored text
-  // (posts.last_seen_area), rendered as-is here and never logged.
-  const title = area ? `Thefts in ${area}` : 'Thefts near you';
+  // "Thefts in St Albans" / "Thefts near St Albans" / "Thefts near you": a
+  // figure with no place attached is not a figure. Both names are user- or
+  // geocoder-authored text (posts.last_seen_area, the feed's addressLabel),
+  // rendered as-is here and never logged.
+  const title = area
+    ? `Thefts in ${area}`
+    : label
+      ? `Thefts near ${label}`
+      : 'Thefts near you';
 
   // Read inside the fetch callbacks to decide whether a failure needs saying
   // out loud. Refs rather than effect deps — depending on either would refetch
@@ -241,7 +282,10 @@ export function AreaInsightsScreen({
         // the figures rightly stay, which is the policy. Without this the
         // spinner just retracts and an explicit request is met with silence.
         if (pulledRef.current && insightsRef.current !== null) {
-          toast.show("We couldn’t refresh just now — these are the last figures.", 'error');
+          toastRef.current.show(
+            "We couldn’t refresh just now — these are the last figures.",
+            'error',
+          );
         }
         pulledRef.current = false;
         setRefreshing(false);
@@ -249,7 +293,7 @@ export function AreaInsightsScreen({
     return () => {
       cancelled = true;
     };
-  }, [lat, lng, radiusMiles, generation, toast]);
+  }, [lat, lng, radiusMiles, generation]);
 
   // The pull: ask the effect again. It owns the spinner and it is how someone
   // gets out of the error state without leaving the screen.
@@ -289,7 +333,7 @@ export function AreaInsightsScreen({
       </View>
 
       {resolving ? (
-        <StatsSkeleton label={`Loading ${title.toLowerCase()}`} />
+        <StatsSkeleton label={`Loading ${title.toLowerCase()}`} outside />
       ) : areaMissed ? (
         // Honest, not helpful-by-accident: falling back to the device centre
         // here would show a different place's numbers under this town's name.
@@ -315,14 +359,6 @@ export function AreaInsightsScreen({
           contentContainerStyle={styles.content}
           refreshControl={<ThemedRefreshControl refreshing={showSpinner} onRefresh={refresh} />}
         >
-          {/* Whole miles only — the RPC quantises the radius, so sending
-              anything else is silently rounded and the number under the slider
-              would stop matching the figures above it. */}
-          <RadiusSlider
-            valueMiles={radiusMiles}
-            onChangeMiles={(miles) => setRadiusMiles(Math.round(miles))}
-          />
-
           {/* Order matters. Figures for the CURRENT radius win outright — a
               failed refresh over data that is already up must not replace it
               with an error page, because those figures are still true and
@@ -336,19 +372,34 @@ export function AreaInsightsScreen({
               rather than holding the old numbers up as an answer. */}
           {haveCurrent ? (
             !insights.enoughData ? (
-            /* ⚠️ NEVER a page of zeros. Below the floor the RPC withholds the
-               whole breakdown on purpose, and "0 thefts" would be a claim we
-               have not made — it is "too few to say", which is a different and
-               more honest sentence. */
-              <EmptyState
-                title="Not enough nearby to say"
-                body={`We only show this once there are enough reports in an area to be meaningful. Try a wider radius than ${Math.round(metresToMiles(insights.radiusM))} miles.`}
-                // Inside the ScrollView's own xl gutter — EmptyState's default
-                // would stack to 48pt a side and wrap the body to 8 lines.
-                gutter="none"
-              />
+              <Section first>
+                {/* ⚠️ NEVER a page of zeros. Below the floor the RPC withholds
+                    the whole breakdown on purpose, and "0 thefts" would be a
+                    claim we have not made — it is "too few to say", which is a
+                    different and more honest sentence. Told WHY first, then
+                    handed the way out beneath. */}
+                <EmptyState
+                  title="Not enough nearby to say"
+                  body={`We only show this once there are enough reports in an area to be meaningful. Try a wider radius than ${Math.round(metresToMiles(insights.radiusM))} miles.`}
+                  // Inside the ScrollView's own xl gutter — EmptyState's default
+                  // would stack to 48pt a side and wrap the body to 8 lines.
+                  gutter="none"
+                />
+                <RadiusControl
+                  radiusMiles={radiusMiles}
+                  open
+                  pinned
+                  onChangeMiles={setRadiusMiles}
+                />
+              </Section>
             ) : (
-              <Insights data={insights} />
+              <Insights
+                data={insights}
+                radiusMiles={radiusMiles}
+                radiusOpen={radiusOpen}
+                onToggleRadius={() => setRadiusOpen((open) => !open)}
+                onChangeMiles={setRadiusMiles}
+              />
             )
           ) : currentFailed ? (
             <ErrorState
@@ -365,86 +416,224 @@ export function AreaInsightsScreen({
   );
 }
 
-function Insights({ data }: { data: Extract<AreaInsights, { enoughData: true }> }) {
+/**
+ * The page's body, in the reference's stat rhythm: ONE hero figure, a quiet
+ * stat row beneath it, then flat sections divided by hairlines at the
+ * measured spacing — divider → 32 → title → 16 → content → 32 — the same
+ * layout PostStatsScreen settled on. Not a stack of boxes: four equal grey
+ * tiles gave nobody a place to start, and boxes read as a dashboard, which is
+ * the one register this page must not borrow.
+ *
+ * Calm and factual throughout (owner decision 2026-09-21): no severity
+ * colour, no trend arrows, no "up 40%" badges — a red arrow next to a theft
+ * count is an alarm, and the reader is already worried.
+ */
+function Insights({
+  data,
+  radiusMiles,
+  radiusOpen,
+  onToggleRadius,
+  onChangeMiles,
+}: {
+  data: Extract<AreaInsights, { enoughData: true }>;
+  radiusMiles: number;
+  radiusOpen: boolean;
+  onToggleRadius: () => void;
+  onChangeMiles: (miles: number) => void;
+}) {
   const styles = useThemedStyles(makeStyles);
   const bars = toMonthlyBars(data.monthly);
   const recovery = recoveryRateLabel(data.recovered, data.closedTotal);
+  const summary = monthlySummary(data.monthly);
+
+  // The 30-day count is the hero: "how bad is it here, now" is the question
+  // a worried owner opened this page with. The other windows sit in the band.
+  const heroCount = data.total30d;
+  const band: StatBandCell[] = [
+    { key: '7d', value: String(data.total7d), label: 'last 7 days', spoken: `${data.total7d} in the last 7 days` },
+    { key: '90d', value: String(data.total90d), label: 'last 90 days', spoken: `${data.total90d} in the last 90 days` },
+    { key: '365d', value: String(data.total365d), label: 'last 12 months', spoken: `${data.total365d} in the last 12 months` },
+  ];
 
   return (
-    <View style={styles.stack}>
-      <Section title="Reported stolen">
-        <View style={styles.windows}>
-          <Window label="Last 7 days" value={data.total7d} />
-          <Window label="30 days" value={data.total30d} />
-          <Window label="90 days" value={data.total90d} />
-          <Window label="12 months" value={data.total365d} />
-        </View>
+    <View>
+      <Section first>
+        {/* A sentence, not a bare number: the count at title size and weight,
+            its words in body Regular beside it, so the number leads by both
+            size and weight — the reference's grammar for a hero figure — and
+            "14" cannot be mistaken for anything else on the page. One text
+            node, one baseline, one screen-reader stop.
+
+            The font-scale cap is repeated on the number run: it is not
+            reliably inherited across nested Text (OnboardingSlide records
+            the same), and an uncapped numeral at 200% would outgrow the
+            words it belongs to. Zero reads "No cars" — calmer and truer than
+            a "0". */}
+        <Text style={styles.hero} accessibilityRole="header" testID="stats-hero">
+          <Text style={styles.heroNumber} maxFontSizeMultiplier={displayFontScaleCap}>
+            {heroCount === 0 ? 'No' : heroCount}
+          </Text>
+          {heroCount === 1 ? ' car reported stolen ' : ' cars reported stolen '}
+          in the last 30 days
+        </Text>
+        <RadiusControl
+          radiusMiles={radiusMiles}
+          open={radiusOpen}
+          onToggle={onToggleRadius}
+          onChangeMiles={onChangeMiles}
+        />
+        <StatBand cells={band} />
       </Section>
 
       <Section title="Over the last year">
-        <StatsSparkline bars={bars} summary={monthlySummary(data.monthly)} />
-        <Text style={styles.caption}>
-          Every month is shown. A month with no reports is a real zero, not a gap.
-        </Text>
+        {/* The sparkline draws a zero month as a visible stub, so the old
+            "every month is shown, a gap is a real zero" caption is now said
+            by the chart itself; it survives as the chart's spoken summary. */}
+        <StatsSparkline bars={bars} summary={`${summary} Every month is shown; a month with no reports is a real zero.`} />
+        <Text style={styles.quiet}>{summary}</Text>
       </Section>
 
       {data.topMakes.length > 0 ? (
         <Section title="Taken most often">
-          {data.topMakes.map((row) => (
-            <Row key={row.make} label={row.make} value={String(row.count)} capitalize />
-          ))}
-          {data.topModels.map((row) => (
-            <Row
-              key={`${row.make}-${row.model}`}
-              label={`${row.make} ${row.model}`}
-              value={String(row.count)}
-              muted
-            />
-          ))}
+          <View style={styles.rows}>
+            {data.topMakes.map((row) => (
+              <Row key={row.make} label={row.make} value={String(row.count)} capitalize />
+            ))}
+            {data.topModels.map((row) => (
+              <Row
+                key={`${row.make}-${row.model}`}
+                label={`${row.make} ${row.model}`}
+                value={String(row.count)}
+                capitalize
+                indented
+              />
+            ))}
+          </View>
           {/* The RPC folds make and model with lower(btrim(...)) and does NOT
               equate VW with Volkswagen. Said out loud rather than left for
               someone to notice in the data. */}
-          <Text style={styles.caption}>
-            Grouped by what owners typed, so spellings of the same make count separately.
+          <Text style={styles.quiet}>
+            Counted as owners typed them, so two spellings of one make count separately.
           </Text>
         </Section>
       ) : null}
 
       {recovery ? (
         <Section title="Do they come back?">
-          <Text style={styles.headline}>{recovery.headline}</Text>
+          <Text style={styles.statement} maxFontSizeMultiplier={displayFontScaleCap}>
+            {recovery.headline}
+          </Text>
           {/* The denominator is CLOSED listings only. An active listing has not
               failed to be recovered — it is still being looked for — and
               counting it as a miss would drag the rate down by however many
               cars are currently in flight. */}
-          <Text style={styles.caption}>{recovery.caveat}</Text>
+          <Text style={styles.quiet}>{recovery.caveat}</Text>
         </Section>
       ) : null}
 
       {data.takenFrom.buckets.length > 0 ? (
         <Section title="How they were taken">
-          {data.takenFrom.buckets.map((bucket) => (
-            <Row
-              key={bucket.key}
-              label={bucket.label}
-              value={`${bucket.count} of ${data.takenFrom.recorded}`}
-            />
-          ))}
-          <Denominator recorded={data.takenFrom.recorded} />
+          <View style={styles.rows}>
+            {data.takenFrom.buckets.map((bucket) => (
+              <Row
+                key={bucket.key}
+                label={bucket.label}
+                value={`${bucket.count} of ${data.takenFrom.recorded}`}
+              />
+            ))}
+          </View>
+          <Denominator recorded={data.takenFrom.recorded} aside />
         </Section>
       ) : null}
 
       {data.keysTaken.buckets.length > 0 ? (
         <Section title="Were the keys taken?">
-          {data.keysTaken.buckets.map((bucket) => (
-            <Row
-              key={bucket.key}
-              label={bucket.label}
-              value={`${bucket.count} of ${data.keysTaken.recorded}`}
-            />
-          ))}
-          <Denominator recorded={data.keysTaken.recorded} />
+          <View style={styles.rows}>
+            {data.keysTaken.buckets.map((bucket) => (
+              <Row
+                key={bucket.key}
+                label={bucket.label}
+                value={`${bucket.count} of ${data.keysTaken.recorded}`}
+              />
+            ))}
+          </View>
+          {/* The aside rides on the first block that needs it; if that block
+              is absent this one carries it instead. */}
+          <Denominator
+            recorded={data.keysTaken.recorded}
+            aside={data.takenFrom.buckets.length === 0}
+          />
         </Section>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * "within 5 miles · Change" — the radius as one quiet line under the hero,
+ * with the slider disclosed beneath it on demand. The figure is the point of
+ * the page; a full slider pinned above it made the control look like the
+ * point instead (and its default label read "Alert radius", a leak from the
+ * alerts feature — this is not an alert).
+ *
+ * THE WHOLE LINE IS THE TARGET. A Pressable around the word "Change" alone
+ * is an 18pt-tall target inside an 18pt row, and Android drops touches in
+ * slop that falls outside the parent's bounds (bugWizardSteps records the
+ * same lesson). So the line is one Pressable padded to 44pt — pulled back
+ * into the 16pt rhythm the way the back glyph is — holding ONE Text with an
+ * underlined run: one baseline, one screen-reader stop, one tap.
+ *
+ * `pinned` (the not-enough state): the slider is the way OUT of that state,
+ * so it is shown open with no toggle at all — an underlined "Done" that did
+ * nothing would break "underline = tappable" and announce as a dead button.
+ *
+ * Whole miles only — the RPC quantises the radius, so sending anything else
+ * is silently rounded and the number in this line would stop matching the
+ * figures above it.
+ */
+function RadiusControl({
+  radiusMiles,
+  open,
+  pinned = false,
+  onToggle,
+  onChangeMiles,
+}: {
+  radiusMiles: number;
+  open: boolean;
+  pinned?: boolean;
+  onToggle?: () => void;
+  onChangeMiles: (miles: number) => void;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const within = `within ${radiusMiles} ${radiusMiles === 1 ? 'mile' : 'miles'}`;
+  return (
+    <View style={styles.radius}>
+      {pinned ? (
+        <Text style={styles.quiet}>{within}</Text>
+      ) : (
+        <Pressable
+          onPress={onToggle}
+          accessibilityRole="button"
+          accessibilityLabel={`${within}. ${open ? 'Hide the radius control' : 'Change the radius'}`}
+          accessibilityState={{ expanded: open }}
+          style={({ pressed }) => [styles.radiusLine, pressed && styles.radiusLinePressed]}
+          testID="stats-change-radius"
+        >
+          <Text style={styles.quiet}>
+            {within} ·{' '}
+            {/* Underline = tappable (DESIGN_SYSTEM) — the profile's text-action
+                idiom; no colour needed. */}
+            <Text style={styles.radiusAction}>{open ? 'Done' : 'Change'}</Text>
+          </Text>
+        </Pressable>
+      )}
+      {pinned || open ? (
+        <RadiusSlider
+          label="Radius"
+          valueMiles={radiusMiles}
+          onChangeMiles={(miles) => onChangeMiles(Math.round(miles))}
+          testID="stats-radius-slider"
+        />
       ) : null}
     </View>
   );
@@ -456,61 +645,83 @@ function Insights({ data }: { data: Extract<AreaInsights, { enoughData: true }> 
  * carry NULL. Without this line "3 from a driveway" reads as three of all the
  * thefts here, when it means three of the handful of people who filled it in.
  */
-function Denominator({ recorded }: { recorded: number }) {
+function Denominator({ recorded, aside = false }: { recorded: number; aside?: boolean }) {
   const styles = useThemedStyles(makeStyles);
+  // The rows already say "3 of 6"; this line's only job is to say what 6 is.
+  // The "it's optional" aside is said ONCE on the page (the first block that
+  // needs it), not under every section — and neutrally: "most owners don't
+  // fill it in" read as a nudge at the reader's neighbours.
   return (
-    <Text style={styles.caption}>
-      Based on the {recorded} {recorded === 1 ? 'listing' : 'listings'} where this was recorded —
-      most owners don’t fill it in.
+    <Text style={styles.quiet}>
+      Of the {recorded} {recorded === 1 ? 'listing' : 'listings'} where this was recorded.
+      {aside ? ' It’s optional, so most listings leave it blank.' : ''}
     </Text>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** The measured rhythm: divider → 32 → title → 16 → content → 32. The first
+ *  section sits under the page title, which is its own separator. */
+function Section({
+  title,
+  first = false,
+  children,
+}: {
+  title?: string;
+  first?: boolean;
+  children: React.ReactNode;
+}) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle} accessibilityRole="header">
-        {title}
-      </Text>
+    <View style={[styles.section, first && styles.sectionFirst]}>
+      {title ? (
+        <Text style={styles.sectionTitle} accessibilityRole="header">
+          {title}
+        </Text>
+      ) : null}
       {children}
     </View>
   );
 }
 
-function Window({ label, value }: { label: string; value: number }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.window}>
-      <Text style={styles.windowValue}>{value}</Text>
-      <Text style={styles.windowLabel}>{label}</Text>
-    </View>
-  );
-}
-
-/** `capitalize` is for owner-typed text (makes, models) — never for labels we
- *  authored, which are already sentence case. */
+/**
+ * Label left, value right — and the VALUE leads by weight, because the count
+ * is the information and the word beside it is the label for it (the same way
+ * round as StatBand and every other number on this page).
+ *
+ * `capitalize` is for owner-typed text (makes, models) — never for labels we
+ * authored, which are already sentence case. `indented` is for the models
+ * under their makes.
+ */
 function Row({
   label,
   value,
-  muted,
   capitalize,
+  indented,
 }: {
   label: string;
   value: string;
-  muted?: boolean;
   capitalize?: boolean;
+  indented?: boolean;
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.row}>
+    // One accessible node, as StatBand reasons: "Ford: 6" in one stop rather
+    // than a label and a bare number the reader has to pair up.
+    <View
+      style={[styles.row, indented && styles.rowIndented]}
+      accessible
+      accessibilityLabel={`${label}: ${value}`}
+    >
+      {/* Two lines, not one: an owner-typed "Mercedes-Benz E-Class Estate" at
+          large type is a name lost if it ellipsises. The value stays centred
+          against a taller row. */}
       <Text
         style={[
           styles.rowLabel,
-          muted ? styles.rowLabelMuted : null,
+          indented ? styles.rowLabelSecondary : null,
           capitalize ? styles.rowLabelCapitalized : null,
         ]}
-        numberOfLines={1}
+        numberOfLines={2}
       >
         {label}
       </Text>
@@ -521,17 +732,18 @@ function Row({
 
 /** The one loading placeholder, used while the town is being placed AND
  *  while the figures load — so both waits are announced the same way. */
-function StatsSkeleton({ label }: { label: string }) {
+function StatsSkeleton({ label, outside = false }: { label: string; outside?: boolean }) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View
-      style={styles.skeletons}
+      style={[styles.skeletons, outside && styles.skeletonOutside]}
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel={label}
       testID="area-insights-skeleton"
     >
       <View style={styles.skeletonHead} />
+      <View style={styles.skeletonLine} />
       <View style={styles.skeletonBlock} />
     </View>
   );
@@ -564,7 +776,9 @@ const makeStyles = (c: Palette) =>
       // pattern): the back glyph and the figures share one left edge.
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.lg,
-      paddingBottom: spacing.md,
+      // 16, the same title → content step the sections use (PostStatsScreen's
+      // headerRow marginBottom); the first section adds nothing on top.
+      paddingBottom: spacing.lg,
     },
     back: {
       width: sizes.touchTarget,
@@ -574,49 +788,89 @@ const makeStyles = (c: Palette) =>
       marginLeft: -(sizes.touchTarget - sizes.icon) / 2,
     },
     title: { ...typography.title, color: c.textPrimary, flexShrink: 1 },
-    content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.xl },
-    stack: { gap: spacing.xl },
-    section: { gap: spacing.sm },
-    sectionTitle: { ...typography.heading, color: c.textPrimary },
-    windows: { flexDirection: 'row', gap: spacing.sm },
-    window: {
-      flex: 1,
-      backgroundColor: c.surfaceSubtle,
-      borderRadius: radii.lg,
-      paddingVertical: spacing.md,
-      alignItems: 'center',
-      gap: spacing.xs,
+    // No `gap`: the rhythm lives on the sections themselves, so a hairline
+    // sits midway between two 32pt spans rather than at the edge of one.
+    content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
+    // The measured rhythm: divider → 32 → title → 16 → content → 32 → divider.
+    section: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+      paddingVertical: spacing.xxl,
+      gap: spacing.lg,
     },
-    windowValue: { ...typography.title, color: c.textPrimary },
-    windowLabel: { ...typography.caption, color: c.textSecondary, textAlign: 'center' },
-    headline: { ...typography.title, color: c.textPrimary },
+    // The first section sits under the page title, which is its own separator.
+    sectionFirst: { borderTopWidth: 0, paddingTop: 0 },
+    // heading, NOT sectionTitle: the step below the page title, as on
+    // PostStatsScreen — this page has enough scales already.
+    sectionTitle: { ...typography.heading, color: c.textPrimary },
+    // The hero: the words in body Regular, the count at title Bold — the one
+    // place the page's number outranks everything else, by size AND weight.
+    // NOT display for the numeral: that is the app's celebration size, and a
+    // theft count is not a celebration. The paragraph takes the TITLE's
+    // leading throughout, so a sentence that wraps (most do, at 342pt) does
+    // not set its second line 6pt tighter than its first.
+    hero: {
+      ...typography.body,
+      lineHeight: typography.title.lineHeight,
+      color: c.textPrimary,
+    },
+    heroNumber: { ...typography.title, color: c.textPrimary },
+    // A section's one plain statement ("71% came back") — sectionTitle, so it
+    // sits between the hero and the headings without a fourth scale.
+    statement: { ...typography.sectionTitle, color: c.textPrimary },
+    quiet: { ...typography.caption, color: c.textSecondary },
+    radius: { gap: spacing.md },
+    // The whole line is the 44pt target; the negative margin gives the extra
+    // height back so the caption still sits in the 16pt rhythm — the same
+    // trick `back` plays horizontally.
+    radiusLine: {
+      alignSelf: 'flex-start',
+      minHeight: sizes.touchTarget,
+      justifyContent: 'center',
+      marginVertical: -(sizes.touchTarget - typography.caption.lineHeight) / 2,
+    },
+    radiusLinePressed: { opacity: opacity.pressed },
+    radiusAction: {
+      ...typography.caption,
+      color: c.textPrimary,
+      textDecorationLine: 'underline', // underline = tappable (DESIGN_SYSTEM)
+    },
+    rows: { gap: spacing.sm },
     row: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: spacing.md,
-      paddingVertical: spacing.xs,
     },
-    rowLabel: { ...typography.label, color: c.textPrimary, flexShrink: 1 },
-    // ⚠️ ONLY for owner-typed makes and models ("bmw" → "Bmw"). It used to sit on
-    // rowLabel itself, which the taken-from and keys-taken rows share — and
-    // those labels are AUTHORED sentence case, so they rendered as "From A
-    // Driveway" and "Keys Not Taken". Sentence case everywhere is the rule
-    // (DESIGN_SYSTEM.md).
+    rowIndented: { paddingLeft: spacing.lg },
+    rowLabel: { ...typography.body, color: c.textPrimary, flexShrink: 1 },
+    rowLabelSecondary: { color: c.textSecondary },
+    // ⚠️ ONLY for owner-typed makes and models ("bmw" → "Bmw"). The taken-from
+    // and keys-taken labels are AUTHORED sentence case and must not pass it.
     rowLabelCapitalized: { textTransform: 'capitalize' },
-    rowLabelMuted: { color: c.textSecondary },
-    rowValue: { ...typography.label, color: c.textSecondary },
-    caption: { ...typography.caption, color: c.textSecondary },
-    skeletons: { paddingHorizontal: spacing.xl, gap: spacing.sm },
-    // Reserved heights, so the real content lands in place instead of shifting
-    // the page under a reader (sizes.ts). Matches PostStatsScreen.
-    skeletonBlock: {
-      height: sizes.statsSkeletonBlock,
+    // The count is the information and the word beside it is its label, so
+    // the emphasis runs value-first — the same way round as StatBand.
+    rowValue: { ...typography.cardTitle, color: c.textPrimary },
+    // No gutter of its own: it renders inside `content` (already 24) or
+    // inside `skeletonOutside` for the pre-fetch waits. Shaped like the real
+    // page — hero sentence, the radius line, the band, then the chart — at
+    // the stack's own rhythm, so the figures land in place instead of
+    // shifting the page under a reader (sizes.ts).
+    skeletons: { gap: spacing.lg },
+    skeletonOutside: { paddingHorizontal: spacing.xl },
+    skeletonHead: {
+      height: sizes.statsSkeletonHead,
       borderRadius: radii.lg,
       backgroundColor: c.surfaceSubtle,
     },
-    skeletonHead: {
-      height: sizes.statsSkeletonHead,
+    skeletonLine: {
+      height: sizes.skeletonLine,
+      width: '45%',
+      borderRadius: radii.sm,
+      backgroundColor: c.surfaceSubtle,
+    },
+    skeletonBlock: {
+      height: sizes.statsSkeletonBlock,
       borderRadius: radii.lg,
       backgroundColor: c.surfaceSubtle,
     },

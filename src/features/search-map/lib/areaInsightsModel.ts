@@ -46,11 +46,26 @@ export function monthlySummary(monthly: { month: string; count: number }[]): str
   if (active.length === 0) {
     return 'No cars reported stolen here in the last 12 months.';
   }
-  const busiest = Math.max(...active.map((m) => m.count));
+  // The busiest month is NAMED, not just counted: "Busiest month 11" under a
+  // chart with no axis labels read as either November or eleven cars. The
+  // month string is `YYYY-MM`; a malformed one falls back to the count alone.
+  const peak = active.reduce((best, m) => (m.count > best.count ? m : best), active[0]);
+  const name = monthName(peak.month);
   return (
     `Cars reported stolen in ${active.length} of the last 12 months. ` +
-    `Busiest month ${busiest}.`
+    (name ? `The busiest was ${name}, with ${peak.count}.` : `The busiest month had ${peak.count}.`)
   );
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** "2026-03" → "March"; anything else → null. */
+function monthName(month: string): string | null {
+  const index = Number(month.slice(5, 7)) - 1;
+  return /^\d{4}-\d{2}$/.test(month) && index >= 0 && index < 12 ? MONTH_NAMES[index] : null;
 }
 
 /**

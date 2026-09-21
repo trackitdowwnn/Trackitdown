@@ -228,6 +228,10 @@ export function HomeFeedScreen() {
         params.lat = String(location.latitude);
         params.lng = String(location.longitude);
         params.radiusMiles = String(location.radiusMiles || FEED_RADIUS_DEFAULT_MILES);
+        // The area's NAME rides along so the stats page can say "Thefts near
+        // St Albans" rather than "near you" — it is the same label the feed's
+        // own header shows, and a figure with no place attached is not a figure.
+        if (location.addressLabel) params.label = location.addressLabel;
       }
       router.push({ pathname: '/area-insights', params });
     },
@@ -386,7 +390,11 @@ export function HomeFeedScreen() {
                 onStats={location?.mode === 'local' ? () => openStats({}) : undefined}
                 // Announced as the title of the screen it opens, so what a
                 // screen reader hears is what the reader lands on.
-                statsAccessibilityLabel="Thefts near you"
+                statsAccessibilityLabel={
+                  location?.mode === 'local' && location.addressLabel
+                    ? `Thefts near ${location.addressLabel}`
+                    : 'Thefts near you'
+                }
                 statsTestID="stats-near-you"
               />
             );
@@ -434,7 +442,7 @@ export function HomeFeedScreen() {
     [
       openMap,
       openStats,
-      location?.mode,
+      location,
       onPressPost,
       nearYouTitle,
       searchRegion,
