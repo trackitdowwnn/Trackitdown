@@ -46,14 +46,27 @@ export interface PostManageSheetProps {
   onDeactivate?: () => void;
   /**
    * OWNER + DRAFT only: delete the draft for good. Mutually exclusive with
-   * onDeactivate — a draft has no escrow to refund, and a paid listing
-   * cannot be deleted at all.
+   * onDeactivate — a draft has no escrow to refund. (A paid listing becomes
+   * deletable only once cancelled — onDeletePost below — and its money
+   * record survives the delete.)
    *
    * Opens the parent's confirm; never deletes straight from a row tap. It is
    * irreversible and there is no tombstone, so the confirm is the only thing
    * standing between a mis-tap and a lost draft.
    */
   onDeleteDraft?: () => void;
+  /**
+   * OWNER + CANCELLED only: delete the cancelled listing for good. The third
+   * mutually-exclusive destructive row — a post is draft, live, or cancelled,
+   * never two at once, so at most one of onDeactivate / onDeleteDraft /
+   * onDeletePost is ever passed.
+   *
+   * Opens the parent's confirm; never deletes straight from a row tap. The
+   * server keeps the money record (the ledger row is detached, not deleted)
+   * and refuses while a refund or dispute is still settling — this row only
+   * decides whether the option shows.
+   */
+  onDeletePost?: () => void;
   /**
    * OWNER + `recovery_claimed` only: try sending the credited spotter their
    * bounty again.
@@ -83,6 +96,7 @@ export function PostManageSheet({
   onEditDistinctiveFeatures,
   onDeactivate,
   onDeleteDraft,
+  onDeletePost,
   onReleasePayout,
 }: PostManageSheetProps) {
   const sheetRef = useRef<BottomSheetRef>(null);
@@ -174,8 +188,9 @@ export function PostManageSheet({
       ) : null}
 
       {/* DRAFT ONLY, and mutually exclusive with the row above: a draft has no
-          escrow to refund, and a paid listing cannot be deleted at all. The
-          parent decides which by passing one handler or the other.
+          escrow to refund. (A paid listing earns the delete row below only
+          once it is cancelled.) The parent decides which by passing one
+          handler or the other.
 
           Says "Delete", not "Discard" or "Remove", because it is permanent —
           there is no tombstone and no undo. A draft was never published, so
@@ -190,6 +205,21 @@ export function PostManageSheet({
           destructive
           onPress={run(onDeleteDraft)}
           testID="manage-delete-draft"
+        />
+      ) : null}
+
+      {/* CANCELLED ONLY — the listing already came down, so unlike the draft
+          row there is nothing left to warn about but permanence. The subtitle
+          names the alternative honestly: doing nothing also deletes it, just
+          later, so this is "now", not "ever". */}
+      {onDeletePost ? (
+        <ListRow
+          icon={Trash2}
+          title="Delete post"
+          subtitle="Removes it for good — otherwise it’s deleted automatically after 30 days."
+          destructive
+          onPress={run(onDeletePost)}
+          testID="manage-delete-post"
         />
       ) : null}
     </BottomSheet>

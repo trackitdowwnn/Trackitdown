@@ -70,6 +70,9 @@ Deno.serve(async (request) => {
     purged: 0,
     locationsPurged: 0,
     photosRemoved: 0,
+    sightingPhotosRemoved: 0,
+    cancelledPostsPurged: 0,
+    cancelledPostsSkipped: 0,
     stillMissingAsked: 0,
   };
 
@@ -167,6 +170,76 @@ Deno.serve(async (request) => {
     }
   } catch (err) {
     console.error('[storage] orphan sweep failed', (err as Error).message);
+  }
+
+  // The SIGHTING-photos twin (20260921110000): same claim → remove → forget
+  // contract, different bucket and queue. Exists because post deletion is
+  // routine now (Phase 0d + the owner's delete) and sighting_photos rows
+  // cascade with their post — without this, every deleted post stranded the
+  // spotters' JPEGs in the private bucket forever. Paths are per-sighting,
+  // never content-shared, so there is no cross-listing hazard here; the
+  // claim's reference re-check is an assertion, not the gate it is above.
+  try {
+    const { data: claimedSighting, error: sightingClaimError } = await admin.rpc(
+      'claim_orphaned_sighting_photos',
+      { p_limit: 100 },
+    );
+    if (sightingClaimError) {
+      console.error('[storage] sighting orphan claim failed', sightingClaimError.message);
+    } else {
+      const paths = (claimedSighting ?? []) as string[];
+      if (paths.length > 0) {
+        const { error: removeError } = await admin.storage.from('sighting-photos').remove(paths);
+        if (removeError) {
+          // Left queued deliberately — the claim/forget note above.
+          console.error('[storage] sighting orphan remove failed', removeError.message);
+        } else {
+          const { error: forgetError } = await admin.rpc('forget_orphaned_sighting_photos', {
+            p_paths: paths,
+          });
+          if (forgetError) {
+            // Objects gone, queue rows not: next run re-claims, `remove` is a
+            // no-op on missing objects, and the forget retries.
+            console.error('[storage] sighting orphan forget failed', forgetError.message);
+          } else {
+            summary.sightingPhotosRemoved = paths.length;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[storage] sighting orphan sweep failed', (err as Error).message);
+  }
+
+  // --- Phase 0d: cancelled-post retention ------------------------------------
+  // A cancelled post the owner never deleted goes at 30 days — the watchlist
+  // tombstone window, fully lapsed. The RPC routes every post through
+  // delete_cancelled_post, so all the money guards apply per post and a
+  // blocked one (a hold still open, a dispute in review, a stray uncaptured
+  // intent only the owner's own delete can prove dead) is skipped and retried
+  // next run, never forced. `skipped` is surfaced in the summary on purpose:
+  // a post the guards refuse EVERY hour is invisible otherwise, and a
+  // persistently non-zero count here is the signal to go look (sweep_health
+  // shows this summary). Photo bytes follow through Phase 0c: the cascading
+  // photo rows queue their storage paths on delete.
+  try {
+    const { data: purgeResult, error: postsPurgeError } = await admin.rpc(
+      'purge_cancelled_posts',
+    );
+    if (postsPurgeError) {
+      console.error('[posts] cancelled-post purge failed', postsPurgeError.message);
+    } else {
+      const doc = purgeResult as { purged?: number; skipped?: number } | null;
+      summary.cancelledPostsPurged = typeof doc?.purged === 'number' ? doc.purged : 0;
+      summary.cancelledPostsSkipped = typeof doc?.skipped === 'number' ? doc.skipped : 0;
+      if (summary.cancelledPostsSkipped > 0) {
+        console.warn('[posts] cancelled-post purge skipped blocked posts', {
+          skipped: summary.cancelledPostsSkipped,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[posts] cancelled-post purge failed', (err as Error).message);
   }
 
   // --- Phase 1: expired, undisputed holds → the owner's refund ---------------
@@ -420,13 +493,14 @@ Deno.serve(async (request) => {
   // because a run that dies half way leaves retention and erasure half-done
   // while an "it was invoked" marker would call that healthy.
   //
-  // This sweep now carries FOUR jobs that fail SILENTLY if it stops: the
+  // This sweep now carries FIVE jobs that fail SILENTLY if it stops: the
   // notification purge, the 90-day location purge (a promise published on the
-  // website), the orphaned-photo removal (GDPR erasure) and — since
-  // 2026-09-02 — the ADR-0019 liveness check. Before this, the only evidence
-  // any of them ran was a console line nobody reads.
+  // website), the orphaned-photo removal (GDPR erasure), the ADR-0019
+  // liveness check (2026-09-02) and — since 2026-09-21 — the 30-day
+  // cancelled-post purge. Before this, the only evidence any of them ran was
+  // a console line nobody reads.
   //
-  // ⚠️ Four is more than this function was designed to carry, and it still has
+  // ⚠️ Five is more than this function was designed to carry, and it still has
   // no ALERTING — sweep_health() must be asked, it never speaks. That is review
   // finding #10 and it is still open.
   //

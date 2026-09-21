@@ -161,7 +161,22 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
 6. **recovered_no_spotter** — recovered without a credited sighting. Bounty
    is refunded to the owner (minus non-recoverable card processing costs,
    which the UI must disclose at posting time).
-7. **cancelled** — the owner cancels. Bounty refunded as above.
+7. **cancelled** — the owner cancels. Bounty refunded as above. Since
+   2026-09-21 a cancelled post is also **deletable**: the app offers deletion
+   right after a cancel, and "Delete post" stays in Manage post; whatever the
+   owner leaves is deleted automatically **30 days after closing**
+   (`purge_cancelled_posts`, run by the hourly sweep — 30 days so the
+   watchlist tombstone window below always lapses first). Deletion is a hard
+   delete (`delete_cancelled_post`, service-role only): sightings, chats and
+   photos cascade, but the **payments row survives, detached** — `post_id`
+   nulled, `post_snapshot` keeping the post's identity and any settled
+   hold/dispute/review history — because money that moved must leave a record.
+   Money still moving (a held refund, an open dispute window or dispute, an
+   unresolved payout review) blocks the delete until it settles; a stray
+   never-captured intent must be cancelled at Stripe first, which the owner's
+   own delete does (delete-post) and the SQL-only purge cannot — such posts
+   are skipped and **counted** (`cancelledPostsSkipped` in the sweep summary),
+   so a post the guards refuse every hour is visible, not silent.
    **expired** — *retired state, like `rejected` below.* Nothing enters it and
    nothing ever has: passive expiry was cut deliberately (see "There is still
    no passive expiry" further down — every refund is a human act). This line
@@ -267,7 +282,10 @@ hearing it was found is the failure mode the watchlist exists to prevent:
 - Recovered states: the watcher sees the normal public payload inside the
   same 30-day window as everyone else — no carve-out needed.
 - `expired` / `cancelled` (not publicly readable): for 30 days after the
-  transition, `get_my_watchlist` returns that watcher a **tombstone** —
+  transition — or until the owner deletes the post, whichever is sooner: the
+  owner's right to erase their own theft record outranks the outcome line, and
+  the 30-day auto-purge deliberately waits for this window to lapse in full —
+  `get_my_watchlist` returns that watcher a **tombstone** —
   make, model, colour, status, transition date, first-photo thumbnail, and
   nothing else (explicitly no plate, bounty, or location: less than the
   post's own active-era public payload, so a tombstone can never be used to
