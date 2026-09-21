@@ -314,17 +314,19 @@ rollback;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 9 — RETENTION: purge_cancelled_posts deletes the 31-days-closed post,
--- keeps the 5-days-closed one, SKIPS (without raising) a 31-days-closed post
--- whose escrow is still held, and reports exactly what it deleted.
+-- CHECK 9 — RETENTION: purge_cancelled_posts deletes the 31-days-closed WARNED
+-- post, keeps the 5-days-closed one, SKIPS (without raising) a warned post
+-- whose escrow is still held, REFUSES the unwarned 31-day post (20260921120000:
+-- no post is ever purged unwarned), and reports exactly what it deleted.
 -- -----------------------------------------------------------------------------
 begin;
--- 31 days closed, settled → should purge. (closed_at supplied on INSERT is
--- honoured by posts_set_closed_at for server-side back-dated fixtures.)
-insert into public.posts (id, owner_id, status, bounty_amount_pence, plate, closed_at)
+-- 31 days closed, settled, warned 4 days ago → should purge. (closed_at
+-- supplied on INSERT is honoured by posts_set_closed_at for server-side
+-- back-dated fixtures.)
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate, closed_at, deletion_warned_at)
 values ('dcdcdcdc-0000-0000-0000-000000000009',
         '11111111-1111-1111-1111-111111111111', 'cancelled', 25000, 'DC19 DEL',
-        now() - interval '31 days');
+        now() - interval '31 days', now() - interval '4 days');
 insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
 values ('dcdcdcdc-0000-0000-0000-000000000009', 'pi_del_9a', 'refunded', 25000);
 -- 5 days closed → inside the tombstone window, must stay.
@@ -334,13 +336,22 @@ values ('dcdcdcdc-0000-0000-0000-00000000000a',
         now() - interval '5 days');
 insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
 values ('dcdcdcdc-0000-0000-0000-00000000000a', 'pi_del_9b', 'refunded', 25000);
--- 31 days closed but escrow still HELD → the guard skips it, the run continues.
-insert into public.posts (id, owner_id, status, bounty_amount_pence, plate, closed_at)
+-- 31 days closed, warned, but escrow still HELD → the guard skips it (and the
+-- skip is counted), the run continues.
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate, closed_at, deletion_warned_at)
 values ('dcdcdcdc-0000-0000-0000-00000000000b',
         '11111111-1111-1111-1111-111111111111', 'cancelled', 25000, 'DC21 DEL',
-        now() - interval '31 days');
+        now() - interval '31 days', now() - interval '4 days');
 insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
 values ('dcdcdcdc-0000-0000-0000-00000000000b', 'pi_del_9c', 'held', 25000);
+-- 31 days closed, settled, NEVER WARNED → the purge must not touch it: the
+-- warning is the owner's notice and the purge structurally waits for it.
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate, closed_at)
+values ('dcdcdcdc-0000-0000-0000-00000000000f',
+        '11111111-1111-1111-1111-111111111111', 'cancelled', 25000, 'DC25 DEL',
+        now() - interval '31 days');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+values ('dcdcdcdc-0000-0000-0000-00000000000f', 'pi_del_9d', 'refunded', 25000);
 
 do $$
 declare
@@ -357,6 +368,9 @@ begin
   if not exists (select 1 from public.posts where id = 'dcdcdcdc-0000-0000-0000-00000000000b') then
     raise exception 'CHECK 9 FAILED: a post with HELD escrow was purged by retention';
   end if;
+  if not exists (select 1 from public.posts where id = 'dcdcdcdc-0000-0000-0000-00000000000f') then
+    raise exception 'CHECK 9 FAILED: an UNWARNED post was purged — the deletion_soon notice is the purge''s precondition';
+  end if;
   -- Exactly ONE fixture purged and ONE skipped. Seed data cannot add to the
   -- counts (purging requires closed_at 30+ days old, and the freshly-reset
   -- seed has no such posts) — but assert >= rather than = so a future seed
@@ -369,7 +383,7 @@ begin
   if coalesce((v_result ->> 'skipped')::integer, 0) < 1 then
     raise exception 'CHECK 9 FAILED: the blocked post was not counted as skipped (got %)', v_result;
   end if;
-  raise notice 'CHECK 9 passed: retention purges at 31 days, keeps at 5, skips + counts held escrow';
+  raise notice 'CHECK 9 passed: retention purges warned 31-day posts, keeps young + unwarned ones, skips + counts held escrow';
 end $$;
 rollback;
 

@@ -102,6 +102,17 @@ const stillMissingPayloadSchema = z
   .object({ type: z.literal('still_missing'), postId: z.guid() })
   .strict();
 
+/** "Your cancelled listing is deleted soon" — the notice before the 30-day
+ *  purge. The POST id: while the post still exists (about 3 more days) the
+ *  tap opens it, where the owner can delete it now if they'd rather; once it
+ *  is purged the detail screen's own not-found state answers honestly. No
+ *  deadline travels — the visible body carries "about 3 days" and a payload
+ *  timestamp would only invite the client to run a countdown to a purge whose
+ *  exact hour belongs to the sweep. */
+const deletionSoonPayloadSchema = z
+  .object({ type: z.literal('deletion_soon'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -116,6 +127,7 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   payoutSentPayloadSchema,
   notCreditedPayloadSchema,
   stillMissingPayloadSchema,
+  deletionSoonPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;
