@@ -126,7 +126,7 @@ describe('fetchHomeFeed', () => {
       feedPayload([
         {
           id: 'recent_uk',
-          title: 'Recent posts across the UK',
+          title: 'Recent listings across the UK',
           layout: 'hero-vertical',
           posts: [rpcPost({ last_seen_at: null, last_seen_area: null, distance_miles: null })],
         },
