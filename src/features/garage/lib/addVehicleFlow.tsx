@@ -34,7 +34,7 @@ export const ADD_VEHICLE_INITIAL_ANSWERS: Partial<AddVehicleAnswers> = {};
 export function buildAddVehicleFlow(): WizardFlow<AddVehicleAnswers> {
   return {
     id: 'add-vehicle',
-    finalCtaLabel: 'Save to my garage',
+    finalCtaLabel: 'Save to My cars',
     review: { title: 'Check your car' },
     phases: [
       {

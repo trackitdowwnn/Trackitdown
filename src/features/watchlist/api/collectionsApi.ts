@@ -34,7 +34,7 @@ const log = createLogger('watchlist');
 const FALLBACK = 'Something went wrong. Please try again.';
 
 const COLLECTION_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'Please sign in and try again.',
+  NOT_AUTHENTICATED: 'Please log in and try again.',
   INVALID_NAME: 'Give your list a name of 1–40 characters.',
   COLLECTION_LIMIT_REACHED: `You can have up to ${MAX_COLLECTIONS} lists. Delete one to add another.`,
   COLLECTION_NAME_TAKEN: 'You already have a list with that name.',

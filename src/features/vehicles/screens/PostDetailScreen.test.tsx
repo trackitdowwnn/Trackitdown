@@ -173,13 +173,13 @@ describe('PostDetailScreen', () => {
     setResult('ready', { kind: 'visible', post });
     const { getByText, queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
     expect(getByText("I've seen this car")).toBeTruthy();
-    expect(queryByText('Manage post')).toBeNull();
+    expect(queryByText('Manage listing')).toBeNull();
   });
 
-  it('owner mode (is_owner): shows "Manage post" instead', async () => {
+  it('owner mode (is_owner): shows "Manage listing" instead', async () => {
     setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
     const { getByText, queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
-    expect(getByText('Manage post')).toBeTruthy();
+    expect(getByText('Manage listing')).toBeTruthy();
     expect(queryByText("I've seen this car")).toBeNull();
   });
 
@@ -202,7 +202,7 @@ describe('PostDetailScreen', () => {
     const { getByText, queryByLabelText } = await render(<PostDetailScreen postId="p1" />, {
       wrapper: ToastProvider,
     });
-    expect(getByText('Report this post')).toBeTruthy();
+    expect(getByText('Report this listing')).toBeTruthy();
     // The header keeps share only (redesign B5 — the reference's trust-page grammar).
     expect(queryByLabelText('Report')).toBeNull();
     expect(queryByLabelText('Share')).toBeTruthy();
@@ -214,7 +214,7 @@ describe('PostDetailScreen', () => {
     setResult('ready', { kind: 'visible', post });
     const { getByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
     await act(async () => {
-      fireEvent.press(getByText('Report this post')); // opens the confirm (auth gate is pass-through)
+      fireEvent.press(getByText('Report this listing')); // opens the confirm (auth gate is pass-through)
     });
     await act(async () => {
       fireEvent.press(getByText('Report')); // the destructive confirm
@@ -331,7 +331,7 @@ describe('PostDetailScreen', () => {
     });
   });
 
-  describe('owner editing + "Manage post"', () => {
+  describe('owner editing + "Manage listing"', () => {
     beforeEach(() => mockPush.mockClear());
 
     // Live-on-payment publishes on payment, so `active` is the state an owner
@@ -365,13 +365,13 @@ describe('PostDetailScreen', () => {
       expect(getByTestId('manage-edit-description')).toBeTruthy();
     });
 
-    it('"Manage post" opens the sheet for THIS listing — it never navigates away', async () => {
+    it('"Manage listing" opens the sheet for THIS listing — it never navigates away', async () => {
       setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'active' } });
       const { getByText, getByTestId } = await render(<PostDetailScreen postId="p1" />, {
         wrapper: ToastProvider,
       });
       await act(async () => {
-        fireEvent.press(getByText('Manage post'));
+        fireEvent.press(getByText('Manage listing'));
       });
       // The old behaviour pushed /my-posts, bouncing the owner off the post.
       expect(mockPush).not.toHaveBeenCalledWith('/my-posts');

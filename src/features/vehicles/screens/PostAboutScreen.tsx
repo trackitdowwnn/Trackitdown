@@ -65,8 +65,8 @@ export function PostAboutScreen({ postId }: PostAboutScreenProps) {
           a fact, not a fault: no retry to loop on. */}
       {status === 'ready' && !post ? (
         <EmptyState
-          title="This post is no longer available"
-          body="It may have been closed or removed by the owner."
+          title="This listing is no longer available"
+          body="It may have been closed or deleted by the owner."
         />
       ) : null}
 

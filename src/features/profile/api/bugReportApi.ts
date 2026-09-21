@@ -66,7 +66,7 @@ export const BUG_REPORT_RATE_LIMITED_MESSAGE =
 
 /** What the server can refuse with, and what a person should read instead. */
 const MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'Please sign in to send a report.',
+  NOT_AUTHENTICATED: 'Please log in to send a report.',
   INVALID_INPUT: 'Please write a little about what went wrong.',
   // Deliberately not "try again later": that invites a retry loop against a
   // limit measured in hours. It names the window instead — and the window is

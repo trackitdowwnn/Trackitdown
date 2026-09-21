@@ -15,13 +15,13 @@ describe('BountyTag', () => {
   it('formats integer pence through the shared money formatter', async () => {
     const { getByText } = await render(<BountyTag bountyPence={50000} />);
 
-    expect(getByText('£500 bounty')).toBeTruthy();
+    expect(getByText('£500 reward')).toBeTruthy();
   });
 
   it('keeps fractional amounts to two decimals at lg size', async () => {
     const { getByText } = await render(<BountyTag bountyPence={125050} size="lg" />);
 
-    expect(getByText('£1,250.50 bounty')).toBeTruthy();
+    expect(getByText('£1,250.50 reward')).toBeTruthy();
   });
 
   // ADR-0014. This is the component that decides what "no reward" looks like
@@ -31,7 +31,7 @@ describe('BountyTag', () => {
 
     expect(getByText(NO_BOUNTY_LABEL)).toBeTruthy();
     // The whole reason posts.bounty_amount_pence is NULLABLE rather than 0.
-    expect(queryByText('£0 bounty')).toBeNull();
+    expect(queryByText('£0 reward')).toBeNull();
     expect(queryByText('£0')).toBeNull();
   });
 

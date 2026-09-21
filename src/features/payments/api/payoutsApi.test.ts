@@ -151,7 +151,7 @@ describe('startConnectOnboarding', () => {
     });
     await expect(startConnectOnboarding()).rejects.toMatchObject({
       code: 'NOT_AUTHENTICATED',
-      message: 'You need to be signed in to set up payouts.',
+      message: 'You need to log in to set up payouts.',
     });
   });
 

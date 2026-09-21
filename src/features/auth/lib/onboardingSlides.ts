@@ -118,7 +118,7 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
     key: 'recovered',
     // The payoff phrase keeps the emphasis the old headlineAccent marked —
     // as weight, which is visible, rather than as a near-black on near-black.
-    headline: [{ text: 'Recovered — ' }, { text: 'bounty paid.', emphasis: true }],
+    headline: [{ text: 'Recovered — ' }, { text: 'reward paid.', emphasis: true }],
     // ⚠️ NOT "earns the bounty". The spotter receives 95%, it requires the
     // owner to CREDIT that specific sighting rather than following from
     // recovery, and on a no-reward listing there is credit and reputation but

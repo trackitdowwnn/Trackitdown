@@ -136,10 +136,10 @@ const CAR_STEP: WizardStep<AlertAnswers> = {
 const FILTERS_STEP: WizardStep<AlertAnswers> = {
   id: 'filters',
   question: 'Which reports are worth it?',
-  helper: 'Only hear about the ones above a bounty you care about.',
+  helper: 'Only hear about the ones above a reward you care about.',
   component: FiltersStep,
   schema: z.object({}),
-  reviewLabel: 'Bounty',
+  reviewLabel: 'Reward',
   reviewValue: describeFilters,
 };
 

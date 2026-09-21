@@ -91,7 +91,7 @@ describe('what the panel promises', () => {
   it('shows the chosen area, so the panel matches what travels', async () => {
     expect(bugDisclosureRows({ lines: [], area: 'payments', shots: 0 })).toContainEqual({
       label: 'Area',
-      value: 'Payments & bounties',
+      value: 'Payments & rewards',
     });
   });
 

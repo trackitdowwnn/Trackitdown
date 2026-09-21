@@ -1,8 +1,9 @@
 /**
  * WHAT:  BountyTag — a listing's reward line in the near-black accent, either a
- *        bounty amount ("£500 bounty") formatted from integer pence via the
- *        shared money formatter, or "No reward" when the listing carries no
- *        bounty at all.
+ *        reward amount ("£500 reward" — "reward" is the user-facing word per
+ *        ADR-0014, glossary settled 2026-09-21) formatted from integer pence
+ *        via the shared money formatter, or "No reward" when the listing
+ *        carries no bounty at all.
  * WHY:   Bounty moments are the one place the accent colour appears
  *        (docs/DESIGN_SYSTEM.md — accent is reserved so it keeps meaning;
  *        monochrome scheme, so it's near-black, distinguished by weight),
@@ -38,7 +39,7 @@ import { typography, useThemedStyles, type Palette } from '../theme';
 export const NO_BOUNTY_LABEL = 'No reward';
 
 /**
- * The reward as one sentence — "£500 bounty", or "No reward".
+ * The reward as one sentence — "£500 reward", or "No reward".
  *
  * Exported because four surfaces build their own accessibility label out of the
  * same two facts (card, map pin, map pager, post detail). Exporting only
@@ -50,7 +51,7 @@ export const NO_BOUNTY_LABEL = 'No reward';
  * also the single place that guard has to be right.
  */
 export function bountyLabel(bountyPence: number | null): string {
-  return bountyPence === null ? NO_BOUNTY_LABEL : `${formatPounds(bountyPence)} bounty`;
+  return bountyPence === null ? NO_BOUNTY_LABEL : `${formatPounds(bountyPence)} reward`;
 }
 
 export interface BountyTagProps {

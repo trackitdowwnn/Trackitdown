@@ -173,7 +173,7 @@ export function PostStatsScreen({ postId }: PostStatsScreenProps) {
           // screen has besides the back chevron.
           <EmptyState
             title="Listing not found"
-            body="This listing may have been removed."
+            body="This listing may have been deleted."
             // "Go back", not "Done": everywhere else in the app Done means
             // commit-and-finish, and this is a dead end, not a completion.
             actionLabel="Go back"

@@ -80,14 +80,14 @@ const CLAIM_MESSAGES: Record<string, string> = {
     'This listing isn’t live, so it can’t be marked recovered. It may already be closed.',
   SIGHTING_NOT_ON_POST: 'That sighting belongs to a different listing.',
   CANNOT_CREDIT_OWN_SIGHTING: 'You can’t credit your own sighting.',
-  NOT_AUTHENTICATED: 'Please sign in again, then try once more.',
+  NOT_AUTHENTICATED: 'Please log in again, then try once more.',
 };
 
 const REFUND_MESSAGES: Record<string, string> = {
   RECOVERY_HAS_CREDITED_SIGHTING:
-    'You credited a spotter for this recovery, so the bounty goes to them.',
+    'You credited a spotter for this recovery, so the reward goes to them.',
   POST_NOT_CLAIMED: 'This listing isn’t waiting on a recovery.',
-  NO_HELD_PAYMENT: 'We couldn’t find the bounty for this listing.',
+  NO_HELD_PAYMENT: 'We couldn’t find the reward for this listing.',
   // The owner-denial gate. REQUIRED should never surface (the screen
   // pre-flights); STALE means a sighting landed mid-confirm.
   ATTESTATION_REQUIRED: 'This listing has recent sightings to look at first.',
@@ -103,14 +103,14 @@ const REFUND_MESSAGES: Record<string, string> = {
 const PAYOUT_MESSAGES: Record<string, string> = {
   POST_NOT_CLAIMED: 'This listing isn’t waiting on a payout. It may already be settled.',
   NO_CREDITED_SIGHTING: 'No spotter is credited on this listing.',
-  NO_HELD_PAYMENT: 'We couldn’t find the bounty for this listing.',
-  LEDGER_ERROR: 'The bounty is on its way. Please check back shortly.',
-  STRIPE_ERROR: 'They’re credited, but sending the bounty didn’t go through. Try again from your listing.',
+  NO_HELD_PAYMENT: 'We couldn’t find the reward for this listing.',
+  LEDGER_ERROR: 'The reward is on its way. Please check back shortly.',
+  STRIPE_ERROR: 'They’re credited, but sending the reward didn’t go through. Try again from your listing.',
   POST_NOT_FOUND: 'We couldn’t find that listing.',
-  NOT_AUTHENTICATED: 'Please sign in again, then try once more.',
-  LOOKUP_FAILED: 'They’re credited. Try sending the bounty again from your listing.',
+  NOT_AUTHENTICATED: 'Please log in again, then try once more.',
+  LOOKUP_FAILED: 'They’re credited. Try sending the reward again from your listing.',
   SPLIT_ERROR: 'They’re credited, but we couldn’t work out the amount. Please contact us.',
-  BAD_REQUEST: 'They’re credited. Try sending the bounty again from your listing.',
+  BAD_REQUEST: 'They’re credited. Try sending the reward again from your listing.',
 };
 
 /**
@@ -123,7 +123,7 @@ const PAYOUT_MESSAGES: Record<string, string> = {
  * non-HTTP failure `UNKNOWN`, so an ordinary dropped connection lands here.
  */
 const PAYOUT_FALLBACK =
-  'They’re credited. Try sending the bounty again from your listing.';
+  'They’re credited. Try sending the reward again from your listing.';
 
 const FALLBACK = 'Something went wrong. Please try again.';
 

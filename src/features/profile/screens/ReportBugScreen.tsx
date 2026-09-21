@@ -112,7 +112,7 @@ export function ReportBugScreen() {
     // anyway; if the session is gone, say so.
     const userId = session.status === 'signedIn' ? session.userId : null;
     if (!userId) {
-      throw new BugReportError('Please sign in to send a report.', 'NOT_AUTHENTICATED');
+      throw new BugReportError('Please log in to send a report.', 'NOT_AUTHENTICATED');
     }
 
     const screenshotPaths = await uploadBugScreenshots(userId, answers.shots ?? []);

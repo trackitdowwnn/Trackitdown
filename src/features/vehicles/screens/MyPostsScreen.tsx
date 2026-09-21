@@ -67,14 +67,14 @@ export function MyPostsScreen() {
       <View style={styles.headerRow}>
         <BackButton />
         <Text style={styles.title} accessibilityRole="header">
-          My Posts
+          My listings
         </Text>
       </View>
 
       {session.status === 'signedOut' ? (
         <EmptyState
-          title="Your posts live here"
-          body="Report a stolen car and track its sightings, status, and bounty — all in one place."
+          title="Your listings live here"
+          body="Report a stolen car and track its sightings, status, and reward — all in one place."
           actionLabel="Log in"
           onAction={() => requireAuth({ context: 'my_posts' })}
         />
@@ -84,11 +84,11 @@ export function MyPostsScreen() {
           <SkeletonVehicleCard />
         </View>
       ) : status === 'error' ? (
-        <ErrorState body="We couldn't load your posts." onRetry={retry} />
+        <ErrorState body="We couldn't load your listings." onRetry={retry} />
       ) : posts.length === 0 ? (
         <EmptyState
-          title="No posts yet"
-          body="When you report a stolen car it shows up here with its status and bounty."
+          title="No listings yet"
+          body="When you report a stolen car it shows up here with its status and reward."
           actionLabel="Post a car"
           onAction={() => router.push('/post-a-car')}
         />

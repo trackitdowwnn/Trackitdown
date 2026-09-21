@@ -66,7 +66,7 @@ describe('feedDisplay', () => {
   });
 
   it('is good-news-empty in local mode without near_you, carrying fallbacks', () => {
-    const fallback = section({ id: 'recent_uk', title: 'Recent posts across the UK' });
+    const fallback = section({ id: 'recent_uk', title: 'Recent listings across the UK' });
     const display = feedDisplay([fallback], 'local');
 
     expect(display).toEqual({ kind: 'good-news-empty', fallbackSections: [fallback] });
@@ -116,7 +116,7 @@ describe('flattenSections', () => {
 
   it('gives non-near_you hero sections a header (recent_uk fallback)', () => {
     const items = flattenSections([
-      section({ id: 'recent_uk', title: 'Recent posts across the UK', posts: [post({ id: 'a' })] }),
+      section({ id: 'recent_uk', title: 'Recent listings across the UK', posts: [post({ id: 'a' })] }),
     ]);
 
     expect(items.map((i) => i.type)).toEqual(['sectionHeader', 'heroCard']);

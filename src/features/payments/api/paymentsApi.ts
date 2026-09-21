@@ -34,7 +34,7 @@ const log = createLogger('payments');
  * unmapped/unknown failure (network, 5xx) falls back to the generic line.
  */
 export const CREATE_PAYMENT_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in to pay.',
+  NOT_AUTHENTICATED: 'You need to log in to pay.',
   POST_NOT_FOUND: 'We couldn’t find that post.',
   POST_NOT_DRAFT: 'This post has already been submitted.',
   STRIPE_ERROR: 'We couldn’t start your payment. Please try again.',
@@ -46,7 +46,7 @@ const CREATE_PAYMENT_FALLBACK = 'We couldn’t start your payment. Please try ag
 
 /** Codes the deactivate-post function returns → user-facing copy. */
 export const DEACTIVATE_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in.',
+  NOT_AUTHENTICATED: 'You need to log in.',
   POST_NOT_FOUND: 'We couldn’t find that post.',
   POST_NOT_REFUNDABLE: 'This listing can’t be deactivated for a refund.',
   NO_HELD_PAYMENT: 'We couldn’t find the escrow for this listing.',

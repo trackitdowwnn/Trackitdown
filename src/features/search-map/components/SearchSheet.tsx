@@ -570,7 +570,7 @@ export function SearchSheet({
           ) : null}
 
           <SearchSection
-            title="Vehicle"
+            title="Car"
             summary={vehicleSummary(criteria)}
             expanded={expanded === 'vehicle'}
             onToggle={() => toggle('vehicle')}
@@ -615,7 +615,7 @@ export function SearchSheet({
           </SearchSection>
 
           <SearchSection
-            title="Bounty"
+            title="Reward"
             summary={bountySummaryLabel(criteria)}
             expanded={expanded === 'bounty'}
             onToggle={() => toggle('bounty')}
@@ -623,7 +623,7 @@ export function SearchSheet({
             testID="section-bounty"
           >
             <MoneyRangeSlider
-              label="Bounty"
+              label="Reward"
               valuePence={{ minPence: criteria.bountyMinPence, maxPence: criteria.bountyMaxPence }}
               onChange={handleBountyChange}
               minPence={SEARCH_BOUNTY_MIN_PENCE}
@@ -709,7 +709,7 @@ export function SearchSheet({
           <View style={styles.footer}>
             {noResults ? (
               <Text style={styles.noResults} accessibilityLiveRegion="polite">
-                No cars match — try widening the bounty or distance.
+                No cars match — try widening the reward or distance.
               </Text>
             ) : null}
             <View style={styles.footerRow}>

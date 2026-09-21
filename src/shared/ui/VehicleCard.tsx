@@ -420,7 +420,7 @@ export function SkeletonVehicleCard({
     return (
       <View
         accessible
-        accessibilityLabel="Loading post"
+        accessibilityLabel="Loading listing"
         accessibilityState={{ busy: true }}
         style={[styles.card, styles.mapCard]}
       >
@@ -438,7 +438,7 @@ export function SkeletonVehicleCard({
   return (
     <View
       accessible
-      accessibilityLabel="Loading post"
+      accessibilityLabel="Loading listing"
       accessibilityState={{ busy: true }}
       style={styles.card}
     >

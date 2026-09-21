@@ -50,7 +50,7 @@ const OPTIONS: CardSelectMultiOption<AlertMatcher>[] = [
   },
   {
     value: 'bounty',
-    label: 'A minimum bounty',
+    label: 'A minimum reward',
     description: 'Only higher-value reports, and how recently the car was seen.',
     icon: Banknote,
   },

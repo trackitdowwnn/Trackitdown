@@ -14,9 +14,9 @@
  *   const dialogRef = useRef<ConfirmDialogRef>(null);
  *   <ConfirmDialog
  *     ref={dialogRef}
- *     title="Sign out?"
+ *     title="Log out?"
  *     body="You can sign back in any time."
- *     confirmLabel="Sign out"
+ *     confirmLabel="Log out"
  *     onConfirm={signOut}
  *   />
  *   dialogRef.current?.open();

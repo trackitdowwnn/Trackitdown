@@ -462,7 +462,7 @@ describe('signed in', () => {
     await act(async () => {
       fireEvent.press(getByTestId('row-delete-account'));
     });
-    expect(getByText(/bounty still held/)).toBeTruthy();
+    expect(getByText(/reward still held/)).toBeTruthy();
     expect(queryByText("Delete your account?")).toBeNull();
     expect(mockRequestDeletion).not.toHaveBeenCalled();
   });

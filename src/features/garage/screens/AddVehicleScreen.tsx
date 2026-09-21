@@ -72,7 +72,7 @@ export function AddVehicleScreen({ vehicleId }: AddVehicleScreenProps) {
           ) : (
             <EmptyState
               title="We couldn't find that car"
-              body="It may have been removed from your garage."
+              body="It may have been removed from My cars."
               actionLabel="Back to my cars"
               onAction={() => router.replace('/my-cars')}
             />
@@ -95,7 +95,7 @@ export function AddVehicleScreen({ vehicleId }: AddVehicleScreenProps) {
     } else {
       await addVehicle(answers);
       successHaptic();
-      toast.show('Saved to your garage', 'success');
+      toast.show('Saved to My cars', 'success');
     }
     // back(), not replace(): the owner came FROM /my-cars, so replacing would
     // stack a second copy of it and defeat the refocus revalidation that

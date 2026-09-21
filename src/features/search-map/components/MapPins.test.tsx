@@ -100,7 +100,7 @@ describe('one marker, one price', () => {
   it('keeps the full accessible label', async () => {
     const { getByLabelText } = await renderPins([pin('a', 5, 25000)]);
 
-    expect(getByLabelText('£250 bounty — Ford Fiesta')).toBeTruthy();
+    expect(getByLabelText('£250 reward — Ford Fiesta')).toBeTruthy();
   });
 
   it('fires onPressPost — a marker you cannot tap is a lie', async () => {

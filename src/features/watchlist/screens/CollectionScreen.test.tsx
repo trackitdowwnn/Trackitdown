@@ -161,9 +161,9 @@ describe('CollectionScreen', () => {
   it('empty: renders the invitation and Explore action routes to the feed', async () => {
     const { getByText } = await renderScreen(null);
 
-    expect(getByText('Tap the bookmark on any post to follow it here.')).toBeTruthy();
+    expect(getByText('Tap the bookmark on any listing to follow it here.')).toBeTruthy();
 
-    fireEvent.press(getByText('Explore posts'));
+    fireEvent.press(getByText('Explore listings'));
     expect(mockPush).toHaveBeenCalledWith('/(tabs)/explore');
   });
 

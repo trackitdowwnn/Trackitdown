@@ -222,7 +222,7 @@ export function FiltersStep({ answers, setAnswers }: StepProps) {
   return (
     <View style={styles.stack}>
       <MoneySlider
-        label="Only if the bounty is at least"
+        label="Only if the reward is at least"
         valuePence={bountyPence}
         // the lowest stop is the floor every post already clears, so treat it as "any"
         // rather than storing a filter that can never exclude anything.

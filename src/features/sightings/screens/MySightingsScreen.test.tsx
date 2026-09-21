@@ -241,7 +241,7 @@ describe('⚠️ grouped by day', () => {
     const { getByRole } = await render(<MySightingsScreen />);
 
     expect(getByRole('header', { name: 'Today' })).toBeTruthy();
-    expect(getByRole('header', { name: 'My reports' })).toBeTruthy();
+    expect(getByRole('header', { name: 'My sightings' })).toBeTruthy();
   });
 });
 
@@ -379,7 +379,7 @@ describe('taking a report back', () => {
       fireEvent.press(getByTestId('confirm-withdraw'));
     });
 
-    expect(mockToastShow).toHaveBeenCalledWith('Report taken back. The owner no longer sees it.');
+    expect(mockToastShow).toHaveBeenCalledWith('Sighting withdrawn — the owner no longer sees it.');
   });
 
   it('⚠️ shows OUR copy when the owner ruled between render and tap', async () => {

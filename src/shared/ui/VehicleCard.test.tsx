@@ -55,7 +55,7 @@ describe('VehicleCard', () => {
 
     const card = getByRole('button');
     expect(card.props.accessibilityLabel).toBe(
-      'Blue BMW 3 Series, plate A B 1 2, C D E, £500 bounty, last seen 2h ago, 2.3 mi away',
+      'Blue BMW 3 Series, plate A B 1 2, C D E, £500 reward, last seen 2h ago, 2.3 mi away',
     );
   });
 
@@ -65,7 +65,7 @@ describe('VehicleCard', () => {
     );
 
     const label = getByRole('button').props.accessibilityLabel;
-    expect(label).toBe('Blue BMW 3 Series, £500 bounty, last seen 2h ago, 2.3 mi away');
+    expect(label).toBe('Blue BMW 3 Series, £500 reward, last seen 2h ago, 2.3 mi away');
     expect(label).not.toContain('plate');
   });
 
@@ -144,7 +144,7 @@ describe('VehicleCard', () => {
   it('renders formatted bounty and distance', async () => {
     const { getByText } = await render(<VehicleCard post={BASE_POST} onPress={() => {}} />);
 
-    expect(getByText('£500 bounty')).toBeTruthy();
+    expect(getByText('£500 reward')).toBeTruthy();
     expect(getByText('2.3 mi')).toBeTruthy();
   });
 
@@ -159,7 +159,7 @@ describe('VehicleCard', () => {
     expect(getByText('2.3 mi · last seen 2h ago')).toBeTruthy();
     expect(queryByText('2.3 mi')).toBeNull();
     expect(queryByText(/Blue ·/)).toBeNull();
-    expect(getByText('£500 bounty')).toBeTruthy();
+    expect(getByText('£500 reward')).toBeTruthy();
     expect(queryByText('AB12 CDE')).toBeNull();
   });
 
@@ -170,7 +170,7 @@ describe('VehicleCard', () => {
 
     expect(getByText('BMW 3 Series')).toBeTruthy();
     expect(getByText('2.3 mi · last seen 2h ago')).toBeTruthy();
-    expect(getByText('£500 bounty')).toBeTruthy();
+    expect(getByText('£500 reward')).toBeTruthy();
     // Definitive peek-card spec: the plate is VISIBLE (spotters confirm a
     // match by plate), not only spoken in the a11y label.
     expect(getByText('AB12 CDE')).toBeTruthy();
@@ -180,7 +180,7 @@ describe('VehicleCard', () => {
 
   it('map skeleton renders without crashing (geometry twin)', async () => {
     const { getByLabelText } = await render(<SkeletonVehicleCard variant="map" />);
-    expect(getByLabelText('Loading post')).toBeTruthy();
+    expect(getByLabelText('Loading listing')).toBeTruthy();
   });
 
   it('compact rail variant renders a static photo — no inner carousel or dots', async () => {
@@ -222,9 +222,9 @@ describe('VehicleCard', () => {
 describe('SkeletonVehicleCard', () => {
   it('renders the loading placeholder for both variants', async () => {
     const feed = await render(<SkeletonVehicleCard />);
-    expect(feed.getByLabelText('Loading post')).toBeTruthy();
+    expect(feed.getByLabelText('Loading listing')).toBeTruthy();
 
     const compact = await render(<SkeletonVehicleCard variant="compact" />);
-    expect(compact.getByLabelText('Loading post')).toBeTruthy();
+    expect(compact.getByLabelText('Loading listing')).toBeTruthy();
   });
 });

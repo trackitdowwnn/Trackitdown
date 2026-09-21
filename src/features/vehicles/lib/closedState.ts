@@ -21,11 +21,11 @@ export function closedStateCopy(result: PostDetailResult | null): ClosedCopy {
   if (result?.kind === 'hidden' && result.closedReason === 'recovered') {
     return {
       title: 'This car has been recovered',
-      body: 'Good news — this post has closed. Thanks for keeping an eye out.',
+      body: 'Good news — this listing has closed. Thanks for keeping an eye out.',
     };
   }
   return {
-    title: 'This post is no longer active',
+    title: 'This listing is no longer active',
     body: 'It may have been recovered or removed.',
   };
 }

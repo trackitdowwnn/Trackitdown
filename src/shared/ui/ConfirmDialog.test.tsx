@@ -52,9 +52,9 @@ function setup(destructive = false) {
   const view = render(
     <ConfirmDialog
       ref={ref}
-      title="Sign out?"
+      title="Log out?"
       body="You can sign back in any time."
-      confirmLabel="Sign out"
+      confirmLabel="Log out"
       destructive={destructive}
       onConfirm={onConfirm}
       onDismiss={onDismiss}
@@ -67,13 +67,13 @@ describe('ConfirmDialog', () => {
   it('is hidden until opened, then shows title, body, and both actions', async () => {
     const { ref, view } = setup();
     const { queryByText, getByText } = await view;
-    expect(queryByText('Sign out?')).toBeNull();
+    expect(queryByText('Log out?')).toBeNull();
     await act(async () => {
       ref.current?.open();
     });
-    expect(getByText('Sign out?')).toBeTruthy();
+    expect(getByText('Log out?')).toBeTruthy();
     expect(getByText('You can sign back in any time.')).toBeTruthy();
-    expect(getByText('Sign out')).toBeTruthy();
+    expect(getByText('Log out')).toBeTruthy();
     expect(getByText('Cancel')).toBeTruthy();
   });
 
@@ -84,11 +84,11 @@ describe('ConfirmDialog', () => {
       ref.current?.open();
     });
     await act(async () => {
-      fireEvent.press(getByText('Sign out'));
+      fireEvent.press(getByText('Log out'));
     });
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onDismiss).not.toHaveBeenCalled();
-    expect(queryByText('Sign out?')).toBeNull();
+    expect(queryByText('Log out?')).toBeNull();
   });
 
   it('cancel closes without confirming and fires onDismiss', async () => {
@@ -102,7 +102,7 @@ describe('ConfirmDialog', () => {
     });
     expect(onConfirm).not.toHaveBeenCalled();
     expect(onDismiss).toHaveBeenCalledTimes(1);
-    expect(queryByText('Sign out?')).toBeNull();
+    expect(queryByText('Log out?')).toBeNull();
   });
 
   it('acknowledge mode shows a single button and no cancel', async () => {
@@ -131,7 +131,7 @@ describe('ConfirmDialog', () => {
       ref.current?.open();
     });
     await act(async () => {
-      fireEvent.press(getByText('Sign out'));
+      fireEvent.press(getByText('Log out'));
     });
     await act(async () => {
       ref.current?.open();

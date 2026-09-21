@@ -95,7 +95,7 @@ export const BUG_AREAS: BugOption<BugArea>[] = [
   { value: 'messages', label: 'Messages' },
   { value: 'watchlist', label: 'Saved cars' },
   { value: 'my_cars', label: 'My cars' },
-  { value: 'payments', label: 'Payments & bounties' },
+  { value: 'payments', label: 'Payments & rewards' },
   { value: 'alerts', label: 'Alerts & notifications' },
   { value: 'account', label: 'Signing in & my account' },
   { value: 'other', label: 'Something else' },
@@ -126,7 +126,7 @@ export const BUG_SEVERITIES: BugCardOption<BugSeverity>[] = [
   {
     value: 'lost',
     label: 'I lost money or data',
-    description: 'A payment, a post or a sighting went missing or wrong.',
+    description: 'A payment, a listing or a sighting went missing or wrong.',
     icon: AlertTriangle,
   },
 ];

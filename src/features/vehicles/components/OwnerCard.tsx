@@ -67,7 +67,7 @@ export function OwnerCard({ owner, sightingCount }: OwnerCardProps) {
     tenure,
     {
       value: String(sightingCount),
-      label: sightingCount === 1 ? 'Sighting on this post' : 'Sightings on this post',
+      label: sightingCount === 1 ? 'Sighting on this post' : 'Sightings on this listing',
     },
   ];
 
@@ -76,7 +76,7 @@ export function OwnerCard({ owner, sightingCount }: OwnerCardProps) {
       style={styles.card}
       accessible
       // Lowercase only the label's leading word — the brand name keeps its case.
-      accessibilityLabel={`${identified ? owner.firstName : 'Verified owner'}, ${tenure.value} ${tenure.label.charAt(0).toLowerCase()}${tenure.label.slice(1)}, ${sightingCount} ${sightingCount === 1 ? 'sighting' : 'sightings'} on this post`}
+      accessibilityLabel={`${identified ? owner.firstName : 'Verified owner'}, ${tenure.value} ${tenure.label.charAt(0).toLowerCase()}${tenure.label.slice(1)}, ${sightingCount} ${sightingCount === 1 ? 'sighting' : 'sightings'} on this listing`}
     >
       <View style={styles.identity}>
         {identified ? (

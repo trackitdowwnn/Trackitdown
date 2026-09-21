@@ -512,7 +512,7 @@ describe('changing bank details — in the app, no browser', () => {
     expect(mockBankToken).toHaveBeenCalledWith({ sortCode: '108800', accountNumber: '00012345' });
     expect(mockIdentityToken).not.toHaveBeenCalled();
     expect(mockSubmitTokens).toHaveBeenCalledWith({ bankToken: 'btok_test_1' });
-    expect(mockShowToast).toHaveBeenCalledWith('Done — bounties will go to your new account.');
+    expect(mockShowToast).toHaveBeenCalledWith('Done — rewards will go to your new account.');
   });
 
   it('offers Stripe’s own page when the in-app change is refused', async () => {

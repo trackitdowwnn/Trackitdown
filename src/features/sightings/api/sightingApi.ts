@@ -56,7 +56,7 @@ const PHOTO_COMPRESS = 0.8;
 /** The RPC raises machine tokens as the exception message; map to calm copy.
  *  RATE_LIMITED copy is time-honest: the budget is per rolling day. */
 export const CREATE_SIGHTING_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in to report a sighting.',
+  NOT_AUTHENTICATED: 'You need to log in to report a sighting.',
   POST_NOT_ACTIVE: 'This post is no longer active, so it can’t take new reports.',
   OWN_POST: 'You can’t report a sighting of your own car.',
   RATE_LIMITED: 'You’ve sent 3 reports for this car today — the owner has them.',

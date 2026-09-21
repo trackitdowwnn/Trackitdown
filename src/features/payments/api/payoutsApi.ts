@@ -33,7 +33,7 @@ const log = createLogger('payments');
 
 /** Codes the connect-onboarding function returns → user-facing copy. */
 export const PAYOUT_ONBOARDING_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in to set up payouts.',
+  NOT_AUTHENTICATED: 'You need to log in to set up payouts.',
   LOOKUP_FAILED: 'We couldn’t set up payouts. Please try again.',
   STRIPE_ERROR: 'We couldn’t set up payouts. Please try again.',
   LEDGER_ERROR: 'We couldn’t set up payouts. Please try again.',
@@ -159,7 +159,7 @@ export async function startConnectOnboarding(
 }
 
 const DETAILS_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in to set up payouts.',
+  NOT_AUTHENTICATED: 'You need to log in to set up payouts.',
   INVALID_DETAILS: 'Please check your details and try again.',
   DETAILS_REJECTED: 'Stripe couldn’t accept those details. Please check them and try again.',
   LOOKUP_FAILED: 'We couldn’t save your details. Please try again.',
@@ -197,7 +197,7 @@ export async function submitPayoutDetails(details: PayoutDetails): Promise<void>
 }
 
 const TOKENS_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in to set up payouts.',
+  NOT_AUTHENTICATED: 'You need to log in to set up payouts.',
   DETAILS_REJECTED: 'Stripe couldn’t accept those details. Please check them and try again.',
   LOOKUP_FAILED: 'We couldn’t save your details. Please try again.',
   LEDGER_ERROR: 'We couldn’t save your details. Please try again.',

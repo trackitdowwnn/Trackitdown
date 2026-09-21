@@ -47,7 +47,7 @@ const log = createLogger('vehicles');
  * Any unmapped failure (network, unknown code) falls back to the generic line.
  */
 export const CREATE_POST_ERROR_MESSAGES: Record<string, string> = {
-  NOT_AUTHENTICATED: 'You need to be signed in to post a car.',
+  NOT_AUTHENTICATED: 'You need to log in to post a car.',
   INVALID_PLATE: 'That number plate doesn’t look right. Check it and try again.',
   PLATE_IN_USE: 'There’s already an active post for this number plate.',
   MISSING_REQUIRED: 'Some required details are missing. Go back and check each step.',

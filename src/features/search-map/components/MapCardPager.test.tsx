@@ -194,14 +194,14 @@ describe('MapCardPager', () => {
       <MapCardPager posts={POSTS} selectedIndex={0} onIndexSettled={() => {}} onPressPost={() => {}} />,
     );
     expect(announceSpy).toHaveBeenCalledWith(
-      'Blue BMW 3 Series, £500 bounty — swipe for more results',
+      'Blue BMW 3 Series, £500 reward — swipe for more results',
     );
 
     await rerender(
       <MapCardPager posts={POSTS} selectedIndex={2} onIndexSettled={() => {}} onPressPost={() => {}} />,
     );
     expect(announceSpy).toHaveBeenCalledWith(
-      'Blue Ford 3 Series, £500 bounty — swipe for more results',
+      'Blue Ford 3 Series, £500 reward — swipe for more results',
     );
   });
 

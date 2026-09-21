@@ -438,7 +438,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     try {
       const { deleteCancelledPost } = await import('../api/deletePostApi');
       await deleteCancelledPost(postId);
-      toast.show('Post deleted');
+      toast.show('Listing deleted');
       router.replace('/my-posts');
     } catch (error) {
       // The api maps every server code to copy a person can act on — including
@@ -765,8 +765,8 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
 
       <ConfirmDialog
         ref={flagRef}
-        title="Report this post?"
-        body="Our team will take a look. Use this for posts that look fake, abusive, or wrong."
+        title="Report this listing?"
+        body="Our team will take a look. Use this for listings that look fake, abusive, or wrong."
         confirmLabel="Report"
         destructive
         onConfirm={onFlagConfirm}
@@ -827,7 +827,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.'
               : `We’ll take it down and refund about ${formatPounds(
                   estimateRefundPence(visiblePost.bountyPence),
-                )} to your card — the bounty minus the non-recoverable card fee. This can’t be undone.`
+                )} to your card — the reward minus the non-recoverable card fee. This can’t be undone.`
           }
           confirmLabel="Yes, deactivate"
           destructive
@@ -849,7 +849,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         <ConfirmDialog
           ref={deleteDraftRef}
           title="Delete this draft?"
-          body="This removes it permanently. Nobody has seen it and nothing has been charged. This can’t be undone."
+          body="This deletes it for good. Nobody has seen it and nothing has been charged. This can’t be undone."
           confirmLabel="Yes, delete"
           destructive
           onConfirm={onDeleteDraft}
@@ -868,8 +868,8 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
       {visiblePost && canDeletePost(visiblePost) ? (
         <ConfirmDialog
           ref={deletePostRef}
-          title="Delete this post?"
-          body="This removes the listing and its sighting history permanently. If you keep it, it stays in My Posts and is deleted automatically after 30 days. This can’t be undone."
+          title="Delete this listing?"
+          body="This deletes the listing and its sighting history for good. If you keep it, it stays in My listings and is deleted automatically after 30 days. This can’t be undone."
           confirmLabel="Yes, delete"
           cancelLabel="Keep it"
           destructive

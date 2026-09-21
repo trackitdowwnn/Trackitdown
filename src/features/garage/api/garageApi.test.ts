@@ -231,7 +231,7 @@ describe('addVehicle', () => {
   it('turns PLATE_ALREADY_SAVED into copy, never the raw code', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'PLATE_ALREADY_SAVED', code: 'P0001' } });
 
-    await expect(addVehicle(answers())).rejects.toThrow('That car is already in your garage.');
+    await expect(addVehicle(answers())).rejects.toThrow('That car is already in My cars.');
   });
 
   it('falls back to safe copy for an unmapped failure', async () => {
