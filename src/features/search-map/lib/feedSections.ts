@@ -23,6 +23,14 @@ export const RECENT_UK_SECTION_ID = 'recent_uk';
  *  empty / error states) — keep in step with the RPC's section title. */
 export const NEAR_YOU_FALLBACK_TITLE = 'Near you';
 
+/**
+ * How wide "this area" is when a feed section names a TOWN rather than a
+ * point ("Recently stolen in St Albans"). Shared by the map's "See all →"
+ * framing and the per-section stats screen, so the two never disagree about
+ * what a named area means: town-sized, not the feed's 20-mile search radius.
+ */
+export const AREA_ENTRY_RADIUS_MILES = 5;
+
 /** Defensive guard — the RPC omits empty sections, but never trust it. */
 export function dropEmptySections(sections: FeedSection[]): FeedSection[] {
   return sections.filter((section) => section.posts.length > 0);
