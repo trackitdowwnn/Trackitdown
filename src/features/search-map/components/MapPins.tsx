@@ -268,11 +268,25 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // on the dark land and 2.61:1 on the light one — which also fixes light,
   // where the old hairline was only 1.17:1 and the shadow was doing all the
   // work alone.
+  // ⚠️ THE MARGIN RESERVES THE GROWTH, AND IT IS WHY THE PILL STOPS CLIPPING.
+  // Selection swaps this padding for a larger one, which made the marker's
+  // view — and so the bitmap Android rasterises it into — CHANGE SIZE on tap.
+  // A marker whose icon resizes while it is being re-tracked comes back half
+  // drawn; with pins overlapping, that reads as the selected one being cut in
+  // half by its neighbours (owner, on device, 2026-09-22, after a first fix
+  // that addressed the shadow and not this).
+  //
+  // So the unselected pill carries the difference as transparent margin: 4pt a
+  // side, exactly the step from md/xs to lg/sm below. The DRAWN pill is
+  // unchanged in both states and still grows on selection; the marker's outer
+  // footprint never does, so the bitmap keeps its dimensions and there is
+  // nothing to re-measure.
   bountyPill: {
     backgroundColor: c.surface,
     borderRadius: radii.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
+    margin: spacing.xs,
     borderWidth: 1,
     borderColor: c.borderStrong,
     ...shadows.soft,
@@ -287,6 +301,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   bountyPillSelected: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+    // The growth spends the margin above rather than adding to the footprint.
+    margin: 0,
     backgroundColor: c.surfaceInverse,
     borderColor: c.surfaceInverse,
   },

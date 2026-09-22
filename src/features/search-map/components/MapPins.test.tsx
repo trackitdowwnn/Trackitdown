@@ -156,6 +156,44 @@ describe('⚠️ the marker box contains its own shadow', () => {
 
     expect(wrapperOf(view).padding).toBe(shadowReach);
   });
+
+  // ⚠️ THE ONE THAT MATTERS. Selection swaps the pill's padding for a larger
+  // one, which changed the marker VIEW's size — and an Android marker whose
+  // icon resizes while it is being re-tracked comes back half drawn. With pins
+  // overlapping, that read as the selected pill cut in half by its neighbours.
+  // The unselected pill carries the difference as transparent margin, so the
+  // drawn pill still grows while the FOOTPRINT never does.
+  it('keeps the same outer footprint selected and unselected', async () => {
+    const pillOf = (view: Awaited<ReturnType<typeof renderPins>>) => {
+      const wrapper = view.getByTestId('marker').children[0] as {
+        children: { props: { style?: unknown } }[];
+      };
+      return StyleSheet.flatten(wrapper.children[0].props.style) as {
+        paddingHorizontal: number;
+        paddingVertical: number;
+        margin: number;
+      };
+    };
+
+    const unselected = pillOf(await renderPins([pin('a', 5, 25000)]));
+    const selected = pillOf(
+      await act(async () =>
+        render(<MapPins pins={[pin('a', 5, 25000)]} selectedPostId="a" onPressPost={jest.fn()} />),
+      ),
+    );
+
+    // The drawn pill really does grow on selection...
+    expect(selected.paddingHorizontal).toBeGreaterThan(unselected.paddingHorizontal);
+    expect(selected.paddingVertical).toBeGreaterThan(unselected.paddingVertical);
+    // ...and padding + margin — the space the marker actually occupies — is
+    // identical, so the bitmap never needs re-measuring.
+    expect(selected.paddingHorizontal + selected.margin).toBe(
+      unselected.paddingHorizontal + unselected.margin,
+    );
+    expect(selected.paddingVertical + selected.margin).toBe(
+      unselected.paddingVertical + unselected.margin,
+    );
+  });
 });
 
 describe('marker identity (the jank guard)', () => {
