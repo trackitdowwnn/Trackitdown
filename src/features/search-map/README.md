@@ -286,10 +286,23 @@ chart rule survive from the Airbnb pass. Calm and factual by decision: no
 severity colour, no trend arrows, no benchmarks against other areas — this
 page is about crime near someone's home. Motion (2026-09-22) is the app's
 one list entrance — staggered `FadeInDown` by rendered position — plus the
-year chart's bars rising from their baseline (`StatsSparkline growIn`, one
-scaleY, not a per-bar race); nothing counts up or bounces, and all of it collapses under reduced motion.
+year chart's bars rising from their baseline (`MonthlyTheftsChart growIn`,
+one scaleY, not a per-bar race); nothing counts up or bounces, and all of it collapses under reduced motion.
 The scroll content adds `insets.bottom` to its tail so the last card clears
 Android's edge-to-edge button bar (Screen pads the top only).
+
+**The year chart** (`components/MonthlyTheftsChart`, 2026-09-22) replaced
+`StatsSparkline` here after the owner found it "not very easy to read or
+understand, there are no labels or anything". The sparkline is right for its
+own page (28 days is too many columns to label); a year is twelve, each wide
+enough to carry its number. So: a count above EVERY bar ("0" included, in
+textSecondary so quiet months recede), a hairline baseline, and a month name
+under every other bar counted back from the last so the most recent month is
+always named (`monthlyColumns`). Names are wider than a column, so they are
+placed from the measured row width rather than flex cells (a Text in a 20pt
+cell ellipsises "Sep"). No y-axis, gridlines or colour coding — the counts
+make an axis redundant, and severity colour on a theft chart is an alarm.
+One node to a screen reader, speaking `monthlySummary`.
 
 **Moving the radius** (2026-09-22, after the owner found the page "refreshes
 too quick and cuts off the slider"): `RadiusSlider` commits on every snap of

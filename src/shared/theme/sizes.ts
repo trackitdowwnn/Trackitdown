@@ -185,6 +185,14 @@ export const sizes = {
   sparklineMin: 4,
   sparklineEmpty: 2,
   sparklineGap: 2,
+  /** The area theft-stats page's 12-month chart (MonthlyTheftsChart): the
+   *  drawn height of the tallest bar. Taller than the sparkline because this
+   *  one carries a count above every bar and month names beneath, and 12
+   *  bars at 64 under a row of numerals read as a strip, not a chart. The
+   *  gap is 4 — the scale's own step — since twelve columns leave each one
+   *  wide enough for a hairline of space to still read as a column. */
+  monthlyChartHeight: 96,
+  monthlyChartGap: 4,
   /** Reserved heights for the stats screen's loading blocks, so the real
    *  content lands in place instead of shifting the page under a reader. */
   statsSkeletonHead: 96,

@@ -50,8 +50,8 @@ jest.mock('../api/areaInsightsApi', () => ({
   fetchAreaInsights: (...args: unknown[]) => mockFetch(...args),
 }));
 
-// The chart is native-heavy and not under test; the toast is asserted on.
-jest.mock('@/features/vehicles', () => ({ StatsSparkline: () => null }));
+// The toast is asserted on. (The chart renders for real — plain Views under
+// the shared Reanimated mock — and has its own suite.)
 const mockToastShow = jest.fn();
 jest.mock('@/shared/ui', () => {
   const actual = jest.requireActual('@/shared/ui');

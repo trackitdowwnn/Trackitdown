@@ -11,25 +11,40 @@
  *        src/features/vehicles/lib/postStatsModel.ts (toSparkline — the sibling).
  */
 
-import type { SparklineBar } from '@/features/vehicles';
+/** One column of the 12-month chart, ready to draw. */
+export interface MonthlyColumn {
+  /** The `YYYY-MM` string — the column's key. */
+  key: string;
+  count: number;
+  /** 0..1 of the busiest month; 0 for a real zero. */
+  fraction: number;
+  /** "Sep" under this column, or null when this column goes unlabelled. */
+  label: string | null;
+}
 
 /**
- * The monthly series as chart bars.
+ * The monthly series as chart columns.
  *
  * The server sends a DENSE series — every month, zeros included — unlike the
  * per-post day series, which is sparse and has to be filled in. So this only
- * scales; it never invents a bucket. `day` carries the month string because that
- * is the bar's key, and the chart is agnostic about what a bucket means.
+ * scales; it never invents a bucket.
+ *
+ * Month names go under EVERY OTHER column, counted back from the last: twelve
+ * three-letter names do not fit twelve ~20pt columns on a phone, and the most
+ * recent month is the one a reader orients by, so it is always the one named.
+ * A malformed month string gets no label rather than a wrong one.
  */
-export function toMonthlyBars(monthly: { month: string; count: number }[]): SparklineBar[] {
+export function monthlyColumns(monthly: { month: string; count: number }[]): MonthlyColumn[] {
   if (monthly.length === 0) return [];
   const busiest = Math.max(...monthly.map((m) => m.count));
-  return monthly.map((m) => ({
-    day: m.month,
+  const last = monthly.length - 1;
+  return monthly.map((m, index) => ({
+    key: m.month,
     count: m.count,
     // A month with no thefts is a real 0 and must draw as the empty stub, not
     // as a nub — dividing by a busiest of 0 would otherwise give NaN.
     fraction: busiest > 0 ? m.count / busiest : 0,
+    label: (last - index) % 2 === 0 ? monthAbbrev(m.month) : null,
   }));
 }
 
@@ -66,6 +81,12 @@ const MONTH_NAMES = [
 function monthName(month: string): string | null {
   const index = Number(month.slice(5, 7)) - 1;
   return /^\d{4}-\d{2}$/.test(month) && index >= 0 && index < 12 ? MONTH_NAMES[index] : null;
+}
+
+/** "2026-03" → "Mar"; anything else → null. */
+function monthAbbrev(month: string): string | null {
+  const name = monthName(month);
+  return name ? name.slice(0, 3) : null;
 }
 
 /**

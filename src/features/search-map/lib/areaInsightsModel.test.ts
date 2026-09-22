@@ -9,36 +9,52 @@
  *        supabase/migrations/20260811160000_area_insights_bucket_floor_owner.sql.
  */
 
-import { monthlySummary, recoveryRateLabel, toMonthlyBars } from './areaInsightsModel';
+import { monthlyColumns, monthlySummary, recoveryRateLabel } from './areaInsightsModel';
 
-describe('toMonthlyBars', () => {
+describe('monthlyColumns', () => {
   it('scales against the busiest month and keeps the zeros', () => {
     // The server series is DENSE — a quiet month is a real zero, not a gap —
     // so this only scales and must never drop a bucket.
-    const bars = toMonthlyBars([
+    const columns = monthlyColumns([
       { month: '2026-01', count: 0 },
       { month: '2026-02', count: 5 },
       { month: '2026-03', count: 10 },
     ]);
 
-    expect(bars).toHaveLength(3);
-    expect(bars[0]).toEqual({ day: '2026-01', count: 0, fraction: 0 });
-    expect(bars[1].fraction).toBeCloseTo(0.5);
-    expect(bars[2].fraction).toBe(1);
+    expect(columns).toHaveLength(3);
+    expect(columns[0]).toMatchObject({ key: '2026-01', count: 0, fraction: 0 });
+    expect(columns[1].fraction).toBeCloseTo(0.5);
+    expect(columns[2].fraction).toBe(1);
+  });
+
+  it('names every other month, counted back from the most recent', () => {
+    const year = Array.from({ length: 12 }, (_, i) => ({
+      month: `2026-${String(i + 1).padStart(2, '0')}`,
+      count: 1,
+    }));
+    const labels = monthlyColumns(year).map((c) => c.label);
+    // The last column is always named — it is the month the reader is in.
+    expect(labels).toEqual([
+      null, 'Feb', null, 'Apr', null, 'Jun', null, 'Aug', null, 'Oct', null, 'Dec',
+    ]);
+  });
+
+  it('gives a malformed month no label rather than a wrong one', () => {
+    expect(monthlyColumns([{ month: 'bad', count: 1 }])[0].label).toBeNull();
   });
 
   it('does not divide by zero on a year with no thefts', () => {
     // Every fraction would be NaN, which renders as a bar of height NaN and
     // takes the chart down with it.
-    const bars = toMonthlyBars([
+    const columns = monthlyColumns([
       { month: '2026-01', count: 0 },
       { month: '2026-02', count: 0 },
     ]);
-    expect(bars.every((b) => b.fraction === 0)).toBe(true);
+    expect(columns.every((c) => c.fraction === 0)).toBe(true);
   });
 
   it('returns nothing for an empty series', () => {
-    expect(toMonthlyBars([])).toEqual([]);
+    expect(monthlyColumns([])).toEqual([]);
   });
 });
 

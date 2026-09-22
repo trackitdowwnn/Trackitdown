@@ -99,7 +99,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { StatsSparkline } from '@/features/vehicles';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import { metresToMiles, milesToMetres } from '@/shared/lib/distance';
@@ -129,7 +128,8 @@ import {
 } from '@/shared/ui';
 
 import { fetchAreaInsights, type AreaInsights } from '../api/areaInsightsApi';
-import { toMonthlyBars, monthlySummary, recoveryRateLabel } from '../lib/areaInsightsModel';
+import { MonthlyTheftsChart } from '../components/MonthlyTheftsChart';
+import { monthlyColumns, monthlySummary, recoveryRateLabel } from '../lib/areaInsightsModel';
 import { AREA_ENTRY_RADIUS_MILES } from '../lib/feedSections';
 
 const log = createLogger('search-map');
@@ -668,7 +668,7 @@ function Breakdown({
   dimStyle: AnimatedStyle<ViewStyle>;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const bars = toMonthlyBars(data.monthly);
+  const columns = monthlyColumns(data.monthly);
   const recovery = recoveryRateLabel(data.recovered, data.closedTotal);
   const summary = monthlySummary(data.monthly);
 
@@ -689,14 +689,11 @@ function Breakdown({
     // fades together with it while a new radius loads.
     <Animated.View style={[styles.stack, dimStyle]}>
       <Card title="Over the last year" index={1} testID="stats-card-year">
-        {/* The sparkline draws a zero month as a visible stub, so the old
-            "every month is shown, a gap is a real zero" caption is now said
-            by the chart itself; it survives as the chart's spoken summary. */}
-        <StatsSparkline
-          bars={bars}
-          summary={`${summary} Every month is shown; a month with no reports is a real zero.`}
-          growIn
-        />
+        {/* A count over every bar and a name under every other, so the chart
+            reads without the caption (MonthlyTheftsChart). The caption stays
+            for the one thing the picture does not say in words — how many of
+            the twelve months had any — and doubles as the spoken summary. */}
+        <MonthlyTheftsChart columns={columns} summary={summary} growIn />
         <Text style={styles.quiet}>{summary}</Text>
       </Card>
 
