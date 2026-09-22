@@ -197,9 +197,18 @@ describe('⚠️ the marker box contains its own shadow', () => {
 });
 
 describe('marker identity (the jank guard)', () => {
-  // If selection ever returns to the React key, this fails — and the marker
-  // would remount and re-arm 500ms of tracksViewChanges on every tap.
-  it('does NOT remount a marker when only its selection changes', async () => {
+  // ⚠️ REVERSED 2026-09-22, deliberately. This used to assert that selection
+  // does NOT remount — the cheap in-place repaint. On Android that repaint is
+  // not reliable: a marker whose appearance and size both change can keep its
+  // old bitmap and have it clipped to the new bounds, which is what the owner
+  // photographed (three tapped-through pills still dark, each cut off).
+  // A remount is the only way to guarantee a fresh icon.
+  //
+  // The perf concern the old assertion protected was never about selection: it
+  // was about RANK, which churns on every pan and would remount dozens of
+  // markers at once. That half is the test below, and it is the load-bearing
+  // one.
+  it('remounts a marker when its selection changes — a fresh bitmap, not a repaint', async () => {
     const view = await renderPins([pin('a', 0)]);
     const before = view.getByTestId('marker');
 
@@ -213,8 +222,7 @@ describe('marker identity (the jank guard)', () => {
       );
     });
 
-    // Same node instance = React reconciled rather than remounted.
-    expect(view.getByTestId('marker')).toBe(before);
+    expect(view.getByTestId('marker')).not.toBe(before);
   });
 
   it('does NOT remount a marker when only its RANK changes', async () => {

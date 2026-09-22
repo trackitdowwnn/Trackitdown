@@ -17,12 +17,21 @@
  *        false from frame 0 is the blank-marker trap), then stops tracking
  *        so it pans free.
  *
- *        RE-RASTERISING IS A PROP, NOT A KEY. Selection used to re-key the
- *        marker, remounting it to force the repaint; `retrackKey` re-arms
- *        tracking IN PLACE instead. It now carries selection alone — with one
- *        appearance there is nothing else that changes what is drawn — so the
- *        churn that made this mechanism necessary (a top-N set turning over on
- *        every pan) no longer exists.
+ *        ⚠️ SELECTION RE-KEYS THE MARKER; EVERYTHING ELSE RE-ARMS IN PLACE.
+ *        This reverses the 2026-08 note that lived here ("RE-RASTERISING IS A
+ *        PROP, NOT A KEY"), and the reason is worth keeping: re-arming
+ *        `tracksViewChanges` is the cheap repaint but not a reliable one on
+ *        Android. A marker whose appearance AND size both change can keep its
+ *        previous bitmap and have it clipped to the new bounds — three pills
+ *        the owner had tapped through were still dark, each cut off where the
+ *        smaller unselected box ended (screenshot, 2026-09-22, after two
+ *        fixes aimed at the shadow and at the footprint). A remount builds a
+ *        new native marker from a new bitmap, so there is no stale-icon path.
+ *
+ *        The cost the old note feared does not apply to selection: it was
+ *        about RANK, which churns on every pan and would remount dozens of
+ *        markers at once. Selection changes one or two per TAP. Rank must
+ *        never enter the key, and the in-place re-arm is gone with it.
  *
  *        Rank, paint order and the assistive-tech cap are decided in
  *        mapPins.pinsForRegion — this component is a dumb renderer of that.
@@ -94,7 +103,6 @@ function TrackedMarker({
   accessible = true,
   anchor,
   zIndex,
-  retrackKey,
   children,
 }: {
   latitude: number;
@@ -114,26 +122,16 @@ function TrackedMarker({
   /** Exposed to assistive tech: selection changes the pill's appearance, so
    *  it must be perceivable non-visually too. */
   selected?: boolean;
-  /** Change this whenever the DRAWN content changes — selection is the only
-   *  such change now — and the marker re-rasterises in place. See the header
-   *  for why this is a prop rather than a key. */
-  retrackKey: string;
   children: ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
+  // Tracks from mount, then freezes. There is no longer an in-place re-arm:
+  // the only thing that changed the drawn content was selection, and selection
+  // now remounts (see the header), which starts this at `true` again anyway.
   const [tracking, setTracking] = useState(true);
-  // Re-arm DURING RENDER, not in an effect: setting state synchronously in an
-  // effect body cascades renders (and the lint rule forbids it). This is the
-  // adjust-state-on-prop-change pattern used elsewhere in the codebase.
-  const [seenKey, setSeenKey] = useState(retrackKey);
-  if (retrackKey !== seenKey) {
-    setSeenKey(retrackKey);
-    setTracking(true);
-  }
 
-  // Freeze a beat after each arming. Keyed on `tracking` so a re-arm restarts
-  // the clock; the setState here is async (inside the timeout), which is the
-  // sanctioned shape.
+  // Freeze a beat after mounting; the setState here is async (inside the
+  // timeout), which is the sanctioned shape.
   useEffect(() => {
     if (!tracking) {
       return;
@@ -179,9 +177,23 @@ export const MapPins = memo(function MapPins({
         const selected = pin.post.id === selectedPostId;
         return (
           <TrackedMarker
-            // The key is the post id ALONE — see the header. Anything that
-            // changes the drawn content goes through retrackKey instead.
-            key={pin.key}
+            // ⚠️ SELECTION IS BACK IN THE KEY (2026-09-22), reversing the
+            // 2026-08 decision recorded in the header. Re-arming
+            // tracksViewChanges in place is the CHEAP repaint — and on
+            // Android it is not a RELIABLE one: a marker whose appearance and
+            // size both change can keep its previous bitmap and have it
+            // clipped to the new bounds. Owner's screenshot: three pills the
+            // map had been tapped through were still wearing their SELECTED
+            // dark fill, each cut off where the smaller unselected box ended,
+            // while an untouched pill beside them drew perfectly.
+            //
+            // Re-keying remounts the marker, so the native side builds a new
+            // marker from a new bitmap and there is no stale-icon path at all.
+            // The cost the old note feared does not apply here: it was written
+            // about RANK, which churns on every pan and would remount dozens
+            // of markers at once. Selection changes one or two per TAP, and
+            // nothing else is in the key, so nothing else remounts.
+            key={`${pin.key}:${selected ? 'on' : 'off'}`}
             selected={selected}
             // Selection on top, then HIGHEST BOUNTY FIRST. Under heavy overlap
             // paint order is what decides which marker a tap actually hits, and
@@ -197,7 +209,6 @@ export const MapPins = memo(function MapPins({
             // a consolation. The selected pin is always reachable.
             accessible={pin.rank < AT_MARKER_LIMIT || selected}
             anchor={pin.anchor ?? MARKER_CENTRE}
-            retrackKey={String(selected)}
             // The car's OWN coordinates, always. A marker displaced to avoid
             // an overlap used to live here; it moved with the zoom, because a
             // constant on-screen gap needs a ground offset that grows as you
@@ -294,7 +305,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // Selection GROWS as well as inverting (DESIGN_SYSTEM: "selected pin grows").
   // Tone alone stopped carrying it once clustering went: a field of near-black
   // dots makes near-black the map's dominant ink, so size and paint order have
-  // to do the work. Costs no remount — it rides the existing retrackKey.
+  // to do the work. Costs the marker a remount (see the header): a fresh
+  // bitmap is the only reliable way Android draws this state change.
   // surfaceInverse, NOT surfaceOverMedia: a pin sits on the BASEMAP, which is
   // themed (mapStyleFor), not on photography. On the dark basemap this flips to
   // near-white — a dark bubble on dark tiles measures ~1.2:1 and vanishes.
