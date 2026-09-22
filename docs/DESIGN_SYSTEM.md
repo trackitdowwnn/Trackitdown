@@ -342,11 +342,16 @@ are build output.
   measured reference ratio). Degrades by omission — pass only the cells you
   have; zero cells renders nothing. Promoted to `shared/ui` 2026-09-21 when
   the theft-stats page became its second consumer after per-listing
-  Activity. **Stat pages are flat**: one hero figure, a StatBand beneath it,
-  then hairline-divided sections at divider → 32 → title → 16 → content →
-  32 (PostStatsScreen, AreaInsightsScreen). Never a stack of `surfaceSubtle`
-  tiles — boxes read as a performance dashboard, the one register these
-  pages must not borrow.
+  Activity. Two stat-page shapes are in use, and both are deliberate:
+  PostStatsScreen is **flat** — one hero figure, a StatBand beneath it, then
+  hairline-divided sections at divider → 32 → title → 16 → content → 32.
+  AreaInsightsScreen (owner decision 2026-09-22) is **card sections** — one
+  column of `cardSurface` cards 16 apart, the hero card first with the
+  StatBand as its footer row under a hairline, then one `cardTitle`-headed
+  card per question. What neither may be is a stack of `surfaceSubtle`
+  tiles or a two-up grid of equal stat boxes: those read as a performance
+  dashboard, the one register these pages must not borrow. Stat cards are
+  never Pressable and carry no chevron.
 - **SafetyNotice** — reusable banner with the "report, don't approach"
   copy; required on sighting flows (see SECURITY_AND_TRUST.md). Passing
   `collapsible` pins it as a single titled line that expands on tap — for

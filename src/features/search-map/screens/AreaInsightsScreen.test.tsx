@@ -170,9 +170,27 @@ describe('scope: the feed\'s area, by name', () => {
   });
 });
 
-describe('the layout (2026-09-21 redesign)', () => {
+describe('the layout (2026-09-21 redesign; card sections 2026-09-22)', () => {
   beforeEach(() => {
     mockFetch.mockResolvedValue(FULL);
+  });
+
+  it('is a column of cards — hero first, then one per question, none for an absent block', async () => {
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-card-hero')).toBeTruthy());
+    // The hero card holds the sentence AND the band: one object, not a
+    // paragraph with three stray numbers under it.
+    const hero = view.getByTestId('stats-card-hero');
+    expect(hero).toHaveTextContent(/14 cars reported stolen/);
+    expect(hero).toHaveTextContent(/last 7 days/);
+    for (const key of ['year', 'makes', 'recovery', 'taken']) {
+      expect(view.getByTestId(`stats-card-${key}`)).toBeTruthy();
+    }
+    // Each card is titled, so a screen reader can walk the page by heading.
+    expect(view.getByRole('header', { name: 'Over the last year' })).toBeTruthy();
+    expect(view.getByRole('header', { name: 'Taken most often' })).toBeTruthy();
+    // No empty shell for a block with nothing in it.
+    expect(view.queryByTestId('stats-card-keys')).toBeNull();
   });
 
   it('leads with ONE hero sentence — the 30-day count — not a row of tiles', async () => {
@@ -237,6 +255,9 @@ describe('the layout (2026-09-21 redesign)', () => {
     const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
     await waitFor(() => expect(view.getByText('Not enough nearby to say')).toBeTruthy());
     expect(view.getByTestId('stats-radius-slider')).toBeTruthy();
+    // One card holds both the reason and the way out.
+    expect(view.getByTestId('stats-card-empty')).toHaveTextContent(/Not enough nearby to say/);
+    expect(view.queryByTestId('stats-card-hero')).toBeNull();
     // Pinned open: no toggle at all — an underlined "Done" that did nothing
     // would break "underline = tappable" and announce as a dead button.
     expect(view.queryByTestId('stats-change-radius')).toBeNull();

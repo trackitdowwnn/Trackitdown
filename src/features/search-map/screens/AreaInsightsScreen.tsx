@@ -1,9 +1,10 @@
 /**
  * WHAT:  AreaInsightsScreen — how many cars have been reported stolen around
- *        here: one hero figure (the last 30 days) over a quiet stat row (7
- *        days / 90 days / 12 months), then flat sections — a 12-month chart,
- *        the makes and models taken most, a recovery rate, and how they were
- *        taken — with the radius as a disclosed "within N miles · Change" line.
+ *        here, as a stack of cards: a hero card (the 30-day count over a quiet
+ *        stat row — 7 days / 90 days / 12 months — with the radius as a
+ *        disclosed "within N miles · Change" line), then one card per
+ *        question — a 12-month chart, the makes and models taken most, a
+ *        recovery rate, how they were taken, whether the keys went.
  * WHY:   The feed shows what is happening near someone one card at a time.
  *        Nothing told them the SHAPE of it — whether this month is normal for
  *        here, which cars go, whether they come back. All of it already existed
@@ -13,13 +14,33 @@
  *        "confusing and not easy to read". It opened with a slider labelled
  *        "Alert radius" and four equal grey tiles — no headline, three visual
  *        grammars (tiles, chart, rows), and six caveat captions louder than the
- *        facts. Now it follows the reference's stat pattern, already measured
- *        for PostStatsScreen: ONE loud statistic, everything else quiet; flat
- *        hairline-divided sections at divider → 32 → title → 16 → content → 32;
- *        values leading their labels; one quiet caveat per section. Calm and
- *        factual — no severity colour, no trend arrows — because the register
- *        Airbnb's own insights pages use (upbeat, benchmarked) is wrong for a
- *        page about crime near someone's home.
+ *        facts. That pass settled the CONTENT order, which still stands: ONE
+ *        loud statistic, everything else quiet; values leading their labels;
+ *        one quiet caveat per section. Calm and factual — no severity colour,
+ *        no trend arrows — because the register Airbnb's own insights pages
+ *        use (upbeat, benchmarked) is wrong for a page about crime near
+ *        someone's home.
+ *
+ *        RE-SHAPED 2026-09-22 into CARD SECTIONS at the owner's request ("I'd
+ *        like this in sections like it's own card sections"), after research
+ *        into how stats pages are drawn on Dribbble and in the apps they
+ *        imitate (Apple Health's Summary, Stripe's metric cards). The pattern
+ *        that recurs: each question gets its own resting card — a small title,
+ *        one headline value or statement, then the supporting chart or rows,
+ *        then a caption — and the page is those cards stacked in one column
+ *        with the hero card first and biggest. Two lessons from that research
+ *        shape the details here:
+ *          · Apple Health's summary-first rule: the sentence comes before the
+ *            chart, and a screen reader hears the sentence, not the bars. Our
+ *            hero sentence and monthlySummary already worked this way.
+ *          · The most common complaint about card-based insights pages is
+ *            that the cards LOOK tappable and are not. So these are the
+ *            house resting card (`cardSurface`: flat, hairline, no shadow —
+ *            a shadow means "floats", which is what a tappable sheet does),
+ *            with no chevrons and nothing pressable but the radius line.
+ *        The previous flat-section layout was itself a decision AGAINST boxes
+ *        ("boxes read as a dashboard"); the owner has seen it and asked for
+ *        cards, and that is theirs to call. PostStatsScreen stays flat.
  *
  * ⚠️ EVERY NUMBER HERE IS A COUNT OVER OTHER PEOPLE'S THEFTS, and the RPC behind
  *        it was rewritten three times to make that safe: membership is tested on
@@ -73,6 +94,7 @@ import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import { metresToMiles, milesToMetres } from '@/shared/lib/distance';
 import { createLogger } from '@/shared/lib/logger';
 import {
+  cardSurface,
   displayFontScaleCap,
   opacity,
   radii,
@@ -372,7 +394,7 @@ export function AreaInsightsScreen({
               rather than holding the old numbers up as an answer. */}
           {haveCurrent ? (
             !insights.enoughData ? (
-              <Section first>
+              <Card testID="stats-card-empty">
                 {/* ⚠️ NEVER a page of zeros. Below the floor the RPC withholds
                     the whole breakdown on purpose, and "0 thefts" would be a
                     claim we have not made — it is "too few to say", which is a
@@ -391,7 +413,7 @@ export function AreaInsightsScreen({
                   pinned
                   onChangeMiles={setRadiusMiles}
                 />
-              </Section>
+              </Card>
             ) : (
               <Insights
                 data={insights}
@@ -417,12 +439,12 @@ export function AreaInsightsScreen({
 }
 
 /**
- * The page's body, in the reference's stat rhythm: ONE hero figure, a quiet
- * stat row beneath it, then flat sections divided by hairlines at the
- * measured spacing — divider → 32 → title → 16 → content → 32 — the same
- * layout PostStatsScreen settled on. Not a stack of boxes: four equal grey
- * tiles gave nobody a place to start, and boxes read as a dashboard, which is
- * the one register this page must not borrow.
+ * The page's body: a single column of cards, 16 apart. The hero card first
+ * and biggest — the 30-day sentence, the radius line, the stat band under a
+ * hairline — then one card per question, each a small title over its
+ * content over its caveat. One column, never a grid: the two-up "stat
+ * tiles" grid that Dribbble stats pages favour is for figures that are peers
+ * of each other, and nothing here is a peer of the hero.
  *
  * Calm and factual throughout (owner decision 2026-09-21): no severity
  * colour, no trend arrows, no "up 40%" badges — a red arrow next to a theft
@@ -456,8 +478,8 @@ function Insights({
   ];
 
   return (
-    <View>
-      <Section first>
+    <View style={styles.stack}>
+      <Card testID="stats-card-hero">
         {/* A sentence, not a bare number: the count at title size and weight,
             its words in body Regular beside it, so the number leads by both
             size and weight — the reference's grammar for a hero figure — and
@@ -482,19 +504,25 @@ function Insights({
           onToggle={onToggleRadius}
           onChangeMiles={onChangeMiles}
         />
-        <StatBand cells={band} />
-      </Section>
+        {/* A hairline between the sentence and the band, INSIDE the card: the
+            band's cells are divided by vertical hairlines already, and the
+            horizontal one turns them into a footer row of the hero card
+            rather than three stray numbers under a paragraph. */}
+        <View style={styles.bandFooter}>
+          <StatBand cells={band} />
+        </View>
+      </Card>
 
-      <Section title="Over the last year">
+      <Card title="Over the last year" testID="stats-card-year">
         {/* The sparkline draws a zero month as a visible stub, so the old
             "every month is shown, a gap is a real zero" caption is now said
             by the chart itself; it survives as the chart's spoken summary. */}
         <StatsSparkline bars={bars} summary={`${summary} Every month is shown; a month with no reports is a real zero.`} />
         <Text style={styles.quiet}>{summary}</Text>
-      </Section>
+      </Card>
 
       {data.topMakes.length > 0 ? (
-        <Section title="Taken most often">
+        <Card title="Taken most often" testID="stats-card-makes">
           <View style={styles.rows}>
             {data.topMakes.map((row) => (
               <Row key={row.make} label={row.make} value={String(row.count)} capitalize />
@@ -515,11 +543,11 @@ function Insights({
           <Text style={styles.quiet}>
             Counted as owners typed them, so two spellings of one make count separately.
           </Text>
-        </Section>
+        </Card>
       ) : null}
 
       {recovery ? (
-        <Section title="Do they come back?">
+        <Card title="Do they come back?" testID="stats-card-recovery">
           <Text style={styles.statement} maxFontSizeMultiplier={displayFontScaleCap}>
             {recovery.headline}
           </Text>
@@ -528,11 +556,11 @@ function Insights({
               counting it as a miss would drag the rate down by however many
               cars are currently in flight. */}
           <Text style={styles.quiet}>{recovery.caveat}</Text>
-        </Section>
+        </Card>
       ) : null}
 
       {data.takenFrom.buckets.length > 0 ? (
-        <Section title="How they were taken">
+        <Card title="How they were taken" testID="stats-card-taken">
           <View style={styles.rows}>
             {data.takenFrom.buckets.map((bucket) => (
               <Row
@@ -543,11 +571,11 @@ function Insights({
             ))}
           </View>
           <Denominator recorded={data.takenFrom.recorded} aside />
-        </Section>
+        </Card>
       ) : null}
 
       {data.keysTaken.buckets.length > 0 ? (
-        <Section title="Were the keys taken?">
+        <Card title="Were the keys taken?" testID="stats-card-keys">
           <View style={styles.rows}>
             {data.keysTaken.buckets.map((bucket) => (
               <Row
@@ -563,7 +591,7 @@ function Insights({
             recorded={data.keysTaken.recorded}
             aside={data.takenFrom.buckets.length === 0}
           />
-        </Section>
+        </Card>
       ) : null}
     </View>
   );
@@ -659,22 +687,29 @@ function Denominator({ recorded, aside = false }: { recorded: number; aside?: bo
   );
 }
 
-/** The measured rhythm: divider → 32 → title → 16 → content → 32. The first
- *  section sits under the page title, which is its own separator. */
-function Section({
+/**
+ * One question, one card: the house resting box (`cardSurface` — surface,
+ * `lg` radius, hairline, NO shadow) with 16 inside and a 12 step between
+ * title, content and caption. The title is `cardTitle` — the token named for
+ * exactly this, body size at Bold — so it labels the card without competing
+ * with the hero sentence two cards up. NOT a Pressable and no chevron: the
+ * cards hold answers, and a box that looks tappable and is not is the most
+ * common complaint about this pattern.
+ */
+function Card({
   title,
-  first = false,
+  testID,
   children,
 }: {
   title?: string;
-  first?: boolean;
+  testID?: string;
   children: React.ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={[styles.section, first && styles.sectionFirst]}>
+    <View style={styles.card} testID={testID}>
       {title ? (
-        <Text style={styles.sectionTitle} accessibilityRole="header">
+        <Text style={styles.cardTitle} accessibilityRole="header">
           {title}
         </Text>
       ) : null}
@@ -788,21 +823,29 @@ const makeStyles = (c: Palette) =>
       marginLeft: -(sizes.touchTarget - sizes.icon) / 2,
     },
     title: { ...typography.title, color: c.textPrimary, flexShrink: 1 },
-    // No `gap`: the rhythm lives on the sections themselves, so a hairline
-    // sits midway between two 32pt spans rather than at the edge of one.
+    // xl gutter, like every other card stack (AlertsScreen, the notification
+    // centre): the page title and the cards share one left edge, and a 16
+    // inset inside the card is the Card entry's own padding.
     content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
-    // The measured rhythm: divider → 32 → title → 16 → content → 32 → divider.
-    section: {
+    // The column of cards. 16 between them — enough that each reads as its
+    // own object, not so much that the page becomes a scroll between islands.
+    stack: { gap: spacing.lg },
+    // The house resting card; `cardSurface` owns the box, this owns the
+    // inside: 16 padding, 12 between title → content → caption.
+    card: {
+      ...cardSurface(c),
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    cardTitle: { ...typography.cardTitle, color: c.textPrimary },
+    // The hero card's footer row: a hairline over the band, and the band's own
+    // cell padding pushed up to the card's 12 step so the three figures sit
+    // clear of the rule.
+    bandFooter: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: c.border,
-      paddingVertical: spacing.xxl,
-      gap: spacing.lg,
+      paddingTop: spacing.xs,
     },
-    // The first section sits under the page title, which is its own separator.
-    sectionFirst: { borderTopWidth: 0, paddingTop: 0 },
-    // heading, NOT sectionTitle: the step below the page title, as on
-    // PostStatsScreen — this page has enough scales already.
-    sectionTitle: { ...typography.heading, color: c.textPrimary },
     // The hero: the words in body Regular, the count at title Bold — the one
     // place the page's number outranks everything else, by size AND weight.
     // NOT display for the numeral: that is the app's celebration size, and a

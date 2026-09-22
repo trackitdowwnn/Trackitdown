@@ -267,16 +267,21 @@ own area NAME travels too (`label`), so the page is titled "Thefts near St
 Albans", not "near you".
 
 **The stats page itself** (`AreaInsightsScreen`, redesigned 2026-09-21 via
-`/airbnb-redesign`) follows the reference's stat pattern already measured for
-PostStatsScreen: ONE hero sentence (the 30-day count), a shared `StatBand`
-beneath it (7 days / 90 days / 12 months), then flat hairline-divided sections
-— chart, most-taken makes, recovery rate, how taken — with values leading
-their labels and one quiet caveat per section. The radius is a disclosed
-"within N miles · Change" line rather than a pinned slider (and no longer
-labelled "Alert radius"). Calm and factual by decision: no severity colour, no
-trend arrows, no benchmarks against other areas — Airbnb's own insights
-register is upbeat and competitive, and this page is about crime near
-someone's home.
+`/airbnb-redesign`, re-shaped into card sections 2026-09-22) is a single
+column of resting cards (`cardSurface`: flat, hairline, no shadow — never a
+Pressable, no chevrons, because a card that looks tappable and is not is the
+standard complaint about this pattern). The hero card first and biggest: ONE
+hero sentence (the 30-day count), the disclosed "within N miles · Change"
+radius line (no pinned slider, no longer labelled "Alert radius"), then a
+shared `StatBand` (7 days / 90 days / 12 months) as the card's footer row
+under a hairline. Then one card per question — chart, most-taken makes,
+recovery rate, how taken, keys — each a `cardTitle` over its content over one
+quiet caveat, with values leading their labels. The card shape came from
+research into Dribbble stats pages and the apps they copy (Apple Health's
+Summary, Stripe's metric cards); the content order and the summary-before-
+chart rule survive from the Airbnb pass. Calm and factual by decision: no
+severity colour, no trend arrows, no benchmarks against other areas — this
+page is about crime near someone's home.
 
 **Entry** — the Map/search pill frames the feed's resolved location at its
 radius; "See all → <Area>" forward-geocodes the town and centres there. Those
