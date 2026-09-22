@@ -2,6 +2,10 @@
  * WHAT:  RadiusSlider — the 1–50 mile radius control: a power-curve track with
  *        a tiered snap grid and a live readout that follows the thumb on the
  *        UI thread. `label` names it per surface ('Alert radius', 'Distance').
+ *        `unsetLabel` (optional) makes the readout say "Any" instead of a
+ *        number while the consumer has no radius APPLIED — the search sheet,
+ *        where the thumb has to rest somewhere but nothing is being filtered
+ *        by; the first touch then commits what is under the finger.
  * WHY:   Modelled on MoneySlider's gesture structure (the house slider), minus
  *        everything money-specific: no typed entry, no transparency panel, no
  *        pence. It is NOT MoneySlider reused directly — that component's
@@ -170,12 +174,21 @@ export function RadiusSlider({
       // The readout stops saying "Any" the moment the thumb moves, on this
       // thread — waiting for the parent's value to come back would leave it
       // reading "Any" under a finger that is already dragging.
+      // ⚠️ CAPTURED BEFORE IT IS CLEARED, and the reason is the whole feature.
+      // `lastSnapped` starts at the RESTING value, so a touch that does not
+      // cross a snap boundary — and above 5 miles the step is 5, making the
+      // band around a resting 10 a wide 7.5–12.5 — used to emit nothing while
+      // still clearing "Any". The readout then said "10 miles" over a search
+      // filtering by no distance at all: precisely the lie `unsetLabel` exists
+      // to remove, reintroduced one line above it. The FIRST touch always
+      // commits what is under the finger.
+      const wasUnset = unset.value;
       unset.value = false;
       position.value = nextPosition;
       const unsnapped = positionToMiles(nextPosition);
       displayMiles.value = unsnapped;
       const snapped = snapMiles(unsnapped);
-      if (snapped !== lastSnapped.value) {
+      if (wasUnset || snapped !== lastSnapped.value) {
         lastSnapped.value = snapped;
         scheduleOnRN(onChangeMiles, snapped);
       }
@@ -269,6 +282,15 @@ export function RadiusSlider({
 
   const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
     if (disabled) return;
+    // From "Any", the first press APPLIES the resting value rather than
+    // stepping off it. `stepAtMiles(10)` is 5, so stepping would make the
+    // first increment commit 15 and the first decrement 5 — leaving the
+    // resting 10 unreachable in one press, and skipping the state the touch
+    // path applies. The two entry points must agree.
+    if (unsetLabel !== undefined) {
+      onChangeMiles(value);
+      return;
+    }
     const direction = event.nativeEvent.actionName === 'increment' ? 1 : -1;
     const next = snapMiles(value + direction * stepAtMiles(value));
     if (next !== value) onChangeMiles(next);
@@ -327,12 +349,21 @@ export function RadiusSlider({
           accessible
           accessibilityRole="adjustable"
           accessibilityLabel={label}
-          accessibilityValue={{
-            min: MIN_RADIUS_MILES,
-            max: MAX_RADIUS_MILES,
-            now: value,
-            text: formatted,
-          }}
+          // ⚠️ TEXT ONLY WHILE UNSET. Publishing `now: 10` beside `text: "Any"`
+          // lets TalkBack build a RangeInfo from min/max/now and announce a
+          // numeric position — asserting a filter that is switched off, which
+          // is the same untruth in the accessibility tree that the readout
+          // just stopped telling on screen.
+          accessibilityValue={
+            unsetLabel !== undefined
+              ? { text: unsetLabel }
+              : {
+                  min: MIN_RADIUS_MILES,
+                  max: MAX_RADIUS_MILES,
+                  now: value,
+                  text: formatted,
+                }
+          }
           accessibilityState={{ disabled }}
           accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
           onAccessibilityAction={handleAccessibilityAction}
@@ -368,6 +399,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textPrimary,
     paddingVertical: 0,
     textAlign: 'right',
+    // ⚠️ Takes the row's spare width, so the frame does not come from whatever
+    // string happened to MOUNT here. The worklet writes this TextInput's text
+    // natively and Yoga never re-measures, so a box sized for "Any" (3 glyphs)
+    // would clip "50 miles" on the first drag. Right-aligned against
+    // headerRow's space-between, so it looks identical at rest.
+    flex: 1,
   },
   trackRow: {
     height: sizes.touchTarget,

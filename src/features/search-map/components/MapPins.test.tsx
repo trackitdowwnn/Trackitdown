@@ -1,13 +1,17 @@
 /**
- * WHAT:  Tests for MapPins — pill vs mini rendering, selection promoting a
- *        mini to a pill, presses firing from both, and the marker key staying
- *        stable when only emphasis changes.
- * WHY:   That last one is the regression guard for a real performance trap.
- *        Emphasis flips on every pan (the top-N set churns), so if it ever
- *        gets folded back into the React key, dozens of markers remount per
- *        pan and each re-arms 500ms of tracksViewChanges — the exact Android
- *        jank MapPins was written to avoid. It cannot be caught by eye in a
- *        simulator; it has to be asserted.
+ * WHAT:  Tests for MapPins — one priced pill per post, the marker box
+ *        containing its own shadow and keeping one footprint across selection,
+ *        paint order, and WHAT MAY ENTER THE REACT KEY: rank must not,
+ *        selection must.
+ * WHY:   Those last two pull in opposite directions and both have bitten.
+ *        RANK churns on every pan, so folding it into the key remounts dozens
+ *        of markers at once, each re-arming 500ms of tracksViewChanges — the
+ *        Android jank this component exists to avoid. SELECTION is the
+ *        opposite case: repainting it in place is cheap and unreliable, and a
+ *        marker that keeps its old bitmap has it clipped to the new bounds
+ *        (owner's screenshot, 2026-09-22: pills tapped through still dark and
+ *        cut off). One or two markers per tap is a price worth paying; dozens
+ *        per pan is not. Neither can be caught by eye in a simulator.
  * LINKS: src/features/search-map/components/MapPins.tsx, docs/TESTING.md.
  */
 

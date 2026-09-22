@@ -175,7 +175,13 @@ commenting standards.
     client-side through a `.strict()` schema so a widened payload fails to
     parse rather than being acted on. The client re-fetches everything else
     through RLS after the tap.
-  - The visible body may name make, colour and a **district-grain** locality.
+  - The visible push — title or body — may name make, colour and a
+    **district-grain** locality. ⚠️ Deliberately field-agnostic since
+    2026-09-22, when the copy pass moved the alert's locality and the
+    sighting's make/colour INTO the title: the guarantee is about what a lock
+    screen shows, and naming one field is how the rule goes stale the next
+    time copy moves between them. The absence assertions in
+    `alerts_verification` are written over title ‖ body for the same reason.
     **Never** the plate, never coordinates, and never
     `posts.last_seen_area` — that column holds the raw reverse-geocoded label
     and can be street-grain, which on a driveway theft is the victim's own

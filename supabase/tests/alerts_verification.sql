@@ -1283,9 +1283,14 @@ declare
   v_frag text;
   v_doc  jsonb;
 begin
-  -- TITLE AND BODY (2026-09-22) — see CHECK 17.
+  -- TITLE AND BODY (2026-09-22) — see CHECK 17. Coalesced: a NULL half makes
+  -- the whole concatenation NULL, every LIKE below NULL, and an absence check
+  -- that cannot fail reads as coverage.
   v_doc  := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001');
-  v_body := (v_doc ->> 'title') || ' ' || (v_doc ->> 'body');
+  v_body := coalesce(v_doc ->> 'title', '') || ' ' || coalesce(v_doc ->> 'body', '');
+  if coalesce(v_doc ->> 'title', '') = '' or coalesce(v_doc ->> 'body', '') = '' then
+    raise exception 'CHECK 18 FAILED: the alert push is missing a title or a body';
+  end if;
 
   select ST_Y(last_seen_location::geometry), ST_X(last_seen_location::geometry)
     into v_lat, v_lng
@@ -1341,9 +1346,14 @@ declare
   v_push  text;
 begin
   v_doc   := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001');
-  v_title := v_doc ->> 'title';
-  v_body  := v_doc ->> 'body';
+  v_title := coalesce(v_doc ->> 'title', '');
+  v_body  := coalesce(v_doc ->> 'body', '');
   v_push  := v_title || ' ' || v_body;
+  -- Neither half may be absent: the LIKEs below are ABSENCE assertions, and a
+  -- NULL (or empty) push would pass every one of them silently.
+  if v_title = '' or v_body = '' then
+    raise exception 'CHECK 19 FAILED: the alert push is missing a title or a body';
+  end if;
 
   -- Sanity: the fixture really does carry two different labels.
   if not exists (
@@ -1391,8 +1401,13 @@ begin
   end if;
 
   v_doc   := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000007');
-  v_title := v_doc ->> 'title';
-  v_push  := v_title || ' ' || (v_doc ->> 'body');
+  v_title := coalesce(v_doc ->> 'title', '');
+  v_push  := v_title || ' ' || coalesce(v_doc ->> 'body', '');
+  -- Nothing else in this file calls match_alert_zones for post …0007, so this
+  -- block is the only guard against a NULL push on the fallback path.
+  if v_title = '' then
+    raise exception 'CHECK 20 FAILED: the fallback push has no title';
+  end if;
 
   if v_title not like '%your area%' then
     raise exception 'CHECK 20 FAILED: a null locality did not fall back to ''your area'': %', v_title;
@@ -1421,6 +1436,13 @@ declare
 begin
   v_with     := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001') ->> 'body';
   v_fallback := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000007') ->> 'body';
+
+  -- ⚠️ THIS IS THE SAFETY-CLAUSE CHECK, so it must not be able to pass on a
+  -- missing body: a NULL makes every `not like` below NULL, and the clause
+  -- SECURITY_AND_TRUST §1 requires would go unasserted.
+  if coalesce(v_with, '') = '' or coalesce(v_fallback, '') = '' then
+    raise exception 'CHECK 21 FAILED: an alert body is missing entirely';
+  end if;
 
   if v_with not like '%don''t approach%' then
     raise exception 'CHECK 21 FAILED: the alert body has no don''t-approach clause: %', v_with;
@@ -1538,8 +1560,10 @@ begin
   end if;
   -- And the title must actually be there, so the coalesce above can never be
   -- the thing making this pass.
-  if coalesce(v_first ->> 'title', '') = '' then
-    raise exception 'CHECK 23 FAILED: the sighting push has no title';
+  -- The BODY too: the clause assertion below is a presence check, so a missing
+  -- body would pass it silently — inside the block being hardened.
+  if coalesce(v_first ->> 'title', '') = '' or coalesce(v_first ->> 'body', '') = '' then
+    raise exception 'CHECK 23 FAILED: the sighting push is missing a title or a body';
   end if;
   if (v_first ->> 'body') not like '%don''t approach%' then
     raise exception 'CHECK 23 FAILED: the sighting body has no don''t-approach clause: %', v_first ->> 'body';
@@ -1619,12 +1643,19 @@ begin
   v_doc  := public.claim_message_notification(
               'c4c4c4c4-0000-0000-0000-000000000002',
               '22222222-2222-2222-2222-222222222222');
-  v_title := v_doc ->> 'title';
-  v_body  := v_doc ->> 'body';
+  v_title := coalesce(v_doc ->> 'title', '');
+  v_body  := coalesce(v_doc ->> 'body', '');
   v_push  := v_title || ' ' || v_body;
 
   if (v_doc ->> 'claimed') <> 'true' then
     raise exception 'CHECK 25 SETUP FAILED: the genuine sender could not claim the message push: %', v_doc;
+  end if;
+  -- ⚠️ NEITHER HALF MAY BE ABSENT. This is the check SECURITY_AND_TRUST §3
+  -- names as the guarantee that message CONTENT never transits Expo/FCM/APNs,
+  -- and every assertion below is a LIKE — so on a NULL push they would all
+  -- evaluate NULL and the block would pass having tested nothing.
+  if v_title = '' or v_body = '' then
+    raise exception 'CHECK 25 FAILED: the message push is missing a title or a body';
   end if;
   -- The recipient is the OTHER participant, derived server-side from the thread.
   if (v_doc ->> 'user_id') <> '11111111-1111-1111-1111-111111111111' then

@@ -585,22 +585,41 @@ function MapSearchBody({
   // either way. `searchId` bumps only when a search LANDS, so recording the one
   // in flight and waiting for a different one is the deterministic version of
   // the same question.
-  const pendingSearchFrame = useRef<{ maxRadiusMiles: number; afterSearchId: number } | null>(
-    null,
-  );
+  const pendingSearchFrame = useRef<{
+    maxRadiusMiles: number;
+    afterSearchId: number;
+    sawLoading: boolean;
+  } | null>(null);
   useEffect(() => {
     const pending = pendingSearchFrame.current;
     if (!pending) {
       return;
     }
-    // ⚠️ A FAILED SEARCH DROPS THE REQUEST. `searchId` only bumps when a search
-    // LANDS, so a failure leaves the pending frame armed — and the next search
-    // to land, including an auto re-search after a pan, would spend it and move
-    // the camera using the FAILED search's radius, minutes later and under
-    // someone mid-browse. That is the exact thing the comment above promises
-    // cannot happen.
+    // ⚠️ A FAILED SEARCH DROPS THE REQUEST — but only ITS OWN failure, and
+    // that distinction is the whole of this block. `searchId` bumps only when
+    // a search LANDS, so a failure would otherwise leave the frame armed and
+    // the next search to land (an auto re-search after a pan, say) would spend
+    // it, moving the camera minutes later with the failed search's radius.
+    //
+    // Reading `status === 'error'` alone was NOT that check. By the same
+    // ordering the comment above refuses to rest on — flyTo sets
+    // `settledRegion` synchronously while runSearch defers its status into a
+    // microtask — the arming commit can flush this effect while `status` is
+    // still the PREVIOUS search's. If that one had failed, the frame was
+    // dropped the instant it was armed, and applying a search straight after a
+    // failed one silently never framed.
+    //
+    // `sawLoading` is the fix: an applied search always passes through
+    // 'loading' (applySearch runs runSearch(..., 'initial')), so an error is
+    // only this request's once we have watched this request start.
+    if (status === 'loading') {
+      pending.sawLoading = true;
+      return;
+    }
     if (status === 'error') {
-      pendingSearchFrame.current = null;
+      if (pending.sawLoading) {
+        pendingSearchFrame.current = null;
+      }
       return;
     }
     if (status !== 'ready' || searchId === pending.afterSearchId) {
@@ -714,6 +733,9 @@ function MapSearchBody({
         maxRadiusMiles: criteria.distanceMiles ?? MAX_SEARCH_FRAME_RADIUS_MILES,
         // The search in flight right now; the frame waits for a LATER one.
         afterSearchId: searchId,
+        // Set by the effect once THIS request is observed starting, so a
+        // stale 'error' from the previous one cannot drop it.
+        sawLoading: false,
       };
       void applySearch({ criteria, region });
       // Which criteria the user searched by (KEY presence only) + the coarse
