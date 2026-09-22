@@ -86,8 +86,17 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown, ReduceMotion } from 'react-native-reanimated';
+import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import Animated, {
+  type AnimatedStyle,
+  FadeIn,
+  FadeInDown,
+  ReduceMotion,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StatsSparkline } from '@/features/vehicles';
@@ -108,13 +117,13 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import {
   EmptyState,
   ErrorState,
   RadiusSlider,
   Screen,
   StatBand,
-  type StatBandCell,
   ThemedRefreshControl,
   useToast,
 } from '@/shared/ui';
@@ -127,6 +136,21 @@ const log = createLogger('search-map');
 
 /** The feed's own default. "Round here" is already defined once. */
 const DEFAULT_RADIUS_MILES = 20;
+
+/**
+ * How long the radius has to hold still before it is fetched for.
+ *
+ * ⚠️ RadiusSlider commits on EVERY SNAP of a drag, not on release. Wired
+ * straight into the fetch, a thumb crossing 10 → 15 → 20 → 25 → 30 fired five
+ * RPCs (the RPC quantises the radius anyway, so four of them answered
+ * questions nobody asked) and — the part the owner saw — each one flipped the
+ * page to the skeleton, which unmounted the slider under their finger. The
+ * "within N miles" line still follows the thumb live; only the QUESTION waits
+ * until the finger has settled. useSearchCount's live count debounces the
+ * same slider at 200; a little longer here because an answer costs a page
+ * repaint, not a number on a button.
+ */
+const RADIUS_SETTLE_MS = 300;
 
 export interface AreaInsightsScreenProps {
   /** A named town to answer for — geocoded here. Wins over nothing; loses
@@ -186,6 +210,16 @@ export function AreaInsightsScreen({
   const [radiusMiles, setRadiusMiles] = useState(
     radiusProp ?? (area && !hasPoint ? AREA_ENTRY_RADIUS_MILES : DEFAULT_RADIUS_MILES),
   );
+  // The radius the FETCH is asked for: `radiusMiles` once it has held still
+  // for RADIUS_SETTLE_MS. Two values on purpose — the slider and the "within
+  // N miles" line follow the finger through `radiusMiles`; the network and
+  // the figures follow `askedMiles`.
+  const [askedMiles, setAskedMiles] = useState(radiusMiles);
+  useEffect(() => {
+    if (askedMiles === radiusMiles) return;
+    const timer = setTimeout(() => setAskedMiles(radiusMiles), RADIUS_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [radiusMiles, askedMiles]);
   const [geocode, setGeocode] = useState<GeocodeState>({ status: 'idle' });
   // The radius control is disclosed, not pinned: the figure is the hero and
   // "within N miles · Change" beneath it is enough until someone wants to
@@ -296,7 +330,7 @@ export function AreaInsightsScreen({
     let cancelled = false;
     // The radius THIS request asked for, captured so a late response can only
     // ever be recorded against the question it actually answered.
-    const forMiles = radiusMiles;
+    const forMiles = askedMiles;
     // Every write is after the await, so this never trips
     // react-hooks/set-state-in-effect.
     fetchAreaInsights(lat, lng, milesToMetres(forMiles))
@@ -327,7 +361,7 @@ export function AreaInsightsScreen({
     return () => {
       cancelled = true;
     };
-  }, [lat, lng, radiusMiles, generation]);
+  }, [lat, lng, askedMiles, generation]);
 
   // The pull: ask the effect again. It owns the spinner and it is how someone
   // gets out of the error state without leaving the screen.
@@ -345,6 +379,12 @@ export function AreaInsightsScreen({
   // we have figures for the area the slider is stating" is.
   const haveCurrent = insights !== null && shownMiles === radiusMiles;
   const currentFailed = failedMiles === radiusMiles;
+  // Figures are up but for ANOTHER radius — the slider has moved (or is still
+  // moving) and the answer for where it now sits has not landed. Rendered as
+  // the old figures, dimmed, under an "Updating for N miles" line: NOT the
+  // skeleton, which would unmount the slider mid-drag (see RADIUS_SETTLE_MS),
+  // and not the old figures held up as-is either.
+  const pending = insights !== null && !haveCurrent && !currentFailed;
   // A pull spinner over a skeleton is two loading indicators for one fetch, so
   // the spinner only shows when there is real content behind it to refresh.
   const showSpinner = refreshing && haveCurrent;
@@ -405,40 +445,22 @@ export function AreaInsightsScreen({
               ⚠️ Once the radius moves they stop being stale and start being
               WRONG: this screen exists to say how much theft there is in a
               STATED area, and figures for 20 miles under a slider reading 30
-              describe a different one. So a moved slider falls through to the
-              skeleton (or the error, if this radius is the one that failed)
-              rather than holding the old numbers up as an answer. */}
-          {haveCurrent ? (
-            !insights.enoughData ? (
-              <Card testID="stats-card-empty">
-                {/* ⚠️ NEVER a page of zeros. Below the floor the RPC withholds
-                    the whole breakdown on purpose, and "0 thefts" would be a
-                    claim we have not made — it is "too few to say", which is a
-                    different and more honest sentence. Told WHY first, then
-                    handed the way out beneath. */}
-                <EmptyState
-                  title="Not enough nearby to say"
-                  body={`We only show this once there are enough reports in an area to be meaningful. Try a wider radius than ${Math.round(metresToMiles(insights.radiusM))} miles.`}
-                  // Inside the ScrollView's own xl gutter — EmptyState's default
-                  // would stack to 48pt a side and wrap the body to 8 lines.
-                  gutter="none"
-                />
-                <RadiusControl
-                  radiusMiles={radiusMiles}
-                  open
-                  pinned
-                  onChangeMiles={setRadiusMiles}
-                />
-              </Card>
-            ) : (
-              <Insights
-                data={insights}
-                radiusMiles={radiusMiles}
-                radiusOpen={radiusOpen}
-                onToggleRadius={() => setRadiusOpen((open) => !open)}
-                onChangeMiles={setRadiusMiles}
-              />
-            )
+              describe a different one. So a moved slider renders them as
+              PENDING — dimmed, under "Updating for 30 miles" — rather than
+              holding them up as an answer. It used to fall through to the
+              skeleton instead, which was more honest still and unusable: the
+              skeleton replaced the slider mid-drag (2026-09-22, on device).
+              Figures that are up but not yet for THIS radius stay mounted so
+              the control the reader is holding stays under their finger. */}
+          {insights !== null && (haveCurrent || pending) ? (
+            <Insights
+              data={insights}
+              pending={pending}
+              radiusMiles={radiusMiles}
+              radiusOpen={radiusOpen}
+              onToggleRadius={() => setRadiusOpen((open) => !open)}
+              onChangeMiles={setRadiusMiles}
+            />
           ) : currentFailed ? (
             <ErrorState
               title="We couldn’t load this area"
@@ -474,19 +496,139 @@ export function AreaInsightsScreen({
  * Calm and factual throughout (owner decision 2026-09-21): no severity
  * colour, no trend arrows, no "up 40%" badges — a red arrow next to a theft
  * count is an alarm, and the reader is already worried.
+ *
+ * ⚠️ ONE HERO CARD FOR BOTH ANSWERS. It takes the whole payload — enough or
+ * not — and renders the same card either way, with the RadiusControl in the
+ * SAME child slot in both. The not-enough state used to be its own card with
+ * its own control; dragging from 20 miles into a too-small 5 swapped one for
+ * the other, and a swap is a remount — the slider vanished from under the
+ * finger exactly as the skeleton did. Same slot, same instance, whatever
+ * the answer.
+ *
+ * `pending`: the figures are for another radius and the new answer is on
+ * its way. The figures dim to `opacity.inactive` (a `fast` fade, not a snap)
+ * under an "Updating for N miles" line, and the control stays at full
+ * strength — it is the one thing on the page that is exactly current.
  */
 function Insights({
   data,
+  pending,
   radiusMiles,
   radiusOpen,
   onToggleRadius,
   onChangeMiles,
 }: {
-  data: Extract<AreaInsights, { enoughData: true }>;
+  data: AreaInsights;
+  pending: boolean;
   radiusMiles: number;
   radiusOpen: boolean;
   onToggleRadius: () => void;
   onChangeMiles: (miles: number) => void;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const reducedMotion = useReducedMotion();
+  const dim = useSharedValue(pending ? opacity.inactive : 1);
+  useEffect(() => {
+    dim.value = withTiming(pending ? opacity.inactive : 1, {
+      duration: reducedMotion ? motion.instant : motion.fast,
+      easing: easeOut,
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [pending, reducedMotion, dim]);
+  const dimStyle = useAnimatedStyle(() => ({ opacity: dim.value }));
+  const within = `${radiusMiles} ${radiusMiles === 1 ? 'mile' : 'miles'}`;
+
+  return (
+    <View style={styles.stack}>
+      <Card testID={data.enoughData ? 'stats-card-hero' : 'stats-card-empty'}>
+        {data.enoughData ? (
+          <HeroSentence count={data.total30d} dimStyle={dimStyle} />
+        ) : (
+          // ⚠️ NEVER a page of zeros. Below the floor the RPC withholds the
+          // whole breakdown on purpose, and "0 thefts" would be a claim we
+          // have not made — it is "too few to say", which is a different and
+          // more honest sentence. Told WHY first, then handed the way out
+          // beneath. Dimmed like any other figure while a new radius loads.
+          <Animated.View style={dimStyle}>
+            <EmptyState
+              title="Not enough nearby to say"
+              body={`We only show this once there are enough reports in an area to be meaningful. Try a wider radius than ${Math.round(metresToMiles(data.radiusM))} miles.`}
+              // Inside the ScrollView's own xl gutter — EmptyState's default
+              // would stack to 48pt a side and wrap the body to 8 lines.
+              gutter="none"
+            />
+          </Animated.View>
+        )}
+        {/* Said, not just shown: dimming alone is a hint, and a screen reader
+            gets nothing from opacity. Polite, so it does not cut off the
+            slider's own value announcements mid-drag. */}
+        {pending ? (
+          <Text style={styles.quiet} accessibilityLiveRegion="polite" testID="stats-pending">
+            Updating for {within}…
+          </Text>
+        ) : null}
+        <RadiusControl
+          radiusMiles={radiusMiles}
+          open={data.enoughData ? radiusOpen : true}
+          pinned={!data.enoughData}
+          onToggle={onToggleRadius}
+          onChangeMiles={onChangeMiles}
+        />
+        {data.enoughData ? (
+          // A hairline between the sentence and the band, INSIDE the card:
+          // the band's cells are divided by vertical hairlines already, and
+          // the horizontal one turns them into a footer row of the hero card
+          // rather than three stray numbers under a paragraph.
+          <Animated.View style={[styles.bandFooter, dimStyle]}>
+            <StatBand
+              cells={[
+                { key: '7d', value: String(data.total7d), label: 'last 7 days', spoken: `${data.total7d} in the last 7 days` },
+                { key: '90d', value: String(data.total90d), label: 'last 90 days', spoken: `${data.total90d} in the last 90 days` },
+                { key: '365d', value: String(data.total365d), label: 'last 12 months', spoken: `${data.total365d} in the last 12 months` },
+              ]}
+            />
+          </Animated.View>
+        ) : null}
+      </Card>
+      {data.enoughData ? <Breakdown data={data} dimStyle={dimStyle} /> : null}
+    </View>
+  );
+}
+
+/**
+ * The hero: a sentence, not a bare number — the count at title size and
+ * weight, its words in body Regular beside it, so the number leads by both
+ * size and weight (the reference's grammar for a hero figure) and "14"
+ * cannot be mistaken for anything else on the page. One text node, one
+ * baseline, one screen-reader stop.
+ *
+ * The font-scale cap is repeated on the number run: it is not reliably
+ * inherited across nested Text (OnboardingSlide records the same), and an
+ * uncapped numeral at 200% would outgrow the words it belongs to. Zero
+ * reads "No cars" — calmer and truer than a "0".
+ */
+function HeroSentence({ count, dimStyle }: { count: number; dimStyle: AnimatedStyle<ViewStyle> }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Animated.View style={dimStyle}>
+      <Text style={styles.hero} accessibilityRole="header" testID="stats-hero">
+        <Text style={styles.heroNumber} maxFontSizeMultiplier={displayFontScaleCap}>
+          {count === 0 ? 'No' : count}
+        </Text>
+        {count === 1 ? ' car reported stolen ' : ' cars reported stolen '}
+        in the last 30 days
+      </Text>
+    </Animated.View>
+  );
+}
+
+/** Everything below the hero card: one card per question, staggered in. */
+function Breakdown({
+  data,
+  dimStyle,
+}: {
+  data: Extract<AreaInsights, { enoughData: true }>;
+  dimStyle: AnimatedStyle<ViewStyle>;
 }) {
   const styles = useThemedStyles(makeStyles);
   const bars = toMonthlyBars(data.monthly);
@@ -505,51 +647,10 @@ function Insights({
   const takenIndex = recoveryIndex + (showRecovery ? 1 : 0);
   const keysIndex = takenIndex + (showTaken ? 1 : 0);
 
-  // The 30-day count is the hero: "how bad is it here, now" is the question
-  // a worried owner opened this page with. The other windows sit in the band.
-  const heroCount = data.total30d;
-  const band: StatBandCell[] = [
-    { key: '7d', value: String(data.total7d), label: 'last 7 days', spoken: `${data.total7d} in the last 7 days` },
-    { key: '90d', value: String(data.total90d), label: 'last 90 days', spoken: `${data.total90d} in the last 90 days` },
-    { key: '365d', value: String(data.total365d), label: 'last 12 months', spoken: `${data.total365d} in the last 12 months` },
-  ];
-
   return (
-    <View style={styles.stack}>
-      <Card testID="stats-card-hero">
-        {/* A sentence, not a bare number: the count at title size and weight,
-            its words in body Regular beside it, so the number leads by both
-            size and weight — the reference's grammar for a hero figure — and
-            "14" cannot be mistaken for anything else on the page. One text
-            node, one baseline, one screen-reader stop.
-
-            The font-scale cap is repeated on the number run: it is not
-            reliably inherited across nested Text (OnboardingSlide records
-            the same), and an uncapped numeral at 200% would outgrow the
-            words it belongs to. Zero reads "No cars" — calmer and truer than
-            a "0". */}
-        <Text style={styles.hero} accessibilityRole="header" testID="stats-hero">
-          <Text style={styles.heroNumber} maxFontSizeMultiplier={displayFontScaleCap}>
-            {heroCount === 0 ? 'No' : heroCount}
-          </Text>
-          {heroCount === 1 ? ' car reported stolen ' : ' cars reported stolen '}
-          in the last 30 days
-        </Text>
-        <RadiusControl
-          radiusMiles={radiusMiles}
-          open={radiusOpen}
-          onToggle={onToggleRadius}
-          onChangeMiles={onChangeMiles}
-        />
-        {/* A hairline between the sentence and the band, INSIDE the card: the
-            band's cells are divided by vertical hairlines already, and the
-            horizontal one turns them into a footer row of the hero card
-            rather than three stray numbers under a paragraph. */}
-        <View style={styles.bandFooter}>
-          <StatBand cells={band} />
-        </View>
-      </Card>
-
+    // The dim rides on the whole breakdown, so every figure below the hero
+    // fades together with it while a new radius loads.
+    <Animated.View style={[styles.stack, dimStyle]}>
       <Card title="Over the last year" index={1} testID="stats-card-year">
         {/* The sparkline draws a zero month as a visible stub, so the old
             "every month is shown, a gap is a real zero" caption is now said
@@ -634,7 +735,7 @@ function Insights({
           />
         </Card>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 

@@ -315,6 +315,99 @@ describe('the layout (2026-09-21 redesign; card sections 2026-09-22)', () => {
   });
 });
 
+describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)', () => {
+  // RadiusSlider commits on every snap of a drag; its accessibility actions
+  // are the same code path (MoneySlider's tests drive it the same way).
+  const nudge = (view: Awaited<ReturnType<typeof render>>, action: 'increment' | 'decrement') =>
+    fireEvent(view.getByTestId('stats-radius-slider-track'), 'accessibilityAction', {
+      nativeEvent: { actionName: action },
+    });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockFetch.mockResolvedValue(FULL);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('keeps the figures AND the slider on screen, dimmed under "Updating", instead of the skeleton', async () => {
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(view.getByTestId('stats-change-radius'));
+    });
+    const sliderBefore = view.getByTestId('stats-radius-slider');
+    await act(async () => {
+      nudge(view, 'increment');
+    });
+    // The whole point: nothing was swapped for a skeleton. Same slider
+    // instance, figures still there, the line already saying where the
+    // thumb is and what is on its way.
+    // (Above 20 the slider steps by 10, so one nudge is 20 → 30.)
+    expect(view.queryByTestId('area-insights-skeleton')).toBeNull();
+    expect(view.getByTestId('stats-radius-slider')).toBe(sliderBefore);
+    expect(view.getByTestId('stats-hero')).toHaveTextContent(/14 cars reported stolen/);
+    expect(view.getByTestId('stats-change-radius')).toHaveTextContent('within 30 miles · Done');
+    expect(view.getByTestId('stats-pending')).toHaveTextContent('Updating for 30 miles…');
+    // And nothing has been asked of the network yet — the finger may still
+    // be moving.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks the network ONCE per settled drag, not once per snap', async () => {
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(view.getByTestId('stats-change-radius'));
+    });
+    // Three snaps inside the settle window: 20 → 30 → 40 → 50. One act per
+    // snap so the slider re-renders with its new value between them, as it
+    // does on device.
+    for (let snap = 0; snap < 3; snap += 1) {
+      await act(async () => {
+        nudge(view, 'increment');
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+    }
+    expect(view.getByTestId('stats-change-radius')).toHaveTextContent('within 50 miles · Done');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+    // One request, for where the thumb stopped.
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenLastCalledWith(51.77, -0.34, milesToMetres(50));
+    // When it lands the figures are current again: no pending line, radius
+    // line settled on the new value.
+    await waitFor(() => expect(view.queryByTestId('stats-pending')).toBeNull());
+    expect(view.getByTestId('stats-change-radius')).toHaveTextContent('within 50 miles · Done');
+  });
+
+  it('dragging from enough into not-enough keeps the same slider instance', async () => {
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(view.getByTestId('stats-change-radius'));
+    });
+    const sliderBefore = view.getByTestId('stats-radius-slider');
+    mockFetch.mockResolvedValue(NOT_ENOUGH);
+    await act(async () => {
+      nudge(view, 'decrement');
+      jest.advanceTimersByTime(300);
+    });
+    await waitFor(() => expect(view.getByText('Not enough nearby to say')).toBeTruthy());
+    // The answer changed shape — hero card to not-enough card — and the
+    // slider survived it, now pinned open as the way out.
+    expect(view.getByTestId('stats-radius-slider')).toBe(sliderBefore);
+    expect(view.queryByTestId('stats-card-hero')).toBeNull();
+    expect(view.getByTestId('stats-card-empty')).toBeTruthy();
+    expect(view.queryByTestId('stats-change-radius')).toBeNull();
+  });
+});
+
 describe('scope: nothing given (an old deep link)', () => {
   it('falls back to the device centre at the feed default radius', async () => {
     mockCentreState = { status: 'ready', centre: { latitude: 53.48, longitude: -2.24 } };

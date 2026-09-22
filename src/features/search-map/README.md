@@ -289,6 +289,21 @@ nothing counts up or bounces, and all of it collapses under reduced motion.
 The scroll content adds `insets.bottom` to its tail so the last card clears
 Android's edge-to-edge button bar (Screen pads the top only).
 
+**Moving the radius** (2026-09-22, after the owner found the page "refreshes
+too quick and cuts off the slider"): `RadiusSlider` commits on every snap of
+a drag, and wired straight into the fetch each snap flipped the page to the
+skeleton — which unmounted the slider under the finger — and fired an RPC
+for a radius the thumb was only passing through. Now the slider and the
+"within N miles" line follow the finger through `radiusMiles`, while the
+fetch follows `askedMiles`, which is `radiusMiles` once it has held still
+for `RADIUS_SETTLE_MS` (300): one request per settled drag. While the
+answer is on its way the previous figures stay MOUNTED but pending — dimmed
+to `opacity.inactive` under a polite "Updating for N miles…" line — so the
+control never leaves the reader's hand; they are still never held up as the
+answer for the new radius. One hero card renders both the enough and
+not-enough answers with the `RadiusControl` in the same child slot, so an
+answer that changes shape mid-drag cannot remount the slider either.
+
 **Entry** — the Map/search pill frames the feed's resolved location at its
 radius; "See all → <Area>" forward-geocodes the town and centres there. Those
 give the map somewhere to START, but the camera then RE-FRAMES ONCE around the
