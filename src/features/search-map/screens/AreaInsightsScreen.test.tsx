@@ -349,10 +349,36 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     expect(view.getByTestId('stats-radius-slider')).toBe(sliderBefore);
     expect(view.getByTestId('stats-hero')).toHaveTextContent(/14 cars reported stolen/);
     expect(view.getByTestId('stats-change-radius')).toHaveTextContent('within 30 miles · Done');
-    expect(view.getByTestId('stats-pending')).toHaveTextContent('Updating for 30 miles…');
     // And nothing has been asked of the network yet — the finger may still
     // be moving.
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-enters the figures when the new answer lands, without remounting the slider', async () => {
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(view.getByTestId('stats-change-radius'));
+    });
+    const sliderBefore = view.getByTestId('stats-radius-slider');
+    const heroBefore = view.getByTestId('stats-hero');
+    const yearBefore = view.getByTestId('stats-card-year');
+    mockFetch.mockResolvedValue({ ...FULL, total30d: 31 });
+    await act(async () => {
+      nudge(view, 'increment');
+      jest.advanceTimersByTime(300);
+    });
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toHaveTextContent(/31 cars/));
+    // The figures are NEW instances (keyed on the answered radius, so their
+    // entrance replays — the stagger, the chart's rise); the slider is the
+    // same one. That split is the whole design: replay the motion on the
+    // figures, never on the control. `getBy` (not `getAllBy`) is load-bearing:
+    // the first cut keyed the hero and the band on the same bare number,
+    // and React left the OLD sentence mounted beside the new one.
+    expect(view.getByTestId('stats-hero')).not.toBe(heroBefore);
+    expect(view.getAllByTestId('stat-7d')).toHaveLength(1);
+    expect(view.getByTestId('stats-card-year')).not.toBe(yearBefore);
+    expect(view.getByTestId('stats-radius-slider')).toBe(sliderBefore);
   });
 
   it('asks the network ONCE per settled drag, not once per snap', async () => {
@@ -380,9 +406,8 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     // One request, for where the thumb stopped.
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockFetch).toHaveBeenLastCalledWith(51.77, -0.34, milesToMetres(50));
-    // When it lands the figures are current again: no pending line, radius
-    // line settled on the new value.
-    await waitFor(() => expect(view.queryByTestId('stats-pending')).toBeNull());
+    // When it lands the radius line has settled on the new value.
+    await act(async () => {});
     expect(view.getByTestId('stats-change-radius')).toHaveTextContent('within 50 miles · Done');
   });
 

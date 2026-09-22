@@ -298,11 +298,16 @@ for a radius the thumb was only passing through. Now the slider and the
 fetch follows `askedMiles`, which is `radiusMiles` once it has held still
 for `RADIUS_SETTLE_MS` (300): one request per settled drag. While the
 answer is on its way the previous figures stay MOUNTED but pending — dimmed
-to `opacity.inactive` under a polite "Updating for N miles…" line — so the
-control never leaves the reader's hand; they are still never held up as the
-answer for the new radius. One hero card renders both the enough and
-not-enough answers with the `RadiusControl` in the same child slot, so an
-answer that changes shape mid-drag cannot remount the slider either.
+to `opacity.inactive` — so the control never leaves the reader's hand; they
+are still never held up as the answer for the new radius. (An "Updating for
+N miles…" caption shipped with the dim for a few hours; the owner asked for
+it gone — the radius line already says N.) When the answer lands the
+figures REMOUNT, keyed on the answered radius with a distinct prefix per
+slot, so their entrance replays — the cards' stagger, the chart's rise, a
+fade on the hero and band — while the slider, unkeyed, stays put. One hero
+card renders both the enough and not-enough answers with the
+`RadiusControl` in the same child slot, so an answer that changes shape
+mid-drag cannot remount the slider either.
 
 **Entry** — the Map/search pill frames the feed's resolved location at its
 radius; "See all → <Area>" forward-geocodes the town and centres there. Those

@@ -381,9 +381,9 @@ export function AreaInsightsScreen({
   const currentFailed = failedMiles === radiusMiles;
   // Figures are up but for ANOTHER radius — the slider has moved (or is still
   // moving) and the answer for where it now sits has not landed. Rendered as
-  // the old figures, dimmed, under an "Updating for N miles" line: NOT the
-  // skeleton, which would unmount the slider mid-drag (see RADIUS_SETTLE_MS),
-  // and not the old figures held up as-is either.
+  // the old figures, dimmed: NOT the skeleton, which would unmount the slider
+  // mid-drag (see RADIUS_SETTLE_MS), and not the old figures held up as-is
+  // either.
   const pending = insights !== null && !haveCurrent && !currentFailed;
   // A pull spinner over a skeleton is two loading indicators for one fetch, so
   // the spinner only shows when there is real content behind it to refresh.
@@ -446,8 +446,8 @@ export function AreaInsightsScreen({
               WRONG: this screen exists to say how much theft there is in a
               STATED area, and figures for 20 miles under a slider reading 30
               describe a different one. So a moved slider renders them as
-              PENDING — dimmed, under "Updating for 30 miles" — rather than
-              holding them up as an answer. It used to fall through to the
+              PENDING — dimmed — rather than holding them up as an answer,
+              and the new answer re-enters when it lands. It used to fall through to the
               skeleton instead, which was more honest still and unusable: the
               skeleton replaced the slider mid-drag (2026-09-22, on device).
               Figures that are up but not yet for THIS radius stay mounted so
@@ -456,6 +456,9 @@ export function AreaInsightsScreen({
             <Insights
               data={insights}
               pending={pending}
+              // Non-null whenever `insights` is: both are set by the same
+              // `.then`. The fallback only satisfies the type.
+              answeredMiles={shownMiles ?? radiusMiles}
               radiusMiles={radiusMiles}
               radiusOpen={radiusOpen}
               onToggleRadius={() => setRadiusOpen((open) => !open)}
@@ -507,12 +510,25 @@ export function AreaInsightsScreen({
  *
  * `pending`: the figures are for another radius and the new answer is on
  * its way. The figures dim to `opacity.inactive` (a `fast` fade, not a snap)
- * under an "Updating for N miles" line, and the control stays at full
- * strength — it is the one thing on the page that is exactly current.
+ * and the control stays at full strength — it is the one thing on the page
+ * that is exactly current. The dim is the whole signal: an "Updating for N
+ * miles…" line shipped alongside it for a few hours and the owner asked for
+ * it gone — the radius line already says N, and a caption that appears and
+ * vanishes with every nudge is churn, not information.
+ *
+ * `answeredMiles` is the KEY under every figure. When a new answer lands the
+ * figures remount and re-enter — the cards' stagger, the chart's rise, a
+ * fade on the hero sentence and band — so the page visibly re-composes for
+ * the new radius instead of the numbers silently swapping. That replay was
+ * a free side effect of the old skeleton swap, which remounted everything;
+ * keeping the tree mounted (so the slider survives) lost it, and the owner
+ * asked for it back. The key sits on the figures ONLY — never on the card
+ * that holds the RadiusControl.
  */
 function Insights({
   data,
   pending,
+  answeredMiles,
   radiusMiles,
   radiusOpen,
   onToggleRadius,
@@ -520,6 +536,7 @@ function Insights({
 }: {
   data: AreaInsights;
   pending: boolean;
+  answeredMiles: number;
   radiusMiles: number;
   radiusOpen: boolean;
   onToggleRadius: () => void;
@@ -536,20 +553,26 @@ function Insights({
     });
   }, [pending, reducedMotion, dim]);
   const dimStyle = useAnimatedStyle(() => ({ opacity: dim.value }));
-  const within = `${radiusMiles} ${radiusMiles === 1 ? 'mile' : 'miles'}`;
+  const enter = FadeIn.duration(motion.standard).reduceMotion(ReduceMotion.System);
 
   return (
     <View style={styles.stack}>
       <Card testID={data.enoughData ? 'stats-card-hero' : 'stats-card-empty'}>
         {data.enoughData ? (
-          <HeroSentence count={data.total30d} dimStyle={dimStyle} />
+          // ⚠️ Every keyed figure in this card gets its OWN prefix. The hero
+          // and the band are siblings; keyed on the bare number they shared a
+          // key, and React's keyed reconciliation silently dropped one of the
+          // two old nodes from its deletion map — the old sentence stayed
+          // mounted beside the new one ("14 cars" over "31 cars"). Caught by
+          // the re-entry test; never shipped.
+          <HeroSentence key={`hero-${answeredMiles}`} count={data.total30d} dimStyle={dimStyle} />
         ) : (
           // ⚠️ NEVER a page of zeros. Below the floor the RPC withholds the
           // whole breakdown on purpose, and "0 thefts" would be a claim we
           // have not made — it is "too few to say", which is a different and
           // more honest sentence. Told WHY first, then handed the way out
           // beneath. Dimmed like any other figure while a new radius loads.
-          <Animated.View style={dimStyle}>
+          <Animated.View key={`empty-${answeredMiles}`} style={dimStyle} entering={enter}>
             <EmptyState
               title="Not enough nearby to say"
               body={`We only show this once there are enough reports in an area to be meaningful. Try a wider radius than ${Math.round(metresToMiles(data.radiusM))} miles.`}
@@ -559,14 +582,6 @@ function Insights({
             />
           </Animated.View>
         )}
-        {/* Said, not just shown: dimming alone is a hint, and a screen reader
-            gets nothing from opacity. Polite, so it does not cut off the
-            slider's own value announcements mid-drag. */}
-        {pending ? (
-          <Text style={styles.quiet} accessibilityLiveRegion="polite" testID="stats-pending">
-            Updating for {within}…
-          </Text>
-        ) : null}
         <RadiusControl
           radiusMiles={radiusMiles}
           open={data.enoughData ? radiusOpen : true}
@@ -579,7 +594,11 @@ function Insights({
           // the band's cells are divided by vertical hairlines already, and
           // the horizontal one turns them into a footer row of the hero card
           // rather than three stray numbers under a paragraph.
-          <Animated.View style={[styles.bandFooter, dimStyle]}>
+          <Animated.View
+            key={`band-${answeredMiles}`}
+            style={[styles.bandFooter, dimStyle]}
+            entering={enter}
+          >
             <StatBand
               cells={[
                 { key: '7d', value: String(data.total7d), label: 'last 7 days', spoken: `${data.total7d} in the last 7 days` },
@@ -590,7 +609,9 @@ function Insights({
           </Animated.View>
         ) : null}
       </Card>
-      {data.enoughData ? <Breakdown data={data} dimStyle={dimStyle} /> : null}
+      {data.enoughData ? (
+        <Breakdown key={`breakdown-${answeredMiles}`} data={data} dimStyle={dimStyle} />
+      ) : null}
     </View>
   );
 }
@@ -610,7 +631,12 @@ function Insights({
 function HeroSentence({ count, dimStyle }: { count: number; dimStyle: AnimatedStyle<ViewStyle> }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <Animated.View style={dimStyle}>
+    // A plain fade, not FadeInDown: the sentence is the top of the page and a
+    // drop would read as the whole card shifting under the slider.
+    <Animated.View
+      style={dimStyle}
+      entering={FadeIn.duration(motion.standard).reduceMotion(ReduceMotion.System)}
+    >
       <Text style={styles.hero} accessibilityRole="header" testID="stats-hero">
         <Text style={styles.heroNumber} maxFontSizeMultiplier={displayFontScaleCap}>
           {count === 0 ? 'No' : count}
