@@ -395,14 +395,19 @@ absolute overlay in the same screen) that MORPHS out of the search pill
 box from it to full screen, a ghost pill label fading early, content fading in;
 reduced-motion cross-fades). Header is a title + close. Then a pinned
 **Where** block — the area row (navigates to the picker) with the radius
-directly beneath it (`RadiusSlider`, 1–50 continuous, + an "Any distance"
-action chip). The radius lived in its own "Distance" accordion until
-2026-09-22, when the owner moved it here: where and how far are one question,
-and a reader who had just set an area still had to go hunting three cards down
-for the control deciding how much of it they were searching. ⚠️ The slider
-renders OUTSIDE the `areaLabel` conditional — the row is absent when browsing
-nationally, but the radius still applies, and nesting it would silently drop
-the control there. Below that, collapsible accordion filter cards:
+inside the same card, under a hairline (`RadiusSlider`, 1–50 continuous). The
+radius lived in its own "Distance" accordion until 2026-09-22, when the owner
+moved it here: where and how far are one question, and a reader who had just
+set an area still had to go hunting three cards down for the control deciding
+how much of it they were searching. The same day's polish pass put the slider
+INSIDE the area card (it was a card with a loose slider under it, which read
+as a filter belonging to nothing) and dropped the "Any distance" chip — the
+slider is the whole control, and the footer's **Clear all** is what returns to
+no radius. ⚠️ The slider renders OUTSIDE the `areaLabel` conditional — the row
+is absent when browsing nationally, but the radius still applies, and nesting
+it would silently drop the control there. `distanceMiles` stays null until the
+slider is touched, which is now the only thing stopping a sheet that shows the
+control from the first frame from opening pre-filtered. Below that, collapsible accordion filter cards:
 **Vehicle** (make/model pickers reused from the posting flow + multi-select
 colour and body-type chips + a From/To year range), **Bounty**
 (`MoneyRangeSlider` — the range consumer the slider's TODO anticipated — +

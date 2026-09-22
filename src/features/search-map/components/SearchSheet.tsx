@@ -114,12 +114,6 @@ import { BOUNTY_SNAP_STEPS } from '@/shared/lib/bountyBounds';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-/** The radius's one-tap "clear it" row. A slider has no null, so "Any" needs
- *  its own control — ChoiceChips' own docstring sanctions role='button' chips
- *  as one-tap actions, and this mirrors the Bounty section, which already
- *  pairs a slider with a quick-chip row. */
-const DISTANCE_ANY_OPTION = [{ value: 'any', label: 'Any distance' }];
-
 /** Where the slider RESTS when no radius is set. Not applied until the reader
  *  touches it — `distanceMiles` stays null (= no filter) until then, so a
  *  radius they never chose cannot narrow their results. That mattered more
@@ -600,12 +594,6 @@ export function SearchSheet({
                   ? 'Showing cars anywhere in view.'
                   : `Only cars ${distanceLabel(criteria.distanceMiles)}.`}
               </Text>
-              <ChoiceChips
-                options={DISTANCE_ANY_OPTION}
-                value={criteria.distanceMiles == null ? 'any' : null}
-                role="button"
-                onSelect={() => patch({ distanceMiles: null })}
-              />
             </View>
           </View>
 
@@ -877,19 +865,31 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
-  // --- Where: the area row (navigates out; deliberately NOT an accordion
-  // card) and, beneath it, the radius that says how much of that area to
-  // search. One block, because they are one question.
+  // --- Where: ONE CARD holding the area row (which navigates out to the
+  // picker) and the radius beneath it. The card is the house resting box, the
+  // same one the accordion cards below are made of — the block was two
+  // separate objects until 2026-09-22, an area card with a loose slider under
+  // it, which read as a filter that belonged to nothing.
   where: {
-    paddingBottom: spacing.md,
+    backgroundColor: c.surface,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: c.border,
+    // Keeps the area row's pressed wash inside the rounded corners.
+    overflow: 'hidden',
   },
-  // The slider keeps the row's own horizontal gutter so the track lines up
-  // with the area name above it, and sits clear of the row's 44pt target.
+  // The slider, under a hairline: the row above says WHERE, this says how far.
+  // Same horizontal gutter as the row, so the track lines up with the area
+  // name rather than floating inside its own inset.
   radius: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
     gap: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: c.border,
   },
+  // No box of its own any more — the card around it is the box.
   areaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -897,10 +897,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: c.surface,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.border,
   },
   areaRowPressed: {
     backgroundColor: c.surfaceSubtle,

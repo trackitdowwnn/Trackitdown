@@ -355,8 +355,9 @@ describe('the change-area row', () => {
     );
 
     expect(view.getByTestId('search-distance')).toBeTruthy();
-    expect(view.getByText('Any distance')).toBeTruthy();
-    // And no accordion is left behind for it.
+    // The slider is the whole control: no "Any distance" chip beside it, and
+    // no accordion left behind for it.
+    expect(view.queryByText('Any distance')).toBeNull();
     expect(view.queryByTestId('section-distance')).toBeNull();
   });
 
@@ -514,11 +515,15 @@ describe('the widened filters', () => {
     expect(view.queryByTestId('search-text')).toBeNull();
   });
 
-  it('drives distance from the slider, and "Any distance" clears it', async () => {
+  it('drives distance from the slider alone', async () => {
     const { view, onApply } = await renderSheet();
 
-    // No accordion to open: the radius lives in the Where block at the top of
-    // the sheet (2026-09-22), visible the moment the sheet is.
+    // No accordion to open: the radius lives in the Where card at the top of
+    // the sheet (2026-09-22), visible the moment the sheet is. And no "Any
+    // distance" chip beside it since the polish pass — the slider is the whole
+    // control; "Clear all" in the footer is what returns to no radius.
+    expect(view.queryByText('Any distance')).toBeNull();
+
     await act(async () => {
       fireEvent.press(view.getByTestId('search-distance')); // stub emits 25
     });
@@ -526,14 +531,19 @@ describe('the widened filters', () => {
       fireEvent.press(applyButton(view));
     });
     expect(onApply.mock.calls[0][0].distanceMiles).toBe(25);
+  });
 
-    await act(async () => {
-      fireEvent.press(view.getByText('Any distance'));
-    });
+  it('⚠️ starts with NO radius, so an untouched slider never narrows the search', async () => {
+    // The slider rests at 10 but distanceMiles stays null until it is touched.
+    // With the control now on screen from the first frame — and no longer
+    // behind an accordion — this is the only thing stopping the sheet from
+    // opening pre-filtered.
+    const { view, onApply } = await renderSheet();
+
     await act(async () => {
       fireEvent.press(applyButton(view));
     });
-    expect(onApply.mock.calls[1][0].distanceMiles).toBeNull();
+    expect(onApply.mock.calls[0][0].distanceMiles).toBeNull();
   });
 
   it('says the radius is measured from the AREA, never from the user', async () => {
