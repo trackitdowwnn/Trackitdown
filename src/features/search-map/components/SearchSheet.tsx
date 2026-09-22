@@ -100,7 +100,6 @@ import { regionAround } from '../lib/regionMath';
 import {
   SEARCH_BOUNTY_MAX_PENCE,
   SEARCH_BOUNTY_MIN_PENCE,
-  distanceLabel,
   seenRangeSummary,
   type SearchCriteria,
 } from '../lib/searchCriteria';
@@ -580,20 +579,24 @@ export function SearchSheet({
             ) : null}
 
             <View style={styles.radius}>
+              {/* ⚠️ NO HINT LINE UNDER THIS (owner, 2026-09-22). It used to
+                  read "Only cars within 10 miles of this area." — there to be
+                  honest that the radius is measured from the map centre, never
+                  from the user, since with no device fix the app cannot claim
+                  a proximity it does not know. The CARD now says that by
+                  adjacency: the area row sits directly above the slider, so
+                  "St Albans" over "10 miles" already reads as ten miles of St
+                  Albans, and a sentence repeating it was the third place the
+                  same fact appeared (row, readout, sentence). The claim it
+                  guarded against — "10 miles of YOU" — is not made anywhere on
+                  this surface, and must not start being made: this control is
+                  bbox-centred and follows every pan. */}
               <RadiusSlider
                 label="Distance"
                 valueMiles={criteria.distanceMiles ?? RADIUS_DEFAULT_MILES}
                 onChangeMiles={handleDistanceChange}
                 testID="search-distance"
               />
-              {/* Honest about what the radius is measured FROM: with no device
-                  fix the origin is the map centre, and the copy must not claim
-                  a proximity to the user the app cannot know. */}
-              <Text style={styles.fieldHint}>
-                {criteria.distanceMiles == null
-                  ? 'Showing cars anywhere in view.'
-                  : `Only cars ${distanceLabel(criteria.distanceMiles)}.`}
-              </Text>
             </View>
           </View>
 
@@ -957,12 +960,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   fieldLabel: {
     ...typography.label,
-    color: c.textSecondary,
-  },
-  // Says what the radius is measured FROM — quieter than a field label, since
-  // it explains the control above rather than naming the next one.
-  fieldHint: {
-    ...typography.caption,
     color: c.textSecondary,
   },
   // --- Footer (inline, below the last filter card) ---

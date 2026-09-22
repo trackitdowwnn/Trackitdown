@@ -427,6 +427,14 @@ function yearSummary(criteria: SearchCriteria): string | null {
  * city the sheet claimed a proximity to the user while the server filtered
  * around somewhere else entirely. Describing the frame of reference honestly
  * beats a warmer sentence that is sometimes false.
+ *
+ * ⚠️ NO CONSUMER SINCE 2026-09-22, deliberately kept. The sheet's hint line
+ * under the radius slider was its only caller and the owner removed it (the
+ * area row sits directly above the slider and says where the miles are
+ * measured from). Kept because the rule it encodes outlives the sentence: the
+ * NEXT person to write distance copy on this surface needs "of this area", not
+ * "of you", and its test asserts exactly that. Delete it only together with
+ * that test, and only having decided the rule no longer matters.
  */
 export function distanceLabel(miles: number): string {
   const unit = miles === 1 ? 'mile' : 'miles';

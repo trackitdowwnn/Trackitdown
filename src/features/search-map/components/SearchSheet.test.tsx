@@ -546,16 +546,21 @@ describe('the widened filters', () => {
     expect(onApply.mock.calls[0][0].distanceMiles).toBeNull();
   });
 
-  it('says the radius is measured from the AREA, never from the user', async () => {
+  it('⚠️ never claims the radius is measured from the USER', async () => {
     // The radius is always measured from the bbox centre, which follows every
     // pan — so "of you" would be false the moment the map moved off the user.
+    // The explanatory hint under the slider was removed on 2026-09-22 (the
+    // area row directly above it says where "10 miles" is from), so what
+    // survives here is the half that was always the safety half: the sheet
+    // must never start claiming a proximity to the reader it cannot know.
     const { view } = await renderSheet(jest.fn(), jest.fn(), {
       ...emptyCriteria(),
       distanceMiles: 10,
     });
 
-    expect(view.getByText(/within 10 miles of this area/)).toBeTruthy();
-    expect(view.queryByText(/miles of you/)).toBeNull();
+    expect(view.queryByText(/of you\b/)).toBeNull();
+    expect(view.queryByText(/near you/i)).toBeNull();
+    expect(view.queryByText(/from your location/i)).toBeNull();
   });
 });
 
