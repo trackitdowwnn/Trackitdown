@@ -13,7 +13,6 @@ import {
   monthlyColumns,
   monthlySummary,
   rankedMakes,
-  rankedModels,
   recoveryRateLabel,
 } from './areaInsightsModel';
 
@@ -103,15 +102,36 @@ describe('rankedMakes', () => {
   it('returns nothing for nothing', () => {
     expect(rankedMakes([])).toEqual([]);
   });
-});
 
-describe('rankedModels', () => {
-  it('labels "Make Model" with both halves canonical', () => {
-    const rows = rankedModels([
-      { make: 'ford', model: 'fiesta', count: 3 },
-      { make: 'vw', model: 'golf', count: 2 },
-    ]);
-    expect(rows.map((r) => r.label)).toEqual(['Ford Fiesta', 'Volkswagen Golf']);
+  it('files each model under its make as a detail line, busiest first, canonical', () => {
+    const rows = rankedMakes(
+      [
+        { make: 'ford', count: 9 },
+        { make: 'vw', count: 5 },
+      ],
+      [
+        { make: 'ford', model: 'focus', count: 2 },
+        { make: 'ford', model: 'fiesta', count: 5 },
+        { make: 'volkswagen', model: 'golf', count: 5 },
+      ],
+    );
+    expect(rows[0]).toMatchObject({ label: 'Ford', detail: 'Fiesta 5 · Focus 2' });
+    // "vw" the make and "volkswagen" the pair's make meet on one canonical name.
+    expect(rows[1]).toMatchObject({ label: 'Volkswagen', detail: 'Golf 5' });
+  });
+
+  it('gives a make with no surviving models no detail line', () => {
+    const rows = rankedMakes([{ make: 'ford', count: 9 }], []);
+    expect(rows[0].detail).toBeNull();
+  });
+
+  it('drops a model whose make is not in the list rather than inventing a row', () => {
+    const rows = rankedMakes(
+      [{ make: 'ford', count: 9 }],
+      [{ make: 'audi', model: 'a3', count: 5 }],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].detail).toBeNull();
   });
 });
 

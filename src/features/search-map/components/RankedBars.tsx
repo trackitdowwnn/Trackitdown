@@ -1,7 +1,8 @@
 /**
  * WHAT:  RankedBars — a ranked list drawn as bars: each row a name on the
- *        left, its count on the right, and beneath them a thin bar scaled to
- *        the top row. Plain Views.
+ *        left, its count on the right, beneath them a thin bar scaled to the
+ *        top row, and optionally a quiet detail line under the bar (a make's
+ *        models). Plain Views.
  * WHY:   The "Taken most often" card used to be ten label/value rows — five
  *        makes, then five make+model pairs indented in grey beneath the LAST
  *        make, as if they were its children. They are a separate ranking, and
@@ -91,7 +92,8 @@ export function RankedBars({ rows, growIn = false, testID }: RankedBarsProps) {
           key={row.key}
           style={styles.row}
           accessible
-          accessibilityLabel={`${row.label}: ${row.count}`}
+          // The detail rides in the same stop: "Ford: 6. Fiesta 3 · Focus 2."
+          accessibilityLabel={`${row.label}: ${row.count}${row.detail ? `. ${row.detail}.` : ''}`}
           testID={testID ? `${testID}-${row.key}` : undefined}
         >
           <View style={styles.line}>
@@ -107,6 +109,10 @@ export function RankedBars({ rows, growIn = false, testID }: RankedBarsProps) {
               style={[styles.fill, { width: `${row.fraction * 100}%` }, extendStyle]}
             />
           </View>
+          {/* The row's own breakdown, under its bar in the page's quiet
+              voice — the models of a make. Wraps rather than ellipsises: a
+              third model cut to "Foc…" is a fact lost. */}
+          {row.detail ? <Text style={styles.detail}>{row.detail}</Text> : null}
         </View>
       ))}
     </View>
@@ -133,6 +139,7 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.borderStrong,
       overflow: 'hidden',
     },
+    detail: { ...typography.caption, color: c.textSecondary },
     fill: {
       height: '100%',
       borderRadius: radii.full,

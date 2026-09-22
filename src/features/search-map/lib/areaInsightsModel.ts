@@ -100,11 +100,13 @@ export interface RankedRow {
   count: number;
   /** 0..1 of the top row — the bar's length. */
   fraction: number;
+  /** A quiet line beneath the bar — "Fiesta 3 · Focus 2" — or null. */
+  detail: string | null;
 }
 
 /**
  * The RPC's top makes as display rows: canonical names, same-make spellings
- * merged, re-ranked.
+ * merged, re-ranked, each carrying its own models beneath.
  *
  * The RPC folds make with lower(btrim(...)) and does NOT equate "vw" with
  * "volkswagen" — so it can hand back "bmw", "vw" AND "volkswagen" as three
@@ -115,25 +117,46 @@ export interface RankedRow {
  * exact — each row is that spelling's full count — so merging never invents.
  * A spelling the alias table does not know stays as typed, which is the same
  * promise the picker makes.
+ *
+ * MODELS RIDE ON THEIR MAKE (owner decision 2026-09-22, "add the model as
+ * well rather than just the make"). The RPC's top make+model pairs are a
+ * separate ranking, and they were drawn as one — a second block the reader
+ * had to relate to the first by eye. Now each pair is filed under its make's
+ * row as a detail line, "Fiesta 3 · Focus 2", busiest first, the model
+ * canonical against its make's own list (canonicaliseModel is keyed by the
+ * canonical make label, so the make goes first). A pair whose make is not in
+ * the top five is dropped rather than given a row of its own: the list is
+ * "which makes", and a model with no make above it has nowhere to sit.
+ *
+ * ⚠️ Every pair here has already cleared the RPC's per-bucket floor (five
+ * thefts of that exact model, from listings the viewer does not own), so in
+ * most areas most makes carry NO detail line. That is the privacy floor
+ * doing its job — "one Urus stolen near here" points at a person — and this
+ * file must never fill the gap from anywhere else.
  */
-export function rankedMakes(topMakes: { make: string; count: number }[]): RankedRow[] {
-  return rank(topMakes.map((row) => ({ label: canonicaliseMake(row.make), count: row.count })));
-}
-
-/**
- * The RPC's top make+model pairs as display rows, "Ford Fiesta" — the make
- * canonical first (canonicaliseModel is keyed by the canonical make label),
- * then the model against that make's list. Merged and re-ranked like makes.
- */
-export function rankedModels(
-  topModels: { make: string; model: string; count: number }[],
+export function rankedMakes(
+  topMakes: { make: string; count: number }[],
+  topModels: { make: string; model: string; count: number }[] = [],
 ): RankedRow[] {
-  return rank(
-    topModels.map((row) => {
-      const make = canonicaliseMake(row.make);
-      return { label: `${make} ${canonicaliseModel(make, row.model)}`, count: row.count };
-    }),
-  );
+  const makes = rank(topMakes.map((row) => ({ label: canonicaliseMake(row.make), count: row.count })));
+  // Models per canonical make, same-spelling pairs merged, busiest first.
+  const byMake = new Map<string, Map<string, number>>();
+  for (const pair of topModels) {
+    const make = canonicaliseMake(pair.make);
+    const model = canonicaliseModel(make, pair.model);
+    const models = byMake.get(make) ?? new Map<string, number>();
+    models.set(model, (models.get(model) ?? 0) + pair.count);
+    byMake.set(make, models);
+  }
+  return makes.map((row) => {
+    const models = byMake.get(row.label);
+    if (!models) return row;
+    const detail = [...models.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([model, count]) => `${model} ${count}`)
+      .join(' · ');
+    return { ...row, detail };
+  });
 }
 
 /** Merge rows sharing a label, sort by count (ties by label), scale to the top. */
@@ -151,6 +174,7 @@ function rank(rows: { label: string; count: number }[]): RankedRow[] {
     label: row.label,
     count: row.count,
     fraction: top > 0 ? row.count / top : 0,
+    detail: null,
   }));
 }
 

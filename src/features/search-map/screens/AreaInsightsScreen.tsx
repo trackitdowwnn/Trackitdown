@@ -134,7 +134,6 @@ import {
   monthlyColumns,
   monthlySummary,
   rankedMakes,
-  rankedModels,
   recoveryRateLabel,
 } from '../lib/areaInsightsModel';
 import { AREA_ENTRY_RADIUS_MILES } from '../lib/feedSections';
@@ -676,8 +675,7 @@ function Breakdown({
 }) {
   const styles = useThemedStyles(makeStyles);
   const columns = monthlyColumns(data.monthly);
-  const makes = rankedMakes(data.topMakes);
-  const models = rankedModels(data.topModels);
+  const makes = rankedMakes(data.topMakes, data.topModels);
   const recovery = recoveryRateLabel(data.recovered, data.closedTotal);
   const summary = monthlySummary(data.monthly);
 
@@ -708,23 +706,16 @@ function Breakdown({
 
       {showMakes ? (
         <Card title="Taken most often" index={makesIndex} testID="stats-card-makes">
-          {/* Two INDEPENDENT rankings from the RPC — top makes, top make+model
-              pairs — each drawn as bars scaled to its own top row (RankedBars),
-              under a quiet sub-label. They used to be one list of ten rows with
-              the models indented under the last make as if they were its
-              children (redesigned 2026-09-22). The names are canonical and
-              same-make spellings merged (rankedMakes), which retired the old
+          {/* The top makes as bars scaled to the top row (RankedBars), each
+              carrying its models beneath its bar — "Fiesta 3 · Focus 2" —
+              where any cleared the RPC's per-bucket floor (rankedMakes). The
+              two rankings used to be one list of ten rows with the models
+              indented under the LAST make as if they were its children, then
+              briefly two blocks side by side (both 2026-09-22); filed under
+              their make they need no second block and no sub-labels. Names
+              canonical, same-make spellings merged, which retired the old
               "two spellings count separately" caption. */}
-          <View style={styles.ranking}>
-            <Text style={styles.quiet}>By make</Text>
-            <RankedBars rows={makes} growIn testID="stats-makes" />
-          </View>
-          {models.length > 0 ? (
-            <View style={styles.ranking}>
-              <Text style={styles.quiet}>By model</Text>
-              <RankedBars rows={models} growIn testID="stats-models" />
-            </View>
-          ) : null}
+          <RankedBars rows={makes} growIn testID="stats-makes" />
         </Card>
       ) : null}
 
@@ -973,10 +964,6 @@ const makeStyles = (c: Palette) =>
       gap: spacing.md,
     },
     rowLabel: { ...typography.body, color: c.textPrimary, flexShrink: 1 },
-    // A sub-label over its ranking, and 12 between the two rankings on top
-    // of the card's own step, so "By model" reads as a new block rather
-    // than the sixth make.
-    ranking: { gap: spacing.sm },
     // The count is the information and the word beside it is its label, so
     // the emphasis runs value-first — the same way round as StatBand.
     rowValue: { ...typography.cardTitle, color: c.textPrimary },

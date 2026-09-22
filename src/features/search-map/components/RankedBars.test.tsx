@@ -37,6 +37,21 @@ describe('RankedBars', () => {
     expect(widthOf('BMW')).toBe('50%');
   });
 
+  it('shows a row\'s detail line beneath its bar and speaks it in the same stop', async () => {
+    const rows = rankedMakes(
+      [{ make: 'ford', count: 6 }],
+      [
+        { make: 'ford', model: 'fiesta', count: 3 },
+        { make: 'ford', model: 'focus', count: 2 },
+      ],
+    );
+    const view = await render(<RankedBars rows={rows} testID="makes" />);
+    expect(view.getByText('Fiesta 3 · Focus 2')).toBeTruthy();
+    expect(view.getByTestId('makes-Ford').props.accessibilityLabel).toBe(
+      'Ford: 6. Fiesta 3 · Focus 2.',
+    );
+  });
+
   it('draws nothing for an empty list', async () => {
     const view = await render(<RankedBars rows={[]} testID="makes" />);
     expect(view.queryByTestId('makes')).toBeNull();
