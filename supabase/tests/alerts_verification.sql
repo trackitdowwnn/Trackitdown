@@ -1526,10 +1526,20 @@ begin
   -- Over the WHOLE push since 2026-09-22: the car moved into the title, so the
   -- title now interpolates owner-authored text and is exactly the field a
   -- future copy change could leak through.
-  if (v_first ->> 'title') || ' ' || (v_first ->> 'body') like '%Beth%'
-     or (v_first ->> 'title') || ' ' || (v_first ->> 'body') like '%ZZ24%' then
+  -- ⚠️ coalesced. A NULL title would make the concatenation NULL, both LIKEs
+  -- NULL, and BOTH absence assertions pass silently — including the body half
+  -- they used to cover on their own. An absence check that cannot fail is
+  -- worse than no check, because it reads as coverage.
+  if coalesce(v_first ->> 'title', '') || ' ' || coalesce(v_first ->> 'body', '') like '%Beth%'
+     or coalesce(v_first ->> 'title', '') || ' ' || coalesce(v_first ->> 'body', '') like '%ZZ24%'
+  then
     raise exception 'CHECK 23 FAILED: the sighting push names the spotter or the plate: % / %',
       v_first ->> 'title', v_first ->> 'body';
+  end if;
+  -- And the title must actually be there, so the coalesce above can never be
+  -- the thing making this pass.
+  if coalesce(v_first ->> 'title', '') = '' then
+    raise exception 'CHECK 23 FAILED: the sighting push has no title';
   end if;
   if (v_first ->> 'body') not like '%don''t approach%' then
     raise exception 'CHECK 23 FAILED: the sighting body has no don''t-approach clause: %', v_first ->> 'body';

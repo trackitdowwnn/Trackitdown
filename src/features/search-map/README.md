@@ -411,8 +411,9 @@ string, so a search filtered only by radius read "10mi" — a bare measurement
 standing as the whole description of what was on the map. `summariseParts`
 owns the split and the rule: the headline says what you are looking at IN
 WORDS and every number that qualifies it goes below, so a car leads when one
-was named, "Cars nearby" leads when the search is its area alone, and "All
-cars" when nothing spatial narrows it. The second line is omitted entirely
+was named, "Cars nearby" leads when the search is its area alone, and "Cars on
+this map" when nothing spatial narrows it — never "All cars", which would
+contradict the details line beneath it. The second line is omitted entirely
 when there is nothing to qualify the headline with. `summarise` remains as
 the one-line form for the pill's accessibility label — two visual lines are
 one spoken sentence.

@@ -590,7 +590,20 @@ function MapSearchBody({
   );
   useEffect(() => {
     const pending = pendingSearchFrame.current;
-    if (!pending || status !== 'ready' || searchId === pending.afterSearchId) {
+    if (!pending) {
+      return;
+    }
+    // ⚠️ A FAILED SEARCH DROPS THE REQUEST. `searchId` only bumps when a search
+    // LANDS, so a failure leaves the pending frame armed — and the next search
+    // to land, including an auto re-search after a pan, would spend it and move
+    // the camera using the FAILED search's radius, minutes later and under
+    // someone mid-browse. That is the exact thing the comment above promises
+    // cannot happen.
+    if (status === 'error') {
+      pendingSearchFrame.current = null;
+      return;
+    }
+    if (status !== 'ready' || searchId === pending.afterSearchId) {
       return;
     }
     pendingSearchFrame.current = null;

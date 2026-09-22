@@ -597,6 +597,16 @@ export function SearchSheet({
               <RadiusSlider
                 label="Distance"
                 valueMiles={criteria.distanceMiles ?? RADIUS_DEFAULT_MILES}
+                // ⚠️ "Any" UNTIL THE SLIDER IS TOUCHED. `distanceMiles` starts
+                // null and the thumb has to rest somewhere, so without this the
+                // sheet opened reading "Distance — 10 miles" while nothing was
+                // being filtered by distance at all. That was survivable while
+                // an "Any distance" chip sat beside it showing the real state;
+                // once the chip went (owner, 2026-09-22) the readout was the
+                // only thing left saying anything, and it was saying something
+                // untrue. Undefined once a radius is set, so the readout goes
+                // back to reporting the value.
+                unsetLabel={criteria.distanceMiles == null ? 'Any' : undefined}
                 onChangeMiles={handleDistanceChange}
                 testID="search-distance"
               />

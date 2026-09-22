@@ -83,6 +83,24 @@ export interface RadiusSliderProps {
   label?: string;
   /** Controlled value in whole miles; out-of-range values are clamped. */
   valueMiles: number;
+  /**
+   * What the readout says INSTEAD of the miles while no radius is actually
+   * applied — "Any" on the search sheet. Omit it and the slider always reads
+   * its value, which is what a control whose value is always applied wants.
+   *
+   * ⚠️ THE THUMB STILL RESTS AT `valueMiles`. A slider has no null position,
+   * so a sheet that opens unfiltered has to park it somewhere; this stops that
+   * resting place being READ as a filter. Search opens with `distanceMiles`
+   * null and the thumb at 10, and said "10 miles" — a number nothing was
+   * filtering by, with (since the "Any distance" chip was removed) nothing
+   * else on screen to say so.
+   *
+   * Cleared ON TOUCH, from the gesture worklet, not by waiting for the parent
+   * to send a value back: the first drag must show miles under the finger
+   * immediately, and a React round-trip would leave the readout saying "Any"
+   * for a frame or two while the thumb moved.
+   */
+  unsetLabel?: string;
   /** Fires on every snap crossing while dragging. Keep the reference stable
    *  (useCallback) — a new identity re-registers the gesture mid-drag. */
   onChangeMiles: (miles: number) => void;
@@ -93,6 +111,7 @@ export interface RadiusSliderProps {
 export function RadiusSlider({
   label = 'Alert radius',
   valueMiles,
+  unsetLabel,
   onChangeMiles,
   disabled = false,
   testID,
@@ -111,6 +130,14 @@ export function RadiusSlider({
   const lastSnapped = useSharedValue(value);
   const grabbed = useSharedValue(0);
   const dragging = useSharedValue(false);
+  /** Whether the readout is still showing `unsetLabel` rather than the miles.
+   *  A shared value so the gesture can clear it on the UI thread. */
+  const unset = useSharedValue(unsetLabel !== undefined);
+  // Follows the prop: the parent turning the filter back off (Clear all) must
+  // put "Any" back, and a parent that never passes the label keeps it false.
+  useEffect(() => {
+    unset.value = unsetLabel !== undefined;
+  }, [unsetLabel, unset]);
   const [dragGeneration, setDragGeneration] = useState(0);
   const endDrag = useCallback(() => setDragGeneration((generation) => generation + 1), []);
 
@@ -140,6 +167,10 @@ export function RadiusSlider({
       'worklet';
       const nextPosition = touchPosition(x);
       if (nextPosition < 0) return;
+      // The readout stops saying "Any" the moment the thumb moves, on this
+      // thread — waiting for the parent's value to come back would leave it
+      // reading "Any" under a finger that is already dragging.
+      unset.value = false;
       position.value = nextPosition;
       const unsnapped = positionToMiles(nextPosition);
       displayMiles.value = unsnapped;
@@ -226,6 +257,7 @@ export function RadiusSlider({
     position,
     displayMiles,
     lastSnapped,
+    unset,
     trackWidthSv,
   ]);
 
@@ -259,10 +291,17 @@ export function RadiusSlider({
 
   const readoutProps = useAnimatedProps(() => {
     // Round: mid-drag values are un-snapped, and "12.4 miles" reads as noise.
-    return { text: formatMiles(Math.round(displayMiles.value)) } as never;
+    return {
+      text: unset.value && unsetLabel !== undefined
+        ? unsetLabel
+        : formatMiles(Math.round(displayMiles.value)),
+    } as never;
   });
 
-  const formatted = formatMiles(value);
+  // What the readout and the track's accessibility value say at REST. Mid-drag
+  // the readout is driven by the worklet above; this is the static fallback
+  // and the string a screen reader is handed.
+  const formatted = unsetLabel !== undefined ? unsetLabel : formatMiles(value);
 
   return (
     <View style={[styles.container, disabled && styles.disabled]} testID={testID}>

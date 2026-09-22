@@ -149,14 +149,22 @@ jest.mock('@/shared/ui', () => {
     Button,
     // Stubbed: the real one pulls gesture-handler + reanimated worklets. Kept
     // DRIVABLE (press to emit a value) so the wiring is still exercised.
-    RadiusSlider: ({ valueMiles, onChangeMiles, testID }: Record<string, unknown>) =>
+    RadiusSlider: ({
+      valueMiles,
+      unsetLabel,
+      onChangeMiles,
+      testID,
+    }: Record<string, unknown>) =>
       React.createElement(
         Text,
         // CallableFunction, not `(miles: number) => void`: babel's jest.mock
         // scope check reads a named parameter in a type annotation as an
         // out-of-scope variable and refuses to compile the factory.
         { testID, onPress: () => (onChangeMiles as CallableFunction)(25) },
-        `radius:${valueMiles}`,
+        // Surfaces `unsetLabel` so the sheet's side of the contract — "Any"
+        // while no radius is applied, nothing once one is — is assertable
+        // without the real slider's worklets.
+        `radius:${valueMiles}:${unsetLabel ?? '-'}`,
       ),
     TextField: ({ value, onChangeText, testID }: Record<string, unknown>) =>
       React.createElement(TextInput, { testID, value, onChangeText }),
@@ -531,6 +539,22 @@ describe('the widened filters', () => {
       fireEvent.press(applyButton(view));
     });
     expect(onApply.mock.calls[0][0].distanceMiles).toBe(25);
+  });
+
+  it('⚠️ reads "Any" until a radius is actually applied', async () => {
+    // The thumb has to rest somewhere, so an unfiltered sheet used to show
+    // "10 miles" — a number nothing was filtering by. Survivable while the
+    // "Any distance" chip showed the real state; once that went the readout
+    // was the only thing left saying anything, and it was saying the wrong
+    // thing. `unsetLabel` is undefined once a radius is set, so the readout
+    // goes back to reporting the value.
+    const { view } = await renderSheet();
+    expect(view.getByTestId('search-distance')).toHaveTextContent('radius:10:Any');
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('search-distance')); // stub emits 25
+    });
+    expect(view.getByTestId('search-distance')).toHaveTextContent('radius:25:-');
   });
 
   it('⚠️ starts with NO radius, so an untouched slider never narrows the search', async () => {
