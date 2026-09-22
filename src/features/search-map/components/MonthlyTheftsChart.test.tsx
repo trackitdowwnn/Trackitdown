@@ -9,6 +9,7 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 
 import { monthlyColumns } from '../lib/areaInsightsModel';
 import { MonthlyTheftsChart } from './MonthlyTheftsChart';
@@ -22,11 +23,21 @@ const YEAR = monthlyColumns(
 );
 
 describe('MonthlyTheftsChart', () => {
-  it('puts a count above every bar, the zero included', async () => {
+  it('gives every bar with thefts its count; a zero month shows only its stub', async () => {
     const view = await render(<MonthlyTheftsChart columns={YEAR} summary="s" />);
-    expect(view.getByTestId('chart-count-2026-01')).toHaveTextContent('0');
+    expect(view.queryByTestId('chart-count-2026-01')).toBeNull();
     expect(view.getByTestId('chart-count-2026-12')).toHaveTextContent('11');
-    expect(view.getAllByTestId(/^chart-count-/)).toHaveLength(12);
+    expect(view.getAllByTestId(/^chart-count-/)).toHaveLength(11);
+  });
+
+  it('tucks the count inside a tall bar and perches it on a short one', async () => {
+    const view = await render(<MonthlyTheftsChart columns={YEAR} summary="s" />);
+    const colorOf = (key: string) =>
+      (StyleSheet.flatten(view.getByTestId(`chart-count-${key}`).props.style) as { color: string })
+        .color;
+    // The busiest bar is full height and holds its numeral in the fill's
+    // ink; the 1-of-11 bar is a nub and wears its numeral on top in page ink.
+    expect(colorOf('2026-12')).not.toBe(colorOf('2026-02'));
   });
 
   it('names every other month once the row has measured, the last always among them', async () => {

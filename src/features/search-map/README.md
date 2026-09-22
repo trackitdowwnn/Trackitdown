@@ -295,14 +295,20 @@ Android's edge-to-edge button bar (Screen pads the top only).
 `StatsSparkline` here after the owner found it "not very easy to read or
 understand, there are no labels or anything". The sparkline is right for its
 own page (28 days is too many columns to label); a year is twelve, each wide
-enough to carry its number. So: a count above EVERY bar ("0" included, in
-textSecondary so quiet months recede), a hairline baseline, and a month name
-under every other bar counted back from the last so the most recent month is
-always named (`monthlyColumns`). Names are wider than a column, so they are
-placed from the measured row width rather than flex cells (a Text in a 20pt
-cell ellipsises "Sep"). No y-axis, gridlines or colour coding — the counts
-make an axis redundant, and severity colour on a theft chart is an alarm.
-One node to a screen reader, speaking `monthlySummary`.
+enough to carry its number. So: each bar CARRIES its count — inside the
+fill in `textOnPrimary` when the bar is tall enough, perched on top in
+`textPrimary` when not; a zero month shows only its stub (a row of counts
+above the chart came first and the owner asked for them "integrated into the
+bar itself") — a hairline baseline, and a month name under every other bar
+counted back from the last so the most recent month is always named
+(`monthlyColumns`). Names are wider than a column, so they are placed from
+the measured row width rather than flex cells (a Text in a 20pt cell
+ellipsises "Sep"). The counts are their own layer over the bars, faded in as
+the bars rise, so the grow-in scale never squashes a numeral. No y-axis,
+gridlines, colour coding, or caption beneath (also dropped at the owner's
+request) — the counts make an axis redundant, and severity colour on a theft
+chart is an alarm. One node to a screen reader, speaking `monthlySummary`,
+which is now the only place that sentence lives.
 
 **Moving the radius** (2026-09-22, after the owner found the page "refreshes
 too quick and cuts off the slider"): `RadiusSlider` commits on every snap of

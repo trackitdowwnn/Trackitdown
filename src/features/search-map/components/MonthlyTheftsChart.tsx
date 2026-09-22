@@ -1,7 +1,8 @@
 /**
  * WHAT:  MonthlyTheftsChart — the area theft-stats page's 12-month bar chart:
- *        a count above every bar, the bars on a baseline, month names under
- *        every other bar. Plain Views, no SVG (StatsSparkline's reasoning).
+ *        each bar carrying its own count, the bars on a baseline, month names
+ *        under every other bar. Plain Views, no SVG (StatsSparkline's
+ *        reasoning).
  * WHY:   The page used to draw this with StatsSparkline, the per-post
  *        sightings-per-day chart — twelve unlabelled bars with no values and
  *        no axis, and a caption underneath doing all the reading. The owner
@@ -14,10 +15,14 @@
  *        silhouette.
  *
  *        WHAT IS LABELLED, AND WHY NOT MORE:
- *          · A count above EVERY bar, "0" included. The empty stub says
- *            "zero" to an eye that already knows the chart; a numeral says it
- *            to everyone. Zero is in textSecondary so the year's quiet months
- *            recede and its busy ones stand out.
+ *          · Each bar CARRIES its count — inside the bar, in textOnPrimary,
+ *            when the bar is tall enough to hold a numeral; perched just
+ *            above it, in textPrimary, when it is not. A zero month shows
+ *            only its stub on the baseline. This replaced a row of counts
+ *            above the chart (owner, 2026-09-22: "I don't like the number
+ *            above the bar chart, can the numbers be integrated into the bar
+ *            itself") — a separate row of twelve numerals read as a table
+ *            sitting on a chart; a number in its bar is one mark, not two.
  *          · A month name under every OTHER bar, counted back from the last,
  *            so the most recent month is always named (monthlyColumns). Twelve
  *            names at caption size need ~22pt columns; the card interior is
@@ -38,8 +43,10 @@
  *        would be noise to swipe through.
  *
  *        `growIn`: the bars rise from the baseline once, over motion.slow —
- *        one scaleY on the bar row from a bottom origin, not a per-bar race —
- *        the labels stay put. Under reduced motion the bars are simply there.
+ *        one scaleY on the bar row from a bottom origin, not a per-bar race.
+ *        The counts are a SEPARATE layer over the bars, faded in over the
+ *        same span, so a numeral is never squashed by the scale as its bar
+ *        grows. Under reduced motion everything is simply there.
  * LINKS: ../lib/areaInsightsModel.ts (monthlyColumns, monthlySummary);
  *        ../screens/AreaInsightsScreen.tsx (the consumer);
  *        src/features/vehicles/components/StatsSparkline.tsx (the sibling
@@ -77,6 +84,15 @@ export interface MonthlyTheftsChartProps {
   growIn?: boolean;
 }
 
+/** A month with thefts gets at least a visible nub, so "one" never rounds
+ *  away into the empty stub. */
+const barHeight = (fraction: number) =>
+  Math.max(fraction * sizes.monthlyChartHeight, sizes.sparklineMin);
+
+/** The shortest bar that can hold its numeral: the caption line plus a 4pt
+ *  breath above and below. Shorter bars wear theirs on top. */
+const COUNT_INSIDE_MIN = typography.caption.lineHeight + spacing.xs * 2;
+
 export function MonthlyTheftsChart({ columns, summary, growIn = false }: MonthlyTheftsChartProps) {
   const styles = useThemedStyles(makeStyles);
   const reducedMotion = useReducedMotion();
@@ -93,6 +109,9 @@ export function MonthlyTheftsChart({ columns, summary, growIn = false }: Monthly
     });
   }, [animateIn, rise]);
   const riseStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: rise.value }] }));
+  // The counts fade in over the same span the bars rise, in their own layer,
+  // so the scale never squashes a numeral.
+  const countsStyle = useAnimatedStyle(() => ({ opacity: rise.value }));
 
   // The row's measured width, for placing the month names (see WHAT).
   const [rowWidth, setRowWidth] = useState(0);
@@ -114,48 +133,63 @@ export function MonthlyTheftsChart({ columns, summary, growIn = false }: Monthly
       accessibilityLabel={summary}
       testID="monthly-thefts-chart"
     >
-      {/* Counts: one flex cell per column, mirroring the bar row exactly. A
-          three-digit count shrinks inside its cell rather than spilling into
-          its neighbour. */}
-      <View style={styles.row}>
-        {columns.map((column) => (
-          <View key={column.key} style={styles.cell}>
-            <Text
-              style={[styles.count, column.count === 0 && styles.countZero]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              testID={`chart-count-${column.key}`}
-            >
-              {column.count}
-            </Text>
-          </View>
-        ))}
-      </View>
+      <View style={styles.plot}>
+        {/* Bars, on a baseline. TOP corners only (StatsSparkline): a rounded
+            bottom on a ~20pt bar turns the minimum nub into a floating dot. */}
+        <Animated.View
+          style={[styles.row, styles.bars, riseStyle]}
+          onLayout={onRowLayout}
+          testID="monthly-thefts-bars"
+        >
+          {columns.map((column) => (
+            <View
+              key={column.key}
+              style={[
+                styles.bar,
+                column.count > 0
+                  ? [styles.barFilled, { height: barHeight(column.fraction) }]
+                  : styles.barEmpty,
+              ]}
+            />
+          ))}
+        </Animated.View>
 
-      {/* Bars, on a baseline. TOP corners only (StatsSparkline): a rounded
-          bottom on a ~20pt bar turns the minimum nub into a floating dot. */}
-      <Animated.View
-        style={[styles.row, styles.bars, riseStyle]}
-        onLayout={onRowLayout}
-        testID="monthly-thefts-bars"
-      >
-        {columns.map((column) => (
-          <View
-            key={column.key}
-            style={[
-              styles.bar,
-              column.count > 0
-                ? [
-                    styles.barFilled,
-                    // A month with thefts gets at least a visible nub, so "one"
-                    // never rounds away into the empty stub.
-                    { height: Math.max(column.fraction * sizes.monthlyChartHeight, sizes.sparklineMin) },
-                  ]
-                : styles.barEmpty,
-            ]}
-          />
-        ))}
-      </Animated.View>
+        {/* Counts, a layer over the bars: one flex cell per column mirroring
+            the bar row, each numeral bottom-anchored at its bar's height —
+            tucked INSIDE the bar's top when the bar can hold it, perched just
+            above it when it cannot. Zero shows nothing but its stub. A
+            three-digit count shrinks inside its cell rather than spilling
+            into its neighbour. */}
+        <Animated.View style={[styles.row, styles.counts, countsStyle]} pointerEvents="none">
+          {columns.map((column) => {
+            if (column.count === 0) {
+              return <View key={column.key} style={styles.cell} />;
+            }
+            const height = barHeight(column.fraction);
+            const inside = height >= COUNT_INSIDE_MIN;
+            return (
+              <View key={column.key} style={styles.cell}>
+                <Text
+                  style={[
+                    styles.count,
+                    inside ? styles.countInside : styles.countAbove,
+                    {
+                      marginBottom: inside
+                        ? height - typography.caption.lineHeight - spacing.xs
+                        : height + spacing.xs,
+                    },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  testID={`chart-count-${column.key}`}
+                >
+                  {column.count}
+                </Text>
+              </View>
+            );
+          })}
+        </Animated.View>
+      </View>
 
       {/* Month names, placed from the measured column width. */}
       <View style={styles.names}>
@@ -190,17 +224,28 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'row',
       gap: sizes.monthlyChartGap,
     },
-    cell: { flex: 1, alignItems: 'center' },
-    count: { ...typography.caption, color: c.textPrimary },
-    countZero: { color: c.textSecondary },
+    // The plot is the bar row's height plus headroom for a numeral perched
+    // above a short bar near the top — which cannot happen (a bar tall
+    // enough to reach the top holds its numeral inside) — so just the row.
+    plot: { height: sizes.monthlyChartHeight },
     bars: {
+      ...StyleSheet.absoluteFill,
       alignItems: 'flex-end',
-      height: sizes.monthlyChartHeight,
-      marginTop: spacing.xs,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: c.border,
       transformOrigin: 'bottom',
     },
+    counts: {
+      ...StyleSheet.absoluteFill,
+      alignItems: 'flex-end',
+    },
+    cell: { flex: 1, alignItems: 'center' },
+    count: { ...typography.caption },
+    // In its bar: the ink for a `primary` fill (16.5:1 in light; the pair
+    // swaps together in dark).
+    countInside: { color: c.textOnPrimary },
+    // On its bar, too short to hold it.
+    countAbove: { color: c.textPrimary },
     bar: {
       flex: 1,
       borderTopLeftRadius: radii.sm,

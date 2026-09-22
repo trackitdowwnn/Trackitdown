@@ -689,12 +689,12 @@ function Breakdown({
     // fades together with it while a new radius loads.
     <Animated.View style={[styles.stack, dimStyle]}>
       <Card title="Over the last year" index={1} testID="stats-card-year">
-        {/* A count over every bar and a name under every other, so the chart
-            reads without the caption (MonthlyTheftsChart). The caption stays
-            for the one thing the picture does not say in words — how many of
-            the twelve months had any — and doubles as the spoken summary. */}
+        {/* Each bar carries its count and every other bar its month, so the
+            chart reads on its own (MonthlyTheftsChart). No caption beneath
+            (owner, 2026-09-22: "I don't think the text under the graph is
+            necessary") — the sentence survives as the chart's spoken summary,
+            which is where a screen reader needs it. */}
         <MonthlyTheftsChart columns={columns} summary={summary} growIn />
-        <Text style={styles.quiet}>{summary}</Text>
       </Card>
 
       {showMakes ? (
