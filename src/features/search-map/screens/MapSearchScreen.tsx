@@ -57,6 +57,7 @@ import {
   isEmptyCriteria,
   parseCriteria,
   summarise,
+  summariseParts,
   toRpcCriteria,
 } from '../lib/searchCriteria';
 import { keepMarkersOnScreen, pinsForRegion } from '../lib/mapPins';
@@ -705,7 +706,8 @@ function MapSearchBody({
             the hook's `paused`. Dismiss the card first; the pill is one tap
             away again immediately. */}
         <MapSearchPill
-          summary={isEmptyCriteria(appliedCriteria) ? null : summarise(appliedCriteria)}
+          summary={isEmptyCriteria(appliedCriteria) ? null : summariseParts(appliedCriteria)}
+          spokenSummary={isEmptyCriteria(appliedCriteria) ? null : summarise(appliedCriteria)}
           onPress={(rect) => {
             if (hasSelection) {
               clear();

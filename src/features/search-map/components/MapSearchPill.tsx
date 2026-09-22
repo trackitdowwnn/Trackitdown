@@ -1,8 +1,9 @@
 /**
  * WHAT:  MapSearchPill — the floating pill at the top of the map that opens the
  *        search surface. Shows the "Search make or model" placeholder when no
- *        search is active, or the active-search summary ("Blue BMW · £500+")
- *        with a clear (×) button when one is.
+ *        search is active, or the active search as a HEADLINE over its details
+ *        ("Blue BMW" / "£500+ · within 10 miles of this area") with a clear (×)
+ *        button when one is.
  * WHY:   The map's single entry into the unified search surface (mirrors the
  *        feed's FeedTopBar), and the persistent readout of what's filtering the
  *        map — Airbnb's active-search chip. Tapping the body reopens the surface
@@ -28,11 +29,21 @@ import {
   type Palette,
 } from '@/shared/theme';
 
+import type { SearchSummary } from '../lib/searchCriteria';
 import type { SourceRect } from './SearchSheet';
 
 export interface MapSearchPillProps {
-  /** The active-search summary, or null/'' when nothing is filtered. */
-  summary: string | null;
+  /**
+   * The active search as a headline over its details, or null when nothing is
+   * filtered (the pill then shows its placeholder).
+   *
+   * TWO LINES, Airbnb's searched-state search bar (2026-09-22): the headline
+   * says what you are looking at, the details qualify it in a quieter voice.
+   * It was one flat string, which meant a search filtered only by radius put
+   * "10mi" — a bare measurement — at the top of the map as the entire
+   * description of what was on screen.
+   */
+  summary: SearchSummary | null;
   /**
    * Open the search surface, given this pill's measured WINDOW rect — the
    * surface morphs out of it and back into it on dismiss.
@@ -43,18 +54,25 @@ export interface MapSearchPillProps {
    * animated properly.
    */
   onPress: (rect: SourceRect) => void;
+  /**
+   * The same search as ONE sentence, for the screen reader — two visual lines
+   * are one spoken thing, and a reader who hears a headline and then a
+   * detached list of numbers has to reassemble them.
+   */
+  spokenSummary: string | null;
   /** Clear the active search (only shown when a summary is present). */
   onClear: () => void;
 }
 
 export const MapSearchPill = memo(function MapSearchPill({
   summary,
+  spokenSummary,
   onPress,
   onClear,
 }: MapSearchPillProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  const active = Boolean(summary && summary.trim());
+  const active = Boolean(summary && summary.headline.trim());
   const pillRef = useRef<View>(null);
 
   // Measure in WINDOW (absolute) coords on tap, then open — same as
@@ -73,17 +91,28 @@ export const MapSearchPill = memo(function MapSearchPill({
       <Pressable
         ref={pillRef}
         accessibilityRole="button"
-        accessibilityLabel={active ? `Search: ${summary}. Edit search` : 'Search make or model'}
+        accessibilityLabel={
+          active ? `Search: ${spokenSummary}. Edit search` : 'Search make or model'
+        }
         onPress={handlePress}
         style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
       >
         <Feather name="search" size={sizes.iconSm} color={palette.textPrimary} />
-        <Text
-          numberOfLines={1}
-          style={[styles.label, !active && styles.placeholder]}
-        >
-          {active ? summary : 'Search make or model'}
-        </Text>
+        {/* The text column. The icon and × stay centred against it however
+            many lines it has, so a one-line search and a two-line one put
+            their controls in the same place. */}
+        <View style={styles.text}>
+          <Text numberOfLines={1} style={[styles.label, !active && styles.placeholder]}>
+            {active && summary ? summary.headline : 'Search make or model'}
+          </Text>
+          {/* Only when there is something to qualify the headline WITH: a
+              car with no other filter is one line, not a line and a blank. */}
+          {active && summary?.details ? (
+            <Text numberOfLines={1} style={styles.details} testID="map-search-details">
+              {summary.details}
+            </Text>
+          ) : null}
+        </View>
         {active ? (
           <Pressable
             accessibilityRole="button"
@@ -111,7 +140,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: c.surface,
     borderRadius: radii.full,
+    // minHeight, not height: the pill is one line at rest and two when a
+    // search has details, and it grows into the second rather than clipping
+    // it. `radii.full` clamps to half the shorter side, so a taller pill stays
+    // a stadium rather than becoming a rounded rectangle.
     minHeight: sizes.control,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
     // See MapCircleButton: the lifted shadow is a black cast and disappears on
     // a dark basemap, so floating map chrome carries its own hairline now.
@@ -122,10 +156,21 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   pillPressed: {
     backgroundColor: c.surfaceSubtle,
   },
+  // The text column between the icon and the ×; `flex: 1` moved here from the
+  // label so the two lines share one measured width.
+  text: {
+    flex: 1,
+  },
   label: {
     ...typography.label,
     color: c.textPrimary,
-    flex: 1,
+  },
+  // The parameters under the headline — caption, secondary ink: they qualify
+  // the line above rather than competing with it, which is the whole point of
+  // splitting them off it.
+  details: {
+    ...typography.caption,
+    color: c.textSecondary,
   },
   placeholder: {
     color: c.textSecondary,

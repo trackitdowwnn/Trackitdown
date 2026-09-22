@@ -39,25 +39,72 @@ afterAll(() => {
 describe('MapSearchPill', () => {
   it('shows the placeholder and no clear button when nothing is active', async () => {
     const { getByText, queryByLabelText } = await render(
-      <MapSearchPill summary={null} onPress={jest.fn()} onClear={jest.fn()} />,
+      <MapSearchPill
+        summary={null}
+        spokenSummary={null}
+        onPress={jest.fn()}
+        onClear={jest.fn()}
+      />,
     );
     expect(getByText('Search make or model')).toBeTruthy();
     expect(queryByLabelText('Clear search')).toBeNull();
   });
 
-  it('shows the summary and a clear button when a search is active', async () => {
+  it('shows the headline over its details, and a clear button, when active', async () => {
     const { getByText, getByLabelText } = await render(
-      <MapSearchPill summary="Blue BMW · £500+" onPress={jest.fn()} onClear={jest.fn()} />,
+      <MapSearchPill
+        summary={{ headline: 'Blue BMW', details: '£500+ · within 10 miles of this area' }}
+        spokenSummary="Blue BMW · £500+ · within 10 miles of this area"
+        onPress={jest.fn()}
+        onClear={jest.fn()}
+      />,
     );
-    expect(getByText('Blue BMW · £500+')).toBeTruthy();
+    // Two lines, not one string: the headline leads and the parameters sit
+    // under it in a quieter voice (2026-09-22).
+    expect(getByText('Blue BMW')).toBeTruthy();
+    expect(getByText('£500+ · within 10 miles of this area')).toBeTruthy();
     expect(getByLabelText('Clear search')).toBeTruthy();
+  });
+
+  it('⚠️ is one line when the headline has nothing to qualify it', async () => {
+    // A blank second line would leave the pill tall and half-empty.
+    const { queryByTestId } = await render(
+      <MapSearchPill
+        summary={{ headline: 'Blue BMW', details: '' }}
+        spokenSummary="Blue BMW"
+        onPress={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+    expect(queryByTestId('map-search-details')).toBeNull();
+  });
+
+  it('speaks both lines as one sentence', async () => {
+    // Two visual lines are one spoken thing; a reader who hears a headline and
+    // then a detached list of numbers has to reassemble them.
+    const { getByLabelText } = await render(
+      <MapSearchPill
+        summary={{ headline: 'Cars nearby', details: 'within 10 miles of this area' }}
+        spokenSummary="Cars nearby · within 10 miles of this area"
+        onPress={jest.fn()}
+        onClear={jest.fn()}
+      />,
+    );
+    expect(
+      getByLabelText('Search: Cars nearby · within 10 miles of this area. Edit search'),
+    ).toBeTruthy();
   });
 
   it('opens on body press and clears on the ×', async () => {
     const onPress = jest.fn();
     const onClear = jest.fn();
     const { getByLabelText } = await render(
-      <MapSearchPill summary="Blue BMW" onPress={onPress} onClear={onClear} />,
+      <MapSearchPill
+        summary={{ headline: 'Blue BMW', details: '' }}
+        spokenSummary="Blue BMW"
+        onPress={onPress}
+        onClear={onClear}
+      />,
     );
 
     await act(async () => {
