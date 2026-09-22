@@ -1,8 +1,8 @@
 /**
  * WHAT:  AreaInsightsScreen — how many cars have been reported stolen around
- *        here, as a stack of cards: a hero card (the 30-day count over a quiet
- *        stat row — 7 days / 90 days / 12 months — with the radius as a
- *        disclosed "within N miles · Change" line), then one card per
+ *        here, as a stack of cards: a hero card (the 30-day count on one line
+ *        over a quiet stat row — 7 days / 90 days / 12 months — with the
+ *        radius slider always visible at its foot), then one card per
  *        question — a 12-month chart, the makes and models taken most, a
  *        recovery rate, how they were taken, whether the keys went.
  * WHY:   The feed shows what is happening near someone one card at a time.
@@ -145,7 +145,7 @@ const DEFAULT_RADIUS_MILES = 20;
  * RPCs (the RPC quantises the radius anyway, so four of them answered
  * questions nobody asked) and — the part the owner saw — each one flipped the
  * page to the skeleton, which unmounted the slider under their finger. The
- * "within N miles" line still follows the thumb live; only the QUESTION waits
+ * slider's own readout still follows the thumb live; only the QUESTION waits
  * until the finger has settled. useSearchCount's live count debounces the
  * same slider at 200; a little longer here because an answer costs a page
  * repaint, not a number on a button.
@@ -221,10 +221,6 @@ export function AreaInsightsScreen({
     return () => clearTimeout(timer);
   }, [radiusMiles, askedMiles]);
   const [geocode, setGeocode] = useState<GeocodeState>({ status: 'idle' });
-  // The radius control is disclosed, not pinned: the figure is the hero and
-  // "within N miles · Change" beneath it is enough until someone wants to
-  // move it. Default closed on every entry.
-  const [radiusOpen, setRadiusOpen] = useState(false);
   const [insights, setInsights] = useState<AreaInsights | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [generation, setGeneration] = useState(0);
@@ -460,8 +456,6 @@ export function AreaInsightsScreen({
               // `.then`. The fallback only satisfies the type.
               answeredMiles={shownMiles ?? radiusMiles}
               radiusMiles={radiusMiles}
-              radiusOpen={radiusOpen}
-              onToggleRadius={() => setRadiusOpen((open) => !open)}
               onChangeMiles={setRadiusMiles}
             />
           ) : currentFailed ? (
@@ -501,7 +495,7 @@ export function AreaInsightsScreen({
  * count is an alarm, and the reader is already worried.
  *
  * ⚠️ ONE HERO CARD FOR BOTH ANSWERS. It takes the whole payload — enough or
- * not — and renders the same card either way, with the RadiusControl in the
+ * not — and renders the same card either way, with the RadiusSlider in the
  * SAME child slot in both. The not-enough state used to be its own card with
  * its own control; dragging from 20 miles into a too-small 5 swapped one for
  * the other, and a swap is a remount — the slider vanished from under the
@@ -523,23 +517,19 @@ export function AreaInsightsScreen({
  * a free side effect of the old skeleton swap, which remounted everything;
  * keeping the tree mounted (so the slider survives) lost it, and the owner
  * asked for it back. The key sits on the figures ONLY — never on the card
- * that holds the RadiusControl.
+ * that holds the RadiusSlider.
  */
 function Insights({
   data,
   pending,
   answeredMiles,
   radiusMiles,
-  radiusOpen,
-  onToggleRadius,
   onChangeMiles,
 }: {
   data: AreaInsights;
   pending: boolean;
   answeredMiles: number;
   radiusMiles: number;
-  radiusOpen: boolean;
-  onToggleRadius: () => void;
   onChangeMiles: (miles: number) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
@@ -582,23 +572,12 @@ function Insights({
             />
           </Animated.View>
         )}
-        <RadiusControl
-          radiusMiles={radiusMiles}
-          open={data.enoughData ? radiusOpen : true}
-          pinned={!data.enoughData}
-          onToggle={onToggleRadius}
-          onChangeMiles={onChangeMiles}
-        />
         {data.enoughData ? (
-          // A hairline between the sentence and the band, INSIDE the card:
-          // the band's cells are divided by vertical hairlines already, and
-          // the horizontal one turns them into a footer row of the hero card
-          // rather than three stray numbers under a paragraph.
-          <Animated.View
-            key={`band-${answeredMiles}`}
-            style={[styles.bandFooter, dimStyle]}
-            entering={enter}
-          >
+          // The band sits directly under the sentence — its cells are divided
+          // by vertical hairlines, and together with the sentence they are
+          // the card's FIGURES, one block. The hairline below separates that
+          // block from the control.
+          <Animated.View key={`band-${answeredMiles}`} style={dimStyle} entering={enter}>
             <StatBand
               cells={[
                 { key: '7d', value: String(data.total7d), label: 'last 7 days', spoken: `${data.total7d} in the last 7 days` },
@@ -608,6 +587,23 @@ function Insights({
             />
           </Animated.View>
         ) : null}
+        {/* ALWAYS VISIBLE, at the foot of the card, under a hairline (owner
+            decision 2026-09-22 — it was a disclosed "within N miles · Change"
+            line before). The slider carries its own label and a live readout
+            beside the thumb, so the radius is still stated on the page; the
+            hairline says "the figures above, the control below". The same
+            slot in both answers, so it is never remounted (see Insights). */}
+        <View style={styles.control}>
+          <RadiusSlider
+            label="Radius"
+            valueMiles={radiusMiles}
+            // Whole miles only — the RPC quantises the radius, so anything
+            // else is silently rounded and the readout would stop matching
+            // the figures.
+            onChangeMiles={(miles) => onChangeMiles(Math.round(miles))}
+            testID="stats-radius-slider"
+          />
+        </View>
       </Card>
       {data.enoughData ? (
         <Breakdown key={`breakdown-${answeredMiles}`} data={data} dimStyle={dimStyle} />
@@ -617,11 +613,18 @@ function Insights({
 }
 
 /**
- * The hero: a sentence, not a bare number — the count at title size and
- * weight, its words in body Regular beside it, so the number leads by both
+ * The hero: a sentence, not a bare number — the count at heading size and
+ * weight, its words at caption size beside it, so the number leads by both
  * size and weight (the reference's grammar for a hero figure) and "14"
  * cannot be mistaken for anything else on the page. One text node, one
  * baseline, one screen-reader stop.
+ *
+ * ONE LINE, by owner decision (2026-09-22): the sizes are chosen so "14 cars
+ * reported stolen in the last 30 days" fits a 310pt card interior at the
+ * default text size, and `adjustsFontSizeToFit` covers a narrower phone or
+ * a larger text setting by shrinking rather than wrapping or ellipsising —
+ * a theft count with its last words cut off is worse than a slightly
+ * smaller one. The floor is 0.7, so it can never shrink past legible.
  *
  * The font-scale cap is repeated on the number run: it is not reliably
  * inherited across nested Text (OnboardingSlide records the same), and an
@@ -637,7 +640,15 @@ function HeroSentence({ count, dimStyle }: { count: number; dimStyle: AnimatedSt
       style={dimStyle}
       entering={FadeIn.duration(motion.standard).reduceMotion(ReduceMotion.System)}
     >
-      <Text style={styles.hero} accessibilityRole="header" testID="stats-hero">
+      <Text
+        style={styles.hero}
+        accessibilityRole="header"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+        maxFontSizeMultiplier={displayFontScaleCap}
+        testID="stats-hero"
+      >
         <Text style={styles.heroNumber} maxFontSizeMultiplier={displayFontScaleCap}>
           {count === 0 ? 'No' : count}
         </Text>
@@ -762,81 +773,6 @@ function Breakdown({
         </Card>
       ) : null}
     </Animated.View>
-  );
-}
-
-/**
- * "within 5 miles · Change" — the radius as one quiet line under the hero,
- * with the slider disclosed beneath it on demand. The figure is the point of
- * the page; a full slider pinned above it made the control look like the
- * point instead (and its default label read "Alert radius", a leak from the
- * alerts feature — this is not an alert).
- *
- * THE WHOLE LINE IS THE TARGET. A Pressable around the word "Change" alone
- * is an 18pt-tall target inside an 18pt row, and Android drops touches in
- * slop that falls outside the parent's bounds (bugWizardSteps records the
- * same lesson). So the line is one Pressable padded to 44pt — pulled back
- * into the 16pt rhythm the way the back glyph is — holding ONE Text with an
- * underlined run: one baseline, one screen-reader stop, one tap.
- *
- * `pinned` (the not-enough state): the slider is the way OUT of that state,
- * so it is shown open with no toggle at all — an underlined "Done" that did
- * nothing would break "underline = tappable" and announce as a dead button.
- *
- * Whole miles only — the RPC quantises the radius, so sending anything else
- * is silently rounded and the number in this line would stop matching the
- * figures above it.
- */
-function RadiusControl({
-  radiusMiles,
-  open,
-  pinned = false,
-  onToggle,
-  onChangeMiles,
-}: {
-  radiusMiles: number;
-  open: boolean;
-  pinned?: boolean;
-  onToggle?: () => void;
-  onChangeMiles: (miles: number) => void;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  const within = `within ${radiusMiles} ${radiusMiles === 1 ? 'mile' : 'miles'}`;
-  return (
-    <View style={styles.radius}>
-      {pinned ? (
-        <Text style={styles.quiet}>{within}</Text>
-      ) : (
-        <Pressable
-          onPress={onToggle}
-          accessibilityRole="button"
-          accessibilityLabel={`${within}. ${open ? 'Hide the radius control' : 'Change the radius'}`}
-          accessibilityState={{ expanded: open }}
-          style={({ pressed }) => [styles.radiusLine, pressed && styles.radiusLinePressed]}
-          testID="stats-change-radius"
-        >
-          <Text style={styles.quiet}>
-            {within} ·{' '}
-            {/* Underline = tappable (DESIGN_SYSTEM) — the profile's text-action
-                idiom; no colour needed. */}
-            <Text style={styles.radiusAction}>{open ? 'Done' : 'Change'}</Text>
-          </Text>
-        </Pressable>
-      )}
-      {pinned || open ? (
-        // A fade, not a slide: the slider appears where the line already
-        // pointed, and `fast` is the micro-interaction duration. Pinned open
-        // it still fades in — that first paint is a disclosure too.
-        <Animated.View entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}>
-          <RadiusSlider
-            label="Radius"
-            valueMiles={radiusMiles}
-            onChangeMiles={(miles) => onChangeMiles(Math.round(miles))}
-            testID="stats-radius-slider"
-          />
-        </Animated.View>
-      ) : null}
-    </View>
   );
 }
 
@@ -1027,46 +963,29 @@ const makeStyles = (c: Palette) =>
       gap: spacing.md,
     },
     cardTitle: { ...typography.cardTitle, color: c.textPrimary },
-    // The hero card's footer row: a hairline over the band, and the band's own
-    // cell padding pushed up to the card's 12 step so the three figures sit
-    // clear of the rule.
-    bandFooter: {
+    // The hero card's control, under a hairline: the figures above, the
+    // slider below.
+    control: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: c.border,
-      paddingTop: spacing.xs,
+      paddingTop: spacing.md,
     },
-    // The hero: the words in body Regular, the count at title Bold — the one
-    // place the page's number outranks everything else, by size AND weight.
-    // NOT display for the numeral: that is the app's celebration size, and a
-    // theft count is not a celebration. The paragraph takes the TITLE's
-    // leading throughout, so a sentence that wraps (most do, at 342pt) does
-    // not set its second line 6pt tighter than its first.
+    // The hero, ON ONE LINE (owner decision 2026-09-22): the count at heading
+    // Bold, the words at caption Regular beside it, so the number still leads
+    // by size AND weight — a step down from title/body, which wrapped to two
+    // lines on every phone. Heading's leading throughout so the line sits
+    // level. NOT display for the numeral: that is the app's celebration size,
+    // and a theft count is not a celebration.
     hero: {
-      ...typography.body,
-      lineHeight: typography.title.lineHeight,
+      ...typography.caption,
+      lineHeight: typography.heading.lineHeight,
       color: c.textPrimary,
     },
-    heroNumber: { ...typography.title, color: c.textPrimary },
+    heroNumber: { ...typography.heading, color: c.textPrimary },
     // A section's one plain statement ("71% came back") — sectionTitle, so it
     // sits between the hero and the headings without a fourth scale.
     statement: { ...typography.sectionTitle, color: c.textPrimary },
     quiet: { ...typography.caption, color: c.textSecondary },
-    radius: { gap: spacing.md },
-    // The whole line is the 44pt target; the negative margin gives the extra
-    // height back so the caption still sits in the 16pt rhythm — the same
-    // trick `back` plays horizontally.
-    radiusLine: {
-      alignSelf: 'flex-start',
-      minHeight: sizes.touchTarget,
-      justifyContent: 'center',
-      marginVertical: -(sizes.touchTarget - typography.caption.lineHeight) / 2,
-    },
-    radiusLinePressed: { opacity: opacity.pressed },
-    radiusAction: {
-      ...typography.caption,
-      color: c.textPrimary,
-      textDecorationLine: 'underline', // underline = tappable (DESIGN_SYSTEM)
-    },
     rows: { gap: spacing.sm },
     row: {
       flexDirection: 'row',

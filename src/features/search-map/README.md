@@ -271,10 +271,13 @@ Albans", not "near you".
 column of resting cards (`cardSurface`: flat, hairline, no shadow — never a
 Pressable, no chevrons, because a card that looks tappable and is not is the
 standard complaint about this pattern). The hero card first and biggest: ONE
-hero sentence (the 30-day count), the disclosed "within N miles · Change"
-radius line (no pinned slider, no longer labelled "Alert radius"), then a
-shared `StatBand` (7 days / 90 days / 12 months) as the card's footer row
-under a hairline. Then one card per question — chart, most-taken makes,
+hero sentence (the 30-day count, on ONE line — heading count over caption
+words, `adjustsFontSizeToFit` so a narrow phone shrinks rather than wraps;
+owner decision 2026-09-22), a shared `StatBand` (7 days / 90 days / 12
+months) directly beneath it, then the radius slider ALWAYS VISIBLE at the
+card's foot under a hairline (also 2026-09-22 — it was a disclosed "within N
+miles · Change" line; the slider's own label "Radius" and live readout state
+the radius now). Then one card per question — chart, most-taken makes,
 recovery rate, how taken, keys — each a `cardTitle` over its content over one
 quiet caveat, with values leading their labels. The card shape came from
 research into Dribbble stats pages and the apps they copy (Apple Health's
@@ -284,8 +287,7 @@ severity colour, no trend arrows, no benchmarks against other areas — this
 page is about crime near someone's home. Motion (2026-09-22) is the app's
 one list entrance — staggered `FadeInDown` by rendered position — plus the
 year chart's bars rising from their baseline (`StatsSparkline growIn`, one
-scaleY, not a per-bar race) and the radius slider fading in when disclosed;
-nothing counts up or bounces, and all of it collapses under reduced motion.
+scaleY, not a per-bar race); nothing counts up or bounces, and all of it collapses under reduced motion.
 The scroll content adds `insets.bottom` to its tail so the last card clears
 Android's edge-to-edge button bar (Screen pads the top only).
 
@@ -293,8 +295,8 @@ Android's edge-to-edge button bar (Screen pads the top only).
 too quick and cuts off the slider"): `RadiusSlider` commits on every snap of
 a drag, and wired straight into the fetch each snap flipped the page to the
 skeleton — which unmounted the slider under the finger — and fired an RPC
-for a radius the thumb was only passing through. Now the slider and the
-"within N miles" line follow the finger through `radiusMiles`, while the
+for a radius the thumb was only passing through. Now the slider's readout
+follows the finger through `radiusMiles`, while the
 fetch follows `askedMiles`, which is `radiusMiles` once it has held still
 for `RADIUS_SETTLE_MS` (300): one request per settled drag. While the
 answer is on its way the previous figures stay MOUNTED but pending — dimmed
