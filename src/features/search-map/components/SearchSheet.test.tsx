@@ -338,6 +338,36 @@ describe('the change-area row', () => {
 
     expect(view.queryByTestId('search-change-area')).toBeNull();
   });
+
+  it('carries the radius with it — visible without opening anything', async () => {
+    // The radius moved out of a "Distance" accordion and into this block
+    // (2026-09-22): where and how far are one question, so the slider is on
+    // screen the moment the sheet is, under the area it applies to.
+    const view = await render(
+      <SearchSheet
+        initialCriteria={emptyCriteria()}
+        region={REGION}
+        onApply={jest.fn()}
+        onClose={jest.fn()}
+        areaLabel="St Albans"
+        onChangeArea={jest.fn()}
+      />,
+    );
+
+    expect(view.getByTestId('search-distance')).toBeTruthy();
+    expect(view.getByText('Any distance')).toBeTruthy();
+    // And no accordion is left behind for it.
+    expect(view.queryByTestId('section-distance')).toBeNull();
+  });
+
+  it('⚠️ keeps the radius when browsing nationally, where there is no area row', async () => {
+    // The slider sits OUTSIDE the areaLabel conditional. Nested inside it, a
+    // national browse would silently lose the control entirely.
+    const { view } = await renderSheet();
+
+    expect(view.queryByTestId('search-change-area')).toBeNull();
+    expect(view.getByTestId('search-distance')).toBeTruthy();
+  });
 });
 
 describe('the When filter', () => {
@@ -487,9 +517,8 @@ describe('the widened filters', () => {
   it('drives distance from the slider, and "Any distance" clears it', async () => {
     const { view, onApply } = await renderSheet();
 
-    await act(async () => {
-      fireEvent.press(view.getByTestId('section-distance'));
-    });
+    // No accordion to open: the radius lives in the Where block at the top of
+    // the sheet (2026-09-22), visible the moment the sheet is.
     await act(async () => {
       fireEvent.press(view.getByTestId('search-distance')); // stub emits 25
     });
@@ -513,9 +542,6 @@ describe('the widened filters', () => {
     const { view } = await renderSheet(jest.fn(), jest.fn(), {
       ...emptyCriteria(),
       distanceMiles: 10,
-    });
-    await act(async () => {
-      fireEvent.press(view.getByTestId('section-distance'));
     });
 
     expect(view.getByText(/within 10 miles of this area/)).toBeTruthy();

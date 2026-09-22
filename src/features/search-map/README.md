@@ -393,13 +393,21 @@ RN Modal — a transparent Modal flickers and can't host gorhom sheets; it's an
 absolute overlay in the same screen) that MORPHS out of the search pill
 (measure-and-grow: `SearchSheet` measures the pill's window rect and springs the
 box from it to full screen, a ghost pill label fading early, content fading in;
-reduced-motion cross-fades). Header is a title + close. Body is collapsible
-accordion filter cards: **Vehicle** (make/model pickers reused from the posting
-flow + multi-select colour and body-type chips + a From/To year range),
-**Bounty** (`MoneyRangeSlider` — the range consumer the slider's TODO
-anticipated — + quick chips), **Distance** (`RadiusSlider`, 1–50 continuous, +
-an "Any distance" action chip), and **When** (recency chips plus From/To date
-pickers, always visible). There is deliberately **no free-text box** — the
+reduced-motion cross-fades). Header is a title + close. Then a pinned
+**Where** block — the area row (navigates to the picker) with the radius
+directly beneath it (`RadiusSlider`, 1–50 continuous, + an "Any distance"
+action chip). The radius lived in its own "Distance" accordion until
+2026-09-22, when the owner moved it here: where and how far are one question,
+and a reader who had just set an area still had to go hunting three cards down
+for the control deciding how much of it they were searching. ⚠️ The slider
+renders OUTSIDE the `areaLabel` conditional — the row is absent when browsing
+nationally, but the radius still applies, and nesting it would silently drop
+the control there. Below that, collapsible accordion filter cards:
+**Vehicle** (make/model pickers reused from the posting flow + multi-select
+colour and body-type chips + a From/To year range), **Bounty**
+(`MoneyRangeSlider` — the range consumer the slider's TODO anticipated — +
+quick chips), and **When** (recency chips plus From/To date pickers, always
+visible). There is deliberately **no free-text box** — the
 make/model pickers ask that question precisely, so a text field beside them was
 a second, fuzzier route to the same answer (`criteria.text` remains in the model
 and the RPC still accepts it; nothing on this surface writes it). A footer
