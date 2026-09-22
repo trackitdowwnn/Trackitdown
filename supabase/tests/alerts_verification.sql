@@ -1319,10 +1319,24 @@ end $$;
 -- 50 miles -- on a driveway theft, i.e. the victim's home address -- is another.
 -- -----------------------------------------------------------------------------
 do $$
+-- ⚠️ ASSERTED OVER THE WHOLE PUSH (title || body), NOT THE BODY ALONE, since
+-- 2026-09-22: the copy pass moved the locality into the TITLE ("Car stolen in
+-- Hemel Hempstead"). The property defended here is unchanged — the push carries
+-- the district and never the street — but it stopped being a property of one
+-- field, and a body-only assertion would now pass a push whose TITLE leaked a
+-- street. So both halves are searched for the street and the postcode, and the
+-- title is additionally required to carry the district, so the locality cannot
+-- quietly leave the line a spotter actually reads.
 declare
-  v_body text;
+  v_doc   jsonb;
+  v_title text;
+  v_body  text;
+  v_push  text;
 begin
-  v_body := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001') ->> 'body';
+  v_doc   := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001');
+  v_title := v_doc ->> 'title';
+  v_body  := v_doc ->> 'body';
+  v_push  := v_title || ' ' || v_body;
 
   -- Sanity: the fixture really does carry two different labels.
   if not exists (
@@ -1333,17 +1347,17 @@ begin
     raise exception 'CHECK 19 SETUP FAILED: the street/district fixture pair is not in place';
   end if;
 
-  if v_body not like '%Hemel Hempstead%' then
-    raise exception 'CHECK 19 FAILED: the body does not carry the district-grain locality: %', v_body;
+  if v_title not like '%Hemel Hempstead%' then
+    raise exception 'CHECK 19 FAILED: the title does not carry the district-grain locality: %', v_title;
   end if;
-  if v_body like '%Shenley%' then
-    raise exception 'CHECK 19 FAILED: the body carries the STREET from last_seen_area: %', v_body;
+  if v_push like '%Shenley%' then
+    raise exception 'CHECK 19 FAILED: the push carries the STREET from last_seen_area: %', v_push;
   end if;
-  if v_body like '%HP2%' or v_body like '%7RJ%' then
-    raise exception 'CHECK 19 FAILED: the body carries the POSTCODE from last_seen_area: %', v_body;
+  if v_push like '%HP2%' or v_push like '%7RJ%' then
+    raise exception 'CHECK 19 FAILED: the push carries the POSTCODE from last_seen_area: %', v_push;
   end if;
 
-  raise notice 'CHECK 19 passed: the body carries the locality and not the street/postcode (body: %)', v_body;
+  raise notice 'CHECK 19 passed: the push carries the locality and not the street/postcode (push: %)', v_push;
 end $$;
 
 
@@ -1354,8 +1368,12 @@ end $$;
 -- get into the push through the back door.
 -- -----------------------------------------------------------------------------
 do $$
+-- Asserted over the whole push, for the same reason as CHECK 19: the locality,
+-- and so its fallback, now lives in the title.
 declare
-  v_body text;
+  v_doc   jsonb;
+  v_title text;
+  v_push  text;
 begin
   if not exists (
     select 1 from public.posts
@@ -1365,16 +1383,18 @@ begin
     raise exception 'CHECK 20 SETUP FAILED: the null-locality fixture is not in place';
   end if;
 
-  v_body := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000007') ->> 'body';
+  v_doc   := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000007');
+  v_title := v_doc ->> 'title';
+  v_push  := v_title || ' ' || (v_doc ->> 'body');
 
-  if v_body not like '%your area%' then
-    raise exception 'CHECK 20 FAILED: a null locality did not fall back to ''your area'': %', v_body;
+  if v_title not like '%your area%' then
+    raise exception 'CHECK 20 FAILED: a null locality did not fall back to ''your area'': %', v_title;
   end if;
-  if v_body like '%null%' or v_body like '%Shenley%' or v_body like '%HP2%' then
-    raise exception 'CHECK 20 FAILED: the fallback body leaked null or the street label: %', v_body;
+  if v_push like '%null%' or v_push like '%Shenley%' or v_push like '%HP2%' then
+    raise exception 'CHECK 20 FAILED: the fallback push leaked null or the street label: %', v_push;
   end if;
 
-  raise notice 'CHECK 20 passed: a null locality falls back to the literal ''your area'' (body: %)', v_body;
+  raise notice 'CHECK 20 passed: a null locality falls back to the literal ''your area'' (push: %)', v_push;
 end $$;
 
 

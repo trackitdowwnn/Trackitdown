@@ -294,7 +294,7 @@ begin
   if v_doc->'user_ids' @> '"22222222-2222-2222-2222-222222222222"'::jsonb then
     raise exception 'CHECK 5 FAILED: the owner is in her own recovery audience';
   end if;
-  if v_doc->>'title' <> 'Good news — a car you were watching was recovered' then
+  if v_doc->>'title' <> 'A car you watched was recovered' then
     raise exception 'CHECK 5 FAILED: title drifted: %', v_doc->>'title';
   end if;
   -- Privacy: make/colour allowed (the alert-copy line); the plate NEVER.
@@ -351,7 +351,7 @@ begin
   if (v_doc->>'claimed')::boolean is distinct from true then
     raise exception 'CHECK 6 FAILED: a released payment could not be claimed: %', v_doc;
   end if;
-  if v_doc->>'title' <> 'On its way — £185.00' then
+  if v_doc->>'title' <> '£185.00 on its way' then
     raise exception 'CHECK 6 FAILED: title is "%" — must carry the RECORDED 18500, never a recomputed split', v_doc->>'title';
   end if;
   if v_doc->>'user_id' <> '11111111-1111-1111-1111-111111111111'

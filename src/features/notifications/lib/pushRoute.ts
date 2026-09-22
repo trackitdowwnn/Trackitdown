@@ -50,7 +50,7 @@ export function pushRouteFor(payload: PushPayload): Href {
     case 'credited':
     // A won dispute is the same earn moment with a different door.
     case 'dispute_upheld':
-    // "On its way" lands where the money's status lives, not on the car.
+    // "£X on its way" lands where the money's status lives, not on the car.
     case 'payout_sent':
       return '/payouts';
     // The dispute surface: filing (closed_uncredited) and the resolved answer
