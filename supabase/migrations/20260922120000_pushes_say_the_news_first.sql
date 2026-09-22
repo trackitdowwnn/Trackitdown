@@ -284,12 +284,14 @@ begin
   -- (DOMAIN.md / SECURITY_AND_TRUST.md §1: every alert notification carries
   -- the safety line).
   --
-  -- There is deliberately NO left() around the finished sentence. Every input
-  -- is already bounded (v_desc <= 48, locality <= 40), so the worst case is
-  -- ~133 characters — far inside Expo's 4KB payload limit. An outer bound
-  -- would add nothing today and would silently start eating the safety clause
-  -- again the moment someone widened one of the field bounds. Failing long is
-  -- safe here; failing truncated is not.
+  -- There is deliberately NO left() around the finished sentence. Its one
+  -- input is already bounded (v_desc <= 48), so the worst case is ~86
+  -- characters — far inside Expo's 4KB payload limit. An outer bound would
+  -- add nothing today and would silently start eating the safety clause again
+  -- the moment someone widened that bound. Failing long is safe here; failing
+  -- truncated is not. (The locality left this sentence for the title on
+  -- 2026-09-22, which is why the figure dropped from ~133; the TITLE bounds
+  -- its own copy of it at 40, and carries no safety clause to lose.)
   -- The title says where; the body says what, and then the safety line. Still
   -- ends with the exact "don't approach." token CHECK 21 matches.
   v_body := format('%s %s. Keep an eye out — don''t approach.', v_article, v_desc);
@@ -1246,3 +1248,27 @@ grant  execute on function public.create_refund_hold(uuid, uuid, text, uuid[]) t
 
 revoke execute on function public.claim_cancelled_deletion_warnings(integer) from public, anon, authenticated;
 grant  execute on function public.claim_cancelled_deletion_warnings(integer) to service_role;
+
+
+-- =============================================================================
+-- Catalogue comments, re-issued for the three functions whose SAFETY sentence
+-- named the FIELD a value travels in.
+--
+-- ⚠️ WHY THIS IS NOT HOUSEKEEPING. `comment on function` survives CREATE OR
+-- REPLACE, so without these the live catalogue would keep asserting, of copy
+-- this migration moved, that "the body is the sender's FIRST NAME", that "the
+-- body carries make/colour", and that "the body carries the district-grain
+-- last_seen_locality". Each of those is now the TITLE. A stale SAFETY claim is
+-- how the next reader concludes a control sits somewhere it does not — the
+-- failure this project has already recorded twice (SECURITY_AND_TRUST §3's
+-- EXIF entry, §7's moderation entry). The claims themselves are unchanged;
+-- only the field each one names is.
+--
+-- The other eight functions' comments make no field-level claim and are left
+-- exactly as they are.
+-- =============================================================================
+comment on function public.claim_sighting_notification(uuid, uuid) is
+  'Authorises AND claims the sighting -> POST OWNER push exactly once. SERVICE ROLE ONLY (the actor is a parameter, not auth.uid(): the caller is an Edge Function that already verified the end-user JWT — a client grant would let a user nominate themselves as the actor and defeat the whole check). Returns {"claimed": true, user_id (post owner), post_id, title, body} on the single winning call, and the IDENTICAL {"claimed": false} for every refusal — missing sighting, actor is not the sighting''s spotter (AUTHORISATION), post not active, owner is the actor, or already notified — so it is no existence oracle for sighting ids. Idempotent via a conditional `update sightings set notified_at = now() where id = $1 and notified_at is null returning id`, so two concurrent calls cannot both claim (REPLAY). SAFETY: the push carries make/colour (in the TITLE since 2026-09-22 — "Your blue BMW was spotted") and the don''t-approach line (in the body) ONLY — never the plate, the spotter''s identity, the sighting location or the note (SECURITY_AND_TRUST §1); make/colour fall back to ''car''/'''' so it can never read "your null null", and each is left(...,32)-bounded (both columns are unbounded owner-authored text) before assembly, with the title bounded at 80 and the body a literal, so nothing an owner types can truncate the safety clause away. Does not send, and deliberately does NOT write push_sends: this is the authorisation + replay boundary, while volume control (the rolling-24h cap / same-subject dedup) belongs to the send path. post_id is the kind=''sighting'' subject_id for that ledger.';
+
+comment on function public.claim_message_notification(uuid, uuid) is
+  'Authorises AND claims the message -> OTHER PARTICIPANT push exactly once. SERVICE ROLE ONLY (actor is a parameter, not auth.uid(): the caller is an Edge Function that already verified the end-user JWT). Returns {"claimed": true, user_id (the other participant, derived server-side from the thread — never a parameter), thread_id, title, body} on the single winning call, and the IDENTICAL {"claimed": false} for every refusal — missing message, actor is not the sender (AUTHORISATION), kind=''system'' (the automatic safety first message must never push), recipient is the actor, or already notified — so it is no existence oracle for message ids or for whether two users have a thread. Idempotent via a conditional `update messages set notified_at = now() where id = $1 and notified_at is null returning id` (REPLAY). SAFETY: the push carries the sender''s FIRST NAME (in the TITLE since 2026-09-22 — "Message from Beth") + post make/colour (in the body) ONLY — message CONTENT never transits push (third-party infrastructure; SECURITY_AND_TRUST §3), and no surname, avatar or uid is ever returned (§1); first_name falls back to ''Someone'' when blank and make/colour to ''car''; all three are left(...,32)-bounded (unbounded user-authored columns) before assembly, and the title is bounded at 80, so neither line can be padded into a wall of attacker-chosen text. Deliberately NOT gated on the post being active (send_message already blocks writes on closed posts; history stays readable). Does not send. VOLUME: writes a kind=''message'' push_sends row keyed on the thread and returns {"claimed": false} when one exists from the last 2 minutes — send_message allows 20 messages/minute/thread and this path has no rolling-24h cap, so without the cooldown a hostile counterpart could fire 20 HIGH-importance pushes a minute (sound + vibration each) at a theft victim; collapseId replaces the banner but not the buzz. The MESSAGE is still claimed and delivered — only the push is suppressed.';

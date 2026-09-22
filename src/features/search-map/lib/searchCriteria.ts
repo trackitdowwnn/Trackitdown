@@ -428,13 +428,11 @@ function yearSummary(criteria: SearchCriteria): string | null {
  * around somewhere else entirely. Describing the frame of reference honestly
  * beats a warmer sentence that is sometimes false.
  *
- * ⚠️ NO CONSUMER SINCE 2026-09-22, deliberately kept. The sheet's hint line
- * under the radius slider was its only caller and the owner removed it (the
- * area row sits directly above the slider and says where the miles are
- * measured from). Kept because the rule it encodes outlives the sentence: the
- * NEXT person to write distance copy on this surface needs "of this area", not
- * "of you", and its test asserts exactly that. Delete it only together with
- * that test, and only having decided the rule no longer matters.
+ * Its caller was the search sheet's hint line until the owner removed that
+ * (2026-09-22); it is now `summariseParts`, which puts it on the map pill's
+ * details line. The rule it encodes is the reason it survived the gap: distance
+ * copy on these surfaces says "of this area", never "of you", because the
+ * radius is bbox-centred and follows every pan. Its test asserts exactly that.
  */
 export function distanceLabel(miles: number): string {
   const unit = miles === 1 ? 'mile' : 'miles';
@@ -487,10 +485,16 @@ export function summariseParts(criteria: SearchCriteria): SearchSummary {
 
   return {
     // No car named: the search IS its area, so say that rather than leading
-    // with a body type or a price. "Cars nearby" when a radius narrows it,
-    // "All cars" when nothing spatial does.
+    // with a body type or a price. "Cars nearby" when a radius narrows it.
+    //
+    // ⚠️ NOT "All cars" for the rest. This is only ever called for a NON-EMPTY
+    // search (the pill guards with isEmptyCriteria), so that branch means "no
+    // car and no radius, but something else is set" — and "All cars" over
+    // "£500+ · last 7 days" claims the opposite of the line beneath it. That is
+    // the same defect as the "10mi" headline this split was written to fix,
+    // inverted: overclaiming instead of underclaiming.
     headline:
-      headlineVehicle || (criteria.distanceMiles !== null ? 'Cars nearby' : 'All cars'),
+      headlineVehicle || (criteria.distanceMiles !== null ? 'Cars nearby' : 'Cars on this map'),
     details: details.join(' · '),
   };
 }

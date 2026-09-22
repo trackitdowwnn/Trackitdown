@@ -1240,10 +1240,14 @@ end $$;
 -- -----------------------------------------------------------------------------
 do $$
 declare
+  -- TITLE AND BODY (2026-09-22): the alert's locality moved into the title, so
+  -- the field that carries a place is the one this guard must also read.
   v_body  text;
   v_plate text;
+  v_doc   jsonb;
 begin
-  v_body := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001') ->> 'body';
+  v_doc  := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001');
+  v_body := (v_doc ->> 'title') || ' ' || (v_doc ->> 'body');
   select plate into v_plate from public.posts
    where id = 'c1c1c1c1-0000-0000-0000-000000000001';
 
@@ -1277,8 +1281,11 @@ declare
   v_lng  double precision;
   v_d    int;
   v_frag text;
+  v_doc  jsonb;
 begin
-  v_body := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001') ->> 'body';
+  -- TITLE AND BODY (2026-09-22) — see CHECK 17.
+  v_doc  := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001');
+  v_body := (v_doc ->> 'title') || ' ' || (v_doc ->> 'body');
 
   select ST_Y(last_seen_location::geometry), ST_X(last_seen_location::geometry)
     into v_lat, v_lng
@@ -1516,8 +1523,13 @@ begin
     raise exception 'CHECK 23 FAILED: the sighting push is addressed to someone other than the post owner: %', v_first;
   end if;
   -- SAFETY: the owner's copy names neither the spotter nor the plate (§1).
-  if (v_first ->> 'body') like '%Beth%' or (v_first ->> 'body') like '%ZZ24%' then
-    raise exception 'CHECK 23 FAILED: the sighting body names the spotter or the plate: %', v_first ->> 'body';
+  -- Over the WHOLE push since 2026-09-22: the car moved into the title, so the
+  -- title now interpolates owner-authored text and is exactly the field a
+  -- future copy change could leak through.
+  if (v_first ->> 'title') || ' ' || (v_first ->> 'body') like '%Beth%'
+     or (v_first ->> 'title') || ' ' || (v_first ->> 'body') like '%ZZ24%' then
+    raise exception 'CHECK 23 FAILED: the sighting push names the spotter or the plate: % / %',
+      v_first ->> 'title', v_first ->> 'body';
   end if;
   if (v_first ->> 'body') not like '%don''t approach%' then
     raise exception 'CHECK 23 FAILED: the sighting body has no don''t-approach clause: %', v_first ->> 'body';
@@ -1583,14 +1595,23 @@ end $$;
 -- ABSENCE assertion cannot pass by accident.
 -- -----------------------------------------------------------------------------
 do $$
+-- ⚠️ TITLE AND BODY, not the body alone, since 2026-09-22: the copy pass moved
+-- the sender's first name into the TITLE ("Message from Beth") and left the
+-- post context in the body. The absence half is the reason this matters — what
+-- must never transit Expo/FCM/APNs is the message CONTENT, the surname and the
+-- plate, and "never in the push" stopped being a property of one field.
 declare
-  v_doc  jsonb;
-  v_body text;
+  v_doc   jsonb;
+  v_title text;
+  v_body  text;
+  v_push  text;
 begin
   v_doc  := public.claim_message_notification(
               'c4c4c4c4-0000-0000-0000-000000000002',
               '22222222-2222-2222-2222-222222222222');
-  v_body := v_doc ->> 'body';
+  v_title := v_doc ->> 'title';
+  v_body  := v_doc ->> 'body';
+  v_push  := v_title || ' ' || v_body;
 
   if (v_doc ->> 'claimed') <> 'true' then
     raise exception 'CHECK 25 SETUP FAILED: the genuine sender could not claim the message push: %', v_doc;
@@ -1603,27 +1624,27 @@ begin
     raise exception 'CHECK 25 FAILED: wrong thread_id in the payload: %', v_doc;
   end if;
 
-  -- PRESENT: first name + post context (colour + make).
-  if v_body not like '%Beth%' then
-    raise exception 'CHECK 25 FAILED: the body does not name the sender''s first name: %', v_body;
+  -- PRESENT: first name (title) + post context (body).
+  if v_title not like '%Beth%' then
+    raise exception 'CHECK 25 FAILED: the title does not name the sender''s first name: %', v_title;
   end if;
   if v_body not like '%Zephyr%' or v_body not like '%Chartreuse%' then
     raise exception 'CHECK 25 FAILED: the body carries no post context (colour/make): %', v_body;
   end if;
 
-  -- ABSENT: the content, the surname, the plate.
-  if v_body like '%ARTICHOKE%' or v_body like '%9271%'
-     or v_body like '%old mill%' or v_body like '%4pm%' then
-    raise exception 'CHECK 25 FAILED: the message CONTENT reached the push body: %', v_body;
+  -- ABSENT from the WHOLE push: the content, the surname, the plate.
+  if v_push like '%ARTICHOKE%' or v_push like '%9271%'
+     or v_push like '%old mill%' or v_push like '%4pm%' then
+    raise exception 'CHECK 25 FAILED: the message CONTENT reached the push: %', v_push;
   end if;
-  if v_body like '%Sanders%' then
-    raise exception 'CHECK 25 FAILED: the body carries the sender''s SURNAME: %', v_body;
+  if v_push like '%Sanders%' then
+    raise exception 'CHECK 25 FAILED: the push carries the sender''s SURNAME: %', v_push;
   end if;
-  if v_body like '%ZZ24%' then
-    raise exception 'CHECK 25 FAILED: the body carries the plate: %', v_body;
+  if v_push like '%ZZ24%' then
+    raise exception 'CHECK 25 FAILED: the push carries the plate: %', v_push;
   end if;
 
-  raise notice 'CHECK 25 passed: first name + post context only, never the message content (body: %)', v_body;
+  raise notice 'CHECK 25 passed: first name + post context only, never the message content (push: %)', v_push;
 end $$;
 
 

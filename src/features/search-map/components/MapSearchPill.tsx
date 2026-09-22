@@ -91,8 +91,14 @@ export const MapSearchPill = memo(function MapSearchPill({
       <Pressable
         ref={pillRef}
         accessibilityRole="button"
+        // `active` is derived from `summary`, but the label reads
+        // `spokenSummary` — a separately-typed nullable prop. The callers keep
+        // the two in step; this component cannot, so it falls back rather than
+        // interpolating the word "null" into what a screen reader says.
         accessibilityLabel={
-          active ? `Search: ${spokenSummary}. Edit search` : 'Search make or model'
+          active
+            ? `Search: ${spokenSummary ?? summary?.headline ?? ''}. Edit search`
+            : 'Search make or model'
         }
         onPress={handlePress}
         style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
@@ -117,7 +123,7 @@ export const MapSearchPill = memo(function MapSearchPill({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Clear search"
-            hitSlop={spacing.sm}
+            hitSlop={spacing.lg}
             onPress={onClear}
             style={({ pressed }) => [styles.clear, pressed && styles.clearPressed]}
           >
@@ -175,11 +181,21 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   placeholder: {
     color: c.textSecondary,
   },
+  // ⚠️ STRETCHES, it does not set a height. A `minHeight: touchTarget` here
+  // made the × the tallest thing in the row, so an ACTIVE pill measured
+  // 44 + 16 padding = 60 while a resting one measured `control` (52) — and
+  // since the top bar centres its row off a fixed top, the 44pt back and
+  // recentre buttons beside it dropped 4pt the moment a search was applied and
+  // jumped back on clear. Stretching instead lets the text column decide the
+  // height: one line or two, the pill is 52 and nothing beside it moves.
+  //
+  // The target is made up by hitSlop rather than by the box, and `lg` is
+  // chosen so it clears 44 in the SHORTER case (a one-line active pill: an
+  // 18pt row plus 16 a side = 50). The slop stays inside the pill's own
+  // bounds, which is what Android requires of it.
   clear: {
-    // Full 44pt target; negative margin pulls it to the pill's edge without
-    // inflating the pill height (the target overlaps the pill's padding).
     minWidth: sizes.touchTarget,
-    minHeight: sizes.touchTarget,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: -spacing.md,

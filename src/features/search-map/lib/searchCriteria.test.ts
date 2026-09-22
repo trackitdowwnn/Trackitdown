@@ -180,9 +180,12 @@ describe('summariseParts', () => {
     });
   });
 
-  it('says "All cars" when nothing spatial narrows it', () => {
+  it('⚠️ does not claim "All cars" over a line that narrows them', () => {
+    // This branch is only reachable for a non-empty search, so the headline
+    // must not contradict its own details — "All cars" over "£500+" is the
+    // same defect as the "10mi" headline, inverted.
     expect(summariseParts(withCriteria({ bountyMinPence: 50000 }))).toEqual({
-      headline: 'All cars',
+      headline: 'Cars on this map',
       details: '£500+',
     });
   });

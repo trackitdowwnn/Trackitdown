@@ -74,6 +74,7 @@ import { CAR_COLOURS } from '@/shared/lib';
 import { formatPounds } from '@/shared/lib/money';
 import { easeOut } from '@/shared/theme/motionEasing';
 import {
+  cardSurface,
   motion,
   opacity,
   radii,
@@ -578,7 +579,9 @@ export function SearchSheet({
               </Pressable>
             ) : null}
 
-            <View style={styles.radius}>
+            <View
+              style={[styles.radius, areaLabel && onChangeArea ? styles.radiusDivided : null]}
+            >
               {/* ⚠️ NO HINT LINE UNDER THIS (owner, 2026-09-22). It used to
                   read "Only cars within 10 miles of this area." — there to be
                   honest that the radius is measured from the map centre, never
@@ -874,10 +877,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // separate objects until 2026-09-22, an area card with a loose slider under
   // it, which read as a filter that belonged to nothing.
   where: {
-    backgroundColor: c.surface,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.border,
+    // The house resting-card box; `cardSurface` owns that decision.
+    ...cardSurface(c),
     // Keeps the area row's pressed wash inside the rounded corners.
     overflow: 'hidden',
   },
@@ -886,9 +887,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // name rather than floating inside its own inset.
   radius: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+  },
+  // ⚠️ Applied ONLY when the area row is above it. Browsing nationally there
+  // is no row, so the slider is the card's first child and an unconditional
+  // top hairline landed straight on the card's own border — a doubled edge no
+  // other card has.
+  radiusDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: c.border,
   },
