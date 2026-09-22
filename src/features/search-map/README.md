@@ -404,7 +404,6 @@ residual within the bbox (no new index — a `pg_trgm` GIN on make/model is a
 measured follow-up if national-zoom text search needs it). Client zod
 (`api/mapApi.ts`) hard-rejects any non-active status carrying coordinates.
 
-**Search surface** (`components/SearchSheet.tsx`) — the Airbnb "assemble
 **The map's active-search pill** (`MapSearchPill`, two lines since
 2026-09-22) shows a HEADLINE over its DETAILS, Airbnb's searched-state search
 bar: "Blue BMW" over "£500+ · within 10 miles of this area". It was one flat
@@ -418,7 +417,8 @@ when there is nothing to qualify the headline with. `summarise` remains as
 the one-line form for the pill's accessibility label — two visual lines are
 one spoken sentence.
 
-A FULL-SCREEN overlay (NOT an
+**Search surface** (`components/SearchSheet.tsx`) — the Airbnb "assemble
+everything in one place, apply once" filter page. A FULL-SCREEN overlay (NOT an
 RN Modal — a transparent Modal flickers and can't host gorhom sheets; it's an
 absolute overlay in the same screen) that MORPHS out of the search pill
 (measure-and-grow: `SearchSheet` measures the pill's window rect and springs the

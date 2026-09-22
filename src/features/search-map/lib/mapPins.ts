@@ -110,15 +110,20 @@ export function pinsForRegion(posts: MapPost[], region: GeoRegion): MapPinItem[]
  * and ~118dp at the mapPinFontScaleCap of 1.3. At 72 those markers were never
  * nudged and clipped at the edge.
  *
- * Raised again to 152 on 2026-09-22. ⚠️ THIS IS THE BOX, NOT THE PILL, and the
- * two stopped being the same thing: MapPins' wrapper now pads the drawn pill by
- * the soft shadow's 16pt reach on every side so the marker's own shadow is not
- * rasterised away. `anchorX` is a fraction OF THIS BOX, so a width 32 short of
- * the truth nudges an edge marker 32dp too little — buying back, at the
- * viewport edge, the clipping the padding was added to stop. If that padding
- * changes, this changes with it.
+ * Raised again to 160 on 2026-09-22. ⚠️ THIS IS THE BOX, NOT THE PILL, and the
+ * two stopped being the same thing that day. `anchorX` is a fraction OF THIS
+ * BOX, so a width short of the truth nudges an edge marker proportionally too
+ * little — buying back, at the viewport edge, the clipping the box grew to
+ * stop. Two things grew it, both in MapPins:
+ *   · the wrapper pads by the soft shadow's 16pt reach a side (32), so the
+ *     marker's own shadow is not rasterised away; and
+ *   · the unselected pill carries `spacing.xs` of margin a side (8) so the
+ *     footprint does not change when selection swaps its padding.
+ * 120 + 32 + 8 = 160. This went to 152 first and was 8 short within the hour —
+ * the margin landed in the very next commit. If either changes, this changes
+ * with it.
  */
-const MARKER_WIDTH_DP = 152;
+const MARKER_WIDTH_DP = 160;
 
 /**
  * Shift the anchor of any marker close enough to a LEFT or RIGHT viewport edge

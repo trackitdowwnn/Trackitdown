@@ -375,8 +375,8 @@ Rules that follow, and are not implementation details:
     `claim_credited_notification` builds the copy for whichever branch applies
     and **only then claims**, so a rewardless credit no longer burns the
     one-shot and sends nothing. A fee listing produces the `credited_no_reward`
-    kind — *"Your sighting found the car / The owner credited your report. It
-    counts towards your record."* — which routes to `/my-sightings` rather than
+    kind — *"Your sighting found the car / The owner credited your
+    report."* — which routes to `/my-sightings` rather than
     `/payouts` (there is no payout to arrange) and sits under the
     `my_sightings` preference rather than `money` (there is no money in it).
     It is persisted like every other kind, so the Inbox is no longer silent.

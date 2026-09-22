@@ -31,7 +31,7 @@ import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { notifyUsers } from './push.ts';
 
-/** "On its way — £X" to the spotter whose transfer just went out. */
+/** "£X on its way" to the spotter whose transfer just went out. */
 export async function announcePayoutSent(admin: SupabaseClient, postId: string): Promise<void> {
   try {
     const { data: claim, error } = await admin.rpc('claim_payout_sent_notification', {

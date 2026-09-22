@@ -573,10 +573,24 @@ function MapSearchBody({
   // so the effect does not depend on `appliedCriteria` — it must fire for the
   // results of THAT search and never re-fire when an auto-search lands new
   // results under someone mid-browse (the same rule the entry frame keeps).
-  const pendingSearchFrame = useRef<{ maxRadiusMiles: number } | null>(null);
+  // ⚠️ GATED ON `searchId`, NOT ON `status` ALONE. `handleApplySearch` calls
+  // flyTo, which sets `settledRegion` SYNCHRONOUSLY, while runSearch defers its
+  // `setStatus('loading')` into a microtask on purpose (useViewportPosts: "every
+  // setState lives in a callback so effect callers never set state
+  // synchronously"). So the commit that applies a search can flush this effect
+  // while `status` is still the PREVIOUS search's 'ready' and `result.posts` is
+  // still its result set — whereupon the frame lands on the old pins and the
+  // ref is spent before the real ones arrive. Whether that happens depends on
+  // microtask-versus-passive-effect ordering, which is not a thing to rest on
+  // either way. `searchId` bumps only when a search LANDS, so recording the one
+  // in flight and waiting for a different one is the deterministic version of
+  // the same question.
+  const pendingSearchFrame = useRef<{ maxRadiusMiles: number; afterSearchId: number } | null>(
+    null,
+  );
   useEffect(() => {
     const pending = pendingSearchFrame.current;
-    if (!pending || status !== 'ready') {
+    if (!pending || status !== 'ready' || searchId === pending.afterSearchId) {
       return;
     }
     pendingSearchFrame.current = null;
@@ -585,13 +599,18 @@ function MapSearchBody({
       // "nowhere" would take away the region they searched as well.
       return;
     }
-    frameCamera(
-      cameraForVisible(
-        searchFrame(result.posts, settledRegion, pending.maxRadiusMiles),
-        mapInsets,
-      ),
-    );
-  }, [status, result.posts, settledRegion, mapInsets, frameCamera]);
+    const framed = searchFrame(result.posts, settledRegion, pending.maxRadiusMiles);
+    // ⚠️ IDENTITY MEANS "DO NOT MOVE", and it has to be honoured here rather
+    // than by passing it on. searchFrame returns `settledRegion` BY REFERENCE
+    // when the results do not all fit — but handing that to frameCamera would
+    // not leave the camera alone: cameraForVisible divides the span by the
+    // visible fraction to clear the chrome, so the map would visibly zoom out
+    // the moment a search failed to fit, which is the opposite of the promise.
+    if (framed === settledRegion) {
+      return;
+    }
+    frameCamera(cameraForVisible(framed, mapInsets));
+  }, [status, searchId, result.posts, settledRegion, mapInsets, frameCamera]);
 
   // A failed auto re-search is quiet by design: results and pins stay put and
   // the map keeps working. Fired on the EDGE (a boolean dep), so a re-render
@@ -680,6 +699,8 @@ function MapSearchBody({
       // one; MAX_SEARCH_FRAME_RADIUS_MILES when they did not.
       pendingSearchFrame.current = {
         maxRadiusMiles: criteria.distanceMiles ?? MAX_SEARCH_FRAME_RADIUS_MILES,
+        // The search in flight right now; the frame waits for a LATER one.
+        afterSearchId: searchId,
       };
       void applySearch({ criteria, region });
       // Which criteria the user searched by (KEY presence only) + the coarse
@@ -689,7 +710,7 @@ function MapSearchBody({
         distanceMiles: criteria.distanceMiles,
       });
     },
-    [flyTo, applySearch],
+    [flyTo, applySearch, searchId],
   );
 
   // The pill's × — drop the filter and re-query the current region unfiltered.
