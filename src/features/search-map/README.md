@@ -362,7 +362,7 @@ figures REMOUNT, keyed on the answered radius with a distinct prefix per
 slot, so their entrance replays — the cards' stagger, the chart's rise, a
 fade on the hero and band — while the slider, unkeyed, stays put. One hero
 card renders both the enough and not-enough answers with the
-`RadiusControl` in the same child slot, so an answer that changes shape
+`RadiusSlider` in the same child slot, so an answer that changes shape
 mid-drag cannot remount the slider either.
 
 **Entry** — the Map/search pill frames the feed's resolved location at its

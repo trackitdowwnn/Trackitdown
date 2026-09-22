@@ -109,6 +109,7 @@ import {
   motion,
   opacity,
   radii,
+  shrinkToFitMinScale,
   sizes,
   spacing,
   typography,
@@ -334,13 +335,19 @@ export function AreaInsightsScreen({
     // The radius THIS request asked for, captured so a late response can only
     // ever be recorded against the question it actually answered.
     const forMiles = askedMiles;
+    // ⚠️ READ AND CLEARED AT REQUEST TIME, not in the callbacks. Cleared only
+    // on the non-cancelled paths, the flag outlived its own request: pull,
+    // then move the slider before the response lands, and the effect's
+    // cleanup cancels that request with the flag still set — so the NEXT
+    // unrelated failure apologised for a refresh nobody had asked for.
+    const wasPull = pulledRef.current;
+    pulledRef.current = false;
     // Every write is after the await, so this never trips
     // react-hooks/set-state-in-effect.
     fetchAreaInsights(lat, lng, milesToMetres(forMiles))
       .then((next) => {
         if (cancelled) return;
         insightsRef.current = next;
-        pulledRef.current = false;
         setInsights(next);
         setShownMiles(forMiles);
         setFailedMiles(null);
@@ -349,16 +356,20 @@ export function AreaInsightsScreen({
       .catch(() => {
         if (cancelled) return;
         setFailedMiles(forMiles);
-        // A failed PULL over figures that are already up renders nothing new —
-        // the figures rightly stay, which is the policy. Without this the
-        // spinner just retracts and an explicit request is met with silence.
-        if (pulledRef.current && insightsRef.current !== null) {
+        // ⚠️ A FAILURE OVER FIGURES THAT ARE ALREADY UP IS SAID, NOT DRAWN.
+        // The render below keeps those figures (and the slider) on screen, so
+        // without this the failure is silent — and for a radius change it is
+        // also the only thing that says the figures now describe a DIFFERENT
+        // radius from the one the slider reads. Both wordings end at the same
+        // place: what you are looking at is the last answer we got.
+        if (insightsRef.current !== null) {
           toastRef.current.show(
-            "We couldn’t refresh just now — these are the last figures.",
+            wasPull
+              ? 'We couldn’t refresh just now — these are the last figures.'
+              : 'We couldn’t load that radius — these are the last figures.',
             'error',
           );
         }
-        pulledRef.current = false;
         setRefreshing(false);
       });
     return () => {
@@ -387,6 +398,9 @@ export function AreaInsightsScreen({
   // the old figures, dimmed: NOT the skeleton, which would unmount the slider
   // mid-drag (see RADIUS_SETTLE_MS), and not the old figures held up as-is
   // either.
+  // Not pending once THIS radius has failed: nothing is on its way any more,
+  // so the figures stop being dimmed and are simply the last answer we got
+  // (the toast in the catch says so).
   const pending = insights !== null && !haveCurrent && !currentFailed;
   // A pull spinner over a skeleton is two loading indicators for one fetch, so
   // the spinner only shows when there is real content behind it to refresh.
@@ -454,8 +468,16 @@ export function AreaInsightsScreen({
               skeleton instead, which was more honest still and unusable: the
               skeleton replaced the slider mid-drag (2026-09-22, on device).
               Figures that are up but not yet for THIS radius stay mounted so
-              the control the reader is holding stays under their finger. */}
-          {insights !== null && (haveCurrent || pending) ? (
+              the control the reader is holding stays under their finger.
+
+              ⚠️ WHICH IS WHY THE ERROR PAGE IS FOR A FIRST LOAD ONLY. Keyed
+              on `currentFailed` it fired whenever the NEW radius failed —
+              replacing still-true figures with an error and unmounting the
+              slider, the exact two things the paragraph above promises cannot
+              happen, and leaving no way back but a pull that retries the
+              failing radius. Once there are figures they stay, and the
+              failure is a toast. */}
+          {insights !== null ? (
             <Insights
               data={insights}
               pending={pending}
@@ -652,7 +674,7 @@ function HeroSentence({ count, dimStyle }: { count: number; dimStyle: AnimatedSt
         accessibilityRole="header"
         numberOfLines={1}
         adjustsFontSizeToFit
-        minimumFontScale={0.7}
+        minimumFontScale={shrinkToFitMinScale}
         maxFontSizeMultiplier={displayFontScaleCap}
         testID="stats-hero"
       >
@@ -729,10 +751,23 @@ function Breakdown({
               DRAWN (ProportionBar — the filled part came back, the rule that
               shows through did not), and the two counts sit in a band
               beneath so the fraction is legible as well as the percentage.
-              The percent and the band are ONE spoken node: the percent alone
-              is the number the caveat exists to qualify. */}
-          <View accessible accessibilityLabel={recovery.spoken}>
-            <Text style={styles.statement} maxFontSizeMultiplier={displayFontScaleCap}>
+              The percent SPEAKS the whole figure — "70% recovered: 7 of the
+              10 nearby listings that have finished" — because the percent
+              alone is the number the caveat exists to qualify.
+
+              ⚠️ ON THE TEXT, NOT ON A WRAPPER ROUND ALL THREE. An `accessible`
+              parent hides its descendants on iOS but NOT on Android, where
+              StatBand's cells are focusable in their own right — so TalkBack
+              read the sentence and then both cells again. The band's cells
+              already speak correctly on their own; this only has to give the
+              percent its denominator. */}
+          <View>
+            <Text
+              style={styles.statement}
+              accessible
+              accessibilityLabel={recovery.spoken}
+              maxFontSizeMultiplier={displayFontScaleCap}
+            >
               <Text style={styles.statementNumber} maxFontSizeMultiplier={displayFontScaleCap}>
                 {recovery.percent}%
               </Text>

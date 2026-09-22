@@ -125,6 +125,19 @@ describe('rankedMakes', () => {
     expect(rows[0].detail).toBeNull();
   });
 
+  it('⚠️ drops a model whose count exceeds its make — a detail cannot outgrow its bar', () => {
+    // The two top-5s are independent and computed over RAW spellings, so a
+    // make that arrived split can meet a model that arrived whole.
+    const rows = rankedMakes(
+      [{ make: 'volkswagen', count: 5 }],
+      [
+        { make: 'vw', model: 'golf', count: 6 },
+        { make: 'volkswagen', model: 'polo', count: 2 },
+      ],
+    );
+    expect(rows[0]).toMatchObject({ label: 'Volkswagen', count: 5, detail: 'Polo 2' });
+  });
+
   it('drops a model whose make is not in the list rather than inventing a row', () => {
     const rows = rankedMakes(
       [{ make: 'ford', count: 9 }],
@@ -188,5 +201,16 @@ describe('recoveryRate', () => {
   it('handles the extremes without producing a nonsense percentage', () => {
     expect(recoveryRate(0, 5)?.percent).toBe(0);
     expect(recoveryRate(5, 5)?.percent).toBe(100);
+  });
+
+  it('clamps an impossible payload rather than printing a negative count', () => {
+    // notRecovered is its own cell in the band; the bar clamps, a numeral
+    // cannot. Every figure is derived from the clamped value.
+    expect(recoveryRate(12, 10)).toMatchObject({
+      percent: 100,
+      recovered: 10,
+      notRecovered: 0,
+      fraction: 1,
+    });
   });
 });

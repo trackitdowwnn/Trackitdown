@@ -28,7 +28,7 @@
  *        `growIn`: the fills extend from the left once, over motion.slow — one
  *        scaleX on every fill from a left origin, the same movement the year
  *        chart makes vertically. Under reduced motion they are simply there.
- * LINKS: ../lib/areaInsightsModel.ts (rankedMakes / rankedModels);
+ * LINKS: ../lib/areaInsightsModel.ts (rankedMakes);
  *        ../screens/AreaInsightsScreen.tsx (the consumer);
  *        src/shared/ui/RadiusSlider.tsx (the track anatomy);
  *        ./MonthlyTheftsChart.tsx (the same grow-in, vertically).

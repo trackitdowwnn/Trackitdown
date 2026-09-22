@@ -347,7 +347,7 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     jest.useRealTimers();
   });
 
-  it('keeps the figures AND the slider on screen, dimmed under "Updating", instead of the skeleton', async () => {
+  it('keeps the figures AND the slider on screen, dimmed, instead of the skeleton', async () => {
     const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
     await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
     const sliderBefore = view.getByTestId('stats-radius-slider');
@@ -416,6 +416,72 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     // When it lands the slider is still on the new value.
     await act(async () => {});
     expect(radiusOf(view)).toBe(50);
+  });
+
+  it('⚠️ keeps the figures and the slider when the NEW radius fails, and says so', async () => {
+    // The error page is for a first load only. Keyed on the failing radius it
+    // replaced still-true figures with an error and unmounted the slider —
+    // leaving no way back but a pull that retries the failing radius.
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    mockFetch.mockRejectedValue(new Error('offline'));
+    // The nudge and the settle are separate acts so the debounce effect
+    // commits with the new radius before its timer runs — the settled-drag
+    // test above drives it the same way.
+    await act(async () => {
+      nudge(view, 'increment');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+    expect(view.queryByText('We couldn’t load this area')).toBeNull();
+    expect(view.getByTestId('stats-hero')).toHaveTextContent(/14 cars/);
+    expect(view.getByTestId('stats-radius-slider')).toBeTruthy();
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'We couldn’t load that radius — these are the last figures.',
+      'error',
+    );
+    // And the reader can still drag back: the control never left.
+    expect(radiusOf(view)).toBe(30);
+  });
+
+  it('still shows the error page when the FIRST load fails — there is nothing to keep', async () => {
+    mockFetch.mockRejectedValue(new Error('offline'));
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByText('We couldn’t load this area')).toBeTruthy());
+    expect(view.queryByTestId('stats-hero')).toBeNull();
+    // Nothing to apologise for either — there were no figures to keep.
+    expect(mockToastShow).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ does not apologise for a refresh nobody asked for after a cancelled pull', async () => {
+    // Pull, then move the slider before the response lands: the pull's request
+    // is cancelled with its flag still set, and the next unrelated failure
+    // used to claim the reader had asked for a refresh.
+    const view = await render(<AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />);
+    await waitFor(() => expect(view.getByTestId('stats-hero')).toBeTruthy());
+    let settle: (value: unknown) => void = () => {};
+    mockFetch.mockReturnValue(new Promise((resolve) => (settle = resolve)));
+    await act(async () => {
+      fireEvent(view.getByTestId('stats-scroll'), 'refresh');
+    });
+    // The pull is in flight; move the slider, which cancels it.
+    mockFetch.mockRejectedValue(new Error('offline'));
+    await act(async () => {
+      nudge(view, 'increment');
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+    await act(async () => {
+      settle(FULL);
+    });
+    // The radius failure is its own message, not the pull's.
+    expect(mockToastShow).toHaveBeenCalledTimes(1);
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'We couldn’t load that radius — these are the last figures.',
+      'error',
+    );
   });
 
   it('dragging from enough into not-enough keeps the same slider instance', async () => {

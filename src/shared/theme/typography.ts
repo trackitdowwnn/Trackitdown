@@ -90,6 +90,18 @@ export const displayFontScaleCap = 1.3;
  *  the bar itself never gets taller. */
 export const tabLabelFontScaleCap = 1.2;
 
+/**
+ * The floor for `adjustsFontSizeToFit` on text that must not wrap — the
+ * theft-stats hero sentence and the numerals inside its chart bars.
+ *
+ * Shrink-to-fit with no floor will take text as small as it needs to; this
+ * stops it at `tabLabel` (11), the one sanctioned size below `caption` (13),
+ * so the smallest type on a page is still a size the design system has
+ * agreed to. Expressed as the ratio so it follows both tokens if either
+ * moves.
+ */
+export const shrinkToFitMinScale = typography.tabLabel.fontSize / typography.caption.fontSize;
+
 /** Dynamic-type cap for map-pin bounties. Uncapped, the OS 200% setting turns
  *  14pt into 28pt, roughly doubling each pill in both axes — twelve of those
  *  overlapping is precisely the wall of type the `mapPin` token chose weight

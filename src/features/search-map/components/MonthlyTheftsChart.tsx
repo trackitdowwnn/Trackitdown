@@ -54,7 +54,13 @@
  */
 
 import { useEffect, useState } from 'react';
-import { type LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import {
+  type LayoutChangeEvent,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, {
   ReduceMotion,
   useAnimatedStyle,
@@ -64,8 +70,10 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import {
+  displayFontScaleCap,
   motion,
   radii,
+  shrinkToFitMinScale,
   sizes,
   spacing,
   typography,
@@ -89,9 +97,21 @@ export interface MonthlyTheftsChartProps {
 const barHeight = (fraction: number) =>
   Math.max(fraction * sizes.monthlyChartHeight, sizes.sparklineMin);
 
-/** The shortest bar that can hold its numeral: the caption line plus a 4pt
- *  breath above and below. Shorter bars wear theirs on top. */
-const COUNT_INSIDE_MIN = typography.caption.lineHeight + spacing.xs * 2;
+/**
+ * The caption's line height AT THE READER'S TEXT SIZE, capped where the
+ * numerals are capped.
+ *
+ * ⚠️ NOT `typography.caption.lineHeight`. The inside/above decision and the
+ * numeral's offset are geometry, and geometry measured at the unscaled line
+ * height is wrong for everyone who has raised their text size: at 200% the
+ * numeral renders ~36pt while this said 18, so a 30pt bar was judged "inside"
+ * and the numeral's top half sat ABOVE the fill — `textOnPrimary`, which is
+ * white in light mode, on the white card. Half the digit simply vanished.
+ * ListRow reads `fontScale` the same way, `?? 1` included (jest's mock omits
+ * it).
+ */
+const scaledCaptionLine = (fontScale: number | undefined) =>
+  typography.caption.lineHeight * Math.min(fontScale ?? 1, displayFontScaleCap);
 
 export function MonthlyTheftsChart({ columns, summary, growIn = false }: MonthlyTheftsChartProps) {
   const styles = useThemedStyles(makeStyles);
@@ -112,6 +132,12 @@ export function MonthlyTheftsChart({ columns, summary, growIn = false }: Monthly
   // The counts fade in over the same span the bars rise, in their own layer,
   // so the scale never squashes a numeral.
   const countsStyle = useAnimatedStyle(() => ({ opacity: rise.value }));
+
+  const { fontScale } = useWindowDimensions();
+  const captionLine = scaledCaptionLine(fontScale);
+  /** The shortest bar that can hold its numeral: the line plus a 4pt breath
+   *  above and below. Shorter bars wear theirs on top. */
+  const countInsideMin = captionLine + spacing.xs * 2;
 
   // The row's measured width, for placing the month names (see WHAT).
   const [rowWidth, setRowWidth] = useState(0);
@@ -166,7 +192,7 @@ export function MonthlyTheftsChart({ columns, summary, growIn = false }: Monthly
               return <View key={column.key} style={styles.cell} />;
             }
             const height = barHeight(column.fraction);
-            const inside = height >= COUNT_INSIDE_MIN;
+            const inside = height >= countInsideMin;
             return (
               <View key={column.key} style={styles.cell}>
                 <Text
@@ -175,12 +201,14 @@ export function MonthlyTheftsChart({ columns, summary, growIn = false }: Monthly
                     inside ? styles.countInside : styles.countAbove,
                     {
                       marginBottom: inside
-                        ? height - typography.caption.lineHeight - spacing.xs
+                        ? height - captionLine - spacing.xs
                         : height + spacing.xs,
                     },
                   ]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
+                  minimumFontScale={shrinkToFitMinScale}
+                  maxFontSizeMultiplier={displayFontScaleCap}
                   testID={`chart-count-${column.key}`}
                 >
                   {column.count}
@@ -191,8 +219,11 @@ export function MonthlyTheftsChart({ columns, summary, growIn = false }: Monthly
         </Animated.View>
       </View>
 
-      {/* Month names, placed from the measured column width. */}
-      <View style={styles.names}>
+      {/* Month names, placed from the measured column width. The strip is
+          sized from the SCALED line for the same reason the numerals are:
+          a fixed 18pt box holding absolutely-positioned text spills into the
+          card's padding the moment the reader raises their text size. */}
+      <View style={[styles.names, { height: captionLine }]}>
         {rowWidth > 0
           ? columns.map((column, index) =>
               column.label ? (
@@ -206,6 +237,7 @@ export function MonthlyTheftsChart({ columns, summary, growIn = false }: Monthly
                     },
                   ]}
                   numberOfLines={1}
+                  maxFontSizeMultiplier={displayFontScaleCap}
                   testID={`chart-month-${column.key}`}
                 >
                   {column.label}
@@ -227,12 +259,23 @@ const makeStyles = (c: Palette) =>
     // The plot is the bar row's height plus headroom for a numeral perched
     // above a short bar near the top — which cannot happen (a bar tall
     // enough to reach the top holds its numeral inside) — so just the row.
-    plot: { height: sizes.monthlyChartHeight },
+    //
+    // ⚠️ THE BASELINE BELONGS HERE, NOT ON `bars`. On the bar row it sat
+    // inside the grow-in's scaleY, so the axis collapsed to nothing and grew
+    // with the bars instead of being the fixed line they rise FROM. And it is
+    // `textSecondary`, not `border`: this rule is the axis, i.e. information,
+    // and owes the 3:1 graphic floor — `border` is #333 on #1E1E1E in dark
+    // (~1.3:1), which is the "twelve bars floating" this file's WHAT block
+    // says the chart must never be. Same reasoning, same token as the zero
+    // stubs below.
+    plot: {
+      height: sizes.monthlyChartHeight,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: c.textSecondary,
+    },
     bars: {
       ...StyleSheet.absoluteFill,
       alignItems: 'flex-end',
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: c.border,
       transformOrigin: 'bottom',
     },
     counts: {
@@ -256,10 +299,8 @@ const makeStyles = (c: Palette) =>
     // information, and owes the 3:1 graphic floor (StatsSparkline measured
     // this — `border` is ~1.4:1 and simply is not there).
     barEmpty: { height: sizes.sparklineEmpty, backgroundColor: c.textSecondary },
-    names: {
-      height: typography.caption.lineHeight,
-      marginTop: spacing.xs,
-    },
+    // Height is set inline from the scaled caption line (see the render).
+    names: { marginTop: spacing.xs },
     name: {
       ...typography.caption,
       color: c.textSecondary,

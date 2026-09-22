@@ -151,11 +151,17 @@ export function rankedMakes(
   return makes.map((row) => {
     const models = byMake.get(row.label);
     if (!models) return row;
-    const detail = [...models.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([model, count]) => `${model} ${count}`)
-      .join(' · ');
-    return { ...row, detail };
+    const entries = [...models.entries()]
+      // ⚠️ A model can only be shown under a make it fits inside. The two
+      // top-5s are independent and computed over RAW spellings, so a make
+      // that arrives split ("volkswagen" 5) can meet a model that arrived
+      // whole ("vw Golf" 6) — and "Golf 6" under a "Volkswagen 5" bar is a
+      // detail bigger than the thing it details. Both numbers are true; the
+      // pairing is what we cannot vouch for, so the entry is dropped.
+      .filter(([, count]) => count <= row.count)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    if (entries.length === 0) return row;
+    return { ...row, detail: entries.map(([model, count]) => `${model} ${count}`).join(' · ') };
   });
 }
 
@@ -221,15 +227,21 @@ export interface RecoveryRate {
 export function recoveryRate(recovered: number, closedTotal: number): RecoveryRate | null {
   if (closedTotal < MIN_CLOSED_FOR_RATE) return null;
 
-  const fraction = recovered / closedTotal;
+  // ⚠️ Clamped before any arithmetic. `closedTotal - recovered` renders as its
+  // own cell in the band, so a payload where recovered somehow exceeds the
+  // closed total would print "-2 not recovered" beside a 140% bar. The bar
+  // clamps; a numeral cannot. Every figure below is derived from the clamped
+  // value so they cannot disagree with each other.
+  const safeRecovered = Math.min(Math.max(recovered, 0), closedTotal);
+  const fraction = safeRecovered / closedTotal;
   const percent = Math.round(fraction * 100);
   return {
     percent,
-    recovered,
-    notRecovered: closedTotal - recovered,
+    recovered: safeRecovered,
+    notRecovered: closedTotal - safeRecovered,
     closedTotal,
     fraction,
-    spoken: `${percent}% recovered: ${recovered} of the ${closedTotal} nearby listings that have finished.`,
+    spoken: `${percent}% recovered: ${safeRecovered} of the ${closedTotal} nearby listings that have finished.`,
     caveat: 'Of nearby listings that have finished. Cars still being looked for aren’t counted either way.',
   };
 }
