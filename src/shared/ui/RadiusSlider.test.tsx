@@ -1,7 +1,10 @@
 /**
  * WHAT:  Tests RadiusSlider's UNSET readout — the "Any" state the search sheet
- *        uses while no radius is applied, and the rule that the first touch
- *        commits a value rather than quietly clearing the label.
+ *        uses while no radius is applied, and its ACCESSIBILITY entry point.
+ *        The touch path's own rule (the first touch commits) lives in
+ *        `shouldCommitRadius` and is tested in radiusSliderMath.test.ts: the
+ *        gesture runs on the UI thread behind RNGH and cannot be driven from
+ *        jest, which is why the predicate was lifted out of the worklet.
  * WHY:   The slider shipped with no tests at all, and the first thing the
  *        `unsetLabel` prop did was reintroduce the lie it was written to
  *        remove: `lastSnapped` starts at the RESTING value, so a touch that

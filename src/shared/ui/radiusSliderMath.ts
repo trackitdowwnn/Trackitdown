@@ -87,3 +87,27 @@ export function formatMiles(miles: number): string {
   'worklet';
   return `${miles} ${miles === 1 ? 'mile' : 'miles'}`;
 }
+
+/**
+ * Whether a touch at `snapped` should COMMIT a value, given the last value
+ * committed and whether the readout was showing its unset label.
+ *
+ * ⚠️ THE `wasUnset` HALF IS NOT AN OPTIMISATION, IT IS THE CORRECTNESS.
+ * `lastSnapped` starts at the value the thumb RESTS on, so on a slider that
+ * is showing "Any" the snap comparison alone is starved: above 5 miles the
+ * step is 5, making the dead band around a resting 10 a wide 7.5–12.5, and a
+ * touch inside it cleared the label while committing nothing. The readout
+ * then stated a number the caller was not filtering by — the exact untruth
+ * `unsetLabel` exists to remove.
+ *
+ * Extracted from the gesture worklet so that rule has a test: the worklet
+ * itself runs on the UI thread behind RNGH and cannot be driven from jest.
+ */
+export function shouldCommitRadius(
+  wasUnset: boolean,
+  snapped: number,
+  lastSnapped: number,
+): boolean {
+  'worklet';
+  return wasUnset || snapped !== lastSnapped;
+}

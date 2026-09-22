@@ -63,6 +63,7 @@ import {
   formatMiles,
   milesToPosition,
   positionToMiles,
+  shouldCommitRadius,
   snapMiles,
   stepAtMiles,
 } from './radiusSliderMath';
@@ -188,7 +189,7 @@ export function RadiusSlider({
       const unsnapped = positionToMiles(nextPosition);
       displayMiles.value = unsnapped;
       const snapped = snapMiles(unsnapped);
-      if (wasUnset || snapped !== lastSnapped.value) {
+      if (shouldCommitRadius(wasUnset, snapped, lastSnapped.value)) {
         lastSnapped.value = snapped;
         scheduleOnRN(onChangeMiles, snapped);
       }
@@ -391,6 +392,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     justifyContent: 'space-between',
   },
   label: {
+    // Gives way before the readout does: `flex: 1` on the readout makes it the
+    // only shrinkable child by default, so at large text sizes the caption
+    // would win the width fight and clip the NUMBER — the one thing in the row
+    // that has to stay whole.
+    flexShrink: 1,
     ...typography.label,
     color: c.textSecondary,
   },

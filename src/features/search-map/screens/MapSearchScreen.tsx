@@ -762,6 +762,12 @@ function MapSearchBody({
   // filter should still happen on one tap — so clear and continue.
   const handleClearSearch = useCallback(() => {
     clear();
+    // ⚠️ DISARM ANY PENDING FRAME. `setAppliedCriteria` runs synchronously in
+    // handleApplySearch, so the pill and its × are on screen while that search
+    // is still in flight — tapping × in that window would otherwise leave the
+    // frame armed, and the unfiltered results would be framed with the
+    // PREVIOUS search's radius. Clearing is not a request to re-frame.
+    pendingSearchFrame.current = null;
     const empty = emptyCriteria();
     setAppliedCriteria(empty);
     void applySearch({ criteria: empty, region: searchedRegion });
