@@ -12,6 +12,9 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+
+import { shadows, sizes } from '@/shared/theme';
 
 import type { MapPinItem, MapPost } from '../types';
 import { MapPins } from './MapPins';
@@ -120,6 +123,38 @@ describe('one marker, one price', () => {
     });
 
     expect(onPressPost).toHaveBeenCalledWith('a');
+  });
+});
+
+describe('⚠️ the marker box contains its own shadow', () => {
+  // A marker's children are rasterised to the wrapper's BOUNDS, so a shadow
+  // drawn outside them is cut off — which is how the selected pill came back
+  // with its bottom clipped (owner, on device, 2026-09-22). The box must clear
+  // the shadow's reach on every side, and SYMMETRICALLY: the anchor is the
+  // box's centre, so buying the room at the bottom alone would slide every
+  // pill north of the coordinate it is reporting.
+  const wrapperOf = (view: Awaited<ReturnType<typeof renderPins>>) =>
+    StyleSheet.flatten(
+      (view.getByTestId('marker').children[0] as { props: { style?: unknown } }).props.style,
+    ) as { padding?: number; minHeight?: number };
+
+  const shadowReach = shadows.soft.shadowOffset.height + shadows.soft.shadowRadius;
+
+  it('pads by the shadow\'s reach, on all four sides', async () => {
+    const view = await renderPins([pin('a', 5, 25000)]);
+
+    const wrapper = wrapperOf(view);
+    expect(wrapper.padding).toBe(shadowReach);
+    // Still at least a 44pt target — the padding only ever grows the box.
+    expect(wrapper.minHeight).toBe(sizes.touchTarget);
+  });
+
+  it('pads the SELECTED marker the same way — it is the one that grows', async () => {
+    const view = await act(async () =>
+      render(<MapPins pins={[pin('a', 5, 25000)]} selectedPostId="a" onPressPost={jest.fn()} />),
+    );
+
+    expect(wrapperOf(view).padding).toBe(shadowReach);
   });
 });
 

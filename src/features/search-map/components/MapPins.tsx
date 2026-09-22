@@ -65,6 +65,13 @@ const MARKER_CENTRE = { x: 0.5, y: 0.5 } as const;
 const MAX_PIN_Z = 200;
 
 /**
+ * How far `shadows.soft` reaches past the pill it is cast from — its downward
+ * offset plus its blur radius, which is the larger of the two directions and
+ * so the one the marker box has to clear. See `hitTarget`.
+ */
+const SHADOW_BLEED = shadows.soft.shadowOffset.height + shadows.soft.shadowRadius;
+
+/**
  * What a pin prints. Short by necessity — the pill sits on map tiles at a capped
  * font size, so "No reward" is already the longest thing it can carry. NEVER
  * empty: docs/DESIGN_SYSTEM.md forbids a price-less marker, because a pill with
@@ -224,11 +231,29 @@ export const MapPins = memo(function MapPins({
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   // 44pt minimum touch target wrapping the smaller drawn marker.
+  //
+  // ⚠️ THE PADDING IS THE MARKER'S SHADOW ROOM, NOT DECORATION. A marker's
+  // children are rasterised to THIS VIEW'S BOUNDS, so anything drawn outside
+  // them is cut off — and `shadows.soft` is drawn below the pill by its offset
+  // plus its blur radius. The box is 44 and centres its child, so a selected
+  // pill (18pt line + 8pt padding each side + 2pt border = 36) left 4pt under
+  // it for 16pt of shadow, and the bottom of the marker came back clipped
+  // (owner, on device, 2026-09-22). Unselected was clipped too — 8pt of 16 —
+  // just less visibly, which is why it went unnoticed.
+  //
+  // SYMMETRIC, and that is load-bearing: the anchor is MARKER_CENTRE, so the
+  // box's centre is what sits on the car's coordinate. Padding the bottom
+  // alone would have bought the shadow its room by sliding every pill north
+  // of the place it is reporting.
+  //
+  // Derived from the token rather than written as 16, so a change to
+  // `shadows.soft` cannot silently start clipping again.
   hitTarget: {
     minWidth: sizes.touchTarget,
     minHeight: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: SHADOW_BLEED,
   },
   // ⚠️ The border is a deliberate divergence — the reference's pill is
   // shadow-only. The pill barely separates from the land by FILL in either
