@@ -30,6 +30,7 @@ import { Platform, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { markStartup } from '@/shared/lib/startupTrace';
+import { useApplyUpdateOnLaunch } from '@/shared/lib/useApplyUpdateOnLaunch';
 // Direct path, not the shared/lib barrel: the barrel is imported by a large
 // share of the tree and its tests, and this module reaches AppState, the
 // Supabase client and expo-constants. Same call as ThemeProvider below.
@@ -130,6 +131,13 @@ function RootLayoutContent() {
   }, [palette.background]);
 
   const navTheme = useMemo(() => navigationTheme(scheme, palette), [scheme, palette]);
+
+  // A published update used to need TWO cold starts to show (expo-updates
+  // downloads on one launch and runs it on the next). This reloads into a
+  // fresh download while the app is still in its first seconds — and only
+  // then; later it defers to the next launch rather than restart under
+  // someone. A no-op in dev and Expo Go. See otaUpdate.ts.
+  useApplyUpdateOnLaunch();
 
   // Satoshi (the app-wide family — typography tokens reference these exact
   // names). Runtime-loaded so the existing dev client needs no rebuild.
