@@ -281,7 +281,18 @@ describe('the layout (2026-09-21 redesign; card sections 2026-09-22)', () => {
     expect(view.getByText(/Of the 6 listings where this was recorded/)).toBeTruthy();
     // The keys block has no buckets, so it is absent entirely — no empty shell.
     expect(view.queryByText('Were the keys taken?')).toBeNull();
-    expect(view.getByText('70% came back')).toBeTruthy();
+    // The recovery card: percent leading, the share drawn, both counts in
+    // the band, all one spoken node with the denominator in it.
+    expect(view.getByText(/70%/)).toBeTruthy();
+    // Decoration to a screen reader, so it must be asked for as hidden.
+    expect(view.getByTestId('stats-recovery-bar', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.getByTestId('stat-recovered')).toHaveTextContent(/^7/);
+    expect(view.getByTestId('stat-not-recovered')).toHaveTextContent(/^3/);
+    expect(view.getByRole('header', { name: 'Recovery rate' })).toBeTruthy();
+    expect(view.queryByText('Do they come back?')).toBeNull();
+    expect(
+      view.getByLabelText('70% recovered: 7 of the 10 nearby listings that have finished.'),
+    ).toBeTruthy();
   });
 
   it('shows the radius control open when there is not enough data — it is the way out', async () => {

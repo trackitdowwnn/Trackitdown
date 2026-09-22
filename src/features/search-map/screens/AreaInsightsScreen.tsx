@@ -129,12 +129,13 @@ import {
 
 import { fetchAreaInsights, type AreaInsights } from '../api/areaInsightsApi';
 import { MonthlyTheftsChart } from '../components/MonthlyTheftsChart';
+import { ProportionBar } from '../components/ProportionBar';
 import { RankedBars } from '../components/RankedBars';
 import {
   monthlyColumns,
   monthlySummary,
   rankedMakes,
-  recoveryRateLabel,
+  recoveryRate,
 } from '../lib/areaInsightsModel';
 import { AREA_ENTRY_RADIUS_MILES } from '../lib/feedSections';
 
@@ -676,7 +677,7 @@ function Breakdown({
   const styles = useThemedStyles(makeStyles);
   const columns = monthlyColumns(data.monthly);
   const makes = rankedMakes(data.topMakes, data.topModels);
-  const recovery = recoveryRateLabel(data.recovered, data.closedTotal);
+  const recovery = recoveryRate(data.recovered, data.closedTotal);
   const summary = monthlySummary(data.monthly);
 
   // Which optional cards render, decided once, so each card's stagger index
@@ -720,10 +721,43 @@ function Breakdown({
       ) : null}
 
       {recovery ? (
-        <Card title="Do they come back?" index={recoveryIndex} testID="stats-card-recovery">
-          <Text style={styles.statement} maxFontSizeMultiplier={displayFontScaleCap}>
-            {recovery.headline}
-          </Text>
+        <Card title="Recovery rate" index={recoveryIndex} testID="stats-card-recovery">
+          {/* Redesigned 2026-09-22 (owner: "redesign the do they come back
+              section, and change the title"). Was one sentence — "70% came
+              back" — over a two-line caveat: a number with nothing to give it
+              shape. Now the percent leads in the hero's grammar, the share is
+              DRAWN (ProportionBar — the filled part came back, the rule that
+              shows through did not), and the two counts sit in a band
+              beneath so the fraction is legible as well as the percentage.
+              The percent and the band are ONE spoken node: the percent alone
+              is the number the caveat exists to qualify. */}
+          <View accessible accessibilityLabel={recovery.spoken}>
+            <Text style={styles.statement} maxFontSizeMultiplier={displayFontScaleCap}>
+              <Text style={styles.statementNumber} maxFontSizeMultiplier={displayFontScaleCap}>
+                {recovery.percent}%
+              </Text>
+              {' recovered'}
+            </Text>
+            <View style={styles.proportion}>
+              <ProportionBar fraction={recovery.fraction} growIn testID="stats-recovery-bar" />
+            </View>
+            <StatBand
+              cells={[
+                {
+                  key: 'recovered',
+                  value: String(recovery.recovered),
+                  label: 'recovered',
+                  spoken: `${recovery.recovered} recovered`,
+                },
+                {
+                  key: 'not-recovered',
+                  value: String(recovery.notRecovered),
+                  label: 'not recovered',
+                  spoken: `${recovery.notRecovered} not recovered`,
+                },
+              ]}
+            />
+          </View>
           {/* The denominator is CLOSED listings only. An active listing has not
               failed to be recovered — it is still being looked for — and
               counting it as a miss would drag the rate down by however many
@@ -952,9 +986,19 @@ const makeStyles = (c: Palette) =>
       color: c.textPrimary,
     },
     heroNumber: { ...typography.heading, color: c.textPrimary },
-    // A section's one plain statement ("71% came back") — sectionTitle, so it
-    // sits between the hero and the headings without a fourth scale.
-    statement: { ...typography.sectionTitle, color: c.textPrimary },
+    // A section's one plain statement ("71% recovered") in the hero's grammar
+    // a step down: the number at sectionTitle Bold, its word in body beside
+    // it, on the number's leading — so it sits between the hero and the
+    // headings without a fourth scale.
+    statement: {
+      ...typography.body,
+      lineHeight: typography.sectionTitle.lineHeight,
+      color: c.textPrimary,
+    },
+    statementNumber: { ...typography.sectionTitle, color: c.textPrimary },
+    // The share, drawn, between the percent and the band: 4 either side so
+    // it reads as part of the figure rather than a rule between two.
+    proportion: { marginVertical: spacing.sm },
     quiet: { ...typography.caption, color: c.textSecondary },
     rows: { gap: spacing.sm },
     row: {

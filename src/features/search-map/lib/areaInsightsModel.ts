@@ -189,12 +189,21 @@ function rank(rows: { label: string; count: number }[]): RankedRow[] {
 const MIN_CLOSED_FOR_RATE = 5;
 
 export interface RecoveryRate {
-  headline: string;
+  /** Whole percent, 0–100. */
+  percent: number;
+  recovered: number;
+  /** Closed without the car coming back. */
+  notRecovered: number;
+  closedTotal: number;
+  /** 0..1 — the proportion bar's fill. */
+  fraction: number;
+  /** What a screen reader hears for the whole figure. */
+  spoken: string;
   caveat: string;
 }
 
 /**
- * The recovery rate as a sentence, or null when it should not be stated.
+ * The recovery rate as figures, or null when it should not be stated.
  *
  * ⚠️ THE DENOMINATOR IS CLOSED LISTINGS, NEVER ALL OF THEM. An active listing
  * has not failed to be recovered — it is still out being looked for — and
@@ -202,15 +211,25 @@ export interface RecoveryRate {
  * currently in flight, which is exactly the cars this product is working on.
  * The RPC computes `closed_total` for that reason; using `total` here would
  * throw the care away at the last step.
+ *
+ * Figures rather than a finished sentence (2026-09-22, the card's redesign):
+ * the screen draws the rate as a percent, a proportion bar and a two-cell
+ * band, and each of those wants the numbers, not the prose. The caveat is
+ * still authored here, because it is the one sentence that must never be
+ * separated from the number.
  */
-export function recoveryRateLabel(recovered: number, closedTotal: number): RecoveryRate | null {
+export function recoveryRate(recovered: number, closedTotal: number): RecoveryRate | null {
   if (closedTotal < MIN_CLOSED_FOR_RATE) return null;
 
-  const percent = Math.round((recovered / closedTotal) * 100);
+  const fraction = recovered / closedTotal;
+  const percent = Math.round(fraction * 100);
   return {
-    headline: `${percent}% came back`,
-    caveat:
-      `Of the ${closedTotal} nearby listings that have finished. ` +
-      `Cars still being looked for aren’t counted either way.`,
+    percent,
+    recovered,
+    notRecovered: closedTotal - recovered,
+    closedTotal,
+    fraction,
+    spoken: `${percent}% recovered: ${recovered} of the ${closedTotal} nearby listings that have finished.`,
+    caveat: 'Of nearby listings that have finished. Cars still being looked for aren’t counted either way.',
   };
 }

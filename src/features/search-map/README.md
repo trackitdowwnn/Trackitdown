@@ -332,6 +332,19 @@ full counts add exactly), which retired the "two spellings count separately"
 caption. The fills extend from the left on entry, the year chart's grow-in
 turned sideways.
 
+**Recovery rate** (2026-09-22; was titled "Do they come back?") — one
+sentence, "70% came back", over a two-line caveat was a number with nothing
+to give it shape. Now the percent leads in the hero's grammar (sectionTitle
+number, body word), the share is DRAWN (`components/ProportionBar` — the
+same `sliderTrack` / `borderStrong` / `primary` bar as the ranked list; the
+filled part came back and the rule that shows through did not), and a
+two-cell `StatBand` beneath gives the counts — "7 recovered · 3 not
+recovered" — so the fraction is legible as well as the percentage. The
+percent, bar and band are ONE spoken node with the denominator in it
+(`recoveryRate.spoken`); the caveat is one line. The denominator is still
+CLOSED listings only, and the five-closed floor before any rate is stated
+is unchanged.
+
 **Moving the radius** (2026-09-22, after the owner found the page "refreshes
 too quick and cuts off the slider"): `RadiusSlider` commits on every snap of
 a drag, and wired straight into the fetch each snap flipped the page to the

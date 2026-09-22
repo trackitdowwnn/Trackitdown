@@ -13,7 +13,7 @@ import {
   monthlyColumns,
   monthlySummary,
   rankedMakes,
-  recoveryRateLabel,
+  recoveryRate,
 } from './areaInsightsModel';
 
 describe('monthlyColumns', () => {
@@ -157,30 +157,36 @@ describe('monthlySummary', () => {
   });
 });
 
-describe('recoveryRateLabel', () => {
+describe('recoveryRate', () => {
   it('is computed over CLOSED listings only', () => {
     // ⚠️ The denominator is the whole point. An ACTIVE listing has not failed to
     // be recovered — it is still out being looked for — so counting it as a miss
     // would drag the rate down by exactly the cars this product is working on.
     // 6 of 10 closed is 60%, whatever the area's total is.
-    expect(recoveryRateLabel(6, 10)?.headline).toBe('60% came back');
+    expect(recoveryRate(6, 10)).toMatchObject({
+      percent: 60,
+      recovered: 6,
+      notRecovered: 4,
+      closedTotal: 10,
+      fraction: 0.6,
+    });
   });
 
   it('says nothing when too few listings have finished', () => {
     // Three closed and one recovery is "33%", which reads as a property of the
     // area and is really a property of three cars.
-    expect(recoveryRateLabel(1, 3)).toBeNull();
-    expect(recoveryRateLabel(0, 0)).toBeNull();
+    expect(recoveryRate(1, 3)).toBeNull();
+    expect(recoveryRate(0, 0)).toBeNull();
   });
 
-  it('names the denominator in the caveat, so the number cannot be read alone', () => {
-    const rate = recoveryRateLabel(4, 8);
-    expect(rate?.caveat).toContain('8 nearby listings that have finished');
+  it('names the denominator when spoken, so the number cannot be heard alone', () => {
+    const rate = recoveryRate(4, 8);
+    expect(rate?.spoken).toBe('50% recovered: 4 of the 8 nearby listings that have finished.');
     expect(rate?.caveat).toContain('still being looked for');
   });
 
   it('handles the extremes without producing a nonsense percentage', () => {
-    expect(recoveryRateLabel(0, 5)?.headline).toBe('0% came back');
-    expect(recoveryRateLabel(5, 5)?.headline).toBe('100% came back');
+    expect(recoveryRate(0, 5)?.percent).toBe(0);
+    expect(recoveryRate(5, 5)?.percent).toBe(100);
   });
 });
