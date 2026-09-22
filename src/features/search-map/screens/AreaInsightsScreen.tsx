@@ -317,6 +317,10 @@ export function AreaInsightsScreen({
   // never during render.
   const pulledRef = useRef(false);
   const insightsRef = useRef<AreaInsights | null>(null);
+  // The radius the figures on screen answer for, for the failure message.
+  // A ref, not the state: naming it in the toast must not make the fetch
+  // effect depend on it (the effect's deps are "what changes the question").
+  const shownMilesRef = useRef<number | null>(null);
 
   // ⚠️ ONE FETCH PATH, and it is this effect. The pull bumps `generation`
   // rather than fetching for itself, so the single `cancelled` guard covers
@@ -350,6 +354,7 @@ export function AreaInsightsScreen({
         insightsRef.current = next;
         setInsights(next);
         setShownMiles(forMiles);
+        shownMilesRef.current = forMiles;
         setFailedMiles(null);
         setRefreshing(false);
       })
@@ -359,14 +364,17 @@ export function AreaInsightsScreen({
         // ⚠️ A FAILURE OVER FIGURES THAT ARE ALREADY UP IS SAID, NOT DRAWN.
         // The render below keeps those figures (and the slider) on screen, so
         // without this the failure is silent — and for a radius change it is
-        // also the only thing that says the figures now describe a DIFFERENT
-        // radius from the one the slider reads. Both wordings end at the same
-        // place: what you are looking at is the last answer we got.
+        // the ONLY thing that says the figures now describe a different radius
+        // from the one the slider reads. Which is why that wording NAMES the
+        // radius they do answer for: "the last figures" alone leaves a reader
+        // looking at 20-mile counts under a slider reading 30 with nothing to
+        // tell them apart. `shownMiles` is the radius those figures were
+        // computed for, read at failure time.
         if (insightsRef.current !== null) {
           toastRef.current.show(
             wasPull
               ? 'We couldn’t refresh just now — these are the last figures.'
-              : 'We couldn’t load that radius — these are the last figures.',
+              : `We couldn’t load that radius — these are still the ${shownMilesRef.current} mile figures.`,
             'error',
           );
         }
@@ -653,7 +661,12 @@ function Insights({
  * default text size, and `adjustsFontSizeToFit` covers a narrower phone or
  * a larger text setting by shrinking rather than wrapping or ellipsising —
  * a theft count with its last words cut off is worse than a slightly
- * smaller one. The floor is 0.7, so it can never shrink past legible.
+ * smaller one. The floor is `shrinkToFitMinScale` (tabLabel over caption,
+ * ~0.85), so it can never shrink below the smallest size the design system
+ * sanctions. That floor is enough BECAUSE the growth above is capped: at
+ * `displayFontScaleCap` the sentence renders 1.3x, and 1.3 x 0.85 is ~1.1x
+ * the default width — inside the headroom the sizes were chosen for. A
+ * lower floor would only buy width the sentence cannot need.
  *
  * The font-scale cap is repeated on the number run: it is not reliably
  * inherited across nested Text (OnboardingSlide records the same), and an

@@ -82,8 +82,11 @@ export const typography = {
 
 export type TypographyToken = keyof typeof typography;
 
-/** Dynamic-type cap for display-size hero text (MoneySlider's amount readout):
- *  it may grow with the user's setting, but never so far the row bursts. */
+/** Dynamic-type cap for text whose CONTAINER cannot grow with it: MoneySlider's
+ *  amount readout, the theft-stats hero sentence, and the numerals and month
+ *  names inside its 12-month chart (where the bar geometry is measured against
+ *  this same cap). It may grow with the user's setting, but never so far the
+ *  row bursts — or, in the chart's case, so far a numeral outgrows its bar. */
 export const displayFontScaleCap = 1.3;
 
 /** Dynamic-type cap for tab-bar labels: one step of growth, then truncate —

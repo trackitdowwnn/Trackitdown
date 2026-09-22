@@ -56,6 +56,33 @@ describe('MonthlyTheftsChart', () => {
     expect(view.queryByTestId('chart-month-2026-01')).toBeNull();
   });
 
+  it('⚠️ keeps a numeral inside its bar at a large text size', async () => {
+    // Regression: the inside/above decision and the numeral's offset were
+    // measured against the UNSCALED caption line, so at a raised text size a
+    // bar was judged tall enough to hold a numeral it could not — and the
+    // top half rendered textOnPrimary (white) on the white card.
+    const dimensions = jest.requireActual<typeof import('react-native')>('react-native').Dimensions;
+    jest.spyOn(dimensions, 'get').mockReturnValue({
+      width: 360,
+      height: 800,
+      scale: 2,
+      fontScale: 2,
+    });
+    const view = await render(<MonthlyTheftsChart columns={YEAR} summary="s" />);
+    const style = (key: string) =>
+      StyleSheet.flatten(view.getByTestId(`chart-count-${key}`).props.style) as {
+        color: string;
+        marginBottom: number;
+      };
+    // The tallest bar (96) still holds its numeral, and the offset leaves the
+    // whole SCALED line inside the fill: 96 - (18 * 1.3) - 4.
+    expect(style('2026-12').marginBottom).toBeCloseTo(96 - 18 * 1.3 - 4);
+    // Capped, so the numeral cannot outgrow the geometry it was placed by.
+    expect(view.getByTestId('chart-count-2026-12').props.maxFontSizeMultiplier).toBe(1.3);
+    // A nub still wears its numeral on top, in page ink.
+    expect(style('2026-02').color).not.toBe(style('2026-12').color);
+  });
+
   it('is one node to a screen reader, speaking the summary', async () => {
     const view = await render(
       <MonthlyTheftsChart columns={YEAR} summary="Cars reported stolen in 11 of the last 12 months." />,

@@ -437,8 +437,10 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     expect(view.queryByText('We couldn’t load this area')).toBeNull();
     expect(view.getByTestId('stats-hero')).toHaveTextContent(/14 cars/);
     expect(view.getByTestId('stats-radius-slider')).toBeTruthy();
+    // The message NAMES the radius the figures still answer for — without it
+    // the reader is looking at 20-mile counts under a slider reading 30.
     expect(mockToastShow).toHaveBeenCalledWith(
-      'We couldn’t load that radius — these are the last figures.',
+      'We couldn’t load that radius — these are still the 20 mile figures.',
       'error',
     );
     // And the reader can still drag back: the control never left.
@@ -479,7 +481,7 @@ describe('moving the radius (2026-09-22 — the slider used to vanish mid-drag)'
     // The radius failure is its own message, not the pull's.
     expect(mockToastShow).toHaveBeenCalledTimes(1);
     expect(mockToastShow).toHaveBeenCalledWith(
-      'We couldn’t load that radius — these are the last figures.',
+      'We couldn’t load that radius — these are still the 20 mile figures.',
       'error',
     );
   });

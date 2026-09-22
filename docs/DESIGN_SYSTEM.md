@@ -235,6 +235,19 @@ are build output.
     headline — the multiplier is not reliably inherited across nested `Text`,
     so an emphasised word left uncapped would outgrow the plain words beside
     it at large dynamic-type settings.
+    **`shrinkToFitMinScale`** (added 2026-09-22) is the companion floor for a
+    line that must not wrap: `adjustsFontSizeToFit` with no `minimumFontScale`
+    will take text as small as it needs to, so this stops it at `tabLabel`
+    (11) — the one sanctioned size below `caption` — expressed as the ratio
+    `tabLabel / caption` so it follows both tokens. Used by the theft-stats
+    hero sentence and the numerals inside its chart bars. A floor only works
+    alongside a cap: paired with `displayFontScaleCap` the worst case is
+    1.3 × 0.85 ≈ 1.1× the default width, which is what the line is sized for.
+    ⚠️ When text sits INSIDE a drawn shape (a numeral in a chart bar), the
+    shape's geometry must be measured against the SAME capped scale —
+    `useWindowDimensions().fontScale` capped at `displayFontScaleCap`, as
+    `MonthlyTheftsChart` does. Measured against the unscaled token instead,
+    the numeral overflows its fill and renders `textOnPrimary` on the page.
   - `display` 32/38, Black — big moments ("Car recovered 🎉")
   - `title` 24/30, Bold — screen titles
   - `sectionTitle` 20/26, Bold — feed section headers (added 2026-07-11;
