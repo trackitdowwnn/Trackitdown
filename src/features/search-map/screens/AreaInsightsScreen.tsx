@@ -129,7 +129,14 @@ import {
 
 import { fetchAreaInsights, type AreaInsights } from '../api/areaInsightsApi';
 import { MonthlyTheftsChart } from '../components/MonthlyTheftsChart';
-import { monthlyColumns, monthlySummary, recoveryRateLabel } from '../lib/areaInsightsModel';
+import { RankedBars } from '../components/RankedBars';
+import {
+  monthlyColumns,
+  monthlySummary,
+  rankedMakes,
+  rankedModels,
+  recoveryRateLabel,
+} from '../lib/areaInsightsModel';
 import { AREA_ENTRY_RADIUS_MILES } from '../lib/feedSections';
 
 const log = createLogger('search-map');
@@ -669,13 +676,15 @@ function Breakdown({
 }) {
   const styles = useThemedStyles(makeStyles);
   const columns = monthlyColumns(data.monthly);
+  const makes = rankedMakes(data.topMakes);
+  const models = rankedModels(data.topModels);
   const recovery = recoveryRateLabel(data.recovered, data.closedTotal);
   const summary = monthlySummary(data.monthly);
 
   // Which optional cards render, decided once, so each card's stagger index
   // is its RENDERED position: an absent makes card must not leave a 50ms
   // hole before the recovery card. Hero is 0 and the year chart 1, always.
-  const showMakes = data.topMakes.length > 0;
+  const showMakes = makes.length > 0;
   const showRecovery = Boolean(recovery);
   const showTaken = data.takenFrom.buckets.length > 0;
   const showKeys = data.keysTaken.buckets.length > 0;
@@ -699,26 +708,23 @@ function Breakdown({
 
       {showMakes ? (
         <Card title="Taken most often" index={makesIndex} testID="stats-card-makes">
-          <View style={styles.rows}>
-            {data.topMakes.map((row) => (
-              <Row key={row.make} label={row.make} value={String(row.count)} capitalize />
-            ))}
-            {data.topModels.map((row) => (
-              <Row
-                key={`${row.make}-${row.model}`}
-                label={`${row.make} ${row.model}`}
-                value={String(row.count)}
-                capitalize
-                indented
-              />
-            ))}
+          {/* Two INDEPENDENT rankings from the RPC — top makes, top make+model
+              pairs — each drawn as bars scaled to its own top row (RankedBars),
+              under a quiet sub-label. They used to be one list of ten rows with
+              the models indented under the last make as if they were its
+              children (redesigned 2026-09-22). The names are canonical and
+              same-make spellings merged (rankedMakes), which retired the old
+              "two spellings count separately" caption. */}
+          <View style={styles.ranking}>
+            <Text style={styles.quiet}>By make</Text>
+            <RankedBars rows={makes} growIn testID="stats-makes" />
           </View>
-          {/* The RPC folds make and model with lower(btrim(...)) and does NOT
-              equate VW with Volkswagen. Said out loud rather than left for
-              someone to notice in the data. */}
-          <Text style={styles.quiet}>
-            Counted as owners typed them, so two spellings of one make count separately.
-          </Text>
+          {models.length > 0 ? (
+            <View style={styles.ranking}>
+              <Text style={styles.quiet}>By model</Text>
+              <RankedBars rows={models} growIn testID="stats-models" />
+            </View>
+          ) : null}
         </Card>
       ) : null}
 
@@ -841,43 +847,19 @@ function Card({
 /**
  * Label left, value right — and the VALUE leads by weight, because the count
  * is the information and the word beside it is the label for it (the same way
- * round as StatBand and every other number on this page).
- *
- * `capitalize` is for owner-typed text (makes, models) — never for labels we
- * authored, which are already sentence case. `indented` is for the models
- * under their makes.
+ * round as StatBand and every other number on this page). For the authored
+ * labels of the taken-from and keys blocks; the makes and models are
+ * RankedBars now.
  */
-function Row({
-  label,
-  value,
-  capitalize,
-  indented,
-}: {
-  label: string;
-  value: string;
-  capitalize?: boolean;
-  indented?: boolean;
-}) {
+function Row({ label, value }: { label: string; value: string }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    // One accessible node, as StatBand reasons: "Ford: 6" in one stop rather
-    // than a label and a bare number the reader has to pair up.
-    <View
-      style={[styles.row, indented && styles.rowIndented]}
-      accessible
-      accessibilityLabel={`${label}: ${value}`}
-    >
-      {/* Two lines, not one: an owner-typed "Mercedes-Benz E-Class Estate" at
-          large type is a name lost if it ellipsises. The value stays centred
-          against a taller row. */}
-      <Text
-        style={[
-          styles.rowLabel,
-          indented ? styles.rowLabelSecondary : null,
-          capitalize ? styles.rowLabelCapitalized : null,
-        ]}
-        numberOfLines={2}
-      >
+    // One accessible node, as StatBand reasons: "From a driveway: 3 of 6" in
+    // one stop rather than a label and a bare number the reader has to pair up.
+    <View style={styles.row} accessible accessibilityLabel={`${label}: ${value}`}>
+      {/* Two lines, not one: a label at large type is a name lost if it
+          ellipsises. The value stays centred against a taller row. */}
+      <Text style={styles.rowLabel} numberOfLines={2}>
         {label}
       </Text>
       <Text style={styles.rowValue}>{value}</Text>
@@ -990,12 +972,11 @@ const makeStyles = (c: Palette) =>
       alignItems: 'center',
       gap: spacing.md,
     },
-    rowIndented: { paddingLeft: spacing.lg },
     rowLabel: { ...typography.body, color: c.textPrimary, flexShrink: 1 },
-    rowLabelSecondary: { color: c.textSecondary },
-    // ⚠️ ONLY for owner-typed makes and models ("bmw" → "Bmw"). The taken-from
-    // and keys-taken labels are AUTHORED sentence case and must not pass it.
-    rowLabelCapitalized: { textTransform: 'capitalize' },
+    // A sub-label over its ranking, and 12 between the two rankings on top
+    // of the card's own step, so "By model" reads as a new block rather
+    // than the sixth make.
+    ranking: { gap: spacing.sm },
     // The count is the information and the word beside it is its label, so
     // the emphasis runs value-first — the same way round as StatBand.
     rowValue: { ...typography.cardTitle, color: c.textPrimary },

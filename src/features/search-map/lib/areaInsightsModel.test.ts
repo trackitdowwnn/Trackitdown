@@ -9,7 +9,13 @@
  *        supabase/migrations/20260811160000_area_insights_bucket_floor_owner.sql.
  */
 
-import { monthlyColumns, monthlySummary, recoveryRateLabel } from './areaInsightsModel';
+import {
+  monthlyColumns,
+  monthlySummary,
+  rankedMakes,
+  rankedModels,
+  recoveryRateLabel,
+} from './areaInsightsModel';
 
 describe('monthlyColumns', () => {
   it('scales against the busiest month and keeps the zeros', () => {
@@ -55,6 +61,57 @@ describe('monthlyColumns', () => {
 
   it('returns nothing for an empty series', () => {
     expect(monthlyColumns([])).toEqual([]);
+  });
+});
+
+describe('rankedMakes', () => {
+  it('canonicalises the lower-cased names the RPC folds to', () => {
+    const rows = rankedMakes([
+      { make: 'ford', count: 6 },
+      { make: 'bmw', count: 4 },
+    ]);
+    expect(rows.map((r) => r.label)).toEqual(['Ford', 'BMW']);
+  });
+
+  it('merges two spellings of one make and re-ranks on the sum', () => {
+    // The RPC does not equate "vw" with "volkswagen"; the app's alias table
+    // does, and the two full counts add up exactly.
+    const rows = rankedMakes([
+      { make: 'ford', count: 5 },
+      { make: 'vw', count: 3 },
+      { make: 'volkswagen', count: 3 },
+    ]);
+    expect(rows.map((r) => [r.label, r.count])).toEqual([
+      ['Volkswagen', 6],
+      ['Ford', 5],
+    ]);
+  });
+
+  it('scales every row to the top one', () => {
+    const rows = rankedMakes([
+      { make: 'ford', count: 8 },
+      { make: 'audi', count: 2 },
+    ]);
+    expect(rows[0].fraction).toBe(1);
+    expect(rows[1].fraction).toBeCloseTo(0.25);
+  });
+
+  it('keeps an unknown make as typed rather than guessing', () => {
+    expect(rankedMakes([{ make: 'zaporozhets', count: 1 }])[0].label).toBe('zaporozhets');
+  });
+
+  it('returns nothing for nothing', () => {
+    expect(rankedMakes([])).toEqual([]);
+  });
+});
+
+describe('rankedModels', () => {
+  it('labels "Make Model" with both halves canonical', () => {
+    const rows = rankedModels([
+      { make: 'ford', model: 'fiesta', count: 3 },
+      { make: 'vw', model: 'golf', count: 2 },
+    ]);
+    expect(rows.map((r) => r.label)).toEqual(['Ford Fiesta', 'Volkswagen Golf']);
   });
 });
 

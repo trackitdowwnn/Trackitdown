@@ -310,6 +310,21 @@ request) — the counts make an axis redundant, and severity colour on a theft
 chart is an alarm. One node to a screen reader, speaking `monthlySummary`,
 which is now the only place that sentence lives.
 
+**Taken most often** (`components/RankedBars`, 2026-09-22) — the RPC returns
+two INDEPENDENT top-5 rankings, makes and make+model pairs, lower-cased. They
+were drawn as one list of ten label/value rows with the models indented in
+grey under the LAST make, as if they were its children, and the names came
+out as "Bmw" via textTransform. Now each ranking is its own block under a
+quiet sub-label ("By make" / "By model"), drawn as bars — name left, count
+right (value leading by weight), a `sliderTrack`-height rule beneath in
+`borderStrong` with a `primary` fill scaled to that ranking's top row; the
+same bar RadiusSlider is made of. A ranking is a comparison and a comparison
+wants a length. Names run through `canonicaliseMake` / `canonicaliseModel`
+(`rankedMakes` / `rankedModels`) — "bmw" → "BMW", "vw" → "Volkswagen" — and
+two spellings that land on one name MERGE (their full counts add exactly),
+which retired the "two spellings count separately" caption. The fills
+extend from the left on entry, the year chart's grow-in turned sideways.
+
 **Moving the radius** (2026-09-22, after the owner found the page "refreshes
 too quick and cuts off the slider"): `RadiusSlider` commits on every snap of
 a drag, and wired straight into the fetch each snap flipped the page to the

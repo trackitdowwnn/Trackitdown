@@ -1,6 +1,7 @@
 /**
  * WHAT:  The pure shaping behind AreaInsightsScreen — the 12-month series into
- *        chart bars, its spoken summary, and the recovery rate as a sentence.
+ *        chart columns, its spoken summary, the top makes and models into
+ *        ranked rows, and the recovery rate as a sentence.
  * WHY:   Kept out of the screen so the arithmetic can be tested without
  *        rendering, and so the two places most likely to mislead are decided
  *        once, in the open:
@@ -10,6 +11,9 @@
  *        supabase/migrations/20260811160000_area_insights_bucket_floor_owner.sql;
  *        src/features/vehicles/lib/postStatsModel.ts (toSparkline — the sibling).
  */
+
+import { canonicaliseMake } from '@/shared/lib/carMakes';
+import { canonicaliseModel } from '@/shared/lib/carModels';
 
 /** One column of the 12-month chart, ready to draw. */
 export interface MonthlyColumn {
@@ -87,6 +91,67 @@ function monthName(month: string): string | null {
 function monthAbbrev(month: string): string | null {
   const name = monthName(month);
   return name ? name.slice(0, 3) : null;
+}
+
+/** One row of a ranked list, ready to draw. */
+export interface RankedRow {
+  key: string;
+  label: string;
+  count: number;
+  /** 0..1 of the top row — the bar's length. */
+  fraction: number;
+}
+
+/**
+ * The RPC's top makes as display rows: canonical names, same-make spellings
+ * merged, re-ranked.
+ *
+ * The RPC folds make with lower(btrim(...)) and does NOT equate "vw" with
+ * "volkswagen" — so it can hand back "bmw", "vw" AND "volkswagen" as three
+ * rows, and the screen used to render them as typed with a caption apologising
+ * for it. `canonicaliseMake` is the app's own answer to that (the make picker
+ * runs every stored make through it), so it runs here too: "bmw" → "BMW",
+ * "vw" → "Volkswagen", and two rows that land on one name add up. The sum is
+ * exact — each row is that spelling's full count — so merging never invents.
+ * A spelling the alias table does not know stays as typed, which is the same
+ * promise the picker makes.
+ */
+export function rankedMakes(topMakes: { make: string; count: number }[]): RankedRow[] {
+  return rank(topMakes.map((row) => ({ label: canonicaliseMake(row.make), count: row.count })));
+}
+
+/**
+ * The RPC's top make+model pairs as display rows, "Ford Fiesta" — the make
+ * canonical first (canonicaliseModel is keyed by the canonical make label),
+ * then the model against that make's list. Merged and re-ranked like makes.
+ */
+export function rankedModels(
+  topModels: { make: string; model: string; count: number }[],
+): RankedRow[] {
+  return rank(
+    topModels.map((row) => {
+      const make = canonicaliseMake(row.make);
+      return { label: `${make} ${canonicaliseModel(make, row.model)}`, count: row.count };
+    }),
+  );
+}
+
+/** Merge rows sharing a label, sort by count (ties by label), scale to the top. */
+function rank(rows: { label: string; count: number }[]): RankedRow[] {
+  const merged = new Map<string, number>();
+  for (const row of rows) {
+    merged.set(row.label, (merged.get(row.label) ?? 0) + row.count);
+  }
+  const sorted = [...merged.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const top = sorted[0]?.count ?? 0;
+  return sorted.map((row) => ({
+    key: row.label,
+    label: row.label,
+    count: row.count,
+    fraction: top > 0 ? row.count / top : 0,
+  }));
 }
 
 /**
