@@ -374,6 +374,23 @@ honest in both. Once only, guarded by a ref — it must never re-fire when an
 auto-search lands new results under someone mid-browse. Empty results keep the
 entry region; framing nothing would zoom to a point.
 
+**A custom search re-frames too** (`searchFrame`, 2026-09-22) — applying
+criteria flies to the region they imply, which is the right place to look but
+not necessarily the right span: a 20-mile search whose four matches sit in one
+town opened on twenty miles of mostly empty ground with the cars knotted in
+the middle. So once that search's results land the camera frames them —
+zooming out or in. ⚠️ **All or nothing, and that is the difference from
+`entryFrame`.** entryFrame keeps the cars near the entry point and drops the
+rest, which is right for an opening nobody asked for. A search is a stated
+question, so a view showing SOME matches while presenting itself as the answer
+is a quiet lie — either every result fits within the cap and the camera frames
+them all, or the camera does not move and the pill's count says there is more.
+"Close enough" is the SEARCH'S OWN radius when it set one (a reader who asked
+for 10 miles has already said how far they mean), else
+`MAX_SEARCH_FRAME_RADIUS_MILES` (25 — wider than entry's 6, because entry is
+involuntary and a search is deliberate). One shot per search, by a ref holding
+that search's radius, so it never re-fires on an auto-search mid-browse.
+
 **Data** — RPC `search_posts(min_lat, min_lng, max_lat, max_lng, criteria,
 limit)` → `{ total, posts }` with exact per-post `lat`/`lng`, and the cheap
 `search_posts_count(…, criteria)` → int for the live "Show N cars" button.

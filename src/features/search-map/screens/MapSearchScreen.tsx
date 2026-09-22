@@ -66,6 +66,8 @@ import {
   cameraForVisible,
   distanceMeters,
   entryFrame,
+  MAX_SEARCH_FRAME_RADIUS_MILES,
+  searchFrame,
   isComfortablyVisible,
   metersToMiles,
   regionAround,
@@ -554,6 +556,43 @@ function MapSearchBody({
     frameCamera(cameraForVisible(entryFrame(result.posts, entryRegion), mapInsets));
   }, [status, result.posts, entryRegion, mapInsets, frameCamera]);
 
+  // RE-FRAME ON A CUSTOM SEARCH'S RESULTS, when they are close enough together
+  // to show at once (owner, 2026-09-22: "if all results are close enough I
+  // want the map to zoom out and show all results").
+  //
+  // handleApplySearch already flies to the region the criteria imply — which
+  // is the right place to LOOK, not necessarily the right span: a 20-mile
+  // search whose four matches sit in one town opened on twenty miles of empty
+  // ground with the cars in a knot at the middle. searchFrame widens (or
+  // tightens) onto the matches themselves, and returns the searched region
+  // untouched when they do not all fit — a view showing some of the matches
+  // is worse than one honestly framed on the area, because the pins on screen
+  // would not be the answer to what was asked.
+  //
+  // ONE SHOT PER SEARCH, and the ref carries the radius the search asked for
+  // so the effect does not depend on `appliedCriteria` — it must fire for the
+  // results of THAT search and never re-fire when an auto-search lands new
+  // results under someone mid-browse (the same rule the entry frame keeps).
+  const pendingSearchFrame = useRef<{ maxRadiusMiles: number } | null>(null);
+  useEffect(() => {
+    const pending = pendingSearchFrame.current;
+    if (!pending || status !== 'ready') {
+      return;
+    }
+    pendingSearchFrame.current = null;
+    if (result.posts.length === 0) {
+      // Nothing to frame: the empty state speaks, and moving the camera to
+      // "nowhere" would take away the region they searched as well.
+      return;
+    }
+    frameCamera(
+      cameraForVisible(
+        searchFrame(result.posts, settledRegion, pending.maxRadiusMiles),
+        mapInsets,
+      ),
+    );
+  }, [status, result.posts, settledRegion, mapInsets, frameCamera]);
+
   // A failed auto re-search is quiet by design: results and pins stay put and
   // the map keeps working. Fired on the EDGE (a boolean dep), so a re-render
   // never re-announces. The next settled pan re-attempts by itself, because a
@@ -636,6 +675,12 @@ function MapSearchBody({
       setAppliedCriteria(criteria);
       setSearchOpen(false);
       flyTo(region);
+      // Ask the effect below to re-frame on whatever this search returns. The
+      // reader's own radius is the definition of "close enough" when they set
+      // one; MAX_SEARCH_FRAME_RADIUS_MILES when they did not.
+      pendingSearchFrame.current = {
+        maxRadiusMiles: criteria.distanceMiles ?? MAX_SEARCH_FRAME_RADIUS_MILES,
+      };
       void applySearch({ criteria, region });
       // Which criteria the user searched by (KEY presence only) + the coarse
       // distance band — no coordinates, no plate (there is no plate criterion).
