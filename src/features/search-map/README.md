@@ -281,7 +281,13 @@ research into Dribbble stats pages and the apps they copy (Apple Health's
 Summary, Stripe's metric cards); the content order and the summary-before-
 chart rule survive from the Airbnb pass. Calm and factual by decision: no
 severity colour, no trend arrows, no benchmarks against other areas — this
-page is about crime near someone's home.
+page is about crime near someone's home. Motion (2026-09-22) is the app's
+one list entrance — staggered `FadeInDown` by rendered position — plus the
+year chart's bars rising from their baseline (`StatsSparkline growIn`, one
+scaleY, not a per-bar race) and the radius slider fading in when disclosed;
+nothing counts up or bounces, and all of it collapses under reduced motion.
+The scroll content adds `insets.bottom` to its tail so the last card clears
+Android's edge-to-edge button bar (Screen pads the top only).
 
 **Entry** — the Map/search pill frames the feed's resolved location at its
 radius; "See all → <Area>" forward-geocodes the town and centres there. Those

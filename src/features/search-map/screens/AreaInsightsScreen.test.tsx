@@ -13,8 +13,11 @@
  */
 
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { milesToMetres } from '@/shared/lib/distance';
+import { spacing } from '@/shared/theme';
 
 import { AREA_ENTRY_RADIUS_MILES } from '../lib/feedSections';
 import { AreaInsightsScreen } from './AreaInsightsScreen';
@@ -191,6 +194,28 @@ describe('the layout (2026-09-21 redesign; card sections 2026-09-22)', () => {
     expect(view.getByRole('header', { name: 'Taken most often' })).toBeTruthy();
     // No empty shell for a block with nothing in it.
     expect(view.queryByTestId('stats-card-keys')).toBeNull();
+  });
+
+  it('pads the scroll content past the bottom safe-area inset, so the last card clears the Android bar', async () => {
+    // A 48pt bottom inset — Android's three-button bar, which is the case
+    // that shipped with content underneath it. The mock's default is 0,
+    // under which 32 + 0 would prove nothing.
+    const view = await render(
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 360, height: 800 },
+          insets: { top: 24, bottom: 48, left: 0, right: 0 },
+        }}
+      >
+        <AreaInsightsScreen lat={51.77} lng={-0.34} radiusMiles={20} />
+      </SafeAreaProvider>,
+    );
+    await waitFor(() => expect(view.getByTestId('stats-card-hero')).toBeTruthy());
+    // The tail is the page's own 32 PLUS the inset — not either alone.
+    const content = StyleSheet.flatten(
+      view.getByTestId('stats-scroll').props.contentContainerStyle,
+    ) as { paddingBottom: number };
+    expect(content.paddingBottom).toBe(spacing.xxl + 48);
   });
 
   it('leads with ONE hero sentence — the 30-day count — not a row of tiles', async () => {

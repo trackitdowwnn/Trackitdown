@@ -28,6 +28,15 @@
  *        follow whichever palette is in effect rather than the one that
  *        happened to be loaded first.
  *
+ *        `growIn` (2026-09-22, for the area theft-stats page): the whole row
+ *        rises from its baseline once, over `motion.slow` on the shared
+ *        ease-out — ONE scaleY on the container from a bottom origin, not a
+ *        per-bar stagger. Twelve columns each racing up on their own clock is
+ *        a dashboard flourish; a chart that settles into place in one calm
+ *        movement is the register these pages keep. Off by default, so
+ *        PostStatsScreen is unchanged. Under reduced motion the bars are
+ *        simply there (`useReducedMotion`, per DESIGN_SYSTEM's Motion rule).
+ *
  *        NOT memo()-wrapped, deliberately: `bars` is rebuilt by toSparkline on
  *        every render of the screen, so a memo could never hit — and a memo
  *        that cannot fire is a false claim that this render is worth
@@ -39,10 +48,19 @@
  *        src/shared/ui/RadiusSlider.tsx (the borderStrong precedent).
  */
 
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
+import Animated, {
+  ReduceMotion,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { timeAgo } from '@/shared/lib';
-import { radii, sizes, usePalette } from '@/shared/theme';
+import { motion, radii, sizes, usePalette } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 
 import type { SparklineBar } from '../lib/postStatsModel';
 
@@ -62,6 +80,8 @@ export interface StatsSparklineProps {
    * own sentence. Everything visual stays shared.
    */
   summary?: string;
+  /** Rise from the baseline on first render (one calm scaleY, `motion.slow`). */
+  growIn?: boolean;
 }
 
 /**
@@ -92,14 +112,33 @@ export function StatsSparkline({
   bars,
   height = sizes.sparklineHeight,
   summary,
+  growIn = false,
 }: StatsSparklineProps) {
   const palette = usePalette();
+  const reducedMotion = useReducedMotion();
+  // Starts collapsed only when asked to grow AND motion is on; otherwise the
+  // bars are at full height from the first frame, so a static chart never
+  // flashes flat. Hooks sit above the early return (rules of hooks).
+  const animateIn = growIn && !reducedMotion;
+  const rise = useSharedValue(animateIn ? 0 : 1);
+  useEffect(() => {
+    if (!animateIn) return;
+    rise.value = withTiming(1, {
+      duration: motion.slow,
+      easing: easeOut,
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [animateIn, rise]);
+  const riseStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: rise.value }] }));
   if (bars.length === 0) {
     return null;
   }
   return (
-    <View
-      style={[styles.row, { height }]}
+    <Animated.View
+      // Scaled from the bottom edge, so the columns rise from the axis rather
+      // than swelling from their middles (LegalDocumentScreen's progress bar
+      // plays the same trick horizontally).
+      style={[styles.row, { height }, riseStyle]}
       // ONE object to a screen reader. The individual columns are deliberately
       // not focusable: 28 stubs is noise to swipe through, and the counts above
       // already carry the totals — so the label has to carry the DISTRIBUTION,
@@ -130,7 +169,7 @@ export function StatsSparkline({
           ]}
         />
       ))}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -141,6 +180,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: sizes.sparklineGap,
+    transformOrigin: 'bottom',
   },
   bar: {
     flex: 1,

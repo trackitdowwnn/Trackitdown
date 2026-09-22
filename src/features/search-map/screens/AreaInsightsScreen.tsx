@@ -87,6 +87,8 @@ import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown, ReduceMotion } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StatsSparkline } from '@/features/vehicles';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
@@ -96,6 +98,7 @@ import { createLogger } from '@/shared/lib/logger';
 import {
   cardSurface,
   displayFontScaleCap,
+  motion,
   opacity,
   radii,
   sizes,
@@ -156,6 +159,15 @@ export function AreaInsightsScreen({
 }: AreaInsightsScreenProps = {}) {
   const styles = useThemedStyles(makeStyles);
   const router = useRouter();
+  // ⚠️ THE BOTTOM INSET IS ADDED TO THE SCROLL CONTENT, NOT TO THE SCREEN.
+  // Screen pads the top only, and at SDK 57 Android is edge-to-edge, so the
+  // scroll's fixed 32pt tail ended BEHIND the three-button bar and the last
+  // card's caption sat under "back". Padding the content (the way
+  // StickyActionBar and BottomSheet add `insets.bottom` themselves) keeps
+  // the scroll region running to the screen edge — cards slide under the
+  // bar as they scroll past, which is right — while the end of the content
+  // still clears it.
+  const insets = useSafeAreaInsets();
   // Called unconditionally (hooks rule); its answer is used only when neither
   // a point nor an area came in through the route.
   const defaultCentre = useDefaultMapCentre();
@@ -378,7 +390,11 @@ export function AreaInsightsScreen({
         />
       ) : (
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: spacing.xxl + insets.bottom },
+          ]}
+          testID="stats-scroll"
           refreshControl={<ThemedRefreshControl refreshing={showSpinner} onRefresh={refresh} />}
         >
           {/* Order matters. Figures for the CURRENT radius win outright — a
@@ -446,6 +462,15 @@ export function AreaInsightsScreen({
  * tiles" grid that Dribbble stats pages favour is for figures that are peers
  * of each other, and nothing here is a peer of the hero.
  *
+ * MOTION (2026-09-22, owner asked for "some subtle animation"): the cards
+ * arrive with the app's one sanctioned list entrance — a staggered
+ * `FadeInDown` at `motion.standard`, `listStagger` apart, the same rhythm as
+ * AlertsScreen and the inbox — so the page composes itself top-down in
+ * under half a second, and the year chart's bars rise from their baseline
+ * inside their card as it lands. Nothing counts up, nothing bounces: a
+ * number ticking towards a theft total is a slot machine, and `springBouncy`
+ * is reserved for reward moments. All of it collapses under reduced motion.
+ *
  * Calm and factual throughout (owner decision 2026-09-21): no severity
  * colour, no trend arrows, no "up 40%" badges — a red arrow next to a theft
  * count is an alarm, and the reader is already worried.
@@ -467,6 +492,18 @@ function Insights({
   const bars = toMonthlyBars(data.monthly);
   const recovery = recoveryRateLabel(data.recovered, data.closedTotal);
   const summary = monthlySummary(data.monthly);
+
+  // Which optional cards render, decided once, so each card's stagger index
+  // is its RENDERED position: an absent makes card must not leave a 50ms
+  // hole before the recovery card. Hero is 0 and the year chart 1, always.
+  const showMakes = data.topMakes.length > 0;
+  const showRecovery = Boolean(recovery);
+  const showTaken = data.takenFrom.buckets.length > 0;
+  const showKeys = data.keysTaken.buckets.length > 0;
+  const makesIndex = 2;
+  const recoveryIndex = makesIndex + (showMakes ? 1 : 0);
+  const takenIndex = recoveryIndex + (showRecovery ? 1 : 0);
+  const keysIndex = takenIndex + (showTaken ? 1 : 0);
 
   // The 30-day count is the hero: "how bad is it here, now" is the question
   // a worried owner opened this page with. The other windows sit in the band.
@@ -513,16 +550,20 @@ function Insights({
         </View>
       </Card>
 
-      <Card title="Over the last year" testID="stats-card-year">
+      <Card title="Over the last year" index={1} testID="stats-card-year">
         {/* The sparkline draws a zero month as a visible stub, so the old
             "every month is shown, a gap is a real zero" caption is now said
             by the chart itself; it survives as the chart's spoken summary. */}
-        <StatsSparkline bars={bars} summary={`${summary} Every month is shown; a month with no reports is a real zero.`} />
+        <StatsSparkline
+          bars={bars}
+          summary={`${summary} Every month is shown; a month with no reports is a real zero.`}
+          growIn
+        />
         <Text style={styles.quiet}>{summary}</Text>
       </Card>
 
-      {data.topMakes.length > 0 ? (
-        <Card title="Taken most often" testID="stats-card-makes">
+      {showMakes ? (
+        <Card title="Taken most often" index={makesIndex} testID="stats-card-makes">
           <View style={styles.rows}>
             {data.topMakes.map((row) => (
               <Row key={row.make} label={row.make} value={String(row.count)} capitalize />
@@ -547,7 +588,7 @@ function Insights({
       ) : null}
 
       {recovery ? (
-        <Card title="Do they come back?" testID="stats-card-recovery">
+        <Card title="Do they come back?" index={recoveryIndex} testID="stats-card-recovery">
           <Text style={styles.statement} maxFontSizeMultiplier={displayFontScaleCap}>
             {recovery.headline}
           </Text>
@@ -559,8 +600,8 @@ function Insights({
         </Card>
       ) : null}
 
-      {data.takenFrom.buckets.length > 0 ? (
-        <Card title="How they were taken" testID="stats-card-taken">
+      {showTaken ? (
+        <Card title="How they were taken" index={takenIndex} testID="stats-card-taken">
           <View style={styles.rows}>
             {data.takenFrom.buckets.map((bucket) => (
               <Row
@@ -574,8 +615,8 @@ function Insights({
         </Card>
       ) : null}
 
-      {data.keysTaken.buckets.length > 0 ? (
-        <Card title="Were the keys taken?" testID="stats-card-keys">
+      {showKeys ? (
+        <Card title="Were the keys taken?" index={keysIndex} testID="stats-card-keys">
           <View style={styles.rows}>
             {data.keysTaken.buckets.map((bucket) => (
               <Row
@@ -589,7 +630,7 @@ function Insights({
               is absent this one carries it instead. */}
           <Denominator
             recorded={data.keysTaken.recorded}
-            aside={data.takenFrom.buckets.length === 0}
+            aside={!showTaken}
           />
         </Card>
       ) : null}
@@ -656,12 +697,17 @@ function RadiusControl({
         </Pressable>
       )}
       {pinned || open ? (
-        <RadiusSlider
-          label="Radius"
-          valueMiles={radiusMiles}
-          onChangeMiles={(miles) => onChangeMiles(Math.round(miles))}
-          testID="stats-radius-slider"
-        />
+        // A fade, not a slide: the slider appears where the line already
+        // pointed, and `fast` is the micro-interaction duration. Pinned open
+        // it still fades in — that first paint is a disclosure too.
+        <Animated.View entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}>
+          <RadiusSlider
+            label="Radius"
+            valueMiles={radiusMiles}
+            onChangeMiles={(miles) => onChangeMiles(Math.round(miles))}
+            testID="stats-radius-slider"
+          />
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -695,26 +741,40 @@ function Denominator({ recorded, aside = false }: { recorded: number; aside?: bo
  * with the hero sentence two cards up. NOT a Pressable and no chevron: the
  * cards hold answers, and a box that looks tappable and is not is the most
  * common complaint about this pattern.
+ *
+ * `index` is the card's RENDERED position in the column, for the staggered
+ * entrance: `listStagger` per step, capped at 6 like every other stagger in
+ * the app so a long page never keeps a reader waiting on its tail. The
+ * caller computes it (a card cannot know how many siblings rendered), so an
+ * absent block leaves no hole in the rhythm.
  */
 function Card({
   title,
+  index = 0,
   testID,
   children,
 }: {
   title?: string;
+  index?: number;
   testID?: string;
   children: React.ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.card} testID={testID}>
+    <Animated.View
+      style={styles.card}
+      entering={FadeInDown.duration(motion.standard)
+        .delay(Math.min(index, 6) * motion.listStagger)
+        .reduceMotion(ReduceMotion.System)}
+      testID={testID}
+    >
       {title ? (
         <Text style={styles.cardTitle} accessibilityRole="header">
           {title}
         </Text>
       ) : null}
       {children}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -826,7 +886,9 @@ const makeStyles = (c: Palette) =>
     // xl gutter, like every other card stack (AlertsScreen, the notification
     // centre): the page title and the cards share one left edge, and a 16
     // inset inside the card is the Card entry's own padding.
-    content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl },
+    // paddingBottom is set inline: xxl PLUS the safe-area inset, read at
+    // render (see the ScrollView).
+    content: { paddingHorizontal: spacing.xl },
     // The column of cards. 16 between them — enough that each reads as its
     // own object, not so much that the page becomes a scroll between islands.
     stack: { gap: spacing.lg },
