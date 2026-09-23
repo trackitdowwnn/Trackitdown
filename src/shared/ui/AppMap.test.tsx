@@ -8,17 +8,25 @@
  * LINKS: src/shared/ui/AppMap.tsx, docs/TESTING.md.
  */
 
-import { render } from '@testing-library/react-native';
+import { createRef } from 'react';
+import { fireEvent, render } from '@testing-library/react-native';
 
-import { AppMap } from './AppMap';
+import { AppMap, type AppMapHandle } from './AppMap';
 
 const mockMapProps = jest.fn();
 
 jest.mock('react-native-maps', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const React = require('react');
-  const MapView = React.forwardRef(function MockMapView(props: Record<string, unknown>, _ref: unknown) {
+  const MapView = React.forwardRef(function MockMapView(props: Record<string, unknown>, ref: unknown) {
     mockMapProps(props);
+    React.useImperativeHandle(ref, () => ({
+      pointForCoordinate: async (c: { latitude: number; longitude: number }) => ({
+        x: c.longitude * 10,
+        y: c.latitude * 10,
+      }),
+      animateToRegion: () => {},
+    }));
     return null;
   });
   return {
@@ -58,5 +66,33 @@ describe('AppMap', () => {
     );
 
     expect(mockMapProps).toHaveBeenCalledWith(expect.objectContaining({ moveOnMarkerPress: false }));
+  });
+
+  // The handle is how the search map checks Google's marker pick against the
+  // finger (MapPins). It must record the touch without taking it from the map.
+  it('records the last touch-down and projects through the map', async () => {
+    const handleRef = createRef<AppMapHandle>();
+    const view = await render(
+      <AppMap
+        handleRef={handleRef}
+        region={REGION}
+        animateDurationMs={0}
+        onRegionChangeStart={() => {}}
+        onRegionChangeComplete={() => {}}
+      />,
+    );
+    expect(handleRef.current?.lastTouch()).toBeNull();
+
+    fireEvent(view.getByTestId('app-map'), 'touchStart', {
+      nativeEvent: { locationX: 120, locationY: 340 },
+    });
+
+    expect(handleRef.current?.lastTouch()).toEqual(
+      expect.objectContaining({ x: 120, y: 340, at: expect.any(Number) }),
+    );
+    await expect(handleRef.current?.pointFor({ latitude: 5, longitude: 2 })).resolves.toEqual({
+      x: 20,
+      y: 50,
+    });
   });
 });

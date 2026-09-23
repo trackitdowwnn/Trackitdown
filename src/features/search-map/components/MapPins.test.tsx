@@ -110,6 +110,89 @@ describe('one pill per car', () => {
   });
 });
 
+describe('⚠️ a press is checked against where the finger was', () => {
+  // Google gives every marker an enlarged tap area and hands overlaps to the
+  // top one, so a tap on one of two close pills selected the other ("the
+  // wrong marker is selected", 2026-09-23). The drawn pill under the touch
+  // wins; anything uncertain keeps Google's pick.
+  const A = { ...post('a', 240000), latitude: 51.75 }; // painted higher
+  const B = { ...post('b', 15000), latitude: 51.7497 }; // just below it
+  const screen: Record<string, { x: number; y: number }> = {
+    '51.75': { x: 100, y: 100 },
+    '51.7497': { x: 100, y: 130 },
+  };
+  const handle = (touch: { x: number; y: number } | null, at = Date.now()) => ({
+    current: {
+      lastTouch: () => (touch ? { ...touch, at } : null),
+      pointFor: async (c: { latitude: number }) => screen[String(c.latitude)],
+    },
+  });
+
+  const pressAsGoogle = async (map: ReturnType<typeof handle> | undefined, googlePicks: string) => {
+    const onPressPost = jest.fn();
+    const view = await act(async () =>
+      render(<MapPins posts={[A, B]} selectedPostId={null} onPressPost={onPressPost} map={map} />),
+    );
+    const target = markers(view).find((node) => node.props.accessibilityLabel.startsWith(
+      googlePicks === 'a' ? '£2,400' : '£150',
+    ));
+    await act(async () => {
+      fireEvent.press(target as unknown as Parameters<typeof fireEvent.press>[0]);
+    });
+    return onPressPost;
+  };
+
+  it('selects the pill under the finger when Google picked its neighbour', async () => {
+    const onPressPost = await pressAsGoogle(handle({ x: 100, y: 133 }), 'a');
+
+    expect(onPressPost).toHaveBeenCalledWith('b');
+  });
+
+  it('keeps Google\'s pick when the finger is on no pill', async () => {
+    const onPressPost = await pressAsGoogle(handle({ x: 400, y: 400 }), 'a');
+
+    expect(onPressPost).toHaveBeenCalledWith('a');
+  });
+
+  it('keeps Google\'s pick with no touch, a stale touch, or no map', async () => {
+    expect(await pressAsGoogle(handle(null), 'a')).toHaveBeenCalledWith('a');
+    expect(await pressAsGoogle(handle({ x: 100, y: 133 }, Date.now() - 5000), 'a')).toHaveBeenCalledWith('a');
+    expect(await pressAsGoogle(undefined, 'a')).toHaveBeenCalledWith('a');
+  });
+
+  it('keeps Google\'s pick when the projection fails', async () => {
+    const broken = {
+      current: {
+        lastTouch: () => ({ x: 100, y: 133, at: Date.now() }),
+        pointFor: () => Promise.reject(new Error('no map')),
+      },
+    };
+
+    expect(await pressAsGoogle(broken, 'a')).toHaveBeenCalledWith('a');
+  });
+
+  it('measures each pill, so the check uses the drawn size', async () => {
+    // B measured tiny: a touch 10dp below its centre is off it — Google's
+    // pick stands.
+    const onPressPost = jest.fn();
+    const view = await act(async () =>
+      render(<MapPins posts={[A, B]} selectedPostId={null} onPressPost={onPressPost} map={handle({ x: 100, y: 145 })} />),
+    );
+    const pillOf = (node: MarkerNode) =>
+      (node.children[0] as unknown as { children: Parameters<typeof fireEvent>[0][] }).children[0];
+    const b = markers(view).find((node) => node.props.accessibilityLabel.startsWith('£150'))!;
+    await act(async () => {
+      fireEvent(pillOf(b), 'layout', { nativeEvent: { layout: { width: 40, height: 20 } } });
+    });
+    const a = markers(view).find((node) => node.props.accessibilityLabel.startsWith('£2,400'))!;
+    await act(async () => {
+      fireEvent.press(a as unknown as Parameters<typeof fireEvent.press>[0]);
+    });
+
+    expect(onPressPost).toHaveBeenCalledWith('a');
+  });
+});
+
 describe('selection swaps the car\'s pill for a dark one', () => {
   // ⚠️ A swap, not an overlay. With a white pill left under the dark one, a
   // wrong paint order put the white pill ON TOP — the "outline" and the

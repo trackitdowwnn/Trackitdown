@@ -30,7 +30,7 @@ import { createLogger } from '@/shared/lib/logger';
 import { motion, sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
 import type { GeoCoord, GeoRegion } from '@/shared/types';
 import { FullscreenLoader, useToast } from '@/shared/ui';
-import { AppMap } from '@/shared/ui/AppMap';
+import { AppMap, type AppMapHandle } from '@/shared/ui/AppMap';
 
 import { MapCardPager } from '../components/MapCardPager';
 import {
@@ -350,6 +350,8 @@ function MapSearchBody({
     () => pinsInView(result.posts, settledRegion),
     [result.posts, settledRegion],
   );
+  // Lets MapPins check a press against where the finger really was.
+  const mapHandle = useRef<AppMapHandle>(null);
 
   const handleRegionChange = useCallback(
     (region: GeoRegion) => {
@@ -760,6 +762,7 @@ function MapSearchBody({
         importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'}
       >
         <AppMap
+          handleRef={mapHandle}
           region={camera}
           // Sheet-driven moves take the UI clock (standard, matching the
           // sheet's own timing) so the two read as ONE gesture; geographic
@@ -779,6 +782,7 @@ function MapSearchBody({
           posts={pins}
           selectedPostId={selected?.id ?? null}
           onPressPost={handlePressPost}
+          map={mapHandle}
         />
       </AppMap>
 

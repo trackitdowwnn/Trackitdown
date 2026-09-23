@@ -23,8 +23,8 @@
  *   <LocationPicker MapComponent={AppMap} locationServices={expoLocationServices} />
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
+import { useEffect, useImperativeHandle, useRef, type ReactNode, type Ref } from 'react';
+import { StyleSheet, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 import { mapStyleFor, useThemeControls } from '@/shared/theme';
@@ -47,7 +47,31 @@ export {
  *  animates. */
 const SAME_POINT_EPSILON = 1e-6;
 
+/** A point on the map, in dp from its top-left corner. */
+export interface MapPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * What a marker press does NOT tell you: where the finger actually was.
+ *
+ * Google Maps enlarges every marker's tap area past its drawn size and, where
+ * enlarged areas overlap, hands the tap to the top marker — so between two
+ * close pills a tap on one often selects its neighbour (react-native-maps
+ * #4386; not configurable). This handle gives a caller what it needs to
+ * decide for itself: the last touch-down point, and the map's own projection.
+ */
+export interface AppMapHandle {
+  /** The last touch-down on the map, and when (ms since epoch); null if none. */
+  lastTouch(): (MapPoint & { at: number }) | null;
+  /** Where a coordinate is on screen now, via the map's projection. */
+  pointFor(coordinate: { latitude: number; longitude: number }): Promise<MapPoint>;
+}
+
 export interface AppMapExtraProps {
+  /** Filled with an AppMapHandle — see its doc. */
+  handleRef?: Ref<AppMapHandle>;
   /** Markers/overlays (the search map's pins). */
   children?: ReactNode;
   /** Tap on the map background (not a marker) — deselect, close cards. */
@@ -108,9 +132,23 @@ export function AppMap({
   showsUserLocation = false,
   liteMode = false,
   onReady,
+  handleRef,
 }: MapComponentProps & AppMapExtraProps) {
   const { scheme } = useThemeControls();
   const mapRef = useRef<MapView>(null);
+  const lastTouchRef = useRef<(MapPoint & { at: number }) | null>(null);
+
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      lastTouch: () => lastTouchRef.current,
+      pointFor: (coordinate) =>
+        mapRef.current
+          ? mapRef.current.pointForCoordinate(coordinate)
+          : Promise.reject(new Error('map not mounted')),
+    }),
+    [],
+  );
   // The region the map currently shows — lets us tell a prop-driven fly-to
   // apart from where the user already is.
   const shownRef = useRef<Region>(region);
@@ -133,6 +171,20 @@ export function AppMap({
   }, [region, animateDurationMs]);
 
   return (
+    // Records where each touch lands. onTouchStart sees touches on the native
+    // map below it without taking them — the map still gets every gesture.
+    // locationX/Y are relative to the touched view, which is the full-bleed map.
+    <View
+      testID="app-map"
+      style={StyleSheet.absoluteFill}
+      onTouchStart={(event) => {
+        lastTouchRef.current = {
+          x: event.nativeEvent.locationX,
+          y: event.nativeEvent.locationY,
+          at: Date.now(),
+        };
+      }}
+    >
     <MapView
       ref={mapRef}
       provider={PROVIDER_GOOGLE}
@@ -205,5 +257,6 @@ export function AppMap({
     >
       {children}
     </MapView>
+    </View>
   );
 }

@@ -139,6 +139,16 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
      react-native-maps registers a POI click listener by default on Android,
      and on Google's latest renderer every map label is a POI whose click
      beats a custom marker's. Pills over a town or road name ignored taps.
+   - **A press is checked against the finger.** Google enlarges every
+     marker's tap area and gives overlaps to the top marker (upstream #4386,
+     not configurable), so between close pills a tap selected the neighbour.
+     `AppMap` records the last touch-down and exposes the map's projection
+     (`AppMapHandle`); `MapPins` measures each pill and, on a press, selects
+     the drawn pill under the finger (`lib/mapPins.ts` `pinAt` — top-painted
+     wins an overlap). No pill under the finger, or any failure: Google's
+     pick stands.
+   - **The pill is the tap box** — no min size, padding or shadow margin.
+     Map markers are the one exception to the 44pt touch-target rule.
    No fades, no batched mounting, no edge nudging: each was cut to keep this
    small. If a dense first load stutters on Android, shorten the tracking
    window before reaching for batching again.

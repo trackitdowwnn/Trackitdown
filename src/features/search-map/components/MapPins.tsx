@@ -20,10 +20,11 @@
  *        in what order); src/shared/ui/AppMap.tsx; docs/DESIGN_SYSTEM.md.
  */
 
-import { memo, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { formatPounds } from '@/shared/lib';
+import { createLogger } from '@/shared/lib/logger';
 import {
   mapPinFontScaleCap,
   radii,
@@ -34,9 +35,12 @@ import {
   type Palette,
 } from '@/shared/theme';
 import { bountyLabel, NO_BOUNTY_LABEL } from '@/shared/ui';
-import { AppMapMarker } from '@/shared/ui/AppMap';
+import { AppMapMarker, type AppMapHandle } from '@/shared/ui/AppMap';
 
+import { pinAt, type PinRect } from '../lib/mapPins';
 import type { MapPost } from '../types';
+
+const log = createLogger('search-map');
 
 /** Android rule 1: how long a new marker re-captures its view before freezing.
  *  Freezing too early leaves Google's default red pin on screen for good. */
@@ -68,6 +72,63 @@ function bountyZ(bountyPence: number | null): number {
   return bountyPence === null ? 1 : 2 + Math.min(Math.floor(bountyPence / 100), SELECTED_Z - 3);
 }
 
+function pinZ(post: MapPost, selected: boolean): number {
+  return selected ? SELECTED_Z : bountyZ(post.bountyPence);
+}
+
+type PillSize = { width: number; height: number };
+
+/** Measured sizes are per drawn state: the dark pill is larger. */
+function sizeKey(id: string, selected: boolean): string {
+  return `${id}:${selected ? 'on' : 'off'}`;
+}
+
+/** Used until a pill has reported its layout — a typical "£1,250" pill. */
+const UNMEASURED_PILL: PillSize = { width: 72, height: 28 };
+
+/** A touch older than this is not the one behind the press being handled. */
+const TOUCH_MAX_AGE_MS = 1500;
+
+/** How long a press may wait for the map's projection before Google's pick
+ *  stands. It normally answers within a frame. */
+const PROJECTION_TIMEOUT_MS = 250;
+
+/**
+ * The drawn pill under the last touch, or null — see MapPins' press handler.
+ * Never throws: every failure means "keep Google's pick".
+ */
+async function pillUnderFinger(
+  map: AppMapHandle | null,
+  { posts, selectedPostId }: { posts: MapPost[]; selectedPostId: string | null },
+  measured: Map<string, PillSize>,
+): Promise<string | null> {
+  const touch = map?.lastTouch();
+  if (!map || !touch || Date.now() - touch.at > TOUCH_MAX_AGE_MS || posts.length === 0) {
+    return null;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const points = await Promise.race([
+      Promise.all(
+        posts.map((post) => map.pointFor({ latitude: post.latitude, longitude: post.longitude })),
+      ),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('projection timed out')), PROJECTION_TIMEOUT_MS);
+      }),
+    ]);
+    const rects: PinRect[] = posts.map((post, index) => {
+      const selected = post.id === selectedPostId;
+      const size = measured.get(sizeKey(post.id, selected)) ?? UNMEASURED_PILL;
+      return { id: post.id, ...points[index], ...size, zIndex: pinZ(post, selected) };
+    });
+    return pinAt(touch, rects);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** The word on the pill: the amount, or "No reward". Never empty. */
 function pinText(bountyPence: number | null): string {
   return bountyPence === null ? NO_BOUNTY_LABEL : formatPounds(bountyPence);
@@ -82,12 +143,15 @@ const PricePin = memo(function PricePin({
   selected,
   zIndex,
   onPressPost,
+  onMeasure,
 }: {
   post: MapPost;
   selected: boolean;
   /** Read once by the native marker at creation — see bountyZ. */
   zIndex: number;
   onPressPost: (id: string) => void;
+  /** The drawn pill's size, for deciding which pill a tap was on. */
+  onMeasure: (key: string, size: PillSize) => void;
 }) {
   const styles = useThemedStyles(makeStyles);
 
@@ -114,7 +178,15 @@ const PricePin = memo(function PricePin({
           makes that the pill and clips it. It hugs the pill exactly, so the
           tap target is the pill and nothing more — see `pill` below. */}
       <View collapsable={false}>
-        <View style={[styles.pill, selected && styles.pillSelected]}>
+        <View
+          style={[styles.pill, selected && styles.pillSelected]}
+          onLayout={(event) =>
+            onMeasure(sizeKey(post.id, selected), {
+              width: event.nativeEvent.layout.width,
+              height: event.nativeEvent.layout.height,
+            })
+          }
+        >
           <Text
             maxFontSizeMultiplier={mapPinFontScaleCap}
             style={[styles.text, selected && styles.textSelected]}
@@ -132,11 +204,59 @@ export interface MapPinsProps {
   posts: MapPost[];
   selectedPostId: string | null;
   onPressPost: (id: string) => void;
+  /** The map these pills are on — lets a press be checked against where the
+   *  finger really was. Without it, Google's pick stands. */
+  map?: RefObject<AppMapHandle | null>;
 }
 
-export const MapPins = memo(function MapPins({ posts, selectedPostId, onPressPost }: MapPinsProps) {
+export const MapPins = memo(function MapPins({
+  posts,
+  selectedPostId,
+  onPressPost,
+  map,
+}: MapPinsProps) {
   // The theme is drawn too: a frozen pill would keep light colours on a dark map.
   const { scheme } = useThemeControls();
+
+  // ⚠️ GOOGLE'S PICK IS CHECKED AGAINST THE FINGER. Google Maps gives every
+  // marker a tap area larger than its drawn pill and hands an overlap to the
+  // top marker (react-native-maps#4386, not configurable), so between two close
+  // pills a tap on one selected the other ("the wrong marker is selected", the
+  // owner, 2026-09-23). So a press asks: which DRAWN pill is under the last
+  // touch? That one wins; where two pills overlap, the one painted on top —
+  // the one you can see there. A tap on no pill keeps Google's pick, as does
+  // anything that fails (no touch recorded, projection unavailable, too slow).
+  const measured = useRef(new Map<string, PillSize>());
+  const onMeasure = useCallback((key: string, size: PillSize) => {
+    measured.current.set(key, size);
+  }, []);
+  // The press handler must stay one stable function (every pill is memoised
+  // on it), so it reads the current posts through a ref.
+  const current = useRef({ posts, selectedPostId });
+  useEffect(() => {
+    current.current = { posts, selectedPostId };
+  }, [posts, selectedPostId]);
+  const pressToken = useRef(0);
+
+  const handlePress = useCallback(
+    (googleId: string) => {
+      const token = ++pressToken.current;
+      void pillUnderFinger(map?.current ?? null, current.current, measured.current).then(
+        (underFinger) => {
+          if (token !== pressToken.current) {
+            return; // a newer tap has already been answered
+          }
+          const chosen = underFinger ?? googleId;
+          if (chosen !== googleId) {
+            log.info('map_pin_tap_corrected', { from: googleId, to: chosen });
+          }
+          onPressPost(chosen);
+        },
+      );
+    },
+    [map, onPressPost],
+  );
+
   return (
     <>
       {posts.map((post) => {
@@ -148,8 +268,9 @@ export const MapPins = memo(function MapPins({ posts, selectedPostId, onPressPos
             key={`${scheme}:${post.id}:${pinText(post.bountyPence)}:${selected ? 'on' : 'off'}`}
             post={post}
             selected={selected}
-            zIndex={selected ? SELECTED_Z : bountyZ(post.bountyPence)}
-            onPressPost={onPressPost}
+            zIndex={pinZ(post, selected)}
+            onPressPost={handlePress}
+            onMeasure={onMeasure}
           />
         );
       })}
