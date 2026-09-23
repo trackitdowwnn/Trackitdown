@@ -191,8 +191,8 @@ export function keepMarkersOnScreen(
  * became a £ pill — it would have withheld nothing at all.)
  *
  * The SELECTED post is never withheld. The renderer never sees a pin this
- * function drops, so without the guard its selected styling and z-index-3
- * silently do nothing and the card describes a car with no marker under it.
+ * function drops, so without the guard the selection marker has no car to
+ * stand on and the card describes a car with no marker under it.
  * Reachable via the pager, not a pin tap: `selectByIndex` walks every result
  * post, not just the drawn ones, so swiping to a neighbour during the reveal
  * can land on one still withheld — and the camera then follows it to an empty

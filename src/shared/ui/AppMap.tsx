@@ -40,10 +40,6 @@ export {
   Polyline as AppMapPolyline,
   Circle as AppMapCircle,
 } from 'react-native-maps';
-/** The instance behind an AppMapMarker ref. `redraw()` is the one method the
- *  search map calls: on Android it re-rasterises the marker's custom view into
- *  its icon exactly once, on the next main-loop pass (see MapPins). */
-export type { MapMarker as AppMapMarkerHandle } from 'react-native-maps';
 
 /** Below this degree delta we treat two regions as the same VIEW (point and
  *  zoom) — a prop update merely echoing where the user already is starts no

@@ -35,9 +35,6 @@ export interface AppMapExtraProps {
 }
 
 /** Web stubs matching the native re-exports — render nothing. */
-/** Mirrors the native export; nothing on web ever holds one. */
-export type AppMapMarkerHandle = { redraw: () => void };
-
 export function AppMapMarker(_props: Record<string, unknown>) {
   return null;
 }

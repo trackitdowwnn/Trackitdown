@@ -1,18 +1,18 @@
 /**
- * WHAT:  Tests for MapPins — one priced pill per post, the marker box
- *        containing its own shadow and keeping one footprint across selection,
- *        paint order, and WHAT MAY RE-ARM RASTERISATION: what is DRAWN must
- *        (selection, the price), what is not must not (rank, make/model) — and
- *        that it re-arms IN PLACE, never by remounting the marker.
- * WHY:   All three have bitten, in three different ways. RANK churns on every
- *        pan, so re-arming for it holds dozens of tracksViewChanges windows
- *        open per gesture — the Android jank this component exists to avoid.
- *        SELECTION and the PRICE are the opposite: a marker frozen with a
- *        stale bitmap shows the wrong fill, or the wrong money. And REMOUNTING
- *        to force either is the trap that looks like the fix: a recreated
- *        native marker wears react-native-maps' default RED PIN until it
- *        rasterises and swallows taps meanwhile (owner, on device 2026-09-23).
- *        None of the three can be caught by eye in a simulator.
+ * WHAT:  Tests for MapPins — one static priced pill per post, drawn once and
+ *        never redrawn; the selection as ITS OWN marker on top; every marker
+ *        born invisible; the marker box containing its shadow and keeping one
+ *        footprint; paint order; and what may enter a React key (the price
+ *        must, rank must not).
+ * WHY:   Every way of changing a mounted marker's bitmap was shipped between
+ *        2026-09-22 and 2026-09-23 and every one failed on the owner's phone:
+ *        re-arming tracksViewChanges landed the highlight late, redraw() left
+ *        two pills highlighted or drew only an outline, letting the pill's
+ *        layout size the bitmap clipped it, and remounting flashed Google's
+ *        red pin. The design that survived is "never change a bitmap": a
+ *        static pill per car, a separate selection marker over the selected
+ *        one, and opacity 0 until the view is captured. None of that can be
+ *        seen in a simulator; each invariant here is one of those failures.
  * LINKS: src/features/search-map/components/MapPins.tsx, docs/TESTING.md.
  */
 
@@ -24,61 +24,56 @@ import { shadows, sizes } from '@/shared/theme';
 import type { MapPinItem, MapPost } from '../types';
 import { MapPins } from './MapPins';
 
-const mockRedraw = jest.fn();
 const mockMarkerRender = jest.fn();
 const mockLightHaptic = jest.fn();
 
 // The real marker needs react-native-maps; render a plain View that keeps the
-// props we assert on. `testID` carries the key so we can watch it change.
+// props we assert on.
 jest.mock('@/shared/ui/AppMap', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const React = require('react');
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const { Pressable } = require('react-native');
   return {
-    AppMapMarker: React.forwardRef(
-      function AppMapMarker(
+    AppMapMarker: function AppMapMarker({
+      children,
+      onPress,
+      accessibilityLabel,
+      accessibilityState,
+      accessible,
+      zIndex,
+      opacity,
+      tracksViewChanges,
+    }: {
+      children: React.ReactNode;
+      onPress: () => void;
+      accessibilityLabel: string;
+      accessibilityState?: { selected?: boolean };
+      accessible?: boolean;
+      zIndex?: number;
+      opacity?: number;
+      tracksViewChanges?: boolean;
+    }) {
+      // Which markers React re-rendered — the memo's whole point.
+      mockMarkerRender(accessibilityLabel, accessibilityState?.selected === true);
+      return React.createElement(
+        Pressable,
         {
-          children,
           onPress,
           accessibilityLabel,
+          accessibilityState,
           accessible,
-          zIndex,
+          testID: 'marker',
+          // Paint order, the birth opacity and the tracking window are all
+          // invisible in a simulator as well as in jest, so they come back
+          // out as assertable props.
+          'data-zindex': zIndex,
+          opacity,
           tracksViewChanges,
-        }: {
-          children: React.ReactNode;
-          onPress: () => void;
-          accessibilityLabel: string;
-          accessible?: boolean;
-          zIndex?: number;
-          tracksViewChanges?: boolean;
         },
-        ref: React.Ref<{ redraw: () => void }>,
-      ) {
-        // The imperative handle the component reaches for on a drawn change.
-        // ⚠️ Lazy arrow, same TDZ reason as the haptics mock below.
-        React.useImperativeHandle(ref, () => ({ redraw: () => mockRedraw() }));
-        // Which markers React re-rendered — the memo's whole point.
-        mockMarkerRender(accessibilityLabel);
-        return React.createElement(
-          Pressable,
-          {
-            onPress,
-            accessibilityLabel,
-            accessible,
-            testID: 'marker',
-            // Paint order is invisible in a simulator as well as in jest, so
-            // it has to come back out as an assertable prop.
-            'data-zindex': zIndex,
-            // So is the tracking window, and it is per-frame bitmap work —
-            // the difference between a tap that feels instant and one that
-            // does not.
-            tracksViewChanges,
-          },
-          children,
-        );
-      },
-    ),
+        children,
+      );
+    },
   };
 });
 
@@ -91,7 +86,6 @@ jest.mock('@/shared/lib/haptics', () => ({
 
 beforeEach(() => {
   mockLightHaptic.mockClear();
-  mockRedraw.mockClear();
   mockMarkerRender.mockClear();
 });
 
@@ -126,6 +120,32 @@ const renderPins = async (pins: MapPinItem[], selectedPostId: string | null = nu
       />,
     ),
   );
+
+type View = Awaited<ReturnType<typeof renderPins>>;
+type MarkerNode = {
+  props: {
+    accessibilityLabel: string;
+    accessibilityState?: { selected?: boolean };
+    accessible?: boolean;
+    'data-zindex': number;
+    opacity: number;
+    tracksViewChanges: boolean;
+  };
+};
+
+const markers = (view: View) => view.getAllByTestId('marker') as unknown as MarkerNode[];
+const isSelection = (node: MarkerNode) => node.props.accessibilityState?.selected === true;
+/** The static pills — never the selection marker. */
+const statics = (view: View) => markers(view).filter((node) => !isSelection(node));
+/** The selection marker, or undefined when nothing is selected. */
+const selection = (view: View) => markers(view).find(isSelection);
+
+/** Let the mount settle: the birth frame and the tracking window. */
+const settle = async () => {
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+};
 
 describe('one marker, one price', () => {
   // The price-less second tier went on 2026-08-07: a marker with no price on it
@@ -183,9 +203,11 @@ describe('one marker, one price', () => {
     // landed. A well-meaning "don't re-fire on a no-op" guard would take the
     // feedback away from the one case that has nothing else.
     const view = await renderPins([pin('a', 9)], 'a');
+    const onTop = selection(view);
+    if (onTop === undefined) throw new Error('no selection marker');
 
     await act(async () => {
-      fireEvent.press(view.getByTestId('marker'));
+      fireEvent.press(onTop as unknown as Parameters<typeof fireEvent.press>[0]);
     });
 
     expect(mockLightHaptic).toHaveBeenCalledTimes(1);
@@ -194,14 +216,13 @@ describe('one marker, one price', () => {
 
 describe('⚠️ the marker box contains its own shadow', () => {
   // A marker's children are rasterised to the wrapper's BOUNDS, so a shadow
-  // drawn outside them is cut off — which is how the selected pill came back
-  // with its bottom clipped (owner, on device, 2026-09-22). The box must clear
-  // the shadow's reach on every side, and SYMMETRICALLY: the anchor is the
-  // box's centre, so buying the room at the bottom alone would slide every
-  // pill north of the coordinate it is reporting.
-  const wrapperOf = (view: Awaited<ReturnType<typeof renderPins>>) =>
+  // drawn outside them is cut off. The box must clear the shadow's reach on
+  // every side, and SYMMETRICALLY: the anchor is the box's centre, so buying
+  // the room at the bottom alone would slide every pill north of the
+  // coordinate it is reporting.
+  const wrapperOf = (node: MarkerNode) =>
     StyleSheet.flatten(
-      (view.getByTestId('marker').children[0] as { props: { style?: unknown } }).props.style,
+      ((node as unknown as { children: { props: { style?: unknown } }[] }).children[0]).props.style,
     ) as { padding?: number; minHeight?: number };
 
   const shadowReach = shadows.soft.shadowOffset.height + shadows.soft.shadowRadius;
@@ -209,296 +230,301 @@ describe('⚠️ the marker box contains its own shadow', () => {
   // ⚠️ THE CLIPPING FIX, 2026-09-23. On the new architecture the Android
   // marker sizes its bitmap from its FIRST NATIVE CHILD's layout, and React
   // Native flattens a View that carries only layout styles — which this
-  // wrapper does. Flattened, the first native child is the pill, so tapping
-  // one resized the bitmap to the pill and drew it, offset, into that: cut
-  // off right and bottom, exactly as photographed. Three fixes shipped
-  // before this one found the cause; none of them touched it.
+  // wrapper does. Flattened, the first native child is the pill, so a pill
+  // that changed size resized the bitmap to itself and was drawn, offset,
+  // into that: cut off right and bottom, exactly as photographed.
   it('⚠️ is a REAL native view — the box the Android bitmap is sized from', async () => {
     const view = await renderPins([pin('a', 5, 25000)]);
 
-    const wrapper = view.getByTestId('marker').children[0] as {
-      props: { collapsable?: boolean };
-    };
+    const wrapper = (markers(view)[0] as unknown as {
+      children: { props: { collapsable?: boolean } }[];
+    }).children[0];
     expect(wrapper.props.collapsable).toBe(false);
   });
 
   it('pads by the shadow\'s reach, on all four sides', async () => {
     const view = await renderPins([pin('a', 5, 25000)]);
 
-    const wrapper = wrapperOf(view);
+    const wrapper = wrapperOf(markers(view)[0]);
     expect(wrapper.padding).toBe(shadowReach);
     // Still at least a 44pt target — the padding only ever grows the box.
     expect(wrapper.minHeight).toBe(sizes.touchTarget);
   });
 
-  it('pads the SELECTED marker the same way — it is the one that grows', async () => {
-    const view = await act(async () =>
-      render(<MapPins pins={[pin('a', 5, 25000)]} selectedPostId="a" onPressPost={jest.fn()} />),
-    );
+  it('pads the SELECTION marker the same way — it is the one that grows', async () => {
+    const view = await renderPins([pin('a', 5, 25000)], 'a');
+    const onTop = selection(view);
+    if (onTop === undefined) throw new Error('no selection marker');
 
-    expect(wrapperOf(view).padding).toBe(shadowReach);
+    expect(wrapperOf(onTop).padding).toBe(shadowReach);
   });
 
-  // ⚠️ THE ONE THAT MATTERS. Selection swaps the pill's padding for a larger
-  // one, which changed the marker VIEW's size — and an Android marker whose
-  // icon resizes while it is being re-tracked comes back half drawn. With pins
-  // overlapping, that read as the selected pill cut in half by its neighbours.
-  // The unselected pill carries the difference as transparent margin, so the
-  // drawn pill still grows while the FOOTPRINT never does.
-  it('keeps the same outer footprint selected and unselected', async () => {
-    const pillOf = (view: Awaited<ReturnType<typeof renderPins>>) => {
-      const wrapper = view.getByTestId('marker').children[0] as {
-        children: { props: { style?: unknown } }[];
-      };
+  // ⚠️ The two markers must be CONCENTRIC. The selection marker's pill has
+  // more padding; the static pill carries exactly that difference as
+  // transparent margin, so both boxes are the same size and — the anchor
+  // being a fraction of the box — both centres sit on the coordinate. Drop
+  // the margin and the dark pill draws off-centre over a light edge.
+  describe('keeps one footprint across the two pills', () => {
+    const pillOf = (node: MarkerNode) => {
+      const wrapper = (node as unknown as {
+        children: { children: { props: { style?: unknown } }[] }[];
+      }).children[0];
       return StyleSheet.flatten(wrapper.children[0].props.style) as {
-        paddingHorizontal: number;
-        paddingVertical: number;
-        margin: number;
+        paddingHorizontal?: number;
+        paddingVertical?: number;
+        margin?: number;
       };
     };
 
-    const unselected = pillOf(await renderPins([pin('a', 5, 25000)]));
-    const selected = pillOf(
-      await act(async () =>
-        render(<MapPins pins={[pin('a', 5, 25000)]} selectedPostId="a" onPressPost={jest.fn()} />),
-      ),
-    );
+    it('the static pill reserves the selection pill\'s growth as margin', async () => {
+      const view = await renderPins([pin('a', 5, 25000)], 'a');
+      const [staticPill, selectedPill] = [pillOf(statics(view)[0]), pillOf(selection(view)!)];
 
-    // The drawn pill really does grow on selection...
-    expect(selected.paddingHorizontal).toBeGreaterThan(unselected.paddingHorizontal);
-    expect(selected.paddingVertical).toBeGreaterThan(unselected.paddingVertical);
-    // ...and padding + margin — the space the marker actually occupies — is
-    // identical, so the bitmap never needs re-measuring.
-    expect(selected.paddingHorizontal + selected.margin).toBe(
-      unselected.paddingHorizontal + unselected.margin,
-    );
-    expect(selected.paddingVertical + selected.margin).toBe(
-      unselected.paddingVertical + unselected.margin,
-    );
+      const staticWidth = (staticPill.paddingHorizontal ?? 0) + (staticPill.margin ?? 0);
+      const selectedWidth = (selectedPill.paddingHorizontal ?? 0) + (selectedPill.margin ?? 0);
+      const staticHeight = (staticPill.paddingVertical ?? 0) + (staticPill.margin ?? 0);
+      const selectedHeight = (selectedPill.paddingVertical ?? 0) + (selectedPill.margin ?? 0);
+
+      expect(selectedWidth).toBe(staticWidth);
+      expect(selectedHeight).toBe(staticHeight);
+      // And the selection pill really is the larger DRAWN one.
+      expect(selectedPill.paddingHorizontal).toBeGreaterThan(staticPill.paddingHorizontal ?? 0);
+    });
   });
 });
 
-/** Whether the marker is currently re-rasterising every frame. */
-const trackingOf = (view: Awaited<ReturnType<typeof renderPins>>) =>
-  view.getByTestId('marker').props.tracksViewChanges as boolean;
+describe('⚠️ born invisible, then tracked, then frozen', () => {
+  // A marker joins the map BEFORE its custom view is inserted, and until that
+  // view is captured react-native-maps hands it Google's default RED PIN — the
+  // flicker the owner saw on every remount. Alpha 0 goes into the marker's
+  // creation options, so the pin is never drawn; the next frame reveals a
+  // finished pill.
+  it('mounts at opacity 0 and is revealed a frame later', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0)]);
+      expect(markers(view)[0].props.opacity).toBe(0);
 
-describe('⚠️ the tracking window (the other jank guard)', () => {
+      await act(async () => {
+        jest.advanceTimersByTime(32);
+      });
+
+      expect(markers(view)[0].props.opacity).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   // `tracksViewChanges` means 're-rasterise this custom view EVERY FRAME', so
   // the window is real bitmap work. It is armed on MOUNT ONLY, and it must
   // NOT be cut short: freezing before the native tracker has captured the
-  // view leaves react-native-maps' default pin on screen — the red marker
-  // the owner saw flicker in (2026-09-23).
+  // view leaves the default pin on screen for good.
   it('tracks from mount and freezes once settled', async () => {
     jest.useFakeTimers();
     try {
       const view = await renderPins([pin('a', 0)]);
-      expect(trackingOf(view)).toBe(true);
+      expect(markers(view)[0].props.tracksViewChanges).toBe(true);
 
-      await act(async () => {
-        jest.advanceTimersByTime(500);
-      });
+      await settle();
 
-      expect(trackingOf(view)).toBe(false);
+      expect(markers(view)[0].props.tracksViewChanges).toBe(false);
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it('does NOT redraw on mount — the window is what draws the first icon', async () => {
+  it('⚠️ the selection marker is born the same way — no red pin on a tap', async () => {
     jest.useFakeTimers();
     try {
-      await renderPins([pin('a', 0), pin('b', 1)]);
-      await act(async () => {
-        jest.advanceTimersByTime(500);
-      });
+      const view = await renderPins([pin('a', 0)]);
+      await settle();
 
-      expect(mockRedraw).not.toHaveBeenCalled();
+      await act(async () => {
+        view.rerender(<MapPins pins={[pin('a', 0)]} selectedPostId="a" onPressPost={jest.fn()} />);
+      });
+      const onTop = selection(view);
+      if (onTop === undefined) throw new Error('no selection marker');
+      expect(onTop.props.opacity).toBe(0);
+      expect(onTop.props.tracksViewChanges).toBe(true);
+
+      await act(async () => {
+        jest.advanceTimersByTime(32);
+      });
+      expect(selection(view)?.props.opacity).toBe(1);
     } finally {
       jest.useRealTimers();
     }
   });
 });
 
-describe('marker identity (the jank guard)', () => {
-  // ⚠️ REVERSED, then REVERSED BACK on 2026-09-23. For one day this asserted
-  // that selection REMOUNTS the marker — the reasoning being that a repaint is
-  // unreliable on Android, so destroying the marker guarantees a fresh icon.
-  // It guarantees something else too: react-native-maps draws its DEFAULT RED
-  // PIN on a freshly-created marker until the custom view has rasterised, and
-  // the marker is not tappable while it is being recreated. The owner saw both
-  // on device — "the red marker flicker into view then back to the price
-  // marker", and taps that did not register.
-  //
-  // So a change to what is DRAWN asks the SAME marker to redraw its icon ONCE
-  // (the `drawnKey` prop → `redraw()`), and the React key stays `pin.key`.
-  // Not a re-arm of `tracksViewChanges` either: that was the version between
-  // the two, and it landed the highlight a native tick or two late — the
-  // owner's "clunky" (2026-09-23). The clipping that sent us down the remount
-  // road had a different cause and a different fix: the wrapper is a real
-  // native view and keeps ONE FOOTPRINT across selection, asserted above.
-  it('redraws IN PLACE when selection changes — same marker, one icon swap', async () => {
+describe('⚠️ selection is its own marker (the whole design)', () => {
+  // Nothing drawn ever changes on a mounted marker. The selected car gets a
+  // SECOND marker on top; moving the selection swaps that marker; clearing it
+  // uncovers the static pill. See the header for the four ways editing a
+  // mounted bitmap failed on device.
+  it('adds ONE marker on top when a car is selected — the statics are untouched', async () => {
     jest.useFakeTimers();
     try {
-      const view = await renderPins([pin('a', 0)]);
-      await act(async () => {
-        jest.advanceTimersByTime(500);
-      });
-      const before = view.getByTestId('marker');
-      expect(trackingOf(view)).toBe(false);
+      const three = [pin('a', 0), pin('b', 1), pin('c', 2)];
+      const view = await renderPins(three);
+      await settle();
+      const before = statics(view);
+      expect(before).toHaveLength(3);
+      expect(selection(view)).toBeUndefined();
 
       await act(async () => {
-        view.rerender(
-          <MapPins
-            pins={[pin('a', 0)]}
-            selectedPostId="a"
-            onPressPost={jest.fn()}
-          />,
-        );
+        view.rerender(<MapPins pins={three} selectedPostId="b" onPressPost={jest.fn()} />);
       });
 
-      // The SAME native marker — no destroy, so no red pin and no dead tap.
-      expect(view.getByTestId('marker')).toBe(before);
-      // One swap, on the next main-loop pass — not a tracker window.
-      expect(mockRedraw).toHaveBeenCalledTimes(1);
-      expect(trackingOf(view)).toBe(false);
+      expect(markers(view)).toHaveLength(4);
+      const onTop = selection(view);
+      if (onTop === undefined) throw new Error('no selection marker');
+      expect(onTop.props.accessibilityLabel).toBe('£250 reward — Ford Fiesta');
+      // The three static markers are the SAME nodes: no remount, no redraw.
+      expect(statics(view)).toEqual(before);
+      // Still frozen — the statics were not re-armed for this.
+      expect(statics(view).every((node) => node.props.tracksViewChanges === false)).toBe(true);
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it('redraws BOTH ends of a selection change — the one deselected too', async () => {
-    // The pill that lost selection has a dark bitmap it must shed; forgetting
-    // it is how three tapped-through pills stayed dark in the owner's photo.
+  it('⚠️ moving the selection swaps the marker on top — never two highlighted', async () => {
+    // The owner, on device: "both markers are still highlighted". Impossible
+    // by construction now — there is exactly one selection marker, and it is
+    // keyed on the car, so a move is an unmount and a mount.
     jest.useFakeTimers();
     try {
-      const view = await renderPins([pin('a', 0), pin('b', 1), pin('c', 2)], 'a');
-      await act(async () => {
-        jest.advanceTimersByTime(500);
-      });
+      const three = [pin('a', 0), pin('b', 1), pin('c', 2)];
+      const view = await renderPins(three, 'a');
+      await settle();
+      const staticsBefore = statics(view);
+      const firstOnTop = selection(view);
 
       await act(async () => {
-        view.rerender(
-          <MapPins
-            pins={[pin('a', 0), pin('b', 1), pin('c', 2)]}
-            selectedPostId="b"
-            onPressPost={jest.fn()}
-          />,
-        );
+        view.rerender(<MapPins pins={three} selectedPostId="b" onPressPost={jest.fn()} />);
       });
 
-      // a (off) and b (on); c drew nothing new and must not pay for it.
-      expect(mockRedraw).toHaveBeenCalledTimes(2);
+      const highlighted = markers(view).filter(isSelection);
+      expect(highlighted).toHaveLength(1);
+      expect(highlighted[0]).not.toBe(firstOnTop);
+      expect(statics(view)).toEqual(staticsBefore);
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it('⚠️ a tap re-renders the two markers it touched, not the whole map', async () => {
-    // Up to a hundred markers are mounted. The marker is memoised with stable
-    // props precisely so a tap costs two React renders rather than a hundred
-    // — an inline onPress arrow at the call site would silently undo that.
-    const three = [pin('a', 0, 25000), pin('b', 1, 4500), pin('c', 2, 1000)];
-    const onPressPost = jest.fn();
-    const view = await act(async () =>
-      render(<MapPins pins={three} selectedPostId="a" onPressPost={onPressPost} />),
-    );
-    mockMarkerRender.mockClear();
+  it('clearing the selection uncovers the static pill — same node, nothing redrawn', async () => {
+    jest.useFakeTimers();
+    try {
+      const one = [pin('a', 0)];
+      const view = await renderPins(one, 'a');
+      await settle();
+      const staticBefore = statics(view)[0];
+
+      await act(async () => {
+        view.rerender(<MapPins pins={one} selectedPostId={null} onPressPost={jest.fn()} />);
+      });
+
+      expect(markers(view)).toHaveLength(1);
+      expect(selection(view)).toBeUndefined();
+      expect(statics(view)[0]).toBe(staticBefore);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('the covered static pill leaves the assistive-tech tree — one stop per car', async () => {
+    const view = await renderPins([pin('a', 0)], 'a');
+
+    expect(statics(view)[0].props.accessible).toBe(false);
+    expect(selection(view)?.props.accessible).toBe(true);
+    expect(selection(view)?.props.accessibilityState).toEqual({ selected: true });
+  });
+
+  it('⚠️ a tap re-renders the markers it touched, not the whole map', async () => {
+    // Up to a hundred markers are mounted. PinMarker is memoised with stable
+    // props precisely so a tap costs a couple of React renders rather than a
+    // hundred — an inline onPress arrow at the call site would silently undo
+    // that. Here: a is uncovered, b is covered, the selection marker mounts;
+    // c has nothing to do.
+    jest.useFakeTimers();
+    try {
+      const three = [pin('a', 0, 25000), pin('b', 1, 4500), pin('c', 2, 1000)];
+      const onPressPost = jest.fn();
+      const view = await act(async () =>
+        render(<MapPins pins={three} selectedPostId="a" onPressPost={onPressPost} />),
+      );
+      // Let every marker's own birth (the reveal frame, the tracking window)
+      // play out first — those are the markers re-rendering THEMSELVES, and
+      // they must not be mistaken for the tap's cost.
+      await settle();
+      mockMarkerRender.mockClear();
+
+      await act(async () => {
+        view.rerender(<MapPins pins={three} selectedPostId="b" onPressPost={onPressPost} />);
+      });
+
+      const rendered = mockMarkerRender.mock.calls.map(([label]) => label as string);
+      expect(rendered).not.toContain('£10 reward — Ford Fiesta');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('what may enter the key', () => {
+  it('⚠️ a PRICE change is a new marker — a frozen pill keeps its old figure', async () => {
+    // The pill is rasterised once and frozen, so a reward the owner raised
+    // once landed in the React tree while the map kept showing the old
+    // figure. A price that is wrong is worse than one that is late.
+    const view = await renderPins([pin('a', 0, 25000)]);
+    const before = markers(view)[0];
+    expect(view.getByText('£250')).toBeTruthy();
 
     await act(async () => {
-      view.rerender(<MapPins pins={three} selectedPostId="b" onPressPost={onPressPost} />);
+      view.rerender(
+        <MapPins pins={[pin('a', 0, 40000)]} selectedPostId={null} onPressPost={jest.fn()} />,
+      );
     });
 
-    const rendered = mockMarkerRender.mock.calls.map(([label]) => label as string);
-    expect(rendered).toContain('£250 reward — Ford Fiesta');
-    expect(rendered).toContain('£45 reward — Ford Fiesta');
-    expect(rendered).not.toContain('£10 reward — Ford Fiesta');
+    expect(markers(view)[0]).not.toBe(before);
+    expect(view.getByText('£400')).toBeTruthy();
   });
 
-  it('⚠️ redraws when the PRICE changes — a frozen marker keeps its old bitmap', async () => {
-    // The pill is rasterised once and frozen, so a reward the owner raised
-    // landed in the React tree while the map kept showing the old figure. A
-    // price that is wrong is worse than one that is late.
-    jest.useFakeTimers();
-    try {
-      const view = await renderPins([pin('a', 0, 25000)]);
-      await act(async () => {
-        jest.advanceTimersByTime(500);
-      });
-      const before = view.getByTestId('marker');
-      expect(view.getByText('£250')).toBeTruthy();
-
-      await act(async () => {
-        view.rerender(
-          <MapPins pins={[pin('a', 0, 40000)]} selectedPostId={null} onPressPost={jest.fn()} />,
-        );
-      });
-
-      expect(view.getByTestId('marker')).toBe(before);
-      expect(mockRedraw).toHaveBeenCalledTimes(1);
-      expect(trackingOf(view)).toBe(false);
-      expect(view.getByText('£400')).toBeTruthy();
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('does NOT redraw for a change that is not DRAWN', async () => {
+  it('does NOT remount for a change that is not DRAWN', async () => {
     // Make and model live in the accessibility label, never on the pill, so
-    // React updates them in place — a redraw for them is pure bitmap work
-    // with nothing to show for it.
-    jest.useFakeTimers();
-    try {
-      const view = await renderPins([pin('a', 0, 25000)]);
-      await act(async () => {
-        jest.advanceTimersByTime(500);
-      });
-      const before = view.getByTestId('marker');
+    // React updates them in place — keying on them would remount for nothing.
+    const view = await renderPins([pin('a', 0, 25000)]);
+    const before = markers(view)[0];
 
-      const renamed = pin('a', 0, 25000);
-      renamed.post = { ...renamed.post, model: 'Focus' };
-      await act(async () => {
-        view.rerender(
-          <MapPins pins={[renamed]} selectedPostId={null} onPressPost={jest.fn()} />,
-        );
-      });
+    const renamed = pin('a', 0, 25000);
+    renamed.post = { ...renamed.post, model: 'Focus' };
+    await act(async () => {
+      view.rerender(
+        <MapPins pins={[renamed]} selectedPostId={null} onPressPost={jest.fn()} />,
+      );
+    });
 
-      expect(view.getByTestId('marker')).toBe(before);
-      expect(mockRedraw).not.toHaveBeenCalled();
-      expect(trackingOf(view)).toBe(false);
-      expect(view.getByLabelText('£250 reward — Ford Focus')).toBeTruthy();
-    } finally {
-      jest.useRealTimers();
-    }
+    expect(markers(view)[0]).toBe(before);
+    expect(view.getByLabelText('£250 reward — Ford Focus')).toBeTruthy();
   });
 
-  it('does NOT redraw a marker when only its RANK changes', async () => {
+  it('does NOT remount a marker when only its RANK changes', async () => {
     // The load-bearing half. Rank churns on every pan as the in-view
-    // population changes, so redrawing here would rasterise dozens of
-    // markers per gesture — worse than the jank this file guards.
-    jest.useFakeTimers();
-    try {
-      const view = await renderPins([pin('a', 0)]);
-      await act(async () => {
-        jest.advanceTimersByTime(500);
-      });
-      const before = view.getByTestId('marker');
+    // population changes, so remounting here would rebuild dozens of markers
+    // per gesture — each flashing invisible and re-tracking. Worse than the
+    // jank this file guards.
+    const view = await renderPins([pin('a', 0)]);
+    const before = markers(view)[0];
 
-      await act(async () => {
-        view.rerender(
-          <MapPins
-            pins={[pin('a', 17)]}
-            selectedPostId={null}
-            onPressPost={jest.fn()}
-          />,
-        );
-      });
+    await act(async () => {
+      view.rerender(
+        <MapPins pins={[pin('a', 17)]} selectedPostId={null} onPressPost={jest.fn()} />,
+      );
+    });
 
-      expect(view.getByTestId('marker')).toBe(before);
-      expect(mockRedraw).not.toHaveBeenCalled();
-      expect(trackingOf(view)).toBe(false);
-    } finally {
-      jest.useRealTimers();
-    }
+    expect(markers(view)[0]).toBe(before);
   });
 });
 
@@ -508,12 +534,12 @@ describe('every post gets its own marker', () => {
   it('renders one marker per pin', async () => {
     const view = await renderPins([pin('a', 0), pin('b', 1), pin('c', 2)]);
 
-    expect(view.getAllByTestId('marker')).toHaveLength(3);
+    expect(markers(view)).toHaveLength(3);
   });
 });
 
 describe('paint order and the assistive-tech path', () => {
-  const zIndexOf = (node: { props: Record<string, unknown> }) => node.props['data-zindex'] as number;
+  const zIndexOf = (node: MarkerNode) => node.props['data-zindex'];
 
   // Under heavy overlap — the normal case now that every marker is a full-width
   // pill — paint order is what decides which marker a tap HITS, and between
@@ -521,23 +547,23 @@ describe('paint order and the assistive-tech path', () => {
   it('paints the highest bounty above the rest', async () => {
     const view = await renderPins([pin('a', 0), pin('b', 1), pin('c', 2)]);
 
-    const [first, second, third] = view.getAllByTestId('marker').map(zIndexOf);
+    const [first, second, third] = markers(view).map(zIndexOf);
     expect(first).toBeGreaterThan(second);
     expect(second).toBeGreaterThan(third);
   });
 
-  it('puts the SELECTED marker above everything', async () => {
+  it('puts the SELECTION marker above everything', async () => {
     const view = await renderPins([pin('a', 0), pin('b', 40)], 'b');
 
-    const [top, selected] = view.getAllByTestId('marker').map(zIndexOf);
-    expect(selected).toBeGreaterThan(top);
+    const top = Math.max(...statics(view).map(zIndexOf));
+    expect(zIndexOf(selection(view)!)).toBeGreaterThan(top);
   });
 
   // Never 0: the iOS Google marker skips a falsy zIndex when it re-creates.
   it('never assigns a falsy z-index, however deep the rank', async () => {
     const view = await renderPins([pin('a', 5000)]);
 
-    expect(zIndexOf(view.getByTestId('marker'))).toBeGreaterThan(0);
+    expect(zIndexOf(markers(view)[0])).toBeGreaterThan(0);
   });
 
   // ⚠️ The DRAWN set and the REACHABLE set deliberately differ. Every marker is
@@ -547,14 +573,14 @@ describe('paint order and the assistive-tech path', () => {
   it('keeps low-ranked markers out of the assistive-tech tree', async () => {
     const view = await renderPins([pin('a', 0), pin('b', 90)]);
 
-    const [top, deep] = view.getAllByTestId('marker');
+    const [top, deep] = markers(view);
     expect(top.props.accessible).toBe(true);
     expect(deep.props.accessible).toBe(false);
   });
 
-  it('but a SELECTED low-ranked marker stays reachable', async () => {
-    const view = await renderPins([pin('a', 90)], 'a');
+  it('the selected car is always reachable, however deep its rank', async () => {
+    const view = await renderPins([pin('a', 0), pin('b', 90)], 'b');
 
-    expect(view.getByTestId('marker').props.accessible).toBe(true);
+    expect(selection(view)?.props.accessible).toBe(true);
   });
 });
