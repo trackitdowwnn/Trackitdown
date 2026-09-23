@@ -122,6 +122,11 @@ export function pinsForRegion(posts: MapPost[], region: GeoRegion): MapPinItem[]
  * 120 + 32 + 8 = 160. This went to 152 first and was 8 short within the hour —
  * the margin landed in the very next commit. If either changes, this changes
  * with it.
+ *
+ * On Android the shadow padding is 0 (2026-09-23 — it drew nothing there and
+ * swallowed taps), so the real box is 128 and this errs HIGH by 32: an edge
+ * marker is nudged a little sooner than it strictly needs. That is the safe
+ * direction, per the note above, and one constant beats two.
  */
 const MARKER_WIDTH_DP = 160;
 

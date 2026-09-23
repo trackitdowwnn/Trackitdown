@@ -46,6 +46,23 @@
  *        opacity 0 and is revealed a frame later, by which time its view has
  *        been captured. A frame of nothing, never a frame of red.
  *
+ *        ⚠️ EVERY MARKER CARRIES A TRANSPARENT IMAGE, and it is not a
+ *        placeholder: it changes which native path draws the pill. Without an
+ *        image, react-native-maps captures the custom view into ONE Bitmap
+ *        object that it erases and redraws for every capture, and hands that
+ *        same object to Marker.setIcon each time. A fresh marker is captured
+ *        several times in its first frames — at insert, before layout; at the
+ *        first layout report, before the pill's children have laid out; then
+ *        per tracker tick — and on the owner's phone the marker kept showing
+ *        an EARLY one: a border with nothing inside it ("only an outline",
+ *        2026-09-23, the selection marker most of the time). With an image
+ *        set, getIcon() composites image and view into a NEWLY ALLOCATED
+ *        bitmap on every capture, so each setIcon gets an object the map has
+ *        never seen and the last capture is the one that shows. A 1×1
+ *        transparent pixel costs nothing to draw over. It is also the second
+ *        guard against the red pin: a marker whose view is not captured yet
+ *        shows its image — nothing — rather than Google's default.
+ *
  *        ⚠️ WHY THE SELECTED PILL WAS CLIPPED — THE REAL CAUSE, 2026-09-23,
  *        found in react-native-maps 1.27.2's Android source after three
  *        guesses (the shadow, the footprint, the remount) each shipped and
@@ -87,7 +104,7 @@
  */
 
 import { memo, useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 
 import { formatPounds } from '@/shared/lib';
 import { lightHaptic } from '@/shared/lib/haptics';
@@ -129,6 +146,24 @@ const TRACK_SETTLE_MS = 500;
 /** The usual anchor: the marker box centred on its coordinate. Hoisted so an
  *  unshifted marker gets a stable object rather than a new one per render. */
 const MARKER_CENTRE = { x: 0.5, y: 0.5 } as const;
+
+/**
+ * A 1×1 fully transparent PNG, given to EVERY marker as its `image`. Not
+ * decoration — see the header: with an image present, the Android marker
+ * composites each capture of its custom view into a freshly allocated bitmap
+ * instead of erasing and reusing one, which is what left the selection pill
+ * showing an early, empty capture. It also stands in for Google's default pin
+ * on a marker whose view has not been captured yet.
+ *
+ * A data URI so it needs no asset in the APK (an OTA cannot add drawables)
+ * and no file to load; react-native-maps decodes it once through Fresco and
+ * shares the result across every marker with the same URI. Hoisted so it is
+ * one stable object rather than a new prop per render. Generated and verified
+ * chunk-by-chunk (IHDR 1×1 RGBA-8, IDAT one zero pixel) on 2026-09-23.
+ */
+const TRANSPARENT_PIXEL = {
+  uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=',
+} as const;
 
 /** Ceiling for marker paint order. Selection takes it; everything else sits
  *  below by bounty rank, floored at 1 (a falsy zIndex is dropped by the iOS
@@ -243,6 +278,8 @@ const PinMarker = memo(function PinMarker({
     <AppMapMarker
       coordinate={{ latitude, longitude }}
       anchor={anchor}
+      // ⚠️ Load-bearing on Android; see TRANSPARENT_PIXEL and the header.
+      image={TRANSPARENT_PIXEL}
       opacity={shown ? 1 : 0}
       tracksViewChanges={tracking}
       zIndex={zIndex}
@@ -396,12 +433,21 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   //
   // Derived from the token rather than written as 16, so a change to
   // `shadows.soft` cannot silently start clipping the iOS shadow.
+  //
+  // ⚠️ ZERO ON ANDROID, AND NOT ONLY BECAUSE IT IS INERT THERE. A Google
+  // marker's tap target is its bitmap's bounds, transparent pixels included,
+  // and the selection marker sits above every other pill. With pills
+  // overlapping — the normal case — 16pt of invisible box on every side of
+  // the marker on top was swallowing taps meant for the pills beside it (the
+  // owner: "multiple taps in the marker for it to be selected"). The Android
+  // box is the pill plus its margin, floored at the 44pt target; both markers
+  // still share it, so they stay concentric.
   hitTarget: {
     minWidth: sizes.touchTarget,
     minHeight: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: SHADOW_BLEED,
+    padding: Platform.select({ android: 0, default: SHADOW_BLEED }),
   },
   // ⚠️ The border is a deliberate divergence — the reference's pill is
   // shadow-only. The pill barely separates from the land by FILL in either

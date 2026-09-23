@@ -43,6 +43,7 @@ jest.mock('@/shared/ui/AppMap', () => {
       accessible,
       zIndex,
       opacity,
+      image,
       tracksViewChanges,
     }: {
       children: React.ReactNode;
@@ -52,6 +53,7 @@ jest.mock('@/shared/ui/AppMap', () => {
       accessible?: boolean;
       zIndex?: number;
       opacity?: number;
+      image?: { uri: string };
       tracksViewChanges?: boolean;
     }) {
       // Which markers React re-rendered — the memo's whole point.
@@ -69,6 +71,7 @@ jest.mock('@/shared/ui/AppMap', () => {
           // out as assertable props.
           'data-zindex': zIndex,
           opacity,
+          image,
           tracksViewChanges,
         },
         children,
@@ -129,6 +132,7 @@ type MarkerNode = {
     accessible?: boolean;
     'data-zindex': number;
     opacity: number;
+    image?: { uri: string };
     tracksViewChanges: boolean;
   };
 };
@@ -331,6 +335,25 @@ describe('⚠️ born invisible, then tracked, then frozen', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  // ⚠️ Not decoration. With an image set, the Android marker composites every
+  // capture of its view into a FRESH bitmap; without one it erases and reuses
+  // a single Bitmap object and hands that same object to setIcon each time —
+  // which is how the selection pill kept showing an early, empty capture
+  // ("only an outline", 2026-09-23). The image also stands in for the red
+  // pin on a marker whose view is not captured yet.
+  it('⚠️ every marker carries the transparent image — statics and the selection', async () => {
+    const view = await renderPins([pin('a', 0), pin('b', 1)], 'b');
+
+    const all = markers(view);
+    expect(all).toHaveLength(3);
+    for (const node of all) {
+      expect(node.props.image?.uri).toMatch(/^data:image\/png;base64,/);
+    }
+    // ONE object for every marker — a fresh one per render would be a new
+    // prop on a memoised component, and a new decode on the native side.
+    expect(new Set(all.map((node) => node.props.image)).size).toBe(1);
   });
 
   it('⚠️ the selection marker is born the same way — no red pin on a tap', async () => {
