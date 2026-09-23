@@ -405,8 +405,8 @@ are build output.
 - Map screens: light map style (muted natural tones), custom `primary` pins;
   selected pin grows and shows a floating vehicle card, Airbnb-style.
   - **EVERY marker carries its price (2026-08-07).** One appearance: a white
-    £ pill with a hairline border; the selected one inverts to
-    `surfaceInverse` and grows. There is no quiet tier.
+    £ pill with a hairline border; the selected car's pill becomes a larger
+    `surfaceInverse` one. There is no quiet tier.
     - **Never ship a price-less map marker.** A marker with no price on it
       reads as a GROUP — there is nothing else it could be saying — so a
       "demoted" pin quietly claims to be several cars. We shipped one for a
@@ -437,11 +437,9 @@ are build output.
       hairline was 1.17:1 and the shadow was carrying it alone. The same rule
       applies to every floating map control (`MapCircleButton`,
       `MapSearchPill`).
-    - Bounty rank still decides **paint order** (highest on top, so a tap in a
-      crowd lands on the car worth tapping) and **how many markers stay in the
-      assistive-tech tree** — the drawn set and the reachable set deliberately
-      differ, because a screen reader should not swipe past a hundred markers
-      when the sheet lists every car with more detail.
+    - Bounty decides **paint order** (highest on top, so a tap in a crowd
+      lands on the car worth tapping). Selecting a car swaps its pill for the
+      dark one, drawn above all of them — instantly, no fade.
   - **Floating CONTROLS over map tiles use `shadows.lifted`** (back, recentre,
     search pill, map pill) — they must hold an edge against busy tiles.
     **MARKERS keep `shadows.soft`**: they are content, not chrome, and

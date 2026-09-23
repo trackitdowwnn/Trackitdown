@@ -67,7 +67,6 @@ let mockLocation: unknown = {
 jest.mock('../hooks/useFeedLocation', () => ({
   useFeedLocation: () => ({ location: mockLocation }),
 }));
-jest.mock('../hooks/useProgressivePins', () => ({ useProgressivePins: () => [] }));
 // A REGION, not null: the screen sorts its cards by distance from this anchor
 // during render, so null throws before any assertion is reached.
 jest.mock('../hooks/useSortAnchor', () => ({
@@ -174,7 +173,6 @@ function viewport(overrides: Record<string, unknown> = {}) {
     },
     searching: false,
     searchId: 1,
-    populationId: 1,
     searchFailed: false,
     onRegionChange: mockOnRegionChange,
     recordRegion: jest.fn(),

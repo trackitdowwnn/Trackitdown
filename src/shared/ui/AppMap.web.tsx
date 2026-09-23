@@ -34,12 +34,7 @@ export interface AppMapExtraProps {
   onReady?: () => void;
 }
 
-// Web stubs matching the native re-exports — render nothing. The animated
-// marker is the same stub as the plain one.
-
-export function AppMapMarkerAnimated(_props: Record<string, unknown>) {
-  return null;
-}
+// Web stubs matching the native re-exports — render nothing.
 
 export function AppMapMarker(_props: Record<string, unknown>) {
   return null;

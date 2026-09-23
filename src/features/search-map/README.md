@@ -120,25 +120,33 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
 
 **Anatomy (Airbnb map mechanics, our brand)**
 1. Full-bleed `AppMap` under everything; floating back button top-left.
-2. BOUNTY PINS — markers are near-black pill tags (the amount), not dots;
-   the selected pin inverts to `surfaceInverse` (`components/MapPins.tsx`).
+2. BOUNTY PINS — every car in view is a white £ pill (the amount, or "No
+   reward"); the selected car's pill is swapped for a larger `surfaceInverse`
+   one (`components/MapPins.tsx`). Redesigned 2026-09-23 to three ideas:
+   - **A pill is drawn once.** On Android a marker is a bitmap captured just
+     after mount and then frozen, so what a pill shows (price, theme,
+     selected) is in its React key — a change is a new marker, never a repaint.
+   - **Selection is a swap, not an overlay.** The selected car has only its
+     dark pill, so nothing can sit on top of it. (An overlay over a white pill
+     showed as an "outline" whenever paint order went wrong.)
+   - **Four Android rules**: a transparent `image` on every marker (no red
+     default pin, no empty capture), `collapsable={false}` on the wrapper (the
+     bitmap is sized to the box, not the pill), a one-time 500ms
+     `tracksViewChanges` window, and **zIndex is read once, at creation**
+     (react-native-maps' Fabric marker has no zIndex setter) — so it comes
+     from the price, never from the number of cars in view.
+   No fades, no batched mounting, no edge nudging: each was cut to keep this
+   small. If a dense first load stutters on Android, shorten the tracking
+   window before reaching for batching again.
 3. NO CLUSTERING (removed 2026-08-06) — every post in view gets its own
-   marker. supercluster used to collapse dense areas into count bubbles; the
-   pill/price split in item 7 does that job now, and a bubble was a tap that only
+   marker. supercluster used to collapse dense areas into count bubbles; now
+   every pill carries its own price (item 7), and a bubble was a tap that only
    ever led to another tap. `lib/mapPins.ts` still CULLS to the viewport,
    which is load-bearing: `result.posts` only refreshes when a search lands
    (~600ms behind the gesture), so without it a pan keeps drawing markers the
    user has already moved away from. Worst case is now
-   `VIEWPORT_POST_LIMIT` (100) simultaneous markers.
-   - **They mount in BATCHES, not all at once** (`hooks/useProgressivePins.ts`
-     + `revealPins`). The highest-ranked markers land in the first commit and
-     the long tail fills in ~20 per tick. Each marker holds `tracksViewChanges`
-     open while it rasterises — re-drawing EVERY FRAME until it does, for two
-     frames past its own layout (2026-09-23; 500ms is now only the ceiling for
-     a marker that never reports one) — so a hundred in one commit is the
-     precise Android jank clustering used to hide. The reveal restarts on a landed SEARCH, not
-     on a pan — a pan re-culls posts whose markers are already mounted, and
-     resetting there would make visible markers disappear mid-gesture.
+   `VIEWPORT_POST_LIMIT` (100) simultaneous markers. A pan does not remount
+   them: a pill's key is its post id and price.
 4. PEEK CARD (pin ↔ card loop — definitive spec). Tapping a pin springs a
    floating card up from the bottom (~250ms Reanimated spring, translateY +
    fade); the card is a horizontal pager (snap paging, ~8px neighbour peek)
@@ -211,14 +219,10 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
      the map each time the camera settled, and moved further out the more you
      zoomed out. Markers that move are worse than markers that overlap. Do not
      reintroduce it without solving that; it is not a tuning problem.
-   - `keepMarkersOnScreen` survives the same critique because it moves the
-     marker's BOX (its anchor) and never its coordinate: the offset is bounded
-     by the marker's own width instead of growing with the zoom.
-   - Bounty rank survives for paint order (highest on top, so a tap in a crowd
-     hits the car worth tapping — equal zIndex between overlapping Android
-     markers is undefined) and for the assistive-tech cap (`AT_MARKER_LIMIT`).
-     ⚠️ The drawn set and the reachable set therefore DIFFER; the sheet is the
-     complete path and lists every car with more detail.
+   - Bounty decides paint order (`lib/mapPins.ts` `pinsInView`): highest on
+     top, so a tap in a crowd hits the car worth tapping — equal zIndex
+     between overlapping Android markers is undefined. Ties break on id so the
+     order is stable across searches.
 8. CAMERA INSETS, AND THE SHEET DRIVES THE ZOOM — the sheet and the card pager
    cover the bottom of the map, so everything that FRAMES something (card
    follow, recentre, the sort anchor, the opening frame) goes through
