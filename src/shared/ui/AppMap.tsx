@@ -164,6 +164,16 @@ export function AppMap({
       // marker tap just made — and the default marker-press camera recentre
       // fights our own selection→camera logic.
       moveOnMarkerPress={false}
+      // ⚠️ THE "TAPS ARE INCONSISTENT" FIX (2026-09-23). react-native-maps
+      // registers a POI click listener BY DEFAULT on Android (MapView.java:
+      // poiClickEnabled = true). On Google's latest renderer — the one this
+      // build initialises — every map LABEL (a town name, a main road) is a
+      // POI, and a POI click wins over a custom marker's click and does not
+      // propagate. So a pill sitting over a label silently ignored the tap,
+      // and a pill beside one worked: "inconsistent". Hiding POIs in the style
+      // does not help; the labels still count. Nothing here uses POI taps.
+      // Upstream: react-native-maps#4472 and the maintainer's note on #4055.
+      poiClickEnabled={false}
       onPress={(event) => {
         if (event.nativeEvent.action === 'marker-press') {
           return; // not a background tap — the marker handles it

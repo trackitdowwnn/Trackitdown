@@ -135,6 +135,10 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
      `tracksViewChanges` window, and **zIndex is read once, at creation**
      (react-native-maps' Fabric marker has no zIndex setter) — so it comes
      from the price, never from the number of cars in view.
+   - **Taps: `poiClickEnabled={false}` on the map** (`shared/ui/AppMap.tsx`).
+     react-native-maps registers a POI click listener by default on Android,
+     and on Google's latest renderer every map label is a POI whose click
+     beats a custom marker's. Pills over a town or road name ignored taps.
    No fades, no batched mounting, no edge nudging: each was cut to keep this
    small. If a dense first load stutters on Android, shorten the tracking
    window before reaching for batching again.

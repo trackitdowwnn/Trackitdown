@@ -70,6 +70,12 @@ export const MapCardPager = memo(function MapCardPager({
   const cardWidth = windowWidth - spacing.lg * 2;
   const listRef = useRef<FlatList<MapPost>>(null);
   const lastReportedIndex = useRef(-1);
+  // ⚠️ Where OUR OWN scroll is heading, until the user touches the list. A
+  // programmatic scrollToIndex fires momentum-end too — and when a second pin
+  // tap interrupts the first scroll, that settle can land on a card IN
+  // BETWEEN. Reported as a swipe, it selected a car nobody tapped (and flew
+  // the camera to it). Settles are only ever the user's while this is null.
+  const scrollingTo = useRef<number | null>(null);
   const reduceMotion = useReducedMotion();
 
   // Enter/exit choreography: `shown` keeps the list mounted through the
@@ -83,6 +89,7 @@ export const MapCardPager = memo(function MapCardPager({
   // SAME index is a genuinely new view (fresh log + scroll-into-place).
   const finishHide = useCallback(() => {
     lastReportedIndex.current = -1;
+    scrollingTo.current = null;
     setShown(false);
   }, []);
 
@@ -140,6 +147,7 @@ export const MapCardPager = memo(function MapCardPager({
     if (selectedIndex !== lastReportedIndex.current) {
       lastReportedIndex.current = selectedIndex;
       log.info('map_card_view', { postId: post.id, index: selectedIndex, trigger: 'pin' });
+      scrollingTo.current = selectedIndex;
       listRef.current?.scrollToIndex({ index: selectedIndex, animated: true });
     }
   }, [selectedIndex, posts]);
@@ -157,6 +165,14 @@ export const MapCardPager = memo(function MapCardPager({
         posts.length - 1,
         Math.max(0, Math.round(event.nativeEvent.contentOffset.x / (cardWidth + CARD_GAP))),
       );
+      // Our own scroll settling — see `scrollingTo`. Selection already says
+      // where it is going; an interrupted scroll's midway stop is not news.
+      if (scrollingTo.current !== null) {
+        if (index === scrollingTo.current) {
+          scrollingTo.current = null;
+        }
+        return;
+      }
       if (index !== lastReportedIndex.current) {
         const from = lastReportedIndex.current;
         lastReportedIndex.current = index;
@@ -201,6 +217,10 @@ export const MapCardPager = memo(function MapCardPager({
         snapToAlignment="start"
         decelerationRate="fast"
         onMomentumScrollEnd={onMomentumEnd}
+        // The user took over: whatever they settle on is theirs to report.
+        onScrollBeginDrag={() => {
+          scrollingTo.current = null;
+        }}
         getItemLayout={(_, index) => ({
           length: cardWidth + CARD_GAP,
           offset: (cardWidth + CARD_GAP) * index,
