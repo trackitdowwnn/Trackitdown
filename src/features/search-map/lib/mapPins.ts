@@ -181,9 +181,9 @@ export function keepMarkersOnScreen(
  * until it does. That is the exact Android jank MapPins was written to avoid,
  * and clustering used to hide it by keeping the count small. Staggering the
  * mount staggers those windows too, which is the part that actually costs
- * frames. (The window itself shrank on 2026-09-23 to two frames past each
- * marker's own layout; it is the COUNT this hook is about, so the argument is
- * unchanged.)
+ * frames. (Shortening that window was tried on 2026-09-23 and reverted — it
+ * freezes markers before the native tracker has captured them. It is the COUNT
+ * this function is about, so the argument is unchanged either way.)
  *
  * BY RANK, so the biggest bounties are in the first commit and the fill-in adds
  * the ones a user is least likely to be reaching for. (This used to withhold

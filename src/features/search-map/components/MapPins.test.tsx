@@ -1,17 +1,18 @@
 /**
  * WHAT:  Tests for MapPins — one priced pill per post, the marker box
  *        containing its own shadow and keeping one footprint across selection,
- *        paint order, and WHAT MAY ENTER THE REACT KEY: what is DRAWN must
- *        (selection, the price), what is not must not (rank, make/model).
- * WHY:   Those last two pull in opposite directions and both have bitten.
- *        RANK churns on every pan, so folding it into the key remounts dozens
- *        of markers at once, each re-arming a tracksViewChanges window — the
- *        Android jank this component exists to avoid. SELECTION is the
- *        opposite case: repainting it in place is cheap and unreliable, and a
- *        marker that keeps its old bitmap has it clipped to the new bounds
- *        (owner's screenshot, 2026-09-22: pills tapped through still dark and
- *        cut off). One or two markers per tap is a price worth paying; dozens
- *        per pan is not. Neither can be caught by eye in a simulator.
+ *        paint order, and WHAT MAY RE-ARM RASTERISATION: what is DRAWN must
+ *        (selection, the price), what is not must not (rank, make/model) — and
+ *        that it re-arms IN PLACE, never by remounting the marker.
+ * WHY:   All three have bitten, in three different ways. RANK churns on every
+ *        pan, so re-arming for it holds dozens of tracksViewChanges windows
+ *        open per gesture — the Android jank this component exists to avoid.
+ *        SELECTION and the PRICE are the opposite: a marker frozen with a
+ *        stale bitmap shows the wrong fill, or the wrong money. And REMOUNTING
+ *        to force either is the trap that looks like the fix: a recreated
+ *        native marker wears react-native-maps' default RED PIN until it
+ *        rasterises and swallows taps meanwhile (owner, on device 2026-09-23).
+ *        None of the three can be caught by eye in a simulator.
  * LINKS: src/features/search-map/components/MapPins.tsx, docs/TESTING.md.
  */
 
@@ -244,87 +245,27 @@ describe('⚠️ the marker box contains its own shadow', () => {
   });
 });
 
-/** The wrapper's onLayout — the signal that ends the tracking window. */
-const layoutOf = (view: Awaited<ReturnType<typeof renderPins>>) =>
-  (view.getByTestId('marker').children[0] as {
-    props: { onLayout?: (event: unknown) => void };
-  }).props.onLayout;
+/** Whether the marker is currently re-rasterising every frame. */
+const trackingOf = (view: Awaited<ReturnType<typeof renderPins>>) =>
+  view.getByTestId('marker').props.tracksViewChanges as boolean;
 
 describe('⚠️ the tracking window (the other jank guard)', () => {
-  // `tracksViewChanges` means "re-rasterise this custom view EVERY FRAME", so
-  // the settle window is bitmap work, not an idle wait. It was a flat 500ms
-  // per marker on mount — affordable — and then twice per TAP once selection
-  // started remounting, which is what the owner felt as "very clunky". Layout
-  // is the thing it was ever waiting for, so the window now ends two frames
-  // past it and 500ms is only the ceiling for a marker that never reports one.
-  it('keeps tracking until the marker has laid out', async () => {
+  // `tracksViewChanges` means 're-rasterise this custom view EVERY FRAME', so
+  // the window is real bitmap work. It is armed on mount and again whenever
+  // retrackKey changes, and it must NOT be cut short: freezing before the
+  // native tracker has captured the view leaves react-native-maps' default
+  // pin on screen — the red marker the owner saw flicker in (2026-09-23).
+  it('tracks from mount and freezes once settled', async () => {
     jest.useFakeTimers();
     try {
       const view = await renderPins([pin('a', 0)]);
-      expect(view.getByTestId('marker').props.tracksViewChanges).toBe(true);
-
-      // Most of the old window gone, still tracking: nothing has measured.
-      await act(async () => {
-        jest.advanceTimersByTime(400);
-      });
-      expect(view.getByTestId('marker').props.tracksViewChanges).toBe(true);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('freezes two FRAMES after the layout, not half a second later', async () => {
-    jest.useFakeTimers();
-    try {
-      const view = await renderPins([pin('a', 0)]);
-
-      await act(async () => {
-        layoutOf(view)?.({ nativeEvent: { layout: { width: 80, height: 60 } } });
-      });
-      // Frames, not wall clock: 32ms is two frames only on a device actually
-      // hitting 60fps, and the moment this matters — a batch mounting while
-      // tiles load — is when a frame runs long.
-      await act(async () => {
-        jest.advanceTimersByTime(1);
-      });
-      await act(async () => {
-        jest.advanceTimersByTime(1);
-      });
-
-      expect(view.getByTestId('marker').props.tracksViewChanges).toBe(false);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('⚠️ a second layout does not re-arm the window', async () => {
-    // onLayout fires on every size change, and re-arming would undo the whole
-    // point — a marker that resizes would go back to per-frame rasterising.
-    // The guard is structural: the prop itself becomes undefined.
-    jest.useFakeTimers();
-    try {
-      const view = await renderPins([pin('a', 0)]);
-
-      await act(async () => {
-        layoutOf(view)?.({ nativeEvent: { layout: { width: 80, height: 60 } } });
-      });
-
-      expect(layoutOf(view)).toBeUndefined();
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('still freezes on the ceiling when no layout is ever reported', async () => {
-    jest.useFakeTimers();
-    try {
-      const view = await renderPins([pin('a', 0)]);
+      expect(trackingOf(view)).toBe(true);
 
       await act(async () => {
         jest.advanceTimersByTime(500);
       });
 
-      expect(view.getByTestId('marker').props.tracksViewChanges).toBe(false);
+      expect(trackingOf(view)).toBe(false);
     } finally {
       jest.useRealTimers();
     }
@@ -332,86 +273,131 @@ describe('⚠️ the tracking window (the other jank guard)', () => {
 });
 
 describe('marker identity (the jank guard)', () => {
-  // ⚠️ REVERSED 2026-09-22, deliberately. This used to assert that selection
-  // does NOT remount — the cheap in-place repaint. On Android that repaint is
-  // not reliable: a marker whose appearance and size both change can keep its
-  // old bitmap and have it clipped to the new bounds, which is what the owner
-  // photographed (three tapped-through pills still dark, each cut off).
-  // A remount is the only way to guarantee a fresh icon.
+  // ⚠️ REVERSED, then REVERSED BACK on 2026-09-23. For one day this asserted
+  // that selection REMOUNTS the marker — the reasoning being that a repaint is
+  // unreliable on Android, so destroying the marker guarantees a fresh icon.
+  // It guarantees something else too: react-native-maps draws its DEFAULT RED
+  // PIN on a freshly-created marker until the custom view has rasterised, and
+  // the marker is not tappable while it is being recreated. The owner saw both
+  // on device — "the red marker flicker into view then back to the price
+  // marker", and taps that did not register.
   //
-  // The perf concern the old assertion protected was never about selection: it
-  // was about RANK, which churns on every pan and would remount dozens of
-  // markers at once. That half is the test below, and it is the load-bearing
-  // one.
-  it('remounts a marker when its selection changes — a fresh bitmap, not a repaint', async () => {
-    const view = await renderPins([pin('a', 0)]);
-    const before = view.getByTestId('marker');
+  // So a change to what is DRAWN re-arms `tracksViewChanges` IN PLACE (the
+  // `retrackKey` prop) and the React key stays `pin.key`. The clipping that
+  // sent us down the remount road had a different cause and a different fix:
+  // the pill now keeps ONE FOOTPRINT across selection, asserted above.
+  it('re-rasterises IN PLACE when selection changes — same marker, new bitmap', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0)]);
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+      const before = view.getByTestId('marker');
+      expect(trackingOf(view)).toBe(false);
 
-    await act(async () => {
-      view.rerender(
-        <MapPins
-          pins={[pin('a', 0)]}
-          selectedPostId="a"
-          onPressPost={jest.fn()}
-        />,
-      );
-    });
+      await act(async () => {
+        view.rerender(
+          <MapPins
+            pins={[pin('a', 0)]}
+            selectedPostId="a"
+            onPressPost={jest.fn()}
+          />,
+        );
+      });
 
-    expect(view.getByTestId('marker')).not.toBe(before);
+      // The SAME native marker — no destroy, so no red pin and no dead tap.
+      expect(view.getByTestId('marker')).toBe(before);
+      // ...drawing itself again, so the selected fill is what shows.
+      expect(trackingOf(view)).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
-  it('⚠️ remounts when the PRICE changes — a frozen marker keeps its old bitmap', async () => {
+  it('⚠️ re-rasterises when the PRICE changes — a frozen marker keeps its old bitmap', async () => {
     // The pill is rasterised once and frozen, so a reward the owner raised
     // landed in the React tree while the map kept showing the old figure. A
     // price that is wrong is worse than one that is late.
-    const view = await renderPins([pin('a', 0, 25000)]);
-    const before = view.getByTestId('marker');
-    expect(view.getByText('£250')).toBeTruthy();
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0, 25000)]);
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+      const before = view.getByTestId('marker');
+      expect(view.getByText('£250')).toBeTruthy();
+      expect(trackingOf(view)).toBe(false);
 
-    await act(async () => {
-      view.rerender(
-        <MapPins pins={[pin('a', 0, 40000)]} selectedPostId={null} onPressPost={jest.fn()} />,
-      );
-    });
+      await act(async () => {
+        view.rerender(
+          <MapPins pins={[pin('a', 0, 40000)]} selectedPostId={null} onPressPost={jest.fn()} />,
+        );
+      });
 
-    expect(view.getByTestId('marker')).not.toBe(before);
-    expect(view.getByText('£400')).toBeTruthy();
+      expect(view.getByTestId('marker')).toBe(before);
+      expect(trackingOf(view)).toBe(true);
+      expect(view.getByText('£400')).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
-  it('does NOT remount for a change that is not DRAWN', async () => {
+  it('does NOT re-rasterise for a change that is not DRAWN', async () => {
     // Make and model live in the accessibility label, never on the pill, so
-    // React updates them in place — keying on them would remount for nothing.
-    const view = await renderPins([pin('a', 0, 25000)]);
-    const before = view.getByTestId('marker');
+    // React updates them in place — re-arming for them is pure bitmap work
+    // with nothing to show for it.
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0, 25000)]);
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+      const before = view.getByTestId('marker');
 
-    const renamed = pin('a', 0, 25000);
-    renamed.post = { ...renamed.post, model: 'Focus' };
-    await act(async () => {
-      view.rerender(
-        <MapPins pins={[renamed]} selectedPostId={null} onPressPost={jest.fn()} />,
-      );
-    });
+      const renamed = pin('a', 0, 25000);
+      renamed.post = { ...renamed.post, model: 'Focus' };
+      await act(async () => {
+        view.rerender(
+          <MapPins pins={[renamed]} selectedPostId={null} onPressPost={jest.fn()} />,
+        );
+      });
 
-    expect(view.getByTestId('marker')).toBe(before);
-    expect(view.getByLabelText('£250 reward — Ford Focus')).toBeTruthy();
+      expect(view.getByTestId('marker')).toBe(before);
+      expect(trackingOf(view)).toBe(false);
+      expect(view.getByLabelText('£250 reward — Ford Focus')).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
-  it('does NOT remount a marker when only its RANK changes', async () => {
-    const view = await renderPins([pin('a', 0)]);
-    const before = view.getByTestId('marker');
+  it('does NOT re-rasterise a marker when only its RANK changes', async () => {
+    // The load-bearing half. Rank churns on every pan as the in-view
+    // population changes, so re-arming here would hold dozens of tracking
+    // windows open per gesture — worse than the jank this file guards.
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0)]);
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+      const before = view.getByTestId('marker');
 
-    // Rank churns on every pan as the in-view population changes.
-    await act(async () => {
-      view.rerender(
-        <MapPins
-          pins={[pin('a', 17)]}
-          selectedPostId={null}
-          onPressPost={jest.fn()}
-        />,
-      );
-    });
+      await act(async () => {
+        view.rerender(
+          <MapPins
+            pins={[pin('a', 17)]}
+            selectedPostId={null}
+            onPressPost={jest.fn()}
+          />,
+        );
+      });
 
-    expect(view.getByTestId('marker')).toBe(before);
+      expect(view.getByTestId('marker')).toBe(before);
+      expect(trackingOf(view)).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

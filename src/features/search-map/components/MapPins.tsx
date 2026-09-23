@@ -17,28 +17,33 @@
  *        false from frame 0 is the blank-marker trap), then stops tracking
  *        so it pans free.
  *
- *        ⚠️ WHAT IS DRAWN RE-KEYS THE MARKER; NOTHING RE-ARMS IN PLACE.
- *        That is the whole rule, and it cuts both ways: selection and the
- *        PRICE are in the key because a frozen bitmap would otherwise show
- *        the old one; rank, make, model and the a11y label are not, because
- *        React updates those props in place and keying on them would remount
- *        for nothing.
+ *        ⚠️ RE-RASTERISING IS A PROP, NOT A KEY. Everything DRAWN goes
+ *        through `retrackKey` — selection and the price — and re-arms
+ *        tracking in place. NOTHING remounts the marker, and the React key is
+ *        the post id alone.
  *
- *        This reverses the 2026-08 note that lived here ("RE-RASTERISING IS A
- *        PROP, NOT A KEY"), and the reason is worth keeping: re-arming
- *        `tracksViewChanges` is the cheap repaint but not a reliable one on
- *        Android. A marker whose appearance AND size both change can keep its
- *        previous bitmap and have it clipped to the new bounds — three pills
- *        the owner had tapped through were still dark, each cut off where the
- *        smaller unselected box ended (screenshot, 2026-09-22, after two
- *        fixes aimed at the shadow and at the footprint). A remount builds a
- *        new native marker from a new bitmap, so there is no stale-icon path.
+ *        ⚠️ THIS WAS TRIED THE OTHER WAY AND REVERTED, 2026-09-23. Selection
+ *        was briefly folded into the KEY to guarantee a fresh bitmap, after
+ *        pills the owner had tapped through came back dark and clipped. It
+ *        did guarantee that, and it cost more than it bought: a remount
+ *        DESTROYS the native marker and builds a new one, and a new marker
+ *        shows react-native-maps' DEFAULT PIN until its custom view has
+ *        rasterised. The owner saw exactly that — "the red marker flicker
+ *        into view then back to the price marker" — and taps landing in the
+ *        recreation window went nowhere, which is the "not registering
+ *        clicks" half of the same report.
  *
- *        The cost the old note feared does not apply to selection: it was
- *        about RANK, which churns on every pan and would remount dozens of
- *        markers at once. Selection changes one or two per TAP, and a reward
- *        changes when its owner edits it. Rank must never enter the key, and
- *        the in-place re-arm is gone with it.
+ *        The clipping it was reaching for has a smaller cause and already has
+ *        a smaller fix: the marker's FOOTPRINT used to change on selection
+ *        (padding md/xs -> lg/sm), and a view that resizes while frozen is
+ *        what strands a bitmap. The unselected pill now carries that
+ *        difference as transparent margin, so the box is constant and there
+ *        is nothing to strand. Keep that invariant and the in-place re-arm is
+ *        enough; break it and no amount of re-arming will save this.
+ *
+ *        Rank must never enter either the key or `retrackKey`: it churns on
+ *        every pan, and dozens of markers re-arming at once is the jank this
+ *        component exists to avoid.
  *
  *        Rank, paint order and the assistive-tech cap are decided in
  *        mapPins.pinsForRegion — this component is a dumb renderer of that.
@@ -69,32 +74,23 @@ import { AT_MARKER_LIMIT } from '../lib/mapPins';
 import type { MapPinItem } from '../types';
 
 /**
- * The CEILING on how long a freshly-mounted marker keeps tracking view
- * changes — the fallback for a marker that never reports a layout.
+ * How long a marker keeps tracking view changes after it is armed — on mount,
+ * and again whenever `retrackKey` changes — before it freezes.
  *
  * ⚠️ `tracksViewChanges` means "re-rasterise this custom view EVERY FRAME", so
- * this is not an idle wait: it is half a second of bitmap work per marker.
- * That was affordable while it happened once per marker on mount; since
- * selection remounts (see the header) it also happens twice per TAP, and the
- * owner reported the surface as "very clunky". The real signal is below.
+ * this is not an idle wait: it is real bitmap work per marker, which is why
+ * the mount is batched (useProgressivePins) rather than done in one commit.
+ *
+ * ⚠️ IT WAS SHORTENED AND PUT BACK, 2026-09-23. Freezing two frames after the
+ * marker reported its own layout was smoother, and sometimes froze BEFORE the
+ * native tracker had captured the custom view — which leaves react-native-maps'
+ * DEFAULT PIN on screen, the red marker the owner saw flicker in. Layout is
+ * necessary for the bitmap but not sufficient, and the cost of being early is
+ * the one marker state this product has already been burned by: a pill that is
+ * not a price reads as a cluster. 500ms is generous on purpose; the batching
+ * is what keeps it affordable.
  */
 const TRACK_SETTLE_MS = 500;
-
-/**
- * ⚠️ AFTER LAYOUT, THE FREEZE IS COUNTED IN FRAMES, NOT MILLISECONDS — see the
- * effect below. Layout is the thing the tracking was ever waiting for (the
- * blank-marker trap is freezing before the custom view has been MEASURED), so
- * once measured the bitmap needs a frame to be captured and nothing after
- * that. The 500 above stops being the normal path and becomes the safety net
- * it was always meant to be.
- *
- * Two `requestAnimationFrame`s rather than a ~32ms timer: 32ms is two frames
- * only on a device actually hitting 60fps, and the moment that matters most —
- * a dense area mounting a batch of markers while tiles load — is exactly when
- * a frame runs long and 32ms is less than ONE. Frames are the unit the
- * rasteriser works in, so count frames. (At 120Hz this is ~17ms, which is
- * simply less idle time, not less safety.)
- */
 
 /** The usual anchor: the marker box centred on its coordinate. Hoisted so an
  *  unshifted marker gets a stable object rather than a new one per render. */
@@ -135,6 +131,7 @@ function TrackedMarker({
   accessible = true,
   anchor,
   zIndex,
+  retrackKey,
   children,
 }: {
   latitude: number;
@@ -154,41 +151,33 @@ function TrackedMarker({
   /** Exposed to assistive tech: selection changes the pill's appearance, so
    *  it must be perceivable non-visually too. */
   selected?: boolean;
+  /** Change this whenever the DRAWN content changes — selection, the price —
+   *  and the marker re-rasterises IN PLACE. See the header for why this is a
+   *  prop rather than a key. */
+  retrackKey: string;
   children: ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
-  // Tracks from mount, then freezes. There is no longer an in-place re-arm:
-  // the only thing that changed the drawn content was selection, and selection
-  // now remounts (see the header), which starts this at `true` again anyway.
   const [tracking, setTracking] = useState(true);
-  // Set once, by the marker's own layout. Flipping it re-runs the effect below
-  // with the short window, so a marker that has been measured stops
-  // re-rasterising almost immediately instead of burning the full ceiling.
-  const [laidOut, setLaidOut] = useState(false);
+  // Re-arm DURING RENDER, not in an effect: setting state synchronously in an
+  // effect body cascades renders (and the lint rule forbids it). This is the
+  // adjust-state-on-prop-change pattern used elsewhere in the codebase.
+  const [seenKey, setSeenKey] = useState(retrackKey);
+  if (retrackKey !== seenKey) {
+    setSeenKey(retrackKey);
+    setTracking(true);
+  }
 
-  // Freeze a beat after the layout that mattered; the setState here is async
-  // (inside the timeout), which is the sanctioned shape.
+  // Freeze a beat after each arming. Keyed on `tracking` so a re-arm restarts
+  // the clock; the setState here is async (inside the timeout), which is the
+  // sanctioned shape.
   useEffect(() => {
     if (!tracking) {
       return;
     }
-    // Not measured yet: hold the ceiling. This is the path for a marker that
-    // never reports a layout at all, which is the only reason the ceiling
-    // still exists.
-    if (!laidOut) {
-      const timer = setTimeout(() => setTracking(false), TRACK_SETTLE_MS);
-      return () => clearTimeout(timer);
-    }
-    // Measured: two real frames, whatever those cost today.
-    let second = 0;
-    const first = requestAnimationFrame(() => {
-      second = requestAnimationFrame(() => setTracking(false));
-    });
-    return () => {
-      cancelAnimationFrame(first);
-      cancelAnimationFrame(second);
-    };
-  }, [tracking, laidOut]);
+    const timer = setTimeout(() => setTracking(false), TRACK_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [tracking]);
 
   return (
     <AppMapMarker
@@ -203,17 +192,8 @@ function TrackedMarker({
       accessibilityState={{ selected }}
     >
       {/* Transparent 44pt hit area around the drawn marker — markers don't
-          honour hitSlop, so the touch target is this wrapper. It is also what
-          reports the layout that ends tracking: this view IS the bounds the
-          marker is rasterised to, so when it has measured, there is nothing
-          further to wait for. Guarded — onLayout fires again on every size
-          change, and re-arming would undo the whole point. */}
-      <View
-        style={styles.hitTarget}
-        onLayout={laidOut ? undefined : () => setLaidOut(true)}
-      >
-        {children}
-      </View>
+          honour hitSlop, so the touch target is this wrapper. */}
+      <View style={styles.hitTarget}>{children}</View>
     </AppMapMarker>
   );
 }
@@ -265,7 +245,10 @@ export const MapPins = memo(function MapPins({
             // which is nothing like the per-pan churn rank would cause.
             // Anything NOT drawn — make, model, the a11y label, zIndex —
             // stays out, because React updates those props in place.
-            key={`${pin.key}:${selected ? 'on' : 'off'}:${pinBountyText(pin.post.bountyPence)}`}
+            key={pin.key}
+            // Everything DRAWN, re-rasterised in place: selection (the fill
+            // and the padding) and the price. Not the key — see the header.
+            retrackKey={`${selected ? 'on' : 'off'}:${pinBountyText(pin.post.bountyPence)}`}
             selected={selected}
             // Selection on top, then HIGHEST BOUNTY FIRST. Under heavy overlap
             // paint order is what decides which marker a tap actually hits, and

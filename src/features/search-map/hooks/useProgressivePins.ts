@@ -5,10 +5,8 @@
  * WHY:   Clustering used to bound the marker population; it was removed
  *        2026-08-06 on the owner's call, so a dense area now mounts up to
  *        VIEWPORT_POST_LIMIT (100) custom markers at once — and each one holds
- *        tracksViewChanges open while it rasterises, re-drawing every frame
- *        until it does (two frames past its own layout since 2026-09-23, 500ms
- *        only for one that never reports a layout; the batching argument is
- *        unchanged, and it is the COUNT that makes it). One commit of a
+ *        tracksViewChanges open for 500ms while it rasterises, re-drawing
+ *        EVERY FRAME until it freezes. One commit of a
  *        hundred of those is the precise Android jank MapPins' header exists to
  *        prevent. Staggering the mount staggers the tracking windows with it.
  *
@@ -37,12 +35,11 @@ const BATCH = 20;
 /** Roughly two frames at 60Hz — long enough to yield to the paint, short
  *  enough that the fill-in is over before a settling map is touched again.
  *
- *  NOT the same knob as MapPins' post-layout freeze, which counts real frames
- *  rather than milliseconds and happens to describe a similar span. Tuning one
- *  is not a reason to tune the other: this paces how fast markers ARRIVE, that
- *  one ends a single marker's rasterisation. They interleave by design —
- *  markers land every ~32ms and each freezes two frames after its own layout,
- *  so the windows stagger rather than stack. */
+ *  NOT the same knob as MapPins' TRACK_SETTLE_MS, which happens to be in the
+ *  same unit. Tuning one is not a reason to tune the other: this paces how
+ *  fast markers ARRIVE, that one ends a single marker's rasterisation. They
+ *  interleave by design — markers land every ~32ms and each then holds its own
+ *  500ms window, so the windows stagger rather than all opening at once. */
 const BATCH_INTERVAL_MS = 32;
 
 /**
