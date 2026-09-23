@@ -1,8 +1,8 @@
 /**
  * WHAT:  Tests for MapPins — one priced pill per post, the marker box
  *        containing its own shadow and keeping one footprint across selection,
- *        paint order, and WHAT MAY ENTER THE REACT KEY: rank must not,
- *        selection must.
+ *        paint order, and WHAT MAY ENTER THE REACT KEY: what is DRAWN must
+ *        (selection, the price), what is not must not (rank, make/model).
  * WHY:   Those last two pull in opposite directions and both have bitten.
  *        RANK churns on every pan, so folding it into the key remounts dozens
  *        of markers at once, each re-arming a tracksViewChanges window — the
@@ -358,6 +358,42 @@ describe('marker identity (the jank guard)', () => {
     });
 
     expect(view.getByTestId('marker')).not.toBe(before);
+  });
+
+  it('⚠️ remounts when the PRICE changes — a frozen marker keeps its old bitmap', async () => {
+    // The pill is rasterised once and frozen, so a reward the owner raised
+    // landed in the React tree while the map kept showing the old figure. A
+    // price that is wrong is worse than one that is late.
+    const view = await renderPins([pin('a', 0, 25000)]);
+    const before = view.getByTestId('marker');
+    expect(view.getByText('£250')).toBeTruthy();
+
+    await act(async () => {
+      view.rerender(
+        <MapPins pins={[pin('a', 0, 40000)]} selectedPostId={null} onPressPost={jest.fn()} />,
+      );
+    });
+
+    expect(view.getByTestId('marker')).not.toBe(before);
+    expect(view.getByText('£400')).toBeTruthy();
+  });
+
+  it('does NOT remount for a change that is not DRAWN', async () => {
+    // Make and model live in the accessibility label, never on the pill, so
+    // React updates them in place — keying on them would remount for nothing.
+    const view = await renderPins([pin('a', 0, 25000)]);
+    const before = view.getByTestId('marker');
+
+    const renamed = pin('a', 0, 25000);
+    renamed.post = { ...renamed.post, model: 'Focus' };
+    await act(async () => {
+      view.rerender(
+        <MapPins pins={[renamed]} selectedPostId={null} onPressPost={jest.fn()} />,
+      );
+    });
+
+    expect(view.getByTestId('marker')).toBe(before);
+    expect(view.getByLabelText('£250 reward — Ford Focus')).toBeTruthy();
   });
 
   it('does NOT remount a marker when only its RANK changes', async () => {

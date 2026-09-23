@@ -17,7 +17,13 @@
  *        false from frame 0 is the blank-marker trap), then stops tracking
  *        so it pans free.
  *
- *        ⚠️ SELECTION RE-KEYS THE MARKER; NOTHING RE-ARMS IN PLACE.
+ *        ⚠️ WHAT IS DRAWN RE-KEYS THE MARKER; NOTHING RE-ARMS IN PLACE.
+ *        That is the whole rule, and it cuts both ways: selection and the
+ *        PRICE are in the key because a frozen bitmap would otherwise show
+ *        the old one; rank, make, model and the a11y label are not, because
+ *        React updates those props in place and keying on them would remount
+ *        for nothing.
+ *
  *        This reverses the 2026-08 note that lived here ("RE-RASTERISING IS A
  *        PROP, NOT A KEY"), and the reason is worth keeping: re-arming
  *        `tracksViewChanges` is the cheap repaint but not a reliable one on
@@ -30,8 +36,9 @@
  *
  *        The cost the old note feared does not apply to selection: it was
  *        about RANK, which churns on every pan and would remount dozens of
- *        markers at once. Selection changes one or two per TAP. Rank must
- *        never enter the key, and the in-place re-arm is gone with it.
+ *        markers at once. Selection changes one or two per TAP, and a reward
+ *        changes when its owner edits it. Rank must never enter the key, and
+ *        the in-place re-arm is gone with it.
  *
  *        Rank, paint order and the assistive-tech cap are decided in
  *        mapPins.pinsForRegion — this component is a dumb renderer of that.
@@ -243,9 +250,22 @@ export const MapPins = memo(function MapPins({
             // marker from a new bitmap and there is no stale-icon path at all.
             // The cost the old note feared does not apply here: it was written
             // about RANK, which churns on every pan and would remount dozens
-            // of markers at once. Selection changes one or two per TAP, and
-            // nothing else is in the key, so nothing else remounts.
-            key={`${pin.key}:${selected ? 'on' : 'off'}`}
+            // of markers at once. Selection changes one or two per TAP.
+            //
+            // ⚠️ THE PRICE IS IN THE KEY FOR THE SAME REASON SELECTION IS:
+            // it is DRAWN. A frozen marker keeps its bitmap, so an owner who
+            // raised their reward had the new figure land in the React tree
+            // and the OLD one stay on the map — a price that is wrong is worse
+            // than one that is late, and this is the number people are
+            // deciding on. Keyed on the rendered STRING rather than on
+            // `bountyPence`, so a change that does not alter what is drawn
+            // cannot remount anything.
+            //
+            // Cheap by construction: a reward changes when its owner edits it,
+            // which is nothing like the per-pan churn rank would cause.
+            // Anything NOT drawn — make, model, the a11y label, zIndex —
+            // stays out, because React updates those props in place.
+            key={`${pin.key}:${selected ? 'on' : 'off'}:${pinBountyText(pin.post.bountyPence)}`}
             selected={selected}
             // Selection on top, then HIGHEST BOUNTY FIRST. Under heavy overlap
             // paint order is what decides which marker a tap actually hits, and
