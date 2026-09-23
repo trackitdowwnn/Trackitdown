@@ -189,6 +189,22 @@ describe('⚠️ the marker box contains its own shadow', () => {
 
   const shadowReach = shadows.soft.shadowOffset.height + shadows.soft.shadowRadius;
 
+  // ⚠️ THE CLIPPING FIX, 2026-09-23. On the new architecture the Android
+  // marker sizes its bitmap from its FIRST NATIVE CHILD's layout, and React
+  // Native flattens a View that carries only layout styles — which this
+  // wrapper does. Flattened, the first native child is the pill, so tapping
+  // one resized the bitmap to the pill and drew it, offset, into that: cut
+  // off right and bottom, exactly as photographed. Three fixes shipped
+  // before this one found the cause; none of them touched it.
+  it('⚠️ is a REAL native view — the box the Android bitmap is sized from', async () => {
+    const view = await renderPins([pin('a', 5, 25000)]);
+
+    const wrapper = view.getByTestId('marker').children[0] as {
+      props: { collapsable?: boolean };
+    };
+    expect(wrapper.props.collapsable).toBe(false);
+  });
+
   it('pads by the shadow\'s reach, on all four sides', async () => {
     const view = await renderPins([pin('a', 5, 25000)]);
 

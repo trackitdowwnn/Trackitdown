@@ -33,13 +33,36 @@
  *        recreation window went nowhere, which is the "not registering
  *        clicks" half of the same report.
  *
- *        The clipping it was reaching for has a smaller cause and already has
- *        a smaller fix: the marker's FOOTPRINT used to change on selection
- *        (padding md/xs -> lg/sm), and a view that resizes while frozen is
- *        what strands a bitmap. The unselected pill now carries that
- *        difference as transparent margin, so the box is constant and there
- *        is nothing to strand. Keep that invariant and the in-place re-arm is
- *        enough; break it and no amount of re-arming will save this.
+ *        ⚠️ WHY THE SELECTED PILL WAS CLIPPED — THE REAL CAUSE, 2026-09-23,
+ *        found in react-native-maps 1.27.2's Android source after three
+ *        guesses (the shadow, the footprint, the remount) each shipped and
+ *        each failed on device. On the new architecture, MarkerManager.addView
+ *        hangs an OnLayoutChangeListener on the marker's FIRST NATIVE CHILD,
+ *        and whenever THAT child's layout changes it calls
+ *        marker.update(childWidth, childHeight) — which sizes the marker's
+ *        bitmap to the CHILD, not to the marker. Our wrapper below carries
+ *        only layout styles, so React Native flattens it out of the native
+ *        tree and the first native child is the PILL. Tap a pill: its layout
+ *        changes, the bitmap is resized to the pill, and the pill is drawn at
+ *        its padded offset into a pill-sized bitmap — cut off at the right and
+ *        the bottom, exactly as photographed. Mount was never affected because
+ *        the listener is attached at insert time, after the first layout.
+ *
+ *        The fix is `collapsable={false}` on the wrapper, which makes it a
+ *        real native view and so the child the marker measures. Its box is
+ *        the whole subtree, and — because the unselected pill carries the
+ *        selected pill's growth as transparent margin — it does not change on
+ *        selection at all, so the listener has nothing to report and the
+ *        bitmap keeps the marker's true size. Both halves are load-bearing:
+ *        drop the margin and the box grows on tap, the bitmap follows, and
+ *        the anchor (a fraction of the bitmap) shifts the pill on screen.
+ *
+ *        This is what Airbnb's native app gets for free: each pill state is
+ *        rendered to a bitmap sized from the very view that was drawn, then
+ *        swapped in with setIcon. Upstream fixed their half of it in 1.29.5
+ *        (#5913, sizing the bitmap to the union of the subtree), but Expo 57
+ *        pins 1.27.2 and a native upgrade needs a new build; this fix needs
+ *        neither, and holds on 1.29.5 too.
  *
  *        Rank must never enter either the key or `retrackKey`: it churns on
  *        every pan, and dozens of markers re-arming at once is the jank this
@@ -192,8 +215,17 @@ function TrackedMarker({
       accessibilityState={{ selected }}
     >
       {/* Transparent 44pt hit area around the drawn marker — markers don't
-          honour hitSlop, so the touch target is this wrapper. */}
-      <View style={styles.hitTarget}>{children}</View>
+          honour hitSlop, so the touch target is this wrapper.
+
+          ⚠️ collapsable={false} IS THE CLIPPING FIX. Read the header before
+          touching it. This View has only layout styles, so React Native
+          FLATTENS it away and the pill becomes the marker's first native
+          child — and on Android the marker sizes its BITMAP from whatever
+          its first native child last reported as its layout. Unflattened,
+          the first child is this box, whose size never changes. */}
+      <View collapsable={false} style={styles.hitTarget}>
+        {children}
+      </View>
     </AppMapMarker>
   );
 }
@@ -216,38 +248,16 @@ export const MapPins = memo(function MapPins({
         const selected = pin.post.id === selectedPostId;
         return (
           <TrackedMarker
-            // ⚠️ SELECTION IS BACK IN THE KEY (2026-09-22), reversing the
-            // 2026-08 decision recorded in the header. Re-arming
-            // tracksViewChanges in place is the CHEAP repaint — and on
-            // Android it is not a RELIABLE one: a marker whose appearance and
-            // size both change can keep its previous bitmap and have it
-            // clipped to the new bounds. Owner's screenshot: three pills the
-            // map had been tapped through were still wearing their SELECTED
-            // dark fill, each cut off where the smaller unselected box ended,
-            // while an untouched pill beside them drew perfectly.
-            //
-            // Re-keying remounts the marker, so the native side builds a new
-            // marker from a new bitmap and there is no stale-icon path at all.
-            // The cost the old note feared does not apply here: it was written
-            // about RANK, which churns on every pan and would remount dozens
-            // of markers at once. Selection changes one or two per TAP.
-            //
-            // ⚠️ THE PRICE IS IN THE KEY FOR THE SAME REASON SELECTION IS:
-            // it is DRAWN. A frozen marker keeps its bitmap, so an owner who
-            // raised their reward had the new figure land in the React tree
-            // and the OLD one stay on the map — a price that is wrong is worse
-            // than one that is late, and this is the number people are
-            // deciding on. Keyed on the rendered STRING rather than on
-            // `bountyPence`, so a change that does not alter what is drawn
-            // cannot remount anything.
-            //
-            // Cheap by construction: a reward changes when its owner edits it,
-            // which is nothing like the per-pan churn rank would cause.
-            // Anything NOT drawn — make, model, the a11y label, zIndex —
-            // stays out, because React updates those props in place.
+            // The post id ALONE. Selection and the price were in here for a
+            // day (2026-09-22) to force a fresh bitmap; see the header for
+            // the red pin and the dead taps that bought.
             key={pin.key}
             // Everything DRAWN, re-rasterised in place: selection (the fill
-            // and the padding) and the price. Not the key — see the header.
+            // and the padding) and the price. Keyed on the rendered STRING
+            // rather than on `bountyPence`, so a change that does not alter
+            // what is drawn cannot re-arm anything. Anything NOT drawn — make,
+            // model, the a11y label, zIndex — stays out: React updates those
+            // in place and a frozen bitmap does not care.
             retrackKey={`${selected ? 'on' : 'off'}:${pinBountyText(pin.post.bountyPence)}`}
             selected={selected}
             // Selection on top, then HIGHEST BOUNTY FIRST. Under heavy overlap
@@ -305,24 +315,25 @@ export const MapPins = memo(function MapPins({
 });
 
 const makeStyles = (c: Palette) => StyleSheet.create({
-  // 44pt minimum touch target wrapping the smaller drawn marker.
+  // 44pt minimum touch target wrapping the smaller drawn marker. It is also
+  // the view the Android marker sizes its bitmap from — see the header and the
+  // `collapsable={false}` at the call site, which is what makes that true.
   //
-  // ⚠️ THE PADDING IS THE MARKER'S SHADOW ROOM, NOT DECORATION. A marker's
-  // children are rasterised to THIS VIEW'S BOUNDS, so anything drawn outside
-  // them is cut off — and `shadows.soft` is drawn below the pill by its offset
-  // plus its blur radius. The box is 44 and centres its child, so a selected
-  // pill (18pt line + 8pt padding each side + 2pt border = 36) left 4pt under
-  // it for 16pt of shadow, and the bottom of the marker came back clipped
-  // (owner, on device, 2026-09-22). Unselected was clipped too — 8pt of 16 —
-  // just less visibly, which is why it went unnoticed.
+  // THE PADDING IS THE PILL'S SHADOW ROOM, and only on iOS. There the marker
+  // is a live view and `shadows.soft` really is drawn past the pill by its
+  // offset plus its blur radius, so the box has to reach that far. On Android
+  // the marker is rasterised through a software canvas, which does not draw
+  // elevation at all — the pill has no shadow there and the padding is inert
+  // (the border is what separates it from the land; see bountyPill). It was
+  // shipped on 2026-09-22 as a fix for the clipping the owner photographed
+  // and was not one; the cause was the flattened wrapper, above.
   //
   // SYMMETRIC, and that is load-bearing: the anchor is MARKER_CENTRE, so the
   // box's centre is what sits on the car's coordinate. Padding the bottom
-  // alone would have bought the shadow its room by sliding every pill north
-  // of the place it is reporting.
+  // alone would slide every pill north of the place it is reporting.
   //
   // Derived from the token rather than written as 16, so a change to
-  // `shadows.soft` cannot silently start clipping again.
+  // `shadows.soft` cannot silently start clipping the iOS shadow.
   hitTarget: {
     minWidth: sizes.touchTarget,
     minHeight: sizes.touchTarget,
@@ -343,19 +354,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // on the dark land and 2.61:1 on the light one — which also fixes light,
   // where the old hairline was only 1.17:1 and the shadow was doing all the
   // work alone.
-  // ⚠️ THE MARGIN RESERVES THE GROWTH, AND IT IS WHY THE PILL STOPS CLIPPING.
-  // Selection swaps this padding for a larger one, which made the marker's
-  // view — and so the bitmap Android rasterises it into — CHANGE SIZE on tap.
-  // A marker whose icon resizes while it is being re-tracked comes back half
-  // drawn; with pins overlapping, that reads as the selected one being cut in
-  // half by its neighbours (owner, on device, 2026-09-22, after a first fix
-  // that addressed the shadow and not this).
+  // ⚠️ THE MARGIN RESERVES THE GROWTH. Selection swaps this padding for a
+  // larger one; the unselected pill carries the difference as transparent
+  // margin — 4pt a side, exactly the step from md/xs to lg/sm below — so the
+  // DRAWN pill grows on selection and the marker's outer box never does.
   //
-  // So the unselected pill carries the difference as transparent margin: 4pt a
-  // side, exactly the step from md/xs to lg/sm below. The DRAWN pill is
-  // unchanged in both states and still grows on selection; the marker's outer
-  // footprint never does, so the bitmap keeps its dimensions and there is
-  // nothing to re-measure.
+  // Half of the clipping fix, not the whole of it (it shipped alone on
+  // 2026-09-22 and changed nothing, because the box being measured was the
+  // pill — see the header). With the wrapper unflattened this is what keeps
+  // the wrapper's layout constant across a tap, so the native size listener
+  // never fires and the bitmap keeps the marker's true size; it also keeps
+  // the anchor — a fraction of that bitmap — from shifting the pill on screen.
   bountyPill: {
     backgroundColor: c.surface,
     borderRadius: radii.full,
@@ -369,8 +378,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // Selection GROWS as well as inverting (DESIGN_SYSTEM: "selected pin grows").
   // Tone alone stopped carrying it once clustering went: a field of near-black
   // dots makes near-black the map's dominant ink, so size and paint order have
-  // to do the work. Costs the marker a remount (see the header): a fresh
-  // bitmap is the only reliable way Android draws this state change.
+  // to do the work. Re-rasterised in place via retrackKey (see the header).
   // surfaceInverse, NOT surfaceOverMedia: a pin sits on the BASEMAP, which is
   // themed (mapStyleFor), not on photography. On the dark basemap this flips to
   // near-white — a dark bubble on dark tiles measures ~1.2:1 and vanishes.
