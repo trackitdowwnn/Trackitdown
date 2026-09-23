@@ -11,27 +11,37 @@
  *        an edge and a number, so a pile of them still reads as a pile of
  *        prices (the reference does exactly this — docs/design-refs/map/).
  *
- *        Markers with custom views are the classic Android jank source. Each
- *        marker TRACKS view changes for a few frames after mount (so the
- *        custom view rasterises AFTER layout — setting tracksViewChanges
- *        false from frame 0 is the blank-marker trap), then stops tracking
- *        so it pans free.
+ *        Markers with custom views are the classic Android jank source: the
+ *        marker is a BITMAP of its view, and nothing re-rasterises it unless
+ *        asked. Two things ask, and they are deliberately different:
  *
- *        ⚠️ RE-RASTERISING IS A PROP, NOT A KEY. Everything DRAWN goes
- *        through `retrackKey` — selection and the price — and re-arms
- *        tracking in place. NOTHING remounts the marker, and the React key is
- *        the post id alone.
+ *          MOUNT   — `tracksViewChanges` is held open for TRACK_SETTLE_MS so
+ *                    the custom view rasterises AFTER layout (false from
+ *                    frame 0 is the blank-marker trap), then freezes so the
+ *                    marker pans free. Once, ever, per marker.
+ *          DRAWN   — everything the pill shows forms TrackedMarker's
+ *                    `drawnKey` (selection, the price) and, when it changes,
+ *                    the marker is asked to `redraw()` its icon EXACTLY ONCE. The Airbnb
+ *                    shape: their native app renders each pill state to a
+ *                    bitmap and swaps it in with one setIcon; this is the
+ *                    same swap, one call, no loop.
  *
- *        ⚠️ THIS WAS TRIED THE OTHER WAY AND REVERTED, 2026-09-23. Selection
- *        was briefly folded into the KEY to guarantee a fresh bitmap, after
- *        pills the owner had tapped through came back dark and clipped. It
- *        did guarantee that, and it cost more than it bought: a remount
- *        DESTROYS the native marker and builds a new one, and a new marker
- *        shows react-native-maps' DEFAULT PIN until its custom view has
- *        rasterised. The owner saw exactly that — "the red marker flicker
- *        into view then back to the price marker" — and taps landing in the
- *        recreation window went nowhere, which is the "not registering
- *        clicks" half of the same report.
+ *        NOTHING remounts the marker, and the React key is the post id alone.
+ *
+ *        ⚠️ BOTH ALTERNATIVES WERE SHIPPED AND FELT WRONG, 2026-09-23.
+ *          · Folding selection into the KEY guaranteed a fresh bitmap by
+ *            DESTROYING the native marker; a new marker wears react-native-
+ *            maps' DEFAULT PIN until its view is captured, and is not there to
+ *            be tapped meanwhile. The owner saw both — "the red marker
+ *            flicker into view", taps "not registering".
+ *          · RE-ARMING `tracksViewChanges` for a drawn change looked cheaper
+ *            and was slower. The native tracker ticks every 40ms and only
+ *            rasterises while an internal `updated` counter is positive — a
+ *            counter our re-arm never bumped, so the highlight was riding on
+ *            the z-index change happening to bump it, and landed a tick or
+ *            two late while everything else on the screen moved on time.
+ *            The owner's word was "clunky". `redraw()` posts the same
+ *            rasterisation to the very next main-loop pass, unconditionally.
  *
  *        ⚠️ WHY THE SELECTED PILL WAS CLIPPED — THE REAL CAUSE, 2026-09-23,
  *        found in react-native-maps 1.27.2's Android source after three
@@ -64,8 +74,8 @@
  *        pins 1.27.2 and a native upgrade needs a new build; this fix needs
  *        neither, and holds on 1.29.5 too.
  *
- *        Rank must never enter either the key or `retrackKey`: it churns on
- *        every pan, and dozens of markers re-arming at once is the jank this
+ *        Rank must never enter either the key or `drawnKey`: it churns on
+ *        every pan, and dozens of markers redrawing at once is the jank this
  *        component exists to avoid.
  *
  *        Rank, paint order and the assistive-tech cap are decided in
@@ -75,7 +85,7 @@
  *        mapPins.ts (MapPinItem); docs/DESIGN_SYSTEM.md (tokens).
  */
 
-import { memo, useEffect, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { formatPounds } from '@/shared/lib';
@@ -91,14 +101,14 @@ import {
   type Palette,
 } from '@/shared/theme';
 import { bountyLabel, NO_BOUNTY_LABEL } from '@/shared/ui';
-import { AppMapMarker } from '@/shared/ui/AppMap';
+import { AppMapMarker, type AppMapMarkerHandle } from '@/shared/ui/AppMap';
 
 import { AT_MARKER_LIMIT } from '../lib/mapPins';
 import type { MapPinItem } from '../types';
 
 /**
- * How long a marker keeps tracking view changes after it is armed — on mount,
- * and again whenever `retrackKey` changes — before it freezes.
+ * How long a freshly-mounted marker keeps tracking view changes before it
+ * freezes. Mount only — a drawn change is a single `redraw()`, not a re-arm.
  *
  * ⚠️ `tracksViewChanges` means "re-rasterise this custom view EVERY FRAME", so
  * this is not an idle wait: it is real bitmap work per marker, which is why
@@ -144,23 +154,38 @@ function pinBountyText(bountyPence: number | null): string {
   return bountyPence === null ? NO_BOUNTY_LABEL : formatPounds(bountyPence);
 }
 
-/** A marker that rasterises its custom child AFTER layout, then freezes. */
-function TrackedMarker({
+/**
+ * A marker that rasterises its custom child AFTER layout, then freezes — and
+ * thereafter redraws its icon exactly once per change to what is DRAWN.
+ *
+ * Memoised, with every prop stable across a tap except the two or three that
+ * a tap actually changes (`selected`, `zIndex`, `accessible`), so selecting a
+ * car re-renders that car's marker and the one it replaced — not the hundred
+ * others on screen. Two things keep that true and both look like pedantry:
+ * it takes `postId` + `onPressPost` rather than a ready-made handler (an
+ * inline arrow at the call site is a new prop every render), and it draws the
+ * PILL ITSELF from `bountyText` + `selected` rather than taking children (a
+ * child element is a new prop every render, however identical it looks).
+ */
+const TrackedMarker = memo(function TrackedMarker({
   latitude,
   longitude,
-  onPress,
+  postId,
+  onPressPost,
   accessibilityLabel,
+  bountyText,
   selected = false,
   accessible = true,
   anchor,
   zIndex,
-  retrackKey,
-  children,
 }: {
   latitude: number;
   longitude: number;
-  onPress: () => void;
+  postId: string;
+  onPressPost: (id: string) => void;
   accessibilityLabel: string;
+  /** What the pill prints — see pinBountyText. Never empty. */
+  bountyText: string;
   /** false drops the marker from the assistive-tech tree — it stays tappable
    *  by sight, but the sheet's list is the AT path. See the call site. */
   accessible?: boolean;
@@ -174,41 +199,62 @@ function TrackedMarker({
   /** Exposed to assistive tech: selection changes the pill's appearance, so
    *  it must be perceivable non-visually too. */
   selected?: boolean;
-  /** Change this whenever the DRAWN content changes — selection, the price —
-   *  and the marker re-rasterises IN PLACE. See the header for why this is a
-   *  prop rather than a key. */
-  retrackKey: string;
-  children: ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const [tracking, setTracking] = useState(true);
-  // Re-arm DURING RENDER, not in an effect: setting state synchronously in an
-  // effect body cascades renders (and the lint rule forbids it). This is the
-  // adjust-state-on-prop-change pattern used elsewhere in the codebase.
-  const [seenKey, setSeenKey] = useState(retrackKey);
-  if (retrackKey !== seenKey) {
-    setSeenKey(retrackKey);
-    setTracking(true);
-  }
+  const markerRef = useRef<AppMapMarkerHandle>(null);
 
-  // Freeze a beat after each arming. Keyed on `tracking` so a re-arm restarts
-  // the clock; the setState here is async (inside the timeout), which is the
-  // sanctioned shape.
+  // Everything the pill DRAWS: selection (the fill and the padding) and the
+  // price. When this changes the icon is redrawn once, below. Built from the
+  // rendered STRING rather than the pence, so a change that does not alter
+  // what is drawn cannot redraw anything; and nothing NOT drawn — make,
+  // model, the a11y label, zIndex — is in it, because React updates those in
+  // place and a frozen bitmap does not care. See the header for why this is
+  // not the React key.
+  const drawnKey = `${selected ? 'on' : 'off'}:${bountyText}`;
+
+  // The mount window: track until the custom view has laid out and been
+  // captured, then freeze. Once only — nothing below re-arms this.
+  const [tracking, setTracking] = useState(true);
   useEffect(() => {
-    if (!tracking) {
-      return;
-    }
     const timer = setTimeout(() => setTracking(false), TRACK_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [tracking]);
+  }, []);
+
+  // ⚠️ ONE ICON SWAP PER DRAWN CHANGE — the Airbnb shape. After the commit
+  // that changed the pill lands, ask the native marker to rasterise its view
+  // into its icon once. On Android that is `updateMarkerIcon()` posted to the
+  // main looper: it runs on the very next pass, after this commit's props
+  // have been mounted, and touches no timer and no tracker (see the header
+  // for what re-arming tracksViewChanges cost). The first icon comes from
+  // the mount window above, so the mount run is skipped by comparing against
+  // the key that was mounted.
+  const drawn = useRef(drawnKey);
+  useEffect(() => {
+    if (drawnKey === drawn.current) {
+      return;
+    }
+    drawn.current = drawnKey;
+    markerRef.current?.redraw();
+  }, [drawnKey]);
+
+  // A tick on the finger. A marker has no pressed state — it is a native map
+  // overlay, not a Pressable — so until the card springs up nothing else
+  // acknowledges the tap, which was most of what made selection feel
+  // unanswered. The same light tick the app gives a colour swatch, a watch
+  // toggle and a copied plate; silent on a build without the module.
+  const handlePress = useCallback(() => {
+    lightHaptic();
+    onPressPost(postId);
+  }, [onPressPost, postId]);
 
   return (
     <AppMapMarker
+      ref={markerRef}
       coordinate={{ latitude, longitude }}
       anchor={anchor}
       tracksViewChanges={tracking}
       zIndex={zIndex}
-      onPress={onPress}
+      onPress={handlePress}
       accessible={accessible}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
@@ -224,11 +270,24 @@ function TrackedMarker({
           its first native child last reported as its layout. Unflattened,
           the first child is this box, whose size never changes. */}
       <View collapsable={false} style={styles.hitTarget}>
-        {children}
+        <View style={[styles.bountyPill, selected && styles.bountyPillSelected]}>
+          <Text
+            // Capped: an uncapped 14pt at the OS 200% setting doubles every
+            // pill and buries the map. The full amount stays scalable in the
+            // sheet list, the card, and the label below.
+            maxFontSizeMultiplier={mapPinFontScaleCap}
+            style={[styles.bountyText, selected && styles.bountyTextSelected]}
+          >
+            {/* NEVER blank. docs/DESIGN_SYSTEM.md: "never ship a price-less
+                map marker" — an empty pill reads as a cluster, not as a car
+                with no reward. A no-reward listing (ADR-0014) says so. */}
+            {bountyText}
+          </Text>
+        </View>
       </View>
     </AppMapMarker>
   );
-}
+});
 
 export interface MapPinsProps {
   pins: MapPinItem[];
@@ -241,7 +300,6 @@ export const MapPins = memo(function MapPins({
   selectedPostId,
   onPressPost,
 }: MapPinsProps) {
-  const styles = useThemedStyles(makeStyles);
   return (
     <>
       {pins.map((pin) => {
@@ -252,13 +310,7 @@ export const MapPins = memo(function MapPins({
             // day (2026-09-22) to force a fresh bitmap; see the header for
             // the red pin and the dead taps that bought.
             key={pin.key}
-            // Everything DRAWN, re-rasterised in place: selection (the fill
-            // and the padding) and the price. Keyed on the rendered STRING
-            // rather than on `bountyPence`, so a change that does not alter
-            // what is drawn cannot re-arm anything. Anything NOT drawn — make,
-            // model, the a11y label, zIndex — stays out: React updates those
-            // in place and a frozen bitmap does not care.
-            retrackKey={`${selected ? 'on' : 'off'}:${pinBountyText(pin.post.bountyPence)}`}
+            bountyText={pinBountyText(pin.post.bountyPence)}
             selected={selected}
             // Selection on top, then HIGHEST BOUNTY FIRST. Under heavy overlap
             // paint order is what decides which marker a tap actually hits, and
@@ -281,33 +333,13 @@ export const MapPins = memo(function MapPins({
             // markers that overlap.
             latitude={pin.post.latitude}
             longitude={pin.post.longitude}
-            // A tick on the finger. A marker has no pressed state — it is a
-            // native map overlay, not a Pressable — so until the card springs
-            // up nothing acknowledges the tap at all, which is most of what
-            // made selection feel unanswered. The same light tick the app
-            // already gives a colour swatch, a watch toggle and a copied
-            // plate; silent on a build without the module.
-            onPress={() => {
-              lightHaptic();
-              onPressPost(pin.post.id);
-            }}
+            // The id and the handler, not an arrow: TrackedMarker is memoised
+            // and an inline closure here would re-render all hundred markers
+            // on every tap. The haptic lives inside it for the same reason.
+            postId={pin.post.id}
+            onPressPost={onPressPost}
             accessibilityLabel={`${bountyLabel(pin.post.bountyPence)} — ${pin.post.make} ${pin.post.model}`}
-          >
-            <View style={[styles.bountyPill, selected && styles.bountyPillSelected]}>
-              <Text
-                // Capped: an uncapped 14pt at the OS 200% setting doubles
-                // every pill and buries the map. The full amount stays
-                // scalable in the sheet list, the card, and the label below.
-                maxFontSizeMultiplier={mapPinFontScaleCap}
-                style={[styles.bountyText, selected && styles.bountyTextSelected]}
-              >
-                {/* NEVER blank. docs/DESIGN_SYSTEM.md: "never ship a price-less
-                    map marker" — an empty pill reads as a cluster, not as a car
-                    with no reward. A no-reward listing (ADR-0014) says so. */}
-                {pinBountyText(pin.post.bountyPence)}
-              </Text>
-            </View>
-          </TrackedMarker>
+          />
         );
       })}
     </>
@@ -378,7 +410,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // Selection GROWS as well as inverting (DESIGN_SYSTEM: "selected pin grows").
   // Tone alone stopped carrying it once clustering went: a field of near-black
   // dots makes near-black the map's dominant ink, so size and paint order have
-  // to do the work. Re-rasterised in place via retrackKey (see the header).
+  // to do the work. Redrawn once in place via drawnKey (see the header).
   // surfaceInverse, NOT surfaceOverMedia: a pin sits on the BASEMAP, which is
   // themed (mapStyleFor), not on photography. On the dark basemap this flips to
   // near-white — a dark bubble on dark tiles measures ~1.2:1 and vanishes.

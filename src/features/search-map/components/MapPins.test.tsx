@@ -24,6 +24,10 @@ import { shadows, sizes } from '@/shared/theme';
 import type { MapPinItem, MapPost } from '../types';
 import { MapPins } from './MapPins';
 
+const mockRedraw = jest.fn();
+const mockMarkerRender = jest.fn();
+const mockLightHaptic = jest.fn();
+
 // The real marker needs react-native-maps; render a plain View that keeps the
 // props we assert on. `testID` carries the key so we can watch it change.
 jest.mock('@/shared/ui/AppMap', () => {
@@ -32,41 +36,52 @@ jest.mock('@/shared/ui/AppMap', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const { Pressable } = require('react-native');
   return {
-    AppMapMarker: ({
-      children,
-      onPress,
-      accessibilityLabel,
-      accessible,
-      zIndex,
-      tracksViewChanges,
-    }: {
-      children: React.ReactNode;
-      onPress: () => void;
-      accessibilityLabel: string;
-      accessible?: boolean;
-      zIndex?: number;
-      tracksViewChanges?: boolean;
-    }) =>
-      React.createElement(
-        Pressable,
+    AppMapMarker: React.forwardRef(
+      function AppMapMarker(
         {
+          children,
           onPress,
           accessibilityLabel,
           accessible,
-          testID: 'marker',
-          // Paint order is invisible in a simulator as well as in jest, so it
-          // has to come back out as an assertable prop.
-          'data-zindex': zIndex,
-          // So is the tracking window, and it is per-frame bitmap work — the
-          // difference between a tap that feels instant and one that does not.
+          zIndex,
           tracksViewChanges,
+        }: {
+          children: React.ReactNode;
+          onPress: () => void;
+          accessibilityLabel: string;
+          accessible?: boolean;
+          zIndex?: number;
+          tracksViewChanges?: boolean;
         },
-        children,
-      ),
+        ref: React.Ref<{ redraw: () => void }>,
+      ) {
+        // The imperative handle the component reaches for on a drawn change.
+        // ⚠️ Lazy arrow, same TDZ reason as the haptics mock below.
+        React.useImperativeHandle(ref, () => ({ redraw: () => mockRedraw() }));
+        // Which markers React re-rendered — the memo's whole point.
+        mockMarkerRender(accessibilityLabel);
+        return React.createElement(
+          Pressable,
+          {
+            onPress,
+            accessibilityLabel,
+            accessible,
+            testID: 'marker',
+            // Paint order is invisible in a simulator as well as in jest, so
+            // it has to come back out as an assertable prop.
+            'data-zindex': zIndex,
+            // So is the tracking window, and it is per-frame bitmap work —
+            // the difference between a tap that feels instant and one that
+            // does not.
+            tracksViewChanges,
+          },
+          children,
+        );
+      },
+    ),
   };
 });
 
-const mockLightHaptic = jest.fn();
 // ⚠️ The arrow is load-bearing. `jest.mock` is hoisted ABOVE the `const` above
 // it, so `lightHaptic: mockLightHaptic` — the obvious simplification — throws a
 // TDZ ReferenceError at module init. Calling it lazily defers the read.
@@ -76,6 +91,8 @@ jest.mock('@/shared/lib/haptics', () => ({
 
 beforeEach(() => {
   mockLightHaptic.mockClear();
+  mockRedraw.mockClear();
+  mockMarkerRender.mockClear();
 });
 
 const post = (id: string, bountyPence: number): MapPost => ({
@@ -267,10 +284,10 @@ const trackingOf = (view: Awaited<ReturnType<typeof renderPins>>) =>
 
 describe('⚠️ the tracking window (the other jank guard)', () => {
   // `tracksViewChanges` means 're-rasterise this custom view EVERY FRAME', so
-  // the window is real bitmap work. It is armed on mount and again whenever
-  // retrackKey changes, and it must NOT be cut short: freezing before the
-  // native tracker has captured the view leaves react-native-maps' default
-  // pin on screen — the red marker the owner saw flicker in (2026-09-23).
+  // the window is real bitmap work. It is armed on MOUNT ONLY, and it must
+  // NOT be cut short: freezing before the native tracker has captured the
+  // view leaves react-native-maps' default pin on screen — the red marker
+  // the owner saw flicker in (2026-09-23).
   it('tracks from mount and freezes once settled', async () => {
     jest.useFakeTimers();
     try {
@@ -282,6 +299,20 @@ describe('⚠️ the tracking window (the other jank guard)', () => {
       });
 
       expect(trackingOf(view)).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does NOT redraw on mount — the window is what draws the first icon', async () => {
+    jest.useFakeTimers();
+    try {
+      await renderPins([pin('a', 0), pin('b', 1)]);
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(mockRedraw).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }
@@ -298,11 +329,14 @@ describe('marker identity (the jank guard)', () => {
   // on device — "the red marker flicker into view then back to the price
   // marker", and taps that did not register.
   //
-  // So a change to what is DRAWN re-arms `tracksViewChanges` IN PLACE (the
-  // `retrackKey` prop) and the React key stays `pin.key`. The clipping that
-  // sent us down the remount road had a different cause and a different fix:
-  // the pill now keeps ONE FOOTPRINT across selection, asserted above.
-  it('re-rasterises IN PLACE when selection changes — same marker, new bitmap', async () => {
+  // So a change to what is DRAWN asks the SAME marker to redraw its icon ONCE
+  // (the `drawnKey` prop → `redraw()`), and the React key stays `pin.key`.
+  // Not a re-arm of `tracksViewChanges` either: that was the version between
+  // the two, and it landed the highlight a native tick or two late — the
+  // owner's "clunky" (2026-09-23). The clipping that sent us down the remount
+  // road had a different cause and a different fix: the wrapper is a real
+  // native view and keeps ONE FOOTPRINT across selection, asserted above.
+  it('redraws IN PLACE when selection changes — same marker, one icon swap', async () => {
     jest.useFakeTimers();
     try {
       const view = await renderPins([pin('a', 0)]);
@@ -324,14 +358,63 @@ describe('marker identity (the jank guard)', () => {
 
       // The SAME native marker — no destroy, so no red pin and no dead tap.
       expect(view.getByTestId('marker')).toBe(before);
-      // ...drawing itself again, so the selected fill is what shows.
-      expect(trackingOf(view)).toBe(true);
+      // One swap, on the next main-loop pass — not a tracker window.
+      expect(mockRedraw).toHaveBeenCalledTimes(1);
+      expect(trackingOf(view)).toBe(false);
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it('⚠️ re-rasterises when the PRICE changes — a frozen marker keeps its old bitmap', async () => {
+  it('redraws BOTH ends of a selection change — the one deselected too', async () => {
+    // The pill that lost selection has a dark bitmap it must shed; forgetting
+    // it is how three tapped-through pills stayed dark in the owner's photo.
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0), pin('b', 1), pin('c', 2)], 'a');
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      await act(async () => {
+        view.rerender(
+          <MapPins
+            pins={[pin('a', 0), pin('b', 1), pin('c', 2)]}
+            selectedPostId="b"
+            onPressPost={jest.fn()}
+          />,
+        );
+      });
+
+      // a (off) and b (on); c drew nothing new and must not pay for it.
+      expect(mockRedraw).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('⚠️ a tap re-renders the two markers it touched, not the whole map', async () => {
+    // Up to a hundred markers are mounted. The marker is memoised with stable
+    // props precisely so a tap costs two React renders rather than a hundred
+    // — an inline onPress arrow at the call site would silently undo that.
+    const three = [pin('a', 0, 25000), pin('b', 1, 4500), pin('c', 2, 1000)];
+    const onPressPost = jest.fn();
+    const view = await act(async () =>
+      render(<MapPins pins={three} selectedPostId="a" onPressPost={onPressPost} />),
+    );
+    mockMarkerRender.mockClear();
+
+    await act(async () => {
+      view.rerender(<MapPins pins={three} selectedPostId="b" onPressPost={onPressPost} />);
+    });
+
+    const rendered = mockMarkerRender.mock.calls.map(([label]) => label as string);
+    expect(rendered).toContain('£250 reward — Ford Fiesta');
+    expect(rendered).toContain('£45 reward — Ford Fiesta');
+    expect(rendered).not.toContain('£10 reward — Ford Fiesta');
+  });
+
+  it('⚠️ redraws when the PRICE changes — a frozen marker keeps its old bitmap', async () => {
     // The pill is rasterised once and frozen, so a reward the owner raised
     // landed in the React tree while the map kept showing the old figure. A
     // price that is wrong is worse than one that is late.
@@ -343,7 +426,6 @@ describe('marker identity (the jank guard)', () => {
       });
       const before = view.getByTestId('marker');
       expect(view.getByText('£250')).toBeTruthy();
-      expect(trackingOf(view)).toBe(false);
 
       await act(async () => {
         view.rerender(
@@ -352,16 +434,17 @@ describe('marker identity (the jank guard)', () => {
       });
 
       expect(view.getByTestId('marker')).toBe(before);
-      expect(trackingOf(view)).toBe(true);
+      expect(mockRedraw).toHaveBeenCalledTimes(1);
+      expect(trackingOf(view)).toBe(false);
       expect(view.getByText('£400')).toBeTruthy();
     } finally {
       jest.useRealTimers();
     }
   });
 
-  it('does NOT re-rasterise for a change that is not DRAWN', async () => {
+  it('does NOT redraw for a change that is not DRAWN', async () => {
     // Make and model live in the accessibility label, never on the pill, so
-    // React updates them in place — re-arming for them is pure bitmap work
+    // React updates them in place — a redraw for them is pure bitmap work
     // with nothing to show for it.
     jest.useFakeTimers();
     try {
@@ -380,6 +463,7 @@ describe('marker identity (the jank guard)', () => {
       });
 
       expect(view.getByTestId('marker')).toBe(before);
+      expect(mockRedraw).not.toHaveBeenCalled();
       expect(trackingOf(view)).toBe(false);
       expect(view.getByLabelText('£250 reward — Ford Focus')).toBeTruthy();
     } finally {
@@ -387,10 +471,10 @@ describe('marker identity (the jank guard)', () => {
     }
   });
 
-  it('does NOT re-rasterise a marker when only its RANK changes', async () => {
+  it('does NOT redraw a marker when only its RANK changes', async () => {
     // The load-bearing half. Rank churns on every pan as the in-view
-    // population changes, so re-arming here would hold dozens of tracking
-    // windows open per gesture — worse than the jank this file guards.
+    // population changes, so redrawing here would rasterise dozens of
+    // markers per gesture — worse than the jank this file guards.
     jest.useFakeTimers();
     try {
       const view = await renderPins([pin('a', 0)]);
@@ -410,6 +494,7 @@ describe('marker identity (the jank guard)', () => {
       });
 
       expect(view.getByTestId('marker')).toBe(before);
+      expect(mockRedraw).not.toHaveBeenCalled();
       expect(trackingOf(view)).toBe(false);
     } finally {
       jest.useRealTimers();
