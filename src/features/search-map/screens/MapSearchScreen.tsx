@@ -362,12 +362,12 @@ function MapSearchBody({
   );
   // Mounted in batches rather than all at once — nothing thins the population
   // any more, so a dense area is up to VIEWPORT_POST_LIMIT custom markers in
-  // one commit, each holding tracksViewChanges open for 500ms.
+  // one commit, each re-drawing every frame until it has rasterised.
   //
   // populationId, NOT searchId: searchId bumps on every landed search
   // INCLUDING the auto re-search after each pan, which returns a largely
   // overlapping set. Resetting there would unmount ~68 already-drawn markers
-  // per pan and re-arm 500ms of tracking on each as they came back — more jank
+  // per pan and re-arm the tracking window on each as they came back — more jank
   // than not batching at all, and the exact failure this hook exists to stop.
   //
   // The selected id goes in so the reveal can never withhold the pin the card

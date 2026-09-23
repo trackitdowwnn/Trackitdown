@@ -5,7 +5,10 @@
  * WHY:   Clustering used to bound the marker population; it was removed
  *        2026-08-06 on the owner's call, so a dense area now mounts up to
  *        VIEWPORT_POST_LIMIT (100) custom markers at once — and each one holds
- *        tracksViewChanges open for 500ms while it rasterises. One commit of a
+ *        tracksViewChanges open while it rasterises, re-drawing every frame
+ *        until it does (two frames past its own layout since 2026-09-23, 500ms
+ *        only for one that never reports a layout; the batching argument is
+ *        unchanged, and it is the COUNT that makes it). One commit of a
  *        hundred of those is the precise Android jank MapPins' header exists to
  *        prevent. Staggering the mount staggers the tracking windows with it.
  *
@@ -14,7 +17,7 @@
  *        auto re-search that follows one: both return largely the same posts,
  *        whose markers are already mounted (the React key is the post id), so
  *        resetting there would unmount markers the user is looking at and fade
- *        them back in, re-arming 500ms of tracking on each. That costs more
+ *        them back in, re-arming the tracking window on each. That costs more
  *        than not batching at all. Hence `populationId`, not `searchId` —
  *        searchId bumps on EVERY landed search, including every pan's.
  * LINKS: src/features/search-map/lib/mapPins.ts (revealPins — the pure slice);
@@ -32,7 +35,14 @@ const FIRST_BATCH = 20;
 /** Added per tick thereafter: 100 markers arrive in ~4 steps. */
 const BATCH = 20;
 /** Roughly two frames at 60Hz — long enough to yield to the paint, short
- *  enough that the fill-in is over before a settling map is touched again. */
+ *  enough that the fill-in is over before a settling map is touched again.
+ *
+ *  NOT the same knob as MapPins' post-layout freeze, which counts real frames
+ *  rather than milliseconds and happens to describe a similar span. Tuning one
+ *  is not a reason to tune the other: this paces how fast markers ARRIVE, that
+ *  one ends a single marker's rasterisation. They interleave by design —
+ *  markers land every ~32ms and each freezes two frames after its own layout,
+ *  so the windows stagger rather than stack. */
 const BATCH_INTERVAL_MS = 32;
 
 /**

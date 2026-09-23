@@ -5,7 +5,7 @@
  *        selection must.
  * WHY:   Those last two pull in opposite directions and both have bitten.
  *        RANK churns on every pan, so folding it into the key remounts dozens
- *        of markers at once, each re-arming 500ms of tracksViewChanges — the
+ *        of markers at once, each re-arming a tracksViewChanges window — the
  *        Android jank this component exists to avoid. SELECTION is the
  *        opposite case: repainting it in place is cheap and unreliable, and a
  *        marker that keeps its old bitmap has it clipped to the new bounds
@@ -37,12 +37,14 @@ jest.mock('@/shared/ui/AppMap', () => {
       accessibilityLabel,
       accessible,
       zIndex,
+      tracksViewChanges,
     }: {
       children: React.ReactNode;
       onPress: () => void;
       accessibilityLabel: string;
       accessible?: boolean;
       zIndex?: number;
+      tracksViewChanges?: boolean;
     }) =>
       React.createElement(
         Pressable,
@@ -54,10 +56,25 @@ jest.mock('@/shared/ui/AppMap', () => {
           // Paint order is invisible in a simulator as well as in jest, so it
           // has to come back out as an assertable prop.
           'data-zindex': zIndex,
+          // So is the tracking window, and it is per-frame bitmap work — the
+          // difference between a tap that feels instant and one that does not.
+          tracksViewChanges,
         },
         children,
       ),
   };
+});
+
+const mockLightHaptic = jest.fn();
+// ⚠️ The arrow is load-bearing. `jest.mock` is hoisted ABOVE the `const` above
+// it, so `lightHaptic: mockLightHaptic` — the obvious simplification — throws a
+// TDZ ReferenceError at module init. Calling it lazily defers the read.
+jest.mock('@/shared/lib/haptics', () => ({
+  lightHaptic: () => mockLightHaptic(),
+}));
+
+beforeEach(() => {
+  mockLightHaptic.mockClear();
 });
 
 const post = (id: string, bountyPence: number): MapPost => ({
@@ -128,6 +145,33 @@ describe('one marker, one price', () => {
 
     expect(onPressPost).toHaveBeenCalledWith('a');
   });
+
+  it('ticks the finger on tap — a marker has no pressed state of its own', async () => {
+    // Until the card springs up nothing acknowledges the tap: a marker is a
+    // native map overlay, not a Pressable. The same light tick the app gives a
+    // colour swatch or a watch toggle.
+    const view = await renderPins([pin('a', 9)]);
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('marker'));
+    });
+
+    expect(mockLightHaptic).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ still ticks when the tapped marker is ALREADY selected', async () => {
+    // Re-tapping a selected pin changes nothing on screen — the sheet snap
+    // early-returns — so the tick is the only acknowledgement that the tap
+    // landed. A well-meaning "don't re-fire on a no-op" guard would take the
+    // feedback away from the one case that has nothing else.
+    const view = await renderPins([pin('a', 9)], 'a');
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('marker'));
+    });
+
+    expect(mockLightHaptic).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('⚠️ the marker box contains its own shadow', () => {
@@ -197,6 +241,93 @@ describe('⚠️ the marker box contains its own shadow', () => {
     expect(selected.paddingVertical + selected.margin).toBe(
       unselected.paddingVertical + unselected.margin,
     );
+  });
+});
+
+/** The wrapper's onLayout — the signal that ends the tracking window. */
+const layoutOf = (view: Awaited<ReturnType<typeof renderPins>>) =>
+  (view.getByTestId('marker').children[0] as {
+    props: { onLayout?: (event: unknown) => void };
+  }).props.onLayout;
+
+describe('⚠️ the tracking window (the other jank guard)', () => {
+  // `tracksViewChanges` means "re-rasterise this custom view EVERY FRAME", so
+  // the settle window is bitmap work, not an idle wait. It was a flat 500ms
+  // per marker on mount — affordable — and then twice per TAP once selection
+  // started remounting, which is what the owner felt as "very clunky". Layout
+  // is the thing it was ever waiting for, so the window now ends two frames
+  // past it and 500ms is only the ceiling for a marker that never reports one.
+  it('keeps tracking until the marker has laid out', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0)]);
+      expect(view.getByTestId('marker').props.tracksViewChanges).toBe(true);
+
+      // Most of the old window gone, still tracking: nothing has measured.
+      await act(async () => {
+        jest.advanceTimersByTime(400);
+      });
+      expect(view.getByTestId('marker').props.tracksViewChanges).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('freezes two FRAMES after the layout, not half a second later', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0)]);
+
+      await act(async () => {
+        layoutOf(view)?.({ nativeEvent: { layout: { width: 80, height: 60 } } });
+      });
+      // Frames, not wall clock: 32ms is two frames only on a device actually
+      // hitting 60fps, and the moment this matters — a batch mounting while
+      // tiles load — is when a frame runs long.
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(1);
+      });
+
+      expect(view.getByTestId('marker').props.tracksViewChanges).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('⚠️ a second layout does not re-arm the window', async () => {
+    // onLayout fires on every size change, and re-arming would undo the whole
+    // point — a marker that resizes would go back to per-frame rasterising.
+    // The guard is structural: the prop itself becomes undefined.
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0)]);
+
+      await act(async () => {
+        layoutOf(view)?.({ nativeEvent: { layout: { width: 80, height: 60 } } });
+      });
+
+      expect(layoutOf(view)).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('still freezes on the ceiling when no layout is ever reported', async () => {
+    jest.useFakeTimers();
+    try {
+      const view = await renderPins([pin('a', 0)]);
+
+      await act(async () => {
+        jest.advanceTimersByTime(500);
+      });
+
+      expect(view.getByTestId('marker').props.tracksViewChanges).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

@@ -9,7 +9,7 @@
  *        same bug one step removed — that bumps on every LANDED search,
  *        including the auto re-search after each pan, which returns largely
  *        the same cars. Either way ~68 mounted markers unmount and re-arm
- *        500ms of tracking per pan: more jank than not batching at all. Only
+ *        their tracking window per pan: more jank than not batching at all. Only
  *        `populationId` (entry / apply / retry) is a genuine turnover. None of
  *        this is visible in a screenshot; it has to be asserted.
  * LINKS: src/features/search-map/hooks/useProgressivePins.ts,

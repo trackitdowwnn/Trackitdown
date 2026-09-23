@@ -132,9 +132,11 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
    `VIEWPORT_POST_LIMIT` (100) simultaneous markers.
    - **They mount in BATCHES, not all at once** (`hooks/useProgressivePins.ts`
      + `revealPins`). The highest-ranked markers land in the first commit and
-     the long tail fills in ~20 per tick. Each marker holds `tracksViewChanges` open for
-     500ms as it rasterises, so a hundred in one commit is the precise Android
-     jank clustering used to hide. The reveal restarts on a landed SEARCH, not
+     the long tail fills in ~20 per tick. Each marker holds `tracksViewChanges`
+     open while it rasterises — re-drawing EVERY FRAME until it does, for two
+     frames past its own layout (2026-09-23; 500ms is now only the ceiling for
+     a marker that never reports one) — so a hundred in one commit is the
+     precise Android jank clustering used to hide. The reveal restarts on a landed SEARCH, not
      on a pan — a pan re-culls posts whose markers are already mounted, and
      resetting there would make visible markers disappear mid-gesture.
 4. PEEK CARD (pin ↔ card loop — definitive spec). Tapping a pin springs a

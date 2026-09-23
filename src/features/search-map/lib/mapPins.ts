@@ -177,10 +177,13 @@ export function keepMarkersOnScreen(
  *
  * WHY: nothing thins the marker population any more, so a dense area mounts up
  * to VIEWPORT_POST_LIMIT (100) custom markers in ONE commit, and each one then
- * holds tracksViewChanges open for 500ms while it rasterises. That is the exact
- * Android jank MapPins was written to avoid, and clustering used to hide it by
- * keeping the count small. Staggering the mount staggers those 500ms windows
- * too, which is the part that actually costs frames.
+ * holds tracksViewChanges open while it rasterises — re-drawing EVERY FRAME
+ * until it does. That is the exact Android jank MapPins was written to avoid,
+ * and clustering used to hide it by keeping the count small. Staggering the
+ * mount staggers those windows too, which is the part that actually costs
+ * frames. (The window itself shrank on 2026-09-23 to two frames past each
+ * marker's own layout; it is the COUNT this hook is about, so the argument is
+ * unchanged.)
  *
  * BY RANK, so the biggest bounties are in the first commit and the fill-in adds
  * the ones a user is least likely to be reaching for. (This used to withhold

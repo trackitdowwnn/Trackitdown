@@ -17,7 +17,7 @@
  *        false from frame 0 is the blank-marker trap), then stops tracking
  *        so it pans free.
  *
- *        ⚠️ SELECTION RE-KEYS THE MARKER; EVERYTHING ELSE RE-ARMS IN PLACE.
+ *        ⚠️ SELECTION RE-KEYS THE MARKER; NOTHING RE-ARMS IN PLACE.
  *        This reverses the 2026-08 note that lived here ("RE-RASTERISING IS A
  *        PROP, NOT A KEY"), and the reason is worth keeping: re-arming
  *        `tracksViewChanges` is the cheap repaint but not a reliable one on
@@ -44,6 +44,7 @@ import { memo, useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { formatPounds } from '@/shared/lib';
+import { lightHaptic } from '@/shared/lib/haptics';
 import {
   mapPinFontScaleCap,
   radii,
@@ -60,9 +61,33 @@ import { AppMapMarker } from '@/shared/ui/AppMap';
 import { AT_MARKER_LIMIT } from '../lib/mapPins';
 import type { MapPinItem } from '../types';
 
-/** How long a freshly-mounted marker keeps tracking view changes before it
- *  freezes — long enough for the custom view to lay out and rasterise. */
+/**
+ * The CEILING on how long a freshly-mounted marker keeps tracking view
+ * changes — the fallback for a marker that never reports a layout.
+ *
+ * ⚠️ `tracksViewChanges` means "re-rasterise this custom view EVERY FRAME", so
+ * this is not an idle wait: it is half a second of bitmap work per marker.
+ * That was affordable while it happened once per marker on mount; since
+ * selection remounts (see the header) it also happens twice per TAP, and the
+ * owner reported the surface as "very clunky". The real signal is below.
+ */
 const TRACK_SETTLE_MS = 500;
+
+/**
+ * ⚠️ AFTER LAYOUT, THE FREEZE IS COUNTED IN FRAMES, NOT MILLISECONDS — see the
+ * effect below. Layout is the thing the tracking was ever waiting for (the
+ * blank-marker trap is freezing before the custom view has been MEASURED), so
+ * once measured the bitmap needs a frame to be captured and nothing after
+ * that. The 500 above stops being the normal path and becomes the safety net
+ * it was always meant to be.
+ *
+ * Two `requestAnimationFrame`s rather than a ~32ms timer: 32ms is two frames
+ * only on a device actually hitting 60fps, and the moment that matters most —
+ * a dense area mounting a batch of markers while tiles load — is exactly when
+ * a frame runs long and 32ms is less than ONE. Frames are the unit the
+ * rasteriser works in, so count frames. (At 120Hz this is ~17ms, which is
+ * simply less idle time, not less safety.)
+ */
 
 /** The usual anchor: the marker box centred on its coordinate. Hoisted so an
  *  unshifted marker gets a stable object rather than a new one per render. */
@@ -129,16 +154,34 @@ function TrackedMarker({
   // the only thing that changed the drawn content was selection, and selection
   // now remounts (see the header), which starts this at `true` again anyway.
   const [tracking, setTracking] = useState(true);
+  // Set once, by the marker's own layout. Flipping it re-runs the effect below
+  // with the short window, so a marker that has been measured stops
+  // re-rasterising almost immediately instead of burning the full ceiling.
+  const [laidOut, setLaidOut] = useState(false);
 
-  // Freeze a beat after mounting; the setState here is async (inside the
-  // timeout), which is the sanctioned shape.
+  // Freeze a beat after the layout that mattered; the setState here is async
+  // (inside the timeout), which is the sanctioned shape.
   useEffect(() => {
     if (!tracking) {
       return;
     }
-    const timer = setTimeout(() => setTracking(false), TRACK_SETTLE_MS);
-    return () => clearTimeout(timer);
-  }, [tracking]);
+    // Not measured yet: hold the ceiling. This is the path for a marker that
+    // never reports a layout at all, which is the only reason the ceiling
+    // still exists.
+    if (!laidOut) {
+      const timer = setTimeout(() => setTracking(false), TRACK_SETTLE_MS);
+      return () => clearTimeout(timer);
+    }
+    // Measured: two real frames, whatever those cost today.
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setTracking(false));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, [tracking, laidOut]);
 
   return (
     <AppMapMarker
@@ -153,8 +196,17 @@ function TrackedMarker({
       accessibilityState={{ selected }}
     >
       {/* Transparent 44pt hit area around the drawn marker — markers don't
-          honour hitSlop, so the touch target is this wrapper. */}
-      <View style={styles.hitTarget}>{children}</View>
+          honour hitSlop, so the touch target is this wrapper. It is also what
+          reports the layout that ends tracking: this view IS the bounds the
+          marker is rasterised to, so when it has measured, there is nothing
+          further to wait for. Guarded — onLayout fires again on every size
+          change, and re-arming would undo the whole point. */}
+      <View
+        style={styles.hitTarget}
+        onLayout={laidOut ? undefined : () => setLaidOut(true)}
+      >
+        {children}
+      </View>
     </AppMapMarker>
   );
 }
@@ -216,7 +268,16 @@ export const MapPins = memo(function MapPins({
             // markers that overlap.
             latitude={pin.post.latitude}
             longitude={pin.post.longitude}
-            onPress={() => onPressPost(pin.post.id)}
+            // A tick on the finger. A marker has no pressed state — it is a
+            // native map overlay, not a Pressable — so until the card springs
+            // up nothing acknowledges the tap at all, which is most of what
+            // made selection feel unanswered. The same light tick the app
+            // already gives a colour swatch, a watch toggle and a copied
+            // plate; silent on a build without the module.
+            onPress={() => {
+              lightHaptic();
+              onPressPost(pin.post.id);
+            }}
             accessibilityLabel={`${bountyLabel(pin.post.bountyPence)} — ${pin.post.make} ${pin.post.model}`}
           >
             <View style={[styles.bountyPill, selected && styles.bountyPillSelected]}>
