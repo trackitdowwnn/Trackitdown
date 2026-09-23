@@ -17,9 +17,9 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
-import { shadows, sizes } from '@/shared/theme';
+import { motion, shadows, sizes } from '@/shared/theme';
 
 import type { MapPinItem, MapPost } from '../types';
 import { MapPins } from './MapPins';
@@ -34,51 +34,60 @@ jest.mock('@/shared/ui/AppMap', () => {
   const React = require('react');
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const { Pressable } = require('react-native');
-  return {
-    AppMapMarker: function AppMapMarker({
+  function AppMapMarker({
+    children,
+    onPress,
+    accessibilityLabel,
+    accessibilityState,
+    accessible,
+    zIndex,
+    animatedProps,
+    image,
+    tracksViewChanges,
+  }: {
+    children: React.ReactNode;
+    onPress: () => void;
+    accessibilityLabel: string;
+    accessibilityState?: { selected?: boolean };
+    accessible?: boolean;
+    zIndex?: number;
+    animatedProps?: { opacity: number };
+    image?: { uri: string };
+    tracksViewChanges?: boolean;
+  }) {
+    // Which markers React re-rendered — the memo's whole point.
+    mockMarkerRender(accessibilityLabel, accessibilityState?.selected === true);
+    return React.createElement(
+      Pressable,
+      {
+        onPress,
+        accessibilityLabel,
+        accessibilityState,
+        accessible,
+        testID: 'marker',
+        // Paint order, the birth opacity and the tracking window are all
+        // invisible in a simulator as well as in jest, so they come back
+        // out as assertable props. `animatedProps` is what the Reanimated
+        // mock hands through: the worklet's return value at render time.
+        'data-zindex': zIndex,
+        animatedProps,
+        image,
+        tracksViewChanges,
+      },
       children,
-      onPress,
-      accessibilityLabel,
-      accessibilityState,
-      accessible,
-      zIndex,
-      opacity,
-      image,
-      tracksViewChanges,
-    }: {
-      children: React.ReactNode;
-      onPress: () => void;
-      accessibilityLabel: string;
-      accessibilityState?: { selected?: boolean };
-      accessible?: boolean;
-      zIndex?: number;
-      opacity?: number;
-      image?: { uri: string };
-      tracksViewChanges?: boolean;
-    }) {
-      // Which markers React re-rendered — the memo's whole point.
-      mockMarkerRender(accessibilityLabel, accessibilityState?.selected === true);
-      return React.createElement(
-        Pressable,
-        {
-          onPress,
-          accessibilityLabel,
-          accessibilityState,
-          accessible,
-          testID: 'marker',
-          // Paint order, the birth opacity and the tracking window are all
-          // invisible in a simulator as well as in jest, so they come back
-          // out as assertable props.
-          'data-zindex': zIndex,
-          opacity,
-          image,
-          tracksViewChanges,
-        },
-        children,
-      );
-    },
-  };
+    );
+  }
+  return { AppMapMarker, AppMapMarkerAnimated: AppMapMarker };
 });
+
+// The project's Reanimated mock resolves `withTiming` to its target at once
+// and shared values are plain objects, so a fade cannot be watched settle in
+// jest. The spy is how a fade's INTENT — target, duration — is asserted.
+// ⚠️ `require`, not `jest.requireMock`: the latter hands back a separate
+// automock instance, not the mapped module the component imports, so spies
+// on it never reach the component (jest/reanimatedMock.js says the same).
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- the mapped mock module, for spying
+const reanimated = require('react-native-reanimated') as typeof import('react-native-reanimated');
 
 // ⚠️ The arrow is load-bearing. `jest.mock` is hoisted ABOVE the `const` above
 // it, so `lightHaptic: mockLightHaptic` — the obvious simplification — throws a
@@ -131,7 +140,7 @@ type MarkerNode = {
     accessibilityState?: { selected?: boolean };
     accessible?: boolean;
     'data-zindex': number;
-    opacity: number;
+    animatedProps: { opacity: number };
     image?: { uri: string };
     tracksViewChanges: boolean;
   };
@@ -139,10 +148,14 @@ type MarkerNode = {
 
 const markers = (view: View) => view.getAllByTestId('marker') as unknown as MarkerNode[];
 const isSelection = (node: MarkerNode) => node.props.accessibilityState?.selected === true;
-/** The static pills — never the selection marker. */
+/** The static pills — never a selection marker, live or leaving. */
 const statics = (view: View) => markers(view).filter((node) => !isSelection(node));
-/** The selection marker, or undefined when nothing is selected. */
-const selection = (view: View) => markers(view).find(isSelection);
+/** The LIVE selection marker (a stop for assistive tech), or undefined. */
+const selection = (view: View) =>
+  markers(view).find((node) => isSelection(node) && node.props.accessible === true);
+/** The selection marker on its way out (scenery: not a stop), or undefined. */
+const leaving = (view: View) =>
+  markers(view).find((node) => isSelection(node) && node.props.accessible === false);
 
 /** Let the mount settle: the birth frame and the tracking window. */
 const settle = async () => {
@@ -255,6 +268,34 @@ describe('⚠️ the marker box contains its own shadow', () => {
     expect(wrapper.minHeight).toBe(sizes.touchTarget);
   });
 
+  // ⚠️ jest runs as iOS, so the Android arm of the Platform.select is
+  // otherwise untested — which is how a padding that the 44pt floor swallowed
+  // whole shipped as "the tap box is taller" (2026-09-24, ui-reviewer). On
+  // Android the box is one `sizes.control` tall and no wider than the pill
+  // plus its margin: the shadow padding draws nothing there and was the
+  // invisible box that swallowed taps meant for neighbouring pills.
+  it('on Android the box is one control tall, with no side padding', async () => {
+    const select = jest
+      .spyOn(Platform, 'select')
+      .mockImplementation((spec) => {
+        const arms = spec as { android?: unknown; default?: unknown };
+        return arms.android ?? arms.default;
+      });
+    try {
+      const view = await renderPins([pin('a', 5, 25000)]);
+
+      const wrapper = StyleSheet.flatten(
+        (markers(view)[0] as unknown as { children: { props: { style?: unknown } }[] })
+          .children[0].props.style,
+      ) as { minHeight?: number; padding?: number; paddingHorizontal?: number };
+      expect(wrapper.minHeight).toBe(sizes.control);
+      expect(wrapper.padding).toBeUndefined();
+      expect(wrapper.paddingHorizontal).toBeUndefined();
+    } finally {
+      select.mockRestore();
+    }
+  });
+
   it('pads the SELECTION marker the same way — it is the one that grows', async () => {
     const view = await renderPins([pin('a', 5, 25000)], 'a');
     const onTop = selection(view);
@@ -277,6 +318,7 @@ describe('⚠️ the marker box contains its own shadow', () => {
         paddingHorizontal?: number;
         paddingVertical?: number;
         margin?: number;
+        borderWidth?: number;
       };
     };
 
@@ -284,10 +326,15 @@ describe('⚠️ the marker box contains its own shadow', () => {
       const view = await renderPins([pin('a', 5, 25000)], 'a');
       const [staticPill, selectedPill] = [pillOf(statics(view)[0]), pillOf(selection(view)!)];
 
-      const staticWidth = (staticPill.paddingHorizontal ?? 0) + (staticPill.margin ?? 0);
-      const selectedWidth = (selectedPill.paddingHorizontal ?? 0) + (selectedPill.margin ?? 0);
-      const staticHeight = (staticPill.paddingVertical ?? 0) + (staticPill.margin ?? 0);
-      const selectedHeight = (selectedPill.paddingVertical ?? 0) + (selectedPill.margin ?? 0);
+      // Border included: a borderless selected pill (the reference's look,
+      // which the styles discuss) would shrink its box by 2pt and break
+      // concentricity while a padding-only sum still passed.
+      const side = (pill: typeof staticPill, axis: 'paddingHorizontal' | 'paddingVertical') =>
+        (pill[axis] ?? 0) + (pill.margin ?? 0) + (pill.borderWidth ?? 0);
+      const staticWidth = side(staticPill, 'paddingHorizontal');
+      const selectedWidth = side(selectedPill, 'paddingHorizontal');
+      const staticHeight = side(staticPill, 'paddingVertical');
+      const selectedHeight = side(selectedPill, 'paddingVertical');
 
       expect(selectedWidth).toBe(staticWidth);
       expect(selectedHeight).toBe(staticHeight);
@@ -297,25 +344,40 @@ describe('⚠️ the marker box contains its own shadow', () => {
   });
 });
 
-describe('⚠️ born invisible, then tracked, then frozen', () => {
+describe('⚠️ born invisible, faded in, then frozen', () => {
   // A marker joins the map BEFORE its custom view is inserted, and until that
   // view is captured react-native-maps hands it Google's default RED PIN — the
   // flicker the owner saw on every remount. Alpha 0 goes into the marker's
-  // creation options, so the pin is never drawn; the next frame reveals a
-  // finished pill.
-  it('mounts at opacity 0 and is revealed a frame later', async () => {
-    jest.useFakeTimers();
+  // creation options, so the pin is never drawn; the fade then brings a
+  // finished pill up over motion.fast — the marker's native alpha, the one
+  // thing the map animates without re-rasterising the pill.
+  it('mounts at opacity 0', async () => {
+    const view = await renderPins([pin('a', 0)]);
+
+    expect(markers(view)[0].props.animatedProps.opacity).toBe(0);
+  });
+
+  it('fades in over motion.fast — it never switches on', async () => {
+    const withTiming = jest.spyOn(reanimated, 'withTiming');
     try {
-      const view = await renderPins([pin('a', 0)]);
-      expect(markers(view)[0].props.opacity).toBe(0);
+      await renderPins([pin('a', 0)]);
 
-      await act(async () => {
-        jest.advanceTimersByTime(32);
-      });
-
-      expect(markers(view)[0].props.opacity).toBe(1);
+      expect(withTiming).toHaveBeenCalledWith(1, expect.objectContaining({ duration: motion.fast }));
     } finally {
-      jest.useRealTimers();
+      withTiming.mockRestore();
+    }
+  });
+
+  it('under reduced motion it goes straight to visible, with no fade', async () => {
+    const reduced = jest.spyOn(reanimated, 'useReducedMotion').mockReturnValue(true);
+    const withTiming = jest.spyOn(reanimated, 'withTiming');
+    try {
+      await renderPins([pin('a', 0)]);
+
+      expect(withTiming).not.toHaveBeenCalled();
+    } finally {
+      withTiming.mockRestore();
+      reduced.mockRestore();
     }
   });
 
@@ -367,13 +429,8 @@ describe('⚠️ born invisible, then tracked, then frozen', () => {
       });
       const onTop = selection(view);
       if (onTop === undefined) throw new Error('no selection marker');
-      expect(onTop.props.opacity).toBe(0);
+      expect(onTop.props.animatedProps.opacity).toBe(0);
       expect(onTop.props.tracksViewChanges).toBe(true);
-
-      await act(async () => {
-        jest.advanceTimersByTime(32);
-      });
-      expect(selection(view)?.props.opacity).toBe(1);
     } finally {
       jest.useRealTimers();
     }
@@ -412,10 +469,11 @@ describe('⚠️ selection is its own marker (the whole design)', () => {
     }
   });
 
-  it('⚠️ moving the selection swaps the marker on top — never two highlighted', async () => {
+  it('⚠️ moving the selection swaps the marker on top — never two LIVE', async () => {
     // The owner, on device: "both markers are still highlighted". Impossible
-    // by construction now — there is exactly one selection marker, and it is
-    // keyed on the car, so a move is an unmount and a mount.
+    // by construction now — there is exactly one live selection marker, keyed
+    // on the car, so a move is a mount of a new one; the old one only lingers
+    // to fade (below), and never as a stop or a tap.
     jest.useFakeTimers();
     try {
       const three = [pin('a', 0), pin('b', 1), pin('c', 2)];
@@ -428,10 +486,16 @@ describe('⚠️ selection is its own marker (the whole design)', () => {
         view.rerender(<MapPins pins={three} selectedPostId="b" onPressPost={jest.fn()} />);
       });
 
-      const highlighted = markers(view).filter(isSelection);
-      expect(highlighted).toHaveLength(1);
-      expect(highlighted[0]).not.toBe(firstOnTop);
+      const live = markers(view).filter((node) => isSelection(node) && node.props.accessible);
+      expect(live).toHaveLength(1);
+      expect(live[0]).not.toBe(firstOnTop);
       expect(statics(view)).toEqual(staticsBefore);
+
+      // Once the fade has had its beat, one selection marker, full stop.
+      await act(async () => {
+        jest.advanceTimersByTime(motion.fast);
+      });
+      expect(markers(view).filter(isSelection)).toHaveLength(1);
     } finally {
       jest.useRealTimers();
     }
@@ -447,6 +511,9 @@ describe('⚠️ selection is its own marker (the whole design)', () => {
 
       await act(async () => {
         view.rerender(<MapPins pins={one} selectedPostId={null} onPressPost={jest.fn()} />);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(motion.fast);
       });
 
       expect(markers(view)).toHaveLength(1);
@@ -492,6 +559,141 @@ describe('⚠️ selection is its own marker (the whole design)', () => {
       expect(rendered).not.toContain('£10 reward — Ford Fiesta');
     } finally {
       jest.useRealTimers();
+    }
+  });
+});
+
+describe('⚠️ the outgoing selection fades, then unmounts', () => {
+  // "The dark pill vanishes abruptly" (the owner, 2026-09-23). It now stays
+  // mounted for one motion.fast, fading to nothing over the static pill it
+  // covered — the SAME native marker, keeping its key, so it is a fade and
+  // not a fresh marker born invisible.
+  it('keeps the previous selection marker mounted and fading for one motion.fast', async () => {
+    jest.useFakeTimers();
+    const withTiming = jest.spyOn(reanimated, 'withTiming');
+    try {
+      const three = [pin('a', 0), pin('b', 1), pin('c', 2)];
+      const view = await renderPins(three, 'a');
+      await settle();
+      const wasLive = selection(view);
+      withTiming.mockClear();
+
+      await act(async () => {
+        view.rerender(<MapPins pins={three} selectedPostId="b" onPressPost={jest.fn()} />);
+      });
+
+      const fading = leaving(view);
+      if (fading === undefined) throw new Error('the outgoing marker was not kept');
+      // The same node the live selection was — a fade, not a remount.
+      expect(fading).toBe(wasLive);
+      expect(fading.props.accessibilityLabel).toBe('£250 reward — Ford Fiesta');
+      expect(withTiming).toHaveBeenCalledWith(0, expect.objectContaining({ duration: motion.fast }));
+
+      await act(async () => {
+        jest.advanceTimersByTime(motion.fast);
+      });
+      expect(leaving(view)).toBeUndefined();
+      expect(markers(view)).toHaveLength(4);
+    } finally {
+      withTiming.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
+  it('the fading marker is scenery — below the live one, and its tap selects nothing', async () => {
+    jest.useFakeTimers();
+    try {
+      const three = [pin('a', 0), pin('b', 1), pin('c', 2)];
+      const onPressPost = jest.fn();
+      const view = await act(async () =>
+        render(<MapPins pins={three} selectedPostId="a" onPressPost={onPressPost} />),
+      );
+      await settle();
+
+      await act(async () => {
+        view.rerender(<MapPins pins={three} selectedPostId="b" onPressPost={onPressPost} />);
+      });
+      const fading = leaving(view);
+      const live = selection(view);
+      if (fading === undefined || live === undefined) throw new Error('markers missing');
+
+      expect(fading.props['data-zindex']).toBeLessThan(live.props['data-zindex']);
+      expect(fading.props['data-zindex']).toBeGreaterThan(
+        Math.max(...statics(view).map((node) => node.props['data-zindex'])),
+      );
+
+      await act(async () => {
+        fireEvent.press(fading as unknown as Parameters<typeof fireEvent.press>[0]);
+      });
+      // A tap on a pill that is on its way out must not bring its car back.
+      expect(onPressPost).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('clearing the selection fades the marker out the same way', async () => {
+    jest.useFakeTimers();
+    try {
+      const one = [pin('a', 0)];
+      const view = await renderPins(one, 'a');
+      await settle();
+
+      await act(async () => {
+        view.rerender(<MapPins pins={one} selectedPostId={null} onPressPost={jest.fn()} />);
+      });
+
+      expect(selection(view)).toBeUndefined();
+      expect(leaving(view)).toBeDefined();
+      expect(markers(view)).toHaveLength(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('re-selecting the car that is still fading keeps ONE marker for it', async () => {
+    // Same car, same key: the fading marker simply fades back up. Rendering
+    // it twice would collide on the key.
+    jest.useFakeTimers();
+    try {
+      // Different prices, so the two cars' labels are distinguishable.
+      const two = [pin('a', 0, 25000), pin('b', 1, 4500)];
+      const view = await renderPins(two, 'a');
+      await settle();
+
+      await act(async () => {
+        view.rerender(<MapPins pins={two} selectedPostId="b" onPressPost={jest.fn()} />);
+      });
+      await act(async () => {
+        view.rerender(<MapPins pins={two} selectedPostId="a" onPressPost={jest.fn()} />);
+      });
+
+      const forA = markers(view).filter(
+        (node) => isSelection(node) && node.props.accessibilityLabel === '£250 reward — Ford Fiesta',
+      );
+      expect(forA).toHaveLength(1);
+      expect(forA[0].props.accessible).toBe(true);
+      // b, just deselected, is the one fading.
+      expect(leaving(view)?.props.accessibilityLabel).toBe('£45 reward — Ford Fiesta');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('under reduced motion the outgoing marker simply unmounts', async () => {
+    const reduced = jest.spyOn(reanimated, 'useReducedMotion').mockReturnValue(true);
+    try {
+      const two = [pin('a', 0), pin('b', 1)];
+      const view = await renderPins(two, 'a');
+
+      await act(async () => {
+        view.rerender(<MapPins pins={two} selectedPostId="b" onPressPost={jest.fn()} />);
+      });
+
+      expect(leaving(view)).toBeUndefined();
+      expect(markers(view).filter(isSelection)).toHaveLength(1);
+    } finally {
+      reduced.mockRestore();
     }
   });
 });
@@ -575,11 +777,13 @@ describe('paint order and the assistive-tech path', () => {
     expect(second).toBeGreaterThan(third);
   });
 
-  it('puts the SELECTION marker above everything', async () => {
+  it('puts the SELECTION marker above everything — the top static pill included', async () => {
     const view = await renderPins([pin('a', 0), pin('b', 40)], 'b');
 
     const top = Math.max(...statics(view).map(zIndexOf));
-    expect(zIndexOf(selection(view)!)).toBeGreaterThan(top);
+    // Strictly above, with a tier to spare for the leaving marker, so the
+    // top-ranked static pill can never tie with either.
+    expect(zIndexOf(selection(view)!)).toBeGreaterThan(top + 1);
   });
 
   // Never 0: the iOS Google marker skips a falsy zIndex when it re-creates.

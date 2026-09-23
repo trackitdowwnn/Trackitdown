@@ -25,7 +25,8 @@
 
 import { useEffect, useRef, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
-import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import Animated from 'react-native-reanimated';
 
 import { mapStyleFor, useThemeControls } from '@/shared/theme';
 
@@ -34,12 +35,22 @@ import type { MapComponentProps } from './LocationPicker';
 // The search map renders markers (the owner's sightings-trail map draws its
 // connecting line, and the alert-zone map draws its radius circle);
 // re-exporting keeps react-native-maps imported in exactly one native module
-// (this file). Web resolves the AppMap.web.tsx stub instead.
+// (this file) — the animated marker below included. Web resolves the
+// AppMap.web.tsx stub instead.
 export {
   Marker as AppMapMarker,
   Polyline as AppMapPolyline,
   Circle as AppMapCircle,
 } from 'react-native-maps';
+
+/**
+ * A marker whose `opacity` can be driven from the UI thread via
+ * `animatedProps`. The search map fades every pill in on arrival and the
+ * outgoing selection pill out; the native marker's alpha is a property the
+ * map applies without re-rasterising the pill, which is the only kind of
+ * motion a custom Android marker can afford (see MapPins' header).
+ */
+export const AppMapMarkerAnimated = Animated.createAnimatedComponent(Marker);
 
 /** Below this degree delta we treat two regions as the same VIEW (point and
  *  zoom) — a prop update merely echoing where the user already is starts no
