@@ -218,6 +218,26 @@ describe('⚠️ the Android bitmap rules', () => {
     expect(markers(view)[0].children[0].props.collapsable).toBe(false);
   });
 
+  // ⚠️ A marker's tap area is its whole bitmap, and Google widens it further.
+  // A 44×52 box around a 28pt pill made taps land on cars nowhere near the
+  // finger ("the hit box is way larger than the marker", 2026-09-23).
+  it('the tap box is the pill exactly — no size, padding or shadow margin around it', async () => {
+    const view = await renderPins([post('a'), post('b')], 'a');
+
+    for (const node of markers(view)) {
+      const wrapper = node.children[0];
+      expect(StyleSheet.flatten(wrapper.props.style as never) ?? {}).toEqual({});
+      const pill = StyleSheet.flatten(
+        (wrapper as unknown as { children: { props: { style?: unknown } }[] }).children[0].props.style as never,
+      ) as Record<string, unknown>;
+      expect(pill).not.toHaveProperty('margin');
+      expect(pill).not.toHaveProperty('minWidth');
+      expect(pill).not.toHaveProperty('minHeight');
+      expect(pill).not.toHaveProperty('shadowRadius');
+      expect(pill).not.toHaveProperty('elevation');
+    }
+  });
+
   it('tracks view changes after mount, then freezes', async () => {
     jest.useFakeTimers();
     try {

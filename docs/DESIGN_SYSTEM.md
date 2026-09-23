@@ -442,9 +442,13 @@ are build output.
       dark one, drawn above all of them — instantly, no fade.
   - **Floating CONTROLS over map tiles use `shadows.lifted`** (back, recentre,
     search pill, map pill) — they must hold an edge against busy tiles.
-    **MARKERS keep `shadows.soft`**: they are content, not chrome, and
-    `lifted`'s `elevation: 10` on forty-plus Android markers is both muddy and
-    expensive.
+    **MARKERS have no shadow** (2026-09-23): the hairline carries the edge.
+    Android never drew a marker's shadow, and on iOS the shadow needed a
+    transparent margin — which a marker counts as tappable.
+  - **A marker's tap box is the pill, exactly** — the one exception to the
+    44pt touch-target rule. A marker's tap area is its whole bitmap, and
+    Google Maps widens it further on its own, so padding a pill out to 44pt
+    made taps land on cars the finger was nowhere near.
   - **Anything that frames the camera must inset for that chrome.** A result
     centred behind the sheet may as well not exist. Where a sheet can be
     dragged, the inset tracks it and the camera zooms to match, so the same
@@ -503,7 +507,8 @@ are build output.
   avatar chip fills with `primary` as a STATUS mark — a sanctioned exception
   to the actions-only rule (it mirrors the reference's verification badge
   and stays distinct from any nearby CTA).
-- Accessibility: minimum 44pt touch targets, WCAG AA contrast against the
+- Accessibility: minimum 44pt touch targets (map markers excepted — see Map
+  screens), WCAG AA contrast against the
   near-white background (check `primary` and `accentText` on `#F7F7F7`), labels on all interactive
   elements, support dynamic type.
 

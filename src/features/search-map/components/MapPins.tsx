@@ -21,14 +21,12 @@
  */
 
 import { memo, useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { formatPounds } from '@/shared/lib';
 import {
   mapPinFontScaleCap,
   radii,
-  shadows,
-  sizes,
   spacing,
   typography,
   useThemeControls,
@@ -53,10 +51,6 @@ const TRANSPARENT_PIXEL = {
 } as const;
 
 const CENTRE = { x: 0.5, y: 0.5 } as const;
-
-/** How far `shadows.soft` reaches past the pill — the iOS box's padding, so the
- *  live-view shadow is not cut off. Android draws no shadow on a marker. */
-const SHADOW_BLEED = shadows.soft.shadowOffset.height + shadows.soft.shadowRadius;
 
 /**
  * ⚠️ PAINT ORDER IS FIXED AT BIRTH. On Android (new architecture) react-native-
@@ -117,8 +111,9 @@ const PricePin = memo(function PricePin({
     >
       {/* Android rule 3: collapsable={false}. The marker sizes its bitmap from
           its first NATIVE child; a layout-only View is flattened away, which
-          makes that the pill and clips it. This box is also the tap target. */}
-      <View collapsable={false} style={styles.hitTarget}>
+          makes that the pill and clips it. It hugs the pill exactly, so the
+          tap target is the pill and nothing more — see `pill` below. */}
+      <View collapsable={false}>
         <View style={[styles.pill, selected && styles.pillSelected]}>
           <Text
             maxFontSizeMultiplier={mapPinFontScaleCap}
@@ -163,21 +158,15 @@ export const MapPins = memo(function MapPins({ posts, selectedPostId, onPressPos
 });
 
 const makeStyles = (c: Palette) => StyleSheet.create({
-  // At least 44pt to tap. iOS pads for the shadow; Android has no marker
-  // shadow, and side padding there would steal taps from overlapping pills,
-  // so it gets height only.
-  hitTarget: {
-    minWidth: sizes.touchTarget,
-    minHeight: sizes.touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      android: { minHeight: sizes.control },
-      default: { padding: SHADOW_BLEED },
-    }),
-  },
-  // White pill with a borderStrong hairline — the fill alone barely separates
-  // from the land in either theme (docs/DESIGN_SYSTEM.md).
+  // ⚠️ THE PILL IS THE TAP BOX — nothing around it. A marker's tap area is
+  // its whole bitmap, transparent pixels included, and Google Maps already
+  // widens it past that (react-native-maps#4386). A 44×52 box around a 28pt
+  // pill made taps land on cars a finger was nowhere near (the owner,
+  // 2026-09-23: "the hit box is way larger than the marker"). So no min size,
+  // no padding, and no shadow — Android never drew one on a marker, and on
+  // iOS it needed a 16pt transparent margin that was tappable too. The
+  // borderStrong hairline is what separates the pill from the land in both
+  // themes (docs/DESIGN_SYSTEM.md).
   pill: {
     backgroundColor: c.surface,
     borderRadius: radii.full,
@@ -185,7 +174,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     paddingVertical: spacing.xs,
     borderWidth: 1,
     borderColor: c.borderStrong,
-    ...shadows.soft,
   },
   // Selected: inverts and grows. surfaceInverse flips with the theme, so it
   // stays visible on the dark basemap.
