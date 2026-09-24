@@ -56,29 +56,40 @@ rounded-top sheet overlapping the hero.)
    `keys_taken`, never an address); a driveway theft's last-seen point is
    coarsened to ~1km for non-owners in `get_post_detail` (the map/feed RPCs
    still need the same — see the migration's follow-up banner and DOMAIN.md).
-6. **Owner** (`OwnerCard`, the reference's host-passport card — the page's
-   one elevated object): centred avatar + first name + "Owner" caption
-   beside a stat column (time on Trackitdown; sightings on this post).
-   Calm register — "Owner", never "Meet the owner". **SAFETY**: signed-in
+6. **Owner** (`OwnerCard`, redesigned 2026-09-24): one quiet row in a
+   hairline-outlined card, no shadow — a 48pt initial avatar, the first name,
+   and one grey line of facts: "2 years on Trackitdown · 3 sightings" ("New
+   to Trackitdown" in the joining month; "No sightings yet" at zero, never a
+   bare 0). It replaced the Airbnb host-passport card (elevated, centred
+   avatar, big stats): research across Dribbble and shipping apps (Uber,
+   Vinted, eBay, Gumtree) puts the person behind a listing in a flat row, and
+   big stats read as a dashboard — wrong for a theft victim. Calm register —
+   "Owner", never "Meet the owner". **Never "verified"**: ownership isn't
+   checked (ADR-0007), so there is no shield and no "Verified owner" — the
+   card said so to every viewer until 2026-09-24. **SAFETY**: signed-in
    viewers see an initial-letter avatar + first name; anonymous viewers a
-   de-identified "Verified owner" shield. **No photo** — a `<owner_id>/…`
+   de-identified "Car owner" with a plain person icon. **No photo** — a `<owner_id>/…`
    avatar path would leak `owner_id` (→ surname). Never
    surname/`display_name`, `owner_id`, or contact. Gated server-side in
    `get_post_detail`; see DOMAIN.md "Owner identity on a post".
-   Non-owners also get a **"Message the owner"** affordance HERE (sighting-
-   gated — DOMAIN Chat): a viewer who has already reported gets a quiet grey
-   (`subtle`) **"Message the owner"** button that opens the thread (the
-   reference's "Message host" treatment); everyone else gets honest copy + a
-   quiet **"Report a sighting"** link into the report flow (a text link, not
-   a second button — the sticky bar's "I've seen this car" is the primary
-   route). Hidden for the owner. Driven by
+   Non-owners also get their next step HERE — always the one the sticky bar
+   is NOT showing, so no action appears twice (2026-09-24). Not reported yet:
+   honest copy ("Seen this car? Report a sighting to start a private chat
+   with the owner.") and a `subtle` **"Report a sighting"** button (chat is
+   sighting-gated — DOMAIN Chat: no cold DMs). Reported: the bar has become
+   "Message the owner", so this offers **"Report another sighting"** ("Seen
+   it again? A new sighting shows the owner where it is now.") — repeat
+   sightings are allowed and a fresher one is worth more. Both subtle, never
+   competing with the bar's primary. Hidden for the owner. Driven by
    `get_post_detail.viewer_has_sighting`.
 7. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
     the section renders only when count > 0 and lights up when the sightings
     feature ships. **SAFETY** (SECURITY_AND_TRUST §6): aggregate count ONLY,
     never individual sightings or their locations to a non-owner.
 8. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
-    the underlined "Report this post" row (moved out of the header).
+    a subtle **"Report this listing"** button (moved out of the header; an
+    underlined link with a flag until 2026-09-24 — grey, never `danger`:
+    reporting is not destructive).
 9. **More cars nearby** (`useSimilarPosts`) — the reference's "More stays
     nearby" shelf at the page's end: a full-bleed compact-`VehicleCard` rail
     from the public `get_home_feed` RPC centred on THIS car's last-seen point
@@ -88,7 +99,10 @@ rounded-top sheet overlapping the hero.)
 
 **Sticky bottom bar** (`PostBottomBar`) — always visible, safe-area padded.
 - **Spotter:** bounty + "reward", primary "I've seen this car" → the
-  report-sighting flow (auth-gated).
+  report-sighting flow (auth-gated). Once they have reported
+  (`viewerHasSighting`), the primary becomes **"Message the owner"** → the
+  thread (2026-09-24): the step they have done stops being the headline, and
+  the conversation it unlocked takes its place. Never shown before a sighting.
 - **Owner:** "Your listing" + `StatusBadge`, secondary "Manage post" →
   **`PostManageSheet`**, a `BottomSheet` of `ListRow`s for THIS listing: view
   sightings, one row per section currently editable, share, and (paid posts) the
@@ -141,7 +155,8 @@ for the price of posting a car), and the count reads `kind = 'alert'` rows ONLY
 WATCHERS, and DOMAIN.md forbids exposing watcher counts to an owner. Both are
 pinned by `post_detail_verification.sql` CHECK 16.
 
-**Message the owner** (migration `20260715130000`) — the section handler
+**Message the owner** (migration `20260715130000`) — the handler (the sticky
+bar's, once reported; the section's "Report a sighting" before)
 opens the thread via `openThread` (deferred `import('@/features/chat')`) when
 `viewerHasSighting`, else routes to `/report-sighting`; a stale-flag or
 `NO_SIGHTING` race falls back to reporting. Guests pass the `message_owner`

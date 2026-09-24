@@ -1,7 +1,8 @@
 /**
  * WHAT:  CameraCapture — the in-app evidence camera: a viewfinder with a big
  *        shutter, a thumbnail strip of taken shots (tap to remove/retake),
- *        and a photo counter. Every capture atomically bundles the photo
+ *        and a photo counter. The shutter is SILENT (a flash, no click — a
+ *        spotter may be near the thief). Every capture atomically bundles the photo
  *        with a device timestamp and, when location permission is already
  *        granted, a best-effort GPS fix + accuracy — the "evidence result".
  * WHY:   Sightings (and later recovery/dispute evidence) must be taken
@@ -209,7 +210,15 @@ export function CameraCapture({
       // Timestamp + photo + fix all belong to THIS shutter press.
       const capturedAt = new Date().toISOString();
       const [picture, fix] = await Promise.all([
-        camera.takePictureAsync({ quality: 0.7 }),
+        // SAFETY: SILENT shutter (owner's call, 2026-09-24). A spotter is
+        // photographing a stolen car, possibly with the people who took it
+        // nearby — a click can give them away. The screen's white flash
+        // (animateShutter, on by default) is the feedback instead. Honoured
+        // natively on both platforms (expo-camera: Android skips its
+        // MediaActionSound; iOS disposes the system shutter sound). Some
+        // regions (e.g. Japan) force a shutter sound at OS level on some
+        // devices; nothing in-app can override that.
+        camera.takePictureAsync({ quality: 0.7, shutterSound: false }),
         captureFix(),
       ]);
       if (picture?.uri) {

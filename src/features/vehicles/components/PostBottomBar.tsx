@@ -1,11 +1,17 @@
 /**
  * WHAT:  PostBottomBar — the always-visible sticky bar at the foot of the
  *        detail screen. SPOTTER: bounty + "reward" left, primary "I've seen
- *        this car" right. OWNER (their own post): a "Your listing" summary +
- *        status left, secondary "Manage post" right.
+ *        this car" right — or "Message the owner" once they have reported
+ *        (viewer_has_sighting). OWNER (their own post): a "Your listing"
+ *        summary + status left, secondary "Manage post" right.
  * WHY:   The Airbnb move — the primary action never scrolls away. Mode is the
  *        server-computed is_owner, decided once; a spotter is never shown the
- *        owner action and vice versa.
+ *        owner action and vice versa. The spotter's action follows their
+ *        progress (2026-09-24): once they have reported, the step they have
+ *        already done stops being the headline, and the conversation it
+ *        unlocked takes its place. Chat stays sighting-gated (DOMAIN Chat: no
+ *        cold DMs) — this never shows "Message" to someone who hasn't
+ *        reported. Reporting AGAIN stays one scroll away, in the Owner section.
  * LINKS: src/features/vehicles/screens/PostDetailScreen.tsx;
  *        src/shared/ui (Button, StatusBadge); src/shared/lib (formatPounds).
  */
@@ -23,11 +29,13 @@ export interface PostBottomBarProps {
   post: PostDetail;
   /** Spotter action — report a sighting. */
   onSeen: () => void;
+  /** Spotter action once they have reported — open the conversation. */
+  onMessageOwner: () => void;
   /** Owner action — manage the post. */
   onManage: () => void;
 }
 
-export function PostBottomBar({ post, onSeen, onManage }: PostBottomBarProps) {
+export function PostBottomBar({ post, onSeen, onMessageOwner, onManage }: PostBottomBarProps) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
 
@@ -72,6 +80,8 @@ export function PostBottomBar({ post, onSeen, onManage }: PostBottomBarProps) {
       </View>
       {post.isOwner ? (
         <Button label="Manage listing" variant="secondary" fullWidth={false} onPress={onManage} />
+      ) : post.viewerHasSighting ? (
+        <Button label="Message the owner" fullWidth={false} onPress={onMessageOwner} />
       ) : (
         <Button label="I've seen this car" fullWidth={false} onPress={onSeen} />
       )}

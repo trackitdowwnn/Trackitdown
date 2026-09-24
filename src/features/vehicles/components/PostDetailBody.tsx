@@ -10,9 +10,9 @@
  *        "Car details" (the FULL fact list in-page, gaps struck through),
  *        "Distinctive features" (the owner's photographed marks as cards —
  *        photo inset beside the description, truncated past three behind a
- *        grey "Show all N" block button), the owner passport card
- *        (OwnerCard), the (dormant) sighting-activity line, the SafetyNotice,
- *        an underlined report row, and the "More cars nearby" compact-card
+ *        grey "Show all N" block button), the owner card (OwnerCard — one
+ *        quiet row), the (dormant) sighting-activity line, the SafetyNotice,
+ *        a subtle "Report this listing" button, and the "More cars nearby" compact-card
  *        rail (the reference's "More stays nearby" shelf; useSimilarPosts).
  * WHY:   Splits the section rendering out of the screen so the screen file
  *        stays about orchestration (load → header → states). Section order is
@@ -49,7 +49,16 @@ import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
 import { estimateRefundPence, formatPounds } from '@/shared/lib';
-import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  cardSurface,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   AppImage,
   Button,
@@ -90,6 +99,11 @@ export interface PostDetailBodyProps {
    *  viewer already has a sighting, else routes them to report one first
    *  (chat is sighting-gated — DOMAIN Chat). Absent for the owner. */
   onMessageOwner?: () => void;
+  /** SPOTTER only: report a (further) sighting — the same flow as the sticky
+   *  bar's "I've seen this car". Offered in the Owner section once the viewer
+   *  has reported, because by then the bar has become "Message the owner".
+   *  Absent for the owner. */
+  onReportSighting?: () => void;
   /** Open the full "About this car" prose page (/post-about). */
   onShowAbout: () => void;
   /** The "More stolen cars nearby" rail (useSimilarPosts) — [] hides it. */
@@ -131,6 +145,7 @@ export function PostDetailBody({
   onOpenMap,
   onReport,
   onMessageOwner,
+  onReportSighting,
   onShowAbout,
   similarPosts,
   similarLoading,
@@ -520,51 +535,48 @@ export function PostDetailBody({
         </>
       ) : null}
 
-      {/* 7 — Owner (the reference's host-passport placement — low on the
-          page, the final reassurance). Calm register: "Owner", never "Meet
+      {/* 7 — Owner (low on the page, the final reassurance). Calm register: "Owner", never "Meet
           the owner". */}
       <Divider />
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Owner</Text>
         <OwnerCard owner={post.owner} sightingCount={post.sightingCount} />
 
-        {/* Message the owner — SPOTTER side only (the owner reaches spotters
-            through their sightings list). Chat is sighting-gated (DOMAIN
-            Chat: no cold DMs), so the affordance is honest about the gate:
-            a viewer who has reported opens the thread; everyone else is told
-            reporting is what opens the conversation, and the handler routes
-            them there. */}
+        {/* The spotter's next step — SPOTTER side only (the owner reaches
+            spotters through their sightings list). It always offers what the
+            sticky bar does NOT, so the page never shows one action twice:
+              · not reported yet: the bar says "I've seen this car"; here,
+                the reason to — reporting is what opens a private chat
+                (DOMAIN Chat: no cold DMs, so this is honest about the gate).
+              · reported: the bar has become "Message the owner"
+                (2026-09-24); here, reporting AGAIN — a fresher sighting is
+                worth more than the first, and nothing else on the page
+                offers it once the bar has moved on.
+            Subtle buttons in both states: encouraged, never competing with
+            the bar's primary. */}
         {!post.isOwner && onMessageOwner ? (
           <View style={styles.messageOwner}>
             <Text style={styles.messageOwnerText}>
               {post.viewerHasSighting
-                ? 'Chat privately with the owner about your sighting.'
-                : 'Spotted this car? Reporting a sighting opens a private, safe conversation with the owner.'}
+                ? 'Seen it again? A new sighting shows the owner where it is now.'
+                : 'Seen this car? Report a sighting to start a private chat with the owner.'}
             </Text>
             {post.viewerHasSighting ? (
-              // A real distinct action (opens the thread) → a button. Subtle,
-              // like the reference's "Message host": encouraged, but never
-              // competing with the sticky bar's primary CTA.
+              onReportSighting ? (
+                <Button
+                  label="Report another sighting"
+                  variant="subtle"
+                  fullWidth={false}
+                  onPress={onReportSighting}
+                />
+              ) : null
+            ) : (
               <Button
-                label="Message the owner"
+                label="Report a sighting"
                 variant="subtle"
                 fullWidth={false}
                 onPress={onMessageOwner}
               />
-            ) : (
-              // No-sighting: a QUIET link, not a second button — the sticky
-              // bottom-bar "I've seen this car" is the primary route to the
-              // same report flow; this is just a contextual entry from the
-              // messaging framing (page's underlined-link grammar).
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Report a sighting to message the owner"
-                onPress={onMessageOwner}
-                style={styles.reportRow}
-                hitSlop={spacing.sm}
-              >
-                <Text style={styles.reportLabel}>Report a sighting</Text>
-              </Pressable>
             )}
           </View>
         ) : null}
@@ -681,25 +693,13 @@ export function PostDetailBody({
         onConfirm={() => {}}
       />
 
-      {/* 10 — Report, the reference's trust-page grammar: an underlined text
-          row at the page's end (underline = tappable). */}
+      {/* 10 — Report, at the page's end. A subtle button since 2026-09-24
+          (owner's call — it was an underlined link with a flag): the same
+          grey treatment as "Report a sighting" above, never `danger` —
+          reporting a listing is not destructive, and red would alarm. */}
       <Divider />
       <View style={styles.section}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Report this listing"
-          onPress={onReport}
-          style={styles.reportRow}
-          hitSlop={spacing.sm}
-        >
-          <Feather
-            name="flag"
-            size={sizes.iconSm}
-            color={palette.textPrimary}
-            importantForAccessibility="no"
-          />
-          <Text style={styles.reportLabel}>Report this listing</Text>
-        </Pressable>
+        <Button label="Report this listing" variant="subtle" fullWidth={false} onPress={onReport} />
       </View>
 
       {/* 11 — More cars nearby (the reference's "More stays nearby" shelf,
@@ -973,20 +973,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     gap: spacing.md,
   },
   featureCard: {
+    // A quiet container, NOT an elevated one: the shared flat card. The
+    // reference's cards are shadowed because they are TAPPABLE; ours are
+    // not, and a shadow would promise an interaction that isn't there.
+    // OwnerCard uses the same cardSurface since its 2026-09-24 redesign.
+    ...cardSurface(c),
     flexDirection: 'row',
     alignItems: 'center',
     // Uniform inset (matching the editor's card for the same content), so the
     // photo sits optically centred rather than shoved against one edge.
     gap: spacing.md,
     padding: spacing.md,
-    backgroundColor: c.surface,
-    borderRadius: radii.lg,
-    // A quiet container, NOT an elevated one (the statBand grammar above).
-    // The reference's cards are shadowed because they are TAPPABLE; ours are
-    // not, and a shadow would promise an interaction that isn't there.
-    // OwnerCard stays the page's one deliberately-elevated object.
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.border,
   },
   featurePhoto: {
     width: sizes.featureThumb,
@@ -1021,17 +1018,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // Instructional copy introducing an action = body, not caption/meta.
     ...typography.body,
     color: c.textSecondary,
-  },
-  reportRow: {
-    minHeight: sizes.touchTarget,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    alignSelf: 'flex-start',
-  },
-  reportLabel: {
-    ...typography.body,
-    color: c.textPrimary,
-    textDecorationLine: 'underline',
   },
 });

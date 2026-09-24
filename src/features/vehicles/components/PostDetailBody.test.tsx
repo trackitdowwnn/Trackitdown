@@ -4,7 +4,7 @@
  *        details" lists EVERY fact in-page with muted "Not provided" gap rows
  *        at the end (no Show-all tap), the sighting-activity line
  *        stays HIDDEN while the aggregate is zero (dormant), the SafetyNotice
- *        is always present, the report row fires its callback, and
+ *        is always present, the report button fires its callback, and
  *        "Distinctive features" renders one card per mark, truncating past
  *        three behind a "Show all N features" toggle.
  * WHY:   The conditional gating is the section's contract; the sighting
@@ -68,6 +68,7 @@ const renderBody = (
   handlers: {
     onReport?: () => void;
     onMessageOwner?: () => void;
+    onReportSighting?: () => void;
     onShowAbout?: () => void;
     onOpenPost?: (target: unknown) => void;
     onDeactivate?: () => void;
@@ -81,6 +82,7 @@ const renderBody = (
       onOpenMap={() => {}}
       onReport={handlers.onReport ?? (() => {})}
       onMessageOwner={post.isOwner ? undefined : (handlers.onMessageOwner ?? (() => {}))}
+      onReportSighting={post.isOwner ? undefined : (handlers.onReportSighting ?? (() => {}))}
       onShowAbout={handlers.onShowAbout ?? (() => {})}
       similarPosts={handlers.similarPosts ?? []}
       similarLoading={handlers.similarLoading ?? false}
@@ -170,10 +172,10 @@ describe('PostDetailBody', () => {
     expect(queryByText(/Show all/)).toBeNull();
   });
 
-  it('renders the owner card with name and this post’s sighting stat', async () => {
+  it('renders the owner card with name and this post’s sighting count', async () => {
     const { getByText } = await renderBody({ ...base, sightingCount: 2 });
     expect(getByText('Alex')).toBeTruthy();
-    expect(getByText('Sightings on this listing')).toBeTruthy();
+    expect(getByText(/· 2 sightings$/)).toBeTruthy();
   });
 
   it('keeps the sighting-activity line HIDDEN while the aggregate is zero (dormant)', async () => {
@@ -250,41 +252,49 @@ describe('PostDetailBody', () => {
     expect(getByText(/Never approach the vehicle/)).toBeTruthy();
   });
 
-  it('renders the underlined report row and fires onReport', async () => {
+  it('renders the report button and fires onReport', async () => {
     const onReport = jest.fn();
-    const { getByText } = await renderBody(base, { onReport });
-    fireEvent.press(getByText('Report this listing'));
+    const { getByRole } = await renderBody(base, { onReport });
+    fireEvent.press(getByRole('button', { name: 'Report this listing' }));
     expect(onReport).toHaveBeenCalledTimes(1);
   });
 
   describe('message the owner (sighting-gated)', () => {
-    it('spotter WITHOUT a sighting: a quiet report link + honest gate copy (no 2nd button)', async () => {
-      const { getByText } = await renderBody(base);
-      expect(getByText(/Reporting a sighting opens a private/)).toBeTruthy();
-      expect(getByText('Report a sighting')).toBeTruthy();
+    it('spotter WITHOUT a sighting: honest gate copy + a "Report a sighting" button', async () => {
+      const { getByText, getByRole, queryByText } = await renderBody(base);
+      expect(getByText(/Report a sighting to start a private chat/)).toBeTruthy();
+      expect(getByRole('button', { name: 'Report a sighting' })).toBeTruthy();
+      expect(queryByText('Message the owner')).toBeNull();
     });
 
-    it('spotter WITH a sighting: the CTA opens the conversation', async () => {
-      const { getByText, queryByText } = await renderBody({ ...base, viewerHasSighting: true });
-      expect(getByText('Message the owner')).toBeTruthy();
-      expect(getByText(/Chat privately with the owner/)).toBeTruthy();
-      expect(queryByText('Report a sighting')).toBeNull();
-    });
-
-    it('fires onMessageOwner when tapped', async () => {
+    it('fires onMessageOwner from "Report a sighting" — the handler routes to the report', async () => {
       const onMessageOwner = jest.fn();
-      const { getByText } = await renderBody(
-        { ...base, viewerHasSighting: true },
-        { onMessageOwner },
-      );
-      fireEvent.press(getByText('Message the owner'));
+      const { getByRole } = await renderBody(base, { onMessageOwner });
+      fireEvent.press(getByRole('button', { name: 'Report a sighting' }));
       expect(onMessageOwner).toHaveBeenCalledTimes(1);
+    });
+
+    // Once they have reported, the sticky bar says "Message the owner"
+    // (PostBottomBar). The section offers what the bar no longer does —
+    // reporting AGAIN — so the page never shows one action twice.
+    it('spotter WITH a sighting: offers "Report another sighting", not a second Message button', async () => {
+      const onReportSighting = jest.fn();
+      const { getByText, getByRole, queryByText } = await renderBody(
+        { ...base, viewerHasSighting: true },
+        { onReportSighting },
+      );
+      expect(getByText(/Seen it again\?/)).toBeTruthy();
+      expect(queryByText('Message the owner')).toBeNull();
+
+      fireEvent.press(getByRole('button', { name: 'Report another sighting' }));
+      expect(onReportSighting).toHaveBeenCalledTimes(1);
     });
 
     it('is HIDDEN for the owner (they reach spotters via their sightings list)', async () => {
       const { queryByText } = await renderBody({ ...base, isOwner: true });
       expect(queryByText('Message the owner')).toBeNull();
-      expect(queryByText(/Reporting a sighting opens/)).toBeNull();
+      expect(queryByText('Report a sighting')).toBeNull();
+      expect(queryByText('Report another sighting')).toBeNull();
     });
   });
 });

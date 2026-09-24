@@ -29,7 +29,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `textSecondary` | `#6A6A6A` | captions, metadata |
 | `border` | `#DDDDDD` | hairlines, input borders |
 | `borderStrong` | `#8F8F8F` | small elements that must stay visible (progress tracks) |
-| `success` | `#4F8A5B` | affirmative states — recovery confirmed, payout complete, ownership verified (fill/dot/icon, not body text) |
+| `success` | `#4F8A5B` | affirmative states — recovery confirmed, payout complete (fill/dot/icon, not body text). Not "ownership verified": that check was removed (ADR-0007), so nothing may claim it |
 | `warning` | `#A9762A` | pending verification, expiring posts (dot/icon/border only — never body text; clears 3:1 as a graphic) |
 | `danger` | `#C0281E` | destructive actions, errors (clear red, kept distinct from the near-black primary) |
 | `dangerPressed` | `#A21F16` | pressed state of danger |
@@ -334,8 +334,9 @@ are build output.
   hairline is load-bearing rather than decorative: in dark mode `surface` on
   `background` is #1E1E1E on #141414, so without an edge a card has no boundary
   at all.
-  A few older cards (garage, owner, profile hero, reputation) still carry
+  A few older cards (garage, profile hero, reputation) still carry
   `shadows.soft`; they converge when next touched, and no new card should.
+  (The owner card converged 2026-09-24.)
   The vehicle card is the app's signature element and is a third thing again —
   **borderless**: no surface, no border, no shadow, because the photo IS the
   card (photo, plate chip, make/model, bounty in `primary`, distance, last-seen

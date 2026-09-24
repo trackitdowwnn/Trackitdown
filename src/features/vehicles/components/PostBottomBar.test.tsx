@@ -1,7 +1,7 @@
 /**
  * WHAT:  Tests for PostBottomBar — the spotter sees the bounty + "I've seen
- *        this car"; the owner sees "Your listing" + "Manage listing". Mode drives
- *        which action fires.
+ *        this car", or "Message the owner" once they have reported; the owner
+ *        sees "Your listing" + "Manage listing". Mode drives which action fires.
  * WHY:   is_owner decides the whole bar; a spotter shown "Manage listing" (or an
  *        owner shown the sighting CTA on their own car) is a broken flow.
  * LINKS: src/features/vehicles/components/PostBottomBar.tsx, docs/TESTING.md.
@@ -36,35 +36,56 @@ const base: PostDetail = {
   viewerHasSighting: false,
 };
 
+const handlers = () => ({ onSeen: jest.fn(), onMessageOwner: jest.fn(), onManage: jest.fn() });
+
 describe('PostBottomBar', () => {
   it('spotter mode: bounty + "I\'ve seen this car", firing onSeen', async () => {
-    const onSeen = jest.fn();
-    const onManage = jest.fn();
-    const { getByText, queryByText } = await render(
-      <PostBottomBar post={base} onSeen={onSeen} onManage={onManage} />,
-    );
+    const h = handlers();
+    const { getByText, queryByText } = await render(<PostBottomBar post={base} {...h} />);
 
     expect(getByText('£500')).toBeTruthy();
     expect(getByText('reward')).toBeTruthy();
     expect(queryByText('Manage listing')).toBeNull();
 
     fireEvent.press(getByText("I've seen this car"));
-    expect(onSeen).toHaveBeenCalledTimes(1);
-    expect(onManage).not.toHaveBeenCalled();
+    expect(h.onSeen).toHaveBeenCalledTimes(1);
+    expect(h.onManage).not.toHaveBeenCalled();
+  });
+
+  // Once they have reported, the step they have done stops being the
+  // headline: the bar opens the conversation it unlocked.
+  it('spotter who has reported: "Message the owner", firing onMessageOwner', async () => {
+    const h = handlers();
+    const { getByText, queryByText } = await render(
+      <PostBottomBar post={{ ...base, viewerHasSighting: true }} {...h} />,
+    );
+
+    expect(queryByText("I've seen this car")).toBeNull();
+    fireEvent.press(getByText('Message the owner'));
+    expect(h.onMessageOwner).toHaveBeenCalledTimes(1);
+    expect(h.onSeen).not.toHaveBeenCalled();
+  });
+
+  // ⚠️ Chat is sighting-gated (DOMAIN Chat: no cold DMs). The bar must never
+  // offer "Message" to someone who has not reported.
+  it('never offers "Message the owner" before a sighting', async () => {
+    const { queryByText } = await render(<PostBottomBar post={base} {...handlers()} />);
+
+    expect(queryByText('Message the owner')).toBeNull();
   });
 
   it('owner mode: "Your listing" + "Manage listing", firing onManage', async () => {
-    const onSeen = jest.fn();
-    const onManage = jest.fn();
+    const h = handlers();
     const { getByText, queryByText } = await render(
-      <PostBottomBar post={{ ...base, isOwner: true }} onSeen={onSeen} onManage={onManage} />,
+      <PostBottomBar post={{ ...base, isOwner: true, viewerHasSighting: true }} {...h} />,
     );
 
     expect(getByText('Your listing')).toBeTruthy();
     expect(queryByText("I've seen this car")).toBeNull();
+    expect(queryByText('Message the owner')).toBeNull();
 
     fireEvent.press(getByText('Manage listing'));
-    expect(onManage).toHaveBeenCalledTimes(1);
-    expect(onSeen).not.toHaveBeenCalled();
+    expect(h.onManage).toHaveBeenCalledTimes(1);
+    expect(h.onSeen).not.toHaveBeenCalled();
   });
 });

@@ -683,7 +683,11 @@ Rules that follow, and are not implementation details:
   - **Signed-in viewers** see the owner's first name and member-since (an
     initial-letter avatar, no photo).
   - **Anonymous viewers** (logged-out browse of an active post) see a
-    de-identified "Verified owner" — member-since only, no name.
+    de-identified "Car owner" — member-since only, no name. (It said
+    "Verified owner" until 2026-09-24. Ownership verification was removed on
+    2026-07-30 — ADR-0007 — so the word claimed a check nobody runs; no owner
+    surface may call an owner verified until a real verification field
+    exists.)
 - Never exposed to anyone: surname / `display_name`, email, the owner's other
   posts, precise location, `owner_id`, or any contact path (chat opens only
   after a sighting — see Chat). **No avatar photo**: the avatar path is pinned

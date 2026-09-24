@@ -687,6 +687,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 onMessageOwner={
                   result.post.isOwner ? undefined : () => onMessageOwner(result.post)
                 }
+                onReportSighting={
+                  result.post.isOwner ? undefined : () => onSeen(result.post)
+                }
                 onShowAbout={onShowAbout}
                 similarPosts={similar.posts}
                 similarLoading={similar.status === 'loading'}
@@ -760,7 +763,12 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
       />
 
       {visiblePost ? (
-        <PostBottomBar post={visiblePost} onSeen={() => onSeen(visiblePost)} onManage={onManage} />
+        <PostBottomBar
+          post={visiblePost}
+          onSeen={() => onSeen(visiblePost)}
+          onMessageOwner={() => onMessageOwner(visiblePost)}
+          onManage={onManage}
+        />
       ) : null}
 
       <ConfirmDialog
