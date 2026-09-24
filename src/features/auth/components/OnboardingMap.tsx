@@ -68,7 +68,6 @@ import {
   mapPinFontScaleCap,
   motion,
   radii,
-  shadows,
   sizes,
   spacing,
   typography,
@@ -601,8 +600,9 @@ const makeStyles = (c: Palette) =>
       // the point it is marking.
       transform: [{ translateX: -28 }, { translateY: -12 }],
     },
-    // MapPins' anatomy: the same fill, radius, hairline and shadow, with the
-    // tighter padding a decorative pin can afford.
+    // MapPins' anatomy: the same fill, radius and hairline, and — like the
+    // real pill since 2026-09-23 — no shadow; with the tighter padding a
+    // decorative pin can afford.
     pill: {
       backgroundColor: c.surface,
       borderRadius: radii.full,
@@ -612,13 +612,12 @@ const makeStyles = (c: Palette) =>
       // ⚠️ STILL `borderStrong`, while the rings and the trail beside it moved
       // to `textSecondary` — deliberately, not an oversight the 2026-09-04 pass
       // missed. Those graphics are the SOLE carrier of their own shape, so they
-      // owe the full 3:1. This edge is not: the pill has a `surface` fill and a
-      // shadow, and DESIGN_SYSTEM sanctions `borderStrong` at 2.61:1 for
+      // owe the full 3:1. This edge is not: the pill carries a `surface` fill
+      // and a price, and DESIGN_SYSTEM sanctions `borderStrong` at 2.79:1 for
       // precisely this element on the real map. Same distinction
       // ChoiceChipsMulti draws when it says the ring is doing ALL the work.
       // Do not unify these.
       borderColor: c.borderStrong,
-      ...shadows.soft,
     },
     pillSelected: {
       paddingHorizontal: spacing.md,

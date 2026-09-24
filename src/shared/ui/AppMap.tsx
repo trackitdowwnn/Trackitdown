@@ -14,6 +14,12 @@
  *        NOT exported from the ui barrel: it imports the native map SDK, so
  *        consumers import it directly and web resolves AppMap.web.tsx (a
  *        search-only fallback) instead.
+ *        Given a `handleRef`, it also records each touch-down (a wrapping
+ *        View's onTouchStart, which never takes the touch) and exposes that
+ *        plus the map's projection as an AppMapHandle — how the search map
+ *        checks Google's marker pick against the finger (MapPins).
+ *        poiClickEnabled is OFF on every map: on Google's latest renderer a
+ *        map label's click beats a marker's.
  * LINKS: src/shared/ui/LocationPicker.tsx (MapComponentProps);
  *        app.config.ts (Google Maps API keys);
  *        https://docs.expo.dev/versions/v57.0.0/sdk/map-view/.
@@ -177,13 +183,18 @@ export function AppMap({
     <View
       testID="app-map"
       style={StyleSheet.absoluteFill}
-      onTouchStart={(event) => {
-        lastTouchRef.current = {
-          x: event.nativeEvent.locationX,
-          y: event.nativeEvent.locationY,
-          at: Date.now(),
-        };
-      }}
+      // Only maps that asked for a handle pay for the handler.
+      onTouchStart={
+        handleRef
+          ? (event) => {
+              lastTouchRef.current = {
+                x: event.nativeEvent.locationX,
+                y: event.nativeEvent.locationY,
+                at: Date.now(),
+              };
+            }
+          : undefined
+      }
     >
     <MapView
       ref={mapRef}

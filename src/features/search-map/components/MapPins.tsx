@@ -14,10 +14,14 @@
  *          3. Three Android rules keep the bitmap right — see TRANSPARENT_PIXEL,
  *             TRACK_MS and the collapsable wrapper below — and a fourth keeps
  *             paint order right: zIndex is read once, at creation (bountyZ).
+ *        And a TAP IS CHECKED AGAINST THE FINGER: Google's enlarged marker
+ *        tap areas let a tap select a neighbour, so a press selects the drawn
+ *        pill under the touch instead (see handlePress / pillUnderFinger).
  *        Never a price-less pill: an empty marker reads as a group of cars
  *        (docs/DESIGN_SYSTEM.md). Overlapping pills are left to overlap.
- * LINKS: src/features/search-map/lib/mapPins.ts (pinsInView — which posts,
- *        in what order); src/shared/ui/AppMap.tsx; docs/DESIGN_SYSTEM.md.
+ * LINKS: src/features/search-map/lib/mapPins.ts (pinsInView — which posts;
+ *        pinAt — which pill a tap is on); src/shared/ui/AppMap.tsx
+ *        (AppMapHandle — the touch and the projection); docs/DESIGN_SYSTEM.md.
  */
 
 import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
@@ -93,18 +97,25 @@ const TOUCH_MAX_AGE_MS = 1500;
  *  stands. It normally answers within a frame. */
 const PROJECTION_TIMEOUT_MS = 250;
 
+/** What the finger check concluded: the drawn pill under the touch (null: on
+ *  no pill — Google's pick stands), or why it could not check at all. */
+type FingerCheck = { id: string | null } | { skipped: string };
+
 /**
- * The drawn pill under the last touch, or null — see MapPins' press handler.
- * Never throws: every failure means "keep Google's pick".
+ * The drawn pill under `touch` — see MapPins' press handler. Never throws:
+ * every failure is a `skipped` reason, and means "keep Google's pick".
  */
 async function pillUnderFinger(
   map: AppMapHandle | null,
+  touch: { x: number; y: number; at: number } | null,
   { posts, selectedPostId }: { posts: MapPost[]; selectedPostId: string | null },
   measured: Map<string, PillSize>,
-): Promise<string | null> {
-  const touch = map?.lastTouch();
-  if (!map || !touch || Date.now() - touch.at > TOUCH_MAX_AGE_MS || posts.length === 0) {
-    return null;
+): Promise<FingerCheck> {
+  if (!map) {
+    return { skipped: 'no-map' };
+  }
+  if (!touch || Date.now() - touch.at > TOUCH_MAX_AGE_MS) {
+    return { skipped: 'no-touch' };
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -121,9 +132,9 @@ async function pillUnderFinger(
       const size = measured.get(sizeKey(post.id, selected)) ?? UNMEASURED_PILL;
       return { id: post.id, ...points[index], ...size, zIndex: pinZ(post, selected) };
     });
-    return pinAt(touch, rects);
-  } catch {
-    return null;
+    return { id: pinAt(touch, rects) };
+  } catch (error) {
+    return { skipped: error instanceof Error ? error.message : 'projection failed' };
   } finally {
     clearTimeout(timer);
   }
@@ -235,24 +246,50 @@ export const MapPins = memo(function MapPins({
   const current = useRef({ posts, selectedPostId });
   useEffect(() => {
     current.current = { posts, selectedPostId };
+    // Forget the sizes of pills no longer drawn, so this stays one screenful.
+    const drawn = new Set(posts.map((post) => post.id));
+    for (const key of measured.current.keys()) {
+      if (!drawn.has(key.slice(0, key.lastIndexOf(':')))) {
+        measured.current.delete(key);
+      }
+    }
   }, [posts, selectedPostId]);
+
+  // Bumped by every press AND on unmount: an answer only lands if nothing has
+  // happened since — no newer press, and the screen still here.
   const pressToken = useRef(0);
+  useEffect(
+    () => () => {
+      pressToken.current += 1;
+    },
+    [],
+  );
 
   const handlePress = useCallback(
     (googleId: string) => {
       const token = ++pressToken.current;
-      void pillUnderFinger(map?.current ?? null, current.current, measured.current).then(
-        (underFinger) => {
-          if (token !== pressToken.current) {
-            return; // a newer tap has already been answered
-          }
-          const chosen = underFinger ?? googleId;
-          if (chosen !== googleId) {
-            log.info('map_pin_tap_corrected', { from: googleId, to: chosen });
-          }
-          onPressPost(chosen);
-        },
-      );
+      const handle = map?.current ?? null;
+      const touch = handle?.lastTouch() ?? null;
+      void pillUnderFinger(handle, touch, current.current, measured.current).then((check) => {
+        if (token !== pressToken.current) {
+          return; // a newer press, or the screen has gone
+        }
+        // A newer touch-down since this press — a map-background tap that has
+        // already deselected, say. Answering now would undo it.
+        if (touch !== null && handle?.lastTouch()?.at !== touch.at) {
+          return;
+        }
+        if ('skipped' in check) {
+          // Loud on purpose: a check that never runs looks exactly like one
+          // that always agrees with Google.
+          log.info('map_pin_tap_check_skipped', { reason: check.skipped });
+        }
+        const chosen = ('id' in check ? check.id : null) ?? googleId;
+        if (chosen !== googleId) {
+          log.info('map_pin_tap_corrected', { from: googleId, to: chosen });
+        }
+        onPressPost(chosen);
+      });
     },
     [map, onPressPost],
   );

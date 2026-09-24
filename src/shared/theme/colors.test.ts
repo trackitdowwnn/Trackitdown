@@ -81,6 +81,14 @@ describe.each([
     expect(contrast(palette.textOnPrimary, palette.primary)).toBeGreaterThanOrEqual(4.5);
   });
 
+  // The selected map pill and the Toast pill print `textOnPrimary` on
+  // `surfaceInverse`. That only holds because `primary` and `surfaceInverse`
+  // happen to invert together — if `primary` ever regains a colour, this is
+  // what fails, rather than the selected pill silently going unreadable.
+  it('reads its on-fill ink on the inverse surface at AA', () => {
+    expect(contrast(palette.textOnPrimary, palette.surfaceInverse)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('reads its on-fill ink on the danger fill at AA', () => {
     // `textOnPrimary`, NOT a hardcoded white: Button's danger variant labels
     // itself with that token, and it inverts to near-black in dark. Asserting

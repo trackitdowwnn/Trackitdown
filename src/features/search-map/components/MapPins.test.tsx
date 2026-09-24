@@ -161,14 +161,93 @@ describe('⚠️ a press is checked against where the finger was', () => {
   });
 
   it('keeps Google\'s pick when the projection fails', async () => {
+    const touch = { x: 100, y: 133, at: Date.now() };
     const broken = {
       current: {
-        lastTouch: () => ({ x: 100, y: 133, at: Date.now() }),
+        lastTouch: () => touch,
         pointFor: () => Promise.reject(new Error('no map')),
       },
     };
 
     expect(await pressAsGoogle(broken, 'a')).toHaveBeenCalledWith('a');
+  });
+
+  // An answer only lands if nothing has happened since the press.
+  it('drops the answer if the screen unmounts before it arrives', async () => {
+    let resolve: (p: { x: number; y: number }) => void = () => {};
+    const touch = { x: 100, y: 133, at: Date.now() };
+    const slow = {
+      current: {
+        lastTouch: () => touch,
+        pointFor: () => new Promise<{ x: number; y: number }>((r) => (resolve = r)),
+      },
+    };
+    const onPressPost = jest.fn();
+    const view = await act(async () =>
+      render(<MapPins posts={[A]} selectedPostId={null} onPressPost={onPressPost} map={slow} />),
+    );
+    await act(async () => {
+      fireEvent.press(view.getByTestId('marker'));
+    });
+    await act(async () => {
+      view.unmount();
+      resolve({ x: 100, y: 100 });
+    });
+
+    expect(onPressPost).not.toHaveBeenCalled();
+  });
+
+  it('drops the answer if a newer touch (a background tap) came after the press', async () => {
+    let at = Date.now();
+    let resolve: (p: { x: number; y: number }) => void = () => {};
+    const moving = {
+      current: {
+        lastTouch: () => ({ x: 100, y: 100, at }),
+        pointFor: () => new Promise<{ x: number; y: number }>((r) => (resolve = r)),
+      },
+    };
+    const onPressPost = jest.fn();
+    const view = await act(async () =>
+      render(<MapPins posts={[A]} selectedPostId={null} onPressPost={onPressPost} map={moving} />),
+    );
+    await act(async () => {
+      fireEvent.press(view.getByTestId('marker'));
+    });
+    await act(async () => {
+      at += 50; // the user tapped the map background; it has already deselected
+      resolve({ x: 100, y: 100 });
+    });
+
+    expect(onPressPost).not.toHaveBeenCalled();
+  });
+
+  it('keeps Google\'s pick when the projection is too slow', async () => {
+    jest.useFakeTimers();
+    try {
+      // One recorded touch, as AppMap stores it — not a fresh stamp per call.
+      const touch = { x: 100, y: 133, at: Date.now() };
+      const hung = {
+        current: {
+          lastTouch: () => touch,
+          pointFor: () => new Promise<{ x: number; y: number }>(() => {}),
+        },
+      };
+      const onPressPost = jest.fn();
+      const view = await act(async () =>
+        render(<MapPins posts={[A, B]} selectedPostId={null} onPressPost={onPressPost} map={hung} />),
+      );
+      const a = markers(view).find((node) => node.props.accessibilityLabel.startsWith('£2,400'))!;
+      await act(async () => {
+        fireEvent.press(a as unknown as Parameters<typeof fireEvent.press>[0]);
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(250);
+      });
+
+      expect(onPressPost).toHaveBeenCalledWith('a');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('measures each pill, so the check uses the drawn size', async () => {

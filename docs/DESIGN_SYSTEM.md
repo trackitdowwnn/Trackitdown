@@ -28,7 +28,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `textPrimary` | `#222222` | ink for headings/body |
 | `textSecondary` | `#6A6A6A` | captions, metadata |
 | `border` | `#DDDDDD` | hairlines, input borders |
-| `borderStrong` | `#949494` | small elements that must stay visible (progress tracks) |
+| `borderStrong` | `#8F8F8F` | small elements that must stay visible (progress tracks) |
 | `success` | `#4F8A5B` | affirmative states — recovery confirmed, payout complete, ownership verified (fill/dot/icon, not body text) |
 | `warning` | `#A9762A` | pending verification, expiring posts (dot/icon/border only — never body text; clears 3:1 as a graphic) |
 | `danger` | `#C0281E` | destructive actions, errors (clear red, kept distinct from the near-black primary) |
@@ -121,7 +121,7 @@ near-white and `textOnPrimary` becomes near-black.
 | `textSecondary` | `#6A6A6A` | `#A3A3A3` | 7.3 AAA | 6.6 |
 | `textOnPrimary` | `#FFFFFF` | `#141414` | 16.5 on `primary` | — |
 | `border` | `#DDDDDD` | `#333333` | 1.5 decorative | 1.3 |
-| `borderStrong` | `#949494` | `#6E6E6E` | 3.6 ≥3 | 3.3 ≥3 |
+| `borderStrong` | `#8F8F8F` | `#6E6E6E` | 3.6 ≥3 | 3.3 ≥3 |
 | `success` | `#4F8A5B` | `#6FBF7F` | 8.3 | 7.5 |
 | `warning` | `#A9762A` | `#E0A64B` | 8.5 | 7.7 |
 | `danger` | `#C0281E` | `#F2685C` | 6.1 AA | 5.5 |
@@ -402,8 +402,9 @@ are build output.
 
 ## Screen conventions
 
-- Map screens: light map style (muted natural tones), custom `primary` pins;
-  selected pin grows and shows a floating vehicle card, Airbnb-style.
+- Map screens: light map style (muted natural tones), white `surface` £ pills
+  (selected: a larger `surfaceInverse` pill) and a floating vehicle card,
+  Airbnb-style.
   - **EVERY marker carries its price (2026-08-07).** One appearance: a white
     £ pill with a hairline border; the selected car's pill becomes a larger
     `surfaceInverse` one. There is no quiet tier.
@@ -433,8 +434,9 @@ are build output.
       mode darkened the land, `border` measured 1.08:1 against it, and
       `shadows` casts a literal black that contributes nothing on dark tiles —
       so the pill lost every edge at once. `borderStrong` is 3.55:1 on the dark
-      land and 2.61:1 on the light one, which also fixes light, where the old
-      hairline was 1.17:1 and the shadow was carrying it alone. The same rule
+      land and 2.79:1 on the light one (re-measured 2026-09-24 at `#8F8F8F`
+      on `#EEEEEE`; it read 2.61 before the 2026-08-25 fix), which also fixes
+      light, where the old hairline was 1.17:1. The same rule
       applies to every floating map control (`MapCircleButton`,
       `MapSearchPill`).
     - Bounty decides **paint order** (highest on top, so a tap in a crowd
@@ -448,7 +450,14 @@ are build output.
   - **A marker's tap box is the pill, exactly** — the one exception to the
     44pt touch-target rule. A marker's tap area is its whole bitmap, and
     Google Maps widens it further on its own, so padding a pill out to 44pt
-    made taps land on cars the finger was nowhere near.
+    made taps land on cars the finger was nowhere near. Even so, a press is
+    checked against the finger (MapPins), because Google's widened areas
+    still hand a tap between two close pills to the top one.
+  - **Screen readers: do not rely on the marker's accessibility props.** On
+    Android a Google marker is a bitmap inside the map, not a view TalkBack
+    walks, so its label, role and `selected` state are likely never read
+    (unverified on device). The peek card's announcement and the list sheet
+    are the screen-reader path to every car.
   - **Anything that frames the camera must inset for that chrome.** A result
     centred behind the sheet may as well not exist. Where a sheet can be
     dragged, the inset tracks it and the camera zooms to match, so the same

@@ -8,13 +8,27 @@
  * LINKS: src/shared/ui/AppMap.tsx (native), src/shared/ui/LocationPicker.tsx.
  */
 
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import type { MapComponentProps } from './LocationPicker';
 
+/** Types kept in step with the native file. There is no map here, so the
+ *  handle is never filled — MapPins then keeps Google's pick, which on web
+ *  never happens anyway. */
+export interface MapPoint {
+  x: number;
+  y: number;
+}
+export interface AppMapHandle {
+  lastTouch(): (MapPoint & { at: number }) | null;
+  pointFor(coordinate: { latitude: number; longitude: number }): Promise<MapPoint>;
+}
+
 export interface AppMapExtraProps {
+  /** Never filled on web — see AppMapHandle above. */
+  handleRef?: Ref<AppMapHandle>;
   children?: ReactNode;
   onPress?: () => void;
   /** Ignored on web (kept for prop parity with the native map). */

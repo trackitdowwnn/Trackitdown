@@ -173,6 +173,42 @@ describe('MapCardPager', () => {
     expect(onIndexSettled).toHaveBeenCalledWith(1);
   });
 
+  // ⚠️ The guard must never outlive its scroll. On first show the list is not
+  // mounted, so no scroll is sent — an armed guard then swallowed every
+  // settle that did not begin with a drag, TalkBack/VoiceOver scrolls included.
+  it('reports a settle with NO drag after the card first appears', async () => {
+    const onIndexSettled = jest.fn();
+    const props = { posts: POSTS, onIndexSettled, onPressPost: () => {} };
+    const { getByTestId, rerender } = await render(<MapCardPager {...props} selectedIndex={-1} />);
+    await rerender(<MapCardPager {...props} selectedIndex={0} />);
+
+    await act(async () => {
+      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(2));
+    });
+
+    expect(onIndexSettled).toHaveBeenCalledWith(2);
+  });
+
+  it('its own-scroll guard expires, so a later drag-less settle still reports', async () => {
+    const onIndexSettled = jest.fn();
+    const props = { posts: POSTS, onIndexSettled, onPressPost: () => {} };
+    const { getByTestId, rerender } = await render(<MapCardPager {...props} selectedIndex={0} />);
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      await rerender(<MapCardPager {...props} selectedIndex={2} />);
+      // The programmatic scroll never settles on 2 (e.g. it was already there).
+      clock.mockReturnValue(now + 5000);
+      await act(async () => {
+        fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
+      });
+
+      expect(onIndexSettled).toHaveBeenCalledWith(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('ignores a momentum settle that lands after the card was dismissed', async () => {
     const onIndexSettled = jest.fn();
     const { queryByTestId, rerender } = await render(

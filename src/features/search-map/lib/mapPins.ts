@@ -1,13 +1,16 @@
 /**
  * WHAT:  pinsInView — the posts the search map draws a pill for: the ones
- *        inside the current view, highest bounty first.
+ *        inside the current view, highest bounty first. And pinAt — which
+ *        drawn pill a tap landed on (MapPins checks Google's marker pick
+ *        against it, because Google's enlarged tap areas pick neighbours).
  * WHY:   CULLING: `result.posts` only refreshes when a search lands (~600ms
  *        behind the gesture), so without it a pan keeps drawing markers the
  *        user has already moved away from. ORDER: a stable mount order, so
  *        identical results never reshuffle. (Paint order is NOT this position
  *        — Android reads zIndex once, at creation, so MapPins derives it from
  *        the bounty itself.) Pure, so it tests without a map.
- * LINKS: src/features/search-map/components/MapPins.tsx (the renderer);
+ * LINKS: src/features/search-map/components/MapPins.tsx (the renderer, and
+ *        the press handler that calls pinAt);
  *        src/features/search-map/lib/regionMath.ts (regionToBbox).
  */
 

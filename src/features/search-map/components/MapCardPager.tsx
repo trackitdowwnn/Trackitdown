@@ -44,6 +44,9 @@ const log = createLogger('search-map');
 // and cardWidth = window − 2·spacing.lg, a snapped card sits 16px from
 // each screen edge and the neighbour's visible sliver is lg − gap = 8px.
 const CARD_GAP = spacing.sm;
+/** How long our own animated scroll may take to settle. Past this, any settle
+ *  is the user's — see `scrollingTo`. */
+const OWN_SCROLL_MAX_MS = 1000;
 /** How far below its resting place the card starts its spring-up. */
 const ENTER_OFFSET = spacing.xxxl;
 
@@ -75,7 +78,13 @@ export const MapCardPager = memo(function MapCardPager({
   // tap interrupts the first scroll, that settle can land on a card IN
   // BETWEEN. Reported as a swipe, it selected a car nobody tapped (and flew
   // the camera to it). Settles are only ever the user's while this is null.
-  const scrollingTo = useRef<number | null>(null);
+  //
+  // It EXPIRES, and is set only when a scroll is really sent. A guard that
+  // outlives its scroll swallows every later settle that does not start with a
+  // drag — TalkBack/VoiceOver scroll actions among them (code review,
+  // 2026-09-24: on first show the list was not mounted yet, the scroll was a
+  // no-op, and the guard stayed armed for good).
+  const scrollingTo = useRef<{ index: number; until: number } | null>(null);
   const reduceMotion = useReducedMotion();
 
   // Enter/exit choreography: `shown` keeps the list mounted through the
@@ -147,8 +156,12 @@ export const MapCardPager = memo(function MapCardPager({
     if (selectedIndex !== lastReportedIndex.current) {
       lastReportedIndex.current = selectedIndex;
       log.info('map_card_view', { postId: post.id, index: selectedIndex, trigger: 'pin' });
-      scrollingTo.current = selectedIndex;
-      listRef.current?.scrollToIndex({ index: selectedIndex, animated: true });
+      // Not mounted yet (first show): initialScrollIndex places the card, and
+      // no scroll means no settle to ignore.
+      if (listRef.current) {
+        scrollingTo.current = { index: selectedIndex, until: Date.now() + OWN_SCROLL_MAX_MS };
+        listRef.current.scrollToIndex({ index: selectedIndex, animated: true });
+      }
     }
   }, [selectedIndex, posts]);
 
@@ -167,12 +180,14 @@ export const MapCardPager = memo(function MapCardPager({
       );
       // Our own scroll settling — see `scrollingTo`. Selection already says
       // where it is going; an interrupted scroll's midway stop is not news.
-      if (scrollingTo.current !== null) {
-        if (index === scrollingTo.current) {
+      const own = scrollingTo.current;
+      if (own !== null && Date.now() < own.until) {
+        if (index === own.index) {
           scrollingTo.current = null;
         }
         return;
       }
+      scrollingTo.current = null;
       if (index !== lastReportedIndex.current) {
         const from = lastReportedIndex.current;
         lastReportedIndex.current = index;
