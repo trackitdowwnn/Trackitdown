@@ -36,6 +36,10 @@ export {
 // Pure module, zero imports — it costs this barrel's weight budget nothing,
 // and chat (which already imports this barrel) feeds its half through it.
 export { reportInboxBadge, resetInboxBadge } from './lib/inboxBadge';
+// The center's half of that badge, for chat's useInboxBadgeSync — the badge
+// before the Inbox is opened. Its api module is supabase + the payload parser,
+// the same weight notifyApi above already brings.
+export { fetchUnreadNotificationCount } from './api/notificationsApi';
 
 // Alert state, read by Profile's summary row and the Explore nudge card. Its
 // deps are React, the api layer and useSession — imported by MODULE path, not

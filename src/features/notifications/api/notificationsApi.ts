@@ -104,6 +104,17 @@ export async function fetchNotifications(): Promise<NotificationRow[]> {
   });
 }
 
+/**
+ * The center's unread count alone — for the Inbox TAB badge before the Inbox
+ * has been opened (chat's useInboxBadgeSync). Same feed and the same rule as
+ * the center's own half (an unread row has no read_at), so the two can't
+ * disagree about the number.
+ */
+export async function fetchUnreadNotificationCount(): Promise<number> {
+  const rows = await fetchNotifications();
+  return rows.reduce((total, row) => total + (row.readAt === null ? 1 : 0), 0);
+}
+
 /** Mark one row read (tap). Idempotent server-side; failures are logged and
  *  swallowed — losing a read-mark must never break a navigation. */
 export async function markNotificationRead(id: string): Promise<void> {
