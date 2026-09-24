@@ -1,8 +1,9 @@
 /**
  * WHAT:  ThreadRow — one inbox conversation: the CAR'S COVER PHOTO leading,
- *        first name + the clock time, a one-line last-message preview, the
- *        anchoring context line ("About your Blue BMW" + the owner's own
- *        PlateChip / "Your sighting · Blue BMW"), and the unread badge.
+ *        first name + the clock time, a one-line last-message preview, and the
+ *        unread badge. The context ("About your Blue BMW" + the owner's own
+ *        plate / "Your sighting · Blue BMW") is spoken, no longer drawn
+ *        (owner's call, 2026-09-24).
  * WHY:   Airbnb-style rows anchor a conversation to the THING it's about, and
  *        they give that thing the leading slot at full size — a listing row
  *        leads with the listing. Ours leads with the car, which is how you
@@ -54,14 +55,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import {
-  AppImage,
-  CarColourTile,
-  PlateChip,
-  PLATE_CHIP_HEIGHT,
-  spellPlate,
-  UnreadBadge,
-} from '@/shared/ui';
+import { AppImage, CarColourTile, spellPlate, UnreadBadge } from '@/shared/ui';
 
 import { contextLine, isUnread, previewText } from '../lib/inboxModel';
 import type { InboxThread } from '../types';
@@ -155,25 +149,11 @@ export function ThreadRow({ thread, onPress }: ThreadRowProps) {
         {/* Past `listRowStackFontScale` the stamp lives here instead of in the
             trailing column — see the note below the body. */}
         {stacked ? <Text style={styles.timeStacked}>{when}</Text> : null}
-        {/* ⚠️ WRAPS. The prefix shrinks beside an intrinsic-width plate chip,
-            and in a column 28pt narrower than before, "About your Blue BMW 3
-            Series" squeezed to nothing at large type. Wrapping lets the chip
-            drop to its own line instead of crushing the words. */}
-        {/* ⚠️ RESERVES THE CHIP'S HEIGHT WHETHER OR NOT THERE IS A CHIP.
-            Owner rows carry a PlateChip (26pt) and spotter rows carry one line
-            of caption (18), so the row height used to depend on which side of
-            the conversation you were — which meant no single skeleton could
-            match, and every owner row resettled when the inbox loaded. */}
-        <View style={[styles.contextLine, { minHeight: PLATE_CHIP_HEIGHT * scale }]}>
-          <Text style={styles.context} numberOfLines={1}>
-            {context.prefix}
-          </Text>
-          {/* onPress forwarded: the chip's long-press-to-copy makes it the
-              touch responder, which would otherwise eat the row's own tap. */}
-          {context.plate ? (
-            <PlateChip plate={context.plate} onPress={() => onPress(thread)} />
-          ) : null}
-        </View>
+        {/* ⚠️ NO DRAWN CONTEXT LINE (owner's call, 2026-09-24). "About your
+            Blue BMW" + the plate chip sat under the message; the car's photo
+            leading the row already says which conversation this is, so the
+            line went. It is still SPOKEN (the label above), because a screen
+            reader can't see the photo. */}
       </View>
       {/* ⚠️ THE TIME AND THE BADGE ARE ONE TRAILING COLUMN (2026-09-04). The
           time used to share the top line with the name and the badge sat in a
@@ -244,18 +224,6 @@ export function ThreadRowSkeleton() {
             { height: typography.body.lineHeight * scale },
           ]}
         />
-        {/* The context line's reserved box, with a caption-height bar inside —
-            mirroring the real row, whose chip-or-no-chip line is always
-            PLATE_CHIP_HEIGHT tall. */}
-        <View style={[styles.contextLine, { minHeight: PLATE_CHIP_HEIGHT * scale }]}>
-          <View
-            style={[
-              styles.skeletonBar,
-              styles.skeletonContext,
-              { height: typography.caption.lineHeight * scale },
-            ]}
-          />
-        </View>
       </View>
       {/* The trailing column, matching the real row: a time bar over the
           badge's reserved slot, so the skeleton and the row it stands in for
@@ -358,18 +326,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // Never shrinks — a truncated timestamp is worse than a truncated name.
     flexShrink: 0,
   },
-  contextLine: {
-    flexWrap: 'wrap',
-    rowGap: spacing.xs,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  context: {
-    ...typography.caption,
-    color: c.textSecondary,
-    flexShrink: 1,
-  },
   // `body`, not `caption`: with the car pictured, the message is the second
   // most important thing in the row rather than the third.
   preview: {
@@ -392,8 +348,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   skeletonPreview: {
     width: '85%',
-  },
-  skeletonContext: {
-    width: '60%',
   },
 });

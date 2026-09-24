@@ -135,33 +135,24 @@ describe('the row shape the inbox pass settled on', () => {
   });
 });
 
-describe('⚠️ the plate is a privacy rule, not a decoration', () => {
-  it('shows an OWNER their own plate', async () => {
-    const { getByText } = await render(<ThreadRow thread={thread()} onPress={jest.fn()} />);
-
-    expect(getByText('AB12 CDE')).toBeTruthy();
-  });
-
-  it('⚠️ never shows a SPOTTER the plate, even though the payload carries it', async () => {
-    // The RPC returns `plate` for both roles; the client rule is what withholds
-    // it. A spotter must never see a plate the post's public face doesn't show.
+// Owner's call, 2026-09-24: the car's photo already says what a conversation
+// is about, so the "About your …" line and the plate are no longer drawn.
+describe('no drawn context line', () => {
+  it.each(['owner', 'spotter'] as const)('draws neither the car line nor the plate (%s)', async (role) => {
     const { queryByText } = await render(
-      <ThreadRow thread={thread({ role: 'spotter' })} onPress={jest.fn()} />,
+      <ThreadRow thread={thread({ role })} onPress={jest.fn()} />,
     );
 
+    expect(queryByText(/About your|Your sighting/)).toBeNull();
     expect(queryByText('AB12 CDE')).toBeNull();
   });
 
-  it('⚠️ the plate opens the conversation rather than swallowing the tap', async () => {
-    // PlateChip long-presses to copy, which makes it the touch responder — so
-    // the row forwards its own onPress into the chip. Without that, an owner's
-    // row has a dead ~80×26 patch that silently does nothing.
+  it('opens the conversation on a tap', async () => {
     const onPress = jest.fn();
-    const { getByText } = await render(<ThreadRow thread={thread()} onPress={onPress} />);
+    const { getByTestId } = await render(<ThreadRow thread={thread()} onPress={onPress} />);
 
-    fireEvent.press(getByText('AB12 CDE'));
+    await fireEvent.press(getByTestId('thread-row-t1'));
 
-    expect(onPress).toHaveBeenCalledTimes(1);
     expect(onPress.mock.calls[0][0].threadId).toBe('t1');
   });
 });
@@ -231,11 +222,10 @@ describe('what a screen reader hears', () => {
     expect(within(row).queryByText(/ago/)).toBeNull();
   });
 
-  it('⚠️ speaks the plate an owner can SEE, spelled out', async () => {
-    // The label was built from the context prefix alone while the chip rendered
-    // from `plate`, so a sighted owner had their registration and a VoiceOver
-    // user did not. Spelled by character group, because "AB12 CDE" read as a
-    // word is not something anyone can write down.
+  it('⚠️ speaks an owner their own plate, spelled out', async () => {
+    // Spelled by character group, because "AB12 CDE" read as a word is not
+    // something anyone can write down. Owner rows only: the RPC returns
+    // `plate` for both roles, and a spotter must never get one (below).
     const { getByTestId } = await render(<ThreadRow thread={thread()} onPress={jest.fn()} />);
 
     expect(getByTestId('thread-row-t1').props.accessibilityLabel).toContain('Plate A B 1 2');
