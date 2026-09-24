@@ -16,8 +16,11 @@
 -- CHECKS: 1 credited path · 2 no double claim · 3 owner-only · 4 no foreign
 -- sighting · 5 no self-credit · 6 single winner (structural) · 7 claim grants ·
 -- 8 no money moved · 9 no-spotter resolve · 10 credited recovery is not
--- refundable · 11 never-regress · 12 resolve grants.
+-- refundable · 11 never-regress · 12 resolve grants · 18-19 a FREE listing
+-- closes on recovery (nextStep done) · 20 the bounty path is unchanged ·
+-- 21 free-but-holding-escrow is refused · 22 the stranded-listing repair.
 -- LINKS: supabase/migrations/20260802200000_claim_recovery.sql;
+--        supabase/migrations/20260924120000_a_free_listing_closes_on_recovery.sql;
 --        docs/DOMAIN.md (lifecycle 4-6, "Single winner", bounty rules);
 --        docs/TESTING.md (Tier 1 = money/safety); scripts/test-db.sh.
 --
@@ -33,6 +36,13 @@
 -- =============================================================================
 
 -- --- housekeeping: leave no trace from a previous run ------------------------
+-- The free-listing fixtures (CHECKS 18-22), back to their seed state.
+delete from public.payments where stripe_payment_intent_id in ('pi_free_but_held_1', 'pi_free_but_held_2');
+delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000007';
+update public.posts set status = 'active', recovered_at = null, bounty_amount_pence = 60000
+where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+update public.posts set status = 'active', recovered_at = null, bounty_amount_pence = 20000
+where id = 'a1a1a1a1-0000-0000-0000-000000000009';
 delete from public.sightings
 where id in ('c0c0c0c0-0000-0000-0000-000000000001',
              'c0c0c0c0-0000-0000-0000-000000000002',
@@ -685,6 +695,262 @@ begin
   end loop;
   raise notice 'CHECK 17 passed: the payout writers are service-role only';
 end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- FREE LISTINGS (ADR-0014). Fixture: Beth's seed post ...0008, turned into a
+-- free listing for these checks (bounty NULL) and restored afterwards; Carl
+-- spots it. Missing until 2026-09-24: claim_recovery lacked this branch, so a
+-- free listing landed on recovery_claimed with nextStep 'refund', the refund
+-- found no escrow, and the post was stranded (the owner's own listing, on
+-- device — 20260924120000_a_free_listing_closes_on_recovery.sql).
+-- -----------------------------------------------------------------------------
+update public.posts
+set bounty_amount_pence = null, status = 'active', recovered_at = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 18 — a free listing "found another way" CLOSES: recovered_no_spotter,
+-- closed_at set, nextStep 'done', and not a payment row touched. The bug was
+-- 'recovery_claimed' + 'refund'.
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_doc      jsonb;
+  v_status   public.post_status;
+  v_closed   timestamptz;
+  v_pay_n    int;
+  v_pay_n0   int;
+begin
+  select count(*) into v_pay_n0 from public.payments
+  where post_id = 'a1a1a1a1-0000-0000-0000-000000000008';
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  v_doc := public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000008', null);
+  reset role;
+
+  select status, closed_at into v_status, v_closed
+  from public.posts where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+  if v_status <> 'recovered_no_spotter' then
+    raise exception 'CHECK 18 FAILED: free listing is % — must close to recovered_no_spotter (recovery_claimed strands it: no refund can ever resolve it)', v_status;
+  end if;
+  if v_closed is null then
+    raise exception 'CHECK 18 FAILED: closed_at not set — the listing would not read as closed';
+  end if;
+  if v_doc ->> 'nextStep' <> 'done' then
+    raise exception 'CHECK 18 FAILED: nextStep = %, expected done — anything else sends the app to a refund that cannot exist', v_doc ->> 'nextStep';
+  end if;
+
+  select count(*) into v_pay_n from public.payments
+  where post_id = 'a1a1a1a1-0000-0000-0000-000000000008';
+  if v_pay_n <> v_pay_n0 then
+    raise exception 'CHECK 18 FAILED: payment rows changed (% -> %) — claim_recovery must move no money', v_pay_n0, v_pay_n;
+  end if;
+  raise notice 'CHECK 18 passed: free listing, found another way -> recovered_no_spotter, closed, nextStep=done, no money moved';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 19 — a free listing WITH a credited sighting closes to 'recovered':
+-- the sighting is credited and the spotter's counter moves (on a free listing
+-- that reputation IS the reward), nextStep 'done'.
+-- -----------------------------------------------------------------------------
+update public.posts set status = 'active', recovered_at = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+
+do $$
+declare
+  v_doc     jsonb;
+  v_status  public.post_status;
+  v_sight   text;
+  v_before  int;
+  v_after   int;
+begin
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+  values ('c0c0c0c0-0000-0000-0000-000000000007',
+          'a1a1a1a1-0000-0000-0000-000000000008',
+          '33333333-3333-3333-3333-333333333333', 'unverified', 'Salford', true);
+  select recoveries_credited into v_before from public.profiles
+  where id = '33333333-3333-3333-3333-333333333333';
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  v_doc := public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000008',
+                                 'c0c0c0c0-0000-0000-0000-000000000007');
+  reset role;
+
+  select status into v_status from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+  if v_status <> 'recovered' then
+    raise exception 'CHECK 19 FAILED: credited free listing is %, expected recovered', v_status;
+  end if;
+  select status into v_sight from public.sightings
+  where id = 'c0c0c0c0-0000-0000-0000-000000000007';
+  if v_sight <> 'credited' then
+    raise exception 'CHECK 19 FAILED: sighting is %, expected credited', v_sight;
+  end if;
+  select recoveries_credited into v_after from public.profiles
+  where id = '33333333-3333-3333-3333-333333333333';
+  if v_after <> v_before + 1 then
+    raise exception 'CHECK 19 FAILED: spotter counter % -> %, expected +1 — the credit is the whole reward here', v_before, v_after;
+  end if;
+  if v_doc ->> 'nextStep' <> 'done' then
+    raise exception 'CHECK 19 FAILED: nextStep = %, expected done', v_doc ->> 'nextStep';
+  end if;
+  raise notice 'CHECK 19 passed: credited free listing -> recovered, sighting credited, counter +1, nextStep=done';
+end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 20 — the bounty path is UNCHANGED by the free-listing branch: a post
+-- with a bounty still lands on recovery_claimed with nextStep 'refund'. (CHECK
+-- 1 covers the credited half; this pins the no-spotter half, which is the one
+-- the branch sits next to.)
+-- -----------------------------------------------------------------------------
+update public.posts set status = 'active', recovered_at = null, bounty_amount_pence = 60000
+where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+
+do $$
+declare
+  v_doc    jsonb;
+  v_status public.post_status;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  v_doc := public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000008', null);
+  reset role;
+
+  select status into v_status from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+  if v_status <> 'recovery_claimed' or v_doc ->> 'nextStep' <> 'refund' then
+    raise exception 'CHECK 20 FAILED: bounty post -> % / %, expected recovery_claimed / refund — the money path must be untouched',
+      v_status, v_doc ->> 'nextStep';
+  end if;
+  raise notice 'CHECK 20 passed: a bounty post still waits in recovery_claimed for its refund';
+end $$;
+
+-- -----------------------------------------------------------------------------
+-- CHECK 21 — MONEY. A NULL bounty WITH escrow held is refused, not closed.
+-- It can happen (a draft switched bounty -> free while the old intent still
+-- captured), and closing it would strand real money: refund-recovery and
+-- release-payout both need recovery_claimed. POST_HAS_BOUNTY, raised before
+-- any write — the post stays active and nothing is credited. (Security review,
+-- 2026-09-24: the first draft of the fix closed it.)
+-- -----------------------------------------------------------------------------
+update public.posts set status = 'active', recovered_at = null, bounty_amount_pence = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+values ('a1a1a1a1-0000-0000-0000-000000000008', 'pi_free_but_held_1', 'held', 25000);
+
+do $$
+declare
+  v_ok     boolean := false;
+  v_status public.post_status;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  set local role authenticated;
+  begin
+    perform public.claim_recovery('a1a1a1a1-0000-0000-0000-000000000008', null);
+  exception when others then
+    if sqlerrm like '%POST_HAS_BOUNTY%' then v_ok := true;
+    else raise exception 'CHECK 21 FAILED: wrong error: %', sqlerrm; end if;
+  end;
+  reset role;
+  if not v_ok then
+    raise exception 'CHECK 21 FAILED: a free listing HOLDING ESCROW was closed — that money would be stranded';
+  end if;
+  select status into v_status from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+  if v_status <> 'active' then
+    raise exception 'CHECK 21 FAILED: post moved to % — the refusal must leave it active', v_status;
+  end if;
+  raise notice 'CHECK 21 passed: NULL bounty + held escrow is refused (POST_HAS_BOUNTY), post left active';
+end $$;
+
+delete from public.payments where stripe_payment_intent_id = 'pi_free_but_held_1';
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 22 — the REPAIR (resolve_stranded_free_recoveries) moves exactly the
+-- stranded free listings and nothing that is waiting on money:
+--   * free, stranded, nobody credited      -> recovered_no_spotter
+--   * a BOUNTY post in recovery_claimed     -> untouched (awaits its payout)
+--   * free but HOLDING escrow, claimed      -> untouched (needs a refund)
+-- and a second run moves nothing. Fixtures: ...0008 (free, stranded), Carl's
+-- ...0005 (bounty), ...0009 (made free, with held escrow).
+-- -----------------------------------------------------------------------------
+-- ...0008 must have NO credited sighting here: CHECK 19 credited one, and the
+-- repair (correctly) sends a post with a credited sighting to 'recovered', not
+-- 'recovered_no_spotter'. Leaving it in failed this check in CI on its first
+-- run — a fixture leak, not a repair bug.
+delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000007';
+update public.posts set status = 'recovery_claimed', recovered_at = now(), bounty_amount_pence = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+update public.posts set status = 'recovery_claimed', recovered_at = now()
+where id = 'a1a1a1a1-0000-0000-0000-000000000005';
+update public.posts set status = 'recovery_claimed', recovered_at = now(), bounty_amount_pence = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000009';
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+values ('a1a1a1a1-0000-0000-0000-000000000009', 'pi_free_but_held_2', 'held', 25000);
+
+do $$
+declare
+  v_first  int;
+  v_second int;
+  v_free   public.post_status;
+  v_bounty public.post_status;
+  v_held   public.post_status;
+  v_closed timestamptz;
+begin
+  v_first  := public.resolve_stranded_free_recoveries();
+  v_second := public.resolve_stranded_free_recoveries();
+
+  select status, closed_at into v_free, v_closed from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+  select status into v_bounty from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000005';
+  select status into v_held from public.posts
+  where id = 'a1a1a1a1-0000-0000-0000-000000000009';
+
+  if v_free <> 'recovered_no_spotter' or v_closed is null then
+    raise exception 'CHECK 22 FAILED: stranded free listing is % (closed_at %), expected recovered_no_spotter and closed', v_free, v_closed;
+  end if;
+  if v_bounty <> 'recovery_claimed' then
+    raise exception 'CHECK 22 FAILED: a BOUNTY post was moved to % — it is waiting on its payout', v_bounty;
+  end if;
+  if v_held <> 'recovery_claimed' then
+    raise exception 'CHECK 22 FAILED: a post HOLDING ESCROW was moved to % — that money would be stranded', v_held;
+  end if;
+  if v_second <> 0 then
+    raise exception 'CHECK 22 FAILED: a second run moved % post(s) — the repair must be idempotent', v_second;
+  end if;
+  if v_first < 1 then
+    raise exception 'CHECK 22 FAILED: the first run moved nothing';
+  end if;
+
+  -- Service role only.
+  if has_function_privilege('authenticated', 'public.resolve_stranded_free_recoveries()', 'EXECUTE')
+     or has_function_privilege('anon', 'public.resolve_stranded_free_recoveries()', 'EXECUTE') then
+    raise exception 'CHECK 22 FAILED: a client role can run the repair';
+  end if;
+  raise notice 'CHECK 22 passed: repair closes only stranded free listings, spares bounty and held posts, idempotent, service-role only';
+end $$;
+
+-- Restore every fixture CHECKS 18-22 touched to its seed state.
+delete from public.payments where stripe_payment_intent_id in ('pi_free_but_held_1', 'pi_free_but_held_2');
+delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000007';
+update public.posts set status = 'active', recovered_at = null, bounty_amount_pence = 60000
+where id = 'a1a1a1a1-0000-0000-0000-000000000008';
+update public.posts set status = 'active', recovered_at = null
+where id = 'a1a1a1a1-0000-0000-0000-000000000005';
+update public.posts set status = 'active', recovered_at = null, bounty_amount_pence = 20000
+where id = 'a1a1a1a1-0000-0000-0000-000000000009';
 
 
 -- --- housekeeping ------------------------------------------------------------

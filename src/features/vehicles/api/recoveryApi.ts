@@ -81,6 +81,12 @@ const CLAIM_MESSAGES: Record<string, string> = {
   SIGHTING_NOT_ON_POST: 'That sighting belongs to a different listing.',
   CANNOT_CREDIT_OWN_SIGHTING: 'You can’t credit your own sighting.',
   NOT_AUTHENTICATED: 'Please log in again, then try once more.',
+  // A listing with no reward that still holds a reward payment (a draft
+  // switched from reward to free while the old payment went through). The
+  // server refuses rather than close it and strand the money
+  // (20260924120000). Rare, and it needs a person, so say so.
+  POST_HAS_BOUNTY:
+    'This listing still has a reward payment attached, so we can’t close it here. Please contact us and we’ll sort it out.',
 };
 
 const REFUND_MESSAGES: Record<string, string> = {
