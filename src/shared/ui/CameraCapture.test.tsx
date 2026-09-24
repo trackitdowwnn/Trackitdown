@@ -93,6 +93,18 @@ describe('CameraCapture', () => {
     expect(photo.accuracyM).toBe(12);
   });
 
+  // SAFETY: a spotter may be metres from the people who took the car — a
+  // shutter click can give them away. The flash is the feedback instead.
+  it('takes the picture SILENTLY — never a shutter sound', async () => {
+    mockGetPermissions.mockResolvedValue({ granted: false });
+    const { getByLabelText } = await render(
+      <CameraCapture photos={[]} onChange={jest.fn()} maxPhotos={3} />,
+    );
+    await pressShutter(getByLabelText);
+
+    expect(mockTakePicture).toHaveBeenCalledWith(expect.objectContaining({ shutterSound: false }));
+  });
+
   it('captures UN-located (no lat/lng/accuracy at all) when permission is missing', async () => {
     mockGetPermissions.mockResolvedValue({ granted: false });
     const onChange = jest.fn();
