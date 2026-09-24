@@ -75,10 +75,12 @@ rounded-top sheet overlapping the hero.)
    Non-owners also get a **"Message the owner"** affordance HERE (sighting-
    gated — DOMAIN Chat): a viewer who has already reported gets a quiet grey
    (`subtle`) **"Message the owner"** button that opens the thread (the
-   reference's "Message host" treatment); everyone else gets honest copy + a
-   quiet **"Report a sighting"** link into the report flow (a text link, not
-   a second button — the sticky bar's "I've seen this car" is the primary
-   route). Hidden for the owner. Driven by
+   reference's "Message host" treatment); everyone else gets honest copy ("Seen
+   this car? Report a sighting to start a private chat with the owner.") and
+   the same `subtle` button reading **"Report a sighting"**, into the report
+   flow (a button since 2026-09-24 — it was an underlined link; still subtle,
+   so the sticky bar's "I've seen this car" stays the primary route). Hidden
+   for the owner. Driven by
    `get_post_detail.viewer_has_sighting`.
 7. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
     the section renders only when count > 0 and lights up when the sightings

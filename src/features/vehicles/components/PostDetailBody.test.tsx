@@ -258,10 +258,11 @@ describe('PostDetailBody', () => {
   });
 
   describe('message the owner (sighting-gated)', () => {
-    it('spotter WITHOUT a sighting: a quiet report link + honest gate copy (no 2nd button)', async () => {
-      const { getByText } = await renderBody(base);
-      expect(getByText(/Reporting a sighting opens a private/)).toBeTruthy();
-      expect(getByText('Report a sighting')).toBeTruthy();
+    it('spotter WITHOUT a sighting: honest gate copy + a "Report a sighting" button', async () => {
+      const { getByText, getByRole, queryByText } = await renderBody(base);
+      expect(getByText(/Report a sighting to start a private chat/)).toBeTruthy();
+      expect(getByRole('button', { name: 'Report a sighting' })).toBeTruthy();
+      expect(queryByText('Message the owner')).toBeNull();
     });
 
     it('spotter WITH a sighting: the CTA opens the conversation', async () => {

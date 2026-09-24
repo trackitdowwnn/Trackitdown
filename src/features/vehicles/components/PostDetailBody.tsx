@@ -547,33 +547,19 @@ export function PostDetailBody({
             <Text style={styles.messageOwnerText}>
               {post.viewerHasSighting
                 ? 'Chat privately with the owner about your sighting.'
-                : 'Spotted this car? Reporting a sighting opens a private, safe conversation with the owner.'}
+                : 'Seen this car? Report a sighting to start a private chat with the owner.'}
             </Text>
-            {post.viewerHasSighting ? (
-              // A real distinct action (opens the thread) → a button. Subtle,
-              // like the reference's "Message host": encouraged, but never
-              // competing with the sticky bar's primary CTA.
-              <Button
-                label="Message the owner"
-                variant="subtle"
-                fullWidth={false}
-                onPress={onMessageOwner}
-              />
-            ) : (
-              // No-sighting: a QUIET link, not a second button — the sticky
-              // bottom-bar "I've seen this car" is the primary route to the
-              // same report flow; this is just a contextual entry from the
-              // messaging framing (page's underlined-link grammar).
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Report a sighting to message the owner"
-                onPress={onMessageOwner}
-                style={styles.reportRow}
-                hitSlop={spacing.sm}
-              >
-                <Text style={styles.reportLabel}>Report a sighting</Text>
-              </Pressable>
-            )}
+            {/* A button in BOTH states (owner's call, 2026-09-24 — it was an
+                underlined link before a sighting). Subtle, like the
+                reference's "Message host": encouraged, but never competing
+                with the sticky bar's primary "I've seen this car", which
+                opens the same report flow. */}
+            <Button
+              label={post.viewerHasSighting ? 'Message the owner' : 'Report a sighting'}
+              variant="subtle"
+              fullWidth={false}
+              onPress={onMessageOwner}
+            />
           </View>
         ) : null}
       </View>
