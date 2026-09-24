@@ -76,19 +76,6 @@ export interface UseViewportPostsResult {
    *  scroll) key off this, never off the posts array identity, which also
    *  changes when the sort anchor moves. */
   searchId: number;
-  /**
-   * Bumped only when a search REPLACES the population wholesale — the entry
-   * load, an applied search, an explicit retry. NOT the auto re-search that
-   * follows a pan, which returns a largely overlapping set.
-   *
-   * Separate from `searchId` because the two answer different questions.
-   * "Are these different results?" (the sheet's scroll reset) is true after
-   * every pan. "Is this a different set of cars?" is not — and a consumer that
-   * throws away mounted work on the answer, like the progressive marker
-   * reveal, must key off THIS or it re-does that work on every pan and costs
-   * more than it saves.
-   */
-  populationId: number;
   /** The last auto re-search failed. Results and pins are untouched; the
    *  screen surfaces this quietly rather than blanking the map. */
   searchFailed: boolean;
@@ -155,7 +142,6 @@ export function useViewportPosts(
   const [searchedRegion, setSearchedRegion] = useState<GeoRegion>(initialRegion);
   const [searching, setSearching] = useState(false);
   const [searchId, setSearchId] = useState(0);
-  const [populationId, setPopulationId] = useState(0);
   const [searchFailed, setSearchFailed] = useState(false);
 
   // What is currently in flight. The pause path reads both: disowning an
@@ -195,13 +181,6 @@ export function useViewportPosts(
           setResult(fresh);
           setStatus('ready');
           setSearchId((n) => n + 1);
-          // 'initial' is the entry load, an applied search and an explicit
-          // retry — the three that swap the population wholesale. A 'research'
-          // is the auto re-search after a pan, which mostly returns the same
-          // cars, so consumers that discard mounted work must not see it.
-          if (kind === 'initial') {
-            setPopulationId((n) => n + 1);
-          }
           // Cleared HERE, not in .finally — see the note there.
           setSearching(false);
         })
@@ -373,7 +352,6 @@ export function useViewportPosts(
     searchedRegion,
     searching,
     searchId,
-    populationId,
     searchFailed,
     onRegionChange,
     recordRegion,

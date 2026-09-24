@@ -14,6 +14,12 @@
  *        NOT exported from the ui barrel: it imports the native map SDK, so
  *        consumers import it directly and web resolves AppMap.web.tsx (a
  *        search-only fallback) instead.
+ *        Given a `handleRef`, it also records each touch-down (a wrapping
+ *        View's onTouchStart, which never takes the touch) and exposes that
+ *        plus the map's projection as an AppMapHandle — how the search map
+ *        checks Google's marker pick against the finger (MapPins).
+ *        poiClickEnabled is OFF on every map: on Google's latest renderer a
+ *        map label's click beats a marker's.
  * LINKS: src/shared/ui/LocationPicker.tsx (MapComponentProps);
  *        app.config.ts (Google Maps API keys);
  *        https://docs.expo.dev/versions/v57.0.0/sdk/map-view/.
@@ -23,10 +29,9 @@
  *   <LocationPicker MapComponent={AppMap} locationServices={expoLocationServices} />
  */
 
-import { useEffect, useRef, type ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
-import Animated from 'react-native-reanimated';
+import { useEffect, useImperativeHandle, useRef, type ReactNode, type Ref } from 'react';
+import { StyleSheet, View } from 'react-native';
+import MapView, { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 import { mapStyleFor, useThemeControls } from '@/shared/theme';
 
@@ -35,22 +40,12 @@ import type { MapComponentProps } from './LocationPicker';
 // The search map renders markers (the owner's sightings-trail map draws its
 // connecting line, and the alert-zone map draws its radius circle);
 // re-exporting keeps react-native-maps imported in exactly one native module
-// (this file) — the animated marker below included. Web resolves the
-// AppMap.web.tsx stub instead.
+// (this file). Web resolves the AppMap.web.tsx stub instead.
 export {
   Marker as AppMapMarker,
   Polyline as AppMapPolyline,
   Circle as AppMapCircle,
 } from 'react-native-maps';
-
-/**
- * A marker whose `opacity` can be driven from the UI thread via
- * `animatedProps`. The search map fades every pill in on arrival and the
- * outgoing selection pill out; the native marker's alpha is a property the
- * map applies without re-rasterising the pill, which is the only kind of
- * motion a custom Android marker can afford (see MapPins' header).
- */
-export const AppMapMarkerAnimated = Animated.createAnimatedComponent(Marker);
 
 /** Below this degree delta we treat two regions as the same VIEW (point and
  *  zoom) — a prop update merely echoing where the user already is starts no
@@ -58,7 +53,31 @@ export const AppMapMarkerAnimated = Animated.createAnimatedComponent(Marker);
  *  animates. */
 const SAME_POINT_EPSILON = 1e-6;
 
+/** A point on the map, in dp from its top-left corner. */
+export interface MapPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * What a marker press does NOT tell you: where the finger actually was.
+ *
+ * Google Maps enlarges every marker's tap area past its drawn size and, where
+ * enlarged areas overlap, hands the tap to the top marker — so between two
+ * close pills a tap on one often selects its neighbour (react-native-maps
+ * #4386; not configurable). This handle gives a caller what it needs to
+ * decide for itself: the last touch-down point, and the map's own projection.
+ */
+export interface AppMapHandle {
+  /** The last touch-down on the map, and when (ms since epoch); null if none. */
+  lastTouch(): (MapPoint & { at: number }) | null;
+  /** Where a coordinate is on screen now, via the map's projection. */
+  pointFor(coordinate: { latitude: number; longitude: number }): Promise<MapPoint>;
+}
+
 export interface AppMapExtraProps {
+  /** Filled with an AppMapHandle — see its doc. */
+  handleRef?: Ref<AppMapHandle>;
   /** Markers/overlays (the search map's pins). */
   children?: ReactNode;
   /** Tap on the map background (not a marker) — deselect, close cards. */
@@ -119,9 +138,23 @@ export function AppMap({
   showsUserLocation = false,
   liteMode = false,
   onReady,
+  handleRef,
 }: MapComponentProps & AppMapExtraProps) {
   const { scheme } = useThemeControls();
   const mapRef = useRef<MapView>(null);
+  const lastTouchRef = useRef<(MapPoint & { at: number }) | null>(null);
+
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      lastTouch: () => lastTouchRef.current,
+      pointFor: (coordinate) =>
+        mapRef.current
+          ? mapRef.current.pointForCoordinate(coordinate)
+          : Promise.reject(new Error('map not mounted')),
+    }),
+    [],
+  );
   // The region the map currently shows — lets us tell a prop-driven fly-to
   // apart from where the user already is.
   const shownRef = useRef<Region>(region);
@@ -144,6 +177,25 @@ export function AppMap({
   }, [region, animateDurationMs]);
 
   return (
+    // Records where each touch lands. onTouchStart sees touches on the native
+    // map below it without taking them — the map still gets every gesture.
+    // locationX/Y are relative to the touched view, which is the full-bleed map.
+    <View
+      testID="app-map"
+      style={StyleSheet.absoluteFill}
+      // Only maps that asked for a handle pay for the handler.
+      onTouchStart={
+        handleRef
+          ? (event) => {
+              lastTouchRef.current = {
+                x: event.nativeEvent.locationX,
+                y: event.nativeEvent.locationY,
+                at: Date.now(),
+              };
+            }
+          : undefined
+      }
+    >
     <MapView
       ref={mapRef}
       provider={PROVIDER_GOOGLE}
@@ -175,6 +227,16 @@ export function AppMap({
       // marker tap just made — and the default marker-press camera recentre
       // fights our own selection→camera logic.
       moveOnMarkerPress={false}
+      // ⚠️ THE "TAPS ARE INCONSISTENT" FIX (2026-09-23). react-native-maps
+      // registers a POI click listener BY DEFAULT on Android (MapView.java:
+      // poiClickEnabled = true). On Google's latest renderer — the one this
+      // build initialises — every map LABEL (a town name, a main road) is a
+      // POI, and a POI click wins over a custom marker's click and does not
+      // propagate. So a pill sitting over a label silently ignored the tap,
+      // and a pill beside one worked: "inconsistent". Hiding POIs in the style
+      // does not help; the labels still count. Nothing here uses POI taps.
+      // Upstream: react-native-maps#4472 and the maintainer's note on #4055.
+      poiClickEnabled={false}
       onPress={(event) => {
         if (event.nativeEvent.action === 'marker-press') {
           return; // not a background tap — the marker handles it
@@ -206,5 +268,6 @@ export function AppMap({
     >
       {children}
     </MapView>
+    </View>
   );
 }

@@ -60,6 +60,12 @@ const momentumEndAt = (index: number) => ({
   nativeEvent: { contentOffset: { x: index * INTERVAL, y: 0 } },
 });
 
+/** A real swipe: the finger starts a drag, then the fling settles. */
+const swipeTo = (list: Parameters<typeof fireEvent>[0], index: number) => {
+  fireEvent(list, 'scrollBeginDrag', momentumEndAt(0));
+  fireEvent(list, 'momentumScrollEnd', momentumEndAt(index));
+};
+
 const announceSpy = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
 
 beforeEach(() => {
@@ -105,7 +111,7 @@ describe('MapCardPager', () => {
 
     // User swipes to card 1.
     await act(async () => {
-      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
+      swipeTo(getByTestId('map-card-pager'), 1);
     });
     expect(onIndexSettled).toHaveBeenCalledTimes(1);
     expect(onIndexSettled).toHaveBeenCalledWith(1);
@@ -137,9 +143,70 @@ describe('MapCardPager', () => {
     );
 
     await act(async () => {
-      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(99));
+      swipeTo(getByTestId('map-card-pager'), 99);
     });
     expect(onIndexSettled).toHaveBeenCalledWith(POSTS.length - 1);
+  });
+
+  // ⚠️ The "inconsistent taps" race (2026-09-23). Tap pin 0, then pin 2 while
+  // the pager is still scrolling: the first scroll is interrupted and settles
+  // on card 1 on the way. Reporting that as a swipe selected a car nobody
+  // tapped — so the pin you tapped lost its highlight to another.
+  it('never reports where its OWN scroll stopped — only a user swipe', async () => {
+    const onIndexSettled = jest.fn();
+    const props = { posts: POSTS, onIndexSettled, onPressPost: () => {} };
+    const { getByTestId, rerender } = await render(<MapCardPager {...props} selectedIndex={0} />);
+
+    await rerender(<MapCardPager {...props} selectedIndex={2} />);
+    await act(async () => {
+      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
+    });
+    await act(async () => {
+      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(2));
+    });
+    expect(onIndexSettled).not.toHaveBeenCalled();
+
+    // And once the user drags, their settle reports as normal.
+    await act(async () => {
+      swipeTo(getByTestId('map-card-pager'), 1);
+    });
+    expect(onIndexSettled).toHaveBeenCalledWith(1);
+  });
+
+  // ⚠️ The guard must never outlive its scroll. On first show the list is not
+  // mounted, so no scroll is sent — an armed guard then swallowed every
+  // settle that did not begin with a drag, TalkBack/VoiceOver scrolls included.
+  it('reports a settle with NO drag after the card first appears', async () => {
+    const onIndexSettled = jest.fn();
+    const props = { posts: POSTS, onIndexSettled, onPressPost: () => {} };
+    const { getByTestId, rerender } = await render(<MapCardPager {...props} selectedIndex={-1} />);
+    await rerender(<MapCardPager {...props} selectedIndex={0} />);
+
+    await act(async () => {
+      fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(2));
+    });
+
+    expect(onIndexSettled).toHaveBeenCalledWith(2);
+  });
+
+  it('its own-scroll guard expires, so a later drag-less settle still reports', async () => {
+    const onIndexSettled = jest.fn();
+    const props = { posts: POSTS, onIndexSettled, onPressPost: () => {} };
+    const { getByTestId, rerender } = await render(<MapCardPager {...props} selectedIndex={0} />);
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      await rerender(<MapCardPager {...props} selectedIndex={2} />);
+      // The programmatic scroll never settles on 2 (e.g. it was already there).
+      clock.mockReturnValue(now + 5000);
+      await act(async () => {
+        fireEvent(getByTestId('map-card-pager'), 'momentumScrollEnd', momentumEndAt(1));
+      });
+
+      expect(onIndexSettled).toHaveBeenCalledWith(1);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('ignores a momentum settle that lands after the card was dismissed', async () => {
@@ -167,7 +234,7 @@ describe('MapCardPager', () => {
       // Under reduced motion the mock unmounts immediately; if the list is
       // still up (animated exit), its late settle must not resurrect the card.
       await act(async () => {
-        fireEvent(list, 'momentumScrollEnd', momentumEndAt(2));
+        swipeTo(list, 2);
       });
     }
     expect(onIndexSettled).not.toHaveBeenCalled();

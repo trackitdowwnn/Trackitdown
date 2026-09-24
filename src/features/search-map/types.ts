@@ -81,34 +81,3 @@ export interface ViewportResult {
   total: number;
   posts: MapPost[];
 }
-
-/**
- * One marker on the map. Every post in view gets one — clustering was removed
- * on 2026-08-06, so there is no bubble variant, and every marker carries its
- * own price. `type` is kept as a discriminant so a second marker kind stays a
- * data change rather than a rewrite.
- */
-export interface MapPinItem {
-  type: 'post';
-  key: string;
-  post: MapPost;
-  /**
-   * Position by bounty among the markers in view — 0 is the highest.
-   *
-   * EVERY marker draws the same £ pill (2026-08-07). This used to pick pill vs
-   * price-less dot, and the dot was the mistake: a marker with no price on it
-   * reads as a GROUP, because there is nothing else it could be saying. The
-   * ranking survives for two jobs where order still matters — paint order under
-   * overlap, and which markers stay in the assistive-tech tree.
-   */
-  rank: number;
-  /**
-   * Where the marker's box sits relative to its coordinate, 0..1 on each axis.
-   * Absent means centred, which is the normal case.
-   *
-   * Only set by keepMarkersOnScreen, and only for markers close enough to a
-   * viewport edge to be cut in half by it. A clipped £ pill reads as "£1,3…",
-   * which is worse than useless — you cannot tell £1,300 from £13,000.
-   */
-  anchor?: { x: number; y: number };
-}

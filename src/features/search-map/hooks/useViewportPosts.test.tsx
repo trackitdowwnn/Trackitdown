@@ -234,22 +234,16 @@ describe('a landed search settles in ONE commit', () => {
   });
 });
 
-describe('populationId vs searchId', () => {
-  // These answer different questions and a consumer keyed to the wrong one
-  // pays for it. searchId means "different results" — true after every pan, and
-  // what the sheet's scroll reset wants. populationId means "a different SET of
-  // cars", which a pan's re-search is not: it returns largely the same posts.
-  // The progressive marker reveal keys off populationId, and keying it off
-  // searchId made it unmount ~68 already-drawn markers on every pan — costing
-  // more jank than not batching at all.
-  it('bumps BOTH on the entry load', async () => {
+describe('searchId', () => {
+  // "These are different results" — the sheet resets its scroll on it. It
+  // bumps on EVERY landed search, a pan's re-search included.
+  it('bumps on the entry load', async () => {
     const { result } = await entry();
 
     expect(result.current.searchId).toBe(1);
-    expect(result.current.populationId).toBe(1);
   });
 
-  it('bumps ONLY searchId on the auto re-search after a pan', async () => {
+  it('bumps on the auto re-search after a pan', async () => {
     const { result } = await entry();
     mockFetch.mockResolvedValue({ total: 4, posts: [] });
 
@@ -259,22 +253,9 @@ describe('populationId vs searchId', () => {
     await settleDebounce();
 
     expect(result.current.searchId).toBe(2);
-    expect(result.current.populationId).toBe(1);
   });
 
-  it('bumps BOTH on an explicit retry — that IS a fresh population', async () => {
-    const { result } = await entry();
-    mockFetch.mockResolvedValue({ total: 4, posts: [] });
-
-    await act(async () => {
-      result.current.retry();
-    });
-
-    expect(result.current.searchId).toBe(2);
-    expect(result.current.populationId).toBe(2);
-  });
-
-  it('bumps BOTH on an applied search', async () => {
+  it('bumps on an applied search', async () => {
     const { result } = await entry();
     mockFetch.mockResolvedValue({ total: 4, posts: [] });
 
@@ -282,7 +263,7 @@ describe('populationId vs searchId', () => {
       await result.current.applySearch({ criteria: emptyCriteria(), region: FAR_REGION });
     });
 
-    expect(result.current.populationId).toBe(2);
+    expect(result.current.searchId).toBe(2);
   });
 });
 

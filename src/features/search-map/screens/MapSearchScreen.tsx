@@ -30,7 +30,7 @@ import { createLogger } from '@/shared/lib/logger';
 import { motion, sizes, spacing, useThemedStyles, type Palette } from '@/shared/theme';
 import type { GeoCoord, GeoRegion } from '@/shared/types';
 import { FullscreenLoader, useToast } from '@/shared/ui';
-import { AppMap } from '@/shared/ui/AppMap';
+import { AppMap, type AppMapHandle } from '@/shared/ui/AppMap';
 
 import { MapCardPager } from '../components/MapCardPager';
 import {
@@ -46,7 +46,6 @@ import { MapSearchPill } from '../components/MapSearchPill';
 import { SearchSheet, type SourceRect } from '../components/SearchSheet';
 import { useFeedLocation } from '../hooks/useFeedLocation';
 import { useMapSelection, useMapSelectionState } from '../hooks/useMapSelection';
-import { useProgressivePins } from '../hooks/useProgressivePins';
 import { useSortAnchor } from '../hooks/useSortAnchor';
 import { useViewportPosts } from '../hooks/useViewportPosts';
 import { FEED_RADIUS_DEFAULT_MILES } from '../lib/feedConfig';
@@ -60,7 +59,7 @@ import {
   summariseParts,
   toRpcCriteria,
 } from '../lib/searchCriteria';
-import { keepMarkersOnScreen, pinsForRegion } from '../lib/mapPins';
+import { pinsInView } from '../lib/mapPins';
 import {
   type MapInsets,
   cameraForVisible,
@@ -213,7 +212,7 @@ function MapSearchBody({
   // the resting peek, on the reasoning that a camera chasing the sheet would
   // be motion nobody asked for — it is now asked for: the map zooms out as the
   // sheet rises so the same ground stays visible in the smaller strip.
-  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const { height: windowHeight } = useWindowDimensions();
   const [pagerHeight, setPagerHeight] = useState(0);
   // ⚠️ INVARIANT: `handleSheetSnap` is the ONLY writer of this. It carries the
   // camera's return leg, so a second call site would let the index change
@@ -270,7 +269,6 @@ function MapSearchBody({
     searchedRegion,
     searching,
     searchId,
-    populationId,
     searchFailed,
     onRegionChange,
     recordRegion,
@@ -344,36 +342,16 @@ function MapSearchBody({
   // framing when there are no results to frame around.
   const [settledRegion, setSettledRegion] = useState<GeoRegion>(entryRegion);
 
-  // Culled to the current view and ranked pill-vs-mini. `settledRegion` is the
-  // dep that matters: `result.posts` only refreshes when a search LANDS, so
-  // without re-culling on every settle a pan would keep drawing markers the
-  // user has already moved away from.
-  // Ranked, then nudged off the viewport edge. Markers that would OVERLAP are
-  // left to overlap: every one is drawn on its own car, at every zoom.
-  // Spreading them apart was tried and reverted the same day (2026-08-07) —
-  // holding a constant on-screen gap needs a ground offset proportional to the
-  // zoom span, so fanned markers slid across the map on every camera settle and
-  // drifted further the more you zoomed out. keepMarkersOnScreen is not the
-  // same trade: it moves the marker's BOX, never its coordinate.
-  const allPins = useMemo(
-    () =>
-      keepMarkersOnScreen(pinsForRegion(result.posts, settledRegion), settledRegion, windowWidth),
-    [result.posts, settledRegion, windowWidth],
+  // The cars to draw a pill for. Re-culled on every settle: `result.posts`
+  // only refreshes when a search LANDS, so without this a pan keeps drawing
+  // markers the user has already moved away from. Overlapping pills are left
+  // to overlap — a marker is always drawn on its own car.
+  const pins = useMemo(
+    () => pinsInView(result.posts, settledRegion),
+    [result.posts, settledRegion],
   );
-  // Mounted in batches rather than all at once — nothing thins the population
-  // any more, so a dense area is up to VIEWPORT_POST_LIMIT custom markers in
-  // one commit, each re-drawing every frame until it has rasterised.
-  //
-  // populationId, NOT searchId: searchId bumps on every landed search
-  // INCLUDING the auto re-search after each pan, which returns a largely
-  // overlapping set. Resetting there would unmount ~68 already-drawn markers
-  // per pan and re-arm the tracking window on each as they came back — more jank
-  // than not batching at all, and the exact failure this hook exists to stop.
-  //
-  // The selected id goes in so the reveal can never withhold the pin the card
-  // is describing — the pager selects across ALL result posts, not just the
-  // drawn ones.
-  const pins = useProgressivePins(allPins, populationId, selected?.id ?? null);
+  // Lets MapPins check a press against where the finger really was.
+  const mapHandle = useRef<AppMapHandle>(null);
 
   const handleRegionChange = useCallback(
     (region: GeoRegion) => {
@@ -784,6 +762,7 @@ function MapSearchBody({
         importantForAccessibility={searchOpen ? 'no-hide-descendants' : 'auto'}
       >
         <AppMap
+          handleRef={mapHandle}
           region={camera}
           // Sheet-driven moves take the UI clock (standard, matching the
           // sheet's own timing) so the two read as ONE gesture; geographic
@@ -800,9 +779,10 @@ function MapSearchBody({
         showsUserLocation={locationPermission.status?.state === 'granted'}
       >
         <MapPins
-          pins={pins}
+          posts={pins}
           selectedPostId={selected?.id ?? null}
           onPressPost={handlePressPost}
+          map={mapHandle}
         />
       </AppMap>
 
