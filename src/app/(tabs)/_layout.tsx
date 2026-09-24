@@ -24,6 +24,7 @@ import { Bookmark, Compass, MessageCircle, Plus, User } from 'lucide-react-nativ
 import { useMemo } from 'react';
 
 import { useRequireAuth, useTabAuthGate } from '@/features/auth';
+import { useInboxBadgeSync } from '@/features/chat';
 import { useHasSavedCar } from '@/features/garage';
 import { useProfileTab, useTrackVisitedTab } from '@/features/profile';
 import {
@@ -52,6 +53,9 @@ const BASE_TABS: AppTabConfig[] = [
 
 function BadgedTabs() {
   const { badges } = useTabBadges();
+  // The Inbox badge from app start, not from the first visit to the Inbox —
+  // tabs mount lazily, and the Inbox's own hooks were its only reporters.
+  useInboxBadgeSync();
   // Remembers which TAB is active so the bug reporter can pre-select the right
   // area. ⚠️ The TAB NAME only — never the pathname, which can be /post/<id>
   // and would tie a bug report to one specific stolen car. See

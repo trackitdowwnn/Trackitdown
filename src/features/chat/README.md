@@ -187,6 +187,11 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
   report their own half to `inboxBadge` and the aggregator sums them. The
   cost of that is two full RPCs per inbox focus instead of one plus a cheap
   count — acceptable at v1 scale, and worth revisiting with the feed.
+- ⚠️ **But neither face runs until the Inbox is first opened** — tabs mount
+  lazily — so until 2026-09-24 the badge read 0 from app start until that
+  first visit. `useInboxBadgeSync` (mounted once by the tab layout) now
+  counts both halves at sign-in, on return to the foreground and when a push
+  arrives; it writes the same aggregator, and clears it on sign-out.
 - **notify-message push: SHIPPED** (2026-07-30). This section read "HONEST
   STUB — no push infra exists" until 2026-08-03, three days after it was
   built; a doc that says a shipped thing is missing costs more than one that
