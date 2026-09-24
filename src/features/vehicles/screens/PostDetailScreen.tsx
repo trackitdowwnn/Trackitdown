@@ -55,6 +55,7 @@ import { PostDetailBody } from '../components/PostDetailBody';
 import { PostHero } from '../components/PostHero';
 import { PostManageSheet } from '../components/PostManageSheet';
 import { StillMissingBanner } from '../components/StillMissingBanner';
+import { useOpenOnArrival } from '../hooks/useOpenOnArrival';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { useStillMissingAsk } from '../hooks/useStillMissingAsk';
@@ -72,6 +73,10 @@ const FADE_TRAVEL = 48;
 
 export interface PostDetailScreenProps {
   postId: string;
+  /** Open the owner's "Manage your listing" sheet as soon as the listing has
+   *  loaded — the landing for a long-press on My listings. Ignored for anyone
+   *  but the owner (the sheet only exists for them). */
+  openManage?: boolean;
 }
 
 /** Photos, last-seen and the bounty are editable ONLY while the post is a draft:
@@ -146,7 +151,7 @@ function canReleasePayout(post: PostDetail): boolean {
   return post.isOwner && post.status === 'recovery_claimed';
 }
 
-export function PostDetailScreen({ postId }: PostDetailScreenProps) {
+export function PostDetailScreen({ postId, openManage = false }: PostDetailScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const router = useRouter();
@@ -200,6 +205,14 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   });
 
   const visiblePost = status === 'ready' && result?.kind === 'visible' ? result.post : null;
+
+  // Arrived by long-pressing this listing on My listings: open the Manage sheet
+  // once, the first time the owner's listing is on screen. The sheet itself only
+  // mounts for the owner, so a stale or forged `manage` param does nothing for
+  // anyone else.
+  useOpenOnArrival(openManage && visiblePost?.isOwner === true, () =>
+    manageRef.current?.open(),
+  );
 
   // The ADR-0019 liveness ask. Only ever open on the owner's own live listing —
   // the RPC is scoped to auth.uid() and status='active', so a spotter's copy of

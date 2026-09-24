@@ -45,8 +45,16 @@ jest.mock('@/shared/ui', () => {
   const { View, Text, Pressable } = require('react-native');
   return {
     Screen: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
-    VehicleCard: ({ post, onPress }: { post: PostSummary; onPress: () => void }) => (
-      <Pressable testID={`card-${post.id}`} onPress={onPress}>
+    VehicleCard: ({
+      post,
+      onPress,
+      onLongPress,
+    }: {
+      post: PostSummary;
+      onPress: () => void;
+      onLongPress?: () => void;
+    }) => (
+      <Pressable testID={`card-${post.id}`} onPress={onPress} onLongPress={onLongPress}>
         <Text>{post.make}</Text>
       </Pressable>
     ),
@@ -142,6 +150,16 @@ describe('MyPostsScreen', () => {
     const { getByTestId } = await render(<MyPostsScreen />);
     fireEvent.press(getByTestId('card-p1'));
     expect(mockPush).toHaveBeenCalledWith('/post/p1');
+  });
+
+  // Press and hold → the listing with its Manage sheet already up (the real
+  // sheet on its own page, so every action is the one tested implementation).
+  it('opens the post with its Manage sheet on press-and-hold', async () => {
+    mockPush.mockClear();
+    mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post] });
+    const { getByTestId } = await render(<MyPostsScreen />);
+    await fireEvent(getByTestId('card-p1'), 'longPress');
+    expect(mockPush).toHaveBeenCalledWith('/post/p1?manage=1');
   });
 
   // ADR-0019's second door: someone who has drifted away from a listing opens

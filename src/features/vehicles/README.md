@@ -110,6 +110,14 @@ rounded-top sheet overlapping the hero.)
   the owner off the very post they were managing. Rows are built from the
   handlers the screen passes — an absent handler means an absent row, so the
   sheet can never offer an edit the server would reject.
+  - **Press and hold a card on My listings** (2026-09-24) opens the listing
+    with this sheet already up: `/post/<id>?manage=1` → `openManage` →
+    `useOpenOnArrival` (once, after the push transition; never again on a
+    reload or edit; a no-op for anyone but the owner, since the sheet only
+    mounts for them). Deliberately the REAL sheet on its own page rather than
+    a copy over the list, so every row stays the one tested implementation.
+    `VehicleCard` gained an opt-in `onLongPress` + `longPressLabel`, also
+    exposed to screen readers as a named `longpress` action.
 
 **Deactivate confirm** — owned by `PostDetailScreen`, not the body: the body's
 "Deactivate listing" section button and the manage sheet's row both open the same

@@ -14,7 +14,9 @@ import { isBrowsingSource } from '@/shared/lib/browsingSource';
 import { PostDetailScreen } from '@/features/vehicles';
 
 export default function PostDetailRoute() {
-  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
+  // `manage=1`: arrived by long-pressing the listing on My listings — open the
+  // owner's Manage sheet once it loads (the screen ignores it for non-owners).
+  const { id, from, manage } = useLocalSearchParams<{ id: string; from?: string; manage?: string }>();
   // Counted HERE rather than inside the screen so features/vehicles never
   // imports features/notifications — the same reason post-a-car.tsx, not the
   // wizard, raises the garage intent. Bumps on unmount; the third raises the
@@ -29,5 +31,5 @@ export default function PostDetailRoute() {
   // that, and neither is arriving from a chat, a watchlist collection or a
   // recovery flow.
   useCountPostViewForAlertNudge(isBrowsingSource(from));
-  return <PostDetailScreen postId={id} />;
+  return <PostDetailScreen postId={id} openManage={manage === '1'} />;
 }

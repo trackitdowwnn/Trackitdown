@@ -2,7 +2,8 @@
  * WHAT:  MyPostsScreen — the pushed "My Posts" page (reached from Profile): the
  *        owner's own listings as standard VehicleCards (newest first, every
  *        status incl. drafts/pending, each showing its StatusBadge), tap to open
- *        the post — where editing now lives (a pencil beside each section).
+ *        the post — where editing now lives (a pencil beside each section) —
+ *        or press and hold to open it with its "Manage your listing" sheet up.
  *        Guests get a friendly invitation through the auth gate; loading/empty/
  *        error states keep the page's identity.
  * WHY:   Your own posts are their own destination (product call — split from the
@@ -21,6 +22,7 @@ import { useCallback } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRequireAuth, useSession } from '@/features/auth';
+import { lightHaptic } from '@/shared/lib/haptics';
 import { sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import type { PostSummary } from '@/shared/types';
 import {
@@ -54,6 +56,16 @@ export function MyPostsScreen() {
         <VehicleCard
           post={item}
           onPress={() => router.push(`/post/${item.id}`)}
+          // Press and hold → the listing, with its Manage sheet already up
+          // (owner's call, 2026-09-24). Opening the REAL sheet on its own page,
+          // rather than a copy here, keeps every row — edits, deactivate &
+          // refund, delete, send the reward — the one tested implementation.
+          // The tick says the hold registered before the page moves.
+          onLongPress={() => {
+            lightHaptic();
+            router.push(`/post/${item.id}?manage=1`);
+          }}
+          longPressLabel="Manage listing"
           showLiveBadge
         />
       </View>

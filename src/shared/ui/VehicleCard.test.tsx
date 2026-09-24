@@ -88,6 +88,42 @@ describe('VehicleCard', () => {
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
+  // Opt-in: only a caller with a real secondary action passes onLongPress (My
+  // listings → Manage). It must work by touch AND for a screen reader, which
+  // cannot discover a long-press by feel.
+  it('fires onLongPress by touch and as a named screen-reader action', async () => {
+    const onPress = jest.fn();
+    const onLongPress = jest.fn();
+    const { getByRole } = await render(
+      <VehicleCard
+        post={BASE_POST}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        longPressLabel="Manage listing"
+      />,
+    );
+    const card = getByRole('button');
+
+    // Awaited: this RNTL's fireEvent is async, and an un-awaited one leaves an
+    // update pending that blanks every render in the tests after it.
+    await fireEvent(card, 'longPress');
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+    expect(onPress).not.toHaveBeenCalled();
+
+    expect(card.props.accessibilityActions).toEqual([{ name: 'longpress', label: 'Manage listing' }]);
+    expect(card.props.accessibilityHint).toBe('Double-tap and hold for manage listing.');
+    await fireEvent(card, 'accessibilityAction', { nativeEvent: { actionName: 'longpress' } });
+    expect(onLongPress).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers no long-press at all unless the caller passes one', async () => {
+    const { getByRole } = await render(<VehicleCard post={BASE_POST} onPress={() => {}} />);
+    const card = getByRole('button');
+
+    expect(card.props.accessibilityActions).toBeUndefined();
+    expect(card.props.accessibilityHint).toBeUndefined();
+  });
+
   it('does not fire onPress when the carousel is swiped', async () => {
     const onPress = jest.fn();
     const { getByTestId } = await render(<VehicleCard post={BASE_POST} onPress={onPress} />);

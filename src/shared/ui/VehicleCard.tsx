@@ -94,6 +94,14 @@ export interface VehicleCardProps {
    * listing shows no badge and stays calm.
    */
   showLiveBadge?: boolean;
+  /**
+   * Optional press-and-hold, with the label a screen reader offers for it
+   * (e.g. "Manage listing"). Only surfaces that have a real secondary action
+   * pass it — My listings opens the owner's Manage sheet — so a card
+   * elsewhere never swallows a long-press for nothing.
+   */
+  onLongPress?: () => void;
+  longPressLabel?: string;
 }
 
 function VehicleCardInner({
@@ -102,6 +110,8 @@ function VehicleCardInner({
   variant = 'feed',
   topRightAction,
   showLiveBadge = false,
+  onLongPress,
+  longPressLabel = 'More options',
 }: VehicleCardProps) {
   const styles = useThemedStyles(makeStyles);
   const compact = variant === 'compact';
@@ -140,6 +150,22 @@ function VehicleCardInner({
     .filter(Boolean)
     .join(', ');
 
+  // Press-and-hold, when the caller has one. The same props on both
+  // Pressables below. A screen reader can't discover a long-press by feel, so
+  // it is also offered as a named custom action (and hinted).
+  const longPressProps = onLongPress
+    ? {
+        onLongPress,
+        accessibilityHint: `Double-tap and hold for ${longPressLabel.toLowerCase()}.`,
+        accessibilityActions: [{ name: 'longpress', label: longPressLabel }],
+        onAccessibilityAction: (event: { nativeEvent: { actionName: string } }) => {
+          if (event.nativeEvent.actionName === 'longpress') {
+            onLongPress();
+          }
+        },
+      }
+    : {};
+
   // Muted meta line shared by every variant: rails/map lead with distance
   // (what a spotter scans for); the full-width card leads with identity.
   const metaText =
@@ -161,6 +187,7 @@ function VehicleCardInner({
           accessibilityRole="button"
           accessibilityLabel={label}
           onPress={onPress}
+          {...longPressProps}
           onPressIn={() => animatePress(true)}
           onPressOut={() => animatePress(false)}
           onTouchEnd={() => animatePress(false)}
@@ -205,6 +232,7 @@ function VehicleCardInner({
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
+      {...longPressProps}
       onPressIn={() => animatePress(true)}
       onPressOut={() => animatePress(false)}
       // Belt-and-braces: if a swipe cancels an in-flight press without an
