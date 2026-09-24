@@ -44,9 +44,10 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
    "Yesterday" yesterday, a date before that. The a11y label keeps day AND
    time at every age, because a screen-reader user cannot glance at the rows
    above to place this one),
-   the one-line preview, and the context line ("About your
-   Blue BMW · ‹PlateChip›" for owners / "Your sighting · Blue BMW" for
-   spotters). Trailing: `UnreadBadge` — a dot at one unread, a count above,
+   and the one-line preview. The context ("About your Blue BMW" + the owner's
+   plate / "Your sighting · Blue BMW") is SPOKEN only — no longer drawn since
+   2026-09-24 (owner's call: the leading car photo already says which
+   conversation it is). Trailing: `UnreadBadge` — a dot at one unread, a count above,
    an empty reserved slot when read so the text column never changes width.
    Unread also bolds the name (family swap, so the row height cannot jump).
    — ⚠️ Until 2026-08-28 the row led with an initial-letter Avatar wearing the
