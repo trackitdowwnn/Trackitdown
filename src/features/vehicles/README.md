@@ -87,7 +87,9 @@ rounded-top sheet overlapping the hero.)
     feature ships. **SAFETY** (SECURITY_AND_TRUST §6): aggregate count ONLY,
     never individual sightings or their locations to a non-owner.
 8. **SafetyNotice** banner (deliberately a banner, never quiet rows), then
-    the underlined "Report this post" row (moved out of the header).
+    a subtle **"Report this listing"** button (moved out of the header; an
+    underlined link with a flag until 2026-09-24 — grey, never `danger`:
+    reporting is not destructive).
 9. **More cars nearby** (`useSimilarPosts`) — the reference's "More stays
     nearby" shelf at the page's end: a full-bleed compact-`VehicleCard` rail
     from the public `get_home_feed` RPC centred on THIS car's last-seen point

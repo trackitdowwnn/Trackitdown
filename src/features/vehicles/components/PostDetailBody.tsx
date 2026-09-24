@@ -12,7 +12,7 @@
  *        photo inset beside the description, truncated past three behind a
  *        grey "Show all N" block button), the owner card (OwnerCard — one
  *        quiet row), the (dormant) sighting-activity line, the SafetyNotice,
- *        an underlined report row, and the "More cars nearby" compact-card
+ *        a subtle "Report this listing" button, and the "More cars nearby" compact-card
  *        rail (the reference's "More stays nearby" shelf; useSimilarPosts).
  * WHY:   Splits the section rendering out of the screen so the screen file
  *        stays about orchestration (load → header → states). Section order is
@@ -675,25 +675,13 @@ export function PostDetailBody({
         onConfirm={() => {}}
       />
 
-      {/* 10 — Report, the reference's trust-page grammar: an underlined text
-          row at the page's end (underline = tappable). */}
+      {/* 10 — Report, at the page's end. A subtle button since 2026-09-24
+          (owner's call — it was an underlined link with a flag): the same
+          grey treatment as "Report a sighting" above, never `danger` —
+          reporting a listing is not destructive, and red would alarm. */}
       <Divider />
       <View style={styles.section}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Report this listing"
-          onPress={onReport}
-          style={styles.reportRow}
-          hitSlop={spacing.sm}
-        >
-          <Feather
-            name="flag"
-            size={sizes.iconSm}
-            color={palette.textPrimary}
-            importantForAccessibility="no"
-          />
-          <Text style={styles.reportLabel}>Report this listing</Text>
-        </Pressable>
+        <Button label="Report this listing" variant="subtle" fullWidth={false} onPress={onReport} />
       </View>
 
       {/* 11 — More cars nearby (the reference's "More stays nearby" shelf,
@@ -1012,17 +1000,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // Instructional copy introducing an action = body, not caption/meta.
     ...typography.body,
     color: c.textSecondary,
-  },
-  reportRow: {
-    minHeight: sizes.touchTarget,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    alignSelf: 'flex-start',
-  },
-  reportLabel: {
-    ...typography.body,
-    color: c.textPrimary,
-    textDecorationLine: 'underline',
   },
 });

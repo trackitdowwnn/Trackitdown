@@ -4,7 +4,7 @@
  *        details" lists EVERY fact in-page with muted "Not provided" gap rows
  *        at the end (no Show-all tap), the sighting-activity line
  *        stays HIDDEN while the aggregate is zero (dormant), the SafetyNotice
- *        is always present, the report row fires its callback, and
+ *        is always present, the report button fires its callback, and
  *        "Distinctive features" renders one card per mark, truncating past
  *        three behind a "Show all N features" toggle.
  * WHY:   The conditional gating is the section's contract; the sighting
@@ -250,10 +250,10 @@ describe('PostDetailBody', () => {
     expect(getByText(/Never approach the vehicle/)).toBeTruthy();
   });
 
-  it('renders the underlined report row and fires onReport', async () => {
+  it('renders the report button and fires onReport', async () => {
     const onReport = jest.fn();
-    const { getByText } = await renderBody(base, { onReport });
-    fireEvent.press(getByText('Report this listing'));
+    const { getByRole } = await renderBody(base, { onReport });
+    fireEvent.press(getByRole('button', { name: 'Report this listing' }));
     expect(onReport).toHaveBeenCalledTimes(1);
   });
 
