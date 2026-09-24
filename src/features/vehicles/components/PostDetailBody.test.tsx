@@ -170,10 +170,10 @@ describe('PostDetailBody', () => {
     expect(queryByText(/Show all/)).toBeNull();
   });
 
-  it('renders the owner card with name and this post’s sighting stat', async () => {
+  it('renders the owner card with name and this post’s sighting count', async () => {
     const { getByText } = await renderBody({ ...base, sightingCount: 2 });
     expect(getByText('Alex')).toBeTruthy();
-    expect(getByText('Sightings on this listing')).toBeTruthy();
+    expect(getByText(/· 2 sightings$/)).toBeTruthy();
   });
 
   it('keeps the sighting-activity line HIDDEN while the aggregate is zero (dormant)', async () => {

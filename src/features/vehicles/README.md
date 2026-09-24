@@ -56,12 +56,19 @@ rounded-top sheet overlapping the hero.)
    `keys_taken`, never an address); a driveway theft's last-seen point is
    coarsened to ~1km for non-owners in `get_post_detail` (the map/feed RPCs
    still need the same — see the migration's follow-up banner and DOMAIN.md).
-6. **Owner** (`OwnerCard`, the reference's host-passport card — the page's
-   one elevated object): centred avatar + first name + "Owner" caption
-   beside a stat column (time on Trackitdown; sightings on this post).
-   Calm register — "Owner", never "Meet the owner". **SAFETY**: signed-in
+6. **Owner** (`OwnerCard`, redesigned 2026-09-24): one quiet row in a
+   hairline-outlined card, no shadow — a 48pt initial avatar, the first name,
+   and one grey line of facts: "2 years on Trackitdown · 3 sightings" ("New
+   to Trackitdown" in the joining month; "No sightings yet" at zero, never a
+   bare 0). It replaced the Airbnb host-passport card (elevated, centred
+   avatar, big stats): research across Dribbble and shipping apps (Uber,
+   Vinted, eBay, Gumtree) puts the person behind a listing in a flat row, and
+   big stats read as a dashboard — wrong for a theft victim. Calm register —
+   "Owner", never "Meet the owner". **Never "verified"**: ownership isn't
+   checked (ADR-0007), so there is no shield and no "Verified owner" — the
+   card said so to every viewer until 2026-09-24. **SAFETY**: signed-in
    viewers see an initial-letter avatar + first name; anonymous viewers a
-   de-identified "Verified owner" shield. **No photo** — a `<owner_id>/…`
+   de-identified "Car owner" with a plain person icon. **No photo** — a `<owner_id>/…`
    avatar path would leak `owner_id` (→ surname). Never
    surname/`display_name`, `owner_id`, or contact. Gated server-side in
    `get_post_detail`; see DOMAIN.md "Owner identity on a post".

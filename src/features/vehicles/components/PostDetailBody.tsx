@@ -10,8 +10,8 @@
  *        "Car details" (the FULL fact list in-page, gaps struck through),
  *        "Distinctive features" (the owner's photographed marks as cards —
  *        photo inset beside the description, truncated past three behind a
- *        grey "Show all N" block button), the owner passport card
- *        (OwnerCard), the (dormant) sighting-activity line, the SafetyNotice,
+ *        grey "Show all N" block button), the owner card (OwnerCard — one
+ *        quiet row), the (dormant) sighting-activity line, the SafetyNotice,
  *        an underlined report row, and the "More cars nearby" compact-card
  *        rail (the reference's "More stays nearby" shelf; useSimilarPosts).
  * WHY:   Splits the section rendering out of the screen so the screen file
@@ -49,7 +49,16 @@ import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
 import { estimateRefundPence, formatPounds } from '@/shared/lib';
-import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  cardSurface,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import {
   AppImage,
   Button,
@@ -520,8 +529,7 @@ export function PostDetailBody({
         </>
       ) : null}
 
-      {/* 7 — Owner (the reference's host-passport placement — low on the
-          page, the final reassurance). Calm register: "Owner", never "Meet
+      {/* 7 — Owner (low on the page, the final reassurance). Calm register: "Owner", never "Meet
           the owner". */}
       <Divider />
       <View style={styles.section}>
@@ -973,20 +981,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     gap: spacing.md,
   },
   featureCard: {
+    // A quiet container, NOT an elevated one: the shared flat card. The
+    // reference's cards are shadowed because they are TAPPABLE; ours are
+    // not, and a shadow would promise an interaction that isn't there.
+    // OwnerCard uses the same cardSurface since its 2026-09-24 redesign.
+    ...cardSurface(c),
     flexDirection: 'row',
     alignItems: 'center',
     // Uniform inset (matching the editor's card for the same content), so the
     // photo sits optically centred rather than shoved against one edge.
     gap: spacing.md,
     padding: spacing.md,
-    backgroundColor: c.surface,
-    borderRadius: radii.lg,
-    // A quiet container, NOT an elevated one (the statBand grammar above).
-    // The reference's cards are shadowed because they are TAPPABLE; ours are
-    // not, and a shadow would promise an interaction that isn't there.
-    // OwnerCard stays the page's one deliberately-elevated object.
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.border,
   },
   featurePhoto: {
     width: sizes.featureThumb,

@@ -73,7 +73,7 @@ analogues. Closing ~4 small gaps closes most of the distance.
 | # | Divergence | Current | Reference | Proposed change | Effort | Impact |
 |---|---|---|---|---|---|---|
 | F1 | Section headline grammar | noun labels ("Details", "Features", "Theft details") | benefit/context headlines ("What this hotel offers", "Where you'll be") | selectively adopt where register survives translation: "Features" → "What to look for"; keep "Theft details" factual (see translation notes) | **S** | Medium |
-| F2 | Trust facts | bare facts ("Ownership verified") | headline + evidence sentence | pair each fact with one calm evidence line (see B1) | **S** | Medium–High |
+| F2 | Trust facts | bare facts (this row's example was "Ownership verified" — ⚠️ OBSOLETE: verification was removed 2026-07-30, ADR-0007, and no surface may claim it; see DOMAIN.md "Owner identity on a post") | headline + evidence sentence | pair each TRUE fact with one calm evidence line (see B1) — never a verification the system does not perform | **S** | Medium–High |
 
 ## Top 3 highest-impact changes
 
