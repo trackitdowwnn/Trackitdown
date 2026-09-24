@@ -14,6 +14,7 @@ import {
 } from '@/shared/lib/distance';
 import {
   clampMiles,
+  shouldCommitRadius,
   formatMiles,
   milesToPosition,
   positionToMiles,
@@ -90,5 +91,27 @@ describe('clampMiles / formatMiles', () => {
   it('singularises one mile', () => {
     expect(formatMiles(1)).toBe('1 mile');
     expect(formatMiles(20)).toBe('20 miles');
+  });
+});
+
+describe('shouldCommitRadius', () => {
+  // ⚠️ THE REGRESSION THIS EXISTS FOR. `lastSnapped` starts at the value the
+  // thumb RESTS on, so on a slider showing "Any" the snap comparison alone
+  // never fires inside the resting band — above 5 miles the step is 5, making
+  // that band 7.5–12.5 around a resting 10. The label cleared and nothing was
+  // committed, so the readout stated a number the caller was not filtering by.
+  it('commits the FIRST touch even when it lands on the resting value', () => {
+    expect(shouldCommitRadius(true, 10, 10)).toBe(true);
+  });
+
+  it('commits any touch that crosses a snap boundary', () => {
+    expect(shouldCommitRadius(false, 15, 10)).toBe(true);
+    expect(shouldCommitRadius(false, 5, 10)).toBe(true);
+  });
+
+  it('stays quiet mid-drag while the snapped value has not moved', () => {
+    // The emit fires on snap CROSSINGS, not on every frame of a drag — that
+    // is what keeps a debounced consumer from refetching per pixel.
+    expect(shouldCommitRadius(false, 10, 10)).toBe(false);
   });
 });

@@ -132,9 +132,11 @@ app's centrepiece. Route `/search-map` accepting `{ area?, search? }`
    `VIEWPORT_POST_LIMIT` (100) simultaneous markers.
    - **They mount in BATCHES, not all at once** (`hooks/useProgressivePins.ts`
      + `revealPins`). The highest-ranked markers land in the first commit and
-     the long tail fills in ~20 per tick. Each marker holds `tracksViewChanges` open for
-     500ms as it rasterises, so a hundred in one commit is the precise Android
-     jank clustering used to hide. The reveal restarts on a landed SEARCH, not
+     the long tail fills in ~20 per tick. Each marker holds `tracksViewChanges`
+     open while it rasterises — re-drawing EVERY FRAME until it does, for two
+     frames past its own layout (2026-09-23; 500ms is now only the ceiling for
+     a marker that never reports one) — so a hundred in one commit is the
+     precise Android jank clustering used to hide. The reveal restarts on a landed SEARCH, not
      on a pan — a pan re-culls posts whose markers are already mounted, and
      resetting there would make visible markers disappear mid-gesture.
 4. PEEK CARD (pin ↔ card loop — definitive spec). Tapping a pin springs a
@@ -262,7 +264,108 @@ cover the same circle as Near you and get no button; the national fallback has
 no area. This replaced a single "Thefts near you" row pinned above the whole
 feed, which read as a banner and could only answer for the feed's whole
 radius. A town the geocoder cannot place is said plainly ("We couldn't place
-<Area>") rather than silently answered with the device's own area.
+<Area>") rather than silently answered with the device's own area. The feed's
+own area NAME travels too (`label`), so the page is titled "Thefts near St
+Albans", not "near you".
+
+**The stats page itself** (`AreaInsightsScreen`, redesigned 2026-09-21 via
+`/airbnb-redesign`, re-shaped into card sections 2026-09-22) is a single
+column of resting cards (`cardSurface`: flat, hairline, no shadow — never a
+Pressable, no chevrons, because a card that looks tappable and is not is the
+standard complaint about this pattern). The hero card first and biggest: ONE
+hero sentence (the 30-day count, on ONE line — heading count over caption
+words, `adjustsFontSizeToFit` so a narrow phone shrinks rather than wraps;
+owner decision 2026-09-22), a shared `StatBand` (7 days / 90 days / 12
+months) directly beneath it, then the radius slider ALWAYS VISIBLE at the
+card's foot under a hairline (also 2026-09-22 — it was a disclosed "within N
+miles · Change" line; the slider's own label "Radius" and live readout state
+the radius now). Then one card per question — chart, most-taken makes,
+recovery rate, how taken, keys — each a `cardTitle` over its content over one
+quiet caveat, with values leading their labels. The card shape came from
+research into Dribbble stats pages and the apps they copy (Apple Health's
+Summary, Stripe's metric cards); the content order and the summary-before-
+chart rule survive from the Airbnb pass. Calm and factual by decision: no
+severity colour, no trend arrows, no benchmarks against other areas — this
+page is about crime near someone's home. Motion (2026-09-22) is the app's
+one list entrance — staggered `FadeInDown` by rendered position — plus the
+year chart's bars rising from their baseline (`MonthlyTheftsChart growIn`,
+one scaleY, not a per-bar race); nothing counts up or bounces, and all of it collapses under reduced motion.
+The scroll content adds `insets.bottom` to its tail so the last card clears
+Android's edge-to-edge button bar (Screen pads the top only).
+
+**The year chart** (`components/MonthlyTheftsChart`, 2026-09-22) replaced
+`StatsSparkline` here after the owner found it "not very easy to read or
+understand, there are no labels or anything". The sparkline is right for its
+own page (28 days is too many columns to label); a year is twelve, each wide
+enough to carry its number. So: each bar CARRIES its count — inside the
+fill in `textOnPrimary` when the bar is tall enough, perched on top in
+`textPrimary` when not; a zero month shows only its stub (a row of counts
+above the chart came first and the owner asked for them "integrated into the
+bar itself") — a hairline baseline, and a month name under every other bar
+counted back from the last so the most recent month is always named
+(`monthlyColumns`). Names are wider than a column, so they are placed from
+the measured row width rather than flex cells (a Text in a 20pt cell
+ellipsises "Sep"). The counts are their own layer over the bars, faded in as
+the bars rise, so the grow-in scale never squashes a numeral. No y-axis,
+gridlines, colour coding, or caption beneath (also dropped at the owner's
+request) — the counts make an axis redundant, and severity colour on a theft
+chart is an alarm. One node to a screen reader, speaking `monthlySummary`,
+which is now the only place that sentence lives.
+
+**Taken most often** (`components/RankedBars`, 2026-09-22) — the RPC returns
+two INDEPENDENT top-5 rankings, makes and make+model pairs, lower-cased. They
+were drawn as one list of ten label/value rows with the models indented in
+grey under the LAST make, as if they were its children, and the names came
+out as "Bmw" via textTransform. Now the makes are drawn as bars — name left,
+count right (value leading by weight), a `sliderTrack`-height rule beneath
+in `borderStrong` with a `primary` fill scaled to the top row; the same bar
+RadiusSlider is made of. A ranking is a comparison and a comparison wants a
+length. Each make's models ride BENEATH its bar as a quiet detail line,
+"Fiesta 3 · Focus 2", busiest first (owner, same day: "add the model as
+well rather than just the make" — a separate "By model" block lasted an
+hour); a pair whose make is not in the top five is dropped rather than
+given a row. ⚠️ Every pair has already cleared the RPC's per-bucket floor
+(five thefts of that exact model from listings the viewer does not own), so
+in most areas most makes carry no detail line — that is the privacy floor
+working, and nothing client-side may fill the gap. Names run through
+`canonicaliseMake` / `canonicaliseModel` (`rankedMakes`) — "bmw" → "BMW",
+"vw" → "Volkswagen" — and two spellings that land on one name MERGE (their
+full counts add exactly), which retired the "two spellings count separately"
+caption. The fills extend from the left on entry, the year chart's grow-in
+turned sideways.
+
+**Recovery rate** (2026-09-22; was titled "Do they come back?") — one
+sentence, "70% came back", over a two-line caveat was a number with nothing
+to give it shape. Now the percent leads in the hero's grammar (sectionTitle
+number, body word), the share is DRAWN (`components/ProportionBar` — the
+same `sliderTrack` / `borderStrong` / `primary` bar as the ranked list; the
+filled part came back and the rule that shows through did not), and a
+two-cell `StatBand` beneath gives the counts — "7 recovered · 3 not
+recovered" — so the fraction is legible as well as the percentage. The
+percent, bar and band are ONE spoken node with the denominator in it
+(`recoveryRate.spoken`); the caveat is one line. The denominator is still
+CLOSED listings only, and the five-closed floor before any rate is stated
+is unchanged.
+
+**Moving the radius** (2026-09-22, after the owner found the page "refreshes
+too quick and cuts off the slider"): `RadiusSlider` commits on every snap of
+a drag, and wired straight into the fetch each snap flipped the page to the
+skeleton — which unmounted the slider under the finger — and fired an RPC
+for a radius the thumb was only passing through. Now the slider's readout
+follows the finger through `radiusMiles`, while the
+fetch follows `askedMiles`, which is `radiusMiles` once it has held still
+for `RADIUS_SETTLE_MS` (300): one request per settled drag. While the
+answer is on its way the previous figures stay MOUNTED but pending — dimmed
+to `opacity.inactive` — so the control never leaves the reader's hand; they
+are still never held up as the answer for the new radius. (An "Updating for
+N miles…" caption shipped with the dim for a few hours; the owner asked for
+it gone — the radius line already says N.) When the answer lands the
+figures REMOUNT, keyed on the answered radius with a distinct prefix per
+slot, so their entrance replays — the cards' stagger, the chart's rise, a
+fade on the hero and band — while the slider, unkeyed, stays put. One hero
+card renders both the enough and not-enough answers with the
+`RadiusSlider` in the same child slot, so an answer that changes shape
+mid-drag cannot remount the slider either.
 
 **Entry** — the Map/search pill frames the feed's resolved location at its
 radius; "See all → <Area>" forward-geocodes the town and centres there. Those
@@ -272,6 +375,23 @@ in one place and crowded in another, and framing what actually came back is
 honest in both. Once only, guarded by a ref — it must never re-fire when an
 auto-search lands new results under someone mid-browse. Empty results keep the
 entry region; framing nothing would zoom to a point.
+
+**A custom search re-frames too** (`searchFrame`, 2026-09-22) — applying
+criteria flies to the region they imply, which is the right place to look but
+not necessarily the right span: a 20-mile search whose four matches sit in one
+town opened on twenty miles of mostly empty ground with the cars knotted in
+the middle. So once that search's results land the camera frames them —
+zooming out or in. ⚠️ **All or nothing, and that is the difference from
+`entryFrame`.** entryFrame keeps the cars near the entry point and drops the
+rest, which is right for an opening nobody asked for. A search is a stated
+question, so a view showing SOME matches while presenting itself as the answer
+is a quiet lie — either every result fits within the cap and the camera frames
+them all, or the camera does not move and the pill's count says there is more.
+"Close enough" is the SEARCH'S OWN radius when it set one (a reader who asked
+for 10 miles has already said how far they mean), else
+`MAX_SEARCH_FRAME_RADIUS_MILES` (25 — wider than entry's 6, because entry is
+involuntary and a search is deliberate). One shot per search, by a ref holding
+that search's radius, so it never re-fires on an auto-search mid-browse.
 
 **Data** — RPC `search_posts(min_lat, min_lng, max_lat, max_lng, criteria,
 limit)` → `{ total, posts }` with exact per-post `lat`/`lng`, and the cheap
@@ -286,19 +406,46 @@ residual within the bbox (no new index — a `pg_trgm` GIN on make/model is a
 measured follow-up if national-zoom text search needs it). Client zod
 (`api/mapApi.ts`) hard-rejects any non-active status carrying coordinates.
 
+**The map's active-search pill** (`MapSearchPill`, two lines since
+2026-09-22) shows a HEADLINE over its DETAILS, Airbnb's searched-state search
+bar: "Blue BMW" over "£500+ · within 10 miles of this area". It was one flat
+string, so a search filtered only by radius read "10mi" — a bare measurement
+standing as the whole description of what was on the map. `summariseParts`
+owns the split and the rule: the headline says what you are looking at IN
+WORDS and every number that qualifies it goes below, so a car leads when one
+was named, "Cars nearby" leads when the search is its area alone, and "Cars on
+this map" when nothing spatial narrows it — never "All cars", which would
+contradict the details line beneath it. The second line is omitted entirely
+when there is nothing to qualify the headline with. `summarise` remains as
+the one-line form for the pill's accessibility label — two visual lines are
+one spoken sentence.
+
 **Search surface** (`components/SearchSheet.tsx`) — the Airbnb "assemble
 everything in one place, apply once" filter page. A FULL-SCREEN overlay (NOT an
 RN Modal — a transparent Modal flickers and can't host gorhom sheets; it's an
 absolute overlay in the same screen) that MORPHS out of the search pill
 (measure-and-grow: `SearchSheet` measures the pill's window rect and springs the
 box from it to full screen, a ghost pill label fading early, content fading in;
-reduced-motion cross-fades). Header is a title + close. Body is collapsible
-accordion filter cards: **Vehicle** (make/model pickers reused from the posting
-flow + multi-select colour and body-type chips + a From/To year range),
-**Bounty** (`MoneyRangeSlider` — the range consumer the slider's TODO
-anticipated — + quick chips), **Distance** (`RadiusSlider`, 1–50 continuous, +
-an "Any distance" action chip), and **When** (recency chips plus From/To date
-pickers, always visible). There is deliberately **no free-text box** — the
+reduced-motion cross-fades). Header is a title + close. Then a pinned
+**Where** block — the area row (navigates to the picker) with the radius
+inside the same card, under a hairline (`RadiusSlider`, 1–50 continuous). The
+radius lived in its own "Distance" accordion until 2026-09-22, when the owner
+moved it here: where and how far are one question, and a reader who had just
+set an area still had to go hunting three cards down for the control deciding
+how much of it they were searching. The same day's polish pass put the slider
+INSIDE the area card (it was a card with a loose slider under it, which read
+as a filter belonging to nothing) and dropped the "Any distance" chip — the
+slider is the whole control, and the footer's **Clear all** is what returns to
+no radius. ⚠️ The slider renders OUTSIDE the `areaLabel` conditional — the row
+is absent when browsing nationally, but the radius still applies, and nesting
+it would silently drop the control there. `distanceMiles` stays null until the
+slider is touched, which is now the only thing stopping a sheet that shows the
+control from the first frame from opening pre-filtered. Below that, collapsible accordion filter cards:
+**Vehicle** (make/model pickers reused from the posting flow + multi-select
+colour and body-type chips + a From/To year range), **Bounty**
+(`MoneyRangeSlider` — the range consumer the slider's TODO anticipated — +
+quick chips), and **When** (recency chips plus From/To date pickers, always
+visible). There is deliberately **no free-text box** — the
 make/model pickers ask that question precisely, so a text field beside them was
 a second, fuzzier route to the same answer (`criteria.text` remains in the model
 and the RPC still accepts it; nothing on this surface writes it). A footer

@@ -11,18 +11,95 @@
  *        an edge and a number, so a pile of them still reads as a pile of
  *        prices (the reference does exactly this — docs/design-refs/map/).
  *
- *        Markers with custom views are the classic Android jank source. Each
- *        marker TRACKS view changes for a few frames after mount (so the
- *        custom view rasterises AFTER layout — setting tracksViewChanges
- *        false from frame 0 is the blank-marker trap), then stops tracking
- *        so it pans free.
+ *        ⚠️ A MARKER IS DRAWN ONCE AND NEVER REDRAWN. That is the design, and
+ *        it is the whole design. On Android a custom marker is a BITMAP of
+ *        its view, captured during a short `tracksViewChanges` window after
+ *        mount (false from frame 0 is the blank-marker trap) and then frozen
+ *        so the marker pans free. Every mechanism for changing that bitmap
+ *        afterwards was shipped on 2026-09-22/23 and every one of them failed
+ *        on the owner's phone in its own way:
+ *          · re-arming `tracksViewChanges` — the native tracker only
+ *            rasterises while an internal counter is positive, so the
+ *            highlight landed late or not at all ("clunky");
+ *          · the imperative `redraw()` — one icon swap, which on device left
+ *            the old pill highlighted alongside the new one, or drew only its
+ *            outline ("I have to click a few times");
+ *          · anything that let the pill's own layout drive the bitmap — sized
+ *            it to the wrong view and clipped it (four reports, one photo).
+ *        So: nothing drawn ever changes on a mounted marker. Everything the
+ *        pill shows is in its React KEY, and a change to it is a NEW marker.
  *
- *        RE-RASTERISING IS A PROP, NOT A KEY. Selection used to re-key the
- *        marker, remounting it to force the repaint; `retrackKey` re-arms
- *        tracking IN PLACE instead. It now carries selection alone — with one
- *        appearance there is nothing else that changes what is drawn — so the
- *        churn that made this mechanism necessary (a top-N set turning over on
- *        every pan) no longer exists.
+ *        SELECTION IS ITS OWN MARKER. Every car has a static pill that is
+ *        never touched after mount. The selected car gets a SECOND marker on
+ *        top of it — the larger, dark pill, at MAX_PIN_Z — keyed on the car,
+ *        so moving the selection unmounts one and mounts another, and
+ *        clearing it uncovers the static pill beneath. Two highlighted pills
+ *        cannot happen: there is one selection marker. A stale pill cannot
+ *        happen: none is ever redrawn. This is the Airbnb shape at the level
+ *        that matters — each state is a finished bitmap, and changing state
+ *        means showing a different one, not editing the one on screen.
+ *
+ *        A NEW MARKER IS BORN INVISIBLE AND FADES IN. A marker joins the map
+ *        before its custom view is inserted, and until that view is captured
+ *        it wears Google's DEFAULT RED PIN — the flicker the owner saw
+ *        whenever selection remounted a marker (2026-09-23). Every PinMarker
+ *        mounts at opacity 0, by which time its view has been captured, and
+ *        fades its NATIVE ALPHA to 1 over motion.fast on the UI thread. That
+ *        alpha is the one thing about a marker the map animates without
+ *        re-rasterising it, so it is the only motion these markers have: the
+ *        arrival, and the outgoing selection marker fading back to the static
+ *        pill beneath it. A frame of nothing, never a frame of red, never a
+ *        pill that switches on.
+ *
+ *        ⚠️ EVERY MARKER CARRIES A TRANSPARENT IMAGE, and it is not a
+ *        placeholder: it changes which native path draws the pill. Without an
+ *        image, react-native-maps captures the custom view into ONE Bitmap
+ *        object that it erases and redraws for every capture, and hands that
+ *        same object to Marker.setIcon each time. A fresh marker is captured
+ *        several times in its first frames — at insert, before layout; at the
+ *        first layout report, before the pill's children have laid out; then
+ *        per tracker tick — and on the owner's phone the marker kept showing
+ *        an EARLY one: a border with nothing inside it ("only an outline",
+ *        2026-09-23, the selection marker most of the time). With an image
+ *        set, getIcon() composites image and view into a NEWLY ALLOCATED
+ *        bitmap on every capture, so each setIcon gets an object the map has
+ *        never seen and the last capture is the one that shows. A 1×1
+ *        transparent pixel costs nothing to draw over. It is also the second
+ *        guard against the red pin: a marker whose view is not captured yet
+ *        shows its image — nothing — rather than Google's default.
+ *
+ *        ⚠️ WHY THE SELECTED PILL WAS CLIPPED — THE REAL CAUSE, 2026-09-23,
+ *        found in react-native-maps 1.27.2's Android source after three
+ *        guesses (the shadow, the footprint, the remount) each shipped and
+ *        each failed on device. On the new architecture, MarkerManager.addView
+ *        hangs an OnLayoutChangeListener on the marker's FIRST NATIVE CHILD,
+ *        and whenever THAT child's layout changes it calls
+ *        marker.update(childWidth, childHeight) — which sizes the marker's
+ *        bitmap to the CHILD, not to the marker. Our wrapper below carries
+ *        only layout styles, so React Native flattens it out of the native
+ *        tree and the first native child is the PILL. Tap a pill: its layout
+ *        changes, the bitmap is resized to the pill, and the pill is drawn at
+ *        its padded offset into a pill-sized bitmap — cut off at the right and
+ *        the bottom, exactly as photographed. Mount was never affected because
+ *        the listener is attached at insert time, after the first layout.
+ *
+ *        The fix is `collapsable={false}` on the wrapper, which makes it a
+ *        real native view and so the child the marker measures: its box is
+ *        the whole subtree, so the bitmap is always the marker's true size.
+ *        Now that a pill never changes after mount the listener only ever
+ *        fires once, at layout — but the wrapper must stay unflattened, or
+ *        that one report is the pill's size rather than the box's.
+ *
+ *        This is what Airbnb's native app gets for free: each pill state is
+ *        rendered to a bitmap sized from the very view that was drawn, then
+ *        swapped in with setIcon. Upstream fixed their half of it in 1.29.5
+ *        (#5913, sizing the bitmap to the union of the subtree), but Expo 57
+ *        pins 1.27.2 and a native upgrade needs a new build; this fix needs
+ *        neither, and holds on 1.29.5 too.
+ *
+ *        Rank must never enter the key: it churns on every pan, and dozens
+ *        of markers remounting at once is the jank this component exists to
+ *        avoid. React updates rank's only effect, zIndex, in place.
  *
  *        Rank, paint order and the assistive-tech cap are decided in
  *        mapPins.pinsForRegion — this component is a dumb renderer of that.
@@ -31,12 +108,20 @@
  *        mapPins.ts (MapPinItem); docs/DESIGN_SYSTEM.md (tokens).
  */
 
-import { memo, useEffect, useState, type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { memo, useCallback, useEffect, useState } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
+import {
+  useAnimatedProps,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { formatPounds } from '@/shared/lib';
+import { lightHaptic } from '@/shared/lib/haptics';
 import {
   mapPinFontScaleCap,
+  motion,
   radii,
   shadows,
   sizes,
@@ -45,24 +130,74 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import { bountyLabel, NO_BOUNTY_LABEL } from '@/shared/ui';
-import { AppMapMarker } from '@/shared/ui/AppMap';
+import { AppMapMarkerAnimated } from '@/shared/ui/AppMap';
 
 import { AT_MARKER_LIMIT } from '../lib/mapPins';
 import type { MapPinItem } from '../types';
 
-/** How long a freshly-mounted marker keeps tracking view changes before it
- *  freezes — long enough for the custom view to lay out and rasterise. */
+/**
+ * How long a freshly-mounted marker keeps tracking view changes before it
+ * freezes. Mount only — nothing on a mounted marker is ever redrawn.
+ *
+ * ⚠️ `tracksViewChanges` means "re-rasterise this custom view EVERY FRAME", so
+ * this is not an idle wait: it is real bitmap work per marker, which is why
+ * the mount is batched (useProgressivePins) rather than done in one commit.
+ *
+ * ⚠️ IT WAS SHORTENED AND PUT BACK, 2026-09-23. Freezing two frames after the
+ * marker reported its own layout was smoother, and sometimes froze BEFORE the
+ * native tracker had captured the custom view — which leaves react-native-maps'
+ * DEFAULT PIN on screen, the red marker the owner saw flicker in. Layout is
+ * necessary for the bitmap but not sufficient, and the cost of being early is
+ * the one marker state this product has already been burned by: a pill that is
+ * not a price reads as a cluster. 500ms is generous on purpose; the batching
+ * is what keeps it affordable.
+ */
 const TRACK_SETTLE_MS = 500;
 
 /** The usual anchor: the marker box centred on its coordinate. Hoisted so an
  *  unshifted marker gets a stable object rather than a new one per render. */
 const MARKER_CENTRE = { x: 0.5, y: 0.5 } as const;
 
-/** Ceiling for marker paint order. Selection takes it; everything else sits
- *  below by bounty rank, floored at 1 (a falsy zIndex is dropped by the iOS
+/**
+ * A 1×1 fully transparent PNG, given to EVERY marker as its `image`. Not
+ * decoration — see the header: with an image present, the Android marker
+ * composites each capture of its custom view into a freshly allocated bitmap
+ * instead of erasing and reusing one, which is what left the selection pill
+ * showing an early, empty capture. It also stands in for Google's default pin
+ * on a marker whose view has not been captured yet.
+ *
+ * A data URI so it needs no asset in the APK (an OTA cannot add drawables)
+ * and no file to load; react-native-maps decodes it once through Fresco and
+ * shares the result across every marker with the same URI. Hoisted so it is
+ * one stable object rather than a new prop per render. Generated and verified
+ * chunk-by-chunk (IHDR 1×1 RGBA-8, IDAT one zero pixel) on 2026-09-23.
+ */
+const TRANSPARENT_PIXEL = {
+  uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=',
+} as const;
+
+/** Ceiling for marker paint order. The live selection marker takes it; the
+ *  selection marker on its way OUT sits one below, so the new dark pill draws
+ *  over the fading one where two cars overlap; every static pill sits below
+ *  both by bounty rank, floored at 1 (a falsy zIndex is dropped by the iOS
  *  Google marker when it re-creates). */
 const MAX_PIN_Z = 200;
+const LEAVING_Z = MAX_PIN_Z - 1;
+/** The top static pill: below the leaving marker, never tied with it. */
+const TOP_STATIC_Z = MAX_PIN_Z - 2;
+
+/** The outgoing selection marker's press handler: scenery, not UI. A tap on
+ *  a pill that is fading away must not re-select the car it belonged to. */
+const IGNORE_PRESS = () => {};
+
+/**
+ * How far `shadows.soft` reaches past the pill it is cast from — its downward
+ * offset plus its blur radius, which is the larger of the two directions and
+ * so the one the marker box has to clear. See `hitTarget`.
+ */
+const SHADOW_BLEED = shadows.soft.shadowOffset.height + shadows.soft.shadowRadius;
 
 /**
  * What a pin prints. Short by necessity — the pill sits on map tiles at a capped
@@ -77,23 +212,44 @@ function pinBountyText(bountyPence: number | null): string {
   return bountyPence === null ? NO_BOUNTY_LABEL : formatPounds(bountyPence);
 }
 
-/** A marker that rasterises its custom child AFTER layout, then freezes. */
-function TrackedMarker({
+/**
+ * One pill on the map. Drawn ONCE — its custom view is captured during the
+ * mount window and never re-rasterised — so nothing this component receives
+ * afterwards may change what the pill shows. That is enforced by the caller:
+ * anything drawn (the price, selection) is in the React KEY, and a change to
+ * it is a new marker, not a repaint.
+ *
+ * Memoised, with every prop stable across a tap, so selecting a car does not
+ * re-render the hundred static pills around it. Two things keep that true and
+ * both look like pedantry: it takes `postId` + `onPressPost` rather than a
+ * ready-made handler (an inline arrow at the call site is a new prop every
+ * render), and it draws the pill itself from `bountyText` + `selected` rather
+ * than taking children (a child element is a new prop every render, however
+ * identical it looks).
+ */
+const PinMarker = memo(function PinMarker({
   latitude,
   longitude,
-  onPress,
+  postId,
+  onPressPost,
   accessibilityLabel,
+  bountyText,
   selected = false,
   accessible = true,
+  visible = true,
   anchor,
   zIndex,
-  retrackKey,
-  children,
 }: {
   latitude: number;
   longitude: number;
-  onPress: () => void;
+  postId: string;
+  onPressPost: (id: string) => void;
   accessibilityLabel: string;
+  /** What the pill prints — see pinBountyText. Never empty. */
+  bountyText: string;
+  /** false fades the marker out (the outgoing selection). It stays mounted;
+   *  the caller unmounts it once the fade has had its motion.fast. */
+  visible?: boolean;
   /** false drops the marker from the assistive-tech tree — it stays tappable
    *  by sight, but the sheet's list is the AT path. See the call site. */
   accessible?: boolean;
@@ -104,55 +260,101 @@ function TrackedMarker({
    *  undefined order — and with every marker now a full-width pill, overlap is
    *  the normal case rather than the exception. */
   zIndex: number;
-  /** Exposed to assistive tech: selection changes the pill's appearance, so
-   *  it must be perceivable non-visually too. */
+  /** The selection marker: the dark, larger pill. Also exposed to assistive
+   *  tech, since selection changes appearance and must be perceivable
+   *  non-visually too. */
   selected?: boolean;
-  /** Change this whenever the DRAWN content changes — selection is the only
-   *  such change now — and the marker re-rasterises in place. See the header
-   *  for why this is a prop rather than a key. */
-  retrackKey: string;
-  children: ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const [tracking, setTracking] = useState(true);
-  // Re-arm DURING RENDER, not in an effect: setting state synchronously in an
-  // effect body cascades renders (and the lint rule forbids it). This is the
-  // adjust-state-on-prop-change pattern used elsewhere in the codebase.
-  const [seenKey, setSeenKey] = useState(retrackKey);
-  if (retrackKey !== seenKey) {
-    setSeenKey(retrackKey);
-    setTracking(true);
-  }
 
-  // Freeze a beat after each arming. Keyed on `tracking` so a re-arm restarts
-  // the clock; the setState here is async (inside the timeout), which is the
-  // sanctioned shape.
+  // The mount window: track until the custom view has laid out and been
+  // captured, then freeze. Once only — nothing re-arms this, ever.
+  const [tracking, setTracking] = useState(true);
   useEffect(() => {
-    if (!tracking) {
-      return;
-    }
     const timer = setTimeout(() => setTracking(false), TRACK_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [tracking]);
+  }, []);
+
+  // ⚠️ BORN INVISIBLE, THEN FADED IN. A marker joins the map BEFORE its
+  // custom view is inserted, and until that view is captured react-native-
+  // maps hands it Google's DEFAULT RED PIN (getIcon(): no view, no image →
+  // defaultMarker). Alpha 0 goes into the marker's creation options, so the
+  // pin is never drawn; the view is captured within the same mount pass (the
+  // native layout listener), and the fade below starts on the next UI frame.
+  // A frame of nothing, never a frame of red — which the owner saw every time
+  // a marker was remounted before this (2026-09-23).
+  //
+  // The fade is the marker's NATIVE ALPHA, driven on the UI thread: the map
+  // applies it as a property of the marker, so the pill is never
+  // re-rasterised for it — the only kind of motion a custom Android marker
+  // can afford (see the header). motion.fast so a tapped car's dark pill
+  // arrives in the same beat as the card's spring; staggered batches at load
+  // read as the map populating rather than switching on. Reduced motion:
+  // straight to the target, still one frame after birth.
+  const reduceMotion = useReducedMotion();
+  const fade = useSharedValue(0);
+  useEffect(() => {
+    const target = visible ? 1 : 0;
+    fade.value = reduceMotion
+      ? target
+      : withTiming(target, { duration: motion.fast, easing: easeOut });
+  }, [visible, reduceMotion, fade]);
+  const fadeProps = useAnimatedProps(() => ({ opacity: fade.value }));
+
+  // A tick on the finger. A marker has no pressed state — it is a native map
+  // overlay, not a Pressable — so until the card springs up nothing else
+  // acknowledges the tap, which was most of what made selection feel
+  // unanswered. The same light tick the app gives a colour swatch, a watch
+  // toggle and a copied plate; silent on a build without the module.
+  const handlePress = useCallback(() => {
+    lightHaptic();
+    onPressPost(postId);
+  }, [onPressPost, postId]);
 
   return (
-    <AppMapMarker
+    <AppMapMarkerAnimated
       coordinate={{ latitude, longitude }}
       anchor={anchor}
+      // ⚠️ Load-bearing on Android; see TRANSPARENT_PIXEL and the header.
+      image={TRANSPARENT_PIXEL}
+      // The native alpha, from 0 at birth — see `fade` above.
+      animatedProps={fadeProps}
       tracksViewChanges={tracking}
       zIndex={zIndex}
-      onPress={onPress}
+      onPress={handlePress}
       accessible={accessible}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected }}
     >
       {/* Transparent 44pt hit area around the drawn marker — markers don't
-          honour hitSlop, so the touch target is this wrapper. */}
-      <View style={styles.hitTarget}>{children}</View>
-    </AppMapMarker>
+          honour hitSlop, so the touch target is this wrapper.
+
+          ⚠️ collapsable={false} IS THE CLIPPING FIX. Read the header before
+          touching it. This View has only layout styles, so React Native
+          FLATTENS it away and the pill becomes the marker's first native
+          child — and on Android the marker sizes its BITMAP from whatever
+          its first native child last reported as its layout. Unflattened,
+          the first child is this box, whose size never changes. */}
+      <View collapsable={false} style={styles.hitTarget}>
+        <View style={[styles.bountyPill, selected && styles.bountyPillSelected]}>
+          <Text
+            // Capped: an uncapped 14pt at the OS 200% setting doubles every
+            // pill and buries the map. The full amount stays scalable in the
+            // sheet list, the card, and the label below.
+            maxFontSizeMultiplier={mapPinFontScaleCap}
+            style={[styles.bountyText, selected && styles.bountyTextSelected]}
+          >
+            {/* NEVER blank. docs/DESIGN_SYSTEM.md: "never ship a price-less
+                map marker" — an empty pill reads as a cluster, not as a car
+                with no reward. A no-reward listing (ADR-0014) says so. */}
+            {bountyText}
+          </Text>
+        </View>
+      </View>
+    </AppMapMarkerAnimated>
   );
-}
+});
 
 export interface MapPinsProps {
   pins: MapPinItem[];
@@ -165,32 +367,78 @@ export const MapPins = memo(function MapPins({
   selectedPostId,
   onPressPost,
 }: MapPinsProps) {
-  const styles = useThemedStyles(makeStyles);
+  // The car under the selection marker, if it is on screen. revealPins never
+  // withholds the selected post, so during a staggered mount this is only
+  // ever missing because the car is outside the viewport.
+  const selectedPin =
+    selectedPostId === null ? undefined : pins.find((pin) => pin.post.id === selectedPostId);
+
+  // THE SELECTION MARKER ON ITS WAY OUT. When the selection moves or clears,
+  // the dark pill that was up stays mounted for one motion.fast, fading to
+  // nothing over the static pill it was covering, then unmounts — instead of
+  // vanishing in the frame the next one appears ("vanishes abruptly", the
+  // owner, 2026-09-23). It keeps its React key, so it is the SAME native
+  // marker fading, not a fresh one born invisible.
+  //
+  // Adjusted DURING RENDER, not in an effect: a synchronous setState in an
+  // effect body cascades renders (and the lint rule forbids it). Same
+  // adjust-state-on-prop-change shape as useProgressivePins. Compared by id,
+  // because the pin OBJECT is rebuilt on every pan settle.
+  const reduceMotion = useReducedMotion();
+  const [leaving, setLeaving] = useState<MapPinItem | null>(null);
+  const [seenSelection, setSeenSelection] = useState(selectedPin);
+  if ((seenSelection?.post.id ?? null) !== (selectedPin?.post.id ?? null)) {
+    setSeenSelection(selectedPin);
+    // Under reduced motion there is no fade to keep it mounted for.
+    if (seenSelection !== undefined && !reduceMotion) {
+      setLeaving(seenSelection);
+    }
+  }
+  useEffect(() => {
+    if (leaving === null) {
+      return;
+    }
+    const timer = setTimeout(() => setLeaving(null), motion.fast);
+    return () => clearTimeout(timer);
+  }, [leaving]);
+  // Re-selecting the car that is still fading out: one marker, one key — it
+  // simply fades back up. Rendering it twice would collide on the key.
+  const leavingPin = leaving !== null && leaving.post.id !== selectedPin?.post.id ? leaving : null;
+
   return (
     <>
       {pins.map((pin) => {
-        const selected = pin.post.id === selectedPostId;
+        const bountyText = pinBountyText(pin.post.bountyPence);
+        // While the selection marker stands on this pill it is covered
+        // completely, so it leaves the assistive-tech tree: one stop per car,
+        // and that stop is the selected one.
+        const covered = pin.post.id === selectedPostId;
         return (
-          <TrackedMarker
-            // The key is the post id ALONE — see the header. Anything that
-            // changes the drawn content goes through retrackKey instead.
-            key={pin.key}
-            selected={selected}
-            // Selection on top, then HIGHEST BOUNTY FIRST. Under heavy overlap
-            // paint order is what decides which marker a tap actually hits, and
-            // between overlapping Android markers with equal zIndex that order
-            // is undefined — so ranking it is not decoration. Never 0: the iOS
+          <PinMarker
+            // ⚠️ THE KEY IS EVERYTHING THIS PILL DRAWS. A static pill is
+            // rasterised once, so a change to what it shows must be a NEW
+            // marker. The price is the only such thing (a reward changes when
+            // its owner edits it — rare, and nothing like the per-pan churn
+            // rank would cause). Keyed on the rendered STRING rather than the
+            // pence, so a change that does not alter what is drawn remounts
+            // nothing. Rank, make, model, the a11y label: NOT in here.
+            key={`${pin.key}:${bountyText}`}
+            bountyText={bountyText}
+            // HIGHEST BOUNTY FIRST. Under heavy overlap paint order is what
+            // decides which marker a tap actually hits, and between
+            // overlapping Android markers with equal zIndex that order is
+            // undefined — so ranking it is not decoration. Never 0: the iOS
             // Google marker skips a falsy zIndex when it re-creates a marker.
-            zIndex={selected ? MAX_PIN_Z : Math.max(1, MAX_PIN_Z - 1 - pin.rank)}
+            // The selection markers, live and leaving, sit above all of these.
+            zIndex={Math.max(1, TOP_STATIC_Z - pin.rank)}
             // ⚠️ The DRAWN set and the REACHABLE set deliberately differ. Every
             // marker is drawn and tappable, but only the top few are individual
             // stops for a screen reader: without a cap that is up to a hundred
             // swipes to get past the map, and the sheet below lists every car
             // with more detail and a live count. That is the intended path, not
-            // a consolation. The selected pin is always reachable.
-            accessible={pin.rank < AT_MARKER_LIMIT || selected}
+            // a consolation.
+            accessible={pin.rank < AT_MARKER_LIMIT && !covered}
             anchor={pin.anchor ?? MARKER_CENTRE}
-            retrackKey={String(selected)}
             // The car's OWN coordinates, always. A marker displaced to avoid
             // an overlap used to live here; it moved with the zoom, because a
             // constant on-screen gap needs a ground offset that grows as you
@@ -198,37 +446,111 @@ export const MapPins = memo(function MapPins({
             // markers that overlap.
             latitude={pin.post.latitude}
             longitude={pin.post.longitude}
-            onPress={() => onPressPost(pin.post.id)}
+            // The id and the handler, not an arrow: PinMarker is memoised and
+            // an inline closure here would re-render all hundred markers on
+            // every tap. The haptic lives inside it for the same reason.
+            postId={pin.post.id}
+            onPressPost={onPressPost}
             accessibilityLabel={`${bountyLabel(pin.post.bountyPence)} — ${pin.post.make} ${pin.post.model}`}
-          >
-            <View style={[styles.bountyPill, selected && styles.bountyPillSelected]}>
-              <Text
-                // Capped: an uncapped 14pt at the OS 200% setting doubles
-                // every pill and buries the map. The full amount stays
-                // scalable in the sheet list, the card, and the label below.
-                maxFontSizeMultiplier={mapPinFontScaleCap}
-                style={[styles.bountyText, selected && styles.bountyTextSelected]}
-              >
-                {/* NEVER blank. docs/DESIGN_SYSTEM.md: "never ship a price-less
-                    map marker" — an empty pill reads as a cluster, not as a car
-                    with no reward. A no-reward listing (ADR-0014) says so. */}
-                {pinBountyText(pin.post.bountyPence)}
-              </Text>
-            </View>
-          </TrackedMarker>
+          />
         );
       })}
+      {leavingPin !== null && (
+        <PinMarker
+          // The SAME key it had as the live selection — see `leaving` above.
+          key={`selected:${leavingPin.post.id}:${pinBountyText(leavingPin.post.bountyPence)}`}
+          selected
+          visible={false}
+          bountyText={pinBountyText(leavingPin.post.bountyPence)}
+          // Under the incoming selection marker, above every static pill.
+          zIndex={LEAVING_Z}
+          // Scenery on its way out: not a stop, and not a tap.
+          accessible={false}
+          anchor={leavingPin.anchor ?? MARKER_CENTRE}
+          latitude={leavingPin.post.latitude}
+          longitude={leavingPin.post.longitude}
+          postId={leavingPin.post.id}
+          onPressPost={IGNORE_PRESS}
+          accessibilityLabel={`${bountyLabel(leavingPin.post.bountyPence)} — ${leavingPin.post.make} ${leavingPin.post.model}`}
+        />
+      )}
+      {selectedPin !== undefined && (
+        <PinMarker
+          // ⚠️ THE SELECTION IS ITS OWN MARKER — see the header. A new one per
+          // selected car (and per price, for the same reason as above): moving
+          // the selection unmounts this and mounts a fresh one over the next
+          // car, and clearing it unmounts it and uncovers the static pill.
+          // Nothing is ever redrawn, so there is nothing to go stale.
+          key={`selected:${selectedPin.post.id}:${pinBountyText(selectedPin.post.bountyPence)}`}
+          selected
+          bountyText={pinBountyText(selectedPin.post.bountyPence)}
+          // Above every static pill, whatever their rank.
+          zIndex={MAX_PIN_Z}
+          // The selected car is always a stop, whatever its rank.
+          accessible
+          // The SAME anchor as the pill beneath, so the two boxes — equal in
+          // size, by the margin in bountyPill — are concentric and the larger
+          // dark pill covers the light one completely.
+          anchor={selectedPin.anchor ?? MARKER_CENTRE}
+          latitude={selectedPin.post.latitude}
+          longitude={selectedPin.post.longitude}
+          postId={selectedPin.post.id}
+          onPressPost={onPressPost}
+          accessibilityLabel={`${bountyLabel(selectedPin.post.bountyPence)} — ${selectedPin.post.make} ${selectedPin.post.model}`}
+        />
+      )}
     </>
   );
 });
 
 const makeStyles = (c: Palette) => StyleSheet.create({
-  // 44pt minimum touch target wrapping the smaller drawn marker.
+  // 44pt minimum touch target wrapping the smaller drawn marker. It is also
+  // the view the Android marker sizes its bitmap from — see the header and the
+  // `collapsable={false}` at the call site, which is what makes that true.
+  //
+  // THE PADDING IS THE PILL'S SHADOW ROOM, and only on iOS. There the marker
+  // is a live view and `shadows.soft` really is drawn past the pill by its
+  // offset plus its blur radius, so the box has to reach that far. On Android
+  // the marker is rasterised through a software canvas, which does not draw
+  // elevation at all — the pill has no shadow there and the padding is inert
+  // (the border is what separates it from the land; see bountyPill). It was
+  // shipped on 2026-09-22 as a fix for the clipping the owner photographed
+  // and was not one; the cause was the flattened wrapper, above.
+  //
+  // SYMMETRIC, and that is load-bearing: the anchor is MARKER_CENTRE, so the
+  // box's centre is what sits on the car's coordinate. Padding the bottom
+  // alone would slide every pill north of the place it is reporting.
+  //
+  // Derived from the token rather than written as 16, so a change to
+  // `shadows.soft` cannot silently start clipping the iOS shadow.
+  //
+  // ⚠️ NO SIDE PADDING ON ANDROID, AND NOT ONLY BECAUSE IT IS INERT THERE. A
+  // Google marker's tap target is its bitmap's bounds, transparent pixels
+  // included, and the selection marker sits above every other pill. With
+  // pills overlapping — the normal case — 16pt of invisible box on every side
+  // of the marker on top was swallowing taps meant for the pills beside it
+  // (the owner: "multiple taps in the marker for it to be selected").
+  //
+  // VERTICALLY it is one `sizes.control` (52) tall — the same height as the
+  // search pill above it. The pill is 28 (an 18pt line, `spacing.xs` above
+  // and below, a 1pt border each side) and 36 with its margin, so with no
+  // padding the box was the 44pt floor: 4pt of slack above and below the
+  // pill, and taps that landed a little past it missed (the owner, the next
+  // day: "taps still sometimes need a second go"). Pills overlap sideways far
+  // more than they stack, so height buys forgiveness without giving the
+  // neighbours back. A NAMED floor rather than padding arithmetic — the first
+  // attempt added `spacing.xs` of padding, which the 44 floor swallowed
+  // whole (36 + 8 = 44) and changed nothing. Both markers still share the
+  // box, so they stay concentric.
   hitTarget: {
     minWidth: sizes.touchTarget,
     minHeight: sizes.touchTarget,
     alignItems: 'center',
     justifyContent: 'center',
+    ...Platform.select({
+      android: { minHeight: sizes.control },
+      default: { padding: SHADOW_BLEED },
+    }),
   },
   // ⚠️ The border is a deliberate divergence — the reference's pill is
   // shadow-only. The pill barely separates from the land by FILL in either
@@ -243,11 +565,20 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // on the dark land and 2.61:1 on the light one — which also fixes light,
   // where the old hairline was only 1.17:1 and the shadow was doing all the
   // work alone.
+  // ⚠️ THE MARGIN MAKES THE TWO PILLS CONCENTRIC. The selection marker's pill
+  // has larger padding; the static pill carries the difference as transparent
+  // margin — 4pt a side, exactly the step from md/xs to lg/sm below — so both
+  // markers' boxes are the same size. The anchor is a fraction of the box, so
+  // equal boxes put both centres on the coordinate and the larger dark pill
+  // covers the light one completely, with 4pt to spare on every side. Drop
+  // the margin and the selection marker draws off-centre over a pill whose
+  // edge shows past it.
   bountyPill: {
     backgroundColor: c.surface,
     borderRadius: radii.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
+    margin: spacing.xs,
     borderWidth: 1,
     borderColor: c.borderStrong,
     ...shadows.soft,
@@ -255,13 +586,16 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   // Selection GROWS as well as inverting (DESIGN_SYSTEM: "selected pin grows").
   // Tone alone stopped carrying it once clustering went: a field of near-black
   // dots makes near-black the map's dominant ink, so size and paint order have
-  // to do the work. Costs no remount — it rides the existing retrackKey.
+  // to do the work. Its own marker, mounted over the static pill (see the
+  // header) — never a repaint of one.
   // surfaceInverse, NOT surfaceOverMedia: a pin sits on the BASEMAP, which is
   // themed (mapStyleFor), not on photography. On the dark basemap this flips to
   // near-white — a dark bubble on dark tiles measures ~1.2:1 and vanishes.
   bountyPillSelected: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+    // The growth spends the margin above rather than adding to the footprint.
+    margin: 0,
     backgroundColor: c.surfaceInverse,
     borderColor: c.surfaceInverse,
   },

@@ -149,14 +149,22 @@ jest.mock('@/shared/ui', () => {
     Button,
     // Stubbed: the real one pulls gesture-handler + reanimated worklets. Kept
     // DRIVABLE (press to emit a value) so the wiring is still exercised.
-    RadiusSlider: ({ valueMiles, onChangeMiles, testID }: Record<string, unknown>) =>
+    RadiusSlider: ({
+      valueMiles,
+      unsetLabel,
+      onChangeMiles,
+      testID,
+    }: Record<string, unknown>) =>
       React.createElement(
         Text,
         // CallableFunction, not `(miles: number) => void`: babel's jest.mock
         // scope check reads a named parameter in a type annotation as an
         // out-of-scope variable and refuses to compile the factory.
         { testID, onPress: () => (onChangeMiles as CallableFunction)(25) },
-        `radius:${valueMiles}`,
+        // Surfaces `unsetLabel` so the sheet's side of the contract — "Any"
+        // while no radius is applied, nothing once one is — is assertable
+        // without the real slider's worklets.
+        `radius:${valueMiles}:${unsetLabel ?? '-'}`,
       ),
     TextField: ({ value, onChangeText, testID }: Record<string, unknown>) =>
       React.createElement(TextInput, { testID, value, onChangeText }),
@@ -338,6 +346,37 @@ describe('the change-area row', () => {
 
     expect(view.queryByTestId('search-change-area')).toBeNull();
   });
+
+  it('carries the radius with it — visible without opening anything', async () => {
+    // The radius moved out of a "Distance" accordion and into this block
+    // (2026-09-22): where and how far are one question, so the slider is on
+    // screen the moment the sheet is, under the area it applies to.
+    const view = await render(
+      <SearchSheet
+        initialCriteria={emptyCriteria()}
+        region={REGION}
+        onApply={jest.fn()}
+        onClose={jest.fn()}
+        areaLabel="St Albans"
+        onChangeArea={jest.fn()}
+      />,
+    );
+
+    expect(view.getByTestId('search-distance')).toBeTruthy();
+    // The slider is the whole control: no "Any distance" chip beside it, and
+    // no accordion left behind for it.
+    expect(view.queryByText('Any distance')).toBeNull();
+    expect(view.queryByTestId('section-distance')).toBeNull();
+  });
+
+  it('⚠️ keeps the radius when browsing nationally, where there is no area row', async () => {
+    // The slider sits OUTSIDE the areaLabel conditional. Nested inside it, a
+    // national browse would silently lose the control entirely.
+    const { view } = await renderSheet();
+
+    expect(view.queryByTestId('search-change-area')).toBeNull();
+    expect(view.getByTestId('search-distance')).toBeTruthy();
+  });
 });
 
 describe('the When filter', () => {
@@ -484,12 +523,15 @@ describe('the widened filters', () => {
     expect(view.queryByTestId('search-text')).toBeNull();
   });
 
-  it('drives distance from the slider, and "Any distance" clears it', async () => {
+  it('drives distance from the slider alone', async () => {
     const { view, onApply } = await renderSheet();
 
-    await act(async () => {
-      fireEvent.press(view.getByTestId('section-distance'));
-    });
+    // No accordion to open: the radius lives in the Where card at the top of
+    // the sheet (2026-09-22), visible the moment the sheet is. And no "Any
+    // distance" chip beside it since the polish pass — the slider is the whole
+    // control; "Clear all" in the footer is what returns to no radius.
+    expect(view.queryByText('Any distance')).toBeNull();
+
     await act(async () => {
       fireEvent.press(view.getByTestId('search-distance')); // stub emits 25
     });
@@ -497,29 +539,52 @@ describe('the widened filters', () => {
       fireEvent.press(applyButton(view));
     });
     expect(onApply.mock.calls[0][0].distanceMiles).toBe(25);
+  });
+
+  it('⚠️ reads "Any" until a radius is actually applied', async () => {
+    // The thumb has to rest somewhere, so an unfiltered sheet used to show
+    // "10 miles" — a number nothing was filtering by. Survivable while the
+    // "Any distance" chip showed the real state; once that went the readout
+    // was the only thing left saying anything, and it was saying the wrong
+    // thing. `unsetLabel` is undefined once a radius is set, so the readout
+    // goes back to reporting the value.
+    const { view } = await renderSheet();
+    expect(view.getByTestId('search-distance')).toHaveTextContent('radius:10:Any');
 
     await act(async () => {
-      fireEvent.press(view.getByText('Any distance'));
+      fireEvent.press(view.getByTestId('search-distance')); // stub emits 25
     });
+    expect(view.getByTestId('search-distance')).toHaveTextContent('radius:25:-');
+  });
+
+  it('⚠️ starts with NO radius, so an untouched slider never narrows the search', async () => {
+    // The slider rests at 10 but distanceMiles stays null until it is touched.
+    // With the control now on screen from the first frame — and no longer
+    // behind an accordion — this is the only thing stopping the sheet from
+    // opening pre-filtered.
+    const { view, onApply } = await renderSheet();
+
     await act(async () => {
       fireEvent.press(applyButton(view));
     });
-    expect(onApply.mock.calls[1][0].distanceMiles).toBeNull();
+    expect(onApply.mock.calls[0][0].distanceMiles).toBeNull();
   });
 
-  it('says the radius is measured from the AREA, never from the user', async () => {
+  it('⚠️ never claims the radius is measured from the USER', async () => {
     // The radius is always measured from the bbox centre, which follows every
     // pan — so "of you" would be false the moment the map moved off the user.
+    // The explanatory hint under the slider was removed on 2026-09-22 (the
+    // area row directly above it says where "10 miles" is from), so what
+    // survives here is the half that was always the safety half: the sheet
+    // must never start claiming a proximity to the reader it cannot know.
     const { view } = await renderSheet(jest.fn(), jest.fn(), {
       ...emptyCriteria(),
       distanceMiles: 10,
     });
-    await act(async () => {
-      fireEvent.press(view.getByTestId('section-distance'));
-    });
 
-    expect(view.getByText(/within 10 miles of this area/)).toBeTruthy();
-    expect(view.queryByText(/miles of you/)).toBeNull();
+    expect(view.queryByText(/of you\b/)).toBeNull();
+    expect(view.queryByText(/near you/i)).toBeNull();
+    expect(view.queryByText(/from your location/i)).toBeNull();
   });
 });
 

@@ -347,7 +347,7 @@ same place.
   numbers. `useNotificationCenter` also holds its badge report until
   `status === 'ready'`, or every inbox open would blink the count to zero.
 - Retention: 90 days, pg_cron `purge-old-notifications` (daily 03:30).
-- New with the center: the `payout_sent` kind — "On its way — £X" from the
+- New with the center: the `payout_sent` kind — "£X on its way" from the
   RECORDED transfer amount, fired by the release core via
   `claim_payout_sent_notification`.
 

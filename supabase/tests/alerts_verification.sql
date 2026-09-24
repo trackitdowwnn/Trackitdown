@@ -1240,10 +1240,14 @@ end $$;
 -- -----------------------------------------------------------------------------
 do $$
 declare
+  -- TITLE AND BODY (2026-09-22): the alert's locality moved into the title, so
+  -- the field that carries a place is the one this guard must also read.
   v_body  text;
   v_plate text;
+  v_doc   jsonb;
 begin
-  v_body := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001') ->> 'body';
+  v_doc  := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001');
+  v_body := (v_doc ->> 'title') || ' ' || (v_doc ->> 'body');
   select plate into v_plate from public.posts
    where id = 'c1c1c1c1-0000-0000-0000-000000000001';
 
@@ -1277,8 +1281,16 @@ declare
   v_lng  double precision;
   v_d    int;
   v_frag text;
+  v_doc  jsonb;
 begin
-  v_body := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001') ->> 'body';
+  -- TITLE AND BODY (2026-09-22) — see CHECK 17. Coalesced: a NULL half makes
+  -- the whole concatenation NULL, every LIKE below NULL, and an absence check
+  -- that cannot fail reads as coverage.
+  v_doc  := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001');
+  v_body := coalesce(v_doc ->> 'title', '') || ' ' || coalesce(v_doc ->> 'body', '');
+  if coalesce(v_doc ->> 'title', '') = '' or coalesce(v_doc ->> 'body', '') = '' then
+    raise exception 'CHECK 18 FAILED: the alert push is missing a title or a body';
+  end if;
 
   select ST_Y(last_seen_location::geometry), ST_X(last_seen_location::geometry)
     into v_lat, v_lng
@@ -1319,10 +1331,29 @@ end $$;
 -- 50 miles -- on a driveway theft, i.e. the victim's home address -- is another.
 -- -----------------------------------------------------------------------------
 do $$
+-- ⚠️ ASSERTED OVER THE WHOLE PUSH (title || body), NOT THE BODY ALONE, since
+-- 2026-09-22: the copy pass moved the locality into the TITLE ("Car stolen in
+-- Hemel Hempstead"). The property defended here is unchanged — the push carries
+-- the district and never the street — but it stopped being a property of one
+-- field, and a body-only assertion would now pass a push whose TITLE leaked a
+-- street. So both halves are searched for the street and the postcode, and the
+-- title is additionally required to carry the district, so the locality cannot
+-- quietly leave the line a spotter actually reads.
 declare
-  v_body text;
+  v_doc   jsonb;
+  v_title text;
+  v_body  text;
+  v_push  text;
 begin
-  v_body := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001') ->> 'body';
+  v_doc   := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001');
+  v_title := coalesce(v_doc ->> 'title', '');
+  v_body  := coalesce(v_doc ->> 'body', '');
+  v_push  := v_title || ' ' || v_body;
+  -- Neither half may be absent: the LIKEs below are ABSENCE assertions, and a
+  -- NULL (or empty) push would pass every one of them silently.
+  if v_title = '' or v_body = '' then
+    raise exception 'CHECK 19 FAILED: the alert push is missing a title or a body';
+  end if;
 
   -- Sanity: the fixture really does carry two different labels.
   if not exists (
@@ -1333,17 +1364,17 @@ begin
     raise exception 'CHECK 19 SETUP FAILED: the street/district fixture pair is not in place';
   end if;
 
-  if v_body not like '%Hemel Hempstead%' then
-    raise exception 'CHECK 19 FAILED: the body does not carry the district-grain locality: %', v_body;
+  if v_title not like '%Hemel Hempstead%' then
+    raise exception 'CHECK 19 FAILED: the title does not carry the district-grain locality: %', v_title;
   end if;
-  if v_body like '%Shenley%' then
-    raise exception 'CHECK 19 FAILED: the body carries the STREET from last_seen_area: %', v_body;
+  if v_push like '%Shenley%' then
+    raise exception 'CHECK 19 FAILED: the push carries the STREET from last_seen_area: %', v_push;
   end if;
-  if v_body like '%HP2%' or v_body like '%7RJ%' then
-    raise exception 'CHECK 19 FAILED: the body carries the POSTCODE from last_seen_area: %', v_body;
+  if v_push like '%HP2%' or v_push like '%7RJ%' then
+    raise exception 'CHECK 19 FAILED: the push carries the POSTCODE from last_seen_area: %', v_push;
   end if;
 
-  raise notice 'CHECK 19 passed: the body carries the locality and not the street/postcode (body: %)', v_body;
+  raise notice 'CHECK 19 passed: the push carries the locality and not the street/postcode (push: %)', v_push;
 end $$;
 
 
@@ -1354,8 +1385,12 @@ end $$;
 -- get into the push through the back door.
 -- -----------------------------------------------------------------------------
 do $$
+-- Asserted over the whole push, for the same reason as CHECK 19: the locality,
+-- and so its fallback, now lives in the title.
 declare
-  v_body text;
+  v_doc   jsonb;
+  v_title text;
+  v_push  text;
 begin
   if not exists (
     select 1 from public.posts
@@ -1365,16 +1400,23 @@ begin
     raise exception 'CHECK 20 SETUP FAILED: the null-locality fixture is not in place';
   end if;
 
-  v_body := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000007') ->> 'body';
-
-  if v_body not like '%your area%' then
-    raise exception 'CHECK 20 FAILED: a null locality did not fall back to ''your area'': %', v_body;
+  v_doc   := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000007');
+  v_title := coalesce(v_doc ->> 'title', '');
+  v_push  := v_title || ' ' || coalesce(v_doc ->> 'body', '');
+  -- Nothing else in this file calls match_alert_zones for post …0007, so this
+  -- block is the only guard against a NULL push on the fallback path.
+  if v_title = '' then
+    raise exception 'CHECK 20 FAILED: the fallback push has no title';
   end if;
-  if v_body like '%null%' or v_body like '%Shenley%' or v_body like '%HP2%' then
-    raise exception 'CHECK 20 FAILED: the fallback body leaked null or the street label: %', v_body;
+
+  if v_title not like '%your area%' then
+    raise exception 'CHECK 20 FAILED: a null locality did not fall back to ''your area'': %', v_title;
+  end if;
+  if v_push like '%null%' or v_push like '%Shenley%' or v_push like '%HP2%' then
+    raise exception 'CHECK 20 FAILED: the fallback push leaked null or the street label: %', v_push;
   end if;
 
-  raise notice 'CHECK 20 passed: a null locality falls back to the literal ''your area'' (body: %)', v_body;
+  raise notice 'CHECK 20 passed: a null locality falls back to the literal ''your area'' (push: %)', v_push;
 end $$;
 
 
@@ -1394,6 +1436,13 @@ declare
 begin
   v_with     := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000001') ->> 'body';
   v_fallback := public.match_alert_zones('c1c1c1c1-0000-0000-0000-000000000007') ->> 'body';
+
+  -- ⚠️ THIS IS THE SAFETY-CLAUSE CHECK, so it must not be able to pass on a
+  -- missing body: a NULL makes every `not like` below NULL, and the clause
+  -- SECURITY_AND_TRUST §1 requires would go unasserted.
+  if coalesce(v_with, '') = '' or coalesce(v_fallback, '') = '' then
+    raise exception 'CHECK 21 FAILED: an alert body is missing entirely';
+  end if;
 
   if v_with not like '%don''t approach%' then
     raise exception 'CHECK 21 FAILED: the alert body has no don''t-approach clause: %', v_with;
@@ -1496,8 +1545,25 @@ begin
     raise exception 'CHECK 23 FAILED: the sighting push is addressed to someone other than the post owner: %', v_first;
   end if;
   -- SAFETY: the owner's copy names neither the spotter nor the plate (§1).
-  if (v_first ->> 'body') like '%Beth%' or (v_first ->> 'body') like '%ZZ24%' then
-    raise exception 'CHECK 23 FAILED: the sighting body names the spotter or the plate: %', v_first ->> 'body';
+  -- Over the WHOLE push since 2026-09-22: the car moved into the title, so the
+  -- title now interpolates owner-authored text and is exactly the field a
+  -- future copy change could leak through.
+  -- ⚠️ coalesced. A NULL title would make the concatenation NULL, both LIKEs
+  -- NULL, and BOTH absence assertions pass silently — including the body half
+  -- they used to cover on their own. An absence check that cannot fail is
+  -- worse than no check, because it reads as coverage.
+  if coalesce(v_first ->> 'title', '') || ' ' || coalesce(v_first ->> 'body', '') like '%Beth%'
+     or coalesce(v_first ->> 'title', '') || ' ' || coalesce(v_first ->> 'body', '') like '%ZZ24%'
+  then
+    raise exception 'CHECK 23 FAILED: the sighting push names the spotter or the plate: % / %',
+      v_first ->> 'title', v_first ->> 'body';
+  end if;
+  -- And the title must actually be there, so the coalesce above can never be
+  -- the thing making this pass.
+  -- The BODY too: the clause assertion below is a presence check, so a missing
+  -- body would pass it silently — inside the block being hardened.
+  if coalesce(v_first ->> 'title', '') = '' or coalesce(v_first ->> 'body', '') = '' then
+    raise exception 'CHECK 23 FAILED: the sighting push is missing a title or a body';
   end if;
   if (v_first ->> 'body') not like '%don''t approach%' then
     raise exception 'CHECK 23 FAILED: the sighting body has no don''t-approach clause: %', v_first ->> 'body';
@@ -1563,17 +1629,33 @@ end $$;
 -- ABSENCE assertion cannot pass by accident.
 -- -----------------------------------------------------------------------------
 do $$
+-- ⚠️ TITLE AND BODY, not the body alone, since 2026-09-22: the copy pass moved
+-- the sender's first name into the TITLE ("Message from Beth") and left the
+-- post context in the body. The absence half is the reason this matters — what
+-- must never transit Expo/FCM/APNs is the message CONTENT, the surname and the
+-- plate, and "never in the push" stopped being a property of one field.
 declare
-  v_doc  jsonb;
-  v_body text;
+  v_doc   jsonb;
+  v_title text;
+  v_body  text;
+  v_push  text;
 begin
   v_doc  := public.claim_message_notification(
               'c4c4c4c4-0000-0000-0000-000000000002',
               '22222222-2222-2222-2222-222222222222');
-  v_body := v_doc ->> 'body';
+  v_title := coalesce(v_doc ->> 'title', '');
+  v_body  := coalesce(v_doc ->> 'body', '');
+  v_push  := v_title || ' ' || v_body;
 
   if (v_doc ->> 'claimed') <> 'true' then
     raise exception 'CHECK 25 SETUP FAILED: the genuine sender could not claim the message push: %', v_doc;
+  end if;
+  -- ⚠️ NEITHER HALF MAY BE ABSENT. This is the check SECURITY_AND_TRUST §3
+  -- names as the guarantee that message CONTENT never transits Expo/FCM/APNs,
+  -- and every assertion below is a LIKE — so on a NULL push they would all
+  -- evaluate NULL and the block would pass having tested nothing.
+  if v_title = '' or v_body = '' then
+    raise exception 'CHECK 25 FAILED: the message push is missing a title or a body';
   end if;
   -- The recipient is the OTHER participant, derived server-side from the thread.
   if (v_doc ->> 'user_id') <> '11111111-1111-1111-1111-111111111111' then
@@ -1583,27 +1665,27 @@ begin
     raise exception 'CHECK 25 FAILED: wrong thread_id in the payload: %', v_doc;
   end if;
 
-  -- PRESENT: first name + post context (colour + make).
-  if v_body not like '%Beth%' then
-    raise exception 'CHECK 25 FAILED: the body does not name the sender''s first name: %', v_body;
+  -- PRESENT: first name (title) + post context (body).
+  if v_title not like '%Beth%' then
+    raise exception 'CHECK 25 FAILED: the title does not name the sender''s first name: %', v_title;
   end if;
   if v_body not like '%Zephyr%' or v_body not like '%Chartreuse%' then
     raise exception 'CHECK 25 FAILED: the body carries no post context (colour/make): %', v_body;
   end if;
 
-  -- ABSENT: the content, the surname, the plate.
-  if v_body like '%ARTICHOKE%' or v_body like '%9271%'
-     or v_body like '%old mill%' or v_body like '%4pm%' then
-    raise exception 'CHECK 25 FAILED: the message CONTENT reached the push body: %', v_body;
+  -- ABSENT from the WHOLE push: the content, the surname, the plate.
+  if v_push like '%ARTICHOKE%' or v_push like '%9271%'
+     or v_push like '%old mill%' or v_push like '%4pm%' then
+    raise exception 'CHECK 25 FAILED: the message CONTENT reached the push: %', v_push;
   end if;
-  if v_body like '%Sanders%' then
-    raise exception 'CHECK 25 FAILED: the body carries the sender''s SURNAME: %', v_body;
+  if v_push like '%Sanders%' then
+    raise exception 'CHECK 25 FAILED: the push carries the sender''s SURNAME: %', v_push;
   end if;
-  if v_body like '%ZZ24%' then
-    raise exception 'CHECK 25 FAILED: the body carries the plate: %', v_body;
+  if v_push like '%ZZ24%' then
+    raise exception 'CHECK 25 FAILED: the push carries the plate: %', v_push;
   end if;
 
-  raise notice 'CHECK 25 passed: first name + post context only, never the message content (body: %)', v_body;
+  raise notice 'CHECK 25 passed: first name + post context only, never the message content (push: %)', v_push;
 end $$;
 
 

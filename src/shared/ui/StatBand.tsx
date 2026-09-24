@@ -18,12 +18,15 @@
  *        has — the reference's sparse profiles "keep the card, drop absent
  *        sections entirely; no placeholders, no zeros". One cell is a valid
  *        band; zero cells renders nothing rather than an empty rule.
+ *        PROMOTED TO shared/ui 2026-09-21 when the second consumer arrived —
+ *        the area theft-stats page, whose hero figure needed the same quiet
+ *        stat row beneath it. Exactly the NudgeRow precedent its own note
+ *        asked for; no visual change to either consumer.
  * LINKS: docs/design-refs/post-detail/REFERENCE_SPEC.md (the measurement);
  *        src/features/profile/components/StatColumn.tsx (same anatomy, its
  *          own feature's semantics);
- *        src/features/vehicles/screens/PostStatsScreen.tsx (only consumer —
- *          promote to shared/ui when a second one appears, per the NudgeRow
- *          precedent).
+ *        src/features/vehicles/screens/PostStatsScreen.tsx and
+ *        src/features/search-map/screens/AreaInsightsScreen.tsx (consumers).
  */
 
 import { StyleSheet, Text, View } from 'react-native';
@@ -34,7 +37,7 @@ import {
   typography,
   useThemedStyles,
   type Palette,
-} from '@/shared/theme';
+} from '../theme';
 
 export interface StatBandCell {
   key: string;

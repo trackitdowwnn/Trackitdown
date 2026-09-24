@@ -25,6 +25,7 @@ import {
   parseCriteria,
   seenRangeSummary,
   summarise,
+  summariseParts,
   toRpcCriteria,
 } from './searchCriteria';
 
@@ -160,43 +161,84 @@ describe('toRpcCriteria', () => {
   });
 });
 
-describe('summarise', () => {
-  it('is empty for unfiltered criteria', () => {
-    expect(summarise(emptyCriteria())).toBe('');
+describe('summariseParts', () => {
+  it('leads with the car and puts everything that qualifies it beneath', () => {
+    expect(
+      summariseParts(
+        withCriteria({ colours: ['Blue'], make: 'BMW', bountyMinPence: 50000, distanceMiles: 10 }),
+      ),
+    ).toEqual({ headline: 'Blue BMW', details: '£500+ · within 10 miles of this area' });
   });
 
-  it('builds "Blue BMW · £500+ · 10mi"', () => {
+  it('⚠️ never leads with a bare measurement — a radius-only search says "Cars nearby"', () => {
+    // The whole reason this split exists: the pill used to render one flat
+    // string, so this search put "10mi" at the top of the map as the entire
+    // description of what was on screen.
+    expect(summariseParts(withCriteria({ distanceMiles: 10 }))).toEqual({
+      headline: 'Cars nearby',
+      details: 'within 10 miles of this area',
+    });
+  });
+
+  it('⚠️ does not claim "All cars" over a line that narrows them', () => {
+    // This branch is only reachable for a non-empty search, so the headline
+    // must not contradict its own details — "All cars" over "£500+" is the
+    // same defect as the "10mi" headline, inverted.
+    expect(summariseParts(withCriteria({ bountyMinPence: 50000 }))).toEqual({
+      headline: 'Cars on this map',
+      details: '£500+',
+    });
+  });
+
+  it('never claims the radius is measured from the USER', () => {
+    const { headline, details } = summariseParts(withCriteria({ distanceMiles: 10 }));
+    expect(`${headline} ${details}`).not.toMatch(/of you|near you|your location/i);
+  });
+
+  it('collapses 3+ multi-select values to a count (each line is ONE line)', () => {
+    expect(summariseParts(withCriteria({ colours: ['Blue', 'Black'] })).headline).toBe(
+      'Blue, Black',
+    );
+    expect(summariseParts(withCriteria({ colours: ['Blue', 'Black', 'Red'] })).headline).toBe(
+      '3 colours',
+    );
+    expect(
+      summariseParts(withCriteria({ bodyTypes: ['SUV', 'Van', 'Estate', 'Saloon'] })).details,
+    ).toBe('4 body types');
+  });
+
+  it('shows a year range, and each open-ended bound', () => {
+    expect(summariseParts(withCriteria({ yearFrom: 2018, yearTo: 2022 })).details).toBe(
+      '2018–2022',
+    );
+    expect(summariseParts(withCriteria({ yearFrom: 2019, yearTo: 2019 })).details).toBe('2019');
+    expect(summariseParts(withCriteria({ yearFrom: 2018 })).details).toBe('2018+');
+    expect(summariseParts(withCriteria({ yearTo: 2022 })).details).toBe('up to 2022');
+  });
+
+  it('falls back to free text for the headline when no facet is chosen', () => {
+    expect(summariseParts(withCriteria({ text: 'transit' })).headline).toBe('transit');
+  });
+
+  it('spells recency out rather than abbreviating it', () => {
+    expect(
+      summariseParts(withCriteria({ bountyMinPence: 50000, bountyMaxPence: 100000, recencyDays: 7 }))
+        .details,
+    ).toBe('£500–£1,000 · last 7 days');
+  });
+});
+
+describe('summarise', () => {
+  it('is the same search on one line, for the screen reader', () => {
     expect(
       summarise(
         withCriteria({ colours: ['Blue'], make: 'BMW', bountyMinPence: 50000, distanceMiles: 10 }),
       ),
-    ).toBe('Blue BMW · £500+ · 10mi');
+    ).toBe('Blue BMW · £500+ · within 10 miles of this area');
   });
 
-  it('collapses 3+ multi-select values to a count (the pill is ONE line)', () => {
-    expect(summarise(withCriteria({ colours: ['Blue', 'Black'] }))).toBe('Blue, Black');
-    expect(summarise(withCriteria({ colours: ['Blue', 'Black', 'Red'] }))).toBe('3 colours');
-    expect(summarise(withCriteria({ bodyTypes: ['SUV', 'Van', 'Estate', 'Saloon'] }))).toBe(
-      '4 body types',
-    );
-  });
-
-  it('shows a year range, and each open-ended bound', () => {
-    expect(summarise(withCriteria({ yearFrom: 2018, yearTo: 2022 }))).toBe('2018–2022');
-    expect(summarise(withCriteria({ yearFrom: 2019, yearTo: 2019 }))).toBe('2019');
-    expect(summarise(withCriteria({ yearFrom: 2018 }))).toBe('2018+');
-    expect(summarise(withCriteria({ yearTo: 2022 }))).toBe('up to 2022');
-  });
-
-  it('falls back to free text when no facet is chosen', () => {
-    expect(summarise(withCriteria({ text: 'transit' }))).toBe('transit');
-  });
-
-  it('shows a bounty band and recency', () => {
-    expect(
-      summarise(withCriteria({ bountyMinPence: 50000, bountyMaxPence: 100000, recencyDays: 7 })),
-    ).toBe('£500–£1,000 · 7d');
-    expect(summarise(withCriteria({ bountyMaxPence: 100000 }))).toBe('up to £1,000');
+  it('is the headline alone when there is nothing to qualify it', () => {
+    expect(summarise(withCriteria({ make: 'BMW' }))).toBe('BMW');
   });
 });
 
@@ -317,11 +359,15 @@ describe('the absolute last-seen window', () => {
     expect(isEmptyCriteria(withCriteria({ seenFrom: from }))).toBe(false);
     expect(isEmptyCriteria(withCriteria({ seenTo: to }))).toBe(false);
 
-    expect(summarise(withCriteria({ seenFrom: from, seenTo: to }))).toContain('–');
-    expect(summarise(withCriteria({ seenFrom: from }))).toMatch(/^from /);
-    expect(summarise(withCriteria({ seenTo: to }))).toMatch(/^until /);
+    // On the DETAILS line: a date range qualifies the search, it does not
+    // headline it, so these read the half they are about (2026-09-22 — before
+    // the pill split in two, `summarise` WAS the details).
+    const details = (c: Partial<SearchCriteria>) => summariseParts(withCriteria(c)).details;
+    expect(details({ seenFrom: from, seenTo: to })).toContain('–');
+    expect(details({ seenFrom: from })).toMatch(/^from /);
+    expect(details({ seenTo: to })).toMatch(/^until /);
     // A single-day window reads as one date, not "1 May – 1 May".
-    expect(summarise(withCriteria({ seenFrom: from, seenTo: from }))).not.toContain('–');
+    expect(details({ seenFrom: from, seenTo: from })).not.toContain('–');
   });
 
   it('round-trips through the route param, and rejects a malformed date', () => {

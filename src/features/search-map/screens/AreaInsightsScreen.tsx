@@ -1,11 +1,46 @@
 /**
  * WHAT:  AreaInsightsScreen — how many cars have been reported stolen around
- *        here: four time windows, a 12-month chart, the makes and models taken
- *        most, a recovery rate, and how they were taken.
+ *        here, as a stack of cards: a hero card (the 30-day count on one line
+ *        over a quiet stat row — 7 days / 90 days / 12 months — with the
+ *        radius slider always visible at its foot), then one card per
+ *        question — a 12-month chart, the makes and models taken most, a
+ *        recovery rate, how they were taken, whether the keys went.
  * WHY:   The feed shows what is happening near someone one card at a time.
  *        Nothing told them the SHAPE of it — whether this month is normal for
  *        here, which cars go, whether they come back. All of it already existed
  *        in `posts` and had never been assembled.
+ *
+ *        REDESIGNED 2026-09-21 (/airbnb-redesign) after the owner found it
+ *        "confusing and not easy to read". It opened with a slider labelled
+ *        "Alert radius" and four equal grey tiles — no headline, three visual
+ *        grammars (tiles, chart, rows), and six caveat captions louder than the
+ *        facts. That pass settled the CONTENT order, which still stands: ONE
+ *        loud statistic, everything else quiet; values leading their labels;
+ *        one quiet caveat per section. Calm and factual — no severity colour,
+ *        no trend arrows — because the register Airbnb's own insights pages
+ *        use (upbeat, benchmarked) is wrong for a page about crime near
+ *        someone's home.
+ *
+ *        RE-SHAPED 2026-09-22 into CARD SECTIONS at the owner's request ("I'd
+ *        like this in sections like it's own card sections"), after research
+ *        into how stats pages are drawn on Dribbble and in the apps they
+ *        imitate (Apple Health's Summary, Stripe's metric cards). The pattern
+ *        that recurs: each question gets its own resting card — a small title,
+ *        one headline value or statement, then the supporting chart or rows,
+ *        then a caption — and the page is those cards stacked in one column
+ *        with the hero card first and biggest. Two lessons from that research
+ *        shape the details here:
+ *          · Apple Health's summary-first rule: the sentence comes before the
+ *            chart, and a screen reader hears the sentence, not the bars. Our
+ *            hero sentence and monthlySummary already worked this way.
+ *          · The most common complaint about card-based insights pages is
+ *            that the cards LOOK tappable and are not. So these are the
+ *            house resting card (`cardSurface`: flat, hairline, no shadow —
+ *            a shadow means "floats", which is what a tappable sheet does),
+ *            with no chevrons and nothing pressable but the radius line.
+ *        The previous flat-section layout was itself a decision AGAINST boxes
+ *        ("boxes read as a dashboard"); the owner has seen it and asked for
+ *        cards, and that is theirs to call. PostStatsScreen stays flat.
  *
  * ⚠️ EVERY NUMBER HERE IS A COUNT OVER OTHER PEOPLE'S THEFTS, and the RPC behind
  *        it was rewritten three times to make that safe: membership is tested on
@@ -51,15 +86,30 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import Animated, {
+  type AnimatedStyle,
+  FadeIn,
+  FadeInDown,
+  ReduceMotion,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { StatsSparkline } from '@/features/vehicles';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import { metresToMiles, milesToMetres } from '@/shared/lib/distance';
 import { createLogger } from '@/shared/lib/logger';
 import {
+  cardSurface,
+  displayFontScaleCap,
+  motion,
+  opacity,
   radii,
+  shrinkToFitMinScale,
   sizes,
   spacing,
   typography,
@@ -67,17 +117,27 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 import {
   EmptyState,
   ErrorState,
   RadiusSlider,
   Screen,
+  StatBand,
   ThemedRefreshControl,
   useToast,
 } from '@/shared/ui';
 
 import { fetchAreaInsights, type AreaInsights } from '../api/areaInsightsApi';
-import { toMonthlyBars, monthlySummary, recoveryRateLabel } from '../lib/areaInsightsModel';
+import { MonthlyTheftsChart } from '../components/MonthlyTheftsChart';
+import { ProportionBar } from '../components/ProportionBar';
+import { RankedBars } from '../components/RankedBars';
+import {
+  monthlyColumns,
+  monthlySummary,
+  rankedMakes,
+  recoveryRate,
+} from '../lib/areaInsightsModel';
 import { AREA_ENTRY_RADIUS_MILES } from '../lib/feedSections';
 
 const log = createLogger('search-map');
@@ -85,10 +145,28 @@ const log = createLogger('search-map');
 /** The feed's own default. "Round here" is already defined once. */
 const DEFAULT_RADIUS_MILES = 20;
 
+/**
+ * How long the radius has to hold still before it is fetched for.
+ *
+ * ⚠️ RadiusSlider commits on EVERY SNAP of a drag, not on release. Wired
+ * straight into the fetch, a thumb crossing 10 → 15 → 20 → 25 → 30 fired five
+ * RPCs (the RPC quantises the radius anyway, so four of them answered
+ * questions nobody asked) and — the part the owner saw — each one flipped the
+ * page to the skeleton, which unmounted the slider under their finger. The
+ * slider's own readout still follows the thumb live; only the QUESTION waits
+ * until the finger has settled. useSearchCount's live count debounces the
+ * same slider at 200; a little longer here because an answer costs a page
+ * repaint, not a number on a button.
+ */
+const RADIUS_SETTLE_MS = 300;
+
 export interface AreaInsightsScreenProps {
   /** A named town to answer for — geocoded here. Wins over nothing; loses
    *  to an explicit point. */
   area?: string;
+  /** The feed area's human name, sent alongside an explicit point so the
+   *  page can say "Thefts near St Albans". Display only — never a scope. */
+  label?: string;
   /** An explicit centre (the feed's own). Wins over `area`. */
   lat?: number;
   lng?: number;
@@ -106,20 +184,50 @@ type GeocodeState =
 
 export function AreaInsightsScreen({
   area,
+  label,
   lat: latProp,
   lng: lngProp,
   radiusMiles: radiusProp,
 }: AreaInsightsScreenProps = {}) {
   const styles = useThemedStyles(makeStyles);
   const router = useRouter();
+  // ⚠️ THE BOTTOM INSET IS ADDED TO THE SCROLL CONTENT, NOT TO THE SCREEN.
+  // Screen pads the top only, and at SDK 57 Android is edge-to-edge, so the
+  // scroll's fixed 32pt tail ended BEHIND the three-button bar and the last
+  // card's caption sat under "back". Padding the content (the way
+  // StickyActionBar and BottomSheet add `insets.bottom` themselves) keeps
+  // the scroll region running to the screen edge — cards slide under the
+  // bar as they scroll past, which is right — while the end of the content
+  // still clears it.
+  const insets = useSafeAreaInsets();
   // Called unconditionally (hooks rule); its answer is used only when neither
   // a point nor an area came in through the route.
   const defaultCentre = useDefaultMapCentre();
   const toast = useToast();
+  // Read by the fetch effect through a ref, NOT as a dependency: the effect's
+  // deps are exactly "what changes the question" (centre, radius, a pull), and
+  // the toast is not one of them. Listing it would make any re-render that
+  // hands back a new toast object refetch — and refetching resets the figures
+  // to the skeleton, which is how opening the radius control could blank the
+  // page it was opened from.
+  const toastRef = useRef(toast);
+  useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
   const hasPoint = latProp !== undefined && lngProp !== undefined;
   const [radiusMiles, setRadiusMiles] = useState(
     radiusProp ?? (area && !hasPoint ? AREA_ENTRY_RADIUS_MILES : DEFAULT_RADIUS_MILES),
   );
+  // The radius the FETCH is asked for: `radiusMiles` once it has held still
+  // for RADIUS_SETTLE_MS. Two values on purpose — the slider and the "within
+  // N miles" line follow the finger through `radiusMiles`; the network and
+  // the figures follow `askedMiles`.
+  const [askedMiles, setAskedMiles] = useState(radiusMiles);
+  useEffect(() => {
+    if (askedMiles === radiusMiles) return;
+    const timer = setTimeout(() => setAskedMiles(radiusMiles), RADIUS_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [radiusMiles, askedMiles]);
   const [geocode, setGeocode] = useState<GeocodeState>({ status: 'idle' });
   const [insights, setInsights] = useState<AreaInsights | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -193,10 +301,15 @@ export function AreaInsightsScreen({
           : null
         : (defaultCentre.centre?.longitude ?? null);
 
-  // "Thefts in St Albans" / "Thefts near you": a figure with no place
-  // attached is not a figure. The area name is user-authored text
-  // (posts.last_seen_area), rendered as-is here and never logged.
-  const title = area ? `Thefts in ${area}` : 'Thefts near you';
+  // "Thefts in St Albans" / "Thefts near St Albans" / "Thefts near you": a
+  // figure with no place attached is not a figure. Both names are user- or
+  // geocoder-authored text (posts.last_seen_area, the feed's addressLabel),
+  // rendered as-is here and never logged.
+  const title = area
+    ? `Thefts in ${area}`
+    : label
+      ? `Thefts near ${label}`
+      : 'Thefts near you';
 
   // Read inside the fetch callbacks to decide whether a failure needs saying
   // out loud. Refs rather than effect deps — depending on either would refetch
@@ -204,6 +317,10 @@ export function AreaInsightsScreen({
   // never during render.
   const pulledRef = useRef(false);
   const insightsRef = useRef<AreaInsights | null>(null);
+  // The radius the figures on screen answer for, for the failure message.
+  // A ref, not the state: naming it in the toast must not make the fetch
+  // effect depend on it (the effect's deps are "what changes the question").
+  const shownMilesRef = useRef<number | null>(null);
 
   // ⚠️ ONE FETCH PATH, and it is this effect. The pull bumps `generation`
   // rather than fetching for itself, so the single `cancelled` guard covers
@@ -221,35 +338,52 @@ export function AreaInsightsScreen({
     let cancelled = false;
     // The radius THIS request asked for, captured so a late response can only
     // ever be recorded against the question it actually answered.
-    const forMiles = radiusMiles;
+    const forMiles = askedMiles;
+    // ⚠️ READ AND CLEARED AT REQUEST TIME, not in the callbacks. Cleared only
+    // on the non-cancelled paths, the flag outlived its own request: pull,
+    // then move the slider before the response lands, and the effect's
+    // cleanup cancels that request with the flag still set — so the NEXT
+    // unrelated failure apologised for a refresh nobody had asked for.
+    const wasPull = pulledRef.current;
+    pulledRef.current = false;
     // Every write is after the await, so this never trips
     // react-hooks/set-state-in-effect.
     fetchAreaInsights(lat, lng, milesToMetres(forMiles))
       .then((next) => {
         if (cancelled) return;
         insightsRef.current = next;
-        pulledRef.current = false;
         setInsights(next);
         setShownMiles(forMiles);
+        shownMilesRef.current = forMiles;
         setFailedMiles(null);
         setRefreshing(false);
       })
       .catch(() => {
         if (cancelled) return;
         setFailedMiles(forMiles);
-        // A failed PULL over figures that are already up renders nothing new —
-        // the figures rightly stay, which is the policy. Without this the
-        // spinner just retracts and an explicit request is met with silence.
-        if (pulledRef.current && insightsRef.current !== null) {
-          toast.show("We couldn’t refresh just now — these are the last figures.", 'error');
+        // ⚠️ A FAILURE OVER FIGURES THAT ARE ALREADY UP IS SAID, NOT DRAWN.
+        // The render below keeps those figures (and the slider) on screen, so
+        // without this the failure is silent — and for a radius change it is
+        // the ONLY thing that says the figures now describe a different radius
+        // from the one the slider reads. Which is why that wording NAMES the
+        // radius they do answer for: "the last figures" alone leaves a reader
+        // looking at 20-mile counts under a slider reading 30 with nothing to
+        // tell them apart. `shownMiles` is the radius those figures were
+        // computed for, read at failure time.
+        if (insightsRef.current !== null) {
+          toastRef.current.show(
+            wasPull
+              ? 'We couldn’t refresh just now — these are the last figures.'
+              : `We couldn’t load that radius — these are still the ${shownMilesRef.current} mile figures.`,
+            'error',
+          );
         }
-        pulledRef.current = false;
         setRefreshing(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [lat, lng, radiusMiles, generation, toast]);
+  }, [lat, lng, askedMiles, generation]);
 
   // The pull: ask the effect again. It owns the spinner and it is how someone
   // gets out of the error state without leaving the screen.
@@ -267,6 +401,15 @@ export function AreaInsightsScreen({
   // we have figures for the area the slider is stating" is.
   const haveCurrent = insights !== null && shownMiles === radiusMiles;
   const currentFailed = failedMiles === radiusMiles;
+  // Figures are up but for ANOTHER radius — the slider has moved (or is still
+  // moving) and the answer for where it now sits has not landed. Rendered as
+  // the old figures, dimmed: NOT the skeleton, which would unmount the slider
+  // mid-drag (see RADIUS_SETTLE_MS), and not the old figures held up as-is
+  // either.
+  // Not pending once THIS radius has failed: nothing is on its way any more,
+  // so the figures stop being dimmed and are simply the last answer we got
+  // (the toast in the catch says so).
+  const pending = insights !== null && !haveCurrent && !currentFailed;
   // A pull spinner over a skeleton is two loading indicators for one fetch, so
   // the spinner only shows when there is real content behind it to refresh.
   const showSpinner = refreshing && haveCurrent;
@@ -289,7 +432,7 @@ export function AreaInsightsScreen({
       </View>
 
       {resolving ? (
-        <StatsSkeleton label={`Loading ${title.toLowerCase()}`} />
+        <StatsSkeleton label={`Loading ${title.toLowerCase()}`} outside />
       ) : areaMissed ? (
         // Honest, not helpful-by-accident: falling back to the device centre
         // here would show a different place's numbers under this town's name.
@@ -312,17 +455,13 @@ export function AreaInsightsScreen({
         />
       ) : (
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: spacing.xxl + insets.bottom },
+          ]}
+          testID="stats-scroll"
           refreshControl={<ThemedRefreshControl refreshing={showSpinner} onRefresh={refresh} />}
         >
-          {/* Whole miles only — the RPC quantises the radius, so sending
-              anything else is silently rounded and the number under the slider
-              would stop matching the figures above it. */}
-          <RadiusSlider
-            valueMiles={radiusMiles}
-            onChangeMiles={(miles) => setRadiusMiles(Math.round(miles))}
-          />
-
           {/* Order matters. Figures for the CURRENT radius win outright — a
               failed refresh over data that is already up must not replace it
               with an error page, because those figures are still true and
@@ -331,25 +470,31 @@ export function AreaInsightsScreen({
               ⚠️ Once the radius moves they stop being stale and start being
               WRONG: this screen exists to say how much theft there is in a
               STATED area, and figures for 20 miles under a slider reading 30
-              describe a different one. So a moved slider falls through to the
-              skeleton (or the error, if this radius is the one that failed)
-              rather than holding the old numbers up as an answer. */}
-          {haveCurrent ? (
-            !insights.enoughData ? (
-            /* ⚠️ NEVER a page of zeros. Below the floor the RPC withholds the
-               whole breakdown on purpose, and "0 thefts" would be a claim we
-               have not made — it is "too few to say", which is a different and
-               more honest sentence. */
-              <EmptyState
-                title="Not enough nearby to say"
-                body={`We only show this once there are enough reports in an area to be meaningful. Try a wider radius than ${Math.round(metresToMiles(insights.radiusM))} miles.`}
-                // Inside the ScrollView's own xl gutter — EmptyState's default
-                // would stack to 48pt a side and wrap the body to 8 lines.
-                gutter="none"
-              />
-            ) : (
-              <Insights data={insights} />
-            )
+              describe a different one. So a moved slider renders them as
+              PENDING — dimmed — rather than holding them up as an answer,
+              and the new answer re-enters when it lands. It used to fall through to the
+              skeleton instead, which was more honest still and unusable: the
+              skeleton replaced the slider mid-drag (2026-09-22, on device).
+              Figures that are up but not yet for THIS radius stay mounted so
+              the control the reader is holding stays under their finger.
+
+              ⚠️ WHICH IS WHY THE ERROR PAGE IS FOR A FIRST LOAD ONLY. Keyed
+              on `currentFailed` it fired whenever the NEW radius failed —
+              replacing still-true figures with an error and unmounting the
+              slider, the exact two things the paragraph above promises cannot
+              happen, and leaving no way back but a pull that retries the
+              failing radius. Once there are figures they stay, and the
+              failure is a toast. */}
+          {insights !== null ? (
+            <Insights
+              data={insights}
+              pending={pending}
+              // Non-null whenever `insights` is: both are set by the same
+              // `.then`. The fallback only satisfies the type.
+              answeredMiles={shownMiles ?? radiusMiles}
+              radiusMiles={radiusMiles}
+              onChangeMiles={setRadiusMiles}
+            />
           ) : currentFailed ? (
             <ErrorState
               title="We couldn’t load this area"
@@ -365,88 +510,345 @@ export function AreaInsightsScreen({
   );
 }
 
-function Insights({ data }: { data: Extract<AreaInsights, { enoughData: true }> }) {
+/**
+ * The page's body: a single column of cards, 16 apart. The hero card first
+ * and biggest — the 30-day sentence, the radius line, the stat band under a
+ * hairline — then one card per question, each a small title over its
+ * content over its caveat. One column, never a grid: the two-up "stat
+ * tiles" grid that Dribbble stats pages favour is for figures that are peers
+ * of each other, and nothing here is a peer of the hero.
+ *
+ * MOTION (2026-09-22, owner asked for "some subtle animation"): the cards
+ * arrive with the app's one sanctioned list entrance — a staggered
+ * `FadeInDown` at `motion.standard`, `listStagger` apart, the same rhythm as
+ * AlertsScreen and the inbox — so the page composes itself top-down in
+ * under half a second, and the year chart's bars rise from their baseline
+ * inside their card as it lands. Nothing counts up, nothing bounces: a
+ * number ticking towards a theft total is a slot machine, and `springBouncy`
+ * is reserved for reward moments. All of it collapses under reduced motion.
+ *
+ * Calm and factual throughout (owner decision 2026-09-21): no severity
+ * colour, no trend arrows, no "up 40%" badges — a red arrow next to a theft
+ * count is an alarm, and the reader is already worried.
+ *
+ * ⚠️ ONE HERO CARD FOR BOTH ANSWERS. It takes the whole payload — enough or
+ * not — and renders the same card either way, with the RadiusSlider in the
+ * SAME child slot in both. The not-enough state used to be its own card with
+ * its own control; dragging from 20 miles into a too-small 5 swapped one for
+ * the other, and a swap is a remount — the slider vanished from under the
+ * finger exactly as the skeleton did. Same slot, same instance, whatever
+ * the answer.
+ *
+ * `pending`: the figures are for another radius and the new answer is on
+ * its way. The figures dim to `opacity.inactive` (a `fast` fade, not a snap)
+ * and the control stays at full strength — it is the one thing on the page
+ * that is exactly current. The dim is the whole signal: an "Updating for N
+ * miles…" line shipped alongside it for a few hours and the owner asked for
+ * it gone — the radius line already says N, and a caption that appears and
+ * vanishes with every nudge is churn, not information.
+ *
+ * `answeredMiles` is the KEY under every figure. When a new answer lands the
+ * figures remount and re-enter — the cards' stagger, the chart's rise, a
+ * fade on the hero sentence and band — so the page visibly re-composes for
+ * the new radius instead of the numbers silently swapping. That replay was
+ * a free side effect of the old skeleton swap, which remounted everything;
+ * keeping the tree mounted (so the slider survives) lost it, and the owner
+ * asked for it back. The key sits on the figures ONLY — never on the card
+ * that holds the RadiusSlider.
+ */
+function Insights({
+  data,
+  pending,
+  answeredMiles,
+  radiusMiles,
+  onChangeMiles,
+}: {
+  data: AreaInsights;
+  pending: boolean;
+  answeredMiles: number;
+  radiusMiles: number;
+  onChangeMiles: (miles: number) => void;
+}) {
   const styles = useThemedStyles(makeStyles);
-  const bars = toMonthlyBars(data.monthly);
-  const recovery = recoveryRateLabel(data.recovered, data.closedTotal);
+  const reducedMotion = useReducedMotion();
+  const dim = useSharedValue(pending ? opacity.inactive : 1);
+  useEffect(() => {
+    dim.value = withTiming(pending ? opacity.inactive : 1, {
+      duration: reducedMotion ? motion.instant : motion.fast,
+      easing: easeOut,
+      reduceMotion: ReduceMotion.System,
+    });
+  }, [pending, reducedMotion, dim]);
+  const dimStyle = useAnimatedStyle(() => ({ opacity: dim.value }));
+  const enter = FadeIn.duration(motion.standard).reduceMotion(ReduceMotion.System);
 
   return (
     <View style={styles.stack}>
-      <Section title="Reported stolen">
-        <View style={styles.windows}>
-          <Window label="Last 7 days" value={data.total7d} />
-          <Window label="30 days" value={data.total30d} />
-          <Window label="90 days" value={data.total90d} />
-          <Window label="12 months" value={data.total365d} />
-        </View>
-      </Section>
-
-      <Section title="Over the last year">
-        <StatsSparkline bars={bars} summary={monthlySummary(data.monthly)} />
-        <Text style={styles.caption}>
-          Every month is shown. A month with no reports is a real zero, not a gap.
-        </Text>
-      </Section>
-
-      {data.topMakes.length > 0 ? (
-        <Section title="Taken most often">
-          {data.topMakes.map((row) => (
-            <Row key={row.make} label={row.make} value={String(row.count)} capitalize />
-          ))}
-          {data.topModels.map((row) => (
-            <Row
-              key={`${row.make}-${row.model}`}
-              label={`${row.make} ${row.model}`}
-              value={String(row.count)}
-              muted
+      <Card testID={data.enoughData ? 'stats-card-hero' : 'stats-card-empty'}>
+        {data.enoughData ? (
+          // ⚠️ Every keyed figure in this card gets its OWN prefix. The hero
+          // and the band are siblings; keyed on the bare number they shared a
+          // key, and React's keyed reconciliation silently dropped one of the
+          // two old nodes from its deletion map — the old sentence stayed
+          // mounted beside the new one ("14 cars" over "31 cars"). Caught by
+          // the re-entry test; never shipped.
+          <HeroSentence key={`hero-${answeredMiles}`} count={data.total30d} dimStyle={dimStyle} />
+        ) : (
+          // ⚠️ NEVER a page of zeros. Below the floor the RPC withholds the
+          // whole breakdown on purpose, and "0 thefts" would be a claim we
+          // have not made — it is "too few to say", which is a different and
+          // more honest sentence. Told WHY first, then handed the way out
+          // beneath. Dimmed like any other figure while a new radius loads.
+          <Animated.View key={`empty-${answeredMiles}`} style={dimStyle} entering={enter}>
+            <EmptyState
+              title="Not enough nearby to say"
+              body={`We only show this once there are enough reports in an area to be meaningful. Try a wider radius than ${Math.round(metresToMiles(data.radiusM))} miles.`}
+              // Inside the ScrollView's own xl gutter — EmptyState's default
+              // would stack to 48pt a side and wrap the body to 8 lines.
+              gutter="none"
             />
-          ))}
-          {/* The RPC folds make and model with lower(btrim(...)) and does NOT
-              equate VW with Volkswagen. Said out loud rather than left for
-              someone to notice in the data. */}
-          <Text style={styles.caption}>
-            Grouped by what owners typed, so spellings of the same make count separately.
-          </Text>
-        </Section>
+          </Animated.View>
+        )}
+        {data.enoughData ? (
+          // The band sits directly under the sentence — its cells are divided
+          // by vertical hairlines, and together with the sentence they are
+          // the card's FIGURES, one block. The hairline below separates that
+          // block from the control.
+          <Animated.View key={`band-${answeredMiles}`} style={dimStyle} entering={enter}>
+            <StatBand
+              cells={[
+                { key: '7d', value: String(data.total7d), label: 'last 7 days', spoken: `${data.total7d} in the last 7 days` },
+                { key: '90d', value: String(data.total90d), label: 'last 90 days', spoken: `${data.total90d} in the last 90 days` },
+                { key: '365d', value: String(data.total365d), label: 'last 12 months', spoken: `${data.total365d} in the last 12 months` },
+              ]}
+            />
+          </Animated.View>
+        ) : null}
+        {/* ALWAYS VISIBLE, at the foot of the card, under a hairline (owner
+            decision 2026-09-22 — it was a disclosed "within N miles · Change"
+            line before). The slider carries its own label and a live readout
+            beside the thumb, so the radius is still stated on the page; the
+            hairline says "the figures above, the control below". The same
+            slot in both answers, so it is never remounted (see Insights). */}
+        <View style={styles.control}>
+          <RadiusSlider
+            label="Radius"
+            valueMiles={radiusMiles}
+            // Whole miles only — the RPC quantises the radius, so anything
+            // else is silently rounded and the readout would stop matching
+            // the figures.
+            onChangeMiles={(miles) => onChangeMiles(Math.round(miles))}
+            testID="stats-radius-slider"
+          />
+        </View>
+      </Card>
+      {data.enoughData ? (
+        <Breakdown key={`breakdown-${answeredMiles}`} data={data} dimStyle={dimStyle} />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * The hero: a sentence, not a bare number — the count at heading size and
+ * weight, its words at caption size beside it, so the number leads by both
+ * size and weight (the reference's grammar for a hero figure) and "14"
+ * cannot be mistaken for anything else on the page. One text node, one
+ * baseline, one screen-reader stop.
+ *
+ * ONE LINE, by owner decision (2026-09-22): the sizes are chosen so "14 cars
+ * reported stolen in the last 30 days" fits a 310pt card interior at the
+ * default text size, and `adjustsFontSizeToFit` covers a narrower phone or
+ * a larger text setting by shrinking rather than wrapping or ellipsising —
+ * a theft count with its last words cut off is worse than a slightly
+ * smaller one. The floor is `shrinkToFitMinScale` (tabLabel over caption,
+ * ~0.85), so it can never shrink below the smallest size the design system
+ * sanctions. That floor is enough BECAUSE the growth above is capped: at
+ * `displayFontScaleCap` the sentence renders 1.3x, and 1.3 x 0.85 is ~1.1x
+ * the default width — inside the headroom the sizes were chosen for. A
+ * lower floor would only buy width the sentence cannot need.
+ *
+ * The font-scale cap is repeated on the number run: it is not reliably
+ * inherited across nested Text (OnboardingSlide records the same), and an
+ * uncapped numeral at 200% would outgrow the words it belongs to. Zero
+ * reads "No cars" — calmer and truer than a "0".
+ */
+function HeroSentence({ count, dimStyle }: { count: number; dimStyle: AnimatedStyle<ViewStyle> }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    // A plain fade, not FadeInDown: the sentence is the top of the page and a
+    // drop would read as the whole card shifting under the slider.
+    <Animated.View
+      style={dimStyle}
+      entering={FadeIn.duration(motion.standard).reduceMotion(ReduceMotion.System)}
+    >
+      <Text
+        style={styles.hero}
+        accessibilityRole="header"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={shrinkToFitMinScale}
+        maxFontSizeMultiplier={displayFontScaleCap}
+        testID="stats-hero"
+      >
+        <Text style={styles.heroNumber} maxFontSizeMultiplier={displayFontScaleCap}>
+          {count === 0 ? 'No' : count}
+        </Text>
+        {count === 1 ? ' car reported stolen ' : ' cars reported stolen '}
+        in the last 30 days
+      </Text>
+    </Animated.View>
+  );
+}
+
+/** Everything below the hero card: one card per question, staggered in. */
+function Breakdown({
+  data,
+  dimStyle,
+}: {
+  data: Extract<AreaInsights, { enoughData: true }>;
+  dimStyle: AnimatedStyle<ViewStyle>;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const columns = monthlyColumns(data.monthly);
+  const makes = rankedMakes(data.topMakes, data.topModels);
+  const recovery = recoveryRate(data.recovered, data.closedTotal);
+  const summary = monthlySummary(data.monthly);
+
+  // Which optional cards render, decided once, so each card's stagger index
+  // is its RENDERED position: an absent makes card must not leave a 50ms
+  // hole before the recovery card. Hero is 0 and the year chart 1, always.
+  const showMakes = makes.length > 0;
+  const showRecovery = Boolean(recovery);
+  const showTaken = data.takenFrom.buckets.length > 0;
+  const showKeys = data.keysTaken.buckets.length > 0;
+  const makesIndex = 2;
+  const recoveryIndex = makesIndex + (showMakes ? 1 : 0);
+  const takenIndex = recoveryIndex + (showRecovery ? 1 : 0);
+  const keysIndex = takenIndex + (showTaken ? 1 : 0);
+
+  return (
+    // The dim rides on the whole breakdown, so every figure below the hero
+    // fades together with it while a new radius loads.
+    <Animated.View style={[styles.stack, dimStyle]}>
+      <Card title="Over the last year" index={1} testID="stats-card-year">
+        {/* Each bar carries its count and every other bar its month, so the
+            chart reads on its own (MonthlyTheftsChart). No caption beneath
+            (owner, 2026-09-22: "I don't think the text under the graph is
+            necessary") — the sentence survives as the chart's spoken summary,
+            which is where a screen reader needs it. */}
+        <MonthlyTheftsChart columns={columns} summary={summary} growIn />
+      </Card>
+
+      {showMakes ? (
+        <Card title="Taken most often" index={makesIndex} testID="stats-card-makes">
+          {/* The top makes as bars scaled to the top row (RankedBars), each
+              carrying its models beneath its bar — "Fiesta 3 · Focus 2" —
+              where any cleared the RPC's per-bucket floor (rankedMakes). The
+              two rankings used to be one list of ten rows with the models
+              indented under the LAST make as if they were its children, then
+              briefly two blocks side by side (both 2026-09-22); filed under
+              their make they need no second block and no sub-labels. Names
+              canonical, same-make spellings merged, which retired the old
+              "two spellings count separately" caption. */}
+          <RankedBars rows={makes} growIn testID="stats-makes" />
+        </Card>
       ) : null}
 
       {recovery ? (
-        <Section title="Do they come back?">
-          <Text style={styles.headline}>{recovery.headline}</Text>
+        <Card title="Recovery rate" index={recoveryIndex} testID="stats-card-recovery">
+          {/* Redesigned 2026-09-22 (owner: "redesign the do they come back
+              section, and change the title"). Was one sentence — "70% came
+              back" — over a two-line caveat: a number with nothing to give it
+              shape. Now the percent leads in the hero's grammar, the share is
+              DRAWN (ProportionBar — the filled part came back, the rule that
+              shows through did not), and the two counts sit in a band
+              beneath so the fraction is legible as well as the percentage.
+              The percent SPEAKS the whole figure — "70% recovered: 7 of the
+              10 nearby listings that have finished" — because the percent
+              alone is the number the caveat exists to qualify.
+
+              ⚠️ ON THE TEXT, NOT ON A WRAPPER ROUND ALL THREE. An `accessible`
+              parent hides its descendants on iOS but NOT on Android, where
+              StatBand's cells are focusable in their own right — so TalkBack
+              read the sentence and then both cells again. The band's cells
+              already speak correctly on their own; this only has to give the
+              percent its denominator. */}
+          <View>
+            <Text
+              style={styles.statement}
+              accessible
+              accessibilityLabel={recovery.spoken}
+              maxFontSizeMultiplier={displayFontScaleCap}
+            >
+              <Text style={styles.statementNumber} maxFontSizeMultiplier={displayFontScaleCap}>
+                {recovery.percent}%
+              </Text>
+              {' recovered'}
+            </Text>
+            <View style={styles.proportion}>
+              <ProportionBar fraction={recovery.fraction} growIn testID="stats-recovery-bar" />
+            </View>
+            <StatBand
+              cells={[
+                {
+                  key: 'recovered',
+                  value: String(recovery.recovered),
+                  label: 'recovered',
+                  spoken: `${recovery.recovered} recovered`,
+                },
+                {
+                  key: 'not-recovered',
+                  value: String(recovery.notRecovered),
+                  label: 'not recovered',
+                  spoken: `${recovery.notRecovered} not recovered`,
+                },
+              ]}
+            />
+          </View>
           {/* The denominator is CLOSED listings only. An active listing has not
               failed to be recovered — it is still being looked for — and
               counting it as a miss would drag the rate down by however many
               cars are currently in flight. */}
-          <Text style={styles.caption}>{recovery.caveat}</Text>
-        </Section>
+          <Text style={styles.quiet}>{recovery.caveat}</Text>
+        </Card>
       ) : null}
 
-      {data.takenFrom.buckets.length > 0 ? (
-        <Section title="How they were taken">
-          {data.takenFrom.buckets.map((bucket) => (
-            <Row
-              key={bucket.key}
-              label={bucket.label}
-              value={`${bucket.count} of ${data.takenFrom.recorded}`}
-            />
-          ))}
-          <Denominator recorded={data.takenFrom.recorded} />
-        </Section>
+      {showTaken ? (
+        <Card title="How they were taken" index={takenIndex} testID="stats-card-taken">
+          <View style={styles.rows}>
+            {data.takenFrom.buckets.map((bucket) => (
+              <Row
+                key={bucket.key}
+                label={bucket.label}
+                value={`${bucket.count} of ${data.takenFrom.recorded}`}
+              />
+            ))}
+          </View>
+          <Denominator recorded={data.takenFrom.recorded} aside />
+        </Card>
       ) : null}
 
-      {data.keysTaken.buckets.length > 0 ? (
-        <Section title="Were the keys taken?">
-          {data.keysTaken.buckets.map((bucket) => (
-            <Row
-              key={bucket.key}
-              label={bucket.label}
-              value={`${bucket.count} of ${data.keysTaken.recorded}`}
-            />
-          ))}
-          <Denominator recorded={data.keysTaken.recorded} />
-        </Section>
+      {showKeys ? (
+        <Card title="Were the keys taken?" index={keysIndex} testID="stats-card-keys">
+          <View style={styles.rows}>
+            {data.keysTaken.buckets.map((bucket) => (
+              <Row
+                key={bucket.key}
+                label={bucket.label}
+                value={`${bucket.count} of ${data.keysTaken.recorded}`}
+              />
+            ))}
+          </View>
+          {/* The aside rides on the first block that needs it; if that block
+              is absent this one carries it instead. */}
+          <Denominator
+            recorded={data.keysTaken.recorded}
+            aside={!showTaken}
+          />
+        </Card>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -456,62 +858,81 @@ function Insights({ data }: { data: Extract<AreaInsights, { enoughData: true }> 
  * carry NULL. Without this line "3 from a driveway" reads as three of all the
  * thefts here, when it means three of the handful of people who filled it in.
  */
-function Denominator({ recorded }: { recorded: number }) {
+function Denominator({ recorded, aside = false }: { recorded: number; aside?: boolean }) {
   const styles = useThemedStyles(makeStyles);
+  // The rows already say "3 of 6"; this line's only job is to say what 6 is.
+  // The "it's optional" aside is said ONCE on the page (the first block that
+  // needs it), not under every section — and neutrally: "most owners don't
+  // fill it in" read as a nudge at the reader's neighbours.
   return (
-    <Text style={styles.caption}>
-      Based on the {recorded} {recorded === 1 ? 'listing' : 'listings'} where this was recorded —
-      most owners don’t fill it in.
+    <Text style={styles.quiet}>
+      Of the {recorded} {recorded === 1 ? 'listing' : 'listings'} where this was recorded.
+      {aside ? ' It’s optional, so most listings leave it blank.' : ''}
     </Text>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle} accessibilityRole="header">
-        {title}
-      </Text>
-      {children}
-    </View>
-  );
-}
-
-function Window({ label, value }: { label: string; value: number }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.window}>
-      <Text style={styles.windowValue}>{value}</Text>
-      <Text style={styles.windowLabel}>{label}</Text>
-    </View>
-  );
-}
-
-/** `capitalize` is for owner-typed text (makes, models) — never for labels we
- *  authored, which are already sentence case. */
-function Row({
-  label,
-  value,
-  muted,
-  capitalize,
+/**
+ * One question, one card: the house resting box (`cardSurface` — surface,
+ * `lg` radius, hairline, NO shadow) with 16 inside and a 12 step between
+ * title, content and caption. The title is `cardTitle` — the token named for
+ * exactly this, body size at Bold — so it labels the card without competing
+ * with the hero sentence two cards up. NOT a Pressable and no chevron: the
+ * cards hold answers, and a box that looks tappable and is not is the most
+ * common complaint about this pattern.
+ *
+ * `index` is the card's RENDERED position in the column, for the staggered
+ * entrance: `listStagger` per step, capped at 6 like every other stagger in
+ * the app so a long page never keeps a reader waiting on its tail. The
+ * caller computes it (a card cannot know how many siblings rendered), so an
+ * absent block leaves no hole in the rhythm.
+ */
+function Card({
+  title,
+  index = 0,
+  testID,
+  children,
 }: {
-  label: string;
-  value: string;
-  muted?: boolean;
-  capitalize?: boolean;
+  title?: string;
+  index?: number;
+  testID?: string;
+  children: React.ReactNode;
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.row}>
-      <Text
-        style={[
-          styles.rowLabel,
-          muted ? styles.rowLabelMuted : null,
-          capitalize ? styles.rowLabelCapitalized : null,
-        ]}
-        numberOfLines={1}
-      >
+    <Animated.View
+      style={styles.card}
+      entering={FadeInDown.duration(motion.standard)
+        .delay(Math.min(index, 6) * motion.listStagger)
+        .reduceMotion(ReduceMotion.System)}
+      testID={testID}
+    >
+      {title ? (
+        <Text style={styles.cardTitle} accessibilityRole="header">
+          {title}
+        </Text>
+      ) : null}
+      {children}
+    </Animated.View>
+  );
+}
+
+/**
+ * Label left, value right — and the VALUE leads by weight, because the count
+ * is the information and the word beside it is the label for it (the same way
+ * round as StatBand and every other number on this page). For the authored
+ * labels of the taken-from and keys blocks; the makes and models are
+ * RankedBars now.
+ */
+function Row({ label, value }: { label: string; value: string }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    // One accessible node, as StatBand reasons: "From a driveway: 3 of 6" in
+    // one stop rather than a label and a bare number the reader has to pair up.
+    <View style={styles.row} accessible accessibilityLabel={`${label}: ${value}`}>
+      {/* Two lines, not one: a label at large type is a name lost if it
+          ellipsises. The value stays centred against a taller row. */}
+      <Text style={styles.rowLabel} numberOfLines={2}>
         {label}
       </Text>
       <Text style={styles.rowValue}>{value}</Text>
@@ -521,17 +942,18 @@ function Row({
 
 /** The one loading placeholder, used while the town is being placed AND
  *  while the figures load — so both waits are announced the same way. */
-function StatsSkeleton({ label }: { label: string }) {
+function StatsSkeleton({ label, outside = false }: { label: string; outside?: boolean }) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View
-      style={styles.skeletons}
+      style={[styles.skeletons, outside && styles.skeletonOutside]}
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel={label}
       testID="area-insights-skeleton"
     >
       <View style={styles.skeletonHead} />
+      <View style={styles.skeletonLine} />
       <View style={styles.skeletonBlock} />
     </View>
   );
@@ -564,7 +986,9 @@ const makeStyles = (c: Palette) =>
       // pattern): the back glyph and the figures share one left edge.
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.lg,
-      paddingBottom: spacing.md,
+      // 16, the same title → content step the sections use (PostStatsScreen's
+      // headerRow marginBottom); the first section adds nothing on top.
+      paddingBottom: spacing.lg,
     },
     back: {
       width: sizes.touchTarget,
@@ -574,49 +998,87 @@ const makeStyles = (c: Palette) =>
       marginLeft: -(sizes.touchTarget - sizes.icon) / 2,
     },
     title: { ...typography.title, color: c.textPrimary, flexShrink: 1 },
-    content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.xl },
-    stack: { gap: spacing.xl },
-    section: { gap: spacing.sm },
-    sectionTitle: { ...typography.heading, color: c.textPrimary },
-    windows: { flexDirection: 'row', gap: spacing.sm },
-    window: {
-      flex: 1,
-      backgroundColor: c.surfaceSubtle,
-      borderRadius: radii.lg,
-      paddingVertical: spacing.md,
-      alignItems: 'center',
-      gap: spacing.xs,
+    // xl gutter, like every other card stack (AlertsScreen, the notification
+    // centre): the page title and the cards share one left edge, and a 16
+    // inset inside the card is the Card entry's own padding.
+    // paddingBottom is set inline: xxl PLUS the safe-area inset, read at
+    // render (see the ScrollView).
+    content: { paddingHorizontal: spacing.xl },
+    // The column of cards. 16 between them — enough that each reads as its
+    // own object, not so much that the page becomes a scroll between islands.
+    stack: { gap: spacing.lg },
+    // The house resting card; `cardSurface` owns the box, this owns the
+    // inside: 16 padding, 12 between title → content → caption.
+    card: {
+      ...cardSurface(c),
+      padding: spacing.lg,
+      gap: spacing.md,
     },
-    windowValue: { ...typography.title, color: c.textPrimary },
-    windowLabel: { ...typography.caption, color: c.textSecondary, textAlign: 'center' },
-    headline: { ...typography.title, color: c.textPrimary },
+    cardTitle: { ...typography.cardTitle, color: c.textPrimary },
+    // The hero card's control, under a hairline: the figures above, the
+    // slider below.
+    control: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+      paddingTop: spacing.md,
+    },
+    // The hero, ON ONE LINE (owner decision 2026-09-22): the count at heading
+    // Bold, the words at caption Regular beside it, so the number still leads
+    // by size AND weight — a step down from title/body, which wrapped to two
+    // lines on every phone. Heading's leading throughout so the line sits
+    // level. NOT display for the numeral: that is the app's celebration size,
+    // and a theft count is not a celebration.
+    hero: {
+      ...typography.caption,
+      lineHeight: typography.heading.lineHeight,
+      color: c.textPrimary,
+    },
+    heroNumber: { ...typography.heading, color: c.textPrimary },
+    // A section's one plain statement ("71% recovered") in the hero's grammar
+    // a step down: the number at sectionTitle Bold, its word in body beside
+    // it, on the number's leading — so it sits between the hero and the
+    // headings without a fourth scale.
+    statement: {
+      ...typography.body,
+      lineHeight: typography.sectionTitle.lineHeight,
+      color: c.textPrimary,
+    },
+    statementNumber: { ...typography.sectionTitle, color: c.textPrimary },
+    // The share, drawn, between the percent and the band: 4 either side so
+    // it reads as part of the figure rather than a rule between two.
+    proportion: { marginVertical: spacing.sm },
+    quiet: { ...typography.caption, color: c.textSecondary },
+    rows: { gap: spacing.sm },
     row: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: spacing.md,
-      paddingVertical: spacing.xs,
     },
-    rowLabel: { ...typography.label, color: c.textPrimary, flexShrink: 1 },
-    // ⚠️ ONLY for owner-typed makes and models ("bmw" → "Bmw"). It used to sit on
-    // rowLabel itself, which the taken-from and keys-taken rows share — and
-    // those labels are AUTHORED sentence case, so they rendered as "From A
-    // Driveway" and "Keys Not Taken". Sentence case everywhere is the rule
-    // (DESIGN_SYSTEM.md).
-    rowLabelCapitalized: { textTransform: 'capitalize' },
-    rowLabelMuted: { color: c.textSecondary },
-    rowValue: { ...typography.label, color: c.textSecondary },
-    caption: { ...typography.caption, color: c.textSecondary },
-    skeletons: { paddingHorizontal: spacing.xl, gap: spacing.sm },
-    // Reserved heights, so the real content lands in place instead of shifting
-    // the page under a reader (sizes.ts). Matches PostStatsScreen.
-    skeletonBlock: {
-      height: sizes.statsSkeletonBlock,
+    rowLabel: { ...typography.body, color: c.textPrimary, flexShrink: 1 },
+    // The count is the information and the word beside it is its label, so
+    // the emphasis runs value-first — the same way round as StatBand.
+    rowValue: { ...typography.cardTitle, color: c.textPrimary },
+    // No gutter of its own: it renders inside `content` (already 24) or
+    // inside `skeletonOutside` for the pre-fetch waits. Shaped like the real
+    // page — hero sentence, the radius line, the band, then the chart — at
+    // the stack's own rhythm, so the figures land in place instead of
+    // shifting the page under a reader (sizes.ts).
+    skeletons: { gap: spacing.lg },
+    skeletonOutside: { paddingHorizontal: spacing.xl },
+    skeletonHead: {
+      height: sizes.statsSkeletonHead,
       borderRadius: radii.lg,
       backgroundColor: c.surfaceSubtle,
     },
-    skeletonHead: {
-      height: sizes.statsSkeletonHead,
+    skeletonLine: {
+      height: sizes.skeletonLine,
+      width: '45%',
+      borderRadius: radii.sm,
+      backgroundColor: c.surfaceSubtle,
+    },
+    skeletonBlock: {
+      height: sizes.statsSkeletonBlock,
       borderRadius: radii.lg,
       backgroundColor: c.surfaceSubtle,
     },

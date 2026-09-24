@@ -17,6 +17,7 @@ import {
   MAX_ENTRY_RADIUS_MILES,
   cameraForVisible,
   entryFrame,
+  searchFrame,
   distanceMeters,
   frameCoords,
   isComfortablyVisible,
@@ -334,6 +335,76 @@ describe('entryFrame (where the map OPENS)', () => {
 
   it('does not zoom to a point for a single nearby car', () => {
     const framed = entryFrame([north(1)], CENTRE);
+
+    expect(framed.latitudeDelta).toBeGreaterThan(0.009);
+  });
+});
+
+describe('searchFrame (where the map sits after a CUSTOM SEARCH)', () => {
+  const SEARCHED: GeoRegion = {
+    latitude: 51.75,
+    longitude: -0.34,
+    latitudeDelta: 0.6, // roughly a 20-mile search
+    longitudeDelta: 0.6,
+  };
+  const north = (miles: number) => ({
+    latitude: 51.75 + miles / 69,
+    longitude: -0.34,
+  });
+
+  it('returns the searched region when there is nothing to frame', () => {
+    expect(searchFrame([], SEARCHED, 20)).toBe(SEARCHED);
+  });
+
+  it('zooms out to fit results that are all close enough together', () => {
+    // Four cars inside one town, found by a 20-mile search: the searched
+    // region is twenty miles of mostly empty ground with the cars in a knot
+    // at the middle. Frame the cars.
+    const framed = searchFrame([north(-1), north(0), north(1), north(2)], SEARCHED, 20);
+
+    expect(framed).not.toBe(SEARCHED);
+    expect(framed.latitudeDelta).toBeLessThan(SEARCHED.latitudeDelta);
+    expect(framed.latitude).toBeCloseTo(north(0.5).latitude, 4);
+  });
+
+  it('zooms OUT as readily as in — a search wider than the camera reframes', () => {
+    const tight: GeoRegion = { ...SEARCHED, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+
+    const framed = searchFrame([north(-4), north(4)], tight, 20);
+
+    expect(framed.latitudeDelta).toBeGreaterThan(tight.latitudeDelta);
+  });
+
+  it('⚠️ does NOT move when the results do not all fit — a partial view is a lie', () => {
+    // entryFrame would keep the near ones and drop the rest; that is right for
+    // an involuntary opening and wrong for an answer to a stated question. The
+    // pins on screen would not be the search's result.
+    const framed = searchFrame([north(0), north(1), north(120)], SEARCHED, 20);
+
+    expect(framed).toBe(SEARCHED);
+  });
+
+  it('measures "close enough" between the RESULTS, not from the camera', () => {
+    // Every car sits together 60 miles north of where the camera was left.
+    // They are close to each other, so they frame; a check against the
+    // searched centre would have refused.
+    const framed = searchFrame([north(60), north(61)], SEARCHED, 20);
+
+    expect(framed).not.toBe(SEARCHED);
+    expect(framed.latitude).toBeCloseTo(north(60.5).latitude, 4);
+  });
+
+  it('honours the search\'s own radius as the definition of close enough', () => {
+    const spread = [north(-8), north(8)];
+
+    // A 20-mile search: 16 miles apart is inside it, so they frame.
+    expect(searchFrame(spread, SEARCHED, 20)).not.toBe(SEARCHED);
+    // The same results under a 5-mile search do not all fit.
+    expect(searchFrame(spread, SEARCHED, 5)).toBe(SEARCHED);
+  });
+
+  it('does not zoom to a point for a single result', () => {
+    const framed = searchFrame([north(1)], SEARCHED, 20);
 
     expect(framed.latitudeDelta).toBeGreaterThan(0.009);
   });

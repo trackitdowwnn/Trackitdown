@@ -56,8 +56,8 @@ export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 // the money gets an address) and `dispute_rejected` (final, calm; routes back
 // to the dispute screen, which shows the resolved state). Senders for the
 // outcomes: release-held-refunds via claim_dispute_outcome_notification.
-// `payout_sent` (2026-08-06): the transfer actually went out — "On its way,
-// £X heading to your account". The money moment users care most about,
+// `payout_sent` (2026-08-06): the transfer actually went out — "£X on its
+// way / Heading to your bank account". The money moment users care most about,
 // previously silent. Sender: the release core via
 // claim_payout_sent_notification; routes to /payouts like the money kinds.
 // `not_credited` (2026-08-06): a car you reported was recovered on SOMEONE

@@ -175,13 +175,22 @@ commenting standards.
     client-side through a `.strict()` schema so a widened payload fails to
     parse rather than being acted on. The client re-fetches everything else
     through RLS after the tap.
-  - The visible body may name make, colour and a **district-grain** locality.
+  - The visible push — title or body — may name make, colour and a
+    **district-grain** locality. ⚠️ Deliberately field-agnostic since
+    2026-09-22, when the copy pass moved the alert's locality and the
+    sighting's make/colour INTO the title: the guarantee is about what a lock
+    screen shows, and naming one field is how the rule goes stale the next
+    time copy moves between them. The absence assertions in
+    `alerts_verification` are written over title ‖ body for the same reason.
     **Never** the plate, never coordinates, and never
     `posts.last_seen_area` — that column holds the raw reverse-geocoded label
     and can be street-grain, which on a driveway theft is the victim's own
     street.
-  - **Message content never transits push.** The body is the sender's first
-    name plus post context, built server-side.
+  - **Message content never transits push.** The push is the sender's first
+    name (the TITLE since 2026-09-22 — "Message from Beth") plus post context
+    (the body), built server-side. The absence is asserted over title AND body
+    together in alerts_verification CHECK 25, because it stopped being a
+    property of one field the day the push had two populated ones.
   - **Notification volume is capped**, because a push is a way to reach someone
     who has already been robbed: at most 3 spotter alerts per user per rolling
     24 hours, and at most one message push per thread per 2 minutes (chat

@@ -1,8 +1,9 @@
 /**
  * WHAT:  SearchSheet — the full-screen search surface that sits over the map.
- *        Airbnb's mobile-search pattern: a stack of collapsible SECTION CARDS
- *        (Vehicle / Bounty / Distance / When) where exactly one is expanded and
- *        the rest collapse to a title + current-value summary row. One place to
+ *        Airbnb's mobile-search pattern: a pinned WHERE block (the area and
+ *        the radius around it) over a stack of collapsible SECTION CARDS
+ *        (Vehicle / Bounty / When) where exactly one is expanded and the rest
+ *        collapse to a title + current-value summary row. One place to
  *        assemble a whole query, with a live "Show N cars" footer that applies
  *        it all at once.
  * WHY:   Rendered as an absolute overlay (NOT an RN Modal — a transparent Modal
@@ -73,6 +74,7 @@ import { CAR_COLOURS } from '@/shared/lib';
 import { formatPounds } from '@/shared/lib/money';
 import { easeOut } from '@/shared/theme/motionEasing';
 import {
+  cardSurface,
   motion,
   opacity,
   radii,
@@ -99,7 +101,6 @@ import { regionAround } from '../lib/regionMath';
 import {
   SEARCH_BOUNTY_MAX_PENCE,
   SEARCH_BOUNTY_MIN_PENCE,
-  distanceLabel,
   seenRangeSummary,
   type SearchCriteria,
 } from '../lib/searchCriteria';
@@ -113,15 +114,11 @@ import { BOUNTY_SNAP_STEPS } from '@/shared/lib/bountyBounds';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-/** The Distance section's one-tap "clear the radius" row. A slider has no null,
- *  so "Any" needs its own control — ChoiceChips' own docstring sanctions
- *  role='button' chips as one-tap actions, and this mirrors the Bounty section,
- *  which already pairs a slider with a quick-chip row. */
-const DISTANCE_ANY_OPTION = [{ value: 'any', label: 'Any distance' }];
-
-/** Where the slider sits when the user opens Distance with no radius set. Not
- *  applied until they touch it — `distanceMiles` stays null (= no filter) until
- *  then, so merely expanding the section never narrows the results. */
+/** Where the slider RESTS when no radius is set. Not applied until the reader
+ *  touches it — `distanceMiles` stays null (= no filter) until then, so a
+ *  radius they never chose cannot narrow their results. That mattered more
+ *  when the control was hidden in an accordion; now that it is on screen from
+ *  the start, it is what stops the sheet opening pre-filtered. */
 const RADIUS_DEFAULT_MILES = 10;
 
 // Money through the shared formatter — never a hard-coded '£' string.
@@ -192,7 +189,9 @@ const RECENCY_OPTIONS = [
   { value: '30', label: 'Last 30 days' },
 ];
 
-type SectionKey = 'vehicle' | 'bounty' | 'distance' | 'when';
+// No 'distance': the radius moved up into the Where block (2026-09-22) and is
+// no longer an accordion section.
+type SectionKey = 'vehicle' | 'bounty' | 'when';
 
 /** Per-section collapsed summaries (right-hand value on a collapsed card). */
 /** 1–2 values verbatim, 3+ collapsed — a collapsed card shows ONE line. */
@@ -229,9 +228,6 @@ function bountySummaryLabel(c: SearchCriteria): string {
   if (min != null) return `${formatPounds(min)}+`;
   if (max != null) return `Up to ${formatPounds(max)}`;
   return 'Any';
-}
-function distanceSummaryLabel(c: SearchCriteria): string {
-  return c.distanceMiles == null ? 'Any' : `${c.distanceMiles} mi`;
 }
 function whenSummaryLabel(c: SearchCriteria): string {
   // The range wins when set — setWhen guarantees the two are never both set,
@@ -548,26 +544,74 @@ export function SearchSheet({
               route to the same answer. `criteria.text` stays in the model and
               the RPC still supports it — nothing on this surface writes it. */}
 
-          {/* WHERE, first and always visible — not an accordion section: it
-              navigates away to the picker rather than editing the draft, so
-              collapsing it beside the filter cards would misrepresent it. */}
-          {areaLabel && onChangeArea ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Change area. Currently ${areaLabel}`}
-              onPress={onChangeArea}
-              style={({ pressed }) => [styles.areaRow, pressed && styles.areaRowPressed]}
-              testID="search-change-area"
+          {/* WHERE, first and always visible — not an accordion section: the
+              row navigates away to the picker rather than editing the draft, so
+              collapsing it beside the filter cards would misrepresent it.
+
+              THE RADIUS LIVES HERE (owner decision 2026-09-22), not in a
+              "Distance" accordion three cards down. Where and how far are one
+              question — the area row answers "from where", the slider beneath
+              answers "how far", and the hint reads them back as one sentence
+              ("Within 10 miles of St Albans"). Split across the sheet, a reader
+              who had set an area still had to go looking for the control that
+              decided how much of it they were searching.
+
+              ⚠️ The slider is OUTSIDE the areaLabel conditional. The row only
+              renders when there is an area to change (never when browsing
+              nationally), but the radius applies either way — nested inside,
+              a national browse would silently lose the control. */}
+          <View style={styles.where}>
+            {areaLabel && onChangeArea ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Change area. Currently ${areaLabel}`}
+                onPress={onChangeArea}
+                style={({ pressed }) => [styles.areaRow, pressed && styles.areaRowPressed]}
+                testID="search-change-area"
+              >
+                <View style={styles.areaText}>
+                  <Text style={styles.areaLabel}>Area</Text>
+                  <Text style={styles.areaValue} numberOfLines={1}>
+                    {areaLabel}
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={sizes.iconSm} color={palette.textSecondary} />
+              </Pressable>
+            ) : null}
+
+            <View
+              style={[styles.radius, areaLabel && onChangeArea ? styles.radiusDivided : null]}
             >
-              <View style={styles.areaText}>
-                <Text style={styles.areaLabel}>Area</Text>
-                <Text style={styles.areaValue} numberOfLines={1}>
-                  {areaLabel}
-                </Text>
-              </View>
-              <Feather name="chevron-right" size={sizes.iconSm} color={palette.textSecondary} />
-            </Pressable>
-          ) : null}
+              {/* ⚠️ NO HINT LINE UNDER THIS (owner, 2026-09-22). It used to
+                  read "Only cars within 10 miles of this area." — there to be
+                  honest that the radius is measured from the map centre, never
+                  from the user, since with no device fix the app cannot claim
+                  a proximity it does not know. The CARD now says that by
+                  adjacency: the area row sits directly above the slider, so
+                  "St Albans" over "10 miles" already reads as ten miles of St
+                  Albans, and a sentence repeating it was the third place the
+                  same fact appeared (row, readout, sentence). The claim it
+                  guarded against — "10 miles of YOU" — is not made anywhere on
+                  this surface, and must not start being made: this control is
+                  bbox-centred and follows every pan. */}
+              <RadiusSlider
+                label="Distance"
+                valueMiles={criteria.distanceMiles ?? RADIUS_DEFAULT_MILES}
+                // ⚠️ "Any" UNTIL THE SLIDER IS TOUCHED. `distanceMiles` starts
+                // null and the thumb has to rest somewhere, so without this the
+                // sheet opened reading "Distance — 10 miles" while nothing was
+                // being filtered by distance at all. That was survivable while
+                // an "Any distance" chip sat beside it showing the real state;
+                // once the chip went (owner, 2026-09-22) the readout was the
+                // only thing left saying anything, and it was saying something
+                // untrue. Undefined once a radius is set, so the readout goes
+                // back to reporting the value.
+                unsetLabel={criteria.distanceMiles == null ? 'Any' : undefined}
+                onChangeMiles={handleDistanceChange}
+                testID="search-distance"
+              />
+            </View>
+          </View>
 
           <SearchSection
             title="Car"
@@ -643,36 +687,6 @@ export function SearchSheet({
                   bountyMaxPence: SEARCH_BOUNTY_MAX_PENCE,
                 })
               }
-            />
-          </SearchSection>
-
-          <SearchSection
-            title="Distance"
-            summary={distanceSummaryLabel(criteria)}
-            expanded={expanded === 'distance'}
-            onToggle={() => toggle('distance')}
-            reduceMotion={reduceMotion}
-            testID="section-distance"
-          >
-            <RadiusSlider
-              label="Distance"
-              valueMiles={criteria.distanceMiles ?? RADIUS_DEFAULT_MILES}
-              onChangeMiles={handleDistanceChange}
-              testID="search-distance"
-            />
-            {/* Honest about what the radius is measured FROM: with no device
-                fix the origin is the map centre, and the copy must not claim a
-                proximity to the user the app cannot know. */}
-            <Text style={styles.fieldHint}>
-              {criteria.distanceMiles == null
-                ? 'Showing cars anywhere in view.'
-                : `Only cars ${distanceLabel(criteria.distanceMiles)}.`}
-            </Text>
-            <ChoiceChips
-              options={DISTANCE_ANY_OPTION}
-              value={criteria.distanceMiles == null ? 'any' : null}
-              role="button"
-              onSelect={() => patch({ distanceMiles: null })}
             />
           </SearchSection>
 
@@ -867,7 +881,33 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.md,
   },
-  // --- Where (navigates out; deliberately NOT an accordion card) ---
+  // --- Where: ONE CARD holding the area row (which navigates out to the
+  // picker) and the radius beneath it. The card is the house resting box, the
+  // same one the accordion cards below are made of — the block was two
+  // separate objects until 2026-09-22, an area card with a loose slider under
+  // it, which read as a filter that belonged to nothing.
+  where: {
+    // The house resting-card box; `cardSurface` owns that decision.
+    ...cardSurface(c),
+    // Keeps the area row's pressed wash inside the rounded corners.
+    overflow: 'hidden',
+  },
+  // The slider, under a hairline: the row above says WHERE, this says how far.
+  // Same horizontal gutter as the row, so the track lines up with the area
+  // name rather than floating inside its own inset.
+  radius: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+  },
+  // ⚠️ Applied ONLY when the area row is above it. Browsing nationally there
+  // is no row, so the slider is the card's first child and an unconditional
+  // top hairline landed straight on the card's own border — a doubled edge no
+  // other card has.
+  radiusDivided: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: c.border,
+  },
+  // No box of its own any more — the card around it is the box.
   areaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -875,10 +915,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     minHeight: sizes.touchTarget,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: c.surface,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: c.border,
   },
   areaRowPressed: {
     backgroundColor: c.surfaceSubtle,
@@ -939,12 +975,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   fieldLabel: {
     ...typography.label,
-    color: c.textSecondary,
-  },
-  // Says what the radius is measured FROM — quieter than a field label, since
-  // it explains the control above rather than naming the next one.
-  fieldHint: {
-    ...typography.caption,
     color: c.textSecondary,
   },
   // --- Footer (inline, below the last filter card) ---

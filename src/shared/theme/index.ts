@@ -31,6 +31,7 @@ export { sizes, type SizeToken } from './sizes';
 export { opacity, type OpacityToken } from './opacity';
 export {
   displayFontScaleCap,
+  shrinkToFitMinScale,
   listRowStackFontScale,
   mapPinFontScaleCap,
   tabLabelFontScaleCap,

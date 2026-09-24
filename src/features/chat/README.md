@@ -191,8 +191,9 @@ Both routes call the same `open_thread` and land in `/chat/[threadId]`.
   built; a doc that says a shipped thing is missing costs more than one that
   says nothing. `supabase/functions/notify-message/` is deployed and invoked
   from `chatApi.ts:215` via `notifications/api/notifyApi.ts:55`. The specced
-  contract held: payload = sender first name + post context ("New message
-  about your Blue BMW"), and message content NEVER transits push
+  contract held: payload = sender first name + post context ("Message from
+  Beth" / "About the Blue BMW" since the 2026-09-22 copy pass moved the name
+  into the title), and message content NEVER transits push
   (third-party infra; SECURITY_AND_TRUST §3 / LOGGING.md). Deep route
   `/chat/[threadId]` is live and gate-aware.
   - **Known weakness, not a stub:** the invoke is CLIENT-side and

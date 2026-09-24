@@ -427,53 +427,86 @@ function yearSummary(criteria: SearchCriteria): string | null {
  * city the sheet claimed a proximity to the user while the server filtered
  * around somewhere else entirely. Describing the frame of reference honestly
  * beats a warmer sentence that is sometimes false.
+ *
+ * Its caller was the search sheet's hint line until the owner removed that
+ * (2026-09-22); it is now `summariseParts`, which puts it on the map pill's
+ * details line. The rule it encodes is the reason it survived the gap: distance
+ * copy on these surfaces says "of this area", never "of you", because the
+ * radius is bbox-centred and follows every pan. Its test asserts exactly that.
  */
 export function distanceLabel(miles: number): string {
   const unit = miles === 1 ? 'mile' : 'miles';
   return `within ${miles} ${unit} of this area`;
 }
 
-/**
- * A short, human summary for the active-search pill, e.g.
- * "Blue BMW · £500+ · 10mi". Empty criteria summarise to '' (the pill then
- * shows its placeholder).
- */
-export function summarise(criteria: SearchCriteria): string {
-  const segments: string[] = [];
+/** The active search as the map pill draws it: a headline over its details. */
+export interface SearchSummary {
+  /** The line that leads, e.g. "Blue BMW" or "Cars nearby". Never empty. */
+  headline: string;
+  /** The constraints beneath it, e.g. "£500+ · within 10 miles". May be ''. */
+  details: string;
+}
 
-  // One "vehicle" descriptor: colours make model, falling back to the free text
-  // when no facet was picked.
+/**
+ * The active search split into a headline and its details, for the map pill's
+ * two lines (Airbnb's searched-state search bar: where, then the parameters
+ * under it in a quieter voice).
+ *
+ * ⚠️ THE HEADLINE IS NEVER A BARE MEASUREMENT. The pill used to render one
+ * flat string, so a search filtered only by radius read "10mi" — the whole
+ * chrome at the top of the map saying nothing about what it was showing
+ * (owner, 2026-09-22). The rule here: the headline says WHAT you are looking
+ * at in words, and every number that qualifies it goes to the details line.
+ * So the car leads when one was specified, and "Cars nearby" leads when the
+ * search is defined by its area alone.
+ *
+ * "nearby" is the one place this file says something spatial without naming
+ * the frame of reference, and it is safe for the same reason distanceLabel is
+ * careful: it describes the MAP's neighbourhood, not the reader's, and the
+ * radius it summarises is bbox-centred. It never claims "near you".
+ */
+export function summariseParts(criteria: SearchCriteria): SearchSummary {
   const vehicle = [listSummary(criteria.colours, 'colours'), criteria.make, criteria.model]
     .filter(Boolean)
     .join(' ');
-  if (vehicle) {
-    segments.push(vehicle);
-  } else if (criteria.text.trim()) {
-    segments.push(criteria.text.trim());
-  }
+  const headlineVehicle = vehicle || criteria.text.trim();
 
+  const details: string[] = [];
   const bodies = listSummary(criteria.bodyTypes, 'body types');
-  if (bodies) {
-    segments.push(bodies);
-  }
+  if (bodies) details.push(bodies);
   const years = yearSummary(criteria);
-  if (years) {
-    segments.push(years);
-  }
+  if (years) details.push(years);
   const bounty = bountySummary(criteria);
-  if (bounty) {
-    segments.push(bounty);
-  }
-  if (criteria.recencyDays !== null) {
-    segments.push(`${criteria.recencyDays}d`);
-  }
+  if (bounty) details.push(bounty);
+  if (criteria.recencyDays !== null) details.push(`last ${criteria.recencyDays} days`);
   const seen = seenRangeSummary(criteria);
-  if (seen) {
-    segments.push(seen);
-  }
-  if (criteria.distanceMiles !== null) {
-    segments.push(`${criteria.distanceMiles}mi`);
-  }
+  if (seen) details.push(seen);
+  if (criteria.distanceMiles !== null) details.push(distanceLabel(criteria.distanceMiles));
 
-  return segments.join(' · ');
+  return {
+    // No car named: the search IS its area, so say that rather than leading
+    // with a body type or a price. "Cars nearby" when a radius narrows it.
+    //
+    // ⚠️ NOT "All cars" for the rest. This is only ever called for a NON-EMPTY
+    // search (the pill guards with isEmptyCriteria), so that branch means "no
+    // car and no radius, but something else is set" — and "All cars" over
+    // "£500+ · last 7 days" claims the opposite of the line beneath it. That is
+    // the same defect as the "10mi" headline this split was written to fix,
+    // inverted: overclaiming instead of underclaiming.
+    headline:
+      headlineVehicle || (criteria.distanceMiles !== null ? 'Cars nearby' : 'Cars on this map'),
+    details: details.join(' · '),
+  };
 }
+
+/**
+ * A short, human summary for the active search on ONE line, e.g.
+ * "Blue BMW · £500+ · within 10 miles of this area" — the map pill's
+ * accessibility label, where two visual lines are one spoken sentence. Empty
+ * criteria summarise to '' (the pill then shows its placeholder).
+ */
+export function summarise(criteria: SearchCriteria): string {
+  const { headline, details } = summariseParts(criteria);
+  return details ? `${headline} · ${details}` : headline;
+}
+

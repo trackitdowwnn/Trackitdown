@@ -82,13 +82,28 @@ export const typography = {
 
 export type TypographyToken = keyof typeof typography;
 
-/** Dynamic-type cap for display-size hero text (MoneySlider's amount readout):
- *  it may grow with the user's setting, but never so far the row bursts. */
+/** Dynamic-type cap for text whose CONTAINER cannot grow with it: MoneySlider's
+ *  amount readout, the theft-stats hero sentence, and the numerals and month
+ *  names inside its 12-month chart (where the bar geometry is measured against
+ *  this same cap). It may grow with the user's setting, but never so far the
+ *  row bursts — or, in the chart's case, so far a numeral outgrows its bar. */
 export const displayFontScaleCap = 1.3;
 
 /** Dynamic-type cap for tab-bar labels: one step of growth, then truncate —
  *  the bar itself never gets taller. */
 export const tabLabelFontScaleCap = 1.2;
+
+/**
+ * The floor for `adjustsFontSizeToFit` on text that must not wrap — the
+ * theft-stats hero sentence and the numerals inside its chart bars.
+ *
+ * Shrink-to-fit with no floor will take text as small as it needs to; this
+ * stops it at `tabLabel` (11), the one sanctioned size below `caption` (13),
+ * so the smallest type on a page is still a size the design system has
+ * agreed to. Expressed as the ratio so it follows both tokens if either
+ * moves.
+ */
+export const shrinkToFitMinScale = typography.tabLabel.fontSize / typography.caption.fontSize;
 
 /** Dynamic-type cap for map-pin bounties. Uncapped, the OS 200% setting turns
  *  14pt into 28pt, roughly doubling each pill in both axes — twelve of those

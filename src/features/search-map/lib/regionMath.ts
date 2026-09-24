@@ -148,6 +148,58 @@ export function entryFrame(coords: GeoCoord[], entry: GeoRegion): GeoRegion {
 }
 
 /**
+ * The widest a SEARCH may re-frame to, as a radius in miles, when the search
+ * itself set no radius.
+ *
+ * Wider than MAX_ENTRY_RADIUS_MILES because the two answer different
+ * questions. Entry is involuntary — the map opens and the reader did not ask
+ * for a span — so it stays tight. A custom search is a deliberate act with a
+ * stated shape, and the reader is owed the whole of what they asked for; 25
+ * miles is ~50 across, still short of the ~64km view where markers merge into
+ * blobs (see MAX_ENTRY_RADIUS_MILES above).
+ */
+export const MAX_SEARCH_FRAME_RADIUS_MILES = 25;
+
+/**
+ * Where the map should sit once a CUSTOM SEARCH's results land: framed on all
+ * of them when they are close enough together to be worth showing at once,
+ * and left exactly where the search put it when they are not.
+ *
+ * ⚠️ ALL OR NOTHING, deliberately, and this is the difference from entryFrame.
+ * entryFrame keeps the cars NEAR the entry point and drops the rest, because
+ * on entry nobody asked for anything and a tight, legible view beats a
+ * complete one. A search is the opposite: the reader stated what they wanted,
+ * so a view showing SOME of the matches while claiming to be the result of
+ * their search is a quiet lie — the pins they can see are not the answer.
+ * Either every result fits within `maxRadiusMiles` and the camera frames them
+ * all, or the camera does not move and the reader keeps the region they
+ * searched, with the count in the pill telling them there is more.
+ *
+ * `maxRadiusMiles` is the SEARCH'S OWN radius when it set one: a reader who
+ * asked for cars within 10 miles has already said how far they mean, and
+ * framing what came back can only ever zoom out to that. It falls back to
+ * MAX_SEARCH_FRAME_RADIUS_MILES when the search is unbounded.
+ */
+export function searchFrame(
+  coords: GeoCoord[],
+  searched: GeoRegion,
+  maxRadiusMiles: number,
+): GeoRegion {
+  if (coords.length === 0) {
+    return searched;
+  }
+  const framed = frameCoords(coords, searched);
+  const centre: GeoCoord = { latitude: framed.latitude, longitude: framed.longitude };
+  // Measured from the FRAMED centre, not the searched one: the question is
+  // whether the results are close to EACH OTHER, not whether they sit near
+  // where the camera happened to be.
+  const fits = coords.every(
+    (c) => metersToMiles(distanceMeters(centre, c)) <= maxRadiusMiles,
+  );
+  return fits ? framed : searched;
+}
+
+/**
  * How much of the map's HEIGHT is covered by floating chrome — the top bar
  * above, the resting sheet or the card pager below. Fractions of the map rect
  * (0..1), never pixels, so this math is platform-independent and testable

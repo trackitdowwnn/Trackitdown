@@ -57,6 +57,7 @@ import {
   isEmptyCriteria,
   parseCriteria,
   summarise,
+  summariseParts,
   toRpcCriteria,
 } from '../lib/searchCriteria';
 import { keepMarkersOnScreen, pinsForRegion } from '../lib/mapPins';
@@ -65,6 +66,8 @@ import {
   cameraForVisible,
   distanceMeters,
   entryFrame,
+  MAX_SEARCH_FRAME_RADIUS_MILES,
+  searchFrame,
   isComfortablyVisible,
   metersToMiles,
   regionAround,
@@ -359,12 +362,12 @@ function MapSearchBody({
   );
   // Mounted in batches rather than all at once — nothing thins the population
   // any more, so a dense area is up to VIEWPORT_POST_LIMIT custom markers in
-  // one commit, each holding tracksViewChanges open for 500ms.
+  // one commit, each re-drawing every frame until it has rasterised.
   //
   // populationId, NOT searchId: searchId bumps on every landed search
   // INCLUDING the auto re-search after each pan, which returns a largely
   // overlapping set. Resetting there would unmount ~68 already-drawn markers
-  // per pan and re-arm 500ms of tracking on each as they came back — more jank
+  // per pan and re-arm the tracking window on each as they came back — more jank
   // than not batching at all, and the exact failure this hook exists to stop.
   //
   // The selected id goes in so the reveal can never withhold the pin the card
@@ -553,6 +556,94 @@ function MapSearchBody({
     frameCamera(cameraForVisible(entryFrame(result.posts, entryRegion), mapInsets));
   }, [status, result.posts, entryRegion, mapInsets, frameCamera]);
 
+  // RE-FRAME ON A CUSTOM SEARCH'S RESULTS, when they are close enough together
+  // to show at once (owner, 2026-09-22: "if all results are close enough I
+  // want the map to zoom out and show all results").
+  //
+  // handleApplySearch already flies to the region the criteria imply — which
+  // is the right place to LOOK, not necessarily the right span: a 20-mile
+  // search whose four matches sit in one town opened on twenty miles of empty
+  // ground with the cars in a knot at the middle. searchFrame widens (or
+  // tightens) onto the matches themselves, and returns the searched region
+  // untouched when they do not all fit — a view showing some of the matches
+  // is worse than one honestly framed on the area, because the pins on screen
+  // would not be the answer to what was asked.
+  //
+  // ONE SHOT PER SEARCH, and the ref carries the radius the search asked for
+  // so the effect does not depend on `appliedCriteria` — it must fire for the
+  // results of THAT search and never re-fire when an auto-search lands new
+  // results under someone mid-browse (the same rule the entry frame keeps).
+  // ⚠️ GATED ON `searchId`, NOT ON `status` ALONE. `handleApplySearch` calls
+  // flyTo, which sets `settledRegion` SYNCHRONOUSLY, while runSearch defers its
+  // `setStatus('loading')` into a microtask on purpose (useViewportPosts: "every
+  // setState lives in a callback so effect callers never set state
+  // synchronously"). So the commit that applies a search can flush this effect
+  // while `status` is still the PREVIOUS search's 'ready' and `result.posts` is
+  // still its result set — whereupon the frame lands on the old pins and the
+  // ref is spent before the real ones arrive. Whether that happens depends on
+  // microtask-versus-passive-effect ordering, which is not a thing to rest on
+  // either way. `searchId` bumps only when a search LANDS, so recording the one
+  // in flight and waiting for a different one is the deterministic version of
+  // the same question.
+  const pendingSearchFrame = useRef<{
+    maxRadiusMiles: number;
+    afterSearchId: number;
+    sawLoading: boolean;
+  } | null>(null);
+  useEffect(() => {
+    const pending = pendingSearchFrame.current;
+    if (!pending) {
+      return;
+    }
+    // ⚠️ A FAILED SEARCH DROPS THE REQUEST — but only ITS OWN failure, and
+    // that distinction is the whole of this block. `searchId` bumps only when
+    // a search LANDS, so a failure would otherwise leave the frame armed and
+    // the next search to land (an auto re-search after a pan, say) would spend
+    // it, moving the camera minutes later with the failed search's radius.
+    //
+    // Reading `status === 'error'` alone was NOT that check. By the same
+    // ordering the comment above refuses to rest on — flyTo sets
+    // `settledRegion` synchronously while runSearch defers its status into a
+    // microtask — the arming commit can flush this effect while `status` is
+    // still the PREVIOUS search's. If that one had failed, the frame was
+    // dropped the instant it was armed, and applying a search straight after a
+    // failed one silently never framed.
+    //
+    // `sawLoading` is the fix: an applied search always passes through
+    // 'loading' (applySearch runs runSearch(..., 'initial')), so an error is
+    // only this request's once we have watched this request start.
+    if (status === 'loading') {
+      pending.sawLoading = true;
+      return;
+    }
+    if (status === 'error') {
+      if (pending.sawLoading) {
+        pendingSearchFrame.current = null;
+      }
+      return;
+    }
+    if (status !== 'ready' || searchId === pending.afterSearchId) {
+      return;
+    }
+    pendingSearchFrame.current = null;
+    if (result.posts.length === 0) {
+      // Nothing to frame: the empty state speaks, and moving the camera to
+      // "nowhere" would take away the region they searched as well.
+      return;
+    }
+    const framed = searchFrame(result.posts, settledRegion, pending.maxRadiusMiles);
+    // ⚠️ IDENTITY MEANS "DO NOT MOVE", and it has to be honoured here rather
+    // than by passing it on. searchFrame returns `settledRegion` BY REFERENCE
+    // when the results do not all fit — but handing that to frameCamera would
+    // not leave the camera alone: cameraForVisible divides the span by the
+    // visible fraction to clear the chrome, so the map would visibly zoom out
+    // the moment a search failed to fit, which is the opposite of the promise.
+    if (framed === settledRegion) {
+      return;
+    }
+    frameCamera(cameraForVisible(framed, mapInsets));
+  }, [status, searchId, result.posts, settledRegion, mapInsets, frameCamera]);
+
   // A failed auto re-search is quiet by design: results and pins stay put and
   // the map keeps working. Fired on the EDGE (a boolean dep), so a re-render
   // never re-announces. The next settled pan re-attempts by itself, because a
@@ -635,6 +726,17 @@ function MapSearchBody({
       setAppliedCriteria(criteria);
       setSearchOpen(false);
       flyTo(region);
+      // Ask the effect below to re-frame on whatever this search returns. The
+      // reader's own radius is the definition of "close enough" when they set
+      // one; MAX_SEARCH_FRAME_RADIUS_MILES when they did not.
+      pendingSearchFrame.current = {
+        maxRadiusMiles: criteria.distanceMiles ?? MAX_SEARCH_FRAME_RADIUS_MILES,
+        // The search in flight right now; the frame waits for a LATER one.
+        afterSearchId: searchId,
+        // Set by the effect once THIS request is observed starting, so a
+        // stale 'error' from the previous one cannot drop it.
+        sawLoading: false,
+      };
       void applySearch({ criteria, region });
       // Which criteria the user searched by (KEY presence only) + the coarse
       // distance band — no coordinates, no plate (there is no plate criterion).
@@ -643,7 +745,7 @@ function MapSearchBody({
         distanceMiles: criteria.distanceMiles,
       });
     },
-    [flyTo, applySearch],
+    [flyTo, applySearch, searchId],
   );
 
   // The pill's × — drop the filter and re-query the current region unfiltered.
@@ -660,6 +762,12 @@ function MapSearchBody({
   // filter should still happen on one tap — so clear and continue.
   const handleClearSearch = useCallback(() => {
     clear();
+    // ⚠️ DISARM ANY PENDING FRAME. `setAppliedCriteria` runs synchronously in
+    // handleApplySearch, so the pill and its × are on screen while that search
+    // is still in flight — tapping × in that window would otherwise leave the
+    // frame armed, and the unfiltered results would be framed with the
+    // PREVIOUS search's radius. Clearing is not a request to re-frame.
+    pendingSearchFrame.current = null;
     const empty = emptyCriteria();
     setAppliedCriteria(empty);
     void applySearch({ criteria: empty, region: searchedRegion });
@@ -705,7 +813,8 @@ function MapSearchBody({
             the hook's `paused`. Dismiss the card first; the pill is one tap
             away again immediately. */}
         <MapSearchPill
-          summary={isEmptyCriteria(appliedCriteria) ? null : summarise(appliedCriteria)}
+          summary={isEmptyCriteria(appliedCriteria) ? null : summariseParts(appliedCriteria)}
+          spokenSummary={isEmptyCriteria(appliedCriteria) ? null : summarise(appliedCriteria)}
           onPress={(rect) => {
             if (hasSelection) {
               clear();

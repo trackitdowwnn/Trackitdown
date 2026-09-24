@@ -109,8 +109,26 @@ export function pinsForRegion(posts: MapPost[], region: GeoRegion): MapPinItem[]
  * listing prints "No reward" (ADR-0014), which draws ~95dp at typography.mapPin
  * and ~118dp at the mapPinFontScaleCap of 1.3. At 72 those markers were never
  * nudged and clipped at the edge.
+ *
+ * Raised again to 160 on 2026-09-22. ⚠️ THIS IS THE BOX, NOT THE PILL, and the
+ * two stopped being the same thing that day. `anchorX` is a fraction OF THIS
+ * BOX, so a width short of the truth nudges an edge marker proportionally too
+ * little — buying back, at the viewport edge, the clipping the box grew to
+ * stop. Two things grew it, both in MapPins:
+ *   · the wrapper pads by the soft shadow's 16pt reach a side (32), so the
+ *     marker's own shadow is not rasterised away; and
+ *   · the unselected pill carries `spacing.xs` of margin a side (8) so the
+ *     footprint does not change when selection swaps its padding.
+ * 120 + 32 + 8 = 160. This went to 152 first and was 8 short within the hour —
+ * the margin landed in the very next commit. If either changes, this changes
+ * with it.
+ *
+ * On Android the shadow padding is 0 (2026-09-23 — it drew nothing there and
+ * swallowed taps), so the real box is 128 and this errs HIGH by 32: an edge
+ * marker is nudged a little sooner than it strictly needs. That is the safe
+ * direction, per the note above, and one constant beats two.
  */
-const MARKER_WIDTH_DP = 120;
+const MARKER_WIDTH_DP = 160;
 
 /**
  * Shift the anchor of any marker close enough to a LEFT or RIGHT viewport edge
@@ -164,10 +182,13 @@ export function keepMarkersOnScreen(
  *
  * WHY: nothing thins the marker population any more, so a dense area mounts up
  * to VIEWPORT_POST_LIMIT (100) custom markers in ONE commit, and each one then
- * holds tracksViewChanges open for 500ms while it rasterises. That is the exact
- * Android jank MapPins was written to avoid, and clustering used to hide it by
- * keeping the count small. Staggering the mount staggers those 500ms windows
- * too, which is the part that actually costs frames.
+ * holds tracksViewChanges open while it rasterises — re-drawing EVERY FRAME
+ * until it does. That is the exact Android jank MapPins was written to avoid,
+ * and clustering used to hide it by keeping the count small. Staggering the
+ * mount staggers those windows too, which is the part that actually costs
+ * frames. (Shortening that window was tried on 2026-09-23 and reverted — it
+ * freezes markers before the native tracker has captured them. It is the COUNT
+ * this function is about, so the argument is unchanged either way.)
  *
  * BY RANK, so the biggest bounties are in the first commit and the fill-in adds
  * the ones a user is least likely to be reaching for. (This used to withhold
@@ -175,8 +196,8 @@ export function keepMarkersOnScreen(
  * became a £ pill — it would have withheld nothing at all.)
  *
  * The SELECTED post is never withheld. The renderer never sees a pin this
- * function drops, so without the guard its selected styling and z-index-3
- * silently do nothing and the card describes a car with no marker under it.
+ * function drops, so without the guard the selection marker has no car to
+ * stand on and the card describes a car with no marker under it.
  * Reachable via the pager, not a pin tap: `selectByIndex` walks every result
  * post, not just the drawn ones, so swiping to a neighbour during the reveal
  * can land on one still withheld — and the camera then follows it to an empty

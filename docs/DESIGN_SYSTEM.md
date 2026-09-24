@@ -235,6 +235,19 @@ are build output.
     headline — the multiplier is not reliably inherited across nested `Text`,
     so an emphasised word left uncapped would outgrow the plain words beside
     it at large dynamic-type settings.
+    **`shrinkToFitMinScale`** (added 2026-09-22) is the companion floor for a
+    line that must not wrap: `adjustsFontSizeToFit` with no `minimumFontScale`
+    will take text as small as it needs to, so this stops it at `tabLabel`
+    (11) — the one sanctioned size below `caption` — expressed as the ratio
+    `tabLabel / caption` so it follows both tokens. Used by the theft-stats
+    hero sentence and the numerals inside its chart bars. A floor only works
+    alongside a cap: paired with `displayFontScaleCap` the worst case is
+    1.3 × 0.85 ≈ 1.1× the default width, which is what the line is sized for.
+    ⚠️ When text sits INSIDE a drawn shape (a numeral in a chart bar), the
+    shape's geometry must be measured against the SAME capped scale —
+    `useWindowDimensions().fontScale` capped at `displayFontScaleCap`, as
+    `MonthlyTheftsChart` does. Measured against the unscaled token instead,
+    the numeral overflows its fill and renders `textOnPrimary` on the page.
   - `display` 32/38, Black — big moments ("Car recovered 🎉")
   - `title` 24/30, Bold — screen titles
   - `sectionTitle` 20/26, Bold — feed section headers (added 2026-07-11;
@@ -335,8 +348,23 @@ are build output.
   `onPress` prop — pass an explicit `null` only when nothing tappable encloses
   it. A chip left without a handler inside a card turns the plate into a dead
   patch that swallows the card's tap.
-- **BountyTag** — `primary`, e.g. "£500 bounty", always formatted from
+- **BountyTag** — `primary`, e.g. "£500 reward", always formatted from
   pence via the shared money formatter.
+- **StatBand** — the stat row: equal-width cells split by vertical
+  hairlines, each a `sectionTitle` number over a `caption` label (~2:1, the
+  measured reference ratio). Degrades by omission — pass only the cells you
+  have; zero cells renders nothing. Promoted to `shared/ui` 2026-09-21 when
+  the theft-stats page became its second consumer after per-listing
+  Activity. Two stat-page shapes are in use, and both are deliberate:
+  PostStatsScreen is **flat** — one hero figure, a StatBand beneath it, then
+  hairline-divided sections at divider → 32 → title → 16 → content → 32.
+  AreaInsightsScreen (owner decision 2026-09-22) is **card sections** — one
+  column of `cardSurface` cards 16 apart, the hero card first with the
+  StatBand as its footer row under a hairline, then one `cardTitle`-headed
+  card per question. What neither may be is a stack of `surfaceSubtle`
+  tiles or a two-up grid of equal stat boxes: those read as a performance
+  dashboard, the one register these pages must not borrow. Stat cards are
+  never Pressable and carry no chevron.
 - **SafetyNotice** — reusable banner with the "report, don't approach"
   copy; required on sighting flows (see SECURITY_AND_TRUST.md). Passing
   `collapsible` pins it as a single titled line that expands on tap — for

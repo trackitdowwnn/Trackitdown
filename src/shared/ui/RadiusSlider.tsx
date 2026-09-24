@@ -2,6 +2,10 @@
  * WHAT:  RadiusSlider — the 1–50 mile radius control: a power-curve track with
  *        a tiered snap grid and a live readout that follows the thumb on the
  *        UI thread. `label` names it per surface ('Alert radius', 'Distance').
+ *        `unsetLabel` (optional) makes the readout say "Any" instead of a
+ *        number while the consumer has no radius APPLIED — the search sheet,
+ *        where the thumb has to rest somewhere but nothing is being filtered
+ *        by; the first touch then commits what is under the finger.
  * WHY:   Modelled on MoneySlider's gesture structure (the house slider), minus
  *        everything money-specific: no typed entry, no transparency panel, no
  *        pence. It is NOT MoneySlider reused directly — that component's
@@ -59,6 +63,7 @@ import {
   formatMiles,
   milesToPosition,
   positionToMiles,
+  shouldCommitRadius,
   snapMiles,
   stepAtMiles,
 } from './radiusSliderMath';
@@ -83,6 +88,24 @@ export interface RadiusSliderProps {
   label?: string;
   /** Controlled value in whole miles; out-of-range values are clamped. */
   valueMiles: number;
+  /**
+   * What the readout says INSTEAD of the miles while no radius is actually
+   * applied — "Any" on the search sheet. Omit it and the slider always reads
+   * its value, which is what a control whose value is always applied wants.
+   *
+   * ⚠️ THE THUMB STILL RESTS AT `valueMiles`. A slider has no null position,
+   * so a sheet that opens unfiltered has to park it somewhere; this stops that
+   * resting place being READ as a filter. Search opens with `distanceMiles`
+   * null and the thumb at 10, and said "10 miles" — a number nothing was
+   * filtering by, with (since the "Any distance" chip was removed) nothing
+   * else on screen to say so.
+   *
+   * Cleared ON TOUCH, from the gesture worklet, not by waiting for the parent
+   * to send a value back: the first drag must show miles under the finger
+   * immediately, and a React round-trip would leave the readout saying "Any"
+   * for a frame or two while the thumb moved.
+   */
+  unsetLabel?: string;
   /** Fires on every snap crossing while dragging. Keep the reference stable
    *  (useCallback) — a new identity re-registers the gesture mid-drag. */
   onChangeMiles: (miles: number) => void;
@@ -93,6 +116,7 @@ export interface RadiusSliderProps {
 export function RadiusSlider({
   label = 'Alert radius',
   valueMiles,
+  unsetLabel,
   onChangeMiles,
   disabled = false,
   testID,
@@ -111,6 +135,14 @@ export function RadiusSlider({
   const lastSnapped = useSharedValue(value);
   const grabbed = useSharedValue(0);
   const dragging = useSharedValue(false);
+  /** Whether the readout is still showing `unsetLabel` rather than the miles.
+   *  A shared value so the gesture can clear it on the UI thread. */
+  const unset = useSharedValue(unsetLabel !== undefined);
+  // Follows the prop: the parent turning the filter back off (Clear all) must
+  // put "Any" back, and a parent that never passes the label keeps it false.
+  useEffect(() => {
+    unset.value = unsetLabel !== undefined;
+  }, [unsetLabel, unset]);
   const [dragGeneration, setDragGeneration] = useState(0);
   const endDrag = useCallback(() => setDragGeneration((generation) => generation + 1), []);
 
@@ -140,11 +172,24 @@ export function RadiusSlider({
       'worklet';
       const nextPosition = touchPosition(x);
       if (nextPosition < 0) return;
+      // The readout stops saying "Any" the moment the thumb moves, on this
+      // thread — waiting for the parent's value to come back would leave it
+      // reading "Any" under a finger that is already dragging.
+      // ⚠️ CAPTURED BEFORE IT IS CLEARED, and the reason is the whole feature.
+      // `lastSnapped` starts at the RESTING value, so a touch that does not
+      // cross a snap boundary — and above 5 miles the step is 5, making the
+      // band around a resting 10 a wide 7.5–12.5 — used to emit nothing while
+      // still clearing "Any". The readout then said "10 miles" over a search
+      // filtering by no distance at all: precisely the lie `unsetLabel` exists
+      // to remove, reintroduced one line above it. The FIRST touch always
+      // commits what is under the finger.
+      const wasUnset = unset.value;
+      unset.value = false;
       position.value = nextPosition;
       const unsnapped = positionToMiles(nextPosition);
       displayMiles.value = unsnapped;
       const snapped = snapMiles(unsnapped);
-      if (snapped !== lastSnapped.value) {
+      if (shouldCommitRadius(wasUnset, snapped, lastSnapped.value)) {
         lastSnapped.value = snapped;
         scheduleOnRN(onChangeMiles, snapped);
       }
@@ -226,6 +271,7 @@ export function RadiusSlider({
     position,
     displayMiles,
     lastSnapped,
+    unset,
     trackWidthSv,
   ]);
 
@@ -237,6 +283,15 @@ export function RadiusSlider({
 
   const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
     if (disabled) return;
+    // From "Any", the first press APPLIES the resting value rather than
+    // stepping off it. `stepAtMiles(10)` is 5, so stepping would make the
+    // first increment commit 15 and the first decrement 5 — leaving the
+    // resting 10 unreachable in one press, and skipping the state the touch
+    // path applies. The two entry points must agree.
+    if (unsetLabel !== undefined) {
+      onChangeMiles(value);
+      return;
+    }
     const direction = event.nativeEvent.actionName === 'increment' ? 1 : -1;
     const next = snapMiles(value + direction * stepAtMiles(value));
     if (next !== value) onChangeMiles(next);
@@ -259,10 +314,17 @@ export function RadiusSlider({
 
   const readoutProps = useAnimatedProps(() => {
     // Round: mid-drag values are un-snapped, and "12.4 miles" reads as noise.
-    return { text: formatMiles(Math.round(displayMiles.value)) } as never;
+    return {
+      text: unset.value && unsetLabel !== undefined
+        ? unsetLabel
+        : formatMiles(Math.round(displayMiles.value)),
+    } as never;
   });
 
-  const formatted = formatMiles(value);
+  // What the readout and the track's accessibility value say at REST. Mid-drag
+  // the readout is driven by the worklet above; this is the static fallback
+  // and the string a screen reader is handed.
+  const formatted = unsetLabel !== undefined ? unsetLabel : formatMiles(value);
 
   return (
     <View style={[styles.container, disabled && styles.disabled]} testID={testID}>
@@ -288,12 +350,21 @@ export function RadiusSlider({
           accessible
           accessibilityRole="adjustable"
           accessibilityLabel={label}
-          accessibilityValue={{
-            min: MIN_RADIUS_MILES,
-            max: MAX_RADIUS_MILES,
-            now: value,
-            text: formatted,
-          }}
+          // ⚠️ TEXT ONLY WHILE UNSET. Publishing `now: 10` beside `text: "Any"`
+          // lets TalkBack build a RangeInfo from min/max/now and announce a
+          // numeric position — asserting a filter that is switched off, which
+          // is the same untruth in the accessibility tree that the readout
+          // just stopped telling on screen.
+          accessibilityValue={
+            unsetLabel !== undefined
+              ? { text: unsetLabel }
+              : {
+                  min: MIN_RADIUS_MILES,
+                  max: MAX_RADIUS_MILES,
+                  now: value,
+                  text: formatted,
+                }
+          }
           accessibilityState={{ disabled }}
           accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
           onAccessibilityAction={handleAccessibilityAction}
@@ -321,6 +392,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     justifyContent: 'space-between',
   },
   label: {
+    // Gives way before the readout does: `flex: 1` on the readout makes it the
+    // only shrinkable child by default, so at large text sizes the caption
+    // would win the width fight and clip the NUMBER — the one thing in the row
+    // that has to stay whole.
+    flexShrink: 1,
     ...typography.label,
     color: c.textSecondary,
   },
@@ -329,6 +405,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textPrimary,
     paddingVertical: 0,
     textAlign: 'right',
+    // ⚠️ Takes the row's spare width, so the frame does not come from whatever
+    // string happened to MOUNT here. The worklet writes this TextInput's text
+    // natively and Yoga never re-measures, so a box sized for "Any" (3 glyphs)
+    // would clip "50 miles" on the first drag. Right-aligned against
+    // headerRow's space-between, so it looks identical at rest.
+    flex: 1,
   },
   trackRow: {
     height: sizes.touchTarget,

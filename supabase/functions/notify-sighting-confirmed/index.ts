@@ -1,6 +1,6 @@
 /**
- * WHAT:  Tells a spotter the owner confirmed their sighting — "the owner
- *        confirmed your sighting of the blue Ford", plus the badge they just
+ * WHAT:  Tells a spotter the owner confirmed their sighting — "Your sighting
+ *        was confirmed" / "The owner confirmed it.", plus the badge they just
  *        earned, if any. The tap opens /my-sightings.
  * WHY:   A spotter reports a car and then, in the ordinary case, NOTHING ever
  *        happens to them. `credited` fires for the one who wins the bounty and
