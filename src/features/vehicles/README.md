@@ -110,6 +110,32 @@ rounded-top sheet overlapping the hero.)
   the owner off the very post they were managing. Rows are built from the
   handlers the screen passes — an absent handler means an absent row, so the
   sheet can never offer an edit the server would reject.
+  - **The sheet and everything behind it live in `PostOwnerActions`**
+    (2026-09-24): the sheet, the deactivate / delete-draft / delete-listing
+    confirms (and the delete offer after a clean cancel), the owner-denial
+    attestation, the section editors, send-the-reward. The listing page
+    drives it by ref (the bottom bar, the pencils, the body's deactivate
+    button); it renders nothing for a non-owner. The rules for which rows
+    show are in `lib/ownerPermissions.ts`, shared by both hosts. Mount it at
+    the host's ROOT — its overlays fill their parent.
+  - **Press and hold a card on My listings** raises that same sheet OVER
+    THE LIST (owner's call: no trip to the listing page). A light tick
+    answers the hold at once; a per-hold `ListingManager` loads the listing's
+    details (`usePostDetail` — the cards don't carry what the sheet needs)
+    and `useOpenOnArrival` raises the sheet once they're in. A failed load
+    toasts. Changes refresh the list; a delete removes the card.
+    `VehicleCard` gained an opt-in `onLongPress` + `longPressLabel`, also
+    exposed to screen readers as a named `longpress` action.
+  - **The archive** (2026-09-24): a finished listing (recovered,
+    recovered_no_spotter, cancelled, expired — `canArchive`) can be filed
+    into a collapsed "Archived (N)" section at the foot of My listings, and
+    moved back, from the held card's sheet only (the listing page doesn't
+    offer it). It's stored on the account: `posts.archived_at`, set ONLY
+    through `set_post_archived` (owner-only, closed-only, no client column
+    grant) and read through `list_my_posts`. A trigger clears it if a post
+    ever reopens (a dispute can move cancelled → recovery_claimed), so a
+    listing whose money is moving again never hides. Archiving changes
+    nothing public — no status, money or visibility.
 
 **Deactivate confirm** — owned by `PostDetailScreen`, not the body: the body's
 "Deactivate listing" section button and the manage sheet's row both open the same

@@ -16,17 +16,22 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useSession } from '@/features/auth';
-import type { PostSummary } from '@/shared/types';
 
-import { listMyPosts } from '../api/myPostsApi';
+import { listMyPosts, type MyPostSummary } from '../api/myPostsApi';
 
 export type MyPostsStatus = 'loading' | 'ready' | 'error';
 
 export interface UseMyPostsResult {
   status: MyPostsStatus;
-  posts: PostSummary[];
+  /** Every own listing, archived ones included (the screen splits them). */
+  posts: MyPostSummary[];
   refreshing: boolean;
+  /** Pull-to-refresh: shows the spinner. */
   refresh: () => Promise<void>;
+  /** A quiet reload after a change made on this screen: no spinner. */
+  revalidate: () => void;
+  /** Move one card in or out of Archived now, ahead of the reload. */
+  setArchivedAt: (postId: string, archivedAt: string | null) => void;
   retry: () => void;
 }
 
@@ -36,9 +41,13 @@ export function useMyPosts(): UseMyPostsResult {
 
   // Loaded data is keyed by user — another user's (or a stale) result never
   // renders. State writes happen after the await (no sync setState in effects).
-  const [loaded, setLoaded] = useState<{ userId: string; posts: PostSummary[] } | null>(null);
+  const [loaded, setLoaded] = useState<{ userId: string; posts: MyPostSummary[] } | null>(null);
   const [errorFor, setErrorFor] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Only the LATEST load may land. Loads overlap (refocus, a change's reload,
+  // a pull), and an older response arriving last would put back a card the
+  // owner has just archived (code review, 2026-09-24).
+  const loadSeq = useRef(0);
 
   const load = useCallback(
     // initial: failure errors the screen. refresh: pull spinner, failure keeps
@@ -48,6 +57,7 @@ export function useMyPosts(): UseMyPostsResult {
         return Promise.resolve();
       }
       const uid = userId;
+      const seq = ++loadSeq.current;
       return Promise.resolve()
         .then(() => {
           if (mode === 'refresh') {
@@ -56,6 +66,9 @@ export function useMyPosts(): UseMyPostsResult {
           return listMyPosts();
         })
         .then((posts) => {
+          if (seq !== loadSeq.current) {
+            return;
+          }
           setLoaded({ userId: uid, posts });
           setErrorFor(null);
         })
@@ -94,6 +107,16 @@ export function useMyPosts(): UseMyPostsResult {
   );
 
   const refresh = useCallback(() => load('refresh'), [load]);
+  const revalidate = useCallback(() => void load('silent'), [load]);
+  const setArchivedAt = useCallback((postId: string, archivedAt: string | null) => {
+    // Supersede any load already in flight: it may predate the change.
+    loadSeq.current += 1;
+    setLoaded((prev) =>
+      prev
+        ? { ...prev, posts: prev.posts.map((p) => (p.id === postId ? { ...p, archivedAt } : p)) }
+        : prev,
+    );
+  }, []);
   const retry = useCallback(() => {
     setErrorFor(null);
     void load('initial');
@@ -117,6 +140,8 @@ export function useMyPosts(): UseMyPostsResult {
     posts: current ?? [],
     refreshing,
     refresh,
+    revalidate,
+    setArchivedAt,
     retry,
   };
 }

@@ -9,7 +9,7 @@
  * LINKS: src/features/vehicles/hooks/useMyPosts.ts, docs/TESTING.md.
  */
 
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { useMyPosts } from './useMyPosts';
 
@@ -65,5 +65,31 @@ describe('useMyPosts', () => {
     mockListMyPosts.mockRejectedValue(new Error('boom'));
     const { result } = await renderHook(() => useMyPosts());
     await waitFor(() => expect(result.current.status).toBe('error'));
+  });
+
+  // The archive (2026-09-24): a card moves the moment the server answers, and
+  // a list load that started BEFORE the change can't land afterwards and put
+  // the card back.
+  it('moves a card at once, and a load from before the change never undoes it', async () => {
+    mockUseSession.mockReturnValue({ status: 'signedIn', userId: 'u1' });
+    mockListMyPosts.mockResolvedValue([{ ...summary, archivedAt: null }]);
+    const { result } = await renderHook(() => useMyPosts());
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    // A reload is in flight when the archive lands.
+    let finishStale: (posts: unknown[]) => void = () => {};
+    mockListMyPosts.mockReturnValueOnce(new Promise((resolve) => (finishStale = resolve)));
+    await act(async () => {
+      result.current.revalidate();
+    });
+    await act(async () => {
+      result.current.setArchivedAt('p1', '2026-09-24T12:00:00Z');
+    });
+    expect(result.current.posts[0].archivedAt).toBe('2026-09-24T12:00:00Z');
+
+    await act(async () => {
+      finishStale([{ ...summary, archivedAt: null }]);
+    });
+    expect(result.current.posts[0].archivedAt).toBe('2026-09-24T12:00:00Z');
   });
 });

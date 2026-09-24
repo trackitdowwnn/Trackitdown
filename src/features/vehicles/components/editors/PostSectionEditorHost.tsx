@@ -3,7 +3,7 @@
  *        presents it: as a BOTTOM SHEET for six of the seven sections, and as a
  *        full-screen overlay for 'last_seen'. The detail screen sets which
  *        section is being edited; this picks the component and the presentation.
- * WHY:   Keeps PostDetailScreen's editor wiring to one line (set a section key)
+ * WHY:   Keeps PostOwnerActions' editor wiring to one line (set a section key)
  *        and the section→editor mapping in one place. A sheet is the right weight
  *        for editing ONE section — the listing stays visible behind it, and
  *        swipe-down is a free cancel — so it's the default, with the sheet
@@ -14,7 +14,8 @@
  *        opaque native Modals ABOVE the sheet.
  * LINKS: src/features/vehicles/components/editors/* (the editors);
  *        src/features/vehicles/components/editors/editorPresentation.ts;
- *        src/features/vehicles/screens/PostDetailScreen.tsx (host mount);
+ *        src/features/vehicles/components/PostOwnerActions.tsx (host mount —
+ *          on the listing page and over My listings);
  *        src/shared/ui/BottomSheet.tsx.
  */
 
