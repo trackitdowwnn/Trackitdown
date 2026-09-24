@@ -72,15 +72,15 @@ rounded-top sheet overlapping the hero.)
    avatar path would leak `owner_id` (→ surname). Never
    surname/`display_name`, `owner_id`, or contact. Gated server-side in
    `get_post_detail`; see DOMAIN.md "Owner identity on a post".
-   Non-owners also get a **"Message the owner"** affordance HERE (sighting-
-   gated — DOMAIN Chat): a viewer who has already reported gets a quiet grey
-   (`subtle`) **"Message the owner"** button that opens the thread (the
-   reference's "Message host" treatment); everyone else gets honest copy ("Seen
-   this car? Report a sighting to start a private chat with the owner.") and
-   the same `subtle` button reading **"Report a sighting"**, into the report
-   flow (a button since 2026-09-24 — it was an underlined link; still subtle,
-   so the sticky bar's "I've seen this car" stays the primary route). Hidden
-   for the owner. Driven by
+   Non-owners also get their next step HERE — always the one the sticky bar
+   is NOT showing, so no action appears twice (2026-09-24). Not reported yet:
+   honest copy ("Seen this car? Report a sighting to start a private chat
+   with the owner.") and a `subtle` **"Report a sighting"** button (chat is
+   sighting-gated — DOMAIN Chat: no cold DMs). Reported: the bar has become
+   "Message the owner", so this offers **"Report another sighting"** ("Seen
+   it again? A new sighting shows the owner where it is now.") — repeat
+   sightings are allowed and a fresher one is worth more. Both subtle, never
+   competing with the bar's primary. Hidden for the owner. Driven by
    `get_post_detail.viewer_has_sighting`.
 7. **Sighting activity — DORMANT** — the RPC returns a zero aggregate today;
     the section renders only when count > 0 and lights up when the sightings
@@ -99,7 +99,10 @@ rounded-top sheet overlapping the hero.)
 
 **Sticky bottom bar** (`PostBottomBar`) — always visible, safe-area padded.
 - **Spotter:** bounty + "reward", primary "I've seen this car" → the
-  report-sighting flow (auth-gated).
+  report-sighting flow (auth-gated). Once they have reported
+  (`viewerHasSighting`), the primary becomes **"Message the owner"** → the
+  thread (2026-09-24): the step they have done stops being the headline, and
+  the conversation it unlocked takes its place. Never shown before a sighting.
 - **Owner:** "Your listing" + `StatusBadge`, secondary "Manage post" →
   **`PostManageSheet`**, a `BottomSheet` of `ListRow`s for THIS listing: view
   sightings, one row per section currently editable, share, and (paid posts) the
@@ -152,7 +155,8 @@ for the price of posting a car), and the count reads `kind = 'alert'` rows ONLY
 WATCHERS, and DOMAIN.md forbids exposing watcher counts to an owner. Both are
 pinned by `post_detail_verification.sql` CHECK 16.
 
-**Message the owner** (migration `20260715130000`) — the section handler
+**Message the owner** (migration `20260715130000`) — the handler (the sticky
+bar's, once reported; the section's "Report a sighting" before)
 opens the thread via `openThread` (deferred `import('@/features/chat')`) when
 `viewerHasSighting`, else routes to `/report-sighting`; a stale-flag or
 `NO_SIGHTING` race falls back to reporting. Guests pass the `message_owner`

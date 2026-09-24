@@ -99,6 +99,11 @@ export interface PostDetailBodyProps {
    *  viewer already has a sighting, else routes them to report one first
    *  (chat is sighting-gated — DOMAIN Chat). Absent for the owner. */
   onMessageOwner?: () => void;
+  /** SPOTTER only: report a (further) sighting — the same flow as the sticky
+   *  bar's "I've seen this car". Offered in the Owner section once the viewer
+   *  has reported, because by then the bar has become "Message the owner".
+   *  Absent for the owner. */
+  onReportSighting?: () => void;
   /** Open the full "About this car" prose page (/post-about). */
   onShowAbout: () => void;
   /** The "More stolen cars nearby" rail (useSimilarPosts) — [] hides it. */
@@ -140,6 +145,7 @@ export function PostDetailBody({
   onOpenMap,
   onReport,
   onMessageOwner,
+  onReportSighting,
   onShowAbout,
   similarPosts,
   similarLoading,
@@ -536,30 +542,42 @@ export function PostDetailBody({
         <Text style={styles.sectionTitle}>Owner</Text>
         <OwnerCard owner={post.owner} sightingCount={post.sightingCount} />
 
-        {/* Message the owner — SPOTTER side only (the owner reaches spotters
-            through their sightings list). Chat is sighting-gated (DOMAIN
-            Chat: no cold DMs), so the affordance is honest about the gate:
-            a viewer who has reported opens the thread; everyone else is told
-            reporting is what opens the conversation, and the handler routes
-            them there. */}
+        {/* The spotter's next step — SPOTTER side only (the owner reaches
+            spotters through their sightings list). It always offers what the
+            sticky bar does NOT, so the page never shows one action twice:
+              · not reported yet: the bar says "I've seen this car"; here,
+                the reason to — reporting is what opens a private chat
+                (DOMAIN Chat: no cold DMs, so this is honest about the gate).
+              · reported: the bar has become "Message the owner"
+                (2026-09-24); here, reporting AGAIN — a fresher sighting is
+                worth more than the first, and nothing else on the page
+                offers it once the bar has moved on.
+            Subtle buttons in both states: encouraged, never competing with
+            the bar's primary. */}
         {!post.isOwner && onMessageOwner ? (
           <View style={styles.messageOwner}>
             <Text style={styles.messageOwnerText}>
               {post.viewerHasSighting
-                ? 'Chat privately with the owner about your sighting.'
+                ? 'Seen it again? A new sighting shows the owner where it is now.'
                 : 'Seen this car? Report a sighting to start a private chat with the owner.'}
             </Text>
-            {/* A button in BOTH states (owner's call, 2026-09-24 — it was an
-                underlined link before a sighting). Subtle, like the
-                reference's "Message host": encouraged, but never competing
-                with the sticky bar's primary "I've seen this car", which
-                opens the same report flow. */}
-            <Button
-              label={post.viewerHasSighting ? 'Message the owner' : 'Report a sighting'}
-              variant="subtle"
-              fullWidth={false}
-              onPress={onMessageOwner}
-            />
+            {post.viewerHasSighting ? (
+              onReportSighting ? (
+                <Button
+                  label="Report another sighting"
+                  variant="subtle"
+                  fullWidth={false}
+                  onPress={onReportSighting}
+                />
+              ) : null
+            ) : (
+              <Button
+                label="Report a sighting"
+                variant="subtle"
+                fullWidth={false}
+                onPress={onMessageOwner}
+              />
+            )}
           </View>
         ) : null}
       </View>
