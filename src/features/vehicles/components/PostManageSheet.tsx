@@ -1,8 +1,9 @@
 /**
  * WHAT:  PostManageSheet — the owner's action sheet for THIS listing, opened by
  *        the sticky bar's "Manage post". A ListRow menu: view sightings, activity, one row
- *        per section they're currently allowed to edit, share, and (paid posts)
- *        the destructive deactivate + refund.
+ *        per section they're currently allowed to edit, share, archive /
+ *        unarchive (finished listings, from My listings' long-press only), and
+ *        (paid posts) the destructive deactivate + refund.
  * WHY:   "Manage post" used to navigate to /my-posts, which threw the owner off
  *        the very listing they were managing to look at a list containing it —
  *        a dead end. Every owner action already exists on this screen (pencils,
@@ -18,7 +19,17 @@
  *        src/shared/ui/BottomSheet.tsx + ListRow.tsx; docs/DESIGN_SYSTEM.md.
  */
 
-import { Ban, Banknote, ChartNoAxesColumn, Eye, Pencil, Share2, Trash2 } from 'lucide-react-native';
+import {
+  Archive,
+  ArchiveRestore,
+  Ban,
+  Banknote,
+  ChartNoAxesColumn,
+  Eye,
+  Pencil,
+  Share2,
+  Trash2,
+} from 'lucide-react-native';
 import { useImperativeHandle, useRef, type Ref } from 'react';
 
 import { BottomSheet, ListRow, type BottomSheetRef } from '@/shared/ui';
@@ -80,6 +91,16 @@ export interface PostManageSheetProps {
    * press can never pay twice.
    */
   onReleasePayout?: () => void;
+  /**
+   * CLOSED listings only (recovered, cancelled, expired): tuck it into, or
+   * bring it back from, the "Archived" section of My listings. At most one of
+   * the two is passed — whichever matches its current state. Offered only on
+   * My listings, where the section is (owner's call, 2026-09-24). Neither is
+   * destructive nor confirmed: nothing public, no status and no money moves,
+   * and it undoes with one tap.
+   */
+  onArchive?: () => void;
+  onUnarchive?: () => void;
 }
 
 export function PostManageSheet({
@@ -99,6 +120,8 @@ export function PostManageSheet({
   onDeleteDraft,
   onDeletePost,
   onReleasePayout,
+  onArchive,
+  onUnarchive,
 }: PostManageSheetProps) {
   const sheetRef = useRef<BottomSheetRef>(null);
 
@@ -173,6 +196,26 @@ export function PostManageSheet({
           subtitle="Try again to pay the spotter you credited."
           onPress={run(onReleasePayout)}
           testID="manage-release-payout"
+        />
+      ) : null}
+
+      {/* Tidying, not ending — above the destructive rows, never among them. */}
+      {onArchive ? (
+        <ListRow
+          icon={Archive}
+          title="Archive listing"
+          subtitle="Moves it to Archived at the bottom of My listings."
+          onPress={run(onArchive)}
+          testID="manage-archive"
+        />
+      ) : null}
+      {onUnarchive ? (
+        <ListRow
+          icon={ArchiveRestore}
+          title="Unarchive listing"
+          subtitle="Moves it back up with your other listings."
+          onPress={run(onUnarchive)}
+          testID="manage-unarchive"
         />
       ) : null}
 

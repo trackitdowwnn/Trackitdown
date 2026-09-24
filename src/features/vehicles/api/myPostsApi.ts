@@ -1,13 +1,15 @@
 /**
  * WHAT:  Supabase access for "My Listings" — the list_my_posts RPC, zod-validated
- *        and mapped to PostSummary card rows. Returns the caller's OWN posts in
- *        every status (draft → recovered), newest first.
+ *        and mapped to MyPostSummary card rows (a PostSummary plus the owner's
+ *        archive stamp, archivedAt). Returns the caller's OWN posts in every
+ *        status (draft → recovered), newest first, archived ones included.
  * WHY:   The owner needs to see their listings incl. private states (drafts,
  *        pending) the public feed never shows; the RPC applies the owner scope
  *        (auth.uid()) server-side and this file only validates + renames, so a
  *        shape drift fails loudly instead of rendering garbage. Loads log
  *        [vehicles], ids only — never plates (docs/LOGGING.md).
- * LINKS: supabase/migrations/…_list_my_posts.sql (the RPC);
+ * LINKS: supabase/migrations/…_list_my_posts.sql (the RPC) +
+ *        20260924130000_archive_listings.sql (adds archived_at);
  *        src/features/vehicles/hooks/useMyPosts.ts (consumer);
  *        src/features/watchlist/api/watchlistApi.ts (the mapping this mirrors);
  *        src/shared/types/posts.ts (PostSummary).
@@ -46,12 +48,24 @@ const myPostRowSchema = z.object({
   last_seen_area: z.string().nullable(),
   bounty_amount_pence: z.number().int().nullable(),
   created_at: z.string(),
+  // When the owner archived it, or null. OPTIONAL as well as nullable: an app
+  // update can reach phones before the server migration that adds the column
+  // (20260924130000), and a missing field must read as "not archived" rather
+  // than fail the whole list.
+  archived_at: z.string().nullable().optional(),
 });
 
 type MyPostRow = z.infer<typeof myPostRowSchema>;
 
-function toSummary(row: MyPostRow): PostSummary {
+/** One of the caller's own listings — a card, plus whether it is archived. */
+export type MyPostSummary = PostSummary & {
+  /** When the owner archived it (it then sits in the "Archived" section), or null. */
+  archivedAt: string | null;
+};
+
+function toSummary(row: MyPostRow): MyPostSummary {
   return {
+    archivedAt: row.archived_at ?? null,
     id: row.id,
     photos: row.photos.map((p) => ({ uri: p.url })),
     make: row.make,
@@ -73,7 +87,7 @@ function toSummary(row: MyPostRow): PostSummary {
 }
 
 /** The caller's own posts, newest first (RPC-ordered). */
-export async function listMyPosts(): Promise<PostSummary[]> {
+export async function listMyPosts(): Promise<MyPostSummary[]> {
   const startedAt = Date.now();
   const { data, error } = await supabase.rpc('list_my_posts');
   if (error) {

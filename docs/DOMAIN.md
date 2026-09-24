@@ -122,6 +122,15 @@ draft → (pay fee) → active → recovered            (a sighting was credited
                      └─ cancelled                  (no refund)
 ```
 
+**Archiving is not a status** (2026-09-24). An owner can file a CLOSED listing
+(`recovered`, `recovered_no_spotter`, `cancelled`, `expired`) into the collapsed
+"Archived" section of My listings, and take it out again. It's stored as
+`posts.archived_at` and set only by `set_post_archived` (owner-only,
+closed-only). It's personal filing: no status, money or visibility changes, and
+no one else can see it. If a post ever reopens (`resolve_sighting_dispute` can
+move `cancelled → recovery_claimed`), a trigger clears the stamp, so a listing
+with money moving again is never hidden.
+
 **LIVE-ON-PAYMENT.** A paid post goes straight to **`active`** (publicly live) —
 there is no pre-publish review gate. For a stolen car the first hours are what
 matter, so the crowd must be looking within minutes. The `pending_verification`

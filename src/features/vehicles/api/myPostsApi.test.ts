@@ -57,7 +57,21 @@ describe('listMyPosts', () => {
       lastSeenAt: '2026-07-10T18:00:00Z',
       lastSeenArea: 'Camden',
       bountyPence: 50000,
+      archivedAt: null,
     });
+  });
+
+  // The archive (2026-09-24). The column is optional as well as nullable: an
+  // app update can land before the server migration, and a missing field must
+  // read as "not archived" rather than fail the whole list.
+  it('maps archived_at, and a row without the field is not archived', async () => {
+    mockRpc.mockResolvedValue({
+      data: [row({ archived_at: '2026-09-24T12:00:00Z' }), row({ id: 'bbbbbbbb-0000-0000-0000-00000000000b' })],
+      error: null,
+    });
+    const [archived, plain] = await listMyPosts();
+    expect(archived.archivedAt).toBe('2026-09-24T12:00:00Z');
+    expect(plain.archivedAt).toBeNull();
   });
 
   it('accepts every lifecycle status (owner sees private states)', async () => {

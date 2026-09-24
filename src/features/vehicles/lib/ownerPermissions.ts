@@ -10,6 +10,8 @@
  *        src/features/vehicles/screens/PostDetailScreen.tsx.
  */
 
+import type { PostStatus } from '@/shared/types';
+
 import type { PostDetail } from '../types';
 
 /** Photos, last-seen and the bounty are editable ONLY while the post is a draft:
@@ -78,6 +80,22 @@ export function canDeletePost(post: PostDetail): boolean {
  *  this on a pending_verification post would show a button that always fails. */
 export function canMarkRecovered(post: PostDetail): boolean {
   return post.isOwner && post.status === 'active';
+}
+
+/** The closed statuses — the only ones an owner may archive (owner's call,
+ *  2026-09-24). Mirrors set_post_archived's NOT_CLOSED check
+ *  (20260924130000_archive_listings.sql). */
+const ARCHIVABLE: readonly PostStatus[] = ['recovered', 'recovered_no_spotter', 'cancelled', 'expired'];
+
+/**
+ * The owner can ARCHIVE a finished listing — tuck it into the collapsed
+ * "Archived" section of My listings. Never a live one: an owner must not lose
+ * sight of a car that is still being searched for, so anything still open
+ * (live, draft, awaiting payout…) stays in the main list. Takes just the status
+ * so My listings can decide from a card, without loading the full listing.
+ */
+export function canArchive(status: PostStatus): boolean {
+  return ARCHIVABLE.includes(status);
 }
 
 /** A credited spotter is waiting to be paid. `recovery_claimed` means the winner

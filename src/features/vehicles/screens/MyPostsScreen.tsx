@@ -12,21 +12,27 @@
  *        delete and send-the-reward, via the SAME PostOwnerActions the listing
  *        page uses — never a copy. Mirrors WatchlistScreen (the house pattern
  *        for an owner/user-scoped card list).
+ *        THE ARCHIVE (owner's call, 2026-09-24): finished listings can be filed
+ *        from the held card's sheet into a collapsed "Archived (N)" section at
+ *        the foot of the list, and moved back, so they stop taking up room.
+ *        Only closed listings (canArchive); stored on the account.
  * LINKS: src/app/my-posts.tsx (route); src/features/profile/screens/
  *        ProfileScreen.tsx (the push); src/features/vehicles/hooks/useMyPosts.ts;
  *        src/features/vehicles/components/PostOwnerActions.tsx (the sheet and
  *        every owner action); src/features/vehicles/hooks/usePostDetail.ts
- *        (ListingManager's loader).
+ *        (ListingManager's loader); src/features/vehicles/api/archiveApi.ts +
+ *        lib/ownerPermissions.ts (canArchive) + supabase/migrations/
+ *        20260924130000_archive_listings.sql (the archive).
  */
 
 import { useRouter } from 'expo-router';
-import { ChevronLeft, Hourglass } from 'lucide-react-native';
+import { ChevronDown, ChevronLeft, ChevronUp, Hourglass } from 'lucide-react-native';
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRequireAuth, useSession } from '@/features/auth';
 import { lightHaptic } from '@/shared/lib/haptics';
-import { sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
+import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import type { PostSummary } from '@/shared/types';
 import {
   EmptyState,
@@ -39,7 +45,9 @@ import {
   VehicleCard,
 } from '@/shared/ui';
 
+import { ArchiveError, setPostArchived } from '../api/archiveApi';
 import { PostOwnerActions, type PostOwnerActionsHandle } from '../components/PostOwnerActions';
+import { canArchive } from '../lib/ownerPermissions';
 import { useMyPosts } from '../hooks/useMyPosts';
 import { useOpenOnArrival } from '../hooks/useOpenOnArrival';
 import { usePostDetail } from '../hooks/usePostDetail';
@@ -47,10 +55,11 @@ import { useStillMissingAsks } from '../hooks/useStillMissingAsk';
 
 export function MyPostsScreen() {
   const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const session = useSession();
   const requireAuth = useRequireAuth();
   const router = useRouter();
-  const { status, posts, refreshing, refresh, retry } = useMyPosts();
+  const { status, posts, refreshing, refresh, revalidate, setArchivedAt, retry } = useMyPosts();
   // ADR-0019's second door. The banner on the post is the first, but it is only
   // reachable by someone who already thought to open that listing — and the
   // owner this asks about is the one who has stopped thinking about it.
@@ -60,6 +69,21 @@ export function MyPostsScreen() {
   // manager on every hold, so holding the same card again re-opens its sheet.
   const [managing, setManaging] = useState<{ postId: string; nonce: number } | null>(null);
   const managerRef = useRef<ListingManagerHandle>(null);
+
+  // THE ARCHIVE (owner's call, 2026-09-24): finished listings the owner has
+  // tucked away. They leave the main list for a collapsed "Archived (N)"
+  // section at the bottom, which opens on a tap. Only closed listings can be
+  // archived (canArchive), so nothing still being searched for can drop out of
+  // view. Collapsed by default: out of the way is the point.
+  // Truthiness, not `=== null`: a row without the field at all (a server
+  // before the archive migration) must read as NOT archived.
+  const active = posts.filter((p) => !p.archivedAt);
+  const archived = posts.filter((p) => Boolean(p.archivedAt));
+  const [showArchived, setShowArchived] = useState(false);
+  // Whether the listing being managed is archived — read from the list, which a
+  // toggle patches the moment the server answers.
+  const managedArchived =
+    managing !== null && posts.some((p) => p.id === managing.postId && Boolean(p.archivedAt));
 
   // Press and hold → the Manage sheet, right here over the list (owner's call,
   // 2026-09-24: "just a bottom sheet … not to be brought to the listing
@@ -137,10 +161,43 @@ export function MyPostsScreen() {
           />
         ) : (
           <FlatList
-            data={posts}
+            data={active}
             renderItem={renderCard}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
+            // Everything is archived: say so, rather than a blank space above
+            // the section.
+            ListEmptyComponent={
+              <Text style={styles.allArchived}>
+                Nothing active — your finished listings are in Archived below.
+              </Text>
+            }
+            ListFooterComponent={
+              archived.length > 0 ? (
+                <View>
+                  <Pressable
+                    onPress={() => setShowArchived((open) => !open)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Archived, ${archived.length} ${archived.length === 1 ? 'listing' : 'listings'}`}
+                    accessibilityState={{ expanded: showArchived }}
+                    style={({ pressed }) => [styles.archivedRow, pressed && styles.archivedRowPressed]}
+                    testID="archived-toggle"
+                  >
+                    <Text style={styles.archivedTitle}>Archived ({archived.length})</Text>
+                    {showArchived ? (
+                      <ChevronUp size={sizes.iconSm} color={palette.textSecondary} />
+                    ) : (
+                      <ChevronDown size={sizes.iconSm} color={palette.textSecondary} />
+                    )}
+                  </Pressable>
+                  {showArchived
+                    ? archived.map((item) => (
+                        <View key={item.id}>{renderCard({ item })}</View>
+                      ))
+                    : null}
+                </View>
+              ) : null
+            }
             ListHeaderComponent={
               stillMissingAsks.length > 0 ? (
                 <View style={styles.nudge}>
@@ -171,14 +228,19 @@ export function MyPostsScreen() {
           ref={managerRef}
           key={`${managing.postId}:${managing.nonce}`}
           postId={managing.postId}
-          onChanged={() => void refresh()}
+          archived={managedArchived}
+          onChanged={revalidate}
+          onArchived={(archivedAt) => {
+            setArchivedAt(managing.postId, archivedAt);
+            revalidate();
+          }}
           onDeleted={() => {
             // Only if THIS hold is still the current one. A delete that
             // finishes after the owner has moved on to another card must not
             // close that card's sheet (code + security review, 2026-09-24).
             const deleted = managing.nonce;
             setManaging((current) => (current?.nonce === deleted ? null : current));
-            void refresh();
+            revalidate();
           }}
         />
       ) : null}
@@ -206,13 +268,19 @@ interface ListingManagerHandle {
 function ListingManager({
   ref,
   postId,
+  archived,
   onChanged,
+  onArchived,
   onDeleted,
 }: {
   ref?: Ref<ListingManagerHandle>;
   postId: string;
+  /** Whether it currently sits in the Archived section (from the list). */
+  archived: boolean;
   /** Something about the listing changed — the list's card should follow. */
   onChanged: () => void;
+  /** The server archived (stamp) or unarchived (null) it — move the card. */
+  onArchived: (archivedAt: string | null) => void;
   /** The listing was deleted — close this manager and refresh the list. */
   onDeleted: () => void;
 }) {
@@ -222,7 +290,36 @@ function ListingManager({
   const post = status === 'ready' && result?.kind === 'visible' ? result.post : null;
   const owned = post?.isOwner === true;
 
-  useImperativeHandle(ref, () => ({ isBusy: () => ownerRef.current?.isBusy() ?? false }), []);
+  // Archive / unarchive. Guarded against a double tap, and counted as busy so
+  // a hold on another card can't replace this manager mid-request.
+  const [archiving, setArchiving] = useState(false);
+  const archivingRef = useRef(false);
+  const toggleArchive = useCallback(async () => {
+    if (archivingRef.current) {
+      return;
+    }
+    archivingRef.current = true;
+    setArchiving(true);
+    try {
+      const archivedAt = await setPostArchived(postId, !archived);
+      toast.show(archived ? 'Moved back to My listings' : 'Listing archived');
+      onArchived(archivedAt);
+    } catch (error) {
+      toast.show(
+        error instanceof ArchiveError ? error.message : 'We couldn’t update that listing. Please try again.',
+        'error',
+      );
+    } finally {
+      archivingRef.current = false;
+      setArchiving(false);
+    }
+  }, [archived, onArchived, postId, toast]);
+
+  useImperativeHandle(
+    ref,
+    () => ({ isBusy: () => archiving || (ownerRef.current?.isBusy() ?? false) }),
+    [archiving],
+  );
 
   useOpenOnArrival(owned, () => ownerRef.current?.openManage());
 
@@ -260,6 +357,13 @@ function ListingManager({
         onChanged();
       }}
       onDeleted={onDeleted}
+      // Closed listings only — from the loaded listing's own (fresh) status.
+      // An archived listing always gets its "move back" row, whatever happens.
+      archive={
+        post && (archived || canArchive(post.status))
+          ? { archived, toggle: () => void toggleArchive() }
+          : undefined
+      }
     />
   );
 }
@@ -313,6 +417,31 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     paddingBottom: spacing.xl,
   },
   cardRow: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  // The archive's header row: a quiet section title with a chevron, full-width
+  // tap target, lined up with the cards' gutter.
+  archivedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: sizes.touchTarget,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    borderRadius: radii.md,
+  },
+  archivedRowPressed: {
+    backgroundColor: c.surfaceSubtle,
+  },
+  // A group label, not a heading — out of the way is the point.
+  archivedTitle: {
+    ...typography.label,
+    color: c.textSecondary,
+  },
+  allArchived: {
+    ...typography.body,
+    color: c.textSecondary,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xl,
   },

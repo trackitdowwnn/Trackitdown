@@ -106,13 +106,29 @@ const mockOpenManage = jest.fn();
 const mockOwnerPost = jest.fn();
 const mockIsBusy = jest.fn(() => false);
 // The last props the manager handed PostOwnerActions — to fire its onDeleted.
-let mockOwnerProps: { onDeleted: () => void; refresh: () => void } | null = null;
+let mockOwnerProps: {
+  onDeleted: () => void;
+  refresh: () => void;
+  archive?: { archived: boolean; toggle: () => void };
+} | null = null;
+
+const mockSetPostArchived = jest.fn();
+jest.mock('../api/archiveApi', () => ({
+  ArchiveError: class ArchiveError extends Error {},
+  setPostArchived: (...args: unknown[]) => mockSetPostArchived(...args),
+}));
 jest.mock('../components/PostOwnerActions', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const React = require('react');
   return {
     PostOwnerActions: React.forwardRef(function MockOwnerActions(
-      props: { postId: string; post: unknown; onDeleted: () => void; refresh: () => void },
+      props: {
+        postId: string;
+        post: unknown;
+        onDeleted: () => void;
+        refresh: () => void;
+        archive?: { archived: boolean; toggle: () => void };
+      },
       ref: unknown,
     ) {
       mockOwnerPost(props.postId, props.post);
@@ -163,7 +179,15 @@ const post: PostSummary = {
 };
 
 function base() {
-  return { status: 'ready', posts: [], refreshing: false, refresh: jest.fn(), retry: jest.fn() };
+  return {
+    status: 'ready',
+    posts: [],
+    refreshing: false,
+    refresh: jest.fn(),
+    revalidate: jest.fn(),
+    setArchivedAt: jest.fn(),
+    retry: jest.fn(),
+  };
 }
 
 beforeEach(() => {
@@ -274,8 +298,8 @@ describe('MyPostsScreen', () => {
 
     // Deleted on another device, auto-deleted after 30 days, or moderated.
     it('says a listing that has gone is not available, and refreshes the list', async () => {
-      const refresh = jest.fn();
-      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post], refresh });
+      const revalidate = jest.fn();
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post], revalidate });
       mockUsePostDetail.mockReturnValue({
         status: 'ready',
         result: { kind: 'notFound' },
@@ -288,7 +312,7 @@ describe('MyPostsScreen', () => {
       expect(mockOpenManage).not.toHaveBeenCalled();
       expect(mockToast).toHaveBeenCalledTimes(1);
       expect(mockToast).toHaveBeenCalledWith('That listing isn’t available any more.', 'error');
-      expect(refresh).toHaveBeenCalled();
+      expect(revalidate).toHaveBeenCalled();
     });
 
     // Never replace a manager with a request in flight: the remount would drop
@@ -307,8 +331,8 @@ describe('MyPostsScreen', () => {
     });
 
     it('a delete closes its manager and refreshes the list', async () => {
-      const refresh = jest.fn();
-      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post], refresh });
+      const revalidate = jest.fn();
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post], revalidate });
       mockUsePostDetail.mockReturnValue(ready(ownerPost));
       const { getByTestId } = await render(<MyPostsScreen />);
       await fireEvent(getByTestId('card-p1'), 'longPress');
@@ -318,7 +342,7 @@ describe('MyPostsScreen', () => {
         mockOwnerProps?.onDeleted();
       });
 
-      expect(refresh).toHaveBeenCalled();
+      expect(revalidate).toHaveBeenCalled();
       expect(mockOwnerPost).not.toHaveBeenCalled(); // unmounted, not re-rendered
     });
 
@@ -354,6 +378,158 @@ describe('MyPostsScreen', () => {
       await fireEvent(getByTestId('card-p1'), 'longPress');
 
       expect(mockOpenManage).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // THE ARCHIVE (2026-09-24): finished listings tucked into a collapsed
+  // section at the bottom; only closed ones can go there.
+  describe('archive', () => {
+    const live = { ...post, id: 'live1', make: 'Ford', status: 'active', archivedAt: null };
+    const done = { ...post, id: 'done1', make: 'Kia', status: 'recovered', archivedAt: null };
+    const tucked = {
+      ...post,
+      id: 'arch1',
+      make: 'Mazda',
+      status: 'cancelled',
+      archivedAt: '2026-09-24T12:00:00Z',
+    };
+    const detail = (id: string, status: string) => ({
+      status: 'ready',
+      result: { kind: 'visible', post: { id, isOwner: true, status } },
+      retry: jest.fn(),
+    });
+
+    beforeEach(() => {
+      mockOwnerProps = null;
+      mockToast.mockClear();
+      mockSetPostArchived.mockReset().mockResolvedValue(undefined);
+    });
+
+    it('keeps archived listings in a collapsed section until it is opened', async () => {
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [live, tucked] });
+      const { getByText, queryByText, getByTestId } = await render(<MyPostsScreen />);
+
+      expect(getByText('Ford')).toBeTruthy();
+      expect(queryByText('Mazda')).toBeNull(); // tucked away
+      expect(getByText('Archived (1)')).toBeTruthy();
+
+      await fireEvent.press(getByTestId('archived-toggle'));
+
+      expect(getByText('Mazda')).toBeTruthy();
+    });
+
+    it('says so when everything is archived — never a blank page', async () => {
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [tucked] });
+      const { getByText } = await render(<MyPostsScreen />);
+
+      expect(getByText('Nothing active — your finished listings are in Archived below.')).toBeTruthy();
+    });
+
+    it('offers Archive on a finished listing, and archiving moves the card at once', async () => {
+      const revalidate = jest.fn();
+      const setArchivedAt = jest.fn();
+      mockUseMyPosts.mockReturnValue({
+        ...base(),
+        status: 'ready',
+        posts: [done],
+        revalidate,
+        setArchivedAt,
+      });
+      mockUsePostDetail.mockReturnValue(detail('done1', 'recovered'));
+      mockSetPostArchived.mockResolvedValue('2026-09-24T12:00:00Z');
+      const { getByTestId } = await render(<MyPostsScreen />);
+
+      await fireEvent(getByTestId('card-done1'), 'longPress');
+      expect(mockOwnerProps?.archive).toEqual({ archived: false, toggle: expect.any(Function) });
+
+      await act(async () => {
+        mockOwnerProps?.archive?.toggle();
+      });
+
+      expect(mockSetPostArchived).toHaveBeenCalledWith('done1', true);
+      expect(mockToast).toHaveBeenCalledWith('Listing archived');
+      // The server's stamp moves the card now; the quiet reload follows.
+      expect(setArchivedAt).toHaveBeenCalledWith('done1', '2026-09-24T12:00:00Z');
+      expect(revalidate).toHaveBeenCalled();
+    });
+
+    it('a failed archive says why and leaves the card where it is', async () => {
+      const setArchivedAt = jest.fn();
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [done], setArchivedAt });
+      mockUsePostDetail.mockReturnValue(detail('done1', 'recovered'));
+      const { ArchiveError } = jest.requireMock('../api/archiveApi');
+      mockSetPostArchived.mockRejectedValue(new ArchiveError('Only finished listings can be archived.'));
+      const { getByTestId } = await render(<MyPostsScreen />);
+      await fireEvent(getByTestId('card-done1'), 'longPress');
+
+      await act(async () => {
+        mockOwnerProps?.archive?.toggle();
+      });
+
+      expect(mockToast).toHaveBeenCalledWith('Only finished listings can be archived.', 'error');
+      expect(setArchivedAt).not.toHaveBeenCalled();
+    });
+
+    // One request at a time: a double tap sends one, and a hold on another
+    // card waits rather than replacing the manager mid-request.
+    it('sends one request for a double tap, and holds off another card meanwhile', async () => {
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [done, live] });
+      mockUsePostDetail.mockImplementation((id: string) =>
+        detail(id, id === 'done1' ? 'recovered' : 'active'),
+      );
+      mockSetPostArchived.mockReturnValue(new Promise(() => {})); // still on its way
+      const { getByTestId } = await render(<MyPostsScreen />);
+      await fireEvent(getByTestId('card-done1'), 'longPress');
+
+      await act(async () => {
+        mockOwnerProps?.archive?.toggle();
+        mockOwnerProps?.archive?.toggle();
+      });
+      expect(mockSetPostArchived).toHaveBeenCalledTimes(1);
+
+      await fireEvent(getByTestId('card-live1'), 'longPress');
+      expect(mockToast).toHaveBeenCalledWith('Just a moment — finishing your last change.');
+    });
+
+    // A dispute can reopen a cancelled listing; the server then clears the
+    // stamp, but until the list reloads the card still sits in Archived. It
+    // must still offer the way out.
+    it('still offers "move back" on an archived card whose listing has reopened', async () => {
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [tucked] });
+      mockUsePostDetail.mockReturnValue(detail('arch1', 'recovery_claimed'));
+      const { getByTestId } = await render(<MyPostsScreen />);
+      await fireEvent.press(getByTestId('archived-toggle'));
+
+      await fireEvent(getByTestId('card-arch1'), 'longPress');
+
+      expect(mockOwnerProps?.archive?.archived).toBe(true);
+    });
+
+    it('offers "move back" on an archived listing', async () => {
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [tucked] });
+      mockUsePostDetail.mockReturnValue(detail('arch1', 'cancelled'));
+      const { getByTestId } = await render(<MyPostsScreen />);
+      await fireEvent.press(getByTestId('archived-toggle'));
+
+      await fireEvent(getByTestId('card-arch1'), 'longPress');
+      await act(async () => {
+        mockOwnerProps?.archive?.toggle();
+      });
+
+      expect(mockOwnerProps?.archive?.archived).toBe(true);
+      expect(mockSetPostArchived).toHaveBeenCalledWith('arch1', false);
+      expect(mockToast).toHaveBeenCalledWith('Moved back to My listings');
+    });
+
+    // An owner must never lose sight of a car still being searched for.
+    it('never offers Archive on a live listing', async () => {
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [live] });
+      mockUsePostDetail.mockReturnValue(detail('live1', 'active'));
+      const { getByTestId } = await render(<MyPostsScreen />);
+
+      await fireEvent(getByTestId('card-live1'), 'longPress');
+
+      expect(mockOwnerProps?.archive).toBeUndefined();
     });
   });
 

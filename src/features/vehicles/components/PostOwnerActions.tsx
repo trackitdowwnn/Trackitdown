@@ -13,6 +13,8 @@
  *        guards — the ONE tested implementation. The logic below moved here
  *        verbatim from PostDetailScreen; only its inputs changed: the host
  *        passes the post, how to refresh it, and what to do after a delete.
+ *        An optional `archive` prop adds the Archive / Unarchive row; only My
+ *        listings passes it (it owns the list the card moves within).
  *
  *        ⚠️ MOUNT IT AT THE HOST'S ROOT. The attestation and the editors are
  *        absolute, opaque overlays sized to this component's parent — inside a
@@ -87,9 +89,22 @@ export interface PostOwnerActionsProps {
   refresh: () => void;
   /** After a delete succeeded — there is no post left to refresh. */
   onDeleted: () => void;
+  /**
+   * The archive row, when this host has an Archived section (My listings).
+   * The host decides whether the listing may be archived (canArchive) and
+   * performs the toggle; absent = no row. `archived` picks which of the two.
+   */
+  archive?: { archived: boolean; toggle: () => void };
 }
 
-export function PostOwnerActions({ ref, postId, post, refresh, onDeleted }: PostOwnerActionsProps) {
+export function PostOwnerActions({
+  ref,
+  postId,
+  post,
+  refresh,
+  onDeleted,
+  archive,
+}: PostOwnerActionsProps) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -398,6 +413,8 @@ export function PostOwnerActions({ ref, postId, post, refresh, onDeleted }: Post
         onDeleteDraft={canDeleteDraft(owned) ? () => deleteDraftRef.current?.open() : undefined}
         onDeletePost={canDeletePost(owned) ? () => deletePostRef.current?.open() : undefined}
         onReleasePayout={canReleasePayout(owned) ? () => void onReleasePayout() : undefined}
+        onArchive={archive && !archive.archived ? archive.toggle : undefined}
+        onUnarchive={archive?.archived ? archive.toggle : undefined}
       />
 
       {/* The ONE deactivate confirm. The refund figure is an estimate; the

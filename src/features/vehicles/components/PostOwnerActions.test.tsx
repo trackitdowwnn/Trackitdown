@@ -148,6 +148,44 @@ describe('PostOwnerActions', () => {
     expect(view.queryByTestId('manage-view-sightings')).toBeNull();
   });
 
+  // The archive (2026-09-24): the host decides whether to offer it; the sheet
+  // shows exactly one of the pair, and only when asked.
+  describe('archive', () => {
+    const mountWith = (archive?: { archived: boolean; toggle: () => void }) =>
+      render(
+        <PostOwnerActions
+          postId="p1"
+          post={post({ status: 'recovered' })}
+          refresh={jest.fn()}
+          onDeleted={jest.fn()}
+          archive={archive}
+        />,
+      );
+
+    it('offers Archive for a listing in the main list, and runs the toggle', async () => {
+      const toggle = jest.fn();
+      const view = await mountWith({ archived: false, toggle });
+
+      expect(view.queryByTestId('manage-unarchive')).toBeNull();
+      await fireEvent.press(view.getByTestId('manage-archive'));
+      expect(toggle).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers Unarchive for an archived listing', async () => {
+      const view = await mountWith({ archived: true, toggle: jest.fn() });
+
+      expect(view.getByTestId('manage-unarchive')).toBeTruthy();
+      expect(view.queryByTestId('manage-archive')).toBeNull();
+    });
+
+    it('offers neither when the host passes no archive (the listing page)', async () => {
+      const view = await mountWith(undefined);
+
+      expect(view.queryByTestId('manage-archive')).toBeNull();
+      expect(view.queryByTestId('manage-unarchive')).toBeNull();
+    });
+  });
+
   describe('deactivate', () => {
     it('clean path: pre-flight, the confirm, the exact refund in the toast, a refresh', async () => {
       mockDeactivate.mockResolvedValue({ outcome: 'done', result: { refundedPence: 24000 } });

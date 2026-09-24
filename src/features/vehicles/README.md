@@ -126,6 +126,16 @@ rounded-top sheet overlapping the hero.)
     toasts. Changes refresh the list; a delete removes the card.
     `VehicleCard` gained an opt-in `onLongPress` + `longPressLabel`, also
     exposed to screen readers as a named `longpress` action.
+  - **The archive** (2026-09-24): a finished listing (recovered,
+    recovered_no_spotter, cancelled, expired — `canArchive`) can be filed
+    into a collapsed "Archived (N)" section at the foot of My listings, and
+    moved back, from the held card's sheet only (the listing page doesn't
+    offer it). It's stored on the account: `posts.archived_at`, set ONLY
+    through `set_post_archived` (owner-only, closed-only, no client column
+    grant) and read through `list_my_posts`. A trigger clears it if a post
+    ever reopens (a dispute can move cancelled → recovery_claimed), so a
+    listing whose money is moving again never hides. Archiving changes
+    nothing public — no status, money or visibility.
 
 **Deactivate confirm** — owned by `PostDetailScreen`, not the body: the body's
 "Deactivate listing" section button and the manage sheet's row both open the same
