@@ -885,6 +885,11 @@ delete from public.payments where stripe_payment_intent_id = 'pi_free_but_held_1
 -- and a second run moves nothing. Fixtures: ...0008 (free, stranded), Carl's
 -- ...0005 (bounty), ...0009 (made free, with held escrow).
 -- -----------------------------------------------------------------------------
+-- ...0008 must have NO credited sighting here: CHECK 19 credited one, and the
+-- repair (correctly) sends a post with a credited sighting to 'recovered', not
+-- 'recovered_no_spotter'. Leaving it in failed this check in CI on its first
+-- run — a fixture leak, not a repair bug.
+delete from public.sightings where id = 'c0c0c0c0-0000-0000-0000-000000000007';
 update public.posts set status = 'recovery_claimed', recovered_at = now(), bounty_amount_pence = null
 where id = 'a1a1a1a1-0000-0000-0000-000000000008';
 update public.posts set status = 'recovery_claimed', recovered_at = now()
