@@ -95,6 +95,13 @@ jest.mock('../api/flagApi', () => ({
   flagPost: (...args: unknown[]) => mockFlagPost(...args),
 }));
 
+// The delete apis, statically imported by PostOwnerActions since 2026-09-24
+// (they were lazy imports here). Mocked at the boundary like the others — the
+// real modules import the supabase client, which throws without app config.
+// Their behaviour is pinned in PostOwnerActions.test.
+jest.mock('../api/draftApi', () => ({ deleteDraft: jest.fn() }));
+jest.mock('../api/deletePostApi', () => ({ deleteCancelledPost: jest.fn() }));
+
 // Mocked at the api boundary like flagApi above — importing the real module
 // reaches `shared/api`, which throws at load without Supabase env configured.
 const mockReleasePayout = jest.fn();

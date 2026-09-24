@@ -11,8 +11,9 @@
  *        built from the handlers the parent passes, so the sheet can never offer
  *        an edit the server would reject: absent handler = absent row (the same
  *        presence-is-permission contract the pencils use).
- * LINKS: src/features/vehicles/screens/PostDetailScreen.tsx (owner, builds the
- *          handlers from canEditDraftSection / canEditSafeSection / canDeactivate);
+ * LINKS: src/features/vehicles/components/PostOwnerActions.tsx (owner — builds
+ *          the handlers from lib/ownerPermissions; mounted by the listing page
+ *          and by the long-press on My listings);
  *        src/features/vehicles/components/PostBottomBar.tsx (the trigger);
  *        src/shared/ui/BottomSheet.tsx + ListRow.tsx; docs/DESIGN_SYSTEM.md.
  */

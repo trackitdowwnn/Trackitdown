@@ -9,7 +9,7 @@
  * LINKS: src/features/vehicles/screens/MyPostsScreen.tsx, docs/TESTING.md.
  */
 
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 import type { PostSummary } from '@/shared/types';
 
@@ -89,8 +89,66 @@ jest.mock('@/shared/ui', () => {
       </Pressable>
     ),
     ThemedRefreshControl: () => null,
+    // ONE stable object, like the real ToastProvider's memoised value — a fresh
+    // object per render would re-run toast effects and hide a repeat-toast bug.
+    useToast: () => mockToastApi,
   };
 });
+
+const mockToast = jest.fn();
+const mockToastApi = { show: (...args: unknown[]) => mockToast(...args) };
+
+// The long-press manager. The real PostOwnerActions (sheet, confirms, editors)
+// is covered through PostDetailScreen's suite; here only "is the sheet raised
+// over the list, for the right listing" matters — so a stand-in records the
+// post it was given and exposes openManage.
+const mockOpenManage = jest.fn();
+const mockOwnerPost = jest.fn();
+const mockIsBusy = jest.fn(() => false);
+// The last props the manager handed PostOwnerActions — to fire its onDeleted.
+let mockOwnerProps: { onDeleted: () => void; refresh: () => void } | null = null;
+jest.mock('../components/PostOwnerActions', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const React = require('react');
+  return {
+    PostOwnerActions: React.forwardRef(function MockOwnerActions(
+      props: { postId: string; post: unknown; onDeleted: () => void; refresh: () => void },
+      ref: unknown,
+    ) {
+      mockOwnerPost(props.postId, props.post);
+      mockOwnerProps = props;
+      React.useImperativeHandle(ref, () => ({
+        openManage: mockOpenManage,
+        requestDeactivate: jest.fn(),
+        edit: jest.fn(),
+        isBusy: mockIsBusy,
+      }));
+      return null;
+    }),
+  };
+});
+
+const mockUsePostDetail = jest.fn();
+jest.mock('../hooks/usePostDetail', () => ({
+  usePostDetail: (id: string) => mockUsePostDetail(id),
+}));
+
+// Opens synchronously here — the real one waits for a transition that a list
+// has not got; its timing is pinned in useOpenOnArrival.test.
+jest.mock('../hooks/useOpenOnArrival', () => ({
+  useOpenOnArrival: (ready: boolean, open: () => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+    const { useEffect } = require('react');
+    useEffect(() => {
+      if (ready) open();
+      // `ready` only, like the real hook: a fresh `open` closure per render
+      // must not re-open the sheet.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [ready]);
+  },
+}));
+
+jest.mock('@/shared/lib/haptics', () => ({ lightHaptic: jest.fn() }));
 
 const post: PostSummary = {
   id: 'p1',
@@ -152,14 +210,151 @@ describe('MyPostsScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/post/p1');
   });
 
-  // Press and hold → the listing with its Manage sheet already up (the real
-  // sheet on its own page, so every action is the one tested implementation).
-  it('opens the post with its Manage sheet on press-and-hold', async () => {
-    mockPush.mockClear();
-    mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post] });
-    const { getByTestId } = await render(<MyPostsScreen />);
-    await fireEvent(getByTestId('card-p1'), 'longPress');
-    expect(mockPush).toHaveBeenCalledWith('/post/p1?manage=1');
+  // Press and hold → the Manage sheet, RIGHT HERE over the list — not a trip
+  // to the listing page (the owner's call, 2026-09-24). It loads that
+  // listing's details, then raises the sheet for it.
+  describe('press and hold', () => {
+    const ownerPost = { id: 'p1', isOwner: true, status: 'draft' };
+
+    const secondPost: PostSummary = { ...post, id: 'p2', make: 'Audi' };
+    const ready = (p: { id: string }) => ({
+      status: 'ready',
+      result: { kind: 'visible', post: p },
+      retry: jest.fn(),
+    });
+
+    beforeEach(() => {
+      mockPush.mockClear();
+      mockOpenManage.mockClear();
+      mockOwnerPost.mockClear();
+      mockToast.mockClear();
+      mockIsBusy.mockReset().mockReturnValue(false);
+      mockOwnerProps = null;
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post, secondPost] });
+    });
+
+    it('raises the Manage sheet over the list, for the held listing — no navigation', async () => {
+      mockUsePostDetail.mockReturnValue({
+        status: 'ready',
+        result: { kind: 'visible', post: ownerPost },
+        retry: jest.fn(),
+      });
+      const { getByTestId } = await render(<MyPostsScreen />);
+
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+
+      expect(mockUsePostDetail).toHaveBeenCalledWith('p1');
+      expect(mockOwnerPost).toHaveBeenLastCalledWith('p1', ownerPost);
+      expect(mockOpenManage).toHaveBeenCalledTimes(1);
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('waits for the listing to load before raising the sheet', async () => {
+      mockUsePostDetail.mockReturnValue({ status: 'loading', result: null, retry: jest.fn() });
+      const { getByTestId } = await render(<MyPostsScreen />);
+
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+
+      expect(mockOpenManage).not.toHaveBeenCalled();
+    });
+
+    it('says so when the listing cannot be loaded — the haptic was the only answer', async () => {
+      mockUsePostDetail.mockReturnValue({ status: 'error', result: null, retry: jest.fn() });
+      const { getByTestId } = await render(<MyPostsScreen />);
+
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+
+      expect(mockOpenManage).not.toHaveBeenCalled();
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      expect(mockToast).toHaveBeenCalledWith(
+        'We couldn’t open that listing. Please try again.',
+        'error',
+      );
+    });
+
+    // Deleted on another device, auto-deleted after 30 days, or moderated.
+    it('says a listing that has gone is not available, and refreshes the list', async () => {
+      const refresh = jest.fn();
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post], refresh });
+      mockUsePostDetail.mockReturnValue({
+        status: 'ready',
+        result: { kind: 'notFound' },
+        retry: jest.fn(),
+      });
+      const { getByTestId } = await render(<MyPostsScreen />);
+
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+
+      expect(mockOpenManage).not.toHaveBeenCalled();
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      expect(mockToast).toHaveBeenCalledWith('That listing isn’t available any more.', 'error');
+      expect(refresh).toHaveBeenCalled();
+    });
+
+    // Never replace a manager with a request in flight: the remount would drop
+    // its double-tap guard and the post-cancel delete offer.
+    it('refuses a new hold while the last action is still running', async () => {
+      mockUsePostDetail.mockImplementation((id: string) => ready({ ...ownerPost, id }));
+      const { getByTestId } = await render(<MyPostsScreen />);
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+      mockIsBusy.mockReturnValue(true);
+      mockOwnerPost.mockClear();
+
+      await fireEvent(getByTestId('card-p2'), 'longPress');
+
+      expect(mockOwnerPost).not.toHaveBeenCalledWith('p2', expect.anything());
+      expect(mockToast).toHaveBeenCalledWith('Just a moment — finishing your last change.');
+    });
+
+    it('a delete closes its manager and refreshes the list', async () => {
+      const refresh = jest.fn();
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [post], refresh });
+      mockUsePostDetail.mockReturnValue(ready(ownerPost));
+      const { getByTestId } = await render(<MyPostsScreen />);
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+      mockOwnerPost.mockClear();
+
+      await act(async () => {
+        mockOwnerProps?.onDeleted();
+      });
+
+      expect(refresh).toHaveBeenCalled();
+      expect(mockOwnerPost).not.toHaveBeenCalled(); // unmounted, not re-rendered
+    });
+
+    // A delete that finishes after the owner has moved on must not close the
+    // sheet they have opened since.
+    it('a late delete on one listing leaves the next listing’s sheet open', async () => {
+      mockUsePostDetail.mockImplementation((id: string) => ready({ ...ownerPost, id }));
+      const { getByTestId, rerender } = await render(<MyPostsScreen />);
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+      const firstOnDeleted = mockOwnerProps?.onDeleted;
+      await fireEvent(getByTestId('card-p2'), 'longPress');
+
+      await act(async () => {
+        firstOnDeleted?.();
+      });
+      // The stale delete changes nothing, so nothing re-renders by itself —
+      // force a render and see whether p2's manager is still there.
+      mockOwnerPost.mockClear();
+      await rerender(<MyPostsScreen />);
+
+      expect(mockOwnerPost).toHaveBeenLastCalledWith('p2', expect.anything());
+    });
+
+    it('holding again re-opens the sheet', async () => {
+      mockUsePostDetail.mockReturnValue({
+        status: 'ready',
+        result: { kind: 'visible', post: ownerPost },
+        retry: jest.fn(),
+      });
+      const { getByTestId } = await render(<MyPostsScreen />);
+
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+      await fireEvent(getByTestId('card-p1'), 'longPress');
+
+      expect(mockOpenManage).toHaveBeenCalledTimes(2);
+    });
   });
 
   // ADR-0019's second door: someone who has drifted away from a listing opens

@@ -2,7 +2,7 @@
  * WHAT:  Tests for useOpenOnArrival — opens once, only when ready, after the
  *        transition, and never again on a later re-render or reload.
  * WHY:   It drives the Manage sheet rising after a long-press on My listings.
- *        Opening on every reload (pull-to-refresh, each section edit) would
+ *        Opening on every reload (the 30s poll, each section edit) would
  *        fight the owner; opening for a non-owner is impossible only because
  *        the caller passes `ready=false` — pinned here as "not ready, no open".
  * LINKS: src/features/vehicles/hooks/useOpenOnArrival.ts, docs/TESTING.md.
@@ -67,7 +67,7 @@ describe('useOpenOnArrival', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
-  // Pull-to-refresh and every section edit reload the post; the sheet must
+  // The 30s poll and every section edit reload the post; the sheet must
   // not rise again each time.
   it('never opens a second time, even if `ready` drops and returns', async () => {
     const open = jest.fn();

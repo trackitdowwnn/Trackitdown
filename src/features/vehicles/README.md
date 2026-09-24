@@ -110,12 +110,20 @@ rounded-top sheet overlapping the hero.)
   the owner off the very post they were managing. Rows are built from the
   handlers the screen passes — an absent handler means an absent row, so the
   sheet can never offer an edit the server would reject.
-  - **Press and hold a card on My listings** (2026-09-24) opens the listing
-    with this sheet already up: `/post/<id>?manage=1` → `openManage` →
-    `useOpenOnArrival` (once, after the push transition; never again on a
-    reload or edit; a no-op for anyone but the owner, since the sheet only
-    mounts for them). Deliberately the REAL sheet on its own page rather than
-    a copy over the list, so every row stays the one tested implementation.
+  - **The sheet and everything behind it live in `PostOwnerActions`**
+    (2026-09-24): the sheet, the deactivate / delete-draft / delete-listing
+    confirms (and the delete offer after a clean cancel), the owner-denial
+    attestation, the section editors, send-the-reward. The listing page
+    drives it by ref (the bottom bar, the pencils, the body's deactivate
+    button); it renders nothing for a non-owner. The rules for which rows
+    show are in `lib/ownerPermissions.ts`, shared by both hosts. Mount it at
+    the host's ROOT — its overlays fill their parent.
+  - **Press and hold a card on My listings** raises that same sheet OVER
+    THE LIST (owner's call: no trip to the listing page). A light tick
+    answers the hold at once; a per-hold `ListingManager` loads the listing's
+    details (`usePostDetail` — the cards don't carry what the sheet needs)
+    and `useOpenOnArrival` raises the sheet once they're in. A failed load
+    toasts. Changes refresh the list; a delete removes the card.
     `VehicleCard` gained an opt-in `onLongPress` + `longPressLabel`, also
     exposed to screen readers as a named `longpress` action.
 

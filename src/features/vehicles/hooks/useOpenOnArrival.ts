@@ -1,14 +1,14 @@
 /**
  * WHAT:  useOpenOnArrival — run `open` exactly ONCE, the first time `ready`
  *        becomes true, after the screen's push transition has finished.
- * WHY:   A long-press on My listings lands on the post with `?manage=1`, and
- *        the owner's Manage sheet should rise by itself. "Once" matters: the
- *        post reloads on pull-to-refresh and after every section edit, and a
- *        sheet that re-opened on each of those would fight the owner.
- *        runAfterInteractions so the page settles before the sheet slides up,
- *        rather than the two animating over each other.
- * LINKS: src/features/vehicles/screens/PostDetailScreen.tsx (the caller);
- *        src/features/vehicles/screens/MyPostsScreen.tsx (the long-press).
+ * WHY:   A long-press on My listings raises the owner's Manage sheet as soon as
+ *        that listing's details have loaded. "Once" matters: the details
+ *        reload after every edit and on the 30s poll, and a sheet that
+ *        re-opened on each of those would fight the owner.
+ *        runAfterInteractions so anything still animating settles before the
+ *        sheet slides up, rather than the two animating over each other.
+ * LINKS: src/features/vehicles/screens/MyPostsScreen.tsx (ListingManager,
+ *        the caller).
  */
 
 import { useEffect, useRef } from 'react';

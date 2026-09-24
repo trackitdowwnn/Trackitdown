@@ -28,9 +28,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bookmark } from 'lucide-react-native';
 
 import { useRequireAuth } from '@/features/auth';
-import { exitCheck, useDeactivatePost } from '@/features/payments';
 import { useWatchToggle } from '@/features/watchlist';
-import { bountyParam, estimateRefundPence, formatPounds } from '@/shared/lib';
+import { bountyParam } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import {
@@ -42,24 +41,26 @@ import {
   HEADER_BAR_HEIGHT,
   ThemedRefreshControl,
   useToast,
-  type BottomSheetRef,
   type ConfirmDialogRef,
 } from '@/shared/ui';
 
 import { flagPost } from '../api/flagApi';
-import { RecoveryError, releasePayout } from '../api/recoveryApi';
-import { ExitAttestation } from '../components/ExitAttestation';
-import { PostSectionEditorHost, type EditableSection } from '../components/editors';
+import { type EditableSection } from '../components/editors';
 import { PostBottomBar } from '../components/PostBottomBar';
 import { PostDetailBody } from '../components/PostDetailBody';
 import { PostHero } from '../components/PostHero';
-import { PostManageSheet } from '../components/PostManageSheet';
+import { PostOwnerActions, type PostOwnerActionsHandle } from '../components/PostOwnerActions';
 import { StillMissingBanner } from '../components/StillMissingBanner';
-import { useOpenOnArrival } from '../hooks/useOpenOnArrival';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { useStillMissingAsk } from '../hooks/useStillMissingAsk';
 import { closedStateCopy } from '../lib/closedState';
+import {
+  canDeactivate,
+  canEditDraftSection,
+  canEditSafeSection,
+  canMarkRecovered,
+} from '../lib/ownerPermissions';
 import { buildSharePayload } from '../lib/postShare';
 import { StillMissingError } from '../lib/stillMissingError';
 import type { PostDetail, PostDetailResult } from '../types';
@@ -73,85 +74,9 @@ const FADE_TRAVEL = 48;
 
 export interface PostDetailScreenProps {
   postId: string;
-  /** Open the owner's "Manage your listing" sheet as soon as the listing has
-   *  loaded — the landing for a long-press on My listings. Ignored for anyone
-   *  but the owner (the sheet only exists for them). */
-  openManage?: boolean;
 }
 
-/** Photos, last-seen and the bounty are editable ONLY while the post is a draft:
- *  imagery and where the car was taken from must not move once the crowd is
- *  matching against them, and the bounty is frozen by escrow. The server enforces
- *  this too. */
-function canEditDraftSection(post: PostDetail): boolean {
-  return post.isOwner && post.status === 'draft';
-}
-/** The money-neutral sections — car details, theft context, distinctive features,
- *  description — stay editable once the post is LIVE. A wrong colour or model
- *  actively harms the search, and the details worth adding ("cracked nearside
- *  mirror", "keys were taken") are exactly what an owner remembers after people
- *  start looking; the alternative was deactivate + refund + repost, which costs
- *  the hours that matter most. Mirrors the four RPCs' status array
- *  (20260731100000_edit_safe_sections_when_live.sql,
- *  20260731110000_edit_car_details_when_live.sql); `pending_verification` is kept
- *  for posts predating live-on-payment. The PLATE is not editable by any of them.
- *  Server-enforced — this only decides whether the pencil shows. */
-function canEditSafeSection(post: PostDetail): boolean {
-  return (
-    post.isOwner &&
-    (post.status === 'draft' ||
-      post.status === 'pending_verification' ||
-      post.status === 'active')
-  );
-}
-/** The owner can deactivate + refund any PAID post — one whose bounty is held in
- *  escrow (active or pending_verification). A draft has nothing to refund. The
- *  server re-enforces this; the button is only convenience. */
-function canDeactivate(post: PostDetail): boolean {
-  return post.isOwner && (post.status === 'active' || post.status === 'pending_verification');
-}
-/**
- * The owner can DELETE an unpaid draft. A draft has no escrow to refund, so
- * its delete removes the ledger rows outright; a paid post keeps its money
- * record forever (see canDeletePost below — its delete detaches the ledger
- * rather than deleting it).
- *
- * Deliberately not `!canDeactivate(post)`: the statuses that are neither
- * (recovered, expired…) must offer nothing at all, and writing it as a
- * negation would quietly hand them a delete the server would refuse.
- */
-function canDeleteDraft(post: PostDetail): boolean {
-  return post.isOwner && post.status === 'draft';
-}
-/**
- * The owner can DELETE a cancelled post — the third mutually-exclusive
- * destructive action. "A paid listing can never be deleted" softened on
- * 2026-09-21 to "a paid listing's LEDGER can never be deleted": the server
- * detaches the money record and removes the post, and refuses while a refund
- * or dispute is still settling. A cancelled post left alone is deleted
- * automatically 30 days after it closed, so this button is "now", not "ever".
- * Server-enforced (delete_cancelled_post); this only decides what shows.
- */
-function canDeletePost(post: PostDetail): boolean {
-  return post.isOwner && post.status === 'cancelled';
-}
-/** The owner can mark an ACTIVE post recovered. Narrower than canDeactivate on
- *  purpose: `claim_recovery` accepts `active` and nothing else, so offering
- *  this on a pending_verification post would show a button that always fails. */
-function canMarkRecovered(post: PostDetail): boolean {
-  return post.isOwner && post.status === 'active';
-}
-/** A credited spotter is waiting to be paid. `recovery_claimed` means the winner
- *  is chosen and the bounty is still in escrow — usually because they have not
- *  given Stripe their details yet, which is the expected first answer, not a
- *  fault. Before this row existed the owner had NO action on such a listing:
- *  every other one requires `active`, so crediting someone made the app go
- *  silent on the post it cared most about. */
-function canReleasePayout(post: PostDetail): boolean {
-  return post.isOwner && post.status === 'recovery_claimed';
-}
-
-export function PostDetailScreen({ postId, openManage = false }: PostDetailScreenProps) {
+export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const router = useRouter();
@@ -160,34 +85,15 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
   const toast = useToast();
   const requireAuth = useRequireAuth();
   const flagRef = useRef<ConfirmDialogRef>(null);
-  // The owner's "Manage post" sheet and the ONE deactivate confirm — both the
-  // sheet's row and the body's button open the latter, so the destructive copy
-  // and the refund estimate exist in a single place.
-  const manageRef = useRef<BottomSheetRef>(null);
-  const deactivateRef = useRef<ConfirmDialogRef>(null);
-  const deleteDraftRef = useRef<ConfirmDialogRef>(null);
-  const deletePostRef = useRef<ConfirmDialogRef>(null);
-  // Guards a double-tap while the delete is in flight. The Edge Function cancels
-  // Stripe intents before deleting, so a second run mid-flight would race the
-  // first over rows it is already removing.
-  const [deleting, setDeleting] = useState(false);
-  // Raised by a CLEAN deactivation, consumed by the effect below: the delete
-  // offer can only open once the refetch shows the post as `cancelled`,
-  // because that is when its ConfirmDialog mounts. A ref + effect rather than
-  // a direct open() so the offer survives however long the refetch takes — a
-  // ref, not state, because consuming it must not itself schedule a render
-  // (react-hooks/set-state-in-effect).
-  const offerDeleteRef = useRef(false);
+  // Everything the OWNER can do — the Manage sheet, the deactivate / delete
+  // confirms, the attestation, the section editors — lives in PostOwnerActions
+  // (shared with the long-press sheet on My listings). This page drives it: the
+  // bottom bar's "Manage listing", the pencils, the body's deactivate button.
+  const ownerRef = useRef<PostOwnerActionsHandle>(null);
 
   const { status, result, retry, refreshing, refresh } = usePostDetail(postId);
 
-  // Which section the owner is editing (a full-screen overlay), or null. Cleared
-  // on cancel; on save it also refetches the detail so the change shows.
-  const [editing, setEditing] = useState<EditableSection | null>(null);
-  // Guards a double-tap on "Send the bounty". The transfer itself is idempotent
-  // server-side, so this is about not firing two requests, not about safety.
-  const [releasing, setReleasing] = useState(false);
-  // Same guard for "Yes, still missing" (ADR-0019).
+  // Guards a double-tap on "Yes, still missing" (ADR-0019).
   const [confirmingMissing, setConfirmingMissing] = useState(false);
 
   const heroHeight = Math.round(width * HERO_RATIO);
@@ -205,14 +111,6 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
   });
 
   const visiblePost = status === 'ready' && result?.kind === 'visible' ? result.post : null;
-
-  // Arrived by long-pressing this listing on My listings: open the Manage sheet
-  // once, the first time the owner's listing is on screen. The sheet itself only
-  // mounts for the owner, so a stale or forged `manage` param does nothing for
-  // anyone else.
-  useOpenOnArrival(openManage && visiblePost?.isOwner === true, () =>
-    manageRef.current?.open(),
-  );
 
   // The ADR-0019 liveness ask. Only ever open on the owner's own live listing —
   // the RPC is scoped to auth.uid() and status='active', so a spotter's copy of
@@ -235,17 +133,6 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
     }
   }, [visiblePost, postId]);
 
-  // The post-cancel delete offer ("If a user cancels a post they should have
-  // an option that comes up to delete it"). Fires once, only after the
-  // deactivation's refetch has landed — that render is what mounts the delete
-  // confirm, so the ref is live by the time this effect runs.
-  useEffect(() => {
-    if (offerDeleteRef.current && visiblePost && canDeletePost(visiblePost)) {
-      offerDeleteRef.current = false;
-      deletePostRef.current?.open();
-    }
-  }, [visiblePost]);
-
   const onShare = useCallback((post: PostDetail) => {
     // ⚠️ SPREAD, don't pass `url` as undefined. There is no website yet, so
     // buildSharePayload omits the key entirely; handing iOS `{ url: undefined }`
@@ -259,10 +146,6 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
   // Header watch toggle: AppHeaderButton chrome (matches share, rides the
   // header's scroll fade) with the shared toggle behaviour underneath.
   const watch = useWatchToggle(postId, 'detail');
-
-  // Deactivate + refund (owner, paid posts). The hook wraps the Edge Function
-  // call; the confirm step lives in PostDetailBody.
-  const { deactivate, pending: deactivating } = useDeactivatePost();
 
   const onFlagConfirm = useCallback(async () => {
     // Records a durable, attributable flag (post_flags) for moderator review.
@@ -302,14 +185,6 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
     },
     [postId, requireAuth, router],
   );
-
-  const onViewSightings = useCallback(() => {
-    router.push({ pathname: '/post-sightings', params: { postId } });
-  }, [postId, router]);
-
-  const onViewStats = useCallback(() => {
-    router.push({ pathname: '/post-stats', params: { postId } });
-  }, [postId, router]);
 
   const onShowAbout = useCallback(() => {
     router.push({ pathname: '/post-about', params: { postId } });
@@ -363,188 +238,12 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
   );
 
   const onManage = useCallback(() => {
-    // "Manage post" opens the owner's action sheet for THIS listing. It used to
-    // push /my-posts, which bounced the owner off the very post they were
-    // managing onto a list containing it — a dead end.
-    manageRef.current?.open();
+    // "Manage listing" opens the owner's action sheet for THIS listing (in
+    // PostOwnerActions). It used to push /my-posts, which bounced the owner off
+    // the very post they were managing onto a list containing it — a dead end.
+    ownerRef.current?.openManage();
   }, []);
-
-  // The owner-denial attestation (DOMAIN.md Disputes): when the server says
-  // recent uncredited sightings exist, deactivation detours through a look at
-  // exactly those sightings before any refund can be held.
-  const [attestation, setAttestation] = useState<{
-    sightingIds: string[];
-    holdHours: number;
-  } | null>(null);
-
-  // What the deactivate toast says. The server returns the EXACT refunded
-  // amount, and for a no-reward listing that amount is 0 — its fixed fee is not
-  // refundable (ADR-0014). "£0 refunded" would read as a failed refund rather
-  // than as a listing that never had one, so the zero case gets its own sentence
-  // instead of being formatted like money that moved.
-  const deactivatedToast = (refundedPence: number) =>
-    refundedPence > 0
-      ? `Listing deactivated — ${formatPounds(refundedPence)} refunded`
-      : 'Listing deactivated';
-
-  // Deactivate + refund. The confirm already fired (the dialog below); this
-  // issues the server refund, toasts the EXACT refunded amount, and refetches so
-  // the post now reads "Cancelled" and drops off public surfaces.
-  const onDeactivate = useCallback(async () => {
-    if (deactivating) {
-      return; // guard a double-tap while the refund is in flight
-    }
-    const result = await deactivate(postId);
-    if (result.outcome === 'done') {
-      toast.show(deactivatedToast(result.result.refundedPence));
-      retry();
-      // A clean cancel is the one moment the delete offer is asked for
-      // unprompted (the effect above opens it once the refetch shows
-      // `cancelled`). NOT on 'held': that refund is still in flight, and the
-      // server would refuse the delete anyway.
-      offerDeleteRef.current = true;
-    } else if (result.outcome === 'held') {
-      // Reachable only if sightings appeared between the pre-flight and now.
-      toast.show(heldToast(result.refundAfter));
-      retry();
-    } else {
-      toast.show(result.message, 'error');
-    }
-  }, [deactivate, deactivating, postId, retry, toast]);
-
-  // Delete an unpaid draft, for good. The confirm has already fired.
-  //
-  // Routes AWAY on success rather than refetching, unlike every other action
-  // here: there is no post left to refetch, and leaving the owner on the detail
-  // screen of something that no longer exists would show them an error for
-  // having succeeded.
-  const onDeleteDraft = useCallback(async () => {
-    if (deleting) return;
-    setDeleting(true);
-    try {
-      const { deleteDraft } = await import('../api/draftApi');
-      await deleteDraft(postId);
-      toast.show('Draft deleted');
-      router.replace('/my-posts');
-    } catch (error) {
-      // The api maps every server code to copy a person can act on — including
-      // the two that must NOT say "try again": money that moved, and a payment
-      // still settling.
-      toast.show(
-        error instanceof Error && error.message
-          ? error.message
-          : 'We couldn’t delete that draft. Please try again.',
-        'error',
-      );
-    } finally {
-      setDeleting(false);
-    }
-  }, [deleting, postId, router, toast]);
-
-  // Delete a cancelled post, for good. The confirm has already fired — either
-  // the offer that follows a clean cancel, or the manage sheet's row on a post
-  // cancelled some other day. Routes away on success for the same reason the
-  // draft delete does: there is nothing left to refetch.
-  const onDeletePost = useCallback(async () => {
-    if (deleting) return;
-    setDeleting(true);
-    try {
-      const { deleteCancelledPost } = await import('../api/deletePostApi');
-      await deleteCancelledPost(postId);
-      toast.show('Listing deleted');
-      router.replace('/my-posts');
-    } catch (error) {
-      // The api maps every server code to copy a person can act on — including
-      // the three that must NOT say "try again": a refund still settling, a
-      // dispute in review, and a payout review.
-      toast.show(
-        error instanceof Error && error.message
-          ? error.message
-          : 'We couldn’t delete that post. Please try again.',
-        'error',
-      );
-    } finally {
-      setDeleting(false);
-    }
-  }, [deleting, postId, router, toast]);
-
-  // The attested exit: same call, carrying exactly what the owner was shown.
-  const onAttestedDeactivate = useCallback(
-    async (attestedSightingIds: string[]) => {
-      if (deactivating) {
-        return;
-      }
-      const result = await deactivate(postId, attestedSightingIds);
-      if (result.outcome === 'held') {
-        setAttestation(null);
-        toast.show(heldToast(result.refundAfter));
-        retry();
-      } else if (result.outcome === 'done') {
-        // The trigger set emptied server-side (sightings aged out) — the
-        // refund simply went through. A clean cancel, so the delete offer
-        // applies here exactly as in onDeactivate.
-        setAttestation(null);
-        toast.show(deactivatedToast(result.result.refundedPence));
-        retry();
-        offerDeleteRef.current = true;
-      } else if (result.code === 'ATTESTATION_STALE') {
-        // A sighting landed mid-confirm. Refresh the set and ask again.
-        toast.show(result.message, 'error');
-        try {
-          const check = await exitCheck(postId);
-          setAttestation(
-            check.requiresAttestation
-              ? { sightingIds: check.sightingIds, holdHours: check.holdHours }
-              : null,
-          );
-        } catch (err) {
-          // ⚠️ SILENT UNTIL 2026-09-02, and this is the branch that DROPS an
-          // attestation requirement. The server re-checks on the next attempt,
-          // so nothing is bypassed — but the owner is handed a clean sheet
-          // after being told to attest, and until now no trace of that existed
-          // anywhere. Matches the pre-flight's log below.
-          log.warn('exit_check refresh failed, attestation cleared', {
-            postId,
-            code: err instanceof Error ? err.message : 'UNKNOWN',
-          });
-          setAttestation(null);
-        }
-      } else {
-        toast.show(result.message, 'error');
-      }
-    },
-    [deactivate, deactivating, postId, retry, toast],
-  );
-
-  // Both deactivate entry points (the body's button, the manage sheet's row)
-  // land here. The pre-flight decides which door: recent sightings → the
-  // attestation; none → the plain destructive confirm, exactly as before.
-  // A failed pre-flight opens the plain confirm — enforcement is the SERVER's
-  // (the gate re-checks), so degrading here costs honesty nothing.
-  const requestDeactivate = useCallback(() => {
-    void (async () => {
-      // SKIPPED on a no-reward listing (ADR-0014): `exit_check` is purely
-      // sighting-based and knows nothing about pricing, so it would open
-      // ExitAttestation — "one thing before your refund", "your refund is sent
-      // after N hours" — for a listing that has no refund and gets no hold.
-      // deactivate-post already returns before the owner-denial gate for these,
-      // so the sheet only ever asked a victim to attest under a false premise.
-      if (visiblePost?.bountyPence !== null) {
-        try {
-          const check = await exitCheck(postId);
-          if (check.requiresAttestation) {
-            setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
-            return;
-          }
-        } catch (err) {
-          log.warn('exit_check pre-flight failed', {
-            code: err instanceof Error ? err.message : 'UNKNOWN',
-          });
-        }
-      }
-      deactivateRef.current?.open();
-    })();
-  }, [postId, visiblePost]);
+  const edit = (section: EditableSection) => ownerRef.current?.edit(section);
 
   // No confirm dialog here, unlike deactivate: the recovery screen IS the
   // confirmation, and it asks something a yes/no cannot — WHICH sighting. A
@@ -588,38 +287,6 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
       setConfirmingMissing(false);
     }
   }, [confirmStillMissing, confirmingMissing, toast]);
-
-  // Retrying a payout. Idempotent server-side (one transfer per post, forever),
-  // so this needs no confirm — and `awaiting_payee` is reported as news rather
-  // than as a failure, because it is: the spotter simply has not onboarded yet.
-  const onReleasePayout = useCallback(async () => {
-    if (releasing) {
-      return;
-    }
-    setReleasing(true);
-    try {
-      const payout = await releasePayout(postId);
-      if (payout.status === 'paid' && payout.transferPence !== null) {
-        toast.show(`Sent. ${formatPounds(payout.transferPence)} is on its way to them.`);
-        retry(); // the post is `recovered` now — reload so the screen agrees
-      } else if (payout.status === 'held_for_review') {
-        // Ours, not theirs: never the bank-details line here, or the owner
-        // chases the spotter about a delay we caused on purpose.
-        toast.show('We’re just double-checking this payout — no need to do anything.');
-      } else {
-        toast.show(
-          'Not yet — they still need to add their bank details. It’ll send automatically when they do.',
-        );
-      }
-    } catch (error) {
-      toast.show(
-        error instanceof RecoveryError ? error.message : 'We couldn’t send it. Please try again.',
-        'error',
-      );
-    } finally {
-      setReleasing(false);
-    }
-  }, [postId, releasing, retry, toast]);
 
   const onOpenMap = useCallback(
     (post: PostDetail) => {
@@ -707,30 +374,30 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
                 similarPosts={similar.posts}
                 similarLoading={similar.status === 'loading'}
                 onOpenPost={(next) => router.push(`/post/${next.id}`)}
+                // The pencils and the deactivate button drive PostOwnerActions
+                // below — the same editors and confirms the Manage sheet uses.
                 onEditCarDetails={
-                  canEditSafeSection(result.post) ? () => setEditing('car_details') : undefined
+                  canEditSafeSection(result.post) ? () => edit('car_details') : undefined
                 }
-                onEditPhotos={
-                  canEditDraftSection(result.post) ? () => setEditing('photos') : undefined
-                }
+                onEditPhotos={canEditDraftSection(result.post) ? () => edit('photos') : undefined}
                 onEditLastSeen={
-                  canEditDraftSection(result.post) ? () => setEditing('last_seen') : undefined
+                  canEditDraftSection(result.post) ? () => edit('last_seen') : undefined
                 }
-                onEditBounty={
-                  canEditDraftSection(result.post) ? () => setEditing('bounty') : undefined
-                }
+                onEditBounty={canEditDraftSection(result.post) ? () => edit('bounty') : undefined}
                 onEditDescription={
-                  canEditSafeSection(result.post) ? () => setEditing('description') : undefined
+                  canEditSafeSection(result.post) ? () => edit('description') : undefined
                 }
                 onEditTheftContext={
-                  canEditSafeSection(result.post) ? () => setEditing('theft_context') : undefined
+                  canEditSafeSection(result.post) ? () => edit('theft_context') : undefined
                 }
                 onEditDistinctiveFeatures={
-                  canEditSafeSection(result.post)
-                    ? () => setEditing('distinctive_features')
+                  canEditSafeSection(result.post) ? () => edit('distinctive_features') : undefined
+                }
+                onDeactivate={
+                  canDeactivate(result.post)
+                    ? () => ownerRef.current?.requestDeactivate()
                     : undefined
                 }
-                onDeactivate={canDeactivate(result.post) ? requestDeactivate : undefined}
                 onRecovered={canMarkRecovered(result.post) ? onRecovered : undefined}
               />
             </View>
@@ -793,163 +460,20 @@ export function PostDetailScreen({ postId, openManage = false }: PostDetailScree
         onConfirm={onFlagConfirm}
       />
 
-      {/* The owner's "Manage post" sheet — every action for THIS listing in one
-          place. Each edit row is passed only when its section is editable, so
-          the sheet can never offer something the server would reject. */}
-      {visiblePost?.isOwner ? (
-        <PostManageSheet
-          ref={manageRef}
-          sightingCount={visiblePost.sightingCount}
-          onViewSightings={onViewSightings}
-          onViewStats={onViewStats}
-          onShare={() => onShare(visiblePost)}
-          onEditCarDetails={
-            canEditSafeSection(visiblePost) ? () => setEditing('car_details') : undefined
-          }
-          onEditPhotos={canEditDraftSection(visiblePost) ? () => setEditing('photos') : undefined}
-          onEditLastSeen={
-            canEditDraftSection(visiblePost) ? () => setEditing('last_seen') : undefined
-          }
-          onEditBounty={canEditDraftSection(visiblePost) ? () => setEditing('bounty') : undefined}
-          onEditDescription={
-            canEditSafeSection(visiblePost) ? () => setEditing('description') : undefined
-          }
-          onEditTheftContext={
-            canEditSafeSection(visiblePost) ? () => setEditing('theft_context') : undefined
-          }
-          onEditDistinctiveFeatures={
-            canEditSafeSection(visiblePost) ? () => setEditing('distinctive_features') : undefined
-          }
-          onDeactivate={canDeactivate(visiblePost) ? requestDeactivate : undefined}
-          onDeleteDraft={
-            canDeleteDraft(visiblePost) ? () => deleteDraftRef.current?.open() : undefined
-          }
-          onDeletePost={
-            canDeletePost(visiblePost) ? () => deletePostRef.current?.open() : undefined
-          }
-          onReleasePayout={
-            canReleasePayout(visiblePost) ? () => void onReleasePayout() : undefined
-          }
-        />
-      ) : null}
-
-      {/* The ONE deactivate confirm — destructive, opened by the body's button
-          and the manage sheet's row alike. The refund figure is an estimate; the
-          exact amount is confirmed in the toast after the server refunds. */}
-      {visiblePost && canDeactivate(visiblePost) ? (
-        <ConfirmDialog
-          ref={deactivateRef}
-          title="Deactivate this listing?"
-          body={
-            visiblePost.bountyPence === null
-              ? // No bounty means no refund, and the listing fee is not
-                // refundable (ADR-0014). The destructive confirm must not
-                // promise money back that is not coming.
-                'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.'
-              : `We’ll take it down and refund about ${formatPounds(
-                  estimateRefundPence(visiblePost.bountyPence),
-                )} to your card — the reward minus the non-recoverable card fee. This can’t be undone.`
-          }
-          confirmLabel="Yes, deactivate"
-          destructive
-          onConfirm={onDeactivate}
-        />
-      ) : null}
-
-      {/* The delete confirm. Says "permanently" and "can't be undone" in the
-          body rather than softening it: there is no tombstone, no undo and no
-          support route back — the row is gone. The only reason it can be this
-          blunt is that a draft has been seen by nobody but its owner.
-
-          It does NOT mention payment. A draft may carry an abandoned
-          PaymentIntent, but that is the Edge Function's problem to cancel, and
-          raising it here would make an owner deleting a form think they were
-          about to lose money. If money HAS moved, the server refuses and the
-          error explains it — which is the right moment for that sentence. */}
-      {visiblePost && canDeleteDraft(visiblePost) ? (
-        <ConfirmDialog
-          ref={deleteDraftRef}
-          title="Delete this draft?"
-          body="This deletes it for good. Nobody has seen it and nothing has been charged. This can’t be undone."
-          confirmLabel="Yes, delete"
-          destructive
-          onConfirm={onDeleteDraft}
-        />
-      ) : null}
-
-      {/* The ONE cancelled-post delete confirm — opened by the offer that
-          follows a clean deactivation AND by the manage sheet's row, so the
-          copy lives in a single place, like the deactivate confirm above.
-          "Keep it" (not "Cancel") because in the post-cancel moment the
-          question is genuinely either/or, and both answers are fine — the body
-          says so by naming the 30-day cleanup rather than pretending keeping
-          it is forever. It does NOT mention money: by the time this post is
-          deletable the refund story is already finished, and if it is not,
-          the server refuses with the sentence that explains it. */}
-      {visiblePost && canDeletePost(visiblePost) ? (
-        <ConfirmDialog
-          ref={deletePostRef}
-          title="Delete this listing?"
-          body="This deletes the listing and its sighting history for good. If you keep it, it stays in My listings and is deleted automatically after 30 days. This can’t be undone."
-          confirmLabel="Yes, delete"
-          cancelLabel="Keep it"
-          destructive
-          onConfirm={onDeletePost}
-        />
-      ) : null}
-
-      {/* Per-section edit overlay — mounts full-screen over the detail when the
-          owner taps a pencil; on save it refetches so the change shows. */}
-      {editing && visiblePost ? (
-        <PostSectionEditorHost
-          section={editing}
-          post={visiblePost}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            retry();
-          }}
-        />
-      ) : null}
-
-      {/* The owner-denial attestation — full-screen and OPAQUE (the transparent
-          Modal bleed-through lesson), mounted over everything when the exit
-          pre-flight found recent sightings. */}
-      {attestation ? (
-        <View style={[styles.attestationOverlay, { paddingTop: insets.top + spacing.lg }]}>
-          <ExitAttestation
-            postId={postId}
-            sightingIds={attestation.sightingIds}
-            holdHours={attestation.holdHours}
-            busy={deactivating}
-            onConfirm={(ids) => void onAttestedDeactivate(ids)}
-            onCredit={() => {
-              setAttestation(null);
-              // Crediting IS the recovery flow — it already knows how to ask
-              // which sighting and to move the money the right way. Carries the
-              // pricing mode for the same reason as onRecovered above.
-              router.push({
-                pathname: '/recover-post',
-                params: visiblePost
-                  ? { postId, bounty: bountyParam(visiblePost.bountyPence) }
-                  : { postId },
-              });
-            }}
-            onCancel={() => setAttestation(null)}
-          />
-        </View>
-      ) : null}
+      {/* Everything the owner can do — the Manage sheet, the deactivate /
+          delete confirms (including the delete offer after a clean cancel),
+          the section editors and the attestation. Renders nothing for anyone
+          but the owner. At the ROOT on purpose: its overlays fill their parent.
+          A delete leaves nothing to show here, so it lands on My listings. */}
+      <PostOwnerActions
+        ref={ownerRef}
+        postId={postId}
+        post={visiblePost}
+        refresh={retry}
+        onDeleted={() => router.replace('/my-posts')}
+      />
     </View>
   );
-}
-
-/** The one sentence for a held refund, with the real date in it. */
-function heldToast(refundAfter: string): string {
-  const date = new Date(refundAfter);
-  const when = Number.isNaN(date.getTime())
-    ? 'the 72-hour window'
-    : date.toLocaleString('en-GB', { weekday: 'long', hour: 'numeric', minute: '2-digit' });
-  return `Listing deactivated. Your refund is sent after ${when}, unless a sighting is contested.`;
 }
 
 /** Graceful copy for a post a viewer can't (or no longer can) see. */
@@ -1053,16 +577,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     height: typography.heading.lineHeight,
     flex: 1,
     maxWidth: '55%',
-  },
-  attestationOverlay: {
-    // Explicit insets, not absoluteFillObject (typecheck) — and an OPAQUE
-    // background: money copy must never render over half-visible content.
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: c.background,
-    padding: spacing.xl,
   },
 });

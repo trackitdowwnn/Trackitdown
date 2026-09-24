@@ -13,7 +13,8 @@
  *        owner to the crediting flow instead. Most owners are honest; the
  *        attestation's job is to make the honest path the easy one at the
  *        exact moment a lazy tap would have stiffed a spotter.
- * LINKS: ../screens/PostDetailScreen.tsx (deactivate entry);
+ * LINKS: ./PostOwnerActions.tsx (deactivate entry — the listing page and the
+ *          My listings long-press sheet);
  *        ../screens/RecoverPostScreen.tsx ("found it another way" entry);
  *        src/features/payments (exitCheck — the server-named set);
  *        supabase/functions/_shared/refundHold.ts (what enforces this);
