@@ -110,9 +110,6 @@ export const sizes = {
   /** SurfaceTabs' active-tab underline — a drawn stroke sitting ON the row's
    *  hairline, so it must read as deliberate ink rather than a thick border. */
   surfaceTabUnderline: 2,
-  /** The needs-attention accent bar on notification-center rows — a drawn
-   *  stroke, like timelineRailStroke, not a spacing value. */
-  attentionBar: 3,
   /** Skeleton-placeholder line height — a drawn dimension, not a spacing gap. */
   skeletonLine: 12,
   /** Embedded map picker height (e.g. the post-a-car "last seen where" step). */
@@ -285,17 +282,9 @@ export const sizes = {
    *  thing it stands in for is a fixed-ish string ("2h ago", "just now") and a
    *  percentage would make it grow with the screen, which timestamps do not. */
   skeletonTimeBar: 40,
-  /**
-   * The needs-attention mark beside its label on a notification row, and the
-   * stroke of that ring.
-   *
-   * ⚠️ ITS OWN TOKENS rather than borrowing `progressDot` (a wizard header) and
-   * `timelineDotStroke` (sighting-timeline geometry). Same reason `carTile` is
-   * not `avatarLg`: a shared number is not a shared meaning, and the day a
-   * wizard's progress dot changes size is not the day this ring should.
-   */
-  attentionRing: 8,
-  attentionRingStroke: 1.5,
+  // (attentionBar / attentionRing / attentionRingStroke went on 2026-09-24
+  // with the notification row's amber bar and ring — the minimal pass kept
+  // only the errand's words.)
   /**
    * The unread badge's slot on an inbox row — a FIXED width, not a minimum.
    * Wide enough for the "9+" pill (16pt minimum + spacing.xs either side plus
