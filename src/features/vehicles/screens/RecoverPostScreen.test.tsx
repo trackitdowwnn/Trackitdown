@@ -263,12 +263,16 @@ describe('finishing an interrupted refund (resume, 2026-09-25)', () => {
       windowDays: 14,
       holdHours: 72,
     });
-    const { getByText } = await act(async () =>
+    const { getByText, queryByText } = await act(async () =>
       render(<RecoverPostScreen postId="p1" bountyPence={50000} resume />),
     );
     await pressConfirm(getByText);
     expect(mockClaim).not.toHaveBeenCalled();
     expect(mockRefund).not.toHaveBeenCalled(); // waiting on the attestation
+    // The claim can't be redone with a spotter, so no button that leads to an
+    // empty list — the owner is told where to go instead.
+    expect(queryByText('One of these did help')).toBeNull();
+    expect(getByText(/Report a bug/)).toBeTruthy();
   });
 });
 

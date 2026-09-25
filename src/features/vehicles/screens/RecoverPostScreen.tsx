@@ -127,6 +127,9 @@ export function RecoverPostScreen({ postId, bountyPence, resume = false }: Recov
   const [attestation, setAttestation] = useState<{
     sightingIds: string[];
     holdHours: number;
+    /** claimedRef, snapshotted when the attestation opened (a ref can't be
+     *  read during render) — decides whether "One of these did help" shows. */
+    claimed: boolean;
   } | null>(null);
   // Resuming means the claim ALREADY landed — claiming again would fail
   // (claim_recovery accepts `active` only), so the refund path starts after it.
@@ -195,7 +198,11 @@ export function RecoverPostScreen({ postId, bountyPence, resume = false }: Recov
           try {
             const check = await exitCheck(postId);
             if (check.requiresAttestation) {
-              setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
+              setAttestation({
+                sightingIds: check.sightingIds,
+                holdHours: check.holdHours,
+                claimed: claimedRef.current,
+              });
               return;
             }
           } catch (err) {
@@ -314,7 +321,11 @@ export function RecoverPostScreen({ postId, bountyPence, resume = false }: Recov
           try {
             const check = await exitCheck(postId);
             if (check.requiresAttestation) {
-              setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
+              setAttestation({
+                sightingIds: check.sightingIds,
+                holdHours: check.holdHours,
+                claimed: claimedRef.current,
+              });
               return;
             }
             await finishNoSpotter();
@@ -351,11 +362,17 @@ export function RecoverPostScreen({ postId, bountyPence, resume = false }: Recov
           busy={submitting}
           onConfirm={(ids) => void submitAttested(ids)}
           // "One of these did help" — back to the list, where crediting one
-          // is exactly what this screen already does best.
-          onCredit={() => {
-            setAttestation(null);
-            setSelected(null);
-          }}
+          // is exactly what this screen already does best. Not once the claim
+          // has landed (resume, or a refund that failed after it): the list
+          // can't credit anyone then, so the attestation says where to go.
+          onCredit={
+            attestation.claimed
+              ? undefined
+              : () => {
+                  setAttestation(null);
+                  setSelected(null);
+                }
+          }
           onCancel={() => setAttestation(null)}
         />
       </Screen>
