@@ -146,6 +146,12 @@ export function MySightingsScreen() {
     [router],
   );
 
+  // A credited report's reward line opens Earnings (2026-09-25).
+  const openEarnings = useCallback(() => {
+    log.info('earnings_opened_from_reports');
+    router.push('/payouts');
+  }, [router]);
+
   /**
    * Opening the car a report was about (review #16 — this screen was a dead
    * end: a verdict, and nowhere to go with it).
@@ -156,12 +162,6 @@ export function MySightingsScreen() {
    * reached. The rule lives in `my_sighting_record`, which is the authority;
    * two places deciding would be two places to get it wrong.
    */
-  // A credited report's reward line opens Earnings (2026-09-25).
-  const openEarnings = useCallback(() => {
-    log.info('earnings_opened_from_reports');
-    router.push('/payouts');
-  }, [router]);
-
   const openPost = useCallback(
     (postId: string) => {
       log.info('post_opened_from_reports');

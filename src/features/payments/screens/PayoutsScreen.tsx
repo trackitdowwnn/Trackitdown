@@ -727,6 +727,9 @@ export function PayoutsScreen() {
         return <PayoutsSkeleton />;
       }
       if (pendingCreditPence === null) {
+        // The earnings list above already says what there is — "No rewards
+        // yet" under it would contradict it (ui-review 2026-09-25).
+        if (earnings && earnings.items.length > 0) return null;
         return (
           // Reached from the Profile row, which is ALWAYS shown since
           // 2026-09-25 — so this is most people's first sight of the screen.

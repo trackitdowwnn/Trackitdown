@@ -59,11 +59,15 @@ function carLabel(car: Earning['car']): string {
   return words.length > 0 ? words : 'A car you reported';
 }
 
-/** "£500 paid · £300 on the way" — only the parts that are not zero. */
+/**
+ * "£500 paid · £300 not paid yet" — only the parts that are not zero. NOT
+ * "on the way": pending includes rewards waiting on bank details or a check,
+ * which are not moving yet (ui-review 2026-09-25).
+ */
 export function totalsLine(totals: Earnings['totals']): string | null {
   const parts = [
     totals.paidPence > 0 ? `${formatPounds(totals.paidPence)} paid` : null,
-    totals.pendingPence > 0 ? `${formatPounds(totals.pendingPence)} on the way` : null,
+    totals.pendingPence > 0 ? `${formatPounds(totals.pendingPence)} not paid yet` : null,
   ].filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(' · ') : null;
 }

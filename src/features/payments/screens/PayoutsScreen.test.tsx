@@ -258,6 +258,26 @@ describe('what each state says', () => {
     expect(queryByTestId('payouts-earned')).toBeNull();
   });
 
+  it('never says "No rewards yet" under a list of rewards', async () => {
+    mockPendingCredit.mockResolvedValue(null);
+    mockEarnings.mockResolvedValue({
+      items: [
+        {
+          sightingId: 'bbbbbbbb-0000-0000-0000-00000000000b',
+          car: { make: 'BMW', colour: 'Black' },
+          state: 'being_checked',
+          rewardPence: 50000,
+          paidPence: null,
+          paidAt: null,
+        },
+      ],
+      totals: { paidPence: 0, pendingPence: 50000 },
+    });
+    const { getByTestId, queryByText } = await act(async () => render(<PayoutsScreen />));
+    expect(getByTestId('earnings-list')).toBeTruthy();
+    expect(queryByText('No rewards yet')).toBeNull();
+  });
+
   it('tells someone mid-way that their progress is saved', async () => {
     mockAccountState = { status: 'unfinished', settling: false };
     const { getByText } = await act(async () => render(<PayoutsScreen />));
@@ -617,7 +637,7 @@ describe('your rewards (2026-09-25)', () => {
 
     expect(getByText('Earnings')).toBeTruthy();
     expect(getByTestId('earnings-list')).toBeTruthy();
-    expect(getByText('£500 paid · £300 on the way')).toBeTruthy();
+    expect(getByText('£500 paid · £300 not paid yet')).toBeTruthy();
     expect(getByText('Blue Ford')).toBeTruthy();
     // ⚠️ No reason, no outcome — a pending and a rejected review read the same.
     expect(getByText('Being checked — nothing you need to do')).toBeTruthy();

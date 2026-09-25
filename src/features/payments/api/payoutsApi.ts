@@ -247,19 +247,26 @@ export async function submitPayoutTokens(tokens: {
 export const EARNING_STATES = ['add_details', 'verifying', 'being_checked', 'on_its_way', 'paid'] as const;
 export type EarningState = (typeof EARNING_STATES)[number];
 
-const earningsSchema = z.object({
-  items: z.array(
-    z.object({
-      sightingId: z.guid(),
-      car: z.object({ make: z.string(), colour: z.string() }),
-      state: z.enum(EARNING_STATES),
-      rewardPence: z.number().int(),
-      paidPence: z.number().int().nullable(),
-      paidAt: z.string().nullable(),
-    }),
-  ),
-  totals: z.object({ paidPence: z.number().int(), pendingPence: z.number().int() }),
-});
+// `.strict()` throughout: my_earnings promises never to return a post id,
+// owner, plate or location, and a field appearing here should fail loudly
+// rather than be silently carried (security-review L4, 2026-09-25).
+const earningsSchema = z
+  .object({
+    items: z.array(
+      z
+        .object({
+          sightingId: z.guid(),
+          car: z.object({ make: z.string(), colour: z.string() }).strict(),
+          state: z.enum(EARNING_STATES),
+          rewardPence: z.number().int(),
+          paidPence: z.number().int().nullable(),
+          paidAt: z.string().nullable(),
+        })
+        .strict(),
+    ),
+    totals: z.object({ paidPence: z.number().int(), pendingPence: z.number().int() }).strict(),
+  })
+  .strict();
 
 export type Earnings = z.infer<typeof earningsSchema>;
 export type Earning = Earnings['items'][number];
