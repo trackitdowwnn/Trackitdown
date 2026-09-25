@@ -85,7 +85,7 @@ describe('states', () => {
     expect(getByTestId('unread-n-1')).toBeTruthy();
   });
 
-  it('keeps the attention bar on unread needs-attention kinds only', async () => {
+  it('shows the errand on unread needs-attention kinds only', async () => {
     mockFetch.mockResolvedValue([
       rowFixture({ id: 'n-credited', kind: 'credited', payload: { type: 'credited', postId: POST_ID } }),
       rowFixture({
@@ -106,20 +106,20 @@ describe('states', () => {
     expect(queryByTestId('attention-n-alert')).toBeNull();
   });
 
-  it('⚠️ says WHAT needs doing, not just that something does', async () => {
-    // The bar alone was status encoded as colour — forbidden outright by the
-    // design system, and unreadable besides: a 3pt stripe cannot say "your
-    // money is waiting on bank details". The words are the fix; the bar stays
-    // as the peripheral cue.
+  it('⚠️ says WHAT needs doing, in the preview’s place', async () => {
+    // The minimal pass (2026-09-24) took the amber bar and ring, but the words
+    // stay: a spotter who never adds bank details never gets paid. The row
+    // keeps to two lines by putting the errand where the preview goes.
     mockFetch.mockResolvedValue([
       rowFixture({ id: 'n-credited', kind: 'credited', payload: { type: 'credited', postId: POST_ID } }),
     ]);
-    const { getByText } = await act(async () => render(<NotificationCenterScreen />));
+    const { getByText, queryByText } = await act(async () => render(<NotificationCenterScreen />));
 
     expect(getByText('Add your bank details')).toBeTruthy();
+    expect(queryByText('Keep an eye out — never approach.')).toBeNull();
   });
 
-  it('drops the label once the row is read, exactly as the bar does', async () => {
+  it('gives the preview back once the row is read', async () => {
     mockFetch.mockResolvedValue([
       rowFixture({
         id: 'n-read-credited',
@@ -128,9 +128,16 @@ describe('states', () => {
         readAt: new Date().toISOString(),
       }),
     ]);
-    const { queryByText } = await act(async () => render(<NotificationCenterScreen />));
+    const { getByText, queryByText } = await act(async () => render(<NotificationCenterScreen />));
 
     expect(queryByText('Add your bank details')).toBeNull();
+    expect(getByText('Keep an eye out — never approach.')).toBeTruthy();
+  });
+
+  it('keeps an ordinary row to a one-line preview', async () => {
+    const { getByText } = await act(async () => render(<NotificationCenterScreen />));
+
+    expect(getByText('Keep an eye out — never approach.').props.numberOfLines).toBe(1);
   });
 
   it('leads with the car’s photo when the server sent one', async () => {

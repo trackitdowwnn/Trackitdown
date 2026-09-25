@@ -1,13 +1,14 @@
 /**
- * WHAT:  One notification feed row — icon in a round tile, title, body (2
- *        lines max), the needs-attention label, and a trailing column holding
- *        the date stamp over the unread badge.
+ * WHAT:  One notification feed row — icon (or the car) in a round tile, title,
+ *        a ONE-line preview, and a trailing column holding the date stamp over
+ *        the unread badge. Two lines of text, like a Messages row.
  * WHY:   The Airbnb-calm row: the icon SHAPE says what happened (hue assists,
- *        never carries alone), unread is a quiet badge and weight rather than a
- *        coloured background, and the two kinds that genuinely need the user
- *        (money waiting, a contest window running) get the one louder
- *        treatment — a warning bar AND its words — that disappears the moment
- *        they're read. The whole row is one pressable ≥ touch-target height;
+ *        never carries alone), and unread is a quiet badge and weight rather
+ *        than a coloured background. The kinds that genuinely need the user
+ *        (money waiting, a contest window, "is it still missing?") show their
+ *        ERRAND in the preview's place until read. Minimal pass (owner's call,
+ *        2026-09-24): the preview went from two lines to one, and the amber
+ *        bar + ring went — the errand's words stayed. The whole row is one pressable ≥ touch-target height;
  *        the tap's destination comes from the row's stored payload through the
  *        same routing pushes use, so a row can never go somewhere its push
  *        wouldn't have.
@@ -111,7 +112,8 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   // reader user learns the same facts (ThreadRow's precedent).
   // ⚠️ THE SAME WORDS THE ROW SHOWS. This used to append "Needs your
   // attention." — a sentence no sighted user ever saw, describing a stripe
-  // rather than the errand. Reader and screen now say the same thing.
+  // rather than the errand. It also keeps the body while the errand stands in
+  // for it on screen: the reader loses nothing a glance at the row would miss.
   const accessibilityLabel =
     // ⚠️ SPOKEN AS DAY + TIME, matching ThreadRow (2026-09-05). This said
     // `timeAgo` while the row DREW formatListStamp, so the two faces of one
@@ -128,10 +130,6 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       testID={`notification-${row.id}`}
     >
-      {/* The needs-attention bar: warning is allowed as a border/accent, never
-          text. Absent entirely for read/ordinary rows so the calm default has
-          no ghost gutter. */}
-      {loud ? <View style={styles.attentionBar} testID={`attention-${row.id}`} /> : null}
       {/* ⚠️ THE PHOTOGRAPH WHEN THERE IS ONE, the icon when there is not — and
           the icon case is ordinary, not exceptional. `image_url` is null
           whenever the server won't show a photo for that post (the caller has
@@ -156,27 +154,25 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
         <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>
           {row.title}
         </Text>
-        <Text style={styles.body} numberOfLines={2}>
-          {row.body}
-        </Text>
-        {/* ⚠️ THE BAR AND THE WORDS TOGETHER. The stripe stays — it is the
-            peripheral cue you catch while scrolling — but on its own it was
-            status encoded as colour, which the design system forbids and which
-            told nobody what to actually do. The mark is a hollow RING rather
-            than a filled amber dot for ReportCard's documented reason: filled
-            amber and neutral grey are the same mark in greyscale and under
-            deuteranopia. Ink on the words, colour only on the ring. */}
+        {/* ONE LINE, like the Messages face's preview (owner's call,
+            2026-09-24: "more minimal like the messages tab").
+
+            ⚠️ WHILE AN ERRAND IS UNREAD, THE ERRAND IS THE LINE. The amber bar
+            and ring went with the minimal pass, but the words did not: "Add
+            your bank details" is the difference between a spotter being paid
+            and not, and the server's body copy isn't guaranteed to say it. So
+            the action phrase takes the preview's place, in full-strength ink,
+            until the row is read — then the body returns. Wraps rather than
+            truncating: a cut-off errand tells nobody what to do. */}
         {loud ? (
-          <View style={styles.attentionRow}>
-            <View style={styles.attentionMark} />
-            {/* ⚠️ NO numberOfLines. At 200% the text column is ~238pt and
-                "Add your bank details" needs ~255 — it truncated to "Add your
-                bank detai…", which puts the ring back to carrying the status
-                on its own, i.e. straight back to colour-only. Wrapping is the
-                cheaper failure. */}
-            <Text style={styles.attentionLabel}>{meta.attentionLabel}</Text>
-          </View>
-        ) : null}
+          <Text style={styles.errand} testID={`attention-${row.id}`}>
+            {meta.attentionLabel}
+          </Text>
+        ) : (
+          <Text style={styles.body} numberOfLines={1}>
+            {row.body}
+          </Text>
+        )}
         {/* Past listRowStackFontScale the stamp lives here — see the meta note. */}
         {stacked ? (
           <Text style={styles.timeStacked}>{formatListStamp(row.createdAt)}</Text>
@@ -281,15 +277,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   rowPressed: {
     backgroundColor: c.surfaceSubtlePressed,
   },
-  attentionBar: {
-    position: 'absolute',
-    left: 0,
-    top: spacing.sm,
-    bottom: spacing.sm,
-    width: sizes.attentionBar,
-    borderRadius: radii.full,
-    backgroundColor: c.warning,
-  },
   // The shared inbox lead: a CIRCLE since 2026-09-04, matching ThreadRow's car
   // photo. See the header for what that reversed and why.
   //
@@ -355,30 +342,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // Never shrinks: a truncated timestamp is worse than a truncated title.
     flexShrink: 0,
   },
-  attentionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  attentionMark: {
-    width: sizes.attentionRing,
-    height: sizes.attentionRing,
-    borderRadius: radii.full,
-    borderWidth: sizes.attentionRingStroke,
-    borderColor: c.warning,
-    // Never squeezed by a wrapping label beside it.
-    flexShrink: 0,
-  },
-  // ⚠️ textPrimary, NOT warning. DESIGN_SYSTEM: warning is dot/icon/border
-  // only, never body text — amber type on the near-white background does not
-  // clear AA, and the ring beside it already carries the hue.
-  //
-  // `label` (14) under a `body` (16) title and message, so the errand is the
-  // quietest line in weight while being the only one in full-strength ink.
-  attentionLabel: {
-    ...typography.label,
+  // The errand in the preview's slot: the preview's size, in full-strength ink
+  // — the one thing that sets it apart now the bar is gone. ⚠️ textPrimary,
+  // NOT warning: DESIGN_SYSTEM keeps warning off text (amber type on the
+  // near-white background does not clear AA).
+  errand: {
+    ...typography.body,
     color: c.textPrimary,
-    flexShrink: 1,
   },
   skeletonBar: {
     borderRadius: radii.sm,
