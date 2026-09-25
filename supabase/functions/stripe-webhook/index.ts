@@ -180,11 +180,16 @@ Deno.serve(async (request) => {
         // the first to record — the Edge Function that issued it may have died
         // after Stripe accepted it. Claim-guarded: if that function already
         // announced, this sends nothing.
-        const { data: refunded } = await admin
+        const { data: refunded, error: refundedLookupError } = await admin
           .from('payments')
           .select('post_id')
           .eq('stripe_payment_intent_id', intentId)
           .maybeSingle();
+        if (refundedLookupError) {
+          // Never fails the event — the refund is recorded; the sweep's
+          // Phase 2c announces it within the hour.
+          console.error('[notifications] refund_sent lookup failed', refundedLookupError.message);
+        }
         if (refunded?.post_id) {
           await announceRefundSent(admin, refunded.post_id as string);
         }
