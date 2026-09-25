@@ -638,8 +638,27 @@ const mySightingRowSchema = z
     dispute: z
       .object({
         available: z.boolean(),
+        // Whether a dispute can still be FILED (20260925110000) — `available`
+        // stays true for one already filed. Declared ahead of the server, as
+        // every field here is, so this bundle survives the migration.
+        can_file: z.boolean().optional(),
         status: z.enum(['open', 'upheld', 'rejected']).nullable(),
         window_ends_at: z.string().nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
+    // The spotter's OWN reward on a credited report (20260925110000). Declared
+    // here, in the first bundle of the escrow overhaul, BEFORE the server that
+    // sends it: this schema is `.strict()`, so a server that shipped the key
+    // first would have emptied My reports for every phone on an older bundle.
+    // Exact shape, still strict — a widened money object must fail loudly too.
+    money: z
+      .object({
+        state: z.enum(['add_details', 'verifying', 'being_checked', 'on_its_way', 'paid']),
+        rewardPence: z.number().int(),
+        paidPence: z.number().int().nullable(),
+        paidAt: z.string().nullable(),
       })
       .strict()
       .nullable()
