@@ -21,6 +21,8 @@ import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 import type { PostStatus, PostSummary } from '@/shared/types';
 
+import { postMoneyBriefSchema, type PostMoneyBrief } from '../lib/postMoney';
+
 const log = createLogger('vehicles');
 
 // The owner sees their post in ANY lifecycle state, so the row status spans the
@@ -53,6 +55,13 @@ const myPostRowSchema = z.object({
   // (20260924130000), and a missing field must read as "not archived" rather
   // than fail the whole list.
   archived_at: z.string().nullable().optional(),
+  // The listing's money in brief (20260925110000), or null when nothing was
+  // captured. OPTIONAL for the same reason as archived_at: a missing field
+  // (an older server) reads as "no money line", never a failed list.
+  // `.catch(null)`: a money STATE this bundle does not know (a newer server)
+  // drops that card's money line rather than failing the whole list — the
+  // failure mode the archived_at note above exists to prevent.
+  money: postMoneyBriefSchema.nullable().optional().catch(null),
 });
 
 type MyPostRow = z.infer<typeof myPostRowSchema>;
@@ -61,11 +70,14 @@ type MyPostRow = z.infer<typeof myPostRowSchema>;
 export type MyPostSummary = PostSummary & {
   /** When the owner archived it (it then sits in the "Archived" section), or null. */
   archivedAt: string | null;
+  /** Where the listing's money is, in brief, or null when nothing was captured. */
+  money: PostMoneyBrief | null;
 };
 
 function toSummary(row: MyPostRow): MyPostSummary {
   return {
     archivedAt: row.archived_at ?? null,
+    money: row.money ?? null,
     id: row.id,
     photos: row.photos.map((p) => ({ uri: p.url })),
     make: row.make,

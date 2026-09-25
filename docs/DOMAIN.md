@@ -395,6 +395,12 @@ Rules that follow, and are not implementation details:
     `my_sightings` preference rather than `money` (there is no money in it).
     It is persisted like every other kind, so the Inbox is no longer silent.
 
+    ⚠️ **Corrected 2026-09-25: the push was built but never sent.** The server
+    half closed on 09-02, but `RecoverPostScreen` still skipped
+    `notifyCredited` on a £5 listing under a stale "KNOWN GAP" comment, so no
+    spotter credited on a £5 listing was told for three weeks. The screen now
+    calls it, and the sweep resends a lost one (ADR-0021).
+
     ⚠️ The payment lookup gained `kind = 'bounty_escrow'` in the same change.
     Without it a £5 fee row would have been read as a bounty and produced
     *"You've earned £4.75"* on a listing carrying no reward — inventing exactly

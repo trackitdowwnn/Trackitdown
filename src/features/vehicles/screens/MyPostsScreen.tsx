@@ -46,6 +46,8 @@ import {
 } from '@/shared/ui';
 
 import { ArchiveError, setPostArchived } from '../api/archiveApi';
+import type { MyPostSummary } from '../api/myPostsApi';
+import { MoneyBriefLine } from '../components/MoneyBriefLine';
 import { PostOwnerActions, type PostOwnerActionsHandle } from '../components/PostOwnerActions';
 import { canArchive } from '../lib/ownerPermissions';
 import { useMyPosts } from '../hooks/useMyPosts';
@@ -110,18 +112,24 @@ export function MyPostsScreen() {
   );
 
   const renderCard = useCallback(
-    ({ item }: { item: PostSummary }) => (
-      <View style={styles.cardRow}>
-        {/* Always the owner's own list → show the green "Live" badge on active posts. */}
-        <VehicleCard
-          post={item}
-          onPress={() => router.push(`/post/${item.id}`)}
-          onLongPress={() => onHold(item.id)}
-          longPressLabel="Manage listing"
-          showLiveBadge
-        />
-      </View>
-    ),
+    ({ item }: { item: PostSummary }) => {
+      // Where this listing's money is (20260925110000) — under the card, since
+      // the card itself is shared UI. Absent for a draft (nothing captured).
+      const money = (item as Partial<MyPostSummary>).money ?? null;
+      return (
+        <View style={styles.cardRow}>
+          {/* Always the owner's own list → show the green "Live" badge on active posts. */}
+          <VehicleCard
+            post={item}
+            onPress={() => router.push(`/post/${item.id}`)}
+            onLongPress={() => onHold(item.id)}
+            longPressLabel="Manage listing"
+            showLiveBadge
+          />
+          {money ? <MoneyBriefLine money={money} testID={`money-${item.id}`} /> : null}
+        </View>
+      );
+    },
     [onHold, router, styles],
   );
 

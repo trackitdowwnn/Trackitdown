@@ -142,7 +142,7 @@ describe('what it says about the money', () => {
       <ReviewCostPanel answers={{ pricingMode: 'bounty', bountyAmountPence: 40000 }} />,
     );
 
-    expect(view.getByText(/card processing costs aren.t refundable/i)).toBeTruthy();
+    expect(view.getByText(/card processing fees aren.t refundable/i)).toBeTruthy();
   });
 
   it('calls the fee non-refundable and never quotes a refund for it', async () => {

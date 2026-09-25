@@ -58,7 +58,11 @@ jest.mock('@/shared/ui', () => {
 });
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockPush }),
+  // usePostMoney re-reads on focus; a mounted test never refocuses.
+  useFocusEffect: () => {},
+}));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -77,6 +81,12 @@ jest.mock('../api/recoveryApi', () => {
 });
 const mockDeleteDraft = jest.fn();
 jest.mock('../api/draftApi', () => ({ deleteDraft: (...a: unknown[]) => mockDeleteDraft(...a) }));
+// The listing's money, read here when the host does not supply it (My
+// listings). Null by default; the send-the-reward tests set a state.
+const mockFetchMoney = jest.fn();
+jest.mock('../api/postMoneyApi', () => ({
+  fetchPostMoney: (...a: unknown[]) => mockFetchMoney(...a),
+}));
 const mockDeleteCancelled = jest.fn();
 jest.mock('../api/deletePostApi', () => ({
   deleteCancelledPost: (...a: unknown[]) => mockDeleteCancelled(...a),
@@ -138,9 +148,58 @@ const flush = () => act(async () => {});
 beforeEach(() => {
   jest.clearAllMocks();
   mockExitCheck.mockResolvedValue({ requiresAttestation: false, sightingIds: [], holdHours: 72 });
+  mockFetchMoney.mockResolvedValue(null);
+});
+
+/** get_post_money's answer for a claimed listing, in the given state. */
+const moneyIn = (state: string, hasCreditedSighting: boolean) => ({
+  kind: 'bounty_escrow',
+  pricing: 'fee_on_top',
+  state,
+  headlinePence: 25000,
+  rewardPence: 25000,
+  serviceFeePence: 1250,
+  chargedPence: 26250,
+  hasCreditedSighting,
+  paid: null,
+  refund: null,
+  refundHold: null,
 });
 
 // --- tests -------------------------------------------------------------------
+
+describe('send the reward (fixed 2026-09-25)', () => {
+  // A held "found it myself" refund ALSO sits in recovery_claimed — with nobody
+  // credited — and the row used to appear there too, then fail with "No
+  // spotter is credited on this listing". The listing's money decides now.
+  it('is offered while a credited spotter is waiting to be paid', async () => {
+    mockFetchMoney.mockResolvedValue(moneyIn('awaiting_payee', true));
+    const { view } = await mount(post({ status: 'recovery_claimed' }));
+    await flush();
+    expect(view.getByTestId('manage-release-payout')).toBeTruthy();
+  });
+
+  it('is NOT offered on a held no-spotter refund, though the status is the same', async () => {
+    mockFetchMoney.mockResolvedValue(moneyIn('refund_on_hold', false));
+    const { view } = await mount(post({ status: 'recovery_claimed' }));
+    await flush();
+    expect(view.queryByTestId('manage-release-payout')).toBeNull();
+  });
+
+  it('stays offered when the money read FAILED — a blip must not take the owner’s only action away', async () => {
+    mockFetchMoney.mockRejectedValue(new Error('network'));
+    const { view } = await mount(post({ status: 'recovery_claimed' }));
+    await flush();
+    expect(view.getByTestId('manage-release-payout')).toBeTruthy();
+  });
+
+  it('is NOT offered before the money is known', async () => {
+    mockFetchMoney.mockResolvedValue(null);
+    const { view } = await mount(post({ status: 'recovery_claimed' }));
+    await flush();
+    expect(view.queryByTestId('manage-release-payout')).toBeNull();
+  });
+});
 
 describe('PostOwnerActions', () => {
   it('renders nothing for anyone but the owner', async () => {
@@ -331,7 +390,10 @@ describe('PostOwnerActions', () => {
       ],
     ])('%o → the right words', async (payout, words, refreshes) => {
       mockReleasePayout.mockResolvedValue(payout);
+      // The row needs a credited spotter waiting to be paid (2026-09-25).
+      mockFetchMoney.mockResolvedValue(moneyIn('awaiting_payee', true));
       const { view, refresh } = await mount(post({ status: 'recovery_claimed' }));
+      await flush();
 
       await fireEvent.press(view.getByTestId('manage-release-payout'));
       await flush();

@@ -29,11 +29,46 @@ jest.mock('expo-router', () => ({
 const mockShowToast = jest.fn();
 jest.mock('@/shared/ui', () => {
   const actual = jest.requireActual('@/shared/ui');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const { Pressable, Text, View } = require('react-native');
   return {
     ...actual,
     get useToast() {
       return () => ({ show: mockShowToast });
     },
+    // The real dialog is a bottom-sheet modal that needs its provider. This
+    // stand-in keeps what the tests are about: nothing shows until open(), it
+    // shows the title and body the owner would read, and its confirm label runs
+    // onConfirm.
+    ConfirmDialog: React.forwardRef(function MockConfirm(
+      {
+        title,
+        body,
+        confirmLabel,
+        onConfirm,
+      }: { title: string; body: string; confirmLabel: string; onConfirm: () => void },
+      ref: unknown,
+    ) {
+      const [open, setOpen] = React.useState(false);
+      React.useImperativeHandle(ref, () => ({ open: () => setOpen(true), close: () => setOpen(false) }));
+      if (!open) return null;
+      return (
+        <View>
+          <Text>{title}</Text>
+          <Text>{body}</Text>
+          <Pressable
+            onPress={() => {
+              setOpen(false);
+              onConfirm();
+            }}
+          >
+            <Text>{confirmLabel}</Text>
+          </Pressable>
+        </View>
+      );
+    }),
   };
 });
 
@@ -81,6 +116,27 @@ jest.mock('../api/recoveryApi', () => {
   };
 });
 
+// The listing's money read (usePostMoney) reaches the Supabase client. Null by
+// default — the screen then prices from the route's reward, as it does before
+// the read lands; the amounts tests set a real answer.
+const mockFetchMoney = jest.fn();
+jest.mock('../api/postMoneyApi', () => ({
+  fetchPostMoney: (...args: unknown[]) => mockFetchMoney(...args),
+}));
+
+/** "Confirm" opens a summary first (2026-09-25); the money moves on its "Yes, …".
+ *  Two acts, because the dialog has to render before its button can be found. */
+async function pressConfirm(
+  getByText: (text: string | RegExp) => Parameters<typeof fireEvent.press>[0],
+) {
+  await act(async () => {
+    fireEvent.press(getByText('Confirm'));
+  });
+  await act(async () => {
+    fireEvent.press(getByText(/^Yes, /));
+  });
+}
+
 const SIGHTING = {
   id: 'sighting-1',
   createdAt: '2026-08-01T10:00:00Z',
@@ -92,6 +148,7 @@ const SIGHTING = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockFetchMoney.mockResolvedValue(null);
   mockSightings = [SIGHTING];
   mockClaim.mockResolvedValue({ nextStep: 'refund', creditedSightingId: null });
   mockRefund.mockResolvedValue({ held: false, refundedPence: 24000 });
@@ -108,14 +165,114 @@ beforeEach(() => {
 
 describe('the guard', () => {
   it('does nothing until a choice is made', async () => {
-    const { getByText } = await act(async () => render(<RecoverPostScreen postId="p1" />));
+    const { getByText, queryByText } = await act(async () => render(<RecoverPostScreen postId="p1" />));
 
     await act(async () => {
       fireEvent.press(getByText('Confirm'));
     });
-    // Money must not move on a stray tap.
+    // Money must not move on a stray tap — and no dialog opens to invite one.
+    expect(queryByText(/^Yes, /)).toBeNull();
     expect(mockClaim).not.toHaveBeenCalled();
     expect(mockRefund).not.toHaveBeenCalled();
+  });
+});
+
+describe('the amounts, and one look before the money moves (2026-09-25)', () => {
+  it('names what each choice sends or returns, and asks before it happens', async () => {
+    // A £500 reward charged £525 with the fee on top: the spotter gets the
+    // whole £500; found-it-myself returns about £516.92 (the charge less the
+    // estimated card fee).
+    mockFetchMoney.mockResolvedValue({
+      kind: 'bounty_escrow',
+      pricing: 'fee_on_top',
+      state: 'held',
+      headlinePence: 50000,
+      rewardPence: 50000,
+      serviceFeePence: 2500,
+      chargedPence: 52500,
+      hasCreditedSighting: false,
+      paid: null,
+      refund: null,
+      refundHold: null,
+    });
+    mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });
+    const { getByText, getByTestId, queryByText } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={50000} />),
+    );
+
+    expect(getByText(/About £516\.92 comes back to your card/)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('credit-sighting-1'));
+    });
+    expect(getByText(/send £500 to that spotter — the full reward/)).toBeTruthy();
+
+    // Confirm opens the question; nothing has moved yet.
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+    expect(getByText('Send £500 to this spotter?')).toBeTruthy();
+    expect(mockClaim).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(getByText('Yes, send it'));
+    });
+    await waitFor(() => expect(mockClaim).toHaveBeenCalledWith('p1', 'sighting-1'));
+    expect(queryByText('Send £500 to this spotter?')).toBeNull();
+  });
+
+  it('prices from the route’s reward before the money read lands', async () => {
+    // No money read yet (null): a £200 reward is charged £210 since ADR-0020,
+    // so about £206.65 would come back.
+    const { getByText } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={20000} />),
+    );
+    expect(getByText(/About £206\.65 comes back to your card/)).toBeTruthy();
+  });
+});
+
+describe('finishing an interrupted refund (resume, 2026-09-25)', () => {
+  // "Found it another way" landed its claim, then the refund never started —
+  // nothing retries it, so the owner finishes it here. The claim must NOT run
+  // again (claim_recovery accepts `active` only and would refuse).
+  it('skips the claim, offers no sightings to credit, and sends the refund', async () => {
+    const { getByText, queryByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={50000} resume />),
+    );
+
+    expect(getByText('Finish your refund')).toBeTruthy();
+    expect(queryByTestId('credit-sighting-1')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+    expect(getByText('Send your refund?')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByText('Yes, send it'));
+    });
+
+    await waitFor(() => expect(mockRefund).toHaveBeenCalledWith('p1', undefined));
+    expect(mockClaim).not.toHaveBeenCalled();
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('still asks about recent sightings first, when there are any', async () => {
+    mockExitCheck.mockResolvedValue({
+      requiresAttestation: true,
+      sightingIds: ['sighting-1'],
+      windowDays: 14,
+      holdHours: 72,
+    });
+    const { getByText, queryByText } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={50000} resume />),
+    );
+    await pressConfirm(getByText);
+    expect(mockClaim).not.toHaveBeenCalled();
+    expect(mockRefund).not.toHaveBeenCalled(); // waiting on the attestation
+    // The claim can't be redone with a spotter, so no button that leads to an
+    // empty list — the owner is told where to go instead.
+    expect(queryByText('One of these did help')).toBeNull();
+    expect(getByText(/Report a bug/)).toBeTruthy();
   });
 });
 
@@ -129,9 +286,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockClaim).toHaveBeenCalledWith('p1', 'sighting-1'));
     // The bounty is the spotter's — refunding it to the owner would take it.
@@ -147,9 +302,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
     // A payout needs the spotter's Stripe details, which we do not control.
@@ -170,9 +323,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockNotifyCredited).toHaveBeenCalledWith('p1'));
   });
@@ -186,9 +337,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-none'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
     await waitFor(() => expect(mockRefund).toHaveBeenCalled());
     expect(mockNotifyCredited).not.toHaveBeenCalled();
   });
@@ -206,9 +355,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockRelease).toHaveBeenCalledWith('p1'));
     expect(mockRefund).not.toHaveBeenCalled();
@@ -224,9 +371,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
     // 95% of £250. The owner is told the real figure, not a round bounty.
@@ -245,9 +390,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
     const [said, kind] = mockShowToast.mock.calls[0];
@@ -268,9 +411,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
     const [said, kind] = mockShowToast.mock.calls[0];
@@ -293,9 +434,7 @@ describe('crediting a spotter', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockShowToast).toHaveBeenCalled());
     const [said, kind] = mockShowToast.mock.calls[0];
@@ -316,9 +455,7 @@ describe('found it another way', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-none'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() => expect(mockClaim).toHaveBeenCalledWith('p1', null));
     // Without this second call the post is stranded in recovery_claimed with
@@ -345,9 +482,7 @@ describe('found it another way', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-none'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     // Nothing irreversible happened yet — the attestation comes first.
     expect(mockClaim).not.toHaveBeenCalled();
@@ -375,9 +510,7 @@ describe('found it another way', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-none'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
     expect(getByTestId('exit-attestation')).toBeTruthy();
 
     await act(async () => {
@@ -411,9 +544,7 @@ describe('when the server refuses', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-none'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     await waitFor(() =>
       expect(mockShowToast).toHaveBeenCalledWith(
@@ -445,21 +576,18 @@ describe('a no-reward listing (nextStep: done)', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-sighting-1'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     expect(mockClaim).toHaveBeenCalledWith('p1', 'sighting-1');
     // The two calls that would 409 / no-op on an already-terminal post.
     expect(mockRefund).not.toHaveBeenCalled();
     expect(mockRelease).not.toHaveBeenCalled();
-    // ...and NOT the credited push. `claim_credited_notification` consumes the
-    // one-shot `credited_notified_at` claim BEFORE it checks for a held payment,
-    // so calling it on a fee post burns that claim FOREVER and still sends
-    // nothing — permanently silencing the spotter even after a non-money push
-    // ships. Pinned here so a future "let's tell them" refactor cannot quietly
-    // destroy the claim it will need. See DOMAIN.md's known gap.
-    expect(mockNotifyCredited).not.toHaveBeenCalled();
+    // ...and the spotter IS told. This asserted the opposite until 2026-09-25,
+    // on reasoning that stopped being true on 09-02: claim_credited_notification
+    // now builds its copy and claims LAST, answering a £5 listing with the
+    // rewardless `credited_no_reward` push. Pinning "don't call it" kept every
+    // spotter credited on a £5 listing in silence for three weeks.
+    expect(mockNotifyCredited).toHaveBeenCalledWith('p1');
     // ...and the owner is told it worked, not that it failed.
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
     const said = mockShowToast.mock.calls.map((c) => String(c[0])).join(' | ');
@@ -477,9 +605,7 @@ describe('a no-reward listing (nextStep: done)', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-none'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     expect(mockClaim).toHaveBeenCalledWith('p1', null);
     expect(mockRefund).not.toHaveBeenCalled();
@@ -507,9 +633,7 @@ describe('a no-reward listing (nextStep: done)', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-none'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     expect(mockExitCheck).not.toHaveBeenCalled();
     expect(mockClaim).toHaveBeenCalledWith('p1', null);
@@ -531,9 +655,7 @@ describe('a no-reward listing (nextStep: done)', () => {
     await act(async () => {
       fireEvent.press(getByTestId('credit-none'));
     });
-    await act(async () => {
-      fireEvent.press(getByText('Confirm'));
-    });
+    await pressConfirm(getByText);
 
     expect(mockExitCheck).toHaveBeenCalledWith('p1');
     // Attestation required → the claim must NOT have happened yet.

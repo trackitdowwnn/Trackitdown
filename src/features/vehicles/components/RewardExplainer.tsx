@@ -59,7 +59,7 @@ export function rewardExplainerSteps(rewardPence: number): Step[] {
       // "about £X" without the reason reads as though we keep the difference.
       body: `That spotter gets the full ${reward}. If no one’s sighting helped, about ${formatPounds(
         estimateRefundPence(chargePence),
-      )} comes back to your card within 5–10 working days — card processing costs aren’t refundable. If anyone reported a sighting in the last two weeks, we wait 72 hours first so they can tell us if theirs led to it.`,
+      )} comes back to your card within 5–10 working days — card processing fees aren’t refundable. If anyone reported a sighting in the last two weeks, we wait 72 hours first so they can tell us if theirs led to it.`,
     },
   ];
 }

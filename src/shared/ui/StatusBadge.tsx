@@ -37,7 +37,10 @@ const STATUS_BADGES: Partial<Record<PostStatus, { label: string; tone: BadgeTone
   pending_verification: { label: 'Pending', tone: 'warning' },
   recovery_claimed: { label: 'Recovery claimed', tone: 'warning' },
   recovered: { label: 'Recovered', tone: 'success' },
-  recovered_no_spotter: { label: 'Recovered', tone: 'success' },
+  // Its own words since 2026-09-25: "Recovered" read the same whether a
+  // spotter was paid or the owner found it and was refunded. Still success —
+  // the car is home either way.
+  recovered_no_spotter: { label: 'Found another way', tone: 'success' },
   cancelled: { label: 'Cancelled', tone: 'neutral' },
   expired: { label: 'Expired', tone: 'neutral' },
   rejected: { label: 'Rejected', tone: 'neutral' },
@@ -47,9 +50,12 @@ const STATUS_BADGES: Partial<Record<PostStatus, { label: string; tone: BadgeTone
  *  showLiveWhenActive). Green, mirroring the recovered-success dot. */
 const LIVE_BADGE = { label: 'Live', tone: 'success' } as const;
 
-/** Tone → dot hex, resolved per-render against the palette in effect. */
+/** Tone → dot hex, resolved per-render against the palette in effect.
+ *  Exported (as `badgeToneColor`) so every status dot in the app — the owner's
+ *  money line and card too — resolves a tone the same way. */
 const toneColor = (c: Palette, tone: BadgeTone): string =>
   tone === 'warning' ? c.warning : tone === 'success' ? c.success : c.textSecondary;
+export const badgeToneColor = toneColor;
 
 /** Resolve the badge for a status, honouring the owner-only Live opt-in.
  *  Returns null when there's no badge (a public active post). */

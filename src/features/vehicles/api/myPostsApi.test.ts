@@ -58,7 +58,37 @@ describe('listMyPosts', () => {
       lastSeenArea: 'Camden',
       bountyPence: 50000,
       archivedAt: null,
+      money: null,
     });
+  });
+
+  // The money in brief (20260925110000). Optional like archived_at: an older
+  // server sends no field, and that must read as "no money line", not fail.
+  it('maps the money brief, and a row without it carries none', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        row({ money: { state: 'refund_on_hold', amountPence: 42000, until: '2026-09-28T18:00:00Z' } }),
+        row({ id: 'bbbbbbbb-0000-0000-0000-00000000000b' }),
+      ],
+      error: null,
+    });
+    const [held, plain] = await listMyPosts();
+    expect(held.money).toEqual({
+      state: 'refund_on_hold',
+      amountPence: 42000,
+      until: '2026-09-28T18:00:00Z',
+    });
+    expect(plain.money).toBeNull();
+  });
+
+  it('a money state this bundle does not know drops the line, never the list', async () => {
+    mockRpc.mockResolvedValue({
+      data: [row({ money: { state: 'teleported', amountPence: 100, until: null } })],
+      error: null,
+    });
+    const [post] = await listMyPosts();
+    expect(post.money).toBeNull();
+    expect(post.id).toBe(ID);
   });
 
   // The archive (2026-09-24). The column is optional as well as nullable: an

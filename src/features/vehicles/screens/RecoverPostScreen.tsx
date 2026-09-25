@@ -48,13 +48,21 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { notifyCredited } from '@/features/notifications';
 import { exitCheck } from '@/features/payments';
 import { usePostSightings } from '@/features/sightings';
-import { formatPounds } from '@/shared/lib/money';
+import { chargeBreakdown, estimateRefundPence, formatPounds } from '@/shared/lib/money';
 import { createLogger } from '@/shared/lib/logger';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
-import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Screen,
+  useToast,
+  type ConfirmDialogRef,
+} from '@/shared/ui';
 
 import { RecoveryError, claimRecovery, refundRecovery, releasePayout } from '../api/recoveryApi';
 import { ExitAttestation } from '../components/ExitAttestation';
+import { usePostMoney } from '../hooks/usePostMoney';
 
 export interface RecoverPostScreenProps {
   postId: string;
@@ -66,6 +74,14 @@ export interface RecoverPostScreenProps {
    * server is authoritative about what actually happens either way.
    */
   bountyPence?: number | null;
+  /**
+   * FINISH an interrupted "found it another way" (review 2026-09-25): the
+   * claim already landed (the listing is recovery_claimed, nobody credited)
+   * but the refund never started, and nothing retries it. The screen opens on
+   * that ending alone and goes straight to the refund — the same pre-flight,
+   * attestation and refund path as the first time, minus the claim.
+   */
+  resume?: boolean;
 }
 
 /** The sentinel for "nobody helped" — a real answer, not the absence of one. */
@@ -76,7 +92,7 @@ const NO_SPOTTER = '__none__';
 // failures are money failures and both exitCheck catches below report.
 const log = createLogger('vehicles');
 
-export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProps) {
+export function RecoverPostScreen({ postId, bountyPence, resume = false }: RecoverPostScreenProps) {
   // ADR-0014: no bounty means no refund to get back and no payout to send.
   const noReward = bountyPence === null;
   const styles = useThemedStyles(makeStyles);
@@ -84,7 +100,25 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
   const router = useRouter();
   const toast = useToast();
   const { status, sightings } = usePostSightings(postId);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Resuming: the only ending left is the one they already chose.
+  const [selected, setSelected] = useState<string | null>(resume ? NO_SPOTTER : null);
+  // The irreversible step gets one look before it happens.
+  const confirmRef = useRef<ConfirmDialogRef>(null);
+
+  // THE AMOUNTS each choice moves (2026-09-25). This screen used to describe
+  // both endings with no number in them — "send your reward", "refund your
+  // reward" — on the one tap in the app that moves money irreversibly. The
+  // listing's own money read gives the real reward and charge; before it
+  // lands (or if it fails) the route's reward with the fee-on-top charge
+  // stands in, which is exact for every listing posted since ADR-0020.
+  const { money } = usePostMoney(postId, !noReward);
+  const rewardPence = money?.rewardPence ?? (typeof bountyPence === 'number' ? bountyPence : null);
+  const chargePence =
+    money?.chargedPence ??
+    (typeof bountyPence === 'number' ? chargeBreakdown(bountyPence).chargePence : null);
+  const refundPence = chargePence === null ? null : estimateRefundPence(chargePence);
+  const rewardText = rewardPence === null ? 'your reward' : formatPounds(rewardPence);
+  const refundText = refundPence === null ? 'your money' : `about ${formatPounds(refundPence)}`;
   const [submitting, setSubmitting] = useState(false);
   // The owner-denial attestation step for "I found it another way": recent
   // uncredited sightings must be looked at before the refund can be asked
@@ -93,8 +127,13 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
   const [attestation, setAttestation] = useState<{
     sightingIds: string[];
     holdHours: number;
+    /** claimedRef, snapshotted when the attestation opened (a ref can't be
+     *  read during render) — decides whether "One of these did help" shows. */
+    claimed: boolean;
   } | null>(null);
-  const claimedRef = useRef(false);
+  // Resuming means the claim ALREADY landed — claiming again would fail
+  // (claim_recovery accepts `active` only), so the refund path starts after it.
+  const claimedRef = useRef(resume);
 
   /** The no-spotter ending, shared by the plain path and the attested one. */
   const finishNoSpotter = useCallback(
@@ -159,7 +198,11 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           try {
             const check = await exitCheck(postId);
             if (check.requiresAttestation) {
-              setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
+              setAttestation({
+                sightingIds: check.sightingIds,
+                holdHours: check.holdHours,
+                claimed: claimedRef.current,
+              });
               return;
             }
           } catch (err) {
@@ -196,17 +239,15 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         // (a no-op) and then toast "we'll send the bounty automatically", which
         // promises the owner and the spotter money that does not exist.
         claimedRef.current = true;
-        // NOT notifyCredited: that push is a MONEY push ("You've earned £X",
-        // routing to /payouts). Its SQL reads the amount from a held/released
-        // payment and returns {claimed:false} rather than invent a number — a
-        // fee listing's payment is `collected`, so calling it here would send
-        // nothing at all. Left uncalled rather than called-as-a-no-op so the
-        // absence is legible.
+        // Tell the spotter. claim_credited_notification answers a £5 listing
+        // with its own rewardless kind — "Your sighting found the car", routed
+        // to My reports, no amount (79f229c, 2026-09-02).
         //
-        // ⚠️ KNOWN GAP, recorded in DOMAIN.md: the spotter is credited and
-        // currently learns it only by opening the app. Closing it needs a
-        // non-money credited push (copy + kind + migration) — deliberately not
-        // smuggled into this change.
+        // ⚠️ FIXED 2026-09-25: the server learned this on 09-02 but this line
+        // still read "NOT notifyCredited … KNOWN GAP", so for three weeks every
+        // spotter credited on a £5 listing was told nothing. The sweep now
+        // catches a lost one too (ADR-0021), but this is the moment it belongs.
+        notifyCredited(postId);
         toast.show('They’re credited. The recovery is added to their spotter record.');
         router.back();
         return;
@@ -280,7 +321,11 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           try {
             const check = await exitCheck(postId);
             if (check.requiresAttestation) {
-              setAttestation({ sightingIds: check.sightingIds, holdHours: check.holdHours });
+              setAttestation({
+                sightingIds: check.sightingIds,
+                holdHours: check.holdHours,
+                claimed: claimedRef.current,
+              });
               return;
             }
             await finishNoSpotter();
@@ -317,11 +362,17 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           busy={submitting}
           onConfirm={(ids) => void submitAttested(ids)}
           // "One of these did help" — back to the list, where crediting one
-          // is exactly what this screen already does best.
-          onCredit={() => {
-            setAttestation(null);
-            setSelected(null);
-          }}
+          // is exactly what this screen already does best. Not once the claim
+          // has landed (resume, or a refund that failed after it): the list
+          // can't credit anyone then, so the attestation says where to go.
+          onCredit={
+            attestation.claimed
+              ? undefined
+              : () => {
+                  setAttestation(null);
+                  setSelected(null);
+                }
+          }
           onCancel={() => setAttestation(null)}
         />
       </Screen>
@@ -341,19 +392,21 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
         </Pressable>
         <Text style={styles.title} accessibilityRole="header">
-          You got it back
+          {resume ? 'Finish your refund' : 'You got it back'}
         </Text>
       </View>
 
       <Text style={styles.lede}>
-        That’s the best news. Did one of these sightings lead you to it?
+        {resume
+          ? 'Your refund didn’t finish last time. Confirm below and we’ll send it.'
+          : 'That’s the best news. Did one of these sightings lead you to it?'}
       </Text>
 
-      {status === 'loading' ? (
+      {!resume && status === 'loading' ? (
         <Text style={styles.body}>Loading your sightings…</Text>
       ) : null}
 
-      {status === 'error' ? (
+      {!resume && status === 'error' ? (
         // Not a dead end: they can still close the listing without crediting.
         <Text style={styles.body}>
           We couldn’t load the sightings. You can still say you found it another way.
@@ -361,7 +414,9 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
       ) : null}
 
       <View style={styles.options} accessibilityRole="radiogroup">
-        {sightings.map((sighting) => {
+        {/* Resuming: crediting is no longer possible (the claim said nobody),
+            so the sightings are not offered as choices. */}
+        {(resume ? [] : sightings).map((sighting) => {
           const isSelected = selected === sighting.id;
           const when = new Date(sighting.createdAt).toLocaleDateString('en-GB', {
             day: 'numeric',
@@ -404,12 +459,16 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           <Text style={styles.optionNote}>
             {noReward
               ? 'The police, or you. We’ll just close the listing.'
-              : 'The police, or you. Your reward comes back to you, minus the card fee.'}
+              : // The estimate is ALREADY net of the card fee — "minus the card
+                // fee" after it read as a second deduction.
+                `The police, or you. ${refundText.charAt(0).toUpperCase()}${refundText.slice(
+                  1,
+                )} comes back to your card (card processing fees aren’t refundable).`}
           </Text>
         </Pressable>
       </View>
 
-      {status === 'ready' && sightings.length === 0 ? (
+      {!resume && status === 'ready' && sightings.length === 0 ? (
         <EmptyState
           title="No sightings were reported"
           body="That’s fine — plenty of cars turn up without one."
@@ -422,20 +481,59 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         {selected === NO_SPOTTER
           ? noReward
             ? 'We’ll close the listing.'
-            : 'We’ll close the listing and refund your reward.'
+            : `We’ll close the listing and refund ${refundText} to your card.`
           : selected
             ? noReward
               ? // No cash to promise — but the credit is real and is what the
                 // spotter gets, so say that rather than nothing.
                 'We’ll close the listing and credit that spotter. Only one sighting can be credited.'
-              : 'We’ll close the listing and send your reward to that spotter. Only one sighting can be credited.'
+              : rewardPence === null
+                ? 'We’ll close the listing and send your reward to that spotter. Only one sighting can be credited.'
+                : `We’ll close the listing and send ${rewardText} to that spotter — the full reward. Only one sighting can be credited.`
             : 'Choose one to continue.'}
       </Text>
 
       <Button
         label={submitting ? 'Just a moment…' : 'Confirm'}
-        onPress={() => void submit()}
+        onPress={() => confirmRef.current?.open()}
         disabled={selected === null || submitting}
+      />
+
+      {/* ONE LOOK BEFORE AN IRREVERSIBLE TAP. claim_recovery cannot be undone
+          and, on a reward listing, it decides where real money goes — so the
+          sentence above is repeated as a question with the amount in it. */}
+      <ConfirmDialog
+        ref={confirmRef}
+        title={
+          resume
+            ? 'Send your refund?'
+            : selected === NO_SPOTTER
+            ? 'Close your listing?'
+            : noReward
+              ? 'Credit this spotter?'
+              : `Send ${rewardText} to this spotter?`
+        }
+        body={
+          resume
+            ? `We’ll refund ${refundText} to your card. If anyone reported a sighting in the last two weeks, we’ll ask you about those first, and the refund waits 72 hours.`
+            : selected === NO_SPOTTER
+            ? noReward
+              ? 'We’ll close it. This can’t be undone.'
+              : `We’ll close it and refund ${refundText} to your card. If anyone reported a sighting in the last two weeks, we’ll ask you about those first, and the refund waits 72 hours. This can’t be undone.`
+            : noReward
+              ? 'We’ll close your listing and add the recovery to their spotter record. This can’t be undone.'
+              : 'We’ll close your listing and send the reward to the spotter whose sighting you picked. This can’t be undone.'
+        }
+        confirmLabel={
+          resume
+            ? 'Yes, send it'
+            : selected === NO_SPOTTER
+              ? 'Yes, close it'
+              : noReward
+                ? 'Yes, credit them'
+                : 'Yes, send it'
+        }
+        onConfirm={() => void submit()}
       />
     </Screen>
   );
@@ -495,8 +593,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textSecondary,
   },
+  // Body weight and primary ink, not a caption: this is the one sentence that
+  // says where the money goes, directly above a tap that cannot be undone.
   caption: {
-    ...typography.caption,
-    color: c.textSecondary,
+    ...typography.body,
+    color: c.textPrimary,
   },
 });
