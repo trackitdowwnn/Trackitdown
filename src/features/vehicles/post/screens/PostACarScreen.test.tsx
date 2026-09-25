@@ -89,6 +89,13 @@ jest.mock('../api/postApi', () => ({
   submitPost: (...args: unknown[]) => mockSubmitPost(...args),
 }));
 
+// The retry path re-saves the draft's price so the server prices what the
+// button shows. Mocked at the module so this unit stays off the network.
+const mockSaveBounty = jest.fn(async (_postId: string, _pence: number | null) => {});
+jest.mock('../api/editSectionApi', () => ({
+  saveBounty: (postId: string, pence: number | null) => mockSaveBounty(postId, pence),
+}));
+
 const mockCreateIntent = jest.fn();
 const mockPayBounty = jest.fn();
 // PaymentError is the real class so `throw`/`instanceof` semantics match.
@@ -139,7 +146,11 @@ describe('handleComplete', () => {
     await capturedOnComplete(ANSWERS);
 
     expect(mockSubmitPost).toHaveBeenCalledTimes(1);
-    expect(mockCreateIntent).toHaveBeenCalledWith('p1');
+    // ADR-0020: the total the pay button showed — the £500 reward plus the 5%
+    // fee on top — travels with the id, so the call can refuse a different sum.
+    expect(mockCreateIntent).toHaveBeenCalledWith('p1', 52500);
+    // First attempt: the draft was just created with these answers; nothing to re-save.
+    expect(mockSaveBounty).not.toHaveBeenCalled();
     expect(mockPayBounty).toHaveBeenCalledWith('pi_secret_123');
     expect(mockSuccessHaptic).toHaveBeenCalledTimes(1);
     expect(mockToastShow).toHaveBeenCalledWith(expect.stringContaining('going live'), 'success');
@@ -160,6 +171,101 @@ describe('handleComplete', () => {
 
     expect(mockSubmitPost).toHaveBeenCalledTimes(1); // ← created once, reused on retry
     expect(mockCreateIntent).toHaveBeenCalledTimes(2); // ← intent reopened (server-idempotent)
+    // Nothing changed, so nothing is re-saved — the draft already holds this price.
+    expect(mockSaveBounty).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('a £5 listing retries without ever re-saving its price', async () => {
+    // The draft RPC takes a reward and refuses NULL — calling it for a £5
+    // listing would make every retry of one fail.
+    await mount();
+    const FEE = { ...ANSWERS, pricingMode: 'fee' };
+
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'cancelled', message: null });
+    await expect(capturedOnComplete(FEE)).rejects.toMatchObject({ code: 'CANCELLED' });
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'paid', message: null });
+    await capturedOnComplete(FEE);
+
+    expect(mockSaveBounty).not.toHaveBeenCalled();
+    expect(mockCreateIntent).toHaveBeenLastCalledWith('p1', 500);
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('MONEY: a payment that went through after all routes to the listing, not an error', async () => {
+    // The sheet can report failure for a payment that succeeded; the server
+    // then refuses a second intent with PAYMENT_ALREADY_TAKEN.
+    await mount();
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'failed', message: null });
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({ code: 'FAILED' });
+
+    const { PaymentError } = jest.requireMock('@/features/payments');
+    mockCreateIntent.mockRejectedValueOnce(new PaymentError('paid', 'PAYMENT_ALREADY_TAKEN'));
+    await capturedOnComplete(ANSWERS);
+
+    expect(mockPayBounty).toHaveBeenCalledTimes(1); // no second sheet
+    expect(mockToastShow).toHaveBeenCalledWith(expect.stringContaining('went through'), 'success');
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('MONEY: a retry that finds the listing already live (POST_NOT_DRAFT) routes to it too', async () => {
+    // The webhook got there first: the draft left draft because it was paid.
+    // Showing "already paid for" as an ERROR here would misreport good news.
+    await mount();
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'cancelled', message: null });
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({ code: 'CANCELLED' });
+
+    const { PaymentError } = jest.requireMock('@/features/payments');
+    mockCreateIntent.mockRejectedValueOnce(new PaymentError('paid', 'POST_NOT_DRAFT'));
+    await capturedOnComplete(ANSWERS);
+
+    expect(mockPayBounty).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('switching between a reward and the £5 fee after the draft exists is refused in words', async () => {
+    await mount();
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'cancelled', message: null });
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({ code: 'CANCELLED' });
+
+    await expect(capturedOnComplete({ ...ANSWERS, pricingMode: 'fee' })).rejects.toMatchObject({
+      code: 'PRICING_LOCKED',
+      message: expect.stringContaining('a listing with a reward'),
+    });
+    expect(mockSaveBounty).not.toHaveBeenCalled();
+    expect(mockCreateIntent).toHaveBeenCalledTimes(1); // never re-priced
+  });
+
+  it('MONEY: a retry after the reward was changed prices the NEW reward, not the draft’s old one', async () => {
+    // Without the re-save, the server would price the reward the draft was
+    // created with while the button named the new one — and the price check
+    // would refuse every retry. Saving first makes the two agree.
+    await mount();
+
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'failed', message: null });
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({ code: 'FAILED' });
+
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'paid', message: null });
+    await capturedOnComplete({ bountyAmountPence: 60000 });
+
+    expect(mockSaveBounty).toHaveBeenCalledWith('p1', 60000);
+    expect(mockCreateIntent).toHaveBeenLastCalledWith('p1', 63000);
+    // Saved BEFORE the intent is opened, or the server prices the old reward.
+    expect(mockSaveBounty.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCreateIntent.mock.invocationCallOrder[1],
+    );
+  });
+
+  it('a re-save the server refuses because the draft is already paid routes to the listing', async () => {
+    await mount();
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'failed', message: null });
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({ code: 'FAILED' });
+
+    const notEditable = Object.assign(new Error('gone'), { code: 'POST_NOT_EDITABLE' });
+    mockSaveBounty.mockRejectedValueOnce(notEditable);
+    await capturedOnComplete({ bountyAmountPence: 60000 });
+
+    expect(mockCreateIntent).toHaveBeenCalledTimes(1); // no second intent
     expect(mockReplace).toHaveBeenCalledWith('/post/p1');
   });
 

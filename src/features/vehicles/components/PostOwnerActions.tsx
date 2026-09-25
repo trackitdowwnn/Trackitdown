@@ -31,7 +31,7 @@ import { Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { exitCheck, useDeactivatePost } from '@/features/payments';
-import { bountyParam, estimateRefundPence, formatPounds } from '@/shared/lib';
+import { bountyParam, chargeBreakdown, estimateRefundPence, formatPounds } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { spacing, useThemedStyles, type Palette } from '@/shared/theme';
 import {
@@ -429,9 +429,11 @@ export function PostOwnerActions({
                 // refundable (ADR-0014). The destructive confirm must not
                 // promise money back that is not coming.
                 'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.'
-              : `We’ll take it down and refund about ${formatPounds(
-                  estimateRefundPence(owned.bountyPence),
-                )} to your card — the reward minus the non-recoverable card fee. This can’t be undone.`
+              : // ADR-0020: the refund is the whole charge (reward + service
+                // fee) minus the card fee — see PostDetailBody's estimate.
+                `We’ll take it down and refund about ${formatPounds(
+                  estimateRefundPence(chargeBreakdown(owned.bountyPence).chargePence),
+                )} to your card — what you paid, minus the non-recoverable card fee. This can’t be undone.`
           }
           confirmLabel="Yes, deactivate"
           destructive

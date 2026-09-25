@@ -1,16 +1,18 @@
 /**
  * WHAT:  Money formatting and money maths — pence-integer amounts rendered as
- *        GBP strings ("£500", "£1,250.50"), plus the reference 95/5 bounty
- *        split and the fixed listing-fee price.
+ *        GBP strings ("£500", "£1,250.50"), plus the reward listing's charge
+ *        (reward + 5% service fee, ADR-0020) and the fixed listing-fee price.
  * WHY:   All money in the app is integer pence end-to-end (docs/DOMAIN.md:
- *        bounties, escrow, the 95/5 split) — floats never touch amounts, so
+ *        rewards, escrow, the service fee) — floats never touch amounts, so
  *        this formatter is the single place pence become display text, and
- *        bountyBreakdown is the single place the split is computed. Whole
+ *        chargeBreakdown is the single place the charge is computed. Whole
  *        pounds drop the ".00" (matches the design system's bounty examples);
  *        fractional amounts keep two decimals. UK-only per the roadmap, so
  *        GBP is fixed.
  * LINKS: docs/DOMAIN.md (Money & fees); docs/TESTING.md (Tier 1: money);
  *        docs/decisions/ADR-0014-no-bounty-listings.md;
+ *        docs/decisions/ADR-0020-the-reward-is-the-reward.md;
+ *        supabase/functions/_shared/serviceFee.ts (the charge this mirrors);
  *        src/shared/ui/BountyTag.tsx, src/shared/ui/MoneySlider.tsx
  *        (consumers).
  */
@@ -82,43 +84,57 @@ export function bountyParam(bountyPence: number | null): string {
   return bountyPence === null ? NO_BOUNTY_PARAM : String(bountyPence);
 }
 
-/** The two sides of a paid-out bounty. Parts always sum exactly to the input. */
-export interface BountyBreakdown {
-  spotterPence: number;
-  feePence: number;
-}
+/** The service fee, as a percentage of the reward (ADR-0020). */
+export const SERVICE_FEE_PERCENT = 5;
 
-/** Split a bounty into the spotter's payout and the platform fee
- *  (docs/DOMAIN.md: 95% to the winning spotter, 5% platform fee). */
-export function bountyBreakdown(bountyPence: number): BountyBreakdown {
-  if (!Number.isInteger(bountyPence) || bountyPence < 0) {
-    throw new Error(`bountyBreakdown expects non-negative integer pence, got ${bountyPence}`);
-  }
-  // MONEY: DISPLAY ONLY. Real payouts are computed server-side via Stripe
-  // transfer math (docs/DOMAIN.md: "never calculated in the app client";
-  // ADR-0002) — never wire this into a payout or charge path.
-  // MONEY: the reference 95/5 split. The fee rounds DOWN and the spotter
-  // receives the remainder, so displayed copy never overstates our fee and
-  // spotter + fee always reconstruct the bounty exactly. Whole-pound bounties
-  // (the only kind the UI produces) split with no remainder at all.
-  const feePence = Math.floor((bountyPence * 5) / 100);
-  return { spotterPence: bountyPence - feePence, feePence };
+/** What a reward listing costs. The parts always sum exactly to the charge. */
+export interface ChargeBreakdown {
+  /** What the credited spotter receives — the advertised reward, in full. */
+  rewardPence: number;
+  /** Our 5%, added on top and kept only on a spotter-led recovery. */
+  serviceFeePence: number;
+  /** What the owner is charged: reward + service fee. */
+  chargePence: number;
 }
 
 /**
- * Bounty minus the ESTIMATED non-recoverable card fee (~UK rate, 1.5% + 20p),
+ * The charge for a reward listing: the reward plus a floor(5%) service fee
+ * (ADR-0020 — "the reward is the reward").
+ *
+ * MONEY: DISPLAY ONLY — a MIRROR of `rewardCharge` in
+ * supabase/functions/_shared/serviceFee.ts, which is what create-payment-intent
+ * actually charges. The client never sends an amount; it sends a post id, and
+ * the payment hook refuses to open the sheet if the server's total differs from
+ * this one — so a drift here shows up as "the price changed", never as a wrong
+ * charge. The fee rounds DOWN, like Postgres integer division; whole-pound
+ * rewards (the only kind the UI produces) have no remainder at all.
+ */
+export function chargeBreakdown(rewardPence: number): ChargeBreakdown {
+  if (!Number.isInteger(rewardPence) || rewardPence < 0) {
+    throw new Error(`chargeBreakdown expects non-negative integer pence, got ${rewardPence}`);
+  }
+  const serviceFeePence = Math.floor((rewardPence * SERVICE_FEE_PERCENT) / 100);
+  return { rewardPence, serviceFeePence, chargePence: rewardPence + serviceFeePence };
+}
+
+/**
+ * A CHARGE minus the ESTIMATED non-recoverable card fee (~UK rate, 1.5% + 20p),
  * floored at zero — what an owner gets back when a listing ends without a
- * credited spotter (cancel, expiry, takedown, recovered-it-themselves).
+ * credited spotter (cancel, takedown, recovered-it-themselves).
+ *
+ * ⚠️ PASS THE CHARGE, NOT THE REWARD. Since ADR-0020 a refund returns the whole
+ * charge — reward AND service fee — minus the card fee, so the reward alone
+ * under-quotes it. `chargeBreakdown(reward).chargePence` is the argument.
  *
  * MONEY: DISPLAY ONLY, and an ESTIMATE. The server withholds the real Stripe
  * fee and returns the authoritative refunded amount, which is what the
  * post-refund toast shows — never wire this into a refund or charge path.
  *
  * Lives here rather than under features/vehicles (where it started) because the
- * bounty slider quotes it too, and shared/ui cannot import from a feature.
+ * reward slider quotes it too, and shared/ui cannot import from a feature.
  * Every surface that quotes a refund before the owner commits must use this one
  * function, or two screens will disagree about the same number.
  */
-export function estimateRefundPence(bountyPence: number): number {
-  return Math.max(0, bountyPence - (Math.round(bountyPence * 0.015) + 20));
+export function estimateRefundPence(chargePence: number): number {
+  return Math.max(0, chargePence - (Math.round(chargePence * 0.015) + 20));
 }

@@ -400,7 +400,10 @@ commenting standards.
 
 ## 4. Payments (Stripe Connect)
 
-- The client app **never** touches amounts, fees, or payout logic. It opens
+- The client app **never** decides amounts, fees, or payout logic. (It does
+  COMPUTE the fee-on-top total for display — `chargeBreakdown` — and refuses to
+  open the payment sheet if the server priced anything else; that is a check
+  on what the owner saw, never an input to what is charged. ADR-0020.) It opens
   Stripe's own flows (PaymentSheet for escrow, the embedded
   `ConnectAccountOnboarding` component for spotters) and, since 2026-08-03,
   collects payout details in a native form of our own — see below.
@@ -432,14 +435,19 @@ commenting standards.
     dispute window** (§5's owner-denial control protects a spotter's claim on a
     bounty; there is none here). Non-refundability is disclosed on the pricing
     step, before any money moves.
-- Escrow charge on posting; payout of 95% by **transfer**, with our 5%
-  retained as the remainder that never leaves the platform balance — **not**
-  an `application_fee_amount` (ADR-0002; this line said "application fee"
-  until 2026-08-03). Only via the `release-payout` Edge Function, which
+- Escrow charge on posting — the reward **plus a 5% service fee** (ADR-0020,
+  2026-09-25); payout of the reward in full by **transfer**, with the service
+  fee retained as the remainder that never leaves the platform balance —
+  **not** an `application_fee_amount` (ADR-0002; this line said "application
+  fee" until 2026-08-03, and "95%" until 2026-09-25). The split is stored on the
+  payment row at charge time and pinned by `payments_split_check`;
+  `mark_recovery_paid` refuses any transfer that differs from it, so a payout
+  can never apply one pricing rule to money charged under another. Only via the `release-payout` Edge Function, which
   validates state transitions server-side (post must be `recovery_claimed`,
   sighting must belong to the post, spotter must be onboarded) and whose
-  `mark_recovery_paid` re-derives the split independently and rejects a
-  mismatch.
+  `mark_recovery_paid` re-derives the spotter's share from the charge and its
+  pricing — independently of the stored reward the Edge Function read — and
+  rejects a mismatch.
   **Wired 2026-08-03.** `release-payout` is called from `RecoverPostScreen`
   when a spotter is credited, and again from the post's manage sheet ("Send the
   bounty") for the usual case where they had not yet onboarded. Connect

@@ -28,11 +28,14 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { PaymentError, createBountyPaymentIntent, useBountyPayment } from '@/features/payments';
+import { DEFAULT_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
 import { successHaptic } from '@/shared/lib/haptics';
+import { chargeBreakdown, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { useToast } from '@/shared/ui';
 import { WizardScreen, type WizardFlow } from '@/shared/wizard';
 
 import { fetchBountyGuidance, logBountyRecommendation } from '../api/bountyGuidanceApi';
+import { saveBounty } from '../api/editSectionApi';
 import { recommendBounty } from '../lib/bountyRecommendation';
 import { clearPostDraft, loadPostDraft, savePostDraft } from '../lib/postDraftStorage';
 import { submitPost } from '../api/postApi';
@@ -72,6 +75,10 @@ export function PostACarScreen({
   // after a cancelled/declined payment never creates a second draft and (with
   // the server idempotency key) never double-charges.
   const createdPostIdRef = useRef<string | null>(null);
+  // The price the draft holds on the SERVER: what it was created with, then
+  // whatever a retry last saved. `null` means the £5 listing fee. A retry
+  // re-saves only when the answers differ from this — never blindly.
+  const savedRewardRef = useRef<number | null | undefined>(undefined);
 
   /**
    * A saved draft, restored once on open (review #19).
@@ -107,14 +114,27 @@ export function PostACarScreen({
     };
   }, [initialAnswers]);
 
+  /** A payment that landed after all: the same ending as a paid sheet. */
+  const goToPaidListing = (postId: string) => {
+    successHaptic();
+    toast.show('Your payment went through — your car is going live for spotters now.', 'success');
+    router.replace(`/post/${postId}`);
+  };
+
   const handleComplete = async (answers: Partial<PostACarAnswers>) => {
     // 1. Create the draft ONCE. On a retry the id is already known — skip
     //    submitPost (and its uploads) and go straight to payment.
+    const feeMode = answers.pricingMode === 'fee';
+    const rewardPence = answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE;
+    // The price these answers ask for: a reward in pence, or null for the fee.
+    const askedReward = feeMode ? null : rewardPence;
+
     let postId = createdPostIdRef.current;
     if (!postId) {
       const result = await submitPost(answers);
       postId = result.postId;
       createdPostIdRef.current = postId;
+      savedRewardRef.current = askedReward;
 
       // ⚠️ CLEARED THE MOMENT THE POST EXISTS, not after payment (review #19).
       // From here the report lives on the server as a draft post with its own
@@ -162,11 +182,67 @@ export function PostACarScreen({
       }
     }
 
-    // 2. Open (or reuse) the escrow PaymentIntent — the server reads the
-    //    authoritative bounty amount; this call carries only the id.
-    const clientSecret = await createBountyPaymentIntent(postId);
+    // 2. On a RETRY whose price CHANGED, bring the draft in line first. The
+    //    draft holds the price it was created with; if a payment failed and
+    //    the owner changed the reward on the review before trying again, the
+    //    server would price the OLD reward while the button names the new one.
+    //    That used to charge the old sum silently; with the price check below
+    //    it would refuse forever.
+    //
+    //    ⚠️ ONLY when it changed, and only reward-to-reward. The draft RPC
+    //    takes a reward and refuses NULL, so a £5 listing (whose price never
+    //    moves) is never re-saved, and switching between a reward and the £5
+    //    fee after the draft exists is refused in words rather than attempted.
+    if (savedRewardRef.current !== askedReward) {
+      if (savedRewardRef.current === null || askedReward === null) {
+        const savedAs =
+          savedRewardRef.current === null
+            ? `a ${formatPounds(LISTING_FEE_PENCE)} listing`
+            : 'a listing with a reward';
+        throw new PaymentError(
+          `This was saved as ${savedAs}. Switch back to finish, or start a new listing.`,
+          'PRICING_LOCKED',
+        );
+      }
+      try {
+        await saveBounty(postId, askedReward);
+      } catch (error) {
+        // POST_NOT_EDITABLE here means the draft is no longer a draft — the
+        // earlier attempt was paid after all and the webhook got there first.
+        if (error instanceof Error && 'code' in error && error.code === 'POST_NOT_EDITABLE') {
+          goToPaidListing(postId);
+          return;
+        }
+        throw error;
+      }
+      savedRewardRef.current = askedReward;
+    }
 
-    // 3. Present Stripe's PaymentSheet.
+    // 3. Open (or reuse) the PaymentIntent. The server derives the charge; the
+    //    total passed here is only what the pay button SHOWED, and the call
+    //    refuses to proceed if the server priced anything else (ADR-0020).
+    const displayedChargePence = feeMode
+      ? LISTING_FEE_PENCE
+      : chargeBreakdown(rewardPence).chargePence;
+    let clientSecret: string;
+    try {
+      clientSecret = await createBountyPaymentIntent(postId, displayedChargePence);
+    } catch (error) {
+      // An earlier attempt the sheet reported as failed was in fact paid. That
+      // is good news, not an error: take them to the listing. POST_NOT_DRAFT
+      // is the same news arriving later — the webhook already made it live,
+      // and a draft only ever leaves draft by being paid.
+      if (
+        error instanceof PaymentError &&
+        (error.code === 'PAYMENT_ALREADY_TAKEN' || error.code === 'POST_NOT_DRAFT')
+      ) {
+        goToPaidListing(postId);
+        return;
+      }
+      throw error;
+    }
+
+    // 4. Present Stripe's PaymentSheet.
     const { outcome, message } = await payBounty(clientSecret);
     if (outcome === 'cancelled') {
       throw new PaymentError('Payment not completed. Tap to try again when ready.', 'CANCELLED');
@@ -175,7 +251,7 @@ export function PostACarScreen({
       throw new PaymentError(message ?? 'Your payment didn’t go through. Please try again.', 'FAILED');
     }
 
-    // 4. Paid — the webhook flips the post to ACTIVE (live-on-payment). Route to
+    // 5. Paid — the webhook flips the post to ACTIVE (live-on-payment). Route to
     //    it (replace so back doesn't return into the finished wizard).
     successHaptic();
     toast.show('Payment received — your car is going live for spotters now.', 'success');

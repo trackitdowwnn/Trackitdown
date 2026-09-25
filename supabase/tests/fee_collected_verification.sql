@@ -53,8 +53,14 @@ begin
   -- a change that sent everything to `collected` would pass CHECK 1 and
   -- silently make every bounty unrefundable and unpayable.
   -- ---------------------------------------------------------------------
-  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
-  values (v_post, 'pi_test_bounty_capture', 'requires_payment', 20000, 'bounty_escrow');
+  -- A NEW escrow charge must state its pricing since 20260925100000 — the
+  -- legacy fill refuses to guess one for a requires_payment row. A £200
+  -- reward, charged £210 with the fee on top (ADR-0020).
+  insert into public.payments
+    (post_id, stripe_payment_intent_id, status, amount_pence, kind,
+     pricing, reward_pence, service_fee_pence)
+  values (v_post, 'pi_test_bounty_capture', 'requires_payment', 21000, 'bounty_escrow',
+          'fee_on_top', 20000, 1000);
 
   perform public.mark_post_payment_held('pi_test_bounty_capture');
 

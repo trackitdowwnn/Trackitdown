@@ -1,17 +1,22 @@
 /**
- * WHAT:  Tests for the money formatter and the 95/5 bounty split — whole
- *        pounds, fractional pence, grouping, zero, negatives, the
- *        integer-only guard, exact splits, and the remainder-penny rule.
+ * WHAT:  Tests for the money formatter, the reward listing's charge (reward +
+ *        5% service fee, ADR-0020) and the refund estimate — whole pounds,
+ *        fractional pence, grouping, zero, negatives, the integer-only guard,
+ *        the fee-rounds-down rule, and parts that always sum to the charge.
  * WHY:   Money is integer pence everywhere (docs/DOMAIN.md); a formatting
- *        slip misrepresents bounty amounts everywhere at once, and
- *        bountyBreakdown is THE reference split implementation — Tier 1 money
- *        per docs/TESTING.md.
- * LINKS: src/shared/lib/money.ts.
+ *        slip misrepresents reward amounts everywhere at once, and
+ *        chargeBreakdown is the number the owner is shown before paying —
+ *        Tier 1 money per docs/TESTING.md. It must match the server's rule
+ *        (supabase/functions/_shared/serviceFee.ts) or every reward listing is
+ *        refused at the payment step.
+ * LINKS: src/shared/lib/money.ts; supabase/functions/_shared/serviceFee.test.ts.
  */
 
+import { rewardCharge } from '../../../supabase/functions/_shared/serviceFee';
 import {
-  bountyBreakdown,
   bountyParam,
+  chargeBreakdown,
+  estimateRefundPence,
   formatPounds,
   LISTING_FEE_PENCE,
   NO_BOUNTY_PARAM,
@@ -35,33 +40,55 @@ describe('formatPounds', () => {
   });
 });
 
-describe('bountyBreakdown', () => {
-  // MONEY: these pin the reference 95/5 split (docs/DOMAIN.md).
+describe('chargeBreakdown', () => {
+  // MONEY: these pin the fee-on-top rule (ADR-0020). The reward is untouched —
+  // it is what the spotter receives — and the fee is added on top.
   it.each([
-    [20000, 19000, 1000], // £200 → spotter £190, fee £10 (the DOMAIN example)
-    [5000, 4750, 250], // £50 minimum bounty
-    [500000, 475000, 25000], // £5,000 maximum bounty
+    [50000, 2500, 52500], // £500 reward → £25 fee → £525 charged
+    [1000, 50, 1050], // £10 minimum reward
+    [500000, 25000, 525000], // £5,000 maximum reward
     [0, 0, 0],
-  ])('splits %i pence into spotter %i and fee %i', (total, spotter, fee) => {
-    expect(bountyBreakdown(total)).toEqual({ spotterPence: spotter, feePence: fee });
+  ])('charges a %i pence reward a %i fee, %i in total', (reward, fee, charge) => {
+    expect(chargeBreakdown(reward)).toEqual({
+      rewardPence: reward,
+      serviceFeePence: fee,
+      chargePence: charge,
+    });
   });
 
-  it('gives the remainder penny to the spotter — the fee rounds down', () => {
-    // 23750 × 5% = 1187.5p: the fee floors to 1187, the spotter gets the rest.
-    expect(bountyBreakdown(23750)).toEqual({ spotterPence: 22563, feePence: 1187 });
+  it('rounds the fee down — 5% of 23750p is 1187.5p, charged as 1187p', () => {
+    expect(chargeBreakdown(23750)).toEqual({
+      rewardPence: 23750,
+      serviceFeePence: 1187,
+      chargePence: 24937,
+    });
   });
 
-  it('parts always sum exactly to the bounty', () => {
-    for (let pence = 0; pence <= 250; pence += 1) {
-      const { spotterPence, feePence } = bountyBreakdown(pence);
-      expect(spotterPence + feePence).toBe(pence);
-      expect(feePence).toBeLessThanOrEqual(spotterPence);
+  it('agrees with the server rule for every whole-pound reward', () => {
+    // The payment hook refuses to open the sheet when these two disagree, so a
+    // drift here would stop every reward listing at the last step.
+    for (let pounds = 10; pounds <= 5000; pounds += 1) {
+      const server = rewardCharge(pounds * 100);
+      const client = chargeBreakdown(pounds * 100);
+      expect(client.chargePence).toBe(server.chargePence);
+      expect(client.serviceFeePence).toBe(server.serviceFeePence);
     }
   });
 
   it('rejects floats and negative amounts', () => {
-    expect(() => bountyBreakdown(100.5)).toThrow(/integer pence/);
-    expect(() => bountyBreakdown(-100)).toThrow(/integer pence/);
+    expect(() => chargeBreakdown(100.5)).toThrow(/integer pence/);
+    expect(() => chargeBreakdown(-100)).toThrow(/integer pence/);
+  });
+});
+
+describe('estimateRefundPence', () => {
+  it('nets the estimated card fee (1.5% + 20p) off the whole charge', () => {
+    // £525 charged: 1.5% is 787.5p → 788p, plus 20p = 808p withheld.
+    expect(estimateRefundPence(52500)).toBe(51692);
+  });
+
+  it('never goes below zero', () => {
+    expect(estimateRefundPence(10)).toBe(0);
   });
 });
 

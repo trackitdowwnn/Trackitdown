@@ -9,6 +9,13 @@ Refines ADR-0001
 > dashboard and platform-owned collection in our own UI. The charge-pattern
 > half of this ADR — separate charges and transfers, immediate capture, 5% by
 > transfer math — **stands unchanged** and ADR-0010 builds on it.
+>
+> **Transfer math amended by
+> [ADR-0020](./ADR-0020-the-reward-is-the-reward.md)** (2026-09-25): the 5%
+> is now charged ON TOP of the reward and the spotter is transferred the reward
+> in full, not `round(bounty × 0.95)`. The mechanism (separate charges and
+> transfers, the fee as the untransferred remainder) is unchanged. Rows charged
+> before 2026-09-25 keep the 95/5 below.
 
 ## Context
 

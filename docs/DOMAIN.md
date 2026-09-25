@@ -69,11 +69,14 @@ no longer true.
   pre-publish review. Nothing moderator-facing is built at all; the only flag
   paths that exist are for a post and a message, and nothing consumes either.)
 - **Platform** — us. Paid one of two ways, depending on how the post was listed
-  (see *Listing pricing* below). On a **bounty listing** we retain 5% of the
-  bounty: it is captured to our balance at posting and 95% is TRANSFERRED to the
-  spotter on a credited recovery, so our 5% is simply the remainder that never
-  leaves — it is **not** a Stripe `application_fee_amount`, which only exists for
-  the destination charges we deliberately do not use (ADR-0002). On a
+  (see *Listing pricing* below). On a **reward listing** the owner is charged
+  the reward **plus a 5% service fee** (ADR-0020, 2026-09-25): the whole charge
+  is captured to our balance at posting, the REWARD is transferred to the
+  spotter on a credited recovery, and the service fee is the remainder that
+  never leaves — it is **not** a Stripe `application_fee_amount`, which only
+  exists for the destination charges we deliberately do not use (ADR-0002).
+  (Before ADR-0020 the fee was inside the reward: charged £500, spotter paid
+  £475. Rows charged that way keep that rule.) On a
   **no-reward listing** we take a fixed £5 fee at posting and nothing else
   ever moves (ADR-0014). This line said "via Stripe Connect application fees"
   until 2026-08-03, and described only the bounty model until 2026-08-20.
@@ -165,11 +168,13 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
    the one that led to the recovery, or selects "none — recovered another
    way."
 5. **recovered (paid)** — a sighting was credited. The Edge Function
-   releases the escrowed bounty: **95% to the winning spotter, 5% platform
-   fee.** Post closes. Spotter's reputation increments.
-6. **recovered_no_spotter** — recovered without a credited sighting. Bounty
-   is refunded to the owner (minus non-recoverable card processing costs,
-   which the UI must disclose at posting time).
+   releases the escrowed reward: **the reward in full to the winning spotter;
+   the 5% service fee the owner paid on top stays with the platform**
+   (ADR-0020). Post closes. Spotter's reputation increments.
+6. **recovered_no_spotter** — recovered without a credited sighting. The whole
+   charge — reward and service fee — is refunded to the owner, minus
+   non-recoverable card processing costs, which the UI must disclose at
+   posting time.
 7. **cancelled** — the owner cancels. Bounty refunded as above. Since
    2026-09-21 a cancelled post is also **deletable**: the app offers deletion
    right after a cancel, and "Delete post" stays in Manage post; whatever the
@@ -349,10 +354,10 @@ A post with both would be charged twice; one with neither would be live for free
 
 | | **Bounty listing** | **No-reward listing** |
 |---|---|---|
-| Owner pays | £10–£5,000, escrowed | **£5 fixed fee**, once |
-| Platform keeps | 5% of the bounty, on recovery | the whole fee, on capture |
-| Spotter gets | 95% of the bounty | **credit + reputation only** |
-| Refundable? | yes, minus the card fee | **no** |
+| Owner pays | reward (£10–£5,000) **+ 5% service fee**, escrowed (ADR-0020) | **£5 fixed fee**, once |
+| Platform keeps | the service fee, on a spotter-led recovery | the whole fee, on capture |
+| Spotter gets | **the reward, in full** | **credit + reputation only** |
+| Refundable? | yes — reward and fee, minus the card fee | **no** |
 | Ledger state | `requires_payment → held → released \| refunded` | `requires_payment → collected` (terminal) |
 
 **Why a listing fee exists at all:** £50, the floor before 2026-08-13, was the price of admission for a theft
@@ -435,14 +440,19 @@ Rules that follow, and are not implementation details:
 "Listing pricing" above.)*
 
 - Minimum bounty: £10 (lowered from £50 on 2026-08-13). Maximum: £5,000
-  (fraud ceiling — revisit later).
+  (fraud ceiling — revisit later). **Both bound the REWARD**, so the owner's
+  charge runs £10.50–£5,250 (ADR-0020).
 - **Single winner.** Exactly one sighting can be credited per recovery.
   No splitting in v1. If several spotters contributed, the owner picks the
   decisive one. (Splitting is a known v2 candidate; do not build it early.)
-- The 5% platform fee is retained via **transfer math** — on recovery the
-  platform transfers 95% of the bounty to the winning spotter under separate
-  charges and transfers, keeping 5% — never calculated in the app client.
-  (Not a Stripe `application_fee_amount`; see ADR-0002 for why.)
+- **The reward is the reward (ADR-0020, 2026-09-25).** The owner is charged
+  the reward plus a service fee of floor(5%); on recovery the platform
+  transfers the reward IN FULL to the winning spotter under separate charges
+  and transfers, and the fee is the remainder — never calculated in the app
+  client for any charge or payout. (Not a Stripe `application_fee_amount`; see
+  ADR-0002 for why.) The split is stored on the payment row when it is charged
+  and never recomputed: rows charged before ADR-0020 (`fee_inside`) still pay
+  95% of their charge.
 - Spotters must complete Stripe Connect onboarding (KYC) before a payout
   can be released. Prompt for this when their first sighting is credited,
   not at signup — the "you've earned £X" moment is the entry point, and the
@@ -835,7 +845,8 @@ whose car a spotter found from taking the bounty back with one tap:
   capture-GPS photos, timestamps, retained chat — and runs
   `resolve_sighting_dispute` by hand (service role; every action is a row).
   Upheld: the sighting is credited on the owner's behalf (the post returns to
-  `recovery_claimed` and the normal payout machinery pays the spotter, 95/5,
+  `recovery_claimed` and the normal payout machinery pays the spotter their
+  reward,
   collusion gate and all); sibling disputes auto-reject. Rejected or
   unclaimed: the hourly `release-held-refunds` sweep sends the owner's refund
   once the window passes.

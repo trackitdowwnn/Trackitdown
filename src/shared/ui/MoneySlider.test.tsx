@@ -95,40 +95,43 @@ describe('MoneySlider rendering', () => {
     });
   });
 
-  it('renders the transparency panel with the live 95/5 breakdown', async () => {
+  // ADR-0020: the fee is ON TOP. The owner is told the total, and told that the
+  // spotter receives the reward they chose in full — the same number every
+  // spotter-facing surface shows.
+  it('renders the live fee-on-top breakdown', async () => {
     const { getByText } = await render(
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
-    expect(getByText(/they receive £190 and our platform fee is £10/)).toBeTruthy();
-    expect(getByText(/£200 is held when your post goes live/)).toBeTruthy();
+    expect(getByText(/You pay £210: the £200 reward plus a £10 service fee/)).toBeTruthy();
+    expect(getByText(/gets the full £200/)).toBeTruthy();
   });
 
-  // The refund conditions must read COMPLETELY. The line used to say "refunded
-  // if you cancel or recover it yourself", omitting expiry — the most likely
-  // ending for most posts — which buried the point: the money comes back
-  // unless a spotter actually finds the car.
-  it('names every way the money comes back, not just cancelling', async () => {
-    const { getByText } = await render(
+  // The refund condition must read COMPLETELY — the money comes back unless a
+  // spotter's sighting finds the car — and must not promise an ending that
+  // never happens. It said "…or the post expires" until 2026-09-25; nothing
+  // expires a post.
+  it('says when the money comes back, and never mentions expiry', async () => {
+    const { getByText, queryByText } = await render(
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
-    expect(getByText(/only pay it if a spotter finds your car/)).toBeTruthy();
-    expect(getByText(/cancel, recover it yourself, or the post expires/)).toBeTruthy();
+    expect(getByText(/pay nobody until you confirm who found your car/)).toBeTruthy();
+    expect(queryByText(/expires/)).toBeNull();
   });
 
   // Our Terms promise "that deduction is shown to you before you pay", and
-  // payment is Stripe's PaymentSheet — so this panel is the only surface that
-  // can keep it. The line said "minus card processing costs" with no figure.
-  it('quotes the actual refund figure, not just that a fee exists', async () => {
+  // payment is Stripe's PaymentSheet — so this panel is one of only two
+  // surfaces that can keep it. The refund is netted off the whole CHARGE.
+  it('quotes the refund figure on the whole charge, not just that a fee exists', async () => {
     const { getByText } = await render(
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
-    // 20000 − (round(20000 × 0.015) + 20) = 19680
-    expect(getByText(/£196\.80 comes back to you/)).toBeTruthy();
+    // Charge 21000 − (round(21000 × 0.015) + 20) = 21000 − 335 = 20665
+    expect(getByText(/about £206\.65 comes back to you/)).toBeTruthy();
   });
 
   it('hides the panel when no copy is provided', async () => {
     const { queryByText } = await render(<MoneySlider {...bountyProps} valuePence={20000} />);
-    expect(queryByText(/is held when your post goes live/)).toBeNull();
+    expect(queryByText(/service fee/)).toBeNull();
   });
 
   it('clamps an out-of-range controlled value', async () => {

@@ -17,14 +17,20 @@
  *          exact moment money moves — this is why the gate was built first.
  *        - `post-payout-{postId}` idempotency: the owner tapping while the
  *          webhook fires cannot double-pay; Stripe returns the same transfer.
- *        - the 95/5 split is computed here and independently re-derived (and
- *          rejected on mismatch) by mark_recovery_paid.
+ *        - the split is the one STORED on the payment at charge time
+ *          (ADR-0020): `reward_pence` is transferred — the whole reward on a
+ *          fee_on_top row, 95% on a legacy fee_inside one — and
+ *          mark_recovery_paid refuses any transfer that is not that number.
+ *          This file does no split arithmetic at all any more: a payout can
+ *          never apply the new rule to money charged under the old one.
  *        - a post that is not `recovery_claimed` is a NO-OP ('not_claimed'),
  *          which is what makes concurrent triggers safe to fire blindly.
  * LINKS: supabase/functions/release-payout/index.ts (owner-invoked caller);
  *        supabase/functions/stripe-webhook/index.ts (payable-event caller);
  *        supabase/functions/create-payout-account/index.ts (instant caller);
- *        ./collusion.ts; supabase/migrations/20260802220000_release_payout.sql.
+ *        ./collusion.ts; supabase/migrations/20260802220000_release_payout.sql;
+ *        supabase/migrations/20260925100000_the_reward_is_the_reward.sql
+ *          (reward_pence / service_fee_pence, and the mark_recovery_paid check).
  */
 
 import type Stripe from 'npm:stripe@22.4.0';
@@ -36,19 +42,6 @@ import {
   announcePayoutSent,
   announceRecoveryToWatchers,
 } from './recoveryAnnounce.ts';
-
-/**
- * The canonical split, mirroring `payout_split` in SQL. Integer arithmetic —
- * `* 95 / 100`, never `* 0.95` — and the fee is the REMAINDER so the two
- * halves always add back to the bounty exactly. This duplication is deliberate
- * and is not drift waiting to happen: we need the number here to create the
- * transfer, and the RPC recomputes it and refuses anything else. Two
- * independent derivations that must agree.
- */
-export function splitBounty(bountyPence: number): { transferPence: number; feePence: number } {
-  const transferPence = Math.round((bountyPence * 95) / 100);
-  return { transferPence, feePence: bountyPence - transferPence };
-}
 
 export type ReleaseOutcome =
   | { status: 'paid'; transferPence: number; feePence: number }
@@ -156,7 +149,7 @@ export async function releasePayoutForPost(
   // --- The held escrow --------------------------------------------------------
   const { data: held, error: heldError } = await admin
     .from('payments')
-    .select('stripe_payment_intent_id, amount_pence')
+    .select('stripe_payment_intent_id, amount_pence, reward_pence, service_fee_pence')
     .eq('post_id', postId)
     // MONEY: kind, not just status. `payments` carries BOTH shapes since
     // 20260819100000 — an escrowed bounty and a £5 listing fee — and that
@@ -185,12 +178,23 @@ export async function releasePayoutForPost(
   }
 
   const paymentIntentId = held.stripe_payment_intent_id as string;
-  const bountyPence = held.amount_pence as number;
-  const { transferPence, feePence } = splitBounty(bountyPence);
+  const chargePence = held.amount_pence as number;
+  // MONEY (ADR-0020): the split fixed when the owner was charged. Never
+  // recomputed here — payments_split_check proves it obeys its pricing's rule,
+  // and mark_recovery_paid refuses a transfer that differs from it.
+  const transferPence = held.reward_pence as number | null;
+  const feePence = held.service_fee_pence as number | null;
 
-  // Defensive: a transfer must be a positive amount no larger than the bounty.
-  if (transferPence <= 0 || transferPence > bountyPence) {
-    console.error('[payments] computed transfer out of range', { bountyPence, transferPence });
+  // Defensive: a transfer must be a positive amount, and reward + fee must be
+  // exactly what was charged. The CHECK makes both unreachable; if either
+  // fires, the row is not one this code knows how to pay, so it stops.
+  if (
+    typeof transferPence !== 'number' ||
+    typeof feePence !== 'number' ||
+    transferPence <= 0 ||
+    transferPence + feePence !== chargePence
+  ) {
+    console.error('[payments] stored split out of range', { chargePence, transferPence, feePence });
     return { status: 'error', code: 'SPLIT_ERROR' };
   }
 
@@ -219,7 +223,7 @@ export async function releasePayoutForPost(
     return { status: 'error', code: 'STRIPE_ERROR' };
   }
 
-  // --- Record it (idempotent, never-regress, split re-checked) -----------------
+  // --- Record it (idempotent, never-regress, split checked against the row) ---
   const { error: rpcError } = await admin.rpc('mark_recovery_paid', {
     p_payment_intent_id: paymentIntentId,
     p_transfer_id: transfer.id,
@@ -234,7 +238,7 @@ export async function releasePayoutForPost(
     return { status: 'error', code: 'LEDGER_ERROR' };
   }
 
-  console.log('[payments] bounty released', { postId, transferPence, feePence });
+  console.log('[payments] reward released', { postId, transferPence, feePence });
 
   // The news, AFTER the money landed: "on its way" to the spotter, the
   // watchers' recovery announcement, and the ending owed to every OTHER

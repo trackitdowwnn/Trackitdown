@@ -48,7 +48,7 @@ import { WatchToggle } from '@/features/watchlist';
 import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { estimateRefundPence, formatPounds } from '@/shared/lib';
+import { chargeBreakdown, estimateRefundPence, formatPounds } from '@/shared/lib';
 import {
   cardSurface,
   radii,
@@ -217,8 +217,16 @@ export function PostDetailBody({
   // would compute a nonsense figure for money that was never escrowed.
   // Narrowed on the field itself rather than via `noReward`, so the compiler can
   // see the null is gone before estimateRefundPence is called.
+  //
+  // ADR-0020: a refund returns the whole CHARGE — reward plus the 5% service
+  // fee — so the estimate is netted off that. (A listing paid before
+  // 2026-09-25 was charged the reward alone, so this over-quotes it by the
+  // fee; those exist only in Stripe test mode, and the owner's money status
+  // replaces this estimate with the server's own figure.)
   const estimatedRefundPence =
-    post.bountyPence === null ? null : estimateRefundPence(post.bountyPence);
+    post.bountyPence === null
+      ? null
+      : estimateRefundPence(chargeBreakdown(post.bountyPence).chargePence);
 
   return (
     <View style={styles.body}>
@@ -626,7 +634,7 @@ export function PostDetailBody({
                   // this is the owner's last chance to learn it, though the
                   // pricing step disclosed it before they ever paid.
                   'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.'
-                : `Take this listing down and get your reward back. You’ll be refunded about ${formatPounds(estimatedRefundPence)} — the reward minus the non-recoverable card fee.`}
+                : `Take this listing down and get your money back. You’ll be refunded about ${formatPounds(estimatedRefundPence)} — what you paid, minus the non-recoverable card fee.`}
             </Text>
             <View style={styles.deactivateAction} testID="deactivate-listing">
               <Button

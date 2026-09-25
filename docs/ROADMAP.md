@@ -250,6 +250,30 @@ users, by admin, and by a lawyer. That is what the plan below spends its time on
 - **The freeze lifts when** ten testers have had a build for a week and the
   results have been read.
 
+> **Exception taken the same day: the escrow UX overhaul (ADR-0020).**
+> Recorded here as a decision, as the rule above requires.
+>
+> **What:**
+> - the service fee moves on top of the reward, so the spotter is paid the
+>   number they were shown
+> - owner money status on the listing and on My listings
+> - amounts and a confirm step on the recovery screen
+> - owner pushes when a refund or payout moves
+> - an always-visible Earnings screen for spotters
+> - five money bugs found along the way
+>
+> **Why it could not wait:**
+> - Two of the three weaknesses the owner named are spotters getting paid and
+>   trust. Both live on these screens.
+> - `payouts` and `recover-post` were already scheduled as the first design
+>   passes after the beta.
+> - The spotter was being promised £500 and paid £475. That is a trust bug,
+>   not polish.
+>
+> **Cost:** six PRs, three of them money-touching. It delays path item 6 (the
+> two-phone walk) until they land. The walk then covers the new money screens
+> too.
+
 ### Unsanctioned scope, recorded rather than deleted
 
 These shipped without any line in this file, which is the v1 fence moving without
@@ -762,4 +786,6 @@ no-deadline project sets.
 Big decisions get a short ADR in `docs/decisions/` (see the template
 there). Existing decisions: Supabase over Firebase (PostGIS), Stripe
 Connect escrow at posting, single-winner bounty, and — **superseding
-verification-before-visibility** — live-on-payment (ADR-0007).
+verification-before-visibility** — live-on-payment (ADR-0007). Since
+2026-09-25, the 5% service fee is charged on top of the reward, so the spotter
+receives the reward in full (ADR-0020, amending ADR-0002's transfer math).

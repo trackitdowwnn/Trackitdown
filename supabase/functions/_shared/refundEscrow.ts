@@ -15,8 +15,11 @@
  *        and the sweep must reuse the exact key the immediate path would have
  *        used so a partial failure retries into the SAME Stripe refund.
  *
- * MONEY: the caller never says how much. The bounty comes from the ledger, the
- *        withheld fee from Stripe's own balance transaction, and this FAILS
+ * MONEY: the caller never says how much. The charge comes from the ledger —
+ *        `amount_pence`, which since ADR-0020 is the reward PLUS the 5% service
+ *        fee, so a refund returns the service fee too (the platform earns only
+ *        on a spotter-led recovery) — the withheld card fee from Stripe's own
+ *        balance transaction, and this FAILS
  *        CLOSED if that fee cannot be read — a guessed amount that later
  *        disagrees with a retry under the same idempotency key bricks the
  *        refund at Stripe, and an over-guess over-refunds. The range guard

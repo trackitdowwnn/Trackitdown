@@ -61,7 +61,9 @@ describe('postACarFlow structure', () => {
     // in BOTH pricing modes. A payment button is never vague about the sum.
     expect(typeof postACarFlow.finalCtaLabel).toBe('function');
     const label = postACarFlow.finalCtaLabel as (a: Partial<PostACarAnswers>) => string;
-    expect(label({ pricingMode: 'bounty', bountyAmountPence: 25000 })).toBe('Post & pay £250');
+    // ADR-0020: a reward listing names the TOTAL charged — the £250 reward
+    // plus the 5% service fee — never the reward alone.
+    expect(label({ pricingMode: 'bounty', bountyAmountPence: 25000 })).toBe('Post & pay £262.50');
     // No-reward listing: the CTA names the FEE, not the slider's retained value.
     expect(label({ pricingMode: 'fee', bountyAmountPence: 25000 })).toBe('Post & pay £5');
     // Falls back to the seeded default when the bounty answer is absent.
