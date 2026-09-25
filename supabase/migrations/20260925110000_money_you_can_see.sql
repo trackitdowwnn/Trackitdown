@@ -79,6 +79,8 @@ begin;
 --      paid            the reward reached the spotter
 --      refund_on_hold  refund waits out the 72h window (until refundHold.expiresAt)
 --      refund_paused   a spotter disputed; a person is looking
+--      refund_owed     "found it another way" was claimed but its refund never
+--                      started — the owner must finish it from the listing
 --      refunding       the refund is due and has not landed yet
 --      refunded        the refund reached the owner
 --    NULL: no captured payment (a draft, or a charge that never succeeded).
@@ -174,9 +176,21 @@ begin
           else 'refunding'
         end;
       elsif v_post_status in ('cancelled', 'recovered_no_spotter') then
-        -- Closed with no hold: the refund was sent immediately and is in
-        -- flight, or it failed and the sweep will retry. Either way: coming.
+        -- Closed with no hold and the money still held: the refund was issued
+        -- at Stripe and its record has not landed yet — the charge.refunded
+        -- webhook writes it. In flight.
         v_state := 'refunding';
+      elsif v_post_status = 'recovery_claimed' then
+        -- ⚠️ "FOUND IT ANOTHER WAY", INTERRUPTED (review 2026-09-25). On a
+        -- reward listing claim_recovery's no-spotter answer moves the post to
+        -- recovery_claimed and the app then calls refund-recovery. If that
+        -- never finished — the app died, or the owner left the attestation —
+        -- there is no credited sighting, no hold, and nothing that will ever
+        -- retry it. Reading that as `held` told the owner their reward was
+        -- waiting to be paid out, after they had said nobody found it. The
+        -- owner finishes it from the listing (the app offers "Finish your
+        -- refund", which resumes the same refund path).
+        v_state := 'refund_owed';
       else
         v_state := 'held';
       end if;
@@ -209,7 +223,7 @@ begin
 end $$;
 
 comment on function public.post_money_state(uuid) is
-  'INTERNAL: one listing''s money as an owner-facing state (fee_paid, held, awaiting_payee, being_checked, sending, paid, refund_on_hold, refund_paused, refunding, refunded) plus the amounts behind it; NULL when nothing was captured. Derived from payments, sightings, payout_reviews, stripe_connected_accounts, refund_holds and refund_disputes — never stored. A pending and a rejected payout review both read being_checked; reasons never appear. No ownership check: callable only by the SECURITY DEFINER reads that make one.';
+  'INTERNAL: one listing''s money as an owner-facing state (fee_paid, held, awaiting_payee, being_checked, sending, paid, refund_on_hold, refund_paused, refund_owed, refunding, refunded) plus the amounts behind it; NULL when nothing was captured. Derived from payments, sightings, payout_reviews, stripe_connected_accounts, refund_holds and refund_disputes — never stored. A pending and a rejected payout review both read being_checked; reasons never appear. No ownership check: callable only by the SECURITY DEFINER reads that make one.';
 
 revoke all on function public.post_money_state(uuid) from public, anon, authenticated;
 

@@ -229,8 +229,13 @@ export function PostACarScreen({
       clientSecret = await createBountyPaymentIntent(postId, displayedChargePence);
     } catch (error) {
       // An earlier attempt the sheet reported as failed was in fact paid. That
-      // is good news, not an error: take them to the listing.
-      if (error instanceof PaymentError && error.code === 'PAYMENT_ALREADY_TAKEN') {
+      // is good news, not an error: take them to the listing. POST_NOT_DRAFT
+      // is the same news arriving later — the webhook already made it live,
+      // and a draft only ever leaves draft by being paid.
+      if (
+        error instanceof PaymentError &&
+        (error.code === 'PAYMENT_ALREADY_TAKEN' || error.code === 'POST_NOT_DRAFT')
+      ) {
         goToPaidListing(postId);
         return;
       }

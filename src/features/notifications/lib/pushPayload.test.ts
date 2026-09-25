@@ -66,6 +66,43 @@ describe('parsePushPayload', () => {
     ).toBeNull();
   });
 
+  // The owner's two money pushes (ADR-0021). The amount lives in the visible
+  // title only; the payload is the post id and nothing else.
+  it('accepts the owner’s money pushes carrying only the post id', () => {
+    expect(parsePushPayload({ type: 'refund_sent', postId: POST_ID })).toEqual({
+      type: 'refund_sent',
+      postId: POST_ID,
+    });
+    expect(parsePushPayload({ type: 'reward_delivered', postId: POST_ID })).toEqual({
+      type: 'reward_delivered',
+      postId: POST_ID,
+    });
+  });
+
+  it('rejects an owner money push carrying an amount', () => {
+    expect(
+      parsePushPayload({ type: 'refund_sent', postId: POST_ID, amountPence: 52500 }),
+    ).toBeNull();
+    expect(
+      parsePushPayload({ type: 'reward_delivered', postId: POST_ID, amountPence: 50000 }),
+    ).toBeNull();
+  });
+
+  it('rejects a reward_delivered push carrying anything about the spotter', () => {
+    expect(
+      parsePushPayload({ type: 'reward_delivered', postId: POST_ID, spotterId: THREAD_ID }),
+    ).toBeNull();
+    expect(
+      parsePushPayload({ type: 'reward_delivered', postId: POST_ID, sightingId: THREAD_ID }),
+    ).toBeNull();
+  });
+
+  it('rejects an owner money push without a uuid post id', () => {
+    expect(parsePushPayload({ type: 'refund_sent' })).toBeNull();
+    expect(parsePushPayload({ type: 'refund_sent', postId: 'not-a-uuid' })).toBeNull();
+    expect(parsePushPayload({ type: 'reward_delivered', sightingId: POST_ID })).toBeNull();
+  });
+
   it('has no payload variant that permits an unknown key', () => {
     // Belt to the braces above: every option is strict, so this holds for
     // variants added later without anyone remembering to test them.

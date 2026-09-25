@@ -243,6 +243,37 @@ rollback;
 
 
 -- -----------------------------------------------------------------------------
+-- CHECK 4b — "FOUND IT ANOTHER WAY", INTERRUPTED. claim_recovery's no-spotter
+-- answer left the post recovery_claimed, but refund-recovery never ran: no
+-- credited sighting, no hold, the money still held. That must read
+-- refund_owed — not `held`, which told the owner their reward was waiting to
+-- be paid out after they had said nobody found it (review 2026-09-25).
+-- -----------------------------------------------------------------------------
+begin;
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+values ('e0e0e0e0-0000-0000-0000-000000000012', '22222222-2222-2222-2222-222222222222',
+        'recovery_claimed', 40000, 'MS12 OWE');
+insert into public.payments
+  (post_id, stripe_payment_intent_id, status, amount_pence, kind, pricing, reward_pence, service_fee_pence)
+values ('e0e0e0e0-0000-0000-0000-000000000012', 'pi_ms12', 'held', 42000, 'bounty_escrow',
+        'fee_on_top', 40000, 2000);
+
+do $$
+declare
+  v_doc jsonb;
+begin
+  v_doc := public.post_money_state('e0e0e0e0-0000-0000-0000-000000000012');
+  if v_doc ->> 'state' is distinct from 'refund_owed'
+     or (v_doc ->> 'hasCreditedSighting')::boolean
+     or (v_doc ->> 'headlinePence')::int <> 42000 then
+    raise exception 'CHECK 4b FAILED: an interrupted no-spotter recovery read %', v_doc;
+  end if;
+  raise notice 'CHECK 4b passed: an interrupted "found it another way" reads refund_owed, not held';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
 -- CHECK 5 — MY LISTINGS CARRIES THE SAME STATE IN BRIEF, and a draft (nothing
 -- captured) carries none.
 -- -----------------------------------------------------------------------------
