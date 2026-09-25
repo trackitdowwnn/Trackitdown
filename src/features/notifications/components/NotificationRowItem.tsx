@@ -71,6 +71,13 @@ import { CENTER_ROW_META, type NotificationTone } from '../lib/centerRowMeta';
 export interface NotificationRowItemProps {
   row: NotificationRow;
   onPress: (row: NotificationRow) => void;
+  /**
+   * The row's errand is already done, so it must not stay loud. Today only
+   * `credited` has one ("Add your bank details"), and the screen sets this
+   * once the reader's payouts are set up — the chip used to nag every spotter
+   * whose details were in, and even ones already paid.
+   */
+  errandDone?: boolean;
 }
 
 /**
@@ -92,7 +99,7 @@ function toneColor(c: Palette, tone: NotificationTone): string {
   }
 }
 
-export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) {
+export function NotificationRowItem({ row, onPress, errandDone = false }: NotificationRowItemProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   // ⚠️ A FALLBACK FOR A KIND THIS BUILD HAS NEVER HEARD OF. The server's CHECK
@@ -106,7 +113,7 @@ export function NotificationRowItem({ row, onPress }: NotificationRowItemProps) 
   const { fontScale } = useWindowDimensions();
   // ⚠️ RESTORED 2026-09-05 alongside ThreadRow — see the meta column note.
   const stacked = (fontScale ?? 1) > listRowStackFontScale;
-  const loud = unread && meta.needsAttention;
+  const loud = unread && meta.needsAttention && !errandDone;
 
   // The badge, the weight and the bar are visual; the LABEL is where a screen-
   // reader user learns the same facts (ThreadRow's precedent).

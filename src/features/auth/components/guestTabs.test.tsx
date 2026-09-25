@@ -98,6 +98,13 @@ jest.mock('@/features/chat', () => {
   return { ChatInboxScreen: () => <Text>chat-inbox-content</Text> };
 });
 
+// The inbox route reads the payout account (to quiet a done "Add your bank
+// details" chip). This file tests gating; the payments barrel pulls in the
+// Stripe native SDK, so it is stubbed to a not-started account.
+jest.mock('@/features/payments', () => ({
+  usePayoutAccount: () => ({ status: 'notStarted', account: null }),
+}));
+
 // The route's segment memory reaches AsyncStorage (native module, null in
 // jest) — the house jest mock stands in.
 jest.mock('@react-native-async-storage/async-storage', () =>

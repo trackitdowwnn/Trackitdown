@@ -37,6 +37,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useRequireAuth, useSession } from '@/features/auth';
 import { ChatInboxScreen } from '@/features/chat';
+import { usePayoutAccount } from '@/features/payments';
 import {
   loadInboxSegment,
   saveInboxSegment,
@@ -56,6 +57,13 @@ export default function InboxRoute() {
   const session = useSession();
   const requireAuth = useRequireAuth();
   const [segment, setSegment] = useState<InboxSegment>('messages');
+  // Whether a `credited` row's "Add your bank details" errand is already done:
+  // details in (Stripe verifying) or payouts on. Read HERE, in the route, so
+  // the notifications feature never imports payments — the same reason this
+  // route composes the two faces rather than either importing the other.
+  const payoutAccount = usePayoutAccount();
+  const payoutsSetUp =
+    payoutAccount.status === 'ready' || payoutAccount.status === 'verifying';
   // The restore must never overwrite a choice the user already made while
   // storage was still answering.
   const userChose = useRef(false);
@@ -143,7 +151,10 @@ export default function InboxRoute() {
           active={segment === 'notifications'}
           testID="inbox-face-notifications"
         >
-          <NotificationCenterScreen active={segment === 'notifications'} />
+          <NotificationCenterScreen
+            active={segment === 'notifications'}
+            payoutsSetUp={payoutsSetUp}
+          />
         </KeepAliveFace>
       </View>
     </SafeAreaView>

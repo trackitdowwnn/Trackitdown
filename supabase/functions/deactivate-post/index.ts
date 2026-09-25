@@ -46,6 +46,7 @@
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { announceRefundSent } from '../_shared/recoveryAnnounce.ts';
 import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
 import { gateExitRefund } from '../_shared/refundHold.ts';
 
@@ -235,5 +236,10 @@ Deno.serve(async (request) => {
   }
 
   console.log('[payments] listing deactivated + refunded', { postId, refundPence, feePence });
+
+  // "£X refunded" (ADR-0021) — the toast says it now, the push and the
+  // Inbox row keep it. Best-effort and claim-guarded; never fails the refund.
+  await announceRefundSent(admin, postId);
+
   return jsonResponse({ held: false, refundedPence: refundPence, feePence });
 });

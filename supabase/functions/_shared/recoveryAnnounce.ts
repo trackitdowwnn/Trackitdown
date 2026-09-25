@@ -1,5 +1,9 @@
 /**
- * WHAT:  The three announcements a finished recovery owes people:
+ * WHAT:  The announcements money owes people. Since ADR-0021 (2026-09-25)
+ *        that includes the OWNER — `refund_sent` and `reward_delivered` — and
+ *        a sweep-side sender for the spotter's credited push
+ *        (announceRefundSent / announceRewardDelivered / announceCredited,
+ *        below). The original three a finished recovery owes:
  *        `payout_sent` to the spotter whose transfer just went out, `recovery`
  *        to everyone watching the car — the sender the `recovery` kind shipped
  *        without (2026-08-02) and waited a month for — and `not_credited` to
@@ -82,6 +86,107 @@ export async function announceNotCredited(admin: SupabaseClient, postId: string)
     });
   } catch (err) {
     console.error('[notifications] not_credited announce failed', (err as Error).message);
+  }
+}
+
+/**
+ * "£X refunded" to the OWNER, once their escrow refund has landed (ADR-0021).
+ * Called after every refund writer — deactivate-post, refund-recovery, the
+ * hold sweep's Phase 1 and the charge.refunded webhook — and swept by Phase 2c.
+ * The claim refuses anything that is not a landed escrow refund, so every
+ * caller may fire it blindly.
+ */
+export async function announceRefundSent(admin: SupabaseClient, postId: string): Promise<void> {
+  try {
+    const { data: claim, error } = await admin.rpc('claim_refund_sent_notification', {
+      p_post_id: postId,
+    });
+    if (error || !(claim as { claimed?: boolean })?.claimed) {
+      if (error) console.error('[notifications] refund_sent claim failed', error.message);
+      return;
+    }
+    const doc = claim as { user_id: string; post_id: string; title: string; body: string };
+    await notifyUsers(admin, [doc.user_id], {
+      kind: 'refund_sent',
+      title: doc.title,
+      body: doc.body,
+      data: { type: 'refund_sent', postId: doc.post_id },
+      collapseKey: `refund_sent:${doc.post_id}`,
+    });
+  } catch (err) {
+    console.error('[notifications] refund_sent announce failed', (err as Error).message);
+  }
+}
+
+/**
+ * "£X sent to your spotter" to the OWNER, once the transfer went out
+ * (ADR-0021) — most often days after they credited someone, when the spotter
+ * finally finished payout setup and the webhook released it.
+ */
+export async function announceRewardDelivered(
+  admin: SupabaseClient,
+  postId: string,
+): Promise<void> {
+  try {
+    const { data: claim, error } = await admin.rpc('claim_reward_delivered_notification', {
+      p_post_id: postId,
+    });
+    if (error || !(claim as { claimed?: boolean })?.claimed) {
+      if (error) console.error('[notifications] reward_delivered claim failed', error.message);
+      return;
+    }
+    const doc = claim as { user_id: string; post_id: string; title: string; body: string };
+    await notifyUsers(admin, [doc.user_id], {
+      kind: 'reward_delivered',
+      title: doc.title,
+      body: doc.body,
+      data: { type: 'reward_delivered', postId: doc.post_id },
+      collapseKey: `reward_delivered:${doc.post_id}`,
+    });
+  } catch (err) {
+    console.error('[notifications] reward_delivered announce failed', (err as Error).message);
+  }
+}
+
+/**
+ * The credited push to the SPOTTER, sent by the sweep when the owner's phone
+ * never did. The usual sender is notify-credited, invoked from the OWNER's app
+ * the moment they credit someone — so an app killed at that moment used to
+ * mean the spotter was never told they earned anything. This goes through the
+ * SAME claim (claim_credited_notification, which verifies the actor owns the
+ * post and sends once, ever), so racing the owner's phone is harmless.
+ */
+export async function announceCredited(
+  admin: SupabaseClient,
+  postId: string,
+  ownerId: string,
+): Promise<void> {
+  try {
+    const { data: claim, error } = await admin.rpc('claim_credited_notification', {
+      p_post_id: postId,
+      p_actor: ownerId,
+    });
+    if (error || !(claim as { claimed?: boolean })?.claimed) {
+      if (error) console.error('[notifications] credited backstop claim failed', error.message);
+      return;
+    }
+    const doc = claim as {
+      user_id: string;
+      post_id: string;
+      kind: 'credited' | 'credited_no_reward';
+      title: string;
+      body: string;
+    };
+    // The KIND comes from the claim — a £5 listing's credit is credited_no_reward.
+    await notifyUsers(admin, [doc.user_id], {
+      kind: doc.kind,
+      title: doc.title,
+      body: doc.body,
+      data: { type: doc.kind, postId: doc.post_id },
+      collapseKey: `credited:${doc.post_id}`,
+    });
+  } catch (err) {
+    console.error('[notifications] credited backstop failed', (err as Error).message);
   }
 }
 

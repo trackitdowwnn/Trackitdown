@@ -66,7 +66,16 @@ export const CATEGORY_KINDS: Record<NotificationCategory, NotificationKind[]> = 
   alerts: ['alert'],
   messages: ['message'],
   my_sightings: ['sighting_confirmed', 'not_credited', 'credited_no_reward'],
-  money: ['credited', 'payout_sent', 'dispute_upheld', 'dispute_rejected'],
+  // refund_sent / reward_delivered are the OWNER's side of the same money
+  // (ADR-0021): news, not a lever, so mutable like the rest of this group.
+  money: [
+    'credited',
+    'payout_sent',
+    'dispute_upheld',
+    'dispute_rejected',
+    'refund_sent',
+    'reward_delivered',
+  ],
   watched: ['recovery'],
 };
 
@@ -123,8 +132,11 @@ export const CATEGORY_COPY: CategoryCopy[] = [
   },
   {
     category: 'money',
-    title: 'Payouts',
-    subtitle: 'When you earn a reward and when the transfer goes out.',
+    // "Money", not "Payouts": since ADR-0021 this switch also carries an
+    // OWNER's refunds and rewards delivered, and "Payouts" named only the
+    // spotter's half.
+    title: 'Money',
+    subtitle: 'When you earn a reward, when it’s sent, and when a refund or reward of yours goes out.',
   },
   {
     category: 'watched',

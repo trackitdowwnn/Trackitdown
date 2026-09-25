@@ -41,6 +41,7 @@ import {
   MessageCircle,
   Scale,
   Trash2,
+  Undo2,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -117,6 +118,14 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   // and an action chip would invent a task where the body says "nothing you
   // need to do". Trash2 because deletion is literally what it reports.
   deletion_soon: { Icon: Trash2, tone: 'neutral', needsAttention: false },
+  // The owner's money coming back (ADR-0021). Undo2 because it is money
+  // RETURNED, not earned — Banknote belongs to rewards. Neutral, not success:
+  // a refund means nobody's sighting found the car, which is not a win.
+  refund_sent: { Icon: Undo2, tone: 'neutral', needsAttention: false },
+  // The owner's reward reached the spotter who found their car — genuinely
+  // good news for the reader, so success, and a banknote because it is the
+  // reward itself.
+  reward_delivered: { Icon: Banknote, tone: 'success', needsAttention: false },
   // "Contest" is the word SightingDisputeScreen already uses with these
   // spotters ("This one can’t be contested any more"), so the row and the
   // screen it opens speak the same language.
