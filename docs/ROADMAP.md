@@ -270,9 +270,24 @@ users, by admin, and by a lawyer. That is what the plan below spends its time on
 > - The spotter was being promised £500 and paid £475. That is a trust bug,
 >   not polish.
 >
-> **Cost:** six PRs, three of them money-touching. It delays path item 6 (the
-> two-phone walk) until they land. The walk then covers the new money screens
-> too.
+> **Cost:** five stacked PRs (#111–#115), three of them money-touching. It delays
+> path item 6 (the two-phone walk) until they land. The walk then covers the new
+> money screens too.
+>
+> **What landed (2026-09-25):**
+> - **#111:** the fee on top (ADR-0020), the itemised bill, and the "how your
+>   reward works" explainer. Review hardening: no double charge on a retry, and
+>   a new charge is always recorded.
+> - **#112:** the money-state reads.
+> - **#113:** owner money pushes (ADR-0021) and a sweep safety net for the
+>   credited push.
+> - **#114:** "Your money" on the listing and on My listings, and amounts plus
+>   a confirm step at recovery.
+> - **#115:** Earnings for spotters.
+>
+> Five bugs were fixed along the way. **Deploy in order, and publish each OTA
+> before the next server deploy** — #112's migration widens a `.strict()` client
+> schema that #111's bundle is the first to tolerate.
 
 ### Unsanctioned scope, recorded rather than deleted
 
