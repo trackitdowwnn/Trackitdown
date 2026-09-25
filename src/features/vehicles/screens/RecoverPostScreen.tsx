@@ -74,6 +74,14 @@ export interface RecoverPostScreenProps {
    * server is authoritative about what actually happens either way.
    */
   bountyPence?: number | null;
+  /**
+   * FINISH an interrupted "found it another way" (review 2026-09-25): the
+   * claim already landed (the listing is recovery_claimed, nobody credited)
+   * but the refund never started, and nothing retries it. The screen opens on
+   * that ending alone and goes straight to the refund — the same pre-flight,
+   * attestation and refund path as the first time, minus the claim.
+   */
+  resume?: boolean;
 }
 
 /** The sentinel for "nobody helped" — a real answer, not the absence of one. */
@@ -84,7 +92,7 @@ const NO_SPOTTER = '__none__';
 // failures are money failures and both exitCheck catches below report.
 const log = createLogger('vehicles');
 
-export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProps) {
+export function RecoverPostScreen({ postId, bountyPence, resume = false }: RecoverPostScreenProps) {
   // ADR-0014: no bounty means no refund to get back and no payout to send.
   const noReward = bountyPence === null;
   const styles = useThemedStyles(makeStyles);
@@ -92,7 +100,8 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
   const router = useRouter();
   const toast = useToast();
   const { status, sightings } = usePostSightings(postId);
-  const [selected, setSelected] = useState<string | null>(null);
+  // Resuming: the only ending left is the one they already chose.
+  const [selected, setSelected] = useState<string | null>(resume ? NO_SPOTTER : null);
   // The irreversible step gets one look before it happens.
   const confirmRef = useRef<ConfirmDialogRef>(null);
 
@@ -119,7 +128,9 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
     sightingIds: string[];
     holdHours: number;
   } | null>(null);
-  const claimedRef = useRef(false);
+  // Resuming means the claim ALREADY landed — claiming again would fail
+  // (claim_recovery accepts `active` only), so the refund path starts after it.
+  const claimedRef = useRef(resume);
 
   /** The no-spotter ending, shared by the plain path and the attested one. */
   const finishNoSpotter = useCallback(
@@ -364,19 +375,21 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
         </Pressable>
         <Text style={styles.title} accessibilityRole="header">
-          You got it back
+          {resume ? 'Finish your refund' : 'You got it back'}
         </Text>
       </View>
 
       <Text style={styles.lede}>
-        That’s the best news. Did one of these sightings lead you to it?
+        {resume
+          ? 'Your refund didn’t finish last time. Confirm below and we’ll send it.'
+          : 'That’s the best news. Did one of these sightings lead you to it?'}
       </Text>
 
-      {status === 'loading' ? (
+      {!resume && status === 'loading' ? (
         <Text style={styles.body}>Loading your sightings…</Text>
       ) : null}
 
-      {status === 'error' ? (
+      {!resume && status === 'error' ? (
         // Not a dead end: they can still close the listing without crediting.
         <Text style={styles.body}>
           We couldn’t load the sightings. You can still say you found it another way.
@@ -384,7 +397,9 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
       ) : null}
 
       <View style={styles.options} accessibilityRole="radiogroup">
-        {sightings.map((sighting) => {
+        {/* Resuming: crediting is no longer possible (the claim said nobody),
+            so the sightings are not offered as choices. */}
+        {(resume ? [] : sightings).map((sighting) => {
           const isSelected = selected === sighting.id;
           const when = new Date(sighting.createdAt).toLocaleDateString('en-GB', {
             day: 'numeric',
@@ -436,7 +451,7 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         </Pressable>
       </View>
 
-      {status === 'ready' && sightings.length === 0 ? (
+      {!resume && status === 'ready' && sightings.length === 0 ? (
         <EmptyState
           title="No sightings were reported"
           body="That’s fine — plenty of cars turn up without one."
@@ -473,14 +488,18 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
       <ConfirmDialog
         ref={confirmRef}
         title={
-          selected === NO_SPOTTER
+          resume
+            ? 'Send your refund?'
+            : selected === NO_SPOTTER
             ? 'Close your listing?'
             : noReward
               ? 'Credit this spotter?'
               : `Send ${rewardText} to this spotter?`
         }
         body={
-          selected === NO_SPOTTER
+          resume
+            ? `We’ll refund ${refundText} to your card. If anyone reported a sighting in the last two weeks, we’ll ask you about those first, and the refund waits 72 hours.`
+            : selected === NO_SPOTTER
             ? noReward
               ? 'We’ll close it. This can’t be undone.'
               : `We’ll close it and refund ${refundText} to your card. If anyone reported a sighting in the last two weeks, we’ll ask you about those first, and the refund waits 72 hours. This can’t be undone.`
@@ -488,7 +507,15 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
               ? 'We’ll close your listing and add the recovery to their spotter record. This can’t be undone.'
               : 'We’ll close your listing and send the reward to the spotter whose sighting you picked. This can’t be undone.'
         }
-        confirmLabel={selected === NO_SPOTTER ? 'Yes, close it' : noReward ? 'Yes, credit them' : 'Yes, send it'}
+        confirmLabel={
+          resume
+            ? 'Yes, send it'
+            : selected === NO_SPOTTER
+              ? 'Yes, close it'
+              : noReward
+                ? 'Yes, credit them'
+                : 'Yes, send it'
+        }
         onConfirm={() => void submit()}
       />
     </Screen>

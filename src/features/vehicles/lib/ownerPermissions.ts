@@ -111,6 +111,16 @@ export function canArchive(status: PostStatus): boolean {
  *  credited — and this used to offer it "Send the reward", which then failed
  *  with "No spotter is credited on this listing". The listing's MONEY must say
  *  a spotter is owed it (awaiting_payee / sending); unknown money shows no row. */
-export function canReleasePayout(post: PostDetail, money: PostMoney | null): boolean {
-  return post.isOwner && post.status === 'recovery_claimed' && canSendReward(money);
+export function canReleasePayout(
+  post: PostDetail,
+  money: PostMoney | null,
+  moneyReadFailed = false,
+): boolean {
+  if (!post.isOwner || post.status !== 'recovery_claimed') {
+    return false;
+  }
+  // The money read FAILED: offer the row rather than silently taking the
+  // owner's only action away. The server refuses it with a clear message if
+  // nobody is actually credited, so the degraded case costs one tap, not money.
+  return canSendReward(money) || (money === null && moneyReadFailed);
 }

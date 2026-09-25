@@ -13,6 +13,7 @@
 
 import {
   briefCopy,
+  canFinishRefund,
   canSendReward,
   detailCopy,
   moneyCopy,
@@ -140,6 +141,22 @@ describe('refundFeeLine', () => {
 
   it('says nothing when there is no finished refund', () => {
     expect(refundFeeLine(money())).toBeNull();
+  });
+});
+
+describe('refund_owed (review 2026-09-25)', () => {
+  it('says the refund has not been sent, and where to finish it', () => {
+    const copy = moneyCopy({ state: 'refund_owed', amountPence: 52500 }, NOW);
+    expect(copy.label).toBe('Refund not sent yet');
+    expect(copy.line).toMatch(/Finish your refund/);
+    expect(copy.tone).toBe('warning');
+  });
+
+  it('is the only state that offers "Finish your refund"', () => {
+    for (const state of POST_MONEY_STATES) {
+      expect(canFinishRefund(money({ state }))).toBe(state === 'refund_owed');
+    }
+    expect(canFinishRefund(null)).toBe(false);
   });
 });
 

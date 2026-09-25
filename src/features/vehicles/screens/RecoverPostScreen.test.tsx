@@ -231,6 +231,47 @@ describe('the amounts, and one look before the money moves (2026-09-25)', () => 
   });
 });
 
+describe('finishing an interrupted refund (resume, 2026-09-25)', () => {
+  // "Found it another way" landed its claim, then the refund never started —
+  // nothing retries it, so the owner finishes it here. The claim must NOT run
+  // again (claim_recovery accepts `active` only and would refuse).
+  it('skips the claim, offers no sightings to credit, and sends the refund', async () => {
+    const { getByText, queryByTestId } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={50000} resume />),
+    );
+
+    expect(getByText('Finish your refund')).toBeTruthy();
+    expect(queryByTestId('credit-sighting-1')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(getByText('Confirm'));
+    });
+    expect(getByText('Send your refund?')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByText('Yes, send it'));
+    });
+
+    await waitFor(() => expect(mockRefund).toHaveBeenCalledWith('p1', undefined));
+    expect(mockClaim).not.toHaveBeenCalled();
+    expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('still asks about recent sightings first, when there are any', async () => {
+    mockExitCheck.mockResolvedValue({
+      requiresAttestation: true,
+      sightingIds: ['sighting-1'],
+      windowDays: 14,
+      holdHours: 72,
+    });
+    const { getByText } = await act(async () =>
+      render(<RecoverPostScreen postId="p1" bountyPence={50000} resume />),
+    );
+    await pressConfirm(getByText);
+    expect(mockClaim).not.toHaveBeenCalled();
+    expect(mockRefund).not.toHaveBeenCalled(); // waiting on the attestation
+  });
+});
+
 describe('crediting a spotter', () => {
   it('claims with that sighting id and does NOT refund', async () => {
     mockClaim.mockResolvedValue({ nextStep: 'payout', creditedSightingId: 'sighting-1' });

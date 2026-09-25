@@ -53,6 +53,7 @@ import { PostOwnerActions, type PostOwnerActionsHandle } from '../components/Pos
 import { StillMissingBanner } from '../components/StillMissingBanner';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { usePostMoney } from '../hooks/usePostMoney';
+import { canFinishRefund } from '../lib/postMoney';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { useStillMissingAsk } from '../hooks/useStillMissingAsk';
 import { closedStateCopy } from '../lib/closedState';
@@ -117,7 +118,11 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // the "Your money" card and the owner actions, so one screen makes one read.
   // Re-read on the post's status (every money move changes it or follows one)
   // and on every return to the screen. No request at all for anyone else.
-  const { money } = usePostMoney(postId, visiblePost?.isOwner === true, visiblePost?.status);
+  const { money, failed: moneyReadFailed } = usePostMoney(
+    postId,
+    visiblePost?.isOwner === true,
+    visiblePost?.status,
+  );
 
   // The ADR-0019 liveness ask. Only ever open on the owner's own live listing —
   // the RPC is scoped to auth.uid() and status='active', so a spotter's copy of
@@ -272,6 +277,18 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     });
   }, [postId, router, visiblePost]);
 
+  // "Finish your refund" — resume an interrupted "found it another way". The
+  // claim already landed, so the recovery screen skips straight to the refund
+  // (and its attestation, if recent sightings need one).
+  const onFinishRefund = useCallback(() => {
+    router.push({
+      pathname: '/recover-post',
+      params: visiblePost
+        ? { postId, bounty: bountyParam(visiblePost.bountyPence), resume: '1' }
+        : { postId, resume: '1' },
+    });
+  }, [postId, router, visiblePost]);
+
   // "Yes, still missing" (ADR-0019). Resets the liveness clock and nothing
   // else: no status moves, no money moves, and the only visible effect is that
   // the banner goes away. "I've found it" is not handled here — it is
@@ -370,6 +387,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
               <PostDetailBody
                 post={result.post}
                 money={money}
+                onFinishRefund={canFinishRefund(money) ? onFinishRefund : undefined}
                 onOpenMap={() => onOpenMap(result.post)}
                 onReport={onReport}
                 onMessageOwner={
@@ -478,6 +496,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         postId={postId}
         post={visiblePost}
         money={money}
+        moneyReadFailed={moneyReadFailed}
         refresh={retry}
         onDeleted={() => router.replace('/my-posts')}
       />

@@ -104,6 +104,9 @@ export interface PostOwnerActionsProps {
    * real action and gives the refund estimate the real charge.
    */
   money?: PostMoney | null;
+  /** The host's money read failed (with `money`). Keeps "Send the reward"
+   *  offered rather than silently removing it. */
+  moneyReadFailed?: boolean;
 }
 
 export function PostOwnerActions({
@@ -114,6 +117,7 @@ export function PostOwnerActions({
   onDeleted,
   archive,
   money: moneyFromHost,
+  moneyReadFailed: moneyFailedFromHost = false,
 }: PostOwnerActionsProps) {
   // Only when the host did not bring it — one read per screen, never two.
   const ownRead = usePostMoney(
@@ -121,7 +125,9 @@ export function PostOwnerActions({
     Boolean(post?.isOwner) && moneyFromHost === undefined,
     post?.status,
   );
-  const money = moneyFromHost !== undefined ? moneyFromHost : ownRead.money;
+  const hostHasMoney = moneyFromHost !== undefined;
+  const money = hostHasMoney ? moneyFromHost : ownRead.money;
+  const moneyReadFailed = hostHasMoney ? moneyFailedFromHost : ownRead.failed;
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -429,7 +435,9 @@ export function PostOwnerActions({
         onDeactivate={canDeactivate(owned) ? requestDeactivate : undefined}
         onDeleteDraft={canDeleteDraft(owned) ? () => deleteDraftRef.current?.open() : undefined}
         onDeletePost={canDeletePost(owned) ? () => deletePostRef.current?.open() : undefined}
-        onReleasePayout={canReleasePayout(owned, money) ? () => void onReleasePayout() : undefined}
+        onReleasePayout={
+          canReleasePayout(owned, money, moneyReadFailed) ? () => void onReleasePayout() : undefined
+        }
         onArchive={archive && !archive.archived ? archive.toggle : undefined}
         onUnarchive={archive?.archived ? archive.toggle : undefined}
       />

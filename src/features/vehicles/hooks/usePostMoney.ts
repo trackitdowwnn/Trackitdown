@@ -21,6 +21,12 @@ import type { PostMoney } from '../lib/postMoney';
 export interface UsePostMoneyResult {
   /** The money, or null while loading / when there is nothing to show. */
   money: PostMoney | null;
+  /**
+   * The LAST read failed. Callers that gate an action on `money` use this to
+   * degrade rather than silently remove it — a transient failure must not take
+   * an owner's only action on a listing away with no word.
+   */
+  failed: boolean;
   /** Re-read now — after the owner's own action moved money. */
   refresh: () => void;
 }
@@ -36,6 +42,7 @@ export function usePostMoney(
   refreshKey?: string,
 ): UsePostMoneyResult {
   const [money, setMoney] = useState<PostMoney | null>(null);
+  const [failed, setFailed] = useState(false);
   const [generation, setGeneration] = useState(0);
 
   const refresh = useCallback(() => setGeneration((g) => g + 1), []);
@@ -47,10 +54,14 @@ export function usePostMoney(
     let cancelled = false;
     fetchPostMoney(postId)
       .then((next) => {
-        if (!cancelled) setMoney(next);
+        if (!cancelled) {
+          setMoney(next);
+          setFailed(false);
+        }
       })
       .catch(() => {
-        // Keep the last good answer; the next focus retries.
+        // Keep the last good answer; the next focus retries. Say it failed.
+        if (!cancelled) setFailed(true);
       });
     return () => {
       cancelled = true;
@@ -71,5 +82,5 @@ export function usePostMoney(
     }, [enabled, refresh]),
   );
 
-  return { money: enabled ? money : null, refresh };
+  return { money: enabled ? money : null, failed: enabled && failed, refresh };
 }

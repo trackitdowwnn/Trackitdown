@@ -21,11 +21,16 @@ import { RecoverPostScreen } from '@/features/vehicles';
 import { NO_BOUNTY_PARAM } from '@/shared/lib';
 
 export default function RecoverPostRoute() {
-  const { postId, bounty } = useLocalSearchParams<{ postId: string; bounty?: string }>();
+  const { postId, bounty, resume } = useLocalSearchParams<{
+    postId: string;
+    bounty?: string;
+    /** '1' = finish an interrupted "found it another way" (the claim landed). */
+    resume?: string;
+  }>();
   const parsed = Number(bounty);
   // number → a bounty listing; null → explicitly no reward; undefined → unknown,
   // which keeps the pre-2026-08-20 bounty copy (the conservative default).
   const bountyPence =
     bounty === NO_BOUNTY_PARAM ? null : Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-  return <RecoverPostScreen postId={postId} bountyPence={bountyPence} />;
+  return <RecoverPostScreen postId={postId} bountyPence={bountyPence} resume={resume === '1'} />;
 }
