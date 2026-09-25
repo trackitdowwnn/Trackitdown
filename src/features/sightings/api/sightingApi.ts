@@ -567,8 +567,12 @@ export async function markSightingHelpful(sightingId: string): Promise<{
  * to hear it.
  */
 export interface MySightingDispute {
-  /** Whether /sighting-dispute will load for this sighting. */
+  /** Whether /sighting-dispute will load for this sighting. Since
+   *  20260925110000 it also closes when the window does, unless they filed. */
   available: boolean;
+  /** Whether a dispute can still be FILED — window open, nothing filed yet.
+   *  Undefined on a server that predates it. */
+  canFile?: boolean;
   /** Their own filing, if they have made one. */
   status: 'open' | 'upheld' | 'rejected' | null;
   /** When the 72-hour window closes, or null once it no longer matters. */
@@ -611,6 +615,20 @@ export interface MySightingRecordEntry {
    * as "no dispute" on the screen.
    */
   dispute?: MySightingDispute;
+  /**
+   * Their OWN reward on a credited report (20260925110000): where it is and
+   * how much. Null on every other report, and on a credit on a £5 listing,
+   * which carries no money. Undefined on a server that predates it.
+   */
+  money?: MySightingMoney | null;
+}
+
+/** Where a spotter's reward for one credited report is. */
+export interface MySightingMoney {
+  state: 'add_details' | 'verifying' | 'being_checked' | 'on_its_way' | 'paid';
+  rewardPence: number;
+  paidPence: number | null;
+  paidAt: string | null;
 }
 
 const mySightingRowSchema = z
@@ -708,11 +726,13 @@ export async function fetchMySightingRecord(): Promise<MySightingRecordEntry[]> 
       ? {
           dispute: {
             available: row.dispute.available,
+            ...(row.dispute.can_file === undefined ? {} : { canFile: row.dispute.can_file }),
             status: row.dispute.status,
             windowEndsAt: row.dispute.window_ends_at,
           },
         }
       : {}),
+    ...(row.money === undefined ? {} : { money: row.money }),
   }));
 }
 

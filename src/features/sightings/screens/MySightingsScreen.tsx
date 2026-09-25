@@ -156,6 +156,12 @@ export function MySightingsScreen() {
    * reached. The rule lives in `my_sighting_record`, which is the authority;
    * two places deciding would be two places to get it wrong.
    */
+  // A credited report's reward line opens Earnings (2026-09-25).
+  const openEarnings = useCallback(() => {
+    log.info('earnings_opened_from_reports');
+    router.push('/payouts');
+  }, [router]);
+
   const openPost = useCallback(
     (postId: string) => {
       log.info('post_opened_from_reports');
@@ -243,11 +249,12 @@ export function MySightingsScreen() {
             onOpenDispute={openDispute}
             onWithdraw={requestWithdraw}
             onOpenPost={openPost}
+            onOpenEarnings={openEarnings}
           />
         )}
       </Animated.View>
     ),
-    [entranceActive, openDispute, requestWithdraw, openPost],
+    [entranceActive, openDispute, requestWithdraw, openPost, openEarnings],
   );
 
   return (

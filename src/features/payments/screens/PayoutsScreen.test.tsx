@@ -79,10 +79,14 @@ jest.mock('@/shared/ui', () => {
 const mockStart = jest.fn();
 const mockSubmitTokens = jest.fn();
 const mockPendingCredit = jest.fn();
+// Every reward the spotter has earned. Empty by default — the list is its own
+// describe block below.
+const mockEarnings = jest.fn();
 jest.mock('../api/payoutsApi', () => ({
   startConnectOnboarding: (...args: unknown[]) => mockStart(...args),
   submitPayoutTokens: (...args: unknown[]) => mockSubmitTokens(...args),
   fetchMyPendingCredit: (...args: unknown[]) => mockPendingCredit(...(args as [])),
+  fetchMyEarnings: (...args: unknown[]) => mockEarnings(...(args as [])),
 }));
 
 // The tokenisers go straight to Stripe from the device; in a test they answer
@@ -148,6 +152,7 @@ beforeEach(() => {
   // that is the ONLY person the setup card exists for. The nothing-waiting
   // case gets its own tests.
   mockPendingCredit.mockResolvedValue({ postId: 'post-1', transferPence: 19000 });
+  mockEarnings.mockResolvedValue({ items: [], totals: { paidPence: 0, pendingPence: 0 } });
   mockIdentityToken.mockResolvedValue('accttok_test_1');
   mockBankToken.mockResolvedValue('btok_test_1');
   mockSubmitTokens.mockResolvedValue('submitted');
@@ -241,13 +246,14 @@ describe('what each state says', () => {
     expect(getByLabelText(/You’ve earned £190\. Your sighting led to a recovery/)).toBeTruthy();
   });
 
-  it('says NOTHING to set up when nothing is waiting — because there isn’t', async () => {
-    // Credit-time setup made "no setup" literal. A never-credited spotter who
-    // finds this screen (deep link, old bookmark) must not be walked into a
-    // form about money that does not exist.
+  it('says there are no rewards yet, and NOTHING to set up — because there isn’t', async () => {
+    // Credit-time setup made "no setup" literal. A never-credited spotter —
+    // most people who open this, now the Profile row is always shown — must
+    // not be walked into a form about money that does not exist.
     mockPendingCredit.mockResolvedValue(null);
     const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
-    expect(getByText('Nothing to set up')).toBeTruthy();
+    expect(getByText('No rewards yet')).toBeTruthy();
+    expect(getByText(/There’s nothing to set up before that/)).toBeTruthy();
     expect(queryByTestId('payouts-notStarted')).toBeNull();
     expect(queryByTestId('payouts-earned')).toBeNull();
   });
@@ -578,6 +584,69 @@ describe('the return', () => {
     mockParams = { onboarding: 'refresh' };
     const { getByText } = await act(async () => render(<PayoutsScreen />));
     expect(getByText(/link expired/i)).toBeTruthy();
+  });
+});
+
+describe('your rewards (2026-09-25)', () => {
+  // A spotter used to see ONE pending credit, nothing once paid, and nothing
+  // while a payout was being checked. Now every reward shows with its state.
+  it('lists every reward with its own state, and the totals', async () => {
+    mockAccountState = { status: 'ready', settling: false };
+    mockEarnings.mockResolvedValue({
+      items: [
+        {
+          sightingId: 'aaaaaaaa-0000-0000-0000-00000000000a',
+          car: { make: 'Ford', colour: 'Blue' },
+          state: 'being_checked',
+          rewardPence: 30000,
+          paidPence: null,
+          paidAt: null,
+        },
+        {
+          sightingId: 'bbbbbbbb-0000-0000-0000-00000000000b',
+          car: { make: 'BMW', colour: 'Black' },
+          state: 'paid',
+          rewardPence: 50000,
+          paidPence: 50000,
+          paidAt: '2026-09-20T10:00:00Z',
+        },
+      ],
+      totals: { paidPence: 50000, pendingPence: 30000 },
+    });
+    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('Earnings')).toBeTruthy();
+    expect(getByTestId('earnings-list')).toBeTruthy();
+    expect(getByText('£500 paid · £300 on the way')).toBeTruthy();
+    expect(getByText('Blue Ford')).toBeTruthy();
+    // ⚠️ No reason, no outcome — a pending and a rejected review read the same.
+    expect(getByText('Being checked — nothing you need to do')).toBeTruthy();
+    expect(getByText(/^Paid on /)).toBeTruthy();
+  });
+
+  it('shows no list while a details form is open — the fields are the task then', async () => {
+    mockStart.mockResolvedValue({ status: 'details_required' });
+    mockEarnings.mockResolvedValue({
+      items: [
+        {
+          sightingId: 'aaaaaaaa-0000-0000-0000-00000000000a',
+          car: { make: 'Ford', colour: 'Blue' },
+          state: 'add_details',
+          rewardPence: 19000,
+          paidPence: null,
+          paidAt: null,
+        },
+      ],
+      totals: { paidPence: 0, pendingPence: 19000 },
+    });
+    const { getByText, queryByTestId, getByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+    expect(getByTestId('earnings-list')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByText('Add your details'));
+    });
+    expect(queryByTestId('earnings-list')).toBeNull();
   });
 });
 

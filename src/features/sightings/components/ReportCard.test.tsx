@@ -211,6 +211,48 @@ describe('⚠️ the verdict marker', () => {
  * is a control in its own right rather than a whole-card press, and it does not
  * swallow the card's one-utterance reading.
  */
+describe('the reward on a credited report (2026-09-25)', () => {
+  const credited = (money: NonNullable<MySightingRecordEntry['money']>) =>
+    entry({ status: 'credited', reviewedAt: new Date().toISOString(), money });
+
+  it('says where the money is, and opens Earnings', async () => {
+    atFontScale(1);
+    const onOpenEarnings = jest.fn();
+    const { getByText, getByTestId } = await render(
+      <ReportCard
+        entry={credited({ state: 'add_details', rewardPence: 50000, paidPence: null, paidAt: null })}
+        onOpenEarnings={onOpenEarnings}
+      />,
+    );
+
+    expect(getByText('£500 — add your bank details to get it')).toBeTruthy();
+    fireEvent.press(getByTestId('my-sighting-money-s1'));
+    expect(onOpenEarnings).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ being checked gives no reason and no outcome', async () => {
+    atFontScale(1);
+    const { getByText } = await render(
+      <ReportCard
+        entry={credited({ state: 'being_checked', rewardPence: 50000, paidPence: null, paidAt: null })}
+        onOpenEarnings={jest.fn()}
+      />,
+    );
+    expect(getByText('£500 — being checked, nothing you need to do')).toBeTruthy();
+  });
+
+  it('is absent on a report with no money — including a £5-listing credit', async () => {
+    atFontScale(1);
+    const { queryByTestId } = await render(
+      <ReportCard
+        entry={entry({ status: 'credited', reviewedAt: new Date().toISOString(), money: null })}
+        onOpenEarnings={jest.fn()}
+      />,
+    );
+    expect(queryByTestId('my-sighting-money-s1')).toBeNull();
+  });
+});
+
 describe('⚠️ the dispute door', () => {
   const disputable = (over: Partial<NonNullable<MySightingRecordEntry['dispute']>> = {}) =>
     entry({ dispute: { available: true, status: null, windowEndsAt: null, ...over } });
@@ -266,6 +308,18 @@ describe('⚠️ the dispute door', () => {
     const label = getByTestId('my-sighting-dispute-s1').props.accessibilityLabel as string;
     expect(label).toMatch(/tell us/i);
     expect(label).not.toMatch(/appeal|challenge|dispute|reject/i);
+  });
+
+  it('says the deadline on the card, not only once the screen is open', async () => {
+    atFontScale(1);
+    const { getByTestId } = await render(
+      <ReportCard
+        entry={disputable({ windowEndsAt: '2026-09-28T17:00:00Z' })}
+        onOpenDispute={jest.fn()}
+      />,
+    );
+    const label = getByTestId('my-sighting-dispute-s1').props.accessibilityLabel as string;
+    expect(label).toMatch(/Tell us if this was your sighting — by \w+ \d{1,2}:\d{2}/);
   });
 
   it('stops inviting once they have filed', async () => {

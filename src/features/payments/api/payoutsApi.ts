@@ -24,6 +24,8 @@
  *        ../hooks/usePayoutAccount.ts (the state machine over this).
  */
 
+import { z } from 'zod';
+
 import { supabase } from '@/shared/api';
 import { createLogger } from '@/shared/lib/logger';
 
@@ -241,22 +243,44 @@ export async function submitPayoutTokens(tokens: {
   throw new PaymentError(TOKENS_FALLBACK, 'BAD_SHAPE');
 }
 
+/** Where one earned reward is (20260925110000, credit_money_state). */
+export const EARNING_STATES = ['add_details', 'verifying', 'being_checked', 'on_its_way', 'paid'] as const;
+export type EarningState = (typeof EARNING_STATES)[number];
+
+const earningsSchema = z.object({
+  items: z.array(
+    z.object({
+      sightingId: z.guid(),
+      car: z.object({ make: z.string(), colour: z.string() }),
+      state: z.enum(EARNING_STATES),
+      rewardPence: z.number().int(),
+      paidPence: z.number().int().nullable(),
+      paidAt: z.string().nullable(),
+    }),
+  ),
+  totals: z.object({ paidPence: z.number().int(), pendingPence: z.number().int() }),
+});
+
+export type Earnings = z.infer<typeof earningsSchema>;
+export type Earning = Earnings['items'][number];
+
 /**
- * Whether the caller has any reason to see a payouts surface at all: a payee
- * account exists, or a credited bounty awaits. Gates the Profile row — under
- * credit-time setup a never-credited spotter has NOTHING to set up, and the
- * `credited` push is the front door.
+ * Every reward the caller has earned, newest first, with totals — the list on
+ * the Earnings screen. Replaces `payouts_relevant` as the client's read of
+ * "is there money here" (the Profile row is always shown since 2026-09-25).
  *
- * False on error, deliberately: the row is a convenience entrance, and a
- * transient failure hiding it loses nothing the push cannot recover.
+ * Throws on error, unlike the old relevance read: an empty list is a real
+ * answer ("no rewards yet"), so a failure must not be mistaken for one.
  */
-export async function fetchPayoutsRelevant(): Promise<boolean> {
-  const { data, error } = await supabase.rpc('payouts_relevant');
+export async function fetchMyEarnings(): Promise<Earnings> {
+  const { data, error } = await supabase.rpc('my_earnings');
   if (error) {
-    log.warn('payouts_relevant failed', { code: error.code });
-    return false;
+    log.warn('my_earnings failed', { code: error.code });
+    throw new PaymentError('We couldn’t load your earnings. Please try again.', error.code ?? 'UNKNOWN');
   }
-  return data === true;
+  const earnings = earningsSchema.parse(data);
+  log.info('earnings_load', { count: earnings.items.length });
+  return earnings;
 }
 
 /** The caller's credited-but-unpaid bounty, or null. Powers "You've earned £X". */

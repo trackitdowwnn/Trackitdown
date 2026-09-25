@@ -112,11 +112,16 @@ Recorded as the decision met reality during the Z0–Z4 build:
   onboarding on "Continue setting up". The rule now: whenever a screen asks
   where an account stands, the server RETRIEVES it from Stripe and syncs the
   row before answering. Webhooks make the row fresh; reconciliation makes it true.
-- **Entry points hide until relevant.** The Profile "Payouts" row renders only
-  when `payouts_relevant()` says there is something behind it (an account
-  exists, or a credited bounty waits). "No setup" is made literally true: a
-  never-credited spotter has no payouts surface anywhere, and the `credited`
-  push is the front door.
+- ~~**Entry points hide until relevant.**~~ **Reversed 2026-09-25 (escrow UX
+  review).** The Profile row used to render only when `payouts_relevant()` said
+  there was something behind it, which made the `credited` push the ONLY way
+  in: a spotter who dismissed it had no door to money they had just earned. The
+  row is now always shown, as **"Earnings"**, and the screen behind it lists
+  every reward with its own state (`my_earnings`) and has an honest empty state
+  ("No rewards yet … nothing to set up before that"). The part of this bullet
+  that stands is the important part: **setup is still asked for at the moment of
+  credit, never before.** `payouts_relevant()` stays in the schema for older
+  bundles; no current client reads it.
 - **Auto-release shipped 2026-08-04** behind the collusion gate, as decision 4
   required: one shared core (`_shared/releasePayout.ts`) serves the owner's
   manual retry, the `account.updated` webhook, and the account-creation path.

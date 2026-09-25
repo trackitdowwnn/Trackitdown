@@ -76,6 +76,7 @@ import { Check, ChevronRight } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
+import { formatPounds } from '@/shared/lib/money';
 import {
   cardSurface,
   opacity,
@@ -170,9 +171,47 @@ function disputeDoor(
       return { label: 'See the outcome', hint: 'Opens the outcome' };
     default:
       return {
-        label: 'Tell us if this was your sighting',
+        // The deadline, on the card itself (2026-09-25). The window is 72
+        // hours and it used to be visible only once they had opened the screen.
+        label: dispute.windowEndsAt
+          ? `Tell us if this was your sighting — by ${deadline(dispute.windowEndsAt)}`
+          : 'Tell us if this was your sighting',
         hint: 'Opens a form to tell us what you saw',
       };
+  }
+}
+
+/** "Thursday 18:00" — the same shape the dispute screen and the owner's sheet use. */
+function deadline(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? 'the deadline'
+    : date.toLocaleString('en-GB', { weekday: 'long', hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Where the spotter's own reward is, on a credited report. The same five
+ * states and words as the Earnings list — kept here rather than imported,
+ * because this feature must not reach into payments (ARCHITECTURE rule 1),
+ * and pinned to each other by the tests on both sides.
+ *
+ * ⚠️ `being_checked` gives no reason and no outcome — ever.
+ */
+function moneyLine(money: NonNullable<MySightingRecordEntry['money']>): string {
+  const amount = formatPounds(
+    money.state === 'paid' && money.paidPence !== null ? money.paidPence : money.rewardPence,
+  );
+  switch (money.state) {
+    case 'add_details':
+      return `${amount} — add your bank details to get it`;
+    case 'verifying':
+      return `${amount} — Stripe is checking your details`;
+    case 'being_checked':
+      return `${amount} — being checked, nothing you need to do`;
+    case 'on_its_way':
+      return `${amount} — on its way to your bank`;
+    case 'paid':
+      return `${amount} — paid`;
   }
 }
 
@@ -198,9 +237,21 @@ export interface ReportCardProps {
    * was not would be worse than a flat one.
    */
   onOpenPost?: (postId: string) => void;
+  /**
+   * Opens Earnings. Used only on a credited report that carries money — the
+   * card then says where the reward is and takes them to it (2026-09-25). A
+   * credit used to say "Credited" and nothing about the money at all.
+   */
+  onOpenEarnings?: () => void;
 }
 
-export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: ReportCardProps) {
+export function ReportCard({
+  entry,
+  onOpenDispute,
+  onWithdraw,
+  onOpenPost,
+  onOpenEarnings,
+}: ReportCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const stacked = useStackedRow();
@@ -348,6 +399,23 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
           a card that looks tappable and is not would be worse than a flat one
           (the original reasoning, still true). Only the reports that can
           actually open something gain a control. */}
+      {/* The reward, on the report that earned it (2026-09-25). Same shape as
+          the dispute door below — a separately labelled control, with the car
+          in its label because it sits outside the grouped text block. */}
+      {entry.money && onOpenEarnings ? (
+        <Pressable
+          onPress={onOpenEarnings}
+          accessibilityRole="button"
+          accessibilityLabel={`${moneyLine(entry.money)}. ${car}, reported ${reported}`}
+          accessibilityHint="Opens your earnings"
+          style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
+          testID={`my-sighting-money-${entry.id}`}
+        >
+          <Text style={styles.doorLabel}>{moneyLine(entry.money)}</Text>
+          <ChevronRight size={sizes.iconSm} color={palette.textSecondary} />
+        </Pressable>
+      ) : null}
+
       {door ? (
         <Pressable
           onPress={() => onOpenDispute?.(entry.id)}
