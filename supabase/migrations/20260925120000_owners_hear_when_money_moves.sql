@@ -73,10 +73,8 @@ create index payments_owner_payout_notify_pending_idx
 -- that exists today is either announced or too old to be news.
 update public.sightings set credited_notified_at = now()
  where status = 'credited' and credited_notified_at is null;
-
-create index sightings_credited_notify_pending_idx
-  on public.sightings (post_id)
-  where status = 'credited' and credited_notified_at is null;
+-- The scan is already served: sightings_credited_notify_pending_idx
+-- (20260804100000) is a partial index on exactly this predicate.
 
 
 -- =============================================================================
