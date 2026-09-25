@@ -153,13 +153,17 @@ const makeStyles = (c: Palette) =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: c.border,
     },
+    // flexShrink so the LABEL wraps at 200% type rather than pushing the
+    // amount — the number the owner is about to pay — off the screen.
     label: {
       ...typography.body,
       color: c.textPrimary,
+      flexShrink: 1,
     },
     totalLabel: {
       ...typography.cardTitle,
       color: c.textPrimary,
+      flexShrink: 1,
     },
     lineAmount: {
       ...typography.body,

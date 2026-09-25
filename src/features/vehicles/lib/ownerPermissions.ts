@@ -13,6 +13,7 @@
 import type { PostStatus } from '@/shared/types';
 
 import type { PostDetail } from '../types';
+import { canSendReward, type PostMoney } from './postMoney';
 
 /** Photos, last-seen and the bounty are editable ONLY while the post is a draft:
  *  imagery and where the car was taken from must not move once the crowd is
@@ -99,11 +100,17 @@ export function canArchive(status: PostStatus): boolean {
 }
 
 /** A credited spotter is waiting to be paid. `recovery_claimed` means the winner
- *  is chosen and the bounty is still in escrow — usually because they have not
+ *  is chosen and the reward is still in escrow — usually because they have not
  *  given Stripe their details yet, which is the expected first answer, not a
  *  fault. Before this row existed the owner had NO action on such a listing:
  *  every other one requires `active`, so crediting someone made the app go
- *  silent on the post it cared most about. */
-export function canReleasePayout(post: PostDetail): boolean {
-  return post.isOwner && post.status === 'recovery_claimed';
+ *  silent on the post it cared most about.
+ *
+ *  ⚠️ STATUS ALONE IS NOT ENOUGH (fixed 2026-09-25). A "found it another way"
+ *  recovery whose refund is HELD also sits in `recovery_claimed` — with nobody
+ *  credited — and this used to offer it "Send the reward", which then failed
+ *  with "No spotter is credited on this listing". The listing's MONEY must say
+ *  a spotter is owed it (awaiting_payee / sending); unknown money shows no row. */
+export function canReleasePayout(post: PostDetail, money: PostMoney | null): boolean {
+  return post.isOwner && post.status === 'recovery_claimed' && canSendReward(money);
 }

@@ -100,6 +100,27 @@ jest.mock('../api/flagApi', () => ({
 // real modules import the supabase client, which throws without app config.
 // Their behaviour is pinned in PostOwnerActions.test.
 jest.mock('../api/draftApi', () => ({ deleteDraft: jest.fn() }));
+// The owner's money read (usePostMoney) reaches the Supabase client; this
+// suite is about the screen, so the read answers "nothing to show".
+const mockFetchMoney = jest.fn(async (_postId: string): Promise<unknown> => null);
+jest.mock('../api/postMoneyApi', () => ({
+  fetchPostMoney: (postId: string) => mockFetchMoney(postId),
+}));
+
+/** get_post_money's answer for the owner's listing, in the given state. */
+const moneyIn = (state: string, hasCreditedSighting: boolean) => ({
+  kind: 'bounty_escrow',
+  pricing: 'fee_on_top',
+  state,
+  headlinePence: 50000,
+  rewardPence: 50000,
+  serviceFeePence: 2500,
+  chargedPence: 52500,
+  hasCreditedSighting,
+  paid: null,
+  refund: null,
+  refundHold: null,
+});
 jest.mock('../api/deletePostApi', () => ({ deleteCancelledPost: jest.fn() }));
 
 // Mocked at the api boundary like flagApi above — importing the real module
@@ -150,6 +171,8 @@ const mockPush = jest.fn();
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, back: mockBack }),
+  // usePostMoney re-reads on focus; a mounted test never refocuses.
+  useFocusEffect: () => {},
 }));
 
 const post: PostDetail = {
@@ -316,15 +339,21 @@ describe('PostDetailScreen', () => {
   // about — and, because deletion is blocked while a post holds escrow, it
   // also locked them out of deleting their account for good.
   describe('a credited spotter who has not been paid yet', () => {
-    it('offers the owner a way to send the bounty', async () => {
+    it('offers the owner a way to send the reward, and says where the money is', async () => {
+      // The listing's money decides the row since 2026-09-25 — status alone
+      // also matched a held no-spotter refund, where it could only fail.
+      mockFetchMoney.mockResolvedValueOnce(moneyIn('awaiting_payee', true));
       setResult('ready', {
         kind: 'visible',
         post: { ...post, isOwner: true, status: 'recovery_claimed' },
       });
-      const { getByTestId } = await render(<PostDetailScreen postId="p1" />, {
+      const { findByTestId, getByText } = await render(<PostDetailScreen postId="p1" />, {
         wrapper: ToastProvider,
       });
-      expect(getByTestId('manage-release-payout')).toBeTruthy();
+      expect(await findByTestId('manage-release-payout')).toBeTruthy();
+      // The "Your money" card says the same thing in words.
+      expect(getByText('Waiting for your spotter')).toBeTruthy();
+      expect(getByText(/£500 is sent automatically once they add their bank details/)).toBeTruthy();
     });
 
     it('offers it on no other status, and never to a spotter', async () => {

@@ -73,6 +73,7 @@ import {
 } from '@/shared/ui';
 
 import { buildCarDetailRows } from '../lib/carDetails';
+import type { PostMoney } from '../lib/postMoney';
 import { theftContextLines } from '../lib/theftContext';
 import type { PostDetail } from '../types';
 // Direct import (not the ./editors barrel) so PostDetailBody doesn't pull the
@@ -80,6 +81,7 @@ import type { PostDetail } from '../types';
 import { SectionEditButton } from './editors/SectionEditButton';
 import { LastSeenMap } from './LastSeenMap';
 import { OwnerCard } from './OwnerCard';
+import { PostMoneyCard } from './PostMoneyCard';
 
 /** In-page description clamp before "Show more" (the reference's ~6 lines). */
 const ABOUT_CLAMP_LINES = 6;
@@ -133,6 +135,9 @@ export interface PostDetailBodyProps {
    *  ending this product exists for; taking the listing down is giving up on
    *  it, and the good news should not be the harder one to find. */
   onRecovered?: () => void;
+  /** OWNER only: the listing's money (get_post_money). Null while it loads,
+   *  for anyone else, or when nothing was captured — the section then hides. */
+  money?: PostMoney | null;
 }
 
 function Divider() {
@@ -159,6 +164,7 @@ export function PostDetailBody({
   onEditDistinctiveFeatures,
   onDeactivate,
   onRecovered,
+  money = null,
 }: PostDetailBodyProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -223,10 +229,12 @@ export function PostDetailBody({
   // 2026-09-25 was charged the reward alone, so this over-quotes it by the
   // fee; those exist only in Stripe test mode, and the owner's money status
   // replaces this estimate with the server's own figure.)
+  // Once the listing's money has loaded, its REAL charge is used — which also
+  // makes a pre-2026-09-25 listing (charged the reward alone) quote correctly.
   const estimatedRefundPence =
     post.bountyPence === null
       ? null
-      : estimateRefundPence(chargeBreakdown(post.bountyPence).chargePence);
+      : estimateRefundPence(money?.chargedPence ?? chargeBreakdown(post.bountyPence).chargePence);
 
   return (
     <View style={styles.body}>
@@ -589,6 +597,19 @@ export function PostDetailBody({
           </View>
         ) : null}
       </View>
+
+      {/* 7a1 — Your money — OWNER only, once anything was captured. Where the
+          money is NOW, in words, read fresh on every return — above the two
+          money actions below so the owner sees the state before changing it. */}
+      {post.isOwner && money ? (
+        <>
+          <Divider />
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Your money</Text>
+            <PostMoneyCard money={money} />
+          </View>
+        </>
+      ) : null}
 
       {/* 7a2 — Got it back — OWNER + ACTIVE only. The recovery flow: credit the
           sighting that led to it, or say you found it another way. Above

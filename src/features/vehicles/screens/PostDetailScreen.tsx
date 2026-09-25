@@ -52,6 +52,7 @@ import { PostHero } from '../components/PostHero';
 import { PostOwnerActions, type PostOwnerActionsHandle } from '../components/PostOwnerActions';
 import { StillMissingBanner } from '../components/StillMissingBanner';
 import { usePostDetail } from '../hooks/usePostDetail';
+import { usePostMoney } from '../hooks/usePostMoney';
 import { useSimilarPosts } from '../hooks/useSimilarPosts';
 import { useStillMissingAsk } from '../hooks/useStillMissingAsk';
 import { closedStateCopy } from '../lib/closedState';
@@ -111,6 +112,12 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   });
 
   const visiblePost = status === 'ready' && result?.kind === 'visible' ? result.post : null;
+
+  // The owner's money for this listing — read once here and handed to both
+  // the "Your money" card and the owner actions, so one screen makes one read.
+  // Re-read on the post's status (every money move changes it or follows one)
+  // and on every return to the screen. No request at all for anyone else.
+  const { money } = usePostMoney(postId, visiblePost?.isOwner === true, visiblePost?.status);
 
   // The ADR-0019 liveness ask. Only ever open on the owner's own live listing —
   // the RPC is scoped to auth.uid() and status='active', so a spotter's copy of
@@ -362,6 +369,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
               ) : null}
               <PostDetailBody
                 post={result.post}
+                money={money}
                 onOpenMap={() => onOpenMap(result.post)}
                 onReport={onReport}
                 onMessageOwner={
@@ -469,6 +477,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         ref={ownerRef}
         postId={postId}
         post={visiblePost}
+        money={money}
         refresh={retry}
         onDeleted={() => router.replace('/my-posts')}
       />

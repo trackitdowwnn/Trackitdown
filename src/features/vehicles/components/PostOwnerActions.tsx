@@ -49,6 +49,8 @@ import {
 import { deleteCancelledPost } from '../api/deletePostApi';
 import { deleteDraft } from '../api/draftApi';
 import { RecoveryError, releasePayout } from '../api/recoveryApi';
+import { usePostMoney } from '../hooks/usePostMoney';
+import type { PostMoney } from '../lib/postMoney';
 import { buildSharePayload } from '../lib/postShare';
 import {
   canDeactivate,
@@ -95,6 +97,13 @@ export interface PostOwnerActionsProps {
    * performs the toggle; absent = no row. `archived` picks which of the two.
    */
   archive?: { archived: boolean; toggle: () => void };
+  /**
+   * The listing's money (get_post_money), when the host already reads it —
+   * the listing screen does, for its "Your money" card. Omitted, this reads it
+   * itself (My listings' sheet). It decides whether "Send the reward" is a
+   * real action and gives the refund estimate the real charge.
+   */
+  money?: PostMoney | null;
 }
 
 export function PostOwnerActions({
@@ -104,7 +113,15 @@ export function PostOwnerActions({
   refresh,
   onDeleted,
   archive,
+  money: moneyFromHost,
 }: PostOwnerActionsProps) {
+  // Only when the host did not bring it — one read per screen, never two.
+  const ownRead = usePostMoney(
+    postId,
+    Boolean(post?.isOwner) && moneyFromHost === undefined,
+    post?.status,
+  );
+  const money = moneyFromHost !== undefined ? moneyFromHost : ownRead.money;
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -412,7 +429,7 @@ export function PostOwnerActions({
         onDeactivate={canDeactivate(owned) ? requestDeactivate : undefined}
         onDeleteDraft={canDeleteDraft(owned) ? () => deleteDraftRef.current?.open() : undefined}
         onDeletePost={canDeletePost(owned) ? () => deletePostRef.current?.open() : undefined}
-        onReleasePayout={canReleasePayout(owned) ? () => void onReleasePayout() : undefined}
+        onReleasePayout={canReleasePayout(owned, money) ? () => void onReleasePayout() : undefined}
         onArchive={archive && !archive.archived ? archive.toggle : undefined}
         onUnarchive={archive?.archived ? archive.toggle : undefined}
       />
@@ -430,9 +447,12 @@ export function PostOwnerActions({
                 // promise money back that is not coming.
                 'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.'
               : // ADR-0020: the refund is the whole charge (reward + service
-                // fee) minus the card fee — see PostDetailBody's estimate.
+                // fee) minus the card fee. The listing's real charge when its
+                // money has loaded; the fee-on-top price of its reward before.
                 `We’ll take it down and refund about ${formatPounds(
-                  estimateRefundPence(chargeBreakdown(owned.bountyPence).chargePence),
+                  estimateRefundPence(
+                    money?.chargedPence ?? chargeBreakdown(owned.bountyPence).chargePence,
+                  ),
                 )} to your card — what you paid, minus the non-recoverable card fee. This can’t be undone.`
           }
           confirmLabel="Yes, deactivate"

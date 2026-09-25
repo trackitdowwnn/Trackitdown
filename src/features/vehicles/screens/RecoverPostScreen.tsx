@@ -48,13 +48,21 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { notifyCredited } from '@/features/notifications';
 import { exitCheck } from '@/features/payments';
 import { usePostSightings } from '@/features/sightings';
-import { formatPounds } from '@/shared/lib/money';
+import { chargeBreakdown, estimateRefundPence, formatPounds } from '@/shared/lib/money';
 import { createLogger } from '@/shared/lib/logger';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
-import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
+import {
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Screen,
+  useToast,
+  type ConfirmDialogRef,
+} from '@/shared/ui';
 
 import { RecoveryError, claimRecovery, refundRecovery, releasePayout } from '../api/recoveryApi';
 import { ExitAttestation } from '../components/ExitAttestation';
+import { usePostMoney } from '../hooks/usePostMoney';
 
 export interface RecoverPostScreenProps {
   postId: string;
@@ -85,6 +93,23 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
   const toast = useToast();
   const { status, sightings } = usePostSightings(postId);
   const [selected, setSelected] = useState<string | null>(null);
+  // The irreversible step gets one look before it happens.
+  const confirmRef = useRef<ConfirmDialogRef>(null);
+
+  // THE AMOUNTS each choice moves (2026-09-25). This screen used to describe
+  // both endings with no number in them — "send your reward", "refund your
+  // reward" — on the one tap in the app that moves money irreversibly. The
+  // listing's own money read gives the real reward and charge; before it
+  // lands (or if it fails) the route's reward with the fee-on-top charge
+  // stands in, which is exact for every listing posted since ADR-0020.
+  const { money } = usePostMoney(postId, !noReward);
+  const rewardPence = money?.rewardPence ?? (typeof bountyPence === 'number' ? bountyPence : null);
+  const chargePence =
+    money?.chargedPence ??
+    (typeof bountyPence === 'number' ? chargeBreakdown(bountyPence).chargePence : null);
+  const refundPence = chargePence === null ? null : estimateRefundPence(chargePence);
+  const rewardText = rewardPence === null ? 'your reward' : formatPounds(rewardPence);
+  const refundText = refundPence === null ? 'your money' : `about ${formatPounds(refundPence)}`;
   const [submitting, setSubmitting] = useState(false);
   // The owner-denial attestation step for "I found it another way": recent
   // uncredited sightings must be looked at before the refund can be asked
@@ -196,17 +221,15 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         // (a no-op) and then toast "we'll send the bounty automatically", which
         // promises the owner and the spotter money that does not exist.
         claimedRef.current = true;
-        // NOT notifyCredited: that push is a MONEY push ("You've earned £X",
-        // routing to /payouts). Its SQL reads the amount from a held/released
-        // payment and returns {claimed:false} rather than invent a number — a
-        // fee listing's payment is `collected`, so calling it here would send
-        // nothing at all. Left uncalled rather than called-as-a-no-op so the
-        // absence is legible.
+        // Tell the spotter. claim_credited_notification answers a £5 listing
+        // with its own rewardless kind — "Your sighting found the car", routed
+        // to My reports, no amount (79f229c, 2026-09-02).
         //
-        // ⚠️ KNOWN GAP, recorded in DOMAIN.md: the spotter is credited and
-        // currently learns it only by opening the app. Closing it needs a
-        // non-money credited push (copy + kind + migration) — deliberately not
-        // smuggled into this change.
+        // ⚠️ FIXED 2026-09-25: the server learned this on 09-02 but this line
+        // still read "NOT notifyCredited … KNOWN GAP", so for three weeks every
+        // spotter credited on a £5 listing was told nothing. The sweep now
+        // catches a lost one too (ADR-0021), but this is the moment it belongs.
+        notifyCredited(postId);
         toast.show('They’re credited. The recovery is added to their spotter record.');
         router.back();
         return;
@@ -404,7 +427,11 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           <Text style={styles.optionNote}>
             {noReward
               ? 'The police, or you. We’ll just close the listing.'
-              : 'The police, or you. Your reward comes back to you, minus the card fee.'}
+              : // The estimate is ALREADY net of the card fee — "minus the card
+                // fee" after it read as a second deduction.
+                `The police, or you. ${refundText.charAt(0).toUpperCase()}${refundText.slice(
+                  1,
+                )} comes back to your card (card processing fees aren’t refundable).`}
           </Text>
         </Pressable>
       </View>
@@ -422,20 +449,47 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         {selected === NO_SPOTTER
           ? noReward
             ? 'We’ll close the listing.'
-            : 'We’ll close the listing and refund your reward.'
+            : `We’ll close the listing and refund ${refundText} to your card.`
           : selected
             ? noReward
               ? // No cash to promise — but the credit is real and is what the
                 // spotter gets, so say that rather than nothing.
                 'We’ll close the listing and credit that spotter. Only one sighting can be credited.'
-              : 'We’ll close the listing and send your reward to that spotter. Only one sighting can be credited.'
+              : rewardPence === null
+                ? 'We’ll close the listing and send your reward to that spotter. Only one sighting can be credited.'
+                : `We’ll close the listing and send ${rewardText} to that spotter — the full reward. Only one sighting can be credited.`
             : 'Choose one to continue.'}
       </Text>
 
       <Button
         label={submitting ? 'Just a moment…' : 'Confirm'}
-        onPress={() => void submit()}
+        onPress={() => confirmRef.current?.open()}
         disabled={selected === null || submitting}
+      />
+
+      {/* ONE LOOK BEFORE AN IRREVERSIBLE TAP. claim_recovery cannot be undone
+          and, on a reward listing, it decides where real money goes — so the
+          sentence above is repeated as a question with the amount in it. */}
+      <ConfirmDialog
+        ref={confirmRef}
+        title={
+          selected === NO_SPOTTER
+            ? 'Close your listing?'
+            : noReward
+              ? 'Credit this spotter?'
+              : `Send ${rewardText} to this spotter?`
+        }
+        body={
+          selected === NO_SPOTTER
+            ? noReward
+              ? 'We’ll close it. This can’t be undone.'
+              : `We’ll close it and refund ${refundText} to your card. If anyone reported a sighting in the last two weeks, we’ll ask you about those first, and the refund waits 72 hours. This can’t be undone.`
+            : noReward
+              ? 'We’ll close your listing and add the recovery to their spotter record. This can’t be undone.'
+              : 'We’ll close your listing and send the reward to the spotter whose sighting you picked. This can’t be undone.'
+        }
+        confirmLabel={selected === NO_SPOTTER ? 'Yes, close it' : noReward ? 'Yes, credit them' : 'Yes, send it'}
+        onConfirm={() => void submit()}
       />
     </Screen>
   );
@@ -495,8 +549,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textSecondary,
   },
+  // Body weight and primary ink, not a caption: this is the one sentence that
+  // says where the money goes, directly above a tap that cannot be undone.
   caption: {
-    ...typography.caption,
-    color: c.textSecondary,
+    ...typography.body,
+    color: c.textPrimary,
   },
 });

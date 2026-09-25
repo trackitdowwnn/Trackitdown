@@ -146,6 +146,7 @@ export { SelectField, type SelectFieldProps } from './SelectField';
 export { SelectScreen, type SelectScreenProps } from './SelectScreen';
 export { type SelectOption } from './selectOptions';
 export {
+  badgeToneColor,
   StatusBadge,
   StatusPill,
   statusBadgeLabel,

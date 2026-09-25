@@ -135,7 +135,7 @@ export const defaultBountyPanelCopy: MoneySliderPanelCopy = {
   escrowLine: ({ chargePence }) =>
     `We hold it from when your listing goes live, and pay nobody until you confirm who found your car. If no one's sighting does, about ${formatPounds(
       estimateRefundPence(chargePence),
-    )} comes back to you — card processing costs aren’t refundable.`,
+    )} comes back to you — card processing fees aren’t refundable.`,
 };
 
 /** Form-level validation matching what the slider can emit. */
