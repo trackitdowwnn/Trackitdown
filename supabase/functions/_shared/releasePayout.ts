@@ -41,6 +41,7 @@ import {
   announceNotCredited,
   announcePayoutSent,
   announceRecoveryToWatchers,
+  announceRewardDelivered,
 } from './recoveryAnnounce.ts';
 
 export type ReleaseOutcome =
@@ -250,6 +251,10 @@ export async function releasePayoutForPost(
   // claim_recovery) means nobody is ever told "another spotter was credited"
   // for a credit that then sits unpaid forever behind an un-onboarded payee.
   await announcePayoutSent(admin, postId);
+  // And the owner's "£X sent to your spotter" (ADR-0021) — the moment most
+  // often reached days after they credited someone, by the webhook, while
+  // they are nowhere near the app.
+  await announceRewardDelivered(admin, postId);
   await announceRecoveryToWatchers(admin, postId);
   await announceNotCredited(admin, postId);
 

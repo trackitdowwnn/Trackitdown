@@ -41,6 +41,11 @@ export function pushRouteFor(payload: PushPayload): Href {
     // own not-found state is the honest answer; routing to My Posts instead
     // would hide WHICH listing this was about while it still exists.
     case 'deletion_soon':
+    // The owner's money news (ADR-0021) — the listing is where their money
+    // status lives, so "£X refunded" / "£X sent to your spotter" lands on the
+    // line that says the same thing, with the date it happened.
+    case 'refund_sent':
+    case 'reward_delivered':
       return `/post/${payload.postId}`;
     case 'message':
       return `/chat/${payload.threadId}`;

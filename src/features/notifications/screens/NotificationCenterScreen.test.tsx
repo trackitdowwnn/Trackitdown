@@ -119,6 +119,27 @@ describe('states', () => {
     expect(queryByText('Keep an eye out — never approach.')).toBeNull();
   });
 
+  it('drops the errand once payouts are set up — the chip no longer nags a spotter who has done it', async () => {
+    // It used to show to every spotter with an unread credit, including ones
+    // whose details were already in and ones already paid.
+    mockFetch.mockResolvedValue([
+      rowFixture({ id: 'n-credited', kind: 'credited', payload: { type: 'credited', postId: POST_ID } }),
+      rowFixture({
+        id: 'n-still',
+        kind: 'still_missing',
+        payload: { type: 'still_missing', postId: POST_ID },
+      }),
+    ]);
+    const { queryByText, queryByTestId, getByTestId } = await act(async () =>
+      render(<NotificationCenterScreen payoutsSetUp />),
+    );
+
+    expect(queryByText('Add your bank details')).toBeNull();
+    expect(queryByTestId('attention-n-credited')).toBeNull();
+    // Only the credited errand is settled by payouts — other asks stay loud.
+    expect(getByTestId('attention-n-still')).toBeTruthy();
+  });
+
   it('gives the preview back once the row is read', async () => {
     mockFetch.mockResolvedValue([
       rowFixture({

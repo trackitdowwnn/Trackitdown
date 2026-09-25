@@ -44,7 +44,7 @@
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
-import { announceRecoveryToWatchers } from '../_shared/recoveryAnnounce.ts';
+import { announceRecoveryToWatchers, announceRefundSent } from '../_shared/recoveryAnnounce.ts';
 import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
 import { gateExitRefund } from '../_shared/refundHold.ts';
 
@@ -204,6 +204,8 @@ Deno.serve(async (request) => {
   // The watchers' announcement — the car went home, however it ended. Best-
   // effort and claim-guarded; never a reason to fail the refund's response.
   await announceRecoveryToWatchers(admin, postId);
+  // And the owner's own "£X refunded" (ADR-0021).
+  await announceRefundSent(admin, postId);
 
   return jsonResponse({ held: false, refundedPence: refundPence, feePence });
 });

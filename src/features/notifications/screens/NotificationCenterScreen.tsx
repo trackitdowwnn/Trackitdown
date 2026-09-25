@@ -53,9 +53,19 @@ export interface NotificationCenterScreenProps {
    * `center_view` effect below. Defaults true for any other consumer.
    */
   active?: boolean;
+  /**
+   * The reader's payouts are set up (details in, or payouts on), so a
+   * `credited` row's "Add your bank details" errand is done and must not stay
+   * loud. Passed in by the inbox route, which may read payments; this feature
+   * may not. Defaults false: an unknown answer keeps the nudge.
+   */
+  payoutsSetUp?: boolean;
 }
 
-export function NotificationCenterScreen({ active = true }: NotificationCenterScreenProps) {
+export function NotificationCenterScreen({
+  active = true,
+  payoutsSetUp = false,
+}: NotificationCenterScreenProps) {
   const styles = useThemedStyles(makeStyles);
   const router = useRouter();
   const { status, rows, refreshing, markRead, markAllRead, refresh, retry } =
@@ -182,7 +192,11 @@ export function NotificationCenterScreen({ active = true }: NotificationCenterSc
                 : undefined
             }
           >
-            <NotificationRowItem row={item} onPress={onRowPress} />
+            <NotificationRowItem
+              row={item}
+              onPress={onRowPress}
+              errandDone={item.kind === 'credited' && payoutsSetUp}
+            />
           </Animated.View>
         )}
         refreshControl={

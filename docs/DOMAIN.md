@@ -567,7 +567,16 @@ Rules that follow, and are not implementation details:
   center (the Inbox tab's second face) and the pushes can never disagree, and
   users without push permission still receive everything in-app. Chat
   messages are the ONE exclusion: the Messages segment is their persistent
-  surface. Rows carry the copy that was true at write time plus the exact
+  surface.
+- **OWNERS HEAR WHEN THEIR MONEY MOVES (2026-09-25, ADR-0021):**
+  `refund_sent` ("£X refunded" — the recorded refund, net of the card fee) and
+  `reward_delivered` ("£X sent to your spotter" — the recorded transfer), both
+  to the owner, both under the `money` category, both routing to the listing.
+  They exist because most money moves while the owner is not in the app: a
+  held refund released by the sweep 72 hours later, a reward released days
+  later when the spotter finishes payout setup. Neither names the spotter.
+  The spotter's own `credited` push, fired from the owner's phone, now has a
+  sweep-side safety net through the same claim. Rows carry the copy that was true at write time plus the exact
   typed payload; retention is 90 days (pg_cron); unread is the user's to
   clear — nothing auto-marks-read except tapping the row or its push.
 - **PER-CATEGORY PUSH PREFERENCES (2026-08-24):** five mutable categories —

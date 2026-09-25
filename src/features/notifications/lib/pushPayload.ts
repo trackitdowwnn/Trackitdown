@@ -113,6 +113,20 @@ const deletionSoonPayloadSchema = z
   .object({ type: z.literal('deletion_soon'), postId: z.guid() })
   .strict();
 
+/** "£X refunded" — to the OWNER, about their own listing (ADR-0021). The POST
+ *  id: the tap opens the listing, where the money status shows the refund.
+ *  The amount lives in the visible title only — never in this payload. */
+const refundSentPayloadSchema = z
+  .object({ type: z.literal('refund_sent'), postId: z.guid() })
+  .strict();
+
+/** "£X sent to your spotter" — to the OWNER (ADR-0021). The POST id, and
+ *  nothing about the spotter: the visible copy says "your spotter" and this
+ *  payload says even less. */
+const rewardDeliveredPayloadSchema = z
+  .object({ type: z.literal('reward_delivered'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -128,6 +142,8 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   notCreditedPayloadSchema,
   stillMissingPayloadSchema,
   deletionSoonPayloadSchema,
+  refundSentPayloadSchema,
+  rewardDeliveredPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

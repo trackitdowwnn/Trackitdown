@@ -49,6 +49,7 @@ import {
   requireEnv,
   stripeCryptoProvider,
 } from '../_shared/clients.ts';
+import { announceRefundSent } from '../_shared/recoveryAnnounce.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
 // NOTE: no CORS / preflight — Stripe calls this server-to-server, not a browser.
@@ -174,6 +175,19 @@ Deno.serve(async (request) => {
         });
         if (error) throw error;
         console.log('[payments] refund confirmed', { paymentIntentId: intentId });
+
+        // The owner's "£X refunded" (ADR-0021), for a refund this webhook was
+        // the first to record — the Edge Function that issued it may have died
+        // after Stripe accepted it. Claim-guarded: if that function already
+        // announced, this sends nothing.
+        const { data: refunded } = await admin
+          .from('payments')
+          .select('post_id')
+          .eq('stripe_payment_intent_id', intentId)
+          .maybeSingle();
+        if (refunded?.post_id) {
+          await announceRefundSent(admin, refunded.post_id as string);
+        }
       }
     } else if (event.type === 'account.updated') {
       // A SPOTTER'S payee account changed — almost always them finishing, or

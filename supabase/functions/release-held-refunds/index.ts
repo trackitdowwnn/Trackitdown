@@ -38,7 +38,13 @@ import { errorResponse, jsonResponse } from '../_shared/http.ts';
 import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
 import { releasePayoutForPost } from '../_shared/releasePayout.ts';
 import { notifyUsers } from '../_shared/push.ts';
-import { announcePayoutSent, announceRecoveryToWatchers } from '../_shared/recoveryAnnounce.ts';
+import {
+  announceCredited,
+  announcePayoutSent,
+  announceRecoveryToWatchers,
+  announceRefundSent,
+  announceRewardDelivered,
+} from '../_shared/recoveryAnnounce.ts';
 
 Deno.serve(async (request) => {
   if (request.method !== 'POST') {
@@ -376,6 +382,10 @@ Deno.serve(async (request) => {
         // car went home. Claim-guarded; a replay announces nothing twice.
         await announceRecoveryToWatchers(admin, postId);
       }
+      // The owner closed this 72+ hours ago and is almost certainly not in
+      // the app: this push is the only way they learn the refund went out
+      // (ADR-0021 — the reason the owner pushes exist at all).
+      await announceRefundSent(admin, postId);
     } catch (err) {
       console.error('[payments] hold sweep item failed', { postId, error: (err as Error).message });
       summary.skipped += 1;
@@ -485,6 +495,43 @@ Deno.serve(async (request) => {
       .gte('updated_at', recentCutoff);
     for (const payment of pendingPayout ?? []) {
       await announcePayoutSent(admin, payment.post_id as string);
+    }
+
+    // ADR-0021's owner pushes, same crash-orphan logic. Their markers were
+    // backfilled on every settled row, so nothing old is announced as news.
+    const { data: pendingOwnerPayout } = await admin
+      .from('payments')
+      .select('post_id')
+      .eq('status', 'released')
+      .eq('kind', 'bounty_escrow')
+      .is('owner_payout_notified_at', null)
+      .gte('updated_at', recentCutoff);
+    for (const payment of pendingOwnerPayout ?? []) {
+      await announceRewardDelivered(admin, payment.post_id as string);
+    }
+    const { data: pendingRefund } = await admin
+      .from('payments')
+      .select('post_id')
+      .eq('status', 'refunded')
+      .eq('kind', 'bounty_escrow')
+      .is('refund_notified_at', null)
+      .gte('updated_at', recentCutoff);
+    for (const payment of pendingRefund ?? []) {
+      await announceRefundSent(admin, payment.post_id as string);
+    }
+
+    // The spotter's credited push, when the OWNER's phone never sent it (it is
+    // fired from their app at the moment of credit). Historical credits were
+    // backfilled as announced, so this only ever finds a genuinely lost one.
+    const { data: pendingCredited } = await admin
+      .from('sightings')
+      .select('post_id, posts!inner(owner_id, status)')
+      .eq('status', 'credited')
+      .is('credited_notified_at', null)
+      .in('posts.status', ['recovery_claimed', 'recovered']);
+    for (const row of pendingCredited ?? []) {
+      const owner = (row.posts as unknown as { owner_id: string }).owner_id;
+      await announceCredited(admin, row.post_id as string, owner);
     }
   } catch (err) {
     console.error('[notifications] announce sweep failed', (err as Error).message);

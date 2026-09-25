@@ -37,6 +37,14 @@ export const NOTIFICATION_KINDS = [
   // once per post, ever. Reports a fact, offers no lever — a cancelled post
   // cannot be kept past 30 days (2026-09-21).
   'deletion_soon',
+  // The OWNER's two money pushes (ADR-0021, 2026-09-25): "£X refunded" when an
+  // escrow refund lands, and "£X sent to your spotter" when the reward goes
+  // out. Both report news that usually happens while the owner is not in the
+  // app — a refund released by the 72-hour sweep, a payout released days later
+  // when the spotter finished setup — and both route to the listing, where the
+  // owner's money status now lives.
+  'refund_sent',
+  'reward_delivered',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
