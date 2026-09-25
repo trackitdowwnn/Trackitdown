@@ -47,5 +47,4 @@ export {
   type PayoutAccountState,
   type PayoutAccountStatus,
 } from './hooks/usePayoutAccount';
-export { usePayoutsRelevant } from './hooks/usePayoutsRelevant';
 export { PayoutsScreen } from './screens/PayoutsScreen';

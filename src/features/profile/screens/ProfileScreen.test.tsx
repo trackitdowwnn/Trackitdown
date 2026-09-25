@@ -148,17 +148,10 @@ jest.mock('@/features/notifications', () => ({
   unregisterCurrentPushToken: jest.fn(),
 }));
 
-// Same boundary rule as garage/notifications. Defaults to RELEVANT so the
-// row's own wiring tests keep a row to press; the hidden case is its own test.
-let mockPayoutsRelevant = true;
-jest.mock('@/features/payments', () => ({
-  usePayoutsRelevant: () => ({
-    get relevant() {
-      return mockPayoutsRelevant;
-    },
-    refresh: jest.fn(),
-  }),
-}));
+// Same boundary rule as garage/notifications: the payments barrel pulls the
+// Stripe native SDK. Profile no longer reads anything from it (the Earnings row
+// is always shown), so an empty stand-in is enough.
+jest.mock('@/features/payments', () => ({}));
 
 const profile = {
   id: 'user-1',
@@ -173,7 +166,6 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockProfileState = { status: 'ready', profile, refresh: jest.fn() };
   mockAlertsState = { status: 'ready', alerts: [], refresh: jest.fn() };
-  mockPayoutsRelevant = true;
   mockSignOut.mockResolvedValue(undefined);
   mockCountBlocking.mockResolvedValue(0);
   mockRequestDeletion.mockResolvedValue(undefined);
@@ -364,13 +356,13 @@ describe('signed in', () => {
     expect(queryByText('Set up payouts')).toBeNull();
   });
 
-  it('shows NO payouts row to someone with nothing behind it', async () => {
-    // Credit-time setup (ADR-0010 amendments): a never-credited spotter has
-    // nothing to set up, so a row inviting them to do it anyway would be a
-    // door to an empty room. The `credited` push is their front door.
-    mockPayoutsRelevant = false;
-    const { queryByTestId } = await render(<ProfileScreen />);
-    expect(queryByTestId('row-payouts')).toBeNull();
+  it('always shows the Earnings row — the push is no longer the only way in', async () => {
+    // Until 2026-09-25 this row appeared only after a first credit, so a
+    // spotter who dismissed the `credited` push had no door to money they had
+    // just earned. The screen behind it has an honest empty state.
+    const { getByTestId, getByText } = await render(<ProfileScreen />);
+    expect(getByTestId('row-payouts')).toBeTruthy();
+    expect(getByText('Earnings')).toBeTruthy();
   });
 
   it('summarises no alerts as Not set', async () => {

@@ -146,6 +146,12 @@ export function MySightingsScreen() {
     [router],
   );
 
+  // A credited report's reward line opens Earnings (2026-09-25).
+  const openEarnings = useCallback(() => {
+    log.info('earnings_opened_from_reports');
+    router.push('/payouts');
+  }, [router]);
+
   /**
    * Opening the car a report was about (review #16 — this screen was a dead
    * end: a verdict, and nowhere to go with it).
@@ -243,11 +249,12 @@ export function MySightingsScreen() {
             onOpenDispute={openDispute}
             onWithdraw={requestWithdraw}
             onOpenPost={openPost}
+            onOpenEarnings={openEarnings}
           />
         )}
       </Animated.View>
     ),
-    [entranceActive, openDispute, requestWithdraw, openPost],
+    [entranceActive, openDispute, requestWithdraw, openPost, openEarnings],
   );
 
   return (

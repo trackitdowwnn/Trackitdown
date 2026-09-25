@@ -16,8 +16,8 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 
 import { PaymentError } from '@/shared/lib/functionError';
 import {
+  fetchMyEarnings,
   fetchMyPayoutAccount,
-  fetchPayoutsRelevant,
   startConnectOnboarding,
   submitPayoutDetails,
 } from './payoutsApi';
@@ -279,21 +279,63 @@ describe('fetchMyPayoutAccount', () => {
   });
 });
 
-describe('fetchPayoutsRelevant', () => {
-  it('asks the caller-scoped RPC and returns its boolean', async () => {
-    mockRpc.mockResolvedValue({ data: true, error: null });
-    await expect(fetchPayoutsRelevant()).resolves.toBe(true);
-    expect(mockRpc).toHaveBeenCalledWith('payouts_relevant');
+describe('fetchMyEarnings', () => {
+  it('parses every reward with its state, and the totals', async () => {
+    mockRpc.mockResolvedValue({
+      data: {
+        items: [
+          {
+            sightingId: 'aaaaaaaa-0000-0000-0000-00000000000a',
+            car: { make: 'Ford', colour: 'Blue' },
+            state: 'paid',
+            rewardPence: 50000,
+            paidPence: 50000,
+            paidAt: '2026-09-20T10:00:00Z',
+          },
+          {
+            sightingId: 'bbbbbbbb-0000-0000-0000-00000000000b',
+            car: { make: 'BMW', colour: '' },
+            state: 'add_details',
+            rewardPence: 30000,
+            paidPence: null,
+            paidAt: null,
+          },
+        ],
+        totals: { paidPence: 50000, pendingPence: 30000 },
+      },
+      error: null,
+    });
+
+    const earnings = await fetchMyEarnings();
+
+    expect(mockRpc).toHaveBeenCalledWith('my_earnings');
+    expect(earnings.items).toHaveLength(2);
+    expect(earnings.items[1].state).toBe('add_details');
+    expect(earnings.totals).toEqual({ paidPence: 50000, pendingPence: 30000 });
   });
 
-  it('hides the row on error — a missing convenience beats a false invitation', async () => {
+  it('throws on an error, rather than showing no earnings as if there were none', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
-    await expect(fetchPayoutsRelevant()).resolves.toBe(false);
+    await expect(fetchMyEarnings()).rejects.toBeInstanceOf(PaymentError);
   });
 
-  it('treats anything but literal true as not relevant', async () => {
-    // A null answer (or a shape change) must fail toward hidden, never shown.
-    mockRpc.mockResolvedValue({ data: null, error: null });
-    await expect(fetchPayoutsRelevant()).resolves.toBe(false);
+  it('fails loudly on a state this build does not know', async () => {
+    mockRpc.mockResolvedValue({
+      data: {
+        items: [
+          {
+            sightingId: 'aaaaaaaa-0000-0000-0000-00000000000a',
+            car: { make: 'Ford', colour: 'Blue' },
+            state: 'teleported',
+            rewardPence: 50000,
+            paidPence: null,
+            paidAt: null,
+          },
+        ],
+        totals: { paidPence: 0, pendingPence: 50000 },
+      },
+      error: null,
+    });
+    await expect(fetchMyEarnings()).rejects.toThrow();
   });
 });

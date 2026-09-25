@@ -105,7 +105,9 @@ import {
 } from '../api/payoutsApi';
 import { createBankToken, createIdentityToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
+import { EarningsList } from '../components/EarningsList';
 import { PayoutDetailsForm } from '../components/PayoutDetailsForm';
+import { useEarnings } from '../hooks/useEarnings';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
 
 const log = createLogger('payments');
@@ -184,7 +186,19 @@ export function PayoutsScreen() {
   const insets = useSafeAreaInsets();
   const toast = useToast();
   const requireAuth = useRequireAuth();
-  const { status, settling, refresh, settleReturn } = usePayoutAccount();
+  const { status, settling, refresh: refreshAccount, settleReturn } = usePayoutAccount();
+  // Every reward they have earned, with its own state (20260925110000).
+  // Re-read whenever the account's status moves — "ready" is exactly when a
+  // reward goes from "add your details" to "on its way".
+  const { earnings, refresh: refreshEarnings } = useEarnings(
+    status !== 'guest' && status !== 'loading',
+    status,
+  );
+  // Pull-to-refresh and "Check again" re-read both halves of the screen.
+  const refresh = useCallback(() => {
+    refreshAccount();
+    refreshEarnings();
+  }, [refreshAccount, refreshEarnings]);
   const params = useLocalSearchParams<{ onboarding?: string }>();
   const [opening, setOpening] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -195,8 +209,8 @@ export function PayoutsScreen() {
   // Stripe refused what our form can describe. Offers the way past.
   const [detailsRejected, setDetailsRejected] = useState(false);
   const [bankRejected, setBankRejected] = useState(false);
-  // The earn moment's context: "You've earned £X". Server-derived via
-  // payout_split, so the push and this line can never disagree on the number.
+  // The earn moment's context: "You've earned £X". The payment's stored reward
+  // (ADR-0020) — the same number the push used, so the two cannot disagree.
   //
   // TRI-STATE, and the third state is load-bearing: `undefined` means "still
   // asking", `null` means "asked — nothing waiting". notStarted branches on
@@ -511,7 +525,7 @@ export function PayoutsScreen() {
       <View style={styles.headerRow}>
         <BackButton />
         <Text style={styles.title} accessibilityRole="header">
-          Payouts
+          Earnings
         </Text>
       </View>
 
@@ -562,6 +576,13 @@ export function PayoutsScreen() {
           "Nearly there" together for the whole settling window. Priority
           order, early returns, structurally impossible to show two. */}
       {renderBody()}
+
+      {/* Every reward, not just the one waiting (2026-09-25). Hidden while a
+          form is open — the fields are the task then — and when there is
+          nothing yet, where the body's empty state already says so. */}
+      {earnings && earnings.items.length > 0 && !showForm && !showBankForm ? (
+        <EarningsList earnings={earnings} />
+      ) : null}
 
       {/* Every state in which details are being handed over or held. Absent for
           a guest (nothing has been asked of them) and once `ready` (the claim
@@ -706,10 +727,15 @@ export function PayoutsScreen() {
         return <PayoutsSkeleton />;
       }
       if (pendingCreditPence === null) {
+        // The earnings list above already says what there is — "No rewards
+        // yet" under it would contradict it (ui-review 2026-09-25).
+        if (earnings && earnings.items.length > 0) return null;
         return (
+          // Reached from the Profile row, which is ALWAYS shown since
+          // 2026-09-25 — so this is most people's first sight of the screen.
           <EmptyState
-            title="Nothing to set up"
-            body="When a sighting of yours leads to a recovery, we’ll let you know you’ve earned the reward — and ask where to send it. That’s the whole setup."
+            title="No rewards yet"
+            body="When a sighting of yours leads to a recovery, your reward shows here — and we’ll ask where to send it then. There’s nothing to set up before that."
           />
         );
       }

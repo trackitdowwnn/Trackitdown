@@ -124,7 +124,7 @@ Deno.serve(async (request) => {
     // Not a refund at all — this post is owed a payout.
     return errorResponse(
       'RECOVERY_HAS_CREDITED_SIGHTING',
-      'You credited a spotter for this recovery, so the bounty goes to them.',
+      'You credited a spotter for this recovery, so the reward goes to them.',
       409,
     );
   }
