@@ -807,6 +807,6 @@ comment on function public.my_dispute_context(uuid) is
 -- 9. payout_split is now the fee_inside rule only.
 -- =============================================================================
 comment on function public.payout_split(integer) is
-  'The fee_inside split (ADR-0002, every escrow row charged before 2026-09-25): 95% to the spotter, the remainder to the platform, integer pence. Since ADR-0020 no payout path calls it — the split is stored on each payments row at charge time — but payments_split_check encodes the same arithmetic for fee_inside rows and the verification suites use it as the reference.';
+  'The fee_inside split (ADR-0002, every escrow row charged before 2026-09-25): 95% to the spotter, the remainder to the platform, integer pence. Since ADR-0020 the split is stored on each payments row at charge time; this function remains the fee_inside rule that mark_recovery_paid re-derives a legacy row''s share with, and that payments_split_check encodes inline.';
 
 commit;

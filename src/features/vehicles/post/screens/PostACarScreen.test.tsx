@@ -208,6 +208,21 @@ describe('handleComplete', () => {
     expect(mockReplace).toHaveBeenCalledWith('/post/p1');
   });
 
+  it('MONEY: a retry that finds the listing already live (POST_NOT_DRAFT) routes to it too', async () => {
+    // The webhook got there first: the draft left draft because it was paid.
+    // Showing "already paid for" as an ERROR here would misreport good news.
+    await mount();
+    mockPayBounty.mockResolvedValueOnce({ outcome: 'cancelled', message: null });
+    await expect(capturedOnComplete(ANSWERS)).rejects.toMatchObject({ code: 'CANCELLED' });
+
+    const { PaymentError } = jest.requireMock('@/features/payments');
+    mockCreateIntent.mockRejectedValueOnce(new PaymentError('paid', 'POST_NOT_DRAFT'));
+    await capturedOnComplete(ANSWERS);
+
+    expect(mockPayBounty).toHaveBeenCalledTimes(1);
+    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
   it('switching between a reward and the £5 fee after the draft exists is refused in words', async () => {
     await mount();
     mockPayBounty.mockResolvedValueOnce({ outcome: 'cancelled', message: null });
