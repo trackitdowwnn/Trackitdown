@@ -499,23 +499,35 @@ Deno.serve(async (request) => {
 
     // ADR-0021's owner pushes, same crash-orphan logic. Their markers were
     // backfilled on every settled row, so nothing old is announced as news.
-    const { data: pendingOwnerPayout } = await admin
+    // Bounded like every scan in this sweep: a backlog drains over a few runs
+    // rather than one run timing out halfway. A failed read is LOGGED — a scan
+    // that errors silently looks exactly like a scan with nothing to do.
+    const ANNOUNCE_SCAN_LIMIT = 200;
+    const { data: pendingOwnerPayout, error: ownerPayoutScanError } = await admin
       .from('payments')
       .select('post_id')
       .eq('status', 'released')
       .eq('kind', 'bounty_escrow')
       .is('owner_payout_notified_at', null)
-      .gte('updated_at', recentCutoff);
+      .gte('updated_at', recentCutoff)
+      .limit(ANNOUNCE_SCAN_LIMIT);
+    if (ownerPayoutScanError) {
+      console.error('[notifications] reward_delivered scan failed', ownerPayoutScanError.message);
+    }
     for (const payment of pendingOwnerPayout ?? []) {
       await announceRewardDelivered(admin, payment.post_id as string);
     }
-    const { data: pendingRefund } = await admin
+    const { data: pendingRefund, error: refundScanError } = await admin
       .from('payments')
       .select('post_id')
       .eq('status', 'refunded')
       .eq('kind', 'bounty_escrow')
       .is('refund_notified_at', null)
-      .gte('updated_at', recentCutoff);
+      .gte('updated_at', recentCutoff)
+      .limit(ANNOUNCE_SCAN_LIMIT);
+    if (refundScanError) {
+      console.error('[notifications] refund_sent scan failed', refundScanError.message);
+    }
     for (const payment of pendingRefund ?? []) {
       await announceRefundSent(admin, payment.post_id as string);
     }
@@ -523,12 +535,16 @@ Deno.serve(async (request) => {
     // The spotter's credited push, when the OWNER's phone never sent it (it is
     // fired from their app at the moment of credit). Historical credits were
     // backfilled as announced, so this only ever finds a genuinely lost one.
-    const { data: pendingCredited } = await admin
+    const { data: pendingCredited, error: creditedScanError } = await admin
       .from('sightings')
       .select('post_id, posts!inner(owner_id, status)')
       .eq('status', 'credited')
       .is('credited_notified_at', null)
-      .in('posts.status', ['recovery_claimed', 'recovered']);
+      .in('posts.status', ['recovery_claimed', 'recovered'])
+      .limit(ANNOUNCE_SCAN_LIMIT);
+    if (creditedScanError) {
+      console.error('[notifications] credited backstop scan failed', creditedScanError.message);
+    }
     for (const row of pendingCredited ?? []) {
       const owner = (row.posts as unknown as { owner_id: string }).owner_id;
       await announceCredited(admin, row.post_id as string, owner);

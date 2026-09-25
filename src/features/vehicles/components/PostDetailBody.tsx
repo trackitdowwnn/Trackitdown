@@ -138,6 +138,9 @@ export interface PostDetailBodyProps {
   /** OWNER only: the listing's money (get_post_money). Null while it loads,
    *  for anyone else, or when nothing was captured — the section then hides. */
   money?: PostMoney | null;
+  /** OWNER only, when an interrupted "found it another way" still owes them
+   *  a refund (money state `refund_owed`): resume it. Presence = the button. */
+  onFinishRefund?: () => void;
 }
 
 function Divider() {
@@ -165,6 +168,7 @@ export function PostDetailBody({
   onDeactivate,
   onRecovered,
   money = null,
+  onFinishRefund,
 }: PostDetailBodyProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -607,6 +611,13 @@ export function PostDetailBody({
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Your money</Text>
             <PostMoneyCard money={money} />
+            {/* An interrupted "found it another way" has nothing that retries
+                it — this button is the only way the refund gets finished. */}
+            {onFinishRefund ? (
+              <View style={styles.deactivateAction} testID="finish-refund">
+                <Button label="Finish your refund" fullWidth={false} onPress={onFinishRefund} />
+              </View>
+            ) : null}
           </View>
         </>
       ) : null}

@@ -36,6 +36,10 @@ export const POST_MONEY_STATES = [
   'paid',
   'refund_on_hold',
   'refund_paused',
+  // "Found it another way" was claimed but its refund never started — the app
+  // died, or the owner left the attestation. Nothing retries it; the owner
+  // finishes it from the listing (review 2026-09-25).
+  'refund_owed',
   'refunding',
   'refunded',
 ] as const;
@@ -158,6 +162,12 @@ export function moneyCopy(
         line: 'A spotter says their sighting helped. Someone on our team is looking into it.',
         tone: 'warning',
       };
+    case 'refund_owed':
+      return {
+        label: 'Refund not sent yet',
+        line: 'Your refund didn’t finish. Open the listing and tap “Finish your refund” to send it.',
+        tone: 'warning',
+      };
     case 'refunding':
       return {
         label: 'Refund on its way',
@@ -214,6 +224,11 @@ export function refundFeeLine(money: PostMoney): string | null {
     return null;
   }
   return `The ${formatPounds(money.refund.cardFeePence)} card processing fee isn’t refundable.`;
+}
+
+/** Whether the owner has a "found it another way" refund to finish. */
+export function canFinishRefund(money: PostMoney | null): boolean {
+  return money !== null && money.state === 'refund_owed';
 }
 
 /** Whether "Send the reward" is a real action here: someone is credited and the

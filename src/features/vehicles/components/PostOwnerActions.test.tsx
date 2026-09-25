@@ -186,6 +186,13 @@ describe('send the reward (fixed 2026-09-25)', () => {
     expect(view.queryByTestId('manage-release-payout')).toBeNull();
   });
 
+  it('stays offered when the money read FAILED — a blip must not take the owner’s only action away', async () => {
+    mockFetchMoney.mockRejectedValue(new Error('network'));
+    const { view } = await mount(post({ status: 'recovery_claimed' }));
+    await flush();
+    expect(view.getByTestId('manage-release-payout')).toBeTruthy();
+  });
+
   it('is NOT offered before the money is known', async () => {
     mockFetchMoney.mockResolvedValue(null);
     const { view } = await mount(post({ status: 'recovery_claimed' }));

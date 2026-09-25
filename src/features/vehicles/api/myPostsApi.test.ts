@@ -81,6 +81,16 @@ describe('listMyPosts', () => {
     expect(plain.money).toBeNull();
   });
 
+  it('a money state this bundle does not know drops the line, never the list', async () => {
+    mockRpc.mockResolvedValue({
+      data: [row({ money: { state: 'teleported', amountPence: 100, until: null } })],
+      error: null,
+    });
+    const [post] = await listMyPosts();
+    expect(post.money).toBeNull();
+    expect(post.id).toBe(ID);
+  });
+
   // The archive (2026-09-24). The column is optional as well as nullable: an
   // app update can land before the server migration, and a missing field must
   // read as "not archived" rather than fail the whole list.

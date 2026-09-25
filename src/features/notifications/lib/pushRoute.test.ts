@@ -35,6 +35,17 @@ describe('pushRouteFor', () => {
     // where the answer gets given.
     expect(pushRouteFor({ type: 'credited', postId: POST_ID })).toBe('/payouts');
   });
+
+  // The OWNER's money news (ADR-0021) lands on the listing, where the money
+  // card says the same thing with its date — not on /payouts, which is the
+  // spotter's side and would show an owner nothing.
+  it('routes "£X refunded" to the owner’s listing', () => {
+    expect(pushRouteFor({ type: 'refund_sent', postId: POST_ID })).toBe(`/post/${POST_ID}`);
+  });
+
+  it('routes "£X sent to your spotter" to the owner’s listing', () => {
+    expect(pushRouteFor({ type: 'reward_delivered', postId: POST_ID })).toBe(`/post/${POST_ID}`);
+  });
 });
 
 // The parse-then-route path lives in NotificationsHost (parsePushPayload +
