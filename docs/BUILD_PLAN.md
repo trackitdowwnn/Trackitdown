@@ -10,6 +10,15 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
 > entirely built, which made the remaining work look enormous. It is not —
 > the loop is one feature short. Items struck through are RESOLVED (removed by
 > a decision), not delivered; they are ticked so they stop reading as debt.
+>
+> ⛔ **Reconciled 2026-09-25 after 51 days untouched.** This file was last edited
+> on 2026-08-05 and had drifted: user blocking, My reports and the telemetry
+> sink all read as unbuilt weeks after they shipped. **The current plan lives in
+> ROADMAP.md, "The 2026-09-25 product review"**: a feature freeze, a seven-item
+> path to the beta, and a pre-submission checklist. That review also decided
+> ROADMAP becomes the single status document, and this file becomes the order
+> of work with no status marks of its own. That rewrite is a `/tidy` job. Until
+> it happens, the marks below are corrected against the code as of 2026-09-25.
 
 ## Phase 0 — Foundations
 
@@ -27,12 +36,20 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
       - [x] Prod project — stood up; migrations pushed with `supabase db push`
             (most recently the default-privilege revoke, 2026-08-01)
       - [x] `.env` created from `.env.example` (public Supabase URL + anon key)
-- [ ] Stripe account in test mode; keys in `.env` / Edge Function secrets
+- [~] Stripe account in test mode; keys in `.env` / Edge Function secrets.
+      **Evidently done** (corrected 2026-09-25): the escrow and £5-fee charges
+      have run end to end in test mode (ADR-0014's correction records the day
+      fees stopped charging and the fix). The ONE sub-item still unconfirmed is
+      the one that fails silently: `account.updated` enabled by hand on the
+      webhook endpoint. That is ROADMAP path item 1.
       - [x] Stripe CLI installed; `.env` scaffolded (public keys only)
-      - [ ] Stripe account (test mode) + Connect **Express** enabled — you
-      - [ ] `pk_test` in `.env`; `sk_test` in Supabase secrets — you
-      - [ ] Webhook endpoint + `whsec` — deferred until the `stripe-webhook`
-            Edge Function exists (local testing uses `stripe listen`)
+      - [x] Stripe account (test mode) + Connect **Express** enabled
+      - [x] `pk_test` in `.env`; `sk_test` in Supabase secrets
+      - [~] Webhook endpoint + `whsec` — `stripe-webhook` handles charges,
+            refunds AND `account.updated` (which auto-releases payouts when a
+            spotter becomes payable). **What is unconfirmed is the event
+            subscription on the Stripe dashboard endpoint**, which is not a
+            default
 - [x] Claude Code first prompts run: folder scaffold, theme + core
       components, initial migration (shared/theme + ~50 shared/ui components)
 - [ ] Import-boundary ESLint rules configured (prompt in CLAUDE.md notes).
@@ -45,11 +62,11 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
 ## Phase 1 — Auth & posting (owner side)
 
 - [x] Sign up / sign in (email + Apple/Google), session handling
-- [~] Onboarding: alert radius + location permission flow. The 4-slide
+- [x] Onboarding: ~~alert radius +~~ location permission flow. The 4-slide
       onboarding and the location-permission flow are BUILT
       (features/permissions, fired from AuthGate right after onboarding).
-      The alert-radius step is NOT in onboarding and never was — see the
-      matching ROADMAP line; it lives in the Alerts wizard instead.
+      The alert-radius step was STRUCK by the 2026-09-25 review, not delivered —
+      it lives in the Alerts wizard, and see the matching ROADMAP line.
 - [x] Post-a-car stepper: details → photos → last seen → bounty
 - [ ] ~~DVLA Vehicle Enquiry API: plate → make/model/colour auto-fill~~
       **Moved to the garage** — the post wizard no longer collects a plate
@@ -69,19 +86,26 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
       `draft → pending_verification` until 2026-08-03, describing the
       pre-publish gate ADR-0007 removed on 2026-07-30)
 - [x] stripe-webhook Edge Function (signature check, dedupe, idempotent)
-- [~] Refund paths: **cancelled is DONE** (`deactivate-post` +
-      `mark_post_payment_refunded`, withholding the authoritative Stripe fee).
-      `expired` / `rejected` / `recovered_no_spotter` have no refund path —
-      and the last of those is unreachable anyway until the recovery flow
-      exists (Phase 3).
-- [~] Tier 1 money tests green (docs/TESTING.md) — charge slice green
-      (`post_payment_verification.sql` + client tests) **and refund green**
-      (`refund_cancel_verification.sql`, in CI's db job). Only PAYOUT tests
-      remain, and only because there is no payout code to test.
+- [x] Refund paths: **cancelled** (`deactivate-post` +
+      `mark_post_payment_refunded`, withholding the authoritative Stripe fee)
+      and **`recovered_no_spotter`** (`refund-recovery`, behind the refund hold
+      and dispute window of ADR-0011, released by `release-held-refunds`).
+      `expired` / `rejected` are RETIRED statuses that nothing sets, so they
+      need no path. Corrected 2026-09-25; this line said the recovery refund
+      was unreachable.
+- [~] Tier 1 money tests green (docs/TESTING.md) — charge
+      (`post_payment_verification.sql`, `listing_fee_verification.sql`,
+      `fee_collected_verification.sql`), refund
+      (`refund_cancel_verification.sql`, `refund_hold_verification.sql`) and
+      the payout's SQL half (`recovery_verification.sql` — `mark_recovery_paid`
+      re-derives the 95/5 split) are all in CI's db job. **Still untested:**
+      the Edge Function half — `_shared/releasePayout.ts` and
+      `_shared/collusion.ts` have no unit tests. Corrected 2026-09-25; this
+      line said there was no payout code to test.
 - [~] Milestone: a test-mode pound goes in and comes back out correctly
-      — **goes in** works (gated on Stripe setup: `supabase/functions/README.md`);
-      **comes back out** works for a REFUND (cancel a listing) but not yet for
-      a PAYOUT, which waits on `release-payout` and the recovery flow.
+      — **goes in** works; **comes back out** works for a REFUND. A PAYOUT is
+      fully built but has **never been walked** end to end: that is ROADMAP
+      path item 6, and it depends on `account.updated` (path item 1).
 
 ## Phase 3 — Core loop (spotter side)
 
@@ -118,24 +142,32 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
 - [~] Milestone: full journey on two phones with two test accounts. Everything
       through "owner credits a spotter" and on to a transfer now runs. Not yet
       walked end to end on two devices, and the escrow PaymentSheet wants a
-      re-test after the Stripe SDK bump (0.64.0 → 0.72.0).
+      re-test after the Stripe SDK bump (0.64.0 → 0.72.0). **This is ROADMAP
+      path item 6 (2026-09-25),** and it now has to cover both pricing modes.
+      ⚠️ **One known hole, verified 2026-09-25:** a credited spotter who never
+      finishes payout onboarding leaves the post in `recovery_claimed`
+      indefinitely. Nothing reminds them, and the owner cannot delete their
+      account. ROADMAP path item 4 has the minimum fix.
 
 ## Phase 4 — Trust layer & polish
 
 - [ ] Moderator dashboard: flags, disputes, collusion queues. (The
       *verification* queue is obsolete — ADR-0007 removed pre-publish
-      verification. Nothing moderator-facing exists at all.)
-- [~] Flagging + user blocking. **Post flagging is DONE** (`flag_post`,
-      flagApi, `post_flags_verification.sql`) and so is **MESSAGE flagging**
-      (`flag_message` + `chatApi.flagMessage` + the thread's long-press report
-      sheet) — corrected 2026-08-05, this line claimed otherwise while all
-      three were shipped. Sightings and photos still have no flag path.
-      User blocking does not exist in any form, and it is a STORE SUBMISSION
-      blocker (guideline 1.2 expects report AND block on UGC + messaging), not
-      a beta blocker. Slot it between beta and submission.
-- [~] Reputation counters + badges — counters and badge maths BUILT and
-      server-maintained; `recoveries_credited` is stuck at 0 until the
-      recovery flow lands.
+      verification. Nothing moderator-facing exists at all.) **Deferred
+      2026-09-25** behind a daily operator digest email — see ROADMAP's
+      pre-submission checklist.
+- [x] Flagging + user blocking. **Post flagging** (`flag_post`, flagApi,
+      `post_flags_verification.sql`), **message flagging** (`flag_message` +
+      the thread's long-press report sheet) and **user blocking** (ADR-0017,
+      shipped 2026-09-01) are all DONE. Corrected 2026-09-25; this line said
+      blocking "does not exist in any form" for 24 days after it shipped.
+      ~~Flagging sightings and photos~~ is DEFERRED rather than missing: guideline
+      1.2's report + block is met without it (ROADMAP's Flagging line).
+- [x] Reputation counters + badges — counters and badge maths BUILT and
+      server-maintained. `recoveries_credited` moves when the owner credits a
+      sighting (`claim_recovery`), in BOTH pricing modes — on a free listing
+      the credit is the spotter's whole reward. Corrected 2026-09-25; this line
+      said the counter was stuck until the recovery flow landed (2026-08-02).
 - [x] Account deletion (Apple/Google requirement + UK GDPR erasure). **Both
       halves are in the tree** — `supabase/functions/delete-account`, invoked
       by `profileApi.requestAccountDeletion`. Corrected 2026-08-05; this line
@@ -147,6 +179,12 @@ feature scope lives in `docs/ROADMAP.md`; this is the *order of work*.
       before the beta. Testers will point at the two that matter, and passes
       on screens nobody has used are the unfalsifiable work a no-deadline
       project fills up with.
+      **2026-09-25:** that call was not followed. Since then, the map, the
+      theft-stats page, area insights and the inbox rows took about 70 commits
+      of design work, and four of the five screens above still have had no pass
+      (my-posts got its archive and press-and-hold work on 09-24). No more
+      passes until after the beta, under ROADMAP's feature freeze. After it,
+      the first two go to the money screens, `payouts` and `recover-post`.
 
 ## Phase 4.5 — Beta, 2026-08-26 (inserted by the 2026-08-05 product review)
 
@@ -162,37 +200,64 @@ policy out of the path and into pre-submission, where they actually bind.
       `search_posts`, `get_map_posts` and post detail all gained it at once
       and a future caller cannot forget it. `devSampleImages` deleted in the
       same commit, as required. CHECKS 17–19 in `home_feed_verification.sql`.
-- [ ] **Spotter "My reports" surface** — `list_my_sightings` + a screen entered
-      from Profile, mirroring "My posts". Give `/sighting-dispute` its in-app
-      door here: today it is reachable ONLY by push, so a spotter who declined
-      notifications can never contest a denial.
-- [ ] **One telemetry sink** (ROADMAP critical path #2). 70 events already
-      emitted, none escaping the device. Ship with the item above so the first
-      testers are measured.
-- [~] **The cut list** — ~~`devSampleImages`~~ (done 2026-08-06),
-      `QuickReplyRow` → `ChoiceChips`,
-      the two permission primers, passive expiry (a DOMAIN edit), DVLA off v1.
+- [x] **Spotter "My reports" surface** — `MySightingsScreen` (`/my-sightings`),
+      entered from Profile. `/sighting-dispute` got its in-app door on
+      2026-09-01 (`ReportCard`, gated by `my_sighting_record`'s `dispute`
+      object). Ticked 2026-09-25. The screen is to be renamed **"My sightings"**
+      (ROADMAP path item 5).
+- [~] **One telemetry sink** — REGISTERED 2026-08-30 (`telemetry.ts` →
+      `telemetry_events`), about 95 events now. Ticked [~] rather than [x] on
+      2026-09-25 because **the money funnel is not instrumented**: the post
+      wizard, payment, payout onboarding and cancel emit only prose, which the
+      sink never sends. ROADMAP path item 3.
+- [x] **The cut list** — ~~`devSampleImages`~~ (done 2026-08-06),
+      ~~`QuickReplyRow` → `ChoiceChips`~~ and ~~the two permission primers~~
+      (STRUCK 2026-09-25 as decided-not-to — see ROADMAP), passive expiry
+      (`expires_at` stopped being set by `20260902150000`), and DVLA off v1.
+      Leftover client branches on the retired `expired` status are a `/tidy`
+      item.
+- [ ] **The 2026-09-25 path, items 1–6** (ROADMAP): Tier 0 admin + the Stripe
+      question, prod-vs-repo diff, money funnel events, the stranded-payee
+      minimum, "My sightings", and a fresh build + two-phone walk.
 - [ ] EAS build to a closed internal track; **verify internal testing is not
-      review-gated** before assuming it.
+      review-gated** before assuming it. The build must be FRESH from `main`:
+      the last preview APK embeds the 29 Aug bundle.
 - [ ] Beta: **ten** testers in one city, half of them people who will not be
-      polite about it. Then STOP and read the results before building more.
+      polite about it, with a one-page task brief. Then STOP and read the
+      results before building more.
 
 ## Phase 5 — Pre-launch (after the beta)
 
-- [ ] User blocking — the submission blocker (guideline 1.2), see Phase 4
-- [ ] Legal review of escrow model; T&Cs; privacy policy; safety page
+> The full list, with the reasoning behind each item, is ROADMAP's
+> **pre-submission checklist** (2026-09-25). This phase mirrors it in order.
+
+- [x] User blocking — the submission blocker (guideline 1.2). SHIPPED
+      2026-09-01, ADR-0017.
+- [ ] Legal review of escrow model; T&Cs; privacy policy; safety page. Ask
+      Stripe about the reward model NOW, which is ROADMAP path item 1; the
+      lawyer comes before live mode.
+- [ ] **Anti-stalking ADR** — the £5 fee made posting any car cheap and
+      instant. Choose the mitigation before a public listing.
+- [ ] **Daily operator digest email** — flags, disputes, held payouts,
+      stranded payees, sweep health (reuses `notify-bug-report`'s Resend path)
+- [ ] Server-side GPS-EXIF strip/reject on `post-photos`
 - [ ] Hosted `LEGAL_PUBLIC_URLS` + a real `SUPPORT_EMAIL` (stores require a
       publicly reachable privacy policy; the in-app documents cannot satisfy it)
 - [ ] Stripe LIVE mode: Connect Express, `sk_live`, and — **by hand** — the
       `account.updated` webhook event. Without it no spotter ever becomes
       payable and nothing errors.
-- [ ] Moderator dashboard: flags, disputes, collusion queues (a console is
-      fine for ten testers; it is not fine past that)
+- [ ] Moderator dashboard: flags, disputes, collusion queues. A console plus
+      the digest is fine for ten testers and early launch; it is not fine at
+      scale.
 - [ ] Sentry (fold into the sink above — do not wire telemetry twice)
-- [ ] EAS production builds; TestFlight external / production tracks
+- [ ] EAS production builds; TestFlight external / production tracks;
+      `eas.json` `submit.production`; iOS privacy manifest; Play data-safety
+      form
 - [ ] Store listings: "information reward" framing, moderation
       commitment, demo account for review
-- [ ] Cold-start plan executed: launch city communities, bounty optional
+- [ ] Cold-start plan executed: launch city communities, bounty optional —
+      **plus the public share page for one listing** (ADR first; ROADMAP
+      argues it past the "no consumer web" fence)
 
 ## Working habits (every phase)
 
