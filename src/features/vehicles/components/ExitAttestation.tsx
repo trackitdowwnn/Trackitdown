@@ -35,8 +35,11 @@ export interface ExitAttestationProps {
   holdHours: number;
   /** "None of these led me to the car" — proceed with the held exit. */
   onConfirm: (attestedSightingIds: string[]) => void;
-  /** "One of these did help" — to the crediting flow instead. */
-  onCredit: () => void;
+  /** "One of these did help" — to the crediting flow instead. OMITTED once
+   *  the listing is already claimed (finishing an interrupted refund): the
+   *  claim can't be redone with a spotter, so the button would lead to an
+   *  empty list. The owner is told where to go instead. */
+  onCredit?: () => void;
   onCancel: () => void;
   busy?: boolean;
 }
@@ -61,7 +64,7 @@ export function ExitAttestation({
       </Text>
       <Text style={styles.body}>
         People reported seeing your car in the last two weeks. If one of them led you to
-        it, they’ve earned the bounty.
+        it, they’ve earned the reward.
       </Text>
 
       {status === 'loading' ? <Text style={styles.body}>Loading the sightings…</Text> : null}
@@ -93,7 +96,14 @@ export function ExitAttestation({
         spotters get that long to tell us if their sighting found it.
       </Text>
 
-      <Button label="One of these did help" onPress={onCredit} disabled={busy} />
+      {onCredit ? (
+        <Button label="One of these did help" onPress={onCredit} disabled={busy} />
+      ) : (
+        <Text style={styles.caption}>
+          Your listing is already closed, so a spotter can’t be credited from here. If one of
+          them helped, tap Cancel and tell us through Profile → Report a bug.
+        </Text>
+      )}
       <Button
         label="None of these led me to the car"
         variant="secondary"
