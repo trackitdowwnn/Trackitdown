@@ -216,9 +216,8 @@ Deno.serve(async (request) => {
   }
 
   // --- Create (or reuse) the escrow PaymentIntent -----------------------------
-  let paymentIntent;
-  try {
-    paymentIntent = await stripe.paymentIntents.create(
+  const createIntent = (key: string) =>
+    stripe.paymentIntents.create(
       {
         amount: amountPence,
         currency: 'gbp',
@@ -250,8 +249,25 @@ Deno.serve(async (request) => {
       // legitimate in-draft price edit changes the amount, so the key differs and
       // Stripe opens a fresh intent instead of rejecting the changed-amount
       // replay. See the resolution above for why the kind is part of the key.
-      { idempotencyKey },
+      { idempotencyKey: key },
     );
+
+  let paymentIntent;
+  try {
+    paymentIntent = await createIntent(idempotencyKey);
+    // ⚠️ A KEY CAN HAND BACK A CANCELLED INTENT (review 2026-09-25). Edit the
+    // reward £100 → £200 → £100 inside Stripe's ~24h key window: the £100 key
+    // returns the intent this very function cancelled when the price moved to
+    // £200. It cannot be paid, so the owner would be handed a dead secret for a
+    // day. Open a fresh one under a key that counts this post's attempts — a
+    // number that only grows, so it never collides with a key already spent.
+    if (paymentIntent.status === 'canceled') {
+      const { count } = await admin
+        .from('payments')
+        .select('id', { count: 'exact', head: true })
+        .eq('post_id', postId);
+      paymentIntent = await createIntent(`${idempotencyKey}-a${count ?? 0}`);
+    }
   } catch (err) {
     console.error('[payments] PaymentIntent create failed', (err as Error).message);
     return errorResponse('STRIPE_ERROR', 'We couldn’t start your payment. Please try again.', 502);
