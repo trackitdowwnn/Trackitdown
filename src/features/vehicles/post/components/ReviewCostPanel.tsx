@@ -20,24 +20,36 @@
  *        stopped charging.
  *
  *        ⚠️ DISPLAY ONLY. Like the final CTA's label, nothing here decides
- *        what is charged — create-payment-intent reads the amount from the
- *        post's own price column, and the client sends only an id.
+ *        what is charged — create-payment-intent derives the amount from the
+ *        post's own price column, and the client sends only an id (and the
+ *        payment hook refuses to open the sheet if the server's total differs
+ *        from the one shown here).
  *
- *        One line, not a breakdown (owner call 2026-08-22). The reader is a
- *        theft victim on a bad day; the whole 95/5 split panel lives on the
- *        bounty step where they chose the figure, and repeating it here would
- *        trade clarity for completeness at exactly the wrong moment.
- * LINKS: src/shared/lib/money.ts (estimateRefundPence, LISTING_FEE_PENCE);
+ *        ITEMISED since ADR-0020 (2026-09-25), reversing the 2026-08-22 "one
+ *        line, not a breakdown" call. That call was right when the owner paid
+ *        one thing; with the fee on top they pay two — a reward that is theirs
+ *        until a spotter earns it, and our fee — and one total would hide which
+ *        is which at the moment of commitment. Under it, RewardExplainer says
+ *        what happens to the money next, which nothing said before paying.
+ * LINKS: src/shared/lib/money.ts (chargeBreakdown, LISTING_FEE_PENCE);
+ *        src/features/vehicles/components/RewardExplainer.tsx;
  *        src/shared/ui/MoneySlider.tsx (defaultBountyPanelCopy — the wording
- *          this echoes); src/features/vehicles/post/postACarFlow.tsx.
+ *          this echoes); src/features/vehicles/post/postACarFlow.tsx;
+ *        docs/decisions/ADR-0020-the-reward-is-the-reward.md.
  */
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { estimateRefundPence, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
+import {
+  chargeBreakdown,
+  formatPounds,
+  LISTING_FEE_PENCE,
+  SERVICE_FEE_PERCENT,
+} from '@/shared/lib/money';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { DEFAULT_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
+import { RewardExplainer } from '../../components/RewardExplainer';
 import type { PostACarAnswers } from '../types';
 
 export interface ReviewCostPanelProps {
@@ -62,33 +74,51 @@ export function ReviewCostPanel({ answers }: ReviewCostPanelProps) {
   // name different sums.
   const bountyPence = answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE;
 
-  const label = feeMode ? 'Listing fee' : 'Reward';
-  const amountPence = feeMode ? LISTING_FEE_PENCE : bountyPence;
-  const note = feeMode
-    ? // Matches the pricing card's own wording — two screens describing the
-      // same fee must not describe it differently.
-      'A one-off fee to list. Not refundable.'
-    : // The gap between the two figures is NAMED. "of it" alone was truthful —
-      // estimateRefundPence already nets the card costs off — but it left the
-      // difference unexplained on the commitment surface, and the natural
-      // misreading is that we keep it. Same clause as defaultBountyPanelCopy,
-      // where they first saw it.
-      `Held when your listing goes live. You only pay it if a spotter finds your car; otherwise ${formatPounds(
-        estimateRefundPence(bountyPence),
-      )} of it comes back to you — card processing costs are not refundable.`;
+  if (feeMode) {
+    return (
+      <View style={styles.block} testID="review-cost-panel">
+        <Text accessibilityRole="header" style={styles.title}>
+          What you&rsquo;ll pay
+        </Text>
+        <View style={styles.row}>
+          <Text style={styles.label}>Listing fee</Text>
+          <Text style={[styles.amount, styles.amountFee]}>{formatPounds(LISTING_FEE_PENCE)}</Text>
+        </View>
+        {/* Matches the pricing card's own wording — two screens describing the
+            same fee must not describe it differently. */}
+        <Text style={styles.note}>A one-off fee to list. Not refundable.</Text>
+      </View>
+    );
+  }
+
+  // ADR-0020: the fee is ON TOP, so this is an itemised bill rather than one
+  // line. Three rows because the owner is now paying two different things —
+  // the reward (theirs to give, returned if nobody helps) and our fee — and a
+  // single total would hide which is which at the exact moment they commit.
+  const { rewardPence, serviceFeePence, chargePence } = chargeBreakdown(bountyPence);
 
   return (
     <View style={styles.block} testID="review-cost-panel">
       <Text accessibilityRole="header" style={styles.title}>
         What you&rsquo;ll pay
       </Text>
-      <View style={styles.row}>
-        <Text style={styles.label}>{label}</Text>
-        <Text style={[styles.amount, feeMode ? styles.amountFee : styles.amountValue]}>
-          {formatPounds(amountPence)}
-        </Text>
+      <View style={styles.lines}>
+        <View style={styles.row}>
+          <Text style={styles.label}>Reward</Text>
+          <Text style={[styles.lineAmount, styles.amountValue]}>{formatPounds(rewardPence)}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Service fee ({SERVICE_FEE_PERCENT}%)</Text>
+          <Text style={styles.lineAmount}>{formatPounds(serviceFeePence)}</Text>
+        </View>
+        <View style={[styles.row, styles.totalRow]}>
+          <Text style={styles.totalLabel}>You pay</Text>
+          <Text style={styles.amount} testID="review-cost-total">
+            {formatPounds(chargePence)}
+          </Text>
+        </View>
       </View>
-      <Text style={styles.note}>{note}</Text>
+      <RewardExplainer rewardPence={rewardPence} />
     </View>
   );
 }
@@ -107,13 +137,31 @@ const makeStyles = (c: Palette) =>
       ...typography.heading,
       color: c.textPrimary,
     },
+    lines: {
+      gap: spacing.sm,
+    },
     row: {
       flexDirection: 'row',
       alignItems: 'baseline',
       justifyContent: 'space-between',
       gap: spacing.lg,
     },
+    // The total sits under a hairline, like the foot of a receipt, so "You
+    // pay" reads as the sum of the two lines above rather than a third item.
+    totalRow: {
+      paddingTop: spacing.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: c.border,
+    },
     label: {
+      ...typography.body,
+      color: c.textPrimary,
+    },
+    totalLabel: {
+      ...typography.cardTitle,
+      color: c.textPrimary,
+    },
+    lineAmount: {
       ...typography.body,
       color: c.textPrimary,
     },
@@ -124,6 +172,7 @@ const makeStyles = (c: Palette) =>
     // compete with it.
     amount: {
       ...typography.heading,
+      color: c.textPrimary,
     },
     // ⚠️ Accent is reserved for BOUNTY/VALUE moments. A listing fee is the
     // absence of a reward, and painting it in the value accent is the dilution

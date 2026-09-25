@@ -19,6 +19,10 @@
 -- Fixtures: a fresh DRAFT post is seeded inside each begin…rollback block, owned
 -- by seed profile 11111111-… (Alex Mercer), with a KNOWN bounty of £250 (25000
 -- pence). The seed rows never persist (every mutation block is rolled back).
+-- CHARGE: since ADR-0020 (20260925100000) a £250 reward is CHARGED £262.50
+-- (26250 pence — the reward plus the 5% service fee), and a £300 one £315
+-- (31500). That is the amount every record_post_payment_intent call below
+-- passes; fee_on_top_verification.sql asserts the bare reward is now refused.
 -- Functions under test (20260726100000_post_payment.sql):
 --   record_post_payment_intent, mark_post_payment_held, mark_post_payment_failed,
 --   claim_stripe_event.
@@ -30,8 +34,15 @@
 
 -- -----------------------------------------------------------------------------
 -- CHECK 1 — record_post_payment_intent on a draft inserts ONE requires_payment
--- ledger row; a SECOND call with a DIFFERENT intent id for the same post does
--- NOT create a second live row (idempotent — the retry reuses the first).
+-- ledger row, and a SECOND call leaves exactly ONE live row.
+--
+-- ⚠️ CHANGED 2026-09-25 (20260925100000). The second call used to be a no-op
+-- that kept the FIRST intent, because reuse matched on the amount. But a second
+-- intent at the same amount is the one the app is about to pay (an expired
+-- idempotency key opens a fresh intent), and leaving it unrecorded let a paid
+-- card leave no ledger row. Reuse is now keyed on the intent: the second intent
+-- is recorded and the first superseded — still exactly one live row. The same
+-- intent recorded twice remains a no-op (fee_on_top_verification CHECK 4c).
 -- -----------------------------------------------------------------------------
 begin;
 insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
@@ -45,29 +56,31 @@ declare
   v_intent text;
 begin
   perform public.record_post_payment_intent(
-    'dddddddd-0000-0000-0000-000000000001', 'pi_check1_first', 25000);
-  -- second call, different intent id, same post -> must be a no-op
+    'dddddddd-0000-0000-0000-000000000001', 'pi_check1_first', 26250);
+  -- second call, different intent id, same post -> the NEW intent is live
   perform public.record_post_payment_intent(
-    'dddddddd-0000-0000-0000-000000000001', 'pi_check1_second', 25000);
+    'dddddddd-0000-0000-0000-000000000001', 'pi_check1_second', 26250);
 
   select count(*) into v_rows
   from public.payments
-  where post_id = 'dddddddd-0000-0000-0000-000000000001';
+  where post_id = 'dddddddd-0000-0000-0000-000000000001'
+    and status = 'requires_payment';
 
   select status, stripe_payment_intent_id into v_status, v_intent
   from public.payments
-  where post_id = 'dddddddd-0000-0000-0000-000000000001';
+  where post_id = 'dddddddd-0000-0000-0000-000000000001'
+    and status = 'requires_payment';
 
   if v_rows <> 1 then
-    raise exception 'CHECK 1 FAILED: expected exactly 1 payments row after two record calls, got %', v_rows;
+    raise exception 'CHECK 1 FAILED: expected exactly 1 live payments row after two record calls, got %', v_rows;
   end if;
-  if v_status <> 'requires_payment' then
-    raise exception 'CHECK 1 FAILED: ledger row status is %, expected requires_payment', v_status;
+  if v_intent <> 'pi_check1_second' then
+    raise exception 'CHECK 1 FAILED: the live ledger row is %, expected the intent being paid (pi_check1_second)', v_intent;
   end if;
-  if v_intent <> 'pi_check1_first' then
-    raise exception 'CHECK 1 FAILED: the retained ledger row is %, expected the first intent (pi_check1_first)', v_intent;
+  if (select status from public.payments where stripe_payment_intent_id = 'pi_check1_first') <> 'failed' then
+    raise exception 'CHECK 1 FAILED: the first intent was not superseded';
   end if;
-  raise notice 'CHECK 1 passed: record_post_payment_intent inserts one requires_payment row and is idempotent';
+  raise notice 'CHECK 1 passed: record_post_payment_intent keeps exactly one live row, for the intent being paid';
 end $$;
 rollback;
 
@@ -123,7 +136,7 @@ declare
 begin
   begin
     perform public.record_post_payment_intent(
-      'a1a1a1a1-0000-0000-0000-000000000001', 'pi_check3', 25000);
+      'a1a1a1a1-0000-0000-0000-000000000001', 'pi_check3', 26250);
   exception when others then
     if sqlerrm not like '%POST_NOT_DRAFT%' then
       raise exception 'CHECK 3 FAILED: expected POST_NOT_DRAFT, got a different error: %', sqlerrm;
@@ -154,7 +167,7 @@ declare
   v_post_status public.post_status;
 begin
   perform public.record_post_payment_intent(
-    'dddddddd-0000-0000-0000-000000000004', 'pi_check4', 25000);
+    'dddddddd-0000-0000-0000-000000000004', 'pi_check4', 26250);
 
   -- escrow success
   perform public.mark_post_payment_held('pi_check4');
@@ -205,7 +218,7 @@ declare
   v_post_status public.post_status;
 begin
   perform public.record_post_payment_intent(
-    'dddddddd-0000-0000-0000-000000000005', 'pi_check5', 25000);
+    'dddddddd-0000-0000-0000-000000000005', 'pi_check5', 26250);
 
   perform public.mark_post_payment_failed('pi_check5');
 
@@ -300,7 +313,7 @@ declare
   v_post_status public.post_status;
 begin
   perform public.record_post_payment_intent(
-    'dddddddd-0000-0000-0000-000000000008', 'pi_check8', 25000);
+    'dddddddd-0000-0000-0000-000000000008', 'pi_check8', 26250);
 
   -- first attempt declines on the reused intent
   perform public.mark_post_payment_failed('pi_check8');
@@ -339,7 +352,7 @@ declare
   v_post_status public.post_status;
 begin
   perform public.record_post_payment_intent(
-    'dddddddd-0000-0000-0000-000000000009', 'pi_check9', 25000);
+    'dddddddd-0000-0000-0000-000000000009', 'pi_check9', 26250);
   perform public.mark_post_payment_held('pi_check9');   -- escrow captured
 
   -- a stray/late failure event for the same intent must NOT regress it
@@ -407,7 +420,7 @@ declare
 begin
   -- first attempt at £250
   perform public.record_post_payment_intent(
-    'dddddddd-0000-0000-0000-000000000011', 'pi_check11_old', 25000);
+    'dddddddd-0000-0000-0000-000000000011', 'pi_check11_old', 26250);
 
   -- owner edits the bounty to £300 (RLS permits a draft-bounty edit)
   update public.posts set bounty_amount_pence = 30000
@@ -415,7 +428,7 @@ begin
 
   -- new attempt at £300 on a fresh intent
   perform public.record_post_payment_intent(
-    'dddddddd-0000-0000-0000-000000000011', 'pi_check11_new', 30000);
+    'dddddddd-0000-0000-0000-000000000011', 'pi_check11_new', 31500);
 
   select status into v_old_status from public.payments
     where stripe_payment_intent_id = 'pi_check11_old';

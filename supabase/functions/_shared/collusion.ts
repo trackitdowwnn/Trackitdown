@@ -2,9 +2,10 @@
  * WHAT:  The pre-payout collusion gate — decides whether a credited payout may
  *        proceed, must be held for manual review, or has already been reviewed.
  * WHY:   SECURITY_AND_TRUST §5: an owner can post a bounty, "sight" their own
- *        car from a second account, credit it, and transfer 95% of their own
- *        escrow back to themselves — laundering with our card fees as the only
- *        cost. The same-PROFILE version is already impossible
+ *        car from a second account, credit it, and transfer their own reward
+ *        back to themselves — laundering with the 5% service fee and the card
+ *        fees as the only cost (ADR-0020 put the fee on top; it was 95% of
+ *        their own escrow before). The same-PROFILE version is already impossible
  *        (CANNOT_CREDIT_OWN_SIGHTING in claim_recovery); this gate exists for
  *        the two-account version of the same person.
  *

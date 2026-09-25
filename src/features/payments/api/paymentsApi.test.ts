@@ -42,18 +42,45 @@ function httpError(body: unknown): FunctionsHttpError {
 
 beforeEach(() => jest.clearAllMocks());
 
+/** The total the pay button showed: a £500 reward plus the 5% fee on top. */
+const SHOWN = 52500;
+const priced = (amountPence: number = SHOWN) => ({
+  data: { clientSecret: 'pi_secret_123', amountPence },
+  error: null,
+});
+
 describe('createBountyPaymentIntent', () => {
   it('returns the client secret on success', async () => {
-    mockInvoke.mockResolvedValue({ data: { clientSecret: 'pi_secret_123' }, error: null });
-    await expect(createBountyPaymentIntent(POST_ID)).resolves.toBe('pi_secret_123');
+    mockInvoke.mockResolvedValue(priced());
+    await expect(createBountyPaymentIntent(POST_ID, SHOWN)).resolves.toBe('pi_secret_123');
   });
 
-  it('MONEY: sends only the post id — never an amount', async () => {
-    mockInvoke.mockResolvedValue({ data: { clientSecret: 'pi_secret_123' }, error: null });
-    await createBountyPaymentIntent(POST_ID);
-    expect(mockInvoke).toHaveBeenCalledWith('create-payment-intent', { body: { postId: POST_ID } });
+  it('MONEY: sends the post id and the pricing acknowledgement — never an amount', async () => {
+    mockInvoke.mockResolvedValue(priced());
+    await createBountyPaymentIntent(POST_ID, SHOWN);
+    expect(mockInvoke).toHaveBeenCalledWith('create-payment-intent', {
+      body: { postId: POST_ID, pricing: 'fee_on_top' },
+    });
     const [, options] = mockInvoke.mock.calls[0];
-    expect(Object.keys(options.body)).toEqual(['postId']);
+    expect(Object.keys(options.body).sort()).toEqual(['postId', 'pricing']);
+  });
+
+  // The sheet must never open on a sum the owner did not see. The server's
+  // price is what is charged; this guard only refuses to proceed when the two
+  // disagree, so the owner hears "the amount changed" instead of finding out.
+  it('MONEY: refuses to hand back a secret when the server priced a different total', async () => {
+    mockInvoke.mockResolvedValue(priced(50000));
+    await expect(createBountyPaymentIntent(POST_ID, SHOWN)).rejects.toMatchObject({
+      code: 'PRICE_MISMATCH',
+      message: 'The amount changed. Check the total and try again.',
+    });
+  });
+
+  it('treats a response with no priced total as a mismatch, not a match', async () => {
+    mockInvoke.mockResolvedValue({ data: { clientSecret: 'pi_secret_123' }, error: null });
+    await expect(createBountyPaymentIntent(POST_ID, SHOWN)).rejects.toMatchObject({
+      code: 'PRICE_MISMATCH',
+    });
   });
 
   it('maps a known error code to its user-facing message', async () => {
@@ -61,9 +88,20 @@ describe('createBountyPaymentIntent', () => {
       data: null,
       error: httpError({ error: 'raw', code: 'POST_NOT_DRAFT' }),
     });
-    await expect(createBountyPaymentIntent(POST_ID)).rejects.toMatchObject({
+    await expect(createBountyPaymentIntent(POST_ID, SHOWN)).rejects.toMatchObject({
       code: 'POST_NOT_DRAFT',
-      message: 'This post has already been submitted.',
+      message: 'This listing has already been paid for.',
+    });
+  });
+
+  it('explains UPGRADE_REQUIRED in plain words', async () => {
+    mockInvoke.mockResolvedValue({
+      data: null,
+      error: httpError({ error: 'raw', code: 'UPGRADE_REQUIRED' }),
+    });
+    await expect(createBountyPaymentIntent(POST_ID, SHOWN)).rejects.toMatchObject({
+      code: 'UPGRADE_REQUIRED',
+      message: 'Update the app to post a listing with a reward.',
     });
   });
 
@@ -72,7 +110,7 @@ describe('createBountyPaymentIntent', () => {
       data: null,
       error: httpError({ error: 'Something specific', code: 'WEIRD' }),
     });
-    await expect(createBountyPaymentIntent(POST_ID)).rejects.toMatchObject({
+    await expect(createBountyPaymentIntent(POST_ID, SHOWN)).rejects.toMatchObject({
       code: 'WEIRD',
       message: 'Something specific',
     });
@@ -85,21 +123,21 @@ describe('createBountyPaymentIntent', () => {
       data: null,
       error: httpError({ error: 'Fallback copy', code: 'constructor' }),
     });
-    const err = await createBountyPaymentIntent(POST_ID).catch((e) => e);
+    const err = await createBountyPaymentIntent(POST_ID, SHOWN).catch((e) => e);
     expect(err.code).toBe('constructor');
     expect(err.message).toBe('Fallback copy');
   });
 
   it('throws a NETWORK PaymentError when the relay errors with no HTTP body', async () => {
     mockInvoke.mockResolvedValue({ data: null, error: new Error('network down') });
-    const err = await createBountyPaymentIntent(POST_ID).catch((e) => e);
+    const err = await createBountyPaymentIntent(POST_ID, SHOWN).catch((e) => e);
     expect(err).toBeInstanceOf(PaymentError);
     expect(err.code).toBe('NETWORK');
   });
 
   it('throws BAD_SHAPE when the function returns no client secret', async () => {
     mockInvoke.mockResolvedValue({ data: {}, error: null });
-    await expect(createBountyPaymentIntent(POST_ID)).rejects.toMatchObject({ code: 'BAD_SHAPE' });
+    await expect(createBountyPaymentIntent(POST_ID, SHOWN)).rejects.toMatchObject({ code: 'BAD_SHAPE' });
   });
 });
 

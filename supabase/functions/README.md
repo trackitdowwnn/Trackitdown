@@ -4,10 +4,10 @@
 
 | Function | Called by | Job |
 | --- | --- | --- |
-| `create-payment-intent` | the app (`supabase.functions.invoke`) | verify the caller owns the draft post, read the price **from the DB** — the bounty, or the £4.99 listing fee for a no-reward post (ADR-0014) — create a Stripe PaymentIntent (captured immediately), record the ledger row against the matching `kind`, return the client secret |
+| `create-payment-intent` | the app (`supabase.functions.invoke`) | verify the caller owns the draft post, derive the price **from the DB** — the reward plus 5% (ADR-0020; requires `pricing: 'fee_on_top'` from the app, else `UPGRADE_REQUIRED`), or the £5 listing fee for a no-reward post (ADR-0014) — create a Stripe PaymentIntent (captured immediately), record the ledger row with its split, return the client secret and the breakdown |
 | `deactivate-post` | the app (`supabase.functions.invoke`) | verify the caller owns a **paid** post (`active`/`pending_verification`), then: **bounty post** → owner-denial gate, find the held escrow, refund **minus the non-recoverable card fee** (fee read from Stripe), flip `→ cancelled` (payment `held → refunded`); **no-reward post** → delist only (`cancel_fee_listing`), no refund, no hold, no dispute window |
-| `refund-recovery` | the app, after `claim_recovery` returns `refund` | the no-spotter ending: refund the bounty and close the post `→ recovered_no_spotter` |
-| `release-payout` | the app, after `claim_recovery` returns `payout` | the credited ending: transfer 95% to the spotter (ADR-0002 transfer math; one transfer per post, forever) and close the post `→ recovered`. Answers `awaiting_payee` — **not an error** — until they have onboarded |
+| `refund-recovery` | the app, after `claim_recovery` returns `refund` | the no-spotter ending: refund the whole charge (reward and service fee) minus the card fee, and close the post `→ recovered_no_spotter` |
+| `release-payout` | the app, after `claim_recovery` returns `payout` | the credited ending: transfer the payment's stored `reward_pence` to the spotter — the reward in full since ADR-0020, 95% on older rows (one transfer per post, forever) and close the post `→ recovered`. Answers `awaiting_payee` — **not an error** — until they have onboarded |
 | `submit-payout-details` | the app, from our own native form | submit bank details + identity fields via `accounts.update` while the prefill window is open, then open the gate. **Transit only** — nothing stored, nothing logged |
 | `connect-onboarding` | the app, from the payouts surface | answer `details_required` until our form has run (minting a session first would shut the prefill window **forever**), then return an **Account Session** (`onboarding_session`) for the in-app component, or a hosted **link** for `account_update` / as a fallback. Takes no request body — the server decides from the account's own state |
 | `connect-return` | **Stripe's browser**, after hosted onboarding | an HTTPS page that forwards to `trackitdown://payouts?onboarding=…`. Exists because Account Links accept **http/https only** — a custom scheme is rejected with "Not a valid URL". Deployed `--no-verify-jwt`: Stripe's browser has no session |
@@ -197,7 +197,10 @@ else works normally.
 - All amounts are integer pence; GBP is fixed (UK-only per the roadmap).
 - Escrow model per `docs/decisions/ADR-0002-stripe-connect.md`: **separate
   charges and transfers**, capture immediately to the platform balance. There is
-  **no** destination charge / `application_fee` here — the 95/5 payout is a
-  separate, later `release-payout` function.
+  **no** destination charge / `application_fee` here — the payout is a
+  separate, later `release-payout` function. Since ADR-0020 a reward listing is
+  charged reward + 5% (`_shared/serviceFee.ts`) and the spotter is transferred
+  the stored `reward_pence` in full; the app must send `pricing: 'fee_on_top'`
+  or the charge is refused with `UPGRADE_REQUIRED`.
 - The webhook is idempotent and deduped (`stripe_webhook_events`), so Stripe's
   retries and out-of-order deliveries are safe.

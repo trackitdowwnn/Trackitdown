@@ -188,7 +188,8 @@ begin
     if sqlerrm not like '%BOUNTY_MISMATCH%' then raise; end if;
   end;
 
-  perform public.record_post_payment_intent(v_id, 'pi_bounty', 25000);
+  -- A £250 reward is charged £262.50 since ADR-0020 (reward + 5%).
+  perform public.record_post_payment_intent(v_id, 'pi_bounty', 26250);
   select kind into v_kind
   from public.payments where stripe_payment_intent_id = 'pi_bounty';
 
@@ -227,7 +228,7 @@ begin
   exception when check_violation then null;
   end;
 
-  raise notice 'CHECK 4 passed: payments_amount_pence_check pins a fee at 500 and keeps escrow above the floor';
+  raise notice 'CHECK 4 passed: payments_split_check pins a fee at 500 and keeps escrow above the floor';
 end $c$;
 rollback;
 
@@ -326,7 +327,7 @@ declare
   v_fee    uuid;
 begin
   v_bounty := pg_temp.seed_bounty_listing(25000);
-  perform public.record_post_payment_intent(v_bounty, 'pi_b', 25000);
+  perform public.record_post_payment_intent(v_bounty, 'pi_b', 26250);
   perform public.mark_post_payment_held('pi_b');
   begin
     perform public.cancel_fee_listing(v_bounty);
@@ -346,10 +347,21 @@ begin
   -- check describes ("a stale bounty intent that captured after a draft
   -- pricing switch") is escrow-kinded BEFORE the webhook lands, so building it
   -- that way exercises the capture path too instead of hand-setting a state.
+  --
+  -- ⚠️ SINCE 20260925100000 THE ROW IS WRITTEN AS ESCROW, NOT RELABELLED.
+  -- payments_split_is_fixed refuses any change to a recorded row's kind or
+  -- split, so "record a fee intent, then rename it escrow" can no longer be
+  -- built — which is the point of that guard. The scenario is the same: an
+  -- escrow-kinded intent (a legacy fee_inside split, predating the pricing
+  -- switch) sitting on a post that is now fee-priced, captured through the
+  -- real webhook path.
   v_fee := pg_temp.seed_free_listing();
-  perform public.record_post_payment_intent(v_fee, 'pi_f', 500);
-  update public.payments set kind = 'bounty_escrow', amount_pence = 25000
-   where stripe_payment_intent_id = 'pi_f';
+  insert into public.payments
+    (post_id, stripe_payment_intent_id, status, amount_pence, kind,
+     pricing, reward_pence, service_fee_pence)
+  values
+    (v_fee, 'pi_f', 'requires_payment', 25000, 'bounty_escrow',
+     'fee_inside', 23750, 1250);
   perform public.mark_post_payment_held('pi_f');
   begin
     perform public.cancel_fee_listing(v_fee);

@@ -248,12 +248,12 @@ export type PayoutStatus = 'paid' | 'awaiting_payee' | 'held_for_review';
 
 export interface ReleasePayoutResult {
   status: PayoutStatus;
-  /** What the spotter receives (95%). Absent until it has actually moved. */
+  /** What the spotter receives — the whole reward (ADR-0020). Absent until it has actually moved. */
   transferPence: number | null;
 }
 
 /**
- * Finish a credited recovery: transfer 95% of the bounty to the spotter.
+ * Finish a credited recovery: transfer the reward to the spotter.
  *
  * Safe to call more than once. The Edge Function carries a per-post transfer
  * idempotency key, so a retry after a dropped response returns the SAME

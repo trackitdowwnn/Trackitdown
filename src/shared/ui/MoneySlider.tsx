@@ -9,20 +9,21 @@
  *        gives lower amounts more room, tiered snap steps (e.g. £25 below
  *        £500, £50 above), and typed entry that respects pence integrity but
  *        not the snap grid. Value is ALWAYS integer pence and always valid —
- *        there is no empty state; out-of-range values clamp. The 95/5 panel
- *        maths come from lib/money's bountyBreakdown (the reference split).
+ *        there is no empty state; out-of-range values clamp. The panel's
+ *        figures come from lib/money's chargeBreakdown (reward + 5% service
+ *        fee on top, ADR-0020).
  *        The typed path is the precise, fully-labelled accessible path; the
  *        slider announces as an adjustable moving one snap step.
  *        Range mode (dual-thumb, for search filters) lives in the sibling
  *        MoneyRangeSlider.tsx — it reuses moneySliderMath.ts unchanged rather
  *        than co-tenanting a second thumb in this money-critical control.
  * LINKS: src/shared/ui/moneySliderMath.ts (curve/snap maths);
- *        src/shared/lib/money.ts (formatPounds, bountyBreakdown);
+ *        src/shared/lib/money.ts (formatPounds, chargeBreakdown);
  *        docs/DOMAIN.md (Money & fees); docs/DESIGN_SYSTEM.md (accent rules).
  *
  * Usage:
  *   <MoneySlider
- *     label="Bounty"
+ *     label="Reward"
  *     valuePence={bountyPence}
  *     onChangePence={setBountyPence}
  *     minPence={5000}
@@ -60,8 +61,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { z } from 'zod';
 
 import {
-  type BountyBreakdown,
-  bountyBreakdown,
+  type ChargeBreakdown,
+  chargeBreakdown,
   estimateRefundPence,
   formatPounds,
 } from '../lib/money';
@@ -93,43 +94,48 @@ export type { SnapStep } from './moneySliderMath';
 
 /** Copy slots for the transparency panel; omit the prop to hide the panel. */
 export interface MoneySliderPanelCopy {
-  /** Line explaining the 95/5 split, built from the live breakdown. */
-  splitLine: (breakdown: BountyBreakdown) => string;
-  /** Line explaining escrow. Takes raw PENCE, not a formatted string, because
-   *  it quotes the refund estimate as well as the amount held. */
-  escrowLine: (bountyPence: number) => string;
+  /** Line explaining what the owner pays, built from the live breakdown. */
+  splitLine: (breakdown: ChargeBreakdown) => string;
+  /** Line explaining the hold and the refund. Takes the live breakdown because
+   *  it quotes the refund estimate, which is netted off the whole CHARGE. */
+  escrowLine: (breakdown: ChargeBreakdown) => string;
 }
 
 /**
- * The bounty step's panel wording (docs/DOMAIN.md: split, escrow, refunds).
+ * The reward step's panel wording (docs/DOMAIN.md: pricing, escrow, refunds).
  *
- * The escrow line does two jobs it did not used to do, and both matter more
- * than they look:
+ * THE FEE IS ON TOP (ADR-0020). The split line leads with what the owner pays
+ * and then says, plainly, that the spotter receives the reward IN FULL — the
+ * number every spotter-facing surface shows is now the number that is paid.
  *
- * 1. It states the refund conditions COMPLETELY. It used to say "refunded if
- *    you cancel or recover it yourself", which omits expiry (90 days — the most
- *    likely ending for most posts) and takedown. That omission buried the
- *    headline: the money comes back unless a spotter actually finds the car.
- *    Read as written, a slider in pounds says "this is what you are spending";
- *    it is nearer to a deposit.
+ * The escrow line does two jobs, and both matter more than they look:
+ *
+ * 1. It states the refund condition COMPLETELY: the money comes back unless a
+ *    spotter's sighting actually finds the car. Read as written, a slider in
+ *    pounds says "this is what you are spending"; it is nearer to a deposit.
+ *    (It used to say "…or the post expires". Nothing expires a post — passive
+ *    expiry was cut — so that clause promised an ending that never happens.)
  * 2. It NAMES THE DEDUCTION. Our own Terms promise "that deduction is shown to
  *    you before you pay" (features/legal/lib/legalContent.ts), and payment is
- *    Stripe's PaymentSheet — there is no app checkout screen — so this panel is
- *    the only surface that can keep that promise. It said "minus card
- *    processing costs" with no figure until 2026-08-07.
+ *    Stripe's PaymentSheet — there is no app checkout screen — so this panel and
+ *    the review are the only surfaces that can keep that promise.
  *
- * The figure is estimateRefundPence, the SAME function the post-detail
- * deactivate section quotes, so the two can never disagree about one bounty.
+ * The refund figure is estimateRefundPence on the CHARGE, the same function
+ * the review and the post-detail deactivate section quote, so no two screens
+ * disagree about one listing. "About", because it is an estimate: the real
+ * card fee is Stripe's, and the toast after a refund quotes the exact figure.
  */
 export const defaultBountyPanelCopy: MoneySliderPanelCopy = {
-  splitLine: (breakdown) =>
-    `If your car is recovered thanks to a spotter, they receive ${formatPounds(
-      breakdown.spotterPence,
-    )} and our platform fee is ${formatPounds(breakdown.feePence)}.`,
-  escrowLine: (bountyPence) =>
-    `${formatPounds(bountyPence)} is held when your post goes live. You only pay it if a spotter finds your car — otherwise ${formatPounds(
-      estimateRefundPence(bountyPence),
-    )} comes back to you, whether you cancel, recover it yourself, or the post expires. Card processing costs are not refundable.`,
+  splitLine: ({ rewardPence, serviceFeePence, chargePence }) =>
+    `You pay ${formatPounds(chargePence)}: the ${formatPounds(
+      rewardPence,
+    )} reward plus a ${formatPounds(serviceFeePence)} service fee. The spotter whose sighting finds your car gets the full ${formatPounds(
+      rewardPence,
+    )}.`,
+  escrowLine: ({ chargePence }) =>
+    `We hold it from when your listing goes live, and pay nobody until you confirm who found your car. If no one's sighting does, about ${formatPounds(
+      estimateRefundPence(chargePence),
+    )} comes back to you — card processing costs aren’t refundable.`,
 };
 
 /** Form-level validation matching what the slider can emit. */
@@ -500,8 +506,8 @@ export function MoneySlider({
 
       {panel ? (
         <View style={styles.panel}>
-          <Text style={styles.panelText}>{panel.splitLine(bountyBreakdown(value))}</Text>
-          <Text style={styles.panelText}>{panel.escrowLine(value)}</Text>
+          <Text style={styles.panelText}>{panel.splitLine(chargeBreakdown(value))}</Text>
+          <Text style={styles.panelText}>{panel.escrowLine(chargeBreakdown(value))}</Text>
         </View>
       ) : null}
 

@@ -30,7 +30,7 @@ import {
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
 } from '@/shared/lib/bountyBounds';
-import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
+import { formatPounds, LISTING_FEE_PENCE, SERVICE_FEE_PERCENT } from '@/shared/lib/money';
 
 import { LEGAL_DOCUMENTS, legalDocument } from '../lib/legalContent';
 import { LegalDocumentScreen } from './LegalDocumentScreen';
@@ -191,8 +191,12 @@ describe('factual claims the code must keep true', () => {
     expect(terms).toContain(
       `between ${formatPounds(MIN_BOUNTY_PENCE)} and ${formatPounds(MAX_BOUNTY_PENCE)}`,
     );
-    expect(terms).toContain('95%');
-    expect(terms).toContain('5%');
+    // ADR-0020: the fee is ON TOP and the spotter receives the WHOLE bounty.
+    // The Terms said "receives 95% of the bounty" until 2026-09-25; a document
+    // still saying so would contradict every screen the app shows.
+    expect(terms).toContain(`a service fee of ${SERVICE_FEE_PERCENT}% of the bounty`);
+    expect(terms).toContain('receives the whole bounty');
+    expect(terms).not.toContain('95%');
   });
 
   it('⚠️ states the listing fee, and that it is NOT refundable', () => {

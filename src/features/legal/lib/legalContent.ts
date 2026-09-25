@@ -154,7 +154,7 @@ const SAFETY: LegalDocument = {
 const TERMS: LegalDocument = {
   slug: 'terms',
   title: 'Terms of service',
-  lastUpdated: '1 September 2026',
+  lastUpdated: '25 September 2026',
   intro: [
     `These terms are an agreement between you and ${OPERATOR}. By creating an account you accept them.`,
     'They are written to be read. Where a term matters to your money or your safety, it is stated plainly rather than buried.',
@@ -203,7 +203,12 @@ const TERMS: LegalDocument = {
         // reason: legal text must change by a decision, not as a side effect of
         // LISTING_FEE_PENCE moving. Whoever changes the price comes here too.
         'There are two ways to publish a listing, and you choose which when you post: offer a bounty, or pay a fixed listing fee.',
-        'When you offer a bounty you pay it up front. It is held by our payment provider and is not ours to spend.',
+        // ⚠️ FEE ON TOP since 2026-09-25 (ADR-0020). These said "you pay it up
+        // front" and "the person who reported it receives 95% of the bounty. We
+        // keep 5%" — the fee was inside the bounty, so the spotter was paid less
+        // than the figure every screen showed them. The legal review before live
+        // mode must cover this wording.
+        'When you offer a bounty you pay it up front, plus a service fee of 5% of the bounty. Both are held by our payment provider and are not ours to spend until a sighting you credit leads to your vehicle.',
         // ⚠️ The floor moved to £10 on 2026-08-13 and this said £50 until
         // 2026-08-23 — the Terms stated a minimum the app had stopped enforcing,
         // so a lawful £10 listing was one the document called impossible. Kept
@@ -211,9 +216,9 @@ const TERMS: LegalDocument = {
         // legal text should change by a decision, not as a side effect of a
         // constant moving. Whoever moves the floor next must come here too.
         'The bounty is between £10 and £5,000. All amounts are in pounds sterling.',
-        'If a sighting leads to your vehicle being recovered, you credit that sighting. The person who reported it receives 95% of the bounty. We keep 5%.',
+        'If a sighting leads to your vehicle being recovered, you credit that sighting. The person who reported it receives the whole bounty. We keep the service fee.',
         'Only one sighting can be credited per recovery. If several people helped, you choose the one that made the difference. We cannot split a bounty.',
-        'If you recover the vehicle without anyone’s help, or you cancel the listing, the bounty is refunded to you minus the card processing costs, which the card networks do not return to us. That deduction is shown to you before you pay.',
+        'If you recover the vehicle without anyone’s help, or you cancel the listing, the bounty and the service fee are refunded to you minus the card processing costs, which the card networks do not return to us. That deduction is shown to you before you pay.',
         // ⚠️ THE FEE IS NON-REFUNDABLE AND THAT MUST BE STATED PLAINLY. You
         // cannot take a non-refundable payment under a document that does not
         // say it is non-refundable, and this is the term a reader is most

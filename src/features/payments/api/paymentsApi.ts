@@ -6,8 +6,10 @@
  *        the money state. Translates each function's { code } errors into plain
  *        English for the caller's error line.
  * WHY:   The client never computes or sends the amount (SECURITY_AND_TRUST §4);
- *        it sends only the post id and the server reads the authoritative bounty
- *        / refund. This is the single place the app calls these functions, so the
+ *        it sends only the post id and the server derives the authoritative
+ *        charge / refund. (It does compare the server's charge against the
+ *        total it displayed, and refuses to proceed on a difference — a check
+ *        on what the owner SAW, never an input to what they are charged.) This is the single place the app calls these functions, so the
  *        error-code→message mapping and the typed error live in one auditable
  *        spot, mirroring postApi's PostSubmissionError.
  * LINKS: supabase/functions/create-payment-intent/index.ts +
@@ -35,8 +37,16 @@ const log = createLogger('payments');
  */
 export const CREATE_PAYMENT_ERROR_MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'You need to log in to pay.',
-  POST_NOT_FOUND: 'We couldn’t find that post.',
-  POST_NOT_DRAFT: 'This post has already been submitted.',
+  POST_NOT_FOUND: 'We couldn’t find that listing.',
+  POST_NOT_DRAFT: 'This listing has already been paid for.',
+  // ADR-0020: a build that predates the fee-on-top price is refused rather
+  // than charged a total it never showed. Unreachable from this build, which
+  // always acknowledges the pricing; kept so the copy is right if it ever isn't.
+  UPGRADE_REQUIRED: 'Update the app to post a listing with a reward.',
+  PRICE_MISMATCH: 'The amount changed. Check the total and try again.',
+  // An earlier attempt the sheet reported as failed had in fact been paid.
+  // The screen routes to the listing rather than showing this as an error.
+  PAYMENT_ALREADY_TAKEN: 'Your payment has already gone through. Your listing will be live in a moment.',
   STRIPE_ERROR: 'We couldn’t start your payment. Please try again.',
   LEDGER_ERROR: 'We couldn’t start your payment. Please try again.',
   LOOKUP_FAILED: 'We couldn’t start your payment. Please try again.',
@@ -62,17 +72,36 @@ export const DEACTIVATE_ERROR_MESSAGES: Record<string, string> = {
 
 const DEACTIVATE_FALLBACK = 'We couldn’t deactivate your listing. Please try again.';
 
+/** What create-payment-intent answers: the secret, and the charge it priced. */
+interface CreatePaymentIntentResponse {
+  clientSecret: string;
+  amountPence?: number;
+}
+
 /**
  * Open (or reuse) the escrow PaymentIntent for a draft post and return its
- * client secret. The Edge Function verifies ownership + draft state and reads
- * the bounty amount from the DB — this call carries only the post id. Throws a
- * PaymentError with user-facing copy on any failure.
+ * client secret. The Edge Function verifies ownership + draft state and derives
+ * the charge from the DB — this call carries only the post id and the pricing
+ * acknowledgement. Throws a PaymentError with user-facing copy on any failure.
+ *
+ * `displayedChargePence` is the total the owner was just shown on the pay
+ * button. If the server priced anything else, this REFUSES to hand back a
+ * secret, so the payment sheet never opens on a sum the owner did not see.
+ * That is a display guard, not the money control — the server's price is the
+ * only one ever charged — but it turns any drift between the two into "the
+ * amount changed" rather than a surprise on a card statement.
  */
-export async function createBountyPaymentIntent(postId: string): Promise<string> {
+export async function createBountyPaymentIntent(
+  postId: string,
+  displayedChargePence: number,
+): Promise<string> {
   log.debug('create-payment-intent invoke', { postId });
-  const { data, error } = await supabase.functions.invoke<{ clientSecret: string }>(
+  const { data, error } = await supabase.functions.invoke<CreatePaymentIntentResponse>(
     'create-payment-intent',
-    { body: { postId } },
+    // ADR-0020: `pricing` is not a choice — the server derives the price — it
+    // tells the server this build shows the fee-on-top total. A build that
+    // does not send it is refused with UPGRADE_REQUIRED.
+    { body: { postId, pricing: 'fee_on_top' } },
   );
 
   if (error) {
@@ -87,6 +116,15 @@ export async function createBountyPaymentIntent(postId: string): Promise<string>
   if (!data?.clientSecret) {
     log.error('create-payment-intent returned no client secret');
     throw new PaymentError(CREATE_PAYMENT_FALLBACK, 'BAD_SHAPE');
+  }
+  if (data.amountPence !== displayedChargePence) {
+    // Logged as an error: nothing in a correct build produces this, so every
+    // occurrence is a drift between the client's display and the server rule.
+    log.error('payment_price_mismatch', {
+      displayedPence: displayedChargePence,
+      serverPence: data.amountPence ?? null,
+    });
+    throw new PaymentError(CREATE_PAYMENT_ERROR_MESSAGES.PRICE_MISMATCH, 'PRICE_MISMATCH');
   }
 
   log.info('escrow PaymentIntent ready', { postId });

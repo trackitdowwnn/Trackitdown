@@ -29,7 +29,7 @@ import {
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
 } from '@/shared/lib/bountyBounds';
-import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
+import { formatPounds, LISTING_FEE_PENCE, SERVICE_FEE_PERCENT } from '@/shared/lib/money';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import {
@@ -117,7 +117,9 @@ const PRICING_OPTIONS: CardSelectOption<PricingMode>[] = [
     // The floor, from the ONE mirror — never a literal. This read "From £50"
     // until 2026-08-22, nine days after 20260813120000 moved it to £10, so the
     // card was quoting a price the database had stopped enforcing.
-    description: `From ${formatPounds(MIN_BOUNTY_PENCE)}. Held securely and only paid if a spotter finds your car.`,
+    // "Paid in full": since ADR-0020 the spotter receives the whole reward and
+    // our 5% is added on top — the reward step spells out the total.
+    description: `From ${formatPounds(MIN_BOUNTY_PENCE)}, plus a ${SERVICE_FEE_PERCENT}% service fee. Held securely, and paid in full only if a spotter finds your car.`,
     icon: BadgePoundSterling,
   },
   {
@@ -478,7 +480,7 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
       ) : null}
 
       <MoneySlider
-        label="Bounty"
+        label="Reward"
         valuePence={bountyPence}
         onChangePence={onChangePence}
         minPence={MIN_BOUNTY_PENCE}

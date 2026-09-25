@@ -222,10 +222,12 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
 The escrow-charge slice is built. The contract between this flow and payments:
 
 1. This flow calls `create_post(...)` → `{ post_id, status: 'draft' }`.
-2. `createBountyPaymentIntent(post_id)` invokes the `create-payment-intent` Edge
-   Function, which verifies the caller **owns** the draft, reads the price
-   **from the DB** (the client never sends an amount, and never sends the fee —
-   the price is not ours to name), creates a Stripe PaymentIntent (idempotency
+2. `createBountyPaymentIntent(post_id, displayedChargePence)` invokes the
+   `create-payment-intent` Edge Function, which verifies the caller **owns** the
+   draft, derives the price **from the DB** — reward + 5% service fee since
+   ADR-0020 (the client never sends an amount, and never sends the fee — the
+   price is not ours to name; `displayedChargePence` is only compared against
+   the server's total, and a difference refuses the sheet), creates a Stripe PaymentIntent (idempotency
    key = kind + `post_id` + amount), records a `requires_payment` ledger row,
    and returns the client secret. **Which price** is decided by the post, not by
    this flow: a null `bounty_amount_pence` means the fee applies (ADR-0014).

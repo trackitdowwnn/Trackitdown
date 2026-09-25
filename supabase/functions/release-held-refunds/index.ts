@@ -20,8 +20,8 @@
  *
  * MONEY: the sweep decides WHEN, never HOW MUCH. Refund arithmetic lives in
  *        _shared/refundEscrow.ts (authoritative fee, range guard); the payout
- *        lives in _shared/releasePayout.ts (collusion gate, 95/5 via
- *        payout_split, mark_recovery_paid). An OPEN or UPHELD dispute blocks
+ *        lives in _shared/releasePayout.ts (collusion gate, the split stored
+ *        on the payment at charge time, mark_recovery_paid). An OPEN or UPHELD dispute blocks
  *        Phase 1 — upheld permanently: that money is being paid the other way.
  *
  * SAFETY: not user-invocable. No JWT path — the caller must present the

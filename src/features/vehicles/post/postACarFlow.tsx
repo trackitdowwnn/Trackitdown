@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { formatDateTimeLabel } from '@/shared/lib/dateTimeLabel';
 // Direct path (not the '@/shared/lib' barrel) to keep this config's module graph
 // off the supabase client, mirroring the dateTimeLabel import above.
-import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
+import { chargeBreakdown, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { deriveLocalityForCoord } from '@/shared/lib/location/placeLabels';
 import type { WizardFlow } from '@/shared/wizard';
 
@@ -51,15 +51,19 @@ export const POST_A_CAR_INITIAL_ANSWERS: Partial<PostACarAnswers> = {
 export const postACarFlow: WizardFlow<PostACarAnswers> = {
   id: 'post-a-car',
   // The final CTA names the amount the owner is about to pay ("Post & pay
-  // £250" / "Post & pay £5") — a payment button must never be vague about
-  // the sum, and that holds for both pricing modes. Reads the current answers
+  // £262.50" / "Post & pay £5") — a payment button must never be vague about
+  // the sum, and that holds for both pricing modes. Since ADR-0020 a reward
+  // listing's sum is the reward PLUS the service fee, so the button names the
+  // total the card is charged, not the reward. Reads the current answers
   // (falls back to the seed so it's never blank). formatPounds here is DISPLAY
-  // ONLY; the charge amount is server-read from the post's own price column,
+  // ONLY; the charge is derived server-side from the post's own price column,
   // never this label — see create-payment-intent.
   finalCtaLabel: (answers) =>
     answers.pricingMode === 'fee'
       ? `Post & pay ${formatPounds(LISTING_FEE_PENCE)}`
-      : `Post & pay ${formatPounds(answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE)}`,
+      : `Post & pay ${formatPounds(
+          chargeBreakdown(answers.bountyAmountPence ?? DEFAULT_BOUNTY_PENCE).chargePence,
+        )}`,
   review: {
     title: 'Check your report',
     // The listing preview leads, because the question this screen really asks
@@ -188,7 +192,7 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         },
         {
           id: 'bounty',
-          question: 'Set a bounty',
+          question: 'Set your reward',
           component: BountyStep,
           // WALKED PAST entirely when there is no reward to set — the wizard's
           // own `when` gating, so the step contributes no screen and no schema
@@ -207,7 +211,7 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           schema: z.object({
             bountyAmountPence: z.number().int().min(MIN_BOUNTY_PENCE).max(MAX_BOUNTY_PENCE),
           }),
-          reviewLabel: 'Bounty',
+          reviewLabel: 'Reward',
           reviewValue: (answers) =>
             answers.bountyAmountPence ? formatPounds(answers.bountyAmountPence) : '',
         },

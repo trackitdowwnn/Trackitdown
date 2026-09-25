@@ -1,15 +1,17 @@
 /**
- * WHAT:  Edge Function that pays the credited spotter: transfers 95% of the
- *        bounty to their Connect account and closes the post as `recovered`.
+ * WHAT:  Edge Function that pays the credited spotter: transfers their reward
+ *        to their Connect account and closes the post as `recovered`.
  *        The last step of the core loop.
  * WHY:   `claim_recovery` decides WHO won but moves nothing;
  *        `recovered` means ALREADY PAID (DOMAIN.md lifecycle 5), so only a
  *        server that has seen Stripe succeed may set it.
  *
- *        ADR-0002: separate charges and transfers. The bounty has sat on the
- *        platform balance since capture; this transfers `round(bounty × 0.95)`
- *        to the spotter and the 5% remainder simply stays. NOT
- *        `application_fee_amount` — that only exists for destination charges.
+ *        ADR-0002: separate charges and transfers. The charge has sat on the
+ *        platform balance since capture; this transfers the payment's stored
+ *        `reward_pence` to the spotter — the whole reward since ADR-0020 (the
+ *        5% service fee was charged on top), 95% on rows charged before it —
+ *        and the remainder simply stays. NOT `application_fee_amount` — that
+ *        only exists for destination charges.
  *
  * THE PAYEE IS OFTEN NOT READY, AND THAT IS NORMAL, NOT AN ERROR.
  *        A spotter has no Stripe account until they make one, and DOMAIN says
@@ -22,8 +24,9 @@
  *
  * MONEY: every amount is derived server-side from the ledger. The client sends
  *        a post id and nothing else. `mark_recovery_paid` independently
- *        re-derives the 95/5 split and REJECTS a mismatch, so the numbers below
- *        are checked by something that did not compute them.
+ *        re-derives the spotter's share from the charge and its pricing and
+ *        REJECTS a mismatch, so the numbers below are checked by something
+ *        that did not compute them.
  *
  *        The transfer carries an idempotency key per post, so a retry after a
  *        dropped response returns the SAME transfer instead of paying twice.

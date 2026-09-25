@@ -46,9 +46,12 @@ is the better of the two.
 
 **Payout (spotter).** `connect-onboarding` creates an Express account and hands
 back a hosted link; Stripe's `account.updated` webhook writes
-`payouts_enabled`; `release-payout` transfers 95% on a credited recovery and the
-5% remainder simply stays (ADR-0002 — transfer math, never an
-`application_fee_amount`).
+`payouts_enabled`; `release-payout` transfers the whole reward on a credited
+recovery and the 5% service fee — charged on top since ADR-0020 — simply stays
+(ADR-0002 — transfer math, never an `application_fee_amount`). The charge is
+opened by `createBountyPaymentIntent(postId, displayedChargePence)`, which
+refuses to hand back a secret if the server priced a total the owner was not
+shown.
 
 **Why KYC is asked for late.** A spotter has no Stripe account until they want
 one. DOMAIN says to ask at the first credited sighting, not at signup — bank

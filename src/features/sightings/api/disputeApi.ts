@@ -25,7 +25,7 @@ const log = createLogger('sightings');
 export interface DisputeContext {
   car: { make: string | null; colour: string | null };
   windowEndsAt: string;
-  /** The spotter's 95% share, or null once the money has moved. */
+  /** What the spotter would receive — the payment's stored reward (ADR-0020) — or null once the money has moved. */
   bountySharePence: number | null;
   dispute: { status: 'open' | 'upheld' | 'rejected'; createdAt: string } | null;
 }

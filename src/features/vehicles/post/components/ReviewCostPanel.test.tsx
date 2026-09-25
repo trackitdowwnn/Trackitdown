@@ -18,7 +18,12 @@
 
 import { render } from '@testing-library/react-native';
 
-import { estimateRefundPence, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
+import {
+  chargeBreakdown,
+  estimateRefundPence,
+  formatPounds,
+  LISTING_FEE_PENCE,
+} from '@/shared/lib/money';
 
 import { postACarFlow, POST_A_CAR_INITIAL_ANSWERS } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
@@ -90,19 +95,46 @@ describe('the sum matches the pay button', () => {
 });
 
 describe('what it says about the money', () => {
-  it('quotes the refund from the ONE function, not a literal', async () => {
+  it('itemises the reward, the service fee on top, and the total (ADR-0020)', async () => {
+    const bountyAmountPence = 40000;
+    const { rewardPence, serviceFeePence, chargePence } = chargeBreakdown(bountyAmountPence);
+    const view = await render(
+      <ReviewCostPanel answers={{ pricingMode: 'bounty', bountyAmountPence }} />,
+    );
+
+    expect(view.getByText('Reward')).toBeTruthy();
+    expect(view.getByText(formatPounds(rewardPence))).toBeTruthy();
+    expect(view.getByText(/Service fee/)).toBeTruthy();
+    expect(view.getByText(formatPounds(serviceFeePence))).toBeTruthy();
+    expect(view.getByText('You pay')).toBeTruthy();
+    expect(view.getByTestId('review-cost-total').props.children).toBe(formatPounds(chargePence));
+  });
+
+  it('quotes the refund on the whole CHARGE, from the ONE function', async () => {
     // estimateRefundPence's own doc makes this binding: every surface quoting a
-    // refund before the owner commits must use it, or two screens disagree.
+    // refund before the owner commits must use it, or two screens disagree. A
+    // refund returns the reward AND the fee, so it is netted off the charge.
     const bountyAmountPence = 40000;
     const view = await render(
       <ReviewCostPanel answers={{ pricingMode: 'bounty', bountyAmountPence }} />,
     );
 
-    expect(
-      view.getByText(
-        new RegExp(formatPounds(estimateRefundPence(bountyAmountPence)).replace('£', '\\£')),
-      ),
-    ).toBeTruthy();
+    const refund = estimateRefundPence(chargeBreakdown(bountyAmountPence).chargePence);
+    expect(view.getByText(new RegExp(formatPounds(refund).replace('£', '\\£')))).toBeTruthy();
+  });
+
+  it('says what happens next: held, the owner decides, paid in full or refunded', async () => {
+    const view = await render(
+      <ReviewCostPanel answers={{ pricingMode: 'bounty', bountyAmountPence: 40000 }} />,
+    );
+
+    expect(view.getByText('How your reward works')).toBeTruthy();
+    expect(view.getByText(/Nobody is paid until you say so/)).toBeTruthy();
+    expect(view.getByText(/gets the full £400/)).toBeTruthy();
+    // The 72-hour hold is said BEFORE paying — it used to appear first on the
+    // exit sheet, after the money had moved.
+    expect(view.getByText(/we wait 72 hours first/)).toBeTruthy();
+    expect(view.queryByText(/expires/)).toBeNull();
   });
 
   it('names the card costs, so the gap between the two figures is explained', async () => {
@@ -110,7 +142,7 @@ describe('what it says about the money', () => {
       <ReviewCostPanel answers={{ pricingMode: 'bounty', bountyAmountPence: 40000 }} />,
     );
 
-    expect(view.getByText(/card processing costs are not refundable/i)).toBeTruthy();
+    expect(view.getByText(/card processing costs aren.t refundable/i)).toBeTruthy();
   });
 
   it('calls the fee non-refundable and never quotes a refund for it', async () => {

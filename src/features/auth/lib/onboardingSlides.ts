@@ -119,11 +119,11 @@ export const ONBOARDING_SLIDES: OnboardingSlideData[] = [
     // The payoff phrase keeps the emphasis the old headlineAccent marked —
     // as weight, which is visible, rather than as a near-black on near-black.
     headline: [{ text: 'Recovered — ' }, { text: 'reward paid.', emphasis: true }],
-    // ⚠️ NOT "earns the bounty". The spotter receives 95%, it requires the
-    // owner to CREDIT that specific sighting rather than following from
-    // recovery, and on a no-reward listing there is credit and reputation but
-    // no cash. "Gets the reward" drops the automatic-and-whole implication
-    // without putting a percentage on an intro screen.
+    // ⚠️ NOT "earns the bounty". It requires the owner to CREDIT that
+    // specific sighting rather than following from recovery, and on a
+    // no-reward listing there is credit and reputation but no cash. "Gets the
+    // reward" drops the automatic implication. (Since ADR-0020 the reward IS
+    // paid whole — the fee is charged on top — so no percentage is hidden here.)
     // ⚠️ "gets", NOT "is paid" (2026-09-05): the headline directly above
     // already says "bounty paid", and "paid … paid" twice in ~15 words was the
     // screen's one clumsy note. "Reward" stays — ADR-0014's user-facing word;
