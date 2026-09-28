@@ -363,9 +363,9 @@ export function DescriptionStep({ answers, setAnswers, onSkip }: StepProps) {
   return (
     <View style={styles.stack}>
       <TextField
-        label="Description"
+        label="Details"
         variant="multiline"
-        placeholder="Describe your car — anything that helps a spotter recognise it (marks, mods, wear, where it usually is)."
+        placeholder="Anything we haven't asked — like what's usually inside it (a child seat, a dash cam) or if the plates may have been swapped."
         value={description}
         onChangeText={(descRecognise) => setAnswers({ descRecognise })}
         maxLength={DESC_MAX_CHARS}
