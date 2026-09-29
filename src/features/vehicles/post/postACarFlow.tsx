@@ -140,8 +140,12 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           // post detail's "About this car" section. Optional; the wizard's old
           // theft-context chips (stolen-from / keys-taken) moved off the flow —
           // they stay editable post-hoc via the post's theft-context pencil.
+          // Asks for what the earlier steps DON'T capture: by now the owner has
+          // given make, model, colour, year, marks/mods (distinctive features),
+          // photos and the last-seen place, and "Describe your car" read as a
+          // request to type all of that again.
           id: 'description',
-          question: 'Describe your car',
+          question: 'Anything else spotters should know?',
           component: DescriptionStep,
           // Next needs 20+ characters — a two-word description helps nobody
           // pick this car out of a car park. Max mirrors posts.desc_recognise's
@@ -155,7 +159,7 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           // stops the review screen re-checking this schema at submit. Without
           // it a skipped description could never be posted at all.
           optional: true,
-          reviewLabel: 'Description',
+          reviewLabel: 'Other details',
           reviewValue: (answers) => answers.descRecognise?.trim() || 'Not added',
         },
       ],
