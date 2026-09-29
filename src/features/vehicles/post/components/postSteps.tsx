@@ -13,7 +13,8 @@
  * LINKS: src/features/vehicles/post/postACarFlow.tsx (wires these into steps);
  *        src/features/vehicles/post/types.ts (PostACarAnswers);
  *        src/shared/ui (TextField, ChoiceChips(Multi), PhotoGridPicker,
- *        DateTimeField, MoneySlider, LocationPicker); docs/DESIGN_SYSTEM.md.
+ *        MoneySlider, LocationPicker); ./LastSeenTimeField.tsx (the when step);
+ *        docs/DESIGN_SYSTEM.md.
  */
 
 import { useCallback } from 'react';
@@ -21,6 +22,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { BadgePoundSterling, Megaphone } from 'lucide-react-native';
 
+import { LastSeenTimeField } from './LastSeenTimeField';
 import { reachAtChosen } from '../lib/bountyRecommendation';
 import { useBountyGuidance } from '../hooks/useBountyGuidance';
 import {
@@ -36,8 +38,6 @@ import {
   CardSelect,
   type CardSelectOption,
   ChoiceChips,
-  DateTimeField,
-  DEFAULT_DATE_TIME_PRESETS,
   defaultBountyPanelCopy,
   LocationPicker,
   MoneySlider,
@@ -220,12 +220,9 @@ export function PhotosStep({
 
 export function LastSeenWhenStep({ answers, setAnswers }: StepProps) {
   return (
-    <DateTimeField
-      label="Last seen"
+    <LastSeenTimeField
       value={answers.lastSeenAt ?? null}
       onChange={(lastSeenAt) => setAnswers({ lastSeenAt })}
-      presets={DEFAULT_DATE_TIME_PRESETS}
-      placeholder="Pick when it was last seen"
     />
   );
 }
@@ -254,12 +251,18 @@ export function LastSeenWhereStep({ answers, setAnswers }: StepProps) {
         // Feed the stored point back so returning here (Back / Edit) starts
         // SETTLED — otherwise the mount emits isSettled:false and wipes it.
         initialLocation={answers.location ?? null}
-        // SAFETY: centre only, deliberately NOT initialLocation. Where a car
-        // was last seen is a claim other people act on — it drives the alert
-        // fan-out and the public map — so it must be a point the reporter
-        // actually chose, not wherever they happened to open the wizard. Next
-        // stays disabled until they commit one.
+        // The opening point (the device's position, else the saved feed
+        // location) COUNTS as the answer, so Next is live without a pan.
+        // Product call (2026-09-28): most cars are reported from where they
+        // were taken, and forcing a pan to confirm the obvious was friction.
+        // What that trades away: a reporter who opens the wizard somewhere
+        // else can now post that point without looking. It drives the alert
+        // fan-out and the public map, so the pill naming the address is what
+        // stands between them and a wrong post.
+        // SAFETY: the whole-UK fallback is NEVER committed. With no centre,
+        // Next stays disabled until they choose a point.
         initialCentre={defaultCentre.centre}
+        commitInitialCentre
         onLocationChange={(value) => {
           if (!value.isSettled) {
             // Un-settle disables Next until the user commits a point again.

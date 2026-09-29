@@ -2,8 +2,9 @@
  * WHAT:  Tests for LocationPicker — the debounced settle→reverse-geocode path,
  *        onLocationChange payloads (including the isSettled validity flip), the
  *        geocode-failure fallback that keeps the value valid, initialLocation vs
- *        the UK default region, search selection re-centring the map, and the
- *        option-slot visibility rule.
+ *        the UK default region, the opt-in commitInitialCentre (settles on a
+ *        real opening point, never on the UK fallback), search selection
+ *        re-centring the map, and the option-slot visibility rule.
  * WHY:   This component records "where the car was last seen" and the spotter's
  *        alert location. Emitting an un-settled value (letting a never-touched
  *        map submit) or dropping the value on a geocode hiccup would corrupt a
@@ -320,6 +321,121 @@ describe('LocationPicker', () => {
     it('still falls back to the whole-UK view when neither is given', async () => {
       await render(<LocationPicker MapComponent={MockMap} locationServices={makeServices()} />);
       expect(mapProps?.region).toEqual(UK_DEFAULT_REGION);
+    });
+
+    describe('with commitInitialCentre', () => {
+      it('settles on the opening centre and geocodes it, so Next is live without a pan', async () => {
+        const reverseGeocode = jest.fn(async () => 'Deansgate, Manchester');
+        const onLocationChange = jest.fn();
+        const { getByText } = await render(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialCentre={CENTRE}
+            commitInitialCentre
+            locationServices={makeServices({ reverseGeocode })}
+            onLocationChange={onLocationChange}
+          />,
+        );
+
+        expect(onLocationChange).toHaveBeenCalledWith(
+          expect.objectContaining({ isSettled: true, latitude: CENTRE.latitude, longitude: CENTRE.longitude }),
+        );
+        expect(onLocationChange).not.toHaveBeenCalledWith(expect.objectContaining({ isSettled: false }));
+
+        await act(async () => {
+          jest.advanceTimersByTime(GEOCODE_DEBOUNCE_MS);
+        });
+        expect(reverseGeocode).toHaveBeenCalledTimes(1);
+        expect(getByText('Deansgate, Manchester')).toBeTruthy();
+        expect(onLocationChange).toHaveBeenLastCalledWith(
+          expect.objectContaining({ isSettled: true, addressLabel: 'Deansgate, Manchester' }),
+        );
+      });
+
+      it('NEVER settles the whole-UK fallback', async () => {
+        // SAFETY: with no real opening point, "the middle of the UK" must not
+        // become a live post's last-seen location. The user still has to choose.
+        const onLocationChange = jest.fn();
+        await render(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialCentre={null}
+            commitInitialCentre
+            locationServices={makeServices()}
+            onLocationChange={onLocationChange}
+          />,
+        );
+
+        expect(mapProps?.region).toEqual(UK_DEFAULT_REGION);
+        expect(onLocationChange).toHaveBeenCalledWith(expect.objectContaining({ isSettled: false }));
+        expect(onLocationChange).not.toHaveBeenCalledWith(expect.objectContaining({ isSettled: true }));
+      });
+
+      it('settles on a centre that arrives AFTER mount', async () => {
+        // The fresh-GPS path: the screen opens on the UK view (nothing cached),
+        // then a real fix lands seconds later.
+        const reverseGeocode = jest.fn(async () => 'Deansgate, Manchester');
+        const onLocationChange = jest.fn();
+        const view = await render(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialCentre={null}
+            commitInitialCentre
+            locationServices={makeServices({ reverseGeocode })}
+            onLocationChange={onLocationChange}
+          />,
+        );
+
+        await view.rerender(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialCentre={CENTRE}
+            commitInitialCentre
+            locationServices={makeServices({ reverseGeocode })}
+            onLocationChange={onLocationChange}
+          />,
+        );
+
+        expect(mapProps?.region).toEqual(
+          expect.objectContaining({ latitude: CENTRE.latitude, longitude: CENTRE.longitude }),
+        );
+        expect(onLocationChange).toHaveBeenLastCalledWith(
+          expect.objectContaining({ isSettled: true, latitude: CENTRE.latitude, longitude: CENTRE.longitude }),
+        );
+        await act(async () => {
+          jest.advanceTimersByTime(GEOCODE_DEBOUNCE_MS);
+        });
+        expect(reverseGeocode).toHaveBeenCalledTimes(1);
+      });
+
+      it('a late centre never replaces a point the user already chose', async () => {
+        const onLocationChange = jest.fn();
+        const view = await render(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialCentre={null}
+            commitInitialCentre
+            locationServices={makeServices()}
+            onLocationChange={onLocationChange}
+          />,
+        );
+        await settle();
+
+        await view.rerender(
+          <LocationPicker
+            MapComponent={MockMap}
+            initialCentre={CENTRE}
+            commitInitialCentre
+            locationServices={makeServices()}
+            onLocationChange={onLocationChange}
+          />,
+        );
+
+        expect(mapProps?.region).toEqual(SETTLED_REGION);
+        expect(onLocationChange).toHaveBeenLastCalledWith(
+          expect.objectContaining({ latitude: SETTLED_REGION.latitude, longitude: SETTLED_REGION.longitude }),
+        );
+      });
     });
   });
 

@@ -20,13 +20,18 @@
  *   />
  */
 
+import { useCallback, useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
 
 import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 
 export interface ChoiceChipOption<V extends string = string> {
   value: V;
   label: string;
+  /** What a screen reader says instead of `label`, when the visible label is
+   *  terse (":15" → "15 minutes past"). Defaults to `label`. */
+  accessibilityLabel?: string;
 }
 
 export interface ChoiceChipsProps<V extends string = string> {
@@ -65,6 +70,12 @@ export interface ChoiceChipsProps<V extends string = string> {
    */
   bleed?: number;
   /**
+   * With `scrollable`, bring the selected chip into view: on first layout, and
+   * whenever `value` changes. For long rows whose answer may sit off-screen,
+   * such as an hour strip opening on 22:00.
+   */
+  scrollToSelected?: boolean;
+  /**
    * Optional — the chip ROW takes this, the scroller takes `${testID}-scroller`.
    * Opt-in rather than a fixed id because a wizard step can render two chip
    * groups, and a hardcoded id would make both unfindable.
@@ -79,10 +90,37 @@ export function ChoiceChips<V extends string = string>({
   role = 'radio',
   scrollable = false,
   bleed,
+  scrollToSelected = false,
   testID,
 }: ChoiceChipsProps<V>) {
   const styles = useThemedStyles(makeStyles);
   const asRadios = role === 'radio';
+
+  // scrollToSelected: each chip's x within the row, and which value the
+  // scroller last moved to. The first move is instant (the row is just
+  // opening); later ones animate, so a change of answer reads as motion —
+  // unless the OS asks for reduced motion (DESIGN_SYSTEM.md, Motion).
+  const reduceMotion = useReducedMotion();
+  const scrollRef = useRef<ScrollView>(null);
+  const chipX = useRef(new Map<string, number>());
+  const scrolledTo = useRef<string | null>(null);
+  const tracksSelection = scrollable && scrollToSelected;
+  const bringIntoView = useCallback(
+    (target: string) => {
+      const x = chipX.current.get(target);
+      if (x === undefined) return; // not laid out yet; its onLayout will retry
+      const animated = !reduceMotion && scrolledTo.current !== null;
+      scrolledTo.current = target;
+      // x is measured inside the padded content, so the chip lands on the gutter.
+      scrollRef.current?.scrollTo({ x, animated });
+    },
+    [reduceMotion],
+  );
+  useEffect(() => {
+    if (tracksSelection && value !== null && scrolledTo.current !== value) {
+      bringIntoView(value);
+    }
+  }, [tracksSelection, value, bringIntoView]);
   const chips = (
     <View
       style={[styles.row, scrollable && styles.rowScrollable]}
@@ -95,9 +133,19 @@ export function ChoiceChips<V extends string = string>({
           <Pressable
             key={option.value}
             accessibilityRole={role}
-            accessibilityLabel={option.label}
+            accessibilityLabel={option.accessibilityLabel ?? option.label}
             accessibilityState={asRadios ? { checked: selected } : undefined}
             onPress={() => onSelect(option.value)}
+            onLayout={
+              tracksSelection
+                ? (event) => {
+                    chipX.current.set(option.value, event.nativeEvent.layout.x);
+                    if (selected && scrolledTo.current !== option.value) {
+                      bringIntoView(option.value);
+                    }
+                  }
+                : undefined
+            }
             style={({ pressed }) => [
               styles.chip,
               selected && styles.chipSelected,
@@ -118,6 +166,7 @@ export function ChoiceChips<V extends string = string>({
   }
   return (
     <ScrollView
+      ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       // The gutter lives on the CONTENT, not the scroller, so the first chip

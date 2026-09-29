@@ -77,7 +77,15 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
 7. **Photos** — `PhotoGridPicker`, min 3 / max 6, first photo = cover.
 
 **Phase 2 — When and where**
-8. **Last seen when** — `DateTimeField`, max = now.
+8. **Last seen when** — `LastSeenTimeField` (2026-09-28; it replaced
+   `DateTimeField` on this step). One-tap presets sit on the step: Just now,
+   About an hour ago, Earlier today (hidden before 04:00), Last night
+   (yesterday 22:00) and Yesterday (same clock time). Below them, the field
+   shows the stored answer and opens a "Pick a date and time" sheet of day /
+   hour / quarter-hour chips, with Confirm over a ghost Cancel. Only moments that can be
+   true are offered: nothing in the future, nothing older than
+   `LAST_SEEN_WINDOW_DAYS` (30). Logic lives in `lib/lastSeenTime.ts`. Stored
+   value unchanged: ISO UTC, minute precision.
 9. **Last seen where** — `LocationPicker` (embedded), storing point +
    `addressLabel`; the coarse grouping `lastSeenArea` is derived here.
 10. **Description** — free-text `descRecognise` ("About this car"), ≤1000 chars
