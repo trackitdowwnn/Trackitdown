@@ -3,9 +3,12 @@
  *        look trigger showing the picked moment as a friendly local label
  *        ("Today, 14:30"), opening a BottomSheet with one-tap presets
  *        ("Just now", "Yesterday"…) and a platform-native exact picker.
- * WHY:   Built first for "when was the car last seen": victims think in
- *        "about an hour ago", not clock times, so the fast path is a
- *        preset pill — one tap, done. Values are ISO 8601 UTC strings
+ * WHY:   Built first for "when was the car last seen". The post wizard's step
+ *        has since moved to its own LastSeenTimeField (2026-09-28), with
+ *        presets on the step and an in-sheet day/hour picker. This field now
+ *        serves the search sheet's date-range bounds and any generic
+ *        date/time input. Presets remain available ("about an hour ago" beats a
+ *        clock time for moments), one tap and done. Values are ISO 8601 UTC strings
  *        (display always local, minute precision), maxDate defaults to now
  *        (a car cannot be last seen in the future) and clamps presets too.
  *        PLATFORM SPLIT, deliberately non-uniform: iOS renders the native

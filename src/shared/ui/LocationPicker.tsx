@@ -21,7 +21,9 @@
  *          value STILL valid (a hiccup must never block someone mid-post).
  *        - `isSettled` is the validity gate: a never-touched default map is not
  *          settled, so the wizard's Next stays disabled until the user actually
- *          pans, searches, or locates. Plug the emitted value into a wizard
+ *          pans, searches, or locates — unless the caller opts in with
+ *          `commitInitialCentre`, which settles on a real opening point (never
+ *          on the whole-UK fallback). Plug the emitted value into a wizard
  *          answers slice and gate it with the step's own schema.
  *        - The pan is a visual-only interaction, so the SEARCH path is the
  *          accessible path: the pill opens search, address changes announce
@@ -123,11 +125,21 @@ export interface LocationPickerProps {
    *
    * SAFETY: this is the difference between a preference and a claim. An alert
    * zone can default to where you are and be right; "where did you last see the
-   * stolen car" cannot — auto-settling it would let a wrong last-seen point
-   * onto a live post, and that point drives the alert fan-out and the public
-   * map. Ignored when `initialLocation` is present.
+   * stolen car" is a claim — auto-settling it can put a wrong last-seen point
+   * on a live post, and that point drives the alert fan-out and the public
+   * map. Settling here is therefore opt-in (`commitInitialCentre`), and the
+   * post wizard's last-seen step opts in deliberately (see its comment).
+   * Ignored when `initialLocation` is present.
    */
   initialCentre?: GeoCoord | null;
+  /**
+   * Let `initialCentre` count as the ANSWER, not just the camera: the picker
+   * settles on it (at mount, or when it arrives late) and geocodes it, so Next
+   * is live without a pan. It never settles the whole-UK fallback — with no
+   * centre the user must still choose. Off by default; see initialCentre's
+   * SAFETY note for what opting in trades away.
+   */
+  commitInitialCentre?: boolean;
   onLocationChange?: (value: LocationValue) => void;
   /** Bottom option card; hidden entirely when omitted. */
   optionSlot?: LocationOptionSlot;
@@ -236,6 +248,7 @@ export function LocationPicker({
   locationServices = noopLocationServices,
   initialLocation = null,
   initialCentre = null,
+  commitInitialCentre = false,
   onLocationChange,
   optionSlot,
   promptLabel = DEFAULT_PROMPT,
@@ -252,7 +265,9 @@ export function LocationPicker({
   });
   const [animateMs, setAnimateMs] = useState(0);
   const [isMoving, setIsMoving] = useState(false);
-  const [hasSettled, setHasSettled] = useState(initialLocation != null);
+  // Mount-time only: the region initialiser above reads the same props once.
+  const startsSettled = initialLocation != null || (commitInitialCentre && initialCentre != null);
+  const [hasSettled, setHasSettled] = useState(startsSettled);
   const [addressLabel, setAddressLabel] = useState<string | null>(null);
   const [geocodeFailed, setGeocodeFailed] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
@@ -354,9 +369,8 @@ export function LocationPicker({
 
   // Emit the initial value once; geocode it only if we started settled.
   useEffect(() => {
-    const settled = initialLocation != null;
-    emit(region, '', settled);
-    if (settled) {
+    emit(region, '', startsSettled);
+    if (startsSettled) {
       scheduleGeocode(region);
     }
     return () => {
@@ -409,14 +423,30 @@ export function LocationPicker({
   // what keep that true: an already-chosen `initialLocation`, a settled point, or
   // a pan in progress each block the move, so this can never overwrite a choice
   // or yank the map out from under a gesture.
+  //
+  // With `commitInitialCentre` the late centre ALSO becomes the answer. The same
+  // gates apply, so it still never replaces a point the user chose. The emit
+  // and geocode are side effects, so they run from the effect below rather
+  // than here in render.
   const [appliedCentre, setAppliedCentre] = useState(initialCentre);
+  const [lateCommit, setLateCommit] = useState<GeoRegion | null>(null);
   if (initialCentre !== appliedCentre) {
     setAppliedCentre(initialCentre);
     if (initialCentre && initialLocation == null && !hasSettled && !isMoving) {
+      const next = regionFor(initialCentre, fitRadiusMiles);
       setAnimateMs(motion.mapFly);
-      setRegion(regionFor(initialCentre, fitRadiusMiles));
+      setRegion(next);
+      if (commitInitialCentre) {
+        setHasSettled(true);
+        setLateCommit(next);
+      }
     }
   }
+  useEffect(() => {
+    if (!lateCommit) return;
+    emit(lateCommit, '', true);
+    scheduleGeocode(lateCommit);
+  }, [lateCommit, emit, scheduleGeocode]);
 
   const handleRegionChangeStart = useCallback(() => {
     setIsMoving(true);

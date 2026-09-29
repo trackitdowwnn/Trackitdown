@@ -1,6 +1,8 @@
 /**
  * WHAT:  Tests for ChoiceChips — selection callback, checked-state
- *        semantics, null-value rendering, and the scrollable variant.
+ *        semantics, null-value rendering, the scrollable variant, the
+ *        per-chip accessibilityLabel, and scrollToSelected (including
+ *        reduced motion).
  * WHY:   Chips carry wizard answers and date presets; a chip that reports
  *        the wrong checked state misleads screen-reader users about what
  *        they've picked. The scrollable variant exists because the Inbox
@@ -10,7 +12,7 @@
  */
 
 import { fireEvent, render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 import { ChoiceChips } from './ChoiceChips';
 
@@ -83,6 +85,89 @@ describe('ChoiceChips', () => {
       expect(StyleSheet.flatten(getByTestId('chips').props.style)).toMatchObject({
         flexWrap: 'wrap',
       });
+    });
+  });
+
+  it('reads a terse label out in full when given an accessibilityLabel', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await render(
+      <ChoiceChips
+        options={[
+          { value: '0', label: ':00', accessibilityLabel: 'On the hour' },
+          { value: '15', label: ':15' },
+        ]}
+        value="0"
+        onSelect={() => {}}
+      />,
+    );
+
+    // The screen shows ":00", a screen reader says "On the hour"...
+    expect(getByText(':00')).toBeTruthy();
+    expect(getByLabelText('On the hour').props.accessibilityState).toMatchObject({ checked: true });
+    expect(queryByLabelText(':00')).toBeNull();
+    // ...and without an override the visible label is the spoken one.
+    expect(getByLabelText(':15')).toBeTruthy();
+  });
+
+  describe('scrollToSelected', () => {
+    // An hour strip opening on 22:00 would otherwise show 00:00–04:00, with the
+    // answer off-screen to the right.
+    const HOURS = ['20', '21', '22'].map((hour) => ({ value: hour, label: `${hour}:00` }));
+    const layout = (x: number) => ({ nativeEvent: { layout: { x, y: 0, width: 72, height: 44 } } });
+    const scrollTo = ScrollView.prototype.scrollTo as jest.Mock;
+
+    beforeEach(() => scrollTo.mockClear());
+
+    it('brings the selected chip into view, instantly on first layout', async () => {
+      const { getByLabelText } = await render(
+        <ChoiceChips options={HOURS} value="22" onSelect={() => {}} scrollable scrollToSelected />,
+      );
+
+      await fireEvent(getByLabelText('20:00'), 'layout', layout(0));
+      expect(scrollTo).not.toHaveBeenCalled(); // not the selected chip
+
+      await fireEvent(getByLabelText('22:00'), 'layout', layout(160));
+      expect(scrollTo).toHaveBeenCalledWith({ x: 160, animated: false });
+    });
+
+    it('animates to a newly selected chip', async () => {
+      const view = await render(
+        <ChoiceChips options={HOURS} value="22" onSelect={() => {}} scrollable scrollToSelected />,
+      );
+      await fireEvent(view.getByLabelText('21:00'), 'layout', layout(80));
+      await fireEvent(view.getByLabelText('22:00'), 'layout', layout(160));
+
+      await view.rerender(
+        <ChoiceChips options={HOURS} value="21" onSelect={() => {}} scrollable scrollToSelected />,
+      );
+
+      expect(scrollTo).toHaveBeenLastCalledWith({ x: 80, animated: true });
+    });
+
+    it('never animates under reduced motion', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- spying on the mocked module, per jest/reanimatedMock.js
+      const reanimated = require('react-native-reanimated');
+      const reduced = jest.spyOn(reanimated, 'useReducedMotion').mockReturnValue(true);
+      const view = await render(
+        <ChoiceChips options={HOURS} value="22" onSelect={() => {}} scrollable scrollToSelected />,
+      );
+      await fireEvent(view.getByLabelText('21:00'), 'layout', layout(80));
+      await fireEvent(view.getByLabelText('22:00'), 'layout', layout(160));
+
+      await view.rerender(
+        <ChoiceChips options={HOURS} value="21" onSelect={() => {}} scrollable scrollToSelected />,
+      );
+
+      expect(scrollTo).toHaveBeenLastCalledWith({ x: 80, animated: false });
+      reduced.mockRestore();
+    });
+
+    it('leaves the scroller alone without the prop', async () => {
+      const { getByLabelText } = await render(
+        <ChoiceChips options={HOURS} value="22" onSelect={() => {}} scrollable />,
+      );
+
+      expect(getByLabelText('22:00').props.onLayout).toBeUndefined();
+      expect(scrollTo).not.toHaveBeenCalled();
     });
   });
 });

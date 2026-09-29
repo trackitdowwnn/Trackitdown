@@ -36,7 +36,12 @@ export {
 export { NudgeRow, type NudgeRowProps } from './NudgeRow';
 export { StatBand, type StatBandCell } from './StatBand';
 export { ToastProvider, useToast, useOptionalToast, type ToastKind } from './Toast';
-export { BottomSheet, type BottomSheetProps, type BottomSheetRef } from './BottomSheet';
+export {
+  BottomSheet,
+  SHEET_GUTTER,
+  type BottomSheetProps,
+  type BottomSheetRef,
+} from './BottomSheet';
 export { BountyTag, bountyLabel, NO_BOUNTY_LABEL, type BountyTagProps } from './BountyTag';
 export { BrandLoader, LOADER_PHRASES, type BrandLoaderProps } from './BrandLoader';
 export { BrandMark, type BrandMarkProps } from './BrandMark';

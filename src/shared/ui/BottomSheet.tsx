@@ -62,6 +62,13 @@ const ANIMATION_DURATION_MS = 250;
  *  visible as a dismiss target. */
 const MAX_HEIGHT_RATIO = 0.9;
 
+/**
+ * The sheet body's side padding. Exported so full-bleed content inside a sheet
+ * (a scrollable ChoiceChips row takes it as `bleed`) reaches the true edge
+ * without hard-coding a number that could drift from this one.
+ */
+export const SHEET_GUTTER = spacing.xl;
+
 export interface BottomSheetRef {
   /** Present the sheet over the current screen. */
   open: () => void;
@@ -207,7 +214,7 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.overlay,
     },
     content: {
-      paddingHorizontal: spacing.xl,
+      paddingHorizontal: SHEET_GUTTER,
       paddingTop: spacing.sm,
     },
     title: {
