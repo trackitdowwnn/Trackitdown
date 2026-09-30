@@ -2,7 +2,7 @@
  * WHAT:  Date/time display formatting — an ISO timestamp rendered as a
  *        friendly local-time label: "Today, 14:30", "Yesterday, 09:00",
  *        "Tomorrow, 10:00", then "Mon 6 Jul, 14:30" beyond a day away.
- * WHY:   Wherever a picked or recorded moment is shown (DateTimeField,
+ * WHY:   Wherever a picked or recorded moment is shown (the last-seen field,
  *        post detail, moderation), the same phrasing must appear. Relative
  *        day names cover the window victims actually reason about ("when
  *        did you last see it?"); the time half follows the DEVICE locale
@@ -11,7 +11,8 @@
  *        dependency. The day words (Today/Yesterday/Tomorrow) are English
  *        only: fine for the UK-only launch, but this is NOT localised
  *        output — revisit alongside any i18n work.
- * LINKS: src/shared/ui/DateTimeField.tsx (first consumer);
+ * LINKS: src/features/vehicles/post/components/LastSeenTimeField.tsx (consumer);
+ *        src/shared/lib/calendarDates.ts (the picker's own day labels);
  *        src/shared/lib/timeAgo.ts (elapsed-time sibling); docs/TESTING.md.
  */
 

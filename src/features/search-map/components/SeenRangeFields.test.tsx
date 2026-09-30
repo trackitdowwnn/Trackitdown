@@ -1,116 +1,83 @@
 /**
- * WHAT:  Tests for SeenRangeFields — the From/To last-seen pair: date-only
- *        pickers, no moment presets, and the ordering it enforces.
- * WHY:   Ordering is the only real logic here and it fails SILENTLY: an
- *        inverted window is a perfectly valid criteria object that simply
- *        matches nothing, so the user reads "No cars match" as a fact about the
- *        world rather than a broken control. The date-only assertions matter
- *        because a time-of-day bound would imply a precision the filter does
- *        not use.
+ * WHAT:  Tests for SeenRangeFields, the adapter between the search criteria's
+ *        start-of-local-day instants and DateRangeField's day IDs. Covers both
+ *        directions, Clear, and the "no future" bound.
+ * WHY:   The conversion is the only logic here, and a slip fails SILENTLY. A
+ *        day ID parsed as UTC, or an instant read in the wrong zone, shifts the
+ *        window by a day. The user then reads "No cars match" as a fact about
+ *        the world rather than a broken control. The field's own behaviour is
+ *        covered in DateRangeField.test.tsx.
  * LINKS: src/features/search-map/components/SeenRangeFields.tsx;
- *        src/features/search-map/components/YearRangeFields.test.tsx (sibling).
+ *        src/shared/ui/DateRangeField.tsx.
  */
 
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 
 import { SeenRangeFields } from './SeenRangeFields';
 import { startOfLocalDayIso } from '../lib/searchCriteria';
 
-/** Stub picker: a pressable per field that emits a fixed instant. */
-jest.mock('@/shared/ui/DateTimeField', () => {
+/** Stub field: shows the day IDs it was given, and emits a fixed range. */
+jest.mock('@/shared/ui/DateRangeField', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const React = require('react');
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const { Text, View } = require('react-native');
   return {
-    DateTimeField: ({ label, value, onChange, mode, presets }: Record<string, unknown>) =>
-      React.createElement(
+    DateRangeField: ({ value, onChange, noFuture }: Record<string, unknown>) => {
+      const range = value as { from: string | null; to: string | null };
+      return React.createElement(
         View,
-        { testID: `field-${label}` },
-        React.createElement(Text, { testID: `mode-${label}` }, String(mode)),
+        null,
+        React.createElement(Text, { testID: 'from' }, String(range.from)),
+        React.createElement(Text, { testID: 'to' }, String(range.to)),
+        React.createElement(Text, { testID: 'no-future' }, String(noFuture)),
         React.createElement(
           Text,
-          { testID: `presets-${label}` },
-          String((presets as unknown[])?.length ?? 'default'),
+          { testID: 'apply', onPress: () => (onChange as CallableFunction)({ from: '2026-05-01', to: '2026-05-10' }) },
+          'apply',
         ),
-        React.createElement(Text, { testID: `value-${label}` }, String(value ?? 'none')),
         React.createElement(
           Text,
-          {
-            testID: `pick-${label}`,
-            onPress: () => (onChange as CallableFunction)(mockPicked),
-          },
-          'pick',
+          { testID: 'clear', onPress: () => (onChange as CallableFunction)({ from: null, to: null }) },
+          'clear',
         ),
-      ),
+      );
+    },
   };
 });
 
-// eslint-disable-next-line no-var
-var mockPicked = new Date(2026, 4, 10, 14, 30).toISOString();
-
 const MAY_1 = startOfLocalDayIso(new Date(2026, 4, 1));
 const MAY_10 = startOfLocalDayIso(new Date(2026, 4, 10));
-const MAY_20 = startOfLocalDayIso(new Date(2026, 4, 20));
-
-async function renderRange(from: string | null = null, to: string | null = null) {
-  const onChange = jest.fn();
-  const view = await render(<SeenRangeFields from={from} to={to} onChange={onChange} />);
-  return { view, onChange };
-}
 
 describe('SeenRangeFields', () => {
-  it('picks DATES, not date-times, and hides the moment presets', async () => {
-    const { view } = await renderRange();
-
-    expect(view.getByTestId('mode-From').props.children).toBe('date');
-    expect(view.getByTestId('mode-To').props.children).toBe('date');
-    // DEFAULT_DATE_TIME_PRESETS are "Just now"/"Yesterday" — shaped for "when
-    // did you last see your car", meaningless as a range bound.
-    expect(view.getByTestId('presets-From').props.children).toBe('0');
-    expect(view.getByTestId('presets-To').props.children).toBe('0');
+  it('hands the field local day IDs, whatever the stored instant', async () => {
+    const view = await render(<SeenRangeFields from={MAY_1} to={MAY_10} onChange={jest.fn()} />);
+    expect(view.getByTestId('from').props.children).toBe('2026-05-01');
+    expect(view.getByTestId('to').props.children).toBe('2026-05-10');
   });
 
-  it('normalises a picked instant to the START of that local day', async () => {
-    // The stub emits 14:30; the window must anchor to 00:00 so the day the user
-    // tapped is fully included.
-    const { view, onChange } = await renderRange();
+  it('stores what the field picks as start-of-local-day instants', async () => {
+    const onChange = jest.fn();
+    const view = await render(<SeenRangeFields from={null} to={null} onChange={onChange} />);
 
-    await act(async () => {
-      fireEvent.press(view.getByTestId('pick-From'));
-    });
+    await fireEvent.press(view.getByTestId('apply'));
 
-    expect(onChange).toHaveBeenCalledWith({ seenFrom: MAY_10, seenTo: null });
+    expect(onChange).toHaveBeenCalledWith({ seenFrom: MAY_1, seenTo: MAY_10 });
   });
 
-  it('pushes To UP when From is moved past it', async () => {
-    const { view, onChange } = await renderRange(MAY_1, MAY_1);
+  it('clears both bounds', async () => {
+    const onChange = jest.fn();
+    const view = await render(<SeenRangeFields from={MAY_1} to={MAY_10} onChange={onChange} />);
 
-    await act(async () => {
-      fireEvent.press(view.getByTestId('pick-From')); // 10 May, past the 1 May ceiling
-    });
+    await fireEvent.press(view.getByTestId('clear'));
 
-    expect(onChange).toHaveBeenCalledWith({ seenFrom: MAY_10, seenTo: MAY_10 });
+    expect(onChange).toHaveBeenCalledWith({ seenFrom: null, seenTo: null });
   });
 
-  it('pulls From DOWN when To is moved before it', async () => {
-    const { view, onChange } = await renderRange(MAY_20, MAY_20);
-
-    await act(async () => {
-      fireEvent.press(view.getByTestId('pick-To')); // 10 May, before the 20 May floor
-    });
-
-    expect(onChange).toHaveBeenCalledWith({ seenFrom: MAY_10, seenTo: MAY_10 });
-  });
-
-  it('leaves a valid window alone', async () => {
-    const { view, onChange } = await renderRange(MAY_1, MAY_20);
-
-    await act(async () => {
-      fireEvent.press(view.getByTestId('pick-From')); // 10 May, inside the window
-    });
-
-    // 10 May <= 20 May, so the ceiling must not move.
-    expect(onChange).toHaveBeenCalledWith({ seenFrom: MAY_10, seenTo: MAY_20 });
+  it('never lets a range reach past today', async () => {
+    // noFuture, not a maxDay computed at render: the field reads "today" when
+    // its sheet opens (DateRangeField.test.tsx covers that).
+    const view = await render(<SeenRangeFields from={null} to={null} onChange={jest.fn()} />);
+    expect(view.getByTestId('no-future').props.children).toBe('true');
   });
 });

@@ -1,7 +1,8 @@
 /**
- * WHAT:  Tiny haptic helpers — a light selection tick and a success buzz — that
- *        lazily load expo-haptics and degrade SILENTLY if the native module (or
- *        the device's taptic support) isn't present.
+ * WHAT:  Tiny haptic helpers — a light pick tick, a fainter stepper detent,
+ *        and a success buzz — that lazily load expo-haptics and degrade
+ *        SILENTLY if the native module (or the device's taptic support) isn't
+ *        present.
  * WHY:   Haptics are polish, never load-bearing: a missing binary or a device
  *        without a haptic engine must never throw. One helper keeps the lazy-
  *        require + swallow pattern in a single place instead of per-component
@@ -15,6 +16,7 @@
 interface HapticsModule {
   impactAsync(style: unknown): Promise<void>;
   notificationAsync(type: unknown): Promise<void>;
+  selectionAsync(): Promise<void>;
   ImpactFeedbackStyle: { Light: unknown };
   NotificationFeedbackType: { Success: unknown };
 }
@@ -33,6 +35,18 @@ export function lightHaptic(): void {
   const h = haptics();
   if (h) {
     void h.impactAsync(h.ImpactFeedbackStyle.Light).catch(() => {});
+  }
+}
+
+/**
+ * The faint detent tick a system picker gives on every step (a wheel's
+ * click). For steppers: lighter than lightHaptic, because it fires on every
+ * step of a held button. Silent if unsupported.
+ */
+export function selectionHaptic(): void {
+  const h = haptics();
+  if (h) {
+    void h.selectionAsync().catch(() => {});
   }
 }
 

@@ -225,6 +225,10 @@ are build output.
   (900) — **there is no SemiBold (600) face**, which is why the old 600 tier
   (title/heading/cardTitle) collapses into Bold rather than by accident.
 - Scale (size / line height / family):
+  - `timeReadout` 56/64, Bold — **TimeSlotPicker's large time only** (added
+    2026-09-29). It is the one focus of the time sheet, between two 52pt
+    steppers, and at `display` or `displayHero` sizes the digits came out
+    smaller than the steppers. Used with `fontVariant: ['tabular-nums']`.
   - `displayHero` 40/46, Black — **the onboarding headline only** (added
     2026-08-08, from `docs/design-refs/onboarding/`). Onboarding is the one
     surface with a single sentence and a whole screen to say it in: nothing
@@ -274,6 +278,11 @@ are build output.
     label size one weight up, because a pin fights map tiles and its own
     overlapping neighbours. Capped at `mapPinFontScaleCap` (1.3): uncapped,
     the OS 200% setting doubles every pill and buries the map
+  - Other scale caps (2026-09-29): `calendarFontScaleCap` (1.5), for
+    CalendarMonth's day numbers and weekday letters, which seven circles
+    share; `segmentFontScaleCap` (1.2), for TimeSlotPicker's up-to-four part-of-day
+    segments, so "Afternoon" survives. Each capped label also carries a full,
+    uncapped accessibilityLabel.
   - `tabLabel` 11/14, Medium — **tab-bar item labels and count badges**; the
     single sanctioned size below `caption` (matches platform tab conventions).
     **Widened 2026-08-28** from "tab-bar item labels only": `AppTabBar`'s badge
@@ -400,6 +409,122 @@ are build output.
   usual label tint, and the label reads "You"; every tab's glyph centres in
   the shared `sizes.tabIconSlot` (34) so labels stay aligned. A failed
   avatar load falls back to the person icon.
+
+### Date & time (custom, since 2026-09-29)
+
+The app has no platform date pickers. Every date is picked in its own
+Airbnb-style calendar, inside a `BottomSheet`. Maths and labels live in
+`src/shared/lib/calendarDates.ts`: day IDs ("2026-09-29"), never
+`new Date('YYYY-MM-DD')`, and day arithmetic in UTC so DST can't move it.
+
+**`CalendarMonth` (one month at a time)**
+- **Header:** the month title, left-aligned, in `cardTitle` (a step below the
+  sheet's own `heading` title), and two bordered circular ‹ › buttons
+  (`sizes.calendarNavButton`, 1pt `border`, padded to a 44pt hit area). An arrow
+  is disabled when its month would leave the allowed span; its glyph turns
+  `borderStrong`.
+- **Weekday row:** M T W T F S S in `caption` `textSecondary`, Monday first,
+  hidden from screen readers.
+- **Days:** circles up to `sizes.calendarDay` (44) on a 7-column grid.
+  - **Always six rows,** so the sheet, and its arrows, never change height
+    between months.
+  - **No spill-over days** from the neighbouring months.
+  - **Tap target:** the whole cell, a full column × 44pt, not the drawn circle.
+    On a 320pt-wide phone the circle shrinks to the column (about 38pt).
+  - **Sanctioned exception** to the 44pt rule, beside map markers: calendar
+    columns may fall below 44pt wide on 320pt screens. They stay ≥ 24pt,
+    meeting WCAG 2.5.8, and 44pt tall.
+  - Available: a `textPrimary` number in `body` Medium.
+  - Selected, or a range's start and end: a `primary` filled circle with a
+    `textOnPrimary` number.
+  - In range: a `surfaceSubtle` band that runs into the end circles and rounds
+    off at week and month edges.
+  - Can't pick (e.g. the future): `textSecondary` and struck through. The day
+    is shown, never hidden.
+  - Today: a small dot under the number.
+- **Motion:** the grid fades between months over `motion.fast`. Nothing
+  springs.
+- **No swipe paging:** it would fight the sheet's pan-to-close, and the arrows
+  are the accessible path.
+- **Accessibility:**
+  - Each day is a button named in full, plus any role: "Tuesday 29 September
+    2026, today", "…, start of range", "…, not available".
+  - Selected and disabled are carried by `accessibilityState`, not repeated in
+    the name, since screen readers already speak them.
+  - Month changes are announced.
+  - Day numbers are capped at `calendarFontScaleCap`.
+
+**`TimeSlotPicker` (rough first, then refine: a large time with steppers)**
+This is the third design (2026-09-29), from research into time pickers. It
+replaced two scrolling chip rows, then an hour grid, which the owner found hard
+to use.
+- **Layout, top to bottom** (no helper line: the owner removed "A rough time is
+  fine.", 2026-09-30):
+  1. A full-width row of up to four equal part-of-day segments: Night 00–05, Morning
+     06–11, Afternoon 12–17, Evening 18–23.
+  2. One large time in its own `timeReadout` role (56/64 Bold) with tabular
+     numerals, flanked by − / + steppers (`sizes.timeStepper`, filled
+     `surfaceSubtle` circles). On 12-hour phones, AM / PM is set smaller in
+     `heading` `textSecondary`.
+  3. "about 17 hours ago" in `body` `textSecondary`.
+  4. The sheet's primary button repeats the value: "Confirm 21:15".
+- **Why this order:**
+  - People recall a past time by the part of the day first (Friedman 1993),
+    then narrow down.
+  - They round to 15 minutes anyway (Sanko & Iriguchi 2022).
+  - Taps beat drags for speed and completion, and under stress (WCAG 2.5.7;
+    Couper 2006). So there's no wheel and no dial.
+  - One large value, then controls, then one button is the modern pattern:
+    iOS Clock, Google Clock, Uber.
+- **Segments:**
+  - One `surfaceSubtle` track with up to four equal segments. The picked one is a
+    raised `surface` thumb (`shadows.soft`, a `borderStrong` hairline, Bold
+    label), not a `primary` fill, so the large time and Confirm stay the only
+    heavy shapes. In dark mode the thumb is DARKER than its track and the
+    shadow barely shows, so the hairline is what reads as raised there.
+  - A segment jumps to its part's middle (03:00, 09:00, 15:00, 21:00), or to
+    the latest slot that has passed today.
+  - Only parts that have started are shown, and they share the track's width:
+    at 14:37 today that's Night / Morning / Afternoon. A past day has all four.
+    (Unlike the calendar's struck-through days: a missing segment doesn't
+    shift anything a user is aiming at.) With only Night started (just after
+    midnight) the row isn't shown: one segment isn't a choice.
+  - Labels cap at `segmentFontScaleCap` so "Afternoon" survives large text.
+- **Steppers:**
+  - 15 minutes per tap, and a tap announces the new time.
+  - A hold steps at once, then repeats every `motion.stepRepeat`. Holds aren't
+    announced.
+  - They walk the day's offered slots, so they stop at 00:00 and at now, and
+    skip a DST-missing hour.
+  - Each step gives `selectionHaptic()`, a system picker's detent. This is the
+    one exception to the rule below that draft taps get neither a haptic nor an
+    announcement.
+- **Accessibility:**
+  - The large time is ONE `adjustable` element: swipe up / down steps 15
+    minutes, and its value is spoken in full ("21:15, about 17 hours ago").
+  - Steppers are "15 minutes earlier / later".
+  - A segment jump announces "Time set to 21:00".
+- **Labels:** the time uses `formatClock`, the device LOCALE's clock style (a
+  UK phone shows 21:15, a US one 9:15 pm). It follows the language region,
+  and may not reflect a separate OS 24-hour toggle.
+
+**Rules that apply to both**
+- The sheet edits a DRAFT. It commits on the primary button (Confirm or
+  Apply). Cancel or a swipe drops it.
+- A range picker always has a "Clear dates" way out, which commits an empty
+  range at once.
+- A commit gets `lightHaptic()` and a spoken confirmation, with ranges
+  spoken "11 July to 2 August". Draft taps get neither.
+- **Date AND time is two stages, never one long sheet.**
+  1. "Pick a date": the calendar alone. Tapping a day moves straight on.
+  2. "Pick a time": the day as a heading, with an underlined "Change" link back
+     to the calendar. Then the time picker, and "Confirm 21:15" over a ghost
+     Cancel. The large time is the summary; there is no separate line.
+  - The draft survives "Change".
+  - The sheet always opens on the date, with the stored day selected, so one
+    tap goes back to its time.
+  - Moving on is announced ("… Now pick a time.").
+  - One long sheet came to about 740pt and pushed Confirm below the fold.
 
 ## Screen conventions
 
@@ -533,6 +658,9 @@ barrel, since it pulls in Reanimated).
   fades, press, label floats) · `standard` 250 (screen-scale: sheets, slides)
   · `slow` 300 (hero continuity). Map camera moves are sanctioned exceptions
   (`mapFly` 500 / `mapPan` 350).
+- **Timings that aren't animations:** `longPress` 350 (hold before a
+  long-press fires) · `stepRepeat` 120 (a held TimeSlotPicker stepper repeats
+  about eight times a second).
 - **Easing:** one deceleration curve — `easeOut` — for enters and most timing
   (from `motionEasing.ts`). `easeIn` (exits) / `easeInOut` (reversible moves)
   are added there when a consumer needs one. No ad-hoc quad/cubic mix.

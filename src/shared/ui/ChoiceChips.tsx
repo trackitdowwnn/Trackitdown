@@ -6,11 +6,12 @@
  *        filters) read faster as tappable pills than as a select; one
  *        shared implementation keeps the radio-group semantics (radiogroup/
  *        radio + checked, 44pt targets) and pressed states consistent.
- *        Promoted from the wizard demo once DateTimeField became its
- *        second consumer. Values may be transient (a preset row can pass
- *        value=null and treat onSelect as an action).
+ *        Promoted from the wizard demo once a second screen needed it.
+ *        Values may be transient (a preset row can pass value=null and
+ *        treat onSelect as an action).
  * LINKS: docs/DESIGN_SYSTEM.md (Colour, Accessibility);
- *        src/shared/ui/DateTimeField.tsx (consumer).
+ *        src/features/vehicles/post/components/LastSeenTimeField.tsx (consumer:
+ *        the last-seen presets).
  *
  * Usage:
  *   <ChoiceChips

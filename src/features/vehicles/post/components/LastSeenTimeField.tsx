@@ -2,8 +2,13 @@
  * WHAT:  LastSeenTimeField — the body of "When did you last see it?".
  *        Five one-tap presets sit on the step itself. Below them, a field
  *        shows the stored answer ("Last seen / Today, 13:05 · 1h ago") and
- *        opens a sheet for an exact moment: three chip rows (day, hour,
- *        quarter hour), a live summary, then Confirm over a ghost Cancel.
+ *        opens a two-stage sheet for an exact moment:
+ *          1. "Pick a date": the app's own calendar (one month, ‹ › arrows, the
+ *             last 30 days pickable). Tapping a day moves straight on.
+ *          2. "Pick a time": the chosen day with a "Change" link back, then the
+ *             time picker (part-of-day segments to jump close, then a large
+ *             time with − / + 15-minute steppers), and "Confirm 21:15" over a
+ *             ghost Cancel.
  * WHY:   Replaces the shared DateTimeField on this step (2026-09-28). There,
  *        the presets were hidden inside a sheet titled "Last seen" (the step's
  *        own question again), and they never showed as picked. Android also
@@ -16,46 +21,58 @@
  *        Which preset is highlighted is local state, not a stored answer: after
  *        Back, Edit or a restored draft no chip is lit, and the field carries
  *        the value instead.
- *        Chip rows scroll sideways rather than listing 96 time slots down the
- *        page. BottomSheet has no footer, and a long vertical list would push
- *        Confirm off the bottom (and nest two vertical scrollers on Android).
+ *        The calendar and time slots are the shared custom picker (2026-09-29,
+ *        CalendarMonth + TimeSlotPicker), so search's date range speaks the
+ *        same visual language.
+ *        TWO STAGES, not one long sheet (owner's call, 2026-09-29). Date then
+ *        time is the order people answer in. It also halves the sheet: calendar
+ *        plus time plus buttons came to about 740pt, which pushed Confirm below
+ *        the fold on most phones. Each stage now fits on its own. The draft
+ *        survives "Change", so going back to the date keeps the chosen time
+ *        where it's still valid.
  *        A11Y: the chosen time is ANNOUNCED on every commit. VoiceOver would
  *        otherwise only say "selected" after a preset tap and never the time,
  *        and iOS has no live regions.
- * LINKS: src/features/vehicles/post/lib/lastSeenTime.ts (presets, options, draft);
+ * LINKS: src/features/vehicles/post/lib/lastSeenTime.ts (presets, window, draft);
  *        src/features/vehicles/post/components/postSteps.tsx (LastSeenWhenStep);
- *        src/shared/ui/DateTimeField.tsx (the field geometry this mirrors);
+ *        src/shared/ui/{CalendarMonth,TimeSlotPicker,DateRangeField}.tsx;
  *        src/shared/ui/{ChoiceChips,BottomSheet,Button}.tsx; docs/DESIGN_SYSTEM.md.
  */
 
-import { Feather } from '@expo/vector-icons';
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 
 import {
   clampDraft,
-  dayOptions,
   draftFromDate,
   draftToDate,
-  hourOptions,
   lastSeenPresets,
-  minuteOptions,
+  lastSeenWindow,
   toLastSeenIso,
   type LastSeenDraft,
   type LastSeenPresetKey,
 } from '../lib/lastSeenTime';
+import { useNow } from '@/shared/hooks';
 import { formatClock, formatDateTimeLabel, timeAgo } from '@/shared/lib';
-import { lightHaptic } from '@/shared/lib/haptics';
-import { BottomSheet, type BottomSheetRef, Button, ChoiceChips, SHEET_GUTTER } from '@/shared/ui';
 import {
-  radii,
-  sizes,
-  spacing,
-  typography,
-  usePalette,
-  useThemedStyles,
-  type Palette,
-} from '@/shared/theme';
+  dayA11yLabel,
+  dayHeading,
+  monthOf,
+  type CalendarMonthRef,
+  type DayId,
+} from '@/shared/lib/calendarDates';
+import { lightHaptic } from '@/shared/lib/haptics';
+import {
+  BottomSheet,
+  type BottomSheetRef,
+  Button,
+  CalendarMonth,
+  ChoiceChips,
+  FieldTrigger,
+  TimeSlotPicker,
+} from '@/shared/ui';
+import { motion, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 export interface LastSeenTimeFieldProps {
   /** ISO 8601 UTC, or null when unset. */
@@ -82,25 +99,14 @@ function describe(iso: string, now: Date, separator = ' · '): string {
 
 const spoken = (iso: string, now: Date) => describe(iso, now, ', ');
 
+// Once a minute while the step is on screen, so "16h ago" stays true and the
+// preset set follows the clock ("Earlier today" appears at 04:00). useNow, not
+// a render-time `new Date()`: the React Compiler would freeze that.
 const TICK_MS = 60_000;
 
-/**
- * Re-render once a minute while the step is on screen, so "16h ago" stays true
- * and the preset set follows the clock ("Earlier today" appears at 04:00). The
- * same tick as useTimeAgo, which can't be used directly: it needs a timestamp,
- * and here there may be no answer yet.
- */
-function useMinuteTick() {
-  const [, tick] = useReducer((count: number) => count + 1, 0);
-  useEffect(() => {
-    const id = setInterval(tick, TICK_MS);
-    return () => clearInterval(id);
-  }, []);
-}
-
+/** The body of "When did you last see it?" (see the file header). */
 export function LastSeenTimeField({ value, onChange }: LastSeenTimeFieldProps) {
   const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
   const sheetRef = useRef<BottomSheetRef>(null);
   const [preset, setPreset] = useState<LastSeenPresetKey | null>(null);
 
@@ -108,9 +114,11 @@ export function LastSeenTimeField({ value, onChange }: LastSeenTimeFieldProps) {
   // under the user's finger as a clock minute ticks over.
   const [sheetNow, setSheetNow] = useState(() => new Date());
   const [draft, setDraft] = useState<LastSeenDraft>(() => draftFromDate(new Date(), new Date()));
+  const [month, setMonth] = useState<CalendarMonthRef>(() => monthOf(draft.day));
+  const [stage, setStage] = useState<'date' | 'time'>('date');
+  const span = lastSeenWindow(sheetNow);
 
-  useMinuteTick();
-  const renderNow = new Date();
+  const renderNow = useNow(TICK_MS);
   const presets = lastSeenPresets(renderNow);
 
   // Every commit gets the app's "picked it" haptic and a spoken confirmation.
@@ -131,24 +139,23 @@ export function LastSeenTimeField({ value, onChange }: LastSeenTimeFieldProps) {
 
   const openSheet = () => {
     const now = new Date();
+    const start = draftFromDate(value ? new Date(value) : now, now);
     setSheetNow(now);
-    setDraft(draftFromDate(value ? new Date(value) : now, now));
+    setDraft(start);
+    setMonth(monthOf(start.day));
+    // Always the date first, even with an answer stored: the calendar shows
+    // it selected, and one tap on it goes straight back to its time.
+    setStage('date');
     sheetRef.current?.open();
   };
 
-  const updateDraft = (patch: Partial<LastSeenDraft>) => {
-    const next = clampDraft({ ...draft, ...patch }, sheetNow);
-    // Picking "Today" with 22:00 selected pulls the time back to the latest
-    // one that has passed. Sighted users see the chip move; say it out loud
-    // too, as iOS has no live regions.
-    const moved =
-      (patch.hour === undefined && next.hour !== draft.hour) ||
-      (patch.minute === undefined && next.minute !== draft.minute);
-    if (moved) {
-      const time = formatClock(toLastSeenIso(draftToDate(next)));
-      AccessibilityInfo.announceForAccessibility(`Time moved to ${time}, the latest available`);
-    }
-    setDraft(next);
+  // A day moves the sheet on to the time. clampDraft keeps the time valid
+  // for the new day (22:00 yesterday becomes the latest slot today).
+  const pickDay = (day: DayId) => {
+    setDraft((current) => clampDraft({ ...current, day }, sheetNow));
+    setStage('time');
+    // The calendar just left the screen, so say where the user is now.
+    AccessibilityInfo.announceForAccessibility(`${dayA11yLabel(day)}. Now pick a time.`);
   };
 
   const confirm = () => {
@@ -168,93 +175,87 @@ export function LastSeenTimeField({ value, onChange }: LastSeenTimeFieldProps) {
         testID="last-seen-presets"
       />
 
-      {/* The answer field: TextField-family geometry with a floated label,
-          as DateTimeField's trigger. One trailing icon: a calendar, since a
-          chevron would promise a new screen rather than a sheet. */}
-      <Pressable
-        accessibilityRole="button"
+      {/* The answer field (shared FieldTrigger, as DateRangeField's). */}
+      <FieldTrigger
+        label="Last seen"
+        value={value ? describe(value, renderNow) : null}
+        placeholder={PICK_LABEL}
+        onPress={openSheet}
         accessibilityLabel={
           value ? `Last seen, ${spoken(value, renderNow)}, change date and time` : PICK_LABEL
         }
         accessibilityHint="Opens a picker for the exact day and time"
-        onPress={openSheet}
-        style={({ pressed }) => [styles.field, pressed && styles.fieldPressed]}
-      >
-        <View style={styles.fieldText}>
-          {value ? (
+      />
+
+      <BottomSheet ref={sheetRef} title={stage === 'date' ? 'Pick a date' : 'Pick a time'}>
+        {/* Keyed on the stage, so each one fades in rather than swapping. */}
+        <Animated.View
+          key={stage}
+          entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+          style={styles.sheetBody}
+        >
+          {stage === 'date' ? (
             <>
-              <Text numberOfLines={1} style={styles.floatedLabel}>
-                Last seen
-              </Text>
-              <Text numberOfLines={1} style={styles.value}>
-                {describe(value, renderNow)}
-              </Text>
+              {/* Stage 1: the calendar alone. Tapping a day moves straight on
+                  to the time, so a date is one tap. */}
+              <CalendarMonth
+                month={month}
+                onMonthChange={setMonth}
+                minDay={span.minDay}
+                maxDay={span.maxDay}
+                selection={{ mode: 'single', day: draft.day }}
+                onSelectDay={pickDay}
+                today={span.maxDay}
+                testID="last-seen-calendar"
+              />
+              <Button label="Cancel" variant="ghost" onPress={() => sheetRef.current?.close()} />
             </>
           ) : (
-            <Text numberOfLines={1} style={styles.restingLabel}>
-              {PICK_LABEL}
-            </Text>
+            <>
+              {/* Stage 2: the picked day, with a way back, then the time. */}
+              <View style={styles.dayRow}>
+                <Text
+                  style={styles.dayTitle}
+                  accessibilityRole="header"
+                  accessibilityLabel={dayA11yLabel(draft.day)}
+                >
+                  {dayHeading(draft.day)}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Change date"
+                  // 44pt tall like every target: 18pt text + hitSlop was 42.
+                  hitSlop={{ left: spacing.md, right: spacing.md }}
+                  onPress={() => {
+                    setStage('date');
+                    // The focused link just unmounted: say where the user is.
+                    AccessibilityInfo.announceForAccessibility('Pick a date');
+                  }}
+                  style={styles.changeTarget}
+                >
+                  {({ pressed }) => (
+                    <Text style={[styles.changeLink, pressed && styles.changeLinkPressed]}>Change</Text>
+                  )}
+                </Pressable>
+              </View>
+
+              <TimeSlotPicker
+                day={draft.day}
+                value={draft}
+                onChange={(time) => setDraft((current) => clampDraft({ ...current, ...time }, sheetNow))}
+                now={sheetNow}
+              />
+
+              {/* No separate summary: the picker's large time IS the summary,
+                  and Confirm repeats it ("Confirm 21:15"). Stacked, primary
+                  over ghost: the app's confirm / dismiss sheet pattern. */}
+              <View style={styles.actions}>
+                <Button label={`Confirm ${formatClock(draftIso)}`} onPress={confirm} />
+                <Button label="Cancel" variant="ghost" onPress={() => sheetRef.current?.close()} />
+              </View>
+            </>
           )}
-        </View>
-        <Feather name="calendar" size={sizes.iconSm} color={palette.textSecondary} />
-      </Pressable>
-
-      <BottomSheet ref={sheetRef} title={PICK_LABEL}>
-        <View style={styles.sheetBody}>
-          {/* Header role on purpose, unlike SearchSheet's field labels. These
-              rows hold up to 30 and 24 chips, and heading navigation is a
-              screen reader's only cheap way past them. Labelling the
-              radiogroups instead is unreliable in React Native: iOS merges the
-              chips, Android adds a duplicate stop. */}
-          <View style={styles.group}>
-            <Text style={styles.groupLabel} accessibilityRole="header">
-              Day
-            </Text>
-            <ChoiceChips
-              options={dayOptions(sheetNow)}
-              value={draft.day}
-              onSelect={(day) => updateDraft({ day })}
-              scrollable
-              scrollToSelected
-              bleed={SHEET_GUTTER}
-              testID="last-seen-day"
-            />
-          </View>
-
-          <View style={styles.group}>
-            <Text style={styles.groupLabel} accessibilityRole="header">
-              Time
-            </Text>
-            <ChoiceChips
-              options={hourOptions(draft.day, sheetNow)}
-              value={String(draft.hour)}
-              onSelect={(hour) => updateDraft({ hour: Number(hour) })}
-              scrollable
-              scrollToSelected
-              bleed={SHEET_GUTTER}
-              testID="last-seen-hour"
-            />
-            <ChoiceChips
-              options={minuteOptions(draft.day, draft.hour, sheetNow)}
-              value={String(draft.minute)}
-              onSelect={(minute) => updateDraft({ minute: Number(minute) })}
-              testID="last-seen-minute"
-            />
-          </View>
-
-          {/* The summary sits WITH the buttons, so it reads as "confirm this". */}
-          <View style={styles.confirmBlock}>
-            <Text style={styles.draftSummary} accessibilityLiveRegion="polite">
-              {describe(draftIso, sheetNow)}
-            </Text>
-            {/* Stacked, primary over ghost: the pattern every confirm/dismiss
-                sheet in the app uses (PostSectionEditor, SaveYourCarSheet). */}
-            <View style={styles.actions}>
-              <Button label="Confirm" onPress={confirm} />
-              <Button label="Cancel" variant="ghost" onPress={() => sheetRef.current?.close()} />
-            </View>
-          </View>
-        </View>
+        </Animated.View>
       </BottomSheet>
     </View>
   );
@@ -267,54 +268,33 @@ const makeStyles = (c: Palette) =>
     root: {
       gap: spacing.xl,
     },
-    // Mirrors DateTimeField's trigger (TextField-family geometry).
-    field: {
+    sheetBody: {
+      gap: spacing.lg,
+    },
+    dayRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       gap: spacing.md,
-      minHeight: sizes.input,
-      borderWidth: 1,
-      borderColor: c.border,
-      borderRadius: radii.md,
-      backgroundColor: c.surface,
-      paddingHorizontal: spacing.lg,
     },
-    fieldPressed: {
-      backgroundColor: c.surfaceSubtle,
-    },
-    fieldText: {
-      flex: 1,
-      paddingVertical: spacing.sm,
-    },
-    floatedLabel: {
-      ...typography.caption,
-      fontFamily: typography.label.fontFamily,
-      color: c.textSecondary,
-    },
-    value: {
-      ...typography.body,
+    // A step below the sheet's title, like CalendarMonth's month title.
+    dayTitle: {
+      ...typography.cardTitle,
       color: c.textPrimary,
+      flexShrink: 1,
     },
-    restingLabel: {
-      ...typography.body,
-      color: c.textSecondary,
-    },
-    sheetBody: {
-      gap: spacing.xl,
-    },
-    group: {
-      gap: spacing.md,
-    },
-    groupLabel: {
+    // Airbnb's underlined text button, for a secondary step back.
+    changeLink: {
       ...typography.label,
-      color: c.textSecondary,
-    },
-    confirmBlock: {
-      gap: spacing.md,
-    },
-    draftSummary: {
-      ...typography.body,
       color: c.textPrimary,
+      textDecorationLine: 'underline',
+    },
+    changeTarget: {
+      minHeight: sizes.touchTarget,
+      justifyContent: 'center',
+    },
+    changeLinkPressed: {
+      color: c.textSecondary,
     },
     actions: {
       gap: spacing.sm,

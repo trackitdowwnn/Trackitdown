@@ -30,10 +30,12 @@ export { cardSurface } from './surfaces';
 export { sizes, type SizeToken } from './sizes';
 export { opacity, type OpacityToken } from './opacity';
 export {
+  calendarFontScaleCap,
   displayFontScaleCap,
   shrinkToFitMinScale,
   listRowStackFontScale,
   mapPinFontScaleCap,
+  segmentFontScaleCap,
   tabLabelFontScaleCap,
   typography,
   type TypographyToken,

@@ -91,7 +91,7 @@ export interface SearchCriteria {
    * ISO STRINGS, never Date objects: JSON.stringify turns a Date into an ISO
    * string but JSON.parse does not turn it back, so a Date-typed field would
    * arrive at the map screen as a string and every .getTime() on it would throw.
-   * This also matches DateTimeField's existing `value` contract.
+   * SeenRangeFields converts these to and from the calendar's day IDs.
    */
   seenFrom: string | null;
   seenTo: string | null;
@@ -385,8 +385,8 @@ export function seenRangeSummary(criteria: SearchCriteria, now: Date = new Date(
   // Drops the YEAR for dates in the current year: "11 Jul – 2 Aug" rather than
   // "11 Jul 2026 – 2 Aug 2026". The map pill is one line beside a back button
   // and a locate button, and the full form truncated to "…2 Au…" there.
-  // Shared with DateTimeField's date mode, which had the same problem in a
-  // half-width field — one rule, so the sheet and the pill cannot disagree.
+  // The range field's own summary (DateRangeField's describeRange) follows the
+  // same rule, so the sheet and the pill cannot disagree.
   const compact = (iso: string) => formatDateLabelCompact(iso, now);
 
   const { seenFrom, seenTo } = criteria;

@@ -172,7 +172,7 @@ jest.mock('@/shared/ui', () => {
   };
 });
 
-// SeenRangeFields → DateTimeField → BottomSheet (gorhom) drags a native graph
+// SeenRangeFields → DateRangeField → BottomSheet (gorhom) drags a native graph
 // this suite's partial reanimated mock cannot satisfy. Stubbed at the boundary,
 // like MakeField/ModelField and RadiusSlider above; the range control's own
 // behaviour is covered by SeenRangeFields.test.tsx.
@@ -430,9 +430,9 @@ describe('the When filter', () => {
     expect(withPreset.seenTo).toBeNull();
   });
 
-  it('"Any time" is the way OUT of a date range', async () => {
-    // DateTimeField's onChange is non-nullable and it has no clear affordance,
-    // so without this chip a range would be a state the user cannot escape.
+  it('"Any time" is a way OUT of a date range', async () => {
+    // One of two, with the range field's own "Clear dates" (covered in
+    // DateRangeField.test.tsx). The chip must keep working on its own.
     const { view, onApply } = await renderSheet();
 
     await act(async () => {

@@ -34,6 +34,12 @@ export const typography = {
    *  numbers like MoneySlider's readout — raising IT would drag those up too.
    *  Hence a role, not a bigger `display`. */
   displayHero: { fontSize: 40, lineHeight: 46, fontFamily: fontFamilies.black },
+  /** TimeSlotPicker's large time, and nothing else (2026-09-29): the ONE focus
+   *  of the time sheet, between two 52pt steppers. Bold, not Black: a number
+   *  read at a glance, not a headline. Its own role, like displayHero. At
+   *  `display` (32) or `displayHero` (40) the digits came out smaller than
+   *  the steppers beside them. */
+  timeReadout: { fontSize: 56, lineHeight: 64, fontFamily: fontFamilies.bold },
   display: { fontSize: 32, lineHeight: 38, fontFamily: fontFamilies.black },
   title: { fontSize: 24, lineHeight: 30, fontFamily: fontFamilies.bold },
   /** Feed section headers — between heading and title so a scrolling feed
@@ -112,6 +118,18 @@ export const shrinkToFitMinScale = typography.tabLabel.fontSize / typography.cap
  *  the bounty is fully scalable in the sheet list, in the peek card, and in
  *  the marker's own accessibilityLabel. */
 export const mapPinFontScaleCap = 1.3;
+
+/** Dynamic-type cap for CalendarMonth's day numbers and weekday letters. The
+ *  circle can't grow: seven of them share the row. At 1.5, body is 24/36,
+ *  which still fits the 38pt circle of a 320pt-wide phone. The full date is
+ *  in every day's accessibilityLabel, uncapped. */
+export const calendarFontScaleCap = 1.5;
+
+/** Dynamic-type cap for TimeSlotPicker's part-of-day segments. Up to four
+ *  share one row, and "Afternoon" must survive. At 1.2 it is about 83pt, which
+ *  shrinks to fit a 78pt segment (the four-way case); at 1.5 it truncated. Each label is a real radio
+ *  with an uncapped accessibilityLabel. */
+export const segmentFontScaleCap = 1.2;
 
 /**
  * Above this, a ListRow puts its trailing value UNDER the title instead of

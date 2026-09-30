@@ -1,27 +1,25 @@
 /**
- * WHAT:  Tests for lastSeenTime — the step's presets, the sheet's day / hour /
- *        quarter-hour options, and the draft clamp.
- * WHY:   These decide which moments a victim CAN report. Two ways they could
- *        go wrong:
- *          - offering a future slot, or one outside the window, would let a
- *            false last-seen time onto a live post;
- *          - a preset landing on the wrong day ("Last night" on the wrong
- *            night) would put the alert fan-out in the wrong window.
- *        Every clock here is a fixed local time, so the tests don't depend on
- *        when they run.
- * LINKS: src/features/vehicles/post/lib/lastSeenTime.ts.
+ * WHAT:  Tests for lastSeenTime — the step's presets, the exact picker's
+ *        30-day window, and the draft clamp.
+ * WHY:   These decide which moments a victim CAN report:
+ *          - a window that reaches into the future, or a draft left on a slot
+ *            that hasn't happened, would let a false last-seen time onto a
+ *            live post;
+ *          - a preset on the wrong day ("Last night" on the wrong night) would
+ *            put the alert fan-out in the wrong window.
+ *        The calendar maths itself is covered in calendarDates.test.ts. Every
+ *        clock here is a fixed local time.
+ * LINKS: src/features/vehicles/post/lib/lastSeenTime.ts;
+ *        src/shared/lib/calendarDates.test.ts.
  */
 
 import {
   clampDraft,
-  dayKey,
-  dayOptions,
   draftFromDate,
   draftToDate,
-  hourOptions,
   LAST_SEEN_WINDOW_DAYS,
   lastSeenPresets,
-  minuteOptions,
+  lastSeenWindow,
   toLastSeenIso,
 } from './lastSeenTime';
 
@@ -73,52 +71,10 @@ describe('lastSeenPresets', () => {
   });
 });
 
-describe('dayOptions', () => {
-  it('covers today back through the window, newest first', () => {
-    const days = dayOptions(NOW);
-    expect(days).toHaveLength(LAST_SEEN_WINDOW_DAYS);
-    expect(days[0]).toEqual(expect.objectContaining({ value: TODAY, label: 'Today' }));
-    expect(days[1]).toEqual(expect.objectContaining({ value: YESTERDAY, label: 'Yesterday' }));
-    expect(days[2]).toEqual(expect.objectContaining({ value: '2026-09-26', label: 'Sat 26 Sept' }));
-    expect(days[days.length - 1].value).toBe('2026-08-30');
-  });
-
-  it('tells screen readers which day "Today" and "Yesterday" are', () => {
-    const [today, yesterday] = dayOptions(NOW);
-    expect(today.accessibilityLabel).toBe('Today, Mon 28 Sept');
-    expect(yesterday.accessibilityLabel).toBe('Yesterday, Sun 27 Sept');
-  });
-});
-
-describe('hourOptions / minuteOptions', () => {
-  it('stops today at the current hour', () => {
-    const hours = hourOptions(TODAY, NOW).map((option) => option.value);
-    expect(hours[0]).toBe('0');
-    expect(hours[hours.length - 1]).toBe('14');
-  });
-
-  it('offers every hour on an earlier day', () => {
-    expect(hourOptions(YESTERDAY, NOW)).toHaveLength(24);
-  });
-
-  it('stops the current hour at the last quarter already passed', () => {
-    expect(minuteOptions(TODAY, 14, NOW).map((option) => option.value)).toEqual(['0', '15', '30']);
-  });
-
-  it('offers all four quarters otherwise', () => {
-    expect(minuteOptions(TODAY, 13, NOW)).toHaveLength(4);
-    expect(minuteOptions(YESTERDAY, 14, NOW)).toHaveLength(4);
-  });
-
-  it('always leaves at least ":00" at the top of the hour', () => {
-    const topOfHour = new Date(2026, 8, 28, 9, 0, 30);
-    expect(minuteOptions(TODAY, 9, topOfHour).map((option) => option.value)).toEqual(['0']);
-  });
-
-  it('labels minutes tersely but reads them out in full', () => {
-    const [onTheHour, quarterPast] = minuteOptions(YESTERDAY, 10, NOW);
-    expect(onTheHour).toEqual({ value: '0', label: ':00', accessibilityLabel: 'On the hour' });
-    expect(quarterPast).toEqual({ value: '15', label: ':15', accessibilityLabel: '15 minutes past' });
+describe('lastSeenWindow', () => {
+  it('runs from today back through the window, today counting as day 1', () => {
+    expect(LAST_SEEN_WINDOW_DAYS).toBe(30);
+    expect(lastSeenWindow(NOW)).toEqual({ minDay: '2026-08-30', maxDay: TODAY });
   });
 });
 
@@ -135,8 +91,8 @@ describe('the draft', () => {
     expect(draftFromDate(NOW, NOW)).toEqual({ day: TODAY, hour: 14, minute: 30 });
   });
 
-  it('pulls a future hour back when the day changes to today', () => {
-    // 22:45 yesterday, then the user taps "Today" at 14:37.
+  it('pulls a future time back when the day changes to today', () => {
+    // 22:45 yesterday, then the user taps today at 14:37.
     expect(clampDraft({ day: TODAY, hour: 22, minute: 45 }, NOW)).toEqual({
       day: TODAY,
       hour: 14,
@@ -161,12 +117,8 @@ describe('the draft', () => {
   });
 });
 
-describe('helpers', () => {
-  it('dayKey zero-pads, so keys sort as dates', () => {
-    expect(dayKey(new Date(2026, 0, 5))).toBe('2026-01-05');
-  });
-
-  it('toLastSeenIso stores UTC with the seconds zeroed', () => {
+describe('toLastSeenIso', () => {
+  it('stores UTC with the seconds zeroed', () => {
     const iso = toLastSeenIso(NOW);
     expect(iso.endsWith('Z')).toBe(true);
     expect(new Date(iso)).toEqual(new Date(2026, 8, 28, 14, 37, 0));
