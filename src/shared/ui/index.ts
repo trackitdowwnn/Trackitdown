@@ -85,12 +85,16 @@ export {
   type SurfaceTabOption,
   type SurfaceTabsProps,
 } from './SurfaceTabs';
+export { CalendarMonth, type CalendarMonthProps, type CalendarSelection } from './CalendarMonth';
 export {
-  DEFAULT_DATE_TIME_PRESETS,
-  DateTimeField,
-  type DateTimeFieldProps,
-  type DateTimePreset,
-} from './DateTimeField';
+  DateRangeField,
+  describeRange,
+  nextRange,
+  type DateRangeFieldProps,
+  type DayRange,
+} from './DateRangeField';
+export { TimeSlotPicker, type TimeSlotPickerProps } from './TimeSlotPicker';
+export { FieldTrigger, type FieldTriggerProps } from './FieldTrigger';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { ErrorState, type ErrorStateProps } from './ErrorState';
 export { FullscreenLoader, type FullscreenLoaderProps } from './FullscreenLoader';

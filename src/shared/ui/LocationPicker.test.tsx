@@ -23,7 +23,7 @@ jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default,
 );
 
-// Same visibility-aware gorhom boundary the BottomSheet/DateTimeField suites
+// Same visibility-aware gorhom boundary the BottomSheet/LastSeenTimeField suites
 // use, so the search sheet's open()/close() actually gate its children.
 jest.mock('@gorhom/bottom-sheet', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports

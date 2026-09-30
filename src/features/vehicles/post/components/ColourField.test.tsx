@@ -23,7 +23,7 @@ jest.mock('react-native-safe-area-context', () =>
 );
 
 // BottomSheet is gorhom-based; reuse the visibility-aware boundary mock the
-// BottomSheet/DateTimeField suites established so open()/close() gate children.
+// BottomSheet suite established so open()/close() gate children.
 jest.mock('@gorhom/bottom-sheet', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const React = require('react');

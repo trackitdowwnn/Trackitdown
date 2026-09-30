@@ -81,11 +81,21 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
    `DateTimeField` on this step). One-tap presets sit on the step: Just now,
    About an hour ago, Earlier today (hidden before 04:00), Last night
    (yesterday 22:00) and Yesterday (same clock time). Below them, the field
-   shows the stored answer and opens a "Pick a date and time" sheet of day /
-   hour / quarter-hour chips, with Confirm over a ghost Cancel. Only moments that can be
-   true are offered: nothing in the future, nothing older than
-   `LAST_SEEN_WINDOW_DAYS` (30). Logic lives in `lib/lastSeenTime.ts`. Stored
-   value unchanged: ISO UTC, minute precision.
+   shows the stored answer and opens the app's custom picker (2026-09-29) in two
+   stages:
+   1. "Pick a date": a `CalendarMonth` (one month, ‹ › arrows). Tapping a day
+      moves on.
+   2. "Pick a time": the day with a "Change" link back, then `TimeSlotPicker`
+      (Night / Morning / Afternoon / Evening segments to jump close, then a
+      large time with − / + 15-minute steppers), with "Confirm 21:15" over a
+      ghost Cancel.
+
+   See DESIGN_SYSTEM.md, Date & time.
+   Only moments that can be true are offered: nothing in the future, nothing
+   older than `LAST_SEEN_WINDOW_DAYS` (30). The rules live in
+   `lib/lastSeenTime.ts` and the calendar maths in
+   `src/shared/lib/calendarDates.ts`. Stored value unchanged: ISO UTC, minute
+   precision.
 9. **Last seen where** — `LocationPicker` (embedded), storing point +
    `addressLabel`; the coarse grouping `lastSeenArea` is derived here.
 10. **Description** — free-text `descRecognise` ("About this car"), ≤1000 chars

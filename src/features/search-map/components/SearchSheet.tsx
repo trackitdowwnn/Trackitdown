@@ -497,9 +497,9 @@ export function SearchSheet({
 
   const handleWhenChip = useCallback(
     (value: string) => {
-      // "Any time" is also the only way OUT of a date range: DateTimeField's
-      // onChange is non-nullable and has no clear affordance, so this chip is
-      // the escape hatch. setWhen clears both dates on the way through.
+      // "Any time" is also a way OUT of a date range (the range field's own
+      // "Clear dates" is the other): setWhen clears both dates on the way
+      // through.
       setWhen({ recencyDays: value === 'any' ? null : Number(value) });
     },
     [setWhen],

@@ -495,12 +495,15 @@ charge of panning), and the same radius is sent as `p_radius_m` with an origin,
 so the results are genuinely narrowed. Both constraints apply — the circle is
 inscribed in the box, and the extra selectivity is the corners.
 
-**When is either relative or absolute, never both.** The chips set
-`recencyDays` ("within the last N days"); the always-visible From/To pickers set
-`seenFrom` / `seenTo`, an exact window on `posts.last_seen_at` — the thing no
-day-count can express ("the week my car went missing"). Picking a date clears
-the preset; **"Any time" is the only way back out of a range**, because
-`DateTimeField.onChange` is non-nullable and the field has no clear affordance.
+**When is either relative or absolute, never both.**
+- The chips set `recencyDays` ("within the last N days").
+- The always-visible "Dates seen" field (the shared `DateRangeField`, a custom
+  calendar range, since 2026-09-29) sets `seenFrom` / `seenTo`. That's an
+  exact window on `posts.last_seen_at`, the thing no day count can express
+  ("the week my car went missing").
+- Picking dates clears the preset.
+- There are two ways back out of a range: the field's own **"Clear dates"**,
+  and the **"Any time"** chip.
 `setWhen` in `useSearchCriteria.ts`
 owns the exclusion, because the server ANDs the two: a state holding both would
 silently intersect them and return fewer cars than either control claims.

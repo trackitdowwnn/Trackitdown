@@ -60,6 +60,9 @@ export const motion = {
   toastVisible: 2500,
   /** Hold duration (ms) before a long-press lifts an element into a drag. */
   longPress: 350,
+  /** Repeat interval (ms) of a held stepper (TimeSlotPicker): about eight
+   *  steps a second, quick enough to cross hours, slow enough to stop on one. */
+  stepRepeat: 120,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */
   loaderMinVisible: 600,
   /** One cycle of a calm loading pulse (PhotoGridPicker's uploading tile). */

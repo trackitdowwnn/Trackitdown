@@ -322,6 +322,25 @@ export const sizes = {
    * tall. It matches the touch targets either side of it.
    */
   threadHeaderTile: 44,
+  /**
+   * CalendarMonth's day circle (added 2026-09-29), as a MAXIMUM: it shrinks to
+   * the column width on narrow phones. Its own token rather than `touchTarget`,
+   * because it is a DRAWN size. The hit area is the whole cell, not the circle.
+   */
+  calendarDay: 44,
+  /**
+   * CalendarMonth's bordered ‹ › buttons, drawn diameter. The pressable is
+   * padded out to `touchTarget` with hitSlop.
+   */
+  calendarNavButton: 36,
+  /** CalendarMonth's "today" marker under the day number. */
+  calendarTodayDot: 4,
+  /**
+   * TimeSlotPicker's − / + circles. A drawn size, NOT `control` (a button's
+   * height), which happens to be the same 52 today. Big enough to hold down
+   * for a repeat without the thumb covering the time.
+   */
+  timeStepper: 52,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

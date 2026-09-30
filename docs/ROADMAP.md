@@ -245,6 +245,21 @@ taken first, deliberately.
   `scrollable`; `PermissionPrimer` (shared) and `LocationPrimerCard`
   (search-map) are two anatomies for one job. Collapse each to one.
 
+- **DELIBERATE EXCEPTION, 2026-09-29: the custom date & time picker.** The
+  owner chose to replace the platform pickers before the ten-tester beta.
+  - It covers `CalendarMonth`, `TimeSlotPicker` and `DateRangeField`, used by
+    last seen and by search's "Dates seen".
+  - JS no longer imports `@react-native-community/datetimepicker`, but the
+    package and its `app.json` plugin are **deliberately kept**, so this change
+    ships as a plain OTA.
+  - ⚠️ Remove them only in the commit that also **bumps `expo.version`** for a
+    native build. The runtime policy is `appVersion`. A binary without the
+    module but still on runtime 1.0.0 would receive older update groups (a
+    rollback, a republish, a hotfix from pre-merge main). Those import the
+    module and crash at launch.
+  - It's recorded here so the "add nothing" rule below stays honest. It is not
+    a precedent.
+
 **Add nothing.** The review's honest answer to "what's missing" was *finish the
 spotter's half and start measuring* — both already scoped below. Everything
 else proposed failed the "why now rather than post-launch" test and is recorded
