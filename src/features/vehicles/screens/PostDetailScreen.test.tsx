@@ -23,7 +23,24 @@ jest.mock('@/features/watchlist', () => ({
 
 // The sighting-activity section owns its own data fetching (both faces hit
 // supabase) — stub the feature barrel; the section has its own tests.
-jest.mock('@/features/sightings', () => ({ PostSightingsSection: () => null }));
+// The safety sheet is stubbed to its ref API: the tests check the report
+// waits for it, and run its "Continue" by hand (the sheet's own
+// behaviour is pinned in ReportSafetySheet.test).
+const mockSafetyOpen = jest.fn();
+jest.mock('@/features/sightings', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const { useImperativeHandle } = require('react');
+  return {
+    PostSightingsSection: () => null,
+    ReportSafetySheet: ({ ref }: { ref: unknown }) => {
+      useImperativeHandle(ref as never, () => ({ open: mockSafetyOpen }));
+      return null;
+    },
+  };
+});
+/** "Continue" on the last sheet opened. */
+const confirmSafety = () =>
+  act(async () => (mockSafetyOpen.mock.lastCall?.[0] as { onContinue: () => void }).onContinue());
 
 // The per-section editors reach the supabase-backed save API — stub the host +
 // pencil (edit-gating is covered in PostDetailBody.test).
@@ -183,6 +200,24 @@ describe('PostDetailScreen', () => {
     expect(queryByText('Manage listing')).toBeNull();
   });
 
+  it('⚠️ "I\'ve seen this car" shows the safety sheet, and reports only after it', async () => {
+    mockPush.mockClear();
+    mockSafetyOpen.mockClear();
+    setResult('ready', { kind: 'visible', post });
+    const { getByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+
+    await fireEvent.press(getByText("I've seen this car"));
+    // For THIS post: the sheet leaves its proof against the id it was given.
+    expect(mockSafetyOpen).toHaveBeenCalledWith(expect.objectContaining({ postId: 'p1' }));
+    expect(mockPush).not.toHaveBeenCalled();
+
+    await confirmSafety();
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/report-sighting',
+      params: expect.objectContaining({ postId: 'p1', source: 'detail' }),
+    });
+  });
+
   it('owner mode (is_owner): shows "Manage listing" instead', async () => {
     setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
     const { getByText, queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
@@ -236,6 +271,7 @@ describe('PostDetailScreen', () => {
     beforeEach(() => {
       mockPush.mockClear();
       mockOpenThread.mockClear();
+      mockSafetyOpen.mockClear();
     });
 
     it('WITHOUT a sighting: routes into the report flow (no cold DM)', async () => {
@@ -245,8 +281,15 @@ describe('PostDetailScreen', () => {
         fireEvent.press(getByText('Report a sighting'));
       });
       expect(mockOpenThread).not.toHaveBeenCalled();
+      // The safety sheet comes first; the report waits for it.
+      expect(mockSafetyOpen).toHaveBeenCalledTimes(1);
+      expect(mockPush).not.toHaveBeenCalled();
+      await confirmSafety();
       expect(mockPush).toHaveBeenCalledWith(
-        expect.objectContaining({ pathname: '/report-sighting', params: expect.objectContaining({ postId: 'p1' }) }),
+        expect.objectContaining({
+          pathname: '/report-sighting',
+          params: expect.objectContaining({ postId: 'p1' }),
+        }),
       );
     });
 

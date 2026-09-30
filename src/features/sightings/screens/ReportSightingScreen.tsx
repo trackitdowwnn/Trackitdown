@@ -1,7 +1,9 @@
 /**
  * WHAT:  ReportSightingScreen — the report-sighting route's orchestrator:
  *        check the rate-limit quota FIRST (a spent quota shows a kind state,
- *        never the wizard), then run the speed wizard, then swap to the
+ *        never the wizard), then the safety sheet unless it was just confirmed
+ *        for this post (lib/safetyAck.ts; a deep link gets it here), then run
+ *        the speed wizard, then swap to the
  *        success screen ("Report sent — thank you") whose Done returns to
  *        where the spotter came from.
  * WHY:   The 3-per-post-per-day limit is friendlier as a gate than as a
@@ -19,7 +21,7 @@
 
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -42,10 +44,12 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { Button, EmptyState, FullscreenLoader, useToast } from '@/shared/ui';
+import { Button, EmptyState, FullscreenLoader, SafetyNotice, useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
 
 import { fetchSightingQuota, submitSighting } from '../api/sightingApi';
+import { ReportSafetySheet, type ReportSafetySheetRef } from '../components/ReportSafetySheet';
+import { hasFreshSafetyAck } from '../lib/safetyAck';
 import {
   REPORT_SIGHTING_INITIAL_ANSWERS,
   reportSightingFlow,
@@ -96,6 +100,24 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
   const palette = usePalette();
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>({ kind: 'checking' });
+
+  // No way into the camera without the safety sheet (SECURITY_AND_TRUST §1).
+  // The entry points show it over the listing, and its confirm leaves an
+  // in-memory proof for this post (never a URL param: those can be forged).
+  // Anything that lands here without one (a deep link) gets the sheet now,
+  // after the quota check (a spent quota needs no safety moment) and before
+  // the wizard mounts.
+  // SAFETY: the wizard (and its camera) mounts only once this is true.
+  const [safetyOk, setSafetyOk] = useState(() => hasFreshSafetyAck(postId));
+  const safetyRef = useRef<ReportSafetySheetRef>(null);
+  const needsSafety = phase.kind === 'wizard' && !safetyOk;
+  const openSafety = () => safetyRef.current?.open({ postId, onContinue: () => setSafetyOk(true) });
+  useEffect(() => {
+    if (needsSafety) safetyRef.current?.open({ postId, onContinue: () => setSafetyOk(true) });
+  }, [needsSafety, postId]);
+
+  // Every way out: a cold-start deep link has nowhere to go back to.
+  const leave = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
   // The quota gate: spent → the kind state instead of the wizard. A failed
   // CHECK never blocks reporting (the RPC is the real enforcement). The
@@ -149,7 +171,7 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
           title="You’ve sent 3 reports for this car today"
           body="The owner has them. If you spot it again tomorrow, you can report again."
           actionLabel="Done"
-          onAction={() => router.back()}
+          onAction={leave}
         />
       </View>
     );
@@ -160,8 +182,22 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
       <SightingSent
         postId={postId}
         bountyPence={bountyPence}
-        onDone={() => router.back()}
+        onDone={leave}
       />
+    );
+  }
+
+  if (needsSafety) {
+    // Closing the sheet without confirming leaves the report. The page behind
+    // it isn't blank: if the sheet ever failed to present, this still gives a
+    // way on (which re-opens the SHEET, never skips it) and a way out.
+    return (
+      <View style={[styles.stateWrap, styles.safetyWrap]}>
+        <SafetyNotice />
+        <Button label="Show the safety check" onPress={openSafety} />
+        <Button label="Not now" variant="ghost" onPress={leave} />
+        <ReportSafetySheet ref={safetyRef} source="direct" onCancel={leave} />
+      </View>
     );
   }
 
@@ -172,7 +208,7 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
         ...REPORT_SIGHTING_INITIAL_ANSWERS,
         confirmableFeatures: phase.confirmableFeatures,
       }}
-      onExit={() => router.back()}
+      onExit={leave}
       onComplete={handleComplete}
     />
   );
@@ -285,6 +321,12 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     backgroundColor: c.background,
+  },
+  // The deep-link fallback behind the safety sheet: the screen's gutter, and
+  // the confirm-sheet button rhythm.
+  safetyWrap: {
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
   },
   sent: {
     flex: 1,

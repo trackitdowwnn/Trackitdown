@@ -1,7 +1,8 @@
 /**
  * WHAT:  Button — the app's pressable action primitive. Variants `primary`
  *        (near-black fill, ADR-0006), `secondary` (outline), `ghost` (bare),
- *        `danger` (red fill), `subtle` (grey fill, ink label — the reference's
+ *        `danger` (red fill), `dangerOutline` (red outline, for an emergency
+ *        action beside a primary), `subtle` (grey fill, ink label — the reference's
  *        "Show all N" block button; docs/design-refs/post-detail/
  *        REFERENCE_SPEC.md §7); 52pt tall, `md` radius, full-width by default.
  * WHY:   Buttons appear on nearly every screen and must look and behave
@@ -9,8 +10,9 @@
  *        the variants keeps pressed/disabled states and touch-target sizing
  *        consistent, and stops screens hand-rolling their own Pressables.
  *        Text-only plus an optional loading spinner (the post-a-car wizard's
- *        DVLA lookup and submit need an in-button busy state) — icons still
- *        get added only when a real flow needs them, not speculatively.
+ *        DVLA lookup and submit need an in-button busy state), and an optional
+ *        leading icon, added 2026-09-30 for the first flow that needed one
+ *        (the safety sheet's phone glyph on "Call 999").
  * LINKS: docs/DESIGN_SYSTEM.md (Core components, Accessibility);
  *        src/shared/theme.
  *
@@ -19,18 +21,21 @@
  *   <Button label="Back" variant="ghost" onPress={goBack} />
  */
 
+import { Feather } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
+  View,
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
 
 import { opacity, radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dangerOutline' | 'subtle';
 
 export interface ButtonProps {
   /** Button text — sentence case per the design system's tone rules. */
@@ -47,6 +52,12 @@ export interface ButtonProps {
   loading?: boolean;
   /** Buttons stretch full-width by default; set false to hug content. */
   fullWidth?: boolean;
+  /** A Feather glyph before the label, in the label's colour. */
+  icon?: ComponentProps<typeof Feather>['name'];
+  /** Spoken instead of `label`. Start it with the visible words, so voice
+   *  control still matches what's on screen. */
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 /**
@@ -87,6 +98,14 @@ const makeVariantStyles = (
     pressed: { backgroundColor: c.dangerPressed },
     label: { color: c.textOnPrimary },
   },
+  // `secondary`'s outline in the danger colour: an emergency action that must
+  // be seen without outweighing the primary beside it (the report safety
+  // sheet's "Call 999").
+  dangerOutline: {
+    rest: { borderWidth: 1, borderColor: c.danger },
+    pressed: { borderWidth: 1, borderColor: c.danger, backgroundColor: c.surfaceSubtle },
+    label: { color: c.danger },
+  },
   // The page's only non-CTA block button (the "show all/more" pattern):
   // quiet grey fill, ink label — never competes with a primary action.
   subtle: {
@@ -103,6 +122,9 @@ export function Button({
   disabled = false,
   loading = false,
   fullWidth = true,
+  icon,
+  accessibilityLabel,
+  accessibilityHint,
 }: ButtonProps) {
   const variantStyle = useThemedStyles(makeVariantStyles)[variant];
   // Loading blocks presses like disabled, but reads as "busy" not "unavailable"
@@ -112,6 +134,8 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled, busy: loading }}
       disabled={blocked}
       onPress={onPress}
@@ -124,11 +148,18 @@ export function Button({
     >
       {/* Keep the label mounted (hidden) under the spinner so the button holds
           its width instead of collapsing to the indicator. */}
-      <Text
-        style={[styles.label, variantStyle.label, loading && styles.hiddenLabel]}
-      >
-        {label}
-      </Text>
+      <View style={[styles.content, loading && styles.hiddenLabel]}>
+        {icon ? (
+          <Feather
+            name={icon}
+            size={sizes.iconSm}
+            color={variantStyle.label.color}
+            accessible={false}
+            importantForAccessibility="no"
+          />
+        ) : null}
+        <Text style={[styles.label, variantStyle.label]}>{label}</Text>
+      </View>
       {loading ? (
         <ActivityIndicator
           color={variantStyle.label.color}
@@ -158,8 +189,20 @@ const styles = StyleSheet.create({
   disabled: {
     opacity: opacity.disabled,
   },
+  // The label, with the icon before it when there is one.
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  // flexShrink: beside an icon, a long label at large text wraps rather than
+  // running out of the button.
   label: {
     ...typography.label,
+    flexShrink: 1,
+    // A wrapped label (large text) centres like the box it's in.
+    textAlign: 'center',
   },
   hiddenLabel: {
     opacity: 0,

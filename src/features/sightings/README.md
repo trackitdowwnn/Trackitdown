@@ -16,15 +16,24 @@ intent continuation. Full-screen route
 
 A SPEED flow: the spotter may be standing near the vehicle. The shared wizard
 in its lightest shape — one phase, **no intro screens** (the framework's
-`intro` became optional for this flow), 4 steps, big targets, everything
+`intro` became optional for this flow), 3 steps, big targets, everything
 optional skippable. Safety copy calm, unmissable, never lecturing.
 
 ## Steps
 
-1. **Safety gate** (not skippable, 3-second pass) — SafetyNotice as hero:
-   report from a distance / never approach / 999 first. Primary **Continue**
-   plus a distinct **Call 999** (`tel:` link). Shown every time.
-2. **Photos** — camera-FIRST: with no evidence yet the full-screen
+0. **Safety sheet, BEFORE the flow** (`components/ReportSafetySheet.tsx`,
+   2026-09-30; it was the wizard's first screen, "Before you report"). A
+   bottom sheet over the listing, titled "Stay safe — report, don't
+   approach", with SafetyNotice's `points`: never approach / take photos
+   from where you are / 999. Primary **Continue** (owner's call over the research's "I'm at a safe
+   distance"), plus a
+   red-outline **Call 999** (`tel:`, keeps the sheet open). Dismissing
+   cancels. Shown every time; logged as `safety_sheet` (shown / continued /
+   dismissed / call_999). A confirm leaves an in-memory proof for that post
+   (`lib/safetyAck.ts`, 30s); without one (a deep link) the report screen
+   shows the sheet itself before the camera. Never a URL param: those can be
+   forged.
+1. **Photos** — camera-FIRST: with no evidence yet the full-screen
    `CameraCapture` opens immediately (the car may drive off); once something
    is captured the **`PhotoGridPicker` grid (source="capture") is the
    resting state** — tap a tile for a full-screen preview, ⋯/a11y actions to
@@ -36,7 +45,7 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
    `PermissionPrimer`; **denied/failed GPS never blocks** — the report
    proceeds flagged `location_unavailable`. Poor accuracy (> ~100 m) is
    recorded with its value, never rejected.
-3. **Context** (all optional) — "Anything else that helps?", four tap groups
+2. **Context** (all optional) — "Anything else that helps?", four tap groups
    + the note, everything skippable and tap-again-clears:
    - **What's it doing?** — single-select state (Parked · Driving · Being
      loaded/towed), stored in `context_flags`. Parked reveals **Likely to
@@ -53,7 +62,7 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      in it); the last two reveal the fixed inline register "Don't approach —
      your report is enough."
    An empty step continues freely — skipping costs nothing.
-4. **Confirm & send** — photos, a small non-interactive map of the CAPTURED
+3. **Confirm & send** — photos, a small non-interactive map of the CAPTURED
    point ("Reported near ‹area›") — display only, **no manual location
    editing** (`// SAFETY`: the capture point is the evidence), "Just now",
    chips/note. CTA **Send report**; failure keeps the wizard fully intact for

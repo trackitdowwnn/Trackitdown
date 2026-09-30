@@ -6,8 +6,8 @@
  *        (launch options, gallery photos flagged source:'gallery' and NEVER
  *        location-bearing, canceled pick is a no-op, remaining-slot
  *        selectionLimit), the requirement-line copy variants, and the
- *        "Library" badge on the confirm grid. Plus the safety gate's
- *        one-tap 999 path.
+ *        "Library" badge on the confirm grid. (The safety gate's 999 path
+ *        moved with it to ReportSafetySheet.test.tsx, 2026-09-30.)
  * WHY:   The photo step is where the anti-fraud evidence is born (DOMAIN
  *        sighting rules / ADR-0003) — a wiring slip here either strands a
  *        spotter (camera never mounts after the primer) or corrupts evidence
@@ -24,12 +24,11 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { useState } from 'react';
-import { Linking } from 'react-native';
 
 import type { EvidencePhoto } from '@/shared/ui';
 
 import type { ReportSightingAnswers } from '../types';
-import { ConfirmStep, PhotosStep, SafetyStep, SIGHTING_LOCATION_PRIMER } from './sightingSteps';
+import { ConfirmStep, PhotosStep, SIGHTING_LOCATION_PRIMER } from './sightingSteps';
 
 const mockTakePicture = jest.fn();
 jest.mock('expo-camera', () => {
@@ -160,19 +159,6 @@ beforeEach(() => {
   mockGetForegroundPermissions.mockResolvedValue({ granted: true, canAskAgain: true });
   mockRequestForegroundPermissions.mockResolvedValue({ granted: true, canAskAgain: true });
   mockLaunchLibrary.mockResolvedValue({ canceled: true, assets: [] });
-});
-
-describe('SafetyStep', () => {
-  it('offers the one-tap 999 path (tel:999) alongside the notice', async () => {
-    const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true as never);
-    let view!: Awaited<ReturnType<typeof render>>;
-    await act(async () => {
-      view = await render(<SafetyStep answers={{}} setAnswers={() => {}} />);
-    });
-    await press(view.getByLabelText('Call 999'));
-    expect(openURL).toHaveBeenCalledWith('tel:999');
-    openURL.mockRestore();
-  });
 });
 
 describe('PhotosStep — location primer', () => {

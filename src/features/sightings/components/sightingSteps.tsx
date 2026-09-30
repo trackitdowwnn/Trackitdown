@@ -1,6 +1,7 @@
 /**
- * WHAT:  The four report-sighting wizard step components (2026-07-30
- *        rebuild): the safety gate (SafetyNotice hero + Call 999), the
+ * WHAT:  The three report-sighting wizard step components (2026-07-30
+ *        rebuild; the safety gate moved out to ReportSafetySheet on
+ *        2026-09-30, shown before the flow opens): the
  *        camera-AS-the-step photos step (in-place viewfinder, no modal, the
  *        ADR-0003 gallery button beside the shutter), the optional context
  *        step (state tap-cards whose parked/driving follow-up opens a
@@ -22,7 +23,8 @@
  *        src/features/sightings/components/CompassPicker.tsx;
  *        src/features/sightings/lib/contextLabels.ts (the shared vocabulary);
  *        src/shared/ui (CameraCapture, PhotoGridPicker, PermissionPrimer,
- *        SafetyNotice, ChoiceChips, ChoiceChipsMulti, TextField, AppMap);
+ *        ChoiceChips, ChoiceChipsMulti, TextField, AppMap);
+ *        src/features/sightings/components/ReportSafetySheet.tsx (the gate);
  *        docs/DOMAIN.md (Sighting rules — structured context);
  *        docs/decisions/ADR-0003-gallery-supplementary-evidence.md.
  */
@@ -32,7 +34,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { CarFront, SquareParking, Truck } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 
 import { useTimeAgo } from '@/shared/hooks';
@@ -58,7 +60,6 @@ import {
   type EvidencePhoto,
   PermissionPrimer,
   type PermissionPrimerContent,
-  SafetyNotice,
   TextField,
 } from '@/shared/ui';
 import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
@@ -83,33 +84,10 @@ const log = createLogger('sightings');
 
 type StepProps = WizardStepProps<ReportSightingAnswers>;
 
-// --- 1 · Safety gate ----------------------------------------------------------
+// The safety gate that was step 1 is now ReportSafetySheet, shown over the
+// listing before this flow opens (2026-09-30).
 
-/** Not skippable but readable in three seconds: the notice is the hero, the
- *  999 path is one tap, and Continue lives in the wizard footer. */
-export function SafetyStep(_props: StepProps) {
-  const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
-  return (
-    <View style={styles.stack}>
-      <SafetyNotice />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Call 999"
-        onPress={() => void Linking.openURL('tel:999')}
-        style={({ pressed }) => [styles.call999, pressed && styles.call999Pressed]}
-      >
-        <Feather name="phone-call" size={sizes.iconSm} color={palette.textOnPrimary} />
-        <Text style={styles.call999Label}>Call 999</Text>
-      </Pressable>
-      <Text style={styles.quiet}>
-        If it’s safe to continue, the next step takes the photos.
-      </Text>
-    </View>
-  );
-}
-
-// --- 2 · Photos (the evidence step) --------------------------------------------
+// --- 1 · Photos (the evidence step) --------------------------------------------
 
 /** Primer copy for this flow — benefit-led headlines, reassurance lines
  *  verified against docs/SECURITY_AND_TRUST.md ("GPS is captured only at the
@@ -269,7 +247,7 @@ export function PhotosStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-// --- 3 · Context (all optional) --------------------------------------------------
+// --- 2 · Context (all optional) --------------------------------------------------
 
 /** The three mutually exclusive vehicle STATES — big tap-cards (the rebuild's
  *  one-glance question; storage stays the shared context_flags array). */
@@ -623,7 +601,7 @@ export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
   );
 }
 
-// --- 4 · Confirm & send ------------------------------------------------------------
+// --- 3 · Confirm & send ------------------------------------------------------------
 
 /** ~0.6-mile span: enough to place the pin without implying precision. */
 const CONFIRM_DELTA = 0.008;
@@ -748,24 +726,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     // quietest style on the screen.
     ...typography.label,
     color: c.textPrimary,
-  },
-  call999: {
-    minHeight: sizes.control,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    borderRadius: radii.md,
-    // Danger is the sanctioned colour for the emergency path — this is the
-    // one screen where it is not decoration.
-    backgroundColor: c.danger,
-  },
-  call999Pressed: {
-    backgroundColor: c.dangerPressed,
-  },
-  call999Label: {
-    ...typography.label,
-    color: c.textOnPrimary,
   },
   // The camera-as-step: viewfinder + controls own a fixed, generous canvas
   // (a flex child inside the wizard's scroll must claim its height).

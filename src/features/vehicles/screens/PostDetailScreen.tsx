@@ -14,6 +14,8 @@
  *        the scroll never jank each other.
  * LINKS: src/app/post/[id].tsx (route); src/features/vehicles/hooks/
  *        usePostDetail.ts; src/features/vehicles/components/*;
+ *        src/features/sightings/components/ReportSafetySheet.tsx (every
+ *        report starts there);
  *        docs/design-refs/post-detail/ (the redesign's reference + gaps);
  *        docs/SECURITY_AND_TRUST.md (§1 safety, §6 aggregate sightings).
  */
@@ -28,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bookmark } from 'lucide-react-native';
 
 import { useRequireAuth } from '@/features/auth';
+import { ReportSafetySheet, type ReportSafetySheetRef } from '@/features/sightings';
 import { useWatchToggle } from '@/features/watchlist';
 import { bountyParam } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
@@ -165,25 +168,35 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     requireAuth({ context: 'report_post', run: () => flagRef.current?.open() });
   }, [requireAuth]);
 
-  const onSeen = useCallback(
+  // Every way into a report goes through the safety sheet first
+  // (SECURITY_AND_TRUST §1). The report starts only from its "I'm at a safe
+  // distance", which also leaves the in-memory proof the route checks.
+  const safetyRef = useRef<ReportSafetySheetRef>(null);
+  const startReport = useCallback(
     (post: PostDetail) => {
-      // Gated: a guest signs in first (sheet), then the continuation fires
-      // without re-tapping — landing straight in the report wizard.
-      requireAuth({
-        context: 'report_sighting',
-        run: () => {
+      safetyRef.current?.open({
+        postId,
+        onContinue: () =>
           router.push({
             pathname: '/report-sighting',
             // 'none' rather than String(null): a null stringifies to "null" and
-          // parses to NaN, which the route cannot tell from an absent param —
-          // and the success screen would then promise "the bounty" on a
-          // no-reward listing (ADR-0014).
-          params: { postId, source: 'detail', bounty: bountyParam(post.bountyPence) },
-          });
-        },
+            // parses to NaN, which the route cannot tell from an absent param —
+            // and the success screen would then promise "the bounty" on a
+            // no-reward listing (ADR-0014).
+            params: { postId, source: 'detail', bounty: bountyParam(post.bountyPence) },
+          }),
       });
     },
-    [postId, requireAuth, router],
+    [postId, router],
+  );
+
+  const onSeen = useCallback(
+    (post: PostDetail) => {
+      // Gated: a guest signs in first (sheet), then the continuation fires
+      // without re-tapping — landing on the safety sheet, then the wizard.
+      requireAuth({ context: 'report_sighting', run: () => startReport(post) });
+    },
+    [requireAuth, startReport],
   );
 
   const onShowAbout = useCallback(() => {
@@ -196,15 +209,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // the sightings list both continue to the thread). Guests sign in first.
   const onMessageOwner = useCallback(
     (post: PostDetail) => {
-      const goReport = () =>
-        router.push({
-          pathname: '/report-sighting',
-          // 'none' rather than String(null): a null stringifies to "null" and
-          // parses to NaN, which the route cannot tell from an absent param —
-          // and the success screen would then promise "the bounty" on a
-          // no-reward listing (ADR-0014).
-          params: { postId, source: 'detail', bounty: bountyParam(post.bountyPence) },
-        });
+      const goReport = () => startReport(post);
       requireAuth({
         context: post.viewerHasSighting ? 'message_owner' : 'report_sighting',
         run: async () => {
@@ -234,7 +239,7 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         },
       });
     },
-    [postId, requireAuth, router, toast],
+    [postId, requireAuth, router, startReport, toast],
   );
 
   const onManage = useCallback(() => {
@@ -459,6 +464,8 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
         destructive
         onConfirm={onFlagConfirm}
       />
+
+      <ReportSafetySheet ref={safetyRef} source="detail" />
 
       {/* Everything the owner can do — the Manage sheet, the deactivate /
           delete confirms (including the delete offer after a clean cancel),

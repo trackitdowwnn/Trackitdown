@@ -1,8 +1,9 @@
 /**
  * WHAT:  Smoke tests for the report-sighting flow config — the speed shape
- *        (no intro screens, four steps, confirm carries "Send report"), the
- *        photo gating (1–3 evidence photos), the always-passable safety gate,
- *        and the never-blocking context step.
+ *        (no intro screens, three steps with the camera first, confirm carries
+ *        "Send report"), the photo gating (1–3 evidence photos), and the
+ *        never-blocking context step. The safety gate is no longer a step
+ *        (ReportSafetySheet.test.tsx).
  * WHY:   The wizard framework warns that a typo'd schema key compiles but can
  *        never validate — each flow needs this smoke coverage. The gating IS
  *        product behaviour: a spotter must not advance past photos with zero
@@ -12,10 +13,7 @@
 
 import { flattenFlow } from '@/shared/wizard';
 
-import {
-  REPORT_SIGHTING_INITIAL_ANSWERS,
-  reportSightingFlow,
-} from './reportSightingFlow';
+import { reportSightingFlow } from './reportSightingFlow';
 
 // The flow config imports its step components, which pull native leaves the
 // jest environment can't register — stub them (the steps render elsewhere).
@@ -46,15 +44,12 @@ const galleryPhoto = {
 };
 
 describe('reportSightingFlow shape', () => {
-  it('is one intro-less phase of four steps ending in Send report', () => {
+  it('is one intro-less phase of three steps, camera first, ending in Send report', () => {
+    // The safety gate is ReportSafetySheet, BEFORE the flow, not a step in it.
     const screens = flattenFlow(reportSightingFlow);
-    expect(screens.map((screen) => screen.kind)).toEqual(['step', 'step', 'step', 'step']);
-    expect(steps.map((step) => step.id)).toEqual(['safety', 'photos', 'context', 'confirm']);
+    expect(screens.map((screen) => screen.kind)).toEqual(['step', 'step', 'step']);
+    expect(steps.map((step) => step.id)).toEqual(['photos', 'context', 'confirm']);
     expect(reportSightingFlow.finalCtaLabel).toBe('Send report');
-  });
-
-  it('safety gate passes immediately (read, not input)', () => {
-    expect(schemaFor('safety').safeParse(REPORT_SIGHTING_INITIAL_ANSWERS).success).toBe(true);
   });
 
   it('photos step blocks at zero and above three, passes 1–3', () => {

@@ -312,6 +312,9 @@ export const sizes = {
    * which at large type it should.
    */
   safetyStripRow: 28,
+  /** SafetyNotice `points`: the grey disc behind each rule's icon. 40, a
+   *  step under a touch target, because it isn't one: it marks an item. */
+  safetyPointIcon: 40,
   /**
    * The car's tile in a chat thread's header (added 2026-08-29).
    *

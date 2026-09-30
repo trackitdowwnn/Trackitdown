@@ -1,12 +1,11 @@
 /**
- * WHAT:  The report-sighting WizardFlow — one intro-less phase, four steps
- *        (safety gate → photos → context → confirm), no built-in review
- *        (the confirm step IS the review), final CTA "Send report".
+ * WHAT:  The report-sighting WizardFlow — one intro-less phase, three steps
+ *        (photos → context → confirm), no built-in review (the confirm step
+ *        IS the review), final CTA "Send report". The safety gate comes
+ *        BEFORE it, as ReportSafetySheet (2026-09-30).
  * WHY:   A SPEED flow: the spotter may be near the vehicle, so the config is
  *        the framework's lightest shape — no phase intros, one optional step,
- *        per-step funnel logging via onContinue. The safety step gates on an
- *        always-true schema (fast to pass, impossible to skip); the photos
- *        step derives the coarse area label on continue so the confirm screen
+ *        per-step funnel logging via onContinue. The photos step derives the coarse area label on continue so the confirm screen
  *        can say where the report reads as from.
  * LINKS: src/features/sightings/components/sightingSteps.tsx (the screens);
  *        src/features/sightings/screens/ReportSightingScreen.tsx (renders);
@@ -18,7 +17,7 @@ import { z } from 'zod';
 import { createLogger } from '@/shared/lib/logger';
 import type { WizardFlow } from '@/shared/wizard';
 
-import { ConfirmStep, ContextStep, PhotosStep, SafetyStep } from './components/sightingSteps';
+import { ConfirmStep, ContextStep, PhotosStep } from './components/sightingSteps';
 import { derivePlaceLabels } from './lib/areaLabel';
 import {
   MAX_NOTE_LENGTH,
@@ -81,21 +80,12 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
     {
       id: 'report',
       title: 'Report a sighting',
-      // No intro — this is a speed flow; the safety gate is screen one.
+      // No intro — this is a speed flow. The safety gate is NOT a step: it's
+      // ReportSafetySheet, shown over the listing before this route opens (or
+      // by ReportSightingScreen for a deep link), so the camera is screen one.
+      // ⚠️ Don't bring it back as a `when`-hidden step 0: the navigation
+      // reducer starts at index 0 without checking visibility.
       steps: [
-        {
-          id: 'safety',
-          question: 'Before you report',
-          helper: 'Three seconds — it matters.',
-          component: SafetyStep,
-          // Always valid: the gate is about READING, not input. It cannot be
-          // skipped (it is the first screen) but must never cost time.
-          schema: z.object({}),
-          ctaLabel: 'Continue',
-          onContinue: async () => {
-            log.info('step_completed', { step: 'safety' });
-          },
-        },
         {
           id: 'photos',
           question: 'Photograph the car',

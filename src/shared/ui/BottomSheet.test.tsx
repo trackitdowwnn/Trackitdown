@@ -1,7 +1,8 @@
 /**
  * WHAT:  Tests for the BottomSheet primitive — hidden until opened via the
  *        ref, renders title/children when open, close() dismisses and fires
- *        onDismiss, the title header is omitted when no title is given, and
+ *        onDismiss, Android Back closes the open sheet (and only while it's
+ *        open), the title header is omitted when no title is given, and
  *        on Android the sheet content pads by the keyboard height so the
  *        sheet rises clear of the keyboard (regression: keyboard used to
  *        cover the sheet entirely).
@@ -19,7 +20,7 @@
 
 import { act, render } from '@testing-library/react-native';
 import { createRef } from 'react';
-import { Keyboard, Platform, StyleSheet, Text } from 'react-native';
+import { BackHandler, Keyboard, Platform, StyleSheet, Text } from 'react-native';
 
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
 import { TextField } from './TextField';
@@ -43,9 +44,12 @@ jest.mock('@gorhom/bottom-sheet', () => {
     // finish), after which present() is silently ignored forever.
     wedged = false;
 
+    // onChange reports the snap index as the real modal does: 0 once open,
+    // -1 once closed. A skipped present reports nothing.
     present = () => {
       if (this.wedged) return;
       this.setState({ visible: true });
+      this.props.onChange?.(0);
     };
 
     dismiss = () => {
@@ -54,6 +58,7 @@ jest.mock('@gorhom/bottom-sheet', () => {
         return;
       }
       this.setState({ visible: false });
+      this.props.onChange?.(-1);
       this.props.onDismiss?.();
     };
 
@@ -135,6 +140,39 @@ describe('BottomSheet', () => {
 
     expect(queryByText('Sheet body')).toBeNull();
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ Android Back closes the sheet, and only the sheet', async () => {
+    // Before 2026-09-30 nothing handled Back while a sheet was up, so it went
+    // to the screen underneath: the route popped with the sheet still showing.
+    const addSpy = jest.spyOn(BackHandler, 'addEventListener');
+    try {
+      const onDismiss = jest.fn();
+      const { sheetRef, view } = renderSheet({ onDismiss });
+      const { queryByText } = await view;
+
+      // Nothing registered while closed: Back belongs to the screen then.
+      expect(addSpy.mock.calls.filter(([event]) => event === 'hardwareBackPress')).toHaveLength(0);
+
+      await act(async () => sheetRef.current?.open());
+      const index = addSpy.mock.calls.findIndex(([event]) => event === 'hardwareBackPress');
+      expect(index).toBeGreaterThanOrEqual(0);
+      const handler = addSpy.mock.calls[index][1] as () => boolean;
+      const subscription = addSpy.mock.results[index].value as { remove: () => void };
+      const remove = jest.spyOn(subscription, 'remove');
+
+      let consumed = false;
+      await act(async () => {
+        consumed = handler();
+      });
+      expect(consumed).toBe(true);
+      expect(queryByText('Sheet body')).toBeNull();
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+      // ...and hands Back back to the screen once it's closed.
+      expect(remove).toHaveBeenCalled();
+    } finally {
+      addSpy.mockRestore();
+    }
   });
 
   it('renders TextFields inside the sheet with the sheet-aware input so the sheet rises with the keyboard', async () => {

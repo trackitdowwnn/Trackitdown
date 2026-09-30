@@ -13,7 +13,8 @@
  * LINKS: src/features/search-map/README.md (map-search spec);
  *        hooks/useViewportPosts.ts, hooks/useMapSelection.ts,
  *        lib/{regionMath,mapPins}.ts, components/Map*.tsx;
- *        docs/SECURITY_AND_TRUST.md (active locations are public).
+ *        docs/SECURITY_AND_TRUST.md (active locations are public, and §1:
+ *        the peek card's report opens sightings' ReportSafetySheet first).
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -24,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequireAuth } from '@/features/auth';
 import { useDevicePermission } from '@/features/permissions';
+import { ReportSafetySheet, type ReportSafetySheetRef } from '@/features/sightings';
 import { bountyParam } from '@/shared/lib/money';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
 import { createLogger } from '@/shared/lib/logger';
@@ -677,21 +679,26 @@ function MapSearchBody({
   );
 
   // The peek card's direct entry into report-sighting: gated (guests sign in
-  // via the sheet; the continuation lands them in the wizard, source=map).
+  // via the sheet), then the safety sheet (SECURITY_AND_TRUST §1), and only
+  // its "Continue" lands them in the wizard (source=map).
   const requireAuth = useRequireAuth();
+  const safetyRef = useRef<ReportSafetySheetRef>(null);
   const onSeenPost = useCallback(
     (post: MapPost) => {
       requireAuth({
         context: 'report_sighting',
-        run: () => {
-          router.push({
-            pathname: '/report-sighting',
-            // bountyParam, not String(): a no-reward listing must arrive as an
-            // explicit token, or the success screen promises a bounty that does
-            // not exist (ADR-0014). Same encoder as the post-detail entry.
-            params: { postId: post.id, source: 'map', bounty: bountyParam(post.bountyPence) },
-          });
-        },
+        run: () =>
+          safetyRef.current?.open({
+            postId: post.id,
+            onContinue: () =>
+              router.push({
+                pathname: '/report-sighting',
+                // bountyParam, not String(): a no-reward listing must arrive as an
+                // explicit token, or the success screen promises a bounty that does
+                // not exist (ADR-0014). Same encoder as the post-detail entry.
+                params: { postId: post.id, source: 'map', bounty: bountyParam(post.bountyPence) },
+              }),
+          }),
       });
     },
     [requireAuth, router],
@@ -866,6 +873,8 @@ function MapSearchBody({
           onClose={closeSearch}
         />
       ) : null}
+
+      <ReportSafetySheet ref={safetyRef} source="map" />
     </View>
   );
 }
