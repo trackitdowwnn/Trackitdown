@@ -21,8 +21,13 @@
  *        instruction, with only the elaboration folding. Default is the full
  *        banner, so every current consumer is untouched.
  *
- *        Current render sites: the sighting wizard, post sightings, sighting
- *        detail, post detail. Onboarding carries the COPY instead — it imports
+ *        `layout="points"` (2026-09-30) is the same message as three icon
+ *        rows (rule, how, 999) for the report safety sheet, where the sheet's
+ *        own title is SAFETY_NOTICE_TITLE. It adds a line (SAFETY_DISTANCE_LINE)
+ *        and drops none.
+ *
+ *        Current render sites: the report safety sheet (points), post
+ *        sightings, sighting detail, post detail. Onboarding carries the COPY instead — it imports
  *        SAFETY_RULE_LINE and renders its own pill, 999 clause omitted at that
  *        stage — so grepping for this component name under-counts coverage.
  * LINKS: docs/SECURITY_AND_TRUST.md §1; docs/DOMAIN.md (sighting rules);
@@ -31,7 +36,7 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useState, type ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import {
@@ -68,25 +73,85 @@ export const SAFETY_NOTICE_TITLE = 'Stay safe — report, don’t approach';
  */
 export const SAFETY_RULE_LINE =
   'Never approach the vehicle, follow it, or confront anyone.';
-export const SAFETY_NOTICE_BODY = `${SAFETY_RULE_LINE} If a crime is in progress, call 999.`;
+
+/** The 999 clause on its own: the third of the `points` rows. BODY is built
+ *  from it, so the banner and the points can't say different things. */
+export const SAFETY_999_LINE = 'If a crime is in progress, call 999.';
+
+export const SAFETY_NOTICE_BODY = `${SAFETY_RULE_LINE} ${SAFETY_999_LINE}`;
+
+/**
+ * The "how" that makes the rule doable, for the report safety sheet
+ * (2026-09-30). Safety research: a warning works best when it says how to
+ * avoid the hazard, not just what the hazard is. No "zoom in": the camera
+ * has no zoom control, so the line mustn't promise one.
+ */
+export const SAFETY_DISTANCE_LINE = 'Take your photos from where you are. You don’t need to get close.';
 
 const TITLE = SAFETY_NOTICE_TITLE;
 const BODY = SAFETY_NOTICE_BODY;
 const FULL_LABEL = `${TITLE}. ${BODY}`;
 
+type FeatherName = ComponentProps<typeof Feather>['name'];
+
+/** The `points` rows: the rule first (safety research: lead with the thing
+ *  not to do), then how, then the emergency. */
+const POINTS: readonly { icon: FeatherName; text: string }[] = [
+  { icon: 'slash', text: SAFETY_RULE_LINE },
+  { icon: 'camera', text: SAFETY_DISTANCE_LINE },
+  { icon: 'phone', text: SAFETY_999_LINE },
+];
+
+/** The `points` read aloud, in order: the alert's label, and what the safety
+ *  sheet announces when it opens (a static alert isn't announced by itself).
+ *  "999" is spoken as spaced digits: screen readers otherwise say "nine
+ *  hundred and ninety-nine", the wrong register for an emergency number. The
+ *  visible text is unchanged. */
+export const SAFETY_POINTS_LABEL = POINTS.map((point) => point.text)
+  .join(' ')
+  .replace(/999/g, '9 9 9');
+
 export interface SafetyNoticeProps {
   /**
    * Pin as one line that expands on tap. For surfaces where the notice sits
    * ABOVE live content for the whole session (chat) rather than being read
-   * once in a flow. Never a way to hide it — see the header.
+   * once in a flow. Never a way to hide it — see the header. Ignores `layout`.
    */
   collapsible?: boolean;
+  /**
+   * `banner` (default): the titled card. `points`: three icon rows, one idea
+   * each, for a surface whose own title already carries SAFETY_NOTICE_TITLE
+   * (the report safety sheet). It says MORE than the banner, never less.
+   */
+  layout?: 'banner' | 'points';
 }
 
-export function SafetyNotice({ collapsible = false }: SafetyNoticeProps) {
+export function SafetyNotice({ collapsible = false, layout = 'banner' }: SafetyNoticeProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const [expanded, setExpanded] = useState(false);
+
+  if (!collapsible && layout === 'points') {
+    return (
+      // The title is the surface's header, so the alert reads the points
+      // alone rather than saying the title twice.
+      <View
+        accessible
+        accessibilityRole="alert"
+        accessibilityLabel={SAFETY_POINTS_LABEL}
+        style={styles.points}
+      >
+        {POINTS.map((point) => (
+          <View key={point.icon} style={styles.point}>
+            <View style={styles.pointIcon}>
+              <Feather name={point.icon} size={sizes.iconSm} color={palette.textPrimary} />
+            </View>
+            <Text style={styles.pointText}>{point.text}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
 
   if (!collapsible) {
     return (
@@ -155,6 +220,37 @@ const makeStyles = (c: Palette) =>
     body: {
       ...typography.caption,
       color: c.textSecondary,
+    },
+    // `points`: body-size ink text, not the banner's grey caption. In a sheet
+    // these lines ARE the content, so they read at full strength.
+    points: {
+      gap: spacing.lg,
+    },
+    point: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+    },
+    // A quiet disc, so each rule reads as its own item (Airbnb's
+    // "things to know" rows).
+    pointIcon: {
+      width: sizes.safetyPointIcon,
+      height: sizes.safetyPointIcon,
+      borderRadius: radii.full,
+      backgroundColor: c.surfaceSubtle,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // The FIRST line centres on the disc, however many lines follow. The old
+    // `alignSelf: 'center'` centred the whole block, so a one-line point sat
+    // 8pt lower against its disc than the two-line points above it. 8 =
+    // (40pt disc − 24pt body line) / 2.
+    pointText: {
+      ...typography.body,
+      color: c.textPrimary,
+      flex: 1,
+      paddingTop: spacing.sm,
+      includeFontPadding: false,
     },
     // Full-bleed strip, not a card: it is chrome on the thread, and a rounded
     // floating card here would compete with the message bubbles below it.

@@ -23,6 +23,10 @@
  *           surface is open that surface owns the gesture instead — registering
  *           both would close two things with one press.
  *
+ *        5. **A report waits for the safety sheet** (2026-09-30). The peek
+ *           card's "I've seen this car" opens it, and only its "I'm at a safe
+ *           distance" pushes the report route (SECURITY_AND_TRUST §1).
+ *
  *        The map itself, the pins and the pager are stubbed: this asserts what
  *        the screen WIRES, not what those render (they have their own suites).
  * LINKS: src/features/search-map/screens/MapSearchScreen.tsx;
@@ -81,7 +85,29 @@ jest.mock('../hooks/useSortAnchor', () => ({
 // --- Leaves that cannot render under jest ------------------------------------
 jest.mock('@/shared/ui/AppMap', () => ({ AppMap: 'AppMap', AppMapMarker: 'AppMapMarker' }));
 jest.mock('../components/MapPins', () => ({ MapPins: () => null }));
-jest.mock('../components/MapCardPager', () => ({ MapCardPager: () => null }));
+// The pager keeps its "I've seen this car" handler, so the report entry can be
+// driven without rendering cards.
+let mockOnSeenPost: ((post: unknown) => void) | null = null;
+jest.mock('../components/MapCardPager', () => ({
+  MapCardPager: ({ onSeenPost }: { onSeenPost: (post: unknown) => void }) => {
+    mockOnSeenPost = onSeenPost;
+    return null;
+  },
+}));
+// The sightings barrel reaches the supabase client at import. Only the safety
+// sheet is used here, stubbed to its ref API (its behaviour is pinned in
+// ReportSafetySheet.test).
+const mockSafetyOpen = jest.fn();
+jest.mock('@/features/sightings', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const { useImperativeHandle } = require('react');
+  return {
+    ReportSafetySheet: ({ ref }: { ref: unknown }) => {
+      useImperativeHandle(ref as never, () => ({ open: mockSafetyOpen }));
+      return null;
+    },
+  };
+});
 // ⚠️ The sheet GEOMETRY is not stubbed — it lives in ../lib/mapSheetGeometry
 // precisely so this stub can exist. Stubbing the component used to make
 // MAP_SHEET_SNAP_PERCENTS undefined and the screen threw on first render: a
@@ -117,7 +143,10 @@ jest.mock('@/shared/ui', () => {
   };
 });
 
-jest.mock('@/features/auth', () => ({ useRequireAuth: () => jest.fn() }));
+// Pass-through (a member): the gated continuation runs at once.
+jest.mock('@/features/auth', () => ({
+  useRequireAuth: () => (intent: { run?: () => void }) => intent.run?.(),
+}));
 jest.mock('@/features/permissions', () => ({
   useDevicePermission: () => ({ status: 'granted', request: jest.fn() }),
 }));
@@ -135,9 +164,10 @@ jest.mock('react-native-safe-area-context', () =>
 
 let mockSearchParams: Record<string, string> = {};
 const mockBack = jest.fn();
+const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockSearchParams,
-  useRouter: () => ({ push: jest.fn(), back: mockBack }),
+  useRouter: () => ({ push: mockPush, back: mockBack }),
 }));
 
 jest.mock('@/shared/lib/logger', () => ({
@@ -280,5 +310,24 @@ describe('who owns the Android back gesture', () => {
     expect(
       addSpy.mock.calls.filter(([event]) => event === 'hardwareBackPress'),
     ).toHaveLength(0);
+  });
+});
+
+describe('reporting from the peek card', () => {
+  it('⚠️ shows the safety sheet, and opens the report only after it', async () => {
+    mockSelectedId = 'p1';
+    await render(<MapSearchScreen />);
+
+    await act(async () => mockOnSeenPost?.(POST));
+    expect(mockSafetyOpen).toHaveBeenCalledTimes(1);
+    expect(mockPush).not.toHaveBeenCalled();
+
+    // The sheet's "Continue".
+    expect(mockSafetyOpen).toHaveBeenCalledWith(expect.objectContaining({ postId: 'p1' }));
+    await act(async () => (mockSafetyOpen.mock.lastCall?.[0] as { onContinue: () => void }).onContinue());
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/report-sighting',
+      params: expect.objectContaining({ postId: 'p1', source: 'map' }),
+    });
   });
 });

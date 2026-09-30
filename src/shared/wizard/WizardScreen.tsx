@@ -16,7 +16,7 @@
  *        docs/DESIGN_SYSTEM.md (Motion, Accessibility, Forms).
  */
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   BackHandler,
@@ -140,25 +140,51 @@ export function WizardScreen<TAnswers>({
   const keyboardHeight = useAndroidKeyboardHeight();
   const isFillsStep = screen.kind === 'step' && screen.step.fills === true;
 
+  // ⚠️ NO SLIDE UNTIL THE FIRST MOVE. The opening screen used to play its
+  // SlideInRight as it mounted, while the route itself was still sliding up
+  // and the SafeAreaView's top inset hadn't landed. Reanimated finished the
+  // entering animation on a frame measured before that padding, so the step
+  // body sat ~48dp too high, OVER the header, and its ScrollView swallowed
+  // every tap on the X (reproduced on the emulator, 2026-09-30: the question
+  // drawn across the X, which did nothing). It's a race, so it came and went.
+  // There's nothing to slide in FROM on the first screen anyway. Set during
+  // render (React's "adjust state on prop change" pattern), so the move that
+  // flips it animates in the same frame.
+  const [openingIndex] = useState(screenIndex);
+  const [hasMoved, setHasMoved] = useState(false);
+  if (!hasMoved && screenIndex !== openingIndex) setHasMoved(true);
+  const slides = !isFillsStep && hasMoved;
+
   // Android system back mirrors in-flow Back (previous screen — even on
   // intros, where the visible button is hidden, because blocking the system
   // gesture would feel broken); on the first screen it becomes the exit,
   // which keeps the dirty-answers confirmation unbypassable.
+  // ⚠️ REGISTERED ONCE, reading the latest state from a ref. Android runs the
+  // most recently added handler first, and this used to re-register whenever
+  // an answer changed (`back` is rebuilt with the visible steps). A step's own
+  // BottomSheet registers its Back on open, so picking an option in it put the
+  // wizard back on top: Back stepped the wizard back with the sheet still up
+  // (2026-09-30 review). Registered once at mount, any sheet opened later wins.
   const { isFirstScreen, back, requestExit } = controller;
+  const backState = useRef({ busy, isFirstScreen, back, requestExit });
+  useEffect(() => {
+    backState.current = { busy, isFirstScreen, back, requestExit };
+  });
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      const latest = backState.current;
       // Swallow the gesture while an async action is in flight so a submit or
       // lookup can't be navigated out from under.
-      if (busy) return true;
-      if (isFirstScreen) {
-        requestExit();
+      if (latest.busy) return true;
+      if (latest.isFirstScreen) {
+        latest.requestExit();
       } else {
-        back();
+        latest.back();
       }
       return true;
     });
     return () => subscription.remove();
-  }, [isFirstScreen, back, requestExit, busy]);
+  }, []);
 
   // What a screen-reader user hears on landing here. A dynamic question reads
   // the answers, but this is a plain string, so the announce effect below fires
@@ -256,7 +282,7 @@ export function WizardScreen<TAnswers>({
           testID="wizard-step-slide"
           style={styles.flex}
           entering={
-            isFillsStep
+            !slides
               ? undefined
               : (direction === 1 ? SlideInRight : SlideInLeft)
                   .duration(SLIDE_MS)

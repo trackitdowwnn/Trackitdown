@@ -1,7 +1,7 @@
 /**
  * WHAT:  Tests for SafetyNotice — carries the non-negotiable "report, don't
- *        approach" copy and the 999 line, as an accessibility alert, in BOTH
- *        the full-banner and collapsible forms.
+ *        approach" copy and the 999 line, as an accessibility alert, in the
+ *        full-banner, `points` (the report safety sheet) and collapsible forms.
  * WHY:   SECURITY_AND_TRUST §1 makes this exact wording a product requirement;
  *        a test locks it so a well-meaning copy edit can't soften it. The
  *        collapsible form (chat) needs more than that: shrinking a safety
@@ -23,7 +23,13 @@ import { StyleSheet } from 'react-native';
 
 import { sizes } from '@/shared/theme';
 
-import { SAFETY_NOTICE_BODY, SafetyNotice } from './SafetyNotice';
+import {
+  SAFETY_999_LINE,
+  SAFETY_DISTANCE_LINE,
+  SAFETY_NOTICE_BODY,
+  SAFETY_RULE_LINE,
+  SafetyNotice,
+} from './SafetyNotice';
 
 const FULL_BODY =
   /Never approach the vehicle, follow it, or confront anyone\. If a crime is in progress, call 999\./;
@@ -34,6 +40,27 @@ describe('SafetyNotice', () => {
     expect(getByText(/Never approach the vehicle/i)).toBeTruthy();
     expect(getByText(/call 999/i)).toBeTruthy();
     expect(getByRole('alert')).toBeTruthy();
+  });
+});
+
+describe('SafetyNotice (points)', () => {
+  it('⚠️ keeps the banner body word for word: the points split it, never reword it', () => {
+    expect(SAFETY_NOTICE_BODY).toMatch(FULL_BODY);
+    expect(SAFETY_NOTICE_BODY).toBe(`${SAFETY_RULE_LINE} ${SAFETY_999_LINE}`);
+  });
+
+  it('says the rule, how to keep it, and 999, as one alert', async () => {
+    const { getByText, getByRole } = await render(<SafetyNotice layout="points" />);
+
+    for (const line of [SAFETY_RULE_LINE, SAFETY_DISTANCE_LINE, SAFETY_999_LINE]) {
+      expect(getByText(line)).toBeTruthy();
+    }
+    // One alert that reads every point, in order, so nothing is left to be
+    // found by swiping.
+    // 999 as spaced digits, so it's read "nine nine nine", not as a number.
+    expect(getByRole('alert').props.accessibilityLabel).toBe(
+      `${SAFETY_RULE_LINE} ${SAFETY_DISTANCE_LINE} If a crime is in progress, call 9 9 9.`,
+    );
   });
 });
 

@@ -1,6 +1,9 @@
 /**
  * WHAT:  Route /report-sighting?postId=…&source=detail|map&bounty=<pence|none> —
  *        thin wrapper rendering the sightings feature's report wizard.
+ *        ⚠️ Whether the safety sheet was already shown is NOT a param: a URL
+ *        can be forged, so the screen checks an in-memory proof instead
+ *        (sightings/lib/safetyAck.ts).
  * WHY:   Route files stay thin (ARCHITECTURE.md rule 3). Full-screen, outside
  *        the (tabs) group, so the tab bar is absent for the whole speed flow.
  *
@@ -32,7 +35,10 @@ export default function ReportSightingRoute() {
   const bountyPence =
     bounty === NO_BOUNTY_PARAM ? null : Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   return (
+    // Keyed on the post: the screen reads the safety proof once, at mount,
+    // so a reused route with a new postId must start over, sheet and all.
     <ReportSightingScreen
+      key={postId}
       postId={postId}
       source={source === 'map' ? 'map' : 'detail'}
       bountyPence={bountyPence}

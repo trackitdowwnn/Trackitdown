@@ -48,7 +48,10 @@ Rules: near-black `primary` is the action colour — buttons, links, active
 states, selection. `accent` (also near-black) is reserved for bounty/value
 moments; in the monochrome scheme value stands out through a bold black fill,
 weight, and size rather than hue. Danger red appears only on destructive/error
-UI — never as decoration on "stolen" content. `success` green and `warning`
+UI — never as decoration on "stolen" content. SANCTIONED EXCEPTION
+(2026-09-30): a `danger` outline and label on an EMERGENCY-CALL action
+(`Button variant="dangerOutline"`, the report safety sheet's "Call 999"): one
+per surface, never a fill. `success` green and `warning`
 amber remain the semantic status hues (not brand colour), so pending/verified
 states stay legible. SANCTIONED EXCEPTION (2026-07-30): the sighting arc's
 nodes are sage (`success`) — a sighting is affirmative evidence on a hopeful
@@ -331,7 +334,11 @@ are build output.
 ## Core components (live in `src/shared/ui/`)
 
 - **Button** — variants: `primary` (near-black fill), `secondary` (outline),
-  `ghost`, `danger`. Height 52, radius `md`, full-width by default.
+  `ghost`, `danger`, `dangerOutline` (red outline, for an emergency action
+  beside a primary: the safety sheet's "Call 999"), `subtle`. Height 52,
+  radius `md`, full-width by default. An optional leading Feather `icon`
+  takes the label's colour. **BottomSheet** closes on swipe, scrim tap and
+  Android Back (Back closes the sheet only, never the screen under it).
 - **Card** — `surface`, radius `lg`, 16px padding, and **flat: a
   `hairlineWidth` border, no shadow**. Use `cardSurface(palette)` from
   `@/shared/theme` rather than hand-rolling the box.
@@ -382,6 +389,17 @@ are build output.
   being read once in a flow. It is never dismissible in either form, keeps
   `role="alert"`, and its accessibility label is the complete title + body
   whether open or shut, so the shrink is visual only.
+  `layout="points"` (2026-09-30) is the same message as three icon rows
+  (a `surfaceSubtle` disc, `sizes.safetyPointIcon`, then `body` ink text): the
+  rule, "take your photos from where you are", 999. It's for a surface whose
+  own title is `SAFETY_NOTICE_TITLE`, today the report safety sheet. The
+  alert reads the three lines in order.
+  **Safety sheet pattern** (`ReportSafetySheet`): a BottomSheet over the
+  thing it's about, never over a camera. Primary "Continue" (the owner chose
+  it over the research's commitment phrasing, "I'm at a safe distance"); a secondary
+  red-OUTLINE "Call 999" with a phone icon, the sheet's only red; no Cancel
+  button, because the swipe, scrim and Back all cancel and none of them
+  counts as agreeing. No checkbox or countdown.
   ⚠️ **`collapsible` has no consumers as of 2026-08-29.** It was built for chat,
   and chat dropped the notice entirely (owner decision — SECURITY_AND_TRUST §1
   and DOMAIN.md amended the same day). Kept, and still tested, so the

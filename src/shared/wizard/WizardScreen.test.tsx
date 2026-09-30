@@ -264,6 +264,23 @@ describe('WizardScreen wiring', () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
+  it('⚠️ registers hardware back ONCE, however the answers and screens change', async () => {
+    // Re-registering on each change put the wizard's handler above an open
+    // step sheet's (Android runs the newest first), so Back stepped the
+    // wizard with the sheet still up.
+    const addSpy = jest.spyOn(BackHandler, 'addEventListener');
+    try {
+      const { view } = await renderWizard();
+      await press(view, 'Get started');
+      await act(async () => {
+        fireEvent.press(view.getByTestId('fill-name'));
+      });
+      expect(addSpy.mock.calls.filter(([event]) => event === 'hardwareBackPress')).toHaveLength(1);
+    } finally {
+      addSpy.mockRestore();
+    }
+  });
+
   it('confirms before exiting with dirty answers via the X', async () => {
     const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     const { view, onExit } = await renderWizard();
@@ -374,6 +391,21 @@ describe('fills steps', () => {
     expect(view.getByTestId('wizard-step-slide').props.entering).toBeUndefined();
 
     await press(view, 'Next');
+    expect(view.getByTestId('wizard-step-slide').props.entering).toBeDefined();
+  });
+
+  it('⚠️ does not slide the OPENING screen in, but does once the user has moved', async () => {
+    // The opening slide raced the route's own slide-up and the safe-area
+    // inset: Reanimated finished it on a stale frame, parking the step body
+    // over the header, where it swallowed every tap on the X (2026-09-30,
+    // report flow). Nothing slides in from anywhere on the first screen.
+    const { view } = await renderWizard();
+    expect(view.getByTestId('wizard-step-slide').props.entering).toBeUndefined();
+
+    await press(view, 'Get started');
+    expect(view.getByTestId('wizard-step-slide').props.entering).toBeDefined();
+    await press(view, 'Back');
+    // Back on the opening screen by a move: that one slides, as a move should.
     expect(view.getByTestId('wizard-step-slide').props.entering).toBeDefined();
   });
 });

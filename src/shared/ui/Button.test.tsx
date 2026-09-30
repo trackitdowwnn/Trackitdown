@@ -46,7 +46,7 @@ describe('Button', () => {
     expect(button.props.accessibilityState).toMatchObject({ busy: true });
   });
 
-  it.each(['primary', 'secondary', 'ghost', 'danger'] as ButtonVariant[])(
+  it.each(['primary', 'secondary', 'ghost', 'danger', 'dangerOutline', 'subtle'] as ButtonVariant[])(
     'renders the label for the %s variant',
     async (variant) => {
       const { getByText } = await render(
@@ -56,4 +56,23 @@ describe('Button', () => {
       expect(getByText('Action')).toBeTruthy();
     },
   );
+
+  it('speaks its own label and hint when given, and still presses', async () => {
+    const onPress = jest.fn();
+    const { getByRole } = await render(
+      <Button
+        label="Call 999"
+        icon="phone"
+        variant="dangerOutline"
+        accessibilityLabel="Call 9 9 9, emergency"
+        accessibilityHint="Opens your phone to call emergency services"
+        onPress={onPress}
+      />,
+    );
+
+    const button = getByRole('button', { name: 'Call 9 9 9, emergency' });
+    expect(button.props.accessibilityHint).toBe('Opens your phone to call emergency services');
+    await fireEvent.press(button);
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
 });

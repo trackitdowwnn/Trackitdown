@@ -547,7 +547,10 @@ Rules that follow, and are not implementation details:
   (a rolling 24-hour window, not a midnight reset).
 - Every sighting screen and notification carries the safety line: report
   from a distance — never approach the vehicle or confront anyone. Call
-  999 if a crime is in progress.
+  999 if a crime is in progress. For the REPORT flow it's carried by the
+  safety sheet shown before the camera, every time (owner decision,
+  2026-09-30: one firm moment at the start rather than a banner on each
+  step of a speed flow); the photos step keeps "From a distance" in view.
 
 ## Notifications
 

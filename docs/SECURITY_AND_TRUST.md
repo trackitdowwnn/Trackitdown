@@ -11,7 +11,7 @@ commenting standards.
   component: **report from a distance; never approach the vehicle, follow it,
   or confront anyone; if a crime is in progress call 999.**
   - **Five surfaces, in two forms.** The COMPONENT renders on four —
-    `sightingSteps.tsx` (the sighting wizard), `PostSightingsScreen.tsx`,
+    `ReportSafetySheet.tsx` (before every sighting report), `PostSightingsScreen.tsx`,
     `SightingDetailScreen.tsx`, `PostDetailBody.tsx` (post detail) — which
     `grep -rn "<SafetyNotice" src` will confirm. Onboarding is the fifth and
     carries the COPY rather than the component: `onboardingSlides.ts` imports
@@ -20,6 +20,22 @@ commenting standards.
     omitted at that stage. Between them they cover the moment someone is
     deciding whether to go and look at a car, which is the decision this rule
     exists to reach.
+  - **The report gate is a sheet, not a wizard step (2026-09-30).**
+    `ReportSafetySheet` opens over the listing (post detail, and the map's peek
+    card) every time someone taps "I've seen this car", in SafetyNotice's
+    `points` layout: the rule, "take your photos from where you are", and 999.
+    Only its "Continue" starts the report. A swipe, scrim tap or
+    Android Back cancels, never acknowledges (BottomSheet now handles Back
+    itself; before, Back went to the screen under the sheet).
+  - ⚠️ **The proof it was shown lives in memory, never in the URL.** A
+    confirm marks `sightings/lib/safetyAck.ts` for that post, for 30 seconds,
+    and `ReportSightingScreen` shows the same sheet itself when there's no
+    fresh mark (a deep link, a future entry). The first version used a
+    `safety=seen` route param, and the security review caught that any deep
+    link could carry it straight to the camera. Don't bring a param back.
+  - Inside the wizard, the photos helper ("From a distance…") keeps the
+    DISTANCE half of the rule in view; the full notice (never approach,
+    follow or confront; 999) is the sheet's, not repeated on each step.
   - ⚠️ **Do not audit this list with `grep "<SafetyNotice"` alone.** On
     2026-08-29 I did exactly that, concluded onboarding was not a safety
     surface, and wrote that into this paragraph — deleting a true statement
@@ -44,10 +60,12 @@ commenting standards.
     isolation; `quickReplies.test.ts` pins the reply lexicon. RENDER
     assertions exist only for post detail (`PostDetailBody.test.tsx`) and
     onboarding (`onboardingSlides.test.ts`, `OnboardingSlide.test.tsx`,
-    `OnboardingScreen.test.tsx`). **Sighting detail, post sightings and the
-    sighting wizard have no test asserting the notice renders at all** — three
-    of the five surfaces this rule now leans on are unguarded. Stated rather
-    than glossed; closing it is a one-line assertion per suite.
+    `OnboardingScreen.test.tsx`), and since 2026-09-30 the report safety sheet
+    (`ReportSafetySheet.test.tsx`, plus `ReportSightingScreen.test.tsx` for the
+    deep-link path). **Sighting detail and post sightings have no test
+    asserting the notice renders at all** — two of the five surfaces this rule
+    leans on are unguarded. Stated rather than glossed; closing it is a
+    one-line assertion per suite.
 - We never build features that facilitate pursuit: no live navigation
   toward a sighted car, no "car is moving" live tracking, no directions
   from spotter to vehicle.

@@ -9,7 +9,8 @@
  *        matching the library's imperative present/dismiss model, so any
  *        handler can open it without lifting state. It auto-sizes to its
  *        content (capped below full screen); taller content scrolls inside.
- *        Always dismissable: swipe down or tap the scrim. Keyboard-aware so
+ *        Always dismissable: swipe down, tap the scrim, or Android Back (which
+ *        closes the sheet and nothing else). Keyboard-aware so
  *        TextFields inside stay visible while typing: iOS uses the library's
  *        interactive behaviour; Android pads the sheet content by the keyboard
  *        height instead, because edge-to-edge breaks the library's own
@@ -41,12 +42,14 @@ import {
 } from '@gorhom/bottom-sheet';
 import {
   useCallback,
+  useEffect,
   useImperativeHandle,
   useRef,
+  useState,
   type ReactNode,
   type Ref,
 } from 'react';
-import { StyleSheet, Text, useWindowDimensions } from 'react-native';
+import { BackHandler, StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '../hooks';
@@ -112,8 +115,33 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
   // handlePortalRender).
   const presentedRef = useRef(false);
 
+  // Whether the sheet is actually ON SCREEN, for the Back handler below. Taken
+  // from gorhom's onChange (index ≥ 0 once it has opened), not from open():
+  // a present the library skips would otherwise leave Back swallowed on this
+  // screen until it unmounted (2026-09-30 review).
+  const [presented, setPresented] = useState(false);
+
+  // ⚠️ ANDROID BACK CLOSES THE SHEET. Neither this wrapper nor gorhom 5.2.14
+  // handled it, so Back went to the screen underneath: it popped the route
+  // with the sheet still up (the sheet then slid down over the PREVIOUS
+  // screen), or the map cleared its card and left the sheet over nothing
+  // (2026-09-30 review of the report safety sheet). Registered on open, so it
+  // runs before any handler a screen registered earlier (Android runs the
+  // newest first), and consumed so Back does one thing. A screen that
+  // re-registers while a sheet is up would jump the queue, which is why
+  // WizardScreen registers its handler once.
+  useEffect(() => {
+    if (!presented) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      modalRef.current?.dismiss();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [presented]);
+
   const handleModalDismiss = useCallback(() => {
     presentedRef.current = false;
+    setPresented(false);
     onDismiss?.();
   }, [onDismiss]);
 
@@ -157,6 +185,7 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
     <BottomSheetModal
       ref={modalRef}
       onDismiss={handleModalDismiss}
+      onChange={(index) => setPresented(index >= 0)}
       enablePanDownToClose
       enableDynamicSizing
       maxDynamicContentSize={windowHeight * MAX_HEIGHT_RATIO}

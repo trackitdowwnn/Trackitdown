@@ -14,5 +14,10 @@ export {
   type SightingDisputeScreenProps,
 } from './screens/SightingDisputeScreen';
 export { PostSightingsSection, type PostSightingsSectionProps } from './components/PostSightingsSection';
+export {
+  ReportSafetySheet,
+  type ReportSafetySheetProps,
+  type ReportSafetySheetRef,
+} from './components/ReportSafetySheet';
 export { usePostSightings } from './hooks/usePostSightings';
 export type { OwnerSighting, ReportSightingAnswers, SightingContextFlag } from './types';
