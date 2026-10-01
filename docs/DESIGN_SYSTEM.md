@@ -428,6 +428,51 @@ are build output.
   the shared `sizes.tabIconSlot` (34) so labels stay aligned. A failed
   avatar load falls back to the person icon.
 
+### Long pickers: make and model (AutoTrader pattern, 2026-09-30)
+
+`SelectField` → full-screen `SelectScreen`, never a dropdown (Baymard and
+GOV.UK both advise against dropdowns for long lists).
+
+- **Browse-first.** The list leads and the keyboard rises only when the search
+  is tapped.
+- **Popular first, ranked, as tiles** (`pinnedLayout="grid"`, 2026-10-01).
+  Up to 10 pinned values, most common first ("Popular makes": Ford,
+  Volkswagen, Vauxhall…), two-up at the 24pt gutter with a `md` gap. Each tile
+  is CardSelect's language: `surface`, `radii.md`, a 2pt `selectBorder` in
+  `border` that turns `primary` with a small check when chosen, pressed fill
+  `surfaceSubtle`, `cardTitle` label, flat (no shadow). Tiles are radios.
+  They hide while searching, and aren't repeated as rows: "All makes" heads
+  the whole list A–Z with sticky letter headers, where each keeps its place.
+  Laid out as rows of two `flex: 1` cells (never measured widths), one column
+  past `listRowStackFontScale`; names shrink, then wrap to two lines. `md`
+  radius, not CardSelect's `lg`: a compact tile, not a card. The tiles are
+  their own named radio group. "Popular makes" and "All makes" are group
+  titles (`heading`, ink), a step above the small grey sticky letters. With
+  the rail showing, the right gutter is wider than the left by the rail's
+  clearance: deliberate, not a misalignment.
+- **Rows are text-only** (no logo or monogram: AutoTrader's filters carry
+  none, and the letter is already the sticky header), with a hairline
+  `border` divider at the gutter between rows, never beside a header. The
+  check is ListRow's: lucide 24pt in `textPrimary`, an equal spacer when
+  unchecked.
+- **Letter rail** on lists of about 20 or more rows, with "#" for numbered
+  models (first, where the sorted data puts it; spoken "numbers"). It hides
+  while searching. **Sanctioned exception** to the 44pt rule: each letter is
+  24pt tall (`sizes.indexRailLetterPad`, meeting WCAG 2.5.8) and its text is
+  capped at `indexRailFontScaleCap`, because the rail is a sighted shortcut;
+  the sticky headers (the headings rotor) are the accessible route.
+- **Search ignores case, accents, hyphens and dots**, and matches an option's
+  `keywords` ("vw" finds Volkswagen). A match by keyword or without accents
+  counts as exact, so no "Use…" row appears beside it.
+- **Answering vs filtering:**
+  - Answering (posting, the garage, the listing editor) offers "Use "<typed>""
+    for anything unlisted.
+  - Filtering (search, alerts) passes `clearable`: an "Any …" radio row leads
+    the list, checked while nothing is chosen, and a filled field gets a ×
+    (a sibling of the field, so screen readers can reach it). No free text.
+- **Model waits for make.** The model field appears only once a make is
+  chosen. A new make clears the model; the same make keeps it.
+
 ### Date & time (custom, since 2026-09-29)
 
 The app has no platform date pickers. Every date is picked in its own

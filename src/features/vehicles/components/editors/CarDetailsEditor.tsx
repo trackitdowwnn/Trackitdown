@@ -1,7 +1,8 @@
 /**
  * WHAT:  CarDetailsEditor — edits the car's identity: make, model, colour (+ its
- *        note), body type, and year. DRAFT ONLY (identity edits on a verified
- *        post would need re-moderation). Prefills from the post.
+ *        note), body type, and year, on a draft or a live post (the server
+ *        has allowed live edits since 20260731110000_edit_car_details_when_live).
+ *        Prefills from the post.
  * WHY:   Reuses the wizard's Make/Model/Colour/BodyType/Year steps stacked (each
  *        a controlled adapter). Save is gated on make/model/colour present
  *        (server re-validates MISSING_REQUIRED). Changing the make clears the

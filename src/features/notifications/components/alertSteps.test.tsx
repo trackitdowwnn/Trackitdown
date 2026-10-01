@@ -32,7 +32,6 @@ jest.mock('@/features/vehicles', () => ({
 // an incident about: a mocked constant hid a floor that had been £10 for nine
 // days while the app went on enforcing £50. The module imports nothing, so
 // there was never anything to stub around; the real values are free.
-jest.mock('@/shared/lib/carMakes', () => ({ CAR_MAKES: [], POPULAR_MAKES: [] }));
 jest.mock('@/shared/lib/carModels', () => ({ modelsForMake: () => [] }));
 jest.mock('@/shared/lib/location/expoLocationServices', () => ({ expoLocationServices: {} }));
 jest.mock('./AlertZoneMap', () => ({ AlertZoneMap: () => null, AlertZoneMapProvider: () => null }));
@@ -48,7 +47,6 @@ jest.mock('@/shared/ui', () => {
     LocationPicker: () => null,
     MoneySlider: () => null,
     RadiusSlider: () => null,
-    SelectField: () => null,
   };
 });
 

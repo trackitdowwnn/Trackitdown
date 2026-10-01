@@ -20,17 +20,16 @@
  *        (suggestAlertName — NameStep's placeholder); ./AlertZoneMap.tsx,
  *        src/shared/ui/RadiusSlider.tsx (shared with map search since
  *        2026-08-10; the default label keeps this wizard's copy unchanged);
- *        @/features/vehicles (BODY_TYPE_OPTIONS);
- *        @/shared/lib (CAR_COLOURS), @/shared/lib/carMakes, carModels.
+ *        @/features/vehicles (BODY_TYPE_OPTIONS, MakeField, ModelField);
+ *        @/shared/lib (CAR_COLOURS), @/shared/lib/carModels.
  */
 
-import { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN } from '@/features/vehicles';
+import { BODY_TYPE_OPTIONS, BODY_TYPE_UNKNOWN, MakeField, ModelField } from '@/features/vehicles';
 import { CAR_COLOURS } from '@/shared/lib';
 import {
   MAX_BOUNTY_PENCE as BOUNTY_MAX_PENCE,
   MIN_BOUNTY_PENCE as BOUNTY_MIN_PENCE,
 } from '@/shared/lib/bountyBounds';
-import { CAR_MAKES, POPULAR_MAKES } from '@/shared/lib/carMakes';
 import { modelsForMake } from '@/shared/lib/carModels';
 import { milesToMetres } from '@/shared/lib/distance';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
@@ -40,8 +39,6 @@ import {
   LocationPicker,
   MoneySlider,
   RadiusSlider,
-  SelectField,
-  type SelectOption,
   TextField,
 } from '@/shared/ui';
 import type { WizardStepProps } from '@/shared/wizard';
@@ -55,12 +52,6 @@ type StepProps = WizardStepProps<AlertAnswers>;
 
 /** "Any" is a value, not an absence, so the chip row can express it. */
 const ANY = '__any__';
-
-const MAKE_OPTIONS: SelectOption[] = CAR_MAKES.map((make) => ({
-  value: make.label,
-  label: make.label,
-  section: make.section,
-}));
 
 const COLOUR_OPTIONS = [
   { value: ANY, label: 'Any colour' },
@@ -158,36 +149,33 @@ export function CarStep({ answers, setAnswers }: StepProps) {
 
   return (
     <View style={styles.stack}>
-      <SelectField
-        label="Make"
-        options={MAKE_OPTIONS}
+      {/* The shared pickers in `filter` mode (2026-09-30): "Any make" /
+          "Any BMW model" rows, a × on each, accent-proof search, and NO free
+          typing, which is the SAFETY rule in the file header. */}
+      <MakeField
         value={make}
-        // Changing the make invalidates the old model — the same dependency
-        // makeChangePatch and useSearchCriteria.setMake enforce elsewhere.
-        onChange={(next) => setAnswers({ make: next, model: null })}
-        placeholder="Any make"
-        screenTitle="Which make?"
-        searchPlaceholder="Search makes"
-        recentValues={POPULAR_MAKES}
-        pinnedTitle="Popular makes"
-        showIndex
-        stagger
-        // NO allowManualEntry — see the SAFETY note in the file header.
+        // Changing the make invalidates the old model; re-picking the same
+        // make keeps it (the rule makeChangePatch and useSearchCriteria use).
+        onChange={(next) =>
+          setAnswers(next === make ? { make: next } : { make: next, model: null })
+        }
+        filter={{ onClear: () => setAnswers({ make: null, model: null }) }}
       />
 
-      {make && models.length > 0 ? (
-        <SelectField
-          label="Model"
-          options={models.map((model) => ({ value: model.label, label: model.label }))}
+      {/* On `make` alone: ModelField (filter) renders nothing for a make with
+          no list, unless the alert already has a model, which it then shows
+          so it can be cleared. */}
+      {make ? (
+        <ModelField
+          make={make}
           value={answers.model ?? null}
           onChange={(model) => setAnswers({ model })}
-          placeholder="Any model"
-          screenTitle={`Which ${make}?`}
-          searchPlaceholder="Search models"
+          filter={{ onClear: () => setAnswers({ model: null }) }}
         />
       ) : null}
 
-      {make && models.length === 0 ? (
+      {/* Not while a model is still set: the field above is showing it. */}
+      {make && models.length === 0 && !answers.model ? (
         <Text style={styles.note}>
           We don&apos;t have a model list for {make} yet, so this alert will cover all of them.
         </Text>

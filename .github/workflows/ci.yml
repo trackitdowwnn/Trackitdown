@@ -95,6 +95,12 @@ jobs:
       - name: Brand asset check
         run: npm run test:assets
 
+      # The car make/model list's build rules (scripts/carTaxonomy.mjs). The
+      # labels are stored values, so a rule change that renames one breaks
+      # matching for every row with the old name.
+      - name: Car list build rules
+        run: npm run test:taxonomy
+
       # Fails the build if any committed file contains obvious secrets.
       # Lightweight guard — not a replacement for proper secret scanning.
       #

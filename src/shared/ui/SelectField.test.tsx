@@ -91,4 +91,44 @@ describe('SelectField', () => {
 
     expect(onChange).toHaveBeenCalledWith('sand');
   });
+
+  describe('clearable (filters)', () => {
+    const clearable = (onClear: () => void) => ({
+      anyLabel: 'Any colour',
+      clearLabel: 'Clear colour',
+      onClear,
+    });
+
+    it('offers a × only once something is chosen, and it clears', async () => {
+      const onClear = jest.fn();
+      const empty = await render(
+        <SelectField label="Colour" options={COLOURS} value={null} onChange={() => {}} clearable={clearable(onClear)} />,
+      );
+      expect(empty.queryByRole('button', { name: 'Clear colour' })).toBeNull();
+      // Nothing chosen reads as the "any" answer, not "not selected".
+      expect(empty.getByLabelText('Colour, Any colour, opens selection screen')).toBeTruthy();
+
+      const chosen = await render(
+        <SelectField label="Colour" options={COLOURS} value="sage" onChange={() => {}} clearable={clearable(onClear)} />,
+      );
+      await act(async () => {
+        fireEvent.press(chosen.getByRole('button', { name: 'Clear colour' }));
+      });
+      expect(onClear).toHaveBeenCalledTimes(1);
+    });
+
+    it('leads the picker with the "any" row, which clears too', async () => {
+      const onClear = jest.fn();
+      const view = await render(
+        <SelectField label="Colour" options={COLOURS} value="sage" onChange={() => {}} clearable={clearable(onClear)} />,
+      );
+      await act(async () => {
+        fireEvent.press(view.getByLabelText('Colour, Sage, opens selection screen'));
+      });
+      await act(async () => {
+        fireEvent.press(view.getByRole('radio', { name: 'Any colour' }));
+      });
+      expect(onClear).toHaveBeenCalledTimes(1);
+    });
+  });
 });

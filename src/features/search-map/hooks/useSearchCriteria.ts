@@ -49,8 +49,17 @@ export function useSearchCriteria(initial?: SearchCriteria): UseSearchCriteriaRe
     (partial: Partial<SearchCriteria>) => setCriteria((current) => ({ ...current, ...partial })),
     [],
   );
+  // A new make clears the model (it belonged to the old make); picking the SAME
+  // make again keeps it, as makeChangePatch does in the posting wizard. No make
+  // always means no model: a model that arrived without one (a shared link)
+  // has no field to show it in, so it would filter invisibly.
   const setMake = useCallback(
-    (make: string | null) => setCriteria((current) => ({ ...current, make, model: null })),
+    (make: string | null) =>
+      setCriteria((current) => ({
+        ...current,
+        make,
+        model: make !== null && make === current.make ? current.model : null,
+      })),
     [],
   );
   const setWhen = useCallback(

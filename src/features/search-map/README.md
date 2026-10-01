@@ -459,7 +459,9 @@ is absent when browsing nationally, but the radius still applies, and nesting
 it would silently drop the control there. `distanceMiles` stays null until the
 slider is touched, which is now the only thing stopping a sheet that shows the
 control from the first frame from opening pre-filtered. Below that, collapsible accordion filter cards:
-**Vehicle** (make/model pickers reused from the posting flow + multi-select
+**Vehicle** (make/model pickers reused from the posting flow, in `filter`
+mode since 2026-09-30: "Any make" / "Any <Make> model", a × on each, listed
+values only; re-picking the same make keeps the model + multi-select
 colour and body-type chips + a From/To year range), **Bounty**
 (`MoneyRangeSlider` — the range consumer the slider's TODO anticipated — +
 quick chips), and **When** (recency chips plus From/To date pickers, always

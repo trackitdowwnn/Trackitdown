@@ -621,12 +621,19 @@ export function SearchSheet({
             reduceMotion={reduceMotion}
             testID="section-vehicle"
           >
-            <MakeField value={criteria.make} onChange={setMake} />
+            {/* Filters, AutoTrader-style: "Any make" / "Any BMW model", a ×
+                on each, and model only once there's a make. */}
+            <MakeField
+              value={criteria.make}
+              onChange={setMake}
+              filter={{ onClear: () => setMake(null) }}
+            />
             {criteria.make ? (
               <ModelField
                 make={criteria.make}
                 value={criteria.model}
                 onChange={(model) => patch({ model })}
+                filter={{ onClear: () => patch({ model: null }) }}
               />
             ) : null}
 

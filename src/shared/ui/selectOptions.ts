@@ -25,6 +25,9 @@ export interface SelectOption<V extends string | number = string> {
   icon?: ReactNode;
   /** Group title; options sharing a section render under one header. */
   section?: string;
+  /** Other names the search should find it by ("vw" for Volkswagen). Never
+   *  shown. */
+  keywords?: string[];
 }
 
 /** The flat list the screen renders: section headers interleaved with rows. */
@@ -38,19 +41,53 @@ export const RECENT_SECTION_TITLE = 'Recent';
 /** Key-namespace delimiter — NUL cannot appear in real labels/values. */
 const KEY_DELIMITER = '\u0000';
 
-/** Lowercase, trim, and collapse internal whitespace for matching. */
+/**
+ * The matching form of a label or query: lower-cased, accents stripped
+ * (a UK keyboard types "skoda", not "Škoda"), hyphens as spaces ("t roc"
+ * finds T-Roc), dots dropped ("id3" finds ID.3), whitespace collapsed.
+ */
 export function normalizeQuery(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, ' ');
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\./g, '')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-/** Case- and whitespace-insensitive label match. */
-export function matchesQuery(label: string, normalizedQuery: string): boolean {
-  return normalizeQuery(label).includes(normalizedQuery);
+/** The query with its spaces taken out too: "mx5" is MX-5, "crv" is CR-V,
+ *  "landrover" is Land Rover. */
+export function compactQuery(text: string): string {
+  return normalizeQuery(text).replace(/ /g, '');
+}
+
+/** Compact matching starts at this many characters: shorter, and "dr" would
+ *  find Land Rover across its word break. */
+const COMPACT_FROM = 3;
+
+/**
+ * Does this option's label, or one of its keywords, contain the query? Spaced
+ * or (from three characters) compact, so "t roc" and "troc" both find T-Roc.
+ */
+export function matchesQuery(
+  label: string,
+  normalizedQuery: string,
+  keywords: readonly string[] = [],
+): boolean {
+  const compact = normalizedQuery.replace(/ /g, '');
+  return [label, ...keywords].some(
+    (text) =>
+      normalizeQuery(text).includes(normalizedQuery) ||
+      (compact.length >= COMPACT_FROM && compactQuery(text).includes(compact)),
+  );
 }
 
 /**
  * Build the flat list for the screen:
- * - a non-empty query filters options by label and hides the pinned group
+ * - a non-empty query filters options by label and keywords (matchesQuery:
+ *   case, accents and spacing ignored) and hides the pinned group
  *   (searching supersedes it);
  * - with no query, consumer-fed `pinnedValues` render first under
  *   `pinnedTitle` (default "Recent"; e.g. "Popular makes") in the given order
@@ -67,7 +104,7 @@ export function buildSelectList<V extends string | number>(
 ): SelectListItem<V>[] {
   const normalizedQuery = normalizeQuery(query);
   const visible = normalizedQuery
-    ? options.filter((option) => matchesQuery(option.label, normalizedQuery))
+    ? options.filter((option) => matchesQuery(option.label, normalizedQuery, option.keywords))
     : options;
 
   const items: SelectListItem<V>[] = [];

@@ -144,7 +144,9 @@ fee); on a no-reward listing **nothing is refunded** and the listing simply come
 down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
 
 1. **draft** — owner fills in car details: make/model/colour (required — the
-   car's identity), an optional UK number plate, photos, last-seen location and
+   car's identity; make and model are picked from a list built from DfT
+   vehicle licensing statistics, with free text for anything unlisted, see
+   `src/features/vehicles/post/README.md`), an optional UK number plate, photos, last-seen location and
    time, distinguishing features, and how the crime happened. **The plate is
    optional**: some owners don't have it (e.g. the thief swapped it). When a
    plate is given it's validated against UK formats and deduped (see below);
