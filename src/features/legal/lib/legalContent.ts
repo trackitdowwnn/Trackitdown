@@ -154,7 +154,9 @@ const SAFETY: LegalDocument = {
 const TERMS: LegalDocument = {
   slug: 'terms',
   title: 'Terms of service',
-  lastUpdated: '1 September 2026',
+  // 30 Sep: the "Vehicle data" credit. Not a change that matters to anyone's
+  // agreement, so no in-app notice.
+  lastUpdated: '30 September 2026',
   intro: [
     `These terms are an agreement between you and ${OPERATOR}. By creating an account you accept them.`,
     'They are written to be read. Where a term matters to your money or your safety, it is stated plainly rather than buried.',
@@ -273,6 +275,14 @@ const TERMS: LegalDocument = {
       body: [
         'You can delete your account at any time from your profile. If you have a listing with a bounty in escrow you will need to cancel or complete it first, because we cannot leave money without an owner.',
         'We may suspend or close an account that breaks these terms, and we will refund any bounty still held unless we are required not to.',
+      ],
+    },
+    // Open Government Licence v3.0 requires this credit (2026-09-30, when the
+    // make and model list moved to DfT data).
+    {
+      heading: 'Vehicle data',
+      body: [
+        'The list of car makes and models comes from the Department for Transport’s vehicle licensing statistics. Contains public sector information licensed under the Open Government Licence v3.0.',
       ],
     },
     {

@@ -73,6 +73,8 @@
     "typecheck:tests": "tsc -p supabase/tests/tsconfig.json --noEmit",
     "test": "jest",
     "test:assets": "node --test scripts/brand/*.test.mjs",
+    "test:taxonomy": "node --test scripts/carTaxonomy.test.mjs",
+    "taxonomy:build": "node scripts/build-car-taxonomy.mjs",
     "test:db": "bash scripts/test-db.sh",
     "preflight": "node --use-system-ca scripts/preflight.mjs",
     "preflight:ci": "node scripts/preflight.mjs --offline",

@@ -34,13 +34,28 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
 
 1. **Make** — its own step (2026-07-23), the flow's first: the full-screen
    searchable make picker (`MakeStep` → `MakeField` → `SelectScreen`;
-   browse-first, "Popular makes" pinned, A–Z index, type-to-add for unlisted
-   makes). `create_post` requires make/model/colour.
+   browse-first, "Popular makes" pinned (the ten most common in the UK, most
+   first), A–Z index, type-to-add for unlisted makes, and a search that
+   ignores accents and knows "vw" / "merc"). `create_post` requires
+   make/model/colour.
+   **The list** (2026-09-30) is generated from DfT vehicle licensing
+   statistics, not typed by hand: about 90 makes and 1,050 models, ranked by
+   how many are on UK roads (`src/shared/lib/carTaxonomy.generated.ts`, Open
+   Government Licence v3.0, credited in the terms). Not AutoTrader's: their
+   terms forbid reuse and UK database right protects their list. **Refresh it
+   quarterly:** download `df_VEH0120_UK.csv` from
+   https://www.gov.uk/government/statistical-data-sets/vehicle-licensing-statistics-data-files
+   and run `npm run taxonomy:build -- <csv>` (`-- <csv> --report` to check the
+   labels first). Label fixes go in `scripts/carTaxonomy.mjs`, never the
+   generated file; `carTaxonomy.test.ts` fails if a label the app already
+   stores disappears.
 2. **Model** — its own step (2026-07-23), **dependent on the make**:
-   `ModelStep` → `ModelField` lists that make's models from the static
-   `carModels` dataset (`modelsForMake`, the data-source seam), with a
-   "Popular <Make> models" group and a free-text row; a make with no seeded
-   models (or a free-typed make) drops to a plain free-text model input. The
+   `ModelStep` → `ModelField` lists that make's models (`modelsForMake`, the
+   data-source seam), with "Popular <Make> models" (by UK count) and a
+   free-text row; 20+ models get A–Z sections and the rail. Common van-only
+   models (Ranger, Transit Connect) are listed at count 0, after the cars and
+   never popular; a model DfT also counts as a car (Transit, Hilux) ranks by
+   that car count. A free-typed make (no list) drops to a plain free-text model input. The
    chosen make is folded into the step **title** ("Which BMW model?") via a
    dynamic `question` (a function of the answers, resolved by the framework's
    `resolveQuestion`) — no separate make chip in the body.

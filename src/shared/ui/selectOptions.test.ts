@@ -50,6 +50,56 @@ describe('matchesQuery', () => {
   it('rejects non-matches', () => {
     expect(matchesQuery('Audi', normalizeQuery('bmw'))).toBe(false);
   });
+
+  it('ignores accents: a UK keyboard types "skoda", not "Škoda"', () => {
+    expect(matchesQuery('Škoda', normalizeQuery('skoda'))).toBe(true);
+    expect(matchesQuery('Citroën', normalizeQuery('citroen'))).toBe(true);
+  });
+
+  it('treats hyphens as spaces and ignores dots', () => {
+    expect(matchesQuery('T-Roc', normalizeQuery('t roc'))).toBe(true);
+    expect(matchesQuery('ID.3', normalizeQuery('id3'))).toBe(true);
+  });
+
+  it('matches the compact typings people use, with no spaces at all', () => {
+    // In a filter these used to end in "No matches", reading as "not listed".
+    expect(matchesQuery('MX-5', normalizeQuery('mx5'))).toBe(true);
+    expect(matchesQuery('CR-V', normalizeQuery('crv'))).toBe(true);
+    expect(matchesQuery('X-Trail', normalizeQuery('xtrail'))).toBe(true);
+    expect(matchesQuery('C-Class', normalizeQuery('cclass'))).toBe(true);
+    expect(matchesQuery('Land Rover', normalizeQuery('landrover'))).toBe(true);
+    expect(matchesQuery('Land Rover', normalizeQuery('range rover'), ['rangerover'])).toBe(true);
+  });
+
+  it('does not match two letters across a word break', () => {
+    // "dr" is the end of "Land" and the start of "Rover", not a search for it.
+    expect(matchesQuery('Land Rover', normalizeQuery('dr'))).toBe(false);
+    expect(matchesQuery('Land Rover', normalizeQuery('la'))).toBe(true);
+  });
+
+  it('matches an option’s keywords too', () => {
+    expect(matchesQuery('Volkswagen', normalizeQuery('vw'), ['vw'])).toBe(true);
+    expect(matchesQuery('Volkswagen', normalizeQuery('vw'))).toBe(false);
+  });
+});
+
+describe('buildSelectList keywords', () => {
+  it('finds an option by keyword without showing the keyword', () => {
+    const options: SelectOption[] = [
+      { value: 'Volkswagen', label: 'Volkswagen', keywords: ['vw'] },
+      { value: 'Volvo', label: 'Volvo' },
+    ];
+    const items = buildSelectList(options, 'vw');
+    expect(items.flatMap((item) => (item.kind === 'option' ? [item.option.label] : []))).toEqual([
+      'Volkswagen',
+    ]);
+  });
+
+  it('keeps the pinned group in the order it is given (a popularity rank)', () => {
+    const items = buildSelectList(MAKES, '', ['bmw', 'audi'], 'Popular makes');
+    expect(items.slice(0, 3).map((item) => (item.kind === 'header' ? item.title : item.option.label)))
+      .toEqual(['Popular makes', 'BMW', 'Audi']);
+  });
 });
 
 describe('buildSelectList', () => {

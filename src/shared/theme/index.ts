@@ -34,6 +34,7 @@ export {
   displayFontScaleCap,
   shrinkToFitMinScale,
   listRowStackFontScale,
+  indexRailFontScaleCap,
   mapPinFontScaleCap,
   segmentFontScaleCap,
   tabLabelFontScaleCap,

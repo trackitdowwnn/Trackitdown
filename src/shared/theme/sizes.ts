@@ -43,8 +43,11 @@ export const sizes = {
   selectBorder: 2,
   colourSwatchBadgeIcon: 12,
   /** A–Z index-rail letter vertical padding — iOS section-index rhythm,
-   *  deliberately below the 4pt scale so ~20 letters fit as one tidy column. */
-  indexRailLetterPad: 2,
+   *  deliberately below the 4pt scale so ~20 letters fit as one tidy column.
+   *  3, not 2 (2026-09-30): an 18pt caption line + 2×3 makes each letter 24pt
+   *  tall, WCAG 2.5.8's minimum, where 2 left it at 22. The rail is the
+   *  sanctioned exception to the 44pt target (DESIGN_SYSTEM Accessibility). */
+  indexRailLetterPad: 3,
   /** Standard icon size (tab bar, action rows). */
   icon: 24,
   /** Small inline icon (inside pills/chips, beside label-size text). */

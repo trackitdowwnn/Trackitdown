@@ -131,6 +131,13 @@ export const calendarFontScaleCap = 1.5;
  *  with an uncapped accessibilityLabel. */
 export const segmentFontScaleCap = 1.2;
 
+/** Dynamic-type cap for SelectScreen's A–Z letter rail. About 20 letters
+ *  stack in one column, so at 200% the rail ran off both ends of the screen.
+ *  It's a shortcut: the sticky section headers, which scale fully, carry the
+ *  same information. (It also capped the make monogram until that was
+ *  removed in the 2026-10-01 polish.) */
+export const indexRailFontScaleCap = 1.2;
+
 /**
  * Above this, a ListRow puts its trailing value UNDER the title instead of
  * beside it.

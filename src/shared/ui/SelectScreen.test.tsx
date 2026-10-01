@@ -11,7 +11,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { SelectScreen } from './SelectScreen';
+import { SelectScreen, fitAnchors } from './SelectScreen';
 import type { SelectOption } from './selectOptions';
 
 jest.mock('react-native-safe-area-context', () =>
@@ -85,6 +85,23 @@ async function typeSearch(view: Awaited<ReturnType<typeof render>>, text: string
   });
 }
 
+describe('fitAnchors (the letter rail on short screens)', () => {
+  const anchors = 'ABCDEFGHIJKLMNOPRSTVX'.split('').map((title, index) => ({ title, index }));
+
+  it('shows every letter when they fit, or before anything is measured', () => {
+    expect(fitAnchors(anchors, 0, 0)).toHaveLength(21);
+    expect(fitAnchors(anchors, 21 * 24, 24)).toHaveLength(21);
+  });
+
+  it('thins evenly to what fits, keeping the first and last letters', () => {
+    const shown = fitAnchors(anchors, 11 * 24, 24);
+    expect(shown).toHaveLength(11);
+    expect(shown[0].title).toBe('A');
+    expect(shown[shown.length - 1].title).toBe('X');
+    expect(new Set(shown.map((anchor) => anchor.title)).size).toBe(11);
+  });
+});
+
 describe('SelectScreen', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -153,6 +170,123 @@ describe('SelectScreen', () => {
       await typeSearch(view, 'audi');
       expect(view.queryByText(/^Use /)).toBeNull();
       expect(view.getByText('Audi')).toBeTruthy();
+    });
+
+    it('treats an accent-less or keyword match as exact too', async () => {
+      const options: SelectOption[] = [
+        { value: 'Škoda', label: 'Škoda', section: 'S' },
+        { value: 'Volkswagen', label: 'Volkswagen', section: 'V', keywords: ['vw'] },
+      ];
+      const { view } = await renderScreen({ options, manualEntry: { onSubmit: jest.fn() } });
+      await typeSearch(view, 'skoda');
+      expect(view.queryByText(/^Use /)).toBeNull();
+      expect(view.getByText('Škoda')).toBeTruthy();
+      await typeSearch(view, 'VW');
+      expect(view.queryByText(/^Use /)).toBeNull();
+      expect(view.getByText('Volkswagen')).toBeTruthy();
+    });
+  });
+
+  describe('pinnedLayout="grid" (popular tiles)', () => {
+    const grid = {
+      recentValues: ['bmw', 'audi'],
+      pinnedTitle: 'Popular makes',
+      pinnedLayout: 'grid' as const,
+      allTitle: 'All makes',
+    };
+    const radios = (view: Awaited<ReturnType<typeof render>>) =>
+      view.getAllByRole('radio').map((radio) => radio.props.accessibilityLabel as string);
+
+    it('draws the pinned values as tiles, in order, above "All makes" and the list', async () => {
+      const { view } = await renderScreen(grid);
+      expect(view.getByRole('header', { name: 'Popular makes' })).toBeTruthy();
+      expect(view.getByRole('header', { name: 'All makes' })).toBeTruthy();
+      // Tiles first (BMW, Audi), then the A–Z rows; each make appears once
+      // as a tile and once in its section, not twice in a row at the top.
+      expect(radios(view)).toEqual(['BMW', 'Audi', 'Aston Martin', 'Audi', 'BMW']);
+    });
+
+    it('checks the selected tile, and a tile press selects and closes', async () => {
+      const { view, onSelect, onClose } = await renderScreen({ ...grid, value: 'audi' });
+      const [bmwTile, audiTile] = view.getAllByRole('radio');
+      expect(audiTile.props.accessibilityState).toMatchObject({ checked: true });
+      expect(bmwTile.props.accessibilityState).toMatchObject({ checked: false });
+
+      await act(async () => {
+        fireEvent.press(bmwTile);
+      });
+      expect(onSelect).toHaveBeenCalledWith('bmw');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('⚠️ keeps the letter headers sticky with the grid above them', async () => {
+      // The grid sits in the list's header cell, which FlatList counts as
+      // cell 0. The letter headers (data 0 and 3) must stick at cells 1 and
+      // 4; unshifted, the Any/grid header stuck instead (2026-09-30 regression).
+      const withGrid = (await renderScreen(grid)).view;
+      expect(withGrid.getByLabelText('Car make').props.stickyHeaderIndices).toEqual([1, 4]);
+      const plain = (await renderScreen()).view;
+      expect(plain.getByLabelText('Car make').props.stickyHeaderIndices).toEqual([0, 3]);
+    });
+
+    it('skips a pinned value that isn’t an option, and shows no grid if none is', async () => {
+      const some = (await renderScreen({ ...grid, recentValues: ['tesla', 'bmw'] })).view;
+      expect(radios(some)).toEqual(['BMW', 'Aston Martin', 'Audi', 'BMW']);
+
+      const none = (await renderScreen({ ...grid, recentValues: ['tesla'] })).view;
+      expect(none.queryByRole('header', { name: 'Popular makes' })).toBeNull();
+      expect(none.queryByRole('header', { name: 'All makes' })).toBeNull();
+    });
+
+    it('in a filter: "Any make" first, then the tiles, then the rows', async () => {
+      const { view } = await renderScreen({
+        ...grid,
+        anyOption: { label: 'Any make', onSelect: jest.fn() },
+      });
+      expect(radios(view)).toEqual(['Any make', 'BMW', 'Audi', 'Aston Martin', 'Audi', 'BMW']);
+    });
+
+    it('hides the tiles while searching: results are rows only', async () => {
+      const { view } = await renderScreen(grid);
+      await typeSearch(view, 'au');
+      expect(view.queryByRole('header', { name: 'Popular makes' })).toBeNull();
+      expect(radios(view)).toEqual(['Audi']);
+    });
+  });
+
+  it('divides rows with a hairline, never beside a section header', async () => {
+    const { view } = await renderScreen();
+    // A: Aston Martin, Audi (one divider between); B: BMW alone (none).
+    expect(view.getAllByTestId('select-row-divider')).toHaveLength(1);
+  });
+
+  describe('the "Any" row (filters)', () => {
+    it('leads the list, is checked while nothing is chosen, and picks "no value"', async () => {
+      const onAny = jest.fn();
+      const { view, onSelect, onClose } = await renderScreen({
+        anyOption: { label: 'Any make', onSelect: onAny },
+      });
+      const any = view.getByRole('radio', { name: 'Any make' });
+      expect(any.props.accessibilityState).toMatchObject({ checked: true });
+
+      await act(async () => {
+        fireEvent.press(any);
+      });
+      expect(onAny).toHaveBeenCalledTimes(1);
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('is unchecked once a value is chosen, and hidden while searching', async () => {
+      const { view } = await renderScreen({
+        value: 'audi',
+        anyOption: { label: 'Any make', onSelect: jest.fn() },
+      });
+      expect(view.getByRole('radio', { name: 'Any make' }).props.accessibilityState).toMatchObject({
+        checked: false,
+      });
+      await typeSearch(view, 'bm');
+      expect(view.queryByRole('radio', { name: 'Any make' })).toBeNull();
     });
   });
 

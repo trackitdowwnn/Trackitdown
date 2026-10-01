@@ -8,7 +8,14 @@
  * LINKS: src/shared/lib/carMakes.ts.
  */
 
-import { CAR_MAKES, POPULAR_MAKES, canonicaliseMake, makeSection } from './carMakes';
+import {
+  CAR_MAKES,
+  MAKE_ALIASES,
+  POPULAR_MAKES,
+  canonicaliseMake,
+  makeKeywords,
+  makeSection,
+} from './carMakes';
 
 describe('carMakes', () => {
   it('folds accented first letters to an ASCII section', async () => {
@@ -28,14 +35,28 @@ describe('carMakes', () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
-  it('surfaces the common UK makes as popular, in list order', async () => {
+  it('ranks the ten most common UK makes as popular, most first', async () => {
+    // DfT counts, 2026 Q2: Ford leads, then Volkswagen and Vauxhall. The old
+    // hand list showed its ten A–Z, which ranked nothing.
+    expect(POPULAR_MAKES).toHaveLength(10);
+    expect(POPULAR_MAKES.slice(0, 3)).toEqual(['Ford', 'Volkswagen', 'Vauxhall']);
     expect(POPULAR_MAKES).toContain('BMW');
-    expect(POPULAR_MAKES).toContain('Ford');
-    expect(POPULAR_MAKES).toContain('Vauxhall');
-    // Popular labels are a subset of the full list.
     for (const label of POPULAR_MAKES) {
-      expect(CAR_MAKES.some((make) => make.label === label)).toBe(true);
+      expect(CAR_MAKES.find((make) => make.label === label)?.popular).toBe(true);
     }
+  });
+
+  it('lists every make A–Z, with accented makes among their letter', () => {
+    const labels = CAR_MAKES.map((make) => make.label);
+    expect(labels.indexOf('SEAT')).toBeLessThan(labels.indexOf('Škoda'));
+    expect(labels.indexOf('Škoda')).toBeLessThan(labels.indexOf('Smart'));
+    expect(labels.indexOf('Chevrolet')).toBeLessThan(labels.indexOf('Citroën'));
+  });
+
+  it('finds a make by the other names it is typed as', () => {
+    expect(makeKeywords('Volkswagen')).toContain('vw');
+    expect(makeKeywords('Mercedes-Benz')).toContain('merc');
+    expect(makeKeywords('Ford')).toEqual([]);
   });
 });
 
@@ -75,6 +96,15 @@ describe('canonicaliseMake', () => {
     expect(canonicaliseMake('Alfa')).toBe('Alfa Romeo');
     // A model offered as a make, common enough to be worth mapping.
     expect(canonicaliseMake('Range Rover')).toBe('Land Rover');
+    // Chevrolet is on the DfT list, so its nickname can map now.
+    expect(canonicaliseMake('Chevy')).toBe('Chevrolet');
+  });
+
+  it('ignores hyphens and spaces, so no alias is needed for them', () => {
+    expect(canonicaliseMake('Rolls Royce')).toBe('Rolls-Royce');
+    expect(canonicaliseMake('mercedes benz')).toBe('Mercedes-Benz');
+    expect(canonicaliseMake('Land-Rover')).toBe('Land Rover');
+    expect(canonicaliseMake('austin healey')).toBe('Austin-Healey');
   });
 
   it('⚠️ NEVER traps a make it does not know', () => {
@@ -107,8 +137,13 @@ describe('canonicaliseMake', () => {
     // make INTO a permanent mismatch — worse than leaving it alone, and
     // invisible without this assertion.
     const labels = new Set(CAR_MAKES.map((make) => make.label));
-    for (const alias of ['VW', 'Merc', 'Landrover', 'Alfa', 'Skoda', 'Citroen', 'DS', 'Mini']) {
-      expect(labels.has(canonicaliseMake(alias))).toBe(true);
+    // The whole table, not a sample: a sample let "chevy" sit untested.
+    for (const [alias, label] of Object.entries(MAKE_ALIASES)) {
+      expect([alias, labels.has(label)]).toEqual([alias, true]);
+      expect(canonicaliseMake(alias)).toBe(label);
+    }
+    for (const typed of ['VW', 'Merc', 'Landrover', 'Alfa', 'Skoda', 'Citroen', 'DS', 'Mini']) {
+      expect(labels.has(canonicaliseMake(typed))).toBe(true);
     }
   });
 });

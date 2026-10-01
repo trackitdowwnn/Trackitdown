@@ -93,10 +93,19 @@ instead of 10.
   typed.
   - The pickers offer **canonical values only, no free typing**. A typed
     "beemer" would create an alert that silently matches nothing — worse than
-    no alert, because the user believes they are covered.
-  - **Known limit**: case-folding doesn't equate `VW` with `Volkswagen`, or
-    `Golf` with `Golf GTI`. The honest fix is normalising
-    `posts.make/model/colour` on write. Not done.
+    no alert, because the user believes they are covered. Since 2026-09-30
+    they're the shared `MakeField` / `ModelField` in `filter` mode: "Any make"
+    and "Any <Make> model" rows, a × on each, and a search that finds "skoda"
+    and "vw".
+  - **Normalised on write** (review #20, 2026-09-03): `canonicaliseMake` /
+    `canonicaliseModel` turn `VW` into `Volkswagen` and `golf` into `Golf` as
+    posts and alerts are saved. **Still a limit:** `Golf` doesn't match
+    `Golf GTI` (a trim), and rows written before 2026-09-03 keep what was
+    typed. Since 2026-09-30 canonicalising also ignores spaces, hyphens and
+    dots, so new rows store "Rolls-Royce" and "C-Class" where an older
+    free-typed row may say "Rolls Royce" or "c class"; those older rows won't
+    meet alerts built from the list. A one-off backfill through
+    `canonicaliseMake` / `canonicaliseModel` would close it; not done.
   - **Recency filters `last_seen_at`, not post age.** It correctly excludes
     reports of older thefts, but most reports are recent, so it narrows less
     than users may expect. The step says so rather than implying otherwise.

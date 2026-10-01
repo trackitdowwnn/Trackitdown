@@ -1,37 +1,33 @@
 /**
- * WHAT:  MakeField — the car-make picker field for the post-a-car details
- *        step: a SelectField that opens the full-screen searchable make picker
- *        (browse-first, "Popular makes" pinned, A–Z index rail, monogram per
- *        row) and accepts a free-typed make for anything unlisted.
- * WHY:   Make is the car's primary identity, so it earns the roomy Airbnb-style
- *        picker rather than a bare text box — but posts.make is FREE TEXT, so
- *        the manual-entry path must reach an unlisted make: typing a make with
- *        no exact match surfaces a "Use "<query>"" row (allowManualEntry). The
- *        stored value IS the make label ("BMW"), so a pick or a typed entry both
- *        write exactly what the DB keeps. Real logos are a later swap — the
- *        monogram fills the slot now (icon convention).
- * LINKS: src/shared/lib/carMakes.ts (the list);
+ * WHAT:  MakeField — the car-make picker field: a SelectField that opens the
+ *        full-screen make picker, AutoTrader-style: browse-first, the ten most
+ *        common UK makes as two-up tiles ("Popular makes"), then "All makes"
+ *        A–Z with sticky letters, hairline-divided rows and a letter rail, and
+ *        a search that ignores accents and knows the other names ("vw",
+ *        "merc", "skoda"). Two modes:
+ *          - answering (posting, garage, the listing editor): a free-typed make
+ *            is allowed for anything unlisted ("Use "<query>"");
+ *          - `filter` (search, alerts): an "Any make" row leads, a × clears the
+ *            field, and only listed makes can be picked.
+ * WHY:   Make is the car's primary identity, so it earns the roomy picker
+ *        rather than a bare text box — but posts.make is FREE TEXT, so an owner
+ *        must be able to enter a make we don't list. A filter is different:
+ *        "any" is a real answer there, and a make nobody's car has can't match
+ *        anything. The stored value IS the make label ("BMW").
+ *        TEXT-ONLY ROWS (2026-10-01 polish): the old grey monogram disc only
+ *        repeated the sticky section letter, at 1.08:1 against the page.
+ *        AutoTrader's filter lists carry no logos either.
+ * LINKS: src/shared/lib/carMakes.ts (the list, from DfT data);
  *        src/features/vehicles/post/components/postSteps.tsx (MakeStep);
+ *        src/features/search-map/components/SearchSheet.tsx (filter);
  *        src/shared/ui/SelectField.tsx (+ SelectScreen) — the picker.
  */
 
 import { useCallback } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 
-import { radii, sizes, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { SelectField, type SelectOption } from '@/shared/ui';
 
-import { CAR_MAKES, POPULAR_MAKES, canonicaliseMake, makeSection } from '@/shared/lib/carMakes';
-
-/** Placeholder for a real make logo — a monogram of the make's first letter. */
-function Monogram({ letter }: { letter: string }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.monogram}>
-      <Text style={styles.monogramText}>{letter}</Text>
-    </View>
-  );
-}
+import { CAR_MAKES, POPULAR_MAKES, canonicaliseMake, makeKeywords } from '@/shared/lib/carMakes';
 
 /** Static once — CAR_MAKES never changes at runtime. Value === label so a pick
  *  writes the make string straight into the answer. */
@@ -39,7 +35,7 @@ const MAKE_OPTIONS: SelectOption<string>[] = CAR_MAKES.map((make) => ({
   value: make.label,
   label: make.label,
   section: make.section,
-  icon: <Monogram letter={make.section} />,
+  keywords: makeKeywords(make.label),
 }));
 
 export interface MakeFieldProps {
@@ -47,12 +43,15 @@ export interface MakeFieldProps {
   value: string | null;
   onChange: (make: string) => void;
   error?: string;
+  /** Search and alerts: "Any make" and a ×, both calling `onClear`; listed
+   *  makes only. */
+  filter?: { onClear: () => void };
 }
 
-export function MakeField({ value, onChange, error }: MakeFieldProps) {
+export function MakeField({ value, onChange, error, filter }: MakeFieldProps) {
   /**
-   * ⚠️ EVERY MAKE THIS APP STORES PASSES THROUGH HERE — the posting wizard and
-   * the search/alert sheet both render this one field — which is why
+   * ⚠️ EVERY MAKE THIS APP STORES PASSES THROUGH HERE — posting, the garage,
+   * search and alerts all render this one field — which is why
    * canonicalisation belongs at this seam and nowhere else (review #20).
    *
    * A post says what the owner typed and an alert says what the spotter typed;
@@ -72,7 +71,7 @@ export function MakeField({ value, onChange, error }: MakeFieldProps) {
   return (
     <SelectField
       label="Make"
-      placeholder="Select the make"
+      placeholder={filter ? 'Any make' : 'Select the make'}
       screenTitle="Car make"
       searchPlaceholder="Search car makes"
       options={MAKE_OPTIONS}
@@ -83,30 +82,18 @@ export function MakeField({ value, onChange, error }: MakeFieldProps) {
       autoFocusSearch={false}
       recentValues={POPULAR_MAKES}
       pinnedTitle="Popular makes"
+      pinnedLayout="grid"
+      allTitle="All makes"
       showIndex
       stagger
-      // Any make not on the list is enterable as free text: typing it surfaces
-      // a "Use "<query>"" row.
-      allowManualEntry
+      // Answering: any make not on the list is enterable as typed. A filter
+      // offers only listed makes, the ones a car can actually be posted as.
+      allowManualEntry={!filter}
+      clearable={
+        filter
+          ? { anyLabel: 'Any make', clearLabel: 'Clear make', onClear: filter.onClear }
+          : undefined
+      }
     />
   );
 }
-
-/** Re-derive a monogram letter if a caller needs one outside the field. */
-export const monogramFor = makeSection;
-
-const makeStyles = (c: Palette) => StyleSheet.create({
-  monogram: {
-    width: sizes.circleButtonSm,
-    height: sizes.circleButtonSm,
-    borderRadius: radii.full,
-    backgroundColor: c.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monogramText: {
-    ...typography.caption,
-    fontFamily: typography.label.fontFamily,
-    color: c.textSecondary,
-  },
-});
