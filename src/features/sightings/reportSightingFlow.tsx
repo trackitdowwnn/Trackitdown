@@ -19,6 +19,7 @@ import type { WizardFlow } from '@/shared/wizard';
 
 import { ConfirmStep, ContextStep, PhotosStep } from './components/sightingSteps';
 import { derivePlaceLabels } from './lib/areaLabel';
+import { contextDetailCount } from './lib/contextLabels';
 import {
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
@@ -110,22 +111,27 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
         {
           id: 'context',
           question: 'Anything else that helps?',
-          helper: 'All optional — skip straight past if not.',
+          helper: 'All optional. Tap what you saw.',
           component: ContextStep,
-          // Everything optional: an empty step must never cost a report. The
-          // step renders the framework's PROMINENT Skip via onSkip, and
-          // `optional` keeps the final gate from ever demanding it.
+          // Everything optional: an empty step must never cost a report, and
+          // `optional` keeps the final gate from ever demanding it. ONE way on
+          // (2026-10-01): the footer says "Skip" until something is added, then
+          // "Continue", so it is always labelled for what it will do.
           optional: true,
+          ctaLabel: (answers) => (contextDetailCount(answers) > 0 ? 'Continue' : 'Skip'),
           schema: z.object({
             contextFlags: z.array(z.enum(SIGHTING_CONTEXT_FLAGS)).optional(),
             note: z.string().max(MAX_NOTE_LENGTH).optional(),
           }),
-          ctaLabel: 'Continue',
           onContinue: async (answers) => {
+            // Skip and Continue are the same button now, so both are counted:
+            // `details: 0` is a skip.
             log.info('step_completed', {
               step: 'context',
+              details: contextDetailCount(answers),
               flags: answers.contextFlags?.length ?? 0,
               hasNote: Boolean(answers.note?.trim()),
+              unsure: answers.contextUnsure?.length ?? 0,
             });
           },
         },

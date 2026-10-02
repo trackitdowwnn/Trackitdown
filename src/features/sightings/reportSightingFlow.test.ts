@@ -91,6 +91,16 @@ describe('reportSightingFlow shape', () => {
     expect(schema.safeParse({ contextFlags: ['parked'], note: 'heading north' }).success).toBe(true);
   });
 
+  it('context step is one way on: "Skip" while empty, "Continue" once a detail is added', () => {
+    const label = steps.find((step) => step.id === 'context')?.ctaLabel;
+    if (typeof label !== 'function') throw new Error('context ctaLabel should be a function');
+    expect(label({})).toBe('Skip');
+    // "Not sure" is not a detail: still a skip.
+    expect(label({ contextFlags: [], contextUnsure: ['state'] })).toBe('Skip');
+    expect(label({ contextFlags: ['parked'] })).toBe('Continue');
+    expect(label({ note: 'By the bins' })).toBe('Continue');
+  });
+
   it('confirm re-asserts the photo rule so an invalidated edit cannot send', () => {
     expect(schemaFor('confirm').safeParse({ photos: [] }).success).toBe(false);
     expect(schemaFor('confirm').safeParse({ photos: [photo] }).success).toBe(true);

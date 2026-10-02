@@ -138,6 +138,12 @@ export const segmentFontScaleCap = 1.2;
  *  removed in the 2026-10-01 polish.) */
 export const indexRailFontScaleCap = 1.2;
 
+/** Dynamic-type cap for CompassPicker's point glyphs ("NW"). Each sits in a
+ *  fixed 52pt cell of a 3×3 grid; uncapped at iOS's largest sizes "NW" is
+ *  wider than the cell. Each cell's accessibilityLabel names the full
+ *  direction, uncapped (added 2026-10-01). */
+export const compassFontScaleCap = 1.5;
+
 /**
  * Above this, a ListRow puts its trailing value UNDER the title instead of
  * beside it.

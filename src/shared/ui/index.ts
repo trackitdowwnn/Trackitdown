@@ -151,6 +151,7 @@ export {
   SAFETY_NOTICE_BODY,
   SAFETY_NOTICE_TITLE,
   SAFETY_POINTS_LABEL,
+  SAFETY_PRESENCE_LINE,
   SAFETY_RULE_LINE,
   type SafetyNoticeProps,
 } from './SafetyNotice';

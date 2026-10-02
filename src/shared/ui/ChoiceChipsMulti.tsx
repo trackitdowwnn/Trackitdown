@@ -57,6 +57,9 @@ export interface ChoiceChipMultiOption<V extends string = string> {
    * — a chip showing both would be noise.
    */
   swatch?: string;
+  /** What a screen reader says instead of `label`, when the chip alone
+   *  doesn't say what it answers (a lone "Not sure"). Defaults to `label`. */
+  accessibilityLabel?: string;
 }
 
 export interface ChoiceChipsMultiProps<V extends string = string> {
@@ -97,6 +100,15 @@ export interface ChoiceChipsMultiProps<V extends string = string> {
    * Omit on a full-bleed screen — the default gutter is correct there.
    */
   bleed?: number;
+  /**
+   * The group's name: the question the chips answer, set on the row.
+   * ⚠️ Android reads it as the row's description; VoiceOver never speaks a
+   * label on a View that isn't itself accessible (and RN maps no group role
+   * on either platform). So it's a bonus, not the context: the visible
+   * question above carries that, and a chip that needs it says it itself
+   * (the option's `accessibilityLabel`).
+   */
+  accessibilityLabel?: string;
   /** Optional — the chip ROW takes this, the scroller takes `${testID}-scroller`. */
   testID?: string;
 }
@@ -108,6 +120,7 @@ export function ChoiceChipsMulti<V extends string = string>({
   max,
   scrollable = false,
   bleed,
+  accessibilityLabel,
   testID,
 }: ChoiceChipsMultiProps<V>) {
   const styles = useThemedStyles(makeStyles);
@@ -123,7 +136,11 @@ export function ChoiceChipsMulti<V extends string = string>({
   };
 
   const chips = (
-    <View style={[styles.row, scrollable && styles.rowScrollable]} testID={testID}>
+    <View
+      style={[styles.row, scrollable && styles.rowScrollable]}
+      accessibilityLabel={accessibilityLabel}
+      testID={testID}
+    >
       {options.map((option) => {
         const selected = value.includes(option.value);
         // Only unselected chips are blocked at the cap — you can always remove.
@@ -132,7 +149,7 @@ export function ChoiceChipsMulti<V extends string = string>({
           <Pressable
             key={option.value}
             accessibilityRole="checkbox"
-            accessibilityLabel={option.label}
+            accessibilityLabel={option.accessibilityLabel ?? option.label}
             accessibilityState={{ checked: selected, disabled }}
             disabled={disabled}
             onPress={() => toggle(option.value)}

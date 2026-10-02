@@ -289,7 +289,8 @@ export function ctaLabel<TAnswers>(
   if (state.index === screens.length - 1) {
     return resolveFinalCtaLabel(flow.finalCtaLabel, answers);
   }
-  return (screen.kind === 'step' && screen.step.ctaLabel) || 'Next';
+  const stepLabel = screen.kind === 'step' ? screen.step.ctaLabel : undefined;
+  return (typeof stepLabel === 'function' ? stepLabel(answers) : stepLabel) || 'Next';
 }
 
 /**

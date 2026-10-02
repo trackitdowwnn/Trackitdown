@@ -347,6 +347,20 @@ export const sizes = {
    * for a repeat without the thumb covering the time.
    */
   timeStepper: 52,
+  /**
+   * The owner's photo leading a mark row on the report's context step
+   * (2026-10-01): "could you see any of these?" — a picture answers faster
+   * than a description. A bordered row on the gutter, under the text's height.
+   * ⚠️ NOT `avatarMd` (also 48): that is a person's photograph.
+   */
+  markThumb: 48,
+  /**
+   * The rule down the left of an inline follow-up on the context step,
+   * tying it to the answer above (2026-10-01). 2pt to read as structure,
+   * not a hairline divider. Its own token so selection borders can change
+   * without restyling it.
+   */
+  followUpRule: 2,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

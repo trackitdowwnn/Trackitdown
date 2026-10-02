@@ -65,8 +65,12 @@ async function fetchConfirmableFeatures(postId: string): Promise<ConfirmableFeat
     const { fetchPostDetail } = await import('@/features/vehicles');
     const result = await fetchPostDetail(postId);
     if (result.kind !== 'visible') return [];
+    // The photo too: the context step shows it beside each mark, so the
+    // spotter knows what they're looking for.
     return result.post.distinctiveFeatures.flatMap((feature) =>
-      feature.id ? [{ id: feature.id, description: feature.description }] : [],
+      feature.id
+        ? [{ id: feature.id, description: feature.description, photoUrl: feature.photoUrl || undefined }]
+        : [],
     );
   } catch {
     return [];

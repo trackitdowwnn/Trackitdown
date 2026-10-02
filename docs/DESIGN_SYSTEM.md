@@ -284,8 +284,9 @@ are build output.
   - Other scale caps (2026-09-29): `calendarFontScaleCap` (1.5), for
     CalendarMonth's day numbers and weekday letters, which seven circles
     share; `segmentFontScaleCap` (1.2), for TimeSlotPicker's up-to-four part-of-day
-    segments, so "Afternoon" survives. Each capped label also carries a full,
-    uncapped accessibilityLabel.
+    segments, so "Afternoon" survives; `compassFontScaleCap` (1.5, 2026-10-01),
+    for CompassPicker's "NW"-style glyphs in their fixed 52pt cells. Each
+    capped label also carries a full, uncapped accessibilityLabel.
   - `tabLabel` 11/14, Medium — **tab-bar item labels and count badges**; the
     single sanctioned size below `caption` (matches platform tab conventions).
     **Widened 2026-08-28** from "tab-bar item labels only": `AppTabBar`'s badge
@@ -472,6 +473,42 @@ GOV.UK both advise against dropdowns for long lists).
     (a sibling of the field, so screen readers can reach it). No free text.
 - **Model waits for make.** The model field appears only once a make is
   chosen. A new make clears the model; the same make keeps it.
+
+### Optional detail step (report context, 2026-10-01)
+
+For a page of quick, optional, factual questions (the report flow's
+"Anything else that helps?"):
+
+- **One page, everything visible.** No drawer or sheet hiding questions.
+  Questions are `cardTitle` headers with an optional grey hint, spaced `xxl`.
+- **Chips, not cards or toggles.** `ChoiceChips` for single answers (tap
+  again to clear), `ChoiceChipsMulti` for "any that apply". A spatial answer
+  (the compass) may keep its own control, centred.
+- **An equal "Not sure"** chip on each single factual question, never
+  pre-selected. It stores nothing; only the UI remembers it.
+- **Follow-ups appear inline** under their answer (FadeIn, reduced-motion
+  aware), indented behind a 2pt `border` rule, never in a sheet.
+- **Neutral wording that describes, never predicts** ("Looks about to move",
+  not "Likely to stay?").
+- **One way on.** No in-body Skip link: the footer CTA reads "Skip" while
+  nothing is added and "Continue" after. A "N details added" line (`label`,
+  `textSecondary`, "Nothing added yet" at 0) heads the page, always rendered so the
+  first tap never shifts it, and never a live region.
+- **Single chips say they clear.** Pass `clearable` to `ChoiceChips` when a
+  second tap clears ("Double tap to clear" on the chosen chip), and the
+  question as the group's `accessibilityLabel`.
+- **A control that moves under the finger is a bug.** A hint that only appears
+  after a pick (the compass's "Heading north-east") is always there instead
+  ("Tap where it went.").
+- **The inline safety line** (`SAFETY_PRESENCE_LINE`, imported, never
+  retyped) shows under the people answer for "near it", "in it" and "Not
+  sure": `cardTitle` ink (never `danger`) after SafetyNotice's `slash`
+  glyph at `iconSm` (top-aligned on the first line), and announced (queued) with `announceForAccessibility` as it
+  appears, since VoiceOver ignores live regions.
+- **Photo rows for "could you see…?"**: `surface`, `radii.md`, a 2pt
+  `selectBorder` turning `primary` when ticked, a `markThumb` (48) photo
+  (an empty thumb with an `image` glyph when there's none, so rows align)
+  and a trailing check-circle.
 
 ### Date & time (custom, since 2026-09-29)
 

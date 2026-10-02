@@ -29,4 +29,7 @@ const officialMock = require('react-native-reanimated/mock');
 module.exports = {
   ...officialMock,
   useReducedMotion: () => false,
+  // Also omitted by the official mock ("ADD ME IF NEEDED"). Its only job is to
+  // skip children's entering animations on first mount; tests have none.
+  LayoutAnimationConfig: ({ children }) => children,
 };
