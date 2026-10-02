@@ -175,9 +175,14 @@ Deno.serve(async (request) => {
         automatic_payment_methods: { enabled: true },
         // The webhook matches the ledger row by intent id; these are for
         // dashboard/debugging traceability only and are never read back as
-        // authority. `kind` mirrors payments.kind so a charge in the Stripe
-        // dashboard can be told apart from an escrowed bounty without a join.
-        metadata: { post_id: postId, kind: isListingFee ? 'listing_fee' : 'bounty_escrow' },
+        // authority. `kind` tells a listing fee from a held reward in the
+        // Stripe dashboard without a join.
+        // ⚠️ 'reward_hold', NOT our ledger's `bounty_escrow` (2026-10-02):
+        // this string is visible to Stripe's reviewers, and "escrow" is a
+        // restricted business category at Stripe. We describe the flow as
+        // charging before the recipient is known, which is what it is. Charges
+        // made before this change still carry the old label; nothing reads it.
+        metadata: { post_id: postId, kind: isListingFee ? 'listing_fee' : 'reward_hold' },
       },
       // Idempotency key = kind + post_id + amount: a retry after a cancelled/
       // declined sheet returns the SAME PaymentIntent (never double-charged); a

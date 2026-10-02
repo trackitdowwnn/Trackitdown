@@ -137,7 +137,9 @@ Then in the app (dev build): post a car and pay with a Stripe **test card**:
 **Run BOTH pricing modes** (ADR-0014) — they take different code paths from the
 charge onwards, and only one of them is exercised by habit:
 - *Offer a reward* → charges the bounty; the ledger row is `kind=bounty_escrow`
-  and lands on `held`.
+  and lands on `held`. (In Stripe the PaymentIntent's metadata says
+  `kind=reward_hold`: "escrow" is a restricted category at Stripe, so the word
+  stays in our ledger and out of anything Stripe's reviewers read.)
 - *No reward, £4.99* → charges 499p; the row is `kind=listing_fee` and lands on
   **`collected`**, never `held`. If you ever see a fee row at `held`, stop: that
   is refundable money that should not be.
