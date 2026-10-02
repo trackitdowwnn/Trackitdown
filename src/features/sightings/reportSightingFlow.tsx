@@ -5,9 +5,12 @@
  *        BEFORE it, as ReportSafetySheet (2026-09-30).
  * WHY:   A SPEED flow: the spotter may be near the vehicle, so the config is
  *        the framework's lightest shape — no phase intros, one optional step,
- *        per-step funnel logging via onContinue. The photos step derives the coarse area label on continue so the confirm screen
- *        can say where the report reads as from.
- * LINKS: src/features/sightings/components/sightingSteps.tsx (the screens);
+ *        per-step funnel logging via onContinue. The photos step derives
+ *        the coarse area label on continue so the confirm screen can say
+ *        where the report reads as from.
+ * LINKS: src/features/sightings/components/sightingSteps.tsx (photos,
+ *        context); src/features/sightings/components/ConfirmStep.tsx (check
+ *        and send);
  *        src/features/sightings/screens/ReportSightingScreen.tsx (renders);
  *        src/features/sightings/lib/areaLabel.ts; docs/DOMAIN.md.
  */
@@ -17,7 +20,8 @@ import { z } from 'zod';
 import { createLogger } from '@/shared/lib/logger';
 import type { WizardFlow } from '@/shared/wizard';
 
-import { ConfirmStep, ContextStep, PhotosStep } from './components/sightingSteps';
+import { ConfirmStep, REPORT_PRIVACY_LINE } from './components/ConfirmStep';
+import { ContextStep, PhotosStep } from './components/sightingSteps';
 import { derivePlaceLabels } from './lib/areaLabel';
 import { contextDetailCount } from './lib/contextLabels';
 import {
@@ -139,6 +143,9 @@ export const reportSightingFlow: WizardFlow<ReportSightingAnswers> = {
           id: 'confirm',
           question: 'Check and send',
           component: ConfirmStep,
+          // Who sees what, beside the commitment (one short true sentence;
+          // a long assurance reads as a warning).
+          footerNote: REPORT_PRIVACY_LINE,
           // The final gate re-asserts the photo rule (incl. ≥1 live); send
           // itself is the screen's onComplete (submitSighting).
           schema: z.object({

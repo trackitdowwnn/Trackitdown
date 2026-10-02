@@ -3,12 +3,22 @@
  *        and the interval is cleaned up on unmount.
  * WHY:   A stale relative time misinforms spotters about how fresh a
  *        sighting is; a leaked interval re-renders unmounted feeds.
+ *        It also pins that the tick's Date is PASSED to timeAgo: Jest has no
+ *        React Compiler, so it can't see the device bug (a bare tick let the
+ *        compiler memoise the label forever), but it can see the fix's shape.
  * LINKS: src/shared/hooks/useTimeAgo.ts.
  */
 
 import { act, renderHook } from '@testing-library/react-native';
 
+import * as lib from '../lib';
 import { useTimeAgo } from './useTimeAgo';
+
+// A pass-through spy: the barrel's re-export can't be redefined by spyOn.
+jest.mock('../lib', () => {
+  const actual = jest.requireActual('../lib');
+  return { ...actual, timeAgo: jest.fn(actual.timeAgo) };
+});
 
 describe('useTimeAgo', () => {
   beforeEach(() => {
@@ -30,6 +40,11 @@ describe('useTimeAgo', () => {
     });
 
     expect(result.current).toBe('2m ago');
+  });
+
+  it('⚠️ passes the ticking clock to timeAgo (what the compiler can see)', async () => {
+    await renderHook(() => useTimeAgo(Date.now()));
+    expect(jest.mocked(lib.timeAgo)).toHaveBeenCalledWith(expect.anything(), expect.any(Date));
   });
 
   it('clears its interval on unmount', async () => {

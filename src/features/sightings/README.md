@@ -66,17 +66,37 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
      visible · being stripped · looks intact); "Looks intact" is exclusive.
    - **Could you see any of these?** The post's distinctive marks as checkbox
      rows with the owner's photo (`confirmed_feature_ids`; absent when the
-     post has none; the screen seeds `confirmableFeatures` from
-     `get_post_detail` best-effort).
+     post has none; the screen seeds `confirmableFeatures`, and the car as
+     `reportedCar`, from one `get_post_detail` call, best-effort via
+     `lib/reportSeed.ts`. Both are read-only seeds and never sent).
    - **A note for the owner**: multiline, with a 0/500 counter.
    One way on: the footer reads **Skip** until something is added, then
    **Continue** (`ctaLabel` as a function); "N details added" ("Nothing added
    yet" at 0, always shown so the page never jumps) counts above.
-3. **Confirm & send** — photos, a small non-interactive map of the CAPTURED
-   point ("Reported near ‹area›") — display only, **no manual location
-   editing** (`// SAFETY`: the capture point is the evidence), "Just now",
-   chips/note. CTA **Send report**; failure keeps the wizard fully intact for
-   retry (the posting flow's standard).
+3. **Check and send** (`components/ConfirmStep.tsx`, redesigned 2026-10-02
+   on the GOV.UK check-answers pattern): labelled sections.
+   - **You're reporting**: the car from the listing (colour make model, the
+     plate, its first photo), from the `reportedCar` seed. Hidden if the seed
+     fetch failed. Not editable.
+   - **Photos** (Edit → the photos step): the real shots in three 3:4 columns,
+     tap for full screen, "Library" badge on gallery photos.
+   - **Where and when**: the display-only map of the CAPTURED point, "Near
+     ‹area›" (or "At the spot you took the photo"), "Approximate location"
+     when the fix is worse than 100 m, "Photo taken ‹ago›" from the first LIVE
+     photo, and why it can't be changed. **No Edit, no manual location
+     editing** (`// SAFETY`: the capture point is the evidence). No fix: "No
+     location on this report — your photos still help."
+   - **What you saw** (Edit → the context step): one row per answer in the
+     contextLabels words (`contextReviewRows`), the marks and the note;
+     "Nothing added" with an Add link when skipped.
+   - Above the CTA, the step's `footerNote`: "Only the owner sees your photos
+     and the exact spot. They'll see your first name, not your contact
+     details." (Strictly true: the public sees that a sighting happened.)
+   An Edit is a wizard edit spur: the step's button reads **Done** and
+   returns here; Back cancels and restores the answers (photos taken on a
+   cancelled spur are dropped). No confirm dialog, no safety banner. CTA
+   **Send report**; failure keeps the wizard fully intact for retry (the
+   posting flow's standard).
 
 **Success screen:** "Report sent — thank you." → the owner can now see your
 report; if your sighting leads to the recovery you'll receive the £X bounty;

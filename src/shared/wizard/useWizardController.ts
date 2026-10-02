@@ -276,7 +276,8 @@ export function useWizardController<TAnswers>(
     screens,
     screenIndex: nav.index,
     screen: screens[nav.index],
-    /** True while on an edit spur launched from the review screen. */
+    /** True while on an edit spur: launched from the review screen, or from a
+     *  step's own `editStep` (the report flow's check-and-send). */
     isEditingFromReview: nav.returnToIndex !== null,
     answers,
     setAnswers,
@@ -291,7 +292,11 @@ export function useWizardController<TAnswers>(
     error,
     requestExit,
     canGoNext: canProceed(flow, screens[nav.index], answers),
-    isFirstScreen: nav.index === 0,
+    // NOT on an edit spur: a spur into an intro-less flow's first step (the
+    // report flow's camera, from its check-and-send) must still show Back,
+    // and the hardware back must cancel the edit, not offer to discard the
+    // whole flow.
+    isFirstScreen: nav.index === 0 && nav.returnToIndex === null,
     /**
      * True on the screen whose primary button SUBMITS (review, or the last step
      * in a flow with no review) — and false while editing from review.

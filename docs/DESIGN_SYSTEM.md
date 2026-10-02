@@ -510,6 +510,33 @@ For a page of quick, optional, factual questions (the report flow's
   (an empty thumb with an `image` glyph when there's none, so rows align)
   and a trailing check-circle.
 
+### Check-and-send inside a step (report confirm, 2026-10-02)
+
+For a flow whose last STEP is its own review (the report flow's "Check and
+send"; ReviewStep is the framework's version for flows with a review screen):
+
+- **Labelled sections** with `heading` titles, on ReviewStep's hairline
+  rhythm tightened to `xl` (a speed flow: about two scrolls when full).
+- **One Edit per editable section**, ReviewStep's underlined 44pt link, with a
+  label naming what it edits ("Edit photos"). It jumps by the step's
+  `editStep`: Done returns, Back cancels. Inert while sending, absent on a spur.
+- **A read-only section has no action and says why** in one caption line
+  ("This comes from where you took the photo, so the owner can trust it.").
+- **Empty means one quiet row**, "Nothing added" with an Add link, never a
+  stack of "Not provided".
+- **Show the real thing.** The identity card is `cardSurface` with a
+  `reportedCarThumb` (56) photo and a PlateChip (`onPress={null}`). Photos
+  are three `reviewPhotoAspect` (3:4) columns, always three (spacers), tap
+  for the view-only PhotoPreviewModal. A map stays display-only and hidden
+  from screen readers when the text says the same.
+- **Reassurance goes in the step's `footerNote`**, the quiet line above the
+  CTA (closer to the button than to the content): one or two short, strictly
+  true sentences. A send error sits between it and the button. At large text it moves to the end of the scrolling body.
+- **Times are spoken in full**: "Photo taken 5m ago" carries the label
+  "…5 minutes ago" (VoiceOver reads "5m" as metres).
+- **No confirm dialog** (the screen is the confirmation) and no SafetyNotice
+  banner in a speed flow that showed it before opening.
+
 ### Date & time (custom, since 2026-09-29)
 
 The app has no platform date pickers. Every date is picked in its own

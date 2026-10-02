@@ -71,6 +71,19 @@ export interface ConfirmableFeature {
   photoUrl?: string;
 }
 
+/** The car being reported, as the PUBLIC listing shows it (the spotter has
+ *  just been looking at it), for the check-and-send step's "You're reporting"
+ *  card: the last chance to notice it's the wrong car. */
+export interface ReportedCar {
+  make: string;
+  model: string;
+  colour: string;
+  /** Null for a plate-less listing (make/model are the identity). */
+  plate: string | null;
+  /** The listing's first photo. Absent when it has none: the card is text-only. */
+  photoUrl?: string;
+}
+
 /** The context step's single-answer questions that offer "Not sure". */
 export const CONTEXT_QUESTIONS = ['state', 'staying', 'direction', 'people'] as const;
 export type ContextQuestion = (typeof CONTEXT_QUESTIONS)[number];
@@ -99,6 +112,10 @@ export interface ReportSightingAnswers {
    *  the screen before the wizard mounts so the context step can offer them
    *  as checkmarks. Empty/absent = no marks section. */
   confirmableFeatures?: ConfirmableFeature[];
+  /** READ-ONLY seed (never submitted), fetched with the marks, for the
+   *  check-and-send step's "You're reporting" card. Absent = the fetch failed
+   *  or the post isn't visible: the card simply hides. */
+  reportedCar?: ReportedCar;
   /** UI-ONLY (never submitted): the questions answered "Not sure", so that
    *  chip shows as chosen, including after Back. "Not sure" stores nothing:
    *  to the owner it reads exactly like an unanswered question, which is

@@ -2,8 +2,10 @@
  * WHAT:  The wizard's container screen — assembles the header row (exit X
  *        left, bubble-stepper progress + label right), the current screen's
  *        content (phase intro / step / review) with horizontal slide
- *        transitions, and the fixed keyboard-aware Back/Next footer. This is
- *        the one component a route renders to run a flow.
+ *        transitions, and the fixed keyboard-aware Back/Next footer (with a
+ *        step's footerNote above the buttons, or ending the body past 1.3×
+ *        text). Steps also receive editStep/busy for their own Edit links.
+ *        This is the one component a route renders to run a flow.
  * WHY:   Consuming flows supply config and two callbacks (onExit,
  *        onComplete); everything Airbnb-ish — one question per screen,
  *        display typography, slides reversed on Back, step announcements for
@@ -40,7 +42,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAndroidKeyboardHeight } from '../hooks';
 import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
-import { invalidStepIds, resolveQuestion } from './navigation';
+import { firstStepFlatIndex, invalidStepIds, resolveQuestion } from './navigation';
 import { PhaseIntro } from './PhaseIntro';
 import { blockingNotice, ReviewStep } from './ReviewStep';
 import { WizardFooter } from './WizardFooter';
@@ -138,6 +140,22 @@ export function WizardScreen<TAnswers>({
     error,
   } = controller;
   const keyboardHeight = useAndroidKeyboardHeight();
+
+  // A step's footerNote rides with the buttons, except at large text: the
+  // footer never scrolls, and a wrapped note there ate a third of a small
+  // phone. Past the fills threshold it ends the scrolling body instead.
+  const { fontScale } = useWindowDimensions();
+  const footerNote = screen.kind === 'step' ? screen.step.footerNote : undefined;
+  const noteInBody = (fontScale ?? 1) > FILLS_MAX_FONT_SCALE;
+
+  /** A step's `editStep`: jump to that step on a spur that returns here.
+   *  Inert while busy (an Edit mid-submit would leave the send in flight
+   *  with the screen gone), and a jump to the screen you're on is a no-op. */
+  const editStepById = (stepId: string | string[]) => {
+    if (busy) return;
+    const index = firstStepFlatIndex(flow, stepId);
+    if (index !== null && index !== screenIndex) controller.editStep(index);
+  };
   const isFillsStep = screen.kind === 'step' && screen.step.fills === true;
 
   // ⚠️ NO SLIDE UNTIL THE FIRST MOVE. The opening screen used to play its
@@ -333,7 +351,15 @@ export function WizardScreen<TAnswers>({
                       // A step's own Skip affordance advances without the Next
                       // gate/action (returns to review on an edit spur).
                       onSkip={controller.next}
+                      // A step's own Edit links (a check-and-send step). Not
+                      // offered on a spur: a spur from a spur would overwrite
+                      // the return point and the cancel snapshot.
+                      editStep={controller.isEditingFromReview ? undefined : editStepById}
+                      busy={busy}
                     />
+                    {footerNote && noteInBody ? (
+                      <Text style={styles.footerNoteInBody}>{footerNote}</Text>
+                    ) : null}
                   </View>
                 </>
               ) : (
@@ -349,11 +375,6 @@ export function WizardScreen<TAnswers>({
         </Animated.View>
 
         <View style={[styles.footer, { paddingBottom: spacing.sm + keyboardHeight }]}>
-          {error ? (
-            <Text accessibilityLiveRegion="polite" style={styles.error}>
-              {error}
-            </Text>
-          ) : null}
           <WizardFooter
             ctaLabel={controller.ctaLabel}
             canProceed={controller.canGoNext}
@@ -362,6 +383,8 @@ export function WizardScreen<TAnswers>({
             showBack={!controller.isFirstScreen && screen.kind !== 'intro' && !busy}
             onBack={controller.back}
             onNext={controller.advance}
+            note={footerNote && !noteInBody ? footerNote : undefined}
+            error={error}
           />
         </View>
       </KeyboardAvoidingView>
@@ -445,11 +468,11 @@ const makeStyles = (c: Palette) =>
     footer: {
       paddingHorizontal: spacing.xl,
     },
-    // Sits just above the footer buttons; danger-toned, announced politely so a
-    // failed lookup/submit is read out without stealing focus.
-    error: {
+    // The footerNote at large text: the end of the scrolling body, still
+    // just before the buttons in reading order.
+    footerNoteInBody: {
       ...typography.caption,
-      color: c.danger,
-      marginBottom: spacing.sm,
+      color: c.textSecondary,
+      marginTop: spacing.xl,
     },
   });

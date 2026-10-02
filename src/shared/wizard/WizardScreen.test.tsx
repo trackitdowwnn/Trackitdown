@@ -2,8 +2,10 @@
  * WHAT:  Wiring tests for WizardScreen — the controller↔chrome integration
  *        the unit suites can't see: intro renders with Back hidden, zod
  *        gating disables/enables the primary button, the review Edit link
- *        jumps and Done returns, and Android hardware back mirrors in-flow
- *        Back (exit-confirm on the first screen).
+ *        jumps and Done returns, Android hardware back mirrors in-flow Back
+ *        (exit-confirm on the first screen), step-launched edit spurs (Back
+ *        and hardware back cancel a spur into the first screen), and where a
+ *        step's footerNote renders (footer, or the body at large text).
  * WHY:   navigation.test.ts proves the logic and this file proves the
  *        screen actually obeys it; a wiring slip (wrong prop, missing
  *        handler) would ship a wizard whose buttons lie.
@@ -11,7 +13,7 @@
  *        screen states).
  */
 
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import {
   AccessibilityInfo,
   Alert,
@@ -407,5 +409,215 @@ describe('fills steps', () => {
     await press(view, 'Back');
     // Back on the opening screen by a move: that one slides, as a move should.
     expect(view.getByTestId('wizard-step-slide').props.entering).toBeDefined();
+  });
+});
+
+/**
+ * Step-launched edit spurs (2026-10-02) — a flow with no review screen whose
+ * LAST step is its own check-and-send (the report flow's ConfirmStep) and
+ * sends the user back to change one thing via `editStep`.
+ *
+ * Intro-less on purpose: the spur's target is the FIRST screen, which is the
+ * case that broke (isFirstScreen hid Back and the hardware back offered to
+ * discard the whole flow instead of cancelling the edit).
+ */
+describe('step-launched edit spurs', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  function FirstStep({ setAnswers, editStep }: WizardStepProps<Answers>) {
+    return (
+      <>
+        <Pressable testID="fill-name" onPress={() => setAnswers({ name: 'Jane' })}>
+          <Text>fill name</Text>
+        </Pressable>
+        <Text>{editStep ? 'can-edit' : 'no-edit'}</Text>
+      </>
+    );
+  }
+
+  function CheckStep({ answers, editStep, busy }: WizardStepProps<Answers>) {
+    return (
+      <>
+        <Text>Name is {answers.name ?? 'unset'}</Text>
+        <Text>{busy ? 'busy' : 'idle'}</Text>
+        <Pressable testID="edit-name" onPress={() => editStep?.('name')}>
+          <Text>edit name</Text>
+        </Pressable>
+        <Pressable testID="edit-unknown" onPress={() => editStep?.(['nope', 'name'])}>
+          <Text>edit by fallback</Text>
+        </Pressable>
+      </>
+    );
+  }
+
+  const speedFlow: WizardFlow<Answers> = {
+    id: 'spur-test',
+    finalCtaLabel: 'Send report',
+    phases: [
+      {
+        id: 'only',
+        title: 'Report',
+        steps: [
+          {
+            id: 'name',
+            question: "What's your name?",
+            component: FirstStep,
+            schema: z.object({ name: z.string().min(1) }),
+            ctaLabel: 'Continue',
+          },
+          {
+            id: 'check',
+            question: 'Check and send',
+            component: CheckStep,
+            schema: z.object({ name: z.string().min(1) }),
+            footerNote: 'Only the owner sees this.',
+          },
+        ],
+      },
+    ],
+  };
+
+  async function renderSpurFlow(onComplete: jest.Mock = jest.fn()) {
+    const onExit = jest.fn();
+    const view = await render(
+      <WizardScreen flow={speedFlow} onExit={onExit} onComplete={onComplete} />,
+    );
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    await press(view, 'Continue');
+    expect(view.getByText('Check and send')).toBeTruthy();
+    return { view, onExit };
+  }
+
+  it('Edit jumps to the step, the CTA reads Done, and Done returns to the check', async () => {
+    const { view } = await renderSpurFlow();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('edit-name'));
+    });
+    expect(view.getByText("What's your name?")).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Done' })).toBeTruthy();
+
+    await press(view, 'Done');
+    expect(view.getByText('Check and send')).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Send report' })).toBeTruthy();
+  });
+
+  it('takes the first step id that exists from a list', async () => {
+    const { view } = await renderSpurFlow();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('edit-unknown'));
+    });
+    expect(view.getByText("What's your name?")).toBeTruthy();
+  });
+
+  it('⚠️ shows Back on a spur into the FIRST screen, and Back cancels the edit', async () => {
+    const { view } = await renderSpurFlow();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('edit-name'));
+    });
+    await press(view, 'Back');
+    expect(view.getByText('Check and send')).toBeTruthy();
+    expect(view.getByText('Name is Jane')).toBeTruthy();
+  });
+
+  it('⚠️ hardware back on that spur cancels the edit, never offers to discard', async () => {
+    let hardwareBack: (() => boolean) | undefined;
+    jest.spyOn(BackHandler, 'addEventListener').mockImplementation(((
+      _event: string,
+      handler: () => boolean,
+    ) => {
+      hardwareBack = handler;
+      return { remove: jest.fn() };
+    }) as unknown as typeof BackHandler.addEventListener);
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { view, onExit } = await renderSpurFlow();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('edit-name'));
+    });
+
+    await act(async () => {
+      expect(hardwareBack?.()).toBe(true);
+    });
+    expect(view.getByText('Check and send')).toBeTruthy();
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it('offers no editStep while on a spur (no spur from a spur)', async () => {
+    const { view } = await renderSpurFlow();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('edit-name'));
+    });
+    expect(view.getByText('no-edit')).toBeTruthy();
+  });
+
+  it('offers editStep on an ordinary screen', async () => {
+    const view = await render(
+      <WizardScreen flow={speedFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    expect(view.getByText('can-edit')).toBeTruthy();
+  });
+
+  it('goes inert while the send is in flight', async () => {
+    let finish: () => void = () => {};
+    const onComplete = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { view } = await renderSpurFlow(onComplete);
+    await press(view, 'Send report');
+    expect(view.getByText('busy')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('edit-name'));
+    });
+    expect(view.getByText('Check and send')).toBeTruthy();
+    await act(async () => {
+      finish();
+    });
+  });
+
+  it('shows a step’s footerNote on that step only', async () => {
+    // Ordinary text size (RN's jest Dimensions default is fontScale 2).
+    jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 2, fontScale: 1 });
+    const view = await render(
+      <WizardScreen flow={speedFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    expect(view.queryByText('Only the owner sees this.')).toBeNull();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    await press(view, 'Continue');
+    expect(view.getByText('Only the owner sees this.')).toBeTruthy();
+    // In the fixed footer at ordinary sizes, not in the scrolling body.
+    expect(
+      within(view.getByTestId('wizard-step-scroll')).queryByText('Only the owner sees this.'),
+    ).toBeNull();
+  });
+
+  it('moves the footerNote into the scrolling body at large text sizes', async () => {
+    // The footer never scrolls: a note wrapped to five lines there ate a third
+    // of a small phone. Past the fills threshold it ends the body instead.
+    jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 2, fontScale: 1.6 });
+    const view = await render(
+      <WizardScreen flow={speedFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    await press(view, 'Continue');
+    expect(
+      within(view.getByTestId('wizard-step-scroll')).getByText('Only the owner sees this.'),
+    ).toBeTruthy();
+    expect(view.getAllByText('Only the owner sees this.')).toHaveLength(1);
   });
 });

@@ -6,24 +6,24 @@
  *        formatter's finest visible unit; the tick is not aligned to the
  *        timestamp's minute boundary, so a label can lag by up to 59s —
  *        acceptable for "how fresh is this sighting" copy.
+ *        ⚠️ The tick's Date is PASSED to timeAgo (2026-10-02). It used to
+ *        re-render with a bare counter and let timeAgo read the clock
+ *        itself, and the React Compiler memoised timeAgo(timestamp) on the
+ *        timestamp alone: on device the label never moved, while Jest (no
+ *        compiler) passed. Same trap as LastSeenTimeField's.
  * LINKS: src/shared/lib/timeAgo.ts (the pure formatter);
+ *        src/shared/hooks/useNow.ts (the ticking clock);
  *        src/shared/ui/VehicleCard.tsx (first consumer).
  */
 
-import { useEffect, useReducer } from 'react';
-
 import { timeAgo } from '../lib';
+
+import { useNow } from './useNow';
 
 const TICK_MS = 60_000;
 
 /** Live relative-time label for `timestamp`, re-rendering each minute. */
 export function useTimeAgo(timestamp: Date | string | number): string {
-  const [, tick] = useReducer((count: number) => count + 1, 0);
-
-  useEffect(() => {
-    const interval = setInterval(tick, TICK_MS);
-    return () => clearInterval(interval);
-  }, []);
-
-  return timeAgo(timestamp);
+  const now = useNow(TICK_MS);
+  return timeAgo(timestamp, now);
 }
