@@ -344,3 +344,20 @@ export function stepFlatIndex<TAnswers>(
   );
   return index === -1 ? null : index;
 }
+
+/**
+ * The flat index of the first of these steps that exists: one id, or an
+ * ordered list of fallbacks (a step a `when` may have dropped from the flow).
+ * Shared by ReviewStep's Edit links and a step's own `editStep`. Null when
+ * none exists.
+ */
+export function firstStepFlatIndex<TAnswers>(
+  flow: WizardFlow<TAnswers>,
+  stepId: string | string[],
+): number | null {
+  for (const candidate of Array.isArray(stepId) ? stepId : [stepId]) {
+    const index = stepFlatIndex(flow, candidate);
+    if (index !== null) return index;
+  }
+  return null;
+}

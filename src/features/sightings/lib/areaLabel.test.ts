@@ -1,6 +1,7 @@
 /**
  * WHAT:  Tests for derivePlaceLabels — one geocode, two grains: the owner's
- *        street-first areaLabel and the PUBLIC locality.
+ *        street-first areaLabel and the PUBLIC locality — and isApproximateFix
+ *        (the 100 m "Approximate location" line).
  * WHY:   The locality fallback chain deliberately EXCLUDES the street —
  *        that string can end up on an anonymous public timeline entry
  *        (ADR-0008), so "street never leaks into locality" is a fence worth
@@ -14,7 +15,7 @@
 import * as Location from 'expo-location';
 
 import type { EvidencePhoto } from '@/shared/ui';
-import { deriveAreaLabel, derivePlaceLabels } from './areaLabel';
+import { deriveAreaLabel, derivePlaceLabels, isApproximateFix } from './areaLabel';
 
 jest.mock('expo-location', () => ({
   reverseGeocodeAsync: jest.fn(),
@@ -92,5 +93,25 @@ describe('deriveAreaLabel (back-compat wrapper)', () => {
   it('returns the owner-facing label only', async () => {
     mockGeocode.mockResolvedValue(place({ district: 'Camden', city: 'London' }));
     expect(await deriveAreaLabel([locatedPhoto])).toBe('Camden, London');
+  });
+});
+
+describe('isApproximateFix', () => {
+  const at = (accuracyM?: number): EvidencePhoto => ({
+    uri: 'file:///a.jpg',
+    capturedAt: '2026-10-02T10:00:00Z',
+    lat: 51.5,
+    lng: -0.12,
+    accuracyM,
+  });
+
+  it('calls a fix worse than 100 m approximate, and 100 m or better exact', () => {
+    expect(isApproximateFix(at(101))).toBe(true);
+    expect(isApproximateFix(at(100))).toBe(false);
+    expect(isApproximateFix(at(8))).toBe(false);
+  });
+
+  it('never calls an unknown accuracy approximate', () => {
+    expect(isApproximateFix(at(undefined))).toBe(false);
   });
 });

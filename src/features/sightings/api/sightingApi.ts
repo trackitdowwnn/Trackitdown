@@ -120,8 +120,9 @@ const submitAnswersSchema = z.object({
   direction: z.enum(DRIVING_DIRECTIONS).optional(),
   peoplePresence: z.enum(PEOPLE_PRESENCE).optional(),
   // Mirrors the RPC's cap (≤ 8 marks per post); ids are validated server-side
-  // against the post's registered marks. `confirmableFeatures` (the wizard's
-  // read-only seed) is deliberately NOT here — unknown keys strip on parse.
+  // against the post's registered marks. The wizard's read-only seeds
+  // (`confirmableFeatures`, `reportedCar`) and UI-only `contextUnsure` are
+  // deliberately NOT here — unknown keys strip on parse.
   confirmedFeatureIds: z.array(z.guid()).max(8).default([]),
 });
 

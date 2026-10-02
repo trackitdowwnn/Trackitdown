@@ -26,6 +26,22 @@ export interface WizardStepProps<TAnswers> {
    * plate-less). Returns to the review screen on an edit spur, exactly like Next.
    */
   onSkip?: () => void;
+  /**
+   * Jump to another step to change it, then come back HERE: on that step the
+   * CTA reads "Done" and returns, and Back cancels and restores the answers
+   * (the review screen's edit spur, launched from a step). By id, or an
+   * ordered list where the first that exists wins (review.header's contract).
+   * A step that ends a flow with its own check-and-send uses it (the report
+   * flow's ConfirmStep).
+   *
+   * UNDEFINED while this screen is itself on an edit spur: a spur from a spur
+   * would overwrite the return point and the cancel snapshot. A no-op while
+   * `busy`.
+   */
+  editStep?: (stepId: string | string[]) => void;
+  /** True while an onContinue lookup or the final submit is in flight, so a
+   *  step's own actions (its Edit links) go inert, as ReviewStep's do. */
+  busy?: boolean;
 }
 
 export interface WizardStep<TAnswers> {
@@ -112,6 +128,13 @@ export interface WizardStep<TAnswers> {
    *  answers lets an optional step say "Skip" until something is added, then
    *  "Continue": one way on, labelled for what it does. */
   ctaLabel?: string | ((answers: Partial<TAnswers>) => string);
+  /**
+   * One quiet line directly above this step's footer buttons: reassurance
+   * that belongs beside the commitment, not in the body (the report flow's
+   * "Only the owner sees…" on its send step). A string, so the framework owns
+   * the style and every flow's note looks the same.
+   */
+  footerNote?: string;
   /** Label for this answer on the review screen; defaults to `question`. */
   reviewLabel?: string;
   /** Renders this step's answer as review text; omit to hide from review. */

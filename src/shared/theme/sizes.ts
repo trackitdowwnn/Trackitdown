@@ -361,6 +361,22 @@ export const sizes = {
    * without restyling it.
    */
   followUpRule: 2,
+  /**
+   * The listing's photo leading the "You're reporting" card on the report's
+   * check-and-send step (2026-10-02). It sits UNDER the text column's height
+   * (the car's name over a PlateChip), so the text drives the card's height.
+   * ⚠️ NOT `markThumb` (48): a mark row is a bare bordered row; this leads a
+   * padded card, and the two are free to diverge.
+   */
+  reportedCarThumb: 56,
+  /**
+   * Width/height of the spotter's photo tiles on check-and-send: PORTRAIT,
+   * because phone shots are, so a tile shows the whole car rather than a
+   * square crop of its middle. Three across at the gutter is ~103×137pt on a
+   * 375pt phone: big enough to notice a wrong or blurry shot. Per RN's
+   * aspectRatio (width / height).
+   */
+  reviewPhotoAspect: 3 / 4,
 } as const;
 
 export type SizeToken = keyof typeof sizes;

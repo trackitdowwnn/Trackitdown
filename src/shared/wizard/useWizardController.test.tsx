@@ -4,7 +4,9 @@
  *        silently; dirty exits confirm, and only Discard exits), and the
  *        async primary-button behaviour: a step's onContinue (merge-then-
  *        advance, error-then-stay) and the final onComplete (success holds the
- *        spinner without navigating; failure keeps the wizard intact for retry).
+ *        spinner without navigating; failure keeps the wizard intact for retry),
+ *        and that an edit spur into an intro-less first step is not "the
+ *        first screen".
  * WHY:   The exit path guards user-entered data across every flow built on
  *        the framework; silently discarding a half-finished post would be a
  *        trust failure. The async path is the post-a-car wizard's spine —
@@ -121,6 +123,41 @@ describe('useWizardController', () => {
 
     expect(result.current.answers).toEqual({ name: 'Jane' });
     expect(result.current.isEditingFromReview).toBe(false);
+  });
+
+  it('⚠️ a spur into an intro-less flow’s FIRST step is not the first screen', async () => {
+    // The report flow's check-and-send sends the spotter back to its camera
+    // (index 0). As "first screen" that spur hid Back, and the hardware back
+    // offered to discard the whole report instead of cancelling the edit.
+    const speedFlow: WizardFlow<Answers> = {
+      id: 'speed-test',
+      finalCtaLabel: 'Send report',
+      phases: [
+        {
+          id: 'only',
+          title: 'Report',
+          steps: [
+            { id: 'name', question: 'Name?', component: () => null, schema: z.object({}) },
+            { id: 'check', question: 'Check', component: () => null, schema: z.object({}) },
+          ],
+        },
+      ],
+    };
+    const { result } = await renderHook(() =>
+      useWizardController<Answers>(speedFlow, { onExit: jest.fn() }),
+    );
+    expect(result.current.isFirstScreen).toBe(true);
+
+    await act(async () => result.current.next()); // → check
+    await act(async () => result.current.editStep(0));
+    expect(result.current.screenIndex).toBe(0);
+    expect(result.current.isFirstScreen).toBe(false);
+    expect(result.current.ctaLabel).toBe('Done');
+    expect(result.current.isLastScreen).toBe(false);
+
+    await act(async () => result.current.back()); // cancels, back to check
+    expect(result.current.screenIndex).toBe(1);
+    expect(result.current.isLastScreen).toBe(true);
   });
 
   it('keeps an edited answer when the edit is completed with Next', async () => {

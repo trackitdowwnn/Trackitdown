@@ -1,7 +1,8 @@
 /**
  * WHAT:  Tests for contextLabels: the words for every context answer, the
  *        option lists the context step renders, contextSummary()'s narration
- *        order, and contextDetailCount().
+ *        order, contextReviewRows() (the check-and-send rows), and
+ *        contextDetailCount().
  * WHY:   The spotter's chips and the owner's summaries share these words; a
  *        drift between them is the bug the 2026-10-01 redesign removed. The
  *        detail count drives the step's Skip / Continue label, so a "Not sure"
@@ -18,6 +19,7 @@ import {
   STATE_OPTIONS,
   STAYING_OPTIONS,
   contextDetailCount,
+  contextReviewRows,
   contextSummary,
 } from './contextLabels';
 
@@ -85,5 +87,70 @@ describe('contextDetailCount', () => {
         note: 'By the bins',
       }),
     ).toBe(7);
+  });
+});
+
+describe('contextReviewRows — the check-and-send rows', () => {
+  const MARKS = [
+    { id: 'm1', description: 'Bee sticker' },
+    { id: 'm2', description: 'Roof rack' },
+  ];
+
+  it('labels every answered question, in the chip words, marks in the owner’s order', () => {
+    expect(
+      contextReviewRows({
+        contextFlags: ['driving', 'damage_visible', 'plate_changed'],
+        direction: 'NE',
+        peoplePresence: 'in_vehicle',
+        confirmableFeatures: MARKS,
+        confirmedFeatureIds: ['m2', 'm1', 'gone'],
+        note: '  Two men loading it  ',
+      }),
+    ).toEqual([
+      { key: 'state', label: 'What it was doing', value: 'Moving · Heading north-east' },
+      { key: 'people', label: 'Anyone in or near it', value: 'Someone in it' },
+      {
+        key: 'condition',
+        label: 'Its condition',
+        value: 'Damage visible · Plate changed or missing',
+      },
+      { key: 'marks', label: 'Marks you could see', value: 'Bee sticker · Roof rack' },
+      { key: 'note', label: 'Your note', value: 'Two men loading it' },
+    ]);
+  });
+
+  it('is empty for a skipped step, "Not sure" marks and a blank note', () => {
+    expect(contextReviewRows({})).toEqual([]);
+    expect(
+      contextReviewRows({
+        contextFlags: [],
+        note: '   ',
+        confirmedFeatureIds: [],
+        contextUnsure: ['state', 'people', 'direction'],
+      }),
+    ).toEqual([]);
+  });
+
+  it('reads a legacy people flag only when there is no 3-way answer', () => {
+    expect(contextReviewRows({ contextFlags: ['people_nearby'] })).toEqual([
+      { key: 'people', label: 'Anyone in or near it', value: 'People nearby' },
+    ]);
+    expect(
+      contextReviewRows({ contextFlags: ['people_nearby'], peoplePresence: 'nobody' }),
+    ).toEqual([{ key: 'people', label: 'Anyone in or near it', value: 'No one seen' }]);
+  });
+
+  it('says everything contextSummary says (one vocabulary)', () => {
+    const answers = {
+      contextFlags: ['parked', 'looks_intact'] as const,
+      parkedLikelihood: 'settled' as const,
+      peoplePresence: 'nearby' as const,
+    };
+    const rowText = contextReviewRows({ ...answers, contextFlags: [...answers.contextFlags] })
+      .map((row) => row.value)
+      .join(' · ');
+    for (const part of contextSummary({ ...answers, contextFlags: [...answers.contextFlags] })) {
+      expect(rowText).toContain(part);
+    }
   });
 });

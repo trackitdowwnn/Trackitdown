@@ -1,29 +1,29 @@
 /**
- * WHAT:  The three report-sighting wizard step components (2026-07-30
+ * WHAT:  Two of the report-sighting wizard's step components (2026-07-30
  *        rebuild; the safety gate moved out to ReportSafetySheet on
  *        2026-09-30, shown before the flow opens): the
  *        camera-AS-the-step photos step (in-place viewfinder, no modal, the
  *        ADR-0003 gallery button beside the shutter), the optional context
  *        step (redesigned 2026-10-01: one page of chip questions, each with
  *        "Not sure", inline follow-ups, the owner's marks with their photos,
- *        and a real note box; the footer says Skip until something's added),
- *        and the confirm step (photo grid with Library badges, captured-point
- *        map, time, the full context summary).
+ *        and a real note box; the footer says Skip until something's added).
+ *        The last step, "Check and send", is its own file (ConfirmStep.tsx,
+ *        2026-10-02).
  * WHY:   Speed-flow screens: big targets, minimal reading, nothing optional
  *        standing between the spotter and Send. The context step's reasons
  *        are in its section comment.
  *        SAFETY decisions live here: ≥1 LIVE in-app capture is required
  *        (gallery photos are supplementary, labelled, and never
  *        location-bearing — ADR-0003, re-enforced by the RPC), removing a
- *        photo removes its WHOLE evidence unit, the confirm map is
- *        display-only (the CAPTURED point is the evidence — no manual
- *        editing, ever), and a missing GPS fix never blocks the flow (an
- *        un-located report is still valuable).
+ *        photo removes its WHOLE evidence unit, and a missing GPS fix never
+ *        blocks the flow (an un-located report is still valuable). The
+ *        display-only confirm map's SAFETY note moved with it.
  * LINKS: src/features/sightings/reportSightingFlow.tsx (the config);
+ *        src/features/sightings/components/ConfirmStep.tsx (the last step);
  *        src/features/sightings/components/CompassPicker.tsx;
  *        src/features/sightings/lib/contextLabels.ts (the shared vocabulary);
  *        src/shared/ui (CameraCapture, PermissionPrimer, ChoiceChips,
- *        ChoiceChipsMulti, TextField, AppImage, AppMap);
+ *        ChoiceChipsMulti, TextField, AppImage);
  *        src/features/sightings/components/ReportSafetySheet.tsx (the gate);
  *        docs/DOMAIN.md (Sighting rules — structured context);
  *        docs/decisions/ADR-0003-gallery-supplementary-evidence.md.
@@ -36,7 +36,6 @@ import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from 'react-native-reanimated';
 
-import { useTimeAgo } from '@/shared/hooks';
 import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
@@ -60,10 +59,8 @@ import {
   SAFETY_PRESENCE_LINE,
   TextField,
 } from '@/shared/ui';
-import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 import type { WizardStepProps } from '@/shared/wizard';
 
-import { firstLocatedPhoto } from '../lib/areaLabel';
 import {
   CONDITION_OPTIONS,
   FLAG_LABELS,
@@ -73,7 +70,6 @@ import {
   STATE_OPTIONS,
   STAYING_OPTIONS,
   contextDetailCount,
-  contextSummary,
   directionLabel,
 } from '../lib/contextLabels';
 import {
@@ -650,99 +646,7 @@ export function ContextStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-// --- 3 · Confirm & send ------------------------------------------------------------
-
-/** ~0.6-mile span: enough to place the pin without implying precision. */
-const CONFIRM_DELTA = 0.008;
-
-export function ConfirmStep({ answers }: StepProps) {
-  const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
-  const photos = answers.photos ?? [];
-  const located = firstLocatedPhoto(photos);
-  const takenAgo = useTimeAgo(photos[0]?.capturedAt ?? new Date().toISOString());
-  // EVERYTHING the spotter said, in the shared friendly vocabulary — the
-  // confirm screen must review the whole report, not just the chips.
-  const contextParts = contextSummary(answers);
-  const confirmedMarks = (answers.confirmableFeatures ?? []).filter((mark) =>
-    (answers.confirmedFeatureIds ?? []).includes(mark.id),
-  );
-
-  return (
-    <View style={styles.stack}>
-      {/* The grid treatment, as review: what's being sent, provenance shown
-          honestly (a library photo is never presented as a live capture). */}
-      <View style={styles.confirmPhotos}>
-        {photos.map((photo) => (
-          <View key={photo.uri} style={styles.confirmPhotoCell}>
-            <AppImage uri={photo.uri} style={styles.confirmPhoto} />
-            {photo.source === 'gallery' ? (
-              <View style={styles.confirmPhotoBadge}>
-                {/* textOnMedia, not textOnPrimary: this badge sits ON the
-                    photo, so it must stay white in both schemes — textOnPrimary
-                    flips to near-black in dark and would vanish on a dark shot. */}
-                <Feather name="image" size={sizes.iconSm} color={palette.textOnMedia} />
-                <Text style={styles.confirmPhotoBadgeText}>Library</Text>
-              </View>
-            ) : null}
-          </View>
-        ))}
-      </View>
-
-      {located ? (
-        <View>
-          {/* SAFETY: display only — the CAPTURED point is the evidence. There
-              is deliberately no way to move this pin or pick a location. */}
-          <View style={styles.confirmMap} pointerEvents="none">
-            <AppMap
-              interactive={false}
-              region={{
-                latitude: located.lat as number,
-                longitude: located.lng as number,
-                latitudeDelta: CONFIRM_DELTA,
-                longitudeDelta: CONFIRM_DELTA,
-              }}
-              animateDurationMs={0}
-              onRegionChangeStart={() => {}}
-              onRegionChangeComplete={() => {}}
-            >
-              <AppMapMarker
-                coordinate={{ latitude: located.lat as number, longitude: located.lng as number }}
-                anchor={{ x: 0.5, y: 0.5 }}
-              >
-                <View style={styles.pin} />
-              </AppMapMarker>
-            </AppMap>
-          </View>
-          <Text style={styles.meta}>
-            {answers.areaLabel ? `Reported near ${answers.areaLabel}` : 'Reported at the captured spot'}
-            {' · '}
-            {takenAgo}
-          </Text>
-        </View>
-      ) : (
-        <Text style={styles.meta}>
-          No location on this report — your photos still help · {takenAgo}
-        </Text>
-      )}
-
-      {contextParts.length > 0 ? (
-        <Text style={styles.confirmLine}>{contextParts.join(' · ')}</Text>
-      ) : null}
-      {confirmedMarks.length > 0 ? (
-        <Text style={styles.confirmLine}>
-          You saw: {confirmedMarks.map((mark) => mark.description).join(' · ')}
-        </Text>
-      ) : null}
-      {answers.note?.trim() ? <Text style={styles.confirmLine}>{answers.note.trim()}</Text> : null}
-    </View>
-  );
-}
-
 const makeStyles = (c: Palette) => StyleSheet.create({
-  stack: {
-    gap: spacing.xl,
-  },
   quiet: {
     ...typography.caption,
     color: c.textSecondary,
@@ -863,61 +767,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   markTiles: {
     gap: spacing.sm,
-  },
-  confirmPhotos: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  confirmPhotoCell: {
-    flex: 1,
-  },
-  confirmPhoto: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: radii.md,
-  },
-  confirmPhotoBadge: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    // mediaScrim + textOnMedia, NOT overlay/textOnPrimary: this badge is
-    // chrome sitting ON the photo. `overlay` now means "a scrim over the PAGE"
-    // and deepens on dark; a photo is as bright in either theme, so its own
-    // chrome must not move at all.
-    backgroundColor: c.mediaScrim,
-    borderTopRightRadius: radii.sm,
-    borderBottomLeftRadius: radii.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  confirmPhotoBadgeText: {
-    ...typography.caption,
-    color: c.textOnMedia,
-  },
-  confirmMap: {
-    height: sizes.mapConfirmPreview,
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-    backgroundColor: c.surfaceSubtle,
-  },
-  pin: {
-    width: sizes.mapPinConfirm,
-    height: sizes.mapPinConfirm,
-    borderRadius: radii.full,
-    backgroundColor: c.primary,
-    borderWidth: sizes.mapPinRing,
-    borderColor: c.surface,
-  },
-  meta: {
-    ...typography.caption,
-    color: c.textSecondary,
-    marginTop: spacing.sm,
-  },
-  confirmLine: {
-    ...typography.body,
-    color: c.textPrimary,
   },
 });

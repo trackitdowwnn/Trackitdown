@@ -1,8 +1,9 @@
 /**
  * WHAT:  Smoke tests for the report-sighting flow config — the speed shape
  *        (no intro screens, three steps with the camera first, confirm carries
- *        "Send report"), the photo gating (1–3 evidence photos), and the
- *        never-blocking context step. The safety gate is no longer a step
+ *        "Send report"), the photo gating (1–3 evidence photos), the
+ *        never-blocking context step, and the confirm step's privacy line
+ *        (footerNote, pinned word for word). The safety gate is no longer a step
  *        (ReportSafetySheet.test.tsx).
  * WHY:   The wizard framework warns that a typo'd schema key compiles but can
  *        never validate — each flow needs this smoke coverage. The gating IS
@@ -99,6 +100,14 @@ describe('reportSightingFlow shape', () => {
     expect(label({ contextFlags: [], contextUnsure: ['state'] })).toBe('Skip');
     expect(label({ contextFlags: ['parked'] })).toBe('Continue');
     expect(label({ note: 'By the bins' })).toBe('Continue');
+  });
+
+  it('says who sees what above "Send report", word for word', () => {
+    // Strictly true (SECURITY_AND_TRUST §1): the public sees that a sighting
+    // happened, never the photos, the exact spot or who sent it.
+    expect(steps.find((step) => step.id === 'confirm')?.footerNote).toBe(
+      'Only the owner sees your photos and the exact spot. They’ll see your first name, not your contact details.',
+    );
   });
 
   it('confirm re-asserts the photo rule so an invalidated edit cannot send', () => {

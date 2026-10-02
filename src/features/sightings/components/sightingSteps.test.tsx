@@ -1,21 +1,20 @@
 /**
- * WHAT:  Tests for the rebuilt PhotosStep (camera-as-the-step) and the
- *        ConfirmStep's provenance badges — the location primer paths
+ * WHAT:  Tests for the rebuilt PhotosStep (camera-as-the-step) — the
+ *        location primer paths
  *        (allow / continue-without / OS-blocked never blocks), the in-step
  *        viewfinder, the ADR-0003 gallery button beside the shutter
  *        (launch options, gallery photos flagged source:'gallery' and NEVER
  *        location-bearing, canceled pick is a no-op, remaining-slot
- *        selectionLimit), the requirement-line copy variants, and the
- *        "Library" badge on the confirm grid. (The safety gate's 999 path
- *        moved with it to ReportSafetySheet.test.tsx, 2026-09-30.)
+ *        selectionLimit) and the requirement-line copy variants. (The safety
+ *        gate's 999 path moved to ReportSafetySheet.test.tsx, 2026-09-30; the
+ *        confirm grid's "Library" badge to ConfirmStep.test.tsx, 2026-10-02.)
  * WHY:   The photo step is where the anti-fraud evidence is born (DOMAIN
  *        sighting rules / ADR-0003) — a wiring slip here either strands a
  *        spotter (camera never mounts after the primer) or corrupts evidence
  *        (a library photo arriving located, or unlabelled as 'gallery',
  *        would masquerade as a live capture). CameraCapture's own capture
  *        contract is pinned in CameraCapture.test.tsx; this file proves the
- *        STEP composes it — primer first, gallery path OUTSIDE the camera,
- *        provenance surfaced honestly at review.
+ *        STEP composes it — primer first, gallery path OUTSIDE the camera.
  * LINKS: src/features/sightings/components/sightingSteps.tsx;
  *        src/shared/ui/CameraCapture.tsx (shutterAccessory slot);
  *        docs/decisions/ADR-0003-gallery-supplementary-evidence.md;
@@ -28,7 +27,7 @@ import { useState } from 'react';
 import type { EvidencePhoto } from '@/shared/ui';
 
 import type { ReportSightingAnswers } from '../types';
-import { ConfirmStep, PhotosStep, SIGHTING_LOCATION_PRIMER } from './sightingSteps';
+import { PhotosStep, SIGHTING_LOCATION_PRIMER } from './sightingSteps';
 
 const mockTakePicture = jest.fn();
 jest.mock('expo-camera', () => {
@@ -327,33 +326,5 @@ describe('PhotosStep — the requirement line', () => {
       photos: [liveEvidence(0), liveEvidence(1), galleryEvidence(2)],
     });
     expect(full.getByText(FULL_SET_LINE)).toBeTruthy();
-  });
-});
-
-describe('ConfirmStep — provenance badges', () => {
-  async function renderConfirm(answers: Partial<ReportSightingAnswers>) {
-    let view!: Awaited<ReturnType<typeof render>>;
-    await act(async () => {
-      view = await render(<ConfirmStep answers={answers} setAnswers={() => {}} />);
-    });
-    return view;
-  }
-
-  it('badges a gallery photo "Library" — never presented as a live capture', async () => {
-    const unlocatedLive: EvidencePhoto = {
-      uri: 'file:///live.jpg',
-      capturedAt: '2026-07-15T10:00:00Z',
-      source: 'live',
-    };
-    const { getAllByText } = await renderConfirm({
-      photos: [unlocatedLive, galleryEvidence(1)],
-    });
-    // Exactly ONE badge — the live photo carries none.
-    expect(getAllByText('Library')).toHaveLength(1);
-  });
-
-  it('shows no badge when every photo is a live capture', async () => {
-    const { queryByText } = await renderConfirm({ photos: [liveEvidence(0), liveEvidence(1)] });
-    expect(queryByText('Library')).toBeNull();
   });
 });

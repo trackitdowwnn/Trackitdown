@@ -47,6 +47,27 @@ header slot is handed an `editStep(stepId)` — or a list of ordered candidate
 ids, first match wins — so a flow never does index arithmetic against a screen
 list the framework builds.
 
+**A step can launch the same spur** (2026-10-02), for a flow whose last step
+is its own check-and-send (the report flow's ConfirmStep). Steps receive:
+- `editStep(stepId | stepId[])`: jump to that step; its CTA reads "Done" and
+  returns, Back cancels and restores the answers. Undefined while the step
+  is itself on a spur (no spur from a spur) and a no-op while busy.
+- `busy`: true while an onContinue lookup or the submit is in flight, so the
+  step's own links go inert.
+
+A spur into an intro-less flow's FIRST screen is not "the first screen":
+`isFirstScreen` is false on any spur, so Back shows and the hardware back
+cancels the edit instead of offering to discard the flow. A step's
+`onContinue` runs again on its spur's Done, so funnel logs count a second
+`step_completed` after an edit.
+
+**`footerNote`** on a step renders one quiet caption line just above its
+footer buttons (lg above, sm below, so it reads as about the button):
+reassurance beside the commitment it's about ("Only the owner sees…"). A
+submit error renders under it, right above the buttons. Past the fills
+font-scale threshold (1.3) the note ends the scrolling body instead, because
+the footer never scrolls.
+
 ⚠️ Flows that pass neither slot get no slot CONTENT, but they are not otherwise
 unchanged: the group rhythm, the single-hairline boundaries, the 44pt Edit
 target and the blocking notice are all framework-wide. Three of the five flows

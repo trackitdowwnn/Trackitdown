@@ -31,7 +31,7 @@
  *        step in the flow and disables — right, but it was silent, and the
  *        commonest cause is invisible from here: changing the make clears the
  *        model, so the row that broke is not the row they touched.
- * LINKS: src/shared/wizard/navigation.ts (reviewGroups, stepFlatIndex, editStep
+ * LINKS: src/shared/wizard/navigation.ts (reviewGroups, firstStepFlatIndex, editStep
  *        return behaviour); docs/DESIGN_SYSTEM.md.
  */
 
@@ -39,7 +39,7 @@ import { useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { opacity, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
-import { invalidStepIds, resolveQuestion, reviewGroups, stepFlatIndex } from './navigation';
+import { firstStepFlatIndex, invalidStepIds, resolveQuestion, reviewGroups } from './navigation';
 import type { WizardFlow } from './types';
 
 /**
@@ -101,13 +101,8 @@ export function ReviewStep<TAnswers>({
   // matches nothing no-ops rather than jumping somewhere arbitrary.
   const editById = useCallback(
     (stepId: string | string[]) => {
-      for (const candidate of Array.isArray(stepId) ? stepId : [stepId]) {
-        const index = stepFlatIndex(flow, candidate);
-        if (index !== null) {
-          onEdit(index);
-          return;
-        }
-      }
+      const index = firstStepFlatIndex(flow, stepId);
+      if (index !== null) onEdit(index);
     },
     [flow, onEdit],
   );

@@ -2,8 +2,9 @@
  * WHAT:  Tests for the sightings API layer — the evidence-atomicity mapping
  *        (a photo without its own fix submits un-located, never borrowing),
  *        min/max photo enforcement, RPC error-token translation (rate limit,
- *        own post), the quota read, and the owner-payload PRIVACY strictness
- *        (an extra spotter field — e.g. a leaked spotter_id — fails loudly).
+ *        own post), the quota read, the owner-payload PRIVACY strictness
+ *        (an extra spotter field — e.g. a leaked spotter_id — fails loudly),
+ *        and that the wizard's seeds and UI-only fields are never sent.
  * WHY:   SAFETY/MONEY-adjacent: fabricated evidence and spotter exposure are
  *        the two ways this feature could hurt someone; both boundaries live
  *        in this file's schemas and are pinned here.
@@ -165,6 +166,21 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     const params = buildCreateSightingParams(POST_ID, answers, ['p/1.jpg']);
     expect(JSON.stringify(params)).not.toMatch(/unsure/i);
   });
+
+  it('never sends the read-only seeds (the car and the offered marks)', () => {
+    // They come FROM the post, to show the spotter; the server already has
+    // them. Echoing them back would be noise at best, a forgery vector at worst.
+    const answers = {
+      photos: [located],
+      contextFlags: [],
+      note: '',
+      confirmedFeatureIds: [],
+      reportedCar: { make: 'BMW', model: '3 Series', colour: 'Blue', plate: 'AB12 CDE' },
+      confirmableFeatures: [{ id: 'm1', description: 'Bee sticker' }],
+    } as unknown as Parameters<typeof buildCreateSightingParams>[1];
+    const params = buildCreateSightingParams(POST_ID, answers, ['p/1.jpg']);
+    expect(JSON.stringify(params)).not.toMatch(/BMW|AB12|Bee sticker|reportedCar|confirmable/);
+  });
 });
 
 describe('submitSighting', () => {
@@ -226,6 +242,24 @@ describe('submitSighting', () => {
     // Paths are pinned under <postId>/<userId>/ so the RPC (and storage RLS)
     // can verify ownership of every object.
     expect(rpcArgs[1].p_photos[0].path).toMatch(new RegExp(`^${POST_ID}/user-1/`));
+  });
+
+  it('strips the wizard’s seeds and UI-only marks end to end', async () => {
+    // Both layers at once: the schema strip AND the explicit mapping.
+    mockRpc.mockResolvedValue({
+      data: { sighting_id: 'bbbbbbbb-0000-0000-0000-000000000002' },
+      error: null,
+    });
+    await submitSighting(POST_ID, {
+      photos: [located],
+      contextFlags: [],
+      note: '',
+      reportedCar: { make: 'BMW', model: '3 Series', colour: 'Blue', plate: 'AB12 CDE' },
+      confirmableFeatures: [{ id: 'm1', description: 'Bee sticker' }],
+      contextUnsure: ['state'],
+    });
+    const payload = JSON.stringify(mockRpc.mock.calls[0][1]);
+    expect(payload).not.toMatch(/BMW|AB12|Bee sticker|reportedCar|confirmable|unsure/i);
   });
 
   // Stub migration: the sightings feature's notify-owner-of-sighting push now

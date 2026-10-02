@@ -49,31 +49,26 @@ import { WizardScreen } from '@/shared/wizard';
 
 import { fetchSightingQuota, submitSighting } from '../api/sightingApi';
 import { ReportSafetySheet, type ReportSafetySheetRef } from '../components/ReportSafetySheet';
+import { EMPTY_REPORT_SEED, reportSeedFromDetail, type ReportSeed } from '../lib/reportSeed';
 import { hasFreshSafetyAck } from '../lib/safetyAck';
 import {
   REPORT_SIGHTING_INITIAL_ANSWERS,
   reportSightingFlow,
 } from '../reportSightingFlow';
-import type { ConfirmableFeature, ReportSightingAnswers } from '../types';
+import type { ReportSightingAnswers } from '../types';
 
-/** The post's registered marks, for the context step's "Could you see…?"
- *  checkmarks. Best-effort: any failure (hidden post, old payload without
- *  ids, network) yields [] and the wizard simply offers no marks section.
- *  Deferred import keeps sightings' module graph off the vehicles feature. */
-async function fetchConfirmableFeatures(postId: string): Promise<ConfirmableFeature[]> {
+/** The wizard's read-only seed from the post detail: the registered marks
+ *  (the context step's "Could you see…?") and the car (the check-and-send
+ *  step's "You're reporting" card). Best-effort: any failure (hidden post,
+ *  network) yields the empty seed, and the wizard simply offers no marks and
+ *  no car card. Deferred import keeps sightings' module graph off the
+ *  vehicles feature. */
+async function fetchReportSeed(postId: string): Promise<ReportSeed> {
   try {
     const { fetchPostDetail } = await import('@/features/vehicles');
-    const result = await fetchPostDetail(postId);
-    if (result.kind !== 'visible') return [];
-    // The photo too: the context step shows it beside each mark, so the
-    // spotter knows what they're looking for.
-    return result.post.distinctiveFeatures.flatMap((feature) =>
-      feature.id
-        ? [{ id: feature.id, description: feature.description, photoUrl: feature.photoUrl || undefined }]
-        : [],
-    );
+    return reportSeedFromDetail(await fetchPostDetail(postId));
   } catch {
-    return [];
+    return EMPTY_REPORT_SEED;
   }
 }
 
@@ -96,7 +91,7 @@ export interface ReportSightingScreenProps {
 type Phase =
   | { kind: 'checking' }
   | { kind: 'rate_limited' }
-  | { kind: 'wizard'; confirmableFeatures: ConfirmableFeature[] }
+  | { kind: 'wizard'; seed: ReportSeed }
   | { kind: 'sent' };
 
 export function ReportSightingScreen({ postId, source, bountyPence }: ReportSightingScreenProps) {
@@ -125,22 +120,22 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
 
   // The quota gate: spent → the kind state instead of the wizard. A failed
   // CHECK never blocks reporting (the RPC is the real enforcement). The
-  // post's registered marks ride the same await — one loading moment, and a
-  // marks failure costs nothing but the checkmarks section.
+  // post's seed (marks + car) rides the same await — one loading moment, and
+  // a seed failure costs nothing but the checkmarks and the car card.
   useEffect(() => {
     let cancelled = false;
     log.info('flow_entered', { postId, source });
-    // allSettled: a quota-check blip must not cost the marks (nor vice
+    // allSettled: a quota-check blip must not cost the seed (nor vice
     // versa) — each degrades independently, and neither ever blocks.
-    Promise.allSettled([fetchSightingQuota(postId), fetchConfirmableFeatures(postId)]).then(
-      ([quota, marks]) => {
+    Promise.allSettled([fetchSightingQuota(postId), fetchReportSeed(postId)]).then(
+      ([quota, seeded]) => {
         if (cancelled) return;
-        const confirmableFeatures = marks.status === 'fulfilled' ? marks.value : [];
+        const seed = seeded.status === 'fulfilled' ? seeded.value : EMPTY_REPORT_SEED;
         if (quota.status === 'fulfilled' && quota.value.used >= quota.value.maxPerDay) {
           log.info('rate_limited', { postId });
           setPhase({ kind: 'rate_limited' });
         } else {
-          setPhase({ kind: 'wizard', confirmableFeatures });
+          setPhase({ kind: 'wizard', seed });
         }
       },
     );
@@ -210,7 +205,9 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
       flow={reportSightingFlow}
       initialAnswers={{
         ...REPORT_SIGHTING_INITIAL_ANSWERS,
-        confirmableFeatures: phase.confirmableFeatures,
+        // A copy: the seed may be the shared, frozen EMPTY_REPORT_SEED.
+        confirmableFeatures: [...phase.seed.confirmableFeatures],
+        reportedCar: phase.seed.reportedCar,
       }}
       onExit={leave}
       onComplete={handleComplete}

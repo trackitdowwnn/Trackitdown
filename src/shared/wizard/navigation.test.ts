@@ -14,6 +14,7 @@ import {
   INITIAL_NAV_STATE,
   canProceed,
   ctaLabel,
+  firstStepFlatIndex,
   flattenFlow,
   invalidStepIds,
   phaseProgress,
@@ -334,6 +335,27 @@ describe('ctaLabel', () => {
     const skipScreens = flattenFlow(skipFlow);
     expect(ctaLabel(skipFlow, skipScreens, navState(1), {})).toBe('Skip');
     expect(ctaLabel(skipFlow, skipScreens, navState(1), { name: 'Sam' })).toBe('Continue');
+    // On an edit spur "Done" wins: the step's own label is never consulted.
+    expect(ctaLabel(skipFlow, skipScreens, navState(1, 4), {})).toBe('Done');
+  });
+});
+
+describe('firstStepFlatIndex', () => {
+  const screens = flattenFlow(flow);
+  const indexOf = (id: string) =>
+    screens.findIndex((screen) => screen.kind === 'step' && screen.step.id === id);
+
+  it('finds one step by id', () => {
+    expect(firstStepFlatIndex(flow, 'name')).toBe(indexOf('name'));
+  });
+
+  it('takes the first id in a list that exists', () => {
+    expect(firstStepFlatIndex(flow, ['missing', 'name'])).toBe(indexOf('name'));
+  });
+
+  it('is null when none exists, so a caller no-ops', () => {
+    expect(firstStepFlatIndex(flow, 'missing')).toBeNull();
+    expect(firstStepFlatIndex(flow, [])).toBeNull();
   });
 });
 
