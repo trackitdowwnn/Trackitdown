@@ -532,18 +532,21 @@ Rules that follow, and are not implementation details:
 - **Structured context (all optional, all taps — approved 2026-07-29).**
   Beyond the photo, a report may carry: a vehicle STATE (parked / driving /
   being loaded-towed — mutually exclusive; the towed case flips the urgency
-  calculus), a parked follow-up (`parked_likelihood`: settled / street /
-  moving — the spotter's one-tap judgement of how fast the owner must act),
+  calculus; the spotter sees "Moving" for driving), a parked follow-up
+  (`parked_likelihood`: settled / street / moving — what the spotter saw,
+  asked as "Did it look like it was staying?" since 2026-10-01; `street` is
+  no longer offered but old rows keep it),
   a driving follow-up (`direction`: 8-way compass heading), condition chips
   (plate changed-missing / damage visible / being stripped / looks intact),
   a 3-way people observation (`people_presence`: nobody / nearby /
-  in_vehicle — supersedes the `people_nearby` flag for new reports; the
-  in-vehicle case reinforces the don't-approach register inline), and
+  in_vehicle — supersedes the `people_nearby` flag for new reports; nearby,
+  in_vehicle and "Not sure" all bring up the don't-approach register inline),
+  and
   confirmed distinctive marks (`confirmed_feature_ids` — the post's
   registered marks the spotter ticked "could you see…?"; ids validated
   server-side against that post's marks). Every field is skippable: an
-  empty context step is a valid report, and the free-text note stays the
-  catch-all. Nothing here is ever public — structured context is owner-only
+  empty context step is a valid report. "Not sure" stores nothing, and the
+  free-text note stays the catch-all. Nothing here is ever public — structured context is owner-only
   like the note (ADR-0008 unchanged).
 - Rate limit: a spotter can report at most 3 sightings per post per day
   (a rolling 24-hour window, not a midnight reset).

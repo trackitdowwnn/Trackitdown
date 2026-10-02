@@ -314,6 +314,27 @@ describe('ctaLabel', () => {
     // Not the last screen → the dynamic label is not used.
     expect(ctaLabel(dynamicFlow, screens, navState(1), { name: 'Sam' })).toBe('Next');
   });
+
+  it('resolves a function step ctaLabel with the answers (Skip until something is added)', () => {
+    const skipFlow: WizardFlow<DemoAnswers> = {
+      ...flow,
+      phases: flow.phases.map((phase, phaseIndex) =>
+        phaseIndex === 0
+          ? {
+              ...phase,
+              steps: phase.steps.map((step, stepIndex) =>
+                stepIndex === 0
+                  ? { ...step, ctaLabel: (answers: Partial<DemoAnswers>) => (answers.name ? 'Continue' : 'Skip') }
+                  : step,
+              ),
+            }
+          : phase,
+      ),
+    };
+    const skipScreens = flattenFlow(skipFlow);
+    expect(ctaLabel(skipFlow, skipScreens, navState(1), {})).toBe('Skip');
+    expect(ctaLabel(skipFlow, skipScreens, navState(1), { name: 'Sam' })).toBe('Continue');
+  });
 });
 
 describe('reviewGroups', () => {

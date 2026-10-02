@@ -49,7 +49,8 @@ export type ConditionFlag = (typeof CONDITION_FLAGS)[number];
 
 /** 3-way people observation — supersedes the people_nearby flag for NEW
  *  reports ('in_vehicle' is the urgency case; the inline safety register
- *  reinforces "don't approach" on nearby/in_vehicle). Old rows carry the
+ *  reinforces "don't approach" on nearby/in_vehicle, and on the UI's
+ *  "Not sure", which stores nothing). Old rows carry the
  *  flag instead; renderers handle both. */
 export const PEOPLE_PRESENCE = ['nobody', 'nearby', 'in_vehicle'] as const;
 export type PeoplePresence = (typeof PEOPLE_PRESENCE)[number];
@@ -65,7 +66,14 @@ export type DrivingDirection = (typeof DRIVING_DIRECTIONS)[number];
 export interface ConfirmableFeature {
   id: string;
   description: string;
+  /** The owner's photo of the mark, shown beside it so the spotter knows
+   *  what to look for. Absent on older payloads: the row is then text-only. */
+  photoUrl?: string;
 }
+
+/** The context step's single-answer questions that offer "Not sure". */
+export const CONTEXT_QUESTIONS = ['state', 'staying', 'direction', 'people'] as const;
+export type ContextQuestion = (typeof CONTEXT_QUESTIONS)[number];
 
 /** The wizard's single answers object. */
 export interface ReportSightingAnswers {
@@ -91,6 +99,11 @@ export interface ReportSightingAnswers {
    *  the screen before the wizard mounts so the context step can offer them
    *  as checkmarks. Empty/absent = no marks section. */
   confirmableFeatures?: ConfirmableFeature[];
+  /** UI-ONLY (never submitted): the questions answered "Not sure", so that
+   *  chip shows as chosen, including after Back. "Not sure" stores nothing:
+   *  to the owner it reads exactly like an unanswered question, which is
+   *  what it is (eyewitness research: an honest "not sure" beats a guess). */
+  contextUnsure?: ContextQuestion[];
 }
 
 /** create_sighting RPC arguments (p_photos is the jsonb evidence array). */

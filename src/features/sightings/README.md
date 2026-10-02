@@ -45,23 +45,33 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
    `PermissionPrimer`; **denied/failed GPS never blocks** — the report
    proceeds flagged `location_unavailable`. Poor accuracy (> ~100 m) is
    recorded with its value, never rejected.
-2. **Context** (all optional) — "Anything else that helps?", four tap groups
-   + the note, everything skippable and tap-again-clears:
-   - **What's it doing?** — single-select state (Parked · Driving · Being
-     loaded/towed), stored in `context_flags`. Parked reveals **Likely to
-     stay?** (settled / street / about to move); Driving reveals the 3×3
-     **compass grid** (`CompassPicker`) for the 8-way heading. Switching
-     state clears the other state's follow-up.
-   - **Condition at a glance** — multi-select chips: plate changed/missing ·
-     damage visible · being stripped · looks intact.
-   - **Could you see…?** — the post's registered distinctive marks as
-     checkmarks (`confirmed_feature_ids`; section absent when the post has
-     none — the screen seeds `confirmableFeatures` from `get_post_detail`
-     best-effort).
-   - **Anyone around?** — 3-way `people_presence` (nobody / nearby / someone
-     in it); the last two reveal the fixed inline register "Don't approach —
-     your report is enough."
-   An empty step continues freely — skipping costs nothing.
+2. **Context** (all optional, redesigned 2026-10-01): "Anything else that
+   helps?", ONE page with every question visible (no drawer, no sheet).
+   Single-select rows are `ChoiceChips` (tap again to clear), each with an
+   equal **Not sure** chip that stores nothing (its selected look lives in the
+   UI-only `contextUnsure` answer, never sent). The words are
+   `lib/contextLabels.ts`, shared with every owner-facing summary.
+   - **What was it doing?** Parked · Moving · Being loaded or towed, stored in
+     `context_flags` (Moving is stored `driving`). Follow-ups appear
+     inline: Parked asks **Did it look like it was staying?** (Looks parked
+     up = `settled` · Looks about to move = `moving`; `street` is no longer
+     offered, old rows still read); Moving shows the **compass grid**
+     (`CompassPicker`) plus Not sure. Switching state clears the other
+     follow-up.
+   - **Anyone in or near it?** 3-way `people_presence` (No one seen · People
+     near it · Someone in it); the last two, and Not sure, reveal the fixed
+     inline register "Don’t approach — your report is enough."
+     (`SAFETY_PRESENCE_LINE`), announced to screen readers as it appears.
+   - **Its condition**: multi-select chips (plate changed or missing · damage
+     visible · being stripped · looks intact); "Looks intact" is exclusive.
+   - **Could you see any of these?** The post's distinctive marks as checkbox
+     rows with the owner's photo (`confirmed_feature_ids`; absent when the
+     post has none; the screen seeds `confirmableFeatures` from
+     `get_post_detail` best-effort).
+   - **A note for the owner**: multiline, with a 0/500 counter.
+   One way on: the footer reads **Skip** until something is added, then
+   **Continue** (`ctaLabel` as a function); "N details added" ("Nothing added
+   yet" at 0, always shown so the page never jumps) counts above.
 3. **Confirm & send** — photos, a small non-interactive map of the CAPTURED
    point ("Reported near ‹area›") — display only, **no manual location
    editing** (`// SAFETY`: the capture point is the evidence), "Just now",

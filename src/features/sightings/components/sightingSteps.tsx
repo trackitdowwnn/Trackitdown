@@ -4,14 +4,14 @@
  *        2026-09-30, shown before the flow opens): the
  *        camera-AS-the-step photos step (in-place viewfinder, no modal, the
  *        ADR-0003 gallery button beside the shutter), the optional context
- *        step (state tap-cards whose parked/driving follow-up opens a
- *        BottomSheet, everything else — condition/marks/people option rows +
- *        note — behind one "Add more detail" expander, prominent Skip), and
- *        the confirm step (photo grid with Library badges, captured-point
+ *        step (redesigned 2026-10-01: one page of chip questions, each with
+ *        "Not sure", inline follow-ups, the owner's marks with their photos,
+ *        and a real note box; the footer says Skip until something's added),
+ *        and the confirm step (photo grid with Library badges, captured-point
  *        map, time, the full context summary).
  * WHY:   Speed-flow screens: big targets, minimal reading, nothing optional
- *        standing between the spotter and Send — one question at first
- *        glance, the follow-up in the thumb zone, the drawer for the rest.
+ *        standing between the spotter and Send. The context step's reasons
+ *        are in its section comment.
  *        SAFETY decisions live here: ≥1 LIVE in-app capture is required
  *        (gallery photos are supplementary, labelled, and never
  *        location-bearing — ADR-0003, re-enforced by the RPC), removing a
@@ -22,8 +22,8 @@
  * LINKS: src/features/sightings/reportSightingFlow.tsx (the config);
  *        src/features/sightings/components/CompassPicker.tsx;
  *        src/features/sightings/lib/contextLabels.ts (the shared vocabulary);
- *        src/shared/ui (CameraCapture, PhotoGridPicker, PermissionPrimer,
- *        ChoiceChips, ChoiceChipsMulti, TextField, AppMap);
+ *        src/shared/ui (CameraCapture, PermissionPrimer, ChoiceChips,
+ *        ChoiceChipsMulti, TextField, AppImage, AppMap);
  *        src/features/sightings/components/ReportSafetySheet.tsx (the gate);
  *        docs/DOMAIN.md (Sighting rules — structured context);
  *        docs/decisions/ADR-0003-gallery-supplementary-evidence.md.
@@ -32,10 +32,9 @@
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { CarFront, SquareParking, Truck } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
+import { useEffect, useState } from 'react';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, LayoutAnimationConfig, ReduceMotion } from 'react-native-reanimated';
 
 import { useTimeAgo } from '@/shared/hooks';
 import { createLogger } from '@/shared/lib/logger';
@@ -52,27 +51,38 @@ import {
 } from '@/shared/theme';
 import {
   AppImage,
-  BottomSheet,
-  type BottomSheetRef,
   CameraCapture,
-  CardSelect,
-  type CardSelectOption,
+  ChoiceChips,
+  ChoiceChipsMulti,
   type EvidencePhoto,
   PermissionPrimer,
   type PermissionPrimerContent,
+  SAFETY_PRESENCE_LINE,
   TextField,
 } from '@/shared/ui';
 import { AppMap, AppMapMarker } from '@/shared/ui/AppMap';
 import type { WizardStepProps } from '@/shared/wizard';
 
 import { firstLocatedPhoto } from '../lib/areaLabel';
-import { contextSummary } from '../lib/contextLabels';
+import {
+  CONDITION_OPTIONS,
+  FLAG_LABELS,
+  PARKED_LIKELIHOOD_LABELS,
+  PEOPLE_OPTIONS,
+  PEOPLE_PRESENCE_LABELS,
+  STATE_OPTIONS,
+  STAYING_OPTIONS,
+  contextDetailCount,
+  contextSummary,
+  directionLabel,
+} from '../lib/contextLabels';
 import {
   CONDITION_FLAGS,
   MAX_NOTE_LENGTH,
   MAX_SIGHTING_PHOTOS,
   VEHICLE_STATE_FLAGS,
   type ConditionFlag,
+  type ContextQuestion,
   type ParkedLikelihood,
   type PeoplePresence,
   type ReportSightingAnswers,
@@ -248,41 +258,49 @@ export function PhotosStep({ answers, setAnswers }: StepProps) {
 }
 
 // --- 2 · Context (all optional) --------------------------------------------------
+//
+// THE 2026-10-01 REDESIGN, after research (GOV.UK question pages, NN/g,
+// Baymard, eyewitness-memory studies). What changed and why:
+//   - ONE PAGE, ALL VISIBLE. Every question is a short row of chips. No sheet
+//     springing up on a tap, no "Add more detail" drawer hiding the people
+//     question, the owner's marks and the safety line.
+//   - "NOT SURE" ON EVERY QUESTION, nothing pre-selected. People guess less
+//     and are more accurate when "not sure" is a real, equal answer. It sends
+//     nothing: to the owner it is simply unanswered.
+//   - DESCRIBE, DON'T PREDICT. "Did it look like it was staying?", not
+//     "Likely to stay?".
+//   - ONE CONTROL GRAMMAR: chips (single = radios, condition = checkboxes),
+//     the compass only for direction, bordered photo rows for the marks.
+//   - ONE WAY ON. The footer reads "Skip" until something is added, then
+//     "Continue" (reportSightingFlow's ctaLabel); the in-body Skip link went.
+//   - THE WORDS ARE contextLabels': what the spotter taps is what the owner
+//     reads.
 
-/** The three mutually exclusive vehicle STATES — big tap-cards (the rebuild's
- *  one-glance question; storage stays the shared context_flags array). */
-const STATE_CARDS: CardSelectOption<VehicleStateFlag>[] = [
-  { value: 'parked', label: 'Parked', description: 'Sitting unattended', icon: SquareParking },
-  { value: 'driving', label: 'Driving', description: 'On the move right now', icon: CarFront },
-  {
-    value: 'being_loaded',
-    label: 'Being loaded or towed',
-    description: 'On or going onto another vehicle',
-    icon: Truck,
-  },
-];
+/** The "Not sure" chip's value: never stored, only remembered (contextUnsure). */
+const UNSURE = '__unsure__';
+type MaybeUnsure<V extends string> = V | typeof UNSURE;
+const UNSURE_OPTION = { value: UNSURE, label: 'Not sure' } as const;
 
-const CONDITION_OPTIONS: { value: ConditionFlag; label: string }[] = [
-  { value: 'plate_changed', label: 'Plate changed or missing' },
-  { value: 'damage_visible', label: 'Damage visible' },
-  { value: 'being_stripped', label: 'Being stripped' },
-  { value: 'looks_intact', label: 'Looks intact' },
-];
+/** The people answers that bring up the safety line. "Not sure" counts: a
+ *  spotter who can't tell is the one tempted to step closer and check. */
+const showsSafetyLine = (people: PeoplePresence | undefined, unsure: boolean) =>
+  people === 'nearby' || people === 'in_vehicle' || unsure;
 
-const PARKED_LIKELIHOOD_OPTIONS: { value: ParkedLikelihood; label: string }[] = [
-  { value: 'settled', label: 'Looks settled' },
-  { value: 'street', label: 'Street parked' },
-  { value: 'moving', label: 'About to move' },
-];
+/** A follow-up, revealed with the tokens' in-place fade (reduced motion: just
+ *  present) and indented under the answer it belongs to. */
+function FollowUp({ children }: { children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <Animated.View
+      entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+      style={styles.followUp}
+    >
+      {children}
+    </Animated.View>
+  );
+}
 
-const PEOPLE_OPTIONS: { value: PeoplePresence; label: string }[] = [
-  { value: 'nobody', label: 'Nobody around' },
-  { value: 'nearby', label: 'People near it' },
-  { value: 'in_vehicle', label: 'Someone in it' },
-];
-
-/** A conditional sub-question, revealed with the tokens' in-place fade.
- *  Reduced motion → simply present (ReduceMotion.System). */
+/** An inline line revealed with the same fade, not indented (the safety line). */
 function Reveal({ children }: { children: React.ReactNode }) {
   const styles = useThemedStyles(makeStyles);
   return (
@@ -295,53 +313,75 @@ function Reveal({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The step's ONE option grammar (the pills read as clutter at this density):
- *  a full-width row with a leading indicator — SQUARE check = pick many,
- *  CIRCLE check = pick one — matching the marks rows, so every group in the
- *  drawer shares an aligned left edge and a calm vertical rhythm. */
-function OptionRow({
-  label,
-  kind,
+/** A question's title (a header, so it's on the headings rotor) and an
+ *  optional quiet hint under it. */
+function QuestionHead({ title, hint }: { title: string; hint?: string }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.questionHead}>
+      <Text accessibilityRole="header" style={styles.questionTitle}>
+        {title}
+      </Text>
+      {hint ? <Text style={styles.questionHint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
+/** One of the owner's marks: their photo, the description, and a check. */
+function MarkTile({
+  description,
+  photoUrl,
   selected,
   onPress,
   testID,
 }: {
-  label: string;
-  kind: 'single' | 'multi';
+  description: string;
+  photoUrl?: string;
   selected: boolean;
   onPress: () => void;
-  testID?: string;
+  testID: string;
 }) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  const iconName =
-    kind === 'multi'
-      ? selected
-        ? 'check-square'
-        : 'square'
-      : selected
-        ? 'check-circle'
-        : 'circle';
   return (
     <Pressable
-      accessibilityRole={kind === 'multi' ? 'checkbox' : 'radio'}
-      accessibilityLabel={label}
+      accessibilityRole="checkbox"
+      accessibilityLabel={description}
       accessibilityState={{ checked: selected }}
       onPress={onPress}
-      style={({ pressed }) => [styles.markRow, pressed && styles.markRowPressed]}
       testID={testID}
+      style={({ pressed }) => [
+        styles.markTile,
+        selected && styles.markTileSelected,
+        pressed && styles.markTilePressed,
+      ]}
     >
+      {photoUrl ? (
+        <AppImage uri={photoUrl} style={styles.markThumb} testID={`${testID}-photo`} />
+      ) : (
+        // No photo: an empty thumb keeps every row's text on the same line.
+        <View
+          style={[styles.markThumb, styles.markThumbEmpty]}
+          importantForAccessibility="no"
+          accessibilityElementsHidden
+        >
+          <Feather name="image" size={sizes.iconSm} color={palette.textSecondary} />
+        </View>
+      )}
+      <Text style={styles.markLabel}>{description}</Text>
       <Feather
-        name={iconName}
-        size={sizes.iconSm}
+        name={selected ? 'check-circle' : 'circle'}
+        size={sizes.icon}
+        // textSecondary, not borderStrong (~2.6:1): a control's state needs 3:1.
         color={selected ? palette.primary : palette.textSecondary}
       />
-      <Text style={styles.markLabel}>{label}</Text>
     </Pressable>
   );
 }
 
-export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
+/** The optional "Anything else that helps?" step: every context question on
+ *  one page, written straight into the wizard's answers. */
+export function ContextStep({ answers, setAnswers }: StepProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const flags = answers.contextFlags ?? [];
@@ -351,41 +391,82 @@ export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
   );
   const marks = answers.confirmableFeatures ?? [];
   const confirmedIds = answers.confirmedFeatureIds ?? [];
-  // The rebuild's lightness move: ONE question at first glance; everything
-  // else waits behind "Add more detail". Auto-open when detail already
-  // exists (returning to the step must show what was said).
-  const [more, setMore] = useState(
-    conditions.length > 0 ||
-      confirmedIds.length > 0 ||
-      answers.peoplePresence !== undefined ||
-      Boolean(answers.note?.trim()),
-  );
+  const unsure = answers.contextUnsure ?? [];
+  const details = contextDetailCount(answers);
+  const safetyLine = showsSafetyLine(answers.peoplePresence, unsure.includes('people'));
 
-  // The follow-up SHEET: tapping Parked or Driving slides its one follow-up
-  // question up from the thumb zone; picking auto-dismisses, swiping away
-  // answers nothing (everything stays optional). The chosen answer then
-  // lives as a quiet editable row under the cards.
-  const sheetRef = useRef<BottomSheetRef>(null);
-  const [sheetFor, setSheetFor] = useState<'parked' | 'driving' | null>(null);
-  const openFollowUp = (which: 'parked' | 'driving') => {
-    setSheetFor(which);
-    sheetRef.current?.open();
+  /** `unsure` with these questions set to not-sure (true) or cleared (false). */
+  const withUnsure = (changes: Partial<Record<ContextQuestion, boolean>>): ContextQuestion[] => {
+    const next = new Set(unsure);
+    for (const [question, on] of Object.entries(changes) as [ContextQuestion, boolean][]) {
+      if (on) next.add(question);
+      else next.delete(question);
+    }
+    return [...next];
   };
 
-  /** Tap-again clears; switching state clears the OLD state's follow-up so a
-   *  "Parked · likely to stay" answer can't linger under "Driving". NOTE:
-   *  contextFlags is rebuilt as state ∪ conditions — any OTHER flag seeded
-   *  into the answers (e.g. a legacy people_nearby) would be dropped on the
-   *  first tap; fine for the wizard's always-fresh answers, a trap if anyone
-   *  ever seeds answers from an existing sighting. */
-  const selectState = (next: VehicleStateFlag) => {
-    const cleared = next === state ? null : next;
+  /** What a single-answer question's chips show as chosen. */
+  const shown = <V extends string>(question: ContextQuestion, stored: V | undefined | null) =>
+    (stored ?? (unsure.includes(question) ? UNSURE : null)) as MaybeUnsure<V> | null;
+
+  /**
+   * The vehicle's state. Tap again clears; a new state clears the OLD state's
+   * follow-up so "Parked · looks parked up" can't linger under "Moving".
+   * NOTE: contextFlags is rebuilt as state ∪ conditions, so any OTHER flag
+   * seeded into the answers (a legacy people_nearby) would be dropped on the
+   * first tap; fine for the wizard's always-fresh answers.
+   */
+  const selectState = (picked: MaybeUnsure<VehicleStateFlag>) => {
+    const current = shown('state', state);
+    const cleared = picked === current;
+    const next = cleared || picked === UNSURE ? null : picked;
     setAnswers({
-      contextFlags: [...(cleared ? [cleared] : []), ...conditions],
-      parkedLikelihood: cleared === 'parked' ? answers.parkedLikelihood : undefined,
-      direction: cleared === 'driving' ? answers.direction : undefined,
+      contextFlags: [...(next ? [next] : []), ...conditions],
+      parkedLikelihood: next === 'parked' ? answers.parkedLikelihood : undefined,
+      direction: next === 'driving' ? answers.direction : undefined,
+      contextUnsure: withUnsure({
+        state: picked === UNSURE && !cleared,
+        // A follow-up's "not sure" belongs to the state it followed.
+        ...(next !== 'parked' ? { staying: false } : {}),
+        ...(next !== 'driving' ? { direction: false } : {}),
+      }),
     });
-    if (cleared === 'parked' || cleared === 'driving') openFollowUp(cleared);
+  };
+
+  const selectStaying = (picked: MaybeUnsure<ParkedLikelihood>) => {
+    const cleared = picked === shown('staying', answers.parkedLikelihood);
+    setAnswers({
+      parkedLikelihood: cleared || picked === UNSURE ? undefined : picked,
+      contextUnsure: withUnsure({ staying: picked === UNSURE && !cleared }),
+    });
+  };
+
+  const selectPeople = (picked: MaybeUnsure<PeoplePresence>) => {
+    const cleared = picked === shown('people', answers.peoplePresence);
+    const people = cleared || picked === UNSURE ? undefined : picked;
+    const peopleUnsure = picked === UNSURE && !cleared;
+    setAnswers({ peoplePresence: people, contextUnsure: withUnsure({ people: peopleUnsure }) });
+    // SAFETY: say it out loud as it appears. iOS has no live regions, and a
+    // live region that mounts with its text isn't reliably read on Android
+    // either, so announce on both (the WizardScreen / TextField pattern).
+    // Queued (iOS), so VoiceOver saying the chip's "selected" can't cut the
+    // sentence off; Android ignores the option.
+    if (!safetyLine && showsSafetyLine(people, peopleUnsure)) {
+      AccessibilityInfo.announceForAccessibilityWithOptions(SAFETY_PRESENCE_LINE, { queue: true });
+    }
+  };
+
+  /** "Looks intact" is exclusive: it can't stand beside damage, stripping or a
+   *  changed plate, so picking it clears them and picking any of them clears it. */
+  const changeConditions = (next: ConditionFlag[]) => {
+    const added = next.find((flag) => !conditions.includes(flag));
+    const resolved =
+      added === 'looks_intact'
+        ? (['looks_intact'] as ConditionFlag[])
+        : added
+          ? next.filter((flag) => flag !== 'looks_intact')
+          : next;
+    setAnswers({ contextFlags: [...(state ? [state] : []), ...resolved] });
   };
 
   const toggleMark = (id: string) => {
@@ -396,208 +477,176 @@ export function ContextStep({ answers, setAnswers, onSkip }: StepProps) {
     });
   };
 
+  const noteLength = answers.note?.length ?? 0;
+
   return (
-    <View style={styles.stack}>
-      {/* The PROMINENT skip — everything here is optional, and the flow's
-          job is speed. The wizard's onSkip advances without the Next gate. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Skip this step"
-        onPress={onSkip}
-        style={styles.skipRow}
-        hitSlop={spacing.sm}
-      >
-        <Text style={styles.skipLabel}>Skip</Text>
-        <Feather name="arrow-right" size={sizes.iconSm} color={palette.textPrimary} />
-      </Pressable>
+    // skipEntering: follow-ups already answered (coming Back to the step) are
+    // simply there; only a reveal AFTER mount fades in. A first-mount
+    // `entering` can finish on a stale frame on device (WizardScreen's X fix,
+    // 2026-09-30).
+    <LayoutAnimationConfig skipEntering>
+      <View style={styles.contextStack}>
+        {/* Always rendered, so the page never jumps when the first chip is
+            tapped. Not a live region: each chip already says checked or not,
+            and the safety line should be the only thing that speaks. */}
+        <Text style={styles.count} testID="context-count">
+          {details === 0
+            ? 'Nothing added yet'
+            : details === 1
+              ? '1 detail added'
+              : `${details} details added`}
+        </Text>
 
-      <View>
-        <Text style={styles.subheading}>What’s it doing?</Text>
-        <CardSelect
-          options={STATE_CARDS}
-          value={state}
-          onSelect={selectState}
-        />
-        {state === 'parked' || state === 'driving' ? (
-          <Reveal>
-            {/* The follow-up's ANSWER, editable — the question itself lives
-                in the sheet that opened when the card was tapped. */}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                state === 'parked'
-                  ? `Likely to stay: ${
-                      answers.parkedLikelihood
-                        ? (PARKED_LIKELIHOOD_OPTIONS.find(
-                            (option) => option.value === answers.parkedLikelihood,
-                          )?.label ?? '')
-                        : 'not answered'
-                    }. Opens options.`
-                  : `Heading: ${answers.direction ?? 'not answered'}. Opens the compass.`
-              }
-              onPress={() => openFollowUp(state)}
-              style={({ pressed }) => [styles.followUpRow, pressed && styles.moreRowPressed]}
-              testID="follow-up-row"
-            >
-              <Text style={styles.followUpLabel}>
-                {state === 'parked' ? 'Likely to stay?' : 'Which way was it heading?'}
-              </Text>
-              <View style={styles.followUpValueWrap}>
-                <Text
-                  style={[
-                    styles.followUpValue,
-                    !(state === 'parked' ? answers.parkedLikelihood : answers.direction) &&
-                      styles.followUpValueEmpty,
-                  ]}
-                >
-                  {state === 'parked'
-                    ? (PARKED_LIKELIHOOD_OPTIONS.find(
-                        (option) => option.value === answers.parkedLikelihood,
-                      )?.label ?? 'Add')
-                    : (answers.direction ?? 'Add')}
-                </Text>
-                <Feather name="chevron-right" size={sizes.iconSm} color={palette.textSecondary} />
-              </View>
-            </Pressable>
-          </Reveal>
-        ) : null}
-      </View>
+        <View>
+          <QuestionHead title="What was it doing?" />
+          <ChoiceChips
+            options={[
+              ...STATE_OPTIONS.map((value) => ({ value, label: FLAG_LABELS[value] })),
+              UNSURE_OPTION,
+            ]}
+            value={shown('state', state)}
+            onSelect={selectState}
+            accessibilityLabel="What was it doing?"
+            clearable
+            testID="context-state"
+          />
 
-      {/* Everything else, one quiet door. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={more ? 'Hide extra detail' : 'Add more detail'}
-        accessibilityState={{ expanded: more }}
-        onPress={() => setMore((current) => !current)}
-        style={({ pressed }) => [styles.moreRow, pressed && styles.moreRowPressed]}
-      >
-        <Text style={styles.moreLabel}>Add more detail</Text>
-        <Feather
-          name={more ? 'chevron-up' : 'chevron-down'}
-          size={sizes.iconSm}
-          color={palette.textSecondary}
-        />
-      </Pressable>
+          {state === 'parked' ? (
+            <FollowUp>
+              <QuestionHead title="Did it look like it was staying?" />
+              <ChoiceChips
+                options={[
+                  ...STAYING_OPTIONS.map((value) => ({
+                    value,
+                    label: PARKED_LIKELIHOOD_LABELS[value],
+                  })),
+                  UNSURE_OPTION,
+                ]}
+                value={shown('staying', answers.parkedLikelihood)}
+                onSelect={selectStaying}
+                accessibilityLabel="Did it look like it was staying?"
+                clearable
+                testID="context-staying"
+              />
+            </FollowUp>
+          ) : null}
 
-      {more ? (
-        <Reveal>
-          <View style={styles.moreBody}>
-            <View>
-              <Text style={styles.subheading}>Condition at a glance</Text>
-              {CONDITION_OPTIONS.map((option) => (
-                <OptionRow
-                  key={option.value}
-                  kind="multi"
-                  label={option.label}
-                  selected={conditions.includes(option.value)}
-                  onPress={() =>
-                    setAnswers({
-                      contextFlags: [
-                        ...(state ? [state] : []),
-                        ...(conditions.includes(option.value)
-                          ? conditions.filter((flag) => flag !== option.value)
-                          : [...conditions, option.value]),
-                      ],
-                    })
+          {state === 'driving' ? (
+            <FollowUp>
+              {/* The hint is always there (so the grid never shifts under a
+                  second tap) and names the pick once there is one. */}
+              <QuestionHead
+                title="Which way was it heading?"
+                hint={answers.direction ? directionLabel(answers.direction) : 'Tap where it went.'}
+              />
+              <View style={styles.compass}>
+                <CompassPicker
+                  value={answers.direction}
+                  onChange={(direction) =>
+                    setAnswers({ direction, contextUnsure: withUnsure({ direction: false }) })
                   }
+                  accessibilityLabel="Which way was it heading?"
                 />
-              ))}
-            </View>
-
-            {marks.length > 0 ? (
-              <View>
-                <Text style={styles.subheading}>Could you see…?</Text>
-                {marks.map((mark) => (
-                  <OptionRow
-                    key={mark.id}
-                    kind="multi"
-                    label={mark.description}
-                    selected={confirmedIds.includes(mark.id)}
-                    onPress={() => toggleMark(mark.id)}
-                    testID={`confirm-mark-${mark.id}`}
-                  />
-                ))}
-              </View>
-            ) : null}
-
-            <View>
-              <Text style={styles.subheading}>Anyone around?</Text>
-              {PEOPLE_OPTIONS.map((option) => (
-                <OptionRow
-                  key={option.value}
-                  kind="single"
-                  label={option.label}
-                  selected={answers.peoplePresence === option.value}
-                  onPress={() =>
+                {/* Under the compass, centred with it: one control. A checkbox,
+                    not a lone radio, because it toggles on its own. */}
+                <ChoiceChipsMulti
+                  // Says what it's unsure OF: on its own, "Not sure" under a
+                  // compass is just "Not sure, checkbox".
+                  options={[{ ...UNSURE_OPTION, accessibilityLabel: 'Not sure which way it went' }]}
+                  value={unsure.includes('direction') ? [UNSURE] : []}
+                  onChange={(next) => {
+                    const on = next.length > 0;
                     setAnswers({
-                      peoplePresence:
-                        option.value === answers.peoplePresence ? undefined : option.value,
-                    })
-                  }
-                />
-              ))}
-              {answers.peoplePresence === 'nearby' || answers.peoplePresence === 'in_vehicle' ? (
-                <Reveal>
-                  {/* SAFETY: fixed copy, not a prop — the register reinforces
-                      the gate's rule exactly where the temptation to linger
-                      lives. Firm and unmissable, announced on reveal. */}
-                  <Text accessibilityLiveRegion="polite" style={styles.safetyInline}>
-                    Don’t approach — your report is enough.
-                  </Text>
-                </Reveal>
-              ) : null}
-            </View>
-
-            <TextField
-              label="Anything else? (optional)"
-              value={answers.note ?? ''}
-              onChangeText={(note) => setAnswers({ note })}
-              helperText="What you noticed — a line is plenty."
-              maxLength={MAX_NOTE_LENGTH}
-              multiline
-            />
-          </View>
-        </Reveal>
-      ) : null}
-
-      {/* The follow-up sheet: one focused question in the thumb zone.
-          Picking dismisses; swiping away answers nothing (all optional). */}
-      <BottomSheet
-        ref={sheetRef}
-        title={sheetFor === 'parked' ? 'Likely to stay?' : 'Which way was it heading?'}
-      >
-        <View style={styles.sheetBody}>
-          {sheetFor === 'parked' ? (
-            <View>
-              {PARKED_LIKELIHOOD_OPTIONS.map((option) => (
-                <OptionRow
-                  key={option.value}
-                  kind="single"
-                  label={option.label}
-                  selected={answers.parkedLikelihood === option.value}
-                  onPress={() => {
-                    setAnswers({
-                      parkedLikelihood:
-                        option.value === answers.parkedLikelihood ? undefined : option.value,
+                      direction: on ? undefined : answers.direction,
+                      contextUnsure: withUnsure({ direction: on }),
                     });
-                    sheetRef.current?.close();
                   }}
+                  testID="context-direction-unsure"
+                />
+              </View>
+            </FollowUp>
+          ) : null}
+        </View>
+
+        <View>
+          <QuestionHead title="Anyone in or near it?" />
+          <ChoiceChips
+            options={[
+              ...PEOPLE_OPTIONS.map((value) => ({ value, label: PEOPLE_PRESENCE_LABELS[value] })),
+              UNSURE_OPTION,
+            ]}
+            value={shown('people', answers.peoplePresence)}
+            onSelect={selectPeople}
+            accessibilityLabel="Anyone in or near it?"
+            clearable
+            testID="context-people"
+          />
+          {safetyLine ? (
+            <Reveal>
+              {/* SAFETY: fixed, imported copy (SAFETY_PRESENCE_LINE), not a
+                  prop — the register reinforces the gate's rule exactly where
+                  the temptation to linger lives. Firm and unmissable: question
+                  weight, with SafetyNotice's rule glyph; announced by
+                  selectPeople as it appears. */}
+              <View style={styles.safetyRow} accessible accessibilityLabel={SAFETY_PRESENCE_LINE}>
+                <Feather
+                  name="slash"
+                  size={sizes.iconSm}
+                  color={palette.textPrimary}
+                  style={styles.safetyGlyph}
+                />
+                <Text style={styles.safetyInline}>{SAFETY_PRESENCE_LINE}</Text>
+              </View>
+            </Reveal>
+          ) : null}
+        </View>
+
+        <View>
+          <QuestionHead title="Its condition" hint="Any that apply." />
+          <ChoiceChipsMulti
+            options={CONDITION_OPTIONS.map((value) => ({ value, label: FLAG_LABELS[value] }))}
+            value={conditions}
+            onChange={changeConditions}
+            accessibilityLabel="Its condition"
+            testID="context-condition"
+          />
+        </View>
+
+        {marks.length > 0 ? (
+          <View>
+            <QuestionHead
+              title="Could you see any of these?"
+              hint="The owner’s marks. Tick any you could see from where you were."
+            />
+            <View style={styles.markTiles}>
+              {marks.map((mark) => (
+                <MarkTile
+                  key={mark.id}
+                  description={mark.description}
+                  photoUrl={mark.photoUrl}
+                  selected={confirmedIds.includes(mark.id)}
+                  onPress={() => toggleMark(mark.id)}
+                  testID={`confirm-mark-${mark.id}`}
                 />
               ))}
             </View>
-          ) : (
-            <CompassPicker
-              value={answers.direction}
-              onChange={(direction) => {
-                setAnswers({ direction });
-                if (direction !== undefined) sheetRef.current?.close();
-              }}
-            />
-          )}
-          <Text style={styles.quiet}>Not sure? Just swipe this away — it’s optional.</Text>
-        </View>
-      </BottomSheet>
-    </View>
+          </View>
+        ) : null}
+
+        <TextField
+          label="A note for the owner (optional)"
+          variant="multiline"
+          value={answers.note ?? ''}
+          onChangeText={(note) => setAnswers({ note })}
+          helperText="What you noticed. A line is plenty."
+          counter={`${noteLength}/${MAX_NOTE_LENGTH}`}
+          // The counter is hidden from screen readers (TextField's contract);
+          // the limit goes here instead, read once on focus.
+          accessibilityHint={`Up to ${MAX_NOTE_LENGTH} characters`}
+          maxLength={MAX_NOTE_LENGTH}
+        />
+      </View>
+    </LayoutAnimationConfig>
   );
 }
 
@@ -698,34 +747,32 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textSecondary,
   },
-  subheading: {
-    ...typography.label,
-    color: c.textPrimary,
-    marginBottom: spacing.sm,
-  },
   revealBlock: {
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
   },
-  markRow: {
-    minHeight: sizes.touchTarget,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderRadius: radii.sm,
-  },
-  markRowPressed: {
-    backgroundColor: c.surfaceSubtle,
-  },
+  // flex: 1 takes the row's spare room, so the check always sits trailing.
   markLabel: {
     ...typography.body,
     color: c.textPrimary,
-    flexShrink: 1,
+    flex: 1,
+  },
+  // Safety copy is the one place we are firm and unmissable — never the
+  // quietest style on the screen: question weight, ink (never `danger`), with
+  // SafetyNotice's rule glyph.
+  // Top-aligned, the glyph centred on the FIRST line: at large text the line
+  // wraps, and a centred glyph would float mid-block (SafetyNotice's fix).
+  safetyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  safetyGlyph: {
+    marginTop: (typography.cardTitle.lineHeight - sizes.iconSm) / 2,
   },
   safetyInline: {
-    // Safety copy is the one place we are firm and unmissable — never the
-    // quietest style on the screen.
-    ...typography.label,
+    ...typography.cardTitle,
     color: c.textPrimary,
+    flexShrink: 1,
   },
   // The camera-as-step: viewfinder + controls own a fixed, generous canvas
   // (a flex child inside the wizard's scroll must claim its height).
@@ -747,67 +794,75 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   galleryButtonDisabled: {
     opacity: opacity.disabled,
   },
-  skipRow: {
-    alignSelf: 'flex-end',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    minHeight: sizes.touchTarget,
+  // --- The context step (2026-10-01 redesign) ---------------------------------
+  // One question = a title, an optional quiet hint, then its chips. Questions
+  // sit `xxl` apart so each reads as its own block on a long page.
+  contextStack: {
+    gap: spacing.xxl,
   },
-  skipLabel: {
-    ...typography.label,
-    color: c.textPrimary,
-    textDecorationLine: 'underline',
-  },
-  moreRow: {
-    minHeight: sizes.touchTarget,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
-    backgroundColor: c.surfaceSubtle,
-  },
-  moreRowPressed: {
-    backgroundColor: c.surfaceSubtlePressed,
-  },
-  moreLabel: {
-    ...typography.label,
+  questionTitle: {
+    ...typography.cardTitle,
     color: c.textPrimary,
   },
-  moreBody: {
-    gap: spacing.xl,
-  },
-  followUpRow: {
-    minHeight: sizes.touchTarget,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
-    backgroundColor: c.surfaceSubtle,
-  },
-  followUpLabel: {
-    ...typography.label,
-    color: c.textPrimary,
-  },
-  followUpValueWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  followUpValue: {
-    ...typography.label,
-    color: c.textPrimary,
-  },
-  followUpValueEmpty: {
+  questionHint: {
+    ...typography.caption,
     color: c.textSecondary,
   },
-  sheetBody: {
-    gap: spacing.lg,
-    paddingBottom: spacing.lg,
+  questionHead: {
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  // A follow-up indents under its parent answer, with a 2pt rule down its
+  // left edge, so it reads as "about the Parked you just chose".
+  followUp: {
+    marginTop: spacing.lg,
+    paddingLeft: spacing.lg,
+    borderLeftWidth: sizes.followUpRule,
+    borderLeftColor: c.border,
+  },
+  // The compass and its "Not sure", centred together as one control (the
+  // grid centres itself; this centres the chip under it).
+  compass: {
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  count: {
+    ...typography.label,
+    color: c.textSecondary,
+  },
+  // The owner's marks: a bordered row each (CardSelect's border and check
+  // cue, at the compact `md` radius of the SelectScreen tiles), the owner's
+  // photo on the left so the spotter knows what to look for.
+  markTile: {
+    minHeight: sizes.control,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.sm,
+    paddingRight: spacing.lg,
+    borderRadius: radii.md,
+    borderWidth: sizes.selectBorder,
+    borderColor: c.border,
+    backgroundColor: c.surface,
+  },
+  markTileSelected: {
+    borderColor: c.primary,
+  },
+  markTilePressed: {
+    backgroundColor: c.surfaceSubtle,
+  },
+  markThumb: {
+    width: sizes.markThumb,
+    height: sizes.markThumb,
+    borderRadius: radii.sm,
+    backgroundColor: c.surfaceSubtle,
+  },
+  markThumbEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markTiles: {
+    gap: spacing.sm,
   },
   confirmPhotos: {
     flexDirection: 'row',

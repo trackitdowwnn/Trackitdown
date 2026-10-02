@@ -81,6 +81,13 @@ export const SAFETY_999_LINE = 'If a crime is in progress, call 999.';
 export const SAFETY_NOTICE_BODY = `${SAFETY_RULE_LINE} ${SAFETY_999_LINE}`;
 
 /**
+ * The inline register for a spotter who saw people at the car, or isn't sure
+ * (the report's context step, 2026-10-01). Short because it sits under the
+ * answer, at the moment the temptation to linger lives. Import, never retype.
+ */
+export const SAFETY_PRESENCE_LINE = 'Don’t approach — your report is enough.';
+
+/**
  * The "how" that makes the rule doable, for the report safety sheet
  * (2026-09-30). Safety research: a warning works best when it says how to
  * avoid the hazard, not just what the hazard is. No "zoom in": the camera

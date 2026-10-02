@@ -88,6 +88,33 @@ describe('ChoiceChips', () => {
     });
   });
 
+  it('names the group, and says a chosen chip clears when clearable', async () => {
+    const { getByLabelText } = await render(
+      <ChoiceChips
+        options={[
+          { value: 'a', label: 'Parked' },
+          { value: 'b', label: 'Moving' },
+        ]}
+        value="a"
+        onSelect={() => {}}
+        accessibilityLabel="What was it doing?"
+        clearable
+      />,
+    );
+    expect(getByLabelText('What was it doing?').props.accessibilityRole).toBe('radiogroup');
+    expect(getByLabelText('Parked').props.accessibilityHint).toBe('Double tap to clear');
+    expect(getByLabelText('Moving').props.accessibilityHint).toBeUndefined();
+  });
+
+  it('never promises "clear" on action chips, or when not clearable', async () => {
+    const { getByLabelText, rerender } = await render(
+      <ChoiceChips options={[{ value: 'a', label: 'Today' }]} value="a" onSelect={() => {}} role="button" clearable />,
+    );
+    expect(getByLabelText('Today').props.accessibilityHint).toBeUndefined();
+    await rerender(<ChoiceChips options={[{ value: 'a', label: 'Today' }]} value="a" onSelect={() => {}} />);
+    expect(getByLabelText('Today').props.accessibilityHint).toBeUndefined();
+  });
+
   it('reads a terse label out in full when given an accessibilityLabel', async () => {
     const { getByLabelText, getByText, queryByLabelText } = await render(
       <ChoiceChips

@@ -1,33 +1,33 @@
 /**
- * WHAT:  Tests for the rebuilt ContextStep — the prominent Skip row (onSkip),
- *        the "What's it doing?" CardSelect single-select, the follow-up
- *        BottomSheet (tapping Parked/Driving opens the likelihood chips /
- *        CompassPicker in a sheet; picking answers AND dismisses; swiping
- *        away answers nothing) with its summary/edit row under the cards,
- *        the "Add more detail" expander (collapsed on a fresh report,
- *        auto-open when detail already exists) that gates the condition
- *        chips, the "Could you see…?" confirmable-mark checkmarks, the 3-way
- *        people question with its fixed inline safety line, and the note —
- *        plus CompassPicker's own select/clear semantics.
- * WHY:   The context step encodes DOMAIN facts in ONE shared array
- *        (contextFlags): a wiring slip either double-stores mutually exclusive
- *        states, strands a stale follow-up under the wrong state ("Parked ·
- *        likely to stay" lingering under "Driving" misleads the owner), or
- *        drops the condition chips when a state is toggled. The sheet is a
- *        SPEED device — but a swiped-away sheet must never fabricate an
- *        answer, and the row must honestly show what was (not) said. The
- *        expander must never HIDE existing detail (auto-open), and the safety
- *        line is a SECURITY_AND_TRUST register that must appear exactly when
- *        people are present, behind that door.
+ * WHAT:  Tests for the redesigned ContextStep (2026-10-01): one page of chip
+ *        questions, every one visible:
+ *          - "What was it doing?" (single), with its inline follow-ups:
+ *            "Did it look like it was staying?" for Parked, the compass for
+ *            Moving;
+ *          - "Anyone in or near it?" (single) and its fixed safety line,
+ *            announced as it appears;
+ *          - "Its condition" (multi; "Looks intact" exclusive);
+ *          - the owner's marks as photo rows;
+ *          - the note (multiline, with a counter).
+ *        Each single question offers "Not sure", which stores nothing but is
+ *        remembered for the UI. Plus CompassPicker's own select/clear.
+ * WHY:   The step writes DOMAIN facts into one shared array (contextFlags): a
+ *        wiring slip double-stores exclusive states, strands a follow-up under
+ *        the wrong state ("looks parked up" under "Moving" misleads the
+ *        owner), or loses the conditions when the state changes. "Not sure"
+ *        must never become a stored answer. The safety line is a
+ *        SECURITY_AND_TRUST register that must show exactly when people are
+ *        present or the spotter can't tell, pinned word for word.
  * LINKS: src/features/sightings/components/sightingSteps.tsx (ContextStep);
- *        src/features/sightings/components/CompassPicker.tsx;
- *        src/shared/ui/BottomSheet.tsx (open/close ref contract);
- *        src/shared/ui/CardSelect.tsx (radio-card semantics);
- *        src/features/sightings/types.ts (flag vocabularies); docs/TESTING.md.
+ *        src/features/sightings/lib/contextLabels.ts (the chip words);
+ *        src/features/sightings/components/CompassPicker.tsx; docs/TESTING.md.
  */
 
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { useState } from 'react';
+import { AccessibilityInfo } from 'react-native';
+
+import { SAFETY_PRESENCE_LINE } from '@/shared/ui';
 
 import { DRIVING_DIRECTIONS, type ReportSightingAnswers } from '../types';
 import { CompassPicker } from './CompassPicker';
@@ -35,8 +35,8 @@ import { ContextStep } from './sightingSteps';
 
 // Load-boundary mocks: importing sightingSteps pulls the WHOLE step module in
 // (camera, map, image pipeline) even though ContextStep renders none of it —
-// same mock set as sightingSteps.test.tsx plus the sheet the follow-ups live
-// in. The global reanimated mock (moduleNameMapper) covers FadeIn.
+// same mock set as sightingSteps.test.tsx. The global reanimated mock
+// (moduleNameMapper) covers FadeIn and LayoutAnimationConfig.
 jest.mock('expo-camera', () => ({
   CameraView: () => null,
   useCameraPermissions: () => [{ granted: true, canAskAgain: true }, jest.fn()],
@@ -79,33 +79,12 @@ jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   require('react-native-safe-area-context/jest/mock').default,
 );
-// The follow-up sheet's boundary — the house visibility-aware modal mock
-// (same as PhotoGridPicker.test.tsx): present()/dismiss() toggle children.
-jest.mock('@gorhom/bottom-sheet', () => {
+// No sheet on this step any more, but the @/shared/ui barrel still exports
+// BottomSheet, so the library needs its stub to load.
+jest.mock('@gorhom/bottom-sheet', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
-  const React = require('react');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
-  const mock = require('@gorhom/bottom-sheet/mock');
-  class VisibilityAwareBottomSheetModal extends React.Component {
-    state = { visible: false };
-    present = () => this.setState({ visible: true });
-    dismiss = () => {
-      if (!this.state.visible) return;
-      this.setState({ visible: false });
-      this.props.onDismiss?.();
-    };
-    render() {
-      return this.state.visible ? this.props.children : null;
-    }
-  }
-  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
-  const ReactNative = require('react-native');
-  return {
-    ...mock,
-    BottomSheetModal: VisibilityAwareBottomSheetModal,
-    BottomSheetScrollView: (props: object) => React.createElement(ReactNative.ScrollView, props),
-  };
-});
+  require('@gorhom/bottom-sheet/mock'),
+);
 jest.mock('expo-image-picker', () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(),
   launchImageLibraryAsync: jest.fn(),
@@ -120,14 +99,8 @@ jest.mock('expo-image-manipulator', () => ({
 /** The fixed inline safety register — pinned word-for-word (SAFETY copy). */
 const SAFETY_LINE = 'Don’t approach — your report is enough.';
 
-/** The CardSelect radio cards read "label. description" to a screen reader —
- *  the step's tap targets, pinned with their one-line subtexts. */
-const PARKED_CARD = 'Parked. Sitting unattended';
-const DRIVING_CARD = 'Driving. On the move right now';
-const LOADED_CARD = 'Being loaded or towed. On or going onto another vehicle';
-
 const MARKS = [
-  { id: 'm1', description: 'Cracked nearside wing mirror' },
+  { id: 'm1', description: 'Cracked nearside wing mirror', photoUrl: 'https://example.test/m1.jpg' },
   { id: 'm2', description: 'Bee sticker on the boot' },
 ];
 
@@ -136,15 +109,8 @@ const MARKS = [
  *  follows a press), never during render (react-hooks/globals). */
 let latest: Partial<ReportSightingAnswers> = {};
 
-/** Drives ContextStep the way the wizard does: one controlled answers bag
- *  plus the framework's onSkip. */
-function Harness({
-  initial,
-  onSkip,
-}: {
-  initial?: Partial<ReportSightingAnswers>;
-  onSkip?: () => void;
-}) {
+/** Drives ContextStep the way the wizard does: one controlled answers bag. */
+function Harness({ initial }: { initial?: Partial<ReportSightingAnswers> }) {
   const [answers, setAnswers] = useState<Partial<ReportSightingAnswers>>(initial ?? {});
   const applyPatch = (patch: Partial<ReportSightingAnswers>) => {
     setAnswers((current) => {
@@ -152,13 +118,15 @@ function Harness({
       return latest;
     });
   };
-  return <ContextStep answers={answers} setAnswers={applyPatch} onSkip={onSkip} />;
+  return <ContextStep answers={answers} setAnswers={applyPatch} />;
 }
 
-async function renderStep(initial?: Partial<ReportSightingAnswers>, onSkip?: () => void) {
-  let view!: Awaited<ReturnType<typeof render>>;
+type View = Awaited<ReturnType<typeof render>>;
+
+async function renderStep(initial?: Partial<ReportSightingAnswers>) {
+  let view!: View;
   await act(async () => {
-    view = await render(<Harness initial={initial} onSkip={onSkip} />);
+    view = await render(<Harness initial={initial} />);
   });
   return view;
 }
@@ -169,333 +137,293 @@ async function press(element: Parameters<typeof fireEvent.press>[0]) {
   });
 }
 
-/** Opens the "Add more detail" expander — the door in front of conditions,
- *  marks, people, and the note. */
-async function openMore(
-  getByLabelText: (label: string) => Parameters<typeof fireEvent.press>[0],
-) {
-  await press(getByLabelText('Add more detail'));
-}
+/** A chip inside one question's row (each row has its own "Not sure"). */
+const chip = (view: View, row: string, name: string) =>
+  within(view.getByTestId(row)).getByRole('radio', { name });
 
-/** Swipes the follow-up sheet away without answering — driven through the
- *  sheet's accessibility-escape path (the mock renders no backdrop; fireEvent
- *  walks up from sheet content to the scroll view carrying the handler). */
-async function dismissSheet(view: Awaited<ReturnType<typeof render>>) {
-  await act(async () => {
-    fireEvent(
-      view.getByText('Not sure? Just swipe this away — it’s optional.'),
-      'accessibilityEscape',
-    );
+/** The direction's "Not sure": a lone checkbox under the compass. */
+const directionUnsure = (view: View) =>
+  within(view.getByTestId('context-direction-unsure')).getByRole('checkbox', {
+    name: 'Not sure which way it went',
   });
-}
 
 beforeEach(() => {
   latest = {};
 });
 
-describe('ContextStep — the prominent Skip', () => {
-  it('advances via the framework onSkip without touching the answers', async () => {
-    const onSkip = jest.fn();
-    const { getByLabelText } = await renderStep(undefined, onSkip);
-    await press(getByLabelText('Skip this step'));
-    expect(onSkip).toHaveBeenCalledTimes(1);
-    expect(latest).toEqual({}); // skipping wrote nothing
+describe('ContextStep — one page, every question visible', () => {
+  it('shows every question at once: no drawer, no sheet, no in-body Skip', async () => {
+    const view = await renderStep({ confirmableFeatures: MARKS });
+    for (const title of [
+      'What was it doing?',
+      'Anyone in or near it?',
+      'Its condition',
+      'Could you see any of these?',
+    ]) {
+      expect(view.getByRole('header', { name: title })).toBeTruthy();
+    }
+    expect(view.getByLabelText('A note for the owner (optional)')).toBeTruthy();
+    expect(view.queryByLabelText('Add more detail')).toBeNull();
+    expect(view.queryByLabelText('Skip this step')).toBeNull();
+  });
+
+  it('counts what has been added (and "Not sure" is not a detail)', async () => {
+    const view = await renderStep();
+    // Always there, so the page never jumps on the first tap.
+    expect(view.getByTestId('context-count')).toHaveTextContent('Nothing added yet');
+    await press(chip(view, 'context-state', 'Parked'));
+    expect(view.getByTestId('context-count')).toHaveTextContent('1 detail added');
+    await press(chip(view, 'context-people', 'Not sure'));
+    expect(view.getByTestId('context-count')).toHaveTextContent('1 detail added');
   });
 });
 
-describe('ContextStep — vehicle state (CardSelect single-select)', () => {
-  it('stores exactly the tapped state flag in contextFlags and checks its card', async () => {
-    const { getByLabelText } = await renderStep();
-    await press(getByLabelText(PARKED_CARD));
-    expect(latest.contextFlags).toEqual(['parked']);
-    expect(getByLabelText(PARKED_CARD)).toBeChecked();
-    expect(getByLabelText(DRIVING_CARD)).not.toBeChecked();
+describe('ContextStep — what it was doing', () => {
+  it('stores exactly the tapped state, and tapping it again clears it', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-state', 'Moving'));
+    expect(latest.contextFlags).toEqual(['driving']);
+    expect(chip(view, 'context-state', 'Moving')).toBeChecked();
+
+    await press(chip(view, 'context-state', 'Moving'));
+    expect(latest.contextFlags).toEqual([]);
   });
 
-  it('switching parked → driving REPLACES the flag and clears parkedLikelihood', async () => {
-    const { getByLabelText } = await renderStep({
-      contextFlags: ['parked'],
-      parkedLikelihood: 'settled',
-    });
-    await press(getByLabelText(DRIVING_CARD));
+  it('switching state REPLACES the flag and clears the old follow-up', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-state', 'Parked'));
+    await press(chip(view, 'context-staying', 'Looks parked up'));
+    expect(latest.parkedLikelihood).toBe('settled');
+
+    await press(chip(view, 'context-state', 'Moving'));
     expect(latest.contextFlags).toEqual(['driving']);
     expect(latest.parkedLikelihood).toBeUndefined();
+    expect(view.queryByTestId('context-staying')).toBeNull();
   });
 
-  it('switching driving → parked REPLACES the flag and clears the direction', async () => {
-    const { getByLabelText } = await renderStep({
-      contextFlags: ['driving'],
-      direction: 'NE',
-    });
-    await press(getByLabelText(PARKED_CARD));
-    expect(latest.contextFlags).toEqual(['parked']);
-    expect(latest.direction).toBeUndefined();
-  });
-
-  it('tapping the selected state again clears it, its follow-up, and the row', async () => {
-    const { getByLabelText, queryByTestId } = await renderStep({
-      contextFlags: ['parked'],
-      parkedLikelihood: 'street',
-    });
-    await press(getByLabelText(PARKED_CARD));
+  it('"Not sure" stores nothing, shows as chosen, and drops any state', async () => {
+    const view = await renderStep({ contextFlags: ['parked'], parkedLikelihood: 'moving' });
+    await press(chip(view, 'context-state', 'Not sure'));
     expect(latest.contextFlags).toEqual([]);
     expect(latest.parkedLikelihood).toBeUndefined();
-    expect(queryByTestId('follow-up-row')).toBeNull();
-  });
-});
+    expect(latest.contextUnsure).toEqual(['state']);
+    expect(chip(view, 'context-state', 'Not sure')).toBeChecked();
 
-describe('ContextStep — the follow-up sheet and its summary row', () => {
-  it('tapping Parked opens the likelihood sheet; picking answers, dismisses, and fills the row', async () => {
-    const view = await renderStep();
-    await press(view.getByLabelText(PARKED_CARD));
-
-    // The sheet is up with the ONE follow-up question…
-    expect(view.getByLabelText('Looks settled')).toBeTruthy();
-    await press(view.getByLabelText('Looks settled'));
-
-    // …picking wrote the answer AND closed the sheet…
-    expect(latest.parkedLikelihood).toBe('settled');
-    expect(view.queryByLabelText('Street parked')).toBeNull();
-
-    // …and the editable row under the cards now carries it.
-    const row = view.getByTestId('follow-up-row');
-    expect(within(row).getByText('Likely to stay?')).toBeTruthy();
-    expect(within(row).getByText('Looks settled')).toBeTruthy();
-  });
-
-  it('tapping Driving opens the compass; picking a direction answers, dismisses, and fills the row', async () => {
-    const view = await renderStep();
-    await press(view.getByLabelText(DRIVING_CARD));
-
-    expect(view.getByTestId('compass-picker')).toBeTruthy();
-    await press(view.getByTestId('compass-NE'));
-
-    expect(latest.direction).toBe('NE');
-    expect(view.queryByTestId('compass-picker')).toBeNull();
-
-    const row = view.getByTestId('follow-up-row');
-    expect(within(row).getByText('Which way was it heading?')).toBeTruthy();
-    expect(within(row).getByText('NE')).toBeTruthy();
-  });
-
-  it('shows the row only while parked or driving is selected — never for loaded/unset', async () => {
-    const view = await renderStep();
-    expect(view.queryByTestId('follow-up-row')).toBeNull();
-
-    await press(view.getByLabelText(LOADED_CARD));
-    expect(view.queryByTestId('follow-up-row')).toBeNull();
-
-    await press(view.getByLabelText(PARKED_CARD));
-    expect(view.getByTestId('follow-up-row')).toBeTruthy();
-  });
-
-  it('dismissing the sheet without picking leaves the answer unset — the row reads "Add"', async () => {
-    const view = await renderStep();
-    await press(view.getByLabelText(PARKED_CARD));
-    expect(view.getByLabelText('Looks settled')).toBeTruthy();
-
-    await dismissSheet(view);
-
-    expect(view.queryByLabelText('Looks settled')).toBeNull(); // sheet gone
-    expect(latest.parkedLikelihood).toBeUndefined(); // nothing fabricated
-    expect(within(view.getByTestId('follow-up-row')).getByText('Add')).toBeTruthy();
-  });
-
-  it('the row reopens the sheet to edit the answer', async () => {
-    const view = await renderStep({ contextFlags: ['parked'], parkedLikelihood: 'settled' });
-    expect(view.queryByLabelText('Street parked')).toBeNull(); // sheet closed at rest
-
-    await press(view.getByTestId('follow-up-row'));
-    await press(view.getByLabelText('Street parked'));
-
-    expect(latest.parkedLikelihood).toBe('street');
-    expect(within(view.getByTestId('follow-up-row')).getByText('Street parked')).toBeTruthy();
-  });
-
-  it('picking the already-chosen likelihood clears it (tap-again-clear survives the sheet)', async () => {
-    const view = await renderStep({ contextFlags: ['parked'], parkedLikelihood: 'settled' });
-    await press(view.getByTestId('follow-up-row'));
-    await press(view.getByLabelText('Looks settled'));
-
-    expect(latest.parkedLikelihood).toBeUndefined();
-    expect(within(view.getByTestId('follow-up-row')).getByText('Add')).toBeTruthy();
-  });
-
-  it('clearing the direction keeps the compass sheet open for a re-pick', async () => {
-    const view = await renderStep({ contextFlags: ['driving'], direction: 'NE' });
-    await press(view.getByTestId('follow-up-row'));
-
-    await press(view.getByTestId('compass-NE')); // tap the selected cell → clear
-    expect(latest.direction).toBeUndefined();
-    // A clear is not an answer — the sheet stays for a corrected pick.
-    expect(view.getByTestId('compass-picker')).toBeTruthy();
-  });
-});
-
-describe('ContextStep — the "Add more detail" expander', () => {
-  it('is collapsed on a fresh report: one question, everything else behind the door', async () => {
-    const { getByLabelText, queryByText, queryByLabelText } = await renderStep({
-      confirmableFeatures: MARKS,
-    });
-    expect(getByLabelText('Add more detail')).not.toBeExpanded();
-    expect(queryByText('Condition at a glance')).toBeNull();
-    expect(queryByText('Could you see…?')).toBeNull();
-    expect(queryByText('Anyone around?')).toBeNull();
-    expect(queryByLabelText('Anything else? (optional)')).toBeNull();
-    // The one-glance question stays out front.
-    expect(getByLabelText(PARKED_CARD)).toBeTruthy();
-  });
-
-  it('opening reveals conditions, marks, people, and the note; closing hides them again', async () => {
-    const { getByLabelText, getByText, queryByText } = await renderStep({
-      confirmableFeatures: MARKS,
-    });
-    await openMore(getByLabelText);
-
-    expect(getByLabelText('Hide extra detail')).toBeExpanded();
-    expect(getByText('Condition at a glance')).toBeTruthy();
-    expect(getByText('Could you see…?')).toBeTruthy();
-    expect(getByText('Anyone around?')).toBeTruthy();
-    expect(getByLabelText('Anything else? (optional)')).toBeTruthy();
-
-    await press(getByLabelText('Hide extra detail'));
-    expect(queryByText('Condition at a glance')).toBeNull();
-    expect(getByLabelText('Add more detail')).not.toBeExpanded();
-  });
-
-  it('auto-opens when the answers already carry a condition flag', async () => {
-    const { getByText, getByLabelText } = await renderStep({
-      contextFlags: ['parked', 'damage_visible'],
-    });
-    expect(getByLabelText('Hide extra detail')).toBeExpanded();
-    expect(getByText('Condition at a glance')).toBeTruthy();
-  });
-
-  it('auto-opens for a recorded people answer — the safety line must not hide', async () => {
-    const { getByText } = await renderStep({ peoplePresence: 'nearby' });
-    expect(getByText('Anyone around?')).toBeTruthy();
-    expect(getByText(SAFETY_LINE)).toBeTruthy();
-  });
-
-  it('auto-opens when marks were confirmed or a note was written', async () => {
-    const confirmed = await renderStep({
-      confirmableFeatures: MARKS,
-      confirmedFeatureIds: ['m1'],
-    });
-    expect(confirmed.getByText('Could you see…?')).toBeTruthy();
-    await confirmed.unmount(); // async in this RNTL — un-awaited it poisons later renders
-
-    const noted = await renderStep({ note: 'white transit following it' });
-    expect(noted.getByLabelText('Anything else? (optional)')).toBeTruthy();
-  });
-
-  it('stays collapsed when only the front question was answered (state + follow-up)', async () => {
-    const { getByLabelText, queryByText } = await renderStep({
-      contextFlags: ['driving'],
-      direction: 'NE',
-    });
-    expect(getByLabelText('Add more detail')).not.toBeExpanded();
-    expect(queryByText('Anyone around?')).toBeNull();
-  });
-});
-
-describe('ContextStep — condition chips (multi-select, behind the expander)', () => {
-  it('condition flags MERGE with the state flag in contextFlags', async () => {
-    const { getByLabelText } = await renderStep({ contextFlags: ['parked'] });
-    await openMore(getByLabelText);
-    await press(getByLabelText('Damage visible'));
-    expect(latest.contextFlags).toEqual(['parked', 'damage_visible']);
-
-    await press(getByLabelText('Being stripped'));
-    expect(latest.contextFlags).toEqual(['parked', 'damage_visible', 'being_stripped']);
-  });
-
-  it('deselecting a condition keeps the state flag intact', async () => {
-    // Existing detail auto-opens the expander — no press needed.
-    const { getByLabelText } = await renderStep({
-      contextFlags: ['being_loaded', 'plate_changed'],
-    });
-    await press(getByLabelText('Plate changed or missing'));
+    // A real answer replaces the "not sure".
+    await press(chip(view, 'context-state', 'Being loaded or towed'));
     expect(latest.contextFlags).toEqual(['being_loaded']);
-  });
-
-  it('conditions survive a state switch (only the state slot is replaced)', async () => {
-    const { getByLabelText } = await renderStep({
-      contextFlags: ['parked', 'looks_intact'],
-    });
-    await press(getByLabelText(DRIVING_CARD));
-    expect(latest.contextFlags).toEqual(['driving', 'looks_intact']);
+    expect(latest.contextUnsure).toEqual([]);
   });
 });
 
-describe('ContextStep — people presence (behind the expander)', () => {
-  it('selecting sets peoplePresence; tapping again clears it', async () => {
-    const { getByLabelText } = await renderStep();
-    await openMore(getByLabelText);
-    await press(getByLabelText('People near it'));
-    expect(latest.peoplePresence).toBe('nearby');
+describe('ContextStep — the inline follow-ups', () => {
+  it('Parked asks whether it looked like it was staying, inline', async () => {
+    const view = await renderStep();
+    expect(view.queryByRole('header', { name: 'Did it look like it was staying?' })).toBeNull();
+    await press(chip(view, 'context-state', 'Parked'));
+    expect(view.getByRole('header', { name: 'Did it look like it was staying?' })).toBeTruthy();
 
-    await press(getByLabelText('People near it'));
-    expect(latest.peoplePresence).toBeUndefined();
+    await press(chip(view, 'context-staying', 'Looks about to move'));
+    expect(latest.parkedLikelihood).toBe('moving');
+    await press(chip(view, 'context-staying', 'Not sure'));
+    expect(latest.parkedLikelihood).toBeUndefined();
+    expect(latest.contextUnsure).toEqual(['staying']);
   });
 
-  it('shows the fixed safety line for nearby and in_vehicle — never for nobody/unset', async () => {
-    const { getByLabelText, queryByText } = await renderStep();
-    await openMore(getByLabelText);
-    expect(queryByText(SAFETY_LINE)).toBeNull(); // unset
+  it('Moving shows the compass inline; a direction is stored and named', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-state', 'Moving'));
+    expect(view.getByText('Tap where it went.')).toBeTruthy();
+    await press(view.getByTestId('compass-NE'));
+    expect(latest.direction).toBe('NE');
+    expect(view.getByText('Heading north-east')).toBeTruthy();
 
-    await press(getByLabelText('People near it'));
-    expect(queryByText(SAFETY_LINE)).toBeTruthy(); // nearby
+    await press(directionUnsure(view));
+    expect(latest.direction).toBeUndefined();
+    expect(latest.contextUnsure).toEqual(['direction']);
+    expect(directionUnsure(view)).toBeChecked();
+  });
 
-    await press(getByLabelText('Someone in it'));
+  it('a follow-up\'s "Not sure" goes with its state', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-state', 'Parked'));
+    await press(chip(view, 'context-staying', 'Not sure'));
+    await press(chip(view, 'context-state', 'Moving'));
+    expect(latest.contextUnsure).toEqual([]);
+
+    // ...and the direction's goes when Moving is left.
+    await press(directionUnsure(view));
+    expect(latest.contextUnsure).toEqual(['direction']);
+    await press(chip(view, 'context-state', 'Parked'));
+    expect(latest.contextUnsure).toEqual([]);
+  });
+
+  it('a compass tap replaces the direction\'s "Not sure", and vice versa', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-state', 'Moving'));
+    await press(directionUnsure(view));
+    await press(view.getByTestId('compass-S'));
+    expect(latest.direction).toBe('S');
+    expect(latest.contextUnsure).toEqual([]);
+
+    await press(directionUnsure(view));
+    expect(latest.direction).toBeUndefined();
+    expect(latest.contextUnsure).toEqual(['direction']);
+    // A second tap on "Not sure" clears it, leaving nothing chosen.
+    await press(directionUnsure(view));
+    expect(latest.direction).toBeUndefined();
+    expect(latest.contextUnsure).toEqual([]);
+  });
+
+  it('a second tap on "Not sure" clears it, like any chip', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-state', 'Not sure'));
+    await press(chip(view, 'context-state', 'Not sure'));
+    expect(latest.contextUnsure).toEqual([]);
+    expect(chip(view, 'context-state', 'Not sure')).not.toBeChecked();
+
+    await press(chip(view, 'context-state', 'Parked'));
+    await press(chip(view, 'context-staying', 'Not sure'));
+    await press(chip(view, 'context-staying', 'Not sure'));
+    expect(latest.contextUnsure).toEqual([]);
+
+    await press(chip(view, 'context-people', 'Not sure'));
+    await press(chip(view, 'context-people', 'Not sure'));
+    expect(latest.contextUnsure).toEqual([]);
+  });
+
+  it('tells screen readers the chosen chip clears on a second tap', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-state', 'Parked'));
+    expect(chip(view, 'context-state', 'Parked').props.accessibilityHint).toBe('Double tap to clear');
+    expect(chip(view, 'context-state', 'Moving').props.accessibilityHint).toBeUndefined();
+  });
+
+  it('shows no follow-up for loaded, unsure or unset', async () => {
+    const view = await renderStep();
+    const noFollowUp = () => {
+      expect(view.queryByTestId('context-staying')).toBeNull();
+      expect(view.queryByTestId('compass-picker')).toBeNull();
+    };
+    noFollowUp();
+    await press(chip(view, 'context-state', 'Being loaded or towed'));
+    noFollowUp();
+    await press(chip(view, 'context-state', 'Not sure'));
+    noFollowUp();
+  });
+});
+
+describe('ContextStep — people', () => {
+  it('stores the answer, clears on a second tap, and "Not sure" stores nothing', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-people', 'Someone in it'));
     expect(latest.peoplePresence).toBe('in_vehicle');
-    expect(queryByText(SAFETY_LINE)).toBeTruthy(); // in_vehicle
+    await press(chip(view, 'context-people', 'Someone in it'));
+    expect(latest.peoplePresence).toBeUndefined();
+    await press(chip(view, 'context-people', 'Not sure'));
+    expect(latest.peoplePresence).toBeUndefined();
+    expect(latest.contextUnsure).toEqual(['people']);
+  });
 
-    await press(getByLabelText('Nobody around'));
-    expect(queryByText(SAFETY_LINE)).toBeNull(); // nobody
+  it('shows the fixed safety line for people near or in it, or unsure; never for no one', async () => {
+    const view = await renderStep();
+    expect(view.queryByText(SAFETY_LINE)).toBeNull();
+    await press(chip(view, 'context-people', 'People near it'));
+    expect(view.getByText(SAFETY_LINE)).toBeTruthy();
+    await press(chip(view, 'context-people', 'Someone in it'));
+    expect(view.getByText(SAFETY_LINE)).toBeTruthy();
+    await press(chip(view, 'context-people', 'No one seen'));
+    expect(view.queryByText(SAFETY_LINE)).toBeNull();
+    // Can't tell is exactly when someone steps closer to check.
+    await press(chip(view, 'context-people', 'Not sure'));
+    expect(view.getByText(SAFETY_LINE)).toBeTruthy();
+  });
+
+  it('SAFETY: announces the line as it appears (VoiceOver has no live regions)', async () => {
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibilityWithOptions');
+    // RN's jest setup already mocks it, so the spy carries earlier tests' calls.
+    announce.mockClear();
+    try {
+      const view = await renderStep();
+      await press(chip(view, 'context-people', 'No one seen'));
+      expect(announce).not.toHaveBeenCalled();
+
+      await press(chip(view, 'context-people', 'People near it'));
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(SAFETY_LINE, { queue: true });
+
+      // Already showing: switching between "showing" answers says it once.
+      await press(chip(view, 'context-people', 'Someone in it'));
+      expect(announce).toHaveBeenCalledTimes(1);
+
+      // Gone and back: said again.
+      await press(chip(view, 'context-people', 'Someone in it'));
+      await press(chip(view, 'context-people', 'Not sure'));
+      expect(announce).toHaveBeenCalledTimes(2);
+    } finally {
+      announce.mockRestore();
+    }
+  });
+
+  it('SAFETY: the line is the shared constant, word for word', () => {
+    expect(SAFETY_PRESENCE_LINE).toBe(SAFETY_LINE);
   });
 });
 
-describe('ContextStep — confirmable marks (behind the expander)', () => {
-  it('renders a checkmark row per registered mark and toggles confirmedFeatureIds', async () => {
-    const { getByLabelText, getByTestId } = await renderStep({ confirmableFeatures: MARKS });
-    await openMore(getByLabelText);
+describe('ContextStep — condition', () => {
+  const box = (view: View, name: string) =>
+    within(view.getByTestId('context-condition')).getByRole('checkbox', { name });
 
-    await press(getByTestId('confirm-mark-m1'));
-    expect(latest.confirmedFeatureIds).toEqual(['m1']);
-    expect(getByTestId('confirm-mark-m1')).toBeChecked();
+  it('merges conditions with the state, and they survive a state switch', async () => {
+    const view = await renderStep();
+    await press(chip(view, 'context-state', 'Parked'));
+    await press(box(view, 'Damage visible'));
+    await press(box(view, 'Plate changed or missing'));
+    expect(latest.contextFlags).toEqual(['parked', 'damage_visible', 'plate_changed']);
 
-    await press(getByTestId('confirm-mark-m2'));
-    expect(latest.confirmedFeatureIds).toEqual(['m1', 'm2']);
+    await press(chip(view, 'context-state', 'Moving'));
+    expect(latest.contextFlags).toEqual(['driving', 'damage_visible', 'plate_changed']);
+  });
 
-    // Toggling off removes ONLY that id.
-    await press(getByTestId('confirm-mark-m1'));
+  it('"Looks intact" is exclusive, both ways', async () => {
+    const view = await renderStep();
+    await press(box(view, 'Damage visible'));
+    await press(box(view, 'Looks intact'));
+    expect(latest.contextFlags).toEqual(['looks_intact']);
+    await press(box(view, 'Being stripped'));
+    expect(latest.contextFlags).toEqual(['being_stripped']);
+  });
+});
+
+describe('ContextStep — the owner\'s marks', () => {
+  it('shows each mark with its photo when there is one, and toggles it', async () => {
+    const view = await renderStep({ confirmableFeatures: MARKS });
+    expect(view.getByTestId('confirm-mark-m1-photo')).toBeTruthy();
+    expect(view.queryByTestId('confirm-mark-m2-photo')).toBeNull();
+
+    await press(view.getByRole('checkbox', { name: 'Bee sticker on the boot' }));
     expect(latest.confirmedFeatureIds).toEqual(['m2']);
-    expect(getByTestId('confirm-mark-m1')).not.toBeChecked();
+    expect(view.getByRole('checkbox', { name: 'Bee sticker on the boot' })).toBeChecked();
+    await press(view.getByRole('checkbox', { name: 'Bee sticker on the boot' }));
+    expect(latest.confirmedFeatureIds).toEqual([]);
   });
 
-  it('labels each row with the mark description (screen-reader path)', async () => {
-    const { getByLabelText } = await renderStep({ confirmableFeatures: MARKS });
-    await openMore(getByLabelText);
-    expect(getByLabelText('Cracked nearside wing mirror')).toBeTruthy();
-    expect(getByLabelText('Bee sticker on the boot')).toBeTruthy();
-  });
-
-  it('omits the "Could you see…?" section when the post has no marks', async () => {
-    const { getByLabelText, queryByText } = await renderStep();
-    await openMore(getByLabelText);
-    expect(queryByText('Could you see…?')).toBeNull();
+  it('leaves the question out when the post has no marks', async () => {
+    const view = await renderStep();
+    expect(view.queryByRole('header', { name: 'Could you see any of these?' })).toBeNull();
   });
 });
 
-describe('ContextStep — the note (behind the expander)', () => {
-  it('typing writes the note into the answers', async () => {
-    const { getByLabelText } = await renderStep();
-    await openMore(getByLabelText);
+describe('ContextStep — the note', () => {
+  it('writes the note, and counts it against the limit', async () => {
+    const view = await renderStep();
+    // The counter is hidden from screen readers on purpose (TextField).
+    expect(view.getByText('0/500', { includeHiddenElements: true })).toBeTruthy();
     await act(async () => {
-      fireEvent.changeText(getByLabelText('Anything else? (optional)'), 'white transit nearby');
+      fireEvent.changeText(view.getByLabelText('A note for the owner (optional)'), 'Two men loading it');
     });
-    expect(latest.note).toBe('white transit nearby');
+    expect(latest.note).toBe('Two men loading it');
+    expect(view.getByText('18/500', { includeHiddenElements: true })).toBeTruthy();
   });
 });
 

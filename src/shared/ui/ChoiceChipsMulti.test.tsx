@@ -76,6 +76,23 @@ describe('ChoiceChipsMulti', () => {
   });
 });
 
+describe('ChoiceChipsMulti labels', () => {
+  it('names the row, and lets a chip say more than its visible label', async () => {
+    const { getByLabelText, getByText, queryByLabelText } = await render(
+      <ChoiceChipsMulti
+        options={[{ value: 'u', label: 'Not sure', accessibilityLabel: 'Not sure which way it went' }]}
+        value={[]}
+        onChange={jest.fn()}
+        accessibilityLabel="Which way?"
+      />,
+    );
+    expect(getByLabelText('Which way?')).toBeTruthy();
+    expect(getByText('Not sure')).toBeTruthy();
+    expect(getByLabelText('Not sure which way it went').props.accessibilityRole).toBe('checkbox');
+    expect(queryByLabelText('Not sure')).toBeNull();
+  });
+});
+
 describe('ChoiceChipsMulti presentation', () => {
   const COLOURS = [
     { value: 'Black', label: 'Black', swatch: '#1A1A1A' },

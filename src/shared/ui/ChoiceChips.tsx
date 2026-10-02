@@ -76,6 +76,17 @@ export interface ChoiceChipsProps<V extends string = string> {
    * such as an hour strip opening on 22:00.
    */
   scrollToSelected?: boolean;
+  /** The group's name: the question the chips answer (the make tiles'
+   *  precedent, DESIGN_SYSTEM.md). TalkBack reads it on the radiogroup;
+   *  VoiceOver doesn't speak container labels, so the visible question above
+   *  still carries the context (see ChoiceChipsMulti). */
+  accessibilityLabel?: string;
+  /**
+   * The caller clears the answer when the chosen chip is tapped again. Says so
+   * on that chip ("Double tap to clear", as CompassPicker does), since a radio
+   * otherwise promises it can't be unchosen.
+   */
+  clearable?: boolean;
   /**
    * Optional — the chip ROW takes this, the scroller takes `${testID}-scroller`.
    * Opt-in rather than a fixed id because a wizard step can render two chip
@@ -92,6 +103,8 @@ export function ChoiceChips<V extends string = string>({
   scrollable = false,
   bleed,
   scrollToSelected = false,
+  accessibilityLabel,
+  clearable = false,
   testID,
 }: ChoiceChipsProps<V>) {
   const styles = useThemedStyles(makeStyles);
@@ -126,6 +139,7 @@ export function ChoiceChips<V extends string = string>({
     <View
       style={[styles.row, scrollable && styles.rowScrollable]}
       accessibilityRole={asRadios ? 'radiogroup' : undefined}
+      accessibilityLabel={accessibilityLabel}
       testID={testID}
     >
       {options.map((option) => {
@@ -136,6 +150,7 @@ export function ChoiceChips<V extends string = string>({
             accessibilityRole={role}
             accessibilityLabel={option.accessibilityLabel ?? option.label}
             accessibilityState={asRadios ? { checked: selected } : undefined}
+            accessibilityHint={asRadios && clearable && selected ? 'Double tap to clear' : undefined}
             onPress={() => onSelect(option.value)}
             onLayout={
               tracksSelection

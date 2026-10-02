@@ -108,8 +108,10 @@ export interface WizardStep<TAnswers> {
    */
   fills?: boolean;
   /** Primary-button label while ON this step (not last, not an edit spur);
-   *  defaults to "Next". Speed flows use it for "Continue". */
-  ctaLabel?: string;
+   *  defaults to "Next". Speed flows use it for "Continue". A function of the
+   *  answers lets an optional step say "Skip" until something is added, then
+   *  "Continue": one way on, labelled for what it does. */
+  ctaLabel?: string | ((answers: Partial<TAnswers>) => string);
   /** Label for this answer on the review screen; defaults to `question`. */
   reviewLabel?: string;
   /** Renders this step's answer as review text; omit to hide from review. */

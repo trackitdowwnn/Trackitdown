@@ -151,6 +151,20 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
     expect(skipped.p_people_presence).toBeNull();
     expect(skipped.p_confirmed_feature_ids).toBeNull();
   });
+
+  it('never sends the UI-only "Not sure" marks (contextUnsure)', () => {
+    // The wizard bag carries contextUnsure for the chips' selected look; it
+    // is not a fact and has no RPC param. Explicit mapping keeps it out.
+    const answers = {
+      photos: [located],
+      contextFlags: [],
+      note: '',
+      confirmedFeatureIds: [],
+      contextUnsure: ['state', 'people'],
+    } as unknown as Parameters<typeof buildCreateSightingParams>[1];
+    const params = buildCreateSightingParams(POST_ID, answers, ['p/1.jpg']);
+    expect(JSON.stringify(params)).not.toMatch(/unsure/i);
+  });
 });
 
 describe('submitSighting', () => {
