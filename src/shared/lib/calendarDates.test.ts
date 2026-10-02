@@ -192,15 +192,16 @@ describe('time of day', () => {
   });
 
   describe('on the UK spring-forward day (29 Mar 2026, 01:00-01:59 does not exist)', () => {
-    // Node applies a changed TZ at once. Only this block runs in London time;
-    // everything else in the file is zone-independent.
-    const previousTz = process.env.TZ;
-    beforeAll(() => {
-      process.env.TZ = 'Europe/London';
+    // London time comes from jest/globalSetup.js. Setting process.env.TZ in
+    // here did nothing (Jest sandboxes it per file): this block passed on a
+    // UK laptop and failed on CI's UTC. Everything else in the file is
+    // zone-independent.
+    it('runs in UK time (the precondition the rest of this block needs)', () => {
+      // 29 Mar 2026 01:30 does not exist in London (01:00 jumps to 02:00), so
+      // Date rolls it forward to 02:30. In UTC it would stay at 01:30.
+      expect(new Date(2026, 2, 29, 1, 30).getHours()).toBe(2);
     });
-    afterAll(() => {
-      process.env.TZ = previousTz;
-    });
+
 
     it('skips the missing hour instead of showing 02:xx twice', () => {
       const early = slotsFor('2026-03-29', 'night', new Date(2026, 2, 29, 12, 0));

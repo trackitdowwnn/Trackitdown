@@ -87,6 +87,7 @@
     "preset": "jest-expo",
     "resolver": "react-native-worklets/jest/resolver",
     "testTimeout": 15000,
+    "globalSetup": "<rootDir>/jest/globalSetup.js",
     "collectCoverageFrom": [
       "src/**/*.{ts,tsx}",
       "!src/**/*.d.ts"
