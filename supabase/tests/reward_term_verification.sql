@@ -237,8 +237,13 @@ values ('99990000-0000-0000-0000-000000000005', 'pi_rt5', 'held', 20000, now() +
         now() - interval '58 days', now() - interval '7 days');
 
 do $$
+declare
+  v_rows jsonb;
 begin
-  if jsonb_array_length(public.claim_reward_reminders(200)) <> 1
+  -- Claim FIRST, check after: a subquery in the same statement as the claim
+  -- reads the statement's starting snapshot and would never see its update.
+  v_rows := public.claim_reward_reminders(200);
+  if jsonb_array_length(v_rows) <> 1
      or (select reminded_3d_at from public.payments where stripe_payment_intent_id = 'pi_rt5') is null then
     raise exception 'CHECK 5 FAILED: a reward reminded at 10 days was not reminded again at 3';
   end if;
