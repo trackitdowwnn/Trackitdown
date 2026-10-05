@@ -362,13 +362,14 @@ export const sizes = {
    */
   followUpRule: 2,
   /**
-   * The listing's photo leading the "You're reporting" card on the report's
-   * check-and-send step (2026-10-02). It sits UNDER the text column's height
-   * (the car's name over a PlateChip), so the text drives the card's height.
-   * ⚠️ NOT `markThumb` (48): a mark row is a bare bordered row; this leads a
-   * padded card, and the two are free to diverge.
+   * Aspect ratio (width / height, RN's `aspectRatio`) of the listing's photo
+   * across the top of the "You're reporting" card on the report's
+   * check-and-send step (2026-10-02, the owner's call: a thumbnail was too
+   * small to answer "is it the same car?"). 4:3 by the app's convention for
+   * car photos (VehicleCard keeps its own matching constant): cars are
+   * landscape.
    */
-  reportedCarThumb: 56,
+  reportedCarPhotoAspect: 4 / 3,
   /**
    * Width/height of the spotter's photo tiles on check-and-send: PORTRAIT,
    * because phone shots are, so a tile shows the whole car rather than a

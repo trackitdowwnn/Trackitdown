@@ -516,7 +516,8 @@ For a flow whose last STEP is its own review (the report flow's "Check and
 send"; ReviewStep is the framework's version for flows with a review screen):
 
 - **Labelled sections** with `heading` titles, on ReviewStep's hairline
-  rhythm tightened to `xl` (a speed flow: about two scrolls when full).
+  rhythm tightened to `xl` (a speed flow; a full report with the car hero
+  is about three screens on a small phone, so add nothing more).
 - **One Edit per editable section**, ReviewStep's underlined 44pt link, with a
   label naming what it edits ("Edit photos"). It jumps by the step's
   `editStep`: Done returns, Back cancels. Inert while sending, absent on a spur.
@@ -525,10 +526,12 @@ send"; ReviewStep is the framework's version for flows with a review screen):
 - **Empty means one quiet row**, "Nothing added" with an Add link, never a
   stack of "Not provided".
 - **Show the real thing.** The identity card is `cardSurface` with a
-  `reportedCarThumb` (56) photo and a PlateChip (`onPress={null}`). Photos
-  are three `reviewPhotoAspect` (3:4) columns, always three (spacers), tap
-  for the view-only PhotoPreviewModal. A map stays display-only and hidden
-  from screen readers when the text says the same.
+  full-width `reportedCarPhotoAspect` (4:3) photo across the top (dropped if
+  it fails to load), then the PlateChip (`onPress={null}`) and the name on
+  one line, plate first, wrapping under it when the line runs out. Photos are
+  three `reviewPhotoAspect` (3:4) columns, always three (spacers), tap for
+  the view-only PhotoPreviewModal. A map stays display-only and hidden from
+  screen readers when the text says the same.
 - **Reassurance goes in the step's `footerNote`**, the quiet line above the
   CTA (closer to the button than to the content): one or two short, strictly
   true sentences. A send error sits between it and the button. At large text it moves to the end of the scrolling body.

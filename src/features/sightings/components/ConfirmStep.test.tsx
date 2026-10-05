@@ -226,11 +226,36 @@ describe('ConfirmStep — where and when', () => {
 });
 
 describe('ConfirmStep — the car', () => {
-  it('shows the car’s name, plate and photo', async () => {
+  it('shows the car’s photo on top, then the plate and name on one line, plate first', async () => {
     const { view } = await renderConfirm({ photos: [live(0)], reportedCar: CAR });
     expect(view.getByText('Blue BMW 3 Series')).toBeTruthy();
     expect(view.getByLabelText('Plate A B 1 2, C D E')).toBeTruthy();
-    expect(view.getByTestId('reported-car-photo')).toBeTruthy();
+    // Screen order, read from the structure (not serialised text): the photo
+    // is the card's first child, and on the line the plate comes before the name.
+    const card = view.getByTestId('reported-car');
+    expect(card.children[0]).toMatchObject({ props: { testID: 'reported-car-photo' } });
+    const line = view.getByTestId('reported-car-line').children.filter(
+      (child) => typeof child !== 'string',
+    );
+    // Host elements: the chip is matched by its spoken label.
+    const plateAt = line.findIndex(
+      (child) => child.props.accessibilityLabel === 'Plate A B 1 2, C D E',
+    );
+    const nameAt = line.findIndex((child) => child.props.children === 'Blue BMW 3 Series');
+    expect(plateAt).toBe(0);
+    expect(nameAt).toBe(1);
+  });
+
+  it('drops a photo that fails to load, rather than leaving a grey slab', async () => {
+    const { view } = await renderConfirm({ photos: [live(0)], reportedCar: CAR });
+    await act(async () => {
+      // expo-image reads the native event's error before calling onError.
+      fireEvent(view.getByTestId('reported-car-photo'), 'error', {
+        nativeEvent: { error: 'HTTP 404' },
+      });
+    });
+    expect(view.queryByTestId('reported-car-photo')).toBeNull();
+    expect(view.getByText('Blue BMW 3 Series')).toBeTruthy();
   });
 
   it('copes with a plate-less, photo-less listing', async () => {
