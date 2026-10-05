@@ -453,7 +453,11 @@ no-deadline project sets.
 - **Automatic ANPR / plate-recognition scanning** — big legal/privacy
   questions; needs dedicated review before it's even a candidate.
 - **Insurance-company or fleet accounts** — v2 candidate.
-- **In-app bounty top-ups / crowdfunded bounties** — v2 candidate.
+- **Crowdfunded bounties** — v2 candidate. *(The owner changing their own
+  live reward shipped 2026-10-05: they can raise it, lower it when there are
+  no recent sightings, or add one to a fee listing, via `ChangeRewardScreen`
+  and migration 20261005130000. Renewing at the same amount comes with the
+  60-day reward term.)*
 - **Police/force integrations** — v2+; manual cooperation policy only in v1.
 - **Web app for consumers** — mobile only at launch (moderator page excepted).
 

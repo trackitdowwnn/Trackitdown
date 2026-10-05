@@ -71,15 +71,19 @@ rollback;
 -- post stays live). A redelivery changes nothing.
 -- -----------------------------------------------------------------------------
 begin;
-insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+-- Since 20261005130000 a renewal must be the owner's CURRENT choice: the
+-- post's renewal_attempt_id + renewal_amount_pence, carried by the charge.
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate, renewal_amount_pence, renewal_attempt_id)
 values ('eeee0000-0000-0000-0000-000000000003',
-        '11111111-1111-1111-1111-111111111111', 'active', 20000, 'RL03 AAA');
+        '11111111-1111-1111-1111-111111111111', 'active', 20000, 'RL03 AAA',
+        35000, 'eeee0003-0000-0000-0000-0000000000cc');
 insert into public.payments (id, post_id, stripe_payment_intent_id, status, amount_pence, captured_at)
 values ('eeee0003-0000-0000-0000-00000000000a', 'eeee0000-0000-0000-0000-000000000003',
         'pi_rl3_old', 'held', 20000, now() - interval '50 days');
-insert into public.payments (id, post_id, stripe_payment_intent_id, status, amount_pence, replaces_payment_id)
+insert into public.payments (id, post_id, stripe_payment_intent_id, status, amount_pence, replaces_payment_id, renewal_attempt_id)
 values ('eeee0003-0000-0000-0000-00000000000b', 'eeee0000-0000-0000-0000-000000000003',
-        'pi_rl3_new', 'requires_payment', 35000, 'eeee0003-0000-0000-0000-00000000000a');
+        'pi_rl3_new', 'requires_payment', 35000, 'eeee0003-0000-0000-0000-00000000000a',
+        'eeee0003-0000-0000-0000-0000000000cc');
 
 do $$
 declare
@@ -456,7 +460,7 @@ declare
 begin
   foreach f in array array[
     'public.reconcile_payment_refund(text, text, integer)',
-    'public.refunds_due(integer)',
+    'public.refunds_due(integer, uuid)',  -- p_post_id added by 20261005130000
     'public.claim_money_deadline_alerts(integer)',
     'public.release_money_deadline_alerts(uuid[])',
     'public.mark_post_payment_held(text)',

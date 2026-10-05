@@ -3,7 +3,8 @@
  *        now shared by the listing page and the My listings long-press sheet:
  *        deactivate (plain, held, the no-reward skip of exit_check, the
  *        attested path, ATTESTATION_STALE), the delete offer after a clean
- *        cancel, both deletes, and the payout retry's three outcomes.
+ *        cancel, both deletes, the payout retry's three outcomes, and the
+ *        change / add reward row.
  * WHY:   These moved out of PostDetailScreen on 2026-09-24 so a second surface
  *        could use them, and that screen's suite only ever covered a clean
  *        deactivate and whether the payout row shows. One component, two
@@ -183,6 +184,30 @@ describe('PostOwnerActions', () => {
 
       expect(view.queryByTestId('manage-archive')).toBeNull();
       expect(view.queryByTestId('manage-unarchive')).toBeNull();
+    });
+  });
+
+  // Changing the reward (2026-10-05): offered on a live listing, worded for
+  // what it does — change a reward, or add one to a £5 fee listing.
+  describe('change reward', () => {
+    it('offers "Change reward" on a live reward listing and opens the change screen', async () => {
+      const { view } = await mount(post());
+      expect(view.getByText('Change reward')).toBeTruthy();
+      await fireEvent.press(view.getByTestId('manage-change-reward'));
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/change-reward',
+        params: { postId: 'p1', mode: 'change' },
+      });
+    });
+
+    it('offers "Add a reward" on a live fee listing', async () => {
+      const { view } = await mount(post({ bountyPence: null }));
+      expect(view.getByText('Add a reward')).toBeTruthy();
+    });
+
+    it('is not offered once the listing is no longer live', async () => {
+      const { view } = await mount(post({ status: 'recovery_claimed' }));
+      expect(view.queryByTestId('manage-change-reward')).toBeNull();
     });
   });
 

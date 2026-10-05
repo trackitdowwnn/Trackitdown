@@ -368,7 +368,21 @@ There are two ways in:
   never chose that charge.
 
 At most one bounty payment per post is ever `held`, and a database index
-enforces it (`payments_one_held_per_post_uidx`). Why this exists: Stripe caps
+enforces it (`payments_one_held_per_post_uidx`).
+
+**Changing a live reward (2026-10-05, migration 20261005130000).** An owner
+can change the reward on a live listing, or add one to a £5 fee listing. Each
+change is a NEW charge. Once it is held, the old reward is superseded and
+refunded minus the card fee. The rules:
+- **No lowering after a recent sighting.** A reward can't be lowered while
+  recent uncredited sightings exist (the same 14-day rule as a refund hold).
+- **No change under a claim.** Nothing changes while a refund hold, dispute,
+  credited sighting or payout review is open.
+- **One change at a time.**
+- **Every rule is checked again at capture,** and only the owner's current
+  choice can become the reward.
+
+When a fee listing adds a reward, its £5 stays non-refundable. Why this exists: Stripe caps
 funds on the platform balance at 90 days, so a reward gets a term (see
 `supabase/migrations/20261005110000_a_reward_can_be_replaced.sql`).
 
