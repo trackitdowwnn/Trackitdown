@@ -80,3 +80,7 @@ Thumbs.db
 # they are a build artefact of src/features/legal/lib/legalContent.ts, and a
 # committed copy is a second source of truth for a document users agreed to.
 dist-legal/
+
+# Demo-photos tool scratch (Unsplash search cache, shortlist page, picks):
+# regenerate with npm run demo-photos:find. credits.json beside it IS committed.
+scripts/demo-photos/out/
