@@ -441,6 +441,12 @@ commenting standards.
   never in the charge request. That function refuses to LOWER a reward while
   recent uncredited sightings exist, and capture re-checks it. See
   20261005130000.)*
+  *(The reward TERM, 2026-10-05, ADR-0020: a reward lasts 60 days and is then
+  refunded to its owner through the ADR-0011 hold. Reward money is never held
+  past capture + 85 days: the 75-day operator alert is the backstop. Refunds
+  are keyed per payment (`payment-refund-<pi>`). The reminder pushes carry
+  the car and the date, never the plate or the amount, and collapse by POST
+  id, never by a ledger id.)*
   The client never sends either amount, and specifically **never sends the fee**:
   `create_post` stamps it from `current_listing_fee_pence()` and
   `posts.listing_fee_pence` is deliberately absent from the client column grants,

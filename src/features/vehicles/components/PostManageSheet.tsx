@@ -196,12 +196,12 @@ export function PostManageSheet({
       {rewardAction ? (
         <ListRow
           icon={BadgePoundSterling}
-          title={rewardAction.mode === 'add' ? 'Add a reward' : 'Change reward'}
+          title={rewardAction.mode === 'add' ? 'Add a reward' : 'Renew or change reward'}
           // Says what it DOES with money, like its money-moving siblings.
           subtitle={
             rewardAction.mode === 'add'
               ? 'Offer a reward to whoever finds your car.'
-              : 'Pay a new amount. Your current reward comes back, minus the card fee.'
+              : 'Pay the same amount to renew, or a new one. Your current reward is then refunded to your card.'
           }
           onPress={run(rewardAction.onPress)}
           testID="manage-change-reward"

@@ -41,6 +41,12 @@ export function pushRouteFor(payload: PushPayload): Href {
     // own not-found state is the honest answer; routing to My Posts instead
     // would hide WHICH listing this was about while it still exists.
     case 'deletion_soon':
+    // "Your reward ends on …" — the listing, whose reward banner shows the
+    // date and, in the last 14 days, Renew. "Your reward has ended" — also the
+    // listing; PR4's "Reward ended" state is what explains it there, and the
+    // expiry (PR5) must not send this kind before that state exists.
+    case 'reward_ending':
+    case 'reward_ended':
       return `/post/${payload.postId}`;
     case 'message':
       return `/chat/${payload.threadId}`;

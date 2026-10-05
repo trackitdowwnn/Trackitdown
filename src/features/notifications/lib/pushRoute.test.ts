@@ -25,6 +25,11 @@ describe('pushRouteFor', () => {
     expect(pushRouteFor({ type: 'recovery', postId: POST_ID })).toBe(`/post/${POST_ID}`);
   });
 
+  it('routes the reward-term pushes to the owner’s listing, where Renew is', () => {
+    expect(pushRouteFor({ type: 'reward_ending', postId: POST_ID })).toBe(`/post/${POST_ID}`);
+    expect(pushRouteFor({ type: 'reward_ended', postId: POST_ID })).toBe(`/post/${POST_ID}`);
+  });
+
   it('routes a message to its chat thread', () => {
     expect(pushRouteFor({ type: 'message', threadId: THREAD_ID })).toBe(`/chat/${THREAD_ID}`);
   });

@@ -65,6 +65,7 @@ import {
   estimateRefundPence,
   formatPounds,
 } from '../lib/money';
+import { REWARD_TERM_DAYS } from '../lib/bountyBounds';
 import { easeOut } from '@/shared/theme/motionEasing';
 import {
   displayFontScaleCap,
@@ -107,8 +108,9 @@ export interface MoneySliderPanelCopy {
  * than they look:
  *
  * 1. It states the refund conditions COMPLETELY. It used to say "refunded if
- *    you cancel or recover it yourself", which omits expiry (90 days — the most
- *    likely ending for most posts) and takedown. That omission buried the
+ *    you cancel or recover it yourself", which omits the end of the reward's
+ *    term (60 days, ADR-0020 — the most likely ending for most rewards) and
+ *    takedown. That omission buried the
  *    headline: the money comes back unless a spotter actually finds the car.
  *    Read as written, a slider in pounds says "this is what you are spending";
  *    it is nearer to a deposit.
@@ -126,10 +128,13 @@ export const defaultBountyPanelCopy: MoneySliderPanelCopy = {
     `If your car is recovered thanks to a spotter, they receive ${formatPounds(
       breakdown.spotterPence,
     )} and our platform fee is ${formatPounds(breakdown.feePence)}.`,
+  // "…or its 60 days end" (2026-10-05, ADR-0020): every reward now has a term,
+  // and the end of the term is one of the ways it comes back. Until then this
+  // said "or the post expires" — of a post that, at the time, never did.
   escrowLine: (bountyPence) =>
-    `${formatPounds(bountyPence)} is held when your post goes live. You only pay it if a spotter finds your car — otherwise ${formatPounds(
+    `${formatPounds(bountyPence)} is held for ${REWARD_TERM_DAYS} days from when your listing goes live, and you can renew it any time — your listing stays up either way. You only pay it if a spotter finds your car — otherwise ${formatPounds(
       estimateRefundPence(bountyPence),
-    )} comes back to you, whether you cancel, recover it yourself, or the post expires. Card processing costs are not refundable.`,
+    )} comes back to you, whether you cancel, recover it yourself, or the ${REWARD_TERM_DAYS} days end without a renewal. Card processing costs are not refundable.`,
 };
 
 /** Form-level validation matching what the slider can emit. */

@@ -104,6 +104,8 @@ const mockExitCheck = jest.fn(async () => ({
 jest.mock('@/features/payments', () => ({
   useDeactivatePost: () => ({ deactivate: mockDeactivate, pending: false }),
   exitCheck: (...args: unknown[]) => mockExitCheck(...(args as [])),
+  // The reward-term banner loads its own status; it has its own tests.
+  RewardTermBanner: () => null,
 }));
 
 // The report path calls the flag_post RPC via flagApi — stub it.

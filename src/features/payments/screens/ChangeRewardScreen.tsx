@@ -1,7 +1,8 @@
 /**
  * WHAT:  ChangeRewardScreen — the owner changes the reward on their LIVE
  *        listing (raise it, or lower it if nobody has reported a sighting
- *        lately), or adds a reward to a £5 fee listing. Choose an amount, read
+ *        lately), RENEWS it (keeps the amount: a fresh 60-day term, ADR-0020),
+ *        or adds a reward to a £5 fee listing. Choose an amount, read
  *        exactly what happens to the money, pay with the PaymentSheet, and come
  *        back to the listing once the new reward is held.
  * WHY:   Until now the only way to change a live reward was deactivate, refund
@@ -44,7 +45,9 @@ import {
   DEFAULT_BOUNTY_PENCE,
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
+  REWARD_TERM_DAYS,
 } from '@/shared/lib/bountyBounds';
+import { formatTermDate } from '@/shared/lib/dateTimeLabel';
 import { PaymentError } from '@/shared/lib/functionError';
 import { createLogger } from '@/shared/lib/logger';
 import { LISTING_FEE_PENCE, estimateRefundPence, formatPounds } from '@/shared/lib/money';
@@ -80,22 +83,26 @@ import { useBountyPayment } from '../hooks/useBountyPayment';
 
 const log = createLogger('payments');
 
+/** A reward's term (ADR-0020) — display only; the server stamps the real
+ *  date at capture (mark_post_payment_held's c_term, to the end of that
+ *  London day). */
+const TERM_MS = REWARD_TERM_DAYS * 24 * 60 * 60 * 1000;
+
 /** How long to wait for the webhook to make the new reward the listing's. */
 const POLL_ATTEMPTS = 8;
 const POLL_INTERVAL_MS = 1500;
 
 /**
  * The slider panel: the posting flow's split line, and an escrow line for a
- * reward charged NOW (the posting flow's says "when your post goes live", and
- * mentions an expiry this listing does not have yet). Module const so the
- * slider's props stay referentially stable.
+ * reward charged NOW (the posting flow's says "from when your listing goes
+ * live"). Module const so the slider's props stay referentially stable.
  */
 const CHANGE_PANEL: MoneySliderPanelCopy = {
   splitLine: defaultBountyPanelCopy.splitLine,
   escrowLine: (pence) =>
-    `${formatPounds(pence)} is charged now and held. You only pay it if a spotter finds your car — otherwise about ${formatPounds(
+    `${formatPounds(pence)} is charged now and held for ${REWARD_TERM_DAYS} days. You only pay it if a spotter finds your car — otherwise about ${formatPounds(
       estimateRefundPence(pence),
-    )} comes back to you. Card fees aren’t refundable.`,
+    )} comes back to you (the card fee isn’t refundable). Your listing stays up either way.`,
 };
 
 export interface ChangeRewardScreenProps {
@@ -121,6 +128,10 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
   const [amountPence, setAmountPence] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // 'Now' is captured with the read, never computed in render: the React
+  // Compiler memoises render-time clock reads on device (the new term's date
+  // would freeze).
+  const [loadedAt, setLoadedAt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -142,6 +153,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
       .then((next) => {
         if (!mounted.current) return;
         setStatus(next);
+        setLoadedAt(Date.now());
         setAmountPence((current) => current ?? next.amountPence ?? DEFAULT_BOUNTY_PENCE);
       })
       .catch((err: unknown) => {
@@ -166,12 +178,14 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
   // Clamped ONCE and used everywhere, so the Pay label, the summary and the
   // amount sent can never name a different figure from the slider.
   const chosen = Math.max(amountPence ?? DEFAULT_BOUNTY_PENCE, minPence);
-  const unchanged = !isAdd && currentPence !== null && chosen === currentPence;
+  // Keeping today's amount IS the renewal (ADR-0020): a fresh 60-day term at
+  // the same reward. It costs the card fee on the old payment, which the
+  // summary says, so it is a choice the owner makes knowingly — not a no-op.
+  const isRenewal = !isAdd && currentPence !== null && chosen === currentPence;
+  const newTermEnds = formatTermDate(new Date(loadedAt + TERM_MS).toISOString());
 
   const submit = useCallback(async () => {
-    // The same guards as the button's disabled state, held here too: paying
-    // for an unchanged reward would only cost the owner a card fee.
-    if (busy || status === null || status.blockedMessage || unchanged) {
+    if (busy || status === null || status.blockedMessage) {
       return;
     }
     setBusy(true);
@@ -201,7 +215,11 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
             toast.show(
               isAdd
                 ? `Your listing now offers a ${formatPounds(next.amountPence ?? chosen)} reward.`
-                : `Your reward is now ${formatPounds(next.amountPence ?? chosen)}.`,
+                : isRenewal
+                  ? next.termEndsAt
+                    ? `Your reward is renewed until ${formatTermDate(next.termEndsAt)}.`
+                    : 'Your reward is renewed.'
+                  : `Your reward is now ${formatPounds(next.amountPence ?? chosen)}.`,
             );
             router.back();
             return;
@@ -227,7 +245,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
         setConfirming(false);
       }
     }
-  }, [busy, chosen, isAdd, payBounty, postId, router, status, toast, unchanged, wait]);
+  }, [busy, chosen, isAdd, isRenewal, payBounty, postId, router, status, toast, wait]);
 
   if (status === null && !loadError) {
     // A blocking wait shows the brand loader (docs/DESIGN_SYSTEM.md).
@@ -246,7 +264,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
         <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
       </Pressable>
       <Text style={styles.title} accessibilityRole="header">
-        {isAdd ? 'Add a reward' : 'Change your reward'}
+        {isAdd ? 'Add a reward' : 'Renew or change your reward'}
       </Text>
     </View>
   );
@@ -293,7 +311,9 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
         {isAdd
           ? 'Offer a reward to whoever finds your car. Spotters see it on your listing as soon as it’s paid.'
           : currentPence !== null
-            ? `Your listing offers a ${formatPounds(currentPence)} reward. Choose a new amount.${
+            ? `Your listing offers a ${formatPounds(currentPence)} reward${
+                status.termEndsAt ? ` until ${formatTermDate(status.termEndsAt)}` : ''
+              }. Keep the amount to renew it for ${REWARD_TERM_DAYS} days from today, or choose a new one.${
                 status.hasRecentSightings ? ` ${LOWERING_RULE_SENTENCE}` : ''
               }`
             : 'Choose a new amount.'}
@@ -316,6 +336,20 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
           text, directly above Pay. Stripe's sheet is the next thing they see,
           so this is the only place they can learn it. */}
       <View style={styles.summary} testID="change-reward-summary">
+        {/* A renewal's real cost first: "Renew for £200" over "Charged now
+            £200" reads as spending another £200, when what it costs is the
+            card fee on the reward it replaces. */}
+        {isRenewal ? (
+          <SummaryRow
+            label="Renewing costs"
+            value={
+              status.feeAbsorbed
+                ? 'Nothing — your current reward comes back in full'
+                : `About ${formatPounds(feeKept)} — the card fee on your current reward`
+            }
+            styles={styles}
+          />
+        ) : null}
         <SummaryRow label="Charged now" value={formatPounds(chosen)} styles={styles} />
         {isAdd ? (
           <SummaryRow
@@ -323,7 +357,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
             value="Not refunded — it paid for the listing"
             styles={styles}
           />
-        ) : refundBack !== null && !unchanged ? (
+        ) : refundBack !== null ? (
           <>
             <SummaryRow
               label="Back to your card"
@@ -334,15 +368,27 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
               }
               styles={styles}
             />
-            {!status.feeAbsorbed && feeKept > 0 ? (
+            {!isRenewal && !status.feeAbsorbed && feeKept > 0 ? (
               <SummaryRow label="Card fee kept" value={`About ${formatPounds(feeKept)}`} styles={styles} />
             ) : null}
           </>
         ) : null}
+        <SummaryRow label="Runs until" value={`${newTermEnds} (${REWARD_TERM_DAYS} days)`} styles={styles} />
       </View>
 
-      {unchanged ? (
-        <Text style={styles.caption}>Choose a different amount to change your reward.</Text>
+      {/* Renewing needs today's EXACT amount, and an older reward may not sit
+          on the slider's snap grid — once moved, it could never be reached
+          again. One tap puts it back. */}
+      {!isAdd && !isRenewal && currentPence !== null && currentPence >= minPence ? (
+        <Pressable
+          onPress={() => setAmountPence(currentPence)}
+          accessibilityRole="button"
+          accessibilityLabel={`Keep ${formatPounds(currentPence)} and renew`}
+          style={styles.keepLink}
+          testID="change-reward-keep"
+        >
+          <Text style={styles.keepText}>{`Keep ${formatPounds(currentPence)} and renew`}</Text>
+        </Pressable>
       ) : null}
 
       {confirming ? (
@@ -360,10 +406,9 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
       {/* Inline at the end of the scroll, not a sticky bar: reaching it means
           passing the summary, which is right for a screen that takes money. */}
       <Button
-        label={`Pay ${formatPounds(chosen)}`}
+        label={isRenewal ? `Renew for ${formatPounds(chosen)}` : `Pay ${formatPounds(chosen)}`}
         onPress={() => void submit()}
         loading={busy}
-        disabled={unchanged}
         accessibilityHint="Opens card payment"
       />
     </Screen>
@@ -444,6 +489,16 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   caption: {
     ...typography.caption,
     color: c.textSecondary,
+  },
+  keepLink: {
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  keepText: {
+    ...typography.label,
+    color: c.textPrimary,
+    textDecorationLine: 'underline',
   },
   error: {
     ...typography.body,

@@ -79,6 +79,10 @@ const rewardStatusSchema = z.object({
   rewardId: z.string().nullable(),
   amountPence: z.number().int().nullable(),
   capturedAt: z.string().nullable(),
+  // Optional for one deploy's worth of skew: an app updated before the
+  // server still parses the old shape (memory: widen client schemas first).
+  termEndsAt: z.string().nullable().optional(),
+  legacyTerm: z.boolean().optional(),
   feeAbsorbed: z.boolean(),
   hasRecentSightings: z.boolean(),
   block: z.string().nullable(),
@@ -92,6 +96,11 @@ export interface RewardStatus {
   amountPence: number | null;
   /** When the current reward was charged (ISO), if there is one. */
   capturedAt: string | null;
+  /** When its 60-day term ends (ISO) — null until it has one (ADR-0020). */
+  termEndsAt: string | null;
+  /** A reward from before the term existed: its END-OF-TERM refund is made
+   *  in full (the platform absorbs the card fee). Other refunds are unchanged. */
+  legacyTerm: boolean;
   /** The current reward's refund returns the full amount (no card fee kept). */
   feeAbsorbed: boolean;
   /** Recent uncredited sightings exist, so the reward can't be lowered. */
@@ -118,6 +127,8 @@ export async function fetchMyRewardStatus(postId: string): Promise<RewardStatus>
     rewardId: doc.rewardId,
     amountPence: doc.amountPence,
     capturedAt: doc.capturedAt,
+    termEndsAt: doc.termEndsAt ?? null,
+    legacyTerm: doc.legacyTerm ?? false,
     feeAbsorbed: doc.feeAbsorbed,
     hasRecentSightings: doc.hasRecentSightings,
     blockedMessage: doc.block ? (CHANGE_REWARD_ERROR_MESSAGES[doc.block] ?? FALLBACK) : null,

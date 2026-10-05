@@ -190,9 +190,9 @@ describe('PostOwnerActions', () => {
   // Changing the reward (2026-10-05): offered on a live listing, worded for
   // what it does — change a reward, or add one to a £5 fee listing.
   describe('change reward', () => {
-    it('offers "Change reward" on a live reward listing and opens the change screen', async () => {
+    it('offers "Renew or change reward" on a live reward listing and opens the change screen', async () => {
       const { view } = await mount(post());
-      expect(view.getByText('Change reward')).toBeTruthy();
+      expect(view.getByText('Renew or change reward')).toBeTruthy();
       await fireEvent.press(view.getByTestId('manage-change-reward'));
       expect(mockPush).toHaveBeenCalledWith({
         pathname: '/change-reward',

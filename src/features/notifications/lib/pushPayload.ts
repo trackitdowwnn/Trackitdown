@@ -113,6 +113,21 @@ const deletionSoonPayloadSchema = z
   .object({ type: z.literal('deletion_soon'), postId: z.guid() })
   .strict();
 
+/** "Your reward ends on {date}" (ADR-0020). The POST id: the destination is
+ *  the owner's own listing, whose reward banner carries the date and the
+ *  Renew button. The date stays in the visible body only — a payload
+ *  timestamp would invite a client-side countdown to a moment that belongs to
+ *  the server. */
+const rewardEndingPayloadSchema = z
+  .object({ type: z.literal('reward_ending'), postId: z.guid() })
+  .strict();
+
+/** "Your reward has ended" — refunded at the end of its term; the listing
+ *  stays live. The POST id, for the same reason. */
+const rewardEndedPayloadSchema = z
+  .object({ type: z.literal('reward_ended'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -128,6 +143,8 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   notCreditedPayloadSchema,
   stillMissingPayloadSchema,
   deletionSoonPayloadSchema,
+  rewardEndingPayloadSchema,
+  rewardEndedPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

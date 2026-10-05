@@ -30,6 +30,7 @@ import {
   DEFAULT_BOUNTY_PENCE,
   MAX_BOUNTY_PENCE,
   MIN_BOUNTY_PENCE,
+  REWARD_TERM_DAYS,
 } from '@/shared/lib/bountyBounds';
 import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
@@ -117,7 +118,9 @@ const PRICING_OPTIONS: CardSelectOption<PricingMode>[] = [
     // The floor, from the ONE mirror — never a literal. This read "From £50"
     // until 2026-08-22, nine days after 20260813120000 moved it to £10, so the
     // card was quoting a price the database had stopped enforcing.
-    description: `From ${formatPounds(MIN_BOUNTY_PENCE)}. Held securely and only paid if a spotter finds your car.`,
+    // "for 60 days, renewable" — the term (ADR-0020) belongs in the very first
+    // place the reward is offered, not only in the Terms.
+    description: `From ${formatPounds(MIN_BOUNTY_PENCE)}. Held securely for ${REWARD_TERM_DAYS} days (renewable) and only paid if a spotter finds your car.`,
     icon: BadgePoundSterling,
   },
   {

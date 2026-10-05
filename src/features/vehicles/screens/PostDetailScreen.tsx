@@ -30,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bookmark } from 'lucide-react-native';
 
 import { useRequireAuth } from '@/features/auth';
+import { RewardTermBanner } from '@/features/payments';
 import { ReportSafetySheet, type ReportSafetySheetRef } from '@/features/sightings';
 import { useWatchToggle } from '@/features/watchlist';
 import { bountyParam } from '@/shared/lib';
@@ -362,6 +363,21 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                     onStillMissing={onStillMissing}
                     onFound={onRecovered}
                     busy={confirmingMissing}
+                  />
+                </View>
+              ) : null}
+              {/* The reward's 60-day term (ADR-0020): owner-only, live
+                  listings with a reward — the banner itself renders nothing
+                  when there is no reward or no term to show. Above the body
+                  for the same reason as the ask above: in the last two weeks
+                  it carries a decision. */}
+              {result.post.isOwner && canDeactivate(result.post) && result.post.bountyPence !== null ? (
+                <View style={styles.stillMissing}>
+                  <RewardTermBanner
+                    postId={postId}
+                    onRenew={() =>
+                      router.push({ pathname: '/change-reward', params: { postId, mode: 'change' } })
+                    }
                   />
                 </View>
               ) : null}

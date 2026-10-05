@@ -165,6 +165,15 @@ on a live listing, or add one to a £5 fee listing. The flow:
 
 The logic lives in `supabase/migrations/20261005130000_a_reward_can_be_changed.sql`.
 
+**The 60-day term (ADR-0020).**
+- **Renewing.** Keeping today's amount on that screen renews the reward: a
+  fresh 60 days, and the old payment is refunded minus the card fee. The
+  summary names that cost first.
+- **`RewardTermBanner`** on the owner's listing shows the end date as one
+  line. In the last 14 days it becomes a card with Renew. It has honest
+  states for a blocked reward and an ended one.
+- The logic lives in `supabase/migrations/20261005140000_a_reward_has_a_term.sql`.
+
 ## Not here
 
 Bounty splitting (single winner, v1), crowdfunded rewards, and any client-side

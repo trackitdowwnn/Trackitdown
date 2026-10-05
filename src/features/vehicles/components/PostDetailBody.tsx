@@ -49,6 +49,7 @@ import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
 import { estimateRefundPence, formatPounds } from '@/shared/lib';
+import { REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
 import {
   cardSurface,
   radii,
@@ -686,7 +687,10 @@ export function PostDetailBody({
               // saying so plainly is better than a vague "no reward" that leaves
               // someone hoping. The recognition on offer is real and is named.
               "There's no cash reward on this listing — the owner paid a flat listing fee instead. If your sighting leads to the car being found, the owner can still credit you, and the recovery is added to your spotter record."
-            : "The reward is paid to the spotter whose sighting leads to this car's recovery. Money is held safely and only released when the owner confirms the car is back."
+            : // The term (ADR-0020) is said to spotters too: a reward can end if
+              // the owner doesn't renew it, and the listing then stays up
+              // without one. Saying so here is what keeps "held safely" true.
+              `The reward is paid to the spotter whose sighting leads to this car's recovery. Money is held safely and only released when the owner confirms the car is back. Rewards run for ${REWARD_TERM_DAYS} days at a time and the owner can renew them. If a reward ends, spotters with recent sightings are told first.`
         }
         confirmLabel="Got it"
         acknowledge

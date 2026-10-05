@@ -314,7 +314,7 @@ order by captured;
 | A **payout review** pending or rejected | Decide it (§3). A rejected review keeps the money held, so it must still end in a refund or a payout. |
 | Post **`recovery_claimed`**, nothing credited | The owner never finished "found it another way". Ask them to finish it, or refund from the Stripe dashboard: the `charge.refunded` webhook then closes the recovery (`reconcile_payment_refund`). |
 | Post **`recovery_claimed`**, a sighting credited | The spotter hasn't finished payout onboarding. Chase them. If day 80 comes first, refund the owner from the Stripe dashboard and tell the spotter why. The webhook records the refund, leaves the post in `recovery_claimed` (no final state is true here) and emails you **"A credited recovery was refunded to the owner"**. Then close the post by hand: `update public.posts set status = 'recovered_no_spotter' where id = '<post id>';`. Note this status normally means "nobody was credited", so record why in the support log. |
-| Post **`active`**, nothing else | A reward from before rewards had a term. Tell the owner first: until automatic reward expiry ships, refunding it closes the listing. Then refund it from the Stripe dashboard; the webhook records the refund. |
+| Post **`active`**, nothing else | A reward from before rewards had a term (`legacy_term`), or one the expiry hasn't reached. Tell the owner first: until automatic reward expiry ships, refunding it closes the listing. Then refund it from the Stripe dashboard; the webhook records the refund. For a `legacy_term` reward, refund the **full** amount: those owners were promised their end-of-term refund in full. |
 | Status **`superseded`** | The sweep should have refunded it within the hour. If it's 75 days old, the refund keeps failing: check the logs for `refund item failed`. An open dispute on the post also holds it back on purpose until the dispute is resolved. |
 
 ⚠️ **A refund from the Stripe dashboard is always recorded correctly.** The
@@ -328,6 +328,29 @@ webhook reconciles it from the ledger:
 
 A partial refund made by hand is recorded as the refund; settling any
 remainder is up to you.
+
+**The reward-term switch.** The sweep sends the term notices and reminders
+(`claim_reward_term_notices`, `claim_reward_reminders`) only when the Edge
+Function secret `REWARD_TERM_NOTICES_ENABLED` is `true`. Turn it on only
+when all three are true:
+1. the app update with the reward banner is live (check with
+   `eas update:list`, never the exit code);
+2. the reward expiry (PR5) is deployed;
+3. you have read the legacy-reward dates the first notices will give.
+
+```sql
+select p.id, p.post_id, coalesce(p.captured_at, p.created_at) as captured,
+       least(public.reward_term_end(greatest(
+               least(coalesce(p.captured_at, p.created_at) + interval '80 days',
+                     greatest(coalesce(p.captured_at, p.created_at) + interval '60 days', now() + interval '14 days')),
+               now() + interval '3 days')),
+             coalesce(p.captured_at, p.created_at) + interval '85 days') as would_end
+from public.payments p
+join public.posts po on po.id = p.post_id
+where p.status = 'held' and p.kind = 'bounty_escrow' and p.term_ends_at is null
+  and po.status in ('active', 'pending_verification')
+order by would_end;
+```
 
 ---
 
