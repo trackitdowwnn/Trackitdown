@@ -101,6 +101,13 @@ jobs:
       - name: Car list build rules
         run: npm run test:taxonomy
 
+      # The demo-photos tool (scripts/demo-photos): the dummy-post guard, the
+      # own-folder storage paths, the delete guard, the search merge and
+      # rate-limit rules, box validation, the crop/plate-box maths, and that
+      # its edited copies are EXIF-free 1600x1200 JPEGs with boxed areas filled.
+      - name: Demo-photos tool tests
+        run: npm run test:demo-photos
+
       # Fails the build if any committed file contains obvious secrets.
       # Lightweight guard — not a replacement for proper secret scanning.
       #
@@ -117,12 +124,16 @@ jobs:
       #   - a live Stripe key: sk_live_ followed by actual key characters
       #   - a JWT: three base64url segments, which is what a leaked service-role
       #     key actually looks like (they ARE JWTs)
+      #   - Supabase's newer secret keys: sb_secret_ followed by key characters
+      # Scripts, docs and pages are scanned too (the demo-photos tool reads a
+      # service key from a gitignored file; this catches it if pasted in).
       # `requireEnv('SUPABASE_SERVICE_ROLE_KEY')` matches neither.
       - name: Basic secret scan
         run: |
-          if grep -rInE "(sk_live_[A-Za-z0-9]{16,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})" \
+          if grep -rInE "(sk_live_[A-Za-z0-9]{16,}|sb_secret_[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})" \
             --include="*.ts" --include="*.tsx" --include="*.json" \
-            --exclude-dir=node_modules . ; then
+            --include="*.mjs" --include="*.js" --include="*.md" --include="*.html" \
+            --exclude-dir=node_modules --exclude-dir=coverage . ; then
             echo "::error::Possible secret committed — see matches above."
             exit 1
           fi
