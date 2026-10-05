@@ -149,10 +149,13 @@ Deno.serve(async (request) => {
   // still `held` for its 72-hour dispute window. That post passes the check
   // above — and the erasure would then die half way on payments' ON DELETE
   // RESTRICT. Money still in motion blocks deletion, whatever the post says.
+  // `superseded` too (2026-10-05): a renewed reward's old payment, or a stray
+  // capture, is captured money still owed back to this owner — erasing them
+  // before it is refunded would strand it.
   const { count: heldCount, error: heldError } = await admin
     .from('payments')
     .select('id, posts!inner(owner_id)', { count: 'exact', head: true })
-    .eq('status', 'held')
+    .in('status', ['held', 'superseded'])
     .eq('posts.owner_id', userId);
 
   if (heldError) {

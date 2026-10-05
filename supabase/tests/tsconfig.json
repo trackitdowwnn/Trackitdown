@@ -19,7 +19,8 @@
     "      cannot read them without a Deno-flavoured config of its own. Pulling",
     "      push.test.ts in here produces errors about the module under test",
     "      rather than the test, which is noise, not coverage. Those two stay",
-    "      untypechecked and the reason is now written down.",
+    "      untypechecked and the reason is now written down. refundEscrow.test.ts",
+    "      (2026-10-05) imports Deno code the same way and is excluded likewise.",
     "RUN:  npm run typecheck (which runs this too), or npm run typecheck:tests."
   ],
   "extends": "../../tsconfig.json",
@@ -28,5 +29,5 @@
     "noEmit": true
   },
   "include": ["**/*.ts"],
-  "exclude": ["push.test.ts"]
+  "exclude": ["push.test.ts", "refundEscrow.test.ts"]
 }

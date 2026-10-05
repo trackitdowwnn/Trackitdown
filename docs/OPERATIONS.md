@@ -272,6 +272,65 @@ you can query today beats a dashboard that does not exist.
 
 ---
 
+## 8. Money deadlines — Stripe's 90-day limit
+
+⚠️ **Reward money must leave the platform balance within 90 days of capture.**
+Stripe lead support said so on 2026-10-05. If it happens persistently, Stripe
+"may take action to offboard the account". Funds segregation does not change
+this. Our own hard line is **capture + 85 days**, which leaves room for a
+weekend.
+
+**This one does alert.** Two emails go to `OPS_ALERT_TO_ADDRESS`; if that
+isn't set, they go to the bug-report inbox.
+
+- **"N reward payment(s) approaching Stripe's 90-day limit"**: the sweep
+  found reward money (held, or superseded and still owed back) **75+ days**
+  after capture. It repeats daily per payment until the money leaves. Each line
+  gives the payment and post ids, the states, the days held, the resolve-by
+  date, and any open dispute, payout review or refund hold. That last part
+  usually tells you why the money is stuck.
+- **"A refund failed"**: Stripe accepted a refund and the bank later bounced
+  it. The ledger says `refunded`, but the money is back on our balance. This
+  needs the Stripe endpoint subscribed to `charge.refund.updated`.
+
+The same list on demand, without claiming or emailing anything:
+
+```sql
+select p.id, p.post_id, p.status, po.status as post_status,
+       coalesce(p.captured_at, p.created_at) as captured,
+       coalesce(p.captured_at, p.created_at) + interval '85 days' as resolve_by
+from public.payments p
+left join public.posts po on po.id = p.post_id
+where p.kind = 'bounty_escrow'
+  and p.status in ('held', 'superseded')
+order by captured;
+```
+
+**What to do, by what's stuck:**
+
+| The row shows | Do this |
+|---|---|
+| An **open dispute** | Resolve it (§2) before the resolve-by date. Upheld pays the spotter; rejected lets the sweep refund the owner within the hour. |
+| A **payout review** pending or rejected | Decide it (§3). A rejected review keeps the money held, so it must still end in a refund or a payout. |
+| Post **`recovery_claimed`**, nothing credited | The owner never finished "found it another way". Ask them to finish it, or refund from the Stripe dashboard: the `charge.refunded` webhook then closes the recovery (`reconcile_payment_refund`). |
+| Post **`recovery_claimed`**, a sighting credited | The spotter hasn't finished payout onboarding. Chase them. If day 80 comes first, refund the owner from the Stripe dashboard and tell the spotter why. The webhook records the refund, leaves the post in `recovery_claimed` (no final state is true here) and emails you **"A credited recovery was refunded to the owner"**. Then close the post by hand: `update public.posts set status = 'recovered_no_spotter' where id = '<post id>';`. Note this status normally means "nobody was credited", so record why in the support log. |
+| Post **`active`**, nothing else | A reward from before rewards had a term. Tell the owner first: until automatic reward expiry ships, refunding it closes the listing. Then refund it from the Stripe dashboard; the webhook records the refund. |
+| Status **`superseded`** | The sweep should have refunded it within the hour. If it's 75 days old, the refund keeps failing: check the logs for `refund item failed`. An open dispute on the post also holds it back on purpose until the dispute is resolved. |
+
+⚠️ **A refund from the Stripe dashboard is always recorded correctly.** The
+webhook reconciles it from the ledger:
+- A superseded payment's refund never touches its post.
+- The post's current reward closes the listing, as an owner deactivation
+  would.
+- A recovery where nobody was credited finishes as `recovered_no_spotter`.
+- A credited recovery is the one case that leaves a post for you to close
+  (see above).
+
+A partial refund made by hand is recorded as the refund; settling any
+remainder is up to you.
+
+---
+
 ## What this file is not
 
 A moderation tool. There is no way here to action anything — no resolving a

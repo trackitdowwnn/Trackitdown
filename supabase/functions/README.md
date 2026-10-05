@@ -11,9 +11,9 @@
 | `submit-payout-details` | the app, from our own native form | submit bank details + identity fields via `accounts.update` while the prefill window is open, then open the gate. **Transit only** — nothing stored, nothing logged |
 | `connect-onboarding` | the app, from the payouts surface | answer `details_required` until our form has run (minting a session first would shut the prefill window **forever**), then return an **Account Session** (`onboarding_session`) for the in-app component, or a hosted **link** for `account_update` / as a fallback. Takes no request body — the server decides from the account's own state |
 | `connect-return` | **Stripe's browser**, after hosted onboarding | an HTTPS page that forwards to `trackitdown://payouts?onboarding=…`. Exists because Account Links accept **http/https only** — a custom scheme is rejected with "Not a valid URL". Deployed `--no-verify-jwt`: Stripe's browser has no session |
-| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` call the ONE function `mark_post_payment_held` (serves both pricing modes; a bounty and a £5 listing fee both reach `held` and are told apart only by `payments.kind`, which every refund/payout selector must filter on) which flips the post `draft → active` either way (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts; on `charge.refunded` confirm the refund (`→ cancelled`); on **`account.updated`** copy Stripe's `payouts_enabled` onto the payee row — the ONLY thing that ever makes a spotter payable — then auto-release any waiting credited bounty |
+| `stripe-webhook` | **Stripe**, server-to-server | verify the signature, dedupe the event, and on `payment_intent.succeeded` call the ONE function `mark_post_payment_held` (serves both pricing modes: a bounty reaches `held` — or `superseded` when it renews the reward or is a stray capture, refunded by the sweep — and a £5 listing fee reaches `collected`, ADR-0018) which flips a draft post `draft → active` (LIVE-ON-PAYMENT, 2026-07-30) then fire-and-forget the spotter alerts; on `charge.refunded` reconcile through `reconcile_payment_refund`, which decides from the ledger (the post's current reward closes it; a superseded payment never touches it); on `charge.refund.updated` with status `failed`, email the operator; on **`account.updated`** copy Stripe's `payouts_enabled` onto the payee row — the ONLY thing that ever makes a spotter payable — then auto-release any waiting credited bounty |
 | `create-payout-account` | the app, from the earn-moment form | ADR-0010 credit-time path: create the v2 recipient account from two CLIENT-minted tokens (identity `accttok_`, bank `btok_`), or replace just the bank (RE-BANK). Auto-releases on the spot if Stripe activates immediately |
-| `release-held-refunds` | **Supabase Cron**, hourly (`x-cron-secret`) | the hold sweep (ADR-0011): refund expired undisputed holds under the same idempotency key the immediate exit would have used; retry upheld-dispute payouts through the release core; send dispute outcome pushes. Deployed `--no-verify-jwt`; safe to invoke by hand, twice |
+| `release-held-refunds` | **Supabase Cron**, hourly (`x-cron-secret`) | the hold sweep (ADR-0011): refund everything `refunds_due` lists — expired undisputed holds and superseded payments — under the payment's own idempotency key (`payment-refund-<pi>`, the same one the immediate exit uses); email the operator about reward money 75+ days old (Stripe's 90-day platform-balance limit); retry upheld-dispute payouts through the release core; send dispute outcome pushes. Deployed `--no-verify-jwt`; safe to invoke by hand, twice |
 
 **Dispute runbook (v1, by hand):** a `refund_disputes` row lands `open` →
 read the sighting trail (photos + capture GPS + timestamps + chat) within the
@@ -98,8 +98,10 @@ verification on (they act on behalf of the signed-in owner).
 ### 5. Register the webhook endpoint
 In **Developers → Webhooks → Add endpoint**:
 - URL: `https://<your-project-ref>.functions.supabase.co/stripe-webhook`
-- Events: `payment_intent.succeeded`, `payment_intent.payment_failed`, and
-  `charge.refunded` (the refund confirmation)
+- Events: `payment_intent.succeeded`, `payment_intent.payment_failed`,
+  `charge.refunded` (the refund confirmation), and `charge.refund.updated`
+  (so a refund the bank later bounces reaches the operator — the money is
+  back on the platform balance, where Stripe's 90-day limit still runs)
 - Copy the endpoint's **Signing secret** (`whsec_...`) and set it:
 ```bash
 npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...

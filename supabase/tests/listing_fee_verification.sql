@@ -346,18 +346,45 @@ begin
   -- check describes ("a stale bounty intent that captured after a draft
   -- pricing switch") is escrow-kinded BEFORE the webhook lands, so building it
   -- that way exercises the capture path too instead of hand-setting a state.
+  -- The listing is paid for and live; THEN a stale escrow intent from before
+  -- the owner switched the draft to fee pricing captures late.
   v_fee := pg_temp.seed_free_listing();
   perform public.record_post_payment_intent(v_fee, 'pi_f', 500);
-  update public.payments set kind = 'bounty_escrow', amount_pence = 25000
-   where stripe_payment_intent_id = 'pi_f';
   perform public.mark_post_payment_held('pi_f');
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
+  values (v_fee, 'pi_f_stale', 'failed', 25000, 'bounty_escrow');
+  perform public.mark_post_payment_held('pi_f_stale');
+
+  -- ⚠️ EXPECTATION CHANGED 2026-10-05 (20261005110000). This capture used to
+  -- land in `held` on a fee-priced post: real money with no refund path, which
+  -- cancel_fee_listing then (rightly) refused to strand further — the
+  -- STRANDED ESCROW / ESCROW_NEEDS_REVIEW case in deactivate-post. A bounty
+  -- capture for an amount the post does not offer is now a STRAY: superseded,
+  -- refunded IN FULL by the sweep. So the post holds no escrow, and taking the
+  -- listing down is safe again. This is the fix, not a test bent to fit.
+  if (select status from public.payments where stripe_payment_intent_id = 'pi_f_stale') <> 'superseded'
+     or not (select refund_fee_absorbed from public.payments where stripe_payment_intent_id = 'pi_f_stale') then
+    raise exception 'CHECK 7 FAILED: an escrow capture on a fee-priced post is % — it must be a stray (superseded, refunded in full), never held',
+      (select status from public.payments where stripe_payment_intent_id = 'pi_f_stale');
+  end if;
+  perform public.cancel_fee_listing(v_fee);
+  if (select status from public.posts where id = v_fee) <> 'cancelled' then
+    raise exception 'CHECK 7 FAILED: the fee listing could not come down once its stray charge was routed home';
+  end if;
+
+  -- ...and the REFUSAL still holds if held escrow ever reaches a fee post by
+  -- any other route: seeded directly, the impossible state, as a second lock.
+  v_fee := pg_temp.seed_free_listing();
+  update public.posts set status = 'active' where id = v_fee;
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
+  values (v_fee, 'pi_f_seeded', 'held', 25000, 'bounty_escrow');
   begin
     perform public.cancel_fee_listing(v_fee);
     raise exception 'CHECK 7 FAILED: a post carrying held escrow was cancelled with no refund';
   exception when others then
     if sqlerrm not like '%POST_HAS_BOUNTY%' then raise; end if;
   end;
-  raise notice 'CHECK 7 passed: cancel_fee_listing refuses a bounty post and a post holding escrow';
+  raise notice 'CHECK 7 passed: a stray escrow capture on a fee post goes home in full; cancel_fee_listing still refuses a bounty post and a post holding escrow';
 end $c$;
 rollback;
 

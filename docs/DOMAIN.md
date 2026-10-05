@@ -354,8 +354,23 @@ A post with both would be charged twice; one with neither would be live for free
 | Owner pays | £10–£5,000, escrowed | **£5 fixed fee**, once |
 | Platform keeps | 5% of the bounty, on recovery | the whole fee, on capture |
 | Spotter gets | 95% of the bounty | **credit + reputation only** |
-| Refundable? | yes, minus the card fee | **no** |
-| Ledger state | `requires_payment → held → released \| refunded` | `requires_payment → collected` (terminal) |
+| Refundable? | yes, minus the card fee — **in full** for a stray capture | **no** |
+| Ledger state | `requires_payment → held → released \| refunded`; or `→ superseded → refunded` | `requires_payment → collected` (terminal) |
+
+**`superseded` (2026-10-05):** a captured bounty that is not the post's
+current reward and is owed back to the owner. The hourly sweep refunds it.
+There are two ways in:
+- **A renewal replaced it.** The owner bears the card fee, as on any exit
+  they chose.
+- **A stray capture.** For example, a late success on a voided intent, a
+  charge for an amount the post does not offer, or a capture on a closed
+  post. The fee is absorbed and the owner gets it back in full, because they
+  never chose that charge.
+
+At most one bounty payment per post is ever `held`, and a database index
+enforces it (`payments_one_held_per_post_uidx`). Why this exists: Stripe caps
+funds on the platform balance at 90 days, so a reward gets a term (see
+`supabase/migrations/20261005110000_a_reward_can_be_replaced.sql`).
 
 **Why a listing fee exists at all:** £50, the floor before 2026-08-13, was the price of admission for a theft
 victim, at the moment they can least afford it and in the hours that matter

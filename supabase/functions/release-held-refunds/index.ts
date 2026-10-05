@@ -4,19 +4,23 @@
  *        clock, so every timed job hangs off it. Phase 0/0b/0c: retention
  *        (notification purge, 90-day location purge, orphaned photo bytes in
  *        both buckets). Phase 0d-warn/0d: the cancelled-post deletion warning
- *        and the 30-day purge it precedes. Phase 1: expired, undisputed holds
- *        get the refund the owner asked for. Phase 2: upheld disputes get the
- *        spotter paid (through the existing release core) and every resolved
- *        dispute gets its outcome push. Phase 4: the ADR-0019 "still missing?"
- *        liveness ask.
+ *        and the 30-day purge it precedes. Phase 1: every refund refunds_due
+ *        names — expired, undisputed holds get the refund the owner asked
+ *        for, and superseded payments (a renewed reward, a stray capture) go
+ *        home. Phase 1b: reward money 75+ days old is emailed to the operator
+ *        (Stripe's 90-day platform-balance limit). Phase 2: upheld disputes
+ *        get the spotter paid (through the existing release core) and every
+ *        resolved dispute gets its outcome push. Phase 4: the ADR-0019 "still
+ *        missing?" liveness ask.
  * WHY:   A hold is a promise with a date on it: "your refund is sent after
  *        {date} unless a sighting is contested". Nothing else in the system
  *        acts on the clock — there is no scheduler anywhere until this — so
  *        without the sweep that promise is a lie and the money strands.
  *        Invoked hourly by Supabase Cron, and safely by hand: everything here
- *        is idempotent (refunds under the SAME per-path key the immediate
- *        exit would have used, payouts under post-payout-{id}, pushes behind
- *        conditional-update claims), so double-invocation does nothing twice.
+ *        is idempotent (refunds under the payment's own key,
+ *        payment-refund-{pi} — the SAME key the immediate exit used — payouts
+ *        under post-payout-{id}, pushes and alerts behind conditional-update
+ *        claims), so double-invocation does nothing twice.
  *
  * MONEY: the sweep decides WHEN, never HOW MUCH. Refund arithmetic lives in
  *        _shared/refundEscrow.ts (authoritative fee, range guard); the payout
@@ -29,13 +33,17 @@
  *        failures are logged and skipped, never thrown: one broken hold must
  *        not stop the rest of the queue, and the next run retries it.
  * LINKS: supabase/migrations/20260805100000_refund_holds_and_disputes.sql;
- *        _shared/refundEscrow.ts, _shared/releasePayout.ts, _shared/push.ts;
+ *        supabase/migrations/20261005110000_a_reward_can_be_replaced.sql
+ *          (refunds_due, claim_money_deadline_alerts);
+ *        _shared/refundEscrow.ts, _shared/releasePayout.ts, _shared/push.ts,
+ *        _shared/opsAlert.ts;
  *        docs/decisions/ADR-0011-refund-holds-and-disputes.md (cron setup).
  */
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { errorResponse, jsonResponse } from '../_shared/http.ts';
-import { refundHeldEscrow } from '../_shared/refundEscrow.ts';
+import { refundPayment } from '../_shared/refundEscrow.ts';
+import { sendOpsAlert } from '../_shared/opsAlert.ts';
 import { releasePayoutForPost } from '../_shared/releasePayout.ts';
 import { notifyUsers } from '../_shared/push.ts';
 import { announcePayoutSent, announceRecoveryToWatchers } from '../_shared/recoveryAnnounce.ts';
@@ -80,6 +88,8 @@ Deno.serve(async (request) => {
     cancelledPostsPurged: 0,
     cancelledPostsSkipped: 0,
     stillMissingAsked: 0,
+    deadlineAlerts: 0,
+    deadlineAlertsEmailed: null as boolean | null,
   };
 
   // --- Phase 0: feed retention (ADR-0012 §8) ---------------------------------
@@ -298,65 +308,67 @@ Deno.serve(async (request) => {
     console.error('[posts] cancelled-post purge failed', (err as Error).message);
   }
 
-  // --- Phase 1: expired, undisputed holds → the owner's refund ---------------
-  // "Released" is derived, not stored: a hold whose payment is no longer
-  // `held` simply stops matching this query. That is the idempotency.
-  const { data: due, error: dueError } = await admin
-    .from('refund_holds')
-    // MONEY: the !inner join filters on kind too — see refundEscrow.ts. This
-    // is the HOURLY CRON, so an unfiltered fee row here is money leaving the
-    // platform on a timer with no human in the loop.
-    .select('post_id, exit_path, payments!inner(status, kind)')
-    .lt('expires_at', new Date().toISOString())
-    .eq('payments.status', 'held')
-    // ⚠️ SINCE ADR-0018 a captured fee lands in `collected`, so the
-    // `payments.status = held` join above already excludes it. This filter is
-    // kept as the second lock — and it matters most HERE, because this is the
-    // unattended hourly path where a fee slipping through would be refunded
-    // days later with nobody watching.
-    .eq('payments.kind', 'bounty_escrow');
-
+  // --- Phase 1: every refund that is due → the owner ------------------------
+  // ONE SQL definition of "due" (refunds_due, 20261005110000): expired holds
+  // with a held reward and no open/upheld dispute (an open dispute pauses the
+  // refund; an upheld one forecloses it — that money goes to the spotter in
+  // Phase 2), and superseded payments (renewed, or a stray capture) owed back
+  // at once. It replaces a PostgREST join that leaned on a relationship the two
+  // tables never declared. "Released" is still derived, not stored: a refunded
+  // payment stops matching. That is the idempotency.
+  //
+  // MONEY: refunds_due filters status AND kind = bounty_escrow, and
+  // refundPayment re-checks both — a fee can never leave here. This is the
+  // HOURLY CRON: anything that slipped through would move money with no human
+  // in the loop, which is why both locks stay.
+  const { data: due, error: dueError } = await admin.rpc('refunds_due', { p_limit: 50 });
   if (dueError) {
-    console.error('[payments] hold sweep query failed', dueError.message);
+    console.error('[payments] refunds_due failed', dueError.message);
   }
-  for (const hold of due ?? []) {
-    const postId = hold.post_id as string;
-    const exitPath = hold.exit_path as 'deactivate' | 'recovery';
+  // The reason picks the terminal record — recorded in the ledger, never
+  // re-derived: a deactivation cancels, a recovery finishes the recovery, a
+  // superseded payment is recorded with its post left exactly as it is.
+  // ⚠️ EXHAUSTIVE ON PURPOSE. A reason this code does not know (a future one
+  // added to refunds_due before this is redeployed) is SKIPPED, never mapped
+  // to a default: sending a held reward to reconcile would cancel its post.
+  const TERMINAL_RPC: Record<string, string> = {
+    deactivate: 'mark_post_payment_refunded',
+    recovery: 'mark_post_recovered_no_spotter',
+    superseded: 'reconcile_payment_refund',
+  };
+  for (const row of (due ?? []) as {
+    payment_intent_id: string;
+    post_id: string | null;
+    reason: string;
+  }[]) {
+    const paymentIntentId = row.payment_intent_id;
+    const postId = row.post_id;
+    const rpc = TERMINAL_RPC[row.reason];
+    if (!rpc) {
+      console.error('[payments] refunds_due returned an unknown reason — skipped', {
+        paymentIntentId,
+        reason: row.reason,
+      });
+      summary.skipped += 1;
+      continue;
+    }
     try {
-      // An open dispute pauses the refund; an upheld one forecloses it —
-      // that money is going to the spotter in Phase 2.
-      const { count: blocking, error: blockError } = await admin
-        .from('refund_disputes')
-        .select('id', { count: 'exact', head: true })
-        .eq('post_id', postId)
-        .in('status', ['open', 'upheld']);
-      if (blockError) {
-        console.error('[payments] dispute check failed', { postId });
-        summary.skipped += 1;
-        continue;
-      }
-      if ((blocking ?? 0) > 0) {
-        summary.skipped += 1;
-        continue;
-      }
-
-      // THE SAME KEY the immediate exit would have used: if the owner's
-      // original request died after Stripe but before the ledger, this
-      // retries into that refund instead of minting a second one.
-      const outcome = await refundHeldEscrow(admin, stripe, {
-        postId,
-        idempotencyKey: exitPath === 'deactivate' ? `post-refund-${postId}` : `recovery-refund-${postId}`,
-        metadata: exitPath === 'recovery' ? { reason: 'recovered_no_spotter' } : undefined,
+      // THE SAME KEY every path uses for this payment (`payment-refund-<pi>`):
+      // if the owner's original request died after Stripe but before the
+      // ledger, this retries into that refund instead of minting a second one.
+      // The status the row was listed in is the only one accepted: a hold's
+      // reward must still be held, a superseded payment still superseded.
+      const outcome = await refundPayment(admin, stripe, {
+        paymentIntentId,
+        statuses: row.reason === 'superseded' ? ['superseded'] : ['held'],
       });
       if (outcome.status !== 'refunded') {
-        // no_held_payment = already released between query and here; the
-        // others retry next run.
+        // no_held_payment = settled between the query and here; the others
+        // retry next run.
         summary.skipped += 1;
         continue;
       }
 
-      const rpc =
-        exitPath === 'deactivate' ? 'mark_post_payment_refunded' : 'mark_post_recovered_no_spotter';
       const { error: rpcError } = await admin.rpc(rpc, {
         p_payment_intent_id: outcome.paymentIntentId,
         p_refund_id: outcome.refundId,
@@ -365,21 +377,77 @@ Deno.serve(async (request) => {
       if (rpcError) {
         // Refund issued, record failed: the idempotency key + never-regress
         // RPC + charge.refunded webhook make the next run safe.
-        console.error('[payments] hold sweep record failed', { postId, error: rpcError.message });
+        console.error('[payments] refund record failed', {
+          paymentIntentId,
+          reason: row.reason,
+          error: rpcError.message,
+        });
         summary.skipped += 1;
         continue;
       }
-      console.log('[payments] held refund released', { postId, exitPath });
+      console.log('[payments] due refund released', { postId, reason: row.reason });
       summary.refunded += 1;
-      if (exitPath === 'recovery') {
+      if (row.reason === 'recovery' && postId) {
         // The post just became recovered_no_spotter — the watchers hear the
         // car went home. Claim-guarded; a replay announces nothing twice.
         await announceRecoveryToWatchers(admin, postId);
       }
     } catch (err) {
-      console.error('[payments] hold sweep item failed', { postId, error: (err as Error).message });
+      console.error('[payments] refund item failed', {
+        paymentIntentId,
+        error: (err as Error).message,
+      });
       summary.skipped += 1;
     }
+  }
+
+  // --- Phase 1b: reward money getting old → tell a person -------------------
+  // Stripe caps funds on the platform balance at 90 days (lead support,
+  // 2026-10-05) and may offboard an account that breaches it persistently.
+  // Anything captured 75+ days ago that is still held or owed back — a legacy
+  // reward with no term yet, an unresolved dispute or payout review, a spotter
+  // who never onboarded — is claimed at most once a day per payment and
+  // emailed. Ids and states only (claim_money_deadline_alerts builds the rows;
+  // no plate, name or amount). Best-effort like everything else here.
+  try {
+    const { data: aging, error: agingError } = await admin.rpc('claim_money_deadline_alerts', {
+      p_limit: 50,
+    });
+    if (agingError) {
+      console.error('[payments] deadline alert claim failed', agingError.message);
+    } else if (Array.isArray(aging) && aging.length > 0) {
+      summary.deadlineAlerts = aging.length;
+      const lines = (aging as Record<string, unknown>[]).map(
+        (row) =>
+          `• payment ${row.paymentId} (post ${row.postId ?? 'deleted'}): ${row.paymentStatus}, post ${row.postStatus ?? '—'}, ` +
+          `${row.daysHeld} days held, resolve by ${row.resolveBy}. ` +
+          `Open disputes: ${row.openDisputes}. Payout review: ${row.payoutReview ?? 'none'}. ` +
+          `Refund hold until: ${row.refundHoldUntil ?? 'none'}.`,
+      );
+      const sent = await sendOpsAlert(
+        `${aging.length} reward payment(s) approaching Stripe's 90-day limit`,
+        [
+          'Reward money must leave the platform balance before day 90 (Stripe lead support, 2026-10-05).',
+          '',
+          ...lines,
+          '',
+          'What to do: docs/OPERATIONS.md → money deadlines.',
+        ],
+      );
+      summary.deadlineAlertsEmailed = sent;
+      if (!sent) {
+        // The claim was taken before the send. Hand it back so the next run
+        // tries again in an hour, instead of losing a day of the window.
+        const { error: releaseError } = await admin.rpc('release_money_deadline_alerts', {
+          p_payment_ids: (aging as { paymentId: string }[]).map((row) => row.paymentId),
+        });
+        if (releaseError) {
+          console.error('[payments] deadline alert release failed', releaseError.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[payments] deadline alerts failed', (err as Error).message);
   }
 
   // --- Phase 2a: upheld disputes → pay the spotter ---------------------------

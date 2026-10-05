@@ -4,22 +4,24 @@
  *        payment_intent.succeeded advances the ledger row and the post
  *        draft -> ACTIVE (live-on-payment); on payment_intent.payment_failed
  *        marks the ledger row failed (post left as draft for retry); on
- *        charge.refunded confirms the bounty refund (payment -> refunded, post ->
- *        cancelled) — the deactivate-post function is authoritative, this
- *        reconciles it.
+ *        charge.refunded reconciles the refund through reconcile_payment_refund,
+ *        which decides from the ledger — the post's CURRENT reward closes the
+ *        post (cancelled, or recovered_no_spotter on a claimed recovery), a
+ *        superseded payment (renewed, or a stray capture) never touches it. The
+ *        exit functions and the sweep are authoritative; this reconciles them.
+ *        charge.refund.updated with status failed emails the operator.
  *
  *        The succeeded branch serves BOTH pricing modes through ONE function,
  *        mark_post_payment_held, which reads the post: a NULL bounty is a free
  *        listing whose payments row already carries kind='listing_fee'
- *        (20260819100000). Both reach 'held' and both take the post live —
- *        a fee post must reach spotters exactly as an escrowed one does.
+ *        (20260819100000). A fee lands in 'collected' (ADR-0018), a bounty in
+ *        'held' — or 'superseded' if it renews the reward or is a stray — and
+ *        both take a draft post live: a fee post must reach spotters exactly
+ *        as an escrowed one does.
  *
- *        ⚠️ A FEE IN 'held' IS SEPARATED FROM ESCROW BY kind ALONE, and only
- *        the Edge Functions apply that filter (refundEscrow, releasePayout,
- *        release-held-refunds). Lose it in any one of them and a £5 fee becomes
- *        refundable money on an hourly cron. charge.refunded stays bounty-only:
- *        a fee is never refunded, so no refund event can exist for one, and
- *        mark_post_payment_refunded's status guard makes a stray one a no-op.
+ *        Fees are never refunded: a fee is never 'held' or 'superseded', and
+ *        reconcile_payment_refund leaves any other status unchanged, so a
+ *        refund event for one is a no-op.
  * WHY:   The client success callback is NOT trusted to move money state — a
  *        cancelled app, a lying client, or a lost network must never leave
  *        escrow and the post out of sync. Stripe calls this endpoint directly;
@@ -35,8 +37,10 @@
  *        supabase/migrations/20260819100000_a_listing_can_be_free.sql
  *          (payments.kind, and record_post_payment_intent serving both prices);
  *        docs/decisions/ADR-0014-no-bounty-listings.md;
- *        supabase/migrations/20260729100000_post_refund_cancel.sql
- *          (mark_post_payment_refunded — the charge.refunded branch);
+ *        supabase/migrations/20261005110000_a_reward_can_be_replaced.sql
+ *          (reconcile_payment_refund — the charge.refunded branch; renewal and
+ *          strays in mark_post_payment_held);
+ *        supabase/functions/_shared/opsAlert.ts;
  *        docs/decisions/ADR-0002-stripe-connect.md (webhooks: verify + dedupe +
  *          idempotent); supabase/functions/README.md (registering the endpoint).
  */
@@ -50,6 +54,7 @@ import {
   stripeCryptoProvider,
 } from '../_shared/clients.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
+import { sendOpsAlert } from '../_shared/opsAlert.ts';
 
 // NOTE: no CORS / preflight — Stripe calls this server-to-server, not a browser.
 // The endpoint takes the RAW body (signature is computed over the exact bytes),
@@ -143,11 +148,18 @@ Deno.serve(async (request) => {
       if (error) throw error;
       console.log('[payments] escrow charge failed', { paymentIntentId: intent.id });
     } else if (event.type === 'charge.refunded') {
-      // Belt-and-braces confirmation of a bounty refund. The deactivate-post
-      // Edge Function is authoritative (it issues the refund synchronously and
-      // records the transition); this reconciles the SAME state idempotently if
-      // that request died after the refund was issued. mark_post_payment_refunded
-      // is guarded/never-regress, so a duplicate here is a safe no-op.
+      // Belt-and-braces confirmation of a reward refund. The exit functions and
+      // the sweep are authoritative (they issue the refund and record it); this
+      // reconciles the SAME state idempotently if that request died after the
+      // refund was issued.
+      //
+      // ⚠️ THROUGH reconcile_payment_refund, NOT mark_post_payment_refunded
+      // (2026-10-05). The old call cancelled the post for ANY refunded charge.
+      // Once a reward can be renewed, a post has had more than one payment, and
+      // the refund of the OLD one (or a redelivery of that event) would take the
+      // live, renewed listing down. reconcile decides from the ledger: a
+      // superseded payment is recorded with the post untouched; only the post's
+      // current held reward can close it.
       const charge = event.data.object as Stripe.Charge;
       const intentId =
         typeof charge.payment_intent === 'string'
@@ -167,13 +179,49 @@ Deno.serve(async (request) => {
         }
       }
       if (intentId) {
-        const { error } = await admin.rpc('mark_post_payment_refunded', {
+        const { data: outcome, error } = await admin.rpc('reconcile_payment_refund', {
           p_payment_intent_id: intentId,
           p_refund_id: refundId,
           p_refunded_amount_pence: charge.amount_refunded,
         });
         if (error) throw error;
-        console.log('[payments] refund confirmed', { paymentIntentId: intentId });
+        console.log('[payments] refund confirmed', { paymentIntentId: intentId, outcome });
+        if (outcome === 'refunded_with_credited_sighting') {
+          // Only a refund made by hand in the dashboard reaches this: the money
+          // a credited spotter was owed went back to the owner. The ledger now
+          // says so; the post is deliberately left in recovery_claimed because
+          // no terminal state is true. A person settles it with the spotter.
+          await sendOpsAlert('A credited recovery was refunded to the owner', [
+            `PaymentIntent: ${intentId}`,
+            '',
+            'The sighting credited on this post is now unfunded, and the post stays in recovery_claimed.',
+            'Tell the spotter what happened, and decide the post’s final state by hand. See docs/OPERATIONS.md (money deadlines).',
+          ]);
+        }
+      }
+    } else if (event.type === 'charge.refund.updated') {
+      // A refund that FAILS after it was accepted (e.g. the card was closed and
+      // the bank bounced it) puts the money back on the platform balance, where
+      // the 90-day limit is still running and the ledger already says
+      // `refunded`. Nothing can fix that automatically — a person must reach
+      // the owner — so it is emailed to the operator. Only the ids: the event
+      // body carries nothing else this needs.
+      // ⚠️ Stripe only sends this if the endpoint subscribes to
+      // charge.refund.updated (Dashboard → Developers → Webhooks).
+      const refund = event.data.object as Stripe.Refund;
+      if (refund.status === 'failed') {
+        const intentId =
+          typeof refund.payment_intent === 'string'
+            ? refund.payment_intent
+            : refund.payment_intent?.id ?? null;
+        await sendOpsAlert('A refund failed — money is back on the platform balance', [
+          `Refund: ${refund.id}`,
+          `PaymentIntent: ${intentId ?? 'unknown'}`,
+          `Failure reason: ${refund.failure_reason ?? 'not given'}`,
+          '',
+          'The ledger says refunded, but the money returned to the platform balance, where Stripe’s 90-day limit still runs.',
+          'Contact the owner and return it another way, then note it on the payment. See docs/OPERATIONS.md (money deadlines).',
+        ]);
       }
     } else if (event.type === 'account.updated') {
       // A SPOTTER'S payee account changed — almost always them finishing, or
