@@ -700,20 +700,24 @@ as $$
         from public.payments p
        where p.status = 'superseded'
          and p.kind   = 'bounty_escrow'
-         -- SECOND LOCK (the first is mark_post_payment_held, which refuses to
-         -- supersede a reward on a closed, held, disputed, credited or
-         -- under-review post): a superseded payment on a post with a live
-         -- claim on its money WAITS. A stray on such a post simply goes home
-         -- once the claim is settled; the 75-day alert covers the rest.
-         and not exists (
-           select 1 from public.refund_disputes d
-            where d.post_id = p.post_id
-              and d.status in ('open', 'upheld')
-         )
-         and not exists (
-           select 1 from public.sightings s
-            where s.post_id = p.post_id
-              and s.status = 'credited'
+         -- SECOND LOCK. The first is mark_post_payment_held, which only ever
+         -- supersedes a REWARD on a live post nobody had a claim on. This
+         -- one holds back a renewal-superseded payment only if a dispute that
+         -- ALREADY EXISTED when it was superseded is still open or upheld —
+         -- i.e. only if the first lock was somehow bypassed. It deliberately
+         -- does NOT wait on claims made afterwards: a dispute or a credit
+         -- after the renewal is a claim on the NEW reward, and both are
+         -- permanent once upheld/credited, so waiting on them would strand
+         -- the owner's old payment forever. A stray (refund_fee_absorbed)
+         -- was never anyone's reward and always goes home.
+         and (
+           p.refund_fee_absorbed
+           or not exists (
+             select 1 from public.refund_disputes d
+              where d.post_id = p.post_id
+                and d.status in ('open', 'upheld')
+                and d.created_at <= p.superseded_at
+           )
          )
     ) due
    order by due.due_at

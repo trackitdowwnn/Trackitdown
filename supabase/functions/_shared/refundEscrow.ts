@@ -188,6 +188,17 @@ export async function refundPayment(
     const existing = await stripe.refunds.list({ payment_intent: paymentIntentId, limit: 10 });
     const settled = existing.data.find((r) => r.status === 'succeeded' || r.status === 'pending');
     if (settled) {
+      if (settled.amount < refundPence) {
+        // A partial refund made by hand. It is recorded as THE refund (the
+        // charge.refunded webhook would record it the same way), which takes
+        // the payment out of the 75-day alert — so the remainder must be
+        // flagged here or it sits on the balance unseen.
+        console.error('[ops] ALERT partial refund recorded — the remainder is still on the platform balance', {
+          paymentIntentId,
+          refundedPence: settled.amount,
+          expectedPence: refundPence,
+        });
+      }
       return {
         status: 'refunded',
         refundId: settled.id,

@@ -189,6 +189,13 @@ Deno.serve(async (request) => {
     p_refunded_amount_pence: refundPence,
   });
   if (rpcError) {
+    if (rpcError.message?.includes('PAYMENT_NOT_CURRENT_REWARD')) {
+      // Unreachable while renewal is refused on a recovery_claimed post (the
+      // capture-time check in mark_post_payment_held); logged distinctly so a
+      // future path that breaks that rule is visible, not "please try again".
+      console.error('[payments] recovery refund hit a replaced payment', { postId, paymentIntentId });
+      return errorResponse('REWARD_RENEWED', 'Your reward changed while this was processing. Please try again.', 409);
+    }
     // The refund SUCCEEDED but we couldn't record it. Retryable: the
     // idempotency key reuses the same refund and the RPC never regresses.
     console.error('[payments] mark_post_recovered_no_spotter failed', rpcError.message);

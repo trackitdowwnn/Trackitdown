@@ -226,6 +226,17 @@ Deno.serve(async (request) => {
     p_refunded_amount_pence: refundPence,
   });
   if (rpcError) {
+    if (rpcError.message?.includes('PAYMENT_NOT_CURRENT_REWARD')) {
+      // A renewal captured between the read and the record: the refund went to
+      // the OLD payment (the webhook records it as superseded) and the listing
+      // is still live on the NEW reward. Say so — a retry deactivates that one.
+      console.error('[payments] deactivate raced a renewal', { postId, paymentIntentId });
+      return errorResponse(
+        'REWARD_RENEWED',
+        'Your reward was just renewed, so your listing is still live. Please try again to take it down.',
+        409,
+      );
+    }
     // The refund succeeded but we couldn't record it. Surface a retryable error;
     // the refund idempotency key means a retry reuses the same refund and the RPC
     // is idempotent — and the charge.refunded webhook reconciles regardless.

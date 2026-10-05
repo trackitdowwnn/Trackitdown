@@ -620,27 +620,45 @@ rollback;
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 17 — refunds_due's second lock: a superseded payment on a post with an
--- open dispute waits.
+-- CHECK 17 — refunds_due's second lock, both directions:
+--   (a) a RENEWAL-superseded payment waits behind a dispute that already
+--       existed when it was superseded;
+--   (b) it does NOT wait on a dispute opened afterwards (a claim on the new
+--       reward), and a STRAY never waits — even on a recovered post with a
+--       credited sighting, which would otherwise strand it forever.
 -- -----------------------------------------------------------------------------
 begin;
 insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
-values ('eeee0000-0000-0000-0000-000000000027', '11111111-1111-1111-1111-111111111111', 'cancelled', 20000, 'RL17 AAA');
-insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, superseded_at)
-values ('eeee0000-0000-0000-0000-000000000027', 'pi_rl17', 'superseded', 20000, now());
+values ('eeee0000-0000-0000-0000-000000000027', '11111111-1111-1111-1111-111111111111', 'cancelled', 20000, 'RL17 OLD'),
+       ('eeee0000-0000-0000-0000-000000000037', '11111111-1111-1111-1111-111111111111', 'active',    30000, 'RL17 NEW'),
+       ('eeee0000-0000-0000-0000-000000000047', '11111111-1111-1111-1111-111111111111', 'recovered', 20000, 'RL17 REC');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, superseded_at, refund_fee_absorbed)
+values ('eeee0000-0000-0000-0000-000000000027', 'pi_rl17_before', 'superseded', 20000, now() + interval '1 minute', false),
+       ('eeee0000-0000-0000-0000-000000000037', 'pi_rl17_after',  'superseded', 20000, now() - interval '1 day',    false),
+       ('eeee0000-0000-0000-0000-000000000047', 'pi_rl17_stray',  'superseded', 20000, now(),                        true);
 insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
 values ('eeee0017-0000-0000-0000-00000000000d', 'eeee0000-0000-0000-0000-000000000027',
-        '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true);
+        '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true),
+       ('eeee0017-0000-0000-0000-00000000000e', 'eeee0000-0000-0000-0000-000000000037',
+        '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true),
+       ('eeee0017-0000-0000-0000-00000000000f', 'eeee0000-0000-0000-0000-000000000047',
+        '33333333-3333-3333-3333-333333333333', 'credited', 'Camden', true);
 insert into public.refund_disputes (post_id, sighting_id, spotter_id)
 values ('eeee0000-0000-0000-0000-000000000027', 'eeee0017-0000-0000-0000-00000000000d',
+        '33333333-3333-3333-3333-333333333333'),
+       ('eeee0000-0000-0000-0000-000000000037', 'eeee0017-0000-0000-0000-00000000000e',
         '33333333-3333-3333-3333-333333333333');
 
 do $$
+declare
+  v_due text[];
 begin
-  if exists (select 1 from public.refunds_due(500) where payment_intent_id = 'pi_rl17') then
-    raise exception 'CHECK 17 FAILED: a superseded payment on a disputed post was due for refund';
+  select coalesce(array_agg(payment_intent_id order by payment_intent_id), '{}') into v_due
+    from public.refunds_due(500) where payment_intent_id like 'pi_rl17_%';
+  if v_due <> array['pi_rl17_after', 'pi_rl17_stray'] then
+    raise exception 'CHECK 17 FAILED: refunds_due gave % — expected the post-renewal-dispute and the stray due, the pre-existing dispute holding one back', v_due;
   end if;
-  raise notice 'CHECK 17 passed: a superseded payment on a disputed post waits for the dispute';
+  raise notice 'CHECK 17 passed: only a dispute that predates the supersede holds a renewal back; strays always go home';
 end $$;
 rollback;
 
