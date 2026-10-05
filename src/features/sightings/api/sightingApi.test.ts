@@ -175,11 +175,19 @@ describe('buildCreateSightingParams (evidence atomicity)', () => {
       contextFlags: [],
       note: '',
       confirmedFeatureIds: [],
-      reportedCar: { make: 'BMW', model: '3 Series', colour: 'Blue', plate: 'AB12 CDE' },
+      reportedCar: {
+        make: 'BMW',
+        model: '3 Series',
+        colour: 'Blue',
+        plate: 'AB12 CDE',
+        photoUrl: 'https://example.test/listing-hero.jpg',
+      },
       confirmableFeatures: [{ id: 'm1', description: 'Bee sticker' }],
     } as unknown as Parameters<typeof buildCreateSightingParams>[1];
     const params = buildCreateSightingParams(POST_ID, answers, ['p/1.jpg']);
-    expect(JSON.stringify(params)).not.toMatch(/BMW|AB12|Bee sticker|reportedCar|confirmable/);
+    expect(JSON.stringify(params)).not.toMatch(
+      /BMW|AB12|Bee sticker|listing-hero|reportedCar|confirmable/,
+    );
   });
 });
 
@@ -254,12 +262,20 @@ describe('submitSighting', () => {
       photos: [located],
       contextFlags: [],
       note: '',
-      reportedCar: { make: 'BMW', model: '3 Series', colour: 'Blue', plate: 'AB12 CDE' },
+      reportedCar: {
+        make: 'BMW',
+        model: '3 Series',
+        colour: 'Blue',
+        plate: 'AB12 CDE',
+        photoUrl: 'https://example.test/listing-hero.jpg',
+      },
       confirmableFeatures: [{ id: 'm1', description: 'Bee sticker' }],
       contextUnsure: ['state'],
     });
     const payload = JSON.stringify(mockRpc.mock.calls[0][1]);
-    expect(payload).not.toMatch(/BMW|AB12|Bee sticker|reportedCar|confirmable|unsure/i);
+    expect(payload).not.toMatch(
+      /BMW|AB12|Bee sticker|listing-hero|reportedCar|confirmable|unsure/i,
+    );
   });
 
   // Stub migration: the sightings feature's notify-owner-of-sighting push now

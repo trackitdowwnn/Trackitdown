@@ -152,20 +152,33 @@ function ReviewSection({
   );
 }
 
-/** "Blue BMW 3 Series" over its plate, led by the listing's photo. */
+/** The listing's photo across the top (the owner's call, 2026-10-02: "is it
+ *  the same car?" is answered by LOOKING), then the plate and "Blue BMW 3
+ *  Series" on one line, plate first. The name wraps under the plate when the
+ *  line runs out. No photo, or one that fails to load: just the line. */
 function ReportedCarCard({ car }: { car: ReportedCar }) {
   const styles = useThemedStyles(makeStyles);
   const name = [car.colour, car.make, car.model].filter(Boolean).join(' ') || 'This car';
+  // A dead URL (a deleted or moved listing photo) would otherwise leave a
+  // screen-wide grey slab where the car should be. The URL that failed, not a
+  // flag, so a different photo would still get its chance.
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const photoUrl = car.photoUrl;
   return (
     // Not one grouped accessible element: PlateChip keeps its own spelled-out
     // label and long-press copy.
     <View style={styles.car} testID="reported-car">
-      {car.photoUrl ? (
-        <AppImage uri={car.photoUrl} style={styles.carThumb} testID="reported-car-photo" />
+      {photoUrl && photoUrl !== failedUri ? (
+        <AppImage
+          uri={photoUrl}
+          style={styles.carPhoto}
+          onError={() => setFailedUri(photoUrl)}
+          testID="reported-car-photo"
+        />
       ) : null}
-      <View style={styles.carText}>
-        <Text style={styles.carName}>{name}</Text>
+      <View style={styles.carText} testID="reported-car-line">
         {car.plate ? <PlateChip plate={car.plate} onPress={null} /> : null}
+        <Text style={styles.carName}>{name}</Text>
       </View>
     </View>
   );
@@ -389,7 +402,8 @@ export function ConfirmStep({ answers, editStep, busy = false }: StepProps) {
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   // ReviewStep's section rhythm, tightened from xxl to xl: this is a speed
-  // flow, and a full report should fit in about two scrolls.
+  // flow. A full report runs to about three screens on a small phone since
+  // the car photo became a hero (the owner's call), so keep it no longer.
   stack: {
     gap: spacing.xl,
   },
@@ -438,27 +452,40 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textSecondary,
     textDecorationLine: 'none',
   },
+  // overflow hidden so the photo takes the card's top corners.
   car: {
     ...cardSurface(c),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
+    overflow: 'hidden',
   },
-  carThumb: {
-    width: sizes.reportedCarThumb,
-    height: sizes.reportedCarThumb,
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
+  // Full width at the 4:3 every car photo in the app uses (VehicleCard):
+  // cars are landscape subjects. Not MediaIdentityCard's tall 4:5 hero, which
+  // would push the rest of a speed flow's review a screen further down.
+  // (AppImage supplies the surfaceSubtle placeholder.)
+  carPhoto: {
+    width: '100%',
+    aspectRatio: sizes.reportedCarPhotoAspect,
   },
+  // One line: plate, then name. Wraps (name under plate) on a narrow phone
+  // or at large text rather than squeezing the name to nothing. When there's
+  // a plate, the 26pt PlateChip sets the first line's height (it pins itself
+  // to flex-start) and the 22pt name centres against it; don't "fix" the
+  // centring in the chip.
   carText: {
-    flex: 1,
-    gap: spacing.xs,
-    alignItems: 'flex-start',
+    padding: spacing.lg,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: spacing.sm,
+    rowGap: spacing.xs,
   },
+  // includeFontPadding off: text beside a chip (DESIGN_SYSTEM.md Typography,
+  // the Android includeFontPadding rule). Satoshi's Android font box is padded
+  // unevenly and sat the name off the plate's centre.
   carName: {
     ...typography.cardTitle,
     color: c.textPrimary,
+    flexShrink: 1,
+    includeFontPadding: false,
   },
   photos: {
     flexDirection: 'row',

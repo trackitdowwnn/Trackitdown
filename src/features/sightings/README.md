@@ -75,9 +75,10 @@ optional skippable. Safety copy calm, unmissable, never lecturing.
    yet" at 0, always shown so the page never jumps) counts above.
 3. **Check and send** (`components/ConfirmStep.tsx`, redesigned 2026-10-02
    on the GOV.UK check-answers pattern): labelled sections.
-   - **You're reporting**: the car from the listing (colour make model, the
-     plate, its first photo), from the `reportedCar` seed. Hidden if the seed
-     fetch failed. Not editable.
+   - **You're reporting**: the car from the listing (its first photo across
+     the top, then the plate and colour make model on one line), from the
+     `reportedCar` seed. Hidden if the seed fetch failed; the photo drops
+     out if it fails to load. Not editable.
    - **Photos** (Edit → the photos step): the real shots in three 3:4 columns,
      tap for full screen, "Library" badge on gallery photos.
    - **Where and when**: the display-only map of the CAPTURED point, "Near
