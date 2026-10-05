@@ -9,6 +9,8 @@
  *        src/features/payments/hooks/useBountyPayment.ts,
  *        src/features/payments/hooks/useDeactivatePost.ts,
  *        src/features/payments/screens/PayoutsScreen.tsx,
+ *        src/features/payments/screens/ChangeRewardScreen.tsx (+ its
+ *          api/rewardChangeApi.ts — changing a live listing's reward),
  *        src/features/payments/BountyPaymentProvider.tsx.
  */
 
@@ -49,3 +51,8 @@ export {
 } from './hooks/usePayoutAccount';
 export { usePayoutsRelevant } from './hooks/usePayoutsRelevant';
 export { PayoutsScreen } from './screens/PayoutsScreen';
+export { ChangeRewardScreen } from './screens/ChangeRewardScreen';
+export {
+  CHANGE_REWARD_ERROR_MESSAGES,
+  type RewardStatus,
+} from './api/rewardChangeApi';

@@ -433,8 +433,14 @@ commenting standards.
   `application`, and ours are Express. **This is financial PII in transit and
   must appear in the privacy policy and the Art. 30 record.**
 - **Two pricing modes since 2026-08-20 (ADR-0014), and the amount is
-  server-authoritative in both.** A post carries EITHER a bounty (escrowed) OR a
-  fixed £5 listing fee — never both, never neither, enforced by a table CHECK.
+  server-authoritative in both.** A post is PRICED as either a bounty (escrowed)
+  or a fixed £5 listing fee. *(Since 2026-10-05 a live fee listing can ADD a
+  reward, and then carries both: the £5 stays `collected` and non-refundable,
+  and the reward is held like any other. Changing a live reward is a new
+  charge whose amount the owner writes through `set_reward_renewal_amount`,
+  never in the charge request. That function refuses to LOWER a reward while
+  recent uncredited sightings exist, and capture re-checks it. See
+  20261005130000.)*
   The client never sends either amount, and specifically **never sends the fee**:
   `create_post` stamps it from `current_listing_fee_pence()` and
   `posts.listing_fee_pence` is deliberately absent from the client column grants,

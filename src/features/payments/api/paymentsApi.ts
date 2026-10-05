@@ -58,6 +58,10 @@ export const DEACTIVATE_ERROR_MESSAGES: Record<string, string> = {
   // they were confirming, and the honest answer is "look again".
   ATTESTATION_REQUIRED: 'This listing has recent sightings to look at first.',
   ATTESTATION_STALE: 'A new sighting arrived while you were confirming. Please look again.',
+  // The reward was changed (another device, or a payment that just landed)
+  // between reading it and refunding it: the listing is still live on the
+  // new reward, and trying again takes that one down.
+  REWARD_RENEWED: 'Your reward was just changed, so your listing is still live. Please try again to take it down.',
 };
 
 const DEACTIVATE_FALLBACK = 'We couldn’t deactivate your listing. Please try again.';

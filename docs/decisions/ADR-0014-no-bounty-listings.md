@@ -93,7 +93,12 @@ surface.
    on that memory, on the money path, forever. `kind` exists too, but only so a
    row is discriminable while still `requires_payment`.
 
-5. **The two paths cannot cross, in both directions.** `record_post_payment_intent`
+5. *(Amended 2026-10-05: a LIVE fee listing may now ADD a reward through
+   the reward-change path in 20261005130000. The £5 stays `collected` and
+   non-refundable; the reward is a separate `bounty_escrow` charge that is
+   `held` like any other. At the DRAFT stage, which is what this point is
+   about, the paths still cannot cross.)*
+   **The two paths cannot cross, in both directions.** `record_post_payment_intent`
    refuses a fee-priced post and `record_listing_fee_intent` refuses a
    bounty-priced one; `mark_post_payment_held` refuses a `listing_fee` row and
    `mark_listing_fee_collected` refuses a `bounty_escrow` one. The asymmetry

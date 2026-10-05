@@ -4,7 +4,9 @@
  *        guard the arithmetic, and issue the refund under the PAYMENT's
  *        idempotency key. `refundPayment` refunds one named payment (the sweep's
  *        superseded and held-refund paths); `refundHeldEscrow` finds a post's
- *        held reward and refunds that (the two owner exits).
+ *        held reward and refunds that (the two owner exits);
+ *        `refundSupersededForPost` sends a replaced reward home the moment a
+ *        reward change captures (stripe-webhook; the sweep is its retry).
  * WHY:   This sequence existed twice, line-for-line, in `deactivate-post` and
  *        `refund-recovery`, and the refund-hold sweep would have made three.
  *        What stays WITH the callers is everything that makes them different:
@@ -41,6 +43,7 @@
  * LINKS: supabase/functions/deactivate-post/index.ts;
  *        supabase/functions/refund-recovery/index.ts;
  *        supabase/functions/release-held-refunds/index.ts (the sweep);
+ *        supabase/functions/stripe-webhook/index.ts (refundSupersededForPost);
  *        supabase/migrations/20261005110000_a_reward_can_be_replaced.sql
  *          (refunds_due, refund_fee_absorbed, the one-held index);
  *        supabase/tests/refundEscrow.test.ts;
@@ -236,6 +239,57 @@ export async function refundPayment(
     feePence: feeAbsorbed ? 0 : feePence,
     paymentIntentId,
   };
+}
+
+/**
+ * Refund every superseded payment refunds_due lists for ONE post, and record
+ * each — the webhook's best effort right after a renewal captures, so the old
+ * reward goes home in minutes rather than at the next hourly sweep (which
+ * remains the retry: this never throws and records nothing it did not refund).
+ * Going through refunds_due, not a direct select, keeps its second lock (a
+ * pre-existing dispute holds a renewal's old payment back) in force here too.
+ */
+export async function refundSupersededForPost(
+  admin: SupabaseClient,
+  stripe: Stripe,
+  postId: string,
+): Promise<number> {
+  let refunded = 0;
+  try {
+    // Narrowed to this post IN SQL: the system-wide oldest-first list could be
+    // filled by an older backlog before this post's row appeared in it.
+    const { data: due, error } = await admin.rpc('refunds_due', { p_limit: 50, p_post_id: postId });
+    if (error) {
+      console.error('[payments] refunds_due failed (webhook)', error.message);
+      return 0;
+    }
+    const rows = ((due ?? []) as { payment_intent_id: string; post_id: string | null; reason: string }[])
+      .filter((row) => row.post_id === postId && row.reason === 'superseded');
+    for (const row of rows) {
+      const outcome = await refundPayment(admin, stripe, {
+        paymentIntentId: row.payment_intent_id,
+        statuses: ['superseded'],
+      });
+      if (outcome.status !== 'refunded') {
+        continue;
+      }
+      const { error: recordError } = await admin.rpc('reconcile_payment_refund', {
+        p_payment_intent_id: outcome.paymentIntentId,
+        p_refund_id: outcome.refundId,
+        p_refunded_amount_pence: outcome.refundPence,
+      });
+      if (recordError) {
+        // Refund issued, record failed: the charge.refunded webhook and the
+        // sweep both reconcile it under the same per-payment key.
+        console.error('[payments] superseded refund record failed', recordError.message);
+        continue;
+      }
+      refunded += 1;
+    }
+  } catch (err) {
+    console.error('[payments] superseded refund failed (webhook)', (err as Error).message);
+  }
+  return refunded;
 }
 
 /**

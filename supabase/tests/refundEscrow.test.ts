@@ -19,6 +19,7 @@ import {
   refundHeldEscrow,
   refundIdempotencyKey,
   refundPayment,
+  refundSupersededForPost,
 } from '../functions/_shared/refundEscrow';
 
 type Row = Record<string, unknown> | null;
@@ -200,6 +201,49 @@ describe('refundPayment', () => {
     const outcome = await refundPayment(admin as Any, stripe as Any, { paymentIntentId: 'pi_abc' });
 
     expect(outcome).toEqual({ status: 'lookup_failed' });
+    expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('refundSupersededForPost', () => {
+  it('refunds only THIS post’s superseded payments, superseded-only, and records each through reconcile', async () => {
+    const { admin, filters } = fakeAdmin({ ...HELD, stripe_payment_intent_id: 'pi_old' });
+    const rpc = jest.fn((name: string) =>
+      Promise.resolve(
+        name === 'refunds_due'
+          ? {
+              data: [
+                { payment_intent_id: 'pi_old', post_id: 'post-1', reason: 'superseded' },
+                { payment_intent_id: 'pi_other_post', post_id: 'post-2', reason: 'superseded' },
+                { payment_intent_id: 'pi_hold', post_id: 'post-1', reason: 'deactivate' },
+              ],
+              error: null,
+            }
+          : { data: 'superseded_refunded', error: null },
+      ),
+    );
+    const { stripe, create } = fakeStripe(320, 're_old');
+
+    const refunded = await refundSupersededForPost({ ...admin, rpc } as Any, stripe as Any, 'post-1');
+
+    expect(rpc).toHaveBeenCalledWith('refunds_due', { p_limit: 50, p_post_id: 'post-1' });
+    expect(refunded).toBe(1);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][1]).toEqual({ idempotencyKey: 'payment-refund-pi_old' });
+    expect(filters).toContainEqual(['in', 'status', ['superseded']]);
+    expect(rpc).toHaveBeenCalledWith('reconcile_payment_refund', {
+      p_payment_intent_id: 'pi_old',
+      p_refund_id: 're_old',
+      p_refunded_amount_pence: 19680,
+    });
+  });
+
+  it('never throws — a failed list is a zero, and the sweep retries', async () => {
+    const { admin } = fakeAdmin(HELD);
+    const rpc = jest.fn(() => Promise.resolve({ data: null, error: { message: 'boom' } }));
+    const { stripe, create } = fakeStripe(320);
+
+    await expect(refundSupersededForPost({ ...admin, rpc } as Any, stripe as Any, 'post-1')).resolves.toBe(0);
     expect(create).not.toHaveBeenCalled();
   });
 });

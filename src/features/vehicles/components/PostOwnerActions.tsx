@@ -2,7 +2,8 @@
  * WHAT:  PostOwnerActions — everything an owner can DO to their listing, in one
  *        mountable piece: the "Manage your listing" sheet, the deactivate /
  *        delete-draft / delete-listing confirms, the owner-denial attestation,
- *        the per-section editors, and send-the-reward. Headless apart from
+ *        the per-section editors, send-the-reward, and the change / add
+ *        reward row (opens /change-reward). Headless apart from
  *        those overlays; the host drives it through a ref.
  * WHY:   Two surfaces raise the same sheet — the listing page ("Manage
  *        listing", the section pencils, the body's deactivate button) and a
@@ -51,6 +52,7 @@ import { deleteDraft } from '../api/draftApi';
 import { RecoveryError, releasePayout } from '../api/recoveryApi';
 import { buildSharePayload } from '../lib/postShare';
 import {
+  canChangeReward,
   canDeactivate,
   canDeleteDraft,
   canDeletePost,
@@ -409,6 +411,18 @@ export function PostOwnerActions({
         onEditDescription={editor(canEditSafeSection(owned), 'description')}
         onEditTheftContext={editor(canEditSafeSection(owned), 'theft_context')}
         onEditDistinctiveFeatures={editor(canEditSafeSection(owned), 'distinctive_features')}
+        rewardAction={
+          canChangeReward(owned)
+            ? {
+                mode: owned.bountyPence === null ? 'add' : 'change',
+                onPress: () =>
+                  router.push({
+                    pathname: '/change-reward',
+                    params: { postId, mode: owned.bountyPence === null ? 'add' : 'change' },
+                  }),
+              }
+            : undefined
+        }
         onDeactivate={canDeactivate(owned) ? requestDeactivate : undefined}
         onDeleteDraft={canDeleteDraft(owned) ? () => deleteDraftRef.current?.open() : undefined}
         onDeletePost={canDeletePost(owned) ? () => deletePostRef.current?.open() : undefined}

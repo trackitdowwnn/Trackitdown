@@ -410,9 +410,11 @@ routed through this pattern. It is finished, not a foundation.
 
 ## Out of scope
 
-Editing photos / last-seen / bounty on a **paid** post — live or pending (a
-bounty change needs refund-or-top-up; photo and last-seen changes need the
-unbuilt re-moderation flow); today the owner deactivates + reposts. Changing the
+Editing photos / last-seen on a **paid** post — live or pending (they need the
+unbuilt re-moderation flow); today the owner deactivates + reposts. *(The
+reward on a live post CAN change since 2026-10-05: a new charge replaces it
+and the old one is refunded — `features/payments` ChangeRewardScreen, not the
+draft bounty editor.)* Changing the
 **plate** at all after posting — deliberately impossible, see above · draft
 resume · multiple vehicles per post · bounty-free posting (all ROADMAP, not
 built). *(The money-neutral four — car details, description, theft context,

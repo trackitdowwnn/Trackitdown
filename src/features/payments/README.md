@@ -148,8 +148,25 @@ is the NORMAL first outcome, not a failure, and the bounty waits in escrow.
 - **Never log a hosted link.** An Account Link is a bearer URL into someone's
   identity documents. Log the account id and the outcome, nothing else.
 
+## Changing a live reward (2026-10-05)
+
+`ChangeRewardScreen` (route `/change-reward`) lets an owner change the reward
+on a live listing, or add one to a £5 fee listing. The flow:
+
+1. **Choose the amount.** `set_reward_renewal_amount` writes it under the
+   owner's JWT. This is where the range check and the lowering rule live: a
+   reward can't be lowered while recent uncredited sightings exist.
+2. **Pay.** `create-payment-intent`, given the post id alone, opens a charge
+   for that amount. The PaymentSheet takes it.
+3. **Webhook.** It makes the new charge the reward, then refunds the old one,
+   minus the card fee, which the screen discloses first.
+4. **Confirm.** The screen polls `get_my_reward_status` until the reward has
+   actually changed.
+
+The logic lives in `supabase/migrations/20261005130000_a_reward_can_be_changed.sql`.
+
 ## Not here
 
-Bounty splitting (single winner, v1), top-ups, and any client-side amount
-arithmetic. `release-payout` has no client caller of its own — the recovery
+Bounty splitting (single winner, v1), crowdfunded rewards, and any client-side
+amount arithmetic. `release-payout` has no client caller of its own — the recovery
 flow in `features/vehicles` calls it, because that is where the owner decides.

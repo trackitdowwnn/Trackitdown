@@ -15,9 +15,11 @@
  *        mark_post_payment_held, which reads the post: a NULL bounty is a free
  *        listing whose payments row already carries kind='listing_fee'
  *        (20260819100000). A fee lands in 'collected' (ADR-0018), a bounty in
- *        'held' — or 'superseded' if it renews the reward or is a stray — and
- *        both take a draft post live: a fee post must reach spotters exactly
- *        as an escrowed one does.
+ *        'held' (a stray lands 'superseded'), and both take a draft post live:
+ *        a fee post must reach spotters exactly as an escrowed one does. When
+ *        a capture CHANGES a live listing's reward, the reward it replaced is
+ *        now 'superseded' — and this function refunds it straight away, after
+ *        the event is recorded (refundSupersededForPost; the sweep retries).
  *
  *        Fees are never refunded: a fee is never 'held' or 'superseded', and
  *        reconcile_payment_refund leaves any other status unchanged, so a
@@ -55,6 +57,7 @@ import {
 } from '../_shared/clients.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
+import { refundSupersededForPost } from '../_shared/refundEscrow.ts';
 
 // NOTE: no CORS / preflight — Stripe calls this server-to-server, not a browser.
 // The endpoint takes the RAW body (signature is computed over the exact bytes),
@@ -350,6 +353,41 @@ Deno.serve(async (request) => {
     } catch (err) {
       console.error('[notifications] alert dispatch failed', (err as Error).message);
     }
+  }
+
+  // --- The replaced reward goes home (2026-10-05) -----------------------------
+  // A capture that changed a live listing's reward left the old payment
+  // `superseded`: owed back to the owner. Refund it now rather than at the next
+  // hourly sweep — the owner was told "your current reward is refunded once the
+  // new one is held". Same placement and posture as the alerts: after the money
+  // state and its dedup record committed, never rethrowing, never failing this
+  // event. The sweep (refunds_due) is the retry, under the same per-payment key.
+  // Kept off the response path like the alerts: two Stripe calls per refund
+  // are latency Stripe's delivery timeout should never wait on (the event is
+  // already recorded — a slow refund must not turn into a redelivery).
+  if (wentLiveIntentId) {
+    const capturedIntentId = wentLiveIntentId;
+    const refundReplaced = (async () => {
+      try {
+        const { data: payment } = await admin
+          .from('payments')
+          .select('post_id')
+          .eq('stripe_payment_intent_id', capturedIntentId)
+          .maybeSingle();
+        if (payment?.post_id) {
+          const refunded = await refundSupersededForPost(admin, stripe, payment.post_id);
+          if (refunded > 0) {
+            console.log('[payments] replaced reward refunded', { postId: payment.post_id, refunded });
+          }
+        }
+      } catch (err) {
+        console.error('[payments] replaced reward refund failed', (err as Error).message);
+      }
+    })();
+    const runtime = (globalThis as { EdgeRuntime?: { waitUntil?(p: Promise<unknown>): void } })
+      .EdgeRuntime;
+    if (typeof runtime?.waitUntil === 'function') runtime.waitUntil(refundReplaced);
+    else await refundReplaced;
   }
 
   return new Response(JSON.stringify({ received: true }), { status: 200 });

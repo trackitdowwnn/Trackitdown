@@ -14,10 +14,11 @@ import type { PostStatus } from '@/shared/types';
 
 import type { PostDetail } from '../types';
 
-/** Photos, last-seen and the bounty are editable ONLY while the post is a draft:
- *  imagery and where the car was taken from must not move once the crowd is
- *  matching against them, and the bounty is frozen by escrow. The server enforces
- *  this too. */
+/** Photos, last-seen and the bounty are editable IN PLACE only while the post is
+ *  a draft: imagery and where the car was taken from must not move once the
+ *  crowd is matching against them, and a held bounty cannot simply be edited.
+ *  (A LIVE reward changes through a new charge instead — canChangeReward.) The
+ *  server enforces this too. */
 export function canEditDraftSection(post: PostDetail): boolean {
   return post.isOwner && post.status === 'draft';
 }
@@ -46,6 +47,16 @@ export function canEditSafeSection(post: PostDetail): boolean {
  *  server re-enforces this; the button is only convenience. */
 export function canDeactivate(post: PostDetail): boolean {
   return post.isOwner && (post.status === 'active' || post.status === 'pending_verification');
+}
+
+/** The owner can CHANGE the reward on a live listing — or ADD one to a £5 fee
+ *  listing (bountyPence null) — through a new charge (20261005130000). The
+ *  same live statuses as canDeactivate. Whether a change is allowed RIGHT NOW
+ *  (no claim on the money, no refund in flight, no lowering after a recent
+ *  sighting) is the server's call and the change screen shows its answer;
+ *  this only decides whether the row is offered at all. */
+export function canChangeReward(post: PostDetail): boolean {
+  return canDeactivate(post);
 }
 
 /**

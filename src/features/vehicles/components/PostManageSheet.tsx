@@ -1,7 +1,8 @@
 /**
  * WHAT:  PostManageSheet — the owner's action sheet for THIS listing, opened by
  *        the sticky bar's "Manage post". A ListRow menu: view sightings, activity, one row
- *        per section they're currently allowed to edit, share, archive /
+ *        per section they're currently allowed to edit, change / add the
+ *        reward (live listings), share, archive /
  *        unarchive (finished listings, from My listings' long-press only), and
  *        (paid posts) the destructive deactivate + refund.
  * WHY:   "Manage post" used to navigate to /my-posts, which threw the owner off
@@ -22,6 +23,7 @@
 import {
   Archive,
   ArchiveRestore,
+  BadgePoundSterling,
   Ban,
   Banknote,
   ChartNoAxesColumn,
@@ -53,6 +55,10 @@ export interface PostManageSheetProps {
   onEditDescription?: () => void;
   onEditTheftContext?: () => void;
   onEditDistinctiveFeatures?: () => void;
+  /** OWNER + LIVE only: change the reward ('change'), or add one to a £5 fee
+   *  listing ('add'). Opens the change screen, which discloses every penny
+   *  before anything is charged. */
+  rewardAction?: { mode: 'change' | 'add'; onPress: () => void };
   /** OWNER + PAID only: take the listing down and refund the bounty. Opens the
    *  parent's confirm — never deactivates straight from a row tap. */
   onDeactivate?: () => void;
@@ -116,6 +122,7 @@ export function PostManageSheet({
   onEditDescription,
   onEditTheftContext,
   onEditDistinctiveFeatures,
+  rewardAction,
   onDeactivate,
   onDeleteDraft,
   onDeletePost,
@@ -183,6 +190,23 @@ export function PostManageSheet({
           />
         ) : null,
       )}
+
+      {/* With the edits: changing the reward is editing the listing — it just
+          costs money, which the screen it opens says in full before charging. */}
+      {rewardAction ? (
+        <ListRow
+          icon={BadgePoundSterling}
+          title={rewardAction.mode === 'add' ? 'Add a reward' : 'Change reward'}
+          // Says what it DOES with money, like its money-moving siblings.
+          subtitle={
+            rewardAction.mode === 'add'
+              ? 'Offer a reward to whoever finds your car.'
+              : 'Pay a new amount. Your current reward comes back, minus the card fee.'
+          }
+          onPress={run(rewardAction.onPress)}
+          testID="manage-change-reward"
+        />
+      ) : null}
 
       <ListRow icon={Share2} title="Share listing" onPress={run(onShare)} testID="manage-share" />
 

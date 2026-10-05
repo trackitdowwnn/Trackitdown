@@ -5,6 +5,13 @@
  *        Stripe PaymentIntent (captured immediately), records the ledger row, and
  *        returns the client secret for the app's PaymentSheet.
  *
+ *        A LIVE post (active / pending_verification) takes the second branch,
+ *        `chargeRewardChange` (2026-10-05): changing the reward on a live
+ *        listing, or adding one to a £5 fee listing. Same request, same
+ *        response; the amount is the one the owner chose via
+ *        set_reward_renewal_amount, and the ledger row names the reward it
+ *        replaces. See that function's comment.
+ *
  *        TWO PRICING MODES share this one function (ADR-0014). A post carries
  *        EITHER a bounty (£10–£5,000, escrowed) OR a flat £5 listing fee
  *        (platform revenue on capture, never refunded). WHETHER THE POST HAS A
@@ -37,6 +44,8 @@
  *        src/features/payments/api/paymentsApi.ts (the client caller);
  *        docs/decisions/ADR-0002-stripe-connect.md;
  *        docs/decisions/ADR-0014-no-bounty-listings.md;
+ *        supabase/migrations/20261005130000_a_reward_can_be_changed.sql
+ *          (reward_charge_context, record_reward_renewal_intent);
  *        supabase/functions/README.md.
  */
 
@@ -93,6 +102,12 @@ Deno.serve(async (request) => {
   if (!post || post.owner_id !== userId) {
     // Don't distinguish "not found" from "not yours" — both are a 404 to the caller.
     return errorResponse('POST_NOT_FOUND', 'We couldn’t find that post.', 404);
+  }
+  // A LIVE listing is a reward CHANGE (or an add to a fee listing), not a
+  // first charge. Still no mode flag: the post's status decides, and the
+  // amount comes from the row the owner wrote via set_reward_renewal_amount.
+  if (post.status === 'active' || post.status === 'pending_verification') {
+    return chargeRewardChange(admin, postId, userId);
   }
   if (post.status !== 'draft') {
     return errorResponse(
@@ -231,3 +246,180 @@ Deno.serve(async (request) => {
 
   return jsonResponse({ clientSecret: paymentIntent.client_secret });
 });
+
+/** Refusal tokens from reward_charge_context / record_reward_renewal_intent →
+ *  the HTTP answer. Copy lives client-side (paymentsApi); these are codes. */
+const CHANGE_BLOCK_STATUS: Record<string, number> = {
+  POST_NOT_LIVE: 409,
+  REWARD_REVIEW_PENDING: 409,
+  REFUND_PENDING: 409,
+  REWARD_LOWER_BLOCKED: 409,
+  NO_AMOUNT: 409,
+  RENEWAL_STALE: 409,
+  BOUNTY_MISMATCH: 409,
+};
+
+function changeBlockResponse(code: string): Response {
+  return errorResponse(code, 'This reward can’t be changed right now.', CHANGE_BLOCK_STATUS[code] ?? 409);
+}
+
+/**
+ * The charge for CHANGING the reward on a live listing — or ADDING one to a £5
+ * fee listing (20261005130000). Shape of the draft path above, three
+ * differences that each matter:
+ *
+ *   * THE AMOUNT is posts.renewal_amount_pence, which the owner wrote under
+ *     their own JWT (set_reward_renewal_amount, range- and lowering-checked).
+ *     Still never a request body.
+ *   * ONE INTENT PER CHOICE. Every choice mints a fresh posts.renewal_attempt_id,
+ *     the key is `post-renew-<post>-<attempt>-<amount>`, and the ledger row
+ *     carries the attempt. A network retry of the same choice reuses its
+ *     intent; a new choice never meets an earlier one's. Every OTHER open
+ *     reward intent on the post is cancelled at Stripe once this one is
+ *     recorded — and even one that escapes the cancel can never become the
+ *     reward, because capture accepts only the CURRENT attempt.
+ *   * THE LEDGER ROW names the reward it replaces. At capture,
+ *     mark_post_payment_held supersedes exactly that payment — or, if anything
+ *     has moved (another device changed it, the listing came down, a claim or
+ *     a recent sighting appeared for a lowering), treats this charge as a stray
+ *     and refunds it in full. The webhook then refunds the old reward (minus
+ *     the card fee — disclosed on the change screen before the owner pays).
+ */
+async function chargeRewardChange(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  postId: string,
+  userId: string,
+): Promise<Response> {
+  const { data: ctx, error: ctxError } = await admin.rpc('reward_charge_context', {
+    p_post_id: postId,
+    p_owner_id: userId,
+  });
+  if (ctxError) {
+    if (ctxError.message?.includes('POST_NOT_FOUND')) {
+      return errorResponse('POST_NOT_FOUND', 'We couldn’t find that post.', 404);
+    }
+    console.error('[payments] reward_charge_context failed', ctxError.message);
+    return errorResponse('LOOKUP_FAILED', 'We couldn’t start your payment. Please try again.', 500);
+  }
+  const context = ctx as {
+    mode: 'change' | 'add';
+    currentPaymentId: string | null;
+    currentPaymentIntentId: string | null;
+    renewalAmountPence: number | null;
+    attemptId: string | null;
+    block: string | null;
+  };
+  if (context.block) {
+    return changeBlockResponse(context.block);
+  }
+  const amountPence = context.renewalAmountPence;
+  if (
+    typeof amountPence !== 'number' ||
+    !Number.isInteger(amountPence) ||
+    amountPence <= 0 ||
+    !context.attemptId
+  ) {
+    return changeBlockResponse('NO_AMOUNT');
+  }
+
+  const idempotencyKey = `post-renew-${postId}-${context.attemptId}-${amountPence}`;
+  const stripe = createStripeClient();
+  const params = {
+    amount: amountPence,
+    currency: 'gbp',
+    capture_method: 'automatic' as const,
+    automatic_payment_methods: { enabled: true },
+    // Dashboard traceability only — the ledger row is the authority.
+    // 'reward_hold', never "escrow" (see the draft path above).
+    metadata: {
+      post_id: postId,
+      kind: 'reward_hold',
+      ...(context.currentPaymentIntentId ? { replaces: context.currentPaymentIntentId } : {}),
+    },
+  };
+
+  let paymentIntent;
+  try {
+    paymentIntent = await stripe.paymentIntents.create(params, { idempotencyKey });
+    // ⚠️ A REPLAYED create returns the response Stripe SAVED, including the
+    // status at creation — so ask for the intent's LIVE status.
+    //   * canceled (a refused record below) — it can never be confirmed or
+    //     capture, so a fresh key here cannot double-charge;
+    //   * processing / succeeded — this choice is ALREADY being paid. Minting
+    //     a second intent would hand the owner a second payable charge for the
+    //     same choice (capture would refund it as a stray, but only after the
+    //     card was charged twice), so refuse and let the webhook land.
+    const live = await stripe.paymentIntents.retrieve(paymentIntent.id);
+    if (live.status === 'canceled') {
+      paymentIntent = await stripe.paymentIntents.create(params, {
+        idempotencyKey: `${idempotencyKey}-${crypto.randomUUID()}`,
+      });
+    } else if (!live.status.startsWith('requires_')) {
+      return errorResponse('PAYMENT_IN_PROGRESS', 'Your payment is already going through.', 409);
+    }
+  } catch (err) {
+    console.error('[payments] reward change PaymentIntent create failed', (err as Error).message);
+    return errorResponse('STRIPE_ERROR', 'We couldn’t start your payment. Please try again.', 502);
+  }
+
+  const { error: recordError } = await admin.rpc('record_reward_renewal_intent', {
+    p_post_id: postId,
+    p_owner_id: userId,
+    p_payment_intent_id: paymentIntent.id,
+    p_amount_pence: amountPence,
+    p_replaces_payment_id: context.currentPaymentId,
+    p_attempt_id: context.attemptId,
+  });
+  if (recordError) {
+    // Whatever refused it — a block that appeared, a stale choice, a fault —
+    // this intent has no ledger row and must never be confirmable. Cancel it.
+    try {
+      await stripe.paymentIntents.cancel(paymentIntent.id);
+    } catch (err) {
+      console.warn('[payments] refused reward intent cancel failed', (err as Error).message);
+    }
+    const code = Object.keys(CHANGE_BLOCK_STATUS).find((c) => recordError.message?.includes(c));
+    if (code) {
+      return changeBlockResponse(code);
+    }
+    if (recordError.message?.includes('POST_NOT_FOUND')) {
+      return errorResponse('POST_NOT_FOUND', 'We couldn’t find that post.', 404);
+    }
+    console.error('[payments] record_reward_renewal_intent failed', recordError.message, {
+      postId,
+      amountPence,
+      mode: context.mode,
+    });
+    return errorResponse('LEDGER_ERROR', 'We couldn’t start your payment. Please try again.', 500);
+  }
+
+  // --- Every OTHER open reward intent on this post goes, now ----------------
+  // Abandoned attempts (an earlier choice, a dismissed sheet) are still
+  // confirmable at Stripe until cancelled — 'failed' in the ledger is not
+  // 'canceled' at Stripe, and a declined intent waits for another card. The
+  // capture-time attempt check already makes any of them a stray (refunded in
+  // full); cancelling them means the owner can't be charged for one at all.
+  // Best-effort: a failure here is logged, never a reason to refuse the charge
+  // the owner is about to make.
+  const { data: openRows, error: openError } = await admin
+    .from('payments')
+    .select('stripe_payment_intent_id')
+    .eq('post_id', postId)
+    .eq('kind', 'bounty_escrow')
+    .in('status', ['requires_payment', 'failed'])
+    .neq('stripe_payment_intent_id', paymentIntent.id);
+  if (openError) {
+    console.error('[payments] open reward intent lookup failed', openError.message);
+  }
+  for (const row of openRows ?? []) {
+    try {
+      await stripe.paymentIntents.cancel(row.stripe_payment_intent_id as string);
+    } catch (err) {
+      // Already cancelled / terminal is the common case and harmless.
+      console.warn('[payments] stale reward intent cancel failed', (err as Error).message);
+    }
+  }
+
+  console.log('[payments] reward change intent ready', { postId, mode: context.mode });
+  return jsonResponse({ clientSecret: paymentIntent.client_secret });
+}
