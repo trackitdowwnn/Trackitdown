@@ -46,10 +46,18 @@
 --        A charge that fails any of these becomes a stray, refunded in full,
 --        and the reward it would have replaced stays exactly where it was.
 --
--- SAFETY NOTE ON DESTRUCTIVE STATEMENTS: none. One additive nullable column;
---        `create or replace` on one existing function (mark_post_payment_held,
---        restated IN FULL from 20261005110000 — diff against it) plus six new
---        functions. No row is written.
+-- SAFETY NOTE ON DESTRUCTIVE STATEMENTS: one DROP — refunds_due(integer),
+--        recreated in the same file as refunds_due(integer, uuid) with an
+--        identical body plus an optional post filter. It drops, rather than
+--        adding an overload, so the old signature cannot linger with the old
+--        semantics; every caller (the sweep's named p_limit, the suites'
+--        positional refunds_due(500)) resolves to the new one through its
+--        defaults. Otherwise additive: three nullable columns
+--        (posts.renewal_amount_pence, posts.renewal_attempt_id,
+--        payments.renewal_attempt_id); `create or replace` on one existing
+--        function (mark_post_payment_held, restated IN FULL from
+--        20261005110000 — diff against it) plus six new functions. No row is
+--        written.
 --
 -- LINKS: supabase/migrations/20261005110000_a_reward_can_be_replaced.sql;
 --        supabase/migrations/20260805100000_refund_holds_and_disputes.sql

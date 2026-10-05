@@ -342,15 +342,20 @@ async function chargeRewardChange(
   try {
     paymentIntent = await stripe.paymentIntents.create(params, { idempotencyKey });
     // ⚠️ A REPLAYED create returns the response Stripe SAVED, including the
-    // status at creation — so ask for the intent's LIVE status. One that was
-    // cancelled since (a refused record below) or already succeeded can never
-    // be confirmed by the sheet; a cancelled or finished intent cannot
-    // capture again either, so a fresh key here cannot double-charge.
+    // status at creation — so ask for the intent's LIVE status.
+    //   * canceled (a refused record below) — it can never be confirmed or
+    //     capture, so a fresh key here cannot double-charge;
+    //   * processing / succeeded — this choice is ALREADY being paid. Minting
+    //     a second intent would hand the owner a second payable charge for the
+    //     same choice (capture would refund it as a stray, but only after the
+    //     card was charged twice), so refuse and let the webhook land.
     const live = await stripe.paymentIntents.retrieve(paymentIntent.id);
-    if (!live.status.startsWith('requires_')) {
+    if (live.status === 'canceled') {
       paymentIntent = await stripe.paymentIntents.create(params, {
         idempotencyKey: `${idempotencyKey}-${crypto.randomUUID()}`,
       });
+    } else if (!live.status.startsWith('requires_')) {
+      return errorResponse('PAYMENT_IN_PROGRESS', 'Your payment is already going through.', 409);
     }
   } catch (err) {
     console.error('[payments] reward change PaymentIntent create failed', (err as Error).message);

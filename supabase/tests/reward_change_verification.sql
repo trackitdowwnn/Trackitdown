@@ -384,7 +384,7 @@ declare
 begin
   foreach f in array array[
     'public.reward_charge_context(uuid, uuid)',
-    'public.record_reward_renewal_intent(uuid, uuid, text, integer, uuid)',
+    'public.record_reward_renewal_intent(uuid, uuid, text, integer, uuid, uuid)',
     'public.reward_has_claim(uuid)',
     'public.reward_change_block(uuid, integer)'
   ] loop

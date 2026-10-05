@@ -54,6 +54,8 @@ export const CHANGE_REWARD_ERROR_MESSAGES: Record<string, string> = {
   NO_AMOUNT: FALLBACK,
   RENEWAL_STALE: 'Your reward just changed. Please check it and try again.',
   BOUNTY_MISMATCH: 'Your reward just changed. Please check it and try again.',
+  PAYMENT_IN_PROGRESS:
+    'Your payment is already going through. Your listing will update in a moment.',
   STRIPE_ERROR: 'We couldn’t start your payment. Please try again.',
   LEDGER_ERROR: 'We couldn’t start your payment. Please try again.',
   LOOKUP_FAILED: 'We couldn’t start your payment. Please try again.',
