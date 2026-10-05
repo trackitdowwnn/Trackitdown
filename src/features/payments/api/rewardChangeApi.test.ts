@@ -54,11 +54,21 @@ describe('fetchMyRewardStatus', () => {
       rewardId: 'r1',
       amountPence: 20000,
       capturedAt: '2026-10-01T10:00:00Z',
+      // The server predates the term columns here: the client reads them as
+      // null / false.
+      termEndsAt: null,
+      legacyTerm: false,
       feeAbsorbed: false,
       hasRecentSightings: false,
       blockedMessage: null,
     });
     expect(mockRpc).toHaveBeenCalledWith('get_my_reward_status', { p_post_id: POST_ID });
+  });
+
+  it('passes the reward term through when the server sends it', async () => {
+    mockRpc.mockResolvedValue({ data: { ...STATUS, termEndsAt: '2026-11-30T10:00:00Z' }, error: null });
+    const status = await fetchMyRewardStatus(POST_ID);
+    expect(status.termEndsAt).toBe('2026-11-30T10:00:00Z');
   });
 
   it('turns a block token into the owner-facing sentence', async () => {

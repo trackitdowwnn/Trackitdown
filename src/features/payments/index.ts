@@ -52,6 +52,7 @@ export {
 export { usePayoutsRelevant } from './hooks/usePayoutsRelevant';
 export { PayoutsScreen } from './screens/PayoutsScreen';
 export { ChangeRewardScreen } from './screens/ChangeRewardScreen';
+export { RewardTermBanner } from './components/RewardTermBanner';
 export {
   CHANGE_REWARD_ERROR_MESSAGES,
   type RewardStatus,

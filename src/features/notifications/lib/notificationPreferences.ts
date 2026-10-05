@@ -83,10 +83,18 @@ export const UNMUTABLE_KINDS: readonly NotificationKind[] = (() => {
   // toggle, and a mutable version would need a `my_posts` category that does
   // not exist. deletion_soon likewise: it is the notice the 30-day purge is
   // required to wait for, sent once per post ever, and a toggle that silenced
-  // it would turn a guaranteed warning back into silence. Both mirror
-  // notification_category returning NULL.
+  // it would turn a guaranteed warning back into silence. reward_ending and
+  // reward_ended too (ADR-0020): they are the notice a reward's automatic
+  // refund must follow. All mirror notification_category returning NULL.
   return (
-    ['sighting', 'closed_uncredited', 'still_missing', 'deletion_soon'] as NotificationKind[]
+    [
+      'sighting',
+      'closed_uncredited',
+      'still_missing',
+      'deletion_soon',
+      'reward_ending',
+      'reward_ended',
+    ] as NotificationKind[]
   ).filter((kind) => !mapped.has(kind));
 })();
 

@@ -3,6 +3,13 @@
 **Status:** PROPOSED · **Date:** 2026-09-02 · Closes the whole-app review's
 finding #14 and the older of the two holes in the 2026-08-05 loop trace
 
+> **Point 1 below is SUPERSEDED by
+> [ADR-0020](ADR-0020-a-reward-has-a-term.md) (2026-10-05).** Stripe caps
+> funds on the platform balance at 90 days, so a reward now has a 60-day
+> term. At the end, it is returned to its owner, on a date they were told,
+> through the ADR-0011 hold. No timer still pays a stranger, keeps money or
+> closes a listing, and the "still missing?" ask below is unchanged.
+
 ## Context
 
 The loop trace found two places where the loop does not close. One was fixed the

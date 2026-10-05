@@ -80,6 +80,8 @@ const status = (over: Partial<RewardStatus> = {}): RewardStatus => ({
   rewardId: 'r1',
   amountPence: 20000,
   capturedAt: '2026-10-01T10:00:00Z',
+  termEndsAt: '2026-11-30T10:00:00Z',
+  legacyTerm: false,
   feeAbsorbed: false,
   hasRecentSightings: false,
   blockedMessage: null,
@@ -112,7 +114,7 @@ describe('ChangeRewardScreen', () => {
     await act(async () => mockSliderProps?.onChangePence(35000));
 
     const back = estimateRefundPence(20000);
-    expect(view.getByText('Change your reward')).toBeTruthy();
+    expect(view.getByText('Renew or change your reward')).toBeTruthy();
     expect(view.getByText('Charged now')).toBeTruthy();
     expect(view.getByText('£350')).toBeTruthy();
     expect(view.getByText(`About ${formatPounds(back)}, in 5–10 working days`)).toBeTruthy();
@@ -153,12 +155,23 @@ describe('ChangeRewardScreen', () => {
     expect(mockSetAmount).not.toHaveBeenCalled();
   });
 
-  it('the same amount cannot be paid for — there is nothing to change', async () => {
-    mockFetchStatus.mockResolvedValue(status());
+  it('keeping the amount RENEWS it — labelled as a renewal, the old reward still refunded minus the fee', async () => {
+    mockFetchStatus
+      .mockResolvedValueOnce(status())
+      .mockResolvedValueOnce(status({ rewardId: 'r2', termEndsAt: '2027-01-29T10:00:00Z' }));
     const view = await mount();
-    expect(view.getByText('Choose a different amount to change your reward.')).toBeTruthy();
-    await fireEvent.press(view.getByText('Pay £200'));
-    expect(mockSetAmount).not.toHaveBeenCalled();
+    expect(view.getByText(/Keep the amount to renew it for 60 days from today/)).toBeTruthy();
+    expect(view.getByText('Runs until')).toBeTruthy();
+    // The renewal's REAL cost is named first: the card fee on the old reward.
+    expect(view.getByText('Renewing costs')).toBeTruthy();
+    expect(
+      view.getByText(`About ${formatPounds(20000 - estimateRefundPence(20000))} — the card fee on your current reward`),
+    ).toBeTruthy();
+    expect(view.getByText(`About ${formatPounds(estimateRefundPence(20000))}, in 5–10 working days`)).toBeTruthy();
+    await fireEvent.press(view.getByText('Renew for £200'));
+    await flush();
+    expect(mockSetAmount).toHaveBeenCalledWith('p1', 20000);
+    expect(mockToast).toHaveBeenCalledWith('Your reward is renewed until 29 January.');
   });
 
   it('pays in order — amount, then a charge with no amount, then the sheet — and only claims success once the reward moved', async () => {

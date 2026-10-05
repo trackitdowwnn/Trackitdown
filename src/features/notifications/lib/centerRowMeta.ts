@@ -32,9 +32,11 @@
 
 import {
   BadgeCheck,
+  BadgePoundSterling,
   Banknote,
   Bell,
   Binoculars,
+  CalendarClock,
   CheckCircle2,
   Eye,
   Hourglass,
@@ -117,6 +119,19 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   // and an action chip would invent a task where the body says "nothing you
   // need to do". Trash2 because deletion is literally what it reports.
   deletion_soon: { Icon: Trash2, tone: 'neutral', needsAttention: false },
+  // "Your reward ends on …" asks for a decision — renew or let it end — so it
+  // carries the chip. `warning`, not `danger`: nothing is wrong, and letting it
+  // end is a fine answer (the money comes back).
+  // CalendarClock, not Hourglass: icon SHAPE tells kinds apart, and the
+  // hourglass already means still_missing / closed_uncredited.
+  reward_ending: {
+    Icon: CalendarClock,
+    tone: 'warning',
+    needsAttention: true,
+    attentionLabel: 'Renew',
+  },
+  // "Your reward has ended" reports a fact; the refund is already on its way.
+  reward_ended: { Icon: BadgePoundSterling, tone: 'neutral', needsAttention: false },
   // "Contest" is the word SightingDisputeScreen already uses with these
   // spotters ("This one can’t be contested any more"), so the row and the
   // screen it opens speak the same language.

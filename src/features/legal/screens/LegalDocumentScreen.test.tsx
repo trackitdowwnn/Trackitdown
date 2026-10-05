@@ -215,18 +215,39 @@ describe('factual claims the code must keep true', () => {
     expect(terms).toMatch(/no bounty for us to pay them|there is no money attached/i);
   });
 
-  it('⚠️ does not promise an expiry the app never performs', () => {
-    // The Terms said "A listing lasts 90 days unless you cancel or renew it"
-    // and that the bounty comes back "or it expires". ROADMAP records passive
-    // expiry as deliberately CUT — "we are cutting the PROMISE, not building
-    // the machine" — and the Terms were missed in that cut, leaving a term an
-    // owner could rely on and we would breach.
-    //
-    // ⚠️ create_post still stamps expires_at and post detail still SHOWS it.
-    // That is a live bug tracked separately; if it is ever FIXED, this test is
-    // the thing that should be revisited, not silently deleted.
-    expect(terms).not.toMatch(/lasts 90 days|or it expires/i);
-    expect(terms).toContain('We do not close it automatically.');
+  it('⚠️ promises the BOUNTY term the app performs — and no LISTING expiry', () => {
+    // REVISITED 2026-10-05, as this test's previous version asked to be. It
+    // pinned the absence of an expiry promise, because nothing performed one
+    // (the old "listing lasts 90 days" line was a term nobody kept). ADR-0020
+    // gives the BOUNTY a real, implemented 60-day term (Stripe caps holds at
+    // 90 days): mark_post_payment_held dates it, claim_reward_reminders sends
+    // the 10- and 3-day reminders, and the expiry refunds it. The LISTING
+    // still never expires — that half of the old pin survives unchanged.
+    expect(terms).toContain('A bounty lasts 60 days from when it is paid.');
+    expect(terms).toContain('We remind you 10 days and 3 days before it ends');
+    expect(terms).toContain('we refund it to you automatically, minus the card processing costs');
+    // The spotter protection travels with the automatic refund.
+    expect(terms).toContain('the refund waits up to 72 hours');
+    // The lowering rule (reward_change_block).
+    expect(terms).toContain('you can lower it only if nobody has reported a sighting of your vehicle in the last 14 days');
+    // And the listing itself: no expiry, ever.
+    expect(terms).not.toMatch(/listing lasts 90 days|or it expires/i);
+    expect(terms).toContain('We do not close a listing automatically');
+  });
+
+  it('tells owners of older bounties their end-date refund is in full', () => {
+    // The owner's decision, 2026-10-05: bounties paid under Terms with no term
+    // absorb the card fee when the term ends (claim_reward_term_notices sets
+    // refund_fee_absorbed). A Terms line that said "minus costs" for them
+    // would be a promise the code breaks in the owner's favour — still wrong.
+    expect(terms).toContain('already being held when this term was introduced');
+    expect(terms).toContain('made in full, including the card processing costs');
+  });
+
+  it('does not promise renewal or the automatic refund while a claim is open', () => {
+    // reward_change_block / the expiry both stand still under a claim; the
+    // Terms must say so rather than over-promise.
+    expect(terms).toContain('While a recovery, a dispute or a payment review is in progress on your listing, the bounty stays held');
   });
 
   it('does NOT promise a full refund — card fees are withheld', () => {

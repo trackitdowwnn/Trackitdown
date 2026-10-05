@@ -226,9 +226,11 @@ taken first, deliberately.
   *why* the missing feed photos survived unnoticed: dev flattered us with a
   full feed while real users got placeholders. The module and all four call
   sites are gone; the feed can no longer lie to us.
-- **CUT: passive post expiry.** DOMAIN promises "expiry (default 90 days, owner
-  can renew), bounty refunded" and then concedes further down that nothing
-  refunds by waiting. Nothing sets `status = 'expired'` anywhere. We are cutting
+- **CUT: passive post expiry.** *(2026-10-05: the LISTING still never
+  expires, but the REWARD now has a 60-day term. Stripe caps platform-balance
+  holds at 90 days. See ADR-0020.)* DOMAIN promises "expiry (default 90 days,
+  owner can renew), bounty refunded" and then concedes further down that
+  nothing refunds by waiting. Nothing sets `status = 'expired'` anywhere. We are cutting
   the PROMISE, not building the machine: a cron that automatically refunds
   strangers' money is high-risk and low-value before launch, and
   owner-initiated cancel-with-refund already works. DOMAIN's lifecycle section

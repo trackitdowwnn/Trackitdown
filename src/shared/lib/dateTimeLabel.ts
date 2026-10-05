@@ -137,6 +137,27 @@ export function formatDateLabelCompact(iso: string, now: Date = new Date()): str
     : formatDateLabel(iso);
 }
 
+/**
+ * A reward term's end date: "4 December" — day and month in full, in
+ * EUROPE/LONDON regardless of the device's zone, because the server's reminder
+ * push prints the same date with `at time zone 'Europe/London'`
+ * (claim_reward_reminders) and the two must never disagree about the day a
+ * reward ends. `withWeekday` gives "Thursday 4 December" for the last days.
+ * @throws on an unparseable timestamp.
+ */
+export function formatTermDate(iso: string, withWeekday = false): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`formatTermDate got an unparseable timestamp: ${iso}`);
+  }
+  return date.toLocaleDateString('en-GB', {
+    ...(withWeekday ? { weekday: 'long' as const } : {}),
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'Europe/London',
+  });
+}
+
 /** Month + year: "July 2026" — for "member since" style labels. @throws on
  *  an unparseable timestamp. */
 export function formatMonthYear(iso: string): string {

@@ -37,6 +37,15 @@ export const NOTIFICATION_KINDS = [
   // once per post, ever. Reports a fact, offers no lever — a cancelled post
   // cannot be kept past 30 days (2026-09-21).
   'deletion_soon',
+  // "Your reward ends on {date}" — the 60-day reward term (ADR-0020): the
+  // one-off notice to rewards held before the term existed, and the 10- and
+  // 3-day reminders. To the OWNER, about their own listing's reward; the
+  // listing's reward banner is where it is renewed (2026-10-05).
+  'reward_ending',
+  // "Your reward has ended" — the term ran out and the reward is being
+  // refunded; the listing stays live with no reward. Sent by the expiry
+  // (PR5); listed now so the vocabulary ships before anything can send it.
+  'reward_ended',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

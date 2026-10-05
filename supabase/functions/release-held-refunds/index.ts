@@ -8,7 +8,8 @@
  *        names — expired, undisputed holds get the refund the owner asked
  *        for, and superseded payments (a renewed reward, a stray capture) go
  *        home. Phase 1b: reward money 75+ days old is emailed to the operator
- *        (Stripe's 90-day platform-balance limit). Phase 2: upheld disputes
+ *        (Stripe's 90-day platform-balance limit). Phase 1c: the 60-day
+ *        reward term's notices and reminders (ADR-0020). Phase 2: upheld disputes
  *        get the spotter paid (through the existing release core) and every
  *        resolved dispute gets its outcome push. Phase 4: the ADR-0019 "still
  *        missing?" liveness ask.
@@ -90,6 +91,8 @@ Deno.serve(async (request) => {
     stillMissingAsked: 0,
     deadlineAlerts: 0,
     deadlineAlertsEmailed: null as boolean | null,
+    rewardTermNotices: 0,
+    rewardReminders: 0,
   };
 
   // --- Phase 0: feed retention (ADR-0012 §8) ---------------------------------
@@ -558,6 +561,65 @@ Deno.serve(async (request) => {
     console.error('[notifications] announce sweep failed', (err as Error).message);
   }
 
+  // --- Phase 1c: the reward term — notices and reminders (ADR-0020) ---------
+  // Every reward runs for 60 days (Stripe caps platform-balance holds at 90).
+  // Owners are TOLD before any reward ends: rewards held before the term
+  // existed get their date once (claim_reward_term_notices — at least 14 days'
+  // notice, capped at capture + 80 days), and every reward gets "ends on
+  // {date}" 10 and 3 days out (claim_reward_reminders). Both claims build the
+  // copy in SQL (car and date, never plate or amount) and are burned BEFORE
+  // the send, like Phase 4: the listing's own reward banner is the door, so a
+  // lost push costs a reminder, not the notice. Moves no money.
+  //
+  // ⚠️ OFF UNTIL SWITCHED ON (REWARD_TERM_NOTICES_ENABLED=true). These pushes
+  // promise an automatic refund at the end of the term (the expiry, PR5) and
+  // point at a Renew button only the updated app has. Deploying this code
+  // must not start sending them: turn the switch on once BOTH are live (the
+  // OTA verified with `eas update:list`, and PR5 deployed). Until then the
+  // claims are not even called, so nothing is stamped and nothing is lost.
+  const termNoticesOn = Deno.env.get('REWARD_TERM_NOTICES_ENABLED') === 'true';
+  for (const claim of termNoticesOn
+    ? (['claim_reward_term_notices', 'claim_reward_reminders'] as const)
+    : []) {
+    try {
+      const { data: rows, error: claimError } = await admin.rpc(claim, { p_limit: 200 });
+      if (claimError) {
+        console.error('[payments] reward term claim failed', { claim, error: claimError.message });
+        continue;
+      }
+      for (const row of (rows ?? []) as {
+        payment_id: string;
+        post_id: string;
+        user_id: string;
+        title: string;
+        body: string;
+      }[]) {
+        try {
+          await notifyUsers(admin, [row.user_id], {
+            kind: 'reward_ending',
+            title: row.title,
+            body: row.body,
+            data: { type: 'reward_ending', postId: row.post_id },
+            // One live notice per LISTING: the 3-day reminder replaces the
+            // 10-day one on the lock screen, across renewals too. The post id,
+            // not the payment id — a ledger id must never travel through
+            // Expo/APNs/FCM (SECURITY_AND_TRUST §3 allows post/thread ids).
+            collapseKey: `reward-ending-${row.post_id}`,
+          });
+          if (claim === 'claim_reward_term_notices') {
+            summary.rewardTermNotices += 1;
+          } else {
+            summary.rewardReminders += 1;
+          }
+        } catch (err) {
+          console.error('[payments] reward term send failed', (err as Error).message);
+        }
+      }
+    } catch (err) {
+      console.error('[payments] reward term phase failed', { claim, error: (err as Error).message });
+    }
+  }
+
   // --- Phase 4: the liveness check (ADR-0019) --------------------------------
   // "Is your {car} still missing?" to owners who have gone quiet. The 2026-08-05
   // loop trace found that nothing in the system ever asks: a post sits `active`
@@ -566,9 +628,12 @@ Deno.serve(async (request) => {
   // to.
   //
   // ⚠️ THIS MOVES NO MONEY AND CHANGES NO STATUS, and that separation is the
-  // whole design. Passive expiry stays cut (DOMAIN.md: "every refund is a human
-  // act") — all this does is ask a question whose answers both lead somewhere a
-  // person already drives. The claim caps itself at three asks per case.
+  // whole design: all this does is ask a question whose answers both lead
+  // somewhere a person already drives. The claim caps itself at three asks per
+  // case. (The one timer that DOES return money is the reward term —
+  // ADR-0020, which supersedes ADR-0019's "no cron moves money" for exactly
+  // that case: an owner's own reward, back to that owner, on a date they were
+  // told. This ask stays money-free.)
   //
   // ⚠️ THE CLAIM IS BURNED BEFORE THE SEND, which is the OPPOSITE of the rule
   // claim_credited_notification was rewritten for on 2026-09-02 — deliberately.

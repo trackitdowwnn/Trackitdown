@@ -80,3 +80,13 @@ export function snapBountyPence(pence: number): number {
   // under MAX on a £50 grid rounds up past it).
   return Math.min(Math.max(snapped, MIN_BOUNTY_PENCE), MAX_BOUNTY_PENCE);
 }
+
+/**
+ * How long a reward runs before it must be renewed — ADR-0020 (Stripe caps
+ * funds on the platform balance at 90 days). The server's authority is
+ * mark_post_payment_held's `c_term`; this mirrors it for display, and every
+ * client string that says "60 days" interpolates THIS, never a literal (the
+ * "From £50" lesson above). The Terms keep their own literal on purpose: legal
+ * text changes by a decision, not as a side effect of a constant.
+ */
+export const REWARD_TERM_DAYS = 60;

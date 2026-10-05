@@ -37,7 +37,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { estimateRefundPence, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
-import { DEFAULT_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
+import { DEFAULT_BOUNTY_PENCE, REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
 import type { PostACarAnswers } from '../types';
 
 export interface ReviewCostPanelProps {
@@ -73,9 +73,9 @@ export function ReviewCostPanel({ answers }: ReviewCostPanelProps) {
       // difference unexplained on the commitment surface, and the natural
       // misreading is that we keep it. Same clause as defaultBountyPanelCopy,
       // where they first saw it.
-      `Held when your listing goes live. You only pay it if a spotter finds your car; otherwise ${formatPounds(
+      `Held for ${REWARD_TERM_DAYS} days and renewable — your listing stays up either way. You only pay it if a spotter finds your car; otherwise ${formatPounds(
         estimateRefundPence(bountyPence),
-      )} of it comes back to you — card processing costs are not refundable.`;
+      )} comes back to you (card processing costs are not refundable).`;
 
   return (
     <View style={styles.block} testID="review-cost-panel">

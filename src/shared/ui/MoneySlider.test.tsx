@@ -100,7 +100,7 @@ describe('MoneySlider rendering', () => {
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
     expect(getByText(/they receive £190 and our platform fee is £10/)).toBeTruthy();
-    expect(getByText(/£200 is held when your post goes live/)).toBeTruthy();
+    expect(getByText(/£200 is held for 60 days from when your listing goes live/)).toBeTruthy();
   });
 
   // The refund conditions must read COMPLETELY. The line used to say "refunded
@@ -112,7 +112,9 @@ describe('MoneySlider rendering', () => {
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
     expect(getByText(/only pay it if a spotter finds your car/)).toBeTruthy();
-    expect(getByText(/cancel, recover it yourself, or the post expires/)).toBeTruthy();
+    // The term (ADR-0020): every ending that brings the money back, named.
+    expect(getByText(/cancel, recover it yourself, or the 60 days end without a renewal/)).toBeTruthy();
+    expect(getByText(/held for 60 days from when your listing goes live, and you can renew it any time — your listing stays up either way/)).toBeTruthy();
   });
 
   // Our Terms promise "that deduction is shown to you before you pay", and
@@ -128,7 +130,7 @@ describe('MoneySlider rendering', () => {
 
   it('hides the panel when no copy is provided', async () => {
     const { queryByText } = await render(<MoneySlider {...bountyProps} valuePence={20000} />);
-    expect(queryByText(/is held when your post goes live/)).toBeNull();
+    expect(queryByText(/is held for 60 days from when your listing goes live/)).toBeNull();
   });
 
   it('clamps an out-of-range controlled value', async () => {

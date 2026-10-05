@@ -154,9 +154,13 @@ const SAFETY: LegalDocument = {
 const TERMS: LegalDocument = {
   slug: 'terms',
   title: 'Terms of service',
-  // 30 Sep: the "Vehicle data" credit. Not a change that matters to anyone's
-  // agreement, so no in-app notice.
-  lastUpdated: '30 September 2026',
+  // 5 Oct: bounties get a 60-day term (ADR-0020). THIS CHANGE MATTERS to
+  // people's money, so — as the "Changes" section promises — owners with a
+  // bounty are told in the app before it affects them: a push and the
+  // listing's reward banner, with at least 14 days' notice where Stripe's
+  // 90-day limit allows (claim_reward_term_notices, 20261005140000).
+  // (30 Sep: the "Vehicle data" credit — no notice needed.)
+  lastUpdated: '5 October 2026',
   intro: [
     `These terms are an agreement between you and ${OPERATOR}. By creating an account you accept them.`,
     'They are written to be read. Where a term matters to your money or your safety, it is stated plainly rather than buried.',
@@ -215,26 +219,38 @@ const TERMS: LegalDocument = {
         'The bounty is between £10 and £5,000. All amounts are in pounds sterling.',
         'If a sighting leads to your vehicle being recovered, you credit that sighting. The person who reported it receives 95% of the bounty. We keep 5%.',
         'Only one sighting can be credited per recovery. If several people helped, you choose the one that made the difference. We cannot split a bounty.',
-        'If you recover the vehicle without anyone’s help, or you cancel the listing, the bounty is refunded to you minus the card processing costs, which the card networks do not return to us. That deduction is shown to you before you pay.',
+        'If you recover the vehicle without anyone’s help, or you cancel the listing, or the bounty reaches the end of its 60 days without being renewed, the bounty is refunded to you minus the card processing costs, which the card networks do not return to us. That deduction is shown to you before you pay.',
+        // ⚠️ THE TERM, 2026-10-05 (ADR-0020). Our payment provider may not
+        // hold funds on our balance for more than 90 days, so a bounty can no
+        // longer sit indefinitely. Each of these four paragraphs is a promise
+        // the code keeps — 60 days (mark_post_payment_held's c_term), the two
+        // reminders (claim_reward_reminders), the 72-hour wait for recent
+        // sightings (the ADR-0011 hold), the lowering rule
+        // (reward_change_block) — so changing either side means changing both.
+        'A bounty lasts 60 days from when it is paid. We remind you 10 days and 3 days before it ends, and you can renew it at any time from your listing.',
+        'Renewing a bounty, or changing its amount, is a new payment. Once the new one is held, your previous bounty is refunded to you minus the card processing costs. You can raise a bounty at any time; you can lower it only if nobody has reported a sighting of your vehicle in the last 14 days.',
+        'If a bounty reaches the end of its 60 days without being renewed, we refund it to you automatically, minus the card processing costs. If someone reported a sighting in the 14 days before, the refund waits up to 72 hours so they can tell us whether their sighting led to the recovery; if they do, a person reviews it before any money moves.',
+        // ⚠️ THE CLAIM CARVE-OUT. reward_change_block refuses a renewal, and
+        // the expiry will not refund, while anyone has a claim on the money —
+        // so the two promises above must say so, or they are false exactly
+        // when it matters most.
+        'While a recovery, a dispute or a payment review is in progress on your listing, the bounty stays held: it cannot be renewed or changed, and it is not refunded at the end of its 60 days, until that is resolved.',
+        'Bounties that were already being held when this term was introduced on 5 October 2026 were given an end date, which we told you about in the app before it applied. Their refund at the end of that term is made in full, including the card processing costs.',
         // ⚠️ THE FEE IS NON-REFUNDABLE AND THAT MUST BE STATED PLAINLY. You
         // cannot take a non-refundable payment under a document that does not
         // say it is non-refundable, and this is the term a reader is most
         // likely to be surprised by. ADR-0014: "a fee is non-refundable".
         'The listing fee is £5. It is not refundable — not if you cancel, not if you recover the vehicle another way, and not if nobody ever reports a sighting. It pays for the listing itself, not for a result, and we tell you so before you pay.',
-        'A fee listing looks like any other and reaches the same people. What it does not carry is a cash reward: if someone’s sighting leads to your vehicle being recovered you still credit them, and it counts towards their record, but there is no bounty for us to pay them.',
-        // ⚠️ THE 90-DAY EXPIRY PROMISE IS GONE, 2026-09-01. It said "A listing
-        // lasts 90 days unless you cancel or renew it", and the refund line
-        // above said the bounty comes back "or it expires". NOTHING IMPLEMENTS
-        // EXPIRY — ROADMAP records passive expiry as deliberately CUT ("we are
-        // cutting the PROMISE, not building the machine"), and the Terms were
-        // missed in that cut. A term nobody keeps is worse than no term: an
-        // owner could rely on it. The refund right it appeared to give is
-        // preserved in full by cancel-with-refund, which does work.
-        //
-        // ⚠️ create_post still stamps expires_at +90 days and post detail still
-        // SHOWS that date. That is a live bug (a date nothing acts on), not a
-        // term — it is tracked separately and must not be written back in here.
-        'A listing stays live until you cancel it or the vehicle is recovered. We do not close it automatically.',
+        'A fee listing looks like any other and reaches the same people. What it does not carry is a cash reward: if someone’s sighting leads to your vehicle being recovered you still credit them, and it counts towards their record, but there is no bounty for us to pay them. You can add a bounty to a fee listing later; the £5 fee is still not refunded.',
+        // ⚠️ THE LISTING HAS NO TERM — ONLY ITS BOUNTY DOES (2026-10-05). On
+        // 2026-09-01 a "listing lasts 90 days" promise was removed here because
+        // nothing implemented it (a term nobody keeps is worse than none). The
+        // 60-day term above is different in kind: it applies to the BOUNTY,
+        // it IS implemented (ADR-0020), and when it ends the listing stays up
+        // with no reward. So the listing line below stays true, extended
+        // rather than replaced. posts.expires_at remains dormant — the term
+        // lives on the payment (payments.term_ends_at).
+        'A listing stays live until you cancel it or the vehicle is recovered — including after its bounty ends, when it simply carries no reward. We do not close a listing automatically, and you can add a bounty to it again at any time.',
       ],
     },
     {

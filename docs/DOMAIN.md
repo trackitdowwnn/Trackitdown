@@ -19,7 +19,8 @@ The honest split:
   RPC bodies are the state of the system. If this file describes a column,
   status or gate that the schema does not have, this file is wrong.
 - **This file is authoritative on what was INTENDED, and why.** Where the code
-  does something this document forbids — money moving on a timer, a plate in a
+  does something this document forbids — money moving on a timer (other than
+  a reward returning to its owner at the end of its term, ADR-0020), a plate in a
   push, a spotter's location shown to an owner — that is a bug in the code, and
   this file is the reason it is a bug.
 
@@ -197,8 +198,9 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
    are skipped and **counted** (`cancelledPostsSkipped` in the sweep summary),
    so a post the guards refuse every hour is visible, not silent.
    **expired** — *retired state, like `rejected` below.* Nothing enters it and
-   nothing ever has: passive expiry was cut deliberately (see "There is still
-   no passive expiry" further down — every refund is a human act). This line
+   nothing ever has: passive LISTING expiry was cut deliberately (a listing
+   still never expires; since 2026-10-05 its REWARD has a 60-day term instead,
+   ADR-0020). This line
    promised "default 90 days, owner can renew" until 2026-09-02; there was
    never a renewal, and `create_post` stopped stamping `expires_at` on the same
    day, because a date nothing acts on was being counted down in front of
@@ -225,8 +227,10 @@ your {car} still missing?"*, re-asked every **7 days**, at most **3 times**.
 - *I've found it* opens the existing recovery flow, unchanged.
 - Silence changes nothing at all.
 
-⚠️ **It moves no money and changes no status.** That is the point, and it is
-what keeps "every refund is a human act" true. The ask reaches the owner as a
+⚠️ **It moves no money and changes no status.** That is the point. (The one
+timer that does return money is the reward term, ADR-0020: an owner's own
+reward, back to that owner, on a date they were told. This ask stays
+money-free.) The ask reaches the owner as a
 push AND as a banner on the listing itself — the banner is the door, because
 the person this asks about is by definition the one who has stopped opening the
 app.
@@ -385,6 +389,19 @@ refunded minus the card fee. The rules:
 When a fee listing adds a reward, its £5 stays non-refundable. Why this exists: Stripe caps
 funds on the platform balance at 90 days, so a reward gets a term (see
 `supabase/migrations/20261005110000_a_reward_can_be_replaced.sql`).
+
+**The reward term (2026-10-05, ADR-0020, migration 20261005140000).**
+- **60 days from capture.** Every reward runs to the end of the London day 60
+  days after capture (`payments.term_ends_at`). Renewing or changing it
+  starts a new payment with a fresh term.
+- **Reminders.** Owners are reminded 10 and 3 days before the end. These are
+  `reward_ending` pushes, which can't be muted, and the listing's reward
+  banner is the door to renewing.
+- **Older rewards.** Rewards held before the term existed get one dated notice
+  (`legacy_term`), and their end-of-term refund is made in full.
+- **At the end** the reward is refunded through the refund hold, and the
+  listing stays live with no reward (PR5).
+- **Switch.** Nothing is sent until `REWARD_TERM_NOTICES_ENABLED` is on.
 
 **Why a listing fee exists at all:** £50, the floor before 2026-08-13, was the price of admission for a theft
 victim, at the moment they can least afford it and in the hours that matter
@@ -880,6 +897,10 @@ whose car a spotter found from taking the bounty back with one tap:
   and on the dispute screen. Rejection is final and deliberately unexplained —
   the evidence was weighed by a person, and reasons become argument surfaces.
 
-There is still no passive expiry: nothing refunds by waiting. Every refund is
-an affirmative act, and now every affirmative act with recent sightings on the
-table is attested, delayed, and contestable.
+~~There is still no passive expiry: nothing refunds by waiting.~~
+**Superseded 2026-10-05 by ADR-0020.** A reward has a 60-day term, and at the
+end it is refunded to its owner automatically if not renewed. That refund goes
+through this same hold: recent sightings start the 72-hour window, and an open
+or upheld dispute blocks it. The listing has no term and stays live. Every
+other refund is an affirmative act. Every refund with recent sightings on the
+table, owner-initiated or not, is held and contestable.

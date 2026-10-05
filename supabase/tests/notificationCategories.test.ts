@@ -70,7 +70,7 @@ describe('notification_category', () => {
     expect(sqlMap).toEqual(clientMap);
   });
 
-  it('⚠️ leaves the four consequential kinds with no category at all', () => {
+  it('⚠️ leaves the consequential kinds with no category at all', () => {
     // Not "maps them to a locked category" — ABSENT, so no column exists to
     // store a mute in and no switch can be built on top of one. A regression
     // here would be someone adding a row to the SQL CASE with the best
@@ -88,11 +88,18 @@ describe('notification_category', () => {
     // guaranteed warning back into silence; its cap is one send per post,
     // ever — the stamp never clears and the post is gone days later.
     expect(sqlMap.deletion_soon).toBeUndefined();
+    // reward_ending / reward_ended (2026-10-05, ADR-0020): the notice a
+    // reward's automatic refund at the end of its 60-day term must follow. A
+    // toggle that silenced it would let a reward end unannounced.
+    expect(sqlMap.reward_ending).toBeUndefined();
+    expect(sqlMap.reward_ended).toBeUndefined();
     expect(UNMUTABLE_KINDS).toEqual([
       'sighting',
       'closed_uncredited',
       'still_missing',
       'deletion_soon',
+      'reward_ending',
+      'reward_ended',
     ]);
   });
 
