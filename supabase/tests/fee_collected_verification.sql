@@ -53,8 +53,11 @@ begin
   -- a change that sent everything to `collected` would pass CHECK 1 and
   -- silently make every bounty unrefundable and unpayable.
   -- ---------------------------------------------------------------------
+  -- 15000 = the seed post's own bounty. Since 20261005110000 a capture for an
+  -- amount the post does not offer is a stray (superseded, refunded in full),
+  -- not a held reward — so the fixture must charge what the listing offers.
   insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
-  values (v_post, 'pi_test_bounty_capture', 'requires_payment', 20000, 'bounty_escrow');
+  values (v_post, 'pi_test_bounty_capture', 'requires_payment', 15000, 'bounty_escrow');
 
   perform public.mark_post_payment_held('pi_test_bounty_capture');
 

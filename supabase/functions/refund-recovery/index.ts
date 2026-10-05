@@ -27,10 +27,10 @@
  *        disagrees with a retry under the same idempotency key bricks the
  *        refund at Stripe, and an over-guess over-refunds.
  *
- *        The idempotency key is per POST and distinct from deactivate-post's
- *        (`recovery-refund-` vs `post-refund-`): the same post could in
- *        principle be cancelled and then recovered, and reusing one key would
- *        make Stripe return the FIRST refund for the second request.
+ *        The idempotency key is per PAYMENT (`payment-refund-<pi>`, since
+ *        2026-10-05; it was per post, `recovery-refund-<post>`). A payment is
+ *        refunded at most once, so its own key cannot collide with another
+ *        exit's — and a renewable reward means a post may have several.
  *
  * SAFETY: refuses a post with a credited sighting — that money is a spotter's.
  *         Checked here AND again inside mark_post_recovered_no_spotter, because
@@ -165,15 +165,11 @@ Deno.serve(async (request) => {
 
   // --- Refund the held escrow (the one shared implementation) -----------------
   // Fee read authoritatively, arithmetic guarded, refund idempotent — see
-  // _shared/refundEscrow.ts. Key distinct from deactivate-post's
-  // `post-refund-<id>`: one post could be cancelled and then recovered, and a
-  // shared key would return the FIRST refund for the second request.
+  // _shared/refundEscrow.ts. Keyed per PAYMENT (`payment-refund-<pi>`): a
+  // payment can only be refunded once, whichever exit asks, so one key per
+  // payment is exactly as distinct as it needs to be.
   const stripe = createStripeClient();
-  const outcome = await refundHeldEscrow(admin, stripe, {
-    postId,
-    idempotencyKey: `recovery-refund-${postId}`,
-    metadata: { reason: 'recovered_no_spotter' },
-  });
+  const outcome = await refundHeldEscrow(admin, stripe, { postId });
 
   if (outcome.status === 'no_held_payment') {
     return errorResponse('NO_HELD_PAYMENT', 'We couldn’t find the escrow for this listing.', 409);

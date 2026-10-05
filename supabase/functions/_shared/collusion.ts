@@ -172,7 +172,10 @@ export async function collusionGate(
         .from('payments')
         .select('stripe_payment_intent_id, posts!inner(owner_id)')
         .eq('posts.owner_id', input.spotterId)
-        .in('status', ['held', 'released', 'refunded'])
+        // Every CAPTURED charge — superseded included (a renewed reward's old
+        // payment was a real charge on a real card), and a collected listing
+        // fee too: the spotter paid it with a card just the same.
+        .in('status', ['held', 'released', 'refunded', 'superseded', 'collected'])
         .order('created_at', { ascending: false })
         .limit(3);
       if (spotterPaymentsError) {

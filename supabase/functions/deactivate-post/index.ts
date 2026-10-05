@@ -23,9 +23,10 @@
  *        card processing costs", so the platform withholds the exact Stripe fee.
  *        The refund execution (fee read, guards, refunds.create) lives in
  *        _shared/refundEscrow.ts — one implementation shared with
- *        refund-recovery and the hold sweep; the key `post-refund-<postId>`
- *        stays THIS function's, so a retry after a dropped response never
- *        issues a SECOND refund. The RPC is likewise idempotent + never-regress,
+ *        refund-recovery and the hold sweep, keyed per PAYMENT
+ *        (`payment-refund-<pi>`, since 2026-10-05: a renewable reward means a
+ *        post can have several payments), so a retry after a dropped response
+ *        never issues a SECOND refund. The RPC is likewise idempotent + never-regress,
  *        and the charge.refunded webhook reconciles the same transition if this
  *        request dies after the refund is issued. Escrow model per ADR-0002:
  *        the charge was captured to the platform balance ('held'); a refund
@@ -200,13 +201,11 @@ Deno.serve(async (request) => {
 
   // --- Refund the held escrow (the one shared implementation) -----------------
   // Fee read authoritatively, arithmetic guarded, refund idempotent — see
-  // _shared/refundEscrow.ts. One refund per post cancellation (terminal): the
-  // key makes a retry after a dropped response return the SAME refund.
+  // _shared/refundEscrow.ts. The key is the PAYMENT's (`payment-refund-<pi>`),
+  // so a retry after a dropped response returns the SAME refund, and the
+  // sweep, retrying this exit after a hold, asks with that same key.
   const stripe = createStripeClient();
-  const outcome = await refundHeldEscrow(admin, stripe, {
-    postId,
-    idempotencyKey: `post-refund-${postId}`,
-  });
+  const outcome = await refundHeldEscrow(admin, stripe, { postId });
 
   if (outcome.status === 'no_held_payment') {
     // Defensive: an eligible-status post with no held escrow is an anomaly.
