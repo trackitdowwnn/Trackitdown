@@ -66,6 +66,7 @@ const context = (overrides: Record<string, unknown> = {}) => ({
   car: { make: 'Fiesta', colour: 'Blue' },
   windowEndsAt: '2026-08-08T12:00:00Z',
   bountySharePence: 19000,
+  reason: null,
   dispute: null,
   ...overrides,
 });
@@ -85,6 +86,18 @@ describe('what each state shows', () => {
     // Server-derived share, never client arithmetic.
     expect(getByText(/£190/)).toBeTruthy();
     expect(getByText(/Blue Fiesta/)).toBeTruthy();
+  });
+
+  it('says the listing closed after an owner’s exit — and that the reward is ending after an expiry', async () => {
+    const closed = await act(async () => render(<SightingDisputeScreen sightingId={SIGHTING_ID} />));
+    expect(closed.getByText(/The listing closed without crediting anyone/)).toBeTruthy();
+    await act(async () => closed.unmount());
+
+    // ADR-0020: the listing is still UP — "closed" would be false.
+    mockFetchContext.mockResolvedValue(context({ reason: 'reward_end' }));
+    const ending = await act(async () => render(<SightingDisputeScreen sightingId={SIGHTING_ID} />));
+    expect(ending.getByText(/The reward on this listing is ending/)).toBeTruthy();
+    expect(ending.queryByText(/listing closed/)).toBeNull();
   });
 
   it('shows the calm closed state when the server says there is nothing here', async () => {

@@ -1,6 +1,8 @@
 /**
  * WHAT:  SightingDisputeScreen — where a spotter says "my sighting led to this
- *        recovery" after a post they sighted closed without crediting anyone,
+ *        recovery" after a post they sighted closed without crediting anyone
+ *        (or after its reward reached the end of its term — ADR-0020: the
+ *        listing is then still up, and the copy says so),
  *        and where they later read the answer.
  * WHY:   The owner-denial control's spotter half. The `closed_uncredited` push
  *        lands here with 72 hours on the clock; filing holds the owner's
@@ -16,6 +18,7 @@
  *        an argument surface. The bounty share shown is server-derived via
  *        payout_split; this screen never does money arithmetic.
  * LINKS: ../api/disputeApi.ts (the only calls);
+ *        supabase/migrations/20261006130000_a_reward_expires.sql (reason);
  *        supabase/migrations/20260805100000_refund_holds_and_disputes.sql;
  *        src/app/sighting-dispute.tsx (the route);
  *        docs/DOMAIN.md (Disputes).
@@ -210,8 +213,11 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
           Did your sighting help find the {car}?
         </Text>
         <Text style={styles.cardBody}>
-          The listing closed without crediting anyone. If your sighting led to the
-          recovery
+          {/* ADR-0020: a reward that reached the end of its 60 days leaves the
+              listing UP — "the listing closed" would be false there. */}
+          {context.reason === 'reward_end'
+            ? 'The reward on this listing is ending. If your sighting led to the car being found'
+            : 'The listing closed without crediting anyone. If your sighting led to the recovery'}
           {context.bountySharePence !== null
             ? `, ${formatPounds(context.bountySharePence)} is set aside for you`
             : ''}
@@ -227,7 +233,7 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
           testID="dispute-statement"
         />
         <Button
-          label="My sighting led to this recovery"
+          label={context.reason === 'reward_end' ? 'My sighting helped find it' : 'My sighting led to this recovery'}
           onPress={() => void submit()}
           loading={submitting}
         />

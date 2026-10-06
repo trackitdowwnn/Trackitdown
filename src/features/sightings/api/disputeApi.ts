@@ -3,7 +3,8 @@
  *        know (`my_dispute_context`) and file the one dispute a sighting gets
  *        (`open_dispute`).
  * WHY:   The owner-denial control (DOMAIN.md Disputes): when a post a spotter
- *        sighted closes without crediting anyone, the refund is held 72 hours
+ *        sighted closes without crediting anyone — or its reward reaches the
+ *        end of its 60 days with a recent sighting (ADR-0020) — the refund is held 72 hours
  *        and this is the spotter's lever. The server answers every refusal —
  *        not yours, window closed, money moved, already filed — with the ONE
  *        token DISPUTE_NOT_AVAILABLE, so this file deliberately cannot tell
@@ -11,6 +12,8 @@
  *        closed" for all of them, and no probing surface exists.
  * LINKS: supabase/migrations/20260805100000_refund_holds_and_disputes.sql
  *          (both RPCs and the no-oracle rule);
+ *        supabase/migrations/20261006130000_a_reward_expires.sql (one hold per
+ *          payment; the reward_end reason);
  *        ../screens/SightingDisputeScreen.tsx (the only consumer);
  *        docs/SECURITY_AND_TRUST.md (owner-denial control).
  */
@@ -25,6 +28,11 @@ const log = createLogger('sightings');
 export interface DisputeContext {
   car: { make: string | null; colour: string | null };
   windowEndsAt: string;
+  /** Why the money is moving: 'closed' (an owner's exit closed the listing —
+   *  which exit is never told to a spotter), or 'reward_end' (the
+   *  reward reached the end of its 60 days and the listing is still up
+   *  (ADR-0020). Null from a server before 20261006130000. */
+  reason: 'reward_end' | 'closed' | null;
   /** The spotter's 95% share, or null once the money has moved. */
   bountySharePence: number | null;
   dispute: { status: 'open' | 'upheld' | 'rejected'; createdAt: string } | null;
@@ -61,6 +69,7 @@ export async function fetchDisputeContext(sightingId: string): Promise<DisputeCo
   const doc = data as {
     car?: { make?: string | null; colour?: string | null };
     windowEndsAt?: string;
+    reason?: string;
     bountySharePence?: number | null;
     dispute?: { status?: string; createdAt?: string } | null;
   } | null;
@@ -71,6 +80,10 @@ export async function fetchDisputeContext(sightingId: string): Promise<DisputeCo
   return {
     car: { make: doc.car?.make ?? null, colour: doc.car?.colour ?? null },
     windowEndsAt: doc.windowEndsAt,
+    reason:
+      doc.reason === 'reward_end' || doc.reason === 'closed'
+        ? doc.reason
+        : null,
     bountySharePence: typeof doc.bountySharePence === 'number' ? doc.bountySharePence : null,
     dispute:
       doc.dispute?.status === 'open' ||

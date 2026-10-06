@@ -442,11 +442,24 @@ commenting standards.
   recent uncredited sightings exist, and capture re-checks it. See
   20261005130000.)*
   *(The reward TERM, 2026-10-05, ADR-0020: a reward lasts 60 days and is then
-  refunded to its owner through the ADR-0011 hold. Reward money is never held
-  past capture + 85 days: the 75-day operator alert is the backstop. Refunds
-  are keyed per payment (`payment-refund-<pi>`). The reminder pushes carry
-  the car and the date, never the plate or the amount, and collapse by POST
-  id, never by a ledger id.)*
+  refunded to its owner through the ADR-0011 hold. A term ends by capture +
+  85 days and its 72-hour spotter window by capture + 88 (under Stripe's 90);
+  only an open dispute holds money longer, and the 75-day operator alert is
+  the backstop. Refunds are keyed per payment (`payment-refund-<pi>`). The
+  reminder pushes carry the car and the date, never the plate or the amount,
+  and collapse by POST id, never by a ledger id.)*
+  *(The EXPIRY, 2026-10-06, `20261006130000`: `claim_reward_expiries` is
+  service-role only and runs only when BOTH `REWARD_EXPIRY_ENABLED` and
+  `REWARD_TERM_NOTICES_ENABLED` are on (the sweep enforces the pair). It
+  raises a SYSTEM refund hold — not attested, so it never stands in for an
+  owner's attestation; an owner exit during it is attested and upgrades it.
+  The refund never runs over an open/upheld dispute, a credited sighting or an
+  unresolved payout review (`refunds_due`), and a sighting reported during
+  the window is taken in and told. Spotters see only `reward_end` vs `closed`
+  on the dispute screen — never which owner exit closed a listing. By the
+  owner's choice the `reward_ended` push names the exact refund figure
+  (ADR-0021's fixed fee) — the only reward push that carries an amount;
+  never the plate.)*
   The client never sends either amount, and specifically **never sends the fee**:
   `create_post` stamps it from `current_listing_fee_pence()` and
   `posts.listing_fee_pence` is deliberately absent from the client column grants,

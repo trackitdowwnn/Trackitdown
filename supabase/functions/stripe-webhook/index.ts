@@ -6,8 +6,10 @@
  *        marks the ledger row failed (post left as draft for retry); on
  *        charge.refunded reconciles the refund through reconcile_payment_refund,
  *        which decides from the ledger — the post's CURRENT reward closes the
- *        post (cancelled, or recovered_no_spotter on a claimed recovery), a
- *        superseded payment (renewed, or a stray capture) never touches it. The
+ *        post (cancelled, or recovered_no_spotter on a claimed recovery) unless
+ *        it ENDED at its term (a reward_end hold: the listing stays up as
+ *        "Reward ended", 20261006130000), and a superseded payment (renewed,
+ *        or a stray capture) never touches it. The
  *        exit functions and the sweep are authoritative; this reconciles them.
  *        charge.refund.updated with status failed emails the operator.
  *
