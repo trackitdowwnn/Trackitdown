@@ -27,6 +27,22 @@ Both were right about what they protected: a spotter's claim must never be
 lost to a clock, and a timer must never decide who is paid. They did not
 anticipate a hard ceiling on how long we may hold money at all.
 
+**Stripe confirmed the design, 2026-10-06** (support, by email), after we
+described the funds flow:
+
+> … your platform's funds flow is fully compliant with Stripe's funds holding
+> period policy. … Your approach of treating renewals as new payments with the
+> previous charge refunded is the correct approach. This effectively resets
+> the clock on each new listing term …
+
+Their reasoning assumed money leaves "within 60 days". Our rare longer cases
+were not put to them: a 72-hour sightings hold, an open dispute, a credited
+spotter who never onboards (refunded at day 80), and pre-term rewards capped
+at day 80. All of them stay under the hard line at capture + 85 days (point 6
+below). Two questions are still open with Stripe: does the 90 days run from
+the charge or from when the funds become available, and are those cases
+explicitly fine?
+
 ## Decision
 
 **A reward lasts 60 days. The listing itself has no term.**
