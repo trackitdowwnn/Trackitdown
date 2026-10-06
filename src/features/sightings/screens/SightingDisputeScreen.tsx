@@ -210,8 +210,11 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
           Did your sighting help find the {car}?
         </Text>
         <Text style={styles.cardBody}>
-          The listing closed without crediting anyone. If your sighting led to the
-          recovery
+          {/* ADR-0020: a reward that reached the end of its 60 days leaves the
+              listing UP — "the listing closed" would be false there. */}
+          {context.reason === 'reward_end'
+            ? 'The reward on this listing is ending. If your sighting led to the car being found'
+            : 'The listing closed without crediting anyone. If your sighting led to the recovery'}
           {context.bountySharePence !== null
             ? `, ${formatPounds(context.bountySharePence)} is set aside for you`
             : ''}

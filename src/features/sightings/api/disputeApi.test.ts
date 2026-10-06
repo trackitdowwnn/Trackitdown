@@ -68,10 +68,21 @@ describe('fetchDisputeContext', () => {
     await expect(fetchDisputeContext(SIGHTING)).resolves.toEqual({
       car: { make: 'Ford', colour: 'Blue' },
       windowEndsAt: '2026-09-05T10:00:00Z',
+      // A server before 20261006130000 sends no reason: null, never a guess.
+      reason: null,
       bountySharePence: 23750,
       dispute: null,
     });
     expect(mockRpc).toHaveBeenCalledWith('my_dispute_context', { p_sighting_id: SIGHTING });
+  });
+
+  // ADR-0020: a reward that ended leaves the listing UP — the screen must
+  // know, or it says "the listing closed".
+  it('passes the reason through, and drops one it does not know', async () => {
+    mockRpc.mockResolvedValue({ data: context({ reason: 'reward_end' }), error: null });
+    expect((await fetchDisputeContext(SIGHTING))?.reason).toBe('reward_end');
+    mockRpc.mockResolvedValue({ data: context({ reason: 'something_new' }), error: null });
+    expect((await fetchDisputeContext(SIGHTING))?.reason).toBeNull();
   });
 
   it('⚠️ returns null — not a throw — when the server says NOT_AVAILABLE', async () => {

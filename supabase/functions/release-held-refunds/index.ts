@@ -4,10 +4,13 @@
  *        clock, so every timed job hangs off it. Phase 0/0b/0c: retention
  *        (notification purge, 90-day location purge, orphaned photo bytes in
  *        both buckets). Phase 0d-warn/0d: the cancelled-post deletion warning
- *        and the 30-day purge it precedes. Phase 1: every refund refunds_due
- *        names — expired, undisputed holds get the refund the owner asked
- *        for, and superseded payments (a renewed reward, a stray capture) go
- *        home. Phase 1b: reward money 75+ days old is emailed to the operator
+ *        and the 30-day purge it precedes. Phase 1-pre: the EXPIRY (ADR-0020,
+ *        behind REWARD_EXPIRY_ENABLED) — rewards past their 60 days get a
+ *        system hold (72h if a spotter's recent sighting might have found the
+ *        car, else due now). Phase 1: every refund refunds_due names —
+ *        expired, undisputed holds get the refund the owner asked for (or,
+ *        for a reward_end, the listing stays up as "Reward ended"), and
+ *        superseded payments (a renewed reward, a stray capture) go home. Phase 1b: reward money 75+ days old is emailed to the operator
  *        (Stripe's 90-day platform-balance limit). Phase 1c: the 60-day
  *        reward term's notices and reminders (ADR-0020). Phase 2: upheld disputes
  *        get the spotter paid (through the existing release core) and every
@@ -93,6 +96,7 @@ Deno.serve(async (request) => {
     deadlineAlertsEmailed: null as boolean | null,
     rewardTermNotices: 0,
     rewardReminders: 0,
+    rewardsExpired: 0,
   };
 
   // --- Phase 0: feed retention (ADR-0012 §8) ---------------------------------
@@ -311,6 +315,72 @@ Deno.serve(async (request) => {
     console.error('[posts] cancelled-post purge failed', (err as Error).message);
   }
 
+  // --- Phase 1-pre: the expiry — rewards past their 60 days (ADR-0020) -------
+  // claim_reward_expiries locks each listing, re-checks everything (live, no
+  // claim on the money, no renewal in flight), fixes the refund basis on the
+  // payment, and raises a SYSTEM hold: 72 hours if any spotter's recent
+  // sighting might have found the car (they are told, and may dispute), due
+  // NOW otherwise — so Phase 1 below refunds it in this same run. The listing
+  // stays up as "Reward ended" (mark_reward_ended_refunded).
+  //
+  // MOVES NO MONEY ITSELF: it only decides that a reward is ending. The refund
+  // is Phase 1's, under the payment's one idempotency key.
+  //
+  // ⚠️ OFF UNTIL SWITCHED ON (REWARD_EXPIRY_ENABLED=true), together with
+  // REWARD_TERM_NOTICES_ENABLED: an owner must have been told their date
+  // (the notice, the reminders, the banner) before anything ends. Until then
+  // the claim is not even called.
+  const expiryOn = Deno.env.get('REWARD_EXPIRY_ENABLED') === 'true';
+  if (expiryOn) {
+    try {
+      const { data: expiries, error: expiryError } = await admin.rpc('claim_reward_expiries', {
+        p_limit: 50,
+      });
+      if (expiryError) {
+        console.error('[payments] reward expiry claim failed', expiryError.message);
+      }
+      for (const item of (expiries ?? []) as {
+        post_id: string;
+        path: 'reward_end' | 'recovery';
+        owner: { user_id: string; title: string; body: string } | null;
+        spotters: { user_id: string; sighting_id: string; title: string; body: string }[];
+      }[]) {
+        summary.rewardsExpired += 1;
+        // The spotters FIRST: their 72 hours started at the claim, and this
+        // push is their only door to the dispute screen (ADR-0011).
+        for (const spotter of item.spotters ?? []) {
+          try {
+            await notifyUsers(admin, [spotter.user_id], {
+              kind: 'closed_uncredited',
+              title: spotter.title,
+              body: spotter.body,
+              data: { type: 'closed_uncredited', sightingId: spotter.sighting_id },
+              collapseKey: `closed_uncredited:${spotter.sighting_id}`,
+            });
+          } catch (err) {
+            console.error('[payments] expiry spotter push failed', (err as Error).message);
+          }
+        }
+        if (item.owner) {
+          try {
+            await notifyUsers(admin, [item.owner.user_id], {
+              kind: 'reward_ended',
+              title: item.owner.title,
+              body: item.owner.body,
+              data: { type: 'reward_ended', postId: item.post_id },
+              // Replaces the "ends on" reminder on the lock screen.
+              collapseKey: `reward-ending-${item.post_id}`,
+            });
+          } catch (err) {
+            console.error('[payments] expiry owner push failed', (err as Error).message);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[payments] reward expiry phase failed', (err as Error).message);
+    }
+  }
+
   // --- Phase 1: every refund that is due → the owner ------------------------
   // ONE SQL definition of "due" (refunds_due, 20261005110000): expired holds
   // with a held reward and no open/upheld dispute (an open dispute pauses the
@@ -337,6 +407,9 @@ Deno.serve(async (request) => {
   const TERMINAL_RPC: Record<string, string> = {
     deactivate: 'mark_post_payment_refunded',
     recovery: 'mark_post_recovered_no_spotter',
+    // A reward that ended at its term: the listing STAYS UP ("Reward ended").
+    // Never mapped to the deactivate record — that would cancel the listing.
+    reward_end: 'mark_reward_ended_refunded',
     superseded: 'reconcile_payment_refund',
   };
   for (const row of (due ?? []) as {

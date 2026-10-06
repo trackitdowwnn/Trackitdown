@@ -25,6 +25,10 @@ const log = createLogger('sightings');
 export interface DisputeContext {
   car: { make: string | null; colour: string | null };
   windowEndsAt: string;
+  /** Why the money is moving: an owner's exit closed the listing, or the
+   *  reward reached the end of its 60 days and the listing is still up
+   *  (ADR-0020). Null from a server before 20261006130000. */
+  reason: 'deactivate' | 'recovery' | 'reward_end' | null;
   /** The spotter's 95% share, or null once the money has moved. */
   bountySharePence: number | null;
   dispute: { status: 'open' | 'upheld' | 'rejected'; createdAt: string } | null;
@@ -61,6 +65,7 @@ export async function fetchDisputeContext(sightingId: string): Promise<DisputeCo
   const doc = data as {
     car?: { make?: string | null; colour?: string | null };
     windowEndsAt?: string;
+    reason?: string;
     bountySharePence?: number | null;
     dispute?: { status?: string; createdAt?: string } | null;
   } | null;
@@ -71,6 +76,10 @@ export async function fetchDisputeContext(sightingId: string): Promise<DisputeCo
   return {
     car: { make: doc.car?.make ?? null, colour: doc.car?.colour ?? null },
     windowEndsAt: doc.windowEndsAt,
+    reason:
+      doc.reason === 'deactivate' || doc.reason === 'recovery' || doc.reason === 'reward_end'
+        ? doc.reason
+        : null,
     bountySharePence: typeof doc.bountySharePence === 'number' ? doc.bountySharePence : null,
     dispute:
       doc.dispute?.status === 'open' ||

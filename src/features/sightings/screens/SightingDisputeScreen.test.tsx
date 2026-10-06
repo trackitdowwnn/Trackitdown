@@ -87,6 +87,18 @@ describe('what each state shows', () => {
     expect(getByText(/Blue Fiesta/)).toBeTruthy();
   });
 
+  it('says the listing closed after an owner’s exit — and that the reward is ending after an expiry', async () => {
+    const closed = await act(async () => render(<SightingDisputeScreen sightingId={SIGHTING_ID} />));
+    expect(closed.getByText(/The listing closed without crediting anyone/)).toBeTruthy();
+    await act(async () => closed.unmount());
+
+    // ADR-0020: the listing is still UP — "closed" would be false.
+    mockFetchContext.mockResolvedValue(context({ reason: 'reward_end' }));
+    const ending = await act(async () => render(<SightingDisputeScreen sightingId={SIGHTING_ID} />));
+    expect(ending.getByText(/The reward on this listing is ending/)).toBeTruthy();
+    expect(ending.queryByText(/listing closed/)).toBeNull();
+  });
+
   it('shows the calm closed state when the server says there is nothing here', async () => {
     // One answer for every reason (not yours, window over, money moved) —
     // the no-oracle rule carried through to the UI.
