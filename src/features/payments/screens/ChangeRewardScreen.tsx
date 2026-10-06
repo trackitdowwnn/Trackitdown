@@ -2,7 +2,8 @@
  * WHAT:  ChangeRewardScreen — the owner changes the reward on their LIVE
  *        listing (raise it, or lower it if nobody has reported a sighting
  *        lately), RENEWS it (keeps the amount: a fresh 60-day term, ADR-0020),
- *        or adds a reward to a £5 fee listing. Choose an amount, read
+ *        or adds a reward to a £5 fee listing or to one whose reward ended
+ *        (no fee row is shown for the latter). Choose an amount, read
  *        exactly what happens to the money, pay with the PaymentSheet, and come
  *        back to the listing once the new reward is held.
  * WHY:   Until now the only way to change a live reward was deactivate, refund
@@ -309,7 +310,12 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
 
       <Text style={styles.lede}>
         {isAdd
-          ? 'Offer a reward to whoever finds your car. Spotters see it on your listing as soon as it’s paid.'
+          ? // After a reward ended (ADR-0020) the owner is adding one AGAIN —
+            // and their listing never had a £5 fee to mention, or had it long
+            // ago; say what is true now.
+            status.rewardEndedAt
+            ? 'Your previous reward ended and went back to your card. Offer a new one to whoever finds your car. Spotters see it on your listing as soon as it’s paid.'
+            : 'Offer a reward to whoever finds your car. Spotters see it on your listing as soon as it’s paid.'
           : currentPence !== null
             ? `Your listing offers a ${formatPounds(currentPence)} reward${
                 status.termEndsAt ? ` until ${formatTermDate(status.termEndsAt)}` : ''
@@ -352,11 +358,16 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
         ) : null}
         <SummaryRow label="Charged now" value={formatPounds(chosen)} styles={styles} />
         {isAdd ? (
-          <SummaryRow
-            label={`Your ${formatPounds(LISTING_FEE_PENCE)} listing fee`}
-            value="Not refunded — it paid for the listing"
-            styles={styles}
-          />
+          // A listing whose reward ended was a REWARD listing — it may never
+          // have paid a listing fee, so the fee row would describe money that
+          // doesn't exist. Only a fee listing gets it.
+          status.rewardEndedAt ? null : (
+            <SummaryRow
+              label={`Your ${formatPounds(LISTING_FEE_PENCE)} listing fee`}
+              value="Not refunded — it paid for the listing"
+              styles={styles}
+            />
+          )
         ) : refundBack !== null ? (
           <>
             <SummaryRow

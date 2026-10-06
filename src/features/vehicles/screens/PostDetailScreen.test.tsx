@@ -101,12 +101,31 @@ const mockExitCheck = jest.fn(async () => ({
   windowDays: 14,
   holdHours: 72,
 }));
-jest.mock('@/features/payments', () => ({
-  useDeactivatePost: () => ({ deactivate: mockDeactivate, pending: false }),
-  exitCheck: (...args: unknown[]) => mockExitCheck(...(args as [])),
-  // The reward-term banner loads its own status; it has its own tests.
-  RewardTermBanner: () => null,
+// The owner's reward status — driven per test; null = not read (the default).
+let mockRewardStatus: unknown = null;
+const mockUseMyRewardStatus = jest.fn((_postId: string, _enabled: boolean) => ({
+  status: mockRewardStatus,
+  readAt: Date.parse('2026-10-06T12:00:00Z'),
 }));
+jest.mock('@/features/payments', () => {
+  // The REAL phase rules: whether the screen draws the card or the line is
+  // exactly what these tests are about.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const term = require('@/features/payments/lib/rewardTerm');
+  return {
+    useDeactivatePost: () => ({ deactivate: mockDeactivate, pending: false }),
+    exitCheck: (...args: unknown[]) => mockExitCheck(...(args as [])),
+    useMyRewardStatus: (postId: string, enabled: boolean) => mockUseMyRewardStatus(postId, enabled),
+    hasRewardTermCard: term.hasRewardTermCard,
+    quietRewardTermLine: term.quietRewardTermLine,
+    // The banner's states have their own tests; here it is a marker.
+    RewardTermBanner: () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+      const { Text } = require('react-native');
+      return <Text>reward-term-banner</Text>;
+    },
+  };
+});
 
 // The report path calls the flag_post RPC via flagApi — stub it.
 const mockFlagPost = jest.fn((..._args: unknown[]) => Promise.resolve());
@@ -180,6 +199,7 @@ const post: PostDetail = {
   colour: 'Blue',
   plate: 'AB12 CDE',
   bountyPence: 50000,
+  rewardEnded: false,
   lastSeenAt: '2026-07-10T18:00:00Z',
   lastSeenArea: 'Camden',
   createdAt: '2026-07-08T12:00:00Z',
@@ -508,5 +528,83 @@ describe('PostDetailScreen', () => {
       );
       expect(mockStillMissingConfirm).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ADR-0020 — the reward's term, and a reward that has ended.
+describe('PostDetailScreen — reward term', () => {
+  const NOW = Date.parse('2026-10-06T12:00:00Z');
+  const DAY = 24 * 60 * 60 * 1000;
+  const rewardStatus = (over: Record<string, unknown> = {}) => ({
+    postStatus: 'active',
+    mode: 'change',
+    rewardId: 'r1',
+    amountPence: 50000,
+    capturedAt: '2026-10-01T10:00:00Z',
+    termEndsAt: '2026-12-04T23:59:59Z',
+    legacyTerm: false,
+    rewardEndedAt: null,
+    endedRewardPence: null,
+    feeAbsorbed: false,
+    hasRecentSightings: false,
+    blockedMessage: null,
+    ...over,
+  });
+
+  beforeEach(() => {
+    mockRewardStatus = null;
+    mockStillMissingOpen = false;
+    mockUseMyRewardStatus.mockClear();
+  });
+
+  it('a spotter never asks for the owner’s reward status', async () => {
+    setResult('ready', { kind: 'visible', post });
+    await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+    expect(mockUseMyRewardStatus).toHaveBeenCalledWith('p1', false);
+  });
+
+  it('QUIET: the date is one line in the stat band, and no card', async () => {
+    mockRewardStatus = rewardStatus();
+    setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
+    const { getByTestId, queryByText } = await render(<PostDetailScreen postId="p1" />, {
+      wrapper: ToastProvider,
+    });
+    expect(mockUseMyRewardStatus).toHaveBeenCalledWith('p1', true);
+    expect(getByTestId('reward-term-line').props.children).toBe('Your £500 reward runs until 4 December.');
+    expect(queryByText('reward-term-banner')).toBeNull();
+  });
+
+  it('RENEW WINDOW: the card, and no second date in the stat band', async () => {
+    mockRewardStatus = rewardStatus({ termEndsAt: new Date(NOW + 5 * DAY).toISOString() });
+    setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
+    const { getByText, queryByTestId } = await render(<PostDetailScreen postId="p1" />, {
+      wrapper: ToastProvider,
+    });
+    expect(getByText('reward-term-banner')).toBeTruthy();
+    expect(queryByTestId('reward-term-line')).toBeNull();
+  });
+
+  it('a lapsed listing still asks — the owner sees what came back', async () => {
+    setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, bountyPence: null, rewardEnded: true } });
+    await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+    expect(mockUseMyRewardStatus).toHaveBeenLastCalledWith('p1', true);
+  });
+
+  it('a fee listing never had a reward, so it doesn’t ask', async () => {
+    setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, bountyPence: null, rewardEnded: false } });
+    await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+    expect(mockUseMyRewardStatus).toHaveBeenLastCalledWith('p1', false);
+  });
+
+  it('a spotter sees "Reward ended" — never the fee wording — on a lapsed listing', async () => {
+    setResult('ready', { kind: 'visible', post: { ...post, bountyPence: null, rewardEnded: true } });
+    const { getAllByText, queryByText } = await render(<PostDetailScreen postId="p1" />, {
+      wrapper: ToastProvider,
+    });
+    // The sticky bar says it in full; the stat band's "Reward" cell says
+    // "Ended", read aloud as the full phrase.
+    expect(getAllByText('Reward ended').length).toBeGreaterThanOrEqual(1);
+    expect(getAllByText('Ended').length).toBeGreaterThanOrEqual(1);
+    expect(queryByText('No reward')).toBeNull();
   });
 });

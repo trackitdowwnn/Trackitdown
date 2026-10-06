@@ -39,7 +39,14 @@
  *        Every number arrives pre-aggregated from get_post_stats — nothing is
  *        counted on this thread, and no list of people is ever fetched in order
  *        to be counted client-side.
+ *
+ *        ONE DATE IS ALLOWED (ADR-0020): the reward's term end, read through
+ *        the owner's own get_my_reward_status (useMyRewardStatus) and said as
+ *        one line under the band (rewardTermLine — the same sentence as the
+ *        listing's). Unlike the old countdown, that date is real: the reward
+ *        is refunded on it unless renewed. Live listings only.
  * LINKS: src/app/post-stats.tsx (route);
+ *        @/features/payments (useMyRewardStatus, rewardTermLine);
  *        docs/design-refs/post-detail/REFERENCE_SPEC.md (section rhythm; the
  *          stat module, listed there as a missing pattern);
  *        docs/design-refs/profile/REFERENCE_SPEC.md (depth from whitespace;
@@ -53,6 +60,7 @@ import { ChevronLeft } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { rewardTermLine, useMyRewardStatus } from '@/features/payments';
 import { timeAgo } from '@/shared/lib';
 import { displayFontScaleCap, radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { EmptyState, ErrorState, Screen, StatBand, type StatBandCell } from '@/shared/ui';
@@ -140,6 +148,11 @@ export function PostStatsScreen({ postId }: PostStatsScreenProps) {
   // open across midnight keeps yesterday's anchor until it remounts, which is
   // the correct trade for a secondary read-only page.
   const [now] = useState(() => Date.now());
+  // The reward's term (ADR-0020) — a DATE, the one honest kind of time this
+  // page may show (see the countdown note below). Owner-scoped like the page;
+  // a failed read just leaves the line out.
+  const reward = useMyRewardStatus(postId);
+  const termLine = rewardTermLine(reward.status, reward.readAt);
 
   if (status === 'loading') {
     // Blocks in the shape of the real content, not a spinner — the numbers
@@ -236,6 +249,14 @@ export function PostStatsScreen({ postId }: PostStatsScreenProps) {
 
       <Section first>
         <StatBand cells={cells} />
+        {/* The reward's END DATE, not a countdown to it: unlike expires_at
+            below, this date is real — the reward is refunded on it unless
+            renewed (ADR-0020) — and a date is what the owner plans around. */}
+        {termLine ? (
+          <Text style={styles.termLine} testID="stats-reward-term">
+            {termLine}
+          </Text>
+        ) : null}
         {/* ⚠️ "N days left on this listing" WAS HERE, AND IT WAS A LIE.
             create_post stamps expires_at at +90 days and nothing has ever acted
             on it: passive expiry was cut deliberately ("we are cutting the
@@ -378,6 +399,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   absence: {
     ...typography.body,
     color: c.textPrimary,
+  },
+  // The reward's date under the band: secondary ink, a fact to know. Centred
+  // under the band's centred cells, as on the listing; the Section's gap sets
+  // the spacing.
+  termLine: {
+    ...typography.caption,
+    color: c.textSecondary,
+    textAlign: 'center',
   },
   chart: {
     gap: spacing.sm,

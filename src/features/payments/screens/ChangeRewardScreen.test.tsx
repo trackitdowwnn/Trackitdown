@@ -1,6 +1,7 @@
 /**
  * WHAT:  Tests for ChangeRewardScreen — the disclosure in both modes (what is
- *        charged, what comes back from the old reward, the £5 fee kept), the
+ *        charged, what comes back from the old reward, the £5 fee kept — or,
+ *        after a reward ended (ADR-0020), no fee row and a lede that says so), the
  *        lowering floor after recent sightings, a blocked listing, the pay
  *        flow's order (amount first, then a charge carrying no amount, then
  *        the sheet), the poll that only claims success once the reward moved,
@@ -77,11 +78,14 @@ jest.mock('@/shared/lib/logger', () => ({
 
 const status = (over: Partial<RewardStatus> = {}): RewardStatus => ({
   mode: 'change',
+  postStatus: 'active',
   rewardId: 'r1',
   amountPence: 20000,
   capturedAt: '2026-10-01T10:00:00Z',
   termEndsAt: '2026-11-30T10:00:00Z',
   legacyTerm: false,
+  rewardEndedAt: null,
+  endedRewardPence: null,
   feeAbsorbed: false,
   hasRecentSightings: false,
   blockedMessage: null,
@@ -134,8 +138,34 @@ describe('ChangeRewardScreen', () => {
     mockFetchStatus.mockResolvedValue(status({ mode: 'add', rewardId: null, amountPence: null }));
     const view = await mount();
     expect(view.getByText('Add a reward')).toBeTruthy();
+    expect(view.getByText(/^Offer a reward to whoever finds your car\./)).toBeTruthy();
+    expect(view.queryByText(/Your previous reward ended/)).toBeNull();
     expect(view.getByText('Your £5 listing fee')).toBeTruthy();
     expect(view.getByText('Not refunded — it paid for the listing')).toBeTruthy();
+  });
+
+  // ADR-0020: the owner is adding a reward AGAIN after one ran its term and
+  // was refunded. That listing was a reward listing — it may never have paid
+  // a £5 fee, so the fee row would describe money that doesn't exist.
+  it('adding a reward after one ended says so, and shows no listing-fee row', async () => {
+    mockFetchStatus.mockResolvedValue(
+      status({
+        mode: 'add',
+        rewardId: null,
+        amountPence: null,
+        termEndsAt: null,
+        rewardEndedAt: '2026-10-01T03:00:00Z',
+        endedRewardPence: 20000,
+      }),
+    );
+    const view = await mount();
+    expect(view.getByText('Add a reward')).toBeTruthy();
+    expect(view.getByText(/^Your previous reward ended and went back to your card\./)).toBeTruthy();
+    expect(view.queryByText('Your £5 listing fee')).toBeNull();
+    expect(view.queryByText(/listing fee/)).toBeNull();
+    expect(view.queryByText('Not refunded — it paid for the listing')).toBeNull();
+    // The rest of the disclosure is unchanged: what is charged now.
+    expect(view.getByText('Charged now')).toBeTruthy();
   });
 
   it('after recent sightings the slider cannot go below today’s reward, and the lede says why', async () => {

@@ -2,17 +2,21 @@
  * WHAT:  Orchestration tests for MyPostsScreen — the state switch (signed-out
  *        invite / loading / error / empty / populated) and that cards route to
  *        the post. The list data + mapping are tested in myPostsApi; this proves
- *        the screen wires useMyPosts + session to the right surface.
+ *        the screen wires useMyPosts + session to the right surface. Also the
+ *        "Reward ends <date>" caption under a live card in its renew window.
  * WHY:   Each state is a hole if unhandled (an owner with no posts must get a
  *        warm empty state + a way to post, not a blank screen), so the branch is
- *        pinned here.
+ *        pinned here. The caption is the owner's nudge before a reward lapses
+ *        (ADR-0020); shown out of window it would be noise or a wrong date.
  * LINKS: src/features/vehicles/screens/MyPostsScreen.tsx, docs/TESTING.md.
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
+import { formatTermDate } from '@/shared/lib/dateTimeLabel';
 import type { PostSummary } from '@/shared/types';
 
+import type { MyPostSummary } from '../api/myPostsApi';
 import { MyPostsScreen } from './MyPostsScreen';
 
 const mockUseMyPosts = jest.fn();
@@ -565,6 +569,63 @@ describe('MyPostsScreen', () => {
       expect(getByText('Tap to answer the first of 2')).toBeTruthy();
       fireEvent.press(getByTestId('still-missing-nudge'));
       expect(mockPush).toHaveBeenCalledWith('/post/p1');
+    });
+  });
+
+  // ADR-0020: a held reward runs 60 days. In its last 14 (the renew window,
+  // the same one the listing's banner opens Renew in) the card carries a
+  // quiet date line. Dates are relative to the real clock: the screen reads
+  // Date.now() once at mount, a moment after these are built, so "13 days"
+  // stays inside the window and "15 days" outside.
+  describe('the "Reward ends" caption', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const inDays = (n: number) => new Date(Date.now() + n * DAY).toISOString();
+    const withTerm = (over: Partial<MyPostSummary>): MyPostSummary => ({
+      ...post,
+      id: 'r1',
+      status: 'active',
+      archivedAt: null,
+      rewardTermEndsAt: null,
+      ...over,
+    });
+    const mountWith = (p: MyPostSummary) => {
+      mockUseMyPosts.mockReturnValue({ ...base(), status: 'ready', posts: [p] });
+      return render(<MyPostsScreen />);
+    };
+
+    it('shows "Reward ends on <date>" for a live listing whose reward ends within 14 days', async () => {
+      const endsAt = inDays(13);
+      const { getByTestId } = await mountWith(withTerm({ rewardTermEndsAt: endsAt }));
+      expect(getByTestId('reward-ends-r1')).toHaveTextContent(`Reward ends on ${formatTermDate(endsAt, true)}`);
+    });
+
+    it('counts a listing awaiting verification as live too', async () => {
+      const { getByTestId } = await mountWith(
+        withTerm({ status: 'pending_verification', rewardTermEndsAt: inDays(3) }),
+      );
+      expect(getByTestId('reward-ends-r1')).toBeTruthy();
+    });
+
+    it('stays quiet while the end is more than 14 days away', async () => {
+      const { queryByTestId } = await mountWith(withTerm({ rewardTermEndsAt: inDays(15) }));
+      expect(queryByTestId('reward-ends-r1')).toBeNull();
+    });
+
+    it('stays quiet once the date has passed — the listing’s banner explains that', async () => {
+      const { queryByTestId } = await mountWith(withTerm({ rewardTermEndsAt: inDays(-1) }));
+      expect(queryByTestId('reward-ends-r1')).toBeNull();
+    });
+
+    it('stays quiet on a listing that is no longer live (recovered)', async () => {
+      const { queryByTestId } = await mountWith(
+        withTerm({ status: 'recovered', rewardTermEndsAt: inDays(5) }),
+      );
+      expect(queryByTestId('reward-ends-r1')).toBeNull();
+    });
+
+    it('stays quiet when no reward is held (null term)', async () => {
+      const { queryByTestId } = await mountWith(withTerm({ rewardTermEndsAt: null }));
+      expect(queryByTestId('reward-ends-r1')).toBeNull();
     });
   });
 });

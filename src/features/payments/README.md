@@ -169,10 +169,21 @@ The logic lives in `supabase/migrations/20261005130000_a_reward_can_be_changed.s
 - **Renewing.** Keeping today's amount on that screen renews the reward: a
   fresh 60 days, and the old payment is refunded minus the card fee. The
   summary names that cost first.
-- **`RewardTermBanner`** on the owner's listing shows the end date as one
-  line. In the last 14 days it becomes a card with Renew. It has honest
-  states for a blocked reward and an ended one.
-- The logic lives in `supabase/migrations/20261005140000_a_reward_has_a_term.sql`.
+- **`lib/rewardTerm.ts`** decides the reward's phase at a moment (quiet,
+  renew, blocked, ending, returned) and its one-line sentence.
+  `useMyRewardStatus` reads the status once per screen, on focus.
+- **`RewardTermBanner`** on the owner's listing is a card only when there is
+  a decision or news: Renew in the last 14 days
+  (`REWARD_RENEW_WINDOW_DAYS`), honest blocked and ending states, and
+  "refunded — Add a reward" for 14 days after a reward goes back. Otherwise
+  the listing's stat band carries the date as one quiet line, so it is said
+  once. PostStats always shows the line, and My listings shows "Reward ends
+  <date>" under a card in the window.
+- **"Reward ended" (PR4).** A lapsed listing is not a fee listing: the add
+  screen drops the "£5 listing fee" row for it, and every no-reward sentence
+  checks `rewardEnded` first.
+- The logic lives in `supabase/migrations/20261005140000_a_reward_has_a_term.sql`
+  and `20261006100000_a_reward_can_end.sql`.
 
 ## Not here
 

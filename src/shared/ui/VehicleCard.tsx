@@ -142,7 +142,7 @@ function VehicleCardInner({
     // visible text can never disagree — and null-safe, which matters because
     // formatPounds throws on a non-integer (a no-reward listing, ADR-0014,
     // would crash the card rather than just mis-label it).
-    bountyLabel(post.bountyPence),
+    bountyLabel(post.bountyPence, post.rewardEnded),
     badgeLabel ? badgeLabel.toLowerCase() : null,
     `last seen ${lastSeen}`,
     post.distanceMiles !== undefined ? `${formatDistance(post.distanceMiles)} away` : null,
@@ -214,7 +214,7 @@ function VehicleCardInner({
                     makes it the touch responder and would otherwise eat the
                     card's own tap. */}
                 {post.plate ? <PlateChip plate={post.plate} onPress={onPress} /> : null}
-                <BountyTag bountyPence={post.bountyPence} size="md" />
+                <BountyTag bountyPence={post.bountyPence} rewardEnded={post.rewardEnded} size="md" />
               </View>
             </View>
           </Animated.View>
@@ -282,18 +282,18 @@ function VehicleCardInner({
               <View style={styles.plateBountyRow}>
                 {/* onPress forwarded — see the map-card chip above. */}
                 <PlateChip plate={post.plate} onPress={onPress} />
-                <BountyTag bountyPence={post.bountyPence} size="lg" />
+                <BountyTag bountyPence={post.bountyPence} rewardEnded={post.rewardEnded} size="lg" />
               </View>
             ) : (
               /* No plate: left-anchor the bounty under the title so the card
                  keeps a left column to read down (matches the compact variant),
                  instead of stranding it far-right with a dead gap. */
               <View style={[styles.plateBountyRow, styles.bountyOnlyRow]}>
-                <BountyTag bountyPence={post.bountyPence} size="lg" />
+                <BountyTag bountyPence={post.bountyPence} rewardEnded={post.rewardEnded} size="lg" />
               </View>
             )
           ) : (
-            <BountyTag bountyPence={post.bountyPence} size="md" />
+            <BountyTag bountyPence={post.bountyPence} rewardEnded={post.rewardEnded} size="md" />
           )}
         </View>
       </View>

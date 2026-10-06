@@ -1,15 +1,17 @@
 /**
- * WHAT:  Tests for RewardTermBanner's four states — quiet (the date, one line),
- *        renew window (card, refund FIGURE, Renew), blocked (held while a claim
- *        is open, no button), ended (no "ends on" for a past date) — and that
- *        it renders nothing without a reward, a term, or a successful read.
+ * WHAT:  Tests for RewardTermBanner's card states — renew window (refund
+ *        FIGURE, Renew), blocked (held while a claim is open, no button),
+ *        ending (no "ends on" for a past date), returned (what came back and
+ *        when, Add a reward) — and that it draws NOTHING in the quiet states,
+ *        which the listing says as a stat-band line instead.
  * WHY:   ADR-0020: the listing banner is the DOOR to renewing, and every
  *        sentence in it is about money. Two earlier drafts said things that
  *        were false (a past "ends on"; "refunded" while a dispute held it).
- * LINKS: src/features/payments/components/RewardTermBanner.tsx.
+ * LINKS: src/features/payments/components/RewardTermBanner.tsx;
+ *        src/features/payments/lib/rewardTerm.ts (the phases).
  */
 
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 
 import { estimateRefundPence, formatPounds } from '@/shared/lib/money';
 
@@ -28,58 +30,50 @@ jest.mock('@/shared/ui', () => {
   };
 });
 
-// useFocusEffect as a plain mount effect: focus is not what is under test.
-jest.mock('expo-router', () => ({
-  useFocusEffect: (effect: () => void | (() => void)) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
-    const { useEffect: mockUseEffect } = require('react');
-    // Run once, as a single focus would.
-    mockUseEffect(effect, []);
-  },
-}));
-
-const mockFetch = jest.fn();
-jest.mock('../api/rewardChangeApi', () => ({
-  fetchMyRewardStatus: (...a: unknown[]) => mockFetch(...a),
-}));
-
+const NOW = Date.parse('2026-10-06T12:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
-const inDays = (d: number) => new Date(Date.now() + d * DAY).toISOString();
+const inDays = (d: number) => new Date(NOW + d * DAY).toISOString();
 
 const status = (over: Partial<RewardStatus> = {}): RewardStatus => ({
+  postStatus: 'active',
   mode: 'change',
   rewardId: 'r1',
   amountPence: 20000,
   capturedAt: '2026-10-01T10:00:00Z',
   termEndsAt: inDays(40),
   legacyTerm: false,
+  rewardEndedAt: null,
+  endedRewardPence: null,
   feeAbsorbed: false,
   hasRecentSightings: false,
   blockedMessage: null,
   ...over,
 });
 
-const mount = async (onRenew = jest.fn()) => {
-  const view = await render(<RewardTermBanner postId="p1" onRenew={onRenew} />);
-  await act(async () => {});
-  return { view, onRenew };
-};
-
-beforeEach(() => jest.clearAllMocks());
-
-describe('RewardTermBanner', () => {
-  it('QUIET outside the last 14 days: one line with the date, no card, no button', async () => {
-    mockFetch.mockResolvedValue(status());
-    const { view } = await mount();
-    expect(view.getByTestId('reward-term-quiet')).toBeTruthy();
-    expect(view.getByText(/^Your £200 reward runs until /)).toBeTruthy();
-    expect(view.queryByTestId('reward-term-banner')).toBeNull();
-    expect(view.queryByText('Renew reward')).toBeNull();
+const ended = (over: Partial<RewardStatus> = {}) =>
+  status({
+    mode: 'add',
+    rewardId: null,
+    amountPence: null,
+    capturedAt: null,
+    termEndsAt: null,
+    rewardEndedAt: inDays(-2),
+    endedRewardPence: 20000,
+    ...over,
   });
 
+const mount = async (value: RewardStatus | null) => {
+  const onRenew = jest.fn();
+  const onAddReward = jest.fn();
+  const view = await render(
+    <RewardTermBanner status={value} readAt={NOW} onRenew={onRenew} onAddReward={onAddReward} />,
+  );
+  return { view, onRenew, onAddReward };
+};
+
+describe('RewardTermBanner', () => {
   it('RENEW WINDOW: "ends on", the refund FIGURE if they don’t, the listing stays up, and Renew', async () => {
-    mockFetch.mockResolvedValue(status({ termEndsAt: inDays(9) }));
-    const { view, onRenew } = await mount();
+    const { view, onRenew } = await mount(status({ termEndsAt: inDays(9) }));
     expect(view.getByText(/^Your £200 reward ends on /)).toBeTruthy();
     expect(
       view.getByText(
@@ -93,41 +87,44 @@ describe('RewardTermBanner', () => {
   });
 
   it('a reward from before the term says its end-of-term refund is the full amount', async () => {
-    mockFetch.mockResolvedValue(status({ legacyTerm: true, termEndsAt: inDays(3) }));
-    const { view } = await mount();
+    const { view } = await mount(status({ legacyTerm: true, termEndsAt: inDays(3) }));
     expect(view.getByText(/the full £200 comes back to your card/)).toBeTruthy();
   });
 
   it('BLOCKED: held while a recovery or dispute is open — never "refunded", no Renew', async () => {
-    mockFetch.mockResolvedValue(status({ termEndsAt: inDays(5), blockedMessage: 'Your reward can’t change…' }));
-    const { view } = await mount();
+    const { view } = await mount(status({ termEndsAt: inDays(5), blockedMessage: 'Your reward can’t change…' }));
     expect(view.getByText(/stays held while the recovery or dispute on your listing is sorted out/)).toBeTruthy();
     expect(view.queryByText(/comes back to your card/)).toBeNull();
     expect(view.queryByText('Renew reward')).toBeNull();
   });
 
-  it('ENDED: no "ends on" for a date that has passed, and no Renew', async () => {
-    mockFetch.mockResolvedValue(status({ termEndsAt: inDays(-1) }));
-    const { view } = await mount();
+  it('ENDING: no "ends on" for a date that has passed, and no Renew', async () => {
+    const { view } = await mount(status({ termEndsAt: inDays(-1) }));
     expect(view.getByText(/^Your £200 reward ended on /)).toBeTruthy();
     expect(view.queryByText(/ends on/)).toBeNull();
     expect(view.queryByText('Renew reward')).toBeNull();
   });
 
-  it.each([
-    ['no reward', { amountPence: null, rewardId: null, mode: 'add' as const }],
-    ['no term yet', { termEndsAt: null }],
-  ])('renders nothing with %s', async (_label, over) => {
-    mockFetch.mockResolvedValue(status(over));
-    const { view } = await mount();
-    expect(view.queryByTestId('reward-term-banner')).toBeNull();
-    expect(view.queryByTestId('reward-term-quiet')).toBeNull();
+  it('RETURNED: what came back and when, the listing is still up, and Add a reward', async () => {
+    const { view, onAddReward } = await mount(ended());
+    expect(view.getByText('Your £200 reward has ended')).toBeTruthy();
+    expect(view.getByText(/^The refund went to your card on .+\. Your listing is still up/)).toBeTruthy();
+    // Never a refunded FIGURE: the card fee may have been kept.
+    expect(view.queryByText(/refunded £|£200 (came|comes) back/)).toBeNull();
+    // Never the fee-listing sentence: this owner paid a reward, not a fee.
+    expect(view.queryByText(/listing fee/)).toBeNull();
+    await fireEvent.press(view.getByText('Add a reward'));
+    expect(onAddReward).toHaveBeenCalled();
   });
 
-  it('renders nothing when the read fails — never a guessed date', async () => {
-    mockFetch.mockRejectedValue(new Error('offline'));
-    const { view } = await mount();
+  it.each([
+    ['the quiet stretch (more than 14 days left)', status()],
+    ['a reward that went back long ago', ended({ rewardEndedAt: inDays(-30) })],
+    ['no reward (a fee listing)', status({ amountPence: null, rewardId: null, mode: 'add', termEndsAt: null })],
+    ['no term yet', status({ termEndsAt: null })],
+    ['no read yet', null],
+  ])('draws nothing for %s', async (_label, value) => {
+    const { view } = await mount(value);
     expect(view.queryByTestId('reward-term-banner')).toBeNull();
-    expect(view.queryByTestId('reward-term-quiet')).toBeNull();
   });
 });

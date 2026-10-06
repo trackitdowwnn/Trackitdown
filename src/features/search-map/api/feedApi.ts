@@ -44,6 +44,10 @@ export const rpcPostSchema = z.object({
   // The key is still REQUIRED — a server that stopped sending it must fail
   // loudly rather than quietly render every card as no-reward.
   bounty_amount_pence: z.number().int().nullable(),
+  // A lapsed reward (ADR-0020, 20261006100000) — "Reward ended", not "No
+  // reward". OPTIONAL: an app update can reach phones before the server
+  // migration, and a missing key must read as false, not fail the feed.
+  reward_ended: z.boolean().optional(),
   status: visibleStatusSchema,
   last_seen_at: z.string().nullable(),
   last_seen_area: z.string().nullable(),
@@ -87,6 +91,7 @@ export function toPostSummary(row: RpcPost): PostSummary {
     lastSeenArea: row.last_seen_area ?? undefined,
     distanceMiles: row.distance_miles ?? undefined,
     bountyPence: row.bounty_amount_pence,
+    rewardEnded: row.reward_ended ?? false,
   };
 }
 

@@ -42,6 +42,9 @@ const watchRowSchema = z.object({
   // the post's active-era public payload).
   plate: z.string().nullable(),
   bounty_amount_pence: z.number().int().nullable(),
+  // A lapsed reward (ADR-0020). Absent on tombstones, and on any server
+  // before 20261006100000 — both read as false.
+  reward_ended: z.boolean().optional(),
   last_seen_at: z.string().nullable(),
   last_seen_area: z.string().nullable(),
   distance_miles: z.number().nullable(),
@@ -103,6 +106,7 @@ function toEntry(row: WatchRow): WatchlistEntry {
       // nulls so a closed post exposes less than its active-era payload). The
       // old `?? 0` printed "£0 bounty" on every tombstone.
       bountyPence: row.bounty_amount_pence,
+      rewardEnded: row.reward_ended ?? false,
     },
   };
 }

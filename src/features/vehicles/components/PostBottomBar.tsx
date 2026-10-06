@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { formatPounds } from '@/shared/lib';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { Button, NO_BOUNTY_LABEL, StatusBadge } from '@/shared/ui';
+import { bountyLabel, Button, StatusBadge } from '@/shared/ui';
 
 import type { PostDetail } from '../types';
 
@@ -62,9 +62,11 @@ export function PostBottomBar({ post, onSeen, onMessageOwner, onManage }: PostBo
               // line — but at `label`, not `caption`: this is the one fact a
               // spotter reads before tapping the CTA, and dropping it to the
               // smallest tier in the app would bury it. Matches BountyTag's `md`,
-              // so the bar and the cards speak with one voice.
+              // so the bar and the cards speak with one voice — including
+              // "Reward ended" for a lapsed reward (ADR-0020), which is not a
+              // fee listing and must not read as one.
               <Text numberOfLines={1} style={styles.rewardNone}>
-                {NO_BOUNTY_LABEL}
+                {bountyLabel(null, post.rewardEnded)}
               </Text>
             ) : (
               <>

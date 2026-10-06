@@ -16,6 +16,10 @@
  *        from the held card's sheet into a collapsed "Archived (N)" section at
  *        the foot of the list, and moved back, so they stop taking up room.
  *        Only closed listings (canArchive); stored on the account.
+ *        THE REWARD TERM (ADR-0020): a live listing whose reward ends within
+ *        REWARD_RENEW_WINDOW_DAYS gets "Reward ends on <date>" under its card
+ *        (list_my_posts' reward_term_ends_at) — a pointer to the listing,
+ *        whose banner carries Renew.
  * LINKS: src/app/my-posts.tsx (route); src/features/profile/screens/
  *        ProfileScreen.tsx (the push); src/features/vehicles/hooks/useMyPosts.ts;
  *        src/features/vehicles/components/PostOwnerActions.tsx (the sheet and
@@ -31,9 +35,10 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRequireAuth, useSession } from '@/features/auth';
+import { REWARD_RENEW_WINDOW_DAYS } from '@/shared/lib/bountyBounds';
+import { formatTermDate } from '@/shared/lib/dateTimeLabel';
 import { lightHaptic } from '@/shared/lib/haptics';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
-import type { PostSummary } from '@/shared/types';
 import {
   EmptyState,
   ErrorState,
@@ -46,12 +51,26 @@ import {
 } from '@/shared/ui';
 
 import { ArchiveError, setPostArchived } from '../api/archiveApi';
+import type { MyPostSummary } from '../api/myPostsApi';
 import { PostOwnerActions, type PostOwnerActionsHandle } from '../components/PostOwnerActions';
 import { canArchive } from '../lib/ownerPermissions';
 import { useMyPosts } from '../hooks/useMyPosts';
 import { useOpenOnArrival } from '../hooks/useOpenOnArrival';
 import { usePostDetail } from '../hooks/usePostDetail';
 import { useStillMissingAsks } from '../hooks/useStillMissingAsk';
+
+const RENEW_WINDOW_MS = REWARD_RENEW_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+/** A live listing whose held reward ends within the renew window — the same
+ *  window the listing's banner opens Renew in, so the nudge never points at a
+ *  listing without the button. A date already gone is the banner's to explain. */
+function rewardEndsSoon(post: MyPostSummary, now: number): boolean {
+  if (!post.rewardTermEndsAt || (post.status !== 'active' && post.status !== 'pending_verification')) {
+    return false;
+  }
+  const endsAt = new Date(post.rewardTermEndsAt).getTime();
+  return !Number.isNaN(endsAt) && endsAt > now && endsAt - now <= RENEW_WINDOW_MS;
+}
 
 export function MyPostsScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -109,20 +128,37 @@ export function MyPostsScreen() {
     [toast],
   );
 
+  // "Now" for the reward nudge, captured once at mount — never read in render,
+  // where the React Compiler would memoise it on device. The page remounts on
+  // every visit, which is as fresh as a date line needs to be.
+  const [now] = useState(() => Date.now());
+
   const renderCard = useCallback(
-    ({ item }: { item: PostSummary }) => (
-      <View style={styles.cardRow}>
-        {/* Always the owner's own list → show the green "Live" badge on active posts. */}
-        <VehicleCard
-          post={item}
-          onPress={() => router.push(`/post/${item.id}`)}
-          onLongPress={() => onHold(item.id)}
-          longPressLabel="Manage listing"
-          showLiveBadge
-        />
-      </View>
-    ),
-    [onHold, router, styles],
+    ({ item }: { item: MyPostSummary }) => {
+      const endsSoon = rewardEndsSoon(item, now);
+      return (
+        <View style={styles.cardRow}>
+          {/* Always the owner's own list → show the green "Live" badge on active posts. */}
+          <VehicleCard
+            post={item}
+            onPress={() => router.push(`/post/${item.id}`)}
+            onLongPress={() => onHold(item.id)}
+            longPressLabel="Manage listing"
+            showLiveBadge
+          />
+          {/* The reward's term in its last stretch (ADR-0020): the date, under
+              the card it belongs to. The listing itself carries Renew — the
+              card already opens it — so this is a line, not a second button. */}
+          {endsSoon && item.rewardTermEndsAt ? (
+            <Text style={styles.termNudge} testID={`reward-ends-${item.id}`}>
+              {/* The listing's banner's own wording for the same window. */}
+              {`Reward ends on ${formatTermDate(item.rewardTermEndsAt, true)}`}
+            </Text>
+          ) : null}
+        </View>
+      );
+    },
+    [now, onHold, router, styles],
   );
 
   return (
@@ -419,6 +455,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   cardRow: {
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xl,
+  },
+  // The reward-term nudge under a card: a caption in secondary ink — a date
+  // and a pointer, never an alarm (ADR-0020's register).
+  termNudge: {
+    ...typography.caption,
+    color: c.textSecondary,
+    marginTop: spacing.sm,
   },
   // The archive's header row: a quiet section title with a chevron, full-width
   // tap target, lined up with the cards' gutter.

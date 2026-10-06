@@ -2,7 +2,8 @@
  * WHAT:  Tests for the watchlist API layer — addWatch's filing behaviour (it
  *        reports the collection the watch LANDED in, falls back to Saved when
  *        the target collection is gone, and still throws on a real failure),
- *        and toEntry carrying collection_id onto both payload shapes.
+ *        and toEntry carrying collection_id onto both payload shapes and
+ *        reward_ended (ADR-0020, absent → false) onto a full row.
  * WHY:   "A save is NEVER blocked by a filing problem" is the rule this whole
  *        feature rests on. A collection deleted on another device leaves a
  *        stale cached target, and the insert policy rejects it — without the
@@ -166,6 +167,36 @@ describe('fetchWatchlist collection filing', () => {
 
     expect(entry.kind).toBe('tombstone');
     expect(entry.collectionId).toBe(COLLECTION_ID);
+  });
+
+  // ADR-0020: a lapsed reward is a null bounty + reward_ended, so a saved car
+  // reads "Reward ended" rather than "No reward". Absent (tombstones, older
+  // servers) reads as false.
+  it('maps reward_ended: true onto the saved post', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        { ...base, status: 'active', bounty_amount_pence: null, reward_ended: true, collection_id: null },
+      ],
+      error: null,
+    });
+
+    const [entry] = await fetchWatchlist();
+
+    if (entry.kind !== 'post') throw new Error('expected a full row');
+    expect(entry.post.bountyPence).toBeNull();
+    expect(entry.post.rewardEnded).toBe(true);
+  });
+
+  it('maps an absent reward_ended key to false', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ ...base, status: 'active', bounty_amount_pence: null, collection_id: null }],
+      error: null,
+    });
+
+    const [entry] = await fetchWatchlist();
+
+    if (entry.kind !== 'post') throw new Error('expected a full row');
+    expect(entry.post.rewardEnded).toBe(false);
   });
 
   it('fails loudly if the server stops sending collection_id', async () => {

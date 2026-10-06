@@ -2,8 +2,11 @@
  * WHAT:  Tests for PostBottomBar — the spotter sees the bounty + "I've seen
  *        this car", or "Message the owner" once they have reported; the owner
  *        sees "Your listing" + "Manage listing". Mode drives which action fires.
+ *        A null bounty reads "No reward" (fee listing) or "Reward ended"
+ *        (a lapsed reward, ADR-0020).
  * WHY:   is_owner decides the whole bar; a spotter shown "Manage listing" (or an
- *        owner shown the sighting CTA on their own car) is a broken flow.
+ *        owner shown the sighting CTA on their own car) is a broken flow. The
+ *        reward line is the one fact a spotter reads before tapping.
  * LINKS: src/features/vehicles/components/PostBottomBar.tsx, docs/TESTING.md.
  */
 
@@ -26,6 +29,7 @@ const base: PostDetail = {
   colour: 'Blue',
   plate: 'AB12 CDE',
   bountyPence: 50000,
+  rewardEnded: false,
   lastSeenAt: '2026-07-10T18:00:00Z',
   createdAt: '2026-07-08T12:00:00Z',
   photos: [],
@@ -87,5 +91,28 @@ describe('PostBottomBar', () => {
     fireEvent.press(getByText('Manage listing'));
     expect(h.onManage).toHaveBeenCalledTimes(1);
     expect(h.onSeen).not.toHaveBeenCalled();
+  });
+
+  // ADR-0014: a fee listing never had a reward.
+  it('spotter on a fee listing sees "No reward"', async () => {
+    const { getByText, queryByText } = await render(
+      <PostBottomBar post={{ ...base, bountyPence: null }} {...handlers()} />,
+    );
+
+    expect(getByText('No reward')).toBeTruthy();
+    expect(queryByText('Reward ended')).toBeNull();
+  });
+
+  // ADR-0020: a lapsed reward is NOT a fee listing and must not read as one.
+  it('spotter on a lapsed-reward listing sees "Reward ended", not "No reward"', async () => {
+    const { getByText, queryByText } = await render(
+      <PostBottomBar post={{ ...base, bountyPence: null, rewardEnded: true }} {...handlers()} />,
+    );
+
+    expect(getByText('Reward ended')).toBeTruthy();
+    expect(queryByText('No reward')).toBeNull();
+    expect(queryByText('£500')).toBeNull();
+    // The CTA is unchanged — a spotter can still report.
+    expect(getByText("I've seen this car")).toBeTruthy();
   });
 });

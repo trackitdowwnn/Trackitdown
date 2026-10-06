@@ -90,3 +90,11 @@ export function snapBountyPence(pence: number): number {
  * text changes by a decision, not as a side effect of a constant.
  */
 export const REWARD_TERM_DAYS = 60;
+
+/**
+ * The last stretch of a reward's term in which the app offers Renew (the
+ * listing's banner, the My listings nudge). Wider than the first reminder push
+ * (10 days, claim_reward_reminders), so a push never points at a listing
+ * without the button. Display only — the server lets an owner renew any time.
+ */
+export const REWARD_RENEW_WINDOW_DAYS = 14;

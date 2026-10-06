@@ -11,6 +11,8 @@
  *        src/features/payments/screens/PayoutsScreen.tsx,
  *        src/features/payments/screens/ChangeRewardScreen.tsx (+ its
  *          api/rewardChangeApi.ts — changing a live listing's reward),
+ *        src/features/payments/lib/rewardTerm.ts (+ hooks/useMyRewardStatus.ts
+ *          — the reward's term, said the same way on every surface),
  *        src/features/payments/BountyPaymentProvider.tsx.
  */
 
@@ -53,6 +55,8 @@ export { usePayoutsRelevant } from './hooks/usePayoutsRelevant';
 export { PayoutsScreen } from './screens/PayoutsScreen';
 export { ChangeRewardScreen } from './screens/ChangeRewardScreen';
 export { RewardTermBanner } from './components/RewardTermBanner';
+export { useMyRewardStatus, type MyRewardStatusState } from './hooks/useMyRewardStatus';
+export { hasRewardTermCard, quietRewardTermLine, rewardTermLine } from './lib/rewardTerm';
 export {
   CHANGE_REWARD_ERROR_MESSAGES,
   type RewardStatus,

@@ -88,8 +88,25 @@ describe('fetchHomeFeed', () => {
       lastSeenArea: 'Salford',
       distanceMiles: 2.4,
       bountyPence: 15000,
+      // The server predates 20261006100000 here: no key reads as false.
+      rewardEnded: false,
     });
     expect(sections[1].area).toBe('Salford');
+  });
+
+  it('carries a lapsed reward (ADR-0020) — "Reward ended", not a fee listing', async () => {
+    mockRpc.mockResolvedValue(
+      feedPayload([
+        {
+          id: 'near_you',
+          title: 'Near you',
+          layout: 'carousel',
+          posts: [rpcPost({ bounty_amount_pence: null, reward_ended: true })],
+        },
+      ]),
+    );
+    const sections = await fetchHomeFeed({ latitude: 53.48, longitude: -2.24, radiusMiles: 20 });
+    expect(sections[0].posts[0]).toMatchObject({ bountyPence: null, rewardEnded: true });
   });
 
   it('passes null coordinates through for national mode', async () => {

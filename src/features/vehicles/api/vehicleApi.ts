@@ -58,6 +58,9 @@ const visibleSchema = z.object({
   colour: z.string(),
   // Nullable since 2026-08-20 (ADR-0014): a no-reward listing has no bounty.
   bounty_amount_pence: z.number().int().nullable(),
+  // A lapsed reward (ADR-0020, 20261006100000). Optional so an app that
+  // updates before the server still parses — absent reads as false.
+  reward_ended: z.boolean().optional(),
   status: postStatusSchema,
   last_seen_at: z.string().nullable(),
   last_seen_area: z.string().nullable(),
@@ -109,6 +112,7 @@ function toPostDetail(row: VisibleRow): PostDetail {
     distinguishingFeatures: row.distinguishing_features ?? undefined,
     ownerNote: row.owner_note ?? undefined,
     bountyPence: row.bounty_amount_pence,
+    rewardEnded: row.reward_ended ?? false,
     lastSeenAt: row.last_seen_at,
     lastSeenArea: row.last_seen_area ?? undefined,
     createdAt: row.created_at,

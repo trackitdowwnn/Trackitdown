@@ -47,6 +47,10 @@ const myPostRowSchema = z.object({
   last_seen_at: z.string().nullable(),
   last_seen_area: z.string().nullable(),
   bounty_amount_pence: z.number().int().nullable(),
+  // A lapsed reward, and the held reward's 60-day term end (ADR-0020,
+  // 20261006100000). Optional for the same reason as archived_at below.
+  reward_ended: z.boolean().optional(),
+  reward_term_ends_at: z.string().nullable().optional(),
   created_at: z.string(),
   // When the owner archived it, or null. OPTIONAL as well as nullable: an app
   // update can reach phones before the server migration that adds the column
@@ -61,11 +65,14 @@ type MyPostRow = z.infer<typeof myPostRowSchema>;
 export type MyPostSummary = PostSummary & {
   /** When the owner archived it (it then sits in the "Archived" section), or null. */
   archivedAt: string | null;
+  /** When the held reward's 60-day term ends (ISO), or null — no reward held. */
+  rewardTermEndsAt: string | null;
 };
 
 function toSummary(row: MyPostRow): MyPostSummary {
   return {
     archivedAt: row.archived_at ?? null,
+    rewardTermEndsAt: row.reward_term_ends_at ?? null,
     id: row.id,
     photos: row.photos.map((p) => ({ uri: p.url })),
     make: row.make,
@@ -83,6 +90,7 @@ function toSummary(row: MyPostRow): MyPostSummary {
     // "£0 bounty" on the owner's own card. BountyTag decides what null looks
     // like; this layer must not decide it here by accident.
     bountyPence: row.bounty_amount_pence,
+    rewardEnded: row.reward_ended ?? false,
   };
 }
 

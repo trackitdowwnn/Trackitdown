@@ -21,6 +21,7 @@ const base: PostDetail = {
   colour: 'Blue',
   plate: null,
   bountyPence: 50000,
+  rewardEnded: false,
   lastSeenAt: '2026-07-10T18:00:00Z',
   createdAt: '2026-07-08T12:00:00Z',
   photos: [],

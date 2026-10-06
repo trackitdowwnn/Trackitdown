@@ -6,7 +6,10 @@
  *        stays HIDDEN while the aggregate is zero (dormant), the SafetyNotice
  *        is always present, the report button fires its callback, and
  *        "Distinctive features" renders one card per mark, truncating past
- *        three behind a "Show all N features" toggle.
+ *        three behind a "Show all N features" toggle. A lapsed reward
+ *        (ADR-0020) reads "Reward ended" in the stat band, the ⓘ and the
+ *        deactivate card — never the fee listing's copy — and the owner's
+ *        reward-term line renders only when passed.
  * WHY:   The conditional gating is the section's contract; the sighting
  *        section's face split is also SAFETY — the body must hand the
  *        sightings feature the correct isOwner, because that flag decides
@@ -52,6 +55,7 @@ const base: PostDetail = {
   colour: 'Blue',
   plate: 'AB12 CDE',
   bountyPence: 50000,
+  rewardEnded: false,
   lastSeenAt: '2026-07-10T18:00:00Z',
   lastSeenArea: 'Camden',
   createdAt: '2026-07-08T12:00:00Z',
@@ -74,6 +78,7 @@ const renderBody = (
     onDeactivate?: () => void;
     similarPosts?: import('@/shared/types').PostSummary[];
     similarLoading?: boolean;
+    rewardTermLine?: string | null;
   } = {},
 ) =>
   render(
@@ -88,6 +93,7 @@ const renderBody = (
       similarLoading={handlers.similarLoading ?? false}
       onOpenPost={handlers.onOpenPost ?? (() => {})}
       onDeactivate={handlers.onDeactivate}
+      rewardTermLine={handlers.rewardTermLine}
     />,
   );
 
@@ -296,6 +302,88 @@ describe('PostDetailBody', () => {
       expect(queryByText('Report a sighting')).toBeNull();
       expect(queryByText('Report another sighting')).toBeNull();
     });
+  });
+});
+
+// ADR-0020: a reward that ran its 60-day term unrenewed went back to the owner;
+// the listing stays live with a NULL bounty, like a £5 fee listing — but it is
+// NOT one, and none of the fee sentences may reach it.
+describe('reward ended (lapsed reward)', () => {
+  const lapsed: PostDetail = { ...base, bountyPence: null, rewardEnded: true };
+
+  it('shows "Ended" under the Reward label (read aloud as "Reward ended"), never "No reward" or an amount', async () => {
+    const { getByText, getByLabelText, queryByText } = await renderBody(lapsed);
+    // The full phrase truncates in a third-width cell; the label says "Reward".
+    expect(getByText('Ended')).toBeTruthy();
+    expect(getByLabelText('Reward ended')).toBeTruthy();
+    expect(queryByText('No reward')).toBeNull();
+    expect(queryByText('£500')).toBeNull();
+  });
+
+  it('the ⓘ explains the ended reward and never mentions a flat listing fee', async () => {
+    const { getByLabelText, getByText, queryByText } = await renderBody(lapsed);
+    await fireEvent.press(getByLabelText('About the ended reward'));
+    expect(getByText('This reward has ended')).toBeTruthy();
+    expect(getByText(/^Rewards run for 60 days at a time\. This one went back to the owner/)).toBeTruthy();
+    expect(queryByText(/flat listing fee/)).toBeNull();
+    expect(queryByText('How this listing works')).toBeNull();
+  });
+
+  // The control: a genuine fee listing still gets the fee explainer.
+  it('a fee listing (null bounty, not ended) keeps the flat-fee explainer', async () => {
+    const { getByText, queryByText } = await renderBody({ ...base, bountyPence: null });
+    expect(getByText('No reward')).toBeTruthy();
+    expect(getByText('How this listing works')).toBeTruthy();
+    expect(getByText(/the owner paid a flat listing fee instead/)).toBeTruthy();
+    expect(queryByText('This reward has ended')).toBeNull();
+  });
+
+  it('the deactivate card says the reward already went back — no listing fee', async () => {
+    const { getByText, getByTestId, getByRole, queryByText } = await renderBody(
+      { ...lapsed, isOwner: true },
+      { onDeactivate: jest.fn() },
+    );
+    expect(getByTestId('deactivate-listing')).toBeTruthy();
+    expect(getByText(/Your reward already went back to your card when it ended/)).toBeTruthy();
+    expect(queryByText(/listing fee/)).toBeNull();
+    // Nothing to refund, so the button does not promise one.
+    expect(getByRole('button', { name: 'Deactivate listing' })).toBeTruthy();
+    expect(queryByText('Deactivate & refund')).toBeNull();
+  });
+
+  it('a fee listing’s deactivate card still says the listing fee isn’t refunded', async () => {
+    const { getByText, queryByText } = await renderBody(
+      { ...base, bountyPence: null, isOwner: true },
+      { onDeactivate: jest.fn() },
+    );
+    expect(getByText(/Your listing fee isn’t refunded/)).toBeTruthy();
+    expect(queryByText(/already went back/)).toBeNull();
+  });
+});
+
+describe('owner reward-term line', () => {
+  it('renders the term line under the stat band when given', async () => {
+    const { getByTestId } = await renderBody(
+      { ...base, isOwner: true },
+      { rewardTermLine: 'Your £500 reward runs until 4 December.' },
+    );
+    expect(getByTestId('reward-term-line')).toHaveTextContent(
+      'Your £500 reward runs until 4 December.',
+    );
+  });
+
+  it('renders no term line when it is null (or absent)', async () => {
+    const { queryByTestId, unmount } = await renderBody(
+      { ...base, isOwner: true },
+      { rewardTermLine: null },
+    );
+    expect(queryByTestId('reward-term-line')).toBeNull();
+    await act(async () => {
+      unmount();
+    });
+
+    const second = await renderBody({ ...base, isOwner: true });
+    expect(second.queryByTestId('reward-term-line')).toBeNull();
   });
 });
 

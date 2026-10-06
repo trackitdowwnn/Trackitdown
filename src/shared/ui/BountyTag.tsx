@@ -17,6 +17,12 @@
  *        that decision. Passing 0 here would print "£0 bounty", which is why the
  *        column is nullable and why this prop is `number | null` rather than
  *        being defaulted somewhere upstream.
+ *
+ *        A NULL BOUNTY HAS TWO MEANINGS SINCE ADR-0020. A £5 fee listing never
+ *        had a reward ("No reward"); a listing whose reward ran its 60-day term
+ *        unrenewed had one and got it back ("Reward ended"). The second is
+ *        `rewardEnded` (posts.reward_ended_at, via home_feed_post_json), and it
+ *        only speaks while the bounty is null — a reward added again wins.
  * LINKS: docs/DESIGN_SYSTEM.md (Colour rules, Core components: BountyTag);
  *        docs/DOMAIN.md (money is integer pence; listing pricing);
  *        docs/decisions/ADR-0014-no-bounty-listings.md; src/shared/lib/money.ts.
@@ -24,6 +30,7 @@
  * Usage:
  *   <BountyTag bountyPence={50000} size="lg" />
  *   <BountyTag bountyPence={null} />          // -> "No reward"
+ *   <BountyTag bountyPence={null} rewardEnded /> // -> "Reward ended"
  */
 
 import { StyleSheet, Text } from 'react-native';
@@ -39,7 +46,22 @@ import { typography, useThemedStyles, type Palette } from '../theme';
 export const NO_BOUNTY_LABEL = 'No reward';
 
 /**
- * The reward as one sentence — "£500 reward", or "No reward".
+ * What a listing whose reward ended (ADR-0020) reads as, everywhere. Not "No
+ * reward": every no-reward sentence says the owner paid a listing fee instead,
+ * which is false here — they paid a reward and it went back to them.
+ */
+export const REWARD_ENDED_LABEL = 'Reward ended';
+
+/**
+ * The same fact for a cell already labelled "Reward" (the post-detail stat
+ * band): "Reward ended" is ~1.35x the width of "No reward" and truncates in a
+ * third-width cell, so the value there is just "Ended" — with
+ * REWARD_ENDED_LABEL as its accessibility label.
+ */
+export const REWARD_ENDED_SHORT = 'Ended';
+
+/**
+ * The reward as one sentence — "£500 reward", "No reward", or "Reward ended".
  *
  * Exported because four surfaces build their own accessibility label out of the
  * same two facts (card, map pin, map pager, post detail). Exporting only
@@ -50,23 +72,29 @@ export const NO_BOUNTY_LABEL = 'No reward';
  * Null-safe by construction: `formatPounds` throws on a non-integer, so this is
  * also the single place that guard has to be right.
  */
-export function bountyLabel(bountyPence: number | null): string {
-  return bountyPence === null ? NO_BOUNTY_LABEL : `${formatPounds(bountyPence)} reward`;
+export function bountyLabel(bountyPence: number | null, rewardEnded = false): string {
+  if (bountyPence !== null) {
+    return `${formatPounds(bountyPence)} reward`;
+  }
+  return rewardEnded ? REWARD_ENDED_LABEL : NO_BOUNTY_LABEL;
 }
 
 export interface BountyTagProps {
   /** Bounty in integer pence, or null for a no-bounty listing. */
   bountyPence: number | null;
+  /** The listing's reward ran its term and went back (ADR-0020). Read only
+   *  while bountyPence is null. */
+  rewardEnded?: boolean;
   /** md = inline rows; lg = the card's anchor line. */
   size?: 'md' | 'lg';
 }
 
-/** The reward line: a formatted bounty, or "No reward". */
-export function BountyTag({ bountyPence, size = 'md' }: BountyTagProps) {
+/** The reward line: a formatted bounty, "No reward", or "Reward ended". */
+export function BountyTag({ bountyPence, rewardEnded = false, size = 'md' }: BountyTagProps) {
   const styles = useThemedStyles(makeStyles);
   // The same sentence every other surface shows — see bountyLabel above for why
   // it is shared rather than repeated.
-  const label = bountyLabel(bountyPence);
+  const label = bountyLabel(bountyPence, rewardEnded);
   return (
     <Text
       accessibilityLabel={label}
@@ -98,7 +126,7 @@ const makeStyles = (c: Palette) =>
     lg: {
       ...typography.heading,
     },
-    // "No reward" is a fact about the listing, not the action driver a bounty
+    // "No reward" (or "Reward ended") is a fact about the listing, not the action driver a bounty
     // is — so it keeps the size/weight that holds the card's layout together
     // but steps back to secondary text. The accent stays reserved for money.
     none: {

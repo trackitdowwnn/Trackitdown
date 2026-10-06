@@ -13,7 +13,9 @@
  *        posting flow's standard); success owns the payoff moment — warmth
  *        allowed, "Message the owner" opens the sighting-gated chat thread
  *        (chat shipped 2026-07-15), and NO Stripe onboarding (DOMAIN: KYC
- *        at credit, not report).
+ *        at credit, not report). Its reward line reads the LIVE reward from
+ *        the post-detail seed (a reward can change or end after the spotter
+ *        tapped), falling back to the route's `bounty` only if that read fails.
  * LINKS: src/app/report-sighting.tsx (route);
  *        src/features/sightings/reportSightingFlow.tsx;
  *        src/features/sightings/api/sightingApi.ts; docs/DOMAIN.md.
@@ -92,7 +94,9 @@ type Phase =
   | { kind: 'checking' }
   | { kind: 'rate_limited' }
   | { kind: 'wizard'; seed: ReportSeed }
-  | { kind: 'sent' };
+  // The live reward rides from the seed into the success screen (absent when
+  // the seed read failed — the route's param is the fallback).
+  | { kind: 'sent'; reward?: ReportSeed['reward'] };
 
 export function ReportSightingScreen({ postId, source, bountyPence }: ReportSightingScreenProps) {
   const styles = useThemedStyles(makeStyles);
@@ -155,7 +159,7 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
       });
       throw err;
     }
-    setPhase({ kind: 'sent' });
+    setPhase({ kind: 'sent', reward: phase.kind === 'wizard' ? phase.seed.reward : undefined });
   };
 
   if (phase.kind === 'checking') {
@@ -180,7 +184,9 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
     return (
       <SightingSent
         postId={postId}
-        bountyPence={bountyPence}
+        // The live reward wins over the route's snapshot (see ReportSeed.reward).
+        bountyPence={phase.reward ? phase.reward.bountyPence : bountyPence}
+        rewardEnded={phase.reward?.rewardEnded ?? false}
         onDone={leave}
       />
     );
@@ -224,10 +230,13 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
 function SightingSent({
   postId,
   bountyPence,
+  rewardEnded,
   onDone,
 }: {
   postId: string;
   bountyPence?: number | null;
+  /** The listing's reward ran its term and went back (ADR-0020). */
+  rewardEnded: boolean;
   onDone: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
@@ -294,7 +303,11 @@ function SightingSent({
               is never coming. null = this listing has no cash reward (ADR-0014);
               undefined = the caller did not say, so stay generic. */}
           {bountyPence === null
-            ? 'There’s no cash reward on this listing, but if your report leads to the car being found the owner can credit you — and it’s added to your spotter record.'
+            ? rewardEnded
+              ? // ADR-0020: the reward ran its term and went back — not a fee
+                // listing, and not one to promise money on.
+                'The reward on this listing has ended, but if your report leads to the car being found the owner can credit you — and it’s added to your spotter record.'
+              : 'There’s no cash reward on this listing, but if your report leads to the car being found the owner can credit you — and it’s added to your spotter record.'
             : bountyPence
               ? `If your sighting leads to the recovery, you’ll receive the ${formatPounds(bountyPence)} reward.`
               : 'If your sighting leads to the recovery, you’ll receive the reward.'}

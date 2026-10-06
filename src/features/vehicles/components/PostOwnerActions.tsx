@@ -441,8 +441,12 @@ export function PostOwnerActions({
             owned.bountyPence === null
               ? // No bounty means no refund, and the listing fee is not
                 // refundable (ADR-0014). The destructive confirm must not
-                // promise money back that is not coming.
-                'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.'
+                // promise money back that is not coming. A reward that ended
+                // (ADR-0020) has already gone back — and that listing may never
+                // have paid a fee, so it isn't mentioned.
+                owned.rewardEnded
+                ? 'We’ll take it down. Your reward already went back to your card when it ended, so there’s nothing more to refund. This can’t be undone.'
+                : 'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.'
               : `We’ll take it down and refund about ${formatPounds(
                   estimateRefundPence(owned.bountyPence),
                 )} to your card — the reward minus the non-recoverable card fee. This can’t be undone.`

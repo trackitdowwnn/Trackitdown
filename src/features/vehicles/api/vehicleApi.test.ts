@@ -1,6 +1,7 @@
 /**
  * WHAT:  Tests for fetchPostDetail — the three RPC variants (not-found /
- *        hidden / visible), the snake→camel mapping, and the SAFETY absence
+ *        hidden / visible), the snake→camel mapping (including reward_ended,
+ *        ADR-0020, absent → false), and the SAFETY absence
  *        guarantee: the hidden branch surfaces ONLY a closedReason even if the
  *        payload smuggles post details, and no variant exposes owner_id or
  *        individual sightings.
@@ -128,6 +129,27 @@ describe('fetchPostDetail', () => {
     if (result.kind !== 'visible') throw new Error('expected visible');
     expect(result.post.owner.firstName).toBeUndefined();
     expect(result.post.owner.memberSince).toBe('2025-01-01T00:00:00Z');
+  });
+
+  // ADR-0020: a lapsed reward arrives as a null bounty + reward_ended. The key
+  // is optional (the app can update before the server), and absent = false.
+  it('maps reward_ended: true to rewardEnded on a null-bounty post', async () => {
+    mockRpc.mockResolvedValue({
+      data: { ...VISIBLE, bounty_amount_pence: null, reward_ended: true },
+      error: null,
+    });
+    const result = await fetchPostDetail('p1');
+    if (result.kind !== 'visible') throw new Error('expected visible');
+    expect(result.post.bountyPence).toBeNull();
+    expect(result.post.rewardEnded).toBe(true);
+  });
+
+  it('maps an absent reward_ended key to rewardEnded false (older server)', async () => {
+    mockRpc.mockResolvedValue({ data: { ...VISIBLE, bounty_amount_pence: null }, error: null });
+    const result = await fetchPostDetail('p1');
+    if (result.kind !== 'visible') throw new Error('expected visible');
+    expect(result.post.bountyPence).toBeNull();
+    expect(result.post.rewardEnded).toBe(false);
   });
 
   it('returns not-found', async () => {

@@ -21,6 +21,7 @@ import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
 import { PaymentError, parseFunctionError } from '@/shared/lib/functionError';
 import { createLogger } from '@/shared/lib/logger';
 import { formatPounds } from '@/shared/lib/money';
+import type { PostStatus } from '@/shared/types';
 
 const log = createLogger('payments');
 
@@ -75,6 +76,22 @@ function rpcError(error: { message?: string }): PaymentError {
 }
 
 const rewardStatusSchema = z.object({
+  // Parsed, not cast: rewardTerm gates the term on it. A status this build
+  // doesn't know degrades to undefined (→ null) rather than failing the read.
+  postStatus: z
+    .enum([
+      'draft',
+      'pending_verification',
+      'active',
+      'recovery_claimed',
+      'recovered',
+      'recovered_no_spotter',
+      'cancelled',
+      'expired',
+      'rejected',
+    ])
+    .optional()
+    .catch(undefined),
   mode: z.enum(['change', 'add']),
   rewardId: z.string().nullable(),
   amountPence: z.number().int().nullable(),
@@ -83,12 +100,20 @@ const rewardStatusSchema = z.object({
   // server still parses the old shape (memory: widen client schemas first).
   termEndsAt: z.string().nullable().optional(),
   legacyTerm: z.boolean().optional(),
+  // The last reward ended and went back (20261006100000) — optional for the
+  // same skew.
+  rewardEndedAt: z.string().nullable().optional(),
+  endedRewardPence: z.number().int().positive().nullable().optional(),
   feeAbsorbed: z.boolean(),
   hasRecentSightings: z.boolean(),
   block: z.string().nullable(),
 });
 
 export interface RewardStatus {
+  /** The listing's lifecycle status. A term is only news on a LIVE listing:
+   *  a cancelled one's held reward is being refunded, a recovery_claimed
+   *  one's is being decided — neither "runs until" anything. */
+  postStatus: PostStatus | null;
   /** change = a reward is held and would be replaced; add = none (a fee listing). */
   mode: 'change' | 'add';
   /** Changes exactly when the reward does — what the screen polls for. */
@@ -101,6 +126,11 @@ export interface RewardStatus {
   /** A reward from before the term existed: its END-OF-TERM refund is made
    *  in full (the platform absorbs the card fee). Other refunds are unchanged. */
   legacyTerm: boolean;
+  /** When the refund of a reward that ended unrenewed was recorded (ISO) —
+   *  set only while no reward is held (ADR-0020). */
+  rewardEndedAt: string | null;
+  /** That ended reward's amount — set together with rewardEndedAt. */
+  endedRewardPence: number | null;
   /** The current reward's refund returns the full amount (no card fee kept). */
   feeAbsorbed: boolean;
   /** Recent uncredited sightings exist, so the reward can't be lowered. */
@@ -123,12 +153,15 @@ export async function fetchMyRewardStatus(postId: string): Promise<RewardStatus>
   }
   const doc = parsed.data;
   return {
+    postStatus: doc.postStatus ?? null,
     mode: doc.mode,
     rewardId: doc.rewardId,
     amountPence: doc.amountPence,
     capturedAt: doc.capturedAt,
     termEndsAt: doc.termEndsAt ?? null,
     legacyTerm: doc.legacyTerm ?? false,
+    rewardEndedAt: doc.rewardEndedAt ?? null,
+    endedRewardPence: doc.endedRewardPence ?? null,
     feeAbsorbed: doc.feeAbsorbed,
     hasRecentSightings: doc.hasRecentSightings,
     blockedMessage: doc.block ? (CHANGE_REWARD_ERROR_MESSAGES[doc.block] ?? FALLBACK) : null,

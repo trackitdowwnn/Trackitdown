@@ -4,7 +4,9 @@
  *        sheet for an entry that didn't show it (a deep link: sheet first,
  *        camera only after its "Continue", closing it leaves), the
  *        camera as screen one otherwise, and the fail-open quota check (a network error never blocks reporting —
- *        the RPC is the real enforcement).
+ *        the RPC is the real enforcement). The success screen's reward line
+ *        reads the LIVE reward from the seed over the route param (a reward
+ *        that ended since the tap, ADR-0020), falling back to the param.
  * WHY:   The rate-limit gate is product kindness AND the client half of a
  *        server rule; showing the wizard to a spent spotter (or a wall to a
  *        legitimate one because a CHECK failed) would each break the flow's
@@ -17,7 +19,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { SAFETY_NOTICE_TITLE } from '@/shared/ui';
+import { SAFETY_NOTICE_TITLE, ToastProvider } from '@/shared/ui';
 
 import { SAFETY_CONTINUE_LABEL } from '../components/ReportSafetySheet';
 import { markSafetyAck, resetSafetyAck } from '../lib/safetyAck';
@@ -31,6 +33,44 @@ jest.mock('../api/sightingApi', () => ({
 }));
 
 jest.mock('@/shared/api', () => ({ supabase: {} }));
+
+// ⚠️ The screen loads its seed through a dynamic `import('@/features/vehicles')`,
+// and this jest config runs without --experimental-vm-modules, so that import
+// THROWS here (ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING_FLAG) and the screen
+// always lands on its catch: EMPTY_REPORT_SEED. A jest.mock of the vehicles
+// feature is never reached. So the seed is steered at the one value the
+// screen does read in tests — EMPTY_REPORT_SEED, read at use time — and a
+// test that needs a live reward overrides it. reportSeedFromDetail's own
+// mapping (detail → reward) is pinned in lib/reportSeed.test.ts.
+let mockSeedOverride: { confirmableFeatures: never[]; reward?: unknown } | null = null;
+jest.mock('../lib/reportSeed', () => {
+  const actual = jest.requireActual('../lib/reportSeed');
+  // defineProperty, not a getter in an object literal: babel compiles
+  // `{ ...actual, get X() {} }` through _objectSpread, which reads the getter
+  // ONCE at factory time and freezes the value.
+  return Object.defineProperty({ ...actual }, 'EMPTY_REPORT_SEED', {
+    enumerable: true,
+    get: () => mockSeedOverride ?? actual.EMPTY_REPORT_SEED,
+  });
+});
+
+// The real wizard, plus a test-only "finish" that calls its onComplete — so
+// the success screen is reachable without driving the camera and every step
+// (the wizard's own completion is covered in useWizardController's tests).
+jest.mock('@/shared/wizard', () => {
+  const actual = jest.requireActual('@/shared/wizard');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const { Pressable } = require('react-native');
+  return {
+    ...actual,
+    WizardScreen: (props: { onComplete: (answers: object) => Promise<void> | void }) => (
+      <>
+        <actual.WizardScreen {...props} />
+        <Pressable testID="test-finish-report" onPress={() => props.onComplete({})} />
+      </>
+    ),
+  };
+});
 
 // Native leaves the wizard steps touch — none render in these tests beyond
 // the first screen, but the imports must not explode under jest.
@@ -116,12 +156,83 @@ const renderScreen = async (acknowledged = false) => {
   return result;
 };
 
+/** The seed the screen will read, carrying the listing's reward as it is now
+ *  (see mockSeedOverride for why the seed is steered this way). */
+const seedWithReward = (bountyPence: number | null, rewardEnded: boolean) => {
+  mockSeedOverride = { confirmableFeatures: [], reward: { bountyPence, rewardEnded } };
+};
+
+/** Mount past the safety sheet, finish the report, land on the success
+ *  screen. The route param always says £500 — the seed may disagree. */
+const renderSent = async () => {
+  markSafetyAck('p1');
+  let result!: Awaited<ReturnType<typeof render>>;
+  await act(async () => {
+    result = await render(
+      <ToastProvider>
+        <ReportSightingScreen postId="p1" source="detail" bountyPence={50000} />
+      </ToastProvider>,
+    );
+  });
+  await act(async () => {});
+  await act(async () => {
+    await fireEvent.press(result.getByTestId('test-finish-report'));
+  });
+  await act(async () => {});
+  return result;
+};
+
 describe('ReportSightingScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetSafetyAck();
     mockCanGoBack = true;
     mockOpenModal.current = null;
+    mockSeedOverride = null;
+  });
+
+  // ADR-0020: the route's `bounty` param was written when the spotter tapped
+  // "I've seen this car"; the reward may have ENDED since. The success
+  // screen must promise the reward as it is now.
+  describe('the success screen’s reward line', () => {
+    beforeEach(() => {
+      mockFetchQuota.mockResolvedValue({ used: 0, maxPerDay: 3 });
+    });
+
+    it('uses the live reward from the seed: a lapsed reward says it has ended, never "£500"', async () => {
+      seedWithReward(null, true);
+      const view = await renderSent();
+
+      expect(view.getByText('Report sent — thank you')).toBeTruthy();
+      expect(view.getByText(/^The reward on this listing has ended/)).toBeTruthy();
+      expect(view.queryByText(/£500/)).toBeNull();
+      expect(view.queryByText(/There’s no cash reward/)).toBeNull();
+    });
+
+    it('uses the live amount when the reward has changed since the tap', async () => {
+      seedWithReward(20000, false);
+      const view = await renderSent();
+
+      expect(view.getByText('If your sighting leads to the recovery, you’ll receive the £200 reward.')).toBeTruthy();
+      expect(view.queryByText(/£500/)).toBeNull();
+    });
+
+    it('a fee listing (null, not ended) gets the no-cash-reward line', async () => {
+      seedWithReward(null, false);
+      const view = await renderSent();
+
+      expect(view.getByText(/^There’s no cash reward on this listing/)).toBeTruthy();
+      expect(view.queryByText(/has ended/)).toBeNull();
+    });
+
+    // The seed read failed (here: always, see mockSeedOverride) → no reward in
+    // the seed → the route's snapshot is all there is.
+    it('falls back to the route param when the seed carries no reward', async () => {
+      const view = await renderSent();
+
+      expect(view.getByText('If your sighting leads to the recovery, you’ll receive the £500 reward.')).toBeTruthy();
+      expect(view.queryByText(/has ended/)).toBeNull();
+    });
   });
 
   it('shows the kind rate-limited state INSTEAD of the wizard when the quota is spent', async () => {

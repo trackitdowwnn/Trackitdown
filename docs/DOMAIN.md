@@ -401,6 +401,15 @@ funds on the platform balance at 90 days, so a reward gets a term (see
   (`legacy_term`), and their end-of-term refund is made in full.
 - **At the end** the reward is refunded through the refund hold, and the
   listing stays live with no reward (PR5).
+- **"Reward ended" (2026-10-06, migration 20261006100000).** A lapsed
+  listing is NOT a £5 fee listing, though both have a null
+  `bounty_amount_pence`. `posts.reward_ended_at` + `ended_reward_pence`
+  (written only by the expiry, together or not at all) tell them apart:
+  every reader gets `reward_ended` from `home_feed_post_json`, true only
+  while the bounty is also null — a reward added again wins. Spotters see
+  "Reward ended" (BountyTag's `REWARD_ENDED_LABEL`), never the "the owner
+  paid a flat listing fee" sentence. The owner sees what came back and when,
+  and can add a reward again; the date and amount are owner-only.
 - **Switch.** Nothing is sent until `REWARD_TERM_NOTICES_ENABLED` is on.
 
 **Why a listing fee exists at all:** £50, the floor before 2026-08-13, was the price of admission for a theft

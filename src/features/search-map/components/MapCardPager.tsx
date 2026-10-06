@@ -150,7 +150,7 @@ export const MapCardPager = memo(function MapCardPager({
       // so a no-reward listing would otherwise crash the announcement) and the
       // same wording the card beside it renders.
       AccessibilityInfo.announceForAccessibility(
-        `${post.colour} ${post.make} ${post.model}, ${bountyLabel(post.bountyPence)} — swipe for more results`,
+        `${post.colour} ${post.make} ${post.model}, ${bountyLabel(post.bountyPence, post.rewardEnded)} — swipe for more results`,
       );
     }
     if (selectedIndex !== lastReportedIndex.current) {
