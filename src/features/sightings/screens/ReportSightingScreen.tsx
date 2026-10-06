@@ -185,7 +185,10 @@ export function ReportSightingScreen({ postId, source, bountyPence }: ReportSigh
       <SightingSent
         postId={postId}
         // The live reward wins over the route's snapshot (see ReportSeed.reward).
-        bountyPence={phase.reward ? phase.reward.bountyPence : bountyPence}
+        // Without it, the snapshot's AMOUNT is never named — it may be a reward
+        // that has since ended or changed — so a number falls back to the
+        // unnamed line; only "no cash reward" (an under-promise) survives.
+        bountyPence={phase.reward ? phase.reward.bountyPence : bountyPence === null ? null : undefined}
         rewardEnded={phase.reward?.rewardEnded ?? false}
         onDone={leave}
       />
@@ -301,7 +304,7 @@ function SightingSent({
         <Text style={styles.sentLine}>
           {/* Three states, and conflating the last two would promise money that
               is never coming. null = this listing has no cash reward (ADR-0014);
-              undefined = the caller did not say, so stay generic. */}
+              undefined = unknown (no live read), so name nothing. */}
           {bountyPence === null
             ? rewardEnded
               ? // ADR-0020: the reward ran its term and went back — not a fee
@@ -310,7 +313,9 @@ function SightingSent({
               : 'There’s no cash reward on this listing, but if your report leads to the car being found the owner can credit you — and it’s added to your spotter record.'
             : bountyPence
               ? `If your sighting leads to the recovery, you’ll receive the ${formatPounds(bountyPence)} reward.`
-              : 'If your sighting leads to the recovery, you’ll receive the reward.'}
+              : // Unknown right now (the live read failed): nothing is named
+                // that might no longer be true.
+                'If your sighting leads to the car being found, the owner can credit you, and any reward on the listing goes to you.'}
         </Text>
         <Text style={styles.sentLine}>
           You and the owner can now message each other about this report — if they get in

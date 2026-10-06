@@ -44,6 +44,7 @@ const status = (over: Partial<RewardStatus> = {}): RewardStatus => ({
   legacyTerm: false,
   rewardEndedAt: null,
   endedRewardPence: null,
+  hasListingFee: null,
   feeAbsorbed: false,
   hasRecentSightings: false,
   blockedMessage: null,

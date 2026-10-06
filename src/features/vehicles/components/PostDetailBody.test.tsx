@@ -359,6 +359,18 @@ describe('reward ended (lapsed reward)', () => {
     expect(getByText(/Your listing fee isn’t refunded/)).toBeTruthy();
     expect(queryByText(/already went back/)).toBeNull();
   });
+
+  // 20261006110000: the ledger says this listing never paid a fee (and its
+  // reward didn't end) — so no fee is claimed, and no refund promised.
+  it('a no-reward listing the ledger says paid no fee claims neither a fee nor a refund', async () => {
+    const { getByText, queryByText } = await renderBody(
+      { ...base, bountyPence: null, isOwner: true, hasListingFee: false },
+      { onDeactivate: jest.fn() },
+    );
+    expect(getByText('Take this listing down. There’s no reward held on it to refund.')).toBeTruthy();
+    expect(queryByText(/listing fee/)).toBeNull();
+    expect(queryByText(/already went back/)).toBeNull();
+  });
 });
 
 describe('owner reward-term line', () => {

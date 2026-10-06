@@ -61,6 +61,8 @@ describe('fetchMyRewardStatus', () => {
       legacyTerm: false,
       rewardEndedAt: null,
       endedRewardPence: null,
+      // The server predates 20261006110000 here: "didn't say", not "no fee".
+      hasListingFee: null,
       feeAbsorbed: false,
       hasRecentSightings: false,
       blockedMessage: null,
@@ -90,6 +92,13 @@ describe('fetchMyRewardStatus', () => {
     const status = await fetchMyRewardStatus(POST_ID);
     expect(status.rewardEndedAt).toBe('2026-12-05T09:00:00Z');
     expect(status.endedRewardPence).toBe(20000);
+  });
+
+  it('passes the ledger’s listing-fee answer through (20261006110000)', async () => {
+    mockRpc.mockResolvedValue({ data: { ...STATUS, hasListingFee: false }, error: null });
+    expect((await fetchMyRewardStatus(POST_ID)).hasListingFee).toBe(false);
+    mockRpc.mockResolvedValue({ data: { ...STATUS, hasListingFee: true }, error: null });
+    expect((await fetchMyRewardStatus(POST_ID)).hasListingFee).toBe(true);
   });
 
   it('turns a block token into the owner-facing sentence', async () => {

@@ -152,6 +152,23 @@ describe('fetchPostDetail', () => {
     expect(result.post.rewardEnded).toBe(false);
   });
 
+  // 20261006110000: owner-only, from the ledger; absent for a spotter or an
+  // older server, and then left undefined (never guessed here).
+  it('passes the owner-only has_listing_fee through, and leaves it undefined when absent', async () => {
+    mockRpc.mockResolvedValue({
+      data: { ...VISIBLE, bounty_amount_pence: null, has_listing_fee: false },
+      error: null,
+    });
+    const owner = await fetchPostDetail('p1');
+    if (owner.kind !== 'visible') throw new Error('expected visible');
+    expect(owner.post.hasListingFee).toBe(false);
+
+    mockRpc.mockResolvedValue({ data: { ...VISIBLE, bounty_amount_pence: null }, error: null });
+    const spotter = await fetchPostDetail('p1');
+    if (spotter.kind !== 'visible') throw new Error('expected visible');
+    expect(spotter.post.hasListingFee).toBeUndefined();
+  });
+
   it('returns not-found', async () => {
     mockRpc.mockResolvedValue({ data: { found: false }, error: null });
     expect((await fetchPostDetail('missing')).kind).toBe('notFound');

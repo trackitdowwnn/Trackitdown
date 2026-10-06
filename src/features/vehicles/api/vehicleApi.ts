@@ -61,6 +61,9 @@ const visibleSchema = z.object({
   // A lapsed reward (ADR-0020, 20261006100000). Optional so an app that
   // updates before the server still parses — absent reads as false.
   reward_ended: z.boolean().optional(),
+  // OWNER-ONLY (20261006110000): the listing paid the £5 fee, from the ledger.
+  // Absent for a spotter, and from a server before that migration.
+  has_listing_fee: z.boolean().optional(),
   status: postStatusSchema,
   last_seen_at: z.string().nullable(),
   last_seen_area: z.string().nullable(),
@@ -113,6 +116,7 @@ function toPostDetail(row: VisibleRow): PostDetail {
     ownerNote: row.owner_note ?? undefined,
     bountyPence: row.bounty_amount_pence,
     rewardEnded: row.reward_ended ?? false,
+    hasListingFee: row.has_listing_fee,
     lastSeenAt: row.last_seen_at,
     lastSeenArea: row.last_seen_area ?? undefined,
     createdAt: row.created_at,

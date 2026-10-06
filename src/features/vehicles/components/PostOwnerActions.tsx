@@ -50,6 +50,7 @@ import {
 import { deleteCancelledPost } from '../api/deletePostApi';
 import { deleteDraft } from '../api/draftApi';
 import { RecoveryError, releasePayout } from '../api/recoveryApi';
+import { noRewardKind } from '../lib/noRewardKind';
 import { buildSharePayload } from '../lib/postShare';
 import {
   canChangeReward,
@@ -443,10 +444,14 @@ export function PostOwnerActions({
                 // refundable (ADR-0014). The destructive confirm must not
                 // promise money back that is not coming. A reward that ended
                 // (ADR-0020) has already gone back — and that listing may never
-                // have paid a fee, so it isn't mentioned.
-                owned.rewardEnded
-                ? 'We’ll take it down. Your reward already went back to your card when it ended, so there’s nothing more to refund. This can’t be undone.'
-                : 'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.'
+                // have paid a fee, so it isn't mentioned. The fee is the
+                // ledger's word (noRewardKind), not an inference.
+                {
+                  ended:
+                    'We’ll take it down. Your reward already went back to your card when it ended, so there’s nothing more to refund. This can’t be undone.',
+                  fee: 'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.',
+                  unknown: 'We’ll take it down. There’s no reward held on it to refund. This can’t be undone.',
+                }[noRewardKind(owned)]
               : `We’ll take it down and refund about ${formatPounds(
                   estimateRefundPence(owned.bountyPence),
                 )} to your card — the reward minus the non-recoverable card fee. This can’t be undone.`
