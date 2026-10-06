@@ -32,7 +32,7 @@ import { Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { exitCheck, useDeactivatePost } from '@/features/payments';
-import { bountyParam, estimateRefundPence, formatPounds } from '@/shared/lib';
+import { bountyParam, cardFeePence, formatPounds, refundPence } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import { spacing, useThemedStyles, type Palette } from '@/shared/theme';
 import {
@@ -115,7 +115,7 @@ export function PostOwnerActions({
 
   // The sheet and the ONE deactivate confirm — both the sheet's row and the
   // listing body's button open the latter, so the destructive copy and the
-  // refund estimate exist in a single place.
+  // refund figure exist in a single place.
   const manageRef = useRef<BottomSheetRef>(null);
   const deactivateRef = useRef<ConfirmDialogRef>(null);
   const deleteDraftRef = useRef<ConfirmDialogRef>(null);
@@ -432,8 +432,8 @@ export function PostOwnerActions({
         onUnarchive={archive?.archived ? archive.toggle : undefined}
       />
 
-      {/* The ONE deactivate confirm. The refund figure is an estimate; the
-          exact amount is confirmed in the toast after the server refunds. */}
+      {/* The ONE deactivate confirm. The refund figure is exact (ADR-0021); the
+          toast repeats the server's figure once it has refunded. */}
       {canDeactivate(owned) ? (
         <ConfirmDialog
           ref={deactivateRef}
@@ -452,9 +452,12 @@ export function PostOwnerActions({
                   fee: 'We’ll take it down. Your listing fee isn’t refunded. This can’t be undone.',
                   unknown: 'We’ll take it down. There’s no reward held on it to refund. This can’t be undone.',
                 }[noRewardKind(owned)]
-              : `We’ll take it down and refund about ${formatPounds(
-                  estimateRefundPence(owned.bountyPence),
-                )} to your card — the reward minus the non-recoverable card fee. This can’t be undone.`
+              : // Exact figures (ADR-0021): the refund IS this amount.
+                `We’ll take it down and send ${formatPounds(
+                  refundPence(owned.bountyPence),
+                )} back to your card. Only the ${formatPounds(
+                  cardFeePence(owned.bountyPence),
+                )} card fee is kept. This can’t be undone.`
           }
           confirmLabel="Yes, deactivate"
           destructive

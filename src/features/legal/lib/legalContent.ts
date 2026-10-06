@@ -154,13 +154,17 @@ const SAFETY: LegalDocument = {
 const TERMS: LegalDocument = {
   slug: 'terms',
   title: 'Terms of service',
+  // 6 Oct: the card processing fee a refund keeps is a FIXED 1.5% + 20p
+  // (ADR-0021), quoted exactly before payment; any higher card cost is ours.
+  // Only ever in the owner's favour (UK standard cards cost exactly this;
+  // dearer cards no longer cost the owner more), so no advance notice applies.
   // 5 Oct: bounties get a 60-day term (ADR-0020). THIS CHANGE MATTERS to
   // people's money, so — as the "Changes" section promises — owners with a
   // bounty are told in the app before it affects them: a push and the
   // listing's reward banner, with at least 14 days' notice where Stripe's
   // 90-day limit allows (claim_reward_term_notices, 20261005140000).
   // (30 Sep: the "Vehicle data" credit — no notice needed.)
-  lastUpdated: '5 October 2026',
+  lastUpdated: '6 October 2026',
   intro: [
     `These terms are an agreement between you and ${OPERATOR}. By creating an account you accept them.`,
     'They are written to be read. Where a term matters to your money or your safety, it is stated plainly rather than buried.',
@@ -219,7 +223,7 @@ const TERMS: LegalDocument = {
         'The bounty is between £10 and £5,000. All amounts are in pounds sterling.',
         'If a sighting leads to your vehicle being recovered, you credit that sighting. The person who reported it receives 95% of the bounty. We keep 5%.',
         'Only one sighting can be credited per recovery. If several people helped, you choose the one that made the difference. We cannot split a bounty.',
-        'If you recover the vehicle without anyone’s help, or you cancel the listing, or the bounty reaches the end of its 60 days without being renewed, the bounty is refunded to you minus the card processing costs, which the card networks do not return to us. That deduction is shown to you before you pay.',
+        'If you recover the vehicle without anyone’s help, or you cancel the listing, or the bounty reaches the end of its 60 days without being renewed, the bounty is refunded to you minus a card processing fee of 1.5% of the bounty plus 20p. We show you the exact amount before you pay, and that is the amount we refund; if your card costs us more to process, we cover the difference. If someone reported a sighting in the 14 days before, the refund waits up to 72 hours so they can tell us whether their sighting led to the recovery; if it did, and a person reviewing it agrees, the bounty goes to them instead.',
         // ⚠️ THE TERM, 2026-10-05 (ADR-0020). Our payment provider may not
         // hold funds on our balance for more than 90 days, so a bounty can no
         // longer sit indefinitely. Each of these four paragraphs is a promise
@@ -228,14 +232,14 @@ const TERMS: LegalDocument = {
         // sightings (the ADR-0011 hold), the lowering rule
         // (reward_change_block) — so changing either side means changing both.
         'A bounty lasts 60 days from when it is paid. We remind you 10 days and 3 days before it ends, and you can renew it at any time from your listing.',
-        'Renewing a bounty, or changing its amount, is a new payment. Once the new one is held, your previous bounty is refunded to you minus the card processing costs. You can raise a bounty at any time; you can lower it only if nobody has reported a sighting of your vehicle in the last 14 days.',
-        'If a bounty reaches the end of its 60 days without being renewed, we refund it to you automatically, minus the card processing costs. If someone reported a sighting in the 14 days before, the refund waits up to 72 hours so they can tell us whether their sighting led to the recovery; if they do, a person reviews it before any money moves.',
+        'Renewing a bounty, or changing its amount, is a new payment. Once the new one is held, your previous bounty is refunded to you minus that card processing fee. You can raise a bounty at any time; you can lower it only if nobody has reported a sighting of your vehicle in the last 14 days.',
+        'If a bounty reaches the end of its 60 days without being renewed, we refund it to you automatically, minus that card processing fee. If someone reported a sighting in the 14 days before, the refund waits up to 72 hours so they can tell us whether their sighting led to the recovery; if they do, a person reviews it before any money moves.',
         // ⚠️ THE CLAIM CARVE-OUT. reward_change_block refuses a renewal, and
         // the expiry will not refund, while anyone has a claim on the money —
         // so the two promises above must say so, or they are false exactly
         // when it matters most.
         'While a recovery, a dispute or a payment review is in progress on your listing, the bounty stays held: it cannot be renewed or changed, and it is not refunded at the end of its 60 days, until that is resolved.',
-        'Bounties that were already being held when this term was introduced on 5 October 2026 were given an end date, which we told you about in the app before it applied. Their refund at the end of that term is made in full, including the card processing costs.',
+        'Bounties that were already being held when this term was introduced on 5 October 2026 were given an end date, which we told you about in the app before it applied. Their refund at the end of that term is made in full, including the card processing fee.',
         // ⚠️ THE FEE IS NON-REFUNDABLE AND THAT MUST BE STATED PLAINLY. You
         // cannot take a non-refundable payment under a document that does not
         // say it is non-refundable, and this is the term a reader is most

@@ -95,42 +95,75 @@ describe('MoneySlider rendering', () => {
     });
   });
 
-  it('renders the transparency panel with the live 95/5 breakdown', async () => {
+  // 2026-10-06: the panel is a heading and three rows — one per question an
+  // owner has — instead of two paragraphs of small print.
+  it('renders the panel as a titled breakdown with the live 95/5 split', async () => {
     const { getByText } = await render(
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
-    expect(getByText(/they receive £190 and our platform fee is £10/)).toBeTruthy();
-    expect(getByText(/£200 is held for 60 days from when your listing goes live/)).toBeTruthy();
+    expect(getByText('How your £200 reward works')).toBeTruthy();
+    expect(getByText('You only pay if a spotter finds your car')).toBeTruthy();
+    expect(getByText('They get £190, and our fee is £10.')).toBeTruthy();
   });
 
-  // The refund conditions must read COMPLETELY. The line used to say "refunded
-  // if you cancel or recover it yourself", omitting expiry — the most likely
-  // ending for most posts — which buried the point: the money comes back
-  // unless a spotter actually finds the car.
-  it('names every way the money comes back, not just cancelling', async () => {
+  // The refund conditions must stay COMPLETE — all three ways the money comes
+  // back, named in one place (the Terms list the same three): cancelling,
+  // finding the car yourself, and the 60 days ending unrenewed (ADR-0020, the
+  // most likely ending for most rewards).
+  it('names every way the money comes back', async () => {
     const { getByText } = await render(
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
-    expect(getByText(/only pay it if a spotter finds your car/)).toBeTruthy();
-    // The term (ADR-0020): every ending that brings the money back, named.
-    expect(getByText(/cancel, recover it yourself, or the 60 days end without a renewal/)).toBeTruthy();
-    expect(getByText(/held for 60 days from when your listing goes live, and you can renew it any time — your listing stays up either way/)).toBeTruthy();
+    expect(getByText('Otherwise, it comes back to you')).toBeTruthy();
+    const detail = getByText(/goes back to your card if/);
+    expect(detail).toHaveTextContent(/if you cancel/);
+    expect(detail).toHaveTextContent(/find the car yourself/);
+    expect(detail).toHaveTextContent(/the 60 days end/);
+    expect(getByText('Lasts 60 days')).toBeTruthy();
+    expect(
+      getByText('From when your listing goes live. Renew any time to keep it going. Your listing stays up either way.'),
+    ).toBeTruthy();
   });
 
   // Our Terms promise "that deduction is shown to you before you pay", and
   // payment is Stripe's PaymentSheet — so this panel is the only surface that
-  // can keep it. The line said "minus card processing costs" with no figure.
-  it('quotes the actual refund figure, not just that a fee exists', async () => {
-    const { getByText } = await render(
+  // can keep it. Both figures, EXACT (ADR-0021): the refund withholds this
+  // fixed fee whatever the card cost, so nothing here may say "about".
+  it('quotes the refund and the card fee as exact figures — never "about"', async () => {
+    const { getByText, queryByText } = await render(
       <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
     );
-    // 20000 − (round(20000 × 0.015) + 20) = 19680
-    expect(getByText(/£196\.80 comes back to you/)).toBeTruthy();
+    // 20000 − (round(20000 × 0.015) + 20) = 19680; the fee is the other 320.
+    expect(
+      getByText(
+        '£196.80 goes back to your card if you cancel, find the car yourself, or the 60 days end. Only the £3.20 card fee is kept.',
+      ),
+    ).toBeTruthy();
+    expect(queryByText(/[Aa]bout £/)).toBeNull();
+  });
+
+  it('reads each row to a screen reader as one "title. detail" stop', async () => {
+    const { getByLabelText } = await render(
+      <MoneySlider {...bountyProps} valuePence={20000} panel={defaultBountyPanelCopy} />,
+    );
+    expect(
+      getByLabelText('You only pay if a spotter finds your car. They get £190, and our fee is £10.'),
+    ).toBeTruthy();
+  });
+
+  it('updates every figure as the amount changes', async () => {
+    const { getByText } = await render(
+      <MoneySlider {...bountyProps} valuePence={50000} panel={defaultBountyPanelCopy} />,
+    );
+    expect(getByText('How your £500 reward works')).toBeTruthy();
+    expect(getByText('They get £475, and our fee is £25.')).toBeTruthy();
+    // 50000 − (750 + 20) = 49230
+    expect(getByText(/^£492\.30 goes back to your card .* Only the £7\.70 card fee is kept\.$/)).toBeTruthy();
   });
 
   it('hides the panel when no copy is provided', async () => {
     const { queryByText } = await render(<MoneySlider {...bountyProps} valuePence={20000} />);
-    expect(queryByText(/is held for 60 days from when your listing goes live/)).toBeNull();
+    expect(queryByText(/reward works/)).toBeNull();
   });
 
   it('clamps an out-of-range controlled value', async () => {

@@ -225,7 +225,7 @@ describe('factual claims the code must keep true', () => {
     // still never expires — that half of the old pin survives unchanged.
     expect(terms).toContain('A bounty lasts 60 days from when it is paid.');
     expect(terms).toContain('We remind you 10 days and 3 days before it ends');
-    expect(terms).toContain('we refund it to you automatically, minus the card processing costs');
+    expect(terms).toContain('we refund it to you automatically, minus that card processing fee');
     // The spotter protection travels with the automatic refund.
     expect(terms).toContain('the refund waits up to 72 hours');
     // The lowering rule (reward_change_block).
@@ -241,7 +241,7 @@ describe('factual claims the code must keep true', () => {
     // refund_fee_absorbed). A Terms line that said "minus costs" for them
     // would be a promise the code breaks in the owner's favour — still wrong.
     expect(terms).toContain('already being held when this term was introduced');
-    expect(terms).toContain('made in full, including the card processing costs');
+    expect(terms).toContain('made in full, including the card processing fee');
   });
 
   it('does not promise renewal or the automatic refund while a claim is open', () => {
@@ -250,10 +250,15 @@ describe('factual claims the code must keep true', () => {
     expect(terms).toContain('While a recovery, a dispute or a payment review is in progress on your listing, the bounty stays held');
   });
 
-  it('does NOT promise a full refund — card fees are withheld', () => {
-    // deactivate-post and refund-recovery both refund `amount - stripe fee`.
-    // Promising the whole bounty back would be a false statement about money.
-    expect(terms).toContain('minus the card processing costs');
+  it('does NOT promise a full refund — and names the fixed card fee exactly', () => {
+    // Every refund path withholds the FIXED 1.5% + 20p (refundEscrow's
+    // cardFeePence, ADR-0021). Promising the whole bounty back would be a
+    // false statement about money; so would naming any other fee.
+    expect(terms).toContain('minus a card processing fee of 1.5% of the bounty plus 20p');
+    expect(terms).toContain('We show you the exact amount before you pay, and that is the amount we refund');
+    // …without over-promising: the ADR-0011 hold applies to these exits too.
+    expect(terms).toContain('the refund waits up to 72 hours');
+    expect(terms).toContain('minus that card processing fee');
   });
 
   it('says only one sighting can be credited', () => {

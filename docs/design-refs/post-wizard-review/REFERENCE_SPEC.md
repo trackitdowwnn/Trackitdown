@@ -102,7 +102,7 @@ the person discover a charge later than this screen.
 |---|---|
 | The sum appears **on the screen**, not only in the button | `typography.title` + `accentText` |
 | One honest line on what happens to the money | `caption`/`textSecondary` |
-| Every figure comes from the single source | `estimateRefundPence`, `LISTING_FEE_PENCE` — its own doc makes this binding |
+| Every figure comes from the single source | `refundPence` / `cardFeePence`, `LISTING_FEE_PENCE` — its own doc makes this binding |
 | Display only | the charge is server-read from the post's price column |
 
 ## 6 — Deliberately not adopted

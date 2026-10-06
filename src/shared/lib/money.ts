@@ -106,19 +106,32 @@ export function bountyBreakdown(bountyPence: number): BountyBreakdown {
 }
 
 /**
- * Bounty minus the ESTIMATED non-recoverable card fee (~UK rate, 1.5% + 20p),
- * floored at zero — what an owner gets back when a listing ends without a
- * credited spotter (cancel, expiry, takedown, recovered-it-themselves).
+ * The card fee a refund keeps: a FIXED 1.5% + 20p of the reward (ADR-0021,
+ * 2026-10-06). EXACT, not an estimate: the server's refund withholds this same
+ * figure whatever the card actually cost (Trackitdown absorbs the rest), so
+ * the app can state it plainly — "£3.20", never "about £3.20".
  *
- * MONEY: DISPLAY ONLY, and an ESTIMATE. The server withholds the real Stripe
- * fee and returns the authoritative refunded amount, which is what the
- * post-refund toast shows — never wire this into a refund or charge path.
+ * MONEY: a MIRROR of `cardFeePence` in supabase/functions/_shared/refundEscrow.ts,
+ * which decides the refund. supabase/tests/refundEscrow.test.ts pins that the
+ * two agree for every reward amount. DISPLAY ONLY here — never wire this into
+ * a refund or charge path.
+ */
+export function cardFeePence(bountyPence: number): number {
+  // 1.5%, rounded half-up to the penny, in INTEGER maths (no float ever
+  // touches an amount): floor((pence × 15 + 500) / 1000) is round(pence × 0.015).
+  return Math.floor((bountyPence * 15 + 500) / 1000) + 20;
+}
+
+/**
+ * What an owner gets back when a reward ends without a credited spotter
+ * (cancel, the 60 days ending, recovered-it-themselves): the reward minus the
+ * fixed card fee, floored at zero. Exact — see cardFeePence.
  *
  * Lives here rather than under features/vehicles (where it started) because the
  * bounty slider quotes it too, and shared/ui cannot import from a feature.
  * Every surface that quotes a refund before the owner commits must use this one
  * function, or two screens will disagree about the same number.
  */
-export function estimateRefundPence(bountyPence: number): number {
-  return Math.max(0, bountyPence - (Math.round(bountyPence * 0.015) + 20));
+export function refundPence(bountyPence: number): number {
+  return Math.max(0, bountyPence - cardFeePence(bountyPence));
 }

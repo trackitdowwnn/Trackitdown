@@ -20,7 +20,8 @@ computes an amount, never decides who is payable, and never holds a secret.
 flips `draft → active` on `payment_intent.succeeded`. The client sends a post id
 and nothing else; the server reads the price from the database. Refunds go
 through `deactivate-post` (owner cancels) or `refund-recovery` (found it
-themselves), both minus the non-recoverable card fee.
+themselves), both minus the fixed 1.5% + 20p card fee (ADR-0021) — the exact
+figure every screen quotes before the owner pays.
 
 **...and since 2026-08-19, TWO PRICING MODES share that path (ADR-0014).** A
 post carries either a bounty (£10–£5,000, escrowed) or a flat **£5 listing

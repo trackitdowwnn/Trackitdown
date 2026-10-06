@@ -5,8 +5,8 @@
  *        of two paths depending on how the post was paid for:
  *
  *        BOUNTY POST — finds the HELD escrow charge, computes the refund as the
- *        bounty MINUS the non-recoverable Stripe processing fee (read
- *        authoritatively from the charge's balance transaction), issues a Stripe
+ *        bounty MINUS the fixed 1.5% + 20p card fee the owner was quoted (ADR-0021,
+ *        refundEscrow's cardFeePence), issues a Stripe
  *        refund, and records the money-state transition (payment held ->
  *        refunded, post -> cancelled) via the service-role RPC. Subject to the
  *        owner-denial gate first (ADR-0011).
@@ -19,9 +19,9 @@
  * WHY:   The refund amount and the state machine must live on the server — the
  *        client never says how much to refund (SECURITY_AND_TRUST §4). Ownership
  *        is proven from the caller's JWT, not a client-supplied id. DOMAIN.md
- *        §lifecycle: cancelling a post refunds the bounty "minus non-recoverable
- *        card processing costs", so the platform withholds the exact Stripe fee.
- *        The refund execution (fee read, guards, refunds.create) lives in
+ *        §lifecycle: cancelling a post refunds the bounty minus the fixed card
+ *        fee (1.5% + 20p, ADR-0021) — the exact figure the owner was quoted.
+ *        The refund execution (amount, guards, refunds.create) lives in
  *        _shared/refundEscrow.ts — one implementation shared with
  *        refund-recovery and the hold sweep, keyed per PAYMENT
  *        (`payment-refund-<pi>`, since 2026-10-05: a renewable reward means a
@@ -200,7 +200,7 @@ Deno.serve(async (request) => {
   }
 
   // --- Refund the held escrow (the one shared implementation) -----------------
-  // Fee read authoritatively, arithmetic guarded, refund idempotent — see
+  // Fixed-fee amount (ADR-0021), arithmetic guarded, refund idempotent — see
   // _shared/refundEscrow.ts. The key is the PAYMENT's (`payment-refund-<pi>`),
   // so a retry after a dropped response returns the SAME refund, and the
   // sweep, retrying this exit after a hold, asks with that same key.

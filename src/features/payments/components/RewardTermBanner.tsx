@@ -14,7 +14,7 @@
  *        THE STATES are lib/rewardTerm.ts's, because every sentence here is
  *        about money and the stat-band line beside it must agree:
  *          * RENEW: the card, the refund FIGURE if they don't renew
- *            (estimateRefundPence — every refund quote names its deduction),
+ *            (refundPence — every refund quote names its deduction),
  *            and the button;
  *          * BLOCKED (a recovery or dispute is open): nothing is refunded and
  *            nothing can change while a claim is open, so it says exactly
@@ -42,7 +42,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
 import { formatTermDate } from '@/shared/lib/dateTimeLabel';
-import { estimateRefundPence, formatPounds } from '@/shared/lib/money';
+import { refundPence, formatPounds } from '@/shared/lib/money';
 import { radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button } from '@/shared/ui';
 
@@ -85,10 +85,11 @@ export function RewardTermBanner({ status, readAt, onRenew, onAddReward }: Rewar
     const amount = formatPounds(status.amountPence as number);
     const termEndsAt = status.termEndsAt as string;
     // In full for a reward from before the term (its end-of-term refund absorbs
-    // the fee) or one already marked absorbed; otherwise the estimate.
+    // the fee) or one already marked absorbed; otherwise the exact refund
+    // (the fixed card fee, ADR-0021).
     const back = status.legacyTerm || status.feeAbsorbed
       ? `the full ${amount} comes back to your card`
-      : `about ${formatPounds(estimateRefundPence(status.amountPence as number))} comes back to your card`;
+      : `${formatPounds(refundPence(status.amountPence as number))} comes back to your card`;
 
     if (phase === 'ending') {
       title = `Your ${amount} reward ended on ${formatTermDate(termEndsAt)}`;

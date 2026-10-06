@@ -8,7 +8,7 @@
  *        and the cancel / fail / refusal outcomes.
  * WHY:   This screen is the ONLY place an owner learns what changing a live
  *        reward does to their money before they pay. Its figures must come
- *        from estimateRefundPence (the one refund estimate), and it must never
+ *        from refundPence (the one refund figure, exact since ADR-0021), and it must never
  *        say "your reward is now £X" before the server agrees.
  * LINKS: src/features/payments/screens/ChangeRewardScreen.tsx;
  *        src/features/payments/api/rewardChangeApi.ts.
@@ -17,7 +17,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { PaymentError } from '@/shared/lib/functionError';
-import { estimateRefundPence, formatPounds } from '@/shared/lib/money';
+import { refundPence, formatPounds } from '@/shared/lib/money';
 
 import type { RewardStatus } from '../api/rewardChangeApi';
 import { ChangeRewardScreen } from './ChangeRewardScreen';
@@ -48,7 +48,8 @@ jest.mock('@/shared/ui', () => {
         <Text>{body}</Text>
       </Pressable>
     ),
-    defaultBountyPanelCopy: { splitLine: () => '', escrowLine: () => '' },
+    rewardPaidRow: () => ({ icon: () => null, title: '', detail: '' }),
+    rewardReturnedRow: () => ({ icon: () => null, title: '', detail: '' }),
   };
 });
 
@@ -113,17 +114,20 @@ beforeEach(() => {
 // --- tests -------------------------------------------------------------------
 
 describe('ChangeRewardScreen', () => {
-  it('summarises the money in full: charged now, back to your card (estimate) and when, and the card fee kept', async () => {
+  it('summarises the money in full and exactly: charged now, back to your card and when, and the card fee kept', async () => {
     mockFetchStatus.mockResolvedValue(status());
     const view = await mount();
     await act(async () => mockSliderProps?.onChangePence(35000));
 
-    const back = estimateRefundPence(20000);
+    const back = refundPence(20000);
     expect(view.getByText('Renew or change your reward')).toBeTruthy();
     expect(view.getByText('Charged now')).toBeTruthy();
     expect(view.getByText('£350')).toBeTruthy();
-    expect(view.getByText(`About ${formatPounds(back)}, in 5–10 working days`)).toBeTruthy();
-    expect(view.getByText(`About ${formatPounds(20000 - back)}`)).toBeTruthy();
+    expect(view.getByText('Your current reward back')).toBeTruthy();
+    expect(view.getByText(`${formatPounds(back)}, in 5–10 working days`)).toBeTruthy();
+    expect(view.getByText(formatPounds(20000 - back))).toBeTruthy();
+    // Exact figures (ADR-0021): never hedged.
+    expect(view.queryByText(/[Aa]bout £/)).toBeNull();
     expect(view.getByText('Pay £350')).toBeTruthy();
   });
 
@@ -221,9 +225,9 @@ describe('ChangeRewardScreen', () => {
     // The renewal's REAL cost is named first: the card fee on the old reward.
     expect(view.getByText('Renewing costs')).toBeTruthy();
     expect(
-      view.getByText(`About ${formatPounds(20000 - estimateRefundPence(20000))} — the card fee on your current reward`),
+      view.getByText(`Just the ${formatPounds(20000 - refundPence(20000))} card fee on your current reward`),
     ).toBeTruthy();
-    expect(view.getByText(`About ${formatPounds(estimateRefundPence(20000))}, in 5–10 working days`)).toBeTruthy();
+    expect(view.getByText(`${formatPounds(refundPence(20000))}, in 5–10 working days`)).toBeTruthy();
     await fireEvent.press(view.getByText('Renew for £200'));
     await flush();
     expect(mockSetAmount).toHaveBeenCalledWith('p1', 20000);

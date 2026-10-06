@@ -1,7 +1,8 @@
 /**
  * WHAT:  Tests for the one refund implementation (`_shared/refundEscrow.ts`):
- *        the per-payment idempotency key, the amount rule, the fail-closed
- *        fee read, and that a fee can never be refunded.
+ *        the per-payment idempotency key, the amount rule (the FIXED card fee,
+ *        ADR-0021, and that it matches the app's pre-payment quote for every
+ *        amount), and that a fee can never be refunded.
  * WHY:   Tier 1 money (docs/TESTING.md), and the key changed on 2026-10-05
  *        from per-POST to per-PAYMENT so a renewable reward cannot collide
  *        inside Stripe's idempotency window. Stripe rejects a reused key whose
@@ -14,7 +15,9 @@
  *        supabase/tests/reward_ledger_verification.sql (the SQL half).
  */
 
+import { cardFeePence as appCardFeePence } from '../../src/shared/lib/money';
 import {
+  cardFeePence,
   refundAmountPence,
   refundHeldEscrow,
   refundIdempotencyKey,
@@ -85,19 +88,41 @@ describe('refundIdempotencyKey', () => {
   });
 });
 
+describe('cardFeePence (ADR-0021)', () => {
+  it('is a fixed 1.5% + 20p — £3.20 on £200, £75.20 on £5,000, 35p on £10', () => {
+    expect(cardFeePence(20000)).toBe(320);
+    expect(cardFeePence(500000)).toBe(7520);
+    expect(cardFeePence(1000)).toBe(35);
+  });
+
+  // THE PROMISE: the figure the app quotes before payment is the figure the
+  // refund withholds. Two copies of one formula (Deno can't import the app),
+  // so every reward amount is checked, in whole pounds as the slider emits
+  // and at odd pence too.
+  it('agrees with the app’s quote for every reward amount', () => {
+    for (let pence = 1000; pence <= 500000; pence += 100) {
+      expect(cardFeePence(pence)).toBe(appCardFeePence(pence));
+    }
+    for (const pence of [1001, 1033, 12345, 33333, 499999]) {
+      expect(cardFeePence(pence)).toBe(appCardFeePence(pence));
+    }
+  });
+});
+
 describe('refundAmountPence', () => {
-  it('withholds the exact card fee when the owner bears it', () => {
-    expect(refundAmountPence(20000, 320, false)).toBe(19680);
+  it('withholds the fixed card fee when the owner bears it', () => {
+    expect(refundAmountPence(20000, false)).toBe(19680);
+    expect(refundAmountPence(1000, false)).toBe(965);
   });
 
   it('returns the full amount when the fee is absorbed (a stray, or a legacy reward)', () => {
-    expect(refundAmountPence(20000, 320, true)).toBe(20000);
+    expect(refundAmountPence(20000, true)).toBe(20000);
   });
 
   it('refuses a refund that would be zero, negative or more than was paid', () => {
-    expect(refundAmountPence(300, 320, false)).toBeNull();
-    expect(refundAmountPence(320, 320, false)).toBeNull();
-    expect(refundAmountPence(20000, -5, false)).toBeNull();
+    expect(refundAmountPence(20, false)).toBeNull();
+    expect(refundAmountPence(0, true)).toBeNull();
+    expect(refundAmountPence(-100, true)).toBeNull();
   });
 });
 
@@ -174,14 +199,48 @@ describe('refundPayment', () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
-  it('fails closed, with no refund, when Stripe will not say what the fee was', async () => {
+  // ADR-0021: the owner gets back exactly what they were quoted, whatever the
+  // card actually cost. A premium/international card's higher Stripe fee is
+  // Trackitdown's to absorb, and an unreadable fee no longer blocks a refund.
+  it('refunds exactly the quoted amount even when the card cost Stripe more', async () => {
     const { admin } = fakeAdmin(HELD);
-    const { stripe, create } = fakeStripe(null);
+    const { stripe, create } = fakeStripe(700);
 
     const outcome = await refundPayment(admin as Any, stripe as Any, { paymentIntentId: 'pi_abc' });
 
-    expect(outcome).toEqual({ status: 'stripe_error' });
+    expect(outcome).toMatchObject({ status: 'refunded', refundPence: 19680, feePence: 320 });
+    expect(create.mock.calls[0][0]).toMatchObject({ amount: 19680 });
+  });
+
+  it('does not need Stripe’s fee to refund — and never asks for it', async () => {
+    const { admin } = fakeAdmin(HELD);
+    const { stripe, create, retrieve } = fakeStripe(null);
+
+    const outcome = await refundPayment(admin as Any, stripe as Any, { paymentIntentId: 'pi_abc' });
+
+    expect(outcome).toMatchObject({ status: 'refunded', refundPence: 19680 });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(retrieve).not.toHaveBeenCalled();
+  });
+
+  // A refund made by hand for LESS than the quote (e.g. "reward minus Stripe's
+  // fee", the old rule, on a dearer card) is recorded, but flagged: the owner
+  // was promised the fixed-fee figure (ADR-0021, docs/OPERATIONS.md).
+  it('flags a hand refund below the quoted figure as an ops alert', async () => {
+    const { admin } = fakeAdmin(HELD);
+    const { stripe, create } = fakeStripe(null, 're_new', [
+      { id: 're_hand', status: 'succeeded', amount: 19300 },
+    ]);
+    const errors = jest.spyOn(console, 'error');
+
+    const outcome = await refundPayment(admin as Any, stripe as Any, { paymentIntentId: 'pi_abc' });
+
+    expect(outcome).toMatchObject({ status: 'refunded', refundId: 're_hand', refundPence: 19300, feePence: 700 });
     expect(create).not.toHaveBeenCalled();
+    expect(errors).toHaveBeenCalledWith(
+      expect.stringContaining('[ops] ALERT partial refund'),
+      expect.objectContaining({ refundedPence: 19300, expectedPence: 19680 }),
+    );
   });
 
   it('issues nothing when no refundable payment matches', async () => {

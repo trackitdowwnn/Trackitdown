@@ -121,7 +121,10 @@ export {
   MoneySlider,
   defaultBountyPanelCopy,
   penceAmountSchema,
+  rewardPaidRow,
+  rewardReturnedRow,
   type MoneySliderPanelCopy,
+  type MoneySliderPanelRow,
   type MoneySliderProps,
   type SnapStep,
 } from './MoneySlider';

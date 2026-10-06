@@ -1,7 +1,7 @@
 /**
  * WHAT:  The one implementation of "refund a reward payment": read the payment
- *        from the ledger, read the non-recoverable Stripe fee authoritatively,
- *        guard the arithmetic, and issue the refund under the PAYMENT's
+ *        from the ledger, work out the refund (the reward minus the FIXED card
+ *        fee, cardFeePence), guard the arithmetic, and issue it under the PAYMENT's
  *        idempotency key. `refundPayment` refunds one named payment (the sweep's
  *        superseded and held-refund paths); `refundHeldEscrow` finds a post's
  *        held reward and refunds that (the two owner exits);
@@ -26,20 +26,23 @@
  *        ⚠️ SO EVERY PARAMETER MUST BE A FUNCTION OF THE PAYMENT ALONE. Stripe
  *        rejects a reused key whose parameters differ, and the deactivate,
  *        recovery and sweep paths can all race on one payment. The amount
- *        (bounty minus the exact fee, or the full amount when
+ *        (bounty minus the fixed card fee, or the full amount when
  *        `refund_fee_absorbed`) and the metadata (`post_id`, nothing per-path)
  *        are both derived here from the ledger row — never passed in. That is
  *        why the old `metadata: { reason }` option is gone: the reason a refund
  *        happened is recorded in the ledger (the hold's exit_path, the
  *        superseded status), which is the only place anything reads it.
  *
- * MONEY: the caller never says how much. The bounty comes from the ledger, the
- *        withheld fee from Stripe's own balance transaction, and this FAILS
- *        CLOSED if that fee cannot be read — a guessed amount that later
- *        disagrees with a retry under the same idempotency key bricks the
- *        refund at Stripe, and an over-guess over-refunds. The range guard
- *        (0 < refund <= bounty) is the last line before money moves. Fees
- *        (`listing_fee`) are never refunded: the ledger read filters on kind.
+ * MONEY: the caller never says how much. The bounty comes from the ledger and
+ *        the withheld fee is the fixed 1.5% + 20p the owner was quoted before
+ *        paying (ADR-0021, 2026-10-06) — until then it was Stripe's actual
+ *        per-charge fee, which varies by card, so every pre-payment quote had
+ *        to say "about". Whatever a card costs beyond the fixed fee,
+ *        Trackitdown absorbs. The amount is a pure function of the ledger row,
+ *        so a retry under the same idempotency key always asks for the same
+ *        refund. The range guard (0 < refund <= bounty) is the last line
+ *        before money moves. Fees (`listing_fee`) are never refunded: the
+ *        ledger read filters on kind.
  * LINKS: supabase/functions/deactivate-post/index.ts;
  *        supabase/functions/refund-recovery/index.ts;
  *        supabase/functions/release-held-refunds/index.ts (the sweep);
@@ -70,7 +73,7 @@ export type EscrowRefundOutcome =
   | { status: 'no_held_payment' }
   /** A database read failed. Retryable. */
   | { status: 'lookup_failed' }
-  /** Stripe refused, or the authoritative fee was unavailable. Retryable. */
+  /** Stripe refused, or the amount was out of range. Retryable. */
   | { status: 'stripe_error' };
 
 /** THE refund key. Exported so the tests pin its exact shape: changing it
@@ -80,20 +83,33 @@ export function refundIdempotencyKey(paymentIntentId: string): string {
 }
 
 /**
+ * The card fee an owner's refund keeps: a FIXED 1.5% + 20p of the reward
+ * (2026-10-06, ADR-0021). Not Stripe's actual fee for the charge, which
+ * varies by card (premium, EU and international cards cost more): the owner
+ * is quoted one exact figure before paying, and that figure is what they get
+ * back. Whatever a card costs beyond it, Trackitdown absorbs.
+ *
+ * ⚠️ MIRRORED in the app as `cardFeePence` (src/shared/lib/money.ts), which
+ * quotes it before payment. supabase/tests/refundEscrow.test.ts pins that the
+ * two agree for every amount, so the quote and the refund can never differ.
+ */
+export function cardFeePence(amountPence: number): number {
+  // 1.5%, rounded half-up to the penny, in INTEGER maths (no float ever
+  // touches an amount): floor((pence × 15 + 500) / 1000) is round(pence × 0.015).
+  return Math.floor((amountPence * 15 + 500) / 1000) + 20;
+}
+
+/**
  * The refund for one payment, in pence. Pure, and the ONLY place the amount is
  * decided: `refundPayment` uses it, and the tests pin it.
  *   - absorbed  → the full amount (a stray capture, or a reward taken under
  *                 the pre-term Terms — the platform eats the fee);
- *   - otherwise → the amount minus Stripe's exact fee (the owner bears the
- *                 non-refundable card cost, as disclosed before they paid).
+ *   - otherwise → the amount minus the fixed card fee (cardFeePence), exactly
+ *                 as quoted to the owner before they paid.
  * Returns null when the result would be out of range (0 < refund <= amount).
  */
-export function refundAmountPence(
-  amountPence: number,
-  feePence: number,
-  feeAbsorbed: boolean,
-): number | null {
-  const refund = feeAbsorbed ? amountPence : amountPence - feePence;
+export function refundAmountPence(amountPence: number, feeAbsorbed: boolean): number | null {
+  const refund = feeAbsorbed ? amountPence : amountPence - cardFeePence(amountPence);
   if (!Number.isInteger(refund) || refund <= 0 || refund > amountPence) {
     return null;
   }
@@ -143,34 +159,17 @@ export async function refundPayment(
   const postId = (payment.post_id as string | null) ?? '';
   const feeAbsorbed = payment.refund_fee_absorbed === true;
 
-  // --- The authoritative Stripe fee (never guessed) ---------------------------
-  // Stripe does not return the processing fee on a refund, so the platform is
-  // made whole by withholding the EXACT fee from the charge's balance
-  // transaction. It is read even when the fee is absorbed: an unreadable charge
-  // is a reason to wait, not to refund blind.
-  let feePence: number | null = null;
-  try {
-    const intent = await stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ['latest_charge.balance_transaction'],
-    });
-    const charge = intent.latest_charge as Stripe.Charge | null;
-    const balanceTxn = charge?.balance_transaction as Stripe.BalanceTransaction | null;
-    if (balanceTxn && typeof balanceTxn.fee === 'number') {
-      feePence = balanceTxn.fee;
-    }
-  } catch (err) {
-    console.error('[payments] fee lookup failed', (err as Error).message);
-  }
-  if (feePence === null) {
-    console.error('[payments] no authoritative fee available', { paymentIntentId });
-    return { status: 'stripe_error' };
-  }
-
-  const refundPence = refundAmountPence(amountPence, feePence, feeAbsorbed);
+  // --- The amount: a function of the payment alone (ADR-0021) ----------------
+  // The reward minus the FIXED card fee the owner was quoted before paying —
+  // never Stripe's per-charge fee, which the owner could not have known. A
+  // pure function of the ledger row, so every path and every retry under the
+  // payment's idempotency key asks Stripe for the same amount.
+  const refundPence = refundAmountPence(amountPence, feeAbsorbed);
   if (refundPence === null) {
-    console.error('[payments] computed refund out of range', { amountPence, feePence, feeAbsorbed });
+    console.error('[payments] computed refund out of range', { amountPence, feeAbsorbed });
     return { status: 'stripe_error' };
   }
+  const feePence = amountPence - refundPence;
 
   // --- A refund that already exists is THE refund ----------------------------
   // The idempotency key only converges retries inside Stripe's ~24-hour window
@@ -236,7 +235,7 @@ export async function refundPayment(
     status: 'refunded',
     refundId: refund.id,
     refundPence,
-    feePence: feeAbsorbed ? 0 : feePence,
+    feePence,
     paymentIntentId,
   };
 }

@@ -37,7 +37,8 @@ export { createLogger, type LogEntry, type LogSink } from './logger';
 export { mapPinUrl } from './mapsLink';
 export {
   bountyParam,
-  estimateRefundPence,
+  cardFeePence,
+  refundPence,
   formatPounds,
   LISTING_FEE_PENCE,
   NO_BOUNTY_PARAM,

@@ -140,7 +140,7 @@ is **no longer entered** by the normal flow. See *Anti-abuse* below for what
 replaces the old verification gate.
 
 `cancelled` is reachable from a live (`active`) post — the owner can deactivate
-it. On a bounty listing the bounty is refunded (minus the non-recoverable card
+it. On a bounty listing the bounty is refunded (minus the fixed 1.5% + 20p card
 fee); on a no-reward listing **nothing is refunded** and the listing simply comes
 down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
 
@@ -171,8 +171,8 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
    releases the escrowed bounty: **95% to the winning spotter, 5% platform
    fee.** Post closes. Spotter's reputation increments.
 6. **recovered_no_spotter** — recovered without a credited sighting. Bounty
-   is refunded to the owner (minus non-recoverable card processing costs,
-   which the UI must disclose at posting time).
+   is refunded to the owner (minus the fixed 1.5% + 20p card fee, ADR-0021,
+   quoted exactly before payment; any higher card cost is ours).
 7. **cancelled** — the owner cancels. Bounty refunded as above. Since
    2026-09-21 a cancelled post is also **deletable**: the app offers deletion
    right after a cancel, and "Delete post" stays in Manage post; whatever the

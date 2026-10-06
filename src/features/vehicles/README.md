@@ -139,9 +139,9 @@ rounded-top sheet overlapping the hero.)
 
 **Deactivate confirm** — owned by `PostDetailScreen`, not the body: the body's
 "Deactivate listing" section button and the manage sheet's row both open the same
-`ConfirmDialog`, so the destructive copy and the refund estimate
-(`estimateRefundPence`, `src/shared/lib/money.ts`) exist exactly once. The quoted figure is an ESTIMATE;
-the post-refund toast shows the server's exact amount.
+`ConfirmDialog`, so the destructive copy and the refund figure
+(`refundPence` / `cardFeePence`, `src/shared/lib/money.ts`) exist exactly once. The quoted figure is EXACT (ADR-0021: a fixed card fee);
+the post-refund toast shows the server's amount, which matches it.
 
 **Share / flag** — share via React Native's `Share` (`lib/postShare.ts`). The
 payload is the car: colour, make/model, plate and last-seen area.

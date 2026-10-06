@@ -13,7 +13,7 @@
 
 import { fireEvent, render } from '@testing-library/react-native';
 
-import { estimateRefundPence, formatPounds } from '@/shared/lib/money';
+import { refundPence, formatPounds } from '@/shared/lib/money';
 
 import type { RewardStatus } from '../api/rewardChangeApi';
 import { RewardTermBanner } from './RewardTermBanner';
@@ -79,7 +79,8 @@ describe('RewardTermBanner', () => {
     expect(
       view.getByText(
         new RegExp(
-          `about ${formatPounds(estimateRefundPence(20000)).replace('.', '\\.')} comes back to your card, and your listing stays up`,
+          // Exact (ADR-0021) — never "about".
+          `If you don’t, ${formatPounds(refundPence(20000)).replace('.', '\\.')} comes back to your card, and your listing stays up`,
         ),
       ),
     ).toBeTruthy();

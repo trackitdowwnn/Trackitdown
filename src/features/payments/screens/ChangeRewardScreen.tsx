@@ -16,7 +16,7 @@
  *            card and when, and the card fee kept (the true cost of a change);
  *          * the slider's own PANEL, worded like the posting flow's — the 95/5
  *            split, and what the new reward returns if nobody finds the car.
- *        Every refund figure is estimateRefundPence (the one function every
+ *        Every refund figure is refundPence (the one function every
  *        refund quote uses); the server refunds the exact amount.
  *
  *        THE AMOUNT NEVER RIDES WITH THE CHARGE. It is written first through
@@ -37,7 +37,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import { ChevronLeft, Info } from 'lucide-react-native';
+import { CalendarClock, ChevronLeft, Info } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -51,7 +51,7 @@ import {
 import { formatTermDate } from '@/shared/lib/dateTimeLabel';
 import { PaymentError } from '@/shared/lib/functionError';
 import { createLogger } from '@/shared/lib/logger';
-import { LISTING_FEE_PENCE, estimateRefundPence, formatPounds } from '@/shared/lib/money';
+import { LISTING_FEE_PENCE, refundPence, formatPounds } from '@/shared/lib/money';
 import {
   cardSurface,
   radii,
@@ -68,7 +68,8 @@ import {
   FullscreenLoader,
   MoneySlider,
   Screen,
-  defaultBountyPanelCopy,
+  rewardPaidRow,
+  rewardReturnedRow,
   useToast,
   type MoneySliderPanelCopy,
 } from '@/shared/ui';
@@ -94,16 +95,22 @@ const POLL_ATTEMPTS = 8;
 const POLL_INTERVAL_MS = 1500;
 
 /**
- * The slider panel: the posting flow's split line, and an escrow line for a
- * reward charged NOW (the posting flow's says "from when your listing goes
- * live"). Module const so the slider's props stay referentially stable.
+ * The slider panel: the posting flow's two outcome rows, word for word, and a
+ * term row for a reward charged NOW (the posting flow's says "from when your
+ * listing goes live"). Module const so the slider's props stay referentially
+ * stable.
  */
 const CHANGE_PANEL: MoneySliderPanelCopy = {
-  splitLine: defaultBountyPanelCopy.splitLine,
-  escrowLine: (pence) =>
-    `${formatPounds(pence)} is charged now and held for ${REWARD_TERM_DAYS} days. You only pay it if a spotter finds your car — otherwise about ${formatPounds(
-      estimateRefundPence(pence),
-    )} comes back to you (the card fee isn’t refundable). Your listing stays up either way.`,
+  title: (pence) => `How your ${formatPounds(pence)} reward works`,
+  rows: (pence, breakdown) => [
+    rewardPaidRow(breakdown),
+    rewardReturnedRow(pence),
+    {
+      icon: CalendarClock,
+      title: `Lasts ${REWARD_TERM_DAYS} days`,
+      detail: 'Starts today, when you pay. Renew any time to keep it going. Your listing stays up either way.',
+    },
+  ],
 };
 
 export interface ChangeRewardScreenProps {
@@ -301,7 +308,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
   }
 
   const refundBack =
-    currentPence === null ? null : status.feeAbsorbed ? currentPence : estimateRefundPence(currentPence);
+    currentPence === null ? null : status.feeAbsorbed ? currentPence : refundPence(currentPence);
   const feeKept = currentPence !== null && refundBack !== null ? currentPence - refundBack : 0;
 
   return (
@@ -351,7 +358,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
             value={
               status.feeAbsorbed
                 ? 'Nothing — your current reward comes back in full'
-                : `About ${formatPounds(feeKept)} — the card fee on your current reward`
+                : `Just the ${formatPounds(feeKept)} card fee on your current reward`
             }
             styles={styles}
           />
@@ -371,16 +378,16 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
         ) : refundBack !== null ? (
           <>
             <SummaryRow
-              label="Back to your card"
+              label="Your current reward back"
               value={
                 status.feeAbsorbed
                   ? `${formatPounds(refundBack)}, in full, in 5–10 working days`
-                  : `About ${formatPounds(refundBack)}, in 5–10 working days`
+                  : `${formatPounds(refundBack)}, in 5–10 working days`
               }
               styles={styles}
             />
             {!isRenewal && !status.feeAbsorbed && feeKept > 0 ? (
-              <SummaryRow label="Card fee kept" value={`About ${formatPounds(feeKept)}`} styles={styles} />
+              <SummaryRow label="Card fee kept" value={formatPounds(feeKept)} styles={styles} />
             ) : null}
           </>
         ) : null}

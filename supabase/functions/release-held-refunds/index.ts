@@ -24,7 +24,7 @@
  *        claims), so double-invocation does nothing twice.
  *
  * MONEY: the sweep decides WHEN, never HOW MUCH. Refund arithmetic lives in
- *        _shared/refundEscrow.ts (authoritative fee, range guard); the payout
+ *        _shared/refundEscrow.ts (the fixed card fee, range guard); the payout
  *        lives in _shared/releasePayout.ts (collusion gate, 95/5 via
  *        payout_split, mark_recovery_paid). An OPEN or UPHELD dispute blocks
  *        Phase 1 — upheld permanently: that money is being paid the other way.
