@@ -29,6 +29,7 @@ const base: PostDetail = {
   colour: 'Blue',
   plate: 'AB12 CDE',
   bountyPence: 50000,
+  rewardEnded: false,
   lastSeenAt: '2026-07-10T18:00:00Z',
   lastSeenArea: 'Camden',
   createdAt: '2026-07-08T12:00:00Z',

@@ -22,6 +22,10 @@
  *        its data is absent — old posts (no features / theft context / guided
  *        descriptions) never render an empty shell; the legacy owner's note
  *        only shows when there are no guided descriptions.
+ *        A null bounty is a £5 fee listing OR a reward that ended (ADR-0020,
+ *        post.rewardEnded): the stat, the ⓘ dialog and the deactivate copy
+ *        each say which. The owner's reward-term date arrives as one quiet
+ *        line (`rewardTermLine`) under the stat band.
  * LINKS: src/features/vehicles/screens/PostDetailScreen.tsx;
  *        src/shared/ui (Button, ConfirmDialog, PlateChip, StatusBadge,
  *        SafetyNotice, VehicleCard, SkeletonVehicleCard);
@@ -62,11 +66,13 @@ import {
 } from '@/shared/theme';
 import {
   AppImage,
+  bountyLabel,
   Button,
   ConfirmDialog,
   type ConfirmDialogRef,
-  NO_BOUNTY_LABEL,
   PlateChip,
+  REWARD_ENDED_LABEL,
+  REWARD_ENDED_SHORT,
   SafetyNotice,
   SkeletonVehicleCard,
   StatusBadge,
@@ -134,6 +140,10 @@ export interface PostDetailBodyProps {
    *  ending this product exists for; taking the listing down is giving up on
    *  it, and the good news should not be the harder one to find. */
   onRecovered?: () => void;
+  /** OWNER only: the reward's term as one quiet line under the stat band
+   *  ("Your £200 reward runs until 4 December.") — passed only while the
+   *  listing's banner shows no card, so the date is said once (ADR-0020). */
+  rewardTermLine?: string | null;
 }
 
 function Divider() {
@@ -160,6 +170,7 @@ export function PostDetailBody({
   onEditDistinctiveFeatures,
   onDeactivate,
   onRecovered,
+  rewardTermLine,
 }: PostDetailBodyProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -206,7 +217,11 @@ export function PostDetailBody({
   // instead of a bounty. Derived once here because it changes THREE things on
   // this screen — the stat band, the explainer behind the ⓘ, and the deactivate
   // copy — and they must never disagree about which kind of listing this is.
+  // ⚠️ Since ADR-0020 a null bounty can also be a reward that ENDED (its term
+  // ran out unrenewed and it went back to the owner). That is not a fee
+  // listing, and none of the "flat listing fee" sentences may reach it.
   const noReward = post.bountyPence === null;
+  const rewardEnded = noReward && post.rewardEnded;
 
   // The refund quoted in the deactivate section is an ESTIMATE (bounty minus
   // the ~card fee); the server computes and returns the exact figure. The
@@ -261,66 +276,88 @@ export function PostDetailBody({
           ) : null}
         </View>
 
-        <View style={styles.statBand}>
-          <View style={styles.statCell}>
-            <View style={styles.bountyValueRow}>
-              <Text
-                // "No reward" is ~2x the width of "£500" and the cell is one of
-                // three sharing the band's width, so at the value tier
-                // (typography.title, 24pt) it wraps to two lines and drops the
-                // ⓘ label out of line with "Sightings" and "Last seen". The
-                // no-reward state therefore steps down a tier and holds ONE
-                // line — the band's geometry is what keeps the cluster readable.
-                style={post.bountyPence === null ? styles.statValueNone : styles.statValueBounty}
-                numberOfLines={1}
+        {/* Band + the owner's term line as ONE child of the section, so the
+            section's gap doesn't separate the line from the figure it
+            qualifies. */}
+        <View>
+          <View style={styles.statBand}>
+            <View style={styles.statCell}>
+              <View style={styles.bountyValueRow}>
+                <Text
+                  // "No reward" is ~2x the width of "£500" and the cell is one of
+                  // three sharing the band's width, so at the value tier
+                  // (typography.title, 24pt) it wraps to two lines and drops the
+                  // ⓘ label out of line with "Sightings" and "Last seen". The
+                  // no-reward state therefore steps down a tier and holds ONE
+                  // line — the band's geometry is what keeps the cluster readable.
+                  // A reward that ENDED reads "Ended" under this cell's
+                  // "Reward" label: the full "Reward ended" truncates here
+                  // (REWARD_ENDED_SHORT), so the screen reader gets the phrase.
+                  style={post.bountyPence === null ? styles.statValueNone : styles.statValueBounty}
+                  numberOfLines={1}
+                  accessibilityLabel={rewardEnded ? REWARD_ENDED_LABEL : undefined}
+                >
+                  {/* Narrowed on the field, not via `noReward` — so the compiler
+                      sees the null is gone and no cast is needed. formatPounds
+                      throws on a non-integer, which is why this is a real guard
+                      rather than a formality. */}
+                  {post.bountyPence === null
+                    ? rewardEnded
+                      ? REWARD_ENDED_SHORT
+                      : bountyLabel(null)
+                    : formatPounds(post.bountyPence)}
+                </Text>
+                {onEditBounty ? (
+                  <SectionEditButton
+                    onPress={onEditBounty}
+                    // "Reward" in both modes since the 2026-09-21 glossary pass
+                    // (ADR-0014: reward is the user-facing word). The testID
+                    // stays stable for the tests.
+                    label="Edit reward"
+                    testID="edit-bounty"
+                  />
+                ) : null}
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  rewardEnded ? 'About the ended reward' : noReward ? 'How this listing works' : 'How the reward works'
+                }
+                onPress={() => bountyInfoRef.current?.open()}
+                hitSlop={spacing.lg}
+                style={styles.statLabelRow}
               >
-                {/* Narrowed on the field, not via `noReward` — so the compiler
-                    sees the null is gone and no cast is needed. formatPounds
-                    throws on a non-integer, which is why this is a real guard
-                    rather than a formality. */}
-                {post.bountyPence === null ? NO_BOUNTY_LABEL : formatPounds(post.bountyPence)}
-              </Text>
-              {onEditBounty ? (
-                <SectionEditButton
-                  onPress={onEditBounty}
-                  // "Reward" in both modes since the 2026-09-21 glossary pass
-                  // (ADR-0014: reward is the user-facing word). The testID
-                  // stays stable for the tests.
-                  label="Edit reward"
-                  testID="edit-bounty"
+                {/* "Reward" names the thing the cell is about in both modes —
+                    and it is the user-facing word (ADR-0014). */}
+                <Text style={styles.statLabel}>Reward</Text>
+                <Feather
+                  name="info"
+                  size={sizes.iconSm}
+                  color={palette.textSecondary}
+                  importantForAccessibility="no"
                 />
-              ) : null}
+              </Pressable>
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={noReward ? 'How this listing works' : 'How the reward works'}
-              onPress={() => bountyInfoRef.current?.open()}
-              hitSlop={spacing.lg}
-              style={styles.statLabelRow}
-            >
-              {/* "Reward" names the thing the cell is about in both modes —
-                  and it is the user-facing word (ADR-0014). */}
-              <Text style={styles.statLabel}>Reward</Text>
-              <Feather
-                name="info"
-                size={sizes.iconSm}
-                color={palette.textSecondary}
-                importantForAccessibility="no"
-              />
-            </Pressable>
+            <View style={styles.statDivider} />
+            <View style={styles.statCell}>
+              <Text style={styles.statValue}>{post.sightingCount}</Text>
+              <Text style={styles.statLabel}>
+                {post.sightingCount === 1 ? 'Sighting' : 'Sightings'}
+              </Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCell}>
+              <Text style={styles.statValue}>{lastSeenAgo}</Text>
+              <Text style={styles.statLabel}>Last seen</Text>
+            </View>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCell}>
-            <Text style={styles.statValue}>{post.sightingCount}</Text>
-            <Text style={styles.statLabel}>
-              {post.sightingCount === 1 ? 'Sighting' : 'Sightings'}
+          {/* The owner's reward term, quietly, under the figure it qualifies
+              (ADR-0020). A date, never a countdown. */}
+          {rewardTermLine ? (
+            <Text style={styles.rewardTermLine} testID="reward-term-line">
+              {rewardTermLine}
             </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCell}>
-            <Text style={styles.statValue}>{lastSeenAgo}</Text>
-            <Text style={styles.statLabel}>Last seen</Text>
-          </View>
+          ) : null}
         </View>
 
       </View>
@@ -625,8 +662,12 @@ export function PostDetailBody({
                 ? // No bounty means no refund, and the listing fee is not
                   // refundable (ADR-0014). Said before the tap, not after —
                   // this is the owner's last chance to learn it, though the
-                  // pricing step disclosed it before they ever paid.
-                  'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.'
+                  // pricing step disclosed it before they ever paid. A reward
+                  // that ENDED has already gone back, and that listing may
+                  // never have paid a fee — so it says only what is true.
+                  rewardEnded
+                  ? 'Take this listing down. Your reward already went back to your card when it ended.'
+                  : 'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.'
                 : `Take this listing down and get your reward back. You’ll be refunded about ${formatPounds(estimatedRefundPence)} — the reward minus the non-recoverable card fee.`}
             </Text>
             <View style={styles.deactivateAction} testID="deactivate-listing">
@@ -679,9 +720,15 @@ export function PostDetailBody({
           act of help, not a price (emotional translation). */}
       <ConfirmDialog
         ref={bountyInfoRef}
-        title={noReward ? 'How this listing works' : 'How the reward works'}
+        title={rewardEnded ? 'This reward has ended' : noReward ? 'How this listing works' : 'How the reward works'}
         body={
-          noReward
+          rewardEnded
+            ? // ADR-0020: NOT the fee sentence — this owner paid a reward, and
+              // it ran its term and went back. Says why (so it doesn't read as
+              // the owner withdrawing it on a spotter), that one may come back,
+              // and what a spotter can still earn.
+              `Rewards run for ${REWARD_TERM_DAYS} days at a time. This one went back to the owner, who can add a new one. If your sighting leads to the car being found, the owner can still credit you, and the recovery is added to your spotter record.`
+            : noReward
             ? // Honest with the spotter about what they will and won't get. The
               // owner paid a flat fee to list, so there is no pot to share — and
               // saying so plainly is better than a vague "no reward" that leaves
@@ -916,6 +963,13 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   statLabel: {
     ...typography.label,
     color: c.textSecondary,
+  },
+  // The owner's reward-term line: a caption, centred under the band it
+  // qualifies — a date to know, not a decision (that is the banner's job).
+  rewardTermLine: {
+    ...typography.caption,
+    color: c.textSecondary,
+    textAlign: 'center',
   },
   // Label + ⓘ as one press target (hitSlop tops it up past the 44pt min).
   statLabelRow: {

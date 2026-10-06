@@ -367,7 +367,11 @@ are build output.
   it. A chip left without a handler inside a card turns the plate into a dead
   patch that swallows the card's tap.
 - **BountyTag** — `primary`, e.g. "£500 reward", always formatted from
-  pence via the shared money formatter.
+  pence via the shared money formatter. With no amount it reads "No reward"
+  (a £5 fee listing, ADR-0014) or "Reward ended" (the reward ran its term
+  and went back, ADR-0020), both in `textSecondary` at the tag's size. The
+  post-detail stat cell, already labelled "Reward", shows the short "Ended"
+  (`REWARD_ENDED_SHORT`) because the full phrase truncates there.
 - **StatBand** — the stat row: equal-width cells split by vertical
   hairlines, each a `sectionTitle` number over a `caption` label (~2:1, the
   measured reference ratio). Degrades by omission — pass only the cells you

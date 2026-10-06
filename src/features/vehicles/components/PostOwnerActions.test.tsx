@@ -2,7 +2,8 @@
  * WHAT:  Tests for PostOwnerActions — the owner's money and destructive paths,
  *        now shared by the listing page and the My listings long-press sheet:
  *        deactivate (plain, held, the no-reward skip of exit_check, the
- *        attested path, ATTESTATION_STALE), the delete offer after a clean
+ *        attested path, ATTESTATION_STALE, the confirm's money sentence for a
+ *        fee listing vs a lapsed reward), the delete offer after a clean
  *        cancel, both deletes, the payout retry's three outcomes, and the
  *        change / add reward row.
  * WHY:   These moved out of PostDetailScreen on 2026-09-24 so a second surface
@@ -43,16 +44,20 @@ jest.mock('@/shared/ui', () => {
         <Text>{title}</Text>
       </Pressable>
     ),
-    // A confirm records open() by title, and exposes its confirm button.
+    // A confirm records open() by title, exposes its confirm button, and
+    // renders its body (the destructive copy is a money promise).
     ConfirmDialog: React.forwardRef(function MockConfirm(
-      { title, onConfirm }: { title: string; onConfirm: () => void },
+      { title, body, onConfirm }: { title: string; body: string; onConfirm: () => void },
       ref: unknown,
     ) {
       React.useImperativeHandle(ref, () => ({ open: () => mockDialogOpen(title) }));
       return (
-        <Pressable testID={`confirm:${title}`} onPress={onConfirm}>
-          <Text>{title}</Text>
-        </Pressable>
+        <>
+          <Pressable testID={`confirm:${title}`} onPress={onConfirm}>
+            <Text>{title}</Text>
+          </Pressable>
+          <Text testID={`confirm-body:${title}`}>{body}</Text>
+        </>
       );
     }),
   };
@@ -205,6 +210,17 @@ describe('PostOwnerActions', () => {
       expect(view.getByText('Add a reward')).toBeTruthy();
     });
 
+    // ADR-0020: after a reward ends the owner can add a new one — the add path.
+    it('offers "Add a reward" on a live lapsed-reward listing, opening the add flow', async () => {
+      const { view } = await mount(post({ bountyPence: null, rewardEnded: true }));
+      expect(view.getByText('Add a reward')).toBeTruthy();
+      await fireEvent.press(view.getByTestId('manage-change-reward'));
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/change-reward',
+        params: { postId: 'p1', mode: 'add' },
+      });
+    });
+
     it('is not offered once the listing is no longer live', async () => {
       const { view } = await mount(post({ status: 'recovery_claimed' }));
       expect(view.queryByTestId('manage-change-reward')).toBeNull();
@@ -248,6 +264,34 @@ describe('PostOwnerActions', () => {
       await flush();
 
       expect(mockToast).toHaveBeenCalledWith('Listing deactivated');
+    });
+
+    // The confirm is the owner's last look before a destructive act; what it
+    // says about money must be true for the kind of null bounty it is.
+    it('a fee listing’s confirm says the listing fee isn’t refunded', async () => {
+      const { view } = await mount(post({ bountyPence: null }));
+      const body = view.getByTestId('confirm-body:Deactivate this listing?');
+      expect(body).toHaveTextContent(/Your listing fee isn’t refunded/);
+    });
+
+    // ADR-0020: a lapsed reward already went back, and that listing may never
+    // have paid a fee — the confirm must not claim either way otherwise.
+    it('a lapsed-reward listing’s confirm says the reward was already refunded, never "listing fee"', async () => {
+      const { view } = await mount(post({ bountyPence: null, rewardEnded: true }));
+      const body = view.getByTestId('confirm-body:Deactivate this listing?');
+      expect(body).toHaveTextContent(/already went back to your card when it ended/);
+      expect(body).not.toHaveTextContent(/listing fee/);
+      expect(body).not.toHaveTextContent(/£/);
+    });
+
+    it('a lapsed-reward listing also skips the exit_check pre-flight (nothing escrowed)', async () => {
+      const { view } = await mount(post({ bountyPence: null, rewardEnded: true }));
+
+      await fireEvent.press(view.getByTestId('manage-deactivate'));
+      await flush();
+
+      expect(mockExitCheck).not.toHaveBeenCalled();
+      expect(mockDialogOpen).toHaveBeenCalledWith('Deactivate this listing?');
     });
 
     it('a held refund names the date and refreshes', async () => {

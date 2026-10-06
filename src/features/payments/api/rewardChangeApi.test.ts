@@ -50,6 +50,7 @@ describe('fetchMyRewardStatus', () => {
   it('returns the owner’s reward status', async () => {
     mockRpc.mockResolvedValue({ data: STATUS, error: null });
     await expect(fetchMyRewardStatus(POST_ID)).resolves.toEqual({
+      postStatus: 'active',
       mode: 'change',
       rewardId: 'r1',
       amountPence: 20000,
@@ -58,6 +59,8 @@ describe('fetchMyRewardStatus', () => {
       // null / false.
       termEndsAt: null,
       legacyTerm: false,
+      rewardEndedAt: null,
+      endedRewardPence: null,
       feeAbsorbed: false,
       hasRecentSightings: false,
       blockedMessage: null,
@@ -69,6 +72,24 @@ describe('fetchMyRewardStatus', () => {
     mockRpc.mockResolvedValue({ data: { ...STATUS, termEndsAt: '2026-11-30T10:00:00Z' }, error: null });
     const status = await fetchMyRewardStatus(POST_ID);
     expect(status.termEndsAt).toBe('2026-11-30T10:00:00Z');
+  });
+
+  it('passes an ended reward through (20261006100000)', async () => {
+    mockRpc.mockResolvedValue({
+      data: {
+        ...STATUS,
+        mode: 'add',
+        rewardId: null,
+        amountPence: null,
+        capturedAt: null,
+        rewardEndedAt: '2026-12-05T09:00:00Z',
+        endedRewardPence: 20000,
+      },
+      error: null,
+    });
+    const status = await fetchMyRewardStatus(POST_ID);
+    expect(status.rewardEndedAt).toBe('2026-12-05T09:00:00Z');
+    expect(status.endedRewardPence).toBe(20000);
   });
 
   it('turns a block token into the owner-facing sentence', async () => {

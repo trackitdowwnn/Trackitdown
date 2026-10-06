@@ -1,9 +1,11 @@
 /**
- * WHAT:  Tests for reportSeedFromDetail: the marks and the car the report
- *        wizard is seeded with, from each post-detail outcome.
+ * WHAT:  Tests for reportSeedFromDetail: the marks, the car and the live
+ *        reward the report wizard is seeded with, from each post-detail outcome.
  * WHY:   The car card is the spotter's last check that it's the right car; a
  *        mapping slip shows the wrong identity, or crashes the wizard on a
  *        plate-less or photo-less listing. A hidden post must seed nothing.
+ *        The live reward is what the success screen promises — a stale one
+ *        would promise money that went back to the owner (ADR-0020).
  * LINKS: src/features/sightings/lib/reportSeed.ts.
  */
 
@@ -21,6 +23,7 @@ function post(overrides: Partial<PostDetail> = {}): PostDetail {
     colour: 'Blue',
     plate: 'AB12 CDE',
     bountyPence: 50000,
+    rewardEnded: false,
     lastSeenAt: null,
     createdAt: '2026-10-01T10:00:00Z',
     owner: { memberSince: '2026-01-01' },
@@ -76,5 +79,29 @@ describe('reportSeedFromDetail', () => {
     );
     expect(reportSeedFromDetail({ kind: 'notFound' })).toBe(EMPTY_REPORT_SEED);
     expect(EMPTY_REPORT_SEED.reportedCar).toBeUndefined();
+    // No reward either: the success screen then falls back to the route param.
+    expect(EMPTY_REPORT_SEED.reward).toBeUndefined();
+  });
+
+  // The success screen promises the reward AS IT IS NOW, not as it was when
+  // the spotter tapped "I've seen this car" (ADR-0020).
+  describe('live reward', () => {
+    it('carries the live reward amount', () => {
+      const seed = reportSeedFromDetail({ kind: 'visible', post: post({ bountyPence: 20000 }) });
+      expect(seed.reward).toEqual({ bountyPence: 20000, rewardEnded: false });
+    });
+
+    it('carries a lapsed reward as a null bounty with rewardEnded', () => {
+      const seed = reportSeedFromDetail({
+        kind: 'visible',
+        post: post({ bountyPence: null, rewardEnded: true }),
+      });
+      expect(seed.reward).toEqual({ bountyPence: null, rewardEnded: true });
+    });
+
+    it('carries a fee listing as a null bounty, not ended', () => {
+      const seed = reportSeedFromDetail({ kind: 'visible', post: post({ bountyPence: null }) });
+      expect(seed.reward).toEqual({ bountyPence: null, rewardEnded: false });
+    });
   });
 });

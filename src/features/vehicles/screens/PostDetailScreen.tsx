@@ -12,6 +12,9 @@
  *        bottom bar. Read-only — no status or money writes. The header fade and
  *        scroll run on the UI thread (Reanimated) so the hero parallax-feel and
  *        the scroll never jank each other.
+ *        The owner's reward term (ADR-0020) is ONE read (useMyRewardStatus)
+ *        shared by RewardTermBanner (a card when there is a decision) and the
+ *        body's stat-band line (when there is not), so the date is said once.
  * LINKS: src/app/post/[id].tsx (route); src/features/vehicles/hooks/
  *        usePostDetail.ts; src/features/vehicles/components/*;
  *        src/features/sightings/components/ReportSafetySheet.tsx (every
@@ -30,7 +33,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bookmark } from 'lucide-react-native';
 
 import { useRequireAuth } from '@/features/auth';
-import { RewardTermBanner } from '@/features/payments';
+import {
+  RewardTermBanner,
+  hasRewardTermCard,
+  quietRewardTermLine,
+  useMyRewardStatus,
+} from '@/features/payments';
 import { ReportSafetySheet, type ReportSafetySheetRef } from '@/features/sightings';
 import { useWatchToggle } from '@/features/watchlist';
 import { bountyParam } from '@/shared/lib';
@@ -120,6 +128,17 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
   // the RPC is scoped to auth.uid() and status='active', so a spotter's copy of
   // this screen can never raise it.
   const { open: stillMissingOpen, confirm: confirmStillMissing } = useStillMissingAsk(postId);
+
+  // The reward's 60-day term (ADR-0020) — one owner-scoped read, shared by the
+  // banner (a card when there is a decision) and the stat band's quiet line
+  // (when there is not), so the two can never disagree. Owner + live listing
+  // with a reward, or one whose reward has ended; the RPC would refuse anyone
+  // else, so it isn't asked.
+  const showsRewardTerm =
+    visiblePost !== null &&
+    canDeactivate(visiblePost) &&
+    (visiblePost.bountyPence !== null || visiblePost.rewardEnded);
+  const rewardTerm = useMyRewardStatus(postId, showsRewardTerm);
 
   // The "More stolen cars nearby" rail — waits for the post (its coords
   // centre the query), quietly empty on failure.
@@ -367,16 +386,20 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                 </View>
               ) : null}
               {/* The reward's 60-day term (ADR-0020): owner-only, live
-                  listings with a reward — the banner itself renders nothing
-                  when there is no reward or no term to show. Above the body
-                  for the same reason as the ask above: in the last two weeks
-                  it carries a decision. */}
-              {result.post.isOwner && canDeactivate(result.post) && result.post.bountyPence !== null ? (
+                  listings with a reward or an ended one — and only when it
+                  carries a decision or news (the quiet date is a line in the
+                  stat band instead). Above the body for the same reason as
+                  the ask above. */}
+              {showsRewardTerm && hasRewardTermCard(rewardTerm.status, rewardTerm.readAt) ? (
                 <View style={styles.stillMissing}>
                   <RewardTermBanner
-                    postId={postId}
+                    status={rewardTerm.status}
+                    readAt={rewardTerm.readAt}
                     onRenew={() =>
                       router.push({ pathname: '/change-reward', params: { postId, mode: 'change' } })
+                    }
+                    onAddReward={() =>
+                      router.push({ pathname: '/change-reward', params: { postId, mode: 'add' } })
                     }
                   />
                 </View>
@@ -420,6 +443,9 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                     : undefined
                 }
                 onRecovered={canMarkRecovered(result.post) ? onRecovered : undefined}
+                rewardTermLine={
+                  showsRewardTerm ? quietRewardTermLine(rewardTerm.status, rewardTerm.readAt) : null
+                }
               />
             </View>
           </>

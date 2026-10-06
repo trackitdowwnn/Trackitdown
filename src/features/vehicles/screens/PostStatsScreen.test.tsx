@@ -32,6 +32,15 @@ jest.mock('expo-router', () => ({
   useFocusEffect: () => {},
 }));
 
+// The owner's reward status (ADR-0020). The barrel is mocked — it would load
+// the Stripe native module — but the sentence is the REAL rewardTermLine.
+let mockRewardStatus: unknown = null;
+jest.mock('@/features/payments', () => ({
+  useMyRewardStatus: () => ({ status: mockRewardStatus, readAt: Date.parse('2026-10-06T12:00:00Z') }),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  rewardTermLine: require('@/features/payments/lib/rewardTerm').rewardTermLine,
+}));
+
 let mockState: { status: string; stats: PostStats | null } = { status: 'loading', stats: null };
 const mockRetry = jest.fn();
 jest.mock('../hooks/usePostStats', () => ({
@@ -263,5 +272,59 @@ describe('a listing with activity', () => {
     const { getByTestId } = await render(<PostStatsScreen postId="p1" />);
 
     expect(getByTestId('stats-sparkline')).toBeTruthy();
+  });
+});
+
+// ADR-0020: the reward's END DATE belongs here; a countdown never did.
+describe('PostStatsScreen — reward term', () => {
+  afterEach(() => {
+    mockRewardStatus = null;
+  });
+
+  it('names the date the reward runs until — a date, not "N days left"', async () => {
+    mockState = { status: 'ready', stats: stats() };
+    mockRewardStatus = {
+      postStatus: 'active',
+      mode: 'change',
+      rewardId: 'r1',
+      amountPence: 20000,
+      capturedAt: '2026-10-01T10:00:00Z',
+      termEndsAt: '2026-12-04T23:59:59Z',
+      legacyTerm: false,
+      rewardEndedAt: null,
+      endedRewardPence: null,
+      feeAbsorbed: false,
+      hasRecentSightings: false,
+      blockedMessage: null,
+    };
+    const { getByTestId, queryByText } = await render(<PostStatsScreen postId="p1" />);
+    expect(getByTestId('stats-reward-term').props.children).toBe('Your £200 reward runs until 4 December.');
+    expect(queryByText(/days? left/)).toBeNull();
+  });
+
+  it('a cancelled listing’s held reward is being refunded — no "runs until"', async () => {
+    mockState = { status: 'ready', stats: stats() };
+    mockRewardStatus = {
+      postStatus: 'cancelled',
+      mode: 'change',
+      rewardId: 'r1',
+      amountPence: 20000,
+      capturedAt: '2026-10-01T10:00:00Z',
+      termEndsAt: '2026-12-04T23:59:59Z',
+      legacyTerm: false,
+      rewardEndedAt: null,
+      endedRewardPence: null,
+      feeAbsorbed: false,
+      hasRecentSightings: false,
+      blockedMessage: null,
+    };
+    const { queryByTestId } = await render(<PostStatsScreen postId="p1" />);
+    expect(queryByTestId('stats-reward-term')).toBeNull();
+  });
+
+  it('says nothing about a reward it could not read', async () => {
+    mockState = { status: 'ready', stats: stats() };
+    const { queryByTestId } = await render(<PostStatsScreen postId="p1" />);
+    expect(queryByTestId('stats-reward-term')).toBeNull();
   });
 });

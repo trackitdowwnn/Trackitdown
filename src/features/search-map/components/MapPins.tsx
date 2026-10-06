@@ -38,7 +38,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { bountyLabel, NO_BOUNTY_LABEL } from '@/shared/ui';
+import { bountyLabel, NO_BOUNTY_LABEL, REWARD_ENDED_LABEL } from '@/shared/ui';
 import { AppMapMarker, type AppMapHandle } from '@/shared/ui/AppMap';
 
 import { pinAt, type PinRect } from '../lib/mapPins';
@@ -140,9 +140,13 @@ async function pillUnderFinger(
   }
 }
 
-/** The word on the pill: the amount, or "No reward". Never empty. */
-function pinText(bountyPence: number | null): string {
-  return bountyPence === null ? NO_BOUNTY_LABEL : formatPounds(bountyPence);
+/** The word on the pill: the amount, "No reward", or "Reward ended". Never
+ *  empty. */
+function pinText(bountyPence: number | null, rewardEnded = false): string {
+  if (bountyPence !== null) {
+    return formatPounds(bountyPence);
+  }
+  return rewardEnded ? REWARD_ENDED_LABEL : NO_BOUNTY_LABEL;
 }
 
 /**
@@ -181,7 +185,7 @@ const PricePin = memo(function PricePin({
       zIndex={zIndex}
       onPress={() => onPressPost(post.id)}
       accessibilityRole="button"
-      accessibilityLabel={`${bountyLabel(post.bountyPence)} — ${post.make} ${post.model}`}
+      accessibilityLabel={`${bountyLabel(post.bountyPence, post.rewardEnded)} — ${post.make} ${post.model}`}
       accessibilityState={{ selected }}
     >
       {/* Android rule 3: collapsable={false}. The marker sizes its bitmap from
@@ -202,7 +206,7 @@ const PricePin = memo(function PricePin({
             maxFontSizeMultiplier={mapPinFontScaleCap}
             style={[styles.text, selected && styles.textSelected]}
           >
-            {pinText(post.bountyPence)}
+            {pinText(post.bountyPence, post.rewardEnded)}
           </Text>
         </View>
       </View>
@@ -302,7 +306,7 @@ export const MapPins = memo(function MapPins({
           <PricePin
             // Everything the pill draws is in the key — see the header — so
             // selecting a car swaps its white pill for a new dark one.
-            key={`${scheme}:${post.id}:${pinText(post.bountyPence)}:${selected ? 'on' : 'off'}`}
+            key={`${scheme}:${post.id}:${pinText(post.bountyPence, post.rewardEnded)}:${selected ? 'on' : 'off'}`}
             post={post}
             selected={selected}
             zIndex={pinZ(post, selected)}

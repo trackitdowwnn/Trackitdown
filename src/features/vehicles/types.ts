@@ -77,8 +77,14 @@ export interface PostDetail {
    * identical on every such listing, so shipping it per-post through
    * get_post_detail would add a field to a privacy-sensitive RPC to carry a
    * constant. Copy that needs the amount reads LISTING_FEE_PENCE.
+   *
+   * ⚠️ Since ADR-0020 a null has a SECOND meaning — see rewardEnded. Never
+   * read a null bounty as "fee listing" without checking it.
    */
   bountyPence: number | null;
+  /** The reward ran its 60-day term unrenewed and went back to the owner; the
+   *  listing stays live (ADR-0020). Only true with a null bountyPence. */
+  rewardEnded: boolean;
   lastSeenAt: string | null;
   lastSeenArea?: string;
   createdAt: string;

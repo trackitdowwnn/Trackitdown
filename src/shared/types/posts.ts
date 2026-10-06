@@ -59,4 +59,11 @@ export interface PostSummary {
    * decision). The nullability is deliberately load-bearing.
    */
   bountyPence: number | null;
+  /**
+   * The listing's reward ran its 60-day term unrenewed and went back to the
+   * owner; the listing stays live (ADR-0020). Only ever true with a null
+   * bountyPence — it is what tells this "Reward ended" listing apart from a £5
+   * fee listing. Optional: absent (older server, test fixtures) means false.
+   */
+  rewardEnded?: boolean;
 }

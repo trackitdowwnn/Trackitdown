@@ -58,7 +58,24 @@ describe('listMyPosts', () => {
       lastSeenArea: 'Camden',
       bountyPence: 50000,
       archivedAt: null,
+      // The server predates 20261006100000 here: absent keys read as
+      // "not ended" and "no term".
+      rewardEnded: false,
+      rewardTermEndsAt: null,
     });
+  });
+
+  it('carries the held reward’s term and a lapsed reward (ADR-0020)', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        row({ status: 'active', reward_term_ends_at: '2026-12-04T23:59:59Z', reward_ended: false }),
+        row({ id: 'aaaaaaaa-0000-0000-0000-00000000000b', status: 'active', bounty_amount_pence: null, reward_ended: true, reward_term_ends_at: null }),
+      ],
+      error: null,
+    });
+    const [held, lapsed] = await listMyPosts();
+    expect(held).toMatchObject({ rewardTermEndsAt: '2026-12-04T23:59:59Z', rewardEnded: false });
+    expect(lapsed).toMatchObject({ bountyPence: null, rewardEnded: true, rewardTermEndsAt: null });
   });
 
   // The archive (2026-09-24). The column is optional as well as nullable: an
