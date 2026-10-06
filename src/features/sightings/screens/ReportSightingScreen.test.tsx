@@ -227,10 +227,17 @@ describe('ReportSightingScreen', () => {
 
     // The seed read failed (here: always, see mockSeedOverride) → no reward in
     // the seed → the route's snapshot is all there is.
-    it('falls back to the route param when the seed carries no reward', async () => {
+    it('without a live read, never names the route’s (possibly stale) amount', async () => {
       const view = await renderSent();
 
-      expect(view.getByText('If your sighting leads to the recovery, you’ll receive the £500 reward.')).toBeTruthy();
+      // The param said £500, but that reward may have ended or changed since
+      // the tap: the line names nothing it can't vouch for.
+      expect(
+        view.getByText(
+          'If your sighting leads to the car being found, the owner can credit you, and any reward on the listing goes to you.',
+        ),
+      ).toBeTruthy();
+      expect(view.queryByText(/£500/)).toBeNull();
       expect(view.queryByText(/has ended/)).toBeNull();
     });
   });

@@ -254,3 +254,50 @@ begin
   raise notice 'CHECK 6 passed: the ended date and amount are not readable off posts by anon or authenticated';
 end $$;
 rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 7 (20261006110000) — the fee is a FACT from the ledger, owner-only: a
+-- listing that paid the £5 fee says so; a lapsed reward listing doesn't; a
+-- stranger's payload has no such key; the shared helper is not client-callable.
+-- -----------------------------------------------------------------------------
+begin;
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate, reward_ended_at, ended_reward_pence)
+values ('eeee0000-0000-0000-0000-00000000000a', '11111111-1111-1111-1111-111111111111', 'active', null, 'RE07 FEE', null, null),
+       ('eeee0000-0000-0000-0000-00000000000b', '11111111-1111-1111-1111-111111111111', 'active', null, 'RE07 LAP', now(), 20000);
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, kind)
+values ('eeee0000-0000-0000-0000-00000000000a', 'pi_re7_fee', 'collected', 500, 'listing_fee');
+
+do $$
+declare
+  v_fee      jsonb;
+  v_lapsed   jsonb;
+  v_stranger jsonb;
+  v_status   jsonb;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  set local role authenticated;
+  v_fee    := public.get_post_detail('eeee0000-0000-0000-0000-00000000000a');
+  v_lapsed := public.get_post_detail('eeee0000-0000-0000-0000-00000000000b');
+  v_status := public.get_my_reward_status('eeee0000-0000-0000-0000-00000000000a');
+  perform set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  v_stranger := public.get_post_detail('eeee0000-0000-0000-0000-00000000000a');
+  reset role;
+
+  if (v_fee -> 'has_listing_fee') is distinct from 'true'::jsonb
+     or (v_status -> 'hasListingFee') is distinct from 'true'::jsonb then
+    raise exception 'CHECK 7 FAILED: a listing that paid the £5 fee does not say so (detail %, status %)', v_fee -> 'has_listing_fee', v_status -> 'hasListingFee';
+  end if;
+  if (v_lapsed -> 'has_listing_fee') is distinct from 'false'::jsonb then
+    raise exception 'CHECK 7 FAILED: a lapsed reward listing claims a listing fee it never paid';
+  end if;
+  if v_stranger ? 'has_listing_fee' then
+    raise exception 'CHECK 7 FAILED: has_listing_fee reached a non-owner: %', v_stranger;
+  end if;
+  if has_function_privilege('anon', 'public.home_feed_post_json(public.posts, numeric)', 'execute')
+     or has_function_privilege('authenticated', 'public.home_feed_post_json(public.posts, numeric)', 'execute') then
+    raise exception 'CHECK 7 FAILED: home_feed_post_json is client-callable';
+  end if;
+  raise notice 'CHECK 7 passed: the fee comes from the ledger, owner-only; the shared helper is internal';
+end $$;
+rollback;

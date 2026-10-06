@@ -86,6 +86,7 @@ const status = (over: Partial<RewardStatus> = {}): RewardStatus => ({
   legacyTerm: false,
   rewardEndedAt: null,
   endedRewardPence: null,
+  hasListingFee: null,
   feeAbsorbed: false,
   hasRecentSightings: false,
   blockedMessage: null,
@@ -166,6 +167,31 @@ describe('ChangeRewardScreen', () => {
     expect(view.queryByText('Not refunded — it paid for the listing')).toBeNull();
     // The rest of the disclosure is unchanged: what is charged now.
     expect(view.getByText('Charged now')).toBeTruthy();
+  });
+
+  // 20261006110000: the fee row follows the LEDGER, not the inference.
+  it('a fee listing whose added reward then ended still shows the fee it paid', async () => {
+    mockFetchStatus.mockResolvedValue(
+      status({
+        mode: 'add',
+        rewardId: null,
+        amountPence: null,
+        termEndsAt: null,
+        rewardEndedAt: '2026-10-01T03:00:00Z',
+        endedRewardPence: 20000,
+        hasListingFee: true,
+      }),
+    );
+    const paid = await mount();
+    expect(paid.getByText('Your £5 listing fee')).toBeTruthy();
+  });
+
+  it('a no-reward listing with no fee in the ledger shows no fee row', async () => {
+    mockFetchStatus.mockResolvedValue(
+      status({ mode: 'add', rewardId: null, amountPence: null, hasListingFee: false }),
+    );
+    const unpaid = await mount();
+    expect(unpaid.queryByText('Your £5 listing fee')).toBeNull();
   });
 
   it('after recent sightings the slider cannot go below today’s reward, and the lede says why', async () => {

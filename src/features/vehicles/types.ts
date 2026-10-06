@@ -85,6 +85,10 @@ export interface PostDetail {
   /** The reward ran its 60-day term unrenewed and went back to the owner; the
    *  listing stays live (ADR-0020). Only true with a null bountyPence. */
   rewardEnded: boolean;
+  /** OWNER-ONLY: the listing paid the £5 listing fee — a fact from the ledger
+   *  (20261006110000). Undefined for a spotter or an older server; read it
+   *  through paidListingFee(), never as "null bounty ⇒ fee". */
+  hasListingFee?: boolean;
   lastSeenAt: string | null;
   lastSeenArea?: string;
   createdAt: string;

@@ -358,10 +358,10 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
         ) : null}
         <SummaryRow label="Charged now" value={formatPounds(chosen)} styles={styles} />
         {isAdd ? (
-          // A listing whose reward ended was a REWARD listing — it may never
-          // have paid a listing fee, so the fee row would describe money that
-          // doesn't exist. Only a fee listing gets it.
-          status.rewardEndedAt ? null : (
+          // Only a listing that PAID the fee gets the fee row — the ledger's
+          // word (hasListingFee). A listing whose reward ended may never have
+          // paid one. An older server doesn't say: then infer as before.
+          !(status.hasListingFee ?? !status.rewardEndedAt) ? null : (
             <SummaryRow
               label={`Your ${formatPounds(LISTING_FEE_PENCE)} listing fee`}
               value="Not refunded — it paid for the listing"

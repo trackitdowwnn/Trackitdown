@@ -80,6 +80,7 @@ import {
 } from '@/shared/ui';
 
 import { buildCarDetailRows } from '../lib/carDetails';
+import { noRewardKind } from '../lib/noRewardKind';
 import { theftContextLines } from '../lib/theftContext';
 import type { PostDetail } from '../types';
 // Direct import (not the ./editors barrel) so PostDetailBody doesn't pull the
@@ -665,9 +666,11 @@ export function PostDetailBody({
                   // pricing step disclosed it before they ever paid. A reward
                   // that ENDED has already gone back, and that listing may
                   // never have paid a fee — so it says only what is true.
-                  rewardEnded
-                  ? 'Take this listing down. Your reward already went back to your card when it ended.'
-                  : 'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.'
+                  {
+                    ended: 'Take this listing down. Your reward already went back to your card when it ended.',
+                    fee: 'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.',
+                    unknown: 'Take this listing down. There’s no reward held on it to refund.',
+                  }[noRewardKind(post)]
                 : `Take this listing down and get your reward back. You’ll be refunded about ${formatPounds(estimatedRefundPence)} — the reward minus the non-recoverable card fee.`}
             </Text>
             <View style={styles.deactivateAction} testID="deactivate-listing">
@@ -733,11 +736,16 @@ export function PostDetailBody({
               // owner paid a flat fee to list, so there is no pot to share — and
               // saying so plainly is better than a vague "no reward" that leaves
               // someone hoping. The recognition on offer is real and is named.
-              "There's no cash reward on this listing — the owner paid a flat listing fee instead. If your sighting leads to the car being found, the owner can still credit you, and the recovery is added to your spotter record."
+              // The fee clause only where it is true: the owner's own payload
+              // carries the ledger's answer (noRewardKind); a spotter's keeps
+              // the inference.
+              `There’s no cash reward on this listing${
+                noRewardKind(post) === 'fee' ? ' — the owner paid a flat listing fee instead' : ''
+              }. If your sighting leads to the car being found, the owner can still credit you, and the recovery is added to your spotter record.`
             : // The term (ADR-0020) is said to spotters too: a reward can end if
               // the owner doesn't renew it, and the listing then stays up
               // without one. Saying so here is what keeps "held safely" true.
-              `The reward is paid to the spotter whose sighting leads to this car's recovery. Money is held safely and only released when the owner confirms the car is back. Rewards run for ${REWARD_TERM_DAYS} days at a time and the owner can renew them. If a reward ends, spotters with recent sightings are told first.`
+              `The reward is paid to the spotter whose sighting leads to this car’s recovery. Money is held safely and only released when the owner confirms the car is back. Rewards run for ${REWARD_TERM_DAYS} days at a time and the owner can renew them. If a reward ends, spotters with recent sightings are told first.`
         }
         confirmLabel="Got it"
         acknowledge

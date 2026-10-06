@@ -104,6 +104,8 @@ const rewardStatusSchema = z.object({
   // same skew.
   rewardEndedAt: z.string().nullable().optional(),
   endedRewardPence: z.number().int().positive().nullable().optional(),
+  // The listing paid the £5 fee, from the ledger (20261006110000).
+  hasListingFee: z.boolean().optional(),
   feeAbsorbed: z.boolean(),
   hasRecentSightings: z.boolean(),
   block: z.string().nullable(),
@@ -131,6 +133,9 @@ export interface RewardStatus {
   rewardEndedAt: string | null;
   /** That ended reward's amount — set together with rewardEndedAt. */
   endedRewardPence: number | null;
+  /** The listing paid the £5 listing fee (from the ledger), or null when the
+   *  server predates 20261006110000 and didn't say. */
+  hasListingFee: boolean | null;
   /** The current reward's refund returns the full amount (no card fee kept). */
   feeAbsorbed: boolean;
   /** Recent uncredited sightings exist, so the reward can't be lowered. */
@@ -162,6 +167,7 @@ export async function fetchMyRewardStatus(postId: string): Promise<RewardStatus>
     legacyTerm: doc.legacyTerm ?? false,
     rewardEndedAt: doc.rewardEndedAt ?? null,
     endedRewardPence: doc.endedRewardPence ?? null,
+    hasListingFee: doc.hasListingFee ?? null,
     feeAbsorbed: doc.feeAbsorbed,
     hasRecentSightings: doc.hasRecentSightings,
     blockedMessage: doc.block ? (CHANGE_REWARD_ERROR_MESSAGES[doc.block] ?? FALLBACK) : null,
