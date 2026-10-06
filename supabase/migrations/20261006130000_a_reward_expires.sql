@@ -448,9 +448,6 @@ begin
     return jsonb_build_object('held', true, 'expiresAt', v_hold_expires, 'notify', '[]'::jsonb);
   end if;
 
-  if v_payment is null then
-    raise exception 'POST_NOT_REFUNDABLE';
-  end if;
   if p_exit_path = 'deactivate' and v_status not in ('active', 'pending_verification') then
     raise exception 'POST_NOT_REFUNDABLE';
   end if;
@@ -480,6 +477,12 @@ begin
   end if;
   if not (v_recent <@ p_attested_ids) then
     raise exception 'ATTESTATION_STALE';
+  end if;
+
+  -- A hold holds a payment: with no held reward there is nothing to hold.
+  -- (Checked after the refusals above so their order is the original's.)
+  if v_payment is null then
+    raise exception 'POST_NOT_REFUNDABLE';
   end if;
 
   if v_hold_id is not null then

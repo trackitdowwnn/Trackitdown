@@ -40,7 +40,7 @@ delete from public.refund_disputes
 delete from public.refund_holds
  where post_id in ('a1a1a1a1-0000-0000-0000-000000000003',
                    'a1a1a1a1-0000-0000-0000-000000000005');
-delete from public.payments where stripe_payment_intent_id = 'pi_test_refund_hold';
+delete from public.payments where stripe_payment_intent_id in ('pi_test_refund_hold', 'pi_test_refund_hold_05');
 delete from public.sightings
  where id in ('d0d0d0d0-0000-0000-0000-000000000001',
               'd0d0d0d0-0000-0000-0000-000000000002',
@@ -452,6 +452,10 @@ begin
   update public.sightings
      set spotter_id = '33333333-3333-3333-3333-333333333333'
    where id = 'd0d0d0d0-0000-0000-0000-000000000003';
+  -- Since 20261006130000 a hold holds a PAYMENT (one per payment), so the
+  -- post needs a held reward for the hold to be a real one.
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence)
+  values ('a1a1a1a1-0000-0000-0000-000000000005', 'pi_test_refund_hold_05', 'held', 20000);
   insert into public.refund_holds (post_id, owner_id, exit_path, sighting_ids, expires_at)
   values ('a1a1a1a1-0000-0000-0000-000000000005', '33333333-3333-3333-3333-333333333333',
           'deactivate', array['d0d0d0d0-0000-0000-0000-000000000003'::uuid], now() + interval '72 hours');
@@ -588,7 +592,7 @@ delete from public.refund_disputes
 delete from public.refund_holds
  where post_id in ('a1a1a1a1-0000-0000-0000-000000000003',
                    'a1a1a1a1-0000-0000-0000-000000000005');
-delete from public.payments where stripe_payment_intent_id = 'pi_test_refund_hold';
+delete from public.payments where stripe_payment_intent_id in ('pi_test_refund_hold', 'pi_test_refund_hold_05');
 delete from public.sightings
  where id in ('d0d0d0d0-0000-0000-0000-000000000001',
               'd0d0d0d0-0000-0000-0000-000000000002',
