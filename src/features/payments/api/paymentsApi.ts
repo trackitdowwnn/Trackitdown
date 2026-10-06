@@ -105,9 +105,9 @@ export async function createBountyPaymentIntent(postId: string): Promise<string>
 export type DeactivateResult =
   | {
       held: false;
-      /** Amount returned to the owner = bounty − non-recoverable card fee. */
+      /** Amount returned to the owner = bounty − the fixed card fee (ADR-0021). */
       refundedPence: number;
-      /** The withheld Stripe processing fee. */
+      /** The withheld card fee — the fixed 1.5% + 20p (ADR-0021). */
       feePence: number;
     }
   | { held: true; refundAfter: string };
@@ -142,8 +142,8 @@ export async function exitCheck(postId: string): Promise<ExitCheck> {
 }
 
 /**
- * Deactivate a PAID post and refund its bounty (minus the non-recoverable card
- * fee). The Edge Function verifies ownership + refund-eligibility, issues the
+ * Deactivate a PAID post and refund its bounty (minus the fixed card fee,
+ * ADR-0021). The Edge Function verifies ownership + refund-eligibility, issues the
  * Stripe refund, and moves the post to `cancelled` — this call carries only
  * the post id, plus (when the attestation step ran) the sighting ids the owner
  * was shown. Throws a PaymentError with user-facing copy on any failure.

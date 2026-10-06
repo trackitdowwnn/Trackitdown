@@ -18,7 +18,7 @@
 
 import { render } from '@testing-library/react-native';
 
-import { estimateRefundPence, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
+import { refundPence, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 
 import { postACarFlow, POST_A_CAR_INITIAL_ANSWERS } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
@@ -91,7 +91,7 @@ describe('the sum matches the pay button', () => {
 
 describe('what it says about the money', () => {
   it('quotes the refund from the ONE function, not a literal', async () => {
-    // estimateRefundPence's own doc makes this binding: every surface quoting a
+    // refundPence's own doc makes this binding: every surface quoting a
     // refund before the owner commits must use it, or two screens disagree.
     const bountyAmountPence = 40000;
     const view = await render(
@@ -100,17 +100,19 @@ describe('what it says about the money', () => {
 
     expect(
       view.getByText(
-        new RegExp(formatPounds(estimateRefundPence(bountyAmountPence)).replace('£', '\\£')),
+        new RegExp(formatPounds(refundPence(bountyAmountPence)).replace('£', '\\£')),
       ),
     ).toBeTruthy();
   });
 
-  it('names the card costs, so the gap between the two figures is explained', async () => {
+  it('names the card fee as an exact figure, so the gap between the two figures is explained', async () => {
     const view = await render(
       <ReviewCostPanel answers={{ pricingMode: 'bounty', bountyAmountPence: 40000 }} />,
     );
 
-    expect(view.getByText(/card processing costs are not refundable/i)).toBeTruthy();
+    // £400: 600 + 20 = £6.20 kept, £393.80 back — exact (ADR-0021).
+    expect(view.getByText(/£393\.80 goes back to your card — only the £6\.20 card fee is kept/)).toBeTruthy();
+    expect(view.queryByText(/[Aa]bout £/)).toBeNull();
   });
 
   it('calls the fee non-refundable and never quotes a refund for it', async () => {

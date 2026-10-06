@@ -37,6 +37,7 @@
    compiler's immutability model doesn't apply to them. The component also
    opts out of the React Compiler ('use no memo' below) for the same reason. */
 
+import { CalendarClock, HandCoins, type LucideIcon, Undo2 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AccessibilityActionEvent,
@@ -62,7 +63,8 @@ import { z } from 'zod';
 import {
   type BountyBreakdown,
   bountyBreakdown,
-  estimateRefundPence,
+  cardFeePence,
+  refundPence,
   formatPounds,
 } from '../lib/money';
 import { REWARD_TERM_DAYS } from '../lib/bountyBounds';
@@ -76,6 +78,7 @@ import {
   sizes,
   spacing,
   typography,
+  usePalette,
   useThemedStyles,
   type Palette,
 } from '../theme';
@@ -92,49 +95,84 @@ import {
 
 export type { SnapStep } from './moneySliderMath';
 
+/** One row of the transparency panel: a question the owner has, answered. */
+export interface MoneySliderPanelRow {
+  /** Leading glyph — decorative; the title carries the meaning. */
+  icon: LucideIcon;
+  /** The question, as a short heading ("If a spotter finds your car"). */
+  title: string;
+  /** The answer, in one or two short sentences. */
+  detail: string;
+}
+
 /** Copy slots for the transparency panel; omit the prop to hide the panel. */
 export interface MoneySliderPanelCopy {
-  /** Line explaining the 95/5 split, built from the live breakdown. */
-  splitLine: (breakdown: BountyBreakdown) => string;
-  /** Line explaining escrow. Takes raw PENCE, not a formatted string, because
-   *  it quotes the refund estimate as well as the amount held. */
-  escrowLine: (bountyPence: number) => string;
+  /** The panel's heading, built from the live amount. */
+  title: (pence: number) => string;
+  /** The rows, built from the live amount and its 95/5 breakdown. Takes raw
+   *  PENCE because rows quote the refund figure as well as the amount. */
+  rows: (pence: number, breakdown: BountyBreakdown) => MoneySliderPanelRow[];
 }
 
 /**
- * The bounty step's panel wording (docs/DOMAIN.md: split, escrow, refunds).
+ * "If a spotter finds your car" — the 95/5 split, in figures. Exported so
+ * every reward panel (posting, changing a live reward) says it identically.
+ */
+export function rewardPaidRow(breakdown: BountyBreakdown): MoneySliderPanelRow {
+  return {
+    icon: HandCoins,
+    title: 'You only pay if a spotter finds your car',
+    detail: `They get ${formatPounds(breakdown.spotterPence)}, and our fee is ${formatPounds(breakdown.feePence)}.`,
+  };
+}
+
+/**
+ * "Otherwise, it comes back to you" — what comes back, WHEN (all three ways:
+ * cancelling, finding the car yourself, the 60 days ending — the Terms list
+ * the same three), and the deduction NAMED AS A FIGURE. Our Terms promise
+ * "that deduction is shown to you before you pay"
+ * (features/legal/lib/legalContent.ts), and payment is Stripe's PaymentSheet —
+ * there is no app checkout screen — so this panel is the only surface that can
+ * keep that promise.
  *
- * The escrow line does two jobs it did not used to do, and both matter more
- * than they look:
+ * EXACT, never "about" (ADR-0021): the refund withholds this fixed card fee
+ * whatever the card cost, so the figure is a promise, not an estimate.
+ * refundPence is the SAME function every refund quote uses.
+ */
+export function rewardReturnedRow(pence: number): MoneySliderPanelRow {
+  return {
+    icon: Undo2,
+    title: 'Otherwise, it comes back to you',
+    detail: `${formatPounds(refundPence(pence))} goes back to your card if you cancel, find the car yourself, or the ${REWARD_TERM_DAYS} days end. Only the ${formatPounds(
+      cardFeePence(pence),
+    )} card fee is kept.`,
+  };
+}
+
+/**
+ * The bounty step's panel (docs/DOMAIN.md: split, escrow, refunds) — three
+ * rows, one per question an owner actually has: who gets it, what if nobody
+ * does, and how long it lasts. It was two dense paragraphs until 2026-10-06;
+ * every fact they held is still here, just findable.
  *
- * 1. It states the refund conditions COMPLETELY. It used to say "refunded if
- *    you cancel or recover it yourself", which omits the end of the reward's
- *    term (60 days, ADR-0020 — the most likely ending for most rewards) and
- *    takedown. That omission buried the
- *    headline: the money comes back unless a spotter actually finds the car.
- *    Read as written, a slider in pounds says "this is what you are spending";
- *    it is nearer to a deposit.
- * 2. It NAMES THE DEDUCTION. Our own Terms promise "that deduction is shown to
- *    you before you pay" (features/legal/lib/legalContent.ts), and payment is
- *    Stripe's PaymentSheet — there is no app checkout screen — so this panel is
- *    the only surface that can keep that promise. It said "minus card
- *    processing costs" with no figure until 2026-08-07.
- *
- * The figure is estimateRefundPence, the SAME function the post-detail
- * deactivate section quotes, so the two can never disagree about one bounty.
+ * THE REFUND CONDITIONS STAY COMPLETE. "Otherwise, it comes back to you"
+ * names all three ways — cancelling, finding the car yourself, and the 60
+ * days ending unrenewed (ADR-0020, the most likely ending for most rewards).
+ * Leaving one out once buried the headline: this is nearer to a deposit than
+ * a payment, and the copy leads with that ("You only pay if…").
  */
 export const defaultBountyPanelCopy: MoneySliderPanelCopy = {
-  splitLine: (breakdown) =>
-    `If your car is recovered thanks to a spotter, they receive ${formatPounds(
-      breakdown.spotterPence,
-    )} and our platform fee is ${formatPounds(breakdown.feePence)}.`,
-  // "…or its 60 days end" (2026-10-05, ADR-0020): every reward now has a term,
-  // and the end of the term is one of the ways it comes back. Until then this
-  // said "or the post expires" — of a post that, at the time, never did.
-  escrowLine: (bountyPence) =>
-    `${formatPounds(bountyPence)} is held for ${REWARD_TERM_DAYS} days from when your listing goes live, and you can renew it any time — your listing stays up either way. You only pay it if a spotter finds your car — otherwise ${formatPounds(
-      estimateRefundPence(bountyPence),
-    )} comes back to you, whether you cancel, recover it yourself, or the ${REWARD_TERM_DAYS} days end without a renewal. Card processing costs are not refundable.`,
+  title: (pence) => `How your ${formatPounds(pence)} reward works`,
+  rows: (pence, breakdown) => [
+    rewardPaidRow(breakdown),
+    rewardReturnedRow(pence),
+    {
+      icon: CalendarClock,
+      title: `Lasts ${REWARD_TERM_DAYS} days`,
+      detail:
+        'From when your listing goes live. Renew any time to keep it going. Your listing stays up either way.',
+    },
+  ],
 };
 
 /** Form-level validation matching what the slider can emit. */
@@ -201,6 +239,7 @@ export function MoneySlider({
   // model (correctly, for plain values) forbids. Reanimated owns this state.
   'use no memo';
   const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const reduceMotion = useReducedMotion();
   // The value the component trusts: always clamped integer pence.
   const value = clampPence(valuePence, minPence, maxPence);
@@ -503,14 +542,39 @@ export function MoneySlider({
         </View>
       </GestureDetector>
 
+      {/* What the amount buys, directly under the control that sets it —
+          before the panel, so the slider and its consequence read as one. */}
+      {footnote ? <Text style={styles.footnote}>{footnote}</Text> : null}
+
       {panel ? (
-        <View style={styles.panel}>
-          <Text style={styles.panelText}>{panel.splitLine(bountyBreakdown(value))}</Text>
-          <Text style={styles.panelText}>{panel.escrowLine(value)}</Text>
+        // A heading and a short row per question, rather than two paragraphs
+        // of small print: each answer is findable at a glance, and the money
+        // figures sit at the start of their sentence.
+        <View style={styles.panel} testID={testID ? `${testID}-panel` : undefined}>
+          <Text style={styles.panelTitle} accessibilityRole="header">
+            {panel.title(value)}
+          </Text>
+          {/* Rows spaced wider than the heading sits above them, so the
+              heading reads as heading the group, not as a fourth row. */}
+          <View style={styles.panelRows}>
+            {panel.rows(value, bountyBreakdown(value)).map((row) => (
+              // One screen-reader stop per row, read as "title. detail".
+              <View
+                key={row.title}
+                style={styles.panelRow}
+                accessible
+                accessibilityLabel={`${row.title}. ${row.detail}`}
+              >
+                <row.icon size={sizes.iconSm} color={palette.textSecondary} />
+                <View style={styles.panelRowText}>
+                  <Text style={styles.panelRowTitle}>{row.title}</Text>
+                  <Text style={styles.panelText}>{row.detail}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
         </View>
       ) : null}
-
-      {footnote ? <Text style={styles.footnote}>{footnote}</Text> : null}
     </View>
   );
 }
@@ -581,20 +645,42 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.surfaceSubtle,
       borderRadius: radii.lg,
       padding: spacing.lg,
-      gap: spacing.sm,
+      gap: spacing.md,
     },
+    panelTitle: {
+      ...typography.cardTitle,
+      color: c.textPrimary,
+    },
+    panelRows: {
+      gap: spacing.lg,
+    },
+    // Icon beside a title/detail pair, top-aligned so a two-line detail
+    // doesn't drag the icon to the middle of the row.
+    panelRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+    },
+    panelRowText: {
+      flex: 1,
+      gap: spacing.xs,
+    },
+    // The question: primary ink so the eye can run down the three of them.
+    panelRowTitle: {
+      ...typography.label,
+      color: c.textPrimary,
+    },
+    // The answer: secondary ink, one or two short sentences.
     panelText: {
       ...typography.caption,
       color: c.textSecondary,
     },
-    // Deliberately heavier than panelText: the panel is small print the owner may
-    // never read, this is the line the amount is actually buying. Centred under
-    // the control rather than left-aligned with the panel, so it reads as part of
-    // the slider rather than a third clause of the terms.
+    // The line about what the amount BUYS, so it sits with the control that
+    // sets it (directly under the track, above the panel) and is centred under
+    // it — part of the slider, not a fourth row of the panel.
     footnote: {
       ...typography.label,
       color: c.textPrimary,
       textAlign: 'center',
-      marginTop: spacing.md,
     },
   });

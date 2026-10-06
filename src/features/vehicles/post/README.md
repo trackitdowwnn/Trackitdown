@@ -146,7 +146,7 @@ route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
       which we measure nothing about.
     * `review.footer` → **`ReviewCostPanel`**: the sum and one honest line on
       what happens to it. Every figure is borrowed from `shared/lib/money`
-      (`estimateRefundPence` is binding — one function, or two screens disagree
+      (`refundPence` / `cardFeePence` are binding — one function, or two screens disagree
       about the same number) and is DISPLAY ONLY.
     * The bounty row is hidden in fee mode via `hideReviewWhenSkipped`. It used
       to show "Bounty £250" — the seed — directly above "Post & pay £5".

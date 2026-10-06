@@ -1,7 +1,7 @@
 /**
  * WHAT:  Edge Function that resolves a `recovery_claimed` post where the owner
  *        credited NOBODY: refunds the escrowed bounty (minus the
- *        non-recoverable Stripe fee) and advances the post to the terminal
+ *        fixed 1.5% + 20p card fee, ADR-0021) and advances the post to the terminal
  *        `recovered_no_spotter`.
  * WHY:   `claim_recovery` stops at `recovery_claimed` on purpose —
  *        `recovered_no_spotter` means ALREADY REFUNDED (DOMAIN.md lifecycle 6)
@@ -20,12 +20,10 @@
  *        rest on.
  *
  * MONEY: the client never says how much to refund. The bounty is read from the
- *        ledger and the withheld fee from Stripe's own balance transaction, so
- *        the platform is made whole for costs Stripe does not return on a
- *        refund (DOMAIN.md: "minus non-recoverable card processing costs").
- *        FAIL CLOSED if that fee cannot be read — a guessed amount that later
- *        disagrees with a retry under the same idempotency key bricks the
- *        refund at Stripe, and an over-guess over-refunds.
+ *        ledger and the withheld fee is the FIXED 1.5% + 20p the owner was
+ *        quoted before paying (refundEscrow's cardFeePence, ADR-0021) — a pure
+ *        function of the payment, so a retry under the same idempotency key
+ *        always asks for the same amount.
  *
  *        The idempotency key is per PAYMENT (`payment-refund-<pi>`, since
  *        2026-10-05; it was per post, `recovery-refund-<post>`). A payment is
@@ -164,7 +162,7 @@ Deno.serve(async (request) => {
   }
 
   // --- Refund the held escrow (the one shared implementation) -----------------
-  // Fee read authoritatively, arithmetic guarded, refund idempotent — see
+  // Fixed-fee amount (ADR-0021), arithmetic guarded, refund idempotent — see
   // _shared/refundEscrow.ts. Keyed per PAYMENT (`payment-refund-<pi>`): a
   // payment can only be refunded once, whichever exit asks, so one key per
   // payment is exactly as distinct as it needs to be.

@@ -12,7 +12,7 @@
  *        between disclosed and remembered.
  *
  *        ⚠️ EVERY FIGURE HERE IS BORROWED, NEVER COMPUTED LOCALLY.
- *        `estimateRefundPence` is binding — its own doc: "Every surface that
+ *        `refundPence` is binding — its own doc: "Every surface that
  *        quotes a refund before the owner commits must use this one function,
  *        or two screens will disagree about the same number." The fee comes
  *        from LISTING_FEE_PENCE for the same reason the pricing card stopped
@@ -27,14 +27,14 @@
  *        theft victim on a bad day; the whole 95/5 split panel lives on the
  *        bounty step where they chose the figure, and repeating it here would
  *        trade clarity for completeness at exactly the wrong moment.
- * LINKS: src/shared/lib/money.ts (estimateRefundPence, LISTING_FEE_PENCE);
+ * LINKS: src/shared/lib/money.ts (refundPence, LISTING_FEE_PENCE);
  *        src/shared/ui/MoneySlider.tsx (defaultBountyPanelCopy — the wording
  *          this echoes); src/features/vehicles/post/postACarFlow.tsx.
  */
 
 import { StyleSheet, Text, View } from 'react-native';
 
-import { estimateRefundPence, formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
+import { cardFeePence, formatPounds, LISTING_FEE_PENCE, refundPence } from '@/shared/lib/money';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { DEFAULT_BOUNTY_PENCE, REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
@@ -68,14 +68,15 @@ export function ReviewCostPanel({ answers }: ReviewCostPanelProps) {
     ? // Matches the pricing card's own wording — two screens describing the
       // same fee must not describe it differently.
       'A one-off fee to list. Not refundable.'
-    : // The gap between the two figures is NAMED. "of it" alone was truthful —
-      // estimateRefundPence already nets the card costs off — but it left the
-      // difference unexplained on the commitment surface, and the natural
-      // misreading is that we keep it. Same clause as defaultBountyPanelCopy,
-      // where they first saw it.
-      `Held for ${REWARD_TERM_DAYS} days and renewable — your listing stays up either way. You only pay it if a spotter finds your car; otherwise ${formatPounds(
-        estimateRefundPence(bountyPence),
-      )} comes back to you (card processing costs are not refundable).`;
+    : // The gap between the two figures is NAMED, as a figure — the natural
+      // misreading of an unexplained gap is that we keep it. Exact, not
+      // "about" (ADR-0021). The same facts as the slider panel the owner saw
+      // on the reward step.
+      `You only pay it if a spotter finds your car. Otherwise ${formatPounds(
+        refundPence(bountyPence),
+      )} goes back to your card — only the ${formatPounds(
+        cardFeePence(bountyPence),
+      )} card fee is kept. It lasts ${REWARD_TERM_DAYS} days, you can renew it any time, and your listing stays up either way.`;
 
   return (
     <View style={styles.block} testID="review-cost-panel">

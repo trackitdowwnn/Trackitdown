@@ -317,6 +317,14 @@ order by captured;
 | Post **`active`**, nothing else | A reward from before rewards had a term (`legacy_term`), or one the expiry hasn't reached. Tell the owner first: until automatic reward expiry ships, refunding it closes the listing. Then refund it from the Stripe dashboard; the webhook records the refund. For a `legacy_term` reward, refund the **full** amount: those owners were promised their end-of-term refund in full. |
 | Status **`superseded`** | The sweep should have refunded it within the hour. If it's 75 days old, the refund keeps failing: check the logs for `refund item failed`. An open dispute on the post also holds it back on purpose until the dispute is resolved. |
 
+⚠️ **How much to refund by hand (ADR-0021).** The Terms promise the owner the
+exact figure the app quoted: **reward − (1.5% of the reward, rounded to the
+nearest penny, + 20p)**. £200 → refund **£196.80** (fee £3.20); £500 → £492.30.
+Never "reward minus Stripe's fee" — that was the old rule, and on a premium or
+non-UK card it is less than the owner was promised. Refund the **full** amount
+only for a stray capture (`refund_fee_absorbed`) or a `legacy_term` reward at
+the end of its term.
+
 ⚠️ **A refund from the Stripe dashboard is always recorded correctly.** The
 webhook reconciles it from the ledger:
 - A superseded payment's refund never touches its post.

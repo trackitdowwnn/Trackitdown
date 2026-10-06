@@ -52,7 +52,7 @@ import { WatchToggle } from '@/features/watchlist';
 import type { PostSummary } from '@/shared/types';
 
 import { useTimeAgo } from '@/shared/hooks';
-import { estimateRefundPence, formatPounds } from '@/shared/lib';
+import { cardFeePence, formatPounds, refundPence } from '@/shared/lib';
 import { REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
 import {
   cardSurface,
@@ -224,18 +224,20 @@ export function PostDetailBody({
   const noReward = post.bountyPence === null;
   const rewardEnded = noReward && post.rewardEnded;
 
-  // The refund quoted in the deactivate section is an ESTIMATE (bounty minus
-  // the ~card fee); the server computes and returns the exact figure. The
+  // The refund quoted in the deactivate section is EXACT (ADR-0021): the reward
+  // minus the fixed card fee, which is precisely what the server refunds. The
   // confirm dialog itself lives on the screen — the "Manage post" sheet opens
   // the same one, so the destructive copy exists exactly once.
   //
   // NULL for a no-reward listing: there is nothing to refund, so there is no
-  // estimate to quote. estimateRefundPence is never called with a null — it
-  // would compute a nonsense figure for money that was never escrowed.
-  // Narrowed on the field itself rather than via `noReward`, so the compiler can
-  // see the null is gone before estimateRefundPence is called.
-  const estimatedRefundPence =
-    post.bountyPence === null ? null : estimateRefundPence(post.bountyPence);
+  // figure to quote. refundPence is never called with a null — it would
+  // compute a nonsense figure for money that was never escrowed. Narrowed on
+  // the field itself rather than via `noReward`, so the compiler can see the
+  // null is gone.
+  const refundQuote =
+    post.bountyPence === null
+      ? null
+      : { backPence: refundPence(post.bountyPence), feePence: cardFeePence(post.bountyPence) };
 
   return (
     <View style={styles.body}>
@@ -650,16 +652,16 @@ export function PostDetailBody({
       ) : null}
 
       {/* 7b — Deactivate listing — OWNER + PAID only. Takes the post down and
-          refunds the bounty (minus the non-recoverable card fee). Server-
-          enforced; the button is convenience. The confirm shows an estimate;
-          the parent runs the refund and toasts the exact figure. */}
+          refunds the bounty minus the fixed card fee (ADR-0021). Server-
+          enforced; the button is convenience. The figure quoted here is the
+          exact refund; the parent runs it and toasts the server's figure. */}
       {onDeactivate ? (
         <>
           <Divider />
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Deactivate listing</Text>
             <Text style={styles.deactivateBody}>
-              {estimatedRefundPence === null
+              {refundQuote === null
                 ? // No bounty means no refund, and the listing fee is not
                   // refundable (ADR-0014). Said before the tap, not after —
                   // this is the owner's last chance to learn it, though the
@@ -671,11 +673,13 @@ export function PostDetailBody({
                     fee: 'Take this listing down. Your listing fee isn’t refunded — it covered putting the car in front of spotters.',
                     unknown: 'Take this listing down. There’s no reward held on it to refund.',
                   }[noRewardKind(post)]
-                : `Take this listing down and get your reward back. You’ll be refunded about ${formatPounds(estimatedRefundPence)} — the reward minus the non-recoverable card fee.`}
+                : `Take this listing down and get your reward back: ${formatPounds(refundQuote.backPence)} goes back to your card. Only the ${formatPounds(
+                    refundQuote.feePence,
+                  )} card fee is kept.`}
             </Text>
             <View style={styles.deactivateAction} testID="deactivate-listing">
               <Button
-                label={estimatedRefundPence === null ? 'Deactivate listing' : 'Deactivate & refund'}
+                label={refundQuote === null ? 'Deactivate listing' : 'Deactivate & refund'}
                 variant="secondary"
                 fullWidth={false}
                 onPress={onDeactivate}

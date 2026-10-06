@@ -48,7 +48,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { notifyCredited } from '@/features/notifications';
 import { exitCheck } from '@/features/payments';
 import { usePostSightings } from '@/features/sightings';
-import { formatPounds } from '@/shared/lib/money';
+import { cardFeePence, formatPounds, refundPence } from '@/shared/lib/money';
 import { createLogger } from '@/shared/lib/logger';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, EmptyState, Screen, useToast } from '@/shared/ui';
@@ -404,7 +404,13 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
           <Text style={styles.optionNote}>
             {noReward
               ? 'The police, or you. We’ll just close the listing.'
-              : 'The police, or you. Your reward comes back to you, minus the card fee.'}
+              : // Exact when the amount is known (ADR-0021); the route may
+                // not carry it, and then the rule is said without a figure.
+                typeof bountyPence === 'number'
+                ? `The police, or you. ${formatPounds(refundPence(bountyPence))} goes back to your card — only the ${formatPounds(
+                    cardFeePence(bountyPence),
+                  )} card fee is kept.`
+                : 'The police, or you. Your reward goes back to your card — only the card fee is kept.'}
           </Text>
         </Pressable>
       </View>
