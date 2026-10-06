@@ -461,11 +461,13 @@ commenting standards.
   (ADR-0021's fixed fee) — the only reward push that carries an amount;
   never the plate.)*
   The client never sends either amount, and specifically **never sends the fee**:
-  `create_post` stamps it from `current_listing_fee_pence()` and
-  `posts.listing_fee_pence` is deliberately absent from the client column grants,
-  so no client can name the price it pays. `record_listing_fee_intent` re-checks
-  the charge against the post's own stamped value (`FEE_MISMATCH`), exactly as
-  the bounty path does (`BOUNTY_MISMATCH`).
+  a NULL-bounty post owes exactly 500p, decided server-side by
+  `record_post_payment_intent` (any other amount raises `BOUNTY_MISMATCH`) and
+  pinned by the `payments` CHECK (`kind = 'listing_fee'` ⇒ `amount_pence = 500`),
+  so no client can name the price it pays. *(Corrected 2026-10-06: this used to
+  cite `current_listing_fee_pence()`, `posts.listing_fee_pence`,
+  `record_listing_fee_intent` and `FEE_MISMATCH` — ADR-0014's first design,
+  never built. ADR-0014 records what shipped.)*
   - **A listing fee reaches `collected` and NEVER `held`.** Every refund and
     payout query selects `held`, so a fee is outside all of them by
     construction. Both capture handlers refuse the other kind's rows; the

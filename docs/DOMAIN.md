@@ -349,9 +349,18 @@ travel. Airbnb's wishlist mechanics, translated:
 ## Listing pricing — two modes (ADR-0014, 2026-08-20)
 
 Every post is paid for at posting time, one of two ways. **Which one is not a
-flag: it is which of two money columns is populated**, and the database enforces
-that exactly one is (`num_nonnulls(bounty_amount_pence, listing_fee_pence) = 1`).
-A post with both would be charged twice; one with neither would be live for free.
+flag: it is whether `posts.bounty_amount_pence` is NULL.** A post with a bounty
+owes exactly that bounty (escrowed); a post with a NULL bounty owes exactly the
+flat £5 fee. `record_post_payment_intent` serves both prices from that one fact
+and refuses any other amount (`BOUNTY_MISMATCH`), and the `payments` CHECK pins
+it: a `bounty_escrow` row is £10–£5,000, a `listing_fee` row is exactly 500p
+(20260819100000). *(Corrected 2026-10-06: this section used to describe a
+`posts.listing_fee_pence` column and a `num_nonnulls(…) = 1` constraint from
+ADR-0014's first design. Neither was ever built — ADR-0014 records what
+shipped — and production was checked: the only constraint on the bounty is
+"NULL, or £10–£5,000".)* Since ADR-0020 a NULL bounty can also mean a reward
+that ENDED (`posts.reward_ended_at`), and an owner's fee sentence rests on the
+ledger (`has_listing_fee`), never on the NULL alone.
 
 | | **Bounty listing** | **No-reward listing** |
 |---|---|---|
@@ -488,9 +497,11 @@ Rules that follow, and are not implementation details:
 - **NULL, never 0.** A no-reward post's bounty is NULL end-to-end. A 0 renders
   as "£0 bounty" on every card and pin; the nullability is what makes the type
   system stop at each read site. Cards read **"No reward"**.
-- The price lives in ONE place, `current_listing_fee_pence()`, and is
-  **snapshotted onto the post** at creation — changing it never re-prices an
-  existing draft. The client never sends a fee.
+- The price is ONE constant, enforced by the database: the `payments` CHECK
+  (`kind = 'listing_fee'` ⇒ `amount_pence = 500`) and `record_post_payment_intent`,
+  which charges a NULL-bounty post exactly that. The app's `LISTING_FEE_PENCE`
+  mirrors it for display only. The client never sends a fee. (Changing the price
+  is a migration that changes the CHECK — there is no per-post snapshot.)
 
 ## Bounty rules (v1 — deliberately simple)
 

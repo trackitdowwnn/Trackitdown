@@ -227,22 +227,30 @@ without checking that the event fires at all.
 ## 7. Is the hourly sweep still running?
 
 ⚠️ **Ask this first when anything looks stale.** `release-held-refunds` is the
-only scheduled process in the system, and it now carries five jobs, four of
-which fail *silently*:
+only scheduled process in the system, and most of its jobs fail *silently*:
 
 | Job | What its silence costs |
 |---|---|
 | Refunds and payouts | Money strands. Loud eventually — someone complains |
+| **Reward term and expiry** (ADR-0020: notices, 10/3-day reminders, `claim_reward_expiries`) | **Rewards are never ended or refunded, so money drifts towards Stripe's 90-day limit.** The 75-day deadline email (`deadlineAlerts`) is the only alarm — and it is sent BY this sweep |
 | `purge_old_notifications` | Retention stops |
 | `purge_sighting_location_history` | **A promise published on the website** stops being kept |
 | Orphaned photo removal | **UK GDPR erasure** stops — deleted cars keep their photos |
 | `claim_still_missing_checks` | Owners are never asked, so abandoned posts stay abandoned (ADR-0019) |
 
-Only the first is self-reporting. The other four would sit broken indefinitely.
+Only the first is self-reporting. The rest would sit broken indefinitely.
 
-The last one fails *quietly but harmlessly*: the ask is a database row, so a
-sweep that stops simply means nobody is asked until it starts again. Nothing
-expires and no money moves either way — that is the design, not a mitigation.
+⚠️ **The sweep now moves money on a clock.** Since 2026-10-06 (ADR-0020,
+both switches on) it ends rewards at the end of their 60-day term and refunds
+them to their owners — the ONE timer in the system that does (ADR-0019's
+"no cron moves money" is superseded for exactly this case). A stopped sweep
+therefore isn't harmless: rewards past their term stay held, and because the
+75-day alert is part of the same sweep, nothing will email you about it.
+Check `sweep_health` whenever something looks stale, and at least weekly.
+
+The still-missing ask fails *quietly but harmlessly*: the ask is a database
+row, so a sweep that stops simply means nobody is asked until it starts
+again. That job moves no money.
 
 ```sql
 select public.sweep_health();
@@ -252,6 +260,14 @@ Returns `last_run_at`, `age_minutes`, a `healthy` flag and the counters from
 that run. `healthy` goes false after **3 hours** — three consecutive misses, not
 one, because a single miss is ordinary (a deploy, a cold start) and a check that
 cries wolf gets ignored.
+
+Times are **UTC** — in summer UK time is an hour ahead, so a `last_run_at` of
+`14:00+00:00` was 15:00 on your clock. The sweep runs on the hour. The reward
+counters to read: `rewardTermNotices` and `rewardReminders` (owners told),
+`rewardsExpired` (rewards ended this run), `refunded` (money sent home, every
+reason), `deadlineAlerts` (reward money 75+ days old — investigate any). A
+summary WITHOUT a `rewardsExpired` key came from a sweep older than the
+expiry's deploy.
 
 `last_run_at: null` means it has never completed a run since 2026-09-02. That is
 a different problem from "ran a while ago" and usually means the pg_cron job or
