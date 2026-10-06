@@ -31,7 +31,14 @@ release via a Supabase Cron sweep; resolution by hand in v1.
    `payments` mirrors Stripe fact-states, and during a hold the money
    genuinely IS still `held`. "Released" is deliberately NOT stored — it is
    derived from `payments.status`, giving one source of truth and a sweep
-   that is idempotent by construction. No post-status enum churn either: a
+   that is idempotent by construction.
+   *(Amended 2026-10-06, `20261006130000`: holds are now **one per
+   payment** — `refund_holds.payment_id`, unique — because a listing whose
+   reward ended stays live and can take another reward, so it can need a
+   second hold. A hold is "pending" while ITS payment is held. A hold can
+   also be raised by the SYSTEM (`system_initiated`, ADR-0020's expiry,
+   `exit_path = 'reward_end'`): not attested, and due at once when it names
+   no sightings. An owner exit during a system hold upgrades it.)* No post-status enum churn either: a
    held deactivate sits on `cancelled` (delisted immediately — the listing
    coming down is the owner's unconditionally; only the money waits), a held
    recovery on `recovery_claimed` (which means exactly "claim recorded, money

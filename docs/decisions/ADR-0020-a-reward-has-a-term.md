@@ -85,7 +85,12 @@ explicitly fine?
    reminders only when `REWARD_TERM_NOTICES_ENABLED=true`. They promise the
    expiry (PR5) and point at the updated app's Renew button, so the switch
    goes on once both are live.
-6. **The hard line is capture + 85 days.** 60 days plus a 72-hour hold leaves
+6. **The hard line is capture + 85 days for the TERM; capture + 88 with its
+   window.** The oldest legacy term can end at capture + 85, and its spotters
+   still get their full 72 hours (a promise in their push and the Terms), so
+   the latest refund is capture + 88 — under Stripe's 90. A sighting during
+   the window extends it only while it would still end by capture + 88. Only a
+   dispute can hold money longer, and a person is resolving it then. 60 days plus a 72-hour hold leaves
    room. Anything older than 75 days is emailed to the operator daily
    (`claim_money_deadline_alerts`), whatever the reason it's still held.
 
@@ -126,7 +131,7 @@ the payment, not the post.
   See `20261005110000`.
 - **The expiry (PR5, `20261006130000`).** The sweep's `claim_reward_expiries`
   claims each reward past its term (live listing, no claim on the money, no
-  renewal paid for in the last hour), fixes its refund basis on the payment
+  renewal started in the last hour, and not past a day after the term), fixes its refund basis on the payment
   (a legacy reward: in full), and raises a **system hold**. That hold is 72
   hours over the recent sightings' spotters (told, and able to dispute), or
   due at once with none. The refund is recorded by

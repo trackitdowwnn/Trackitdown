@@ -92,6 +92,8 @@ export function refundIdempotencyKey(paymentIntentId: string): string {
  * ⚠️ MIRRORED in the app as `cardFeePence` (src/shared/lib/money.ts), which
  * quotes it before payment. supabase/tests/refundEscrow.test.ts pins that the
  * two agree for every amount, so the quote and the refund can never differ.
+ * A THIRD copy, public.card_fee_pence (SQL, 20261006130000), words the
+ * owner's reward_ended push; reward_expiry_verification CHECK 1 pins it.
  */
 export function cardFeePence(amountPence: number): number {
   // 1.5%, rounded half-up to the penny, in INTEGER maths (no float ever

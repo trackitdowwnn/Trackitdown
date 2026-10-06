@@ -399,8 +399,12 @@ funds on the platform balance at 90 days, so a reward gets a term (see
   banner is the door to renewing.
 - **Older rewards.** Rewards held before the term existed get one dated notice
   (`legacy_term`), and their end-of-term refund is made in full.
-- **At the end** the reward is refunded through the refund hold, and the
-  listing stays live with no reward (PR5).
+- **At the end** (`claim_reward_expiries`, migration 20261006130000, behind
+  `REWARD_EXPIRY_ENABLED`) the reward gets a system refund hold — 72 hours
+  over the recent sightings' spotters (told, able to dispute), due at once
+  otherwise — and is then refunded (a legacy reward in full). The listing
+  stays live as "Reward ended". Refund holds are one per PAYMENT; an owner
+  exit during the window upgrades the hold and keeps the spotters' window.
 - **"Reward ended" (2026-10-06, migration 20261006100000).** A lapsed
   listing is NOT a £5 fee listing, though both have a null
   `bounty_amount_pence`. `posts.reward_ended_at` + `ended_reward_pence`
@@ -410,7 +414,9 @@ funds on the platform balance at 90 days, so a reward gets a term (see
   "Reward ended" (BountyTag's `REWARD_ENDED_LABEL`), never the "the owner
   paid a flat listing fee" sentence. The owner sees what came back and when,
   and can add a reward again; the date and amount are owner-only.
-- **Switch.** Nothing is sent until `REWARD_TERM_NOTICES_ENABLED` is on.
+- **Switches.** Nothing is sent until `REWARD_TERM_NOTICES_ENABLED` is on, and
+  nothing expires until `REWARD_EXPIRY_ENABLED` is ALSO on (the sweep requires
+  both — an expiry nobody was told about is impossible by construction).
 
 **Why a listing fee exists at all:** £50, the floor before 2026-08-13, was the price of admission for a theft
 victim, at the moment they can least afford it and in the hours that matter

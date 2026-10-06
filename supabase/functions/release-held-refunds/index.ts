@@ -38,7 +38,9 @@
  *        not stop the rest of the queue, and the next run retries it.
  * LINKS: supabase/migrations/20260805100000_refund_holds_and_disputes.sql;
  *        supabase/migrations/20261005110000_a_reward_can_be_replaced.sql
- *          (refunds_due, claim_money_deadline_alerts);
+ *          (claim_money_deadline_alerts);
+ *        supabase/migrations/20261006130000_a_reward_expires.sql
+ *          (refunds_due, claim_reward_expiries, mark_reward_ended_refunded);
  *        _shared/refundEscrow.ts, _shared/releasePayout.ts, _shared/push.ts,
  *        _shared/opsAlert.ts;
  *        docs/decisions/ADR-0011-refund-holds-and-disputes.md (cron setup).
@@ -330,7 +332,11 @@ Deno.serve(async (request) => {
   // REWARD_TERM_NOTICES_ENABLED: an owner must have been told their date
   // (the notice, the reminders, the banner) before anything ends. Until then
   // the claim is not even called.
-  const expiryOn = Deno.env.get('REWARD_EXPIRY_ENABLED') === 'true';
+  // ENFORCED, not just documented: expiry without the notices would end
+  // rewards whose owners were never told their date.
+  const expiryOn =
+    Deno.env.get('REWARD_EXPIRY_ENABLED') === 'true' &&
+    Deno.env.get('REWARD_TERM_NOTICES_ENABLED') === 'true';
   if (expiryOn) {
     try {
       const { data: expiries, error: expiryError } = await admin.rpc('claim_reward_expiries', {
@@ -341,11 +347,13 @@ Deno.serve(async (request) => {
       }
       for (const item of (expiries ?? []) as {
         post_id: string;
-        path: 'reward_end' | 'recovery';
+        path: 'reward_end' | 'recovery' | 'extended';
         owner: { user_id: string; title: string; body: string } | null;
         spotters: { user_id: string; sighting_id: string; title: string; body: string }[];
       }[]) {
-        summary.rewardsExpired += 1;
+        if (item.path !== 'extended') {
+          summary.rewardsExpired += 1;
+        }
         // The spotters FIRST: their 72 hours started at the claim, and this
         // push is their only door to the dispute screen (ADR-0011).
         for (const spotter of item.spotters ?? []) {

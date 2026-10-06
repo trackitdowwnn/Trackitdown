@@ -188,7 +188,7 @@ begin
     raise exception 'CHECK 4 FAILED: the spotter push is %', v_item -> 'spotters';
   end if;
   -- Legacy: the full £200, and the date the refund waits for.
-  if v_item -> 'owner' ->> 'body' not like '£200 is going back to your card after %. Your listing stays up — you can add a new reward any time.' then
+  if v_item -> 'owner' ->> 'body' not like '£200 is going back to your card after %, unless a spotter shows their sighting found your car. Your listing stays up — you can add a new reward any time.' then
     raise exception 'CHECK 4 FAILED: the legacy owner push is %', v_item -> 'owner' ->> 'body';
   end if;
   if not (select refund_fee_absorbed from public.payments where id = 'e5e50004-0000-0000-0000-00000000000a') then
@@ -515,3 +515,200 @@ begin
   end if;
   raise notice 'CHECK 12 passed: the expiry is service-role only';
 end $$;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 13 (security review C1) — a spotter CREDITED during a reward_end
+-- window keeps the money: the timer never refunds it, and the record refuses.
+-- -----------------------------------------------------------------------------
+begin;
+update public.payments set expiry_claimed_at = now() where status = 'held' and expiry_claimed_at is null;
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+values ('e5e50000-0000-0000-0000-000000000013', '11111111-1111-1111-1111-111111111111', 'active', 20000, 'EX13 AAA');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, captured_at, term_ends_at)
+values ('e5e50000-0000-0000-0000-000000000013', 'pi_ex13', 'held', 20000, now() - interval '61 days', now() - interval '1 hour');
+insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+values ('e5e50013-1111-0000-0000-000000000001', 'e5e50000-0000-0000-0000-000000000013',
+        '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true);
+
+do $$
+declare
+  v_err text;
+begin
+  perform public.claim_reward_expiries(50);
+  -- Inside the window the owner credits the finder (claim_recovery's effect).
+  update public.sightings set status = 'credited' where id = 'e5e50013-1111-0000-0000-000000000001';
+  update public.posts set status = 'recovery_claimed', recovered_at = now()
+   where id = 'e5e50000-0000-0000-0000-000000000013';
+  update public.refund_holds set expires_at = now() - interval '1 second'
+   where post_id = 'e5e50000-0000-0000-0000-000000000013';
+
+  if exists (select 1 from public.refunds_due(50, 'e5e50000-0000-0000-0000-000000000013')) then
+    raise exception 'CHECK 13 FAILED: the timer would refund a credited spotter''s money';
+  end if;
+  begin
+    perform public.mark_reward_ended_refunded('pi_ex13', 're_ex13', 19680);
+    v_err := 'none';
+  exception when others then v_err := sqlerrm; end;
+  if v_err <> 'RECOVERY_HAS_CREDITED_SIGHTING' then
+    raise exception 'CHECK 13 FAILED: the lapse record took a credited spotter''s money (%)', v_err;
+  end if;
+  raise notice 'CHECK 13 passed: a credit inside the window wins; the timer never refunds it';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 14 (security review C2) — waiting out the window (and the 14 days)
+-- does not let an owner deactivate past an OPEN dispute.
+-- -----------------------------------------------------------------------------
+begin;
+update public.payments set expiry_claimed_at = now() where status = 'held' and expiry_claimed_at is null;
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+values ('e5e50000-0000-0000-0000-000000000014', '11111111-1111-1111-1111-111111111111', 'active', 20000, 'EX14 AAA');
+insert into public.payments (id, post_id, stripe_payment_intent_id, status, amount_pence, captured_at, term_ends_at)
+values ('e5e50014-0000-0000-0000-00000000000a', 'e5e50000-0000-0000-0000-000000000014', 'pi_ex14', 'held', 20000,
+        now() - interval '61 days', now() - interval '1 hour');
+insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+values ('e5e50014-1111-0000-0000-000000000001', 'e5e50000-0000-0000-0000-000000000014',
+        '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true);
+
+do $$
+declare
+  v_check jsonb;
+begin
+  perform public.claim_reward_expiries(50);
+  perform set_config('request.jwt.claims', '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  set local role authenticated;
+  perform public.open_dispute('e5e50014-1111-0000-0000-000000000001', null);
+  reset role;
+
+  -- The window closes, the dispute stays open, and the sighting ages out.
+  update public.refund_holds set expires_at = now() - interval '1 day'
+   where payment_id = 'e5e50014-0000-0000-0000-00000000000a';
+  update public.sightings set created_at = now() - interval '20 days'
+   where id = 'e5e50014-1111-0000-0000-000000000001';
+
+  v_check := public.exit_check_for('e5e50000-0000-0000-0000-000000000014', '11111111-1111-1111-1111-111111111111');
+  if (v_check ->> 'requiresAttestation')::boolean is not true then
+    raise exception 'CHECK 14 FAILED: after the window an exit would refund now, past an open dispute: %', v_check;
+  end if;
+  perform public.create_refund_hold('e5e50000-0000-0000-0000-000000000014', '11111111-1111-1111-1111-111111111111',
+                                    'deactivate', array['e5e50014-1111-0000-0000-000000000001'::uuid]);
+  if exists (select 1 from public.refunds_due(50, 'e5e50000-0000-0000-0000-000000000014')) then
+    raise exception 'CHECK 14 FAILED: the deactivate refunded over the open dispute';
+  end if;
+  raise notice 'CHECK 14 passed: an owner cannot wait out the window to refund past an open dispute';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 15 (security review M1) — the races between a lapse and an owner exit
+-- never strand a listing: "found it another way" mid-window finishes as that
+-- recovery; a deactivate recorded after the lapse still delists.
+-- -----------------------------------------------------------------------------
+begin;
+update public.payments set expiry_claimed_at = now() where status = 'held' and expiry_claimed_at is null;
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+values ('e5e50000-0000-0000-0000-000000000151', '11111111-1111-1111-1111-111111111111', 'active', 20000, 'EX15 REC'),
+       ('e5e50000-0000-0000-0000-000000000152', '11111111-1111-1111-1111-111111111111', 'active', 20000, 'EX15 DEA');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, captured_at, term_ends_at)
+values ('e5e50000-0000-0000-0000-000000000151', 'pi_ex15_rec', 'held', 20000, now() - interval '61 days', now() - interval '1 hour'),
+       ('e5e50000-0000-0000-0000-000000000152', 'pi_ex15_dea', 'held', 20000, now() - interval '61 days', now() - interval '1 hour');
+
+do $$
+begin
+  perform public.claim_reward_expiries(50);
+
+  -- (a) The owner says "found it another way"; the lapse refund lands first.
+  update public.posts set status = 'recovery_claimed', recovered_at = now()
+   where id = 'e5e50000-0000-0000-0000-000000000151';
+  perform public.mark_reward_ended_refunded('pi_ex15_rec', 're_ex15a', 19680);
+  if (select status from public.posts where id = 'e5e50000-0000-0000-0000-000000000151') <> 'recovered_no_spotter' then
+    raise exception 'CHECK 15 FAILED: a recovery mid-window was left %',
+      (select status from public.posts where id = 'e5e50000-0000-0000-0000-000000000151');
+  end if;
+
+  -- (b) The lapse is recorded, then the owner's deactivate record arrives.
+  perform public.mark_reward_ended_refunded('pi_ex15_dea', 're_ex15b', 19680);
+  perform public.mark_post_payment_refunded('pi_ex15_dea', 're_ex15b', 19680);
+  if (select status from public.posts where id = 'e5e50000-0000-0000-0000-000000000152') <> 'cancelled' then
+    raise exception 'CHECK 15 FAILED: a deactivate recorded after the lapse left the listing live';
+  end if;
+  raise notice 'CHECK 15 passed: no race between a lapse and an owner exit strands a listing';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 16 (security review M2) — a spotter told about an EARLIER hold is told
+-- again about this one: the push is their only door.
+-- -----------------------------------------------------------------------------
+begin;
+update public.payments set expiry_claimed_at = now() where status = 'held' and expiry_claimed_at is null;
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+values ('e5e50000-0000-0000-0000-000000000016', '11111111-1111-1111-1111-111111111111', 'active', 20000, 'EX16 AAA');
+insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, captured_at, term_ends_at)
+values ('e5e50000-0000-0000-0000-000000000016', 'pi_ex16', 'held', 20000, now() - interval '61 days', now() - interval '1 hour');
+insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable, closed_notified_at)
+values ('e5e50016-1111-0000-0000-000000000001', 'e5e50000-0000-0000-0000-000000000016',
+        '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true, now() - interval '5 days');
+
+do $$
+declare
+  v_item jsonb;
+begin
+  select e into v_item from jsonb_array_elements(public.claim_reward_expiries(50)) e
+   where e ->> 'post_id' = 'e5e50000-0000-0000-0000-000000000016';
+  if jsonb_array_length(v_item -> 'spotters') <> 1 then
+    raise exception 'CHECK 16 FAILED: a spotter told about an earlier hold was not told about this one';
+  end if;
+  raise notice 'CHECK 16 passed: the notice is per hold, not once forever';
+end $$;
+rollback;
+
+
+-- -----------------------------------------------------------------------------
+-- CHECK 17 (security review M5) — a sighting reported DURING the window is
+-- taken in: named, told, and given its own 72 hours.
+-- -----------------------------------------------------------------------------
+begin;
+update public.payments set expiry_claimed_at = now() where status = 'held' and expiry_claimed_at is null;
+insert into public.posts (id, owner_id, status, bounty_amount_pence, plate)
+values ('e5e50000-0000-0000-0000-000000000017', '11111111-1111-1111-1111-111111111111', 'active', 20000, 'EX17 AAA');
+insert into public.payments (id, post_id, stripe_payment_intent_id, status, amount_pence, captured_at, term_ends_at)
+values ('e5e50017-0000-0000-0000-00000000000a', 'e5e50000-0000-0000-0000-000000000017', 'pi_ex17', 'held', 20000,
+        now() - interval '61 days', now() - interval '1 hour');
+insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+values ('e5e50017-1111-0000-0000-000000000001', 'e5e50000-0000-0000-0000-000000000017',
+        '33333333-3333-3333-3333-333333333333', 'unverified', 'Camden', true);
+
+do $$
+declare
+  v_item jsonb;
+  v_hold record;
+begin
+  perform public.claim_reward_expiries(50);
+  update public.refund_holds set expires_at = now() + interval '10 hours'
+   where payment_id = 'e5e50017-0000-0000-0000-00000000000a';
+
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable)
+  values ('e5e50017-1111-0000-0000-000000000002', 'e5e50000-0000-0000-0000-000000000017',
+          '44444444-4444-4444-4444-444444444444', 'unverified', 'Hackney', true);
+
+  select e into v_item from jsonb_array_elements(public.claim_reward_expiries(50)) e
+   where e ->> 'post_id' = 'e5e50000-0000-0000-0000-000000000017';
+  select sighting_ids, expires_at into v_hold
+    from public.refund_holds where payment_id = 'e5e50017-0000-0000-0000-00000000000a';
+  if v_item ->> 'path' <> 'extended' or jsonb_array_length(v_item -> 'spotters') <> 1
+     or v_item -> 'spotters' -> 0 ->> 'user_id' <> '44444444-4444-4444-4444-444444444444' then
+    raise exception 'CHECK 17 FAILED: the new spotter was not told: %', v_item;
+  end if;
+  if not ('e5e50017-1111-0000-0000-000000000002'::uuid = any (v_hold.sighting_ids))
+     or v_hold.expires_at < now() + interval '71 hours' then
+    raise exception 'CHECK 17 FAILED: the hold did not take the new sighting in: %', v_hold;
+  end if;
+  raise notice 'CHECK 17 passed: a sighting inside the window gets its own 72 hours';
+end $$;
+rollback;

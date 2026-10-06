@@ -63,8 +63,13 @@
 --        its payment — asserted, the migration fails loudly otherwise. Two
 --        CHECK constraints on refund_holds are dropped and re-added WIDER
 --        (every existing row passes; asserted by re-adding them). No data is
---        deleted. `create or replace` on twelve functions, each restated IN
---        FULL from its latest definition (named in its section).
+--        deleted. attested_at loses NOT NULL (a system hold is not attested)
+--        and a third CHECK is added (only the system ends a reward). A BEFORE
+--        INSERT trigger links a hold written without payment_id. `create or
+--        replace` on ELEVEN existing functions, each restated IN FULL from its
+--        latest definition (named in its section), and five new ones.
+--        (hold_trigger_sightings, card_fee_pence, claim_reward_expiries,
+--        mark_reward_ended_refunded, refund_holds_link_payment).
 -- LINKS: docs/decisions/ADR-0020-a-reward-has-a-term.md;
 --        docs/decisions/ADR-0011-refund-holds-and-disputes.md;
 --        docs/decisions/ADR-0021-a-fixed-card-fee.md;
@@ -192,9 +197,12 @@ begin
      where p.post_id = new.post_id and p.kind = 'bounty_escrow' and p.status = 'held'
      limit 1;
     if new.payment_id is null then
+      -- Only a reward that actually moved money (the backfill's set) — never
+      -- a failed or uncaptured intent (security review of PR5, L3).
       select p.id into new.payment_id
         from public.payments p
        where p.post_id = new.post_id and p.kind = 'bounty_escrow'
+         and p.status in ('refunded', 'released', 'superseded')
        order by coalesce(p.captured_at, p.created_at) desc
        limit 1;
     end if;
@@ -230,12 +238,17 @@ as $$
         from public.refund_holds h
         join public.payments p on p.id = h.payment_id and p.status = 'held'
        where h.post_id = p_post_id
-         and h.expires_at > now()
+       -- ⚠️ NO `expires_at > now()`. A hold is pending for as long as its
+       -- payment is held — including AFTER its window, when an open dispute
+       -- is what keeps it held. Filtering on the window let an owner wait
+       -- out the 72 hours (and the 14 days) and then deactivate straight
+       -- past an open dispute (security review of PR5, C2): the exit must
+       -- still route through the hold, which refunds_due keeps blocked.
     ) x;
 $$;
 
 comment on function public.hold_trigger_sightings(uuid) is
-  'The sightings an owner exit must wait for: recent_uncredited_sightings (ADR-0011''s 14 days) plus those named by a PENDING hold on the post whose window is still open (a reward_end hold''s spotters were told they have 72 hours). Not directly grantable.';
+  'The sightings an owner exit must wait for: recent_uncredited_sightings (ADR-0011''s 14 days) plus those named by any PENDING hold on the post (its payment still held — during its window, and after it while a dispute holds it). Not directly grantable.';
 
 revoke all on function public.hold_trigger_sightings(uuid) from public, anon, authenticated;
 
@@ -307,6 +320,21 @@ as $$
             where d.post_id = h.post_id
               and d.status in ('open', 'upheld')
          )
+         -- ⚠️ NEW (20261006130000): a CREDITED sighting or an unresolved
+         -- payout review means this money is a spotter's, being paid (or
+         -- reviewed) the other way. A reward_end hold runs on a LIVE listing,
+         -- so the owner can credit the finder inside the window — the timer
+         -- must never refund it from under them. (Owner holds could never
+         -- reach this: a cancelled post cannot be credited, and a recovery
+         -- hold refuses a credited post.)
+         and not exists (
+           select 1 from public.sightings s
+            where s.post_id = h.post_id and s.status = 'credited'
+         )
+         and not exists (
+           select 1 from public.payout_reviews r
+            where r.post_id = h.post_id and r.resolved_at is null
+         )
       union all
       select p.id, p.stripe_payment_intent_id, p.post_id, 'superseded', p.superseded_at
         from public.payments p
@@ -331,7 +359,7 @@ as $$
 $$;
 
 comment on function public.refunds_due(integer, uuid) is
-  'THE single definition of a refund that is due now: an expired hold whose OWN payment (refund_holds.payment_id) is still held, with no open/upheld dispute on the post (reason = the hold''s exit_path: deactivate | recovery | reward_end), and superseded reward payments owed back (reason superseded; behind a dispute only if it predates the supersede, unless a stray). Bounty only — listing fees never. Service role.';
+  'THE single definition of a refund that is due now: an expired hold whose OWN payment (refund_holds.payment_id) is still held, with no open/upheld dispute, no credited sighting and no unresolved payout review on the post (reason = the hold''s exit_path: deactivate | recovery | reward_end), and superseded reward payments owed back (reason superseded; behind a dispute only if it predates the supersede, unless a stray). Bounty only — listing fees never. Service role.';
 
 revoke all on function public.refunds_due(integer, uuid) from public, anon, authenticated;
 grant execute on function public.refunds_due(integer, uuid) to service_role;
@@ -410,6 +438,7 @@ declare
   v_hold_system  boolean;
   v_hold_expires timestamptz;
   v_hold_ids     uuid[];
+  v_hold_since   timestamptz;
   v_recent   uuid[];
   v_expires  timestamptz;
   v_inserted uuid;
@@ -434,8 +463,8 @@ begin
    where post_id = p_post_id and status = 'held' and kind = 'bounty_escrow';
 
   if v_payment is not null then
-    select id, system_initiated, expires_at, sighting_ids
-      into v_hold_id, v_hold_system, v_hold_expires, v_hold_ids
+    select id, system_initiated, expires_at, sighting_ids, created_at
+      into v_hold_id, v_hold_system, v_hold_expires, v_hold_ids, v_hold_since
       from public.refund_holds where payment_id = v_payment;
   end if;
 
@@ -535,7 +564,10 @@ begin
     update public.sightings
        set closed_notified_at = now()
      where id = any (v_recent)
-       and closed_notified_at is null
+       -- Told for THIS hold, not ever: a sighting can sit in two holds now
+       -- (one per payment), and the push is its only door. The window being
+       -- upgraded keeps its own spotters told (stamped since it began).
+       and (closed_notified_at is null or closed_notified_at < coalesce(v_hold_since, now()))
     returning id, spotter_id
   )
   select coalesce(jsonb_agg(jsonb_build_object(
@@ -675,10 +707,11 @@ begin
   return jsonb_build_object(
     'car', jsonb_build_object('make', v_row.make, 'colour', v_row.colour),
     'windowEndsAt', v_row.expires_at,
-    -- Why the money is moving: deactivate | recovery | reward_end. The
-    -- screen words a reward_end ("the reward is ending") differently from
-    -- an owner's exit ("the listing closed").
-    'reason', v_row.exit_path,
+    -- Why the money is moving, as the spotter may know it: 'reward_end' (the
+    -- reward ran its term; the listing is still up) or 'closed' (an owner exit).
+    -- Collapsed on purpose: deactivate vs recovery would tell a spotter
+    -- whether the owner said the car was FOUND, which they never learn here.
+    'reason', case when v_row.exit_path = 'reward_end' then 'reward_end' else 'closed' end,
     'bountySharePence', v_share,
     'dispute', case when v_row.dispute_status is null then null
       else jsonb_build_object('status', v_row.dispute_status, 'createdAt', v_row.dispute_created_at)
@@ -687,7 +720,7 @@ begin
 end $$;
 
 comment on function public.my_dispute_context(uuid) is
-  'The dispute screen''s read: own sighting named by a hold (the LATEST such hold). Car make/colour (what the spotter already saw), deadline, reason (the hold''s exit_path — reward_end means the listing is still up), their dispute if any, and the payout_split share (null once the money moved). No owner identity, no location, no plate. Single refusal token.';
+  'The dispute screen''s read: own sighting named by a hold (the LATEST such hold). Car make/colour (what the spotter already saw), deadline, reason (reward_end — the listing is still up — or closed; deactivate vs recovery is never told to a spotter), their dispute if any, and the payout_split share (null once the money moved). No owner identity, no location, no plate. Single refusal token.';
 
 revoke all on function public.my_dispute_context(uuid) from public, anon;
 grant execute on function public.my_dispute_context(uuid) to authenticated, service_role;
@@ -1069,8 +1102,9 @@ grant  execute on function public.delete_cancelled_post(uuid, uuid, text[]) to s
 --     sighting (a stale "found it another way", finished as that refund);
 --   * no claim on the money (reward_has_claim: a pending hold, an open or
 --     upheld dispute, a credited sighting, a payout review) — those decide
---     where the money goes, not a clock (the 75-day ops alert watches them);
---   * no reward change in flight (an intent made in the last hour for the
+--   * no reward change in flight (a renewal intent created in the last
+--     hour) — renewing at the last minute must win; but only for a day past
+--     the term, so minting intents can never postpone the expiry for good.
 --     owner's current choice) — renewing at the last minute must win.
 -- Then: stamp expiry_claimed_at; fix the refund basis ON THE PAYMENT
 -- (refund_fee_absorbed := legacy_term — a reward from before the term comes
@@ -1095,6 +1129,7 @@ declare
   v_notify   jsonb;
   v_owner    jsonb;
   v_out      jsonb := '[]'::jsonb;
+  v_ext      record;
 begin
   for v_cand in
     select p.id as payment_id, p.post_id
@@ -1108,6 +1143,7 @@ begin
      order by p.term_ends_at
      limit greatest(coalesce(p_limit, 50), 0)
   loop
+    begin
     -- THE POST FIRST, then the payment (every money RPC's lock order).
     select id, owner_id, status, make, model, colour into v_post
       from public.posts where id = v_cand.post_id for update;
@@ -1140,6 +1176,8 @@ begin
          and r.status = 'requires_payment'
          and r.renewal_attempt_id is not null
          and r.created_at > now() - c_inflight
+         -- Bounded: a day past the term, an intent no longer postpones it.
+         and v_pay.term_ends_at > now() - interval '24 hours'
     );
 
     v_recent := public.hold_trigger_sightings(v_post.id);
@@ -1162,7 +1200,9 @@ begin
       update public.sightings
          set closed_notified_at = now()
        where id = any (v_recent)
-         and closed_notified_at is null
+         -- Told for THIS hold (see create_refund_hold): a stamp from an
+         -- earlier hold does not count.
+         and (closed_notified_at is null or closed_notified_at < now())
       returning id, spotter_id
     )
     select coalesce(jsonb_agg(jsonb_build_object(
@@ -1194,7 +1234,10 @@ begin
                              else to_char(v_back / 100.0, 'FM999,999.00') end
                    || ' is going back to your card'
                    || case when cardinality(v_recent) > 0
+                        -- Never unconditional (security review L1): a spotter may
+                        -- yet show their sighting found the car.
                         then ' after ' || to_char(v_expires at time zone 'Europe/London', 'FMDD FMMonth')
+                             || ', unless a spotter shows their sighting found your car'
                         else '' end
                    || '. Your listing stays up — you can add a new reward any time.'
       );
@@ -1206,6 +1249,70 @@ begin
       'owner',   v_owner,
       'spotters', v_notify
     ));
+    exception when others then
+      -- ONE BAD ROW MUST NOT STALL THE EXPIRY (security review of PR5, L4):
+      -- this row's changes roll back to the block's savepoint, the rest of
+      -- the batch carries on, and the row is reconsidered next run.
+      raise warning 'claim_reward_expiries: payment % skipped: %', v_cand.payment_id, sqlerrm;
+    end;
+  end loop;
+
+  -- SIGHTINGS THAT ARRIVE DURING A WINDOW (security review of PR5, M5). A
+  -- system hold names the sightings recent at its claim; a spotter who
+  -- reports the car INSIDE the window would otherwise watch the reward leave
+  -- with no door. Each run, a pending system hold whose window is still open
+  -- takes them in: they are named, told (72 hours, the same words), and the
+  -- window restarts for them — capped at capture + 88 days so a stream of
+  -- sightings can never hold money towards Stripe's 90-day line (the
+  -- 75-day operator alert is watching it either way).
+  for v_ext in
+    select h.id as hold_id, h.post_id, h.sighting_ids, h.exit_path, p.captured_at
+      from public.refund_holds h
+      join public.payments p on p.id = h.payment_id and p.status = 'held'
+     where h.system_initiated
+       and h.expires_at > now()
+       and now() + c_window <= coalesce(p.captured_at, p.created_at) + interval '88 days'
+  loop
+    begin
+      perform 1 from public.posts where id = v_ext.post_id for update;
+      select coalesce(array_agg(t.id), '{}') into v_recent
+        from public.recent_uncredited_sightings(v_ext.post_id) as t(id)
+       where not (t.id = any (v_ext.sighting_ids));
+      continue when cardinality(v_recent) = 0;
+
+      update public.refund_holds
+         set sighting_ids = sighting_ids || v_recent,
+             expires_at   = greatest(expires_at, now() + c_window)
+       where id = v_ext.hold_id;
+
+      with claimed as (
+        update public.sightings
+           set closed_notified_at = now()
+         where id = any (v_recent)
+           and (closed_notified_at is null or closed_notified_at < now())
+        returning id, spotter_id
+      )
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'user_id', claimed.spotter_id,
+               'sighting_id', claimed.id,
+               'title', 'Did your sighting help find it?',
+               'body', case when v_ext.exit_path = 'reward_end'
+                         then 'The reward on a car you sighted is ending. If your sighting led to it being found, you have 72 hours to tell us.'
+                         else 'A car you sighted closed without crediting anyone. You have 72 hours to tell us if it was yours.'
+                       end
+             )), '[]'::jsonb)
+        into v_notify
+        from claimed;
+
+      v_out := v_out || jsonb_build_array(jsonb_build_object(
+        'post_id', v_ext.post_id,
+        'path',    'extended',
+        'owner',   null,
+        'spotters', v_notify
+      ));
+    exception when others then
+      raise warning 'claim_reward_expiries: hold % not extended: %', v_ext.hold_id, sqlerrm;
+    end;
   end loop;
 
   return v_out;
@@ -1237,9 +1344,10 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_post_id uuid;
-  v_amount  integer;
-  v_moved   integer;
+  v_post_id     uuid;
+  v_post_status public.post_status;
+  v_amount      integer;
+  v_moved       integer;
 begin
   select post_id into v_post_id
     from public.payments
@@ -1250,7 +1358,26 @@ begin
   end if;
 
   if v_post_id is not null then
-    perform 1 from public.posts where id = v_post_id for update;
+    select status into v_post_status from public.posts where id = v_post_id for update;
+  end if;
+
+  -- ⚠️ A CREDITED SPOTTER'S MONEY IS NEVER THE OWNER'S (security review of
+  -- PR5, C1) — mirroring mark_post_recovered_no_spotter. refunds_due already
+  -- refuses this; the raise is the record-level backstop.
+  if exists (
+    select 1 from public.sightings
+     where post_id = v_post_id and status = 'credited'
+  ) then
+    raise exception 'RECOVERY_HAS_CREDITED_SIGHTING';
+  end if;
+
+  -- The owner said "found it another way" during the window and the refund
+  -- landed before refund-recovery recorded it: finish THAT recovery (the
+  -- post goes to recovered_no_spotter), never leave it in recovery_claimed.
+  if v_post_status = 'recovery_claimed' then
+    perform public.mark_post_recovered_no_spotter(
+      p_payment_intent_id, p_refund_id, p_refunded_amount_pence);
+    return;
   end if;
 
   update public.payments
@@ -1350,16 +1477,6 @@ begin
     return 'no_change';
   end if;
 
-  -- A reward that ENDED: the listing stays up as "Reward ended".
-  if exists (
-    select 1 from public.refund_holds
-     where payment_id = v_payment_id and exit_path = 'reward_end'
-  ) then
-    perform public.mark_reward_ended_refunded(
-      p_payment_intent_id, p_refund_id, p_refunded_amount_pence);
-    return 'reward_ended';
-  end if;
-
   if v_post_status = 'recovery_claimed' then
     if exists (
       select 1 from public.sightings
@@ -1384,6 +1501,19 @@ begin
     return 'recovered_no_spotter';
   end if;
 
+  -- A reward that ENDED on a live listing: it stays up as "Reward ended".
+  -- AFTER the recovery branch on purpose (security review of PR5, C1): a
+  -- credited spotter's money refunded by hand must still reach the
+  -- refunded_with_credited_sighting alert above, never be filed as a lapse.
+  if exists (
+    select 1 from public.refund_holds
+     where payment_id = v_payment_id and exit_path = 'reward_end'
+  ) then
+    perform public.mark_reward_ended_refunded(
+      p_payment_intent_id, p_refund_id, p_refunded_amount_pence);
+    return 'reward_ended';
+  end if;
+
   perform public.mark_post_payment_refunded(
     p_payment_intent_id, p_refund_id, p_refunded_amount_pence);
   return 'refunded';
@@ -1392,6 +1522,97 @@ end $$;
 revoke all on function public.reconcile_payment_refund(text, text, integer) from public, anon, authenticated;
 grant execute on function public.reconcile_payment_refund(text, text, integer) to service_role;
 
+
+
+
+-- =============================================================================
+-- 6c. mark_post_payment_refunded — an owner's deactivate always delists
+-- =============================================================================
+-- ⚠️ RESTATED IN FULL from 20261005110000 (extracted mechanically). The ONLY
+-- change: when nothing moved because THIS payment was already refunded (the
+-- expiry recorded it first — security review of PR5, M1), a still-live post
+-- is still cancelled. Before reward_end holds existed, whoever moved the
+-- payment had also closed the post, so "nothing moved" meant "nothing to do".
+create or replace function public.mark_post_payment_refunded(
+  p_payment_intent_id     text,
+  p_refund_id             text,
+  p_refunded_amount_pence integer
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_post_id uuid;
+  v_moved   integer;
+begin
+  select post_id into v_post_id
+    from public.payments
+   where stripe_payment_intent_id = p_payment_intent_id;
+
+  -- Benign no-op: a refund for an intent we never recorded.
+  if not found then
+    return;
+  end if;
+
+  if v_post_id is not null then
+    perform 1 from public.posts where id = v_post_id for update;
+  end if;
+  perform 1 from public.payments
+    where stripe_payment_intent_id = p_payment_intent_id
+      for update;
+
+  -- Escrow held -> refunded, recording the refund id + amount. Guarded on
+  -- 'held' so a duplicate or any later state is NEVER regressed.
+  update public.payments
+     set status                = 'refunded',
+         stripe_refund_id      = p_refund_id,
+         refunded_amount_pence = p_refunded_amount_pence
+   where stripe_payment_intent_id = p_payment_intent_id
+     and status = 'held';
+  get diagnostics v_moved = row_count;
+
+  if v_moved = 0 then
+    -- Nothing moved: a duplicate (already recorded — the post moved with it),
+    -- or this payment stopped being the reward between the read and here.
+    if exists (
+      select 1 from public.payments
+       where post_id = v_post_id
+         and status = 'held'
+         and stripe_payment_intent_id <> p_payment_intent_id
+    ) then
+      raise exception 'PAYMENT_NOT_CURRENT_REWARD';
+    end if;
+    -- ⚠️ NEW (20261006130000): THIS payment was already refunded by another
+    -- path a moment earlier — the expiry's sweep, or the webhook filing it
+    -- as a lapse (mark_reward_ended_refunded) — while the owner's own
+    -- deactivate was in flight. The money is right; the listing is not: the
+    -- owner asked for it to come down. Cancel a still-live post.
+    if exists (
+      select 1 from public.payments
+       where stripe_payment_intent_id = p_payment_intent_id and status = 'refunded'
+    ) then
+      update public.posts
+         set status = 'cancelled'
+       where id = v_post_id
+         and status in ('active', 'pending_verification');
+    end if;
+    return;
+  end if;
+
+  -- The post -> cancelled, only from a refund-eligible paid state.
+  update public.posts
+     set status = 'cancelled'
+   where id = v_post_id
+     and status in ('active', 'pending_verification');
+
+  -- AUDIT: deferred with moderation (SECURITY_AND_TRUST §7).
+end;
+$$;
+
+revoke execute on function public.mark_post_payment_refunded(text, text, integer) from public, anon, authenticated;
+grant  execute on function public.mark_post_payment_refunded(text, text, integer) to service_role;
 
 -- =============================================================================
 -- 7. Assert the grants

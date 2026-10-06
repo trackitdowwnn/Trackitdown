@@ -114,7 +114,8 @@ export function bountyBreakdown(bountyPence: number): BountyBreakdown {
  * MONEY: a MIRROR of `cardFeePence` in supabase/functions/_shared/refundEscrow.ts,
  * which decides the refund. supabase/tests/refundEscrow.test.ts pins that the
  * two agree for every reward amount. DISPLAY ONLY here — never wire this into
- * a refund or charge path.
+ * a refund or charge path. A third copy, public.card_fee_pence (SQL,
+ * 20261006130000), words the owner's reward_ended push — change all three.
  */
 export function cardFeePence(bountyPence: number): number {
   // 1.5%, rounded half-up to the penny, in INTEGER maths (no float ever

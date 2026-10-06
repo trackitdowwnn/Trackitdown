@@ -36,14 +36,13 @@ it, Trackitdown absorbs.
   idempotency key asks Stripe for the same amount.
 - **Unchanged:** stray captures are still refunded in full
   (`refund_fee_absorbed`). The 95/5 payout split is unaffected.
-- **Not yet implemented — PR5's job:** the Terms promise a `legacy_term`
-  reward's END-OF-TERM refund in full. Nothing refunds at end of term until
-  PR5's expiry ships, and `refundPayment` never reads `legacy_term`. PR5 must
-  make "absorbed" a fact on the payment row *before* any refund can start
-  (e.g. the expiry claim sets `refund_fee_absorbed = true` in the same
-  transaction that takes the payment out of reach of deactivate and recover),
-  so the amount stays a function of the payment alone under its idempotency
-  key. `REWARD_TERM_NOTICES_ENABLED` stays off until then.
+- **A legacy reward at end of term (PR5, `20261006130000`):** the expiry
+  claim sets `refund_fee_absorbed` from `legacy_term` in the same transaction
+  that raises the system hold, so the amount is a fact on the payment before
+  any refund can start and stays one function of the payment under its
+  idempotency key. Consequence, accepted: once the expiry has claimed a
+  legacy reward, ANY refund of it (an owner exit during the window included)
+  is in full — the error, if any, is in the owner's favour.
 - **Copy:** every pre-payment and pre-refund quote states exact figures —
   "£196.80 goes back to your card. Only the £3.20 card fee is kept." The Terms
   name the fee ("1.5% of the bounty plus 20p") and promise the quoted amount

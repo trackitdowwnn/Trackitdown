@@ -66,6 +66,7 @@ const context = (overrides: Record<string, unknown> = {}) => ({
   car: { make: 'Fiesta', colour: 'Blue' },
   windowEndsAt: '2026-08-08T12:00:00Z',
   bountySharePence: 19000,
+  reason: null,
   dispute: null,
   ...overrides,
 });
