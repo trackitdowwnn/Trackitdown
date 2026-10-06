@@ -337,14 +337,33 @@ webhook reconciles it from the ledger:
 A partial refund made by hand is recorded as the refund; settling any
 remainder is up to you.
 
-**The reward-term switch.** The sweep sends the term notices and reminders
-(`claim_reward_term_notices`, `claim_reward_reminders`) only when the Edge
-Function secret `REWARD_TERM_NOTICES_ENABLED` is `true`. Turn it on only
-when all three are true:
-1. the app update with the reward banner is live (check with
-   `eas update:list`, never the exit code);
-2. the reward expiry (PR5) is deployed;
-3. you have read the legacy-reward dates the first notices will give.
+**The two reward switches — turn them on TOGETHER.** Both are Edge Function
+secrets, both default off:
+- `REWARD_TERM_NOTICES_ENABLED=true` — the sweep sends the term notices and
+  reminders (`claim_reward_term_notices`, `claim_reward_reminders`);
+- `REWARD_EXPIRY_ENABLED=true` — the sweep ends rewards past their term
+  (`claim_reward_expiries`, PR5): a system hold (72 hours if a recent sighting
+  might have found the car, due now otherwise), then the refund, and the
+  listing stays up as "Reward ended".
+
+Turn them on only when all four are true:
+1. the app update with the reward banner and "Reward ended" is live (check
+   with `eas update:list`, never the exit code);
+2. PR5 (`20261006130000_a_reward_expires.sql`) is deployed;
+3. you have read the legacy-reward dates the first notices will give (query
+   below);
+4. you have run the sweep once by hand afterwards and read its summary
+   (`rewardTermNotices`, `rewardsExpired`, `refunded`).
+
+Notices on and expiry off would promise a refund nothing performs; expiry on
+and notices off would end rewards nobody was told about. Nothing expires
+before its owner has had the notice: a legacy reward's term is at least 14
+days after its notice (3 at the floor for the oldest), and a new reward's is
+60 days after capture.
+
+**A reward_end hold** shows in §2's dispute query like any other. Upholding a
+dispute on one credits the spotter on a listing that is still live: the post
+moves to `recovery_claimed` and the payout runs as usual.
 
 ```sql
 select p.id, p.post_id, coalesce(p.captured_at, p.created_at) as captured,

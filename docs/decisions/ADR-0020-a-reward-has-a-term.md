@@ -124,6 +124,22 @@ the payment, not the post.
 - The ledger can now hold several payments per post over time. One held
   payment per post is enforced by an index; refunds are keyed per payment.
   See `20261005110000`.
+- **The expiry (PR5, `20261006130000`).** The sweep's `claim_reward_expiries`
+  claims each reward past its term (live listing, no claim on the money, no
+  renewal paid for in the last hour), fixes its refund basis on the payment
+  (a legacy reward: in full), and raises a **system hold**. That hold is 72
+  hours over the recent sightings' spotters (told, and able to dispute), or
+  due at once with none. The refund is recorded by
+  `mark_reward_ended_refunded`: the listing stays up, its bounty clears and
+  "Reward ended" is stamped. Refund holds became **one per payment** for
+  this; a settled hold is history, not a claim, so a lapsed listing can take
+  a reward again. An owner exit during the window upgrades the system hold,
+  still delists, and keeps the spotters' window. A stale "found it another
+  way" is finished as that recovery refund at the end of the term. Behind
+  `REWARD_EXPIRY_ENABLED`, turned on with the notices (docs/OPERATIONS.md §8).
+- **Still by hand:** a credited spotter, or a dispute winner, who never sets
+  up payouts. The 75-day operator email and the runbook cover it; the
+  automatic day-80 owner refund is a follow-up.
 
 ## Links
 

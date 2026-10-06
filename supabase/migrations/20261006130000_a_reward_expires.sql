@@ -910,21 +910,28 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_post     record;
-  v_stray    text;
+  v_post     public.posts%rowtype;
   v_snapshot jsonb;
+  v_stray    text;
 begin
-  select id, owner_id, status, plate, make, model, colour, created_at, closed_at
-    into v_post
-    from public.posts
-   where id = p_post_id
-     for update;
-
-  if not found then
-    raise exception 'POST_NOT_FOUND';
+  if p_owner_id is null then
+    raise exception 'NOT_OWNER';
   end if;
 
-  if v_post.owner_id is distinct from p_owner_id then
+  -- Lock first: every guard below is decided against state that cannot move
+  -- until this transaction ends. record_post_payment_intent takes this same
+  -- lock before writing a ledger row, so a row created mid-delete waits; and
+  -- the refund path's own posts update queues behind this FOR UPDATE, so the
+  -- guards below always read the ledger as of a settled moment, never halfway
+  -- through a transition.
+  select * into v_post
+  from public.posts
+  where id = p_post_id
+  for update;
+
+  -- Same answer for "no such post" and "not yours" — a post id must never be
+  -- an existence oracle.
+  if not found or v_post.owner_id is distinct from p_owner_id then
     raise exception 'NOT_OWNER';
   end if;
 
