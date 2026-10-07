@@ -53,6 +53,22 @@ it, Trackitdown absorbs.
 - **Cost:** on a premium, EU or international card, Trackitdown pays the
   difference between Stripe's fee and the fixed fee on every refund. At UK
   launch volumes this is small; revisit if non-UK cards become common.
+  Only a REFUND carries it: a paid-out reward's card fee comes out of our 5%.
+  On Stripe's standard UK pricing (check the live pricing page) a refunded
+  £200 reward costs us about £3.50 extra on an international card (3.25% vs
+  1.5%), about £2 on an EEA card (2.5%) and under £1 on a premium UK card.
+- **Non-UK cards — no Radar rule, decided 2026-10-07.** Considered:
+  `Block if :card_country: != 'GB'` (avoids the cost, but turns away genuine
+  UK owners whose card is issued abroad, as some app-based banks' are, and
+  visitors whose car was stolen here, at the worst moment) and
+  `Review if :card_country: != 'GB'` (visibility only — the payment still
+  goes through, so the cost is unchanged). Custom rules usually need Stripe's
+  paid Radar for Fraud Teams add-on. Neither was worth it with no real money
+  flowing yet. **Revisit when real payments start:** we store no card country
+  today, so first stamp it on the payment at capture (the card's `country`
+  from the charge's `payment_method_details`, in the webhook that marks a
+  payment held), then read the share of non-UK cards and the fee we absorbed.
+  If it is material, the Review rule is the first step, Block the last.
 - **Never worse for an owner:** a standard UK card cost exactly this before,
   and a dearer card no longer costs the owner more. So the Terms change is in
   the owner's favour and needs no advance notice.
