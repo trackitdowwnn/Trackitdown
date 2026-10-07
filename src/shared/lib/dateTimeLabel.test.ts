@@ -1,12 +1,15 @@
 /**
  * WHAT:  Tests for formatDateTimeLabel — the Today/Yesterday/Tomorrow day
  *        windows, the older-date fallback, local-midnight boundaries, and
- *        the unparseable-input guard; formatLastDay's last day of a stored
- *        term end or deadline (20261007120000).
+ *        the unparseable-input guard; formatLastDay's last whole day of a
+ *        stored term end or deadline (20261007120000).
  * WHY:   "When was the car last seen" answers render through this; calling
  *        yesterday evening "Today" would misinform every spotter reading
  *        the post. Time-of-day strings follow the device locale, so tests
  *        assert day words and structure rather than a fixed clock format.
+ *        The money dates are a promise ("ends on", "by"): a day late tells
+ *        an owner or spotter they have time they don't, so their exact
+ *        London day is pinned.
  * LINKS: src/shared/lib/dateTimeLabel.ts.
  */
 
@@ -178,8 +181,16 @@ describe('formatLastDay', () => {
     expect(formatLastDay('2026-12-06T00:00:00Z', true)).toBe('Saturday 5 December');
   });
 
-  it('keeps the day of an end that is not a midnight (the 85-day hard line)', () => {
-    expect(formatLastDay('2026-12-30T15:00:00Z')).toBe('30 December');
+  it('names the day before an end partway through a day (the 85-day hard line)', () => {
+    // Ends at 15:00 on 30 December: the 29th is the last WHOLE day.
+    expect(formatLastDay('2026-12-30T15:00:00Z')).toBe('29 December');
+  });
+
+  it('names the same last day just after a midnight end, and across a month', () => {
+    // A millisecond into 24 October (BST): the 23rd is still the last whole day.
+    expect(formatLastDay('2026-10-23T23:00:00.001Z')).toBe('23 October');
+    // 00:00 GMT on 1 January: 31 December, the previous month and year.
+    expect(formatLastDay('2027-01-01T00:00:00Z')).toBe('31 December');
   });
 
   it('throws on an unparseable timestamp', () => {

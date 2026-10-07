@@ -102,7 +102,10 @@ export function RewardTermBanner({ status, readAt, onRenew, onAddReward }: Rewar
       body = 'It stays held while the recovery or dispute on your listing is sorted out, and can’t be renewed until then.';
     } else {
       title = `Your ${amount} reward ends on ${formatLastDay(termEndsAt, true)}`;
-      body = `Renew it to keep a reward on your listing for another ${REWARD_TERM_DAYS} days. If you don’t, ${back}, and your listing stays up.`;
+      // "From the day you renew", not "another": a renewal is a fresh term
+      // starting that day (ChangeRewardScreen says the same), so renewing
+      // early does not add 60 days to the date above.
+      body = `Renew it to keep a reward on your listing for ${REWARD_TERM_DAYS} days from the day you renew. If you don’t, ${back}, and your listing stays up.`;
       action = { label: 'Renew reward', onPress: onRenew, hint: 'Opens the reward screen' };
     }
   }

@@ -78,7 +78,7 @@ describe('rewardTermPhase', () => {
 
 describe('rewardTermLine', () => {
   it('names the amount and the date while the reward runs', () => {
-    expect(rewardTermLine(held({ termEndsAt: '2026-12-04T23:59:59Z' }), NOW)).toBe(
+    expect(rewardTermLine(held({ termEndsAt: '2026-12-05T00:00:00Z' }), NOW)).toBe(
       'Your £200 reward runs until 4 December.',
     );
   });
@@ -96,7 +96,7 @@ describe('rewardTermLine', () => {
   });
 
   it('never says "runs until" a date that has passed', () => {
-    expect(rewardTermLine(held({ termEndsAt: '2026-10-04T23:59:59Z' }), NOW)).toBe(
+    expect(rewardTermLine(held({ termEndsAt: '2026-10-05T23:00:00Z' }), NOW)).toBe(
       'Your £200 reward ended on 5 October.',
     );
   });
@@ -109,7 +109,7 @@ describe('rewardTermLine', () => {
 
   it('past its date but held by a claim: says it stays held, not that it went back', () => {
     expect(
-      rewardTermLine(held({ termEndsAt: '2026-10-04T23:59:59Z', blockedMessage: 'held' }), NOW),
+      rewardTermLine(held({ termEndsAt: '2026-10-05T23:00:00Z', blockedMessage: 'held' }), NOW),
     ).toBe('Your £200 reward ended on 5 October. It stays held while the recovery or dispute is sorted out.');
   });
 });

@@ -541,7 +541,7 @@ describe('PostDetailScreen — reward term', () => {
     rewardId: 'r1',
     amountPence: 50000,
     capturedAt: '2026-10-01T10:00:00Z',
-    termEndsAt: '2026-12-04T23:59:59Z',
+    termEndsAt: '2026-12-05T00:00:00Z',
     legacyTerm: false,
     rewardEndedAt: null,
     endedRewardPence: null,

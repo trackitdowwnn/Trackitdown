@@ -165,8 +165,12 @@ the payment, not the post.
   (`reward_term_end`), but every push and the app printed that midnight's
   date: one day late, so "ends on 7 December" really ended at 00:00 on the
   7th. The server's `last_day_text` and the app's `formatLastDay` now name the
-  last whole day. Found before any term ended or the payout deadline was
-  switched on, so nothing moved on a wrong day.
+  last WHOLE day: the calendar day before the one the end falls on, by the
+  same rule on both sides. For an end the capture + 85 hard line cuts partway
+  through a day, that is the day before it, so nobody is told a day that
+  isn't wholly theirs. The banner's renewal line now says "60 days from the
+  day you renew", not "another 60 days". Found before any term ended or the
+  payout deadline was switched on, so nothing moved on a wrong day.
 
 ## Links
 

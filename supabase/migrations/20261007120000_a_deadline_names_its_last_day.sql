@@ -6,8 +6,12 @@
 --        7 December" lost the reward at 00:00 on 7 December; a spotter told
 --        "add your bank details by 24 October" was already a day late on the
 --        24th.
---          1. last_day_text(end) — the London date of the last whole day
---             before an end instant ('23 October').
+--          1. last_day_text(end) — the last WHOLE London day before an end
+--             instant: the calendar day before the one the end falls on
+--             ('23 October'). For a midnight end that is the term's last
+--             day; for an end the capture + 85 hard line cuts partway
+--             through a day (15:00 on 30 December), it is the day before
+--             (29 December) — never a day that is not wholly theirs.
 --          2. claim_reward_term_notices, claim_reward_reminders,
 --             claim_payout_reminders — restated, the date through it.
 -- WHY:   reward_term_end's own comment: "so the date owners are told is the
@@ -34,20 +38,22 @@
 -- =============================================================================
 -- 1. last_day_text — the last whole day before an end instant
 -- =============================================================================
--- One microsecond before the end is still the last day: an end of
--- 2026-10-24 00:00 (London) is '23 October'. STABLE, not immutable: a named
--- time zone's rules are data.
+-- The London calendar day the end falls on, minus one: an end of 2026-10-24
+-- 00:00 (London) is '23 October', and so is one at 15:00 that day. Calendar
+-- arithmetic, no epsilon, so the app's formatLastDay (the same rule) can never
+-- disagree by a sub-millisecond. STABLE, not immutable: a named time zone's
+-- rules are data.
 create or replace function public.last_day_text(p_end timestamptz)
 returns text
 language sql
 stable
 set search_path = ''
 as $$
-  select to_char((p_end - interval '1 microsecond') at time zone 'Europe/London', 'FMDD FMMonth');
+  select to_char((p_end at time zone 'Europe/London')::date - 1, 'FMDD FMMonth');
 $$;
 
 comment on function public.last_day_text(timestamptz) is
-  'The London date of the last whole day before an end instant, as push copy (''23 October''). Every term_ends_at and payout_deadline is midnight at the START of the day after the last one (reward_term_end), so its own date is one day late. Display only. Not directly grantable.';
+  'The last WHOLE London day before an end instant, as push copy (''23 October''): the calendar day before the one the end falls on. A term_ends_at or payout_deadline is normally midnight at the START of the day after the last one (reward_term_end); one the capture + 85 hard line cuts partway through a day names the day before, never a day that is not wholly theirs. The app''s formatLastDay is the same rule. Display only. Not directly grantable.';
 
 revoke all on function public.last_day_text(timestamptz) from public, anon, authenticated;
 
@@ -268,8 +274,16 @@ declare
 begin
   -- A day ending in BST (24 Oct 00:00 BST = 23 Oct 23:00 UTC) and one in GMT.
   if public.last_day_text(public.reward_term_end('2026-10-23 12:00:00+01')) <> '23 October'
-     or public.last_day_text(public.reward_term_end('2026-12-05 12:00:00+00')) <> '5 December' then
-    raise exception 'last_day_text does not name the last day';
+     or public.last_day_text(public.reward_term_end('2026-12-05 12:00:00+00')) <> '5 December'
+     -- A hard-line end partway through 30 December: the 29th is the last
+     -- whole day.
+     or public.last_day_text('2026-12-30 15:00:00+00') <> '29 December' then
+    raise exception 'last_day_text does not name the last whole day';
+  end if;
+
+  if has_function_privilege('anon', 'public.last_day_text(timestamptz)', 'execute')
+     or has_function_privilege('authenticated', 'public.last_day_text(timestamptz)', 'execute') then
+    raise exception 'last_day_text is client-executable';
   end if;
 
   foreach f in array array[

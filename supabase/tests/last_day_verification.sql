@@ -1,9 +1,9 @@
 -- =============================================================================
 -- WHAT:  Verification for 20261007120000_a_deadline_names_its_last_day.sql:
---        every push that names a deadline names its LAST DAY — the day
---        before the stored end instant when that instant is a midnight
---        (reward_term_end), the same day when it is not (the capture + 85
---        hard line).
+--        every push that names a deadline names its last WHOLE day — the
+--        calendar day before the one the stored end falls on: the term's last
+--        day for a midnight end (reward_term_end), the day before for an end
+--        the capture + 85 hard line cuts partway through a day.
 -- WHY:   Each deadline was printed as the day AFTER the last one, so an owner
 --        renewing, or a spotter adding bank details, "by" the date they were
 --        given was a day late. These checks pin the date in the copy, not
@@ -15,18 +15,20 @@
 
 
 -- -----------------------------------------------------------------------------
--- CHECK 1 — last_day_text: a midnight end names the day before (in BST and
--- in GMT); any other instant names its own day.
+-- CHECK 1 — last_day_text: the day before the one the end falls on — a
+-- midnight end (BST and GMT), just after one, and a hard-line end partway
+-- through a day all name the last WHOLE day.
 -- -----------------------------------------------------------------------------
 do $$
 begin
   if public.last_day_text('2026-10-23 23:00:00+00') <> '23 October'      -- 00:00 BST 24 Oct
      or public.last_day_text('2026-12-06 00:00:00+00') <> '5 December'   -- 00:00 GMT 6 Dec
-     or public.last_day_text('2026-12-30 15:00:00+00') <> '30 December'  -- a capped end
+     or public.last_day_text('2026-12-30 15:00:00+00') <> '29 December'  -- a capped end, 15:00
+     or public.last_day_text('2026-10-23 23:00:00.000001+00') <> '23 October'  -- just after 00:00 BST 24 Oct
      or public.last_day_text(public.reward_term_end('2026-11-02 09:00:00+00')) <> '2 November' then
-    raise exception 'CHECK 1 FAILED: last_day_text does not name the last day';
+    raise exception 'CHECK 1 FAILED: last_day_text does not name the last whole day';
   end if;
-  raise notice 'CHECK 1 passed: a midnight end names the day before; any other instant its own day';
+  raise notice 'CHECK 1 passed: the last whole day — before a midnight end, and before a hard-line end partway through a day';
 end $$;
 
 

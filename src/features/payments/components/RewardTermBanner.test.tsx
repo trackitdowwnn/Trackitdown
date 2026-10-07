@@ -76,6 +76,10 @@ describe('RewardTermBanner', () => {
   it('RENEW WINDOW: "ends on", the refund FIGURE if they don’t, the listing stays up, and Renew', async () => {
     const { view, onRenew } = await mount(status({ termEndsAt: inDays(9) }));
     expect(view.getByText(/^Your £200 reward ends on /)).toBeTruthy();
+    // A renewal is a fresh term from that day — never "another 60 days" on
+    // top of the date above.
+    expect(view.getByText(/^Renew it to keep a reward on your listing for 60 days from the day you renew\./)).toBeTruthy();
+    expect(view.queryByText(/another 60 days/)).toBeNull();
     expect(
       view.getByText(
         new RegExp(
