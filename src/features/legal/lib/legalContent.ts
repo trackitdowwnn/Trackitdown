@@ -273,10 +273,11 @@ const TERMS: LegalDocument = {
         // ⚠️ THE PAYOUT DEADLINE, 2026-10-07 (20261007100000). Our payment
         // provider may not hold funds for more than 90 days, so a credited
         // reward cannot wait for its spotter forever. Each number here is a
-        // promise the code keeps — 7 days (payout_deadline), 80 days, the
-        // reminders (claim_payout_reminders), in full (claim_payout_lapse) —
-        // so changing either side means changing both.
-        'If you are credited, please finish those checks by the date we give you. That date is at least 7 days after you are credited, and normally 80 days after the owner paid the bounty, and we remind you before it. If you have not finished by then we cannot keep holding the money, so the bounty is returned to the owner in full. Being credited still counts towards your record.',
+        // promise the code keeps — 80 days, 7 days, the 85-day cap
+        // (payout_deadline), the reminders (claim_payout_reminders: the last
+        // one always goes), in full (claim_payout_lapse) — so changing either
+        // side means changing both.
+        'If you are credited, please finish those checks by the date we give you. That date is 80 days after the owner paid the bounty, or 7 days after you are credited if that is later, but never more than 85 days after the owner paid, and we remind you before it. If you have not finished by then we cannot keep holding the money, so the bounty is returned to the owner in full. Being credited still counts towards your record.',
         'You are responsible for any tax due on a bounty you receive. If you are unsure, speak to HMRC or an accountant.',
       ],
     },

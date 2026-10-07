@@ -21,10 +21,17 @@
  *          rejected on mismatch) by mark_recovery_paid.
  *        - a post that is not `recovery_claimed` is a NO-OP ('not_claimed'),
  *          which is what makes concurrent triggers safe to fire blindly.
+ *        - NEVER A PAYOUT AND A DEADLINE REFUND (2026-10-07): `begin_payout`
+ *          runs under the post lock immediately before the transfer. It
+ *          refuses PAYOUT_LAPSED once the payout deadline has claimed the
+ *          reward for the owner, and otherwise stamps payout_started_at, which
+ *          keeps the deadline off this reward for an hour.
  * LINKS: supabase/functions/release-payout/index.ts (owner-invoked caller);
  *        supabase/functions/stripe-webhook/index.ts (payable-event caller);
  *        supabase/functions/create-payout-account/index.ts (instant caller);
- *        ./collusion.ts; supabase/migrations/20260802220000_release_payout.sql.
+ *        supabase/functions/release-held-refunds/index.ts (deadline caller);
+ *        ./collusion.ts; supabase/migrations/20260802220000_release_payout.sql;
+ *        supabase/migrations/20261007100000_a_credited_reward_has_a_deadline.sql.
  */
 
 import type Stripe from 'npm:stripe@22.4.0';
@@ -208,6 +215,10 @@ export async function releasePayoutForPost(
     if (beginError.message?.includes('PAYOUT_LAPSED')) {
       console.log('[payments] payout refused — the deadline returned this reward', { postId });
       return { status: 'error', code: 'PAYOUT_LAPSED' };
+    }
+    if (beginError.message?.includes('NO_HELD_PAYMENT')) {
+      // Settled between the lookup above and the lock: nothing to pay.
+      return { status: 'error', code: 'NO_HELD_PAYMENT' };
     }
     console.error('[payments] begin_payout failed', beginError.message);
     return { status: 'error', code: 'LOOKUP_FAILED' };

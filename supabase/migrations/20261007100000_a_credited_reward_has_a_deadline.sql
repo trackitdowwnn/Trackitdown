@@ -6,17 +6,23 @@
 --        FULL. The listing closes as recovered_no_spotter; the spotter's
 --        credit stays on their record.
 --          1. payments: payout_reminded_7d_at / _2d_at, payout_started_at,
---             payout_lapse_claimed_at.
+--             payout_lapse_claimed_at / _blocked_at / _notified_at; and
+--             sightings.credited_at (1b), stamped by a trigger.
 --          2. payout_deadline(payment) — capture + 80 days, or 7 days after
 --             the credit if later; never past capture + 85.
 --          3. Kinds payout_reminder (→ /payouts) and payout_lapsed (→ the
---             spotter's own record), both UNMUTABLE.
+--             spotter's own record), both UNMUTABLE. The OWNER's lapse push
+--             reuses reward_ended (→ their listing): the reward ended and the
+--             money is coming back, which is that kind's meaning.
 --          4. claim_payout_reminders — 7 and 2 days before the deadline.
 --          5. begin_payout — the payout core stamps payout_started_at UNDER
 --             THE POST LOCK before it creates a transfer, and is refused once
 --             a lapse is claimed.
---          6. payouts_past_deadline (read) + claim_payout_lapse (per post,
---             locked): the refund basis is fixed in full on the payment.
+--          6. payouts_past_deadline (the staged work list) +
+--             claim_payout_lapse (per post, locked, RESUMABLE): the refund
+--             basis is fixed in full on the payment; block_payout_lapse parks
+--             one Stripe already paid out; claim_payout_lapse_notice claims
+--             the pushes once the refund is recorded.
 --          7. mark_payout_lapsed_refunded — the terminal record.
 --          8. reconcile_payment_refund — a lapse refund the webhook sees
 --             first is recorded as the lapse (not as a hand refund of a
@@ -45,12 +51,15 @@
 --
 -- SAFETY NOTE ON DESTRUCTIVE STATEMENTS: none dropped except the two kind
 --        CHECKs, dropped and re-added WIDER (every existing kind kept —
---        asserted). Four additive nullable columns. `create or replace` on
---        ONE existing function (reconcile_payment_refund, restated IN FULL
---        from 20261006130000, extracted mechanically); eight new ones
---        (pounds_text, payout_deadline, payout_awaiting_payee,
+--        asserted). Seven additive nullable columns; one backfill (only the
+--        new sightings.credited_at, only on credited rows); one new trigger.
+--        `create or replace` on ONE existing function
+--        (reconcile_payment_refund, restated IN FULL from 20261006130000,
+--        extracted mechanically); eleven new ones (stamp_sighting_credited_at,
+--        pounds_text, payout_deadline, payout_awaiting_payee,
 --        claim_payout_reminders, begin_payout, payouts_past_deadline,
---        claim_payout_lapse, mark_payout_lapsed_refunded).
+--        claim_payout_lapse, block_payout_lapse, claim_payout_lapse_notice,
+--        mark_payout_lapsed_refunded).
 -- LINKS: docs/decisions/ADR-0020-a-reward-has-a-term.md;
 --        supabase/functions/_shared/releasePayout.ts (begin_payout);
 --        supabase/functions/release-held-refunds/index.ts (the deadline phase);
@@ -62,23 +71,80 @@
 -- 1. Columns
 -- =============================================================================
 alter table public.payments
-  add column payout_reminded_7d_at   timestamptz,
-  add column payout_reminded_2d_at   timestamptz,
-  add column payout_started_at       timestamptz,
-  add column payout_lapse_claimed_at timestamptz;
+  add column payout_reminded_7d_at    timestamptz,
+  add column payout_reminded_2d_at    timestamptz,
+  add column payout_started_at        timestamptz,
+  add column payout_lapse_claimed_at  timestamptz,
+  add column payout_lapse_blocked_at  timestamptz,
+  add column payout_lapse_notified_at timestamptz;
 
 comment on column public.payments.payout_started_at is
   'When the payout core (begin_payout) last began a transfer for this reward, under the post lock. A lapse cannot be claimed within an hour of it.';
 comment on column public.payments.payout_lapse_claimed_at is
-  'When the payout deadline claimed this reward for the owner (claim_payout_lapse): no payout may begin after it (begin_payout refuses), and its refund is in full.';
+  'When the payout deadline claimed this reward for the owner (claim_payout_lapse): no payout may begin after it (begin_payout refuses), and its refund is in full. A claimed reward still held is RESUMED by every sweep until it is refunded, or parked (payout_lapse_blocked_at).';
+comment on column public.payments.payout_lapse_blocked_at is
+  'A claimed lapse the sweep found Stripe already holds a transfer for: parked, NEVER refunded, after the operator alert was sent. Settled by hand (docs/OPERATIONS.md §8).';
+comment on column public.payments.payout_lapse_notified_at is
+  'When the lapse''s pushes were claimed (claim_payout_lapse_notice), after the refund was recorded — by the sweep or the webhook, whichever landed first.';
+
+
+-- -----------------------------------------------------------------------------
+-- 1b. sightings.credited_at — when THIS sighting was credited
+-- -----------------------------------------------------------------------------
+-- posts.recovered_at is NOT the credit time: on a "found it another way"
+-- recovery it is the owner's claim, and a dispute upheld weeks later keeps it
+-- (resolve_sighting_dispute coalesces). The late-credited spotter's 7 days run
+-- from their credit (security review of this change, H2).
+--
+-- Stamped by a trigger on the status TRANSITION, so claim_recovery and
+-- resolve_sighting_dispute need no restatement. Clients hold no write grant on
+-- sightings (20260814150000) — only SECURITY DEFINER code writes this column.
+alter table public.sightings
+  add column credited_at timestamptz;
+
+comment on column public.sightings.credited_at is
+  'When this sighting became credited (by the owner''s recovery, or an upheld dispute). Stamped by sightings_stamp_credited_at on the status transition. Starts the late-credit 7 days of payout_deadline.';
+
+-- Backfill BEFORE the trigger exists: an upheld dispute's resolution time,
+-- else the recovery, else the sighting itself.
+update public.sightings s
+   set credited_at = coalesce(
+         (select d.resolved_at from public.refund_disputes d
+           where d.sighting_id = s.id and d.status = 'upheld'),
+         (select po.recovered_at from public.posts po where po.id = s.post_id),
+         s.created_at)
+ where s.status = 'credited';
+
+create or replace function public.stamp_sighting_credited_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.status = 'credited' then
+    if tg_op = 'INSERT' then
+      new.credited_at := coalesce(new.credited_at, now());
+    elsif old.status is distinct from 'credited' then
+      new.credited_at := now();
+    end if;
+  end if;
+  return new;
+end $$;
+
+revoke all on function public.stamp_sighting_credited_at() from public, anon, authenticated;
+
+create trigger sightings_stamp_credited_at
+  before insert or update of status on public.sightings
+  for each row execute function public.stamp_sighting_credited_at();
 
 
 -- =============================================================================
 -- 2. payout_deadline — when a credited reward goes back
 -- =============================================================================
--- capture + 80 days, or 7 days after the credit (posts.recovered_at — stamped
--- by claim_recovery and by an upheld dispute) if that is later, run to the
--- end of its London day (reward_term_end), and never past capture + 85.
+-- capture + 80 days, or 7 days after the credit (sightings.credited_at; the
+-- post's recovered_at only for a sighting the backfill could not date) if that
+-- is later, run to the end of its London day (reward_term_end), and never past
+-- capture + 85.
 create or replace function public.payout_deadline(p_payment_id uuid)
 returns timestamptz
 language sql
@@ -88,7 +154,11 @@ as $$
   select least(
            public.reward_term_end(greatest(
              coalesce(p.captured_at, p.created_at) + interval '80 days',
-             coalesce(po.recovered_at, now()) + interval '7 days')),
+             coalesce(
+               (select max(s.credited_at) from public.sightings s
+                 where s.post_id = po.id and s.status = 'credited'),
+               po.recovered_at,
+               now()) + interval '7 days')),
            coalesce(p.captured_at, p.created_at) + interval '85 days')
     from public.payments p
     join public.posts po on po.id = p.post_id
@@ -133,8 +203,11 @@ comment on function public.notification_category(text) is
 -- Shared predicate: a credited reward awaiting a payee
 -- =============================================================================
 -- A held bounty on a recovery_claimed post with a credited sighting whose
--- spotter cannot be paid yet, and no payout review in progress (a review
--- decides by hand — collusion is not a clock's call).
+-- spotter cannot be paid yet, no payout review short of APPROVED (pending or
+-- rejected: a person decides — collusion is not a clock's call, and the gate
+-- answers "held" for a rejected review forever, which would spend the sweep's
+-- limit every hour), and no open dispute (defence in depth: refunds_due's
+-- rule).
 create or replace function public.payout_awaiting_payee(p_payment_id uuid)
 returns boolean
 language sql
@@ -155,10 +228,17 @@ as $$
        )
        and not exists (
          select 1 from public.payout_reviews r
-          where r.post_id = po.id and r.resolved_at is null
+          where r.post_id = po.id and r.resolution is distinct from 'approved'
+       )
+       and not exists (
+         select 1 from public.refund_disputes d
+          where d.post_id = po.id and d.status = 'open'
        )
   );
 $$;
+
+comment on function public.payout_awaiting_payee(uuid) is
+  'True while a credited reward waits on its payee: held bounty, post recovery_claimed, a credited sighting whose spotter has no payouts_enabled account, no payout review short of approved, no open dispute. The deadline''s reminders and lapse act only while it holds. Not directly grantable.';
 
 revoke all on function public.payout_awaiting_payee(uuid) from public, anon, authenticated;
 
@@ -187,8 +267,10 @@ revoke all on function public.pounds_text(integer) from public, anon, authentica
 -- 4. claim_payout_reminders — 7 and 2 days before the deadline
 -- =============================================================================
 -- To the credited SPOTTER: the amount they would receive (payout_split) and
--- the date. Never within a day of the credit (the "You've earned" push just
--- went). Claim-before-send (conditional update): a replay sends nothing twice.
+-- the date. The 7-day one never within a day of the credit (the "You've
+-- earned" push just went); the LAST one always — a spotter credited near the
+-- cap is still reminded before the deadline, as the Terms promise.
+-- Claim-before-send (conditional update): a replay sends nothing twice.
 create or replace function public.claim_payout_reminders(p_limit integer default 100)
 returns jsonb
 language plpgsql
@@ -204,13 +286,14 @@ begin
     select x.id, x.deadline, (x.deadline <= now() + interval '2 days') as last_days
       from (
         select p.id, public.payout_deadline(p.id) as deadline,
-               p.payout_reminded_7d_at, p.payout_reminded_2d_at
+               p.payout_reminded_7d_at, p.payout_reminded_2d_at,
+               coalesce(s.credited_at, po.recovered_at) as credited_at
           from public.payments p
           join public.posts po on po.id = p.post_id
+          join public.sightings s on s.post_id = po.id and s.status = 'credited'
          where p.status = 'held'
            and p.kind = 'bounty_escrow'
            and po.status = 'recovery_claimed'
-           and po.recovered_at < now() - interval '1 day'
            and p.payout_lapse_claimed_at is null
            and (p.payout_reminded_7d_at is null or p.payout_reminded_2d_at is null)
            and public.payout_awaiting_payee(p.id)
@@ -218,7 +301,8 @@ begin
      where x.deadline > now()
        and x.deadline <= now() + interval '7 days'
        and ((x.deadline <= now() + interval '2 days' and x.payout_reminded_2d_at is null)
-            or x.payout_reminded_7d_at is null)
+            or (x.payout_reminded_7d_at is null
+                and x.credited_at < now() - interval '1 day'))
      order by x.deadline
      limit greatest(coalesce(p_limit, 100), 0)
   ),
@@ -255,7 +339,7 @@ begin
 end $$;
 
 comment on function public.claim_payout_reminders(integer) is
-  'Claims the credited spotter''s payout reminders: 7 days and 2 days before payout_deadline (the 2-day one also burns the 7-day rung), only while the reward is held, the post recovery_claimed, the spotter not yet payable, no payout review open, and never within a day of the credit. Returns [{payment_id, post_id, user_id, title, body}] — the amount they would receive and the date; never the plate or the owner. Claim-before-send. SERVICE ROLE ONLY.';
+  'Claims the credited spotter''s payout reminders: 7 days and 2 days before payout_deadline (the 2-day one also burns the 7-day rung), only while payout_awaiting_payee holds; the 7-day one never within a day of the credit, the 2-day one always. Returns [{payment_id, post_id, user_id, title, body}] — the amount they would receive and the date; never the plate or the owner. Claim-before-send. SERVICE ROLE ONLY.';
 
 revoke all on function public.claim_payout_reminders(integer) from public, anon, authenticated;
 grant execute on function public.claim_payout_reminders(integer) to service_role;
@@ -300,29 +384,52 @@ grant execute on function public.begin_payout(uuid) to service_role;
 
 
 -- =============================================================================
--- 6. payouts_past_deadline + claim_payout_lapse
+-- 6. payouts_past_deadline + claim_payout_lapse + block_payout_lapse
 -- =============================================================================
--- The READ the sweep walks: credited rewards past their deadline, unclaimed.
--- It tries the payout first; only a reward still awaiting its payee is then
--- claimed (below), one post at a time, under the lock.
-create or replace function public.payouts_past_deadline(p_limit integer default 20)
-returns table (post_id uuid, payment_intent_id text)
+-- The READ the sweep walks, one row per post, with the stage it is at:
+--   'lapse'  — past its deadline, unclaimed, still awaiting its payee: the
+--              sweep tries the payout first, then claims (below);
+--   'resume' — CLAIMED but still held and not parked: a run failed after the
+--              claim (a Stripe error, a disputed charge, a crash). Retried
+--              every run under the payment's own refund key, which converges
+--              on a refund already made. Without this a claimed lapse could be
+--              neither paid (begin_payout refuses) nor refunded (security and
+--              code review of this change, H1).
+--   'notify' — refunded (by the sweep or the webhook), pushes not yet claimed.
+-- Oldest capture first: the nearest to Stripe's 90 days goes first.
+create or replace function public.payouts_past_deadline(p_limit integer default 50)
+returns table (post_id uuid, payment_intent_id text, stage text)
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select p.post_id, p.stripe_payment_intent_id
+  select p.post_id,
+         p.stripe_payment_intent_id,
+         case when p.payout_lapse_claimed_at is null then 'lapse'
+              when p.status = 'held'                 then 'resume'
+              else 'notify' end
     from public.payments p
-   where p.status = 'held'
-     and p.kind = 'bounty_escrow'
-     and p.payout_lapse_claimed_at is null
+   where p.kind = 'bounty_escrow'
      and p.post_id is not null
-     and public.payout_awaiting_payee(p.id)
-     and public.payout_deadline(p.id) < now()
-   order by p.captured_at
-   limit greatest(coalesce(p_limit, 20), 0);
+     and (
+       (p.status = 'held'
+        and p.payout_lapse_claimed_at is null
+        and public.payout_awaiting_payee(p.id)
+        and public.payout_deadline(p.id) < now())
+       or (p.status = 'held'
+           and p.payout_lapse_claimed_at is not null
+           and p.payout_lapse_blocked_at is null)
+       or (p.status = 'refunded'
+           and p.payout_lapse_claimed_at is not null
+           and p.payout_lapse_notified_at is null)
+     )
+   order by coalesce(p.captured_at, p.created_at)
+   limit greatest(coalesce(p_limit, 50), 0);
 $$;
+
+comment on function public.payouts_past_deadline(integer) is
+  'The payout-deadline work list, one row per post with its stage: lapse (past payout_deadline, unclaimed, awaiting payee), resume (claimed, still held, not parked — retried every run), notify (refunded, pushes unclaimed). Oldest capture first. Moves nothing. SERVICE ROLE ONLY.';
 
 revoke all on function public.payouts_past_deadline(integer) from public, anon, authenticated;
 grant execute on function public.payouts_past_deadline(integer) to service_role;
@@ -334,26 +441,36 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_post   record;
-  v_pay    record;
-  v_spot   record;
+  v_pay_id      uuid;
+  v_intent      text;
+  v_started     timestamptz;
+  v_claimed     timestamptz;
+  v_blocked     timestamptz;
 begin
-  select id, owner_id into v_post from public.posts where id = p_post_id for update;
-  select id, stripe_payment_intent_id, amount_pence, payout_started_at, payout_lapse_claimed_at
-    into v_pay
+  perform 1 from public.posts where id = p_post_id for update;
+  select id, stripe_payment_intent_id, payout_started_at, payout_lapse_claimed_at, payout_lapse_blocked_at
+    into v_pay_id, v_intent, v_started, v_claimed, v_blocked
     from public.payments
    where post_id = p_post_id and status = 'held' and kind = 'bounty_escrow'
      for update;
 
-  -- Everything re-checked under the lock; any miss is "not now" (null).
-  if v_pay.id is null or v_pay.payout_lapse_claimed_at is not null then
+  if v_pay_id is null or v_blocked is not null then
     return null;
   end if;
-  if not public.payout_awaiting_payee(v_pay.id) or public.payout_deadline(v_pay.id) >= now() then
+
+  -- Already claimed and still held: the same answer again, so the sweep
+  -- resumes the refund under the same key. The decision was made at the
+  -- deadline; nothing below is re-asked.
+  if v_claimed is not null then
+    return jsonb_build_object('post_id', p_post_id, 'payment_intent_id', v_intent);
+  end if;
+
+  -- Everything re-checked under the lock; any miss is "not now" (null).
+  if not public.payout_awaiting_payee(v_pay_id) or public.payout_deadline(v_pay_id) >= now() then
     return null;
   end if;
   -- A transfer began within the hour: let it land (or fail) first.
-  if v_pay.payout_started_at is not null and v_pay.payout_started_at > now() - interval '1 hour' then
+  if v_started is not null and v_started > now() - interval '1 hour' then
     return null;
   end if;
 
@@ -362,37 +479,103 @@ begin
   update public.payments
      set payout_lapse_claimed_at = now(),
          refund_fee_absorbed     = true
-   where id = v_pay.id;
+   where id = v_pay_id;
 
-  select s.id, s.spotter_id into v_spot
+  return jsonb_build_object('post_id', p_post_id, 'payment_intent_id', v_intent);
+end $$;
+
+comment on function public.claim_payout_lapse(uuid) is
+  'Claims ONE credited reward for its owner at the payout deadline, under the post lock (begin_payout''s lock): re-checks payout_awaiting_payee, past payout_deadline, and no transfer begun in the last hour; then stamps payout_lapse_claimed_at (no payout can begin after it) and refund_fee_absorbed (the refund is in full). A claimed, still-held, unparked reward returns the same {post_id, payment_intent_id} again, so a failed run resumes. Null otherwise. Moves no money. SERVICE ROLE ONLY.';
+
+revoke all on function public.claim_payout_lapse(uuid) from public, anon, authenticated;
+grant execute on function public.claim_payout_lapse(uuid) to service_role;
+
+-- A claimed lapse whose post already has a Stripe transfer: a payout escaped
+-- the ledger. Parked AFTER the operator alert went (the sweep re-alerts every
+-- run until it does) and never refunded; begin_payout keeps refusing, so the
+-- operator settles it by hand (docs/OPERATIONS.md §8).
+create or replace function public.block_payout_lapse(p_post_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform 1 from public.posts where id = p_post_id for update;
+  update public.payments
+     set payout_lapse_blocked_at = coalesce(payout_lapse_blocked_at, now())
+   where post_id = p_post_id
+     and status = 'held'
+     and kind = 'bounty_escrow'
+     and payout_lapse_claimed_at is not null;
+end $$;
+
+comment on function public.block_payout_lapse(uuid) is
+  'Parks a claimed payout lapse whose post already has a Stripe transfer: the sweep stops resuming it and never refunds it. Called only after the operator alert was sent. SERVICE ROLE ONLY.';
+
+revoke all on function public.block_payout_lapse(uuid) from public, anon, authenticated;
+grant execute on function public.block_payout_lapse(uuid) to service_role;
+
+-- The pushes, claimed only once the refund is RECORDED — by the sweep or by
+-- the webhook, whichever landed first — so a crash between the refund and
+-- the send loses nothing: the next run's 'notify' stage sends them.
+create or replace function public.claim_payout_lapse_notice(p_post_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_owner   uuid;
+  v_pay_id  uuid;
+  v_amount  integer;
+  v_spotter uuid;
+  v_sight   uuid;
+begin
+  select owner_id into v_owner from public.posts where id = p_post_id for update;
+  select id, amount_pence into v_pay_id, v_amount
+    from public.payments
+   where post_id = p_post_id
+     and kind = 'bounty_escrow'
+     and status = 'refunded'
+     and payout_lapse_claimed_at is not null
+     and payout_lapse_notified_at is null
+     for update;
+  if v_pay_id is null then
+    return null;
+  end if;
+
+  update public.payments set payout_lapse_notified_at = now() where id = v_pay_id;
+
+  select s.id, s.spotter_id into v_sight, v_spotter
     from public.sightings s
    where s.post_id = p_post_id and s.status = 'credited';
 
   return jsonb_build_object(
-    'post_id',           p_post_id,
-    'payment_intent_id', v_pay.stripe_payment_intent_id,
-    -- Sent only AFTER the refund is recorded (the sweep's job).
+    'post_id', p_post_id,
     'spotter', jsonb_build_object(
-      'user_id',     v_spot.spotter_id,
-      'sighting_id', v_spot.id,
+      'user_id',     v_spotter,
+      'sighting_id', v_sight,
       'title',       'We couldn''t send your reward',
       'body',        'Your bank details weren''t added in time, so the reward went back to the owner. Your recovery still counts on your record.'
     ),
     'owner', jsonb_build_object(
-      'user_id', v_post.owner_id,
+      'user_id', v_owner,
       'title',   'Your reward is coming back to you',
-      'body',    'The spotter you credited didn''t set up payouts in time, so your full '
-                 || public.pounds_text(v_pay.amount_pence)
+      -- "credited with finding your car", not "you credited": a dispute
+      -- winner was credited by us, not by the owner.
+      'body',    'The spotter credited with finding your car didn''t set up payouts in time, so your full '
+                 || public.pounds_text(v_amount)
                  || ' is going back to your card.'
     )
   );
 end $$;
 
-comment on function public.claim_payout_lapse(uuid) is
-  'Claims ONE credited reward for its owner at the payout deadline, under the post lock (begin_payout''s lock): re-checks it is held, credited, the spotter still not payable, no payout review open, past payout_deadline, and no transfer begun in the last hour; then stamps payout_lapse_claimed_at (no payout can begin after it) and refund_fee_absorbed (the refund is in full). Returns {post_id, payment_intent_id, spotter{…push}, owner{…push}} or null. Moves no money. SERVICE ROLE ONLY.';
+comment on function public.claim_payout_lapse_notice(uuid) is
+  'Claims the pushes for a RECORDED payout lapse (refunded, notice unclaimed), once: {post_id, spotter{user_id, sighting_id, title, body}, owner{user_id, title, body}} or null. The spotter''s carries no plate, owner or place. SERVICE ROLE ONLY.';
 
-revoke all on function public.claim_payout_lapse(uuid) from public, anon, authenticated;
-grant execute on function public.claim_payout_lapse(uuid) to service_role;
+revoke all on function public.claim_payout_lapse_notice(uuid) from public, anon, authenticated;
+grant execute on function public.claim_payout_lapse_notice(uuid) to service_role;
 
 
 -- =============================================================================
@@ -593,6 +776,8 @@ begin
     'public.begin_payout(uuid)',
     'public.payouts_past_deadline(integer)',
     'public.claim_payout_lapse(uuid)',
+    'public.block_payout_lapse(uuid)',
+    'public.claim_payout_lapse_notice(uuid)',
     'public.mark_payout_lapsed_refunded(text, text, integer)',
     'public.reconcile_payment_refund(text, text, integer)'
   ] loop

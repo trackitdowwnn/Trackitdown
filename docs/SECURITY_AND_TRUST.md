@@ -491,9 +491,11 @@ commenting standards.
   has been claimed, and stamps `payout_started_at`. The sweep's
   `claim_payout_lapse` takes the same lock and refuses within an hour of a
   started payout. It still asks Stripe for a transfer in the post's
-  `transfer_group` before refunding, and alerts us instead if there is one.
-  A payout review in progress is never lapsed: the gate's decision is ours,
-  not the clock's (ADR-0020).
+  `transfer_group` before refunding. If there is one, it alerts us, parks the
+  lapse, and never refunds it. It also re-reads the spotter's payee status
+  from Stripe first, so a missed webhook can't cost them the reward. A payout
+  review short of approved (pending or rejected) is never lapsed: the gate's
+  decision is ours, not the clock's (ADR-0020).
   **Wired 2026-08-03.** `release-payout` is called from `RecoverPostScreen`
   when a spotter is credited, and again from the post's manage sheet ("Send the
   bounty") for the usual case where they had not yet onboarded. Connect

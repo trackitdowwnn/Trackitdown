@@ -146,13 +146,17 @@ the payment, not the post.
   `20261007100000_a_credited_reward_has_a_deadline.sql`).** A credited
   spotter, or a dispute winner, who never sets up payouts has until
   `payout_deadline`: the end of day 80 after capture, or 7 days after the
-  credit if later, never past capture + 85. They are reminded 7 and 2 days
-  before. Past it, the sweep tries the payout once more, then refunds the owner
+  credit (`sightings.credited_at`, not the post's recovery time: a dispute can
+  be upheld long after the owner's claim) if later, never past capture + 85.
+  They are reminded 7 and 2 days before. Past it, the sweep re-reads the
+  payee from Stripe, tries the payout once more, then refunds the owner
   **in full** (a missed payout is not the owner's doing, so no card fee) and
   closes the post as `recovered_no_spotter`. The credit stays on the spotter's
   record. `begin_payout` and `claim_payout_lapse` share the post lock, so a
   transfer and a lapse refund can never both start, and the sweep checks Stripe
-  for a transfer before refunding. Behind `PAYOUT_DEADLINE_ENABLED`
+  for a transfer before refunding. A claimed lapse is resumed by every run
+  until it is refunded, or parked if Stripe shows a transfer. A payout review
+  short of approved stops the clock. Behind `PAYOUT_DEADLINE_ENABLED`
   (docs/OPERATIONS.md §8). The 75-day operator email still fires as the
   backstop.
 

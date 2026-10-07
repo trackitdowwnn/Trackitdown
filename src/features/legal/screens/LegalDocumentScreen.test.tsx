@@ -262,9 +262,11 @@ describe('factual claims the code must keep true', () => {
   });
 
   // The payout deadline (2026-10-07, 20261007100000): each number is a promise
-  // the code keeps — at least 7 days, normally 80, reminders, in full.
+  // the code keeps — 80 days, credit + 7, never past 85, reminders, in full.
   it('states the credited spotter’s payout deadline, and that the owner is refunded in full', () => {
-    expect(terms).toContain('That date is at least 7 days after you are credited, and normally 80 days after the owner paid the bounty');
+    expect(terms).toContain(
+      'That date is 80 days after the owner paid the bounty, or 7 days after you are credited if that is later, but never more than 85 days after the owner paid',
+    );
     expect(terms).toContain('we remind you before it');
     expect(terms).toContain('the bounty is returned to the owner in full');
     expect(terms).toContain('Being credited still counts towards your record');
