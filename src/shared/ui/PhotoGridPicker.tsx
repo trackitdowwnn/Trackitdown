@@ -187,7 +187,7 @@ export const defaultOwnerPhotoCopy: PhotoGridCopy = {
   coverPill: 'Cover photo',
   // Shown before any photo exists, so it names the cover rather than
   // pointing at one ("This is…" pointed at nothing above an empty grid).
-  coverHint: 'Your first photo is the cover — it’s what spotters see first.',
+  coverHint: 'Your first photo is the cover — spotters see it first.',
   reorderHint: 'Press and hold a photo to move it.',
   addLabel: 'Add photos',
   addingLabel: 'Adding photos…',
@@ -604,12 +604,21 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
           card (owner's call, 2026-10-07: these were caption-grey lines under
           the grid that people missed). Always present in gallery mode, so
           adding photos never moves anything under the finger. */}
-      {!singlePhotoMode && !captureMode ? (
+      {/* Not when photo access is refused with nothing added: the settings
+          card below is the one thing to read then. */}
+      {!singlePhotoMode && !captureMode && !(permissionDenied && count === 0) ? (
         <View style={styles.hints} testID={testID ? `${testID}-hints` : undefined}>
           <View style={styles.hintRow}>
-            {/* An eye, not a star: nothing on the tile carries a star, and
-                a star reads as "favourite". */}
-            <Feather name="eye" size={sizes.iconSm} color={palette.textPrimary} style={styles.hintIcon} />
+            {/* An eye — "what spotters see" — not a star, which on its own
+                reads as "favourite". Decorative: the sentence says it all. */}
+            <Feather
+              name="eye"
+              size={sizes.iconSm}
+              color={palette.textPrimary}
+              style={styles.hintIcon}
+              accessible={false}
+              importantForAccessibility="no"
+            />
             <Text style={styles.hintText}>{copy.coverHint}</Text>
           </View>
           {copy.reorderHint ? (
@@ -737,7 +746,9 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
               </>
             ) : (
               <>
-                <Feather name="plus" size={typography.title.lineHeight} color={palette.textSecondary} />
+                {/* textPrimary: the how-to card above is body ink, and the
+                    action must still outweigh the instructions. */}
+                <Feather name="plus" size={typography.title.lineHeight} color={palette.textPrimary} />
                 <Text style={styles.addLabel}>{copy.addLabel}</Text>
                 {needMore > 0 ? <Text style={styles.addMore}>{copy.addMore(needMore)}</Text> : null}
                 {needMore === 0 && copy.addRemaining ? (
@@ -1334,12 +1345,13 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.surfaceSubtle,
       borderRadius: radii.lg,
       padding: spacing.lg,
-      gap: spacing.sm,
+      // md, not sm: a wrapped first line must not run into the second.
+      gap: spacing.md,
     },
     hintRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: spacing.sm,
+      gap: spacing.md,
     },
     // Centres the small icon on the FIRST line of body text, so it stays put
     // when a line wraps (and follows the tokens if either size changes).
@@ -1350,6 +1362,8 @@ const makeStyles = (c: Palette) =>
       ...typography.body,
       color: c.textPrimary,
       flex: 1,
+      // Android's asymmetric font padding would sit the text off the icon.
+      includeFontPadding: false,
     },
     cameraRow: {
       flexDirection: 'row',

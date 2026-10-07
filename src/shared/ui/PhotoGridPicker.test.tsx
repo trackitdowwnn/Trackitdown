@@ -178,7 +178,7 @@ describe('render states', () => {
     expect(getByText('Add at least 3 more')).toBeTruthy();
     // The card leads the step before any photo exists, so adding one never
     // moves anything under the finger.
-    expect(getByText('Your first photo is the cover — it’s what spotters see first.')).toBeTruthy();
+    expect(getByText('Your first photo is the cover — spotters see it first.')).toBeTruthy();
   });
 
   it('partial: photos render, cover pill on the first only, the card stays', async () => {
@@ -186,11 +186,11 @@ describe('render states', () => {
     expect(getByTestId('pgp-photo-0')).toBeTruthy();
     expect(getByTestId('pgp-photo-2')).toBeTruthy();
     expect(getAllByText('Cover photo')).toHaveLength(1);
-    expect(getByText('Your first photo is the cover — it’s what spotters see first.')).toBeTruthy();
+    expect(getByText('Your first photo is the cover — spotters see it first.')).toBeTruthy();
   });
 
-  // Drag-to-reorder starts with a long press nothing on the tile shows, so it
-  // is said under the grid — once there are two photos to put in order.
+  // Drag-to-reorder starts with a long press nothing on a tile shows, so the
+  // how-to card at the top of the step says it, from the start.
   // The hint row is hidden from screen readers (their tiles carry their own
   // gesture), so these queries must include hidden elements.
   const HIDDEN = { includeHiddenElements: true };
@@ -236,7 +236,7 @@ describe('render states', () => {
       maxPhotos: 1,
     });
     expect(queryByText('Cover photo')).toBeNull();
-    expect(queryByText('Your first photo is the cover — it’s what spotters see first.')).toBeNull();
+    expect(queryByText('Your first photo is the cover — spotters see it first.')).toBeNull();
     expect(getByTestId('pgp-photo-0').props.accessibilityLabel).toBe('Photo 1 of 1');
   });
 
@@ -545,7 +545,10 @@ describe('library permission', () => {
     });
     expect(getByTestId('pgp-permission')).toBeTruthy();
     expect(queryByTestId('pgp-add')).toBeNull();
-    fireEvent.press(getByText('Open settings'));
+    // With nothing added, the settings card is the one thing to read: the
+    // how-to card steps aside rather than stacking a second grey box on it.
+    expect(queryByTestId('pgp-hints', { includeHiddenElements: true })).toBeNull();
+    await fireEvent.press(getByText('Open settings'));
     expect(openSettings).toHaveBeenCalled();
     openSettings.mockRestore();
   });
@@ -797,7 +800,7 @@ describe('capture mode (evidence review)', () => {
       photos: [evidence(0), evidence(1)],
     });
     expect(queryByText('Cover photo')).toBeNull();
-    expect(queryByText('Your first photo is the cover — it’s what spotters see first.')).toBeNull();
+    expect(queryByText('Your first photo is the cover — spotters see it first.')).toBeNull();
     expect(queryByTestId('pgp-camera')).toBeNull();
     // Uniform labels — no cover prefix on the first tile.
     expect(getByTestId('pgp-photo-0').props.accessibilityLabel).toBe('Photo 1 of 2');

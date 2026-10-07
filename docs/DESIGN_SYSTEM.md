@@ -752,6 +752,18 @@ to use.
 - Forms: one topic per screen step (the posting flow is a stepper —
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
+- **How-to card (2026-10-07, the photo step):** in-step instructions for
+  what a control can't show by itself — which photo is the cover, that a
+  long press moves one. `surfaceSubtle`, `radii.lg`, `spacing.lg` padding,
+  rows of a neutral `sizes.iconSm` glyph + `body` text in `textPrimary`,
+  `spacing.md` between rows and between glyph and text. At the TOP of the
+  step and present from the start, so adding content never moves it. No
+  title, no `role="alert"`, one per step — it is guidance, not a notice,
+  and must never be dressed up as the `SafetyNotice`, which stays the
+  strongest box on any screen. The control it explains must still
+  outweigh it (the photo step's add-tile glyph is `textPrimary` for that
+  reason). A step whose guidance is one plain sentence uses the wizard's
+  `helper` line instead.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
   **Sanctioned exception (2026-10-07): work the user just started** may
   show ONE small `ActivityIndicator` in `textSecondary`, in two places only:
