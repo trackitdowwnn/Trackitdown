@@ -13,7 +13,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { formatTermDate } from '@/shared/lib/dateTimeLabel';
+import { formatLastDay } from '@/shared/lib/dateTimeLabel';
 import type { PostSummary } from '@/shared/types';
 
 import type { MyPostSummary } from '../api/myPostsApi';
@@ -596,7 +596,9 @@ describe('MyPostsScreen', () => {
     it('shows "Reward ends on <date>" for a live listing whose reward ends within 14 days', async () => {
       const endsAt = inDays(13);
       const { getByTestId } = await mountWith(withTerm({ rewardTermEndsAt: endsAt }));
-      expect(getByTestId('reward-ends-r1')).toHaveTextContent(`Reward ends on ${formatTermDate(endsAt, true)}`);
+      // The LAST day of the term (20261007120000): its stored end is the
+      // midnight after it.
+      expect(getByTestId('reward-ends-r1')).toHaveTextContent(`Reward ends on ${formatLastDay(endsAt, true)}`);
     });
 
     it('counts a listing awaiting verification as live too', async () => {

@@ -159,6 +159,14 @@ the payment, not the post.
   short of approved stops the clock. Behind `PAYOUT_DEADLINE_ENABLED`
   (docs/OPERATIONS.md §8). The 75-day operator email still fires as the
   backstop.
+- **A deadline names its last day (2026-10-07,
+  `20261007120000_a_deadline_names_its_last_day.sql`).** Every term end and
+  payout deadline is stored as the midnight AFTER its last day
+  (`reward_term_end`), but every push and the app printed that midnight's
+  date: one day late, so "ends on 7 December" really ended at 00:00 on the
+  7th. The server's `last_day_text` and the app's `formatLastDay` now name the
+  last whole day. Found before any term ended or the payout deadline was
+  switched on, so nothing moved on a wrong day.
 
 ## Links
 

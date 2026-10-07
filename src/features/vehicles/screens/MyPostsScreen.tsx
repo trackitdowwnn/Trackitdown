@@ -36,7 +36,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useRequireAuth, useSession } from '@/features/auth';
 import { REWARD_RENEW_WINDOW_DAYS } from '@/shared/lib/bountyBounds';
-import { formatTermDate } from '@/shared/lib/dateTimeLabel';
+import { formatLastDay } from '@/shared/lib/dateTimeLabel';
 import { lightHaptic } from '@/shared/lib/haptics';
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import {
@@ -152,7 +152,7 @@ export function MyPostsScreen() {
           {endsSoon && item.rewardTermEndsAt ? (
             <Text style={styles.termNudge} testID={`reward-ends-${item.id}`}>
               {/* The listing's banner's own wording for the same window. */}
-              {`Reward ends on ${formatTermDate(item.rewardTermEndsAt, true)}`}
+              {`Reward ends on ${formatLastDay(item.rewardTermEndsAt, true)}`}
             </Text>
           ) : null}
         </View>

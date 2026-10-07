@@ -1,7 +1,8 @@
 /**
  * WHAT:  Tests for formatDateTimeLabel — the Today/Yesterday/Tomorrow day
  *        windows, the older-date fallback, local-midnight boundaries, and
- *        the unparseable-input guard.
+ *        the unparseable-input guard; formatLastDay's last day of a stored
+ *        term end or deadline (20261007120000).
  * WHY:   "When was the car last seen" answers render through this; calling
  *        yesterday evening "Today" would misinform every spotter reading
  *        the post. Time-of-day strings follow the device locale, so tests
@@ -14,8 +15,10 @@ import {
   formatDateLabel,
   formatDateLabelCompact,
   formatDateTimeLabel,
+  formatLastDay,
   formatListStamp,
   formatMonthYear,
+  formatTermDate,
 } from './dateTimeLabel';
 
 // A fixed local "now": Wednesday 8 July 2026, 15:00 local time.
@@ -156,5 +159,30 @@ describe('formatDateLabelCompact', () => {
 
   it('throws on unparseable input, like its siblings', () => {
     expect(() => formatDateLabelCompact('nope')).toThrow(/unparseable/);
+  });
+});
+
+// A term or deadline is stored as the midnight AFTER its last day
+// (reward_term_end). Showing that midnight's own date told owners and spotters
+// a day too late; these pin the last day, in BST and GMT, alongside the
+// server's last_day_text checks (supabase/tests/last_day_verification.sql).
+describe('formatLastDay', () => {
+  it('names the day before a London midnight end, in BST', () => {
+    // 00:00 BST on 24 October.
+    expect(formatLastDay('2026-10-23T23:00:00Z')).toBe('23 October');
+    expect(formatTermDate('2026-10-23T23:00:00Z')).toBe('24 October');
+  });
+
+  it('names the day before a London midnight end, in GMT, with the weekday', () => {
+    // 00:00 GMT on Sunday 6 December: the last day is Saturday 5 December.
+    expect(formatLastDay('2026-12-06T00:00:00Z', true)).toBe('Saturday 5 December');
+  });
+
+  it('keeps the day of an end that is not a midnight (the 85-day hard line)', () => {
+    expect(formatLastDay('2026-12-30T15:00:00Z')).toBe('30 December');
+  });
+
+  it('throws on an unparseable timestamp', () => {
+    expect(() => formatLastDay('not a date')).toThrow('formatLastDay got an unparseable timestamp');
   });
 });

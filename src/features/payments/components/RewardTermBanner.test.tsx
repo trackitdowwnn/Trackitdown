@@ -100,6 +100,15 @@ describe('RewardTermBanner', () => {
     expect(view.queryByText('Renew reward')).toBeNull();
   });
 
+  // 20261007120000: a term is stored as the midnight AFTER its last day. This
+  // one ends at 00:00 BST on Friday 16 October, so the owner has all of
+  // Thursday 15th — and is told so, not "Friday 16 October".
+  it('names the LAST DAY of a term stored as the following midnight', async () => {
+    const { view } = await mount(status({ termEndsAt: '2026-10-15T23:00:00Z' }));
+    expect(view.getByText('Your £200 reward ends on Thursday 15 October')).toBeTruthy();
+    expect(view.queryByText(/16 October/)).toBeNull();
+  });
+
   it('ENDING: no "ends on" for a date that has passed, and no Renew', async () => {
     const { view } = await mount(status({ termEndsAt: inDays(-1) }));
     expect(view.getByText(/^Your £200 reward ended on /)).toBeTruthy();

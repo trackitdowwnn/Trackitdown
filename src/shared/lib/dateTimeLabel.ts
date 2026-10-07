@@ -138,12 +138,12 @@ export function formatDateLabelCompact(iso: string, now: Date = new Date()): str
 }
 
 /**
- * A reward term's end date: "4 December" — day and month in full, in
- * EUROPE/LONDON regardless of the device's zone, because the server's reminder
- * push prints the same date with `at time zone 'Europe/London'`
- * (claim_reward_reminders) and the two must never disagree about the day a
- * reward ends. `withWeekday` gives "Thursday 4 December" for the last days.
- * @throws on an unparseable timestamp.
+ * The day something HAPPENED: "4 December" — day and month in full, in
+ * EUROPE/LONDON regardless of the device's zone, so it matches the server's
+ * pushes (`at time zone 'Europe/London'`). For an instant that is an event (a
+ * refund sent) or a plain day count ("now + 60 days"). NOT for a stored term
+ * end or deadline — use formatLastDay. `withWeekday` gives "Thursday
+ * 4 December". @throws on an unparseable timestamp.
  */
 export function formatTermDate(iso: string, withWeekday = false): string {
   const date = new Date(iso);
@@ -156,6 +156,24 @@ export function formatTermDate(iso: string, withWeekday = false): string {
     month: 'long',
     timeZone: 'Europe/London',
   });
+}
+
+/**
+ * The LAST DAY of something that ends at `endIso`: a reward term
+ * (`termEndsAt`) or a payout deadline. Those are stored as the instant they
+ * end, midnight at the START of the next London day (reward_term_end), so
+ * their own date is one day late: an end of 7 December 00:00 has 6 December as
+ * its last day. One millisecond earlier is still the last day; an end that
+ * is not a midnight (the capture + 85 hard line) keeps its own day. The
+ * server's last_day_text does the same, and the two must never disagree
+ * (20261007120000). @throws on an unparseable timestamp.
+ */
+export function formatLastDay(endIso: string, withWeekday = false): string {
+  const end = new Date(endIso);
+  if (Number.isNaN(end.getTime())) {
+    throw new Error(`formatLastDay got an unparseable timestamp: ${endIso}`);
+  }
+  return formatTermDate(new Date(end.getTime() - 1).toISOString(), withWeekday);
 }
 
 /** Month + year: "July 2026" — for "member since" style labels. @throws on

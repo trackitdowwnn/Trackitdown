@@ -31,7 +31,7 @@
  */
 
 import { REWARD_RENEW_WINDOW_DAYS } from '@/shared/lib/bountyBounds';
-import { formatTermDate } from '@/shared/lib/dateTimeLabel';
+import { formatLastDay, formatTermDate } from '@/shared/lib/dateTimeLabel';
 import { formatPounds } from '@/shared/lib/money';
 
 import type { RewardStatus } from '../api/rewardChangeApi';
@@ -109,7 +109,7 @@ export function rewardTermLine(status: RewardStatus | null, now: number): string
     return `The refund of your ${formatPounds(status.endedRewardPence as number)} reward went to your card on ${formatTermDate(status.rewardEndedAt as string)}.`;
   }
   const amount = formatPounds(status.amountPence as number);
-  const date = formatTermDate(status.termEndsAt as string);
+  const date = formatLastDay(status.termEndsAt as string);
   if (phase === 'ending') {
     // Past its date but still held: a claim decides where it goes, or the
     // 72-hour hold is running — never "refunded" yet.
