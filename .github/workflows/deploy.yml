@@ -53,7 +53,9 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    # PINNED (2026-10-07): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19.
+    # Move this deliberately, with a green run, not when GitHub flips a label.
+    runs-on: ubuntu-24.04
     # No `environment:` on purpose — it would need creating in repo settings
     # before the first run and failing there teaches nothing. Add
     # `environment: production` later if you want required reviewers gating
@@ -65,9 +67,9 @@ jobs:
       PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           # PINNED, not `latest`. Resolving `latest` costs a GitHub API call,
           # and on 2026-08-22 that call hit a rate limit and failed the deploy
