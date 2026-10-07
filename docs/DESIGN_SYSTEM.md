@@ -753,6 +753,13 @@ to use.
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
+  ⚠️ **Sanctioned exception (2026-10-07): an item being PROCESSED** — not
+  loading in, but worked on after the user acted — may carry ONE small
+  centred `ActivityIndicator` in `textSecondary` on its skeleton (≈4.7:1 on
+  `surfaceSubtle` light, ≈5.7:1 dark). Today: `PhotoGridPicker`'s pending
+  tiles while a picked photo is resized, and its add tile ("Adding photos…")
+  while the picker hands the picks back. Why: the pulse alone read as an
+  empty grey tile, and it stops entirely under reduced motion.
   Blocking waits show ONE face — `BrandLoader` (the mark + a rotating waiting
   phrase), rendered by both the cold-start splash and `FullscreenLoader`. The
   phrase is lit by a highlight sweeping left to right through its letters
