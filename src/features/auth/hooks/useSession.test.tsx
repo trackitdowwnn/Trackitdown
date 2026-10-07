@@ -21,7 +21,7 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
-import { useSession } from './useSession';
+import { getCurrentUserId, resetSessionSnapshot, useSession } from './useSession';
 
 const mockGetSession = jest.fn();
 const mockUnsubscribe = jest.fn();
@@ -62,6 +62,36 @@ beforeEach(() => {
   mockUnsubscribe.mockReset();
   mockMarkStartup.mockReset();
   authCallback = null;
+  resetSessionSnapshot();
+});
+
+describe('the session snapshot', () => {
+  // A screen pushed mid-session used to start on 'loading' again and put a
+  // loader on screen during its own slide-in (2026-10-07).
+  it('a later mount starts on the resolved session, with no loading beat', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: USER } } } });
+    const first = await renderHook(() => useSession());
+    await waitFor(() => expect(first.result.current.status).toBe('signedIn'));
+
+    const second = await renderHook(() => useSession());
+    expect(second.result.current).toEqual({ status: 'signedIn', userId: USER });
+    expect(getCurrentUserId()).toBe(USER);
+  });
+
+  it('signing out clears the current user', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: { user: { id: USER } } } });
+    const { result } = await renderHook(() => useSession());
+    await waitFor(() => expect(result.current.status).toBe('signedIn'));
+
+    await act(async () => {
+      authCallback?.('SIGNED_OUT', null);
+    });
+    expect(getCurrentUserId()).toBeNull();
+    // As the real client would after a sign-out.
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+    const later = await renderHook(() => useSession());
+    expect(later.result.current.status).toBe('signedOut');
+  });
 });
 
 describe('useSession', () => {

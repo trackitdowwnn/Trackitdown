@@ -8,7 +8,9 @@
  *        here than elsewhere, since a saved car is a plate; and refocus
  *        revalidates silently so a car added, edited or reported stolen appears
  *        on return without a manual pull (/my-cars is a pushed page, so coming
- *        back from the add flow refocuses it).
+ *        back from the add flow refocuses it). Seeds from the shared garage
+ *        cache, so a screen mounted after the garage is known renders it on
+ *        its first frame (the report flow's slide-up, 2026-10-07).
  * LINKS: src/features/garage/api/garageApi.ts;
  *        src/features/garage/screens/MyCarsScreen.tsx (consumer);
  *        src/features/vehicles/hooks/useMyPosts.ts (the pattern).
@@ -20,8 +22,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSession } from '@/features/auth';
 
 import { listMyVehicles } from '../api/garageApi';
-import { publishSavedCarCount } from '../lib/savedCarSignal';
+import { garageFor, isGarageFresh, publishGarage } from '../lib/savedCarSignal';
 import type { SavedVehicle } from '../types';
+
+/** A cached garage younger than this is trusted as-is on mount — the + button
+ *  loaded it moments ago, so the report host doesn't fetch it again. */
+const FRESH_ENOUGH_MS = 30_000;
 
 export type MyVehiclesStatus = 'loading' | 'ready' | 'error';
 
@@ -39,7 +45,15 @@ export function useMyVehicles(): UseMyVehiclesResult {
 
   // SAFETY: loaded data is keyed by user, so another user's (or a stale) garage
   // can never render. State writes happen after the await.
-  const [loaded, setLoaded] = useState<{ userId: string; vehicles: SavedVehicle[] } | null>(null);
+  // Seeded from the shared garage cache, so a screen that mounts after the
+  // garage is already known (the report host, during its slide-up) renders
+  // its real content on the FIRST frame instead of a loading beat.
+  const [loaded, setLoaded] = useState<{ userId: string; vehicles: SavedVehicle[] } | null>(
+    () => {
+      const cached = garageFor(userId);
+      return cached ? { userId: cached.userId, vehicles: cached.vehicles } : null;
+    },
+  );
   const [errorFor, setErrorFor] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -61,11 +75,11 @@ export function useMyVehicles(): UseMyVehiclesResult {
         .then((vehicles) => {
           setLoaded({ userId: uid, vehicles });
           setErrorFor(null);
-          // Prime the shared nudge signal for free — this screen has just paid
-          // for the answer, so the Profile row and the feed card never need to
-          // fetch it themselves. publishSavedCarCount no-ops when unchanged, so
-          // the refocus revalidation doesn't wake subscribers for nothing.
-          publishSavedCarCount(uid, vehicles.length);
+          // Prime the shared garage cache for free — this screen has just paid
+          // for the answer, so the nudges and the report flow never need to
+          // fetch it themselves. publishGarage no-ops when unchanged, so the
+          // refocus revalidation doesn't wake subscribers for nothing.
+          publishGarage(uid, vehicles);
         })
         .catch(() => {
           // listMyVehicles already logged the failure.
@@ -82,6 +96,18 @@ export function useMyVehicles(): UseMyVehiclesResult {
 
   useEffect(() => {
     if (session.status === 'loading' || !userId) {
+      return;
+    }
+    const cached = garageFor(userId);
+    if (cached) {
+      // Already showing the cached garage: never an error screen over it.
+      // Revalidate quietly unless it was loaded moments ago.
+      setLoaded((current) =>
+        current?.userId === userId ? current : { userId, vehicles: cached.vehicles },
+      );
+      if (!isGarageFresh(userId, FRESH_ENOUGH_MS)) {
+        void load('silent');
+      }
       return;
     }
     void load('initial');
