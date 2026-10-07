@@ -409,7 +409,14 @@ if that is later, and never past day 85, inside Stripe's 90-day hold.
   before day 90.
 - **Paying a spotter by hand?** Always set **transfer group = the post id** on
   the transfer. The sweep looks for transfers by group before it refunds, and
-  can't see one without it.
+  can't see one without it. If the lapse is already claimed (the payment has
+  `payout_lapse_claimed_at`), park it **first** with
+  `select public.block_payout_lapse('<post id>');` so the hourly sweep can't
+  refund the owner while you're paying.
+- **Turning the switch off is not an emergency stop for claimed rows.** A lapse
+  claimed before you switch off stays claimed: payouts refuse it and nothing
+  resumes it. Settle any such row by hand (refund the owner in full from the
+  Stripe dashboard; the webhook records it as the lapse).
 
 **A lapse found a transfer** (alert: "A credited reward past its payout
 deadline already has a Stripe transfer"). A payout reached Stripe that our
@@ -421,9 +428,11 @@ never refund it, and `release-payout` refuses it. Settle it by hand:
    95/5 split and refuses a mismatch, and moves payment and post together:
    `select public.mark_recovery_paid('<pi_…>', '<tr_…>', (select id from public.stripe_connected_accounts where profile_id = '<spotter id>'), <transfer pence>, <reward pence − transfer pence>);`.
    For example, a £200 reward is `19000, 1000`.
-3. If it is wrong, reverse the transfer in Stripe first, then clear the park
-   (`update public.payments set payout_lapse_blocked_at = null where post_id = '<post id>' and status = 'held';`).
-   The next sweep then refunds the owner.
+3. If it is wrong, reverse the transfer in Stripe, then refund the owner **in
+   full** from the Stripe dashboard. The webhook files that refund as the lapse
+   (`recovered_no_spotter`), and the next sweep sends both pushes. Don't clear
+   the park instead: a reversed transfer stays in the group, so the sweep
+   would find it and park the row again.
 
 Turn it on once the app update with the new notification kinds is live
 (`eas update:list`) and this migration is deployed. Then run the sweep once by

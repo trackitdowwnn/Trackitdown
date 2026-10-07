@@ -6,7 +6,8 @@
 --        FULL. The listing closes as recovered_no_spotter; the spotter's
 --        credit stays on their record.
 --          1. payments: payout_reminded_7d_at / _2d_at, payout_started_at,
---             payout_lapse_claimed_at / _blocked_at / _notified_at; and
+--             payout_lapse_claimed_at / _blocked_at / _notified_at /
+--             _attempted_at; and
 --             sightings.credited_at (1b), stamped by a trigger.
 --          2. payout_deadline(payment) — capture + 80 days, or 7 days after
 --             the credit if later; never past capture + 85.
@@ -51,7 +52,7 @@
 --
 -- SAFETY NOTE ON DESTRUCTIVE STATEMENTS: none dropped except the two kind
 --        CHECKs, dropped and re-added WIDER (every existing kind kept —
---        asserted). Seven additive nullable columns; one backfill (only the
+--        asserted). Eight additive nullable columns; one backfill (only the
 --        new sightings.credited_at, only on credited rows); one new trigger.
 --        `create or replace` on ONE existing function
 --        (reconcile_payment_refund, restated IN FULL from 20261006130000,
@@ -76,7 +77,8 @@ alter table public.payments
   add column payout_started_at        timestamptz,
   add column payout_lapse_claimed_at  timestamptz,
   add column payout_lapse_blocked_at  timestamptz,
-  add column payout_lapse_notified_at timestamptz;
+  add column payout_lapse_notified_at timestamptz,
+  add column payout_lapse_attempted_at timestamptz;
 
 comment on column public.payments.payout_started_at is
   'When the payout core (begin_payout) last began a transfer for this reward, under the post lock. A lapse cannot be claimed within an hour of it.';
@@ -84,6 +86,8 @@ comment on column public.payments.payout_lapse_claimed_at is
   'When the payout deadline claimed this reward for the owner (claim_payout_lapse): no payout may begin after it (begin_payout refuses), and its refund is in full. A claimed reward still held is RESUMED by every sweep until it is refunded, or parked (payout_lapse_blocked_at).';
 comment on column public.payments.payout_lapse_blocked_at is
   'A claimed lapse the sweep found Stripe already holds a transfer for: parked, NEVER refunded, after the operator alert was sent. Settled by hand (docs/OPERATIONS.md §8).';
+comment on column public.payments.payout_lapse_attempted_at is
+  'When the sweep last tried to finish this lapse (claim_payout_lapse): orders the work list least-recently-tried first, so a row that fails every run cannot starve the rest.';
 comment on column public.payments.payout_lapse_notified_at is
   'When the lapse''s pushes were claimed (claim_payout_lapse_notice), after the refund was recorded — by the sweep or the webhook, whichever landed first.';
 
@@ -396,7 +400,11 @@ grant execute on function public.begin_payout(uuid) to service_role;
 --              neither paid (begin_payout refuses) nor refunded (security and
 --              code review of this change, H1).
 --   'notify' — refunded (by the sweep or the webhook), pushes not yet claimed.
--- Oldest capture first: the nearest to Stripe's 90 days goes first.
+-- Order: pushes first (no money, never fail for long); then the rows tried
+-- least recently (never-tried first), so one that fails every run — a charge
+-- Stripe won't refund, a transfer alert that can't be emailed — goes to the
+-- back and cannot starve the rest; then the oldest capture, the nearest to
+-- Stripe's 90 days.
 create or replace function public.payouts_past_deadline(p_limit integer default 50)
 returns table (post_id uuid, payment_intent_id text, stage text)
 language sql
@@ -424,7 +432,9 @@ as $$
            and p.payout_lapse_claimed_at is not null
            and p.payout_lapse_notified_at is null)
      )
-   order by coalesce(p.captured_at, p.created_at)
+   order by (p.status = 'refunded') desc,
+            p.payout_lapse_attempted_at nulls first,
+            coalesce(p.captured_at, p.created_at)
    limit greatest(coalesce(p_limit, 50), 0);
 $$;
 
@@ -462,6 +472,9 @@ begin
   -- resumes the refund under the same key. The decision was made at the
   -- deadline; nothing below is re-asked.
   if v_claimed is not null then
+    -- Stamped per attempt: a row that fails every run (a charge Stripe will
+    -- not refund) goes to the back of the list, never starving newer ones.
+    update public.payments set payout_lapse_attempted_at = now() where id = v_pay_id;
     return jsonb_build_object('post_id', p_post_id, 'payment_intent_id', v_intent);
   end if;
 
@@ -477,8 +490,9 @@ begin
   -- The refund basis, fixed ON THE PAYMENT before any refund can start: in
   -- FULL (the owner's decision — they did nothing wrong).
   update public.payments
-     set payout_lapse_claimed_at = now(),
-         refund_fee_absorbed     = true
+     set payout_lapse_claimed_at   = now(),
+         payout_lapse_attempted_at = now(),
+         refund_fee_absorbed       = true
    where id = v_pay_id;
 
   return jsonb_build_object('post_id', p_post_id, 'payment_intent_id', v_intent);
@@ -529,11 +543,13 @@ declare
   v_owner   uuid;
   v_pay_id  uuid;
   v_amount  integer;
+  v_refund  integer;
   v_spotter uuid;
   v_sight   uuid;
 begin
   select owner_id into v_owner from public.posts where id = p_post_id for update;
-  select id, amount_pence into v_pay_id, v_amount
+  select id, amount_pence, coalesce(refunded_amount_pence, amount_pence)
+    into v_pay_id, v_amount, v_refund
     from public.payments
    where post_id = p_post_id
      and kind = 'bounty_escrow'
@@ -564,8 +580,11 @@ begin
       'title',   'Your reward is coming back to you',
       -- "credited with finding your car", not "you credited": a dispute
       -- winner was credited by us, not by the owner.
-      'body',    'The spotter credited with finding your car didn''t set up payouts in time, so your full '
-                 || public.pounds_text(v_amount)
+      -- The amount actually refunded: "full" only when it was (a partial
+      -- refund made by hand is recorded as the lapse too).
+      'body',    'The spotter credited with finding your car didn''t set up payouts in time, so '
+                 || case when v_refund >= v_amount then 'your full ' else '' end
+                 || public.pounds_text(v_refund)
                  || ' is going back to your card.'
     )
   );

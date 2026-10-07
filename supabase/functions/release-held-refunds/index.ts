@@ -639,18 +639,28 @@ Deno.serve(async (request) => {
           if (row.stage === 'lapse') {
             // (0) Can the spotter be paid? Stripe is the authority; our row is
             // synced first so the payout core below reads the truth.
-            const { data: credited } = await admin
+            // A failed read is "not this run", never "no account": skipping
+            // the Stripe check on an error would lapse on a stale row.
+            const { data: credited, error: creditedError } = await admin
               .from('sightings')
               .select('spotter_id')
               .eq('post_id', postId)
               .eq('status', 'credited')
               .maybeSingle();
-            if (!credited) continue;
-            const { data: payee } = await admin
+            if (creditedError || !credited) {
+              if (creditedError) console.error('[payments] payout deadline sighting read failed', creditedError.message);
+              continue;
+            }
+            const { data: payee, error: payeeError } = await admin
               .from('stripe_connected_accounts')
               .select('stripe_account_id, onboarding_complete, payouts_enabled')
               .eq('profile_id', credited.spotter_id)
               .maybeSingle();
+            if (payeeError) {
+              console.error('[payments] payout deadline payee read failed', payeeError.message);
+              summary.skipped += 1;
+              continue;
+            }
             if (payee?.stripe_account_id) {
               let account: { details_submitted?: boolean; payouts_enabled?: boolean } | null = null;
               try {
