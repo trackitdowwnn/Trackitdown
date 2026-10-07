@@ -2,10 +2,11 @@
  * WHAT:  PhotoGridPicker — Airbnb-listing-style photo grid: a full-width
  *        cover tile over a two-column grid, gallery multi-select with a
  *        secondary camera add, long-press drag-to-reorder (plus a ⋯ sheet
- *        with Make cover / Move / Remove for the no-drag path, and a "press
- *        and hold" hint under the grid once there are two photos, because
- *        nothing on a tile shows the long press), tap-to-preview full screen,
- *        a dismissible tips card, and a configurable min/max. Loading is
+ *        with Make cover / Move / Remove for the no-drag path), a how-to card
+ *        at the top of the step (which photo is the cover; press and hold to
+ *        move one — the two things a tile can't show), tap-to-preview full
+ *        screen, an optional dismissible tips card, and a configurable
+ *        min/max. Loading is
  *        visible end to end: "Adding photo(s)…" on the add tile while the
  *        picker hands the picks back, then a spinner on each placeholder
  *        while it is resized. A second SOURCE mode, `source="capture"`,
@@ -150,12 +151,14 @@ export type PhotoTileStatus =
  *  the user-facing story. Generic operational strings (sheet actions, upload
  *  status) stay fixed until a consumer needs them varied. */
 export interface PhotoGridCopy {
-  /** Tips card body; the card hides when tips is undefined. */
+  /** Optional tips card body; the card hides when tips is undefined (the
+   *  owner step's default has none). */
   tips?: string;
   coverPill: string;
+  /** First line of the how-to card at the top of the step (gallery mode),
+   *  shown from the start — so it explains the cover before there is one. */
   coverHint: string;
-  /** How to reorder, shown under the grid once there are two photos to
-   *  order (gallery mode). Hidden when undefined. */
+  /** Second line of that card: how to reorder. Hidden when undefined. */
   reorderHint?: string;
   addLabel: string;
   /** The add tile's label while a picker hands several picks back… */
@@ -179,11 +182,12 @@ export interface PhotoGridCopy {
 
 /** The posting wizard photo step's wording (docs/DOMAIN.md: owner photos). */
 export const defaultOwnerPhotoCopy: PhotoGridCopy = {
-  tips: 'Clear photos help spotters recognise your car — include the plate if you have a shot of it, plus any dents, stickers or unique details.',
+  // No tips card (owner's call, 2026-10-07): the step leads with the how-to
+  // card instead — the two things the grid itself can't show.
   coverPill: 'Cover photo',
-  coverHint: 'This is the first photo spotters will see.',
-  // One line on a phone: its space is held from the first photo (see the
-  // hint row), so a two-line hint left a visible gap above the camera link.
+  // Shown before any photo exists, so it names the cover rather than
+  // pointing at one ("This is…" pointed at nothing above an empty grid).
+  coverHint: 'Your first photo is the cover — spotters see it first.',
   reorderHint: 'Press and hold a photo to move it.',
   addLabel: 'Add photos',
   addingLabel: 'Adding photos…',
@@ -315,9 +319,6 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
   const slotCount = count + pendingCount + (showAddTile ? 1 : 0);
   const singlePhotoMode = maxPhotos === 1;
   const awaiting = awaitingPicker !== null;
-  // The same rule as GridTile's canDrag: the hint shows exactly when a drag
-  // would work.
-  const canReorder = !disabled && count > 1 && !captureMode;
   const addingLabel = awaitingPicker === 'one' ? copy.addingOneLabel : copy.addingLabel;
 
   // Announce count changes so non-visual users hear progress toward the min.
@@ -597,6 +598,47 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
         </View>
       ) : null}
 
+      {/* THE HOW-TO CARD, at the top and from the start: the two things the
+          grid itself can't show — which photo is the cover, and that a long
+          press moves a photo. Body text in textPrimary on a surfaceSubtle
+          card (owner's call, 2026-10-07: these were caption-grey lines under
+          the grid that people missed). Always present in gallery mode, so
+          adding photos never moves anything under the finger. */}
+      {/* Not when photo access is refused with nothing added: the settings
+          card below is the one thing to read then. */}
+      {!singlePhotoMode && !captureMode && !(permissionDenied && count === 0) ? (
+        <View style={styles.hints} testID={testID ? `${testID}-hints` : undefined}>
+          <View style={styles.hintRow}>
+            {/* An eye — "what spotters see" — not a star, which on its own
+                reads as "favourite". Decorative: the sentence says it all. */}
+            <Feather
+              name="eye"
+              size={sizes.iconSm}
+              color={palette.textPrimary}
+              style={styles.hintIcon}
+              accessible={false}
+              importantForAccessibility="no"
+            />
+            <Text style={styles.hintText}>{copy.coverHint}</Text>
+          </View>
+          {copy.reorderHint ? (
+            // Drag-to-reorder needs a long press first, which nothing on a
+            // tile shows. Hidden from screen readers: each tile's own hint
+            // gives THEIR gesture ("double-tap and hold") and the Move
+            // actions, and "press and hold" would be wrong for them.
+            <View
+              style={styles.hintRow}
+              importantForAccessibility="no-hide-descendants"
+              accessibilityElementsHidden
+              testID={testID ? `${testID}-reorder-hint` : undefined}
+            >
+              <Feather name="move" size={sizes.iconSm} color={palette.textPrimary} style={styles.hintIcon} />
+              <Text style={styles.hintText}>{copy.reorderHint}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
       <View
         style={[styles.grid, { height: gridHeight }]}
         onLayout={handleGridLayout}
@@ -704,7 +746,9 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
               </>
             ) : (
               <>
-                <Feather name="plus" size={typography.title.lineHeight} color={palette.textSecondary} />
+                {/* textPrimary: the how-to card above is body ink, and the
+                    action must still outweigh the instructions. */}
+                <Feather name="plus" size={typography.title.lineHeight} color={palette.textPrimary} />
                 <Text style={styles.addLabel}>{copy.addLabel}</Text>
                 {needMore > 0 ? <Text style={styles.addMore}>{copy.addMore(needMore)}</Text> : null}
                 {needMore === 0 && copy.addRemaining ? (
@@ -715,39 +759,6 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
           </Pressable>
         ) : null}
       </View>
-
-      {/* From the first PLACEHOLDER, not the first finished photo: arriving
-          with the pending tile means the camera link below moves once, with
-          the grid, instead of again a second or two later. */}
-      {count + pendingCount > 0 && !singlePhotoMode && !captureMode ? (
-        <View style={styles.hints}>
-          <View style={styles.hintRow}>
-            {/* An eye, not a star: nothing on the tile carries a star, and
-                under a grid a star reads as "favourite". */}
-            <Feather name="eye" size={sizes.iconSm} color={palette.textSecondary} />
-            <Text style={styles.hintText}>{copy.coverHint}</Text>
-          </View>
-          {copy.reorderHint ? (
-            // Drag-to-reorder needs a long press first, which nothing on the
-            // tile shows — so it is said here once there is an order to
-            // change. ALWAYS laid out from the first photo and only made
-            // visible at two: appearing at two would push "Take a photo
-            // instead" down under the finger of someone taking a second shot
-            // (DESIGN_SYSTEM: a control that moves under the finger is a bug).
-            // Hidden from screen readers: each tile's own hint gives THEIR
-            // gesture ("double-tap and hold") and the Move actions.
-            <View
-              style={[styles.hintRow, !canReorder && styles.hintRowHidden]}
-              importantForAccessibility="no-hide-descendants"
-              accessibilityElementsHidden
-              testID={testID ? `${testID}-reorder-hint` : undefined}
-            >
-              <Feather name="move" size={sizes.iconSm} color={palette.textSecondary} />
-              <Text style={styles.hintText}>{copy.reorderHint}</Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
 
       {allowCamera && !captureMode && remaining > 0 && !permissionDenied ? (
         <Pressable
@@ -1328,23 +1339,31 @@ const makeStyles = (c: Palette) =>
       ...typography.caption,
       color: c.textSecondary,
     },
+    // The how-to card: the tips card's quiet surface, but body-size text in
+    // textPrimary, because these lines are instructions, not decoration.
     hints: {
-      gap: spacing.xs,
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.lg,
+      padding: spacing.lg,
+      // md, not sm: a wrapped first line must not run into the second.
+      gap: spacing.md,
     },
-    // Icon then caption; the icon box equals the caption's line height, so
-    // top alignment lands it on the first line when the caption wraps.
     hintRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
-      gap: spacing.xs,
+      gap: spacing.md,
     },
-    hintRowHidden: {
-      opacity: 0,
+    // Centres the small icon on the FIRST line of body text, so it stays put
+    // when a line wraps (and follows the tokens if either size changes).
+    hintIcon: {
+      marginTop: (typography.body.lineHeight - sizes.iconSm) / 2,
     },
     hintText: {
-      ...typography.caption,
-      color: c.textSecondary,
+      ...typography.body,
+      color: c.textPrimary,
       flex: 1,
+      // Android's asymmetric font padding would sit the text off the icon.
+      includeFontPadding: false,
     },
     cameraRow: {
       flexDirection: 'row',
