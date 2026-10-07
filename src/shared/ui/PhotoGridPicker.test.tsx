@@ -1,7 +1,9 @@
 /**
  * WHAT:  Wiring tests for PhotoGridPicker — render states (empty, partial,
- *        at max, V5C single-photo), the gallery/camera pick pipelines
- *        (selection-limit maths, processing shimmer, resize fallback), the
+ *        at max, V5C single-photo, the reorder hint), the gallery/camera
+ *        pick pipelines (selection-limit maths, "Adding photos…" while the
+ *        picker hands photos back, processing tiles with their spinner,
+ *        cancel and picker-failure recovery, resize fallback), the
  *        permission-denied inline state, the ⋯ sheet actions with the
  *        cover-removal confirm, the full-screen preview (tap / sheet / a11y
  *        action), capture mode (add tile → onRequestCapture, no gallery
@@ -20,6 +22,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
+import { opacity } from '../theme';
 import { PhotoGridPicker, type PickedPhoto } from './PhotoGridPicker';
 
 jest.mock('react-native-reanimated', () => {
@@ -184,6 +187,35 @@ describe('render states', () => {
     expect(getByText('This is the first photo spotters will see.')).toBeTruthy();
   });
 
+  // Drag-to-reorder starts with a long press nothing on the tile shows, so it
+  // is said under the grid — once there are two photos to put in order.
+  // The hint row is hidden from screen readers (their tiles carry their own
+  // gesture), so these queries must include hidden elements.
+  const HIDDEN = { includeHiddenElements: true };
+
+  it('says how to reorder once there are two photos — its space held from the first', async () => {
+    const hint = 'Press and hold a photo to move it.';
+    const one = await renderPicker({ photos: photos(1) });
+    // Laid out but invisible at one photo, so appearing at two moves nothing
+    // (the camera link below it stays put under the finger).
+    expect(one.getByTestId('pgp-reorder-hint', HIDDEN)).toHaveStyle({ opacity: 0 });
+    await one.unmount();
+
+    const two = await renderPicker({ photos: photos(2) });
+    expect(two.getByText(hint, HIDDEN)).toBeTruthy();
+    expect(two.getByTestId('pgp-reorder-hint', HIDDEN)).not.toHaveStyle({ opacity: 0 });
+    expect(two.getByTestId('pgp-reorder-hint', HIDDEN).props.accessibilityElementsHidden).toBe(true);
+  });
+
+  it('no visible reorder hint where nothing can be reordered', async () => {
+    const disabled = await renderPicker({ photos: photos(3), disabled: true });
+    expect(disabled.getByTestId('pgp-reorder-hint', HIDDEN)).toHaveStyle({ opacity: 0 });
+    await disabled.unmount();
+
+    const capture = await renderPicker({ photos: photos(2), source: 'capture', onRequestCapture: jest.fn() });
+    expect(capture.queryByTestId('pgp-reorder-hint', HIDDEN)).toBeNull();
+  });
+
   it('at max: add tile and camera row disappear', async () => {
     const { queryByTestId } = await renderPicker({ photos: photos(6) });
     expect(queryByTestId('pgp-add')).toBeNull();
@@ -276,15 +308,162 @@ describe('gallery selection', () => {
       }),
     }));
     mockLaunchLibrary.mockResolvedValue({ canceled: false, assets: [photo(10, true)] });
-    const { getByTestId, queryByTestId } = await renderPicker();
+    const { getByTestId, getByText, queryByTestId } = await renderPicker();
     await act(async () => {
       fireEvent.press(getByTestId('pgp-add'));
     });
     expect(getByTestId('pgp-pending-0')).toBeTruthy();
+    // A spinner on the pulse: the pulse alone read as an empty grey tile.
+    expect(getByTestId('pgp-pending-0-spinner', { includeHiddenElements: true })).toBeTruthy();
+    // The hints arrive WITH the placeholder, so the camera link below moves
+    // once, with the grid — not again when the photo finishes.
+    expect(getByText('This is the first photo spotters will see.')).toBeTruthy();
     await act(async () => {
       releaseSave?.();
     });
     await waitFor(() => expect(queryByTestId('pgp-pending-0')).toBeNull());
+  });
+
+  // Android copies (and for cloud photos downloads) every pick before the
+  // picker's promise settles; nothing else on screen answers in that gap.
+  it('answers on the add tile while the picker is still handing photos back', async () => {
+    let resolvePick: ((value: unknown) => void) | undefined;
+    mockLaunchLibrary.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePick = resolve;
+      }),
+    );
+    const onChangePhotos = jest.fn();
+    const { getByTestId, getByText, queryByText, queryByTestId } = await renderPicker({
+      onChangePhotos,
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('pgp-add'));
+    });
+
+    expect(getByText('Adding photos…')).toBeTruthy();
+    expect(getByTestId('pgp-add-spinner', { includeHiddenElements: true })).toBeTruthy();
+    expect(getByTestId('pgp-add').props.accessibilityLabel).toBe('Adding photos…');
+    expect(getByTestId('pgp-add').props.accessibilityState).toEqual(
+      expect.objectContaining({ busy: true, disabled: true }),
+    );
+    // Neither way in opens a second picker on top of the first.
+    await fireEvent.press(getByTestId('pgp-add'));
+    await fireEvent.press(getByTestId('pgp-camera'));
+    expect(mockLaunchLibrary).toHaveBeenCalledTimes(1);
+    expect(mockLaunchCamera).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolvePick?.({ canceled: false, assets: [photo(10)] });
+    });
+    await waitFor(() => expect(onChangePhotos).toHaveBeenCalled());
+    expect(queryByText('Adding photos…')).toBeNull();
+    expect(queryByTestId('pgp-add-spinner', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('a cancelled pick puts the add tile straight back', async () => {
+    let resolvePick: ((value: unknown) => void) | undefined;
+    mockLaunchLibrary.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePick = resolve;
+      }),
+    );
+    const { getByTestId, getByText, queryByText } = await renderPicker();
+    await act(async () => {
+      fireEvent.press(getByTestId('pgp-add'));
+    });
+    expect(getByText('Adding photos…')).toBeTruthy();
+    await act(async () => {
+      resolvePick?.({ canceled: true, assets: null });
+    });
+    expect(queryByText('Adding photos…')).toBeNull();
+    expect(getByText('Add photos')).toBeTruthy();
+    // And the one-picker guard was released: the next tap opens a picker.
+    mockLaunchLibrary.mockResolvedValue({ canceled: true, assets: null });
+    await fireEvent.press(getByTestId('pgp-add'));
+    expect(mockLaunchLibrary).toHaveBeenCalledTimes(2);
+  });
+
+  it('a picker that fails resets quietly, and the next tap still works', async () => {
+    mockLaunchLibrary.mockRejectedValueOnce(new Error('picker unavailable'));
+    const { getByTestId, getByText, queryByText } = await renderPicker();
+    await fireEvent.press(getByTestId('pgp-add'));
+    expect(queryByText('Adding photos…')).toBeNull();
+    expect(getByText('Add photos')).toBeTruthy();
+    mockLaunchLibrary.mockResolvedValue({ canceled: true, assets: null });
+    await fireEvent.press(getByTestId('pgp-add'));
+    expect(mockLaunchLibrary).toHaveBeenCalledTimes(2);
+  });
+
+  it('a permission request that throws reads as not granted, and the next tap still works', async () => {
+    mockRequestLibraryPermission.mockRejectedValueOnce(new Error('permission module failed'));
+    const { getByTestId, queryByTestId } = await renderPicker();
+    await fireEvent.press(getByTestId('pgp-add'));
+    expect(mockLaunchLibrary).not.toHaveBeenCalled();
+    // Not the permanent-denial settings card: a failure we can't explain.
+    expect(queryByTestId('pgp-permission')).toBeNull();
+    mockLaunchLibrary.mockResolvedValue({ canceled: true, assets: null });
+    await fireEvent.press(getByTestId('pgp-add'));
+    expect(mockLaunchLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  it('one slot left in the library says "Adding photo…", singular', async () => {
+    mockLaunchLibrary.mockReturnValue(new Promise(() => {}));
+    const { getByTestId, getByText } = await renderPicker({ photos: photos(5) });
+    // One press per act: the handler is still awaiting the picker, so
+    // awaiting the press itself would never return.
+    await act(async () => {
+      fireEvent.press(getByTestId('pgp-add'));
+    });
+    expect(getByText('Adding photo…')).toBeTruthy();
+  });
+
+  // `disabled` only lands on the next render, and the permission prompt comes
+  // before it: two taps in that window must still open ONE picker.
+  it('two quick taps open one picker, even before the tile re-renders', async () => {
+    // The permission answer is held back, so the tile cannot have disabled
+    // itself yet: only the synchronous guard can stop the later taps.
+    let grant: ((value: unknown) => void) | undefined;
+    mockRequestLibraryPermission.mockReturnValue(
+      new Promise((resolve) => {
+        grant = resolve;
+      }),
+    );
+    mockLaunchLibrary.mockResolvedValue({ canceled: true, assets: null });
+    const { getByTestId } = await renderPicker();
+    // One press per act (several in one act overlap); none of them awaits
+    // the handler, which is still waiting on the permission answer.
+    for (const id of ['pgp-add', 'pgp-add', 'pgp-camera']) {
+      await act(async () => {
+        fireEvent.press(getByTestId(id));
+      });
+    }
+    expect(mockRequestLibraryPermission).toHaveBeenCalledTimes(1);
+    expect(mockRequestCameraPermission).not.toHaveBeenCalled();
+    await act(async () => {
+      grant?.(granted);
+    });
+    expect(mockLaunchLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  it('one photo on its way says so in the singular, and the camera link dims', async () => {
+    let resolveShot: ((value: unknown) => void) | undefined;
+    mockLaunchCamera.mockReturnValue(
+      new Promise((resolve) => {
+        resolveShot = resolve;
+      }),
+    );
+    const { getByTestId, getByText } = await renderPicker({ photos: photos(1) });
+    await act(async () => {
+      fireEvent.press(getByTestId('pgp-camera'));
+    });
+    expect(getByText('Adding photo…')).toBeTruthy();
+    // Disabled while a picker is out, and looks it.
+    expect(getByTestId('pgp-camera')).toHaveStyle({ opacity: opacity.disabled });
+    await act(async () => {
+      resolveShot?.({ canceled: true, assets: null });
+    });
+    expect(getByTestId('pgp-camera')).not.toHaveStyle({ opacity: opacity.disabled });
   });
 
   it('a failed resize keeps the original photo — never blocks', async () => {
