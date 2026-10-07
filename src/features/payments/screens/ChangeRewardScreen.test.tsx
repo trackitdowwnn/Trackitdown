@@ -216,10 +216,13 @@ describe('ChangeRewardScreen', () => {
   });
 
   it('keeping the amount RENEWS it — labelled as a renewal, the old reward still refunded minus the fee', async () => {
+    // Both terms end at a London midnight, as every stored term does
+    // (20261007120000): the copy names the LAST day, the one before.
     mockFetchStatus
-      .mockResolvedValueOnce(status())
-      .mockResolvedValueOnce(status({ rewardId: 'r2', termEndsAt: '2027-01-29T10:00:00Z' }));
+      .mockResolvedValueOnce(status({ termEndsAt: '2026-12-01T00:00:00Z' }))
+      .mockResolvedValueOnce(status({ rewardId: 'r2', termEndsAt: '2027-01-30T00:00:00Z' }));
     const view = await mount();
+    expect(view.getByText(/offers a £200 reward until 30 November\./)).toBeTruthy();
     expect(view.getByText(/Keep the amount to renew it for 60 days from today/)).toBeTruthy();
     expect(view.getByText('Runs until')).toBeTruthy();
     // The renewal's REAL cost is named first: the card fee on the old reward.

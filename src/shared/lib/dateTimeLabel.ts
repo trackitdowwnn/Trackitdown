@@ -1,7 +1,10 @@
 /**
  * WHAT:  Date/time display formatting — an ISO timestamp rendered as a
  *        friendly local-time label: "Today, 14:30", "Yesterday, 09:00",
- *        "Tomorrow, 10:00", then "Mon 6 Jul, 14:30" beyond a day away.
+ *        "Tomorrow, 10:00", then "Mon 6 Jul, 14:30" beyond a day away. Also
+ *        the money dates, always in EUROPE/LONDON: formatTermDate (the day
+ *        something happened) and formatLastDay (the last whole day of a
+ *        reward term or payout deadline, stored as the midnight after it).
  * WHY:   Wherever a picked or recorded moment is shown (the last-seen field,
  *        post detail, moderation), the same phrasing must appear. Relative
  *        day names cover the window victims actually reason about ("when
@@ -10,10 +13,19 @@
  *        2:30 PM) — deliberately not a fixed format and not a date-fns
  *        dependency. The day words (Today/Yesterday/Tomorrow) are English
  *        only: fine for the UK-only launch, but this is NOT localised
- *        output — revisit alongside any i18n work.
+ *        output — revisit alongside any i18n work. The money dates ignore the
+ *        device's zone on purpose: the server's pushes word the same dates
+ *        in Europe/London, and an owner abroad must not read a different
+ *        last day in the app than in the notification.
  * LINKS: src/features/vehicles/post/components/LastSeenTimeField.tsx (consumer);
+ *        src/features/payments/components/RewardTermBanner.tsx,
+ *        src/features/payments/lib/rewardTerm.ts,
+ *        src/features/payments/screens/ChangeRewardScreen.tsx,
+ *        src/features/vehicles/screens/MyPostsScreen.tsx (money-date consumers);
  *        src/shared/lib/calendarDates.ts (the picker's own day labels);
- *        src/shared/lib/timeAgo.ts (elapsed-time sibling); docs/TESTING.md.
+ *        src/shared/lib/timeAgo.ts (elapsed-time sibling); docs/TESTING.md;
+ *        supabase/migrations/20261007120000_a_deadline_names_its_last_day.sql
+ *          (last_day_text — formatLastDay's server twin; they must agree).
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -138,12 +150,12 @@ export function formatDateLabelCompact(iso: string, now: Date = new Date()): str
 }
 
 /**
- * A reward term's end date: "4 December" — day and month in full, in
- * EUROPE/LONDON regardless of the device's zone, because the server's reminder
- * push prints the same date with `at time zone 'Europe/London'`
- * (claim_reward_reminders) and the two must never disagree about the day a
- * reward ends. `withWeekday` gives "Thursday 4 December" for the last days.
- * @throws on an unparseable timestamp.
+ * The day something HAPPENED: "4 December" — day and month in full, in
+ * EUROPE/LONDON regardless of the device's zone, so it matches the server's
+ * pushes (`at time zone 'Europe/London'`). For an instant that is an event (a
+ * refund sent) or a plain day count ("now + 60 days"). NOT for a stored term
+ * end or deadline — use formatLastDay. `withWeekday` gives "Thursday
+ * 4 December". @throws on an unparseable timestamp.
  */
 export function formatTermDate(iso: string, withWeekday = false): string {
   const date = new Date(iso);
@@ -156,6 +168,35 @@ export function formatTermDate(iso: string, withWeekday = false): string {
     month: 'long',
     timeZone: 'Europe/London',
   });
+}
+
+/**
+ * The last WHOLE day of something that ends at `endIso`: a reward term
+ * (`termEndsAt`) or a payout deadline — the London calendar day before the one
+ * the end falls on. Those are stored as the instant they end, normally
+ * midnight at the START of the next London day (reward_term_end), so their own
+ * date is one day late: an end of 7 December 00:00 has 6 December as its last
+ * day. An end the capture + 85 hard line cuts partway through a day (15:00 on
+ * 30 December) names the day before too (29 December): never a day that is
+ * not wholly theirs. Calendar arithmetic, no epsilon — the server's
+ * last_day_text is the same rule, and the two must never disagree
+ * (20261007120000). @throws on an unparseable timestamp.
+ */
+export function formatLastDay(endIso: string, withWeekday = false): string {
+  const end = new Date(endIso);
+  if (Number.isNaN(end.getTime())) {
+    throw new Error(`formatLastDay got an unparseable timestamp: ${endIso}`);
+  }
+  // The London calendar date the end falls on. en-GB numeric is DD/MM/YYYY —
+  // the same toLocaleDateString-with-timeZone the app already relies on, so
+  // nothing newer is asked of Hermes' Intl.
+  const [day, month, year] = end
+    .toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'numeric', year: 'numeric' })
+    .split('/')
+    .map(Number);
+  // Noon UTC on the day before is that same date in London, whatever its
+  // offset; Date.UTC rolls day 0 back into the previous month.
+  return formatTermDate(new Date(Date.UTC(year, month - 1, day - 1, 12)).toISOString(), withWeekday);
 }
 
 /** Month + year: "July 2026" — for "member since" style labels. @throws on

@@ -34,14 +34,15 @@
  * LINKS: ../lib/rewardTerm.ts (the phases); ../hooks/useMyRewardStatus.ts;
  *        src/features/vehicles/screens/PostDetailScreen.tsx (the mount);
  *        src/features/vehicles/components/StillMissingBanner.tsx (the pattern);
- *        src/shared/lib/dateTimeLabel.ts (formatTermDate, Europe/London);
+ *        src/shared/lib/dateTimeLabel.ts (formatLastDay for the term's last
+ *        day, formatTermDate for the refund's day; Europe/London);
  *        docs/decisions/ADR-0020-a-reward-has-a-term.md.
  */
 
 import { StyleSheet, Text, View } from 'react-native';
 
 import { REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
-import { formatTermDate } from '@/shared/lib/dateTimeLabel';
+import { formatLastDay, formatTermDate } from '@/shared/lib/dateTimeLabel';
 import { refundPence, formatPounds } from '@/shared/lib/money';
 import { radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button } from '@/shared/ui';
@@ -92,16 +93,19 @@ export function RewardTermBanner({ status, readAt, onRenew, onAddReward }: Rewar
       : `${formatPounds(refundPence(status.amountPence as number))} comes back to your card`;
 
     if (phase === 'ending') {
-      title = `Your ${amount} reward ended on ${formatTermDate(termEndsAt)}`;
+      title = `Your ${amount} reward ended on ${formatLastDay(termEndsAt)}`;
       body = status.blockedMessage
         ? 'It stays held while the recovery or dispute on your listing is sorted out. Your listing stays up.'
         : `We’re returning it — ${back}. Your listing stays up.`;
     } else if (phase === 'blocked') {
-      title = `Your ${amount} reward ends on ${formatTermDate(termEndsAt, true)}`;
+      title = `Your ${amount} reward ends on ${formatLastDay(termEndsAt, true)}`;
       body = 'It stays held while the recovery or dispute on your listing is sorted out, and can’t be renewed until then.';
     } else {
-      title = `Your ${amount} reward ends on ${formatTermDate(termEndsAt, true)}`;
-      body = `Renew it to keep a reward on your listing for another ${REWARD_TERM_DAYS} days. If you don’t, ${back}, and your listing stays up.`;
+      title = `Your ${amount} reward ends on ${formatLastDay(termEndsAt, true)}`;
+      // "From the day you renew", not "another": a renewal is a fresh term
+      // starting that day (ChangeRewardScreen says the same), so renewing
+      // early does not add 60 days to the date above.
+      body = `Renew it to keep a reward on your listing for ${REWARD_TERM_DAYS} days from the day you renew. If you don’t, ${back}, and your listing stays up.`;
       action = { label: 'Renew reward', onPress: onRenew, hint: 'Opens the reward screen' };
     }
   }

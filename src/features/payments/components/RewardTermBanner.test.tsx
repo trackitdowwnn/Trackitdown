@@ -76,6 +76,10 @@ describe('RewardTermBanner', () => {
   it('RENEW WINDOW: "ends on", the refund FIGURE if they don’t, the listing stays up, and Renew', async () => {
     const { view, onRenew } = await mount(status({ termEndsAt: inDays(9) }));
     expect(view.getByText(/^Your £200 reward ends on /)).toBeTruthy();
+    // A renewal is a fresh term from that day — never "another 60 days" on
+    // top of the date above.
+    expect(view.getByText(/^Renew it to keep a reward on your listing for 60 days from the day you renew\./)).toBeTruthy();
+    expect(view.queryByText(/another 60 days/)).toBeNull();
     expect(
       view.getByText(
         new RegExp(
@@ -98,6 +102,15 @@ describe('RewardTermBanner', () => {
     expect(view.getByText(/stays held while the recovery or dispute on your listing is sorted out/)).toBeTruthy();
     expect(view.queryByText(/comes back to your card/)).toBeNull();
     expect(view.queryByText('Renew reward')).toBeNull();
+  });
+
+  // 20261007120000: a term is stored as the midnight AFTER its last day. This
+  // one ends at 00:00 BST on Friday 16 October, so the owner has all of
+  // Thursday 15th — and is told so, not "Friday 16 October".
+  it('names the LAST DAY of a term stored as the following midnight', async () => {
+    const { view } = await mount(status({ termEndsAt: '2026-10-15T23:00:00Z' }));
+    expect(view.getByText('Your £200 reward ends on Thursday 15 October')).toBeTruthy();
+    expect(view.queryByText(/16 October/)).toBeNull();
   });
 
   it('ENDING: no "ends on" for a date that has passed, and no Renew', async () => {

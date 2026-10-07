@@ -48,7 +48,7 @@ import {
   MIN_BOUNTY_PENCE,
   REWARD_TERM_DAYS,
 } from '@/shared/lib/bountyBounds';
-import { formatTermDate } from '@/shared/lib/dateTimeLabel';
+import { formatLastDay, formatTermDate } from '@/shared/lib/dateTimeLabel';
 import { PaymentError } from '@/shared/lib/functionError';
 import { createLogger } from '@/shared/lib/logger';
 import { LISTING_FEE_PENCE, refundPence, formatPounds } from '@/shared/lib/money';
@@ -190,6 +190,8 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
   // the same reward. It costs the card fee on the old payment, which the
   // summary says, so it is a choice the owner makes knowingly — not a no-op.
   const isRenewal = !isAdd && currentPence !== null && chosen === currentPence;
+  // formatTermDate, not formatLastDay: today + 60 days IS the new last day
+  // (the stored end is reward_term_end of it, the midnight after).
   const newTermEnds = formatTermDate(new Date(loadedAt + TERM_MS).toISOString());
 
   const submit = useCallback(async () => {
@@ -225,7 +227,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
                 ? `Your listing now offers a ${formatPounds(next.amountPence ?? chosen)} reward.`
                 : isRenewal
                   ? next.termEndsAt
-                    ? `Your reward is renewed until ${formatTermDate(next.termEndsAt)}.`
+                    ? `Your reward is renewed until ${formatLastDay(next.termEndsAt)}.`
                     : 'Your reward is renewed.'
                   : `Your reward is now ${formatPounds(next.amountPence ?? chosen)}.`,
             );
@@ -325,7 +327,7 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
             : 'Offer a reward to whoever finds your car. Spotters see it on your listing as soon as it’s paid.'
           : currentPence !== null
             ? `Your listing offers a ${formatPounds(currentPence)} reward${
-                status.termEndsAt ? ` until ${formatTermDate(status.termEndsAt)}` : ''
+                status.termEndsAt ? ` until ${formatLastDay(status.termEndsAt)}` : ''
               }. Keep the amount to renew it for ${REWARD_TERM_DAYS} days from today, or choose a new one.${
                 status.hasRecentSightings ? ` ${LOWERING_RULE_SENTENCE}` : ''
               }`
