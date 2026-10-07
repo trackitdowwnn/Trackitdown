@@ -169,7 +169,7 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
             We’re looking into it
           </Text>
           <Text style={styles.cardBody}>
-            Thanks — the bounty stays put while a person reviews the sighting trail. We’ll
+            Thanks — the reward stays put while a person reviews the sighting trail. We’ll
             let you know either way.
           </Text>
         </View>
@@ -199,7 +199,7 @@ export function SightingDisputeScreen({ sightingId }: SightingDisputeScreenProps
             This one isn’t coming to you
           </Text>
           <Text style={styles.cardBody}>
-            We looked into it carefully, and this bounty won’t be paid out for your
+            We looked into it carefully, and this reward won’t be paid out for your
             sighting. Thank you for reporting it — it still counts.
           </Text>
         </View>

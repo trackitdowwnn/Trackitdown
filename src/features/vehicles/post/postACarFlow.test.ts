@@ -115,6 +115,15 @@ describe('postACarFlow structure', () => {
     expect(review?.({ pricingMode: 'fee' })).toBe('No reward · £5 fee');
     expect(review?.({ pricingMode: 'bounty' })).toBe('Reward offered');
   });
+
+  // The copy glossary (ADR-0014, 2026-09-21): "reward" is the word an owner
+  // reads; "bounty" stays in code identifiers only. The money step was the
+  // one the glossary pass missed.
+  it('names the money step and its review row "reward", never "bounty"', () => {
+    const step = stepById('bounty');
+    expect(step.question).toBe('Set a reward');
+    expect(step.reviewLabel).toBe('Reward');
+  });
 });
 
 describe('step gating', () => {

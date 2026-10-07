@@ -53,7 +53,7 @@ export const CREATE_POST_ERROR_MESSAGES: Record<string, string> = {
   MISSING_REQUIRED: 'Some required details are missing. Go back and check each step.',
   // Derived, so this can never quote a floor the database has stopped
   // enforcing — which it did, saying £50 for nine days after it became £10.
-  BOUNTY_OUT_OF_RANGE: `The bounty must be between ${formatPounds(MIN_BOUNTY_PENCE)} and ${formatPounds(MAX_BOUNTY_PENCE)}.`,
+  BOUNTY_OUT_OF_RANGE: `The reward must be between ${formatPounds(MIN_BOUNTY_PENCE)} and ${formatPounds(MAX_BOUNTY_PENCE)}.`,
   PHOTO_COUNT: 'Add between 3 and 6 photos of your car.',
   INVALID_STOLEN_FROM: 'Where it was taken from wasn’t recognised. Please reselect it.',
   INVALID_KEYS_TAKEN: 'The “keys taken” answer wasn’t recognised. Please reselect it.',

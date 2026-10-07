@@ -61,7 +61,7 @@ export function ExitAttestation({
       </Text>
       <Text style={styles.body}>
         People reported seeing your car in the last two weeks. If one of them led you to
-        it, they’ve earned the bounty.
+        it, they’ve earned the reward.
       </Text>
 
       {status === 'loading' ? <Text style={styles.body}>Loading the sightings…</Text> : null}

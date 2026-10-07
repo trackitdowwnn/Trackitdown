@@ -462,7 +462,7 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
         <View style={styles.bountyGuidance}>
           <Text style={styles.bountyGuidanceLead}>
             {recommendation.basis === 'reach'
-              ? `Around ${formatPounds(recommendation.midPence)} reaches most spotters reporting near here`
+              ? `Around ${formatPounds(recommendation.midPence)} reaches most spotters watching this area`
               : `Most owners near here offer ${formatPounds(recommendation.lowPence)}–${formatPounds(recommendation.highPence)}`}
           </Text>
           <Pressable
@@ -484,7 +484,7 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
       ) : null}
 
       <MoneySlider
-        label="Bounty"
+        label="Reward"
         valuePence={bountyPence}
         onChangePence={onChangePence}
         minPence={MIN_BOUNTY_PENCE}
