@@ -172,19 +172,21 @@ beforeEach(() => {
 });
 
 describe('render states', () => {
-  it('empty: full-width add tile with the gentle minimum copy, no cover hint', async () => {
-    const { getByTestId, getByText, queryByText } = await renderPicker();
+  it('empty: full-width add tile with the gentle minimum copy, under the how-to card', async () => {
+    const { getByTestId, getByText } = await renderPicker();
     expect(getByTestId('pgp-add')).toBeTruthy();
     expect(getByText('Add at least 3 more')).toBeTruthy();
-    expect(queryByText('This is the first photo spotters will see.')).toBeNull();
+    // The card leads the step before any photo exists, so adding one never
+    // moves anything under the finger.
+    expect(getByText('Your first photo is the cover — it’s what spotters see first.')).toBeTruthy();
   });
 
-  it('partial: photos render, cover pill on the first only, hint appears', async () => {
+  it('partial: photos render, cover pill on the first only, the card stays', async () => {
     const { getAllByText, getByText, getByTestId } = await renderPicker({ photos: photos(3) });
     expect(getByTestId('pgp-photo-0')).toBeTruthy();
     expect(getByTestId('pgp-photo-2')).toBeTruthy();
     expect(getAllByText('Cover photo')).toHaveLength(1);
-    expect(getByText('This is the first photo spotters will see.')).toBeTruthy();
+    expect(getByText('Your first photo is the cover — it’s what spotters see first.')).toBeTruthy();
   });
 
   // Drag-to-reorder starts with a long press nothing on the tile shows, so it
@@ -193,27 +195,24 @@ describe('render states', () => {
   // gesture), so these queries must include hidden elements.
   const HIDDEN = { includeHiddenElements: true };
 
-  it('says how to reorder once there are two photos — its space held from the first', async () => {
-    const hint = 'Press and hold a photo to move it.';
-    const one = await renderPicker({ photos: photos(1) });
-    // Laid out but invisible at one photo, so appearing at two moves nothing
-    // (the camera link below it stays put under the finger).
-    expect(one.getByTestId('pgp-reorder-hint', HIDDEN)).toHaveStyle({ opacity: 0 });
-    await one.unmount();
-
-    const two = await renderPicker({ photos: photos(2) });
-    expect(two.getByText(hint, HIDDEN)).toBeTruthy();
-    expect(two.getByTestId('pgp-reorder-hint', HIDDEN)).not.toHaveStyle({ opacity: 0 });
-    expect(two.getByTestId('pgp-reorder-hint', HIDDEN).props.accessibilityElementsHidden).toBe(true);
+  it('the how-to card sits at the TOP of the step, both lines, from the start', async () => {
+    const { getByTestId, getByText, toJSON } = await renderPicker();
+    expect(getByText('Press and hold a photo to move it.', HIDDEN)).toBeTruthy();
+    // Screen readers get their own gesture from each tile instead.
+    expect(getByTestId('pgp-reorder-hint', HIDDEN).props.accessibilityElementsHidden).toBe(true);
+    // Above the grid: the card is the first thing in the step.
+    const root = toJSON() as { children: { props: { testID?: string } }[] };
+    expect(root.children[0].props.testID).toBe('pgp-hints');
+    expect(getByTestId('pgp-hints')).toBeTruthy();
   });
 
-  it('no visible reorder hint where nothing can be reordered', async () => {
-    const disabled = await renderPicker({ photos: photos(3), disabled: true });
-    expect(disabled.getByTestId('pgp-reorder-hint', HIDDEN)).toHaveStyle({ opacity: 0 });
-    await disabled.unmount();
-
+  it('no how-to card where there is no cover and no order', async () => {
     const capture = await renderPicker({ photos: photos(2), source: 'capture', onRequestCapture: jest.fn() });
-    expect(capture.queryByTestId('pgp-reorder-hint', HIDDEN)).toBeNull();
+    expect(capture.queryByTestId('pgp-hints', HIDDEN)).toBeNull();
+    await capture.unmount();
+
+    const single = await renderPicker({ minPhotos: 1, maxPhotos: 1 });
+    expect(single.queryByTestId('pgp-hints', HIDDEN)).toBeNull();
   });
 
   it('at max: add tile and camera row disappear', async () => {
@@ -237,13 +236,21 @@ describe('render states', () => {
       maxPhotos: 1,
     });
     expect(queryByText('Cover photo')).toBeNull();
-    expect(queryByText('This is the first photo spotters will see.')).toBeNull();
+    expect(queryByText('Your first photo is the cover — it’s what spotters see first.')).toBeNull();
     expect(getByTestId('pgp-photo-0').props.accessibilityLabel).toBe('Photo 1 of 1');
   });
 
-  it('tips card shows and dismisses via the consumer callback', async () => {
+  it('the owner step has no tips card by default (owner’s call, 2026-10-07)', async () => {
+    const { queryByText } = await renderPicker();
+    expect(queryByText(/Clear photos help spotters/)).toBeNull();
+  });
+
+  it('a consumer’s tips card still shows and dismisses via its callback', async () => {
     const onDismissTips = jest.fn();
-    const { getByTestId, getByText } = await renderPicker({ onDismissTips });
+    const { getByTestId, getByText } = await renderPicker({
+      onDismissTips,
+      copy: { tips: 'Clear photos help spotters recognise your car.' },
+    });
     expect(getByText(/Clear photos help spotters/)).toBeTruthy();
     fireEvent.press(getByTestId('pgp-dismiss-tips'));
     expect(onDismissTips).toHaveBeenCalled();
@@ -308,16 +315,13 @@ describe('gallery selection', () => {
       }),
     }));
     mockLaunchLibrary.mockResolvedValue({ canceled: false, assets: [photo(10, true)] });
-    const { getByTestId, getByText, queryByTestId } = await renderPicker();
+    const { getByTestId, queryByTestId } = await renderPicker();
     await act(async () => {
       fireEvent.press(getByTestId('pgp-add'));
     });
     expect(getByTestId('pgp-pending-0')).toBeTruthy();
     // A spinner on the pulse: the pulse alone read as an empty grey tile.
     expect(getByTestId('pgp-pending-0-spinner', { includeHiddenElements: true })).toBeTruthy();
-    // The hints arrive WITH the placeholder, so the camera link below moves
-    // once, with the grid — not again when the photo finishes.
-    expect(getByText('This is the first photo spotters will see.')).toBeTruthy();
     await act(async () => {
       releaseSave?.();
     });
@@ -793,7 +797,7 @@ describe('capture mode (evidence review)', () => {
       photos: [evidence(0), evidence(1)],
     });
     expect(queryByText('Cover photo')).toBeNull();
-    expect(queryByText('This is the first photo spotters will see.')).toBeNull();
+    expect(queryByText('Your first photo is the cover — it’s what spotters see first.')).toBeNull();
     expect(queryByTestId('pgp-camera')).toBeNull();
     // Uniform labels — no cover prefix on the first tile.
     expect(getByTestId('pgp-photo-0').props.accessibilityLabel).toBe('Photo 1 of 2');
