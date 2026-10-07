@@ -25,14 +25,18 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    # PINNED (2026-10-07): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19.
+    # Move this deliberately, with a green run, not when GitHub flips a label.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # 24: what the app is developed and tested on (Node 20 reached end of
+          # life in April 2026).
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -147,14 +151,18 @@ jobs:
   # keeping it apart means a lint failure and an RLS failure are told apart at a
   # glance.
   db:
-    runs-on: ubuntu-latest
+    # PINNED (2026-10-07): `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19.
+    # Move this deliberately, with a green run, not when GitHub flips a label.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # 24: what the app is developed and tested on (Node 20 reached end of
+          # life in April 2026).
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
