@@ -142,9 +142,19 @@ the payment, not the post.
   still delists, and keeps the spotters' window. A stale "found it another
   way" is finished as that recovery refund at the end of the term. Behind
   `REWARD_EXPIRY_ENABLED`, turned on with the notices (docs/OPERATIONS.md §8).
-- **Still by hand:** a credited spotter, or a dispute winner, who never sets
-  up payouts. The 75-day operator email and the runbook cover it; the
-  automatic day-80 owner refund is a follow-up.
+- **A credited reward has a deadline (2026-10-07,
+  `20261007100000_a_credited_reward_has_a_deadline.sql`).** A credited
+  spotter, or a dispute winner, who never sets up payouts has until
+  `payout_deadline`: the end of day 80 after capture, or 7 days after the
+  credit if later, never past capture + 85. They are reminded 7 and 2 days
+  before. Past it, the sweep tries the payout once more, then refunds the owner
+  **in full** (a missed payout is not the owner's doing, so no card fee) and
+  closes the post as `recovered_no_spotter`. The credit stays on the spotter's
+  record. `begin_payout` and `claim_payout_lapse` share the post lock, so a
+  transfer and a lapse refund can never both start, and the sweep checks Stripe
+  for a transfer before refunding. Behind `PAYOUT_DEADLINE_ENABLED`
+  (docs/OPERATIONS.md §8). The 75-day operator email still fires as the
+  backstop.
 
 ## Links
 

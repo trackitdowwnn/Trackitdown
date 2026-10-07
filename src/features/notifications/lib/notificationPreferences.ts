@@ -94,6 +94,10 @@ export const UNMUTABLE_KINDS: readonly NotificationKind[] = (() => {
       'deletion_soon',
       'reward_ending',
       'reward_ended',
+      // The notice a credited spotter's reward is about to go, and went, back
+      // to the owner (20261007100000) — never silenceable either.
+      'payout_reminder',
+      'payout_lapsed',
     ] as NotificationKind[]
   ).filter((kind) => !mapped.has(kind));
 })();

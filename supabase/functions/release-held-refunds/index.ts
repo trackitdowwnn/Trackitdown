@@ -14,7 +14,9 @@
  *        (Stripe's 90-day platform-balance limit). Phase 1c: the 60-day
  *        reward term's notices and reminders (ADR-0020). Phase 2: upheld disputes
  *        get the spotter paid (through the existing release core) and every
- *        resolved dispute gets its outcome push. Phase 4: the ADR-0019 "still
+ *        resolved dispute gets its outcome push; 2d (behind PAYOUT_DEADLINE_ENABLED)
+ *        reminds a credited spotter who has not set up payouts and, at the
+ *        payout deadline, returns the reward to the owner in full. Phase 4: the ADR-0019 "still
  *        missing?" liveness ask.
  * WHY:   A hold is a promise with a date on it: "your refund is sent after
  *        {date} unless a sighting is contested". Nothing else in the system
@@ -99,6 +101,8 @@ Deno.serve(async (request) => {
     rewardTermNotices: 0,
     rewardReminders: 0,
     rewardsExpired: 0,
+    payoutReminders: 0,
+    payoutsLapsed: 0,
   };
 
   // --- Phase 0: feed retention (ADR-0012 §8) ---------------------------------
@@ -561,6 +565,156 @@ Deno.serve(async (request) => {
         postId,
         error: (err as Error).message,
       });
+    }
+  }
+
+  // --- Phase 2d: the payout deadline (20261007100000) ------------------------
+  // A spotter credited for a recovery who never finishes setting up payouts
+  // strands the reward — it cannot be paid, and Stripe caps platform-balance
+  // holds at 90 days. Reminders go 7 and 2 days before the deadline (capture +
+  // 80, or credit + 7 if later; never past capture + 85); at the deadline the
+  // reward goes back to the owner IN FULL and the listing closes as
+  // recovered_no_spotter. The credit stays on the spotter's record.
+  //
+  // ⚠️ NEVER A PAYOUT AND A REFUND. Per post, in order, each step only if the
+  // last allows it: (1) try the PAYOUT — a spotter who just became payable is
+  // paid, not refunded; (2) claim the lapse under the post lock (begin_payout
+  // takes the same lock and is refused from then on); (3) ask Stripe for any
+  // transfer in this post's group — one existing means a payout escaped the
+  // ledger, so alert a person and refund nothing; (4) refund in full under the
+  // payment's own key; (5) record; (6) only then tell both sides.
+  //
+  // ⚠️ OFF UNTIL SWITCHED ON (PAYOUT_DEADLINE_ENABLED=true): the spotter Terms
+  // line ships in the app, and nothing is enforced before it can be read.
+  const payoutDeadlineOn = Deno.env.get('PAYOUT_DEADLINE_ENABLED') === 'true';
+  if (payoutDeadlineOn) {
+    try {
+      const { data: reminders, error: reminderError } = await admin.rpc('claim_payout_reminders', {
+        p_limit: 100,
+      });
+      if (reminderError) {
+        console.error('[payments] payout reminder claim failed', reminderError.message);
+      }
+      for (const row of (reminders ?? []) as { post_id: string; user_id: string; title: string; body: string }[]) {
+        try {
+          await notifyUsers(admin, [row.user_id], {
+            kind: 'payout_reminder',
+            title: row.title,
+            body: row.body,
+            data: { type: 'payout_reminder' },
+            collapseKey: `payout-reminder-${row.post_id}`,
+          });
+          summary.payoutReminders += 1;
+        } catch (err) {
+          console.error('[payments] payout reminder send failed', (err as Error).message);
+        }
+      }
+    } catch (err) {
+      console.error('[payments] payout reminder phase failed', (err as Error).message);
+    }
+
+    try {
+      const { data: lapsing, error: lapsingError } = await admin.rpc('payouts_past_deadline', {
+        p_limit: 20,
+      });
+      if (lapsingError) {
+        console.error('[payments] payouts_past_deadline failed', lapsingError.message);
+      }
+      for (const row of (lapsing ?? []) as { post_id: string; payment_intent_id: string }[]) {
+        const postId = row.post_id;
+        try {
+          // (1) The payout first.
+          const release = await releasePayoutForPost(admin, stripe, postId);
+          if (release.status === 'paid') {
+            summary.paid += 1;
+            continue;
+          }
+          if (release.status !== 'awaiting_payee') {
+            // Under review, already settled, or a retryable error: not the
+            // deadline's call this run.
+            continue;
+          }
+
+          // (2) Claim under the post lock.
+          const { data: claim, error: claimError } = await admin.rpc('claim_payout_lapse', {
+            p_post_id: postId,
+          });
+          if (claimError || !claim) {
+            if (claimError) console.error('[payments] payout lapse claim failed', claimError.message);
+            continue;
+          }
+          const lapse = claim as {
+            payment_intent_id: string;
+            spotter: { user_id: string; sighting_id: string; title: string; body: string };
+            owner: { user_id: string; title: string; body: string };
+          };
+
+          // (3) Has any payout reached Stripe for this post?
+          const transfers = await stripe.transfers.list({ transfer_group: postId, limit: 1 });
+          if (transfers.data.length > 0) {
+            await sendOpsAlert('A credited reward past its payout deadline already has a Stripe transfer', [
+              `Post ${postId}: payout_deadline claimed the reward, but Stripe already has a transfer`,
+              `(${transfers.data[0].id}) in its group. Nothing was refunded.`,
+              'Record the payout by hand (docs/OPERATIONS.md §8). New payouts on this post are now refused.',
+            ]);
+            summary.skipped += 1;
+            continue;
+          }
+
+          // (4) Refund — in full (claim_payout_lapse fixed the basis).
+          const outcome = await refundPayment(admin, stripe, {
+            paymentIntentId: lapse.payment_intent_id,
+            statuses: ['held'],
+          });
+          if (outcome.status !== 'refunded') {
+            summary.skipped += 1;
+            continue;
+          }
+
+          // (5) Record.
+          const { error: recordError } = await admin.rpc('mark_payout_lapsed_refunded', {
+            p_payment_intent_id: outcome.paymentIntentId,
+            p_refund_id: outcome.refundId,
+            p_refunded_amount_pence: outcome.refundPence,
+          });
+          if (recordError) {
+            // Refund issued, record failed: the webhook (reconcile routes a
+            // claimed lapse here) or the next run records it.
+            console.error('[payments] payout lapse record failed', recordError.message);
+            summary.skipped += 1;
+            continue;
+          }
+          summary.payoutsLapsed += 1;
+
+          // (6) Tell both sides — after the money moved.
+          try {
+            await notifyUsers(admin, [lapse.spotter.user_id], {
+              kind: 'payout_lapsed',
+              title: lapse.spotter.title,
+              body: lapse.spotter.body,
+              data: { type: 'payout_lapsed', sightingId: lapse.spotter.sighting_id },
+              collapseKey: `payout-reminder-${postId}`,
+            });
+            await notifyUsers(admin, [lapse.owner.user_id], {
+              kind: 'reward_ended',
+              title: lapse.owner.title,
+              body: lapse.owner.body,
+              data: { type: 'reward_ended', postId },
+              collapseKey: `payout-lapsed-${postId}`,
+            });
+          } catch (err) {
+            console.error('[payments] payout lapse push failed', (err as Error).message);
+          }
+          // The listing just became recovered_no_spotter — the watchers hear
+          // the car went home. Claim-guarded; a replay announces nothing twice.
+          await announceRecoveryToWatchers(admin, postId);
+        } catch (err) {
+          console.error('[payments] payout deadline item failed', { postId, error: (err as Error).message });
+          summary.skipped += 1;
+        }
+      }
+    } catch (err) {
+      console.error('[payments] payout deadline phase failed', (err as Error).message);
     }
   }
 

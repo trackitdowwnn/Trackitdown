@@ -66,7 +66,9 @@ export type ReleaseOutcome =
         | 'NO_HELD_PAYMENT'
         | 'SPLIT_ERROR'
         | 'STRIPE_ERROR'
-        | 'LEDGER_ERROR';
+        | 'LEDGER_ERROR'
+        /** The payout deadline returned this reward to its owner. */
+        | 'PAYOUT_LAPSED';
     };
 
 /**
@@ -192,6 +194,23 @@ export async function releasePayoutForPost(
   if (transferPence <= 0 || transferPence > bountyPence) {
     console.error('[payments] computed transfer out of range', { bountyPence, transferPence });
     return { status: 'error', code: 'SPLIT_ERROR' };
+  }
+
+  // --- Claim the payout under the post lock (20261007100000) -----------------
+  // The payout deadline returns a credited reward to its owner when the
+  // spotter never onboards. Both paths take the SAME post lock: once the
+  // deadline has claimed the reward this refuses (PAYOUT_LAPSED) and no
+  // transfer is created; once this has stamped payout_started_at the deadline
+  // waits an hour, and then checks Stripe for this post's transfers before it
+  // refunds anything. Never a payout AND a refund.
+  const { error: beginError } = await admin.rpc('begin_payout', { p_post_id: postId });
+  if (beginError) {
+    if (beginError.message?.includes('PAYOUT_LAPSED')) {
+      console.log('[payments] payout refused — the deadline returned this reward', { postId });
+      return { status: 'error', code: 'PAYOUT_LAPSED' };
+    }
+    console.error('[payments] begin_payout failed', beginError.message);
+    return { status: 'error', code: 'LOOKUP_FAILED' };
   }
 
   // --- Transfer (idempotent — never a second payout) --------------------------

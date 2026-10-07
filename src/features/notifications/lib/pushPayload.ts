@@ -128,6 +128,16 @@ const rewardEndedPayloadSchema = z
   .object({ type: z.literal('reward_ended'), postId: z.guid() })
   .strict();
 
+/** "Your £190 reward is waiting" — the payouts screen is the whole errand,
+ *  so the payload names nothing. The date stays in the visible body. */
+const payoutReminderPayloadSchema = z.object({ type: z.literal('payout_reminder') }).strict();
+
+/** "We couldn't send your reward" — the SIGHTING id: the spotter's own record
+ *  is where the credit still shows (the post is closed to them). */
+const payoutLapsedPayloadSchema = z
+  .object({ type: z.literal('payout_lapsed'), sightingId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -145,6 +155,8 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   deletionSoonPayloadSchema,
   rewardEndingPayloadSchema,
   rewardEndedPayloadSchema,
+  payoutReminderPayloadSchema,
+  payoutLapsedPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

@@ -485,6 +485,15 @@ commenting standards.
   sighting must belong to the post, spotter must be onboarded) and whose
   `mark_recovery_paid` re-derives the split independently and rejects a
   mismatch.
+  **A payout and a deadline refund are mutually exclusive (2026-10-07).**
+  Before any transfer, `release-payout` calls `begin_payout`, which takes the
+  post lock, refuses with `PAYOUT_LAPSED` once the spotter's deadline refund
+  has been claimed, and stamps `payout_started_at`. The sweep's
+  `claim_payout_lapse` takes the same lock and refuses within an hour of a
+  started payout. It still asks Stripe for a transfer in the post's
+  `transfer_group` before refunding, and alerts us instead if there is one.
+  A payout review in progress is never lapsed: the gate's decision is ours,
+  not the clock's (ADR-0020).
   **Wired 2026-08-03.** `release-payout` is called from `RecoverPostScreen`
   when a spotter is credited, and again from the post's manage sheet ("Send the
   bounty") for the usual case where they had not yet onboarded. Connect
