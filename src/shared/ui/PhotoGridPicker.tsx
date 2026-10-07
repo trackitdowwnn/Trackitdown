@@ -2,9 +2,13 @@
  * WHAT:  PhotoGridPicker — Airbnb-listing-style photo grid: a full-width
  *        cover tile over a two-column grid, gallery multi-select with a
  *        secondary camera add, long-press drag-to-reorder (plus a ⋯ sheet
- *        with Make cover / Move / Remove for the no-drag path), tap-to-
- *        preview full screen, a dismissible tips card, and a configurable
- *        min/max. A second SOURCE mode, `source="capture"`, turns it into
+ *        with Make cover / Move / Remove for the no-drag path, and a "press
+ *        and hold" hint under the grid once there are two photos, because
+ *        nothing on a tile shows the long press), tap-to-preview full screen,
+ *        a dismissible tips card, and a configurable min/max. Loading is
+ *        visible end to end: "Adding photos…" on the add tile while the
+ *        picker hands the picks back, then a spinner on each placeholder
+ *        while it is resized. A second SOURCE mode, `source="capture"`, turns it into
  *        the evidence-review grid: a uniform two-column grid (no cover
  *        concept, no reorder — capture order is the order), whose add tile
  *        fires `onRequestCapture` (the consumer opens its camera) and whose
@@ -142,7 +146,12 @@ export interface PhotoGridCopy {
   tips?: string;
   coverPill: string;
   coverHint: string;
+  /** How to reorder, shown under the grid once there are two photos to
+   *  order (gallery mode). Hidden when undefined. */
+  reorderHint?: string;
   addLabel: string;
+  /** The add tile's label while the photo library hands the picks back. */
+  addingLabel: string;
   /** Sub-line on the add tile while below the minimum. */
   addMore: (remaining: number) => string;
   /** Optional sub-line once the minimum is met but slots remain ("Up to 2
@@ -163,7 +172,9 @@ export const defaultOwnerPhotoCopy: PhotoGridCopy = {
   tips: 'Clear photos help spotters recognise your car — include the plate if you have a shot of it, plus any dents, stickers or unique details.',
   coverPill: 'Cover photo',
   coverHint: 'This is the first photo spotters will see.',
+  reorderHint: 'Press and hold a photo, then drag it to change the order.',
   addLabel: 'Add photos',
+  addingLabel: 'Adding photos…',
   addMore: (remaining) => `Add at least ${remaining} more`,
   cameraLabel: 'Take a photo instead',
   permissionTitle: 'Allow photo access',
@@ -257,6 +268,12 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
   const dragY = useSharedValue(0);
 
   const [pendingCount, setPendingCount] = useState(0);
+  // The picker has returned control but not yet its photos. On Android the
+  // library copies (and, for cloud photos, downloads) every pick before the
+  // promise settles — seconds, for several photos — and until now the screen
+  // showed nothing at all in that gap. Set before launch, cleared when the
+  // result arrives: pending tiles take over in the same render (batched).
+  const [awaitingPicker, setAwaitingPicker] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
   // The ⋯ sheet and the preview both track their photo by URI, not index —
   // photos can reorder or shrink while either is open (e.g. upload status
@@ -371,13 +388,24 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
     }
     setPermissionDenied(false); // iOS limited access counts as granted
     const limit = remainingSlots(photosRef.current.length + pendingRef.current, maxPhotos);
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: limit > 1,
-      selectionLimit: limit,
-      quality: 1,
-      exif: false,
-    });
+    setAwaitingPicker(true);
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: limit > 1,
+        selectionLimit: limit,
+        quality: 1,
+        exif: false,
+      });
+    } catch {
+      // The picker itself failed (an OEM quirk, a revoked permission
+      // mid-flight): nothing was picked. Swallowed rather than thrown out of
+      // the tap, where it would surface as an unhandled rejection.
+      return;
+    } finally {
+      setAwaitingPicker(false);
+    }
     if (result.canceled || !result.assets?.length) {
       return;
     }
@@ -392,11 +420,22 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
     if (!permission.granted) {
       return; // secondary path — no inline state, the gallery remains primary
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 1,
-      exif: false,
-    });
+    setAwaitingPicker(true);
+    let result: ImagePicker.ImagePickerResult;
+    try {
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 1,
+        exif: false,
+      });
+    } catch {
+      // The picker itself failed (an OEM quirk, a revoked permission
+      // mid-flight): nothing was picked. Swallowed rather than thrown out of
+      // the tap, where it would surface as an unhandled rejection.
+      return;
+    } finally {
+      setAwaitingPicker(false);
+    }
     if (result.canceled || !result.assets?.length) {
       return;
     }
@@ -556,6 +595,19 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
                 testID={testID ? `${testID}-pending-${n}` : undefined}
               >
                 <ProcessingShimmer reduceMotion={reduceMotion} />
+                {/* The pulse alone read as an empty grey tile, not as work in
+                    progress (and is still under reduced motion), so a small
+                    spinner sits on it — DESIGN_SYSTEM's skeleton-plus-spinner
+                    pairing. Decorative: the tile's label says "Processing". */}
+                <View style={styles.pendingSpinner}>
+                  <ActivityIndicator
+                    size="small"
+                    color={palette.textSecondary}
+                    importantForAccessibility="no"
+                    accessibilityElementsHidden
+                    testID={testID ? `${testID}-pending-${n}-spinner` : undefined}
+                  />
+                </View>
               </View>
             ))
           : null}
@@ -566,38 +618,78 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
             // Capture mode NEVER opens the library — the consumer's camera is
             // the only way in (DOMAIN.md sighting rules / ADR-0003).
             onPress={captureMode ? onRequestCapture : addFromLibrary}
-            disabled={disabled}
+            // Not tappable again while a pick is still arriving: a second
+            // picker on top of the first is refused by the OS anyway.
+            disabled={disabled || awaitingPicker}
             accessibilityRole="button"
+            accessibilityState={awaitingPicker ? { busy: true, disabled: true } : undefined}
             accessibilityLabel={
-              needMore > 0
-                ? `${copy.addLabel}. ${copy.addMore(needMore)}`
-                : copy.addRemaining
-                  ? // Screen-reader users get the same remaining-capacity line
-                    // sighted users see on the tile.
-                    `${copy.addLabel}. ${copy.addRemaining(remaining)}`
-                  : copy.addLabel
+              awaitingPicker
+                ? copy.addingLabel
+                : needMore > 0
+                  ? `${copy.addLabel}. ${copy.addMore(needMore)}`
+                  : copy.addRemaining
+                    ? // Screen-reader users get the same remaining-capacity line
+                      // sighted users see on the tile.
+                      `${copy.addLabel}. ${copy.addRemaining(remaining)}`
+                    : copy.addLabel
             }
             testID={testID ? `${testID}-add` : undefined}
           >
-            <Feather name="plus" size={typography.title.lineHeight} color={palette.textSecondary} />
-            <Text style={styles.addLabel}>{copy.addLabel}</Text>
-            {needMore > 0 ? <Text style={styles.addMore}>{copy.addMore(needMore)}</Text> : null}
-            {needMore === 0 && copy.addRemaining ? (
-              <Text style={styles.addMore}>{copy.addRemaining(remaining)}</Text>
-            ) : null}
+            {awaitingPicker ? (
+              // The tile they just tapped answers them: the photos are on
+              // their way, even though no placeholder can show yet (we don't
+              // know how many until the picker hands them over).
+              <>
+                <ActivityIndicator
+                  size="small"
+                  color={palette.textSecondary}
+                  importantForAccessibility="no"
+                  accessibilityElementsHidden
+                  testID={testID ? `${testID}-add-spinner` : undefined}
+                />
+                <Text style={styles.addLabel}>{copy.addingLabel}</Text>
+              </>
+            ) : (
+              <>
+                <Feather name="plus" size={typography.title.lineHeight} color={palette.textSecondary} />
+                <Text style={styles.addLabel}>{copy.addLabel}</Text>
+                {needMore > 0 ? <Text style={styles.addMore}>{copy.addMore(needMore)}</Text> : null}
+                {needMore === 0 && copy.addRemaining ? (
+                  <Text style={styles.addMore}>{copy.addRemaining(remaining)}</Text>
+                ) : null}
+              </>
+            )}
           </Pressable>
         ) : null}
       </View>
 
       {count > 0 && !singlePhotoMode && !captureMode ? (
-        <Text style={styles.coverHint}>{copy.coverHint}</Text>
+        <View style={styles.hints}>
+          <Text style={styles.coverHint}>{copy.coverHint}</Text>
+          {count > 1 && !disabled && copy.reorderHint ? (
+            // Drag-to-reorder needs a long press first, which nothing on the
+            // tile shows — so it is said here once there is an order to
+            // change. Hidden from screen readers: each tile's own hint gives
+            // THEIR gesture ("double-tap and hold") and the Move actions.
+            <View
+              style={styles.reorderHint}
+              importantForAccessibility="no-hide-descendants"
+              accessibilityElementsHidden
+              testID={testID ? `${testID}-reorder-hint` : undefined}
+            >
+              <Feather name="move" size={typography.caption.lineHeight} color={palette.textSecondary} />
+              <Text style={styles.reorderHintText}>{copy.reorderHint}</Text>
+            </View>
+          ) : null}
+        </View>
       ) : null}
 
       {allowCamera && !captureMode && remaining > 0 && !permissionDenied ? (
         <Pressable
           style={({ pressed }) => [styles.cameraRow, pressed && styles.cameraRowPressed]}
           onPress={addFromCamera}
-          disabled={disabled}
+          disabled={disabled || awaitingPicker}
           accessibilityRole="button"
           accessibilityLabel={copy.cameraLabel}
           testID={testID ? `${testID}-camera` : undefined}
@@ -1139,6 +1231,15 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.surfaceSubtle,
       borderRadius: radii.lg,
     },
+    pendingSpinner: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     addTile: {
       borderWidth: 1,
       borderStyle: 'dashed',
@@ -1155,9 +1256,22 @@ const makeStyles = (c: Palette) =>
       ...typography.caption,
       color: c.textSecondary,
     },
+    hints: {
+      gap: spacing.xs,
+    },
     coverHint: {
       ...typography.caption,
       color: c.textSecondary,
+    },
+    reorderHint: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    reorderHintText: {
+      ...typography.caption,
+      color: c.textSecondary,
+      flex: 1,
     },
     cameraRow: {
       flexDirection: 'row',
