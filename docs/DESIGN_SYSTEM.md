@@ -753,13 +753,16 @@ to use.
   car details → photos → last seen → bounty → verification), progress
   shown, big touch targets, inline validation.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
-  ⚠️ **Sanctioned exception (2026-10-07): an item being PROCESSED** — not
-  loading in, but worked on after the user acted — may carry ONE small
-  centred `ActivityIndicator` in `textSecondary` on its skeleton (≈4.7:1 on
-  `surfaceSubtle` light, ≈5.7:1 dark). Today: `PhotoGridPicker`'s pending
-  tiles while a picked photo is resized, and its add tile ("Adding photos…")
-  while the picker hands the picks back. Why: the pulse alone read as an
-  empty grey tile, and it stops entirely under reduced motion.
+  **Sanctioned exception (2026-10-07): work the user just started** may
+  show ONE small `ActivityIndicator` in `textSecondary`, in two places only:
+  (a) centred on a pending item's `surfaceSubtle` skeleton while it is
+  processed (≈4.7:1 light, ≈5.7:1 dark) — `PhotoGridPicker`'s tiles while a
+  picked photo is resized; (b) on the control just tapped, above its label,
+  while a system picker hands results back (on `background`, ≈5.1:1 light,
+  ≈7.3:1 dark) — its add tile's "Adding photo…" / "Adding photos…". Why:
+  the pulse alone read as an empty grey tile, and it stops entirely under
+  reduced motion; and in the picker's hand-back nothing else on screen
+  answers the tap.
   Blocking waits show ONE face — `BrandLoader` (the mark + a rotating waiting
   phrase), rendered by both the cold-start splash and `FullscreenLoader`. The
   phrase is lit by a highlight sweeping left to right through its letters

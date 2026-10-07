@@ -6,7 +6,7 @@
  *        and hold" hint under the grid once there are two photos, because
  *        nothing on a tile shows the long press), tap-to-preview full screen,
  *        a dismissible tips card, and a configurable min/max. Loading is
- *        visible end to end: "Adding photos…" on the add tile while the
+ *        visible end to end: "Adding photo(s)…" on the add tile while the
  *        picker hands the picks back, then a spinner on each placeholder
  *        while it is resized. A second SOURCE mode, `source="capture"`,
  *        turns it into the evidence-review grid: a uniform two-column grid
@@ -26,8 +26,13 @@
  *        cover-at-0 invariant. The component SELECTS only — it never uploads
  *        — but each tile accepts a status overlay (uploading / error +
  *        retry) so the same grid can be reused during submission. Gallery
- *        picks are resized to ~2000px longest edge (upload weight only —
- *        EXIF is stripped server-side per docs/SECURITY_AND_TRUST.md).
+ *        picks are resized to ~2000px longest edge (upload weight only).
+ *        EXIF is NOT this file's job and NOT stripped server-side: the
+ *        upload's re-encode (src/shared/api/photoUpload.ts) strips it on
+ *        the device — a convention, not a boundary; see the open gap in
+ *        docs/SECURITY_AND_TRUST.md. `source` is fixed for a mount: the
+ *        capture-mode guards read it per tap, so switching it mid-pick is
+ *        unsupported.
  *        Consumer today: the vehicle PhotosStep (min 3 / max 6), which the
  *        posting wizard, Edit photos and the garage all mount. The
  *        single-photo mode (max 1 — cover chrome hides; built for a V5C
@@ -177,7 +182,9 @@ export const defaultOwnerPhotoCopy: PhotoGridCopy = {
   tips: 'Clear photos help spotters recognise your car — include the plate if you have a shot of it, plus any dents, stickers or unique details.',
   coverPill: 'Cover photo',
   coverHint: 'This is the first photo spotters will see.',
-  reorderHint: 'Press and hold a photo, then drag it to change the order.',
+  // One line on a phone: its space is held from the first photo (see the
+  // hint row), so a two-line hint left a visible gap above the camera link.
+  reorderHint: 'Press and hold a photo to move it.',
   addLabel: 'Add photos',
   addingLabel: 'Adding photos…',
   addingOneLabel: 'Adding photo…',
@@ -308,6 +315,9 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
   const slotCount = count + pendingCount + (showAddTile ? 1 : 0);
   const singlePhotoMode = maxPhotos === 1;
   const awaiting = awaitingPicker !== null;
+  // The same rule as GridTile's canDrag: the hint shows exactly when a drag
+  // would work.
+  const canReorder = !disabled && count > 1 && !captureMode;
   const addingLabel = awaitingPicker === 'one' ? copy.addingOneLabel : copy.addingLabel;
 
   // Announce count changes so non-visual users hear progress toward the min.
@@ -388,6 +398,19 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
     }
   };
 
+  /** A permission answer; a request that THROWS (an OEM quirk) reads as "not
+   *  granted, may ask again" — no inline settings card for a failure we
+   *  can't explain, and nothing escapes the tap as an unhandled rejection. */
+  const askPermission = async (
+    request: () => Promise<{ granted: boolean; canAskAgain: boolean }>,
+  ): Promise<{ granted: boolean; canAskAgain: boolean }> => {
+    try {
+      return await request();
+    } catch {
+      return { granted: false, canAskAgain: true };
+    }
+  };
+
   /** A picker's photos, or null for a cancel or a failure. A picker that
    *  throws (an OEM quirk, a permission revoked mid-flight) has picked
    *  nothing — swallowed here rather than escaping the tap as an unhandled
@@ -410,7 +433,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
     pickingRef.current = true;
     let assets: PickedPhoto[] | null = null;
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission = await askPermission(ImagePicker.requestMediaLibraryPermissionsAsync);
       if (!permission.granted) {
         // canAskAgain: the system dialog just handled it — stay quiet. Once
         // the OS stops asking, surface the inline settings path instead.
@@ -447,7 +470,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
     pickingRef.current = true;
     let assets: PickedPhoto[] | null = null;
     try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      const permission = await askPermission(ImagePicker.requestCameraPermissionsAsync);
       if (!permission.granted) {
         return; // secondary path — no inline state, the gallery remains primary
       }
@@ -646,8 +669,9 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
             // Capture mode NEVER opens the library — the consumer's camera is
             // the only way in (DOMAIN.md sighting rules / ADR-0003).
             onPress={captureMode ? onRequestCapture : addFromLibrary}
-            // Not tappable again while a pick is still arriving: a second
-            // picker on top of the first is refused by the OS anyway.
+            // Disabled while a pick is arriving so the tile LOOKS and reads
+            // busy; the real one-picker guard is pickingRef, which also
+            // covers the taps before this re-render lands.
             disabled={disabled || awaiting}
             accessibilityRole="button"
             accessibilityState={awaiting ? { busy: true, disabled: true } : undefined}
@@ -692,10 +716,15 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
         ) : null}
       </View>
 
-      {count > 0 && !singlePhotoMode && !captureMode ? (
+      {/* From the first PLACEHOLDER, not the first finished photo: arriving
+          with the pending tile means the camera link below moves once, with
+          the grid, instead of again a second or two later. */}
+      {count + pendingCount > 0 && !singlePhotoMode && !captureMode ? (
         <View style={styles.hints}>
           <View style={styles.hintRow}>
-            <Feather name="star" size={sizes.iconSm} color={palette.textSecondary} />
+            {/* An eye, not a star: nothing on the tile carries a star, and
+                under a grid a star reads as "favourite". */}
+            <Feather name="eye" size={sizes.iconSm} color={palette.textSecondary} />
             <Text style={styles.hintText}>{copy.coverHint}</Text>
           </View>
           {copy.reorderHint ? (
@@ -708,7 +737,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
             // Hidden from screen readers: each tile's own hint gives THEIR
             // gesture ("double-tap and hold") and the Move actions.
             <View
-              style={[styles.hintRow, !(count > 1 && !disabled) && styles.hintRowHidden]}
+              style={[styles.hintRow, !canReorder && styles.hintRowHidden]}
               importantForAccessibility="no-hide-descendants"
               accessibilityElementsHidden
               testID={testID ? `${testID}-reorder-hint` : undefined}
@@ -727,7 +756,9 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
             pressed && styles.cameraRowPressed,
             // Disabled while a picker is out — and LOOKS it, or it reads as a
             // link that has stopped working.
-            awaiting && styles.cameraRowBusy,
+            // Not on top of a consumer's `disabled`: the container already
+            // dims, and the two multiplied fall below legible contrast.
+            awaiting && !disabled && styles.cameraRowBusy,
           ]}
           onPress={addFromCamera}
           disabled={disabled || awaiting}
