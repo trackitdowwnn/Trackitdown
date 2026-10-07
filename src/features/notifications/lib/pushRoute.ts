@@ -54,6 +54,9 @@ export function pushRouteFor(payload: PushPayload): Href {
     // car: the context of this tap is the payout. /payouts is guest-open like
     // every destination here, so even a signed-out tap never dead-ends.
     case 'credited':
+    // "Your £190 reward is waiting — add your bank details by …": the same
+    // errand as `credited`, against a deadline (20261007100000).
+    case 'payout_reminder':
     // A won dispute is the same earn moment with a different door.
     case 'dispute_upheld':
     // "£X on its way" lands where the money's status lives, not on the car.
@@ -80,6 +83,10 @@ export function pushRouteFor(payload: PushPayload): Href {
     // DOMAIN's "recognition is the reward" — so the tap lands where the credit
     // is actually visible.
     case 'credited_no_reward':
+    // "We couldn't send your reward" — the money went back to the owner, but
+    // the credit did not: their record is where it still shows, and the
+    // payouts screen would now show nothing.
+    case 'payout_lapsed':
       return '/my-sightings';
   }
 }

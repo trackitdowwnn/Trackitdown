@@ -173,6 +173,10 @@ down (ADR-0014). A `draft` (unpaid) is deleted/abandoned, not cancelled.
 6. **recovered_no_spotter** — recovered without a credited sighting. Bounty
    is refunded to the owner (minus the fixed 1.5% + 20p card fee, ADR-0021,
    quoted exactly before payment; any higher card cost is ours).
+   It is also where a credited reward ends when the spotter never sets up
+   payouts by their deadline (day 80, or credit + 7, never past day 85). The
+   owner is then refunded **in full** and the sighting stays credited
+   (ADR-0020).
 7. **cancelled** — the owner cancels. Bounty refunded as above. Since
    2026-09-21 a cancelled post is also **deletable**: the app offers deletion
    right after a cancel, and "Delete post" stays in Manage post; whatever the

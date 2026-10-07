@@ -104,6 +104,17 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   // already counts. An action chip here would invent a task, and a banknote
   // would imply a payment that is never coming.
   credited_no_reward: { Icon: Binoculars, tone: 'success', needsAttention: false },
+  // The same errand as `credited`, against a deadline (20261007100000): the
+  // money goes back to the owner if it is not done, so the chip says so.
+  payout_reminder: {
+    Icon: Banknote,
+    tone: 'warning',
+    needsAttention: true,
+    attentionLabel: 'Add your bank details',
+  },
+  // A fact, not an errand: nothing to do now. The credit still counts, so the
+  // spotter's binoculars, not a banknote that implies money is coming.
+  payout_lapsed: { Icon: Binoculars, tone: 'neutral', needsAttention: false },
   payout_sent: { Icon: Banknote, tone: 'success', needsAttention: false },
   // The one row in the centre that asks rather than tells, so it is the one
   // row that legitimately carries an action chip. `warning`, not `danger`:

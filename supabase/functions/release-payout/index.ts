@@ -123,6 +123,14 @@ Deno.serve(async (request) => {
             'We couldn’t find the bounty for this listing.',
             409,
           );
+        case 'PAYOUT_LAPSED':
+          // The payout deadline returned this reward to its owner
+          // (20261007100000): the spotter never finished setting up payouts.
+          return errorResponse(
+            'PAYOUT_LAPSED',
+            'This reward went back to the owner — payouts weren’t set up in time.',
+            409,
+          );
         case 'STRIPE_ERROR':
           return errorResponse('STRIPE_ERROR', 'We couldn’t send the bounty. Please try again.', 502);
         case 'LEDGER_ERROR':

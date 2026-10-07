@@ -31,6 +31,7 @@ const SIGHTING_KEYED = [
   'dispute_upheld',
   'dispute_rejected',
   'sighting_confirmed',
+  'payout_lapsed',
 ] as const;
 type SightingKeyed = (typeof SIGHTING_KEYED)[number];
 const isSightingKeyed = (kind: string): kind is SightingKeyed =>
@@ -52,6 +53,9 @@ describe('notification kinds stay in sync', () => {
       const payload =
         kind === 'message'
           ? ({ type: 'message', threadId: THREAD_ID } as const)
+          : kind === 'payout_reminder'
+            ? // The payouts screen is the whole errand: no id at all.
+              ({ type: 'payout_reminder' } as const)
           : isSightingKeyed(kind)
             ? ({ type: kind, sightingId: SIGHTING_ID } as const)
             : ({ type: kind, postId: POST_ID } as const);

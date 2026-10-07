@@ -93,6 +93,10 @@ describe('notification_category', () => {
     // toggle that silenced it would let a reward end unannounced.
     expect(sqlMap.reward_ending).toBeUndefined();
     expect(sqlMap.reward_ended).toBeUndefined();
+    // payout_reminder / payout_lapsed (2026-10-07): the notice a credited
+    // spotter's reward is about to go, and went, back to the owner.
+    expect(sqlMap.payout_reminder).toBeUndefined();
+    expect(sqlMap.payout_lapsed).toBeUndefined();
     expect(UNMUTABLE_KINDS).toEqual([
       'sighting',
       'closed_uncredited',
@@ -100,6 +104,8 @@ describe('notification_category', () => {
       'deletion_soon',
       'reward_ending',
       'reward_ended',
+      'payout_reminder',
+      'payout_lapsed',
     ]);
   });
 

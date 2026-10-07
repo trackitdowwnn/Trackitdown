@@ -329,7 +329,7 @@ order by captured;
 | An **open dispute** | Resolve it (§2) before the resolve-by date. Upheld pays the spotter; rejected lets the sweep refund the owner within the hour. |
 | A **payout review** pending or rejected | Decide it (§3). A rejected review keeps the money held, so it must still end in a refund or a payout. |
 | Post **`recovery_claimed`**, nothing credited | The owner never finished "found it another way". Ask them to finish it, or refund from the Stripe dashboard: the `charge.refunded` webhook then closes the recovery (`reconcile_payment_refund`). |
-| Post **`recovery_claimed`**, a sighting credited | The spotter hasn't finished payout onboarding. Chase them. If day 80 comes first, refund the owner from the Stripe dashboard and tell the spotter why. The webhook records the refund, leaves the post in `recovery_claimed` (no final state is true here) and emails you **"A credited recovery was refunded to the owner"**. Then close the post by hand: `update public.posts set status = 'recovered_no_spotter' where id = '<post id>';`. Note this status normally means "nobody was credited", so record why in the support log. |
+| Post **`recovery_claimed`**, a sighting credited | The spotter hasn't finished payout onboarding. With `PAYOUT_DEADLINE_ENABLED` on (below), the sweep reminds them 7 and 2 days before their deadline (`public.payout_deadline(<payment id>)`) and, if it passes, refunds the owner **in full** and closes the post as `recovered_no_spotter`. Nothing to do unless a payout review is open: the sweep never lapses a reward under review, so decide it (§3). With the switch off, it is the old manual path: refund the owner in full from the Stripe dashboard and tell the spotter why. The webhook records it and emails you **"A credited recovery was refunded to the owner"**; close the post by hand with `update public.posts set status = 'recovered_no_spotter' where id = '<post id>';` and record why in the support log. |
 | Post **`active`**, nothing else | A reward from before rewards had a term (`legacy_term`), or one the expiry hasn't reached. Tell the owner first: until automatic reward expiry ships, refunding it closes the listing. Then refund it from the Stripe dashboard; the webhook records the refund. For a `legacy_term` reward, refund the **full** amount: those owners were promised their end-of-term refund in full. |
 | Status **`superseded`** | The sweep should have refunded it within the hour. If it's 75 days old, the refund keeps failing: check the logs for `refund item failed`. An open dispute on the post also holds it back on purpose until the dispute is resolved. |
 
@@ -338,8 +338,9 @@ exact figure the app quoted: **reward − (1.5% of the reward, rounded to the
 nearest penny, + 20p)**. £200 → refund **£196.80** (fee £3.20); £500 → £492.30.
 Never "reward minus Stripe's fee" — that was the old rule, and on a premium or
 non-UK card it is less than the owner was promised. Refund the **full** amount
-only for a stray capture (`refund_fee_absorbed`) or a `legacy_term` reward at
-the end of its term.
+only for a stray capture (`refund_fee_absorbed`), a `legacy_term` reward at
+the end of its term, or a credited reward whose spotter missed their payout
+deadline.
 
 ⚠️ **A refund from the Stripe dashboard is always recorded correctly.** The
 webhook reconciles it from the ledger:
@@ -376,6 +377,66 @@ and notices off would end rewards nobody was told about. Nothing expires
 before its owner has had the notice: a legacy reward's term is at least 14
 days after its notice (3 at the floor for the oldest), and a new reward's is
 60 days after capture.
+
+**The payout deadline switch.** `PAYOUT_DEADLINE_ENABLED=true` (an Edge
+Function secret, default off) lets the sweep handle a credited spotter who
+never sets up payouts (`20261007100000_a_credited_reward_has_a_deadline.sql`).
+Their deadline is the end of day 80 after capture, or 7 days after the credit
+if that is later, and never past day 85, inside Stripe's 90-day hold.
+- **Reminders.** 7 days and 2 days before, a push with their amount and the
+  date (`payout_reminder`, opens Payouts). None in the first day after the
+  credit, none once they can be paid, none while a payout review is open.
+- **The lapse.** Past the deadline, the sweep first asks Stripe whether the
+  spotter can now be paid, and syncs our copy, so a missed `account.updated`
+  never costs them the reward. Then it tries the payout one last time. If the
+  spotter still can't be paid, it:
+  1. claims the lapse under the post lock;
+  2. checks Stripe has no transfer for the post;
+  3. refunds the owner **in full**;
+  4. closes the post as `recovered_no_spotter`. The sighting stays credited.
+
+  The spotter gets `payout_lapsed` and the owner `reward_ended`. The pushes are
+  sent only after the refund is recorded, and are retried if a run dies.
+- **Never both.** A payout that started in the last hour blocks the lapse, and
+  a claimed lapse makes `release-payout` refuse with 409 `PAYOUT_LAPSED`.
+- **A failed run is finished by the next one.** A claimed lapse that is still
+  held (Stripe error, crash) is retried every hour under the same refund key.
+  If it keeps failing (e.g. the owner has a chargeback open on the charge, and
+  Stripe won't refund a disputed charge), it shows in the 75-day email. Look in
+  the logs for `payout lapse refund not made`.
+- **A rejected or pending payout review stops the clock.** That money waits for
+  you (§3). The 75-day email still lists it, and you must refund or pay it
+  before day 90.
+- **Paying a spotter by hand?** Always set **transfer group = the post id** on
+  the transfer. The sweep looks for transfers by group before it refunds, and
+  can't see one without it. If the lapse is already claimed (the payment has
+  `payout_lapse_claimed_at`), park it **first** with
+  `select public.block_payout_lapse('<post id>');` so the hourly sweep can't
+  refund the owner while you're paying.
+- **Turning the switch off is not an emergency stop for claimed rows.** A lapse
+  claimed before you switch off stays claimed: payouts refuse it and nothing
+  resumes it. Settle any such row by hand (refund the owner in full from the
+  Stripe dashboard; the webhook records it as the lapse).
+
+**A lapse found a transfer** (alert: "A credited reward past its payout
+deadline already has a Stripe transfer"). A payout reached Stripe that our
+ledger doesn't show. The sweep has parked it (`payout_lapse_blocked_at`), will
+never refund it, and `release-payout` refuses it. Settle it by hand:
+1. In Stripe, open the transfer named in the alert. Check its amount (95% of
+   the reward) and its destination (the credited spotter's account).
+2. If it is right, record it with the payout's own function. It re-derives the
+   95/5 split and refuses a mismatch, and moves payment and post together:
+   `select public.mark_recovery_paid('<pi_…>', '<tr_…>', (select id from public.stripe_connected_accounts where profile_id = '<spotter id>'), <transfer pence>, <reward pence − transfer pence>);`.
+   For example, a £200 reward is `19000, 1000`.
+3. If it is wrong, reverse the transfer in Stripe, then refund the owner **in
+   full** from the Stripe dashboard. The webhook files that refund as the lapse
+   (`recovered_no_spotter`), and the next sweep sends both pushes. Don't clear
+   the park instead: a reversed transfer stays in the group, so the sweep
+   would find it and park the row again.
+
+Turn it on once the app update with the new notification kinds is live
+(`eas update:list`) and this migration is deployed. Then run the sweep once by
+hand and read `payoutReminders` and `payoutsLapsed` in its summary.
 
 **A reward_end hold** shows in §2's dispute query like any other. Upholding a
 dispute on one credits the spotter on a listing that is still live: the post

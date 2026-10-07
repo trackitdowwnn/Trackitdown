@@ -46,6 +46,13 @@ export const NOTIFICATION_KINDS = [
   // refunded; the listing stays live with no reward. Sent by the expiry
   // (PR5); listed now so the vocabulary ships before anything can send it.
   'reward_ended',
+  // "Your £190 reward is waiting — add your bank details by {date}" — to a
+  // CREDITED spotter who has not set up payouts, 7 and 2 days before the
+  // payout deadline (20261007100000).
+  'payout_reminder',
+  // "We couldn't send your reward" — the deadline passed and it went back to
+  // the owner; the recovery still counts on their record.
+  'payout_lapsed',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

@@ -154,6 +154,12 @@ const SAFETY: LegalDocument = {
 const TERMS: LegalDocument = {
   slug: 'terms',
   title: 'Terms of service',
+  // 7 Oct: a credited spotter has a PAYOUT DEADLINE (20261007100000) — at
+  // least 7 days after the credit, normally 80 days after the owner paid; the
+  // bounty then goes back to the owner in full. It matters to the spotters it
+  // affects, so it is enforced only behind PAYOUT_DEADLINE_ENABLED (switched
+  // on after this text reaches phones), and every affected spotter is told
+  // their own date twice before it (7 and 2 days out) — the notice.
   // 6 Oct: the card processing fee a refund keeps is a FIXED 1.5% + 20p
   // (ADR-0021), quoted exactly before payment; any higher card cost is ours.
   // Only ever in the owner's favour (UK standard cards cost exactly this;
@@ -164,7 +170,7 @@ const TERMS: LegalDocument = {
   // listing's reward banner, with at least 14 days' notice where Stripe's
   // 90-day limit allows (claim_reward_term_notices, 20261005140000).
   // (30 Sep: the "Vehicle data" credit — no notice needed.)
-  lastUpdated: '6 October 2026',
+  lastUpdated: '7 October 2026',
   intro: [
     `These terms are an agreement between you and ${OPERATOR}. By creating an account you accept them.`,
     'They are written to be read. Where a term matters to your money or your safety, it is stated plainly rather than buried.',
@@ -264,6 +270,14 @@ const TERMS: LegalDocument = {
         'Being credited is the owner’s decision. Reporting a sighting does not entitle you to the bounty, and a sighting that turns out to be the wrong car is not a failure — it is how this works.',
         'Not every listing carries a bounty. Some owners pay a listing fee instead, and those listings say so before you report anything. Being credited on one still counts towards your record, but there is no money attached to it.',
         'To be paid you must complete identity checks with our payment provider, Stripe. We cannot pay you until you do. Payments are made by Stripe to the account you give them, and their timescales apply.',
+        // ⚠️ THE PAYOUT DEADLINE, 2026-10-07 (20261007100000). Our payment
+        // provider may not hold funds for more than 90 days, so a credited
+        // reward cannot wait for its spotter forever. Each number here is a
+        // promise the code keeps — 80 days, 7 days, the 85-day cap
+        // (payout_deadline), the reminders (claim_payout_reminders: the last
+        // one always goes), in full (claim_payout_lapse) — so changing either
+        // side means changing both.
+        'If you are credited, please finish those checks by the date we give you. That date is 80 days after the owner paid the bounty, or 7 days after you are credited if that is later, but never more than 85 days after the owner paid, and we remind you before it. If you have not finished by then we cannot keep holding the money, so the bounty is returned to the owner in full. Being credited still counts towards your record.',
         'You are responsible for any tax due on a bounty you receive. If you are unsure, speak to HMRC or an accountant.',
       ],
     },

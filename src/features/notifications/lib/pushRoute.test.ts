@@ -11,6 +11,7 @@ import { pushRouteFor } from './pushRoute';
 
 const POST_ID = '11111111-2222-3333-4444-555555555555';
 const THREAD_ID = '66666666-7777-8888-9999-000000000000';
+const SIGHTING_ID = '99999999-8888-7777-6666-555555555555';
 
 describe('pushRouteFor', () => {
   it('routes an alert to the post detail', () => {
@@ -28,6 +29,13 @@ describe('pushRouteFor', () => {
   it('routes the reward-term pushes to the owner’s listing, where Renew is', () => {
     expect(pushRouteFor({ type: 'reward_ending', postId: POST_ID })).toBe(`/post/${POST_ID}`);
     expect(pushRouteFor({ type: 'reward_ended', postId: POST_ID })).toBe(`/post/${POST_ID}`);
+  });
+
+  // The payout deadline (2026-10-07): the reminder is the payouts errand; the
+  // lapse lands on the spotter's own record, where the credit still shows.
+  it('routes the payout-deadline pushes to the errand, then to the record', () => {
+    expect(pushRouteFor({ type: 'payout_reminder' })).toBe('/payouts');
+    expect(pushRouteFor({ type: 'payout_lapsed', sightingId: SIGHTING_ID })).toBe('/my-sightings');
   });
 
   it('routes a message to its chat thread', () => {

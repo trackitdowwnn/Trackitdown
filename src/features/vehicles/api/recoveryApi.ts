@@ -117,6 +117,10 @@ const PAYOUT_MESSAGES: Record<string, string> = {
   LOOKUP_FAILED: 'They’re credited. Try sending the reward again from your listing.',
   SPLIT_ERROR: 'They’re credited, but we couldn’t work out the amount. Please contact us.',
   BAD_REQUEST: 'They’re credited. Try sending the reward again from your listing.',
+  // The payout deadline returned the reward to the owner (20261007100000).
+  // Nothing to retry: the full amount is on its way back to their card.
+  PAYOUT_LAPSED:
+    'The spotter didn’t set up payouts in time, so your full reward is going back to your card.',
 };
 
 /**
