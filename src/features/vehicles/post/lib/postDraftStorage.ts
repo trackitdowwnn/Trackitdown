@@ -15,7 +15,7 @@
  *        rather than an accident — the same instinct as the `.strict()` schemas
  *        on every payload boundary in this codebase.
  *
- * ⚠️ PHOTOS ARE DELIBERATELY NOT SAVED, and the resume prompt says so. They are
+ * ⚠️ PHOTOS ARE DELIBERATELY NOT SAVED (the photo step simply asks again). They are
  *        local `file://` uris into the app's cache, and a cache the OS has
  *        cleared leaves a uri that points at nothing: restoring it would show
  *        broken tiles and then fail at upload, which is a worse experience than
@@ -117,6 +117,7 @@ export async function savePostDraft(answers: Partial<PostACarAnswers>): Promise<
       savedAt: new Date().toISOString(),
       answers: pickPersisted(answers),
     };
+    primed = { value: draft.answers };
     await AsyncStorage.setItem(KEY, JSON.stringify(draft));
     // ⚠️ COUNTS ONLY. The draft holds a location and a car; nothing about it
     // may reach a log line (docs/LOGGING.md).
@@ -160,9 +161,53 @@ export async function loadPostDraft(): Promise<PersistedDraftAnswers | null> {
 
 /** Remove it. Called on submit, on discard, and on a failed read. */
 export async function clearPostDraft(): Promise<void> {
+  primed = { value: null };
   try {
     await AsyncStorage.removeItem(KEY);
   } catch {
     log.warn('post_draft_clear_failed');
   }
+}
+
+// ---- Read ahead -----------------------------------------------------------
+//
+// The form must slide up ALREADY BUILT. Reading the draft after mount left the
+// screen empty for the first part of its slide and then mounted the whole
+// wizard mid-animation (2026-10-07). So whoever is about to open the form —
+// the + button — primes the read first, and the screen starts from the primed
+// answer synchronously. The async read in the screen is only the fallback.
+
+/** The last known draft: undefined until read; { value: null } = no draft. */
+let primed: { value: PersistedDraftAnswers | null } | undefined;
+let priming: Promise<void> | null = null;
+
+/** Read the draft into memory ahead of opening the form. Shared, never throws. */
+export function primePostDraft(): Promise<void> {
+  if (primed !== undefined) {
+    return Promise.resolve();
+  }
+  if (!priming) {
+    priming = loadPostDraft()
+      .then((value) => {
+        // A save or clear that landed meanwhile wins over this read.
+        if (primed === undefined) {
+          primed = { value };
+        }
+      })
+      .finally(() => {
+        priming = null;
+      });
+  }
+  return priming;
+}
+
+/** The primed draft, synchronously: undefined when not read yet. */
+export function peekPrimedDraft(): { value: PersistedDraftAnswers | null } | undefined {
+  return primed;
+}
+
+/** Test-only: forget the primed copy. */
+export function resetPrimedDraft(): void {
+  primed = undefined;
+  priming = null;
 }

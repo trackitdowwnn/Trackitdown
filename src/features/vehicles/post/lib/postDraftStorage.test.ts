@@ -23,7 +23,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { PostACarAnswers } from '../types';
-import { clearPostDraft, loadPostDraft, savePostDraft } from './postDraftStorage';
+import {
+  clearPostDraft,
+  loadPostDraft,
+  peekPrimedDraft,
+  primePostDraft,
+  resetPrimedDraft,
+  savePostDraft,
+} from './postDraftStorage';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn(async () => {}),
@@ -192,6 +199,36 @@ describe('loadPostDraft', () => {
     );
 
     await expect(loadPostDraft()).resolves.toEqual({ make: 'BMW' });
+  });
+});
+
+// 2026-10-07: the + button reads the draft before navigating, so the form can
+// start from it synchronously and slide up already built.
+describe('reading ahead', () => {
+  beforeEach(() => {
+    resetPrimedDraft();
+  });
+
+  it('is unknown until primed, then holds what was read', async () => {
+    mockStorage.getItem.mockResolvedValue(
+      JSON.stringify({ savedAt: new Date().toISOString(), answers: { make: 'BMW' } }),
+    );
+    expect(peekPrimedDraft()).toBeUndefined();
+    await primePostDraft();
+    expect(peekPrimedDraft()).toEqual({ value: { make: 'BMW' } });
+  });
+
+  it('shares one read between callers', async () => {
+    await Promise.all([primePostDraft(), primePostDraft()]);
+    expect(mockStorage.getItem).toHaveBeenCalledTimes(1);
+    expect(peekPrimedDraft()).toEqual({ value: null });
+  });
+
+  it('stays in step with saves and clears', async () => {
+    await savePostDraft({ make: 'Audi' } as Partial<PostACarAnswers>);
+    expect(peekPrimedDraft()).toEqual({ value: { make: 'Audi' } });
+    await clearPostDraft();
+    expect(peekPrimedDraft()).toEqual({ value: null });
   });
 });
 

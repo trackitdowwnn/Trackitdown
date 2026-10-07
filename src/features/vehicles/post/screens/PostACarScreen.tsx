@@ -34,7 +34,12 @@ import { WizardScreen, type WizardFlow } from '@/shared/wizard';
 
 import { fetchBountyGuidance, logBountyRecommendation } from '../api/bountyGuidanceApi';
 import { recommendBounty } from '../lib/bountyRecommendation';
-import { clearPostDraft, loadPostDraft, savePostDraft } from '../lib/postDraftStorage';
+import {
+  clearPostDraft,
+  loadPostDraft,
+  peekPrimedDraft,
+  savePostDraft,
+} from '../lib/postDraftStorage';
 import { submitPost } from '../api/postApi';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
@@ -87,12 +92,28 @@ export function PostACarScreen({
    * prefilled path (report THIS saved car), and a stale draft about a different
    * car must never overwrite the one they just chose.
    */
+  //
+  // ⚠️ STARTS FROM THE PRIMED DRAFT when there is one (2026-10-07). The +
+  // button reads the draft before it navigates (primePostDraft), so the form
+  // renders its real first screen on its FIRST frame and slides up already
+  // built. The async read below is only the fallback for an entry that didn't
+  // prime — it used to be the only path, and the slide-up started on an empty
+  // page with the whole wizard mounting halfway through it.
   const [draft, setDraft] = useState<{ answers: Partial<PostACarAnswers> } | 'checking' | null>(
-    initialAnswers ? null : 'checking',
+    () => {
+      if (initialAnswers) {
+        return null;
+      }
+      const primed = peekPrimedDraft();
+      if (primed === undefined) {
+        return 'checking';
+      }
+      return primed.value ? { answers: primed.value } : null;
+    },
   );
 
   useEffect(() => {
-    if (initialAnswers) {
+    if (draft !== 'checking') {
       return;
     }
     let cancelled = false;
@@ -105,7 +126,7 @@ export function PostACarScreen({
     return () => {
       cancelled = true;
     };
-  }, [initialAnswers]);
+  }, [draft]);
 
   const handleComplete = async (answers: Partial<PostACarAnswers>) => {
     // 1. Create the draft ONCE. On a retry the id is already known — skip
@@ -182,10 +203,10 @@ export function PostACarScreen({
     router.replace(`/post/${postId}`);
   };
 
-  // ⚠️ NOTHING RENDERS UNTIL THE DRAFT CHECK RESOLVES, and it is a blank rather
-  // than a spinner: the read is one AsyncStorage hit and typically lands in the
-  // same frame, so a loader would be a flash of chrome nobody asked for. The
-  // wizard's own entrance animation then plays once, over the right answers.
+  // ⚠️ NOTHING RENDERS UNTIL THE DRAFT CHECK RESOLVES — only on an entry that
+  // didn't prime the draft (see above). A blank rather than a spinner: the read
+  // is one AsyncStorage hit, so a loader would be a flash of chrome nobody
+  // asked for.
   if (draft === 'checking') {
     return null;
   }
@@ -215,6 +236,9 @@ export function PostACarScreen({
       // one place in the app where losing the answers is a real loss; report-a-
       // sighting and add-a-vehicle keep the plain discard prompt.
       onSaveAndExit={savePostDraft}
+      // Discard means discard: the saved draft goes too, or it came straight
+      // back on the next open.
+      onDiscard={() => void clearPostDraft()}
     />
   );
 }

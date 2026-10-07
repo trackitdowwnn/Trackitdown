@@ -25,6 +25,10 @@ let capturedOnComplete: (answers: Record<string, unknown>) => Promise<void>;
 let capturedOnExit: () => void;
 let capturedOnSaveAndExit: ((a: Record<string, unknown>) => void) | undefined;
 let capturedInitialAnswers: Record<string, unknown> | undefined;
+let capturedOnDiscard: (() => void) | undefined;
+/** How many times the wizard rendered — the primed path must render it on
+ *  the very first commit, with no empty frame before. */
+let wizardRenders = 0;
 
 /** Mount the screen and flush the commit so the captured props are assigned. */
 async function mount(props: React.ComponentProps<typeof PostACarScreen> = {}) {
@@ -37,8 +41,11 @@ jest.mock('@/shared/wizard', () => ({
     onComplete: (a: Record<string, unknown>) => Promise<void>;
     onExit: () => void;
     onSaveAndExit?: (a: Record<string, unknown>) => void;
+    onDiscard?: () => void;
     initialAnswers?: Record<string, unknown>;
   }) => {
+    wizardRenders += 1;
+    capturedOnDiscard = props.onDiscard;
     capturedOnComplete = props.onComplete;
     capturedOnExit = props.onExit;
     capturedOnSaveAndExit = props.onSaveAndExit;
@@ -53,8 +60,10 @@ jest.mock('@/shared/wizard', () => ({
 const mockLoadDraft = jest.fn(async () => null as Record<string, unknown> | null);
 const mockSaveDraft = jest.fn(async (_answers: Record<string, unknown>) => {});
 const mockClearDraft = jest.fn(async () => {});
+const mockPeekDraft = jest.fn((): { value: Record<string, unknown> | null } | undefined => undefined);
 jest.mock('../lib/postDraftStorage', () => ({
   loadPostDraft: () => mockLoadDraft(),
+  peekPrimedDraft: () => mockPeekDraft(),
   savePostDraft: (a: Record<string, unknown>) => mockSaveDraft(a),
   clearPostDraft: () => mockClearDraft(),
 }));
@@ -127,6 +136,8 @@ const ANSWERS = { bountyAmountPence: 50000 };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPeekDraft.mockReturnValue(undefined);
+  wizardRenders = 0;
   mockSubmitPost.mockResolvedValue({ postId: 'p1', status: 'draft' });
   mockCreateIntent.mockResolvedValue('pi_secret_123');
 });
@@ -282,6 +293,30 @@ describe('the saved draft', () => {
     await mount();
 
     expect(capturedInitialAnswers).toMatchObject({ make: 'BMW', colour: 'Blue' });
+  });
+
+  // 2026-10-07: the + button reads the draft before it navigates, so the form
+  // slides up ALREADY BUILT instead of mounting the wizard mid-slide.
+  it('starts from a primed draft on the first frame, without reading again', async () => {
+    mockPeekDraft.mockReturnValue({ value: { make: 'BMW' } });
+    await mount();
+
+    expect(mockLoadDraft).not.toHaveBeenCalled();
+    expect(capturedInitialAnswers).toMatchObject({ make: 'BMW' });
+  });
+
+  it('a primed "no draft" renders the wizard at once, too', async () => {
+    mockPeekDraft.mockReturnValue({ value: null });
+    await mount();
+
+    expect(mockLoadDraft).not.toHaveBeenCalled();
+    expect(wizardRenders).toBeGreaterThan(0);
+  });
+
+  it('Discard forgets the saved draft, so it does not come back next time', async () => {
+    await mount();
+    capturedOnDiscard?.();
+    expect(mockClearDraft).toHaveBeenCalled();
   });
 
   it('offers save & exit to the wizard', async () => {
