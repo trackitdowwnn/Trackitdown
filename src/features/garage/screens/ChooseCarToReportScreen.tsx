@@ -20,7 +20,10 @@
  *        signed in through the sheet never saw their own cars. So this screen
  *        MUST cope with having nothing to offer, which is what `nothingToOffer`
  *        below is for. (See the README's Nudges section for why this is not the
- *        rejected on-entry interstitial.)
+ *        rejected on-entry interstitial.) And it must not LOOK like a chooser
+ *        until it is one: while the garage loads the page stays blank for
+ *        motion.skeletonGrace, and it is blank while leaving for the wizard,
+ *        so someone with no cars never glimpses "Which car?" (2026-10-07).
  * LINKS: src/app/report-stolen/index.tsx (the route);
  *        src/app/(tabs)/_layout.tsx (routes here unless 'none' is confirmed);
  *        src/features/garage/screens/ReportSavedCarScreen.tsx (where a
@@ -30,11 +33,12 @@
 
 import { useRouter } from 'expo-router';
 import { Car, ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { createLogger } from '@/shared/lib/logger';
 import {
+  motion,
   radii,
   sizes,
   spacing,
@@ -133,6 +137,23 @@ export function ChooseCarToReportScreen() {
     }
   }, [nothingToOffer, startBlank]);
 
+  // ⚠️ NO CHOOSER UNTIL THERE IS SOMETHING TO CHOOSE. Someone with no cars
+  // lands here whenever the tab bar didn't yet know (just after launch, or
+  // signing in from the + button), and "Which car?" over two car-shaped
+  // skeleton rows told them, for a beat, that they had cars (owner report,
+  // 2026-10-07). So while loading the page stays BLANK for motion.skeletonGrace
+  // — most answers land inside it and go straight on — and only a slow load
+  // shows the skeleton. A held timer in state, not a render-time clock: the
+  // React Compiler would freeze that.
+  const [graceOver, setGraceOver] = useState(false);
+  useEffect(() => {
+    if (status !== 'loading') {
+      return;
+    }
+    const timer = setTimeout(() => setGraceOver(true), motion.skeletonGrace);
+    return () => clearTimeout(timer);
+  }, [status]);
+
   useEffect(() => {
     if (status === 'ready' && offerable.length > 0) {
       // Ids and counts only — never a plate or a nickname (docs/LOGGING.md).
@@ -159,6 +180,25 @@ export function ChooseCarToReportScreen() {
     ({ item }: { item: SavedVehicle }) => <ChooseCarRow vehicle={item} onPress={() => choose(item)} />,
     [choose],
   );
+
+  // Blank while the answer is due any moment, and while leaving for the
+  // wizard (the replace lands a frame after this render): neither may show a
+  // chooser. One busy element so a screen reader still hears that something
+  // is happening — worded for everyone, since we don't know yet whether
+  // there are cars.
+  if ((status === 'loading' && !graceOver) || nothingToOffer) {
+    return (
+      <Screen>
+        <View
+          style={styles.blank}
+          accessible
+          accessibilityLabel="Loading"
+          accessibilityState={{ busy: true }}
+          testID="choose-car-pending"
+        />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
@@ -242,6 +282,9 @@ export function ChooseCarToReportScreen() {
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
+  blank: {
+    flex: 1,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -14,6 +14,8 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
+import { motion } from '@/shared/theme';
+
 import type { SavedVehicle } from '../types';
 import { ChooseCarToReportScreen } from './ChooseCarToReportScreen';
 
@@ -196,9 +198,13 @@ describe('the escapes', () => {
     // cars means the garage emptied since. Never strand anyone on an empty
     // chooser — go where they were heading.
     mockVehicles = { status: 'ready', vehicles: [], retry: mockRetry };
-    await renderScreen();
+    const { queryByText, queryByTestId } = await renderScreen();
 
     expect(mockReplace).toHaveBeenCalledWith('/post-a-car');
+    // And never LOOKS like a chooser on the way out (the replace lands a
+    // frame later): no title, no "different car" row.
+    expect(queryByText('Which car?')).toBeNull();
+    expect(queryByTestId('choose-car-different')).toBeNull();
   });
 
   it('skips itself when every saved car is already reported', async () => {
@@ -232,5 +238,42 @@ describe('the escapes', () => {
     await renderScreen();
 
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+});
+
+describe('while the garage loads', () => {
+  // Someone with NO cars lands here whenever the tab bar didn't know yet, and
+  // "Which car?" over car-shaped skeleton rows told them they had cars
+  // (owner report, 2026-10-07).
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('stays blank at first — no chooser for someone who may have no cars', async () => {
+    jest.useFakeTimers();
+    mockVehicles = { status: 'loading', vehicles: [], retry: mockRetry };
+    const { getByTestId, queryByText, queryByTestId } = await renderScreen();
+
+    expect(queryByText('Which car?')).toBeNull();
+    expect(queryByTestId('choose-car-skeleton')).toBeNull();
+    expect(getByTestId('choose-car-pending').props.accessibilityState).toEqual({ busy: true });
+  });
+
+  it('a slow load shows the skeleton once the grace has passed', async () => {
+    jest.useFakeTimers();
+    mockVehicles = { status: 'loading', vehicles: [], retry: mockRetry };
+    const { getByTestId, getByText } = await renderScreen();
+
+    await act(async () => {
+      jest.advanceTimersByTime(motion.skeletonGrace);
+    });
+    expect(getByText('Which car?')).toBeTruthy();
+    expect(getByTestId('choose-car-skeleton')).toBeTruthy();
+  });
+
+  it('cars that are already known show the chooser at once, no wait', async () => {
+    const { getByText, getByTestId } = await renderScreen();
+    expect(getByText('Which car?')).toBeTruthy();
+    expect(getByTestId('choose-car-different')).toBeTruthy();
   });
 });

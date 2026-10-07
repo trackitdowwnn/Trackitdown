@@ -65,6 +65,11 @@ export const motion = {
   stepRepeat: 120,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */
   loaderMinVisible: 600,
+  /** How long a screen that may turn out to be a REDIRECT stays blank before
+   *  it draws its skeleton (ChooseCarToReportScreen). Most answers land well
+   *  inside it, so someone with nothing to choose never sees a chooser —
+   *  only a slow network shows the skeleton. */
+  skeletonGrace: 400,
   /** One cycle of a calm loading pulse (PhotoGridPicker's uploading tile). */
   loaderLoop: 1200,
   /** BrandLoader: dwell time per waiting phrase before it rotates — long
