@@ -188,7 +188,7 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
         },
         {
           id: 'bounty',
-          question: 'Set a bounty',
+          question: 'Set a reward',
           component: BountyStep,
           // WALKED PAST entirely when there is no reward to set — the wizard's
           // own `when` gating, so the step contributes no screen and no schema
@@ -207,7 +207,7 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           schema: z.object({
             bountyAmountPence: z.number().int().min(MIN_BOUNTY_PENCE).max(MAX_BOUNTY_PENCE),
           }),
-          reviewLabel: 'Bounty',
+          reviewLabel: 'Reward',
           reviewValue: (answers) =>
             answers.bountyAmountPence ? formatPounds(answers.bountyAmountPence) : '',
         },
