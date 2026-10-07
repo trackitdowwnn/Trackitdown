@@ -13,7 +13,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { formatLastDay } from '@/shared/lib/dateTimeLabel';
+import { formatTermDate } from '@/shared/lib/dateTimeLabel';
 import type { PostSummary } from '@/shared/types';
 
 import type { MyPostSummary } from '../api/myPostsApi';
@@ -594,11 +594,19 @@ describe('MyPostsScreen', () => {
     };
 
     it('shows "Reward ends on <date>" for a live listing whose reward ends within 14 days', async () => {
-      const endsAt = inDays(13);
+      // A stored term end is a London MIDNIGHT (reward_term_end), and the
+      // caption names the LAST day — the one before it (20261007120000).
+      // Built from the real clock: the UTC midnight 10 days on, moved back
+      // an hour when London is on BST.
+      const utcMidnight = new Date(Date.now() + 10 * DAY);
+      utcMidnight.setUTCHours(0, 0, 0, 0);
+      const londonHour = utcMidnight.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', hour12: false });
+      const endsAt = new Date(utcMidnight.getTime() - (londonHour === '01' ? 60 * 60 * 1000 : 0)).toISOString();
+      // The last day, independently: noon on it.
+      const lastDayNoon = new Date(Date.parse(endsAt) - 12 * 60 * 60 * 1000).toISOString();
       const { getByTestId } = await mountWith(withTerm({ rewardTermEndsAt: endsAt }));
-      // The LAST day of the term (20261007120000): its stored end is the
-      // midnight after it.
-      expect(getByTestId('reward-ends-r1')).toHaveTextContent(`Reward ends on ${formatLastDay(endsAt, true)}`);
+      expect(getByTestId('reward-ends-r1')).toHaveTextContent(`Reward ends on ${formatTermDate(lastDayNoon, true)}`);
+      expect(getByTestId('reward-ends-r1')).not.toHaveTextContent(formatTermDate(endsAt, true));
     });
 
     it('counts a listing awaiting verification as live too', async () => {

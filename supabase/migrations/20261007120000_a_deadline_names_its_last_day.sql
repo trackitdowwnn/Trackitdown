@@ -15,8 +15,9 @@
 --        Found 2026-10-07 reading a live payout deadline before
 --        PAYOUT_DEADLINE_ENABLED was switched on. Nothing moved on a wrong
 --        day: no 60-day term has ended yet, and the payout deadline was off.
---        The app's banner and My Posts line carry the same fix
---        (src/shared/lib/dateTimeLabel.ts, formatLastDay).
+--        The app carries the same fix (src/shared/lib/dateTimeLabel.ts,
+--        formatLastDay): the listing banner, the listing's term line
+--        (rewardTerm.ts), My Posts, and the change-reward screen.
 --
 -- SAFETY NOTE ON DESTRUCTIVE STATEMENTS: none. `create or replace` on THREE
 --        existing functions, each RESTATED IN FULL (extracted mechanically

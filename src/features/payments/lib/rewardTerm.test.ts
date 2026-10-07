@@ -83,6 +83,18 @@ describe('rewardTermLine', () => {
     );
   });
 
+  // 20261007120000: a term is stored as the midnight AFTER its last day
+  // (00:00 GMT on 5 December here), so the last day named is the 4th.
+  it('names the LAST DAY of a term stored as the following midnight', () => {
+    expect(rewardTermLine(held({ termEndsAt: '2026-12-05T00:00:00Z' }), NOW)).toBe(
+      'Your £200 reward runs until 4 December.',
+    );
+    // 00:00 BST on 5 October: it ended on the 4th.
+    expect(rewardTermLine(held({ termEndsAt: '2026-10-04T23:00:00Z' }), NOW)).toBe(
+      'Your £200 reward ended on 4 October.',
+    );
+  });
+
   it('never says "runs until" a date that has passed', () => {
     expect(rewardTermLine(held({ termEndsAt: '2026-10-04T23:59:59Z' }), NOW)).toBe(
       'Your £200 reward ended on 5 October.',

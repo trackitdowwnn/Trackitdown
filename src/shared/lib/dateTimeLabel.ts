@@ -1,7 +1,10 @@
 /**
  * WHAT:  Date/time display formatting — an ISO timestamp rendered as a
  *        friendly local-time label: "Today, 14:30", "Yesterday, 09:00",
- *        "Tomorrow, 10:00", then "Mon 6 Jul, 14:30" beyond a day away.
+ *        "Tomorrow, 10:00", then "Mon 6 Jul, 14:30" beyond a day away. Also
+ *        the money dates, always in EUROPE/LONDON: formatTermDate (the day
+ *        something happened) and formatLastDay (the last day of a reward
+ *        term or payout deadline, stored as the midnight after it).
  * WHY:   Wherever a picked or recorded moment is shown (the last-seen field,
  *        post detail, moderation), the same phrasing must appear. Relative
  *        day names cover the window victims actually reason about ("when
@@ -13,7 +16,9 @@
  *        output — revisit alongside any i18n work.
  * LINKS: src/features/vehicles/post/components/LastSeenTimeField.tsx (consumer);
  *        src/shared/lib/calendarDates.ts (the picker's own day labels);
- *        src/shared/lib/timeAgo.ts (elapsed-time sibling); docs/TESTING.md.
+ *        src/shared/lib/timeAgo.ts (elapsed-time sibling); docs/TESTING.md;
+ *        supabase/migrations/20261007120000_a_deadline_names_its_last_day.sql
+ *          (last_day_text — formatLastDay's server twin; they must agree).
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
