@@ -38,12 +38,12 @@ import { BODY_TYPE_UNKNOWN } from '@/features/vehicles';
 import { swatchForName } from '@/shared/lib/carColours';
 import {
   opacity,
+  radii,
   sizes,
   spacing,
   typography,
   useThemedStyles,
   type Palette,
-  radii,
 } from '@/shared/theme';
 import { DistinctiveFeatureList, PhotoPager, PlateChip } from '@/shared/ui';
 import { WIZARD_GUTTER } from '@/shared/wizard';
@@ -57,9 +57,15 @@ export interface VehicleSummaryStepProps {
   onEdit: () => void;
 }
 
-/** What the listing calls the car: make and model. */
+/** What the listing calls the car: make and model — or, if both are somehow
+ *  blank (the database allows an empty string), the step's own word for it,
+ *  so the heading and the photos' labels are never empty. */
 function makeAndModel(vehicle: SavedVehicle): string {
-  return [vehicle.make, vehicle.model].filter((part) => part?.trim()).join(' ');
+  const name = [vehicle.make, vehicle.model]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(' ');
+  return name || 'Your car';
 }
 
 /**
@@ -82,6 +88,7 @@ export function vehicleDetailLine(vehicle: SavedVehicle): string {
     .join(' · ');
 }
 
+/** The "Your car" sheet for one saved car — see the header. */
 export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps) {
   const styles = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
@@ -106,18 +113,19 @@ export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps)
       {/* The photo's own caption: close beneath it, so the two read as one
           object. Edit sits right under the details it would change. */}
       <View style={styles.identity}>
-        <Text style={styles.name} accessibilityRole="header">
-          {name}
-        </Text>
-        {nickname ? <Text style={styles.nickname}>{nickname}</Text> : null}
+        {/* The nickname is the name's own caption, so it sits closer to it
+            than the lines below do. */}
+        <View style={styles.nameGroup}>
+          <Text style={styles.name} accessibilityRole="header">
+            {name}
+          </Text>
+          {nickname ? <Text style={styles.nickname}>{nickname}</Text> : null}
+        </View>
         {/* Its own line, as on the listing: beside a long name the chip
-            wrapped anyway, inconsistently. A row wrapper, because the chip's
-            own alignSelf would otherwise override the parent's alignment. */}
-        {vehicle.plate ? (
-          <View style={styles.plateRow}>
-            <PlateChip plate={vehicle.plate} onPress={null} />
-          </View>
-        ) : null}
+            wrapped anyway, inconsistently. A DIRECT child, not wrapped: the
+            chip reaches its 44pt through hitSlop, which Android only honours
+            inside the parent's bounds — a chip-height wrapper clipped it. */}
+        {vehicle.plate ? <PlateChip plate={vehicle.plate} onPress={null} /> : null}
         {details ? <Text style={styles.details}>{details}</Text> : null}
         <Pressable
           onPress={onEdit}
@@ -154,29 +162,33 @@ const makeStyles = (c: Palette) =>
     },
     // sectionTitle (20), not title: the same size the review screen gives the
     // car's name, and a clear step down from the 32pt "Your car" above.
+    nameGroup: {
+      gap: spacing.xs,
+    },
     name: {
       ...typography.sectionTitle,
       color: c.textPrimary,
-      includeFontPadding: false,
     },
     nickname: {
       ...typography.caption,
       color: c.textSecondary,
     },
-    plateRow: {
-      flexDirection: 'row',
-    },
     details: {
       ...typography.body,
       color: c.textSecondary,
     },
-    // A real 44pt box, not hitSlop: slop outside the parent's bounds is not
-    // reliably hit on Android (ReviewStep's Edit learned the same).
+    // A real 44pt box, not hitSlop: slop alone left ReviewStep's Edit only
+    // as wide as the word, and slop past the parent's bounds is not reliably
+    // hit on Android. Pulled up by its own slack (above the 18pt line), so
+    // the visible gap to the details line is the block's 8pt — the link reads
+    // as part of what it edits. Top only: a negative bottom would push the box
+    // past the block and back into Android's clipping.
     edit: {
       alignSelf: 'flex-start',
       justifyContent: 'center',
       minHeight: sizes.touchTarget,
       minWidth: sizes.touchTarget,
+      marginTop: -(sizes.touchTarget - typography.label.lineHeight) / 2,
     },
     editPressed: {
       opacity: opacity.pressed,

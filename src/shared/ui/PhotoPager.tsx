@@ -72,6 +72,7 @@ export interface PhotoPagerProps {
   testID?: string;
 }
 
+/** Photos, swiped one page at a time — see the header. */
 export function PhotoPager({
   photos,
   aspectRatio = 4 / 3,
@@ -107,8 +108,8 @@ export function PhotoPager({
   };
 
   // Stay on the same photo when the width changes (rotation): the old offset
-  // would land between two pages. Not on the first width — there is nothing
-  // to re-align yet.
+  // would land between two pages. Not when the first measurement replaces no
+  // width at all — there is nothing to re-align yet.
   const indexRef = useRef(current);
   useEffect(() => {
     indexRef.current = current;
@@ -116,8 +117,11 @@ export function PhotoPager({
   const alignedWidth = useRef(width);
   useEffect(() => {
     if (width === alignedWidth.current) return;
+    const first = alignedWidth.current === 0;
     alignedWidth.current = width;
-    if (width > 0) scrollRef.current?.scrollTo({ x: indexRef.current * width, animated: false });
+    if (width > 0 && !first) {
+      scrollRef.current?.scrollTo({ x: indexRef.current * width, animated: false });
+    }
   }, [width]);
 
   const frame = [
@@ -165,7 +169,11 @@ export function PhotoPager({
               key={`${photo.uri}-${i}`}
               uri={photo.uri}
               accessibilityLabel={
-                photos.length > 1 ? `${alt ?? 'Photo'}, photo ${i + 1} of ${photos.length}` : alt
+                photos.length > 1
+                  ? alt
+                    ? `${alt}, photo ${i + 1} of ${photos.length}`
+                    : `Photo ${i + 1} of ${photos.length}`
+                  : alt || undefined
               }
               style={{ width, height }}
             />

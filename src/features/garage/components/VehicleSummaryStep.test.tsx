@@ -74,6 +74,26 @@ describe('VehicleSummaryStep', () => {
     expect(view.getByText('Betsy')).toBeTruthy();
   });
 
+  it('never an empty heading — blank make and model fall back to "Your car"', async () => {
+    const view = await render(
+      <VehicleSummaryStep vehicle={vehicle({ make: '', model: ' ' })} onEdit={jest.fn()} />,
+    );
+    expect(view.getByRole('header', { name: 'Your car' })).toBeTruthy();
+  });
+
+  it('shows EVERY distinctive feature — no "Show all" to outweigh Edit', async () => {
+    const marks = Array.from({ length: 4 }, (_, i) => ({
+      photoUrl: `https://x/f${i}.jpg`,
+      description: `Mark ${i + 1}`,
+      position: i,
+    }));
+    const view = await render(
+      <VehicleSummaryStep vehicle={vehicle({ distinctiveFeatures: marks })} onEdit={jest.fn()} />,
+    );
+    expect(view.getByLabelText('Distinctive feature: Mark 4')).toBeTruthy();
+    expect(view.queryByText(/Show all/)).toBeNull();
+  });
+
   it('says so when the car has no photos', async () => {
     const view = await render(
       <VehicleSummaryStep vehicle={vehicle({ photos: [] })} onEdit={jest.fn()} />,

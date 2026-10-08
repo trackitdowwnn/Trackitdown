@@ -105,7 +105,15 @@ describe('PhotoPager', () => {
       });
       (children ?? []).forEach(walk);
     };
-    walk(view.toJSON());
+    // toJSON is an array when there is more than one root — walk every one.
+    const tree = view.toJSON();
+    (Array.isArray(tree) ? tree : [tree]).forEach(walk);
     expect(handlers).toEqual([]);
+  });
+
+  it('without a description, each photo is simply "Photo n of m"', async () => {
+    const view = await render(<PhotoPager photos={photos(2)} testID="pager" />);
+    await measure(view);
+    expect(view.getByLabelText('Photo 2 of 2')).toBeTruthy();
   });
 });
