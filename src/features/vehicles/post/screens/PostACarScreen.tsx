@@ -27,6 +27,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 
+import { getCurrentUserId } from '@/features/auth';
 import { PaymentError, createBountyPaymentIntent, useBountyPayment } from '@/features/payments';
 import { successHaptic } from '@/shared/lib/haptics';
 import { useToast } from '@/shared/ui';
@@ -34,7 +35,12 @@ import { WizardScreen, type WizardFlow } from '@/shared/wizard';
 
 import { fetchBountyGuidance, logBountyRecommendation } from '../api/bountyGuidanceApi';
 import { recommendBounty } from '../lib/bountyRecommendation';
-import { clearPostDraft, loadPostDraft, savePostDraft } from '../lib/postDraftStorage';
+import {
+  clearPostDraft,
+  loadPostDraft,
+  peekPrimedDraft,
+  savePostDraft,
+} from '../lib/postDraftStorage';
 import { submitPost } from '../api/postApi';
 import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from '../postACarFlow';
 import type { PostACarAnswers } from '../types';
@@ -57,12 +63,20 @@ export interface PostACarScreenProps {
    * screen still never learns the garage exists (ARCHITECTURE.md rule 1).
    */
   onAbandon?: () => void;
+  /**
+   * Fired once, the moment the post exists on the server (before payment).
+   * The garage uses it to drop its cached cars: a car reported here is no
+   * longer offerable, and the next + must not offer it again (review of
+   * #141). A plain callback for the same reason as onAbandon.
+   */
+  onPostCreated?: () => void;
 }
 
 export function PostACarScreen({
   flow,
   initialAnswers,
   onAbandon,
+  onPostCreated,
 }: PostACarScreenProps = {}) {
   const router = useRouter();
   const toast = useToast();
@@ -87,12 +101,33 @@ export function PostACarScreen({
    * prefilled path (report THIS saved car), and a stale draft about a different
    * car must never overwrite the one they just chose.
    */
+  //
+  // ⚠️ STARTS FROM THE PRIMED DRAFT when there is one (2026-10-07). The +
+  // button reads the draft before it navigates (primePostDraft), so the form
+  // renders its real first screen on its FIRST frame and slides up already
+  // built. The async read below is only the fallback for an entry that didn't
+  // prime — it used to be the only path, and the slide-up started on an empty
+  // page with the whole wizard mounting halfway through it.
+  // Whose report this is, fixed when the form opens: a session that expires
+  // mid-form reads as nobody, and Save and exit must still save it for its
+  // owner rather than for no one (security review of #141).
+  const [ownerId] = useState(getCurrentUserId);
+
   const [draft, setDraft] = useState<{ answers: Partial<PostACarAnswers> } | 'checking' | null>(
-    initialAnswers ? null : 'checking',
+    () => {
+      if (initialAnswers) {
+        return null;
+      }
+      const primed = peekPrimedDraft();
+      if (primed === undefined) {
+        return 'checking';
+      }
+      return primed.value ? { answers: primed.value } : null;
+    },
   );
 
   useEffect(() => {
-    if (initialAnswers) {
+    if (draft !== 'checking') {
       return;
     }
     let cancelled = false;
@@ -105,7 +140,7 @@ export function PostACarScreen({
     return () => {
       cancelled = true;
     };
-  }, [initialAnswers]);
+  }, [draft]);
 
   const handleComplete = async (answers: Partial<PostACarAnswers>) => {
     // 1. Create the draft ONCE. On a retry the id is already known — skip
@@ -123,6 +158,7 @@ export function PostACarScreen({
       // createdPostIdRef rather than the answers, so the draft could only
       // resurface as a stale duplicate of a car already listed.
       void clearPostDraft();
+      onPostCreated?.();
 
       // Record what we ADVISED against what they CHOSE, once, on first
       // creation only — a retry after a declined card must not log a second
@@ -182,10 +218,10 @@ export function PostACarScreen({
     router.replace(`/post/${postId}`);
   };
 
-  // ⚠️ NOTHING RENDERS UNTIL THE DRAFT CHECK RESOLVES, and it is a blank rather
-  // than a spinner: the read is one AsyncStorage hit and typically lands in the
-  // same frame, so a loader would be a flash of chrome nobody asked for. The
-  // wizard's own entrance animation then plays once, over the right answers.
+  // ⚠️ NOTHING RENDERS UNTIL THE DRAFT CHECK RESOLVES — only on an entry that
+  // didn't prime the draft (see above). A blank rather than a spinner: the read
+  // is one AsyncStorage hit, so a loader would be a flash of chrome nobody
+  // asked for.
   if (draft === 'checking') {
     return null;
   }
@@ -214,7 +250,11 @@ export function PostACarScreen({
       // ⚠️ ONLY THIS FLOW GETS IT. Nine steps ending in a card charge is the
       // one place in the app where losing the answers is a real loss; report-a-
       // sighting and add-a-vehicle keep the plain discard prompt.
-      onSaveAndExit={savePostDraft}
+      onSaveAndExit={(answers) => savePostDraft(answers, ownerId)}
+      // Discard means discard: the saved draft goes too, or it came straight
+      // back on the next open. Only on the BLANK report — the prefilled path
+      // never read the draft, so its Discard must not wipe an unrelated one.
+      onDiscard={initialAnswers ? undefined : () => void clearPostDraft()}
     />
   );
 }

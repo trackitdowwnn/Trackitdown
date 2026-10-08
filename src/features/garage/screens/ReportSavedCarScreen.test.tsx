@@ -9,7 +9,7 @@
  *        Also pins the distinction the error branch exists for: a failed load
  *        is NOT a missing car, and must never be reported as one.
  * LINKS: src/features/garage/screens/ReportSavedCarScreen.tsx;
- *        src/features/garage/screens/ChooseCarToReportScreen.tsx;
+ *        src/features/garage/screens/StartReportScreen.tsx;
  *        docs/TESTING.md.
  */
 
@@ -47,7 +47,11 @@ jest.mock('../hooks/useMyVehicles', () => ({
 // early-return failure branches, so both the wizard and the flow builder are
 // stubbed to keep this suite about the fallbacks.
 jest.mock('@/features/vehicles', () => ({
-  PostACarScreen: () => null,
+  PostACarScreen: () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+    const { Text } = require('react-native');
+    return <Text testID="prefilled-form">form</Text>;
+  },
   postACarFlow: { id: 'post-a-car', phases: [] },
   POST_A_CAR_INITIAL_ANSWERS: {},
 }));
@@ -71,7 +75,7 @@ describe('when the garage will not load', () => {
       fireEvent.press(getByText('Report a stolen car from scratch'));
     });
 
-    expect(mockReplace).toHaveBeenCalledWith('/post-a-car');
+    expect(mockReplace).toHaveBeenCalledWith('/post-a-car?start=blank');
   });
 
   it('does not claim the car was deleted', async () => {
@@ -82,7 +86,7 @@ describe('when the garage will not load', () => {
       render(<ReportSavedCarScreen vehicleId="v1" />),
     );
 
-    expect(getByText("We couldn't load your cars.")).toBeTruthy();
+    expect(getByText("We couldn't load your saved cars.")).toBeTruthy();
     expect(queryByText("We couldn't find that car")).toBeNull();
   });
 });
@@ -98,6 +102,32 @@ describe('when the car is genuinely gone', () => {
       fireEvent.press(getByText('Report a stolen car'));
     });
 
-    expect(mockReplace).toHaveBeenCalledWith('/post-a-car');
+    expect(mockReplace).toHaveBeenCalledWith('/post-a-car?start=blank');
+  });
+});
+
+describe('once the report is shown', () => {
+  // Review of #141: posting drops the cached garage (so the next + won't offer
+  // this car), which sends the garage back to loading — mid-payment. The form
+  // must not be swapped for a loader or for "Already reported".
+  it('stays on screen through a reload and a now-posted car', async () => {
+    const car = { id: 'v1', isCurrentlyPosted: false, activePostId: null } as never;
+    mockVehicles = { status: 'ready', vehicles: [car], retry: mockRetry };
+    const view = await act(async () => render(<ReportSavedCarScreen vehicleId="v1" />));
+    expect(view.getByTestId('prefilled-form')).toBeTruthy();
+
+    mockVehicles = { status: 'loading', vehicles: [], retry: mockRetry };
+    await act(async () => {
+      view.rerender(<ReportSavedCarScreen vehicleId="v1" />);
+    });
+    expect(view.getByTestId('prefilled-form')).toBeTruthy();
+
+    const posted = { id: 'v1', isCurrentlyPosted: true, activePostId: 'p1' } as never;
+    mockVehicles = { status: 'ready', vehicles: [posted], retry: mockRetry };
+    await act(async () => {
+      view.rerender(<ReportSavedCarScreen vehicleId="v1" />);
+    });
+    expect(view.getByTestId('prefilled-form')).toBeTruthy();
+    expect(view.queryByText('Already reported')).toBeNull();
   });
 });

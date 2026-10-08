@@ -203,6 +203,13 @@ function RootLayoutContent() {
                     rather than a lateral push. */}
                 <Stack.Screen name="report-sighting" options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="post-a-car" options={{ animation: 'slide_from_bottom' }} />
+                {/* Reporting a SAVED car from /my-cars is the same task as the
+                    + button's report, so it arrives the same way: one slide
+                    up, never a sideways push (2026-10-07). */}
+                <Stack.Screen
+                  name="report-stolen/[vehicleId]"
+                  options={{ animation: 'slide_from_bottom' }}
+                />
                 {/* Creating an alert is a self-contained task over the app,
                     like the two above. Editing one (/alerts/[alertId]) is a
                     lateral push from the list, so it keeps the default. */}

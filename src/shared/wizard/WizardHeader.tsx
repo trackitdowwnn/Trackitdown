@@ -35,9 +35,10 @@ export interface WizardHeaderProps {
    * review screen's Edit links follow.
    */
   disabled?: boolean;
+  testID?: string;
 }
 
-export function WizardHeader({ onExit, disabled = false }: WizardHeaderProps) {
+export function WizardHeader({ onExit, disabled = false, testID }: WizardHeaderProps) {
   const styles = useThemedStyles(makeStyles);
 
   return (
@@ -49,6 +50,7 @@ export function WizardHeader({ onExit, disabled = false }: WizardHeaderProps) {
       disabled={disabled}
       onPress={onExit}
       hitSlop={spacing.sm}
+      testID={testID}
       style={({ pressed }) => [
         styles.exit,
         pressed && styles.exitPressed,

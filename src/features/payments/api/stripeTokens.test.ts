@@ -35,8 +35,10 @@ import { PaymentError } from '@/shared/lib/functionError';
 import type { PayoutDetails } from './payoutsApi';
 
 const mockCreateToken = jest.fn();
+const mockInitStripe = jest.fn(async (_params: unknown) => {});
 jest.mock('@stripe/stripe-react-native', () => ({
   createToken: (...args: unknown[]) => mockCreateToken(...args),
+  initStripe: (params: unknown) => mockInitStripe(params),
 }));
 
 // ⚠️ The key is read at MODULE SCOPE, and jest does not load .env — so a static
@@ -51,6 +53,11 @@ process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_fake';
 const { createIdentityToken, createBankToken } =
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- must load AFTER the env assignment above
   require('./stripeTokens') as typeof import('./stripeTokens');
+// The SAME module instance stripeTokens holds — a later jest.resetModules()
+// would otherwise hand beforeEach a fresh copy whose reset touches nothing.
+const { resetStripeReady } =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- same registry as the require above
+  require('../lib/stripeReady') as typeof import('../lib/stripeReady');
 
 const details: PayoutDetails = {
   firstName: 'Alex',
@@ -80,6 +87,8 @@ const consoleSpies: jest.SpyInstance[] = [];
 
 beforeEach(() => {
   mockCreateToken.mockReset();
+  mockInitStripe.mockReset().mockResolvedValue(undefined);
+  resetStripeReady();
   // Spy on EVERY console method: the assertion is that this module is silent,
   // and "silent" cannot mean "silent on the two methods we remembered".
   consoleSpies.length = 0;
@@ -240,6 +249,25 @@ describe('createIdentityToken', () => {
 });
 
 describe('createBankToken', () => {
+  // 2026-10-07: Stripe is initialised after the screen's transition, not on
+  // mount — so minting a token must wait for it, and a failed init must say so.
+  it('initialises Stripe before minting the token', async () => {
+    mockCreateToken.mockResolvedValue({ token: { id: 'btok_123' }, error: null });
+    await createBankToken(details);
+    expect(mockInitStripe).toHaveBeenCalledWith(
+      expect.objectContaining({ publishableKey: 'pk_test_fake' }),
+    );
+    expect(mockInitStripe.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCreateToken.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('a failed Stripe init is a retryable error, and no token is attempted', async () => {
+    mockInitStripe.mockRejectedValue(new Error('native init failed'));
+    await expect(createBankToken(details)).rejects.toMatchObject({ code: 'STRIPE_UNAVAILABLE' });
+    expect(mockCreateToken).not.toHaveBeenCalled();
+  });
+
   it('maps a UK sort code to routingNumber and pins country/currency', async () => {
     mockCreateToken.mockResolvedValue({ token: { id: 'btok_123' }, error: null });
 

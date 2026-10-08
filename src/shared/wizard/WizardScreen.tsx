@@ -118,6 +118,9 @@ export interface WizardScreenProps<TAnswers> {
    * than the thing it saves.
    */
   onSaveAndExit?: (answers: Partial<TAnswers>) => void | Promise<void>;
+  /** Called when the owner explicitly taps Discard on the leave prompt
+   *  (before onExit) — e.g. to forget a saved draft they've now thrown away. */
+  onDiscard?: () => void;
   /** Pre-filled answers (sensible defaults, or a saved draft). */
   initialAnswers?: Partial<TAnswers>;
 }
@@ -127,10 +130,17 @@ export function WizardScreen<TAnswers>({
   onExit,
   onComplete,
   onSaveAndExit,
+  onDiscard,
   initialAnswers,
 }: WizardScreenProps<TAnswers>) {
   const styles = useThemedStyles(makeStyles);
-  const controller = useWizardController(flow, { onExit, onComplete, onSaveAndExit, initialAnswers });
+  const controller = useWizardController(flow, {
+    onExit,
+    onComplete,
+    onSaveAndExit,
+    onDiscard,
+    initialAnswers,
+  });
   const {
     screen,
     screenIndex,

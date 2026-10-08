@@ -21,6 +21,8 @@ import { useCallback } from 'react';
 
 import { createLogger } from '@/shared/lib/logger';
 
+import { ensureStripeReady } from '../lib/stripeReady';
+
 const log = createLogger('payments');
 
 export type BountyPaymentOutcome = 'paid' | 'cancelled' | 'failed';
@@ -42,6 +44,14 @@ export function useBountyPayment() {
    */
   const payBounty = useCallback(
     async (clientSecret: string): Promise<BountyPaymentResult> => {
+      // Stripe is initialised after the screen's transition, not on mount
+      // (2026-10-07) — a fast tap to pay waits for it here.
+      try {
+        await ensureStripeReady();
+      } catch {
+        log.warn('Stripe init failed');
+        return { outcome: 'failed', message: PAYMENT_FAILED_MESSAGE };
+      }
       const initResult = await initPaymentSheet({
         paymentIntentClientSecret: clientSecret,
         merchantDisplayName: 'Trackitdown',

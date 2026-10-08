@@ -75,13 +75,26 @@ saved answers, so the owner only completes when/where, bounty, review and pay.
 - **`AddVehicleScreen`** — `WizardScreen` over `buildAddVehicleFlow()`. Serves
   **both** add and edit (`/add-vehicle`, `/edit-vehicle/[vehicleId]`): the flow
   and the mapping are identical, only the RPC and the toast differ.
-- **`ChooseCarToReportScreen`** — `/report-stolen`. The "Which car?" fork the
-  tab bar's **+** lands on when there are saved cars: a `GarageCard` each
-  (overflow hidden) plus "It's a different car". See the Nudges section for why
-  this is not the on-entry interstitial that was rejected.
-- **`ReportSavedCarScreen`** — `/report-stolen/[vehicleId]`. Resolves the car,
-  builds the prefilled flow, and renders `PostACarScreen` with it. Fails kindly
+- **`StartReportScreen`** — `/post-a-car`, the ONE destination of the tab
+  bar's **+** (since 2026-10-07). It slides up once and shows, in place: the
+  blank report (no cars to offer), the "Which car?" chooser
+  (`ChooseCarStage`: tap-rows plus "It's a different car"), a quiet pending
+  stage (`ReportPending`: the exit ✕, then "Getting your report ready…" —
+  never a title or car-shaped rows), or the chooser's error view. Choosing
+  dissolves into the report (`StageCover`) — no navigation. The first real
+  stage is fixed for the visit. A guest who reaches it without the gate (a
+  deep link) gets the sign-in sheet over a "Sign in to report a stolen car"
+  stage, which can ask again if they close the sheet. See the Nudges section for why the chooser is
+  not the on-entry interstitial that was rejected.
+- **`ReportSavedCarScreen`** — `/report-stolen/[vehicleId]`, the `/my-cars`
+  entry (slides up too). Finds the car (from the shared garage cache when
+  known) and renders `PrefilledReport` — the same prefilled wizard the chooser
+  uses. Waits with `ReportPending`, never `FullscreenLoader`. Fails kindly
   when the car is gone or already has a live listing.
+- **`useStartReport`** — the **+** button's action: waits, capped at
+  `motion.skeletonGrace`, for the garage answer (`awaitGarageAnswer`) and the
+  saved draft (`primePostDraft`), then pushes `/post-a-car` once, so the form
+  slides up already built.
 
 Garage cards are photography-first (2026-07-29 redesign): a full-width 3:2
 cover with no border or shadow, a "Reported stolen" pill overlaid ONLY in that
@@ -333,76 +346,81 @@ principle, which is why neither should be deleted as contradicting the other.
 
 ### "Which car?" is NOT one of these
 
-The tab bar's **+** routes someone with saved cars to `/report-stolen`
-(`ChooseCarToReportScreen`) instead of the blank wizard — which looks, at a
-glance, like the interstitial the rule above rejects. It isn't, and the
-difference is the whole of that rule's own reasoning:
+The tab bar's **+** offers someone with saved cars the "Which car?" chooser
+before the blank wizard — which looks, at a glance, like the interstitial the
+rule above rejects. It isn't, and the difference is the whole of that rule's
+own reasoning:
 
 > *adding a car first is strictly slower than reporting*
 
-True for someone with **no** saved car, which is who that rule is about. They
-pass through this screen without acting on it: since 2026-08-22 the **+** sends
-everyone except a confirmed `'none'` here, and the screen replaces itself with
-the blank wizard the moment it knows it has nothing to offer. For someone who
-**does** have one, choosing it is strictly **faster** than retyping it — the
-point of the entire feature, and this is the only way most people will find it.
-Same principle, opposite conclusion. **Do not delete this as contradicting the
-exit-sheet rule: they cover disjoint users and can never both fire.**
+True for someone with **no** saved car, which is who that rule is about — and
+they never see the chooser: the report screen shows it only when there are cars
+to offer. For someone who **does** have one, choosing it is strictly **faster**
+than retyping it — the point of the entire feature, and this is the only way
+most people will find it. Same principle, opposite conclusion. **Do not delete
+this as contradicting the exit-sheet rule: they cover disjoint users and can
+never both fire.**
 
 | | Where | When | Interrupts? |
 |---|---|---|---|
-| **"Which car?"** | `ChooseCarToReportScreen` at `/report-stolen` | Tapping **+** unless the garage is confirmed **empty** | It IS the destination — anyone with nothing to choose is replaced straight out to the wizard |
+| **"Which car?"** | `ChooseCarStage`, a stage of `StartReportScreen` at `/post-a-car` | Tapping **+** when the garage has a car to offer | It IS the destination — with nothing to offer, the same screen shows the blank wizard instead |
 
 What keeps it honest:
 
-- **The decision happens before the tap.** `(tabs)/_layout.tsx` reads
-  `useHasSavedCar` and picks the route up front, so there is no spinner for the
-  common case. ⚠️ **Only a confirmed `'none'` skips the chooser** (changed
-  2026-08-22). `'unknown'` used to mean the blank wizard on the reasoning that
-  "the honest default is the one that always works" — but the **+** is
-  auth-gated, and `'unknown'` is precisely what a **guest** reports, so the
-  overwhelmingly common path was: tap **+**, sign in through the sheet, and get
-  a route chosen while still signed out. Saved cars were never offered. It was
-  wrong a second way even when signed in, because the garage fetch is in flight
-  for a beat after sign-in.
-
-  Sending `'unknown'` to the chooser is safe **because the chooser
-  self-corrects**: `nothingToOffer` replaces it with `/post-a-car`. The cost is
-  a brief spinner for someone with no cars; the cost of the old reading was
-  silently withholding the feature from everyone who had just signed in.
-
-  This is the one place `enabled` is unconditional, because unlike the
-  nudges the answer is needed for *every* signed-in user; it is still one
-  `list_my_vehicles` per app session, not per mount.
+- **One route, one slide-up (2026-10-07).** The **+** always opens
+  `/post-a-car`; `StartReportScreen` picks the stage in place and dissolves
+  between stages (`StageCover`). It used to push a chooser route that then
+  REPLACED itself with the wizard — two full-screen transitions back to back,
+  which is a large part of why the owner called the flow "janky, slow and not
+  smooth".
+- **The answer is fetched before the tap, and awaited briefly at it.** The tab
+  layout's `useHasSavedCar({ enabled: true })` warms the shared garage cache
+  (`loadGarage`) once per session; `useStartReport` then waits for that answer
+  and the saved draft, capped at `motion.skeletonGrace`, before it navigates —
+  so the report screen usually renders its real stage on its first frame. It
+  reads the user at TAP time (`getCurrentUserId`): the **+** is auth-gated, and
+  a guest who signs in through the sheet must be offered their saved cars (the
+  2026-08-22 bug, when a route chosen while still signed out skipped them).
+- **"Which car?" is never drawn without cars.** A confirmed empty garage (or one
+  where every car is already reported) goes straight to the blank wizard; an
+  unknown one shows `ReportPending` — the exit ✕, then "Getting your
+  report ready…", no title, no car-shaped rows. The old skeleton told people with no
+  cars that they had some (#140).
+- **A stage once shown stays for the visit.** A background revalidation that
+  finds cars can't yank away a blank form someone has started on.
+- **A reported car is never offered again.** Creating a saved car's report
+  marks it posted in the cache (`markVehiclePosted`) rather than refetching:
+  the server only counts a post once it is paid, so a refetch would offer the
+  car straight back.
 - **Never a dead end.** "It's a different car" is always present; a failed
-  garage load offers retry *and* a way onward; and if the garage turns out to be
-  empty (or every car is already reported) the screen redirects to the blank
-  wizard rather than stranding anyone.
+  garage load offers retry *and* "Report a car from scratch"; a retry never
+  blanks the page it has already shown.
 - **No once-per-install flag, and it must not read the shared one.** The three
   nudges above are *asks* ("go and add a car"), which is why they are capped.
   This is the *route itself* at the moment of need. A flag would mean a real
   theft, months later, silently getting the slow path.
-- **`ReportSavedCarScreen`'s failure exits land on the BLANK wizard**, never
-  back on the chooser — whatever went wrong would go wrong again, and bouncing
-  someone between the two is a loop at the worst possible moment. One constant
-  (`BLANK_POST_AFTER_PREFILL_FAILURE`) so both exits cannot drift apart.
+- **`ReportSavedCarScreen`'s failure exits land on the BLANK wizard**
+  (`/post-a-car?start=blank`), never back on the chooser — whatever went wrong
+  would go wrong again, and bouncing someone between the two is a loop at the
+  worst possible moment. One constant (`BLANK_POST_AFTER_PREFILL_FAILURE`) so
+  both exits cannot drift apart.
 - **`GarageCard`'s overflow is hidden here** (`onOpenActions` omitted): editing
   or removing a car is the wrong offer to someone whose car was just stolen, and
   each card should present exactly one thing to do.
 
 A car that is already reported is filtered out (a second listing would be
-refused as `PLATE_IN_USE`). That filter is **dormant** today — see gap 1 below.
+refused as `PLATE_IN_USE`).
 
-The **My Posts** empty state still goes straight to the blank wizard: it lives
-in `features/vehicles`, and the dependency is one-way (garage → vehicles, never
-back), so it cannot read the saved-car signal. A cold path, deliberately left.
+The **My Posts** empty state pushes `/post-a-car` too, so since 2026-10-07 it
+lands on the same report screen — the chooser when there are cars to offer.
 
 Two guards make that safe, and both are tested:
 - `PostACarScreen`'s `onAbandon` fires only when **no draft exists** — someone who
   got as far as creating one and hit a payment problem is not offered anything.
-- The `/post-a-car` route is the only caller. `ReportSavedCarScreen` renders the
-  same screen and passes nothing, so the from-garage path is excluded
-  structurally rather than by a runtime check.
+- Only `StartReportScreen`'s BLANK stage passes it. Its prefilled stage and
+  `ReportSavedCarScreen` render the same wizard (via `PrefilledReport`) and
+  pass nothing, so the from-garage path is excluded structurally rather than by
+  a runtime check.
 
 **One shared flag, `trackitdown.garage_nudge_offered_v1`.** It means *"we asked"*,
 not *"they declined"* — the sheet writes it the moment it appears, whatever the
@@ -418,7 +436,8 @@ module-level cached count over `list_my_vehicles`, fetched lazily behind each
 caller's cheap checks — so a new or already-offered user costs zero network on
 the app's hottest screen. `'unknown'` (guest, failed fetch, request in flight)
 **never nudges**. `garageApi` invalidates it after every write, and
-`useMyVehicles` primes it for free.
+`useMyVehicles` primes it for free. Every write also bumps a generation, so a
+fetch that started before it is never published or joined — it asks again.
 
 Logged as `garage_nudge_shown / _accepted / _dismissed { surface }`.
 

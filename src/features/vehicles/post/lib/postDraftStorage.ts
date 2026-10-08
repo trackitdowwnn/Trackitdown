@@ -15,7 +15,7 @@
  *        rather than an accident — the same instinct as the `.strict()` schemas
  *        on every payload boundary in this codebase.
  *
- * ⚠️ PHOTOS ARE DELIBERATELY NOT SAVED, and the resume prompt says so. They are
+ * ⚠️ PHOTOS ARE DELIBERATELY NOT SAVED (the photo step simply asks again). They are
  *        local `file://` uris into the app's cache, and a cache the OS has
  *        cleared leaves a uri that points at nothing: restoring it would show
  *        broken tiles and then fail at upload, which is a worse experience than
@@ -32,6 +32,16 @@
  *        unlock an account), and SecureStore is not an alternative here: iOS
  *        caps a value at ~2KB, which this object exceeds. The mitigations are
  *        the expiry and the clears below, not the storage medium.
+ *
+ * ⚠️ IT BELONGS TO ONE ACCOUNT. The draft records who saved it and is only
+ *        ever offered back to them — a shared phone must never open one
+ *        account's draft (a last-seen location) for the next. A draft with no
+ *        owner (written before 2026-10-08, when one was recorded) is offered
+ *        to no one: it could be anyone's. A DELIBERATE sign-out, and account
+ *        deletion, delete it outright (profileApi); a session that merely
+ *        expires does not, so the owner keeps their own work (security review
+ *        of #141). Still one draft per device: another account saving one
+ *        replaces it.
  * LINKS: src/shared/wizard/useWizardController.ts (the seam this fills — it has
  *          carried a TODO(draft-persistence) since the framework was written);
  *        src/features/vehicles/post/screens/PostACarScreen.tsx (restores it);
@@ -40,6 +50,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { getCurrentUserId } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
 
 import type { PostACarAnswers } from '../types';
@@ -91,7 +102,15 @@ export type PersistedDraftAnswers = Partial<Pick<PostACarAnswers, (typeof PERSIS
 
 interface StoredDraft {
   savedAt: string;
+  /** Who saved it. Absent (before 2026-10-08) or null — offered to no one. */
+  ownerId?: string | null;
   answers: PersistedDraftAnswers;
+}
+
+/** True when the signed-in user may see a draft saved by ownerId. An
+ *  unknown owner is nobody's: "unknown" must never read as "anyone". */
+function isMine(ownerId: string | null): boolean {
+  return ownerId !== null && ownerId === getCurrentUserId();
 }
 
 /** Copy across only the whitelisted keys that actually have a value. */
@@ -111,11 +130,22 @@ function pickPersisted(answers: Partial<PostACarAnswers>): PersistedDraftAnswers
  * disappointment, but a storage failure taking down the exit the owner just
  * asked for would be a trap.
  */
-export async function savePostDraft(answers: Partial<PostACarAnswers>): Promise<void> {
+export async function savePostDraft(
+  answers: Partial<PostACarAnswers>,
+  // The form passes the user it OPENED for: a session that expired mid-form
+  // reads as nobody now, and a draft saved for nobody is offered to no one.
+  ownerId: string | null = getCurrentUserId(),
+): Promise<void> {
   try {
     const draft: StoredDraft = {
       savedAt: new Date().toISOString(),
+      ownerId,
       answers: pickPersisted(answers),
+    };
+    primed = {
+      value: draft.answers,
+      savedAt: Date.now(),
+      ownerId,
     };
     await AsyncStorage.setItem(KEY, JSON.stringify(draft));
     // ⚠️ COUNTS ONLY. The draft holds a location and a car; nothing about it
@@ -127,11 +157,21 @@ export async function savePostDraft(answers: Partial<PostACarAnswers>): Promise<
 }
 
 /**
- * The saved draft, or null when there is none, it is too old, or it is
- * unreadable. Every failure is null — a corrupt draft must never break the
- * screen that offers it.
+ * The saved draft, or null when there is none, it is too old, it is
+ * unreadable, or it is someone else's. Every failure is null — a corrupt draft
+ * must never break the screen that offers it.
  */
 export async function loadPostDraft(): Promise<PersistedDraftAnswers | null> {
+  const draft = await readDraft();
+  return draft && isMine(draft.ownerId) ? draft.answers : null;
+}
+
+/** The draft with WHEN it was saved — the read-ahead needs the age too. */
+async function readDraft(): Promise<{
+  answers: PersistedDraftAnswers;
+  savedAt: number;
+  ownerId: string | null;
+} | null> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     if (raw === null) {
@@ -151,18 +191,92 @@ export async function loadPostDraft(): Promise<PersistedDraftAnswers | null> {
     // ⚠️ RE-FILTERED ON READ, not trusted. The stored blob is whatever a
     // previous build wrote; a key this build does not persist must not come
     // back into the answers object just because it is on disk.
-    return pickPersisted(parsed.answers as Partial<PostACarAnswers>);
+    return {
+      answers: pickPersisted(parsed.answers as Partial<PostACarAnswers>),
+      savedAt,
+      ownerId: typeof parsed.ownerId === 'string' ? parsed.ownerId : null,
+    };
   } catch {
     log.warn('post_draft_load_failed');
     return null;
   }
 }
 
-/** Remove it. Called on submit, on discard, and on a failed read. */
+/** Remove it. Called on submit, on discard, on a failed read, and on a
+ *  deliberate sign-out or account deletion (profileApi). */
 export async function clearPostDraft(): Promise<void> {
+  primed = { value: null, savedAt: 0, ownerId: null };
   try {
     await AsyncStorage.removeItem(KEY);
   } catch {
     log.warn('post_draft_clear_failed');
   }
+}
+
+// ---- Read ahead -----------------------------------------------------------
+//
+// The form must slide up ALREADY BUILT. Reading the draft after mount left the
+// screen empty for the first part of its slide and then mounted the whole
+// wizard mid-animation (2026-10-07). So whoever is about to open the form —
+// the + button — primes the read first, and the screen starts from the primed
+// answer synchronously. The async read in the screen is only the fallback.
+//
+// The in-memory copy obeys the same rules as the disk: it carries its saved
+// time so the fortnight expiry still applies within a long-running session,
+// and its owner, so it is only ever offered back to them.
+
+/** The last known draft: undefined until read; { value: null } = no draft. */
+let primed:
+  | {
+      value: PersistedDraftAnswers | null;
+      savedAt: number;
+      ownerId: string | null;
+    }
+  | undefined;
+let priming: Promise<void> | null = null;
+
+/** Read the draft into memory ahead of opening the form. Shared, never throws. */
+export function primePostDraft(): Promise<void> {
+  if (primed !== undefined) {
+    return Promise.resolve();
+  }
+  if (!priming) {
+    priming = readDraft()
+      .then((draft) => {
+        // A save or clear that landed meanwhile wins over this read.
+        if (primed === undefined) {
+          primed = {
+            value: draft?.answers ?? null,
+            savedAt: draft?.savedAt ?? 0,
+            ownerId: draft?.ownerId ?? null,
+          };
+        }
+      })
+      .finally(() => {
+        priming = null;
+      });
+  }
+  return priming;
+}
+
+/** The primed draft, synchronously: undefined when not read yet. A copy that
+ *  has aged past the expiry, or belongs to another account, reads as "no
+ *  draft". */
+export function peekPrimedDraft(): { value: PersistedDraftAnswers | null } | undefined {
+  if (primed === undefined) {
+    return undefined;
+  }
+  if (
+    primed.value !== null &&
+    (Date.now() - primed.savedAt > MAX_AGE_MS || !isMine(primed.ownerId))
+  ) {
+    return { value: null };
+  }
+  return { value: primed.value };
+}
+
+/** Test-only: forget the primed copy. */
+export function resetPrimedDraft(): void {
+  primed = undefined;
+  priming = null;
 }

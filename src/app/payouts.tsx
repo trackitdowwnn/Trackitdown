@@ -16,9 +16,10 @@
 
 import { BountyPaymentProvider, PayoutsScreen } from '@/features/payments';
 
-// StripeProvider (via BountyPaymentProvider) is required here since 2026-08-04:
-// the payout form mints the BANK token with the SDK's createToken, which only
-// works inside the provider. Same mounting pattern as post-a-car.
+// BountyPaymentProvider since 2026-08-04: the payout form mints the BANK token
+// with the SDK's createToken, which needs Stripe initialised. The provider warms
+// it after this screen's transition; createBankToken awaits it. Same mounting
+// pattern as post-a-car.
 export default function PayoutsRoute() {
   return (
     <BountyPaymentProvider>

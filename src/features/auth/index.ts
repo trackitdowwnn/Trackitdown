@@ -19,5 +19,5 @@ export {
 } from './gate/useTabAuthGate';
 export { useAuthStanding, type AuthStanding } from './hooks/useAuthStanding';
 export { useOnboardingGate, type OnboardingGateState } from './hooks/useOnboardingGate';
-export { useSession, type SessionState } from './hooks/useSession';
+export { getCurrentUserId, useSession, type SessionState } from './hooks/useSession';
 export { OnboardingScreen } from './screens/OnboardingScreen';

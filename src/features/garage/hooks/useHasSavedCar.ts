@@ -12,9 +12,11 @@
  *        and a user switch all read 'unknown', so the honest default everywhere
  *        is "say nothing". A network blip must never produce a prompt.
  *
- *        SAFETY: the cached count is keyed by user id and ignored when it
- *        belongs to anyone else — a saved car is a number plate.
+ *        SAFETY: the cached garage is keyed by user id and ignored when it
+ *        belongs to anyone else, and dropped on sign-out — a saved car is a
+ *        number plate.
  * LINKS: src/features/garage/lib/savedCarSignal.ts (the store);
+ *        src/features/garage/lib/loadGarage.ts (the one shared fetch);
  *        src/features/garage/hooks/useGarageNudgeCard.ts,
  *        src/features/garage/components/SaveYourCarSheet.tsx (consumers);
  *        src/features/garage/hooks/useMyVehicles.ts (primes the same store).
@@ -24,10 +26,10 @@ import { useEffect, useSyncExternalStore } from 'react';
 
 import { useSession } from '@/features/auth';
 
-import { listMyVehicles } from '../api/garageApi';
+import { loadGarage } from '../lib/loadGarage';
 import {
   getSavedCarSnapshot,
-  publishSavedCarCount,
+  invalidateSavedCarSignal,
   subscribeToSavedCarSignal,
 } from '../lib/savedCarSignal';
 
@@ -38,44 +40,39 @@ export interface UseHasSavedCarOptions {
   enabled: boolean;
 }
 
-/** One in-flight request shared by every mounted consumer, so the Profile row
- *  and the feed card mounting together cause ONE round trip, not two. */
-let inFlight: Promise<void> | null = null;
-
-function loadOnce(userId: string): Promise<void> {
-  if (inFlight) {
-    return inFlight;
-  }
-  inFlight = listMyVehicles()
-    .then((vehicles) => {
-      publishSavedCarCount(userId, vehicles.length);
-    })
-    .catch(() => {
-      // listMyVehicles already logged it. Leaving the signal 'unknown' means the
-      // nudges simply stay quiet — the right failure mode for a prompt.
-    })
-    .finally(() => {
-      inFlight = null;
-    });
-  return inFlight;
-}
-
 export function useHasSavedCar({ enabled }: UseHasSavedCarOptions): SavedCarState {
   const session = useSession();
   const userId = session.status === 'signedIn' ? session.userId : null;
-  const cached = useSyncExternalStore(subscribeToSavedCarSignal, getSavedCarSnapshot);
-
-  // Another user's cached answer is not an answer. Guests are 'unknown' rather
-  // than 'none' (unlike useMyVehicles, which reports them as ready-and-empty) —
+  // Subscribed so a publish re-renders; keyed by user so another
+  // user's cached answer is never an answer. Guests are 'unknown' rather than
+  // 'none' (unlike useMyVehicles, which reports them as ready-and-empty) —
   // treating a signed-out user as having no cars would nudge them to save one.
-  const known = userId !== null && cached?.userId === userId ? cached : null;
+  //
+  // ⚠️ READ THE SNAPSHOT THE STORE HANDS BACK — never re-read the module in
+  // render. The React Compiler memoises a plain `garageFor(userId)` call on
+  // `userId`, so a publish would re-render this hook and still return the old
+  // answer: nudges stuck on 'unknown', or a 'none' outliving the car just
+  // added (review of #141 — the same trap as a render-time clock).
+  const snapshot = useSyncExternalStore(subscribeToSavedCarSignal, getSavedCarSnapshot);
+  const known = userId !== null && snapshot?.userId === userId ? snapshot : null;
 
   useEffect(() => {
     if (!enabled || !userId || known) {
       return;
     }
-    void loadOnce(userId);
+    void loadGarage(userId);
   }, [enabled, userId, known]);
+
+  // SAFETY: the cache holds plates — drop it the moment the session ends.
+  // The tab layout mounts this hook for the whole session, so this is the
+  // one place that always sees a sign-out. (The saved report draft is NOT
+  // wiped here: it records its owner and is only offered back to them — see
+  // postDraftStorage.)
+  useEffect(() => {
+    if (session.status === 'signedOut') {
+      invalidateSavedCarSignal();
+    }
+  }, [session.status]);
 
   if (!known) {
     return 'unknown';

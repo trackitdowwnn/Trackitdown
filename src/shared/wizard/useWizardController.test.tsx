@@ -384,6 +384,29 @@ describe('save & exit', () => {
     expect(buttons.find((b) => b.text === 'Save & exit')?.style).toBeUndefined();
   });
 
+  it('Discard calls onDiscard before leaving; a clean exit does not', async () => {
+    const onExit = jest.fn();
+    const onDiscard = jest.fn();
+    let buttons: AlertButton[] = [];
+    jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, alertButtons) => {
+      buttons = alertButtons ?? [];
+    });
+    const { result } = await renderHook(() =>
+      useWizardController<Answers>(flow, { onExit, onSaveAndExit: jest.fn(), onDiscard }),
+    );
+
+    // Nothing entered: leaving is not discarding anything.
+    await act(async () => result.current.requestExit());
+    expect(onDiscard).not.toHaveBeenCalled();
+    expect(onExit).toHaveBeenCalledTimes(1);
+
+    await act(async () => result.current.setAnswers({ name: 'J' }));
+    await act(async () => result.current.requestExit());
+    await act(async () => buttons.find((b) => b.text === 'Discard')?.onPress?.());
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(onExit).toHaveBeenCalledTimes(2);
+  });
+
   it('hands over the CURRENT answers, then leaves', async () => {
     const onExit = jest.fn();
     const onSaveAndExit = jest.fn();

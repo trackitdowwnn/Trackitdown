@@ -25,6 +25,10 @@ let capturedOnComplete: (answers: Record<string, unknown>) => Promise<void>;
 let capturedOnExit: () => void;
 let capturedOnSaveAndExit: ((a: Record<string, unknown>) => void) | undefined;
 let capturedInitialAnswers: Record<string, unknown> | undefined;
+let capturedOnDiscard: (() => void) | undefined;
+/** How many times the wizard rendered — the primed path must render it on
+ *  the very first commit, with no empty frame before. */
+let wizardRenders = 0;
 
 /** Mount the screen and flush the commit so the captured props are assigned. */
 async function mount(props: React.ComponentProps<typeof PostACarScreen> = {}) {
@@ -37,8 +41,11 @@ jest.mock('@/shared/wizard', () => ({
     onComplete: (a: Record<string, unknown>) => Promise<void>;
     onExit: () => void;
     onSaveAndExit?: (a: Record<string, unknown>) => void;
+    onDiscard?: () => void;
     initialAnswers?: Record<string, unknown>;
   }) => {
+    wizardRenders += 1;
+    capturedOnDiscard = props.onDiscard;
     capturedOnComplete = props.onComplete;
     capturedOnExit = props.onExit;
     capturedOnSaveAndExit = props.onSaveAndExit;
@@ -47,15 +54,20 @@ jest.mock('@/shared/wizard', () => ({
   },
 }));
 
+let mockCurrentUser: string | null = 'u1';
+jest.mock('@/features/auth', () => ({ getCurrentUserId: () => mockCurrentUser }));
+
 // ⚠️ Mocked at the module, not at AsyncStorage: the screen only has to decide
 // WHEN to save, restore and clear — what gets written is postDraftStorage's own
 // suite, and reaching the native module here would fail at import.
 const mockLoadDraft = jest.fn(async () => null as Record<string, unknown> | null);
-const mockSaveDraft = jest.fn(async (_answers: Record<string, unknown>) => {});
+const mockSaveDraft = jest.fn(async (_answers: Record<string, unknown>, _ownerId?: string | null) => {});
 const mockClearDraft = jest.fn(async () => {});
+const mockPeekDraft = jest.fn((): { value: Record<string, unknown> | null } | undefined => undefined);
 jest.mock('../lib/postDraftStorage', () => ({
   loadPostDraft: () => mockLoadDraft(),
-  savePostDraft: (a: Record<string, unknown>) => mockSaveDraft(a),
+  peekPrimedDraft: () => mockPeekDraft(),
+  savePostDraft: (a: Record<string, unknown>, ownerId?: string | null) => mockSaveDraft(a, ownerId),
   clearPostDraft: () => mockClearDraft(),
 }));
 
@@ -127,6 +139,8 @@ const ANSWERS = { bountyAmountPence: 50000 };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockPeekDraft.mockReturnValue(undefined);
+  wizardRenders = 0;
   mockSubmitPost.mockResolvedValue({ postId: 'p1', status: 'draft' });
   mockCreateIntent.mockResolvedValue('pi_secret_123');
 });
@@ -284,9 +298,65 @@ describe('the saved draft', () => {
     expect(capturedInitialAnswers).toMatchObject({ make: 'BMW', colour: 'Blue' });
   });
 
+  // 2026-10-07: the + button reads the draft before it navigates, so the form
+  // slides up ALREADY BUILT instead of mounting the wizard mid-slide.
+  it('starts from a primed draft on the first frame, without reading again', async () => {
+    mockPeekDraft.mockReturnValue({ value: { make: 'BMW' } });
+    await mount();
+
+    expect(mockLoadDraft).not.toHaveBeenCalled();
+    expect(capturedInitialAnswers).toMatchObject({ make: 'BMW' });
+  });
+
+  it('a primed "no draft" renders the wizard at once, too', async () => {
+    mockPeekDraft.mockReturnValue({ value: null });
+    await mount();
+
+    expect(mockLoadDraft).not.toHaveBeenCalled();
+    expect(wizardRenders).toBeGreaterThan(0);
+  });
+
+  it('Discard forgets the saved draft, so it does not come back next time', async () => {
+    await mount();
+    capturedOnDiscard?.();
+    expect(mockClearDraft).toHaveBeenCalled();
+  });
+
+  it('Discard on a prefilled report leaves the (unrelated) saved draft alone', async () => {
+    await mount({ initialAnswers: { make: 'Audi' } });
+    expect(capturedOnDiscard).toBeUndefined();
+  });
+
+  it('tells the caller the moment the post exists, before payment', async () => {
+    // The garage drops its cached cars then: the car just reported must not
+    // be offered again by the next +.
+    const onPostCreated = jest.fn();
+    mockPayBounty.mockResolvedValue({ outcome: 'cancelled', message: null });
+    await mount({ onPostCreated });
+
+    await expect(capturedOnComplete(ANSWERS)).rejects.toBeDefined();
+    expect(onPostCreated).toHaveBeenCalledTimes(1);
+    // A retry reuses the post — it is not created twice, so not told twice.
+    await expect(capturedOnComplete(ANSWERS)).rejects.toBeDefined();
+    expect(onPostCreated).toHaveBeenCalledTimes(1);
+  });
+
   it('offers save & exit to the wizard', async () => {
     await mount();
     expect(capturedOnSaveAndExit).toBeDefined();
+  });
+
+  // Security review of #141: a session that expired mid-form reads as nobody,
+  // and a draft saved for nobody is offered to no one — the owner's work lost.
+  it('saves the draft for whoever the form OPENED for, even if the session has since ended', async () => {
+    mockCurrentUser = 'u1';
+    await mount();
+    mockCurrentUser = null; // the token expired
+    await act(async () => {
+      capturedOnSaveAndExit?.({ make: 'BMW' });
+    });
+    expect(mockSaveDraft).toHaveBeenCalledWith({ make: 'BMW' }, 'u1');
+    mockCurrentUser = 'u1';
   });
 
   it('⚠️ ignores a saved draft when the caller supplied answers', async () => {

@@ -1,37 +1,31 @@
 /**
- * WHAT:  Route for the post-a-car wizard — a full-screen flow OUTSIDE the
- *        (tabs) group, so the bottom tab bar is absent for the whole wizard.
- *        Wrapped in BountyPaymentProvider so the final step can present Stripe's
- *        PaymentSheet to take the bounty into escrow.
+ * WHAT:  Route for reporting a stolen car — THE destination of the + button,
+ *        a full-screen flow OUTSIDE the (tabs) group (no tab bar), sliding up
+ *        from the bottom. Wrapped in BountyPaymentProvider so the final step
+ *        can present Stripe's PaymentSheet to take the bounty into escrow.
  * WHY:   Route files stay thin (docs/ARCHITECTURE.md rule 3): this imports the
  *        feature screen + the payments provider and nothing else. The provider
  *        is scoped here (not the app root) so Stripe's native module is only
- *        engaged for the flow that charges.
+ *        engaged for the flows that charge.
  *
- *        This is the BLANK report. Someone with cars in their garage is routed
- *        to /report-stolen first (see src/app/(tabs)/_layout.tsx) and arrives
- *        here only by choosing "It's a different car", so this route never
- *        needs to offer a prefill.
- *
- *        It ALSO wires the garage's exit nudge. Doing it here rather than
- *        inside PostACarScreen is what keeps features/vehicles unaware of the
- *        garage, AND what excludes the from-garage report path:
- *        ReportSavedCarScreen renders the same PostACarScreen but passes no
- *        onAbandon, so someone who already has a saved car is never offered one.
- * LINKS: src/features/vehicles/post/screens/PostACarScreen.tsx;
+ *        Since 2026-10-07 this one route covers EVERY way into a report: the
+ *        host screen shows the blank form, the "Which car?" chooser or the
+ *        prefilled form in place, so the + button is one slide up, never a
+ *        chooser route that then replaced itself with this one. The garage's
+ *        exit nudge is wired inside the host, on the blank form only.
+ * LINKS: src/features/garage/screens/StartReportScreen.tsx (the host);
+ *        src/features/garage/hooks/useStartReport.ts (the + button);
  *        src/features/payments/BountyPaymentProvider.tsx;
- *        src/features/garage/lib/exitNudgeIntent.ts;
- *        src/app/report-stolen/index.tsx (the chooser that precedes this).
+ *        src/app/report-stolen/[vehicleId].tsx (the /my-cars entry).
  */
 
-import { requestSaveCarNudge } from '@/features/garage';
+import { StartReportScreen } from '@/features/garage';
 import { BountyPaymentProvider } from '@/features/payments';
-import { PostACarScreen } from '@/features/vehicles/post';
 
 export default function PostACarRoute() {
   return (
     <BountyPaymentProvider>
-      <PostACarScreen onAbandon={requestSaveCarNudge} />
+      <StartReportScreen />
     </BountyPaymentProvider>
   );
 }

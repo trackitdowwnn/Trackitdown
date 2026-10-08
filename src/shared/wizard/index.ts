@@ -19,3 +19,6 @@ export type {
 export { flattenFlow, resolveQuestion } from './navigation';
 export { useWizardController } from './useWizardController';
 export { WizardScreen, type WizardScreenProps } from './WizardScreen';
+// The exit X, shared so a screen that dissolves INTO a wizard (the report
+// host's stages) shows the same control in the same place.
+export { WizardHeader, type WizardHeaderProps } from './WizardHeader';

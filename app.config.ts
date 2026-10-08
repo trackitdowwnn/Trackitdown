@@ -90,7 +90,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Function secrets, never bundled. See supabase/functions/README.md.
     // The plugin MUST be configured with props (a bare string makes withStripeIos
     // throw on props.merchantIdentifier). merchantIdentifier matches
-    // BountyPaymentProvider's APPLE_PAY_MERCHANT_ID; both stay inert until Apple
+    // APPLE_PAY_MERCHANT_ID in src/features/payments/lib/stripeReady.ts; both stay inert until Apple
     // Pay / Google Pay are actually set up.
     [
       '@stripe/stripe-react-native',

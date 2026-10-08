@@ -44,6 +44,13 @@ export interface WizardControllerOptions<TAnswers> {
    */
   onSaveAndExit?: (answers: Partial<TAnswers>) => void | Promise<void>;
   /**
+   * Called when the owner EXPLICITLY taps Discard on the leave prompt, just
+   * before onExit — not on a clean exit with nothing entered. The posting
+   * flow uses it to forget a saved draft: without it, a draft the owner had
+   * just thrown away came straight back on the next open.
+   */
+  onDiscard?: () => void;
+  /**
    * The final screen's async submit. Runs when the user presses the primary
    * button on the last screen; while it runs the button shows a spinner. On
    * rejection the wizard stays fully intact (answers + position) and the
@@ -70,7 +77,7 @@ function toErrorMessage(err: unknown): string {
 
 export function useWizardController<TAnswers>(
   flow: WizardFlow<TAnswers>,
-  { onExit, onComplete, onSaveAndExit, initialAnswers }: WizardControllerOptions<TAnswers>,
+  { onExit, onComplete, onSaveAndExit, onDiscard, initialAnswers }: WizardControllerOptions<TAnswers>,
 ) {
   const screens = useMemo(() => flattenFlow(flow), [flow]);
   const [nav, dispatch] = useReducer(wizardReducer, INITIAL_NAV_STATE);
@@ -210,6 +217,10 @@ export function useWizardController<TAnswers>(
   }, [busy, screens, nav.index, isLastScreen, onComplete, answers, next]);
 
   const requestExit = useCallback(() => {
+    const discard = () => {
+      onDiscard?.();
+      onExit();
+    };
     // ⚠️ NOT WHILE SUBMITTING, and this is a double-pop bug, not tidiness. The
     // footer Back hides itself while an action is in flight and the Android
     // hardware back swallows the gesture, but the header X funnels straight in
@@ -246,7 +257,7 @@ export function useWizardController<TAnswers>(
         // ⚠️ Destructive is on DISCARD, not on saving — the safe option must
         // not be the one styled as dangerous. Order matters too: on iOS the
         // cancel button is pinned, and "Discard" sits furthest from the thumb.
-        { text: 'Discard', style: 'destructive', onPress: onExit },
+        { text: 'Discard', style: 'destructive', onPress: discard },
         {
           text: 'Save & exit',
           onPress: () => {
@@ -268,9 +279,9 @@ export function useWizardController<TAnswers>(
     }
     Alert.alert('Discard your answers?', "You'll lose what you've entered so far.", [
       { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: onExit },
+      { text: 'Discard', style: 'destructive', onPress: discard },
     ]);
-  }, [busy, isLastScreen, onExit, onSaveAndExit]);
+  }, [busy, isLastScreen, onExit, onSaveAndExit, onDiscard]);
 
   return {
     screens,

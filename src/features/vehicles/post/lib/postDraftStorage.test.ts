@@ -23,7 +23,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { PostACarAnswers } from '../types';
-import { clearPostDraft, loadPostDraft, savePostDraft } from './postDraftStorage';
+import {
+  clearPostDraft,
+  loadPostDraft,
+  peekPrimedDraft,
+  primePostDraft,
+  resetPrimedDraft,
+  savePostDraft,
+} from './postDraftStorage';
 
 jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn(async () => {}),
@@ -31,8 +38,18 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: jest.fn(async () => {}),
 }));
 
+let mockCurrentUser: string | null = 'u1';
+jest.mock('@/features/auth', () => ({
+  getCurrentUserId: () => mockCurrentUser,
+}));
+
 jest.mock('@/shared/lib/logger', () => ({
-  createLogger: () => ({ info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() }),
+  createLogger: () => ({
+    info: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    error: jest.fn(),
+  }),
 }));
 
 const mockStorage = AsyncStorage as unknown as {
@@ -57,7 +74,10 @@ function answers(): Partial<PostACarAnswers> {
     bountyAmountPence: 30000,
     photos: [{ uri: 'file:///cache/a.jpg', width: 4000, height: 3000 }],
     distinctiveFeatures: [
-      { photo: { uri: 'file:///cache/mark.jpg', width: 100, height: 100 }, description: 'Dent' },
+      {
+        photo: { uri: 'file:///cache/mark.jpg', width: 100, height: 100 },
+        description: 'Dent',
+      },
     ],
   };
 }
@@ -83,7 +103,11 @@ describe('savePostDraft', () => {
       model: '320d',
       colour: 'Blue',
       year: 2019,
-      location: { latitude: 53.48, longitude: -2.24, addressLabel: 'Manchester' },
+      location: {
+        latitude: 53.48,
+        longitude: -2.24,
+        addressLabel: 'Manchester',
+      },
       stolenFrom: 'driveway',
       bountyAmountPence: 30000,
     });
@@ -130,7 +154,11 @@ describe('savePostDraft', () => {
 describe('loadPostDraft', () => {
   it('returns the saved answers', async () => {
     mockStorage.getItem.mockResolvedValue(
-      JSON.stringify({ savedAt: new Date().toISOString(), answers: { make: 'BMW' } }),
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        ownerId: 'u1',
+        answers: { make: 'BMW' },
+      }),
     );
 
     await expect(loadPostDraft()).resolves.toEqual({ make: 'BMW' });
@@ -147,6 +175,7 @@ describe('loadPostDraft', () => {
     mockStorage.getItem.mockResolvedValue(
       JSON.stringify({
         savedAt: new Date(Date.now() - 15 * DAY_MS).toISOString(),
+        ownerId: 'u1',
         answers: { make: 'BMW' },
       }),
     );
@@ -160,6 +189,7 @@ describe('loadPostDraft', () => {
     mockStorage.getItem.mockResolvedValue(
       JSON.stringify({
         savedAt: new Date(Date.now() - 13 * DAY_MS).toISOString(),
+        ownerId: 'u1',
         answers: { make: 'BMW' },
       }),
     );
@@ -187,11 +217,99 @@ describe('loadPostDraft', () => {
     mockStorage.getItem.mockResolvedValue(
       JSON.stringify({
         savedAt: new Date().toISOString(),
+        ownerId: 'u1',
         answers: { make: 'BMW', photos: [{ uri: 'file:///gone.jpg' }] },
       }),
     );
 
     await expect(loadPostDraft()).resolves.toEqual({ make: 'BMW' });
+  });
+});
+
+// 2026-10-07: the + button reads the draft before navigating, so the form can
+// start from it synchronously and slide up already built.
+describe('reading ahead', () => {
+  beforeEach(() => {
+    resetPrimedDraft();
+  });
+
+  it('is unknown until primed, then holds what was read', async () => {
+    mockStorage.getItem.mockResolvedValue(
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        ownerId: 'u1',
+        answers: { make: 'BMW' },
+      }),
+    );
+    expect(peekPrimedDraft()).toBeUndefined();
+    await primePostDraft();
+    expect(peekPrimedDraft()).toEqual({ value: { make: 'BMW' } });
+  });
+
+  it('shares one read between callers', async () => {
+    await Promise.all([primePostDraft(), primePostDraft()]);
+    expect(mockStorage.getItem).toHaveBeenCalledTimes(1);
+    expect(peekPrimedDraft()).toEqual({ value: null });
+  });
+
+  it('stays in step with saves and clears', async () => {
+    await savePostDraft({ make: 'Audi' } as Partial<PostACarAnswers>);
+    expect(peekPrimedDraft()).toEqual({ value: { make: 'Audi' } });
+    await clearPostDraft();
+    expect(peekPrimedDraft()).toEqual({ value: null });
+  });
+});
+
+// Security review of #141: one draft per device, but only ever offered back to
+// the account that saved it — it holds where the car was last seen.
+describe('ownership', () => {
+  beforeEach(() => {
+    resetPrimedDraft();
+    mockCurrentUser = 'u1';
+  });
+
+  it('records who saved it', async () => {
+    await savePostDraft(answers());
+    const written = JSON.parse(mockStorage.setItem.mock.calls[0][1]);
+    expect(written.ownerId).toBe('u1');
+  });
+
+  it('SAFETY: another account never reads it — from disk or from memory', async () => {
+    mockStorage.getItem.mockResolvedValue(
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        ownerId: 'u1',
+        answers: { make: 'BMW' },
+      }),
+    );
+    await primePostDraft();
+    mockCurrentUser = 'u2';
+
+    await expect(loadPostDraft()).resolves.toBeNull();
+    expect(peekPrimedDraft()).toEqual({ value: null });
+    expect(mockStorage.removeItem).not.toHaveBeenCalled(); // kept for its owner
+
+    mockCurrentUser = 'u1';
+    await expect(loadPostDraft()).resolves.toEqual({ make: 'BMW' });
+    expect(peekPrimedDraft()).toEqual({ value: { make: 'BMW' } });
+  });
+
+  it('SAFETY: a draft saved with no known user is offered to no one', async () => {
+    mockStorage.getItem.mockResolvedValue(
+      JSON.stringify({ savedAt: new Date().toISOString(), ownerId: null, answers: { make: 'BMW' } }),
+    );
+    await expect(loadPostDraft()).resolves.toBeNull();
+    await primePostDraft();
+    expect(peekPrimedDraft()).toEqual({ value: null });
+  });
+
+  // Before 2026-10-08 nothing recorded an owner, and nothing wiped the draft on
+  // sign-out — so an ownerless draft could be anyone's.
+  it('SAFETY: a draft from before owners were recorded is offered to no one', async () => {
+    mockStorage.getItem.mockResolvedValue(
+      JSON.stringify({ savedAt: new Date().toISOString(), answers: { make: 'BMW' } }),
+    );
+    await expect(loadPostDraft()).resolves.toBeNull();
   });
 });
 
