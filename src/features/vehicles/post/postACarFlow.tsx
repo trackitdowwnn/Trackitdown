@@ -1,7 +1,6 @@
 /**
  * WHAT:  The post-a-car WizardFlow — the config table that turns the step
- *        components into the 3-phase / review flow: phase intros, per-step
- *        questions, zod gating, and review labels/values. Plus the initial
+ *        components into the 3-phase / review flow: per-step questions, zod gating, and review labels/values. Plus the initial
  *        answers (a sensible starting bounty so the slider and its schema begin
  *        valid).
  * WHY:   Flows are DATA, not code (the framework renders everything else). One
@@ -10,6 +9,13 @@
  *        the manual make/model/colour/year path is what identifies the car;
  *        create_post re-validates everything at submit. Copy follows
  *        DESIGN_SYSTEM tone — calm, practical, no dwelling.
+ *
+ *        NO PHASE INTROS (2026-10-08). Three screens that only said what was
+ *        coming stood between someone whose car was just stolen and the
+ *        questions ("janky, slow and not smooth" — the owner chose to trim).
+ *        What the first intro said that mattered is kept as ONE line on the
+ *        first step (EMPATHY_LINE); the segmented progress bar names the
+ *        phases' progress instead.
  * LINKS: src/features/vehicles/post/components/postSteps.tsx (the components);
  *        src/features/vehicles/post/screens/PostACarScreen.tsx (renders this);
  *        src/features/vehicles/post/api/postApi.ts (buildCreatePostParams).
@@ -48,6 +54,22 @@ export const POST_A_CAR_INITIAL_ANSWERS: Partial<PostACarAnswers> = {
   bountyAmountPence: DEFAULT_BOUNTY_PENCE,
 };
 
+/**
+ * The one line of comfort left from the old "Sorry this happened" intro,
+ * under the first question (owner's call, 2026-10-08). Post a car ONLY: the
+ * garage's add-a-car flow shares these steps (buildVehicleSteps) and nothing
+ * has happened to anyone there. The one exception to this flow's "no helper"
+ * rule (post README).
+ */
+export const EMPATHY_LINE = 'Sorry this happened — let’s get the details.';
+
+/** The shared vehicle steps, with the empathy line on the first. */
+function carSteps() {
+  return buildVehicleSteps<PostACarAnswers>({ minPhotos: 3 }).map((step, index) =>
+    index === 0 ? { ...step, helper: EMPATHY_LINE } : step,
+  );
+}
+
 export const postACarFlow: WizardFlow<PostACarAnswers> = {
   id: 'post-a-car',
   // The final CTA names the amount the owner is about to pay ("Post & pay
@@ -80,23 +102,14 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
     {
       id: 'car',
       title: 'Your car',
-      intro: {
-        headline: 'Sorry this happened',
-        body: "Let's get the details spotters need — it takes about five minutes.",
-        ctaLabel: 'Get started',
-      },
       // The SHARED vehicle-identity slice — the same seven steps the garage
       // collects (lib/vehicleSteps.tsx). Posting demands 3–6 photos: a spotter
       // needs several angles to recognise a car.
-      steps: buildVehicleSteps<PostACarAnswers>({ minPhotos: 3 }),
+      steps: carSteps(),
     },
     {
       id: 'when-where',
       title: 'When and where',
-      intro: {
-        headline: 'Where it was last seen',
-        body: 'The last place and time you saw it helps spotters look in the right area.',
-      },
       steps: [
         {
           id: 'last-seen-when',
@@ -163,13 +176,6 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
     {
       id: 'bounty',
       title: 'Reward',
-      intro: {
-        // Phase copy no longer PRESUMES a reward — "Set the reward" would make
-        // the no-reward option read as the wrong answer to a question already
-        // asked (ADR-0014).
-        headline: 'How you’ll list it',
-        body: 'Offer a reward for whoever finds your car, or list it for a one-off fee.',
-      },
       steps: [
         {
           id: 'pricing-mode',

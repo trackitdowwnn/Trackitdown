@@ -47,6 +47,10 @@ const mockWarm = jest.fn();
 jest.mock('@/shared/lib/location/placeLabels', () => ({
   warmPlaceLabels: (coord: unknown) => mockWarm(coord),
 }));
+const mockWarmGuidance = jest.fn();
+jest.mock('../api/bountyGuidanceApi', () => ({
+  warmBountyGuidance: (lat: number, lng: number) => mockWarmGuidance(lat, lng),
+}));
 
 function renderStep(settled: boolean) {
   return render(
@@ -94,6 +98,8 @@ describe('LastSeenWhereStep', () => {
       });
     });
     expect(mockWarm).toHaveBeenCalledWith({ latitude: 53.4, longitude: -2.2 });
+    // …and the reward guidance, so it is there when the reward step arrives.
+    expect(mockWarmGuidance).toHaveBeenCalledWith(53.4, -2.2);
   });
 
   it('a pin still moving starts nothing', async () => {
@@ -102,6 +108,7 @@ describe('LastSeenWhereStep', () => {
       mockPickerProps?.onLocationChange({ isSettled: false, latitude: 53.4, longitude: -2.2 });
     });
     expect(mockWarm).not.toHaveBeenCalled();
+    expect(mockWarmGuidance).not.toHaveBeenCalled();
   });
 });
 

@@ -48,6 +48,13 @@ export interface WizardStepProps<TAnswers> {
    * so mounting it doesn't steal frames from the transition.
    */
   settled?: boolean;
+  /**
+   * Move on by itself after a short beat (motion.autoAdvanceBeat), for a step
+   * whose answer is a single pick (2026-10-08). Only if the step is then
+   * valid; any move meanwhile cancels it; never under a screen reader. On an
+   * edit spur it does what Done does. Call it AFTER a picker has closed.
+   */
+  advanceSoon?: () => void;
 }
 
 export interface WizardStep<TAnswers> {

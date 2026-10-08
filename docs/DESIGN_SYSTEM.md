@@ -856,7 +856,9 @@ barrel, since it pulls in Reanimated).
   over `fast`. One move at a time, with the keyboard dropped first, and
   nothing a step had already shown replays its entrance on return. Progress
   is one segment per phase, filling per step, and animates only on change,
-  never on mount. Mechanics in `src/shared/wizard/README.md`.
+  never on mount. A one-pick step (a make, a colour) moves on by itself
+  after `autoAdvanceBeat` (300ms) — the beat lets the pick be seen landing;
+  never under a screen reader. Mechanics in `src/shared/wizard/README.md`.
 - **Lists:** on-screen rows enter with a small staggered `FadeInDown`
   (≤~300ms total); recycled/off-screen cells don't animate.
 - **Reduced motion (part of the system, not a footnote):** every animated

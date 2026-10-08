@@ -92,6 +92,51 @@ describe('SelectField', () => {
     expect(onChange).toHaveBeenCalledWith('sand');
   });
 
+  // 2026-10-08: the wizard's auto-advance hangs off onPicked, so it must come
+  // AFTER the picker has finished closing, and never from its X.
+  describe('onPicked', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    async function openPicker(onPicked: () => void) {
+      jest.useFakeTimers();
+      const view = await render(
+        <SelectField label="Colour" options={COLOURS} value={null} onChange={jest.fn()} onPicked={onPicked} />,
+      );
+      await act(async () => {
+        fireEvent.press(view.getByLabelText('Colour, not selected, opens selection screen'));
+      });
+      return view;
+    }
+
+    it('fires after a pick, once the picker has finished closing', async () => {
+      const onPicked = jest.fn();
+      const view = await openPicker(onPicked);
+      await act(async () => {
+        fireEvent.press(view.getByText('Sand'));
+      });
+      expect(onPicked).not.toHaveBeenCalled(); // still closing
+
+      await act(async () => {
+        jest.advanceTimersByTime(300); // past the close animation
+      });
+      expect(onPicked).toHaveBeenCalledTimes(1);
+    });
+
+    it('never fires when the picker is closed without a pick', async () => {
+      const onPicked = jest.fn();
+      const view = await openPicker(onPicked);
+      await act(async () => {
+        fireEvent.press(view.getByLabelText('Close'));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(onPicked).not.toHaveBeenCalled();
+    });
+  });
+
   describe('clearable (filters)', () => {
     const clearable = (onClear: () => void) => ({
       anyLabel: 'Any colour',

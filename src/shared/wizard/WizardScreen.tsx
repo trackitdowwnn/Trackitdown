@@ -396,6 +396,7 @@ export function WizardScreen<TAnswers>({
                         // False for the length of a move's transition: a heavy
                         // step (the map) waits for it before it mounts.
                         settled={controller.settled}
+                        advanceSoon={controller.advanceSoon}
                       />
                     </LayoutAnimationConfig>
                     {shownFooterNote && noteInBody ? (

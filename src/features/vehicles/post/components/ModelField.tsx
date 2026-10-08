@@ -43,13 +43,16 @@ export interface ModelFieldProps {
   /** The selected model (free text — may be unlisted), or null. */
   value: string | null;
   onChange: (model: string) => void;
+  /** After a pick from the LIST, once the picker has closed (the wizard's
+   *  auto-advance). Never for the typed fallback — typing is not a pick. */
+  onPicked?: () => void;
   error?: string;
   /** Search and alerts: "Any <Make> model" and a ×, both calling `onClear`;
    *  listed models only. */
   filter?: { onClear: () => void };
 }
 
-export function ModelField({ make, value, onChange, error, filter }: ModelFieldProps) {
+export function ModelField({ make, value, onChange, onPicked, error, filter }: ModelFieldProps) {
   // Defensive: the make step gates before this one, so an empty make shouldn't
   // reach here — guide back rather than show an empty list.
   if (!make.trim()) {
@@ -112,6 +115,7 @@ export function ModelField({ make, value, onChange, error, filter }: ModelFieldP
       options={options}
       value={value}
       onChange={onChangeCanonical}
+      onPicked={onPicked}
       error={error}
       autoFocusSearch={false}
       recentValues={popularModelsForMake(make)}

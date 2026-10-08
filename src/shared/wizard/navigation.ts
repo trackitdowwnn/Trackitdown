@@ -93,8 +93,10 @@ export type WizardNavAction =
   /**
    * Advance: next screen, or back to review when editing from review.
    * `visible[i]` is false for a screen whose `when` says to walk past it.
+   * `blocking[i]` is true for a REQUIRED step the answers no longer satisfy:
+   * an edit spur visits those before it returns (see the reducer).
    */
-  | { type: 'next'; visible: readonly boolean[] }
+  | { type: 'next'; visible: readonly boolean[]; blocking?: readonly boolean[] }
   /** Go back one screen; during a review edit, cancel back to review. */
   | { type: 'back'; visible: readonly boolean[] }
   /** Jump from the review screen to a step to edit it. */
@@ -144,6 +146,17 @@ export function wizardReducer(
   switch (action.type) {
     case 'next': {
       if (state.returnToIndex !== null) {
+        // ⚠️ AN EDIT CAN BREAK ANOTHER ANSWER (2026-10-08). Changing the make
+        // clears the model, and Done used to drop the owner straight back on
+        // review — to a blocking notice and a disabled pay button, one Edit
+        // away from where they had just been. So Done first visits the first
+        // required step the answers no longer satisfy, still on the spur
+        // (Done again, Back cancels the whole edit), and returns when there
+        // is none left.
+        const pending = action.blocking ? action.blocking.findIndex(Boolean) : -1;
+        if (pending !== -1 && pending !== state.index) {
+          return { ...state, index: pending, direction: pending > state.index ? 1 : -1 };
+        }
         return { ...state, index: state.returnToIndex, returnToIndex: null, direction: 1 };
       }
       const target = Math.min(state.index + 1, action.visible.length - 1);

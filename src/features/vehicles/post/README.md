@@ -25,7 +25,20 @@ never opens one person's last-seen location for the next.
 > secrets/functions are deployed, the charge step surfaces a retryable error but
 > the rest of the wizard runs. Payout/refunds are still a later slice.
 
-## Phases & steps (Airbnb treatment — an intro screen before each phase)
+## Phases & steps (no intro screens — straight to the first question)
+
+> **Trimmed 2026-10-08** ("janky, slow and not smooth" — the owner chose to
+> trim as well as smooth). The three phase intros are gone; the segmented
+> progress bar shows the phases instead. What the first intro said is kept as
+> ONE line under the first question — "Sorry this happened — let's get the
+> details." (`EMPATHY_LINE`) — on Post a car only, never on the garage's
+> add-a-car flow, which shares these steps. It is the one exception to the "no
+> helper" rule below. **Make, model (picked from the list), year, colour and
+> body type move on by themselves** a beat after the pick (`advanceSoon`):
+> not for "Multicolour / wrapped" or "Other", which open a note; not under a
+> screen reader; never from the submitting screen. The reward guidance and the
+> place label are asked for when the map pin settles, so neither keeps the
+> owner waiting later.
 
 **Phase 1 — Tell us about your car**
 
@@ -34,7 +47,7 @@ never opens one person's last-seen location for the next.
 > null`, so every post is plate-less for now and make/model/colour are the
 > car's identity. The `plate_available` RPC + migration remain in the backend
 > for when the step is re-added; nothing in the wizard calls them today.
-> Steps no longer show a helper sub-heading. The distinctive-features step keeps
+> Steps no longer show a helper sub-heading (except the first — see above). The distinctive-features step keeps
 > a **"None to add"** skip: Next requires ≥1 mark, and a centred, underlined
 > `StepSkipButton` (shown while the list is empty) advances marks-less.
 

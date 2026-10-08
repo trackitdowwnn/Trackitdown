@@ -85,6 +85,12 @@ export interface SelectFieldProps<V extends string | number> {
    *  full list (SelectScreen `pinnedLayout`). */
   pinnedLayout?: 'list' | 'grid';
   allTitle?: string;
+  /**
+   * Called after a PICK, once the picker has finished closing — never on its
+   * X or the back gesture. The wizard's auto-advance hangs off this, so the
+   * next step's slide never plays hidden behind the closing picker.
+   */
+  onPicked?: () => void;
 }
 
 export function SelectField<V extends string | number>({
@@ -107,6 +113,7 @@ export function SelectField<V extends string | number>({
   clearable,
   pinnedLayout,
   allTitle,
+  onPicked,
 }: SelectFieldProps<V>) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -236,6 +243,9 @@ export function SelectField<V extends string | number>({
         value={value}
         onSelect={onChange}
         onClose={() => setOpen(false)}
+        onClosed={(picked) => {
+          if (picked) onPicked?.();
+        }}
         searchPlaceholder={searchPlaceholder}
         recentValues={recentValues}
         pinnedTitle={pinnedTitle}

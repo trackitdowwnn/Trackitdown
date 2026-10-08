@@ -17,11 +17,16 @@ import { render } from '@testing-library/react-native';
 
 import { BountyStep } from './postSteps';
 
+// The map step warms the guidance through this; not under test here.
+jest.mock('../api/bountyGuidanceApi', () => ({ warmBountyGuidance: jest.fn() }));
+const GUIDED = {
+  guidance: { rungs: [{ bountyPence: 10000, reach: 12 }], local: null },
+  recommendation: { lowPence: 5000, midPence: 10000, highPence: 20000, basis: 'reach' },
+  loading: false,
+};
+let mockGuidance: object = GUIDED;
 jest.mock('../hooks/useBountyGuidance', () => ({
-  useBountyGuidance: () => ({
-    guidance: { rungs: [{ bountyPence: 10000, reach: 12 }], local: null },
-    recommendation: { lowPence: 5000, midPence: 10000, highPence: 20000, basis: 'reach' },
-  }),
+  useBountyGuidance: () => mockGuidance,
 }));
 
 // The step only needs the slider's label and footnote; the rest of the shared
@@ -59,6 +64,27 @@ const props = {
   answers: { bountyAmountPence: 25000, location: { latitude: 51.5, longitude: -0.1 } },
   setAnswers: jest.fn(),
 } as unknown as Parameters<typeof BountyStep>[0];
+
+// 2026-10-08: the guidance used to pop in above the slider a beat after the
+// step arrived, pushing the slider down under the owner's thumb.
+describe('BountyStep guidance slot', () => {
+  afterEach(() => {
+    mockGuidance = GUIDED;
+  });
+
+  it('holds the panel’s place while the guidance is on its way', async () => {
+    mockGuidance = { guidance: { rungs: [], local: null }, recommendation: null, loading: true };
+    const view = await render(<BountyStep {...props} />);
+    expect(view.getByTestId('bounty-guidance-pending')).toBeTruthy();
+  });
+
+  it('holds nothing once it is known there is nothing to say', async () => {
+    mockGuidance = { guidance: { rungs: [], local: null }, recommendation: null, loading: false };
+    const view = await render(<BountyStep {...props} />);
+    expect(view.queryByTestId('bounty-guidance-pending')).toBeNull();
+    expect(view.queryByTestId('bounty-use-suggested')).toBeNull();
+  });
+});
 
 describe('BountyStep wording', () => {
   it('labels the slider "Reward" and never says "bounty"', async () => {

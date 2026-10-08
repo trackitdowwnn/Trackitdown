@@ -56,25 +56,89 @@ const guidanceSchema = z.object({
  * area, and the right one: a supporting line that cannot be computed should
  * disappear, not error.
  */
-export async function fetchBountyGuidance(
-  latitude: number,
-  longitude: number,
-): Promise<BountyGuidance> {
-  const empty: BountyGuidance = { rungs: [], local: null };
+const EMPTY: BountyGuidance = { rungs: [], local: null };
 
-  const { data, error } = await supabase.rpc('get_bounty_guidance', {
-    p_lat: latitude,
-    p_lng: longitude,
+/**
+ * Answers kept per point, and lookups in flight (2026-10-08). The map step
+ * warms this the moment its pin settles, several screens before the reward
+ * step, so the guidance is simply THERE when that step slides in rather than
+ * popping in above the slider a beat later — and the post's own analytics
+ * line (PostACarScreen) reuses it instead of asking again. Keyed to ~100m,
+ * finer than the RPC's own ~1km grid, so two keys can share an answer but one
+ * key never stands for two. A failure is not kept: the next ask tries again.
+ */
+const cache = new Map<string, Promise<BountyGuidance>>();
+const settled = new Map<string, BountyGuidance>();
+const CACHE_SIZE = 10;
+
+function cacheKey(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+}
+
+/** The guidance for a point if it has already arrived — synchronously, so a
+ *  step can start from it. Undefined while unknown or in flight. */
+export function peekBountyGuidance(latitude: number, longitude: number): BountyGuidance | undefined {
+  return settled.get(cacheKey(latitude, longitude));
+}
+
+/** Start the lookup for a point the owner is about to reach the reward with. */
+export function warmBountyGuidance(latitude: number, longitude: number): void {
+  void fetchBountyGuidance(latitude, longitude);
+}
+
+/** Test-only: forget every remembered answer. */
+export function resetBountyGuidanceCache(): void {
+  cache.clear();
+  settled.clear();
+}
+
+export function fetchBountyGuidance(latitude: number, longitude: number): Promise<BountyGuidance> {
+  const key = cacheKey(latitude, longitude);
+  const known = cache.get(key);
+  if (known) {
+    return known;
+  }
+  const request = requestGuidance(latitude, longitude).then((guidance) => {
+    if (guidance === null) {
+      cache.delete(key); // failed: ask again next time
+      return EMPTY;
+    }
+    settled.set(key, guidance);
+    return guidance;
   });
+  cache.set(key, request);
+  if (cache.size > CACHE_SIZE) {
+    const oldest = cache.keys().next().value as string;
+    cache.delete(oldest);
+    settled.delete(oldest);
+  }
+  return request;
+}
+
+/**
+ * One RPC round trip; null when it failed (already logged). Never throws —
+ * not even synchronously: it is now started from the map step's pin settle
+ * (warmBountyGuidance), where an escaped error would be an unhandled
+ * rejection in the middle of choosing a location.
+ */
+async function requestGuidance(latitude: number, longitude: number): Promise<BountyGuidance | null> {
+  let response: { data: unknown; error: { code?: string } | null };
+  try {
+    response = await supabase.rpc('get_bounty_guidance', { p_lat: latitude, p_lng: longitude });
+  } catch {
+    log.warn('bounty_guidance_failed', { code: 'NETWORK' });
+    return null;
+  }
+  const { data, error } = response;
   if (error) {
     log.warn('bounty_guidance_failed', { code: error.code });
-    return empty;
+    return null;
   }
 
   const parsed = guidanceSchema.safeParse(data);
   if (!parsed.success) {
     log.warn('bounty_guidance_parse_failed');
-    return empty;
+    return null;
   }
 
   return {

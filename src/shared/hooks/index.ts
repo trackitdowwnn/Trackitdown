@@ -10,4 +10,5 @@ export { useAndroidKeyboardHeight } from './useAndroidKeyboardHeight';
 export { useEntranceGate } from './useEntranceGate';
 export { useFullscreenLoader } from './useFullscreenLoader';
 export { useNow } from './useNow';
+export { useScreenReaderEnabled } from './useScreenReaderEnabled';
 export { useTimeAgo } from './useTimeAgo';

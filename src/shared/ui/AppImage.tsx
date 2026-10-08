@@ -37,6 +37,10 @@ export interface AppImageProps {
    *  avatar reverting to its icon) switch on this. */
   onError?: () => void;
   testID?: string;
+  /** Fade-in once loaded, in ms. Defaults to the app's quick fade; pass 0
+   *  for a LOCAL file that is already on the device (a picked photo), where
+   *  the fade is just a flash each time the tile mounts (2026-10-08). */
+  transition?: number;
 }
 
 /** expo-image with the app's placeholder/transition/recycling defaults. */
@@ -49,6 +53,7 @@ export function AppImage({
   accessibilityLabel,
   onError,
   testID,
+  transition = motion.fast,
 }: AppImageProps) {
   const styles = useThemedStyles(makeStyles);
 
@@ -58,7 +63,7 @@ export function AppImage({
       placeholder={thumbhash ? { thumbhash } : undefined}
       recyclingKey={recyclingKey}
       contentFit={contentFit}
-      transition={motion.fast}
+      transition={transition}
       accessible={Boolean(accessibilityLabel)}
       accessibilityLabel={accessibilityLabel}
       style={[styles.base, style]}

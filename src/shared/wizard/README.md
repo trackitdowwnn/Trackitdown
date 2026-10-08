@@ -36,6 +36,16 @@ doing you a favour.
 - **Nothing replays on return:** each step body sits in
   `<LayoutAnimationConfig skipEntering>`, so a step's own entrances only play
   for what appears after it mounts.
+- **Auto-advance (`advanceSoon`).** A step whose answer is one pick can move
+  on by itself after `motion.autoAdvanceBeat`. A picker calls it from its
+  field's `onPicked` (after the picker has CLOSED, never on its X), so the
+  next slide never plays behind it. It only fires if the step is then valid,
+  any move cancels it, it is off under a screen reader, and it NEVER fires on
+  the submitting screen (there, Next is a payment).
+- **An edit from review continues to what it broke.** Done visits the first
+  required step the answers no longer satisfy (changing the make clears the
+  model) before returning to review, still on the spur: Done again, and Back
+  cancels the whole edit.
 
 **Screen anatomy:** header row with the exit X top-left (dirty answers →
 discard confirmation → `router.back()`) and a segmented progress bar beside

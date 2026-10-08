@@ -27,7 +27,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { fetchBountyGuidance } from '../api/bountyGuidanceApi';
+import { fetchBountyGuidance, peekBountyGuidance } from '../api/bountyGuidanceApi';
 import {
   recommendBounty,
   type BountyGuidance,
@@ -40,13 +40,22 @@ export interface UseBountyGuidanceResult {
   guidance: BountyGuidance;
   /** Null when there is nothing honest to say — render no guidance at all. */
   recommendation: BountyRecommendation | null;
+  /** True while a known point's guidance is still on its way — the step
+   *  holds the panel's place rather than letting it pop in (2026-10-08). */
+  loading: boolean;
 }
 
 export function useBountyGuidance(
   latitude: number | null,
   longitude: number | null,
 ): UseBountyGuidanceResult {
-  const [guidance, setGuidance] = useState<BountyGuidance>(EMPTY);
+  // Usually already known: the map step warms it when its pin settles.
+  const [state, setState] = useState<{ guidance: BountyGuidance; loading: boolean }>(() => {
+    const known =
+      latitude !== null && longitude !== null ? peekBountyGuidance(latitude, longitude) : undefined;
+    return { guidance: known ?? EMPTY, loading: latitude !== null && longitude !== null && !known };
+  });
+  const { guidance, loading } = state;
 
   useEffect(() => {
     if (latitude === null || longitude === null) {
@@ -56,7 +65,11 @@ export function useBountyGuidance(
     // Every write happens after the await, so this never trips
     // react-hooks/set-state-in-effect.
     void fetchBountyGuidance(latitude, longitude).then((next) => {
-      if (!cancelled) setGuidance(next);
+      if (!cancelled) {
+        setState((current) =>
+          current.guidance === next && !current.loading ? current : { guidance: next, loading: false },
+        );
+      }
     });
     return () => {
       cancelled = true;
@@ -68,5 +81,5 @@ export function useBountyGuidance(
 
   const recommendation = useMemo(() => recommendBounty(guidance), [guidance]);
 
-  return { guidance, recommendation };
+  return { guidance, recommendation, loading };
 }

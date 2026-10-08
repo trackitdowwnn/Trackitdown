@@ -70,6 +70,10 @@ export const motion = {
    *  pending stage stays bare before its one neutral line (ReportPending).
    *  Most answers land well inside it. */
   skeletonGrace: 400,
+  /** The pause between a wizard pick and the auto-advance to the next step
+   *  (make, model, year, colour, body type — 2026-10-08): long enough to see
+   *  the pick land, short enough to read as one motion. */
+  autoAdvanceBeat: 300,
   /** One cycle of a calm loading pulse (PhotoGridPicker's uploading tile). */
   loaderLoop: 1200,
   /** BrandLoader: dwell time per waiting phrase before it rotates — long

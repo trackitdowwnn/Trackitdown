@@ -11,7 +11,10 @@
  */
 
 import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
-import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from './postACarFlow';
+import { flattenFlow } from '@/shared/wizard/navigation';
+
+import { buildVehicleSteps } from './lib/vehicleSteps';
+import { EMPATHY_LINE, POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from './postACarFlow';
 import type { PostACarAnswers } from './types';
 
 // Stub the step components + their exported consts so the config loads without
@@ -53,6 +56,26 @@ const passes = (id: string, answers: Partial<PostACarAnswers>) =>
   stepById(id).schema.safeParse(answers).success;
 
 describe('postACarFlow structure', () => {
+  // 2026-10-08 ("janky, slow and not smooth" — the owner chose to trim): three
+  // screens that only announced what came next stood before the questions.
+  it('has NO phase intros — the first screen is the make question', () => {
+    expect(postACarFlow.phases.every((phase) => phase.intro === undefined)).toBe(true);
+    const first = flattenFlow(postACarFlow)[0];
+    expect(first.kind === 'step' && first.step.id).toBe('make');
+  });
+
+  it('keeps one line of comfort on the first question — and only there', () => {
+    expect(stepById('make').helper).toBe(EMPATHY_LINE);
+    const otherHelpers = postACarFlow.phases
+      .flatMap((phase) => phase.steps)
+      .filter((step) => step.id !== 'make' && step.helper);
+    expect(otherHelpers).toEqual([]);
+  });
+
+  it('leaves the garage’s shared steps alone — nothing has happened to anyone there', () => {
+    expect(buildVehicleSteps({ minPhotos: 0 })[0].helper).toBeUndefined();
+  });
+
   it('has three phases, a review, and a high-information final CTA', () => {
     expect(postACarFlow.phases).toHaveLength(3);
     expect(postACarFlow.phases.map((p) => p.id)).toEqual(['car', 'when-where', 'bounty']);
