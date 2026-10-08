@@ -184,8 +184,11 @@ export function wizardReducer(
   }
 }
 
+/** How one screen gives way to another — see transitionKind. */
+export type WizardTransition = 'slide' | 'fade';
+
 /**
- * How one screen gives way to another.
+ * How the screen at `from` gives way to the one at `to`.
  *
  * 'slide' — the normal case: both slide, in the move's direction.
  * 'fade' — a `fills` step (a full-bleed map) is at one end. The map side
@@ -195,8 +198,6 @@ export function wizardReducer(
  * doesn't sweep across a map that is simply there (2026-10-08: the map used
  * to pop in while its neighbour slid away).
  */
-export type WizardTransition = 'slide' | 'fade';
-
 export function transitionKind<TAnswers>(
   screens: WizardScreenDescriptor<TAnswers>[],
   from: number,

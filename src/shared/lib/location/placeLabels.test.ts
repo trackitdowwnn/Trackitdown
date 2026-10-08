@@ -70,7 +70,40 @@ describe('derivePlaceLabelsForCoord', () => {
     expect(result).toEqual({ areaLabel: null, locality: null });
   });
 
-  it('a failed or timed-out lookup is not remembered — the next ask tries again', async () => {
+  it('each ask gets the whole time limit, even joining a lookup a warm-up started', async () => {
+    jest.useFakeTimers();
+    let land: (value: unknown) => void = () => {};
+    mockGeocode.mockReturnValue(new Promise((resolve) => (land = resolve)));
+    warmPlaceLabels(POINT);
+    await jest.advanceTimersByTimeAsync(LOOKUP_TIMEOUT_MS - 100); // the warm-up has been waiting
+
+    let result: unknown;
+    void derivePlaceLabelsForCoord(POINT).then((labels) => {
+      result = labels;
+    });
+    await jest.advanceTimersByTimeAsync(200); // past the WARM-UP's limit, not this ask's
+    expect(result).toBeUndefined();
+    land([PLACE]);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(result).toMatchObject({ locality: 'City Centre' });
+    expect(mockGeocode).toHaveBeenCalledTimes(1);
+  });
+
+  it('a slow answer that lands after an ask gave up is kept for the next ask', async () => {
+    jest.useFakeTimers();
+    let land: (value: unknown) => void = () => {};
+    mockGeocode.mockReturnValueOnce(new Promise((resolve) => (land = resolve)));
+    const first = derivePlaceLabelsForCoord(POINT);
+    await jest.advanceTimersByTimeAsync(LOOKUP_TIMEOUT_MS);
+    await expect(first).resolves.toEqual({ areaLabel: null, locality: null });
+
+    land([PLACE]); // it arrives, late
+    await jest.advanceTimersByTimeAsync(0);
+    await expect(derivePlaceLabelsForCoord(POINT)).resolves.toMatchObject({ locality: 'City Centre' });
+    expect(mockGeocode).toHaveBeenCalledTimes(1);
+  });
+
+  it('a FAILED lookup is not remembered — the next ask tries again', async () => {
     mockGeocode.mockRejectedValueOnce(new Error('offline'));
     await expect(derivePlaceLabelsForCoord(POINT)).resolves.toEqual({
       areaLabel: null,

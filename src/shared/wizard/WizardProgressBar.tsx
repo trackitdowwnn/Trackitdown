@@ -11,14 +11,16 @@
  *        little, on the UI thread, and NOTHING animates on mount: a segment
  *        starts at its value and only animates when it changes. ease-out on
  *        the standard clock, as every wizard move; instant under reduced
- *        motion. Exposed as a progressbar with a label and percentage.
+ *        motion. The fill MOVES (translateX inside a clipped track) rather
+ *        than resizing, so it never asks for a layout pass per frame.
+ *        Exposed as a progressbar with a label and percentage.
  * LINKS: src/shared/wizard/WizardScreen.tsx (owner);
  *        src/shared/wizard/navigation.ts (phaseProgress — the fills);
  *        docs/DESIGN_SYSTEM.md (Motion, Accessibility).
  */
 
 import { useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -32,15 +34,14 @@ import { easeOut } from '@/shared/theme/motionEasing';
 export interface WizardProgressBarProps {
   /** Fill fraction (0–1) per phase, one segment each. */
   fills: number[];
-  /** Screen-reader name for the bar, e.g. "Step 2 of 3" — not shown. */
+  /** Screen-reader name for the bar, e.g. "Step 2 of 7" — not shown. */
   label: string;
+  /** How far through the flow, 0–100, for screen readers. */
+  percent: number;
 }
 
-export function WizardProgressBar({ fills, label }: WizardProgressBarProps) {
+export function WizardProgressBar({ fills, label, percent }: WizardProgressBarProps) {
   const reduceMotion = useReducedMotion();
-  const overallPercent = Math.round(
-    (fills.reduce((sum, fill) => sum + fill, 0) / Math.max(fills.length, 1)) * 100,
-  );
 
   return (
     <View
@@ -48,7 +49,7 @@ export function WizardProgressBar({ fills, label }: WizardProgressBarProps) {
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel={label}
-      accessibilityValue={{ min: 0, max: 100, now: overallPercent }}
+      accessibilityValue={{ min: 0, max: 100, now: percent }}
     >
       {fills.map((fill, index) => (
         <Segment key={index} fill={fill} reduceMotion={reduceMotion} />
@@ -72,10 +73,24 @@ function Segment({ fill, reduceMotion }: { fill: number; reduceMotion: boolean }
       : withTiming(fill, { duration: motion.standard, easing: easeOut });
   }, [fill, reduceMotion, progress]);
 
-  const fillStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+  // The fill is the track's full width, slid left out of the clipped track by
+  // the part not yet done. Hidden until the track is measured, so it can't
+  // show full for a frame.
+  const trackWidth = useSharedValue(0);
+  const onLayout = (event: LayoutChangeEvent) => {
+    trackWidth.value = event.nativeEvent.layout.width;
+  };
+  const fillStyle = useAnimatedStyle(() => ({
+    opacity: trackWidth.value > 0 ? 1 : 0,
+    transform: [{ translateX: (progress.value - 1) * trackWidth.value }],
+  }));
 
   return (
-    <View style={[styles.track, { backgroundColor: palette.borderStrong }]} testID="wizard-progress-segment">
+    <View
+      style={[styles.track, { backgroundColor: palette.borderStrong }]}
+      onLayout={onLayout}
+      testID="wizard-progress-segment"
+    >
       <Animated.View style={[styles.fill, { backgroundColor: palette.primary }, fillStyle]} />
     </View>
   );
@@ -91,11 +106,15 @@ const styles = StyleSheet.create({
   track: {
     flex: 1,
     height: sizes.progressSegment,
-    borderRadius: radii.sm,
+    borderRadius: radii.full,
     overflow: 'hidden',
   },
   fill: {
-    height: '100%',
-    borderRadius: radii.sm,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: radii.full,
   },
 });

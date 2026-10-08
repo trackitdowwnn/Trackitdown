@@ -166,18 +166,25 @@ export function useWizardController<TAnswers>(
   const lockRef = useRef(false);
   const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [settled, setSettled] = useState(true);
-  useEffect(
-    () => () => {
+  // A move can be asked for AFTER the screen has gone: a step's onContinue
+  // lookup resolving once the owner has left by the X. It must do nothing —
+  // above all not drop the keyboard on whatever screen is now on top.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      lockRef.current = false;
       if (unlockTimer.current) clearTimeout(unlockTimer.current);
-    },
-    [],
-  );
+    };
+  }, []);
 
   /** Every move goes through here: drop the keyboard (a field left focused
    *  would otherwise close mid-slide and resize the screen under it), lock,
    *  dispatch. Internal — the public moves below check the lock first. */
   const move = useCallback(
     (action: WizardNavAction) => {
+      if (!mountedRef.current) return;
       Keyboard.dismiss();
       dispatch(action);
       if (reduceMotion) return;
@@ -288,13 +295,14 @@ export function useWizardController<TAnswers>(
     //
     // ⚠️ AND ONLY ON THE LAST SCREEN — `busy` alone was too wide, and the cost
     // landed on a different flow entirely. `busy` is also true during a step's
-    // `onContinue`, two of which are reverse-geocodes with no timeout
-    // (postACarFlow, reportSightingFlow → placeLabels.ts, which catches but
-    // cannot detect a hang). With Back hidden and the Android gesture
-    // swallowed, the X is iOS's ONLY way out of a stalled lookup, and a wider
-    // guard took it away. Leaving during an `onContinue` is harmless anyway: it
-    // strands a `next()` dispatch against an unmounted reducer and routes
-    // nowhere. Only the final submit has an onComplete that pops.
+    // `onContinue`, two of which are reverse-geocodes (postACarFlow,
+    // reportSightingFlow → placeLabels.ts) — bounded at LOOKUP_TIMEOUT_MS (4s)
+    // since 2026-10-08, but four seconds of spinner is still long enough to
+    // want out of. With Back hidden and the Android gesture swallowed, the X is
+    // iOS's ONLY way out of one, and a wider guard took it away. Leaving during
+    // an `onContinue` is harmless anyway: the move it ends in does nothing once
+    // the screen has gone (see `move`). Only the final submit has an
+    // onComplete that pops.
     if (busy && isLastScreen) return;
     if (!dirtyRef.current) {
       onExit();
@@ -381,8 +389,9 @@ export function useWizardController<TAnswers>(
      */
     isLastScreen,
     ctaLabel: ctaLabel(flow, screens, nav, answers),
-    /** Fill fraction (0–1) per phase segment. */
-    progress: phaseProgress(flow, nav.index),
+    /** Fill fraction (0–1) per phase segment. Held where it was while on an
+     *  edit spur: a detour from review is not progress lost (2026-10-08). */
+    progress: phaseProgress(flow, nav.returnToIndex ?? nav.index),
     /** +1 sliding forward, -1 sliding back — drives the transition. */
     direction: nav.direction,
   };
