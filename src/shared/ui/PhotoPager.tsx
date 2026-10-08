@@ -5,10 +5,10 @@
  *        Display-only: nothing in it is tappable.
  * WHY:   Extracted 2026-10-08 from the post detail hero when the garage's
  *        "Your car" sheet needed the same thing — one pager, so the two can't
- *        drift. It measures its own width (onLayout) and re-aligns to the
- *        current photo when that width changes (rotation), the way
- *        VehicleCard's carousel learned to; `estimatedWidth` lets a caller
- *        that already knows its width lay out on the first frame.
+ *        drift. It measures its own width (onLayout) and stays on the same
+ *        photo when that width changes (rotation), the way VehicleCard's
+ *        carousel learned to; `estimatedWidth` lets a caller that already
+ *        knows its width lay out on the first frame.
  *
  *        ⚠️ DISPLAY-ONLY. Under a confirmation (the "Your car" sheet), a
  *        tappable photo is a tap-to-affirm trap — see MediaIdentityCard.
@@ -16,13 +16,17 @@
  *
  *        ⚠️ The counter is chrome ON THE PHOTOGRAPHY: `surfaceOverMedia` /
  *        `textOnMedia`, never the page tokens, which flip with the theme
- *        while a photo does not.
+ *        while a photo does not. It is a SIGHTED aid only: each photo
+ *        carries its own place ("Blue BMW, photo 2 of 5") for screen
+ *        readers, where a counter that updates on scroll-end could be stale.
  * LINKS: src/features/vehicles/components/PostHero.tsx (the detail hero);
  *        src/features/garage/components/VehicleSummaryStep.tsx;
- *        src/shared/ui/MediaIdentityCard.tsx (the display-only rule).
+ *        src/shared/ui/MediaIdentityCard.tsx (the display-only rule, and the
+ *          placeholder's size).
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Image as ImageIcon, type LucideIcon } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -33,7 +37,16 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { radii, spacing, typography, useThemedStyles, type Palette } from '../theme';
+import {
+  displayFontScaleCap,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { AppImage } from './AppImage';
 
 export interface PhotoPagerProps {
@@ -43,15 +56,18 @@ export interface PhotoPagerProps {
   /** A fixed page height (the detail hero sizes itself to the screen). */
   height?: number;
   /** The width it will most likely have, for its FIRST frame — before this,
-   *  it can't size its pages and would render empty for a frame. */
+   *  it can't size its pages and would show an empty frame. */
   estimatedWidth?: number;
-  /** Screen-reader description of the photos (e.g. "Blue BMW 320d"). */
+  /** What the photos show (e.g. "Blue BMW 320d"); each page adds its place. */
   alt?: string;
-  /** Shown in the frame when there are no photos. */
-  placeholder?: ReactNode;
+  /** The mark in the empty frame when there are no photos. */
+  placeholderIcon?: LucideIcon;
+  /** What a screen reader hears for the empty frame. */
+  placeholderLabel?: string;
   /** Extra lift for the counter when something overlaps the photo's foot. */
   counterBottomInset?: number;
-  /** The frame's own style (corner radius, margins). */
+  /** The frame's own style — corner radius, margins. NOT border or padding:
+   *  pages are sized to the frame's measured width. */
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -62,18 +78,28 @@ export function PhotoPager({
   height: fixedHeight,
   estimatedWidth = 0,
   alt,
-  placeholder,
+  placeholderIcon: PlaceholderIcon = ImageIcon,
+  placeholderLabel = 'No photos added yet',
   counterBottomInset = 0,
   style,
   testID,
 }: PhotoPagerProps) {
   const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [width, setWidth] = useState(estimatedWidth);
   const [index, setIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
   const height = fixedHeight ?? (width > 0 ? width / aspectRatio : 0);
-  // A shorter list (or a width change) must never leave the counter past the end.
-  const current = Math.min(index, Math.max(photos.length - 1, 0));
+
+  // A shorter list must not leave the page past the end — and the clamp is
+  // written BACK, so a list that grows again later doesn't jump the counter
+  // to a page the scroll isn't on (the detail screen's editor changes photos
+  // without unmounting this).
+  const last = Math.max(photos.length - 1, 0);
+  if (index > last) {
+    setIndex(last);
+  }
+  const current = Math.min(index, last);
 
   const onLayout = (event: LayoutChangeEvent) => {
     const measured = event.nativeEvent.layout.width;
@@ -81,10 +107,17 @@ export function PhotoPager({
   };
 
   // Stay on the same photo when the width changes (rotation): the old offset
-  // would land between two pages.
+  // would land between two pages. Not on the first width — there is nothing
+  // to re-align yet.
+  const indexRef = useRef(current);
   useEffect(() => {
-    if (width > 0) scrollRef.current?.scrollTo({ x: current * width, animated: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on a width change
+    indexRef.current = current;
+  }, [current]);
+  const alignedWidth = useRef(width);
+  useEffect(() => {
+    if (width === alignedWidth.current) return;
+    alignedWidth.current = width;
+    if (width > 0) scrollRef.current?.scrollTo({ x: indexRef.current * width, animated: false });
   }, [width]);
 
   const frame = [
@@ -95,8 +128,18 @@ export function PhotoPager({
 
   if (photos.length === 0) {
     return (
-      <View style={[frame, styles.placeholder]} onLayout={onLayout} testID={testID}>
-        {placeholder}
+      <View
+        style={[frame, styles.placeholder]}
+        onLayout={onLayout}
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={placeholderLabel}
+        testID={testID}
+      >
+        {/* avatarLg, not an icon size: in a frame this big a 24pt glyph
+            reads as broken, not calm (MediaIdentityCard learned this).
+            borderStrong, so it is a frame mark rather than content. */}
+        <PlaceholderIcon size={sizes.avatarLg} color={palette.borderStrong} />
       </View>
     );
   }
@@ -111,11 +154,9 @@ export function PhotoPager({
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={(event) => {
             // Clamped: overscroll can round past either end.
-            const next = Math.min(
-              photos.length - 1,
-              Math.max(0, Math.round(event.nativeEvent.contentOffset.x / width)),
+            setIndex(
+              Math.min(last, Math.max(0, Math.round(event.nativeEvent.contentOffset.x / width))),
             );
-            setIndex(next);
           }}
           testID={testID ? `${testID}-scroll` : undefined}
         >
@@ -123,7 +164,9 @@ export function PhotoPager({
             <AppImage
               key={`${photo.uri}-${i}`}
               uri={photo.uri}
-              accessibilityLabel={alt}
+              accessibilityLabel={
+                photos.length > 1 ? `${alt ?? 'Photo'}, photo ${i + 1} of ${photos.length}` : alt
+              }
               style={{ width, height }}
             />
           ))}
@@ -133,12 +176,12 @@ export function PhotoPager({
         <View
           style={[styles.counter, { bottom: spacing.md + counterBottomInset }]}
           pointerEvents="none"
-          accessible
-          accessibilityRole="text"
-          accessibilityLabel={`Photo ${current + 1} of ${photos.length}`}
+          // Sighted only — each photo already says where it is (see header).
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
           testID={testID ? `${testID}-counter` : undefined}
         >
-          <Text style={styles.counterText}>
+          <Text style={styles.counterText} maxFontSizeMultiplier={displayFontScaleCap}>
             {current + 1} / {photos.length}
           </Text>
         </View>
@@ -149,16 +192,16 @@ export function PhotoPager({
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    // surfaceSubtle behind the photos: the frame is never a page-coloured
+    // hole while a photo loads or before the first measurement.
     frame: {
       width: '100%',
       overflow: 'hidden',
+      backgroundColor: c.surfaceSubtle,
     },
-    // PAGE chrome, not chrome over a photo (there is no photo), so it stays
-    // on the themed surface token.
     placeholder: {
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: c.surfaceSubtle,
     },
     counter: {
       position: 'absolute',

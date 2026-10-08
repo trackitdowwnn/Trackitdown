@@ -996,10 +996,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textSecondary,
     textDecorationLine: 'line-through',
   },
-  // Distinctive features: the reference's card list — a hairline-bordered white
-  // card per mark, its photo inset and rounded, the description carrying the
-  // card as a bold body-size line. The photo is the evidence; the card gives it
-  // standing without pretending to be tappable.
   messageOwner: {
     // The section's own gap governs rhythm — no extra top margin (which would
     // compound to an off-rhythm 24px below the owner block).

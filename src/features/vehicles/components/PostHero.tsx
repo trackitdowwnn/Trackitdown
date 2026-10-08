@@ -13,7 +13,6 @@
  *        src/shared/ui/PhotoPager.tsx; src/shared/ui/AppHeader.tsx (overlay).
  */
 
-import { Feather } from '@expo/vector-icons';
 import { useEffect } from 'react';
 import Animated, {
   useAnimatedStyle,
@@ -22,7 +21,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { motion, radii, sizes, usePalette } from '@/shared/theme';
+import { motion, radii } from '@/shared/theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { PhotoPager } from '@/shared/ui';
 
@@ -37,8 +36,6 @@ export interface PostHeroProps {
 }
 
 export function PostHero({ photos, width, height, alt }: PostHeroProps) {
-  const palette = usePalette();
-
   // Card→detail continuity: the hero fades + grows from 0.94 on mount, so the
   // detail reads as a continuation of the tapped card (Airbnb's move, without a
   // full shared element). Reduced motion → no scale/fade (starts settled).
@@ -63,7 +60,6 @@ export function PostHero({ photos, width, height, alt }: PostHeroProps) {
         // Clear of the content sheet's rounded top edge, which overlaps the
         // hero's last `radii.xl` points (PostDetailScreen `sheet`).
         counterBottomInset={radii.xl}
-        placeholder={<Feather name="image" size={sizes.avatarSm} color={palette.textSecondary} />}
       />
     </Animated.View>
   );

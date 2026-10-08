@@ -1,5 +1,5 @@
 /**
- * WHAT:  GarageCard — one saved car, photography-first: full-width 3:2 cover
+ * WHAT:  GarageCard — one saved car, photography-first: full-width 4:3 cover
  *        photo (no border, no shadow — the photo IS the card), a quiet
  *        "Reported stolen" pill overlaid when the car has a live listing,
  *        then name, meta line, and the owner's PlateChip below. The whole
@@ -18,7 +18,7 @@
  *        this app "nothing to report" IS the good news. (Note: driven by
  *        isCurrentlyPosted, which is dormant until README gap 1 is wired.)
  * LINKS: src/features/garage/screens/MyCarsScreen.tsx (tap → actions sheet);
- *        src/features/garage/components/VehicleSummaryStep.tsx (display use);
+ *        src/features/garage/components/VehicleSummaryStep.tsx (shares the photo ratio);
  *        src/shared/ui/VehicleCard.tsx (the press-scale pattern mirrored
  *        here); docs/DESIGN_SYSTEM.md.
  */
@@ -45,7 +45,8 @@ import { vehicleDisplayName } from '../lib/vehicleAnswers';
 import type { SavedVehicle } from '../types';
 
 /** The card photo's ratio — VehicleCard's PHOTO_ASPECT_RATIO, so a car reads
- *  the same in the garage as on a listing. Exported for the skeleton. */
+ *  the same in the garage as on a listing. Exported for the skeleton and the
+ *  "Your car" sheet's photos. */
 export const GARAGE_PHOTO_ASPECT_RATIO = 4 / 3;
 
 export interface GarageCardProps {

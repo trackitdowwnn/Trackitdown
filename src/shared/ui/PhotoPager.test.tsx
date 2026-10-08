@@ -1,7 +1,8 @@
 /**
  * WHAT:  Tests for PhotoPager — the counter (shown for 2+, hidden for 1, kept
- *        in step with the page), the placeholder when there are no photos,
- *        a first frame laid out from `estimatedWidth`, and that nothing in it
+ *        in step with the page, and written back when the list shrinks), each
+ *        photo saying its own place to a screen reader, the placeholder, a
+ *        first frame laid out from `estimatedWidth`, and that nothing in it
  *        is pressable.
  * WHY:   It is the post detail hero AND the garage's "Your car" sheet
  *        (2026-10-08). On the sheet a tappable photo would be a tap-to-affirm
@@ -10,16 +11,28 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Text } from 'react-native';
 
 import { PhotoPager } from './PhotoPager';
 
 const photos = (n: number) => Array.from({ length: n }, (_, i) => ({ uri: `https://x/${i}.jpg` }));
 
+type View = Awaited<ReturnType<typeof render>>;
+
+/** The counter is a sighted aid, hidden from screen readers — so are its queries. */
+const HIDDEN = { includeHiddenElements: true };
+
 /** Give the pager a width, as its first layout would. */
-async function measure(view: Awaited<ReturnType<typeof render>>, width = 300) {
+async function measure(view: View, width = 300) {
   await act(async () => {
     fireEvent(view.getByTestId('pager'), 'layout', { nativeEvent: { layout: { width } } });
+  });
+}
+
+async function swipeTo(view: View, x: number) {
+  await act(async () => {
+    fireEvent(view.getByTestId('pager-scroll'), 'momentumScrollEnd', {
+      nativeEvent: { contentOffset: { x } },
+    });
   });
 }
 
@@ -27,39 +40,46 @@ describe('PhotoPager', () => {
   it('counts the photos, and follows the page swiped to', async () => {
     const view = await render(<PhotoPager photos={photos(5)} testID="pager" />);
     await measure(view);
-    expect(view.getByText('1 / 5')).toBeTruthy();
-    expect(view.getByLabelText('Photo 1 of 5')).toBeTruthy();
-
-    await act(async () => {
-      fireEvent(view.getByTestId('pager-scroll'), 'momentumScrollEnd', {
-        nativeEvent: { contentOffset: { x: 600 } },
-      });
-    });
-    expect(view.getByText('3 / 5')).toBeTruthy();
+    expect(view.getByText('1 / 5', HIDDEN)).toBeTruthy();
+    await swipeTo(view, 600);
+    expect(view.getByText('3 / 5', HIDDEN)).toBeTruthy();
   });
 
   it('clamps an overscroll to the last photo', async () => {
     const view = await render(<PhotoPager photos={photos(2)} testID="pager" />);
     await measure(view);
-    await act(async () => {
-      fireEvent(view.getByTestId('pager-scroll'), 'momentumScrollEnd', {
-        nativeEvent: { contentOffset: { x: 9999 } },
-      });
-    });
-    expect(view.getByText('2 / 2')).toBeTruthy();
+    await swipeTo(view, 9999);
+    expect(view.getByText('2 / 2', HIDDEN)).toBeTruthy();
+  });
+
+  it('a list that shrinks, then grows again, does not jump the counter', async () => {
+    const pager = (n: number) => <PhotoPager photos={photos(n)} testID="pager" />;
+    const view = await render(pager(5));
+    await measure(view);
+    await swipeTo(view, 900); // photo 4
+    await act(async () => view.rerender(pager(2)));
+    expect(view.getByText('2 / 2', HIDDEN)).toBeTruthy();
+    await act(async () => view.rerender(pager(5)));
+    expect(view.getByText('2 / 5', HIDDEN)).toBeTruthy(); // where the scroll actually is
+  });
+
+  it('each photo tells a screen reader where it is; the counter is for sight only', async () => {
+    const view = await render(<PhotoPager photos={photos(3)} alt="Blue BMW" testID="pager" />);
+    await measure(view);
+    expect(view.getByLabelText('Blue BMW, photo 2 of 3')).toBeTruthy();
+    expect(view.getByTestId('pager-counter', HIDDEN).props.accessibilityElementsHidden).toBe(true);
   });
 
   it('shows no counter for a single photo', async () => {
-    const view = await render(<PhotoPager photos={photos(1)} testID="pager" />);
+    const view = await render(<PhotoPager photos={photos(1)} alt="Blue BMW" testID="pager" />);
     await measure(view);
     expect(view.queryByTestId('pager-counter')).toBeNull();
+    expect(view.getByLabelText('Blue BMW')).toBeTruthy();
   });
 
-  it('shows its placeholder when there are no photos', async () => {
-    const view = await render(
-      <PhotoPager photos={[]} placeholder={<Text>no photos</Text>} testID="pager" />,
-    );
-    expect(view.getByText('no photos')).toBeTruthy();
+  it('says so when there are no photos', async () => {
+    const view = await render(<PhotoPager photos={[]} testID="pager" />);
+    expect(view.getByLabelText('No photos added yet')).toBeTruthy();
     expect(view.queryByTestId('pager-scroll')).toBeNull();
   });
 
@@ -70,12 +90,22 @@ describe('PhotoPager', () => {
     expect(view.getByTestId('pager-scroll')).toBeTruthy();
   });
 
-  it('⚠️ is display-only — no photo can be pressed', async () => {
+  it('⚠️ is display-only — nothing in it can be pressed', async () => {
     // Under the "Your car" sheet's Continue, tapping a photo to mean "yes"
     // must not do anything else (MediaIdentityCard's rule).
     const view = await render(<PhotoPager photos={photos(3)} alt="Blue BMW" testID="pager" />);
     await measure(view);
-    expect(view.queryAllByRole('button')).toHaveLength(0);
-    expect(view.queryAllByRole('imagebutton')).toHaveLength(0);
+    // Any press handler on any rendered element — not just what declares a role.
+    const handlers: string[] = [];
+    const walk = (node: unknown) => {
+      if (!node || typeof node !== 'object') return;
+      const { props, children } = node as { props?: Record<string, unknown>; children?: unknown[] };
+      Object.keys(props ?? {}).forEach((key) => {
+        if (/^on(Press|Click|ResponderRelease)/.test(key)) handlers.push(key);
+      });
+      (children ?? []).forEach(walk);
+    };
+    walk(view.toJSON());
+    expect(handlers).toEqual([]);
   });
 });

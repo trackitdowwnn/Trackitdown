@@ -54,17 +54,33 @@ describe('vehicleDetailLine', () => {
     expect(vehicleDetailLine(vehicle({ bodyType: null }))).toBe('Blue · 2019');
   });
 
-  it('an escape colour gives way to the owner’s note — or stays when there is none', () => {
+  it('an escape colour gives way to the owner’s note — and with none, is left out', () => {
     expect(vehicleDetailLine(vehicle({ colour: 'Other', colourNote: 'Matte green wrap' }))).toBe(
       'Matte green wrap · 2019 · Saloon',
     );
-    expect(vehicleDetailLine(vehicle({ colour: 'Other', colourNote: null }))).toBe(
-      'Other · 2019 · Saloon',
-    );
+    // "Other" says nothing a spotter can use — the review preview drops it too.
+    expect(vehicleDetailLine(vehicle({ colour: 'Other', colourNote: null }))).toBe('2019 · Saloon');
   });
 });
 
 describe('VehicleSummaryStep', () => {
+  // UI review of #144: spotters never see a nickname — a sheet headed "Betsy"
+  // would show the owner everything except what the listing says.
+  it('leads with make and model, never the nickname — which sits quietly beneath', async () => {
+    const view = await render(
+      <VehicleSummaryStep vehicle={vehicle({ nickname: 'Betsy' })} onEdit={jest.fn()} />,
+    );
+    expect(view.getByRole('header', { name: 'BMW 320d' })).toBeTruthy();
+    expect(view.getByText('Betsy')).toBeTruthy();
+  });
+
+  it('says so when the car has no photos', async () => {
+    const view = await render(
+      <VehicleSummaryStep vehicle={vehicle({ photos: [] })} onEdit={jest.fn()} />,
+    );
+    expect(view.getByLabelText('No photos added yet')).toBeTruthy();
+  });
+
   it('shows the car: name, plate and its details', async () => {
     const view = await render(<VehicleSummaryStep vehicle={vehicle()} onEdit={jest.fn()} />);
     expect(view.getByText('BMW 320d')).toBeTruthy();
@@ -79,7 +95,9 @@ describe('VehicleSummaryStep', () => {
         nativeEvent: { layout: { width: 320 } },
       });
     });
-    expect(view.getByText('1 / 3')).toBeTruthy();
+    // The counter is for sight only (hidden from screen readers).
+    expect(view.getByText('1 / 3', { includeHiddenElements: true })).toBeTruthy();
+    expect(view.getByLabelText('BMW 320d, photo 3 of 3')).toBeTruthy();
   });
 
   it('lists the distinctive features only when there are some', async () => {
@@ -104,17 +122,16 @@ describe('VehicleSummaryStep', () => {
     const onEdit = jest.fn();
     const view = await render(<VehicleSummaryStep vehicle={vehicle()} onEdit={onEdit} />);
     await act(async () => {
-      fireEvent.press(view.getByRole('button', { name: "Edit your car's details" }));
+      fireEvent.press(view.getByRole('button', { name: 'Edit details' }));
     });
     expect(onEdit).toHaveBeenCalledTimes(1);
   });
 
-  it('⚠️ the photos are display-only — Edit is the only way to change anything', async () => {
-    const view = await render(
-      <VehicleSummaryStep vehicle={vehicle({ plate: null })} onEdit={jest.fn()} />,
-    );
-    expect(view.getAllByRole('button').map((b) => b.props.accessibilityLabel)).toEqual([
-      "Edit your car's details",
-    ]);
+  it('⚠️ the photos are display-only — the plate (copy) and Edit are the only buttons', async () => {
+    const view = await render(<VehicleSummaryStep vehicle={vehicle()} onEdit={jest.fn()} />);
+    const buttons = view.getAllByRole('button');
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0].props.accessibilityLabel).toMatch(/^Plate A B 1 2/); // copies the plate
+    expect(view.getByRole('button', { name: 'Edit details' })).toBeTruthy();
   });
 });
