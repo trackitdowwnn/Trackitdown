@@ -22,6 +22,7 @@ import { resetInboxBadge, unregisterCurrentPushToken } from '@/features/notifica
 import { clearPostDraft } from '@/features/vehicles';
 import { supabase } from '@/shared/api';
 import { avatarUrlFromPath } from '@/shared/lib/avatarUrl';
+import { forgetLocationMemory } from '@/shared/lib/location/locationMemory';
 import { createLogger } from '@/shared/lib/logger';
 
 import type { MyProfile, PublicProfile, ReputationCounters } from '../types';
@@ -196,6 +197,8 @@ export async function signOut(): Promise<void> {
   // that also fires when a session merely expires, and the owner keeps their
   // own work then. Never throws.
   await clearPostDraft();
+  // …and the in-memory location caches (recent points and place labels).
+  forgetLocationMemory();
   const { error } = await supabase.auth.signOut();
   if (error) {
     throw error;
@@ -260,6 +263,7 @@ export async function requestAccountDeletion(): Promise<void> {
   // location). Deletion signs out directly, not through signOut(). Never
   // throws.
   await clearPostDraft();
+  forgetLocationMemory();
   // The server deleted auth.users; drop the now-orphaned local tokens too.
   await supabase.auth.signOut().catch(() => {
     // Tokens are dead either way; failing to clear them locally is harmless.

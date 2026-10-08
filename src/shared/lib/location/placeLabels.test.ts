@@ -103,6 +103,17 @@ describe('derivePlaceLabelsForCoord', () => {
     expect(mockGeocode).toHaveBeenCalledTimes(1);
   });
 
+  it('a lookup that never answers is dropped at the time limit — the next ask starts afresh', async () => {
+    jest.useFakeTimers();
+    mockGeocode.mockReturnValueOnce(new Promise(() => {})); // hangs for ever
+    const first = derivePlaceLabelsForCoord(POINT);
+    await jest.advanceTimersByTimeAsync(LOOKUP_TIMEOUT_MS);
+    await expect(first).resolves.toEqual({ areaLabel: null, locality: null });
+
+    await expect(derivePlaceLabelsForCoord(POINT)).resolves.toMatchObject({ locality: 'City Centre' });
+    expect(mockGeocode).toHaveBeenCalledTimes(2);
+  });
+
   it('a FAILED lookup is not remembered — the next ask tries again', async () => {
     mockGeocode.mockRejectedValueOnce(new Error('offline'));
     await expect(derivePlaceLabelsForCoord(POINT)).resolves.toEqual({

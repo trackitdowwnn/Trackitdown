@@ -75,6 +75,17 @@ export interface WizardControllerOptions<TAnswers> {
 }
 
 /**
+ * How long the SUBMITTING screen ignores its button after arriving.
+ *
+ * ⚠️ A double-tapped Next on the screen before it must not become a submit —
+ * on Post a car that is "Post & pay" (security review of #142). The move lock
+ * already covers this with motion on; under reduced motion there is no lock,
+ * so the submitting screen arms itself instead. Long enough to outlast a
+ * double-tap, too short for anyone meaning to press it.
+ */
+const SUBMIT_ARM_MS = 300;
+
+/**
  * Pull a user-facing string out of whatever an async action threw. Steps and
  * submit handlers are expected to throw Errors whose message is already
  * plain-English; anything else falls back to a generic line.
@@ -265,8 +276,18 @@ export function useWizardController<TAnswers>(
    * success), or a plain forward move. Serialized by `busy` so a double-tap
    * can't fire two lookups or two submits.
    */
+  // When the current screen arrived (see SUBMIT_ARM_MS), and whether an
+  // action is already running. `busy` is state, so two presses inside one
+  // commit would both see it false; the ref is set synchronously.
+  const arrivedAt = useRef(0);
+  useEffect(() => {
+    arrivedAt.current = Date.now();
+  }, [nav.index]);
+  const actingRef = useRef(false);
+
   const advance = useCallback(async () => {
-    if (busy || lockRef.current) return;
+    if (busy || lockRef.current || actingRef.current) return;
+    if (isLastScreen && Date.now() - arrivedAt.current < SUBMIT_ARM_MS) return;
     const screen = screens[nav.index];
     const onContinue = screen.kind === 'step' ? screen.step.onContinue : undefined;
     const hasAction = isLastScreen ? Boolean(onComplete) : Boolean(onContinue);
@@ -280,6 +301,7 @@ export function useWizardController<TAnswers>(
 
     setError(null);
     setBusy(true);
+    actingRef.current = true;
     try {
       if (isLastScreen) {
         await onComplete!(answers);
@@ -292,11 +314,13 @@ export function useWizardController<TAnswers>(
         setAnswersState((current) => ({ ...current, ...result }));
       }
       setBusy(false);
+      actingRef.current = false;
       // Not `next`: the press already passed the lock, and a lookup that
       // outlasts nothing must not be dropped by one.
       goNext();
     } catch (err) {
       setBusy(false);
+      actingRef.current = false;
       setError(toErrorMessage(err));
     }
   }, [busy, screens, nav.index, isLastScreen, onComplete, answers, goNext]);

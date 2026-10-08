@@ -156,6 +156,14 @@ async function renderWizard(overrides: { onExit?: jest.Mock; onComplete?: jest.M
   return { view, onExit, onComplete };
 }
 
+/** The submitting screen ignores its button for a moment after arriving (a
+ *  double-tapped Next must not become a submit — useWizardController's
+ *  SUBMIT_ARM_MS). A person never presses that fast; wait as one would. */
+const waitForSubmitArm = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 320));
+  });
+
 /** Press the primary/labelled button. */
 async function press(view: Awaited<ReturnType<typeof render>>, name: string | RegExp) {
   await act(async () => {
@@ -780,6 +788,7 @@ describe('step-launched edit spurs', () => {
         }),
     );
     const { view } = await renderSpurFlow(onComplete);
+    await waitForSubmitArm();
     await press(view, 'Send report');
     expect(view.getByText('busy')).toBeTruthy();
 

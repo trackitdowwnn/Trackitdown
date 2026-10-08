@@ -40,6 +40,13 @@ const mockClearDraft = jest.fn(async () => {
 });
 jest.mock('@/features/vehicles', () => ({ clearPostDraft: () => mockClearDraft() }));
 
+const mockForgetLocations = jest.fn(() => {
+  calls.push('forgetLocationMemory');
+});
+jest.mock('@/shared/lib/location/locationMemory', () => ({
+  forgetLocationMemory: () => mockForgetLocations(),
+}));
+
 const mockUnregister = jest.fn(async () => {
   calls.push('unregisterPushToken');
 });
@@ -64,7 +71,12 @@ beforeEach(() => {
 describe('signOut', () => {
   it('releases the push token BEFORE dropping the session', async () => {
     await signOut();
-    expect(calls).toEqual(['unregisterPushToken', 'clearPostDraft', 'auth.signOut']);
+    expect(calls).toEqual([
+      'unregisterPushToken',
+      'clearPostDraft',
+      'forgetLocationMemory',
+      'auth.signOut',
+    ]);
   });
 
   it('still signs out when releasing the token fails', async () => {
@@ -85,7 +97,7 @@ describe('signOut', () => {
 describe('requestAccountDeletion', () => {
   it('SAFETY: deletes the unfinished report draft along with the account', async () => {
     await requestAccountDeletion();
-    expect(calls).toEqual(['clearPostDraft', 'auth.signOut']);
+    expect(calls).toEqual(['clearPostDraft', 'forgetLocationMemory', 'auth.signOut']);
   });
 
   it('keeps it when the deletion is refused', async () => {

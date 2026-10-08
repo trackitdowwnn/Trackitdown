@@ -363,6 +363,13 @@ describe('the saved draft', () => {
     expect(mockPrefetchCentre).toHaveBeenCalledTimes(1);
   });
 
+  it('…but not when the answers already hold a location — nothing to look for', async () => {
+    await mount({
+      initialAnswers: { location: { latitude: 53.4, longitude: -2.2, addressLabel: 'Deansgate' } },
+    });
+    expect(mockPrefetchCentre).not.toHaveBeenCalled();
+  });
+
   it('offers save & exit to the wizard', async () => {
     await mount();
     expect(capturedOnSaveAndExit).toBeDefined();

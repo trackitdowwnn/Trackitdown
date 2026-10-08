@@ -321,6 +321,13 @@ commenting standards.
   never logged in full (redactEmail).
 - Spotter GPS is captured **only** at the moment of reporting a sighting —
   no background location tracking anywhere in the app.
+- **In-memory location speed caches** (2026-10-08, #142): recent reverse-geocode
+  answers (`placeLabels`, ≤20 points, ~10m keys) and the map-centre read-ahead
+  (`useDefaultMapCentre`, 2 minutes). Memory only, never sent anywhere, and
+  **forgotten on a deliberate sign-out or account deletion**
+  (`forgetLocationMemory`). A cached OS fix only counts if it is under 10
+  minutes old and within 200m — the post wizard commits the opening point as
+  the last-seen answer.
 - **An unfinished post-a-car report is saved on the device** (2026-09-03,
   review #19 — a nine-step flow ending in a card charge previously lost
   everything to a phone call). It lives in AsyncStorage, and **it contains the

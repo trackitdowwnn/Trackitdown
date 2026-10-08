@@ -46,6 +46,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { getFreshPositionIfPermitted, getLastKnownPosition } from './expoLocationServices';
 import { loadFeedLocationPref } from './feedLocationStorage';
+import { registerLocationMemory } from './locationMemory';
 import type { GeoCoord } from '@/shared/types';
 
 export interface DefaultMapCentreState {
@@ -99,11 +100,13 @@ function freshPrefetch(): GeoCoord | null {
   return prefetched && Date.now() - prefetched.at <= PREFETCH_MAX_AGE_MS ? prefetched.centre : null;
 }
 
-/** Test-only: forget the read-ahead. */
+/** Forget the read-ahead — on a deliberate sign-out (forgetLocationMemory),
+ *  and in tests. */
 export function resetDefaultMapCentrePrefetch(): void {
   prefetched = null;
   prefetching = null;
 }
+registerLocationMemory(resetDefaultMapCentrePrefetch);
 
 async function resolveCentre(): Promise<GeoCoord | null> {
   // 1. The fix the OS already has. NOT a fresh one: measured on the test
@@ -187,9 +190,12 @@ export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
       // fix lands. 3-10s on a real handset, and it never prompts (see
       // getFreshPositionIfPermitted's SAFETY note).
       //
-      // The camera moves; nothing is SETTLED. A late centre must never become a
-      // chosen point — on the last-seen step that would turn "wherever the phone
-      // was" into a claim other people act on. LocationPicker enforces that end.
+      // By default the camera moves and nothing is SETTLED: a late centre is
+      // not a chosen point. With `commitInitialCentre` (the post wizard's
+      // last-seen step) it DOES become the answer — the same product call as
+      // the opening centre (2026-09-28), and a fresh fix is where the phone is
+      // now — but never over a point the owner chose or a pan in progress.
+      // LocationPicker enforces both.
       const fresh = await getFreshPositionIfPermitted().catch(() => null);
       if (cancelled || !fresh || !mountedRef.current) return;
       setState((current) =>

@@ -118,8 +118,13 @@ export function PostACarScreen({
   // Find where the last-seen map should open while the owner is still on the
   // first questions, so that step opens on its first frame (2026-10-08).
   // After the slide-up, never during it; it never prompts for location.
+  // Not when the answers already hold a location (a restored draft, a
+  // prefill): the map step won't look for one, so reading the device's
+  // position would be collecting it for nothing.
   useAfterTransition(() => {
-    void prefetchDefaultMapCentre();
+    const known =
+      initialAnswers?.location ?? (typeof draft === 'object' ? draft?.answers.location : undefined);
+    if (!known) void prefetchDefaultMapCentre();
   });
 
   const [draft, setDraft] = useState<{ answers: Partial<PostACarAnswers> } | 'checking' | null>(
