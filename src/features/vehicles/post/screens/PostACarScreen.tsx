@@ -27,6 +27,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 
+import { getCurrentUserId } from '@/features/auth';
 import { PaymentError, createBountyPaymentIntent, useBountyPayment } from '@/features/payments';
 import { successHaptic } from '@/shared/lib/haptics';
 import { useToast } from '@/shared/ui';
@@ -107,6 +108,11 @@ export function PostACarScreen({
   // built. The async read below is only the fallback for an entry that didn't
   // prime — it used to be the only path, and the slide-up started on an empty
   // page with the whole wizard mounting halfway through it.
+  // Whose report this is, fixed when the form opens: a session that expires
+  // mid-form reads as nobody, and Save and exit must still save it for its
+  // owner rather than for no one (security review of #141).
+  const [ownerId] = useState(getCurrentUserId);
+
   const [draft, setDraft] = useState<{ answers: Partial<PostACarAnswers> } | 'checking' | null>(
     () => {
       if (initialAnswers) {
@@ -244,7 +250,7 @@ export function PostACarScreen({
       // ⚠️ ONLY THIS FLOW GETS IT. Nine steps ending in a card charge is the
       // one place in the app where losing the answers is a real loss; report-a-
       // sighting and add-a-vehicle keep the plain discard prompt.
-      onSaveAndExit={savePostDraft}
+      onSaveAndExit={(answers) => savePostDraft(answers, ownerId)}
       // Discard means discard: the saved draft goes too, or it came straight
       // back on the next open. Only on the BLANK report — the prefilled path
       // never read the draft, so its Discard must not wipe an unrelated one.

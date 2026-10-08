@@ -54,17 +54,20 @@ jest.mock('@/shared/wizard', () => ({
   },
 }));
 
+let mockCurrentUser: string | null = 'u1';
+jest.mock('@/features/auth', () => ({ getCurrentUserId: () => mockCurrentUser }));
+
 // ⚠️ Mocked at the module, not at AsyncStorage: the screen only has to decide
 // WHEN to save, restore and clear — what gets written is postDraftStorage's own
 // suite, and reaching the native module here would fail at import.
 const mockLoadDraft = jest.fn(async () => null as Record<string, unknown> | null);
-const mockSaveDraft = jest.fn(async (_answers: Record<string, unknown>) => {});
+const mockSaveDraft = jest.fn(async (_answers: Record<string, unknown>, _ownerId?: string | null) => {});
 const mockClearDraft = jest.fn(async () => {});
 const mockPeekDraft = jest.fn((): { value: Record<string, unknown> | null } | undefined => undefined);
 jest.mock('../lib/postDraftStorage', () => ({
   loadPostDraft: () => mockLoadDraft(),
   peekPrimedDraft: () => mockPeekDraft(),
-  savePostDraft: (a: Record<string, unknown>) => mockSaveDraft(a),
+  savePostDraft: (a: Record<string, unknown>, ownerId?: string | null) => mockSaveDraft(a, ownerId),
   clearPostDraft: () => mockClearDraft(),
 }));
 
@@ -341,6 +344,19 @@ describe('the saved draft', () => {
   it('offers save & exit to the wizard', async () => {
     await mount();
     expect(capturedOnSaveAndExit).toBeDefined();
+  });
+
+  // Security review of #141: a session that expired mid-form reads as nobody,
+  // and a draft saved for nobody is offered to no one — the owner's work lost.
+  it('saves the draft for whoever the form OPENED for, even if the session has since ended', async () => {
+    mockCurrentUser = 'u1';
+    await mount();
+    mockCurrentUser = null; // the token expired
+    await act(async () => {
+      capturedOnSaveAndExit?.({ make: 'BMW' });
+    });
+    expect(mockSaveDraft).toHaveBeenCalledWith({ make: 'BMW' }, 'u1');
+    mockCurrentUser = 'u1';
   });
 
   it('⚠️ ignores a saved draft when the caller supplied answers', async () => {

@@ -35,10 +35,13 @@
  *
  * ⚠️ IT BELONGS TO ONE ACCOUNT. The draft records who saved it and is only
  *        ever offered back to them — a shared phone must never open one
- *        account's draft (a last-seen location) for the next (security review
- *        of #141). Checked on read rather than wiped on sign-out: a session
- *        that merely expires reads as signed out too, and wiping then would
- *        throw away the owner's own work.
+ *        account's draft (a last-seen location) for the next. A draft with no
+ *        owner (written before 2026-10-08, when one was recorded) is offered
+ *        to no one: it could be anyone's. A DELIBERATE sign-out, and account
+ *        deletion, delete it outright (profileApi); a session that merely
+ *        expires does not, so the owner keeps their own work (security review
+ *        of #141). Still one draft per device: another account saving one
+ *        replaces it.
  * LINKS: src/shared/wizard/useWizardController.ts (the seam this fills — it has
  *          carried a TODO(draft-persistence) since the framework was written);
  *        src/features/vehicles/post/screens/PostACarScreen.tsx (restores it);
@@ -99,14 +102,15 @@ export type PersistedDraftAnswers = Partial<Pick<PostACarAnswers, (typeof PERSIS
 
 interface StoredDraft {
   savedAt: string;
-  /** Who saved it. Absent on drafts written before 2026-10-08 — accepted. */
+  /** Who saved it. Absent (before 2026-10-08) or null — offered to no one. */
   ownerId?: string | null;
   answers: PersistedDraftAnswers;
 }
 
-/** True when the signed-in user may see a draft saved by ownerId. */
-function isMine(ownerId: string | null | undefined): boolean {
-  return ownerId === undefined || ownerId === null || ownerId === getCurrentUserId();
+/** True when the signed-in user may see a draft saved by ownerId. An
+ *  unknown owner is nobody's: "unknown" must never read as "anyone". */
+function isMine(ownerId: string | null): boolean {
+  return ownerId !== null && ownerId === getCurrentUserId();
 }
 
 /** Copy across only the whitelisted keys that actually have a value. */
@@ -126,17 +130,22 @@ function pickPersisted(answers: Partial<PostACarAnswers>): PersistedDraftAnswers
  * disappointment, but a storage failure taking down the exit the owner just
  * asked for would be a trap.
  */
-export async function savePostDraft(answers: Partial<PostACarAnswers>): Promise<void> {
+export async function savePostDraft(
+  answers: Partial<PostACarAnswers>,
+  // The form passes the user it OPENED for: a session that expired mid-form
+  // reads as nobody now, and a draft saved for nobody is offered to no one.
+  ownerId: string | null = getCurrentUserId(),
+): Promise<void> {
   try {
     const draft: StoredDraft = {
       savedAt: new Date().toISOString(),
-      ownerId: getCurrentUserId(),
+      ownerId,
       answers: pickPersisted(answers),
     };
     primed = {
       value: draft.answers,
       savedAt: Date.now(),
-      ownerId: draft.ownerId,
+      ownerId,
     };
     await AsyncStorage.setItem(KEY, JSON.stringify(draft));
     // ⚠️ COUNTS ONLY. The draft holds a location and a car; nothing about it
@@ -161,7 +170,7 @@ export async function loadPostDraft(): Promise<PersistedDraftAnswers | null> {
 async function readDraft(): Promise<{
   answers: PersistedDraftAnswers;
   savedAt: number;
-  ownerId: string | null | undefined;
+  ownerId: string | null;
 } | null> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
@@ -185,7 +194,7 @@ async function readDraft(): Promise<{
     return {
       answers: pickPersisted(parsed.answers as Partial<PostACarAnswers>),
       savedAt,
-      ownerId: typeof parsed.ownerId === 'string' ? parsed.ownerId : undefined,
+      ownerId: typeof parsed.ownerId === 'string' ? parsed.ownerId : null,
     };
   } catch {
     log.warn('post_draft_load_failed');
@@ -193,9 +202,10 @@ async function readDraft(): Promise<{
   }
 }
 
-/** Remove it. Called on submit, on discard and on a failed read. */
+/** Remove it. Called on submit, on discard, on a failed read, and on a
+ *  deliberate sign-out or account deletion (profileApi). */
 export async function clearPostDraft(): Promise<void> {
-  primed = { value: null, savedAt: 0, ownerId: undefined };
+  primed = { value: null, savedAt: 0, ownerId: null };
   try {
     await AsyncStorage.removeItem(KEY);
   } catch {
@@ -220,7 +230,7 @@ let primed:
   | {
       value: PersistedDraftAnswers | null;
       savedAt: number;
-      ownerId: string | null | undefined;
+      ownerId: string | null;
     }
   | undefined;
 let priming: Promise<void> | null = null;
@@ -238,7 +248,7 @@ export function primePostDraft(): Promise<void> {
           primed = {
             value: draft?.answers ?? null,
             savedAt: draft?.savedAt ?? 0,
-            ownerId: draft?.ownerId,
+            ownerId: draft?.ownerId ?? null,
           };
         }
       })

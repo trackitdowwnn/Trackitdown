@@ -2,8 +2,9 @@
  * WHAT:  StartReportScreen — the ONE screen behind the + button. It slides up
  *        once and shows, in place: the blank report (no cars to offer), the
  *        "Which car?" chooser (cars to offer), a quiet pending state while it
- *        can't yet tell, or the chooser's error view. Choosing a car or "a
- *        different car" dissolves into that report — no navigation.
+ *        can't yet tell, the chooser's error view, or — for a guest who got
+ *        here without the + button's gate — a sign-in stage. Choosing a car
+ *        or "a different car" dissolves into that report — no navigation.
  * WHY:   "Janky, slow and not smooth" (owner, 2026-10-07). The + used to push
  *        a chooser route, which then REPLACED itself with the form: two
  *        full-screen transitions back to back, the second starting on a blank
@@ -18,6 +19,17 @@
  *        after the blank form appeared must not yank the form away. The one
  *        exception runs the other way: a chooser left with NO car to offer
  *        (the last one was just reported) gives way to the blank report.
+ *
+ *        ⚠️ SIGNED OUT BEATS EVERYTHING — BUT ONLY BEFORE THE VISIT WAS EVER
+ *        SIGNED IN. A guest sees the sign-in stage, even with ?start=blank.
+ *        A session that ends MID-visit (a token that expired) changes
+ *        nothing on screen: swapping the form for a sign-in page would throw
+ *        away every typed answer — and, after create_post, the draft's id,
+ *        so paying again would make a second post (review of #141). Its
+ *        submit fails with the sign-in-again copy, and Save and exit still
+ *        keeps the draft for its owner. A DIFFERENT account appearing
+ *        mid-visit closes the screen: nothing of the first one's — a chosen
+ *        car's plate, typed answers — may be shown to the second.
  *
  *        ⚠️ "Which car?" IS NEVER DRAWN WITHOUT CARS. A confirmed empty garage
  *        (or nothing offerable) goes straight to the blank report; an unknown
@@ -66,14 +78,30 @@ export function StartReportScreen() {
   // they're shown the sign-in sheet once, over a sign-in stage that asks
   // again if they close it; once signed in, this screen carries on.
   const askToSignIn = useCallback(() => requireAuth({ context: 'post_car' }), [requireAuth]);
+  //
+  // "Guest" means never signed in during THIS visit — see the header for
+  // why a session that ends mid-visit doesn't count. Held in state, set
+  // during render, so the first signed-in frame already knows.
+  const userId = session.status === 'signedIn' ? session.userId : null;
+  const [visitUser, setVisitUser] = useState(userId);
+  if (visitUser === null && userId !== null) {
+    setVisitUser(userId);
+  }
+  const isGuest = visitUser === null;
+  // SAFETY: another account mid-visit — leave (see the header).
+  const switched = visitUser !== null && userId !== null && userId !== visitUser;
+  useEffect(() => {
+    if (switched) {
+      router.back();
+    }
+  }, [switched, router]);
   const askedRef = useRef(false);
   useEffect(() => {
-    if (session.status === 'signedOut' && !askedRef.current) {
+    if (isGuest && session.status === 'signedOut' && !askedRef.current) {
       askedRef.current = true;
       askToSignIn();
     }
-  }, [session.status, askToSignIn]);
-  const isGuest = session.status !== 'signedIn';
+  }, [isGuest, session.status, askToSignIn]);
 
   // A car with a live listing can't be reported again (create_post refuses
   // it as PLATE_IN_USE), so it is never offered.
@@ -103,10 +131,16 @@ export function StartReportScreen() {
   const [committed, setCommitted] = useState<'blank' | 'choose' | null>(null);
   if (committed === null && (natural === 'blank' || natural === 'choose')) {
     setCommitted(natural);
-  } else if (committed === 'choose' && status === 'ready' && offerable.length === 0) {
+  } else if (
+    committed === 'choose' &&
+    session.status === 'signedIn' &&
+    status === 'ready' &&
+    offerable.length === 0
+  ) {
     // The ONE allowed swap: a revalidation left the chooser with nothing to
     // offer (the car was just reported elsewhere). "Which car?" is never
-    // drawn without cars, so it gives way to the blank report.
+    // drawn without cars, so it gives way to the blank report. (Not on a
+    // sign-out: a signed-out garage reads as empty, and that isn't news.)
     setCommitted('blank');
   }
   // Once the page has shown any answer (an error, say), a retry must not blank
@@ -126,8 +160,10 @@ export function StartReportScreen() {
   const goBack = useCallback(() => router.back(), [router]);
 
   // Signed out (or not yet known) beats even ?start=blank: a guest can't post.
-  const stage = isGuest
-    ? natural
+  const stage = switched
+    ? 'pending'
+    : isGuest
+      ? natural
     : picked?.kind === 'car'
       ? `car:${picked.vehicle.id}`
       : picked?.kind === 'blank'
@@ -165,7 +201,7 @@ export function StartReportScreen() {
             onAction={askToSignIn}
           />
         </Screen>
-      ) : picked?.kind === 'car' && !isGuest ? (
+      ) : picked?.kind === 'car' && stage === `car:${picked.vehicle.id}` ? (
         <PrefilledReport vehicle={picked.vehicle} />
       ) : stage === 'blank' ? (
         // The garage's exit nudge: only the blank report offers it — someone

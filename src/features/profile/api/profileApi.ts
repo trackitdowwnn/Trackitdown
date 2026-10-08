@@ -19,6 +19,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 import { resetInboxBadge, unregisterCurrentPushToken } from '@/features/notifications';
+import { clearPostDraft } from '@/features/vehicles';
 import { supabase } from '@/shared/api';
 import { avatarUrlFromPath } from '@/shared/lib/avatarUrl';
 import { createLogger } from '@/shared/lib/logger';
@@ -189,6 +190,12 @@ export async function signOut(): Promise<void> {
   // The Inbox badge halves are module-level and would otherwise survive into
   // the NEXT account's session — this is the one place they must be zeroed.
   resetInboxBadge();
+  // SAFETY: the unfinished report holds where the car was last seen — on a
+  // driveway theft, a home. A deliberate sign-out is the hand-over point for
+  // a shared or sold phone, so it goes here, not on the SIGNED_OUT event:
+  // that also fires when a session merely expires, and the owner keeps their
+  // own work then. Never throws.
+  await clearPostDraft();
   const { error } = await supabase.auth.signOut();
   if (error) {
     throw error;
@@ -249,6 +256,10 @@ export async function requestAccountDeletion(): Promise<void> {
       : DELETION_FALLBACK;
     throw new AccountDeletionError(message, code);
   }
+  // SAFETY: the account is gone, so is its unfinished report (a last-seen
+  // location). Deletion signs out directly, not through signOut(). Never
+  // throws.
+  await clearPostDraft();
   // The server deleted auth.users; drop the now-orphaned local tokens too.
   await supabase.auth.signOut().catch(() => {
     // Tokens are dead either way; failing to clear them locally is harmless.

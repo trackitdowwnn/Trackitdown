@@ -111,8 +111,7 @@ export function invalidateSavedCarSignal(): void {
   notify();
 }
 
-/** Counts writes (invalidations and local marks) — a fetch started under an
- *  older one is stale. */
+/** Counts invalidations — a fetch started under an older one is stale. */
 export function garageGeneration(): number {
   return generation;
 }
@@ -122,8 +121,12 @@ export function garageGeneration(): number {
  * #141). Not a refetch: the server only counts a post as live once it is
  * paid (list_my_vehicles' is_currently_posted), so a refetch right after
  * creation would still say "not posted" and the next + would offer the car
- * again. The next real fetch (or the 30s freshness window ending) replaces
- * this with the server's own answer.
+ * again.
+ *
+ * It bridges the gap until the server agrees — it does not outlast it. The
+ * next fetch replaces it with the server's answer: by then the payment's
+ * webhook has normally landed (posted), and if the owner never paid, offering
+ * the car again is right — an unpaid draft doesn't hold the plate.
  */
 export function markVehiclePosted(vehicleId: string): void {
   if (!cached || !cached.vehicles.some((v) => v.id === vehicleId && !v.isCurrentlyPosted)) {
@@ -133,6 +136,5 @@ export function markVehiclePosted(vehicleId: string): void {
     v.id === vehicleId ? { ...v, isCurrentlyPosted: true } : v,
   );
   cached = { ...cached, vehicles };
-  generation += 1; // an in-flight fetch from before this would undo it
   notify();
 }

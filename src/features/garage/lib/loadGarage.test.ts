@@ -133,21 +133,18 @@ describe('markVehiclePosted', () => {
     expect(vehicles.find((v) => v.id === 'v2')?.isCurrentlyPosted).toBeFalsy();
   });
 
-  it('a fetch already in flight cannot undo it', async () => {
+  it('lasts until the server answers — and the server has the last word', async () => {
     publishGarage('u1', [car]);
-    let land: ((v: SavedVehicle[]) => void) | undefined;
-    mockList.mockReturnValueOnce(
-      new Promise<SavedVehicle[]>((resolve) => {
-        land = resolve;
-      }),
-    );
-    const loading = loadGarage('u1');
     markVehiclePosted('v1');
-    mockList.mockResolvedValue([{ ...car, isCurrentlyPosted: true }]);
-
-    land?.([car]); // the pre-report answer: not posted
-    await loading;
     expect(garageFor('u1')?.vehicles[0]?.isCurrentlyPosted).toBe(true);
+
+    mockList.mockResolvedValue([{ ...car, isCurrentlyPosted: true }]); // paid
+    await loadGarage('u1');
+    expect(garageFor('u1')?.vehicles[0]?.isCurrentlyPosted).toBe(true);
+
+    mockList.mockResolvedValue([car]); // e.g. never paid: offer it again
+    await loadGarage('u1');
+    expect(garageFor('u1')?.vehicles[0]?.isCurrentlyPosted).toBeFalsy();
   });
 
   it('does nothing when the car is not cached', () => {

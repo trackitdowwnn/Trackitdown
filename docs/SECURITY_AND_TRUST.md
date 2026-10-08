@@ -331,9 +331,13 @@ commenting standards.
     later anyway.
   - SecureStore is not the alternative: iOS caps a value at ~2KB and this
     object exceeds it (the same cap `shared/api/supabase.ts` records).
-  - The mitigations are **expiry and clearing**, not the medium: a draft older
-    than 14 days is dropped on read, and it is deleted the moment the post is
-    created server-side.
+  - The mitigations are **expiry, ownership and clearing**, not the medium:
+    a draft older than 14 days is dropped on read; it is deleted the moment
+    the post is created server-side; it records the account that saved it and
+    is offered to no one else (a draft with no recorded owner — written before
+    2026-10-08 — is offered to no one); and a **deliberate sign-out or account
+    deletion deletes it** (`profileApi`). A session that merely EXPIRES does
+    not — the owner keeps their own work (security review of #141).
   - **Photos are never written** — they are cache uris that may already point
     at nothing, and an explicit whitelist (`PERSISTED_KEYS`) means a future
     answer field is persisted only by decision, never by default.

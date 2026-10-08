@@ -372,6 +372,57 @@ describe('a guest who arrives without the + button (a deep link)', () => {
     expect(getByText('Sign in to report a stolen car')).toBeTruthy();
   });
 
+  // Review of #141: a token that expires mid-form reads as signed out. Swapping
+  // the form for a sign-in page lost every answer — and, after create_post, the
+  // draft's id, so paying again made a second post.
+  it('a session that ends MID-visit leaves the form exactly where it was', async () => {
+    mockSession = { status: 'signedIn', userId: 'u1' };
+    const view = await renderScreen();
+    expect(view.getByTestId('blank-report')).toBeTruthy();
+
+    mockSession = { status: 'signedOut', userId: null };
+    await act(async () => {
+      view.rerender(<StartReportScreen />);
+    });
+    expect(view.getByTestId('blank-report')).toBeTruthy();
+    expect(view.queryByText('Sign in to report a stolen car')).toBeNull();
+    expect(mockRequireAuth).not.toHaveBeenCalled();
+  });
+
+  it('…and a chooser it was showing stays a chooser', async () => {
+    mockSession = { status: 'signedIn', userId: 'u1' };
+    mockVehicles = { status: 'ready', vehicles: [vehicle()], retry: mockRetry };
+    const view = await renderScreen();
+    expect(view.getByText('Which car?')).toBeTruthy();
+
+    // A signed-out garage reads as ready-and-empty.
+    mockSession = { status: 'signedOut', userId: null };
+    mockVehicles = { status: 'ready', vehicles: [], retry: mockRetry };
+    await act(async () => {
+      view.rerender(<StartReportScreen />);
+    });
+    expect(view.getByText('Which car?')).toBeTruthy();
+  });
+
+  // Security review of #141: the chosen car (its plate) belongs to the account
+  // that chose it.
+  it('SAFETY: a DIFFERENT account mid-visit closes it — the first one’s car is never shown', async () => {
+    mockSession = { status: 'signedIn', userId: 'u1' };
+    mockVehicles = { status: 'ready', vehicles: [vehicle()], retry: mockRetry };
+    const view = await renderScreen();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('choose-car-v1'));
+    });
+    expect(view.getByTestId('prefilled-report')).toBeTruthy();
+
+    mockSession = { status: 'signedIn', userId: 'u2' };
+    await act(async () => {
+      view.rerender(<StartReportScreen />);
+    });
+    expect(view.queryByTestId('prefilled-report')).toBeNull();
+    expect(mockBack).toHaveBeenCalled();
+  });
+
   it('once signed in, the report carries on in place', async () => {
     const view = await renderScreen();
     mockSession = { status: 'signedIn', userId: 'u1' };

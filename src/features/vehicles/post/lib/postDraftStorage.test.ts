@@ -156,6 +156,7 @@ describe('loadPostDraft', () => {
     mockStorage.getItem.mockResolvedValue(
       JSON.stringify({
         savedAt: new Date().toISOString(),
+        ownerId: 'u1',
         answers: { make: 'BMW' },
       }),
     );
@@ -174,6 +175,7 @@ describe('loadPostDraft', () => {
     mockStorage.getItem.mockResolvedValue(
       JSON.stringify({
         savedAt: new Date(Date.now() - 15 * DAY_MS).toISOString(),
+        ownerId: 'u1',
         answers: { make: 'BMW' },
       }),
     );
@@ -187,6 +189,7 @@ describe('loadPostDraft', () => {
     mockStorage.getItem.mockResolvedValue(
       JSON.stringify({
         savedAt: new Date(Date.now() - 13 * DAY_MS).toISOString(),
+        ownerId: 'u1',
         answers: { make: 'BMW' },
       }),
     );
@@ -214,6 +217,7 @@ describe('loadPostDraft', () => {
     mockStorage.getItem.mockResolvedValue(
       JSON.stringify({
         savedAt: new Date().toISOString(),
+        ownerId: 'u1',
         answers: { make: 'BMW', photos: [{ uri: 'file:///gone.jpg' }] },
       }),
     );
@@ -233,6 +237,7 @@ describe('reading ahead', () => {
     mockStorage.getItem.mockResolvedValue(
       JSON.stringify({
         savedAt: new Date().toISOString(),
+        ownerId: 'u1',
         answers: { make: 'BMW' },
       }),
     );
@@ -289,14 +294,22 @@ describe('ownership', () => {
     expect(peekPrimedDraft()).toEqual({ value: { make: 'BMW' } });
   });
 
-  it('a draft from before owners were recorded is still offered', async () => {
+  it('SAFETY: a draft saved with no known user is offered to no one', async () => {
     mockStorage.getItem.mockResolvedValue(
-      JSON.stringify({
-        savedAt: new Date().toISOString(),
-        answers: { make: 'BMW' },
-      }),
+      JSON.stringify({ savedAt: new Date().toISOString(), ownerId: null, answers: { make: 'BMW' } }),
     );
-    await expect(loadPostDraft()).resolves.toEqual({ make: 'BMW' });
+    await expect(loadPostDraft()).resolves.toBeNull();
+    await primePostDraft();
+    expect(peekPrimedDraft()).toEqual({ value: null });
+  });
+
+  // Before 2026-10-08 nothing recorded an owner, and nothing wiped the draft on
+  // sign-out — so an ownerless draft could be anyone's.
+  it('SAFETY: a draft from before owners were recorded is offered to no one', async () => {
+    mockStorage.getItem.mockResolvedValue(
+      JSON.stringify({ savedAt: new Date().toISOString(), answers: { make: 'BMW' } }),
+    );
+    await expect(loadPostDraft()).resolves.toBeNull();
   });
 });
 
