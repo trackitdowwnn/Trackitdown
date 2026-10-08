@@ -24,6 +24,14 @@ import { z } from 'zod';
 import type { WizardFlow } from './types';
 import { useWizardController } from './useWizardController';
 
+/** The submitting screen ignores its button for a moment after arriving (a
+ *  double-tapped Next must not become a submit — useWizardController's
+ *  SUBMIT_ARM_MS). A person never presses that fast; wait as one would. */
+const waitForSubmitArm = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 320));
+  });
+
 /** A promise whose resolve/reject we drive by hand, to freeze an action mid-flight. */
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -364,6 +372,7 @@ describe('useWizardController — async actions', () => {
 
     await act(async () => result.current.advance()); // plate → review
     expect(result.current.screenIndex).toBe(2);
+    await waitForSubmitArm();
 
     let submit!: Promise<void>;
     await act(async () => {
@@ -381,6 +390,20 @@ describe('useWizardController — async actions', () => {
     expect(result.current.screenIndex).toBe(2);
   });
 
+  // Security review of #142: under reduced motion there is no move lock, so a
+  // double-tapped Next on the screen before could land on the submit.
+  it('⚠️ ignores the submit for a moment after arriving — a double tap is not a payment', async () => {
+    const onComplete = jest.fn();
+    const { result } = await renderAsyncController(makeAsyncFlow({}), onComplete);
+    await act(async () => result.current.advance()); // plate → review
+    await act(async () => result.current.advance()); // the double tap's second half
+    expect(onComplete).not.toHaveBeenCalled();
+
+    await waitForSubmitArm();
+    await act(async () => result.current.advance());
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the wizard intact and shows the error when onComplete fails', async () => {
     const onComplete = jest.fn(async () => {
       throw new Error('Payment could not be taken. Please try again.');
@@ -388,6 +411,7 @@ describe('useWizardController — async actions', () => {
     const { result } = await renderAsyncController(makeAsyncFlow({}), onComplete);
 
     await act(async () => result.current.advance()); // plate → review
+    await waitForSubmitArm();
     await act(async () => result.current.advance()); // submit (fails)
 
     expect(result.current.error).toBe('Payment could not be taken. Please try again.');

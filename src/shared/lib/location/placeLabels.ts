@@ -29,6 +29,8 @@ import * as Location from 'expo-location';
 
 import type { GeoCoord } from '@/shared/types/location';
 
+import { registerLocationMemory } from './locationMemory';
+
 /** Owner-facing labels run longer than the public ones; both mirror the
  *  column CHECKs (sightings.area_label ≤ 120, posts.last_seen_locality ≤ 80). */
 const MAX_LABEL = 120;
@@ -72,8 +74,13 @@ function lookupFor(coord: GeoCoord): Promise<PlaceLabels | null> {
     return known;
   }
   const lookup: Promise<PlaceLabels | null> = geocode(coord).then((labels) => {
-    // Only this entry: an evicted lookup failing must not drop a newer one.
-    if (labels === null && cache.get(key) === lookup) cache.delete(key);
+    if (labels === null) {
+      // Only this entry: an evicted lookup failing must not drop a newer one.
+      if (cache.get(key) === lookup) cache.delete(key);
+    } else if (!cache.has(key)) {
+      // A late answer, after an ask gave up and dropped it: keep it after all.
+      cache.set(key, Promise.resolve(labels));
+    }
     return labels;
   });
   cache.set(key, lookup);
@@ -96,8 +103,20 @@ export function derivePlaceLabelsForCoord(coord: GeoCoord): Promise<PlaceLabels>
   const timeout = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), LOOKUP_TIMEOUT_MS);
   });
-  return Promise.race([lookupFor(coord), timeout]).then((labels) => {
+  const lookup = lookupFor(coord);
+  let answered = false;
+  void lookup.then(() => {
+    answered = true;
+  });
+  return Promise.race([lookup, timeout]).then((labels) => {
     clearTimeout(timer);
+    if (!answered) {
+      // Timed out and still pending: drop it so the next ask starts afresh
+      // rather than waiting on a geocoder that may never answer. If it does
+      // answer, lookupFor puts it back.
+      const key = cacheKey(coord);
+      if (cache.get(key) === lookup) cache.delete(key);
+    }
     return labels ?? EMPTY;
   });
 }
@@ -108,10 +127,12 @@ export function warmPlaceLabels(coord: GeoCoord): void {
   void lookupFor(coord);
 }
 
-/** Test-only: forget every remembered answer. */
+/** Forget every remembered answer — on a deliberate sign-out
+ *  (forgetLocationMemory), and in tests. */
 export function resetPlaceLabelCache(): void {
   cache.clear();
 }
+registerLocationMemory(resetPlaceLabelCache);
 
 /** One reverse-geocode, or null when it failed (never throws). */
 async function geocode(coord: GeoCoord): Promise<PlaceLabels | null> {
