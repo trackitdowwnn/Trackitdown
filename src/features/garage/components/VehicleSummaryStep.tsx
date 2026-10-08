@@ -1,38 +1,50 @@
 /**
- * WHAT:  The hero confirmation that replaces the posting wizard's seven-step
- *        `car` phase when the report was started from a saved car: one tall
- *        (4:5) cover photo with the car's identity laid over its lower edge,
- *        the underlined "Edit" on the strip's right, and a quiet meta line
- *        beneath (photo + distinctive-feature counts). No helper subtext: the
- *        question and the photo carry the moment (product calls 2026-07-29).
- * WHY:   "Is this the car?" is answered by RECOGNISING it, so the photo is the
- *        screen (the reference's photography-first language at full strength —
- *        redesigned 2026-07-29, second pass, after the card treatment read as
- *        too quiet for the moment).
+ * WHAT:  "Your car" — the step that stands in for the posting wizard's seven
+ *        car questions when the report is for a SAVED car: every photo to
+ *        swipe through, the name and plate, one line of details ("Blue · 2019
+ *        · Saloon"), the distinctive features, and "Edit details" (which opens
+ *        the full questions, seeded). The footer's primary is "Continue".
+ * WHY:   It used to ask "Is this the car?" over one tall photo, with the rest
+ *        reduced to a count ("4 photos · 2 distinctive features"). The owner
+ *        had just CHOSEN this car, so the question was redundant, and the
+ *        screen showed too little to be worth stopping on (2026-10-08). It now
+ *        earns its place by showing the car as spotters will see it — no
+ *        question to answer, just a last look before the report goes on.
  *
- *        The layout itself now lives in `shared/ui/MediaIdentityCard`,
- *        extracted 2026-08-22 when the posting wizard's review step needed the
- *        same moment for the same reason. THE RULES MOVED WITH IT and are
- *        documented there: the hero is display-only (a tappable artifact under
- *        a yes/no question is a tap-to-affirm trap), and photo chrome uses
- *        `surfaceOverMedia`/`textOnMedia` rather than `overlay`/`textOnPrimary`,
- *        which track the page and would flip with the scheme while the
- *        photograph does not. (The strip was a `mediaScrim` until 2026-08-23;
- *        at 45% it could not carry 14pt text over a white or silver car.)
- *        This file keeps only what is about a VEHICLE:
- *        which fields make up the identity, and how the counts read.
- * LINKS: src/shared/ui/MediaIdentityCard.tsx (the layout + its rules);
- *        src/features/garage/lib/prefilledPostFlow.tsx (builds the flow that
- *          uses this + owns the helper copy);
- *        src/features/garage/screens/ReportSavedCarScreen.tsx.
+ *        ⚠️ DISPLAY-ONLY PHOTOS. Swipe, never tap: under a "Continue", a
+ *        tappable photo is a tap-to-affirm trap (MediaIdentityCard's rule,
+ *        which PhotoPager keeps). Changing anything is the explicit link.
+ *
+ *        Unknowns are LEFT OUT, never printed: a missing year, or the body
+ *        type's "Not sure" escape, is not a fact about the car (the same rule
+ *        as the listing's detail rows and the review preview).
+ * LINKS: src/shared/ui/PhotoPager.tsx; src/shared/ui/DistinctiveFeatureList.tsx;
+ *        src/features/garage/lib/prefilledPostFlow.tsx (builds the step and
+ *          owns its question / CTA);
+ *        src/features/vehicles/post/components/ReviewListingPreview.tsx (the
+ *          same colour / detail rules, for the review screen).
  */
 
 import { Car } from 'lucide-react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { MediaIdentityCard, PlateChip } from '@/shared/ui';
+import { BODY_TYPE_UNKNOWN } from '@/features/vehicles';
+import { swatchForName } from '@/shared/lib/carColours';
+import {
+  opacity,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
+import { DistinctiveFeatureList, PhotoPager, PlateChip } from '@/shared/ui';
 
 import { vehicleDisplayName } from '../lib/vehicleAnswers';
 import type { SavedVehicle } from '../types';
+import { GARAGE_PHOTO_ASPECT_RATIO } from './GarageCard';
 
 export interface VehicleSummaryStepProps {
   vehicle: SavedVehicle;
@@ -40,41 +52,124 @@ export interface VehicleSummaryStepProps {
   onEdit: () => void;
 }
 
-export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps) {
-  // Hoisted: narrowing does not survive into the closure below, and a `!`
-  // assertion is a worse way to say the same thing.
-  const plate = vehicle.plate;
-  const photoCount = vehicle.photos.length;
-  const featureCount = vehicle.distinctiveFeatures.length;
-  const meta = [
-    photoCount === 1 ? '1 photo' : `${photoCount} photos`,
-    featureCount > 0
-      ? featureCount === 1
-        ? '1 distinctive feature'
-        : `${featureCount} distinctive features`
-      : null,
+/**
+ * "Blue · 2019 · Saloon" — only what is KNOWN. An escape colour ("Other",
+ * "Multicolour / wrapped") gives way to the owner's own note, which is what
+ * actually describes it; with no note, the escape name stays.
+ */
+export function vehicleDetailLine(vehicle: SavedVehicle): string {
+  const note = vehicle.colourNote?.trim();
+  const colour = swatchForName(vehicle.colour)?.note && note ? note : vehicle.colour;
+  const bodyType = vehicle.bodyType?.trim();
+  return [
+    colour?.trim() || null,
+    vehicle.year ? String(vehicle.year) : null,
+    bodyType && bodyType !== BODY_TYPE_UNKNOWN ? bodyType : null,
   ]
-    .filter(Boolean)
+    .filter((part): part is string => Boolean(part))
     .join(' · ');
+}
+
+export function VehicleSummaryStep({ vehicle, onEdit }: VehicleSummaryStepProps) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+  const name = vehicleDisplayName(vehicle);
+  const details = vehicleDetailLine(vehicle);
+  const features = vehicle.distinctiveFeatures;
 
   return (
-    <MediaIdentityCard
-      uri={vehicle.photos[0]?.url}
-      name={vehicleDisplayName(vehicle)}
-      // Handed `onMedia` so the chip picks theme-INVARIANT tokens when it
-      // lands on the photo strip: its default `surfaceSubtle` fill tracks the
-      // page, so in dark mode it turned charcoal beside white text that did
-      // not — a flip the photograph underneath never makes.
-      metaLeading={
-        plate ? (onMedia) => <PlateChip plate={plate} onPress={null} onMedia={onMedia} /> : undefined
-      }
-      metaText={vehicle.colour ?? undefined}
-      caption={meta}
-      onEdit={onEdit}
-      editAccessibilityLabel="Edit your car's details"
-      placeholderIcon={Car}
-      testID="vehicle-summary"
-      editTestID="vehicle-summary-edit"
-    />
+    <View style={styles.root} testID="vehicle-summary">
+      <PhotoPager
+        photos={vehicle.photos.map((photo) => ({ uri: photo.url }))}
+        aspectRatio={GARAGE_PHOTO_ASPECT_RATIO}
+        alt={name}
+        placeholder={<Car size={sizes.icon} color={palette.textSecondary} />}
+        style={styles.photos}
+        testID="vehicle-summary-photos"
+      />
+
+      <View style={styles.identity}>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} accessibilityRole="header">
+            {name}
+          </Text>
+          {vehicle.plate ? <PlateChip plate={vehicle.plate} onPress={null} /> : null}
+        </View>
+        {details ? <Text style={styles.details}>{details}</Text> : null}
+      </View>
+
+      {features.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            Distinctive features
+          </Text>
+          <DistinctiveFeatureList features={features} />
+        </View>
+      ) : null}
+
+      <Pressable
+        onPress={onEdit}
+        accessibilityRole="button"
+        accessibilityLabel="Edit your car's details"
+        hitSlop={spacing.sm}
+        style={({ pressed }) => [styles.edit, pressed && styles.editPressed]}
+        testID="vehicle-summary-edit"
+      >
+        <Text style={styles.editLabel}>Edit details</Text>
+      </Pressable>
+    </View>
   );
 }
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    root: {
+      gap: spacing.xl,
+    },
+    photos: {
+      borderRadius: radii.lg,
+    },
+    identity: {
+      gap: spacing.xs,
+    },
+    // Wraps, so a long nickname at large text pushes the plate onto its own
+    // line instead of squeezing either.
+    nameRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      columnGap: spacing.md,
+      rowGap: spacing.sm,
+    },
+    name: {
+      ...typography.title,
+      color: c.textPrimary,
+      flexShrink: 1,
+    },
+    details: {
+      ...typography.body,
+      color: c.textSecondary,
+    },
+    section: {
+      gap: spacing.md,
+    },
+    sectionTitle: {
+      ...typography.label,
+      color: c.textPrimary,
+    },
+    // A text link, left-aligned with everything above it, with a full-height
+    // target (hitSlop brings the 20pt line up to the 44pt minimum).
+    edit: {
+      alignSelf: 'flex-start',
+      minHeight: sizes.touchTarget - spacing.sm * 2,
+      justifyContent: 'center',
+    },
+    editPressed: {
+      opacity: opacity.pressed,
+    },
+    editLabel: {
+      ...typography.label,
+      color: c.textPrimary,
+      textDecorationLine: 'underline',
+    },
+  });

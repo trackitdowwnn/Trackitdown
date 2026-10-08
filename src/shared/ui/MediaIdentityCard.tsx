@@ -9,8 +9,9 @@
  *        the photo is the component (the reference's photography-first
  *        language at full strength). Extracted from the garage's
  *        VehicleSummaryStep on 2026-08-22 when the posting wizard's review
- *        step needed the same moment — one implementation, so the two cannot
- *        drift.
+ *        step needed the same moment. (That step became the "Your car" sheet
+ *        on 2026-10-08 — PhotoPager plus details — so the review preview is
+ *        the one consumer now.)
  *
  *        ⚠️ THE HERO IS DISPLAY-ONLY (no `onPress`) ON PURPOSE. Under a
  *        confirmation, a tappable artifact is a tap-to-affirm trap: people tap
@@ -37,9 +38,9 @@
  *        The no-photo branch puts the identity in standard ink below the
  *        frame: there is nothing to protect the text against, and white on
  *        grey would fail contrast.
- * LINKS: src/features/garage/components/VehicleSummaryStep.tsx and
- *        src/features/vehicles/post/components/ReviewListingPreview.tsx (the
- *        two consumers); src/shared/ui/CameraCapture.tsx (the
+ * LINKS: src/features/vehicles/post/components/ReviewListingPreview.tsx (the
+ *        consumer); src/shared/ui/PhotoPager.tsx (keeps the display-only rule
+ *        for the "Your car" sheet); src/shared/ui/CameraCapture.tsx (the
  *        overlay-on-photo precedent); docs/DESIGN_SYSTEM.md.
  */
 

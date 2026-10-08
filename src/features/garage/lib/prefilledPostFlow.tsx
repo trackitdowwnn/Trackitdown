@@ -110,13 +110,15 @@ export function buildPrefilledPostFlow({
   // seeded into the answers here, and create_post re-validates the lot at submit.
   const summaryStep: WizardStep<PostACarAnswers> = {
     id: 'vehicle-summary',
-    question: 'Is this the car?',
-    // NO helper, deliberately (product call 2026-07-29): the question and the
-    // photo carry the moment; explanatory subtext between them slowed it
-    // down. The Edit affordance sits at the top of the step body instead.
+    // NOT a question (2026-10-08): the owner has just CHOSEN this car, so
+    // "Is this the car?" asked them something they had already answered. The
+    // step is a last look at the car as spotters will see it — the photos,
+    // the details, the features — and then on.
+    question: 'Your car',
+    // No helper: the car itself is the content (product call 2026-07-29).
     component: () => <VehicleSummaryStep vehicle={vehicle} onEdit={onEdit} />,
     schema: z.object({}),
-    ctaLabel: 'Yes, continue',
+    ctaLabel: 'Continue',
     reviewLabel: 'Car',
     reviewValue: () => vehicleSummaryLine(vehicle),
   };

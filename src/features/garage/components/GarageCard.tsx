@@ -4,8 +4,7 @@
  *        "Reported stolen" pill overlaid when the car has a live listing,
  *        then name, meta line, and the owner's PlateChip below. The whole
  *        card is one tap; it renders as a plain display block when no
- *        handler is given (the wizard's "Is this the car?" confirm reuses it
- *        as a genuine preview).
+ *        handler is given.
  * WHY:   Redesigned 2026-07-29 against Airbnb's host Listings-tab card: photo
  *        full-width with text below and status ON the photo, actions behind
  *        the tap rather than buttons on the card. The old row-card (72×54
@@ -53,8 +52,7 @@ export interface GarageCardProps {
   vehicle: SavedVehicle;
   /**
    * The card's single tap (MyCarsScreen opens the actions sheet). Omit for a
-   * pure display render — the wizard's confirm step shows the card as an
-   * artifact, not a control.
+   * pure display render — an artifact, not a control.
    */
   onPress?: () => void;
   testID?: string;
