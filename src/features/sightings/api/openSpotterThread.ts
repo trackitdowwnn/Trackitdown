@@ -10,12 +10,29 @@
  *
  *        PRIVACY (§1): the SIGHTING id is the handle — the server resolves
  *        the spotter; no spotter id ever reaches this client.
+ *
+ *        Every error it throws carries words a person can read: the chat
+ *        feature's own calm copy (ChatActionError), or one generic line —
+ *        never a parser's message about a reply of the wrong shape (security
+ *        review of #145). The screen shows the message as it is.
  * LINKS: src/features/chat/api/chatApi.ts (openThreadForSighting);
  *        src/features/sightings/screens/SightingDetailScreen.tsx.
  */
 
+const OPEN_FAILED = 'We couldn’t open the conversation.';
+
 /** The thread for this sighting's spotter — see the header. */
 export async function openSpotterThread(sightingId: string): Promise<{ threadId: string }> {
-  const { openThreadForSighting } = await import('@/features/chat');
-  return openThreadForSighting(sightingId);
+  let chat: typeof import('@/features/chat');
+  try {
+    chat = await import('@/features/chat');
+  } catch {
+    throw new Error(OPEN_FAILED);
+  }
+  try {
+    return await chat.openThreadForSighting(sightingId);
+  } catch (error) {
+    if (error instanceof chat.ChatActionError) throw error;
+    throw new Error(OPEN_FAILED);
+  }
 }

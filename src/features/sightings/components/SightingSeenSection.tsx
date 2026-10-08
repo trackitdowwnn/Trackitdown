@@ -124,7 +124,7 @@ const makeStyles = (c: Palette) =>
     // a wrapped note) — the design system's inline-quote form.
     note: {
       gap: spacing.xs,
-      borderLeftWidth: 2,
+      borderLeftWidth: sizes.followUpRule,
       borderLeftColor: c.border,
       paddingLeft: spacing.md,
     },

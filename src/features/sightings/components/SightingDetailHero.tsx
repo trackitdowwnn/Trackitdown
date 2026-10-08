@@ -41,7 +41,8 @@ export function SightingDetailHero({ photos, photoUrls, width, height }: Sightin
       }))}
       height={height}
       estimatedWidth={width}
-      alt="Sighting photo"
+      // PhotoPager adds "photo 2 of 3" itself.
+      alt="Sighting"
       placeholderIcon={Camera}
       placeholderLabel="No photos with this sighting"
       // Clear of the content sheet's rounded top, which overlaps the hero's

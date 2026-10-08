@@ -238,6 +238,13 @@ describe('SightingDetailScreen — states', () => {
     expect(mockBack).not.toHaveBeenCalled();
     expect(mockReplace).toHaveBeenCalledWith(`/post/${POST_ID}`);
   });
+
+  it('⚠️ …but never to a post id that isn’t one', async () => {
+    mockCanGoBack.mockReturnValue(false);
+    const view = await renderScreen('p1', 's1');
+    await press(view.getByText('Go back'));
+    expect(mockReplace).toHaveBeenCalledWith('/');
+  });
 });
 
 describe('the decision', () => {
@@ -282,6 +289,20 @@ describe('the decision', () => {
     expect(mockNotMine).toHaveBeenCalledWith(SIGHTING_ID);
     expect(view.getByText('Not your car')).toBeTruthy();
     expect(view.getByText('Marked as not your car. You can change this.')).toBeTruthy();
+  });
+
+  it('a later change on the server wins over the answer just given', async () => {
+    const view = await renderScreen();
+    await press(view.getByRole('button', { name: 'Not my car' }));
+    expect(view.getByText('Not your car')).toBeTruthy();
+
+    // The next fetch: the owner changed it elsewhere and a recovery credited it.
+    ready(sighting({ status: 'credited', reviewedAt: '2026-10-08T12:00:00Z' }));
+    await act(async () => {
+      view.rerender(<SightingDetailScreen postId={POST_ID} sightingId={SIGHTING_ID} />);
+    });
+    expect(view.getByText('Credited')).toBeTruthy();
+    expect(view.queryByText('Not your car')).toBeNull();
   });
 
   it('the spinner sits on the answer being sent, not the other one', async () => {
@@ -347,7 +368,24 @@ describe('the evidence', () => {
         nativeEvent: { layout: { width: 390 } },
       });
     });
-    expect(view.getByLabelText('Sighting photo, photo 2 of 2, From photo library')).toBeTruthy();
+    expect(view.getByLabelText('Sighting, photo 2 of 2, From photo library')).toBeTruthy();
+  });
+
+  it('times it by the in-app photo — never a library photo’s date (ADR-0003)', async () => {
+    const [live, gallery] = sighting().photos;
+    const seenLabel = async (photos: OwnerSighting['photos']) => {
+      ready(sighting({ photos }));
+      const view = await renderScreen();
+      const label = view.getByLabelText(/^Seen /).props.accessibilityLabel as string;
+      await act(async () => view.unmount());
+      return label;
+    };
+    const oldLibraryPhoto = { ...gallery, capturedAt: '2026-09-01T08:00:00Z' };
+    // A library photo first must not set the time; the live one does.
+    expect(await seenLabel([oldLibraryPhoto, live])).toBe(await seenLabel([live]));
+    // Library photos only: when it was sent.
+    expect(await seenLabel([oldLibraryPhoto])).toBe(await seenLabel([]));
+    expect(await seenLabel([oldLibraryPhoto])).not.toBe(await seenLabel([live]));
   });
 
   it('says when the location is only approximate', async () => {

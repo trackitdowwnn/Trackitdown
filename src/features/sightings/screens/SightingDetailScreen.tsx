@@ -293,6 +293,8 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
     }
   };
 
+  // Clear of the floating header. No side gutter: ErrorState and EmptyState
+  // pad themselves, and a second 24 put their text 48 in from each edge.
   const stateTop = { paddingTop: insets.top + HEADER_BAR_HEIGHT };
 
   return (
@@ -306,16 +308,17 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
         {loading ? (
           <SightingDetailSkeleton heroHeight={heroHeight} />
         ) : failed ? (
-          <View style={[styles.stateBlock, stateTop]}>
+          <View style={stateTop}>
             <ErrorState body="We couldn’t load this sighting." onRetry={retry} />
           </View>
         ) : !sighting ? (
           // Ready but absent — a stale link (the list changed, the spotter
           // withdrew it, or an id that was never one). Not an error: an honest
           // dead-end with a way back, and no oracle about why.
-          <View style={[styles.stateBlock, stateTop]}>
+          <View style={stateTop}>
             <EmptyState
               title="This sighting isn’t available any more"
+              body="The link may be out of date."
               actionLabel="Go back"
               onAction={goBack}
             />
@@ -503,22 +506,60 @@ function DecisionLine({
   status: OwnerSighting['status'];
   reviewedAt: string | null;
 }) {
-  const styles = useThemedStyles(makeStyles);
-  // Unconditional (hooks); only shown when there is a time to show.
-  const ago = useTimeAgo(reviewedAt ?? 0);
   const label = sightingVerdictLabel(status);
   if (!label) return null;
+  return reviewedAt ? (
+    <DecidedLine label={label} status={status} reviewedAt={reviewedAt} />
+  ) : (
+    <DecisionRow label={label} status={status} accessibilityLabel={`Your answer: ${label}`} />
+  );
+}
+
+/** The decision with its time — its own component, so the clock only ticks
+ *  once there is a decision to time. */
+function DecidedLine({
+  label,
+  status,
+  reviewedAt,
+}: {
+  label: string;
+  status: OwnerSighting['status'];
+  reviewedAt: string;
+}) {
+  const ago = useTimeAgo(reviewedAt);
+  return (
+    <DecisionRow
+      label={label}
+      status={status}
+      accessibilityLabel={`Your answer: ${label}, decided ${spokenAgo(ago)}`}
+      ago={ago}
+    />
+  );
+}
+
+function DecisionRow({
+  label,
+  status,
+  accessibilityLabel,
+  ago,
+}: {
+  label: string;
+  status: OwnerSighting['status'];
+  accessibilityLabel: string;
+  ago?: string;
+}) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View
       style={styles.decisionRow}
       accessible
-      accessibilityLabel={`Your answer: ${label}${reviewedAt ? `, decided ${spokenAgo(ago)}` : ''}`}
+      accessibilityLabel={accessibilityLabel}
       testID="sighting-decision"
     >
       {/* Primary ink for a confirmation, not success green — sage stays
           reserved for payout moments; "Not your car" is the quiet one. */}
       <StatusPill label={label} tone={isConfirmedVerdict(status) ? 'primary' : 'neutral'} />
-      {reviewedAt ? <Text style={styles.meta}>You decided {ago}</Text> : null}
+      {ago ? <Text style={styles.meta}>You decided {ago}</Text> : null}
     </View>
   );
 }
@@ -550,9 +591,6 @@ const makeStyles = (c: Palette) =>
       borderTopRightRadius: radii.xl,
       backgroundColor: c.background,
       overflow: 'hidden',
-      paddingHorizontal: spacing.xl,
-    },
-    stateBlock: {
       paddingHorizontal: spacing.xl,
     },
     // The first block carries its own clearance from the sheet's curved top.
