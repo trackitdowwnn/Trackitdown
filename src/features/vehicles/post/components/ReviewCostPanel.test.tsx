@@ -26,6 +26,8 @@ import { ReviewCostPanel } from './ReviewCostPanel';
 
 // The step components pull in the map/slider/picker native graph; the panel
 // needs none of it, but importing the flow for finalCtaLabel does.
+// The flow's pricing step waits on the guidance API (network); not used here.
+jest.mock('../api/bountyGuidanceApi', () => ({ fetchBountyGuidance: jest.fn() }));
 jest.mock('./postSteps', () => ({
   MakeStep: () => null,
   ModelStep: () => null,

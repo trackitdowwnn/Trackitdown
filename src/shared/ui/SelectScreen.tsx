@@ -110,6 +110,14 @@ export interface SelectScreenProps<V extends string | number> {
   visible: boolean;
   /** Close without choosing (X, Android back). Parent flips `visible`. */
   onClose: () => void;
+  /**
+   * Called once the screen has FINISHED closing — its slide-down done and the
+   * modal gone — with whether the close was a pick (a row, a tile, or the
+   * "Use …" row) rather than the X or the back gesture. For whatever should
+   * follow a pick without playing behind the closing picker (the wizard's
+   * auto-advance, 2026-10-08).
+   */
+  onClosed?: (picked: boolean) => void;
   options: SelectOption<V>[];
   /** Currently selected value — its row shows the checkmark. */
   value: V | null;
@@ -150,6 +158,7 @@ export interface SelectScreenProps<V extends string | number> {
 export function SelectScreen<V extends string | number>({
   visible,
   onClose,
+  onClosed,
   options,
   value,
   onSelect,
@@ -273,7 +282,30 @@ export function SelectScreen<V extends string | number>({
     [],
   );
 
+  // Whether the close in progress is a pick — reported by onClosed once the
+  // modal has gone (see the prop).
+  const pickedRef = useRef(false);
+  const onClosedRef = useRef(onClosed);
+  useEffect(() => {
+    onClosedRef.current = onClosed;
+  });
+  // A reopen before the last close finished starts afresh: that close's pick
+  // must not be credited to a later X.
+  useEffect(() => {
+    if (visible) pickedRef.current = false;
+  }, [visible]);
+  const wasMounted = useRef(mounted);
+  useEffect(() => {
+    if (wasMounted.current && !mounted) {
+      const picked = pickedRef.current;
+      pickedRef.current = false;
+      onClosedRef.current?.(picked);
+    }
+    wasMounted.current = mounted;
+  }, [mounted]);
+
   const submitManual = (text: string) => {
+    pickedRef.current = true;
     manualEntry?.onSubmit(text.trim());
     onClose();
   };
@@ -294,6 +326,7 @@ export function SelectScreen<V extends string | number>({
     // draft set here and move the commit to a footer Done button instead
     // of closing immediately.
     lightHaptic(); // a light tick confirms the pick
+    pickedRef.current = true;
     onSelect(selected);
     onClose();
   };

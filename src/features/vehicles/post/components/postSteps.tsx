@@ -18,7 +18,8 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 
 import { BadgePoundSterling, Megaphone } from 'lucide-react-native';
 
@@ -50,6 +51,7 @@ import {
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
 import {
+  motion,
   opacity,
   radii,
   sizes,
@@ -58,10 +60,10 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import type { WizardStepProps } from '@/shared/wizard';
+import { WIZARD_GUTTER, type WizardStepProps } from '@/shared/wizard';
 
 import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
-import { colourChangePatch } from '@/shared/lib';
+import { colourChangePatch, isNoteColour } from '@/shared/lib';
 import { makeChangePatch } from '@/shared/lib/carModels';
 import type { VehicleAnswers } from '../lib/vehicleSteps';
 import type { PostACarAnswers, PricingMode } from '../types';
@@ -138,7 +140,16 @@ const PRICING_OPTIONS: CardSelectOption<PricingMode>[] = [
 // StepSkipButton moved to shared/ui when the garage's plate and nickname steps
 // needed the identical affordance — an optional step without one is a dead end.
 
-export function MakeStep({ answers, setAnswers }: VehicleStepProps) {
+// AUTO-ADVANCE (2026-10-08): make, model, year, colour and body type are
+// one-tap answers, so a pick moves on by itself after a short beat
+// (advanceSoon) — the owner chose this to cut a tap per step. A picker's
+// advance waits for it to finish closing (onPicked), then only a short breath
+// (the pick was seen in the picker). The framework skips it under assistive
+// technology and on an invalid answer, and any move cancels it.
+const afterPicker = (advanceSoon?: (delayMs?: number) => void) => () =>
+  advanceSoon?.(motion.autoAdvanceAfterPicker);
+
+export function MakeStep({ answers, setAnswers, advanceSoon }: VehicleStepProps) {
   // Its own step (2026-07-23): the make picker earns a screen. Changing the
   // make clears any model chosen under the old make (the make→model
   // dependency) — makeChangePatch keeps the model only when the same make is
@@ -147,11 +158,12 @@ export function MakeStep({ answers, setAnswers }: VehicleStepProps) {
     <MakeField
       value={answers.make ?? null}
       onChange={(make) => setAnswers(makeChangePatch(answers.make, make))}
+      onPicked={afterPicker(advanceSoon)}
     />
   );
 }
 
-export function ModelStep({ answers, setAnswers }: VehicleStepProps) {
+export function ModelStep({ answers, setAnswers, advanceSoon }: VehicleStepProps) {
   // Dependent on the make: the picker lists the chosen make's models (free text
   // for an unlisted/unseeded make). Empty make is guarded inside ModelField.
   return (
@@ -159,11 +171,12 @@ export function ModelStep({ answers, setAnswers }: VehicleStepProps) {
       make={answers.make ?? ''}
       value={answers.model ?? null}
       onChange={(model) => setAnswers({ model })}
+      onPicked={afterPicker(advanceSoon)}
     />
   );
 }
 
-export function ColourStep({ answers, setAnswers }: VehicleStepProps) {
+export function ColourStep({ answers, setAnswers, advanceSoon }: VehicleStepProps) {
   // Its own step (2026-07-23): the swatch grid earns a screen. Switching to a
   // plain colour clears any wrapped/other note (colourChangePatch) so a note
   // never rides under a colour it doesn't describe.
@@ -171,15 +184,24 @@ export function ColourStep({ answers, setAnswers }: VehicleStepProps) {
     <ColourField
       value={answers.colour ?? null}
       note={answers.colourNote ?? ''}
-      onChange={(colour) => setAnswers(colourChangePatch(colour))}
+      onChange={(colour) => {
+        setAnswers(colourChangePatch(colour));
+        // Not for "Multicolour / wrapped" or "Other": those open a note to
+        // fill in, and moving on would take the step away from under it.
+        if (!isNoteColour(colour)) advanceSoon?.();
+      }}
       onChangeNote={(colourNote) => setAnswers({ colourNote })}
     />
   );
 }
 
-export function YearStep({ answers, setAnswers }: VehicleStepProps) {
+export function YearStep({ answers, setAnswers, advanceSoon }: VehicleStepProps) {
   return (
-    <YearField value={answers.year ?? null} onChange={(year) => setAnswers({ year })} />
+    <YearField
+      value={answers.year ?? null}
+      onChange={(year) => setAnswers({ year })}
+      onPicked={afterPicker(advanceSoon)}
+    />
   );
 }
 
@@ -214,8 +236,12 @@ export function PhotosStep({
   setAnswers,
   status,
 }: VehicleStepProps & { status?: Record<string, PhotoTileStatus> }) {
+  // The wizard's body is the window less its gutters, so the grid can lay
+  // its tiles out on its first frame.
+  const { width } = useWindowDimensions();
   return (
     <PhotoGridPicker
+      estimatedWidth={width - WIZARD_GUTTER * 2}
       photos={answers.photos ?? []}
       onChangePhotos={(photos) => setAnswers({ photos })}
       minPhotos={3}
@@ -239,7 +265,9 @@ export function LastSeenWhereStep({ answers, setAnswers, settled = true }: StepP
   // Warm the PUBLIC-grain lookup Next will need (onContinue) once the pin has
   // RESTED — not on every settle of a pan: the picker already geocodes each
   // settle for its own label, and Apple rate-limits its geocoder (review of
-  // #142). A Next pressed sooner simply does its own lookup.
+  // #142). A Next pressed sooner simply does its own lookup. (Nothing leaves
+  // the device for this: it is the OS geocoder. The reward guidance — a
+  // server call — waits for the owner to confirm the point; see the flow.)
   const warmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -367,12 +395,15 @@ export function TheftContextStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-export function BodyTypeStep({ answers, setAnswers }: VehicleStepProps) {
+export function BodyTypeStep({ answers, setAnswers, advanceSoon }: VehicleStepProps) {
   return (
     <CardSelect
       options={BODY_TYPE_OPTIONS}
       value={answers.bodyType ?? null}
-      onSelect={(bodyType) => setAnswers({ bodyType })}
+      onSelect={(bodyType) => {
+        setAnswers({ bodyType });
+        advanceSoon?.();
+      }}
     />
   );
 }
@@ -491,7 +522,14 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
           is a statement about other people's choices, not a prediction about
           this car. */}
       {recommendation ? (
-        <View style={styles.bountyGuidance}>
+        // Usually there on arrival (the pricing step waits briefly for it),
+        // so the wizard's skipEntering shows it at once. If it lands later it
+        // FADES in rather than popping — and nothing holds a guidance-shaped
+        // gap open for an answer that is often "nothing to say".
+        <Animated.View
+          entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+          style={styles.bountyGuidance}
+        >
           <Text style={styles.bountyGuidanceLead}>
             {recommendation.basis === 'reach'
               ? `Around ${formatPounds(recommendation.midPence)} reaches most spotters watching this area`
@@ -512,7 +550,7 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
               Use {formatPounds(recommendation.midPence)}
             </Text>
           </Pressable>
-        </View>
+        </Animated.View>
       ) : null}
 
       <MoneySlider

@@ -42,13 +42,15 @@ export interface MakeFieldProps {
   /** The selected make (free text — may be unlisted), or null. */
   value: string | null;
   onChange: (make: string) => void;
+  /** After a pick, once the picker has closed (the wizard's auto-advance). */
+  onPicked?: () => void;
   error?: string;
   /** Search and alerts: "Any make" and a ×, both calling `onClear`; listed
    *  makes only. */
   filter?: { onClear: () => void };
 }
 
-export function MakeField({ value, onChange, error, filter }: MakeFieldProps) {
+export function MakeField({ value, onChange, onPicked, error, filter }: MakeFieldProps) {
   /**
    * ⚠️ EVERY MAKE THIS APP STORES PASSES THROUGH HERE — posting, the garage,
    * search and alerts all render this one field — which is why
@@ -77,6 +79,7 @@ export function MakeField({ value, onChange, error, filter }: MakeFieldProps) {
       options={MAKE_OPTIONS}
       value={value}
       onChange={onChangeCanonical}
+      onPicked={onPicked}
       error={error}
       // Browse-first: the list leads; the keyboard rises only on tap.
       autoFocusSearch={false}

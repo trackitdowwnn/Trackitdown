@@ -18,6 +18,7 @@ import {
   flattenFlow,
   invalidStepIds,
   phaseProgress,
+  pendingEditTarget,
   resolveQuestion,
   transitionKind,
   reviewGroups,
@@ -151,6 +152,25 @@ describe('wizardReducer', () => {
     expect(afterEdit).toMatchObject(target(REVIEW_INDEX));
   });
 
+  // 2026-10-08: changing the make clears the model; Done went straight back to
+  // a review that now refused to submit.
+  it('Done on an edit visits a required step the edit broke before returning', () => {
+    const blocking = ALL_VISIBLE.map((_, index) => index === 2); // the colour step
+    const onward = wizardReducer(navState(1, REVIEW_INDEX), {
+      type: 'next',
+      visible: ALL_VISIBLE,
+      blocking,
+    });
+    expect(onward).toMatchObject(target(2, REVIEW_INDEX, 1)); // still on the spur
+
+    const done = wizardReducer(navState(2, REVIEW_INDEX), {
+      type: 'next',
+      visible: ALL_VISIBLE,
+      blocking: ALL_VISIBLE.map(() => false),
+    });
+    expect(done).toMatchObject(target(REVIEW_INDEX));
+  });
+
   it('returns to review when the user backs out of an edit', () => {
     const cancelled = wizardReducer(navState(1, REVIEW_INDEX), { type: 'back', visible: ALL_VISIBLE });
     expect(cancelled).toMatchObject(target(REVIEW_INDEX, null, -1));
@@ -226,6 +246,14 @@ describe('settling a move', () => {
     const reset = wizardReducer(navState(4, REVIEW_INDEX), { type: 'reset' });
     expect(reset).toMatchObject({ index: 0, returnToIndex: null, shownIndex: 4 });
     expect(wizardReducer(reset, { type: 'settle' }).shownIndex).toBe(0);
+  });
+});
+
+describe('pendingEditTarget', () => {
+  it('is the first required step left broken — never the one being left', () => {
+    expect(pendingEditTarget([false, true, true], 1)).toBe(2);
+    expect(pendingEditTarget([true, false, true], 2)).toBe(0);
+    expect(pendingEditTarget([false, true, false], 1)).toBe(-1);
   });
 });
 

@@ -18,7 +18,7 @@ export type {
 // resolveQuestion turns a step's question (string or answers→string) into text.
 export { flattenFlow, resolveQuestion } from './navigation';
 export { useWizardController } from './useWizardController';
-export { WizardScreen, type WizardScreenProps } from './WizardScreen';
+export { WIZARD_GUTTER, WizardScreen, type WizardScreenProps } from './WizardScreen';
 // The exit X, shared so a screen that dissolves INTO a wizard (the report
 // host's stages) shows the same control in the same place.
 export { WizardHeader, type WizardHeaderProps } from './WizardHeader';

@@ -234,6 +234,27 @@ export interface PhotoGridPickerProps<T extends GridPhoto = PickedPhoto> {
   allowCamera?: boolean;
   disabled?: boolean;
   testID?: string;
+  /**
+   * The width the grid will most likely have, for its FIRST frame (2026-10-08).
+   * The grid can't place tiles until it is measured, so it used to render 0
+   * high and then pop its photos in a frame later — on a wizard step, in the
+   * middle of the slide. A width remembered from an earlier mount wins over
+   * this; the real measurement always corrects both.
+   */
+  estimatedWidth?: number;
+}
+
+/** A photo on the device (picked or captured), not one downloaded. */
+function isLocalUri(uri: string): boolean {
+  return /^(file|ph|content|assets-library):/.test(uri);
+}
+
+/** The last measured grid width, for the next mount's first frame. */
+let lastGridWidth = 0;
+
+/** Test-only: forget the remembered width. */
+export function resetPhotoGridWidthMemory(): void {
+  lastGridWidth = 0;
 }
 
 /** Grid gap between tiles. */
@@ -258,6 +279,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
   allowCamera = true,
   disabled = false,
   testID,
+  estimatedWidth = 0,
 }: PhotoGridPickerProps<T>) {
   // React Compiler opt-out: shared values are mutated from gesture worklets.
   'use no memo';
@@ -276,8 +298,9 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
   const captureMode = source === 'capture';
   const coverRow = !captureMode;
 
-  const [gridWidth, setGridWidth] = useState(0);
-  const gridWidthSv = useSharedValue(0);
+  // A caller that knows its layout wins; the remembered width is the fallback.
+  const [gridWidth, setGridWidth] = useState(() => estimatedWidth || lastGridWidth);
+  const gridWidthSv = useSharedValue(estimatedWidth || lastGridWidth);
   // Index being dragged (-1 = none) and the slot it currently hovers.
   const dragFrom = useSharedValue(-1);
   const dragOver = useSharedValue(-1);
@@ -337,6 +360,7 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
 
   const handleGridLayout = (event: LayoutChangeEvent) => {
     const { width } = event.nativeEvent.layout;
+    lastGridWidth = width;
     setGridWidth(width);
     gridWidthSv.value = width;
   };
@@ -1080,7 +1104,14 @@ function GridTile({
           accessible={false}
           testID={testID ? `${testID}-preview` : undefined}
         >
-          <AppImage uri={photo.uri} style={styles.tileImage} />
+          {/* No fade for a local file — a picked photo is already here, and a
+              fade is just a flash each time the tile mounts. A REMOTE photo
+              (the post editor's uploaded ones) keeps the usual fade. */}
+          <AppImage
+            uri={photo.uri}
+            style={styles.tileImage}
+            transition={isLocalUri(photo.uri) ? 0 : undefined}
+          />
 
           {index === 0 && showCoverChrome ? (
             <View style={styles.coverPillWrap}>

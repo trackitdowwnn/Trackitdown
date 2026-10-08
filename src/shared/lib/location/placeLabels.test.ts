@@ -114,6 +114,19 @@ describe('derivePlaceLabelsForCoord', () => {
     expect(mockGeocode).toHaveBeenCalledTimes(2);
   });
 
+  it('a lookup in flight across a forget (a sign-out) writes nothing back', async () => {
+    let land: (value: unknown) => void = () => {};
+    mockGeocode.mockReturnValueOnce(new Promise((resolve) => (land = resolve)));
+    warmPlaceLabels(POINT);
+    resetPlaceLabelCache(); // signed out
+    land([PLACE]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await derivePlaceLabelsForCoord(POINT);
+    expect(mockGeocode).toHaveBeenCalledTimes(2); // asked afresh, not served the old answer
+  });
+
   it('a FAILED lookup is not remembered — the next ask tries again', async () => {
     mockGeocode.mockRejectedValueOnce(new Error('offline'));
     await expect(derivePlaceLabelsForCoord(POINT)).resolves.toEqual({

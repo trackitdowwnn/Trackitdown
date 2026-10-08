@@ -11,7 +11,10 @@
  */
 
 import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
-import { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from './postACarFlow';
+import { flattenFlow } from '@/shared/wizard/navigation';
+
+import { buildVehicleSteps } from './lib/vehicleSteps';
+import { EMPATHY_LINE, POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from './postACarFlow';
 import type { PostACarAnswers } from './types';
 
 // Stub the step components + their exported consts so the config loads without
@@ -27,6 +30,16 @@ import type { PostACarAnswers } from './types';
 //
 // lib/bountyBounds has no imports at all, so requiring it here pulls in none of
 // the native graph this mock exists to avoid.
+const mockFetchGuidance = jest.fn();
+const mockWarmGuidance = jest.fn();
+jest.mock('./api/bountyGuidanceApi', () => ({
+  fetchBountyGuidance: (lat: number, lng: number) => mockFetchGuidance(lat, lng),
+  warmBountyGuidance: (lat: number, lng: number) => mockWarmGuidance(lat, lng),
+}));
+jest.mock('@/shared/lib/location/placeLabels', () => ({
+  deriveLocalityForCoord: async () => 'City Centre',
+}));
+
 jest.mock('./components/postSteps', () => ({
   MakeStep: () => null,
   ModelStep: () => null,
@@ -53,6 +66,26 @@ const passes = (id: string, answers: Partial<PostACarAnswers>) =>
   stepById(id).schema.safeParse(answers).success;
 
 describe('postACarFlow structure', () => {
+  // 2026-10-08 ("janky, slow and not smooth" — the owner chose to trim): three
+  // screens that only announced what came next stood before the questions.
+  it('has NO phase intros — the first screen is the make question', () => {
+    expect(postACarFlow.phases.every((phase) => phase.intro === undefined)).toBe(true);
+    const first = flattenFlow(postACarFlow)[0];
+    expect(first.kind === 'step' && first.step.id).toBe('make');
+  });
+
+  it('keeps one line of comfort on the first question — and only there', () => {
+    expect(stepById('make').helper).toBe(EMPATHY_LINE);
+    const otherHelpers = postACarFlow.phases
+      .flatMap((phase) => phase.steps)
+      .filter((step) => step.id !== 'make' && step.helper);
+    expect(otherHelpers).toEqual([]);
+  });
+
+  it('leaves the garage’s shared steps alone — nothing has happened to anyone there', () => {
+    expect(buildVehicleSteps({ minPhotos: 0 })[0].helper).toBeUndefined();
+  });
+
   it('has three phases, a review, and a high-information final CTA', () => {
     expect(postACarFlow.phases).toHaveLength(3);
     expect(postACarFlow.phases.map((p) => p.id)).toEqual(['car', 'when-where', 'bounty']);
@@ -108,6 +141,48 @@ describe('postACarFlow structure', () => {
     // Mode not chosen yet: the step stays visible, so a half-filled flow never
     // silently skips the money question.
     expect(visible({})).toBe(true);
+  });
+
+  // Security review of #143: the guidance is a server call, so it starts when
+  // the owner CONFIRMS the last-seen point — not while the pin merely rests.
+  it('starts the reward guidance when the last-seen point is confirmed', async () => {
+    const LOCATION = { latitude: 53.4, longitude: -2.2, addressLabel: 'x' };
+    await stepById('last-seen-where').onContinue!({ location: LOCATION });
+    expect(mockWarmGuidance).toHaveBeenCalledWith(53.4, -2.2);
+  });
+
+  // 2026-10-08: so the reward step arrives WITH its guidance.
+  describe('choosing a reward waits a moment for its guidance', () => {
+    const LOCATION = { latitude: 53.4, longitude: -2.2, addressLabel: 'x' };
+    const onContinue = () => stepById('pricing-mode').onContinue!;
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('until it arrives', async () => {
+      mockFetchGuidance.mockResolvedValue({ rungs: [], local: null });
+      await onContinue()({ pricingMode: 'bounty', location: LOCATION });
+      expect(mockFetchGuidance).toHaveBeenCalledWith(53.4, -2.2);
+    });
+
+    it('but never longer than the grace — a slow answer fades in later', async () => {
+      jest.useFakeTimers();
+      mockFetchGuidance.mockReturnValue(new Promise(() => {}));
+      let done = false;
+      void Promise.resolve(onContinue()({ pricingMode: 'bounty', location: LOCATION })).then(() => {
+        done = true;
+      });
+      await jest.advanceTimersByTimeAsync(399);
+      expect(done).toBe(false);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(done).toBe(true);
+    });
+
+    it('not at all for a no-reward listing', async () => {
+      mockFetchGuidance.mockClear();
+      await onContinue()({ pricingMode: 'fee', location: LOCATION });
+      expect(mockFetchGuidance).not.toHaveBeenCalled();
+    });
   });
 
   it('reviews a no-reward listing as the fee, not as a bounty', () => {

@@ -27,7 +27,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { fetchBountyGuidance } from '../api/bountyGuidanceApi';
+import { fetchBountyGuidance, peekBountyGuidance } from '../api/bountyGuidanceApi';
 import {
   recommendBounty,
   type BountyGuidance,
@@ -46,7 +46,21 @@ export function useBountyGuidance(
   latitude: number | null,
   longitude: number | null,
 ): UseBountyGuidanceResult {
-  const [guidance, setGuidance] = useState<BountyGuidance>(EMPTY);
+  // Usually already known (2026-10-08): the map step warms it once its pin
+  // rests, and the pricing step waits briefly for it before this step slides
+  // in. Re-seeded during render if the point changes — the "adjust state on
+  // prop change" pattern — so one point's guidance never shows for another.
+  const pointKey = latitude !== null && longitude !== null ? `${latitude},${longitude}` : null;
+  const seed = () =>
+    latitude !== null && longitude !== null ? peekBountyGuidance(latitude, longitude) : undefined;
+  const [state, setState] = useState<{ pointKey: string | null; guidance: BountyGuidance }>(() => ({
+    pointKey,
+    guidance: seed() ?? EMPTY,
+  }));
+  if (state.pointKey !== pointKey) {
+    setState({ pointKey, guidance: seed() ?? EMPTY });
+  }
+  const { guidance } = state;
 
   useEffect(() => {
     if (latitude === null || longitude === null) {
@@ -56,15 +70,18 @@ export function useBountyGuidance(
     // Every write happens after the await, so this never trips
     // react-hooks/set-state-in-effect.
     void fetchBountyGuidance(latitude, longitude).then((next) => {
-      if (!cancelled) setGuidance(next);
+      if (!cancelled) {
+        setState((current) =>
+          current.pointKey !== pointKey || current.guidance === next ? current : { pointKey, guidance: next },
+        );
+      }
     });
     return () => {
       cancelled = true;
     };
-    // The RPC snaps the caller's point to a ~1km grid, so re-fetching on a
-    // small coordinate change would spend a request to receive the identical
-    // answer. The location step settles once, which is when this runs.
-  }, [latitude, longitude]);
+    // Runs for each point; a nearby one costs no request — the API's cache
+    // keys on the RPC's own ~1km grid, so it is served the same answer.
+  }, [latitude, longitude, pointKey]);
 
   const recommendation = useMemo(() => recommendBounty(guidance), [guidance]);
 

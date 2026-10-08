@@ -121,9 +121,11 @@ export function PostACarScreen({
   // Not when the answers already hold a location (a restored draft, a
   // prefill): the map step won't look for one, so reading the device's
   // position would be collecting it for nothing.
+  // (Read when the transition ends, so it sees the draft as it is by then; a
+  // draft still being read counts as unknown, and is skipped.)
   useAfterTransition(() => {
-    const known =
-      initialAnswers?.location ?? (typeof draft === 'object' ? draft?.answers.location : undefined);
+    if (draft === 'checking') return;
+    const known = initialAnswers?.location ?? draft?.answers.location;
     if (!known) void prefetchDefaultMapCentre();
   });
 

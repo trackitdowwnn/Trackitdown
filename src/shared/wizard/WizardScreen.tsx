@@ -59,6 +59,10 @@ import { WizardProgressBar } from './WizardProgressBar';
 import type { WizardFlow } from './types';
 import { useWizardController } from './useWizardController';
 
+/** The step body's side padding — exported so a step that must know its
+ *  own width before measuring (the photo grid) can't drift from it. */
+export const WIZARD_GUTTER = spacing.xl;
+
 /** Step transitions: ease-out per the design system's motion rules. A slide
  *  is screen-scale (standard); the fade beside a map step is a quick
  *  dissolve (fast). */
@@ -422,6 +426,7 @@ export function WizardScreen<TAnswers>({
                         // A leaving step is drawn once more (for its exit)
                         // and must not flip to a placeholder as it goes.
                         settled={leaving ? true : controller.settled}
+                        advanceSoon={controller.advanceSoon}
                       />
                     </LayoutAnimationConfig>
                     {shownFooterNote && noteInBody ? (
@@ -488,7 +493,7 @@ const makeStyles = (c: Palette) =>
       paddingRight: spacing.md,
     },
     content: {
-      paddingHorizontal: spacing.xl,
+      paddingHorizontal: WIZARD_GUTTER,
       paddingTop: spacing.xl,
     },
     introContent: {

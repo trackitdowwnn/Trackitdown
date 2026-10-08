@@ -47,6 +47,10 @@ const mockWarm = jest.fn();
 jest.mock('@/shared/lib/location/placeLabels', () => ({
   warmPlaceLabels: (coord: unknown) => mockWarm(coord),
 }));
+const mockWarmGuidance = jest.fn();
+jest.mock('../api/bountyGuidanceApi', () => ({
+  warmBountyGuidance: (lat: number, lng: number) => mockWarmGuidance(lat, lng),
+}));
 
 function renderStep(settled: boolean) {
   return render(
@@ -100,6 +104,10 @@ describe('LastSeenWhereStep', () => {
         jest.advanceTimersByTime(1000);
       });
       expect(mockWarm).toHaveBeenCalledWith({ latitude: 53.4, longitude: -2.2 });
+      // NOT the reward guidance: that is a server call, and waits for the
+      // owner to confirm the point (the flow's onContinue — security review
+      // of #143).
+      expect(mockWarmGuidance).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }
@@ -117,6 +125,7 @@ describe('LastSeenWhereStep', () => {
         jest.advanceTimersByTime(2000);
       });
       expect(mockWarm).not.toHaveBeenCalled();
+      expect(mockWarmGuidance).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }
@@ -128,6 +137,7 @@ describe('LastSeenWhereStep', () => {
       mockPickerProps?.onLocationChange({ isSettled: false, latitude: 53.4, longitude: -2.2 });
     });
     expect(mockWarm).not.toHaveBeenCalled();
+    expect(mockWarmGuidance).not.toHaveBeenCalled();
   });
 });
 

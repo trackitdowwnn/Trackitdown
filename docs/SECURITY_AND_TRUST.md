@@ -323,8 +323,12 @@ commenting standards.
   no background location tracking anywhere in the app.
 - **In-memory location speed caches** (2026-10-08, #142): recent reverse-geocode
   answers (`placeLabels`, ≤20 points, ~10m keys) and the map-centre read-ahead
-  (`useDefaultMapCentre`, 2 minutes). Memory only, never sent anywhere, and
-  **forgotten on a deliberate sign-out or account deletion**
+  (`useDefaultMapCentre`, 2 minutes), and the reward guidance per ~1km cell
+  (`bountyGuidanceApi`, 5 minutes, keyed per account). The first two are
+  memory only and never sent anywhere; the guidance is asked for — snapped to
+  the RPC's own 0.01° grid, never the raw pin — once the owner CONFIRMS the
+  last-seen point (the map step's Next), as it always was before the reward
+  step. All three are **forgotten on a deliberate sign-out or account deletion**
   (`forgetLocationMemory`). A cached OS fix only counts if it is under 10
   minutes old and within 200m — the post wizard commits the opening point as
   the last-seen answer.

@@ -609,6 +609,23 @@ describe('moving between screens', () => {
       expect(onExit).not.toHaveBeenCalled();
     });
 
+    it('hands its steps advanceSoon — without it, auto-advance would silently do nothing', async () => {
+      let given: unknown;
+      const Probe = ({ advanceSoon }: WizardStepProps<Answers>) => {
+        given = advanceSoon;
+        return null;
+      };
+      const probeFlow: WizardFlow<Answers> = {
+        ...flow,
+        phases: [{ ...flow.phases[0], steps: [{ ...flow.phases[0].steps[0], component: Probe }] }],
+      };
+      const view = await render(
+        <WizardScreen flow={probeFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+      );
+      await press(view, 'Get started');
+      expect(typeof given).toBe('function');
+    });
+
     it('tells the step when its move has finished', async () => {
       const seen: (boolean | undefined)[] = [];
       const Probe = ({ settled }: WizardStepProps<Answers>) => {

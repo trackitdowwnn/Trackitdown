@@ -23,7 +23,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
 import { opacity } from '../theme';
-import { PhotoGridPicker, type PickedPhoto } from './PhotoGridPicker';
+import { PhotoGridPicker, type PickedPhoto, resetPhotoGridWidthMemory } from './PhotoGridPicker';
 
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
@@ -166,9 +166,38 @@ async function renderPicker(props: Partial<React.ComponentProps<typeof PhotoGrid
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // The grid remembers its last width across mounts; no test may inherit it.
+  resetPhotoGridWidthMemory();
   mockRequestLibraryPermission.mockResolvedValue(granted);
   mockRequestCameraPermission.mockResolvedValue(granted);
   mockResizePipeline();
+});
+
+// 2026-10-08: the grid used to render 0 high until measured, then pop its
+// photos in a frame later — on a wizard step, in the middle of the slide.
+describe('the first frame', () => {
+  beforeEach(() => {
+    resetPhotoGridWidthMemory();
+  });
+
+  it('with no width to go on, waits for its measurement (as before)', async () => {
+    const view = await render(<PhotoGridPicker photos={photos(2)} {...baseProps} />);
+    expect(view.queryByTestId('pgp-photo-0')).toBeNull();
+  });
+
+  it('lays its photos out on the FIRST frame from an estimated width', async () => {
+    const view = await render(
+      <PhotoGridPicker photos={photos(2)} {...baseProps} estimatedWidth={328} />,
+    );
+    expect(view.getByTestId('pgp-photo-0')).toBeTruthy();
+  });
+
+  it('remembers the measured width for the next time it mounts', async () => {
+    const first = await renderPicker({ photos: photos(2) }); // measured at 328
+    await first.unmount();
+    const again = await render(<PhotoGridPicker photos={photos(2)} {...baseProps} />);
+    expect(again.getByTestId('pgp-photo-0')).toBeTruthy();
+  });
 });
 
 describe('render states', () => {

@@ -6,7 +6,9 @@
  *        `error`) that runs a step's onContinue lookup or the final onComplete
  *        submit — advancing on success, staying put with an error on failure.
  *        Every move also LOCKS navigation for the length of its transition
- *        and drops the keyboard (see `move`).
+ *        and drops the keyboard (see `move`). One-pick steps can move on by
+ *        themselves (`advanceSoon`), and an edit from review visits any
+ *        answer it broke before returning (2026-10-08).
  * WHY:   A thin React shell over the pure logic in navigation.ts, so screens
  *        and chrome stay dumb. The answers object is a single serializable
  *        value and exits funnel through one place, deliberately: that is the
@@ -19,6 +21,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { Alert, Keyboard } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { useAssistiveTechEnabled } from '../hooks/useAssistiveTechEnabled';
 import { motion } from '../theme';
 
 import {
@@ -26,8 +29,10 @@ import {
   canProceed,
   ctaLabel,
   flattenFlow,
+  invalidStepIds,
   phaseProgress,
   wizardReducer,
+  pendingEditTarget,
   type WizardNavAction,
 } from './navigation';
 import type { WizardFlow } from './types';
@@ -69,6 +74,14 @@ export interface WizardControllerOptions<TAnswers> {
   /** Pre-filled answers (e.g. a future saved draft). */
   initialAnswers?: Partial<TAnswers>;
 }
+
+/**
+ * The least a move started by AUTO-ADVANCE locks for — even under reduced
+ * motion. The owner may press Next out of habit just as the step moves on by
+ * itself; without this the tap lands on the NEXT step and skips it (a year
+ * step is always valid, so it would go unseen). Code review of #143.
+ */
+const AUTO_MOVE_LOCK_MS = 400;
 
 /**
  * How long the SUBMITTING screen ignores its button after arriving.
@@ -175,8 +188,22 @@ export function useWizardController<TAnswers>(
   // map) can wait for it before they mount.
   const reduceMotion = useReducedMotion();
   const lockRef = useRef(false);
+  // An onContinue lookup or the final submit is running. `busy` is state, so
+  // two presses inside one commit would both see it false; this is set
+  // synchronously. Also stops a step's Skip moving under a lookup.
+  const actingRef = useRef(false);
+  // When the current screen was moved to (see SUBMIT_ARM_MS). Stamped in
+  // `move`, on the monotonic clock: an effect would run late after a
+  // lookup-driven move, and a wall clock can jump backwards.
+  const arrivedAt = useRef(0);
   const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [settled, setSettled] = useState(true);
+  // A pending auto-advance (see advanceSoon). Any move cancels it.
+  const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelAutoAdvance = useCallback(() => {
+    if (autoTimer.current) clearTimeout(autoTimer.current);
+    autoTimer.current = null;
+  }, []);
   // A move can be asked for AFTER the screen has gone: a step's onContinue
   // lookup resolving once the owner has left by the X. It must do nothing —
   // above all not drop the keyboard on whatever screen is now on top.
@@ -187,8 +214,12 @@ export function useWizardController<TAnswers>(
       mountedRef.current = false;
       lockRef.current = false;
       if (unlockTimer.current) clearTimeout(unlockTimer.current);
+      if (autoTimer.current) clearTimeout(autoTimer.current);
     };
   }, []);
+
+  // Set by an auto-advance just before it moves (see AUTO_MOVE_LOCK_MS).
+  const autoMoveRef = useRef(false);
 
   /** Every move goes through here: drop the keyboard (a field left focused
    *  would otherwise close mid-slide and resize the screen under it), lock,
@@ -196,9 +227,18 @@ export function useWizardController<TAnswers>(
   const move = useCallback(
     (action: WizardNavAction) => {
       if (!mountedRef.current) return;
+      const auto = autoMoveRef.current;
+      autoMoveRef.current = false;
+      cancelAutoAdvance();
       Keyboard.dismiss();
       dispatch(action);
-      if (reduceMotion) return;
+      arrivedAt.current = performance.now();
+      const lockMs = auto
+        ? Math.max(AUTO_MOVE_LOCK_MS, motion.standard)
+        : reduceMotion
+          ? 0
+          : motion.standard;
+      if (lockMs === 0) return;
       lockRef.current = true;
       setSettled(false);
       if (unlockTimer.current) clearTimeout(unlockTimer.current);
@@ -206,18 +246,31 @@ export function useWizardController<TAnswers>(
         lockRef.current = false;
         unlockTimer.current = null;
         setSettled(true);
-      }, motion.standard);
+      }, lockMs);
     },
-    [reduceMotion],
+    [reduceMotion, cancelAutoAdvance],
   );
 
   const goNext = useCallback(() => {
-    // Completing an edit commits it — the snapshot is no longer a fallback.
-    editSnapshotRef.current = null;
-    move({ type: 'next', visible });
-  }, [move, visible]);
+    // On an edit spur, Done first visits any required answer the edit broke
+    // (navigation.ts, 'next'). Only a return to review commits the edit —
+    // until then the snapshot stays, so Back still cancels all of it.
+    const editing = nav.returnToIndex !== null;
+    const invalid = editing ? new Set(invalidStepIds(flow, answers)) : null;
+    const blocking = invalid
+      ? screens.map((screen) => screen.kind === 'step' && invalid.has(screen.step.id))
+      : undefined;
+    // The same target the reducer will pick (pendingEditTarget): only a spur
+    // that is actually continuing keeps its snapshot.
+    if (!blocking || pendingEditTarget(blocking, nav.index) === -1) {
+      // Completing an edit commits it — the snapshot is no longer a fallback.
+      editSnapshotRef.current = null;
+    }
+    move({ type: 'next', visible, blocking });
+  }, [move, visible, nav.returnToIndex, nav.index, flow, answers, screens]);
   const next = useCallback(() => {
-    if (lockRef.current) return;
+    // Not mid-move, and not under a lookup: its own move is coming.
+    if (lockRef.current || actingRef.current) return;
     goNext();
   }, [goNext]);
   const back = useCallback(() => {
@@ -254,18 +307,9 @@ export function useWizardController<TAnswers>(
    * success), or a plain forward move. Serialized by `busy` so a double-tap
    * can't fire two lookups or two submits.
    */
-  // When the current screen arrived (see SUBMIT_ARM_MS), and whether an
-  // action is already running. `busy` is state, so two presses inside one
-  // commit would both see it false; the ref is set synchronously.
-  const arrivedAt = useRef(0);
-  useEffect(() => {
-    arrivedAt.current = Date.now();
-  }, [nav.index]);
-  const actingRef = useRef(false);
-
   const advance = useCallback(async () => {
     if (busy || lockRef.current || actingRef.current) return;
-    if (isLastScreen && Date.now() - arrivedAt.current < SUBMIT_ARM_MS) return;
+    if (isLastScreen && performance.now() - arrivedAt.current < SUBMIT_ARM_MS) return;
     const screen = screens[nav.index];
     const onContinue = screen.kind === 'step' ? screen.step.onContinue : undefined;
     const hasAction = isLastScreen ? Boolean(onComplete) : Boolean(onContinue);
@@ -302,6 +346,55 @@ export function useWizardController<TAnswers>(
       setError(toErrorMessage(err));
     }
   }, [busy, screens, nav.index, isLastScreen, onComplete, answers, goNext]);
+
+  const canGoNext = canProceed(flow, screens[nav.index], answers);
+
+  // ⚠️ AUTO-ADVANCE (2026-10-08): a one-pick step (make, model, year, colour,
+  // body type) moves on by itself a beat after the pick, saving a tap per
+  // step. The beat lets the pick be SEEN landing. When it fires it reads the
+  // LATEST state (a ref, not this closure): it advances only if the step is
+  // valid by then, and never past the lock. Any move cancels it — the owner
+  // pressing Next or Back meanwhile wins. NEVER under a screen reader: the
+  // screen would move on before the new value had been read back.
+  //
+  // ⚠️ AND NEVER FROM THE SUBMITTING SCREEN. There `advance` runs onComplete
+  // — on Post a car, "Post & pay". A pick must never become a payment.
+  //
+  // ⚠️ NOR ON AN EDIT SPUR (security review of #143). Done there can return
+  // to review, putting "Post & pay" exactly where "Done" was a moment before
+  // — a tap meant for Done would become a payment request. On a spur the
+  // owner presses Done themselves.
+  const assistiveTech = useAssistiveTechEnabled();
+  const editing = nav.returnToIndex !== null;
+  const latestRef = useRef({ canGoNext, advance, isLastScreen, assistiveTech, editing });
+  useEffect(() => {
+    latestRef.current = { canGoNext, advance, isLastScreen, assistiveTech, editing };
+  });
+  const advanceSoon = useCallback(
+    (delayMs: number = motion.autoAdvanceBeat) => {
+      const now = latestRef.current;
+      if (!mountedRef.current || now.assistiveTech || now.editing) return;
+      cancelAutoAdvance();
+      const fire = () => {
+        autoTimer.current = null;
+        if (lockRef.current) {
+          autoTimer.current = setTimeout(fire, delayMs);
+          return;
+        }
+        const latest = latestRef.current;
+        // Re-checked at fire time: any of these can change during the beat.
+        if (!latest.canGoNext || latest.isLastScreen || latest.assistiveTech || latest.editing) {
+          return;
+        }
+        autoMoveRef.current = true;
+        void latest.advance().finally(() => {
+          autoMoveRef.current = false;
+        });
+      };
+      autoTimer.current = setTimeout(fire, delayMs);
+    },
+    [cancelAutoAdvance],
+  );
 
   const requestExit = useCallback(() => {
     const discard = () => {
@@ -397,7 +490,9 @@ export function useWizardController<TAnswers>(
     /** Last async-action error message (null when none); shown for retry. */
     error,
     requestExit,
-    canGoNext: canProceed(flow, screens[nav.index], answers),
+    canGoNext,
+    /** Move on after a short beat — see the auto-advance note above. */
+    advanceSoon,
     // NOT on an edit spur: a spur into an intro-less flow's first step (the
     // report flow's camera, from its check-and-send) must still show Back,
     // and the hardware back must cancel the edit, not offer to discard the

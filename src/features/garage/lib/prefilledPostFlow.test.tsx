@@ -227,9 +227,12 @@ describe('Edit keeps every prefilled value changeable', () => {
     const collapsed = build(v, false);
     const expanded = build(v, true);
 
-    // Full step list back, intro included — identical to posting from scratch...
+    // Full step list back — the same questions as posting from scratch...
     expect(carPhase(expanded.flow).steps.map((s) => s.id)).toEqual(['make', 'photos']);
-    expect(carPhase(expanded.flow).intro).toBeDefined();
+    // ...without the words of comfort: they came from their own garage, and
+    // "let's get the details" over details already filled in reads wrong.
+    expect(carPhase(expanded.flow).intro).toBeUndefined();
+    expect(carPhase(expanded.flow).steps.every((s) => s.helper === undefined)).toBe(true);
     // ...but still seeded, so nothing is retyped.
     expect(expanded.initialAnswers).toEqual(collapsed.initialAnswers);
   });

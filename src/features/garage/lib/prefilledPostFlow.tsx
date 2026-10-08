@@ -84,8 +84,25 @@ export function buildPrefilledPostFlow({
 
   if (expanded) {
     // The full flow, seeded — every prefilled value editable, exactly as if they
-    // had typed it. This is the escape hatch that makes the prefill safe.
-    return { flow: baseFlow, initialAnswers };
+    // had typed it. This is the escape hatch that makes the prefill safe. Less
+    // its words of comfort: they came from their own garage (see the collapsed
+    // branch), and "let's get the details" over details already filled in
+    // reads wrong (UI review of #143).
+    return {
+      flow: {
+        ...baseFlow,
+        phases: baseFlow.phases.map((phase) =>
+          phase.id === 'car'
+            ? {
+                ...phase,
+                intro: undefined,
+                steps: phase.steps.map((step) => ({ ...step, helper: undefined })),
+              }
+            : phase,
+        ),
+      },
+      initialAnswers,
+    };
   }
 
   // The confirm step stands in for the whole identity phase. `schema: z.object({})`

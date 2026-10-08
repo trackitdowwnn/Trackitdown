@@ -66,6 +66,19 @@ function cacheKey(coord: GeoCoord): string {
  * after an ask has given up on it is still kept for the next ask.
  */
 const cache = new Map<string, Promise<PlaceLabels | null>>();
+/** Lookups an ask gave up on (and dropped) — the only ones a late answer
+ *  may be put back for. */
+const timedOut = new WeakSet<Promise<PlaceLabels | null>>();
+/** Bumped by every forget: a lookup from before one must write nothing. */
+let generation = 0;
+
+function remember(key: string, value: Promise<PlaceLabels | null>): void {
+  cache.set(key, value);
+  if (cache.size > CACHE_SIZE) {
+    // Map keeps insertion order: the first key is the oldest.
+    cache.delete(cache.keys().next().value as string);
+  }
+}
 
 function lookupFor(coord: GeoCoord): Promise<PlaceLabels | null> {
   const key = cacheKey(coord);
@@ -73,21 +86,19 @@ function lookupFor(coord: GeoCoord): Promise<PlaceLabels | null> {
   if (known) {
     return known;
   }
+  const born = generation;
   const lookup: Promise<PlaceLabels | null> = geocode(coord).then((labels) => {
+    if (born !== generation) return labels; // forgotten meanwhile (a sign-out)
     if (labels === null) {
       // Only this entry: an evicted lookup failing must not drop a newer one.
       if (cache.get(key) === lookup) cache.delete(key);
-    } else if (!cache.has(key)) {
+    } else if (timedOut.has(lookup) && !cache.has(key)) {
       // A late answer, after an ask gave up and dropped it: keep it after all.
-      cache.set(key, Promise.resolve(labels));
+      remember(key, Promise.resolve(labels));
     }
     return labels;
   });
-  cache.set(key, lookup);
-  if (cache.size > CACHE_SIZE) {
-    // Map keeps insertion order: the first key is the oldest.
-    cache.delete(cache.keys().next().value as string);
-  }
+  remember(key, lookup);
   return lookup;
 }
 
@@ -115,7 +126,10 @@ export function derivePlaceLabelsForCoord(coord: GeoCoord): Promise<PlaceLabels>
       // rather than waiting on a geocoder that may never answer. If it does
       // answer, lookupFor puts it back.
       const key = cacheKey(coord);
-      if (cache.get(key) === lookup) cache.delete(key);
+      if (cache.get(key) === lookup) {
+        cache.delete(key);
+        timedOut.add(lookup);
+      }
     }
     return labels ?? EMPTY;
   });
@@ -130,6 +144,7 @@ export function warmPlaceLabels(coord: GeoCoord): void {
 /** Forget every remembered answer — on a deliberate sign-out
  *  (forgetLocationMemory), and in tests. */
 export function resetPlaceLabelCache(): void {
+  generation += 1;
   cache.clear();
 }
 registerLocationMemory(resetPlaceLabelCache);

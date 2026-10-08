@@ -17,10 +17,11 @@
  */
 
 import { act, renderHook } from '@testing-library/react-native';
-import { Alert, Keyboard, type AlertButton } from 'react-native';
+import { AccessibilityInfo, Alert, Keyboard, type AlertButton } from 'react-native';
 import * as Reanimated from 'react-native-reanimated';
 import { z } from 'zod';
 
+import { motion } from '../theme';
 import type { WizardFlow } from './types';
 import { useWizardController } from './useWizardController';
 
@@ -121,6 +122,195 @@ describe('one move at a time', () => {
     await act(async () => result.current.back());
     expect(result.current.screenIndex).toBe(0);
     expect(result.current.settled).toBe(true);
+  });
+});
+
+// 2026-10-08: one-pick steps move on by themselves a beat after the pick.
+describe('advanceSoon (auto-advance)', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  /** The name step, with one more after it. */
+  const twoStepFlow: WizardFlow<Answers> = {
+    ...flow,
+    phases: [
+      {
+        ...flow.phases[0],
+        steps: [
+          ...flow.phases[0].steps,
+          { id: 'more', question: 'And?', component: () => null, schema: z.object({}) },
+        ],
+      },
+    ],
+  };
+
+  /** On the name step, freshly answered. */
+  async function onAnsweredStep(onComplete?: () => void) {
+    jest.useFakeTimers();
+    const rendered = await renderHook(() =>
+      useWizardController<Answers>(twoStepFlow, { onExit: jest.fn(), onComplete }),
+    );
+    await act(async () => rendered.result.current.next()); // intro → name
+    await act(async () => rendered.result.current.setAnswers({ name: 'Jane' }));
+    return rendered;
+  }
+
+  it('moves on after the beat — not before', async () => {
+    const { result } = await onAnsweredStep();
+    await act(async () => result.current.advanceSoon());
+    await act(async () => {
+      jest.advanceTimersByTime(motion.autoAdvanceBeat - 1);
+    });
+    expect(result.current.screenIndex).toBe(1);
+    await act(async () => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(result.current.screenIndex).toBe(2);
+  });
+
+  it('takes the beat it is given (a picker’s shorter one)', async () => {
+    const { result } = await onAnsweredStep();
+    await act(async () => result.current.advanceSoon(motion.autoAdvanceAfterPicker));
+    await act(async () => {
+      jest.advanceTimersByTime(motion.autoAdvanceAfterPicker);
+    });
+    expect(result.current.screenIndex).toBe(2);
+  });
+
+  // Code review of #143: a habitual Next landing just after the step moved on
+  // by itself acted on the NEXT step — an always-valid year step, skipped
+  // unseen. Even under reduced motion, where ordinary moves don't lock.
+  it('⚠️ a move it makes locks against a stray Next, even under reduced motion', async () => {
+    const { result } = await onAnsweredStep();
+    await act(async () => result.current.advanceSoon());
+    await act(async () => {
+      jest.advanceTimersByTime(motion.autoAdvanceBeat);
+    });
+    expect(result.current.screenIndex).toBe(2);
+    await act(async () => result.current.next()); // the habitual tap
+    expect(result.current.screenIndex).toBe(2);
+  });
+
+  it('a move meanwhile cancels it — the owner’s Back wins', async () => {
+    const { result } = await onAnsweredStep();
+    await act(async () => result.current.advanceSoon());
+    await act(async () => result.current.back());
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(result.current.screenIndex).toBe(0);
+  });
+
+  it('never moves on from a step that is not valid by then', async () => {
+    const { result } = await onAnsweredStep();
+    await act(async () => result.current.advanceSoon());
+    await act(async () => result.current.setAnswers({ name: '' }));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(result.current.screenIndex).toBe(1);
+  });
+
+  it('⚠️ never SUBMITS — a pick on the last screen waits for the button', async () => {
+    jest.useFakeTimers();
+    const onComplete = jest.fn();
+    const { result } = await renderHook(() =>
+      useWizardController<Answers>(flow, { onExit: jest.fn(), onComplete }),
+    );
+    await act(async () => result.current.next()); // intro → name, the last screen
+    await act(async () => result.current.setAnswers({ name: 'Jane' }));
+    await act(async () => result.current.advanceSoon());
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('never runs under a screen reader', async () => {
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    const { result } = await onAnsweredStep();
+    await act(async () => result.current.advanceSoon());
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(result.current.screenIndex).toBe(1);
+  });
+});
+
+// 2026-10-08: changing the make from review clears the model. Done used to drop
+// the owner back on a review that now refused to submit.
+describe('an edit from review that breaks another answer', () => {
+  interface CarAnswers {
+    make: string;
+    model: string;
+  }
+  const carFlow: WizardFlow<CarAnswers> = {
+    id: 'car-edit-test',
+    finalCtaLabel: 'Post',
+    review: {},
+    phases: [
+      {
+        id: 'car',
+        title: 'Car',
+        steps: [
+          { id: 'make', question: 'Make?', component: () => null, schema: z.object({ make: z.string().min(1) }) },
+          { id: 'model', question: 'Model?', component: () => null, schema: z.object({ model: z.string().min(1) }) },
+        ],
+      },
+    ],
+  };
+  // make(0), model(1), review(2)
+  async function onReviewEditingMake() {
+    const rendered = await renderHook(() =>
+      useWizardController<CarAnswers>(carFlow, {
+        onExit: jest.fn(),
+        initialAnswers: { make: 'BMW', model: '320d' },
+      }),
+    );
+    const { result } = rendered;
+    await act(async () => result.current.next());
+    await act(async () => result.current.next()); // review
+    await act(async () => result.current.editStep(0)); // edit the make
+    await act(async () => result.current.setAnswers({ make: 'Audi', model: '' })); // clears the model
+    return rendered;
+  }
+
+  it('Done goes on to the answer it broke, still on the edit (Done again)', async () => {
+    const { result } = await onReviewEditingMake();
+    await act(async () => result.current.next());
+    expect(result.current.screenIndex).toBe(1); // the model step
+    expect(result.current.ctaLabel).toBe('Done');
+
+    await act(async () => result.current.setAnswers({ model: 'A4' }));
+    await act(async () => result.current.next());
+    expect(result.current.screenIndex).toBe(2); // back on review
+  });
+
+  // Security review of #143: Done can return to review, putting "Post & pay"
+  // where "Done" was — so on a spur the owner presses Done themselves.
+  it('⚠️ never auto-advances on an edit — a tap meant for Done must not land on pay', async () => {
+    jest.useFakeTimers();
+    try {
+      const { result } = await onReviewEditingMake();
+      await act(async () => result.current.setAnswers({ make: 'BMW', model: '320d' })); // nothing broken
+      await act(async () => result.current.advanceSoon());
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+      expect(result.current.screenIndex).toBe(0); // still on the spur
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('Back from there cancels the WHOLE edit — make and model restored', async () => {
+    const { result } = await onReviewEditingMake();
+    await act(async () => result.current.next()); // on to the model step
+    await act(async () => result.current.back());
+    expect(result.current.screenIndex).toBe(2);
+    expect(result.current.answers).toEqual({ make: 'BMW', model: '320d' });
   });
 });
 
@@ -402,6 +592,24 @@ describe('useWizardController — async actions', () => {
     await waitForSubmitArm();
     await act(async () => result.current.advance());
     expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  // Confirming review of #143: a step's Skip during an onContinue lookup moved,
+  // and then the lookup's own move went one further — a screen skipped.
+  it('a step’s Skip does nothing while a lookup is running — the lookup moves', async () => {
+    const lookup = deferred<undefined>();
+    const { result } = await renderAsyncController(
+      makeAsyncFlow({ onContinue: () => lookup.promise }),
+      jest.fn(),
+    );
+    await act(async () => {
+      void result.current.advance(); // the lookup starts
+    });
+    await act(async () => result.current.next()); // Skip, mid-lookup
+    expect(result.current.screenIndex).toBe(1);
+
+    await act(async () => lookup.resolve(undefined));
+    expect(result.current.screenIndex).toBe(2); // one move, not two
   });
 
   it('keeps the wizard intact and shows the error when onComplete fails', async () => {

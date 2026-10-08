@@ -31,10 +31,12 @@ export interface YearFieldProps {
   /** The selected year, or null when unset. */
   value: number | null;
   onChange: (year: number | null) => void;
+  /** After a pick, once the picker has closed (the wizard's auto-advance). */
+  onPicked?: () => void;
   error?: string;
 }
 
-export function YearField({ value, onChange, error }: YearFieldProps) {
+export function YearField({ value, onChange, onPicked, error }: YearFieldProps) {
   const currentYear = new Date().getFullYear();
   const options = useMemo<SelectOption<number>[]>(() => {
     const years: SelectOption<number>[] = [{ value: NOT_SURE, label: 'Not sure' }];
@@ -53,6 +55,7 @@ export function YearField({ value, onChange, error }: YearFieldProps) {
       options={options}
       value={value}
       onChange={(picked) => onChange(picked === NOT_SURE ? null : picked)}
+      onPicked={onPicked}
       error={error}
       // Browse-first (newest years lead), matching the make/model pickers.
       autoFocusSearch={false}
