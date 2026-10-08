@@ -19,13 +19,13 @@
  *        docs/DESIGN_SYSTEM.md.
  */
 
-import { Tabs, useRouter, useSegments } from 'expo-router';
+import { Tabs, useSegments } from 'expo-router';
 import { Bookmark, Compass, MessageCircle, Plus, User } from 'lucide-react-native';
 import { useMemo } from 'react';
 
 import { useRequireAuth, useTabAuthGate } from '@/features/auth';
 import { useInboxBadgeSync } from '@/features/chat';
-import { useHasSavedCar } from '@/features/garage';
+import { useHasSavedCar, useStartReport } from '@/features/garage';
 import { useProfileTab, useTrackVisitedTab } from '@/features/profile';
 import {
   AppTabBar,
@@ -64,7 +64,6 @@ function BadgedTabs() {
   const segments = useSegments();
   useTrackVisitedTab(segments[segments.length - 1]);
 
-  const router = useRouter();
   const requireAuth = useRequireAuth();
   const profileTab = useProfileTab();
 
@@ -78,37 +77,19 @@ function BadgedTabs() {
     route: '/(tabs)/inbox',
   });
 
-  // Where + goes: someone with cars in the garage picks one and gets the whole
-  // vehicle phase prefilled; everyone else goes straight to the blank wizard.
+  // ONE way into a report (2026-10-07): the + always opens /post-a-car, whose
+  // host shows the blank form, the "Which car?" chooser or the prefilled form
+  // IN PLACE. The old split — decide a route here, push a chooser route that
+  // then replaced itself with the form — meant two full-screen transitions
+  // back to back. useStartReport instead waits (briefly, bounded) for the
+  // garage answer and the saved draft, so the form slides up already built.
   //
-  // Resolved HERE, before the tap, so the decision costs nothing at the moment
-  // of a theft — no spinner, no chooser that turns out to be empty. 'unknown'
-  // (guest, still loading, failed fetch) means the blank wizard: the honest
-  // default is the one that always works.
-  //
-  // `enabled` is true rather than gated on the nudge rules, because unlike
-  // those this answer is needed for EVERY signed-in user. It is one
-  // list_my_vehicles per app session (useHasSavedCar dedupes and caches it in
-  // savedCarSignal), not one per mount of this layout.
-  const savedCar = useHasSavedCar({ enabled: true });
-  // ⚠️ ONLY A CONFIRMED 'none' SKIPS THE CHOOSER. This read
-  // `savedCar === 'some' ? chooser : blank`, so 'unknown' went to the blank
-  // wizard — and 'unknown' is exactly what a GUEST reports. The action below is
-  // auth-gated, so the overwhelmingly common path is: guest taps +, signs in
-  // through the sheet, and `run` fires with a route decided while they were
-  // still signed out. Their saved cars were never offered, which is the bug
-  // reported on 2026-08-22.
-  //
-  // The same read is wrong a second way even when signed in: the garage fetch
-  // is in flight for a beat after sign-in, and 'unknown' during that window
-  // sent people past their own cars.
-  //
-  // Sending 'unknown' to the chooser is safe BECAUSE THE CHOOSER SELF-CORRECTS:
-  // with nothing offerable it replaces itself with /post-a-car (see
-  // ChooseCarToReportScreen's `nothingToOffer`). So the worst case is a brief
-  // spinner for someone who has no cars; the previous worst case was silently
-  // withholding a feature from everyone who had just signed in.
-  const startPostRoute = savedCar === 'none' ? '/post-a-car' : '/report-stolen';
+  // This call is the WARM-UP: it fetches the garage once per session, as soon
+  // as a signed-in user is on the tabs, so by the time + is tapped the answer
+  // is usually already cached and the wait is zero. One list_my_vehicles per
+  // app session (loadGarage dedupes it), not one per mount of this layout.
+  useHasSavedCar({ enabled: true });
+  const startReport = useStartReport();
 
   // Session/avatar changes re-render this layout, so the tab bar reacts live:
   // sign-in flips "Profile" → "You", an EditProfile avatar save (shared
@@ -146,7 +127,7 @@ function BadgedTabs() {
             // started spreading (SaveYourCarSheet grew a workaround for it).
             // Seed a dev session instead of skipping the gate.
             onPress: () =>
-              requireAuth({ context: 'post_car', run: () => router.push(startPostRoute) }),
+              requireAuth({ context: 'post_car', run: startReport }),
           }}
         />
       )}

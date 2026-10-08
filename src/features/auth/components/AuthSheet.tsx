@@ -16,8 +16,8 @@
  *        (gate_completed / gate_dismissed funnel events).
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Animated, Easing, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { createLogger, isValidEmail } from '@/shared/lib';
 import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
@@ -49,6 +49,9 @@ const log = createLogger('auth');
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 const RESEND_SECONDS = 60;
+/** Longest a completed gate waits for the sheet to report it has closed
+ *  before running its action anyway. */
+const CLOSE_FALLBACK_MS = 600;
 
 type Step = 'email' | 'otp' | 'profile';
 const STEP_ORDER: Record<Step, number> = { email: 0, otp: 1, profile: 2 };
@@ -67,6 +70,17 @@ export function AuthSheet() {
   const renderStep: Step = intent && standing === 'incomplete' ? 'profile' : step;
 
   const openRef = useRef(false); // sheet currently presented (or presenting)
+  // The completed gate's action, held until the sheet has finished closing.
+  const pendingActionRef = useRef<(() => void) | null>(null);
+  const fallbackRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const runPendingAction = useCallback(() => {
+    clearTimeout(fallbackRef.current);
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    action?.();
+  }, []);
+  // Only an unmount cancels a waiting fallback.
+  useEffect(() => () => clearTimeout(fallbackRef.current), []);
   const stepRef = useRef<Step>('email'); // for the dismissal log's closure
   const sawProfileStepRef = useRef(false); // newUser flag for gate_completed
 
@@ -81,15 +95,33 @@ export function AuthSheet() {
     if (standing === 'member') {
       // Auth (and the profiles row) confirmed — finish what the user started.
       const done = consumePendingIntent(); // BEFORE close(): onDismiss must see no intent
+      const wasOpen = openRef.current;
       openRef.current = false;
-      sheetRef.current?.close();
       if (done) {
         log.info('gate_completed', {
           context: done.context,
           newUser: sawProfileStepRef.current,
         });
-        done.run?.();
       }
+      if (!wasOpen) {
+        // Never presented (the session resolved before it opened): nothing
+        // to wait for.
+        done?.run?.();
+        return;
+      }
+      // ⚠️ RUN AFTER THE SHEET HAS CLOSED, not alongside (2026-10-07). The
+      // action is usually a navigation — the report form sliding up — and
+      // starting it in the same tick put three animations on screen at once:
+      // the sheet closing, the OTP keyboard dropping, and the new screen
+      // sliding in. handleDismiss runs it; a timer covers a close that never
+      // reports back, and runPendingAction guarantees it runs once.
+      pendingActionRef.current = done?.run ?? null;
+      Keyboard.dismiss();
+      sheetRef.current?.close();
+      // A ref, not this effect's cleanup: consuming the intent re-runs this
+      // effect at once, and a cleanup would cancel the fallback it just set.
+      clearTimeout(fallbackRef.current);
+      fallbackRef.current = setTimeout(runPendingAction, CLOSE_FALLBACK_MS);
       return;
     }
     if (standing === 'loading') return; // session restoring / profile check in flight
@@ -102,6 +134,8 @@ export function AuthSheet() {
 
   const handleDismiss = () => {
     openRef.current = false;
+    // The signed-in path closed the sheet with an action waiting: now it runs.
+    runPendingAction();
     // Reset for the next gate (an event handler, so plain setState is fine).
     setStep('email');
     setEmail('');

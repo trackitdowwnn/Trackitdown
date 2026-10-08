@@ -22,7 +22,9 @@ export { SaveYourCarSheet } from './components/SaveYourCarSheet';
 export { requestSaveCarNudge, useSaveCarNudgeIntent } from './lib/exitNudgeIntent';
 // The mirror image of the exit nudge: shown when the user HAS saved cars.
 // Reached from the tab bar's + only when there are cars to choose between.
-export { ChooseCarToReportScreen } from './screens/ChooseCarToReportScreen';
+// The + button's report host (blank form / chooser / prefilled form, in place).
+export { StartReportScreen } from './screens/StartReportScreen';
+export { useStartReport } from './hooks/useStartReport';
 export { MyCarsScreen } from './screens/MyCarsScreen';
 export {
   ReportSavedCarScreen,

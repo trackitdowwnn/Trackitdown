@@ -1,37 +1,33 @@
 /**
  * WHAT:  ReportSavedCarScreen — "Report this car stolen" from a garage card.
- *        Loads the saved car, builds the post-a-car wizard with its vehicle
- *        phase collapsed to a confirm step, and hands off to the ordinary
- *        posting screen behaviour (create draft → escrow → live).
+ *        Finds the saved car (from the shared garage cache when it's known,
+ *        so usually on the first frame) and hands it to PrefilledReport —
+ *        the same prefilled wizard the report host's chooser uses.
  * WHY:   This screen is the garage's whole reason to exist, and it is also what
  *        keeps the two features acyclic: the GARAGE resolves the vehicle and
  *        maps it down to plain answers, so features/vehicles never imports a
  *        SavedVehicle (ARCHITECTURE.md rule 1). A missing or already-posted car
  *        must fail kindly rather than drop someone into a broken wizard at the
  *        worst moment.
+ *
+ *        While the garage loads it shows ReportPending (back control, then a
+ *        quiet line) — never FullscreenLoader, a native modal that is for
+ *        submit-style waits and popped mid-transition here (2026-10-07).
  * LINKS: src/app/report-stolen/[vehicleId].tsx (route);
- *        src/features/garage/lib/prefilledPostFlow.tsx;
+ *        src/features/garage/components/PrefilledReport.tsx;
  *        src/features/vehicles/post/screens/PostACarScreen.tsx (the submit path
  *          this reuses via PostACarScreen's own flow prop).
  */
 
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import {
-  POST_A_CAR_INITIAL_ANSWERS,
-  PostACarScreen,
-  postACarFlow,
-} from '@/features/vehicles';
-import { createLogger } from '@/shared/lib/logger';
 import { spacing } from '@/shared/theme';
-import { Button, EmptyState, ErrorState, FullscreenLoader, Screen } from '@/shared/ui';
+import { Button, EmptyState, ErrorState, Screen } from '@/shared/ui';
 
+import { PrefilledReport } from '../components/PrefilledReport';
+import { ReportPending } from '../components/ReportPending';
 import { useMyVehicles } from '../hooks/useMyVehicles';
-import { buildPrefilledPostFlow } from '../lib/prefilledPostFlow';
-
-const log = createLogger('garage');
 
 /**
  * Both failure exits land on the BLANK wizard, never back on the "which car?"
@@ -49,33 +45,10 @@ export interface ReportSavedCarScreenProps {
 export function ReportSavedCarScreen({ vehicleId }: ReportSavedCarScreenProps) {
   const router = useRouter();
   const { status, vehicles, retry } = useMyVehicles();
-  // Set when the owner taps Edit on the confirm step — restores the full seven
-  // steps, seeded with the same answers.
-  const [expanded, setExpanded] = useState(false);
-
   const vehicle = vehicles.find((v) => v.id === vehicleId);
 
-  const onEdit = useCallback(() => {
-    log.info('garage_prefill_expanded', { vehicleId });
-    setExpanded(true);
-  }, [vehicleId]);
-
-  const prefilled = useMemo(
-    () =>
-      vehicle
-        ? buildPrefilledPostFlow({
-            baseFlow: postACarFlow,
-            baseInitialAnswers: POST_A_CAR_INITIAL_ANSWERS,
-            vehicle,
-            expanded,
-            onEdit,
-          })
-        : null,
-    [vehicle, expanded, onEdit],
-  );
-
   if (status === 'loading') {
-    return <FullscreenLoader visible />;
+    return <ReportPending onBack={() => router.back()} />;
   }
 
   // A FAILED LOAD IS NOT A MISSING CAR. useMyVehicles returns ready-and-empty on
@@ -132,9 +105,7 @@ export function ReportSavedCarScreen({ vehicleId }: ReportSavedCarScreenProps) {
     );
   }
 
-  return (
-    <PostACarScreen flow={prefilled?.flow} initialAnswers={prefilled?.initialAnswers} />
-  );
+  return <PrefilledReport vehicle={vehicle} />;
 }
 
 const styles = StyleSheet.create({

@@ -12,6 +12,7 @@
  */
 
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Keyboard } from 'react-native';
 
 import type { AuthStanding } from '../hooks/useAuthStanding';
 import { clearPendingIntent, consumePendingIntent, setPendingIntent } from '../gate/gateIntent';
@@ -160,6 +161,32 @@ describe('AuthSheet', () => {
     await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('What should we call you?')).toBeNull();
     expect(consumePendingIntent()).toBeNull(); // consumed, not still pending
+  });
+
+  // 2026-10-07: the continuation is usually a navigation (the report form
+  // sliding up); starting it alongside the sheet's close and the keyboard's
+  // drop put three animations on screen at once. It now waits for the close.
+  it('runs the continuation after the sheet closes — once, even if the close never reports back', async () => {
+    const run = jest.fn();
+    const keyboardDismiss = jest.spyOn(Keyboard, 'dismiss');
+    const screen = await render(<AuthSheet />);
+    await act(async () => {
+      setPendingIntent({ context: 'post_car', run });
+    });
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    await enterEmailAndCode(screen);
+
+    // A close that never calls back: the fallback must still run it.
+    const handle = mockModalHandle.current as { dismiss: () => void };
+    handle.dismiss = () => {};
+    await act(async () => {
+      setMockStanding('member');
+    });
+
+    expect(keyboardDismiss).toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled(); // not alongside the close
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    keyboardDismiss.mockRestore();
   });
 
   it('a NEW user completes the profile BEFORE the continuation runs', async () => {
