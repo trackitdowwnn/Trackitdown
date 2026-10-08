@@ -319,6 +319,25 @@ describe('the saved draft', () => {
     expect(mockClearDraft).toHaveBeenCalled();
   });
 
+  it('Discard on a prefilled report leaves the (unrelated) saved draft alone', async () => {
+    await mount({ initialAnswers: { make: 'Audi' } });
+    expect(capturedOnDiscard).toBeUndefined();
+  });
+
+  it('tells the caller the moment the post exists, before payment', async () => {
+    // The garage drops its cached cars then: the car just reported must not
+    // be offered again by the next +.
+    const onPostCreated = jest.fn();
+    mockPayBounty.mockResolvedValue({ outcome: 'cancelled', message: null });
+    await mount({ onPostCreated });
+
+    await expect(capturedOnComplete(ANSWERS)).rejects.toBeDefined();
+    expect(onPostCreated).toHaveBeenCalledTimes(1);
+    // A retry reuses the post — it is not created twice, so not told twice.
+    await expect(capturedOnComplete(ANSWERS)).rejects.toBeDefined();
+    expect(onPostCreated).toHaveBeenCalledTimes(1);
+  });
+
   it('offers save & exit to the wizard', async () => {
     await mount();
     expect(capturedOnSaveAndExit).toBeDefined();

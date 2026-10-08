@@ -28,8 +28,9 @@
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useRequireAuth, useSession } from '@/features/auth';
 import { PostACarScreen } from '@/features/vehicles';
 import { createLogger } from '@/shared/lib/logger';
 
@@ -39,6 +40,7 @@ import { ReportPending } from '../components/ReportPending';
 import { StageCover } from '../components/StageCover';
 import { useMyVehicles } from '../hooks/useMyVehicles';
 import { requestSaveCarNudge } from '../lib/exitNudgeIntent';
+import { invalidateSavedCarSignal } from '../lib/savedCarSignal';
 import type { SavedVehicle } from '../types';
 
 const log = createLogger('garage');
@@ -52,14 +54,29 @@ export function StartReportScreen() {
   // never land on the chooser (a saved-car report that failed: offering the
   // chooser again would be a loop at the worst moment).
   const { start } = useLocalSearchParams<{ start?: string }>();
+  const session = useSession();
+  const requireAuth = useRequireAuth();
   const { status, vehicles, retry } = useMyVehicles();
+
+  // A GUEST can arrive here without the + button's gate — a deep link to
+  // /post-a-car (review of #141). The form would only fail at create_post, so
+  // they're shown the sign-in sheet; once signed in, this screen carries on.
+  const askedRef = useRef(false);
+  useEffect(() => {
+    if (session.status === 'signedOut' && !askedRef.current) {
+      askedRef.current = true;
+      requireAuth({ context: 'post_car' });
+    }
+  }, [session.status, requireAuth]);
+  const isGuest = session.status !== 'signedIn';
 
   // A car with a live listing can't be reported again (create_post refuses
   // it as PLATE_IN_USE), so it is never offered.
   const offerable = vehicles.filter((v) => !v.isCurrentlyPosted);
 
-  const natural: NaturalStage =
-    status === 'ready'
+  const natural: NaturalStage = isGuest
+    ? 'pending'
+    : status === 'ready'
       ? offerable.length > 0
         ? 'choose'
         : 'blank'
@@ -74,10 +91,16 @@ export function StartReportScreen() {
   );
   // The first real stage shown is fixed for the visit (see the header). Set
   // during render — React's pattern for state derived from props — so the
-  // commit and the stage land in the same frame.
+  // commit and the stage land in the same frame. Each update is guarded by
+  // the condition it makes false, so it settles.
   const [committed, setCommitted] = useState<'blank' | 'choose' | null>(null);
   if (committed === null && (natural === 'blank' || natural === 'choose')) {
     setCommitted(natural);
+  } else if (committed === 'choose' && status === 'ready' && offerable.length === 0) {
+    // The ONE allowed swap: a revalidation left the chooser with nothing to
+    // offer (the car was just reported elsewhere). "Which car?" is never
+    // drawn without cars, so it gives way to the blank report.
+    setCommitted('blank');
   }
   // Once the page has shown any answer (an error, say), a retry must not blank
   // it again — the pending stage then shows its quiet line at once.
@@ -102,16 +125,20 @@ export function StartReportScreen() {
         ? 'blank'
         : (committed ?? natural);
 
-  // Ids and counts only — never a plate or a nickname (docs/LOGGING.md).
+  // Funnel events, once each per visit. Ids and counts only — never a plate
+  // or a nickname (docs/LOGGING.md). "Skipped" means the GARAGE sent them
+  // straight to the blank report — not an owner's pick, not ?start=blank.
+  const loggedRef = useRef({ shown: false, skipped: false });
+  const offerableCount = offerable.length;
   useEffect(() => {
-    if (committed === 'choose') {
-      log.info('garage_choose_car_shown', { vehicleCount: offerable.length });
-    } else if (committed === 'blank' && status === 'ready') {
+    if (stage === 'choose' && !loggedRef.current.shown) {
+      loggedRef.current.shown = true;
+      log.info('garage_choose_car_shown', { vehicleCount: offerableCount });
+    } else if (stage === 'blank' && picked === null && status === 'ready' && !loggedRef.current.skipped) {
+      loggedRef.current.skipped = true;
       log.debug('garage_choose_car_skipped', { reason: 'no_offerable_cars' });
     }
-    // Once per visit: the commit happens once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [committed]);
+  }, [stage, picked, status, offerableCount]);
 
   return (
     <StageCover stageKey={stage}>
@@ -120,7 +147,7 @@ export function StartReportScreen() {
       ) : stage === 'blank' ? (
         // The garage's exit nudge: only the blank report offers it — someone
         // reporting a saved car is never asked to save one.
-        <PostACarScreen onAbandon={requestSaveCarNudge} />
+        <PostACarScreen onAbandon={requestSaveCarNudge} onPostCreated={invalidateSavedCarSignal} />
       ) : stage === 'choose' ? (
         <ChooseCarStage
           mode="cars"

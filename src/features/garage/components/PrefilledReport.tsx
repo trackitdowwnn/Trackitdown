@@ -22,6 +22,7 @@ import { POST_A_CAR_INITIAL_ANSWERS, PostACarScreen, postACarFlow } from '@/feat
 import { createLogger } from '@/shared/lib/logger';
 
 import { buildPrefilledPostFlow } from '../lib/prefilledPostFlow';
+import { invalidateSavedCarSignal } from '../lib/savedCarSignal';
 import type { SavedVehicle } from '../types';
 
 const log = createLogger('garage');
@@ -48,5 +49,13 @@ export function PrefilledReport({ vehicle }: { vehicle: SavedVehicle }) {
     [vehicle, expanded, onEdit],
   );
 
-  return <PostACarScreen flow={prefilled.flow} initialAnswers={prefilled.initialAnswers} />;
+  return (
+    <PostACarScreen
+      flow={prefilled.flow}
+      initialAnswers={prefilled.initialAnswers}
+      // This car now has a live report: drop the cached garage so the next +
+      // never offers it again.
+      onPostCreated={invalidateSavedCarSignal}
+    />
+  );
 }

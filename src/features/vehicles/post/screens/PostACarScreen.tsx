@@ -62,12 +62,20 @@ export interface PostACarScreenProps {
    * screen still never learns the garage exists (ARCHITECTURE.md rule 1).
    */
   onAbandon?: () => void;
+  /**
+   * Fired once, the moment the post exists on the server (before payment).
+   * The garage uses it to drop its cached cars: a car reported here is no
+   * longer offerable, and the next + must not offer it again (review of
+   * #141). A plain callback for the same reason as onAbandon.
+   */
+  onPostCreated?: () => void;
 }
 
 export function PostACarScreen({
   flow,
   initialAnswers,
   onAbandon,
+  onPostCreated,
 }: PostACarScreenProps = {}) {
   const router = useRouter();
   const toast = useToast();
@@ -144,6 +152,7 @@ export function PostACarScreen({
       // createdPostIdRef rather than the answers, so the draft could only
       // resurface as a stale duplicate of a car already listed.
       void clearPostDraft();
+      onPostCreated?.();
 
       // Record what we ADVISED against what they CHOSE, once, on first
       // creation only — a retry after a declined card must not log a second
@@ -237,8 +246,9 @@ export function PostACarScreen({
       // sighting and add-a-vehicle keep the plain discard prompt.
       onSaveAndExit={savePostDraft}
       // Discard means discard: the saved draft goes too, or it came straight
-      // back on the next open.
-      onDiscard={() => void clearPostDraft()}
+      // back on the next open. Only on the BLANK report — the prefilled path
+      // never read the draft, so its Discard must not wipe an unrelated one.
+      onDiscard={initialAnswers ? undefined : () => void clearPostDraft()}
     />
   );
 }

@@ -17,12 +17,12 @@
  */
 
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useSession } from '@/features/auth';
 
-import { listMyVehicles } from '../api/garageApi';
-import { garageFor, isGarageFresh, publishGarage } from '../lib/savedCarSignal';
+import { loadGarage } from '../lib/loadGarage';
+import { getSavedCarSnapshot, isGarageFresh, subscribeToSavedCarSignal } from '../lib/savedCarSignal';
 import type { SavedVehicle } from '../types';
 
 /** A cached garage younger than this is trusted as-is on mount — the + button
@@ -43,23 +43,27 @@ export function useMyVehicles(): UseMyVehiclesResult {
   const session = useSession();
   const userId = session.status === 'signedIn' ? session.userId : null;
 
-  // SAFETY: loaded data is keyed by user, so another user's (or a stale) garage
-  // can never render. State writes happen after the await.
-  // Seeded from the shared garage cache, so a screen that mounts after the
-  // garage is already known (the report host, during its slide-up) renders
-  // its real content on the FIRST frame instead of a loading beat.
-  const [loaded, setLoaded] = useState<{ userId: string; vehicles: SavedVehicle[] } | null>(
-    () => {
-      const cached = garageFor(userId);
-      return cached ? { userId: cached.userId, vehicles: cached.vehicles } : null;
-    },
-  );
+  // ⚠️ THE SHARED GARAGE CACHE IS THE SOURCE OF TRUTH (2026-10-07), read
+  // through the snapshot the store hands back — never by re-reading the
+  // module in render, which the React Compiler would memoise (review of #141).
+  // So a screen mounted after the garage is known renders it on its FIRST
+  // frame, and every surface updates together when it changes.
+  //
+  // SAFETY: the snapshot is used only when it belongs to THIS user, so
+  // another user's (or a signed-out user's) garage can never render.
+  const snapshot = useSyncExternalStore(subscribeToSavedCarSignal, getSavedCarSnapshot);
+  const cached = userId !== null && snapshot?.userId === userId ? snapshot : null;
+
   const [errorFor, setErrorFor] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(
     // initial: failure errors the screen. refresh: pull spinner, failure keeps
     // the list. silent: refocus revalidation, no spinner, failure keeps the list.
+    //
+    // Through loadGarage, not listMyVehicles directly: one fetch shared with
+    // the + button and the nudges, and never published for a user who signed
+    // out while it was in flight (the cache holds plates).
     (mode: 'initial' | 'refresh' | 'silent'): Promise<void> => {
       if (!userId) {
         return Promise.resolve();
@@ -70,20 +74,13 @@ export function useMyVehicles(): UseMyVehiclesResult {
           if (mode === 'refresh') {
             setRefreshing(true);
           }
-          return listMyVehicles();
+          return loadGarage(uid);
         })
-        .then((vehicles) => {
-          setLoaded({ userId: uid, vehicles });
-          setErrorFor(null);
-          // Prime the shared garage cache for free — this screen has just paid
-          // for the answer, so the nudges and the report flow never need to
-          // fetch it themselves. publishGarage no-ops when unchanged, so the
-          // refocus revalidation doesn't wake subscribers for nothing.
-          publishGarage(uid, vehicles);
-        })
-        .catch(() => {
-          // listMyVehicles already logged the failure.
-          if (mode === 'initial') {
+        .then((ok) => {
+          if (ok) {
+            setErrorFor(null);
+          } else if (mode === 'initial') {
+            // listMyVehicles already logged the failure.
             setErrorFor(uid);
           }
         })
@@ -94,21 +91,23 @@ export function useMyVehicles(): UseMyVehiclesResult {
     [userId],
   );
 
+  const hasCached = cached !== null;
   useEffect(() => {
     if (session.status === 'loading' || !userId) {
       return;
     }
-    if (garageFor(userId)) {
-      // Already showing the cached garage (see `current` below): never an
-      // error screen over it. Revalidate quietly unless it was loaded moments
-      // ago.
+    if (hasCached) {
+      // Already showing the cached garage: never an error screen over it.
+      // Revalidate quietly unless it was loaded moments ago.
       if (!isGarageFresh(userId, FRESH_ENOUGH_MS)) {
         void load('silent');
       }
       return;
     }
+    // No cached garage — first load, or the cache was just cleared after a
+    // garage write (add / edit / delete), in which case this refetches.
     void load('initial');
-  }, [session.status, userId, load]);
+  }, [session.status, userId, load, hasCached]);
 
   const firstFocus = useRef(true);
   useFocusEffect(
@@ -128,20 +127,16 @@ export function useMyVehicles(): UseMyVehiclesResult {
   }, [load]);
 
   // Derived per-session view: guests are instantly ready and empty.
-  // Falls back to the shared cache, so a mount after the garage is known — or
-  // a user switch onto a known garage — renders it at once, with no loading
-  // beat and no setState-in-effect to get there.
-  const current =
-    userId && loaded?.userId === userId ? loaded.vehicles : (garageFor(userId)?.vehicles ?? null);
+  const current = cached?.vehicles ?? null;
   const status: MyVehiclesStatus =
     session.status === 'loading'
       ? 'loading'
       : !userId
         ? 'ready'
-        : errorFor === userId
-          ? 'error'
-          : current
-            ? 'ready'
+        : current
+          ? 'ready'
+          : errorFor === userId
+            ? 'error'
             : 'loading';
 
   return {

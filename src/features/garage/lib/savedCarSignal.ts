@@ -31,12 +31,14 @@ export interface GarageSnapshot {
   userId: string;
   count: number;
   vehicles: SavedVehicle[];
-  /** Date.now() when published — lets a reader skip a refetch of an answer
-   *  loaded moments ago (the + button's wait, then the report host). */
-  publishedAt: number;
 }
 
 let cached: GarageSnapshot | null = null;
+/** When the cached garage was last confirmed (Date.now()). Kept OUTSIDE the snapshot:
+ *  refreshing it on a same-answer publish must not change the object
+ *  useSyncExternalStore compares — that would re-render every subscriber for
+ *  an identical answer without telling them (review of #141). */
+let confirmedAt = 0;
 const subscribers = new Set<() => void>();
 
 function notify(): void {
@@ -75,17 +77,17 @@ export function publishGarage(userId: string, vehicles: SavedVehicle[]): void {
     JSON.stringify(cached.vehicles) === JSON.stringify(vehicles)
   ) {
     // Same answer: refresh its age without waking anyone.
-    cached = { ...cached, publishedAt: Date.now() };
+    confirmedAt = Date.now();
     return;
   }
-  cached = { userId, count: vehicles.length, vehicles, publishedAt: Date.now() };
+  cached = { userId, count: vehicles.length, vehicles };
+  confirmedAt = Date.now();
   notify();
 }
 
 /** True when this user's cached garage was loaded within maxAgeMs. */
 export function isGarageFresh(userId: string | null, maxAgeMs: number): boolean {
-  const garage = garageFor(userId);
-  return garage !== null && Date.now() - garage.publishedAt <= maxAgeMs;
+  return garageFor(userId) !== null && Date.now() - confirmedAt <= maxAgeMs;
 }
 
 /**

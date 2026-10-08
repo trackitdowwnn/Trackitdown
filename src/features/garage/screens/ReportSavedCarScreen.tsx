@@ -20,14 +20,18 @@
  */
 
 import { useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { spacing } from '@/shared/theme';
 import { Button, EmptyState, ErrorState, Screen } from '@/shared/ui';
 
 import { PrefilledReport } from '../components/PrefilledReport';
+import { ReportHeader } from '../components/ReportHeader';
 import { ReportPending } from '../components/ReportPending';
+import { StageCover } from '../components/StageCover';
 import { useMyVehicles } from '../hooks/useMyVehicles';
+import type { SavedVehicle } from '../types';
 
 /**
  * Both failure exits land on the BLANK wizard, never back on the "which car?"
@@ -44,74 +48,92 @@ export interface ReportSavedCarScreenProps {
 
 export function ReportSavedCarScreen({ vehicleId }: ReportSavedCarScreenProps) {
   const router = useRouter();
+  const goBack = useCallback(() => router.back(), [router]);
   const { status, vehicles, retry } = useMyVehicles();
-  const vehicle = vehicles.find((v) => v.id === vehicleId);
+  const found = vehicles.find((v) => v.id === vehicleId);
 
-  if (status === 'loading') {
-    return <ReportPending onBack={() => router.back()} />;
+  // ⚠️ ONCE THE REPORT IS SHOWN, IT STAYS (review of #141). The garage cache
+  // is dropped the moment the post is created (so the next + won't offer this
+  // car again), which sends useMyVehicles back to 'loading' — mid-payment.
+  // Without this the form would be swapped for a loader, then for "Already
+  // reported", under someone's finger. Held as state, set during render
+  // (guarded by its own condition, so it settles).
+  const [reporting, setReporting] = useState<SavedVehicle | null>(null);
+  if (reporting === null && status === 'ready' && found && !found.isCurrentlyPosted) {
+    setReporting(found);
   }
+  const vehicle = reporting ?? found;
 
-  // A FAILED LOAD IS NOT A MISSING CAR. useMyVehicles returns ready-and-empty on
-  // error, so without this branch a network blip would tell someone whose car
-  // has just been stolen that their saved car was deleted — untrue, and the
-  // worst possible sentence at the worst possible moment.
-  if (status === 'error') {
-    return (
-      <Screen>
-        <View style={styles.state}>
-          <ErrorState body="We couldn't load your cars." onRetry={retry} />
-          <Button
-            label="Report a stolen car from scratch"
-            variant="ghost"
-            onPress={() => router.replace(BLANK_POST_AFTER_PREFILL_FAILURE)}
-          />
-        </View>
-      </Screen>
-    );
-  }
+  const stage = reporting
+    ? 'report'
+    : status === 'loading'
+      ? 'pending'
+      : status === 'error'
+        ? 'error'
+        : !vehicle
+          ? 'gone'
+          : 'posted';
 
-  // Genuinely gone — removed on another device, say.
-  if (!vehicle) {
-    return (
-      <Screen>
-        <View style={styles.state}>
-          <EmptyState
-            title="We couldn't find that car"
-            body="It may have been removed from My cars. You can still report a car stolen from scratch."
-            actionLabel="Report a stolen car"
-            onAction={() => router.replace(BLANK_POST_AFTER_PREFILL_FAILURE)}
-          />
-        </View>
-      </Screen>
-    );
-  }
-
-  if (vehicle.isCurrentlyPosted) {
-    return (
-      <Screen>
-        <View style={styles.state}>
-          <EmptyState
-            title="Already reported"
-            body="This car already has a live listing — you can keep updating it there."
-            actionLabel="View the listing"
-            onAction={() =>
-              vehicle.activePostId
-                ? router.replace(`/post/${vehicle.activePostId}`)
-                : router.replace('/my-cars')
-            }
-          />
-        </View>
-      </Screen>
-    );
-  }
-
-  return <PrefilledReport vehicle={vehicle} />;
+  return (
+    <StageCover stageKey={stage}>
+      {reporting ? (
+        <PrefilledReport vehicle={reporting} />
+      ) : stage === 'pending' ? (
+        <ReportPending onBack={goBack} />
+      ) : stage === 'error' ? (
+        // A FAILED LOAD IS NOT A MISSING CAR. Without this branch a network
+        // blip would tell someone whose car has just been stolen that their
+        // saved car was deleted — untrue, and the worst possible sentence at
+        // the worst possible moment.
+        <Screen>
+          <ReportHeader onBack={goBack} />
+          <View style={styles.state}>
+            <ErrorState body="We couldn't load your saved cars." onRetry={retry} />
+            <Button
+              label="Report a stolen car from scratch"
+              variant="ghost"
+              onPress={() => router.replace(BLANK_POST_AFTER_PREFILL_FAILURE)}
+            />
+          </View>
+        </Screen>
+      ) : stage === 'gone' ? (
+        // Genuinely gone — removed on another device, say.
+        <Screen>
+          <ReportHeader onBack={goBack} />
+          <View style={styles.state}>
+            <EmptyState
+              title="We couldn't find that car"
+              body="It may have been removed from My cars. You can still report a car stolen from scratch."
+              actionLabel="Report a stolen car"
+              onAction={() => router.replace(BLANK_POST_AFTER_PREFILL_FAILURE)}
+            />
+          </View>
+        </Screen>
+      ) : (
+        <Screen>
+          <ReportHeader onBack={goBack} />
+          <View style={styles.state}>
+            <EmptyState
+              title="Already reported"
+              body="This car already has a live listing — you can keep updating it there."
+              actionLabel="View the listing"
+              onAction={() =>
+                vehicle?.activePostId
+                  ? router.replace(`/post/${vehicle.activePostId}`)
+                  : router.replace('/my-cars')
+              }
+            />
+          </View>
+        </Screen>
+      )}
+    </StageCover>
+  );
 }
 
 const styles = StyleSheet.create({
   state: {
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.lg,
     gap: spacing.md,
   },
 });

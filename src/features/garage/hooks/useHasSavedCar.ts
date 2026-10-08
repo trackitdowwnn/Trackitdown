@@ -28,7 +28,6 @@ import { useSession } from '@/features/auth';
 
 import { loadGarage } from '../lib/loadGarage';
 import {
-  garageFor,
   getSavedCarSnapshot,
   invalidateSavedCarSignal,
   subscribeToSavedCarSignal,
@@ -44,12 +43,18 @@ export interface UseHasSavedCarOptions {
 export function useHasSavedCar({ enabled }: UseHasSavedCarOptions): SavedCarState {
   const session = useSession();
   const userId = session.status === 'signedIn' ? session.userId : null;
-  // Subscribed so a publish re-renders; read through garageFor so another
+  // Subscribed so a publish re-renders; keyed by user so another
   // user's cached answer is never an answer. Guests are 'unknown' rather than
   // 'none' (unlike useMyVehicles, which reports them as ready-and-empty) —
   // treating a signed-out user as having no cars would nudge them to save one.
-  useSyncExternalStore(subscribeToSavedCarSignal, getSavedCarSnapshot);
-  const known = garageFor(userId);
+  //
+  // ⚠️ READ THE SNAPSHOT THE STORE HANDS BACK — never re-read the module in
+  // render. The React Compiler memoises a plain `garageFor(userId)` call on
+  // `userId`, so a publish would re-render this hook and still return the old
+  // answer: nudges stuck on 'unknown', or a 'none' outliving the car just
+  // added (review of #141 — the same trap as a render-time clock).
+  const snapshot = useSyncExternalStore(subscribeToSavedCarSignal, getSavedCarSnapshot);
+  const known = userId !== null && snapshot?.userId === userId ? snapshot : null;
 
   useEffect(() => {
     if (!enabled || !userId || known) {

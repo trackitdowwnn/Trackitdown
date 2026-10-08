@@ -49,6 +49,14 @@ jest.mock('@/shared/lib/logger', () => ({
   }),
 }));
 
+// Signed in unless a test says otherwise; the gate is only for guests.
+let mockSession: { status: string; userId: string | null } = { status: 'signedIn', userId: 'u1' };
+const mockRequireAuth = jest.fn();
+jest.mock('@/features/auth', () => ({
+  useSession: () => mockSession,
+  useRequireAuth: () => mockRequireAuth,
+}));
+
 const mockRetry = jest.fn();
 let mockVehicles: { status: string; vehicles: SavedVehicle[]; retry: () => void };
 jest.mock('../hooks/useMyVehicles', () => ({
@@ -105,6 +113,7 @@ const renderScreen = () => act(async () => render(<StartReportScreen />));
 beforeEach(() => {
   jest.clearAllMocks();
   mockParams = {};
+  mockSession = { status: 'signedIn', userId: 'u1' };
   mockVehicles = { status: 'ready', vehicles: [vehicle()], retry: mockRetry };
 });
 
@@ -317,7 +326,36 @@ describe('the escapes', () => {
   });
 });
 
+describe('a guest who arrives without the + button (a deep link)', () => {
+  it('is shown the sign-in sheet, never the form', async () => {
+    mockSession = { status: 'signedOut', userId: null };
+    mockVehicles = { status: 'ready', vehicles: [], retry: mockRetry };
+    const { queryByTestId, getByTestId } = await renderScreen();
+
+    expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'post_car' });
+    expect(queryByTestId('blank-report')).toBeNull();
+    expect(getByTestId('report-pending')).toBeTruthy();
+  });
+});
+
 describe('a stage once shown stays for the visit', () => {
+  it('a chooser left with nothing to offer gives way to the blank report', async () => {
+    const view = await renderScreen();
+    expect(view.getByText('Which car?')).toBeTruthy();
+
+    mockVehicles = {
+      status: 'ready',
+      vehicles: [vehicle({ isCurrentlyPosted: true, activePostId: 'p1' })],
+      retry: mockRetry,
+    };
+    await act(async () => {
+      view.rerender(<StartReportScreen />);
+    });
+    expect(view.getByTestId('blank-report')).toBeTruthy();
+    expect(view.queryByText('Which car?')).toBeNull();
+  });
+
+
   it('a revalidation that finds cars never yanks away the blank form', async () => {
     mockVehicles = { status: 'ready', vehicles: [], retry: mockRetry };
     const view = await renderScreen();
