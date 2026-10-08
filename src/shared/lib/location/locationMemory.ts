@@ -1,6 +1,7 @@
 /**
  * WHAT:  forgetLocationMemory — clears every in-memory location cache the app
- *        keeps for speed (the place-label lookups, the map-centre read-ahead).
+ *        keeps for speed (the place-label lookups, the map-centre read-ahead,
+ *        the reward guidance per area).
  *        Each cache registers its own clear when its module loads.
  * WHY:   A deliberate sign-out and an account deletion are the hand-over
  *        points for a shared or sold phone (SECURITY_AND_TRUST §3), and they
@@ -10,6 +11,7 @@
  *        direct imports keeps the caller (profileApi) off expo-location and
  *        storage: a cache whose module never loaded has nothing to forget.
  * LINKS: ./placeLabels.ts; ./useDefaultMapCentre.ts;
+ *        src/features/vehicles/post/api/bountyGuidanceApi.ts;
  *        src/features/profile/api/profileApi.ts (signOut, requestAccountDeletion).
  */
 

@@ -32,6 +32,7 @@
 
 import { z } from 'zod';
 
+import { getCurrentUserId } from '@/features/auth';
 import { supabase } from '@/shared/api';
 import { registerLocationMemory } from '@/shared/lib/location/locationMemory';
 import { createLogger } from '@/shared/lib/logger';
@@ -67,8 +68,11 @@ const GRID = 0.01;
 function snap(value: number): number {
   return Math.round(value / GRID) * GRID;
 }
+/** Per ACCOUNT as well as per area: the RPC leaves out the caller's own
+ *  listings, so one account's answer is not another's — and a session that
+ *  merely expires never runs the sign-out clear (security review of #143). */
 function cacheKey(latitude: number, longitude: number): string {
-  return `${snap(latitude).toFixed(2)},${snap(longitude).toFixed(2)}`;
+  return `${getCurrentUserId() ?? '-'}:${snap(latitude).toFixed(2)},${snap(longitude).toFixed(2)}`;
 }
 
 /** How long an answer stays good. Short: it is per-caller (the RPC leaves out

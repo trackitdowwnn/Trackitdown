@@ -104,8 +104,10 @@ describe('LastSeenWhereStep', () => {
         jest.advanceTimersByTime(1000);
       });
       expect(mockWarm).toHaveBeenCalledWith({ latitude: 53.4, longitude: -2.2 });
-      // …and the reward guidance, so it is there when the reward step arrives.
-      expect(mockWarmGuidance).toHaveBeenCalledWith(53.4, -2.2);
+      // NOT the reward guidance: that is a server call, and waits for the
+      // owner to confirm the point (the flow's onContinue — security review
+      // of #143).
+      expect(mockWarmGuidance).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

@@ -45,7 +45,8 @@ doing you a favour.
   must not skip the next step), it is off under assistive technology
   (`useAssistiveTechEnabled`), and it NEVER fires on the submitting screen
   (there, Next is a payment — which also ignores its button for 300ms after
-  arriving).
+  arriving) or on an edit spur (Done there can return to review, putting the
+  payment button under the thumb).
 - **An edit from review continues to what it broke.** Done visits the first
   required step the answers no longer satisfy (changing the make clears the
   model) before returning to review, still on the spur: Done again, and Back

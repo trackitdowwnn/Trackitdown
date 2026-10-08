@@ -32,7 +32,7 @@ import type { WizardFlow } from '@/shared/wizard';
 
 import { motion } from '@/shared/theme/motion';
 
-import { fetchBountyGuidance } from './api/bountyGuidanceApi';
+import { fetchBountyGuidance, warmBountyGuidance } from './api/bountyGuidanceApi';
 import { ReviewCostPanel } from './components/ReviewCostPanel';
 import {
   PREVIEW_EDIT_STEP_ID,
@@ -148,6 +148,12 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           // back to "your area".
           onContinue: async (answers) => {
             if (!answers.location) return;
+            // The owner has CONFIRMED this point: start the reward guidance
+            // now, two screens ahead of the reward step, so it is there when
+            // that step arrives. Not before — it is a server call, and an
+            // unconfirmed opening point is just where the phone was
+            // (security review of #143). Sent snapped to ~1km.
+            warmBountyGuidance(answers.location.latitude, answers.location.longitude);
             return { lastSeenLocality: await deriveLocalityForCoord(answers.location) };
           },
         },

@@ -358,14 +358,21 @@ export function useWizardController<TAnswers>(
   //
   // ⚠️ AND NEVER FROM THE SUBMITTING SCREEN. There `advance` runs onComplete
   // — on Post a car, "Post & pay". A pick must never become a payment.
+  //
+  // ⚠️ NOR ON AN EDIT SPUR (security review of #143). Done there can return
+  // to review, putting "Post & pay" exactly where "Done" was a moment before
+  // — a tap meant for Done would become a payment request. On a spur the
+  // owner presses Done themselves.
   const assistiveTech = useAssistiveTechEnabled();
-  const latestRef = useRef({ canGoNext, advance, isLastScreen, assistiveTech });
+  const editing = nav.returnToIndex !== null;
+  const latestRef = useRef({ canGoNext, advance, isLastScreen, assistiveTech, editing });
   useEffect(() => {
-    latestRef.current = { canGoNext, advance, isLastScreen, assistiveTech };
+    latestRef.current = { canGoNext, advance, isLastScreen, assistiveTech, editing };
   });
   const advanceSoon = useCallback(
     (delayMs: number = motion.autoAdvanceBeat) => {
-      if (!mountedRef.current || latestRef.current.assistiveTech) return;
+      const now = latestRef.current;
+      if (!mountedRef.current || now.assistiveTech || now.editing) return;
       cancelAutoAdvance();
       const fire = () => {
         autoTimer.current = null;
@@ -375,7 +382,9 @@ export function useWizardController<TAnswers>(
         }
         const latest = latestRef.current;
         // Re-checked at fire time: any of these can change during the beat.
-        if (!latest.canGoNext || latest.isLastScreen || latest.assistiveTech) return;
+        if (!latest.canGoNext || latest.isLastScreen || latest.assistiveTech || latest.editing) {
+          return;
+        }
         autoMoveRef.current = true;
         void latest.advance().finally(() => {
           autoMoveRef.current = false;

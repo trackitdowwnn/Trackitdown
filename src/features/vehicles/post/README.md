@@ -37,8 +37,9 @@ never opens one person's last-seen location for the next.
 > body type move on by themselves** a beat after the pick (`advanceSoon`):
 > not for "Multicolour / wrapped" or "Other", which open a note; not under a
 > screen reader or (Android) any accessibility service; never from the
-> submitting screen. The reward guidance and the place label are asked for
-> once the map pin rests, and choosing a reward waits up to
+> submitting screen, nor on an edit from review (Done there can land on "Post
+> & pay"). The place label is warmed once the map pin rests; the reward
+> guidance once the owner confirms that point; and choosing a reward waits up to
 > `motion.skeletonGrace` for the guidance, so the reward step arrives with it
 > (a late answer fades in; no placeholder holds a gap open for it).
 

@@ -25,7 +25,6 @@ import { BadgePoundSterling, Megaphone } from 'lucide-react-native';
 
 import { LastSeenTimeField } from './LastSeenTimeField';
 import { reachAtChosen } from '../lib/bountyRecommendation';
-import { warmBountyGuidance } from '../api/bountyGuidanceApi';
 import { useBountyGuidance } from '../hooks/useBountyGuidance';
 import {
   BOUNTY_SNAP_STEPS,
@@ -266,9 +265,9 @@ export function LastSeenWhereStep({ answers, setAnswers, settled = true }: StepP
   // Warm the PUBLIC-grain lookup Next will need (onContinue) once the pin has
   // RESTED — not on every settle of a pan: the picker already geocodes each
   // settle for its own label, and Apple rate-limits its geocoder (review of
-  // #142). A Next pressed sooner simply does its own lookup. The reward
-  // guidance, a few screens on, is asked for at the same moment, so it is
-  // simply there when that step arrives instead of popping in.
+  // #142). A Next pressed sooner simply does its own lookup. (Nothing leaves
+  // the device for this: it is the OS geocoder. The reward guidance — a
+  // server call — waits for the owner to confirm the point; see the flow.)
   const warmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -281,7 +280,6 @@ export function LastSeenWhereStep({ answers, setAnswers, settled = true }: StepP
     warmTimer.current = setTimeout(() => {
       warmTimer.current = null;
       warmPlaceLabels(point);
-      warmBountyGuidance(point.latitude, point.longitude);
     }, PIN_REST_MS);
   };
 

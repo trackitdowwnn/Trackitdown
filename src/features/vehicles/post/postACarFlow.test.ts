@@ -31,8 +31,13 @@ import type { PostACarAnswers } from './types';
 // lib/bountyBounds has no imports at all, so requiring it here pulls in none of
 // the native graph this mock exists to avoid.
 const mockFetchGuidance = jest.fn();
+const mockWarmGuidance = jest.fn();
 jest.mock('./api/bountyGuidanceApi', () => ({
   fetchBountyGuidance: (lat: number, lng: number) => mockFetchGuidance(lat, lng),
+  warmBountyGuidance: (lat: number, lng: number) => mockWarmGuidance(lat, lng),
+}));
+jest.mock('@/shared/lib/location/placeLabels', () => ({
+  deriveLocalityForCoord: async () => 'City Centre',
 }));
 
 jest.mock('./components/postSteps', () => ({
@@ -136,6 +141,14 @@ describe('postACarFlow structure', () => {
     // Mode not chosen yet: the step stays visible, so a half-filled flow never
     // silently skips the money question.
     expect(visible({})).toBe(true);
+  });
+
+  // Security review of #143: the guidance is a server call, so it starts when
+  // the owner CONFIRMS the last-seen point — not while the pin merely rests.
+  it('starts the reward guidance when the last-seen point is confirmed', async () => {
+    const LOCATION = { latitude: 53.4, longitude: -2.2, addressLabel: 'x' };
+    await stepById('last-seen-where').onContinue!({ location: LOCATION });
+    expect(mockWarmGuidance).toHaveBeenCalledWith(53.4, -2.2);
   });
 
   // 2026-10-08: so the reward step arrives WITH its guidance.

@@ -21,6 +21,9 @@ const mockRpc = jest.fn();
 jest.mock('@/shared/api', () => ({
   supabase: { rpc: (...args: unknown[]) => mockRpc(...args) },
 }));
+let mockUser: string | null = 'u1';
+jest.mock('@/features/auth', () => ({ getCurrentUserId: () => mockUser }));
+
 jest.mock('@/shared/lib/logger', () => ({
   createLogger: () => ({ info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() }),
 }));
@@ -32,6 +35,7 @@ const PAYLOAD = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUser = 'u1';
   resetBountyGuidanceCache();
   mockRpc.mockResolvedValue({ data: PAYLOAD, error: null });
 });
@@ -80,6 +84,15 @@ describe('bounty guidance cache', () => {
     } finally {
       now.mockRestore();
     }
+  });
+
+  // Security review of #143: the RPC leaves out the caller's own listings.
+  it('never serves one account’s answer to another', async () => {
+    await fetchBountyGuidance(53.4794, -2.2453);
+    mockUser = 'u2';
+    expect(peekBountyGuidance(53.4794, -2.2453)).toBeUndefined();
+    await fetchBountyGuidance(53.4794, -2.2453);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
   });
 
   it('never throws — not even when the client throws synchronously', async () => {

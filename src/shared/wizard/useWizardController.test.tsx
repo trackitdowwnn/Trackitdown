@@ -288,6 +288,23 @@ describe('an edit from review that breaks another answer', () => {
     expect(result.current.screenIndex).toBe(2); // back on review
   });
 
+  // Security review of #143: Done can return to review, putting "Post & pay"
+  // where "Done" was — so on a spur the owner presses Done themselves.
+  it('⚠️ never auto-advances on an edit — a tap meant for Done must not land on pay', async () => {
+    jest.useFakeTimers();
+    try {
+      const { result } = await onReviewEditingMake();
+      await act(async () => result.current.setAnswers({ make: 'BMW', model: '320d' })); // nothing broken
+      await act(async () => result.current.advanceSoon());
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+      expect(result.current.screenIndex).toBe(0); // still on the spur
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('Back from there cancels the WHOLE edit — make and model restored', async () => {
     const { result } = await onReviewEditingMake();
     await act(async () => result.current.next()); // on to the model step

@@ -33,6 +33,7 @@ jest.mock('@/shared/ui', () => {
   };
 });
 jest.mock('@/shared/api', () => ({ supabase: {} }));
+jest.mock('@/features/auth', () => ({ getCurrentUserId: () => 'u1' }));
 jest.mock('@/shared/ui/AppMap', () => ({ AppMap: () => null }));
 jest.mock('@/shared/lib/location/expoLocationServices', () => ({ expoLocationServices: {} }));
 jest.mock('@/shared/lib/location/useDefaultMapCentre', () => ({ useDefaultMapCentre: () => null }));
