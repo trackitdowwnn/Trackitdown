@@ -15,6 +15,8 @@
 import * as Location from 'expo-location';
 
 import type { EvidencePhoto } from '@/shared/ui';
+import { resetPlaceLabelCache } from '@/shared/lib/location/placeLabels';
+
 import { deriveAreaLabel, derivePlaceLabels, isApproximateFix } from './areaLabel';
 
 jest.mock('expo-location', () => ({
@@ -42,6 +44,9 @@ const place = (fields: Record<string, string | null>) => [
 ];
 
 beforeEach(() => {
+  // placeLabels remembers answers per point (2026-10-08); each case here
+  // geocodes the same point with a different result.
+  resetPlaceLabelCache();
   mockGeocode.mockReset();
 });
 
@@ -72,6 +77,7 @@ describe('derivePlaceLabels', () => {
     const labels = await derivePlaceLabels([locatedPhoto]);
     expect(labels.locality).toHaveLength(80);
 
+    resetPlaceLabelCache(); // same point, a different answer
     mockGeocode.mockResolvedValue(place({ subregion: 'Greater London' }));
     expect((await derivePlaceLabels([locatedPhoto])).locality).toBe('Greater London');
   });

@@ -19,6 +19,7 @@ import {
   invalidStepIds,
   phaseProgress,
   resolveQuestion,
+  transitionKind,
   reviewGroups,
   wizardReducer,
   type WizardNavState,
@@ -83,11 +84,18 @@ const screens = flattenFlow(flow);
 const ALL_VISIBLE = screens.map(() => true);
 const REVIEW_INDEX = 5;
 
+/** A SETTLED state on `index` (what's on screen is what's current). */
 function navState(
   index: number,
   returnToIndex: number | null = null,
   direction: 1 | -1 = 1,
 ): WizardNavState {
+  return { index, returnToIndex, direction, shownIndex: index, previousIndex: index };
+}
+
+/** Where a move points — compared without the on-screen fields, which only
+ *  'settle' changes. */
+function target(index: number, returnToIndex: number | null = null, direction: 1 | -1 = 1) {
   return { index, returnToIndex, direction };
 }
 
@@ -112,18 +120,18 @@ describe('flattenFlow', () => {
 describe('wizardReducer', () => {
   it('advances one screen on next', () => {
     expect(wizardReducer(INITIAL_NAV_STATE, { type: 'next', visible: ALL_VISIBLE }))
-      .toEqual(navState(1));
+      .toMatchObject(target(1));
   });
 
   it('does not advance past the last screen', () => {
     expect(
       wizardReducer(navState(REVIEW_INDEX), { type: 'next', visible: ALL_VISIBLE }),
-    ).toEqual(navState(REVIEW_INDEX));
+    ).toMatchObject(target(REVIEW_INDEX));
   });
 
   it('goes back one screen and never below the first', () => {
-    expect(wizardReducer(navState(2), { type: 'back', visible: ALL_VISIBLE })).toEqual(navState(1, null, -1));
-    expect(wizardReducer(navState(0), { type: 'back', visible: ALL_VISIBLE })).toEqual(navState(0, null, -1));
+    expect(wizardReducer(navState(2), { type: 'back', visible: ALL_VISIBLE })).toMatchObject(target(1, null, -1));
+    expect(wizardReducer(navState(0), { type: 'back', visible: ALL_VISIBLE })).toMatchObject(target(0, null, -1));
   });
 
   it('jumps from review to the edited step and remembers where to return', () => {
@@ -132,7 +140,7 @@ describe('wizardReducer', () => {
       targetIndex: 1,
       reviewIndex: REVIEW_INDEX,
     });
-    expect(editing).toEqual(navState(1, REVIEW_INDEX, -1));
+    expect(editing).toMatchObject(target(1, REVIEW_INDEX, -1));
   });
 
   it('returns to review when the edited step completes, not forward', () => {
@@ -140,12 +148,12 @@ describe('wizardReducer', () => {
       type: 'next',
       visible: ALL_VISIBLE,
     });
-    expect(afterEdit).toEqual(navState(REVIEW_INDEX));
+    expect(afterEdit).toMatchObject(target(REVIEW_INDEX));
   });
 
   it('returns to review when the user backs out of an edit', () => {
     const cancelled = wizardReducer(navState(1, REVIEW_INDEX), { type: 'back', visible: ALL_VISIBLE });
-    expect(cancelled).toEqual(navState(REVIEW_INDEX, null, -1));
+    expect(cancelled).toMatchObject(target(REVIEW_INDEX, null, -1));
   });
 
   // A step whose `when` says to walk past it. Positions are NOT renumbered —
@@ -155,23 +163,23 @@ describe('wizardReducer', () => {
     const hidden1 = ALL_VISIBLE.map((_, index) => index !== 1);
 
     it('next skips it', () => {
-      expect(wizardReducer(navState(0), { type: 'next', visible: hidden1 })).toEqual(
-        navState(2),
+      expect(wizardReducer(navState(0), { type: 'next', visible: hidden1 })).toMatchObject(
+        target(2),
       );
     });
 
     it('back skips it too, so Back is not a trap', () => {
       // The bug this prevents: Back lands on a hidden step, which is skipped
       // forward again, and the user can never get behind it.
-      expect(wizardReducer(navState(2), { type: 'back', visible: hidden1 })).toEqual(
-        navState(0, null, -1),
+      expect(wizardReducer(navState(2), { type: 'back', visible: hidden1 })).toMatchObject(
+        target(0, null, -1),
       );
     });
 
     it('skips a whole run of hidden steps', () => {
       const hidden12 = ALL_VISIBLE.map((_, index) => index !== 1 && index !== 2);
-      expect(wizardReducer(navState(0), { type: 'next', visible: hidden12 })).toEqual(
-        navState(3),
+      expect(wizardReducer(navState(0), { type: 'next', visible: hidden12 })).toMatchObject(
+        target(3),
       );
     });
 
@@ -181,15 +189,69 @@ describe('wizardReducer', () => {
         targetIndex: 1,
         reviewIndex: REVIEW_INDEX,
       });
-      expect(editing).toEqual(navState(1, REVIEW_INDEX, -1));
+      expect(editing).toMatchObject(target(1, REVIEW_INDEX, -1));
     });
 
     it('stays put rather than running off the end when the way is all hidden', () => {
       const noneVisible = ALL_VISIBLE.map(() => false);
       expect(
         wizardReducer(navState(0), { type: 'next', visible: noneVisible }),
-      ).toEqual(navState(1));
+      ).toMatchObject(target(1));
     });
+  });
+});
+
+// 2026-10-08: a move takes two commits, so the leaving screen re-renders with
+// the exit for the way it is actually going before it is swapped out.
+describe('settling a move', () => {
+  it('a move points at the new screen but leaves the old one on screen', () => {
+    const moved = wizardReducer(navState(2), { type: 'back', visible: ALL_VISIBLE });
+    expect(moved.index).toBe(1);
+    expect(moved.direction).toBe(-1);
+    expect(moved.shownIndex).toBe(2); // still keyed: it re-renders with its exit
+  });
+
+  it('settle swaps it in and remembers what it replaced', () => {
+    const moved = wizardReducer(navState(2), { type: 'back', visible: ALL_VISIBLE });
+    const settled = wizardReducer(moved, { type: 'settle' });
+    expect(settled).toMatchObject({ index: 1, shownIndex: 1, previousIndex: 2, direction: -1 });
+  });
+
+  it('settle with nothing to swap is a no-op (same object, no re-render)', () => {
+    const state = navState(3);
+    expect(wizardReducer(state, { type: 'settle' })).toBe(state);
+  });
+
+  it('a reset settles like any other move', () => {
+    const reset = wizardReducer(navState(4, REVIEW_INDEX), { type: 'reset' });
+    expect(reset).toMatchObject({ index: 0, returnToIndex: null, shownIndex: 4 });
+    expect(wizardReducer(reset, { type: 'settle' }).shownIndex).toBe(0);
+  });
+});
+
+describe('transitionKind', () => {
+  const mapFlow: WizardFlow<DemoAnswers> = {
+    ...flow,
+    phases: [
+      {
+        ...flow.phases[0],
+        steps: [flow.phases[0].steps[0], { ...flow.phases[0].steps[1], fills: true }],
+      },
+      flow.phases[1],
+    ],
+  };
+  // intro(0), name(1), colour-as-map(2), intro(3), newsletter(4), review(5)
+  const mapScreens = flattenFlow(mapFlow);
+
+  it('slides between two ordinary screens', () => {
+    expect(transitionKind(mapScreens, 0, 1)).toBe('slide');
+    expect(transitionKind(mapScreens, 4, 3)).toBe('slide');
+  });
+
+  it('fades whenever a full-bleed (fills) step is at either end', () => {
+    expect(transitionKind(mapScreens, 1, 2)).toBe('fade');
+    expect(transitionKind(mapScreens, 2, 3)).toBe('fade');
+    expect(transitionKind(mapScreens, 3, 2)).toBe('fade');
   });
 });
 
@@ -421,7 +483,7 @@ describe('intro-less phases (speed flows)', () => {
   it('the last step carries the final CTA', () => {
     const speedScreens = flattenFlow(speedFlow);
     expect(
-      ctaLabel(speedFlow, speedScreens, { index: 1, returnToIndex: null, direction: 1 }, {}),
+      ctaLabel(speedFlow, speedScreens, navState(1), {}),
     ).toBe('Send report');
   });
 

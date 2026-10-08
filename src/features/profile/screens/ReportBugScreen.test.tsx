@@ -23,6 +23,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert, StyleSheet } from 'react-native';
+import * as Reanimated from 'react-native-reanimated';
 
 import { paletteFor } from '@/shared/theme/colors';
 
@@ -134,6 +135,9 @@ const FULL = {
 };
 
 beforeEach(() => {
+  // Reduced motion: these walk the form Next-Next-Next faster than any thumb,
+  // and each wizard move otherwise locks navigation for its transition.
+  jest.spyOn(Reanimated, 'useReducedMotion').mockReturnValue(true);
   jest.clearAllMocks();
   mockCanGoBack.mockReturnValue(true);
   mockRead.mockReturnValue(FULL);
@@ -150,6 +154,14 @@ beforeEach(() => {
  * review screen. This helper IS the product claim — if it ever needs more
  * presses, the three-tap report is gone.
  */
+/** The submitting screen ignores its button for a moment after arriving (a
+ *  double-tapped Next must not become a submit — useWizardController's
+ *  SUBMIT_ARM_MS). A person never presses that fast; wait as one would. */
+const waitForSubmitArm = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 320));
+  });
+
 async function walkToReview(view: Awaited<ReturnType<typeof render>>, message: string) {
   await act(async () => {
     fireEvent.changeText(view.getByTestId('report-bug-message'), message);
@@ -174,6 +186,7 @@ describe('the fast path', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -200,6 +213,7 @@ describe('the fast path', () => {
 
     expect(mockShowToast).not.toHaveBeenCalled();
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -213,6 +227,7 @@ describe('the fast path', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -231,6 +246,7 @@ describe('the fast path', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -246,6 +262,7 @@ describe('the fast path', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -264,6 +281,7 @@ describe('the fast path', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -279,6 +297,7 @@ describe('the fast path', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'My card was declined at checkout');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -296,6 +315,7 @@ describe('⚠️ the two refusals', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'This is still broken again today');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -320,6 +340,7 @@ describe('⚠️ the two refusals', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'I cannot sign in on my phone');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -434,6 +455,7 @@ describe('⚠️ screenshots', () => {
     await act(async () => {
       fireEvent.press(view.getByText('Next'));
     });
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -471,6 +493,7 @@ describe('what the triage answers carry', () => {
     await act(async () => {
       fireEvent.press(view.getByText('Next'));
     });
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -490,6 +513,7 @@ describe('what the triage answers carry', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'I cannot tell what went wrong');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -504,6 +528,7 @@ describe('what the triage answers carry', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'I arrived here from a deep link');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -522,6 +547,7 @@ describe('⚠️ when the send fails', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -546,6 +572,7 @@ describe('⚠️ when the send fails', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -563,6 +590,7 @@ describe('⚠️ when the send fails', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'I cannot sign in on my phone');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });
@@ -597,6 +625,7 @@ describe('⚠️ when the send fails', () => {
     const view = await render(<ReportBugScreen />);
     await walkToReview(view, 'The map went blank when I opened it');
 
+    await waitForSubmitArm();
     await act(async () => {
       fireEvent.press(view.getByText('Send report'));
     });

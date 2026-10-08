@@ -24,7 +24,8 @@
  *        apart, but the difference must survive a reader who cannot separate
  *        them. `OnboardingDots.test.tsx` pins the width gap for that reason.
  *
- * ⚠️ NOT `shared/wizard/WizardProgressBar`, WHICH IS THE SAME PICTURE — a dot
+ * ⚠️ NOT `shared/wizard/WizardProgressBar`, WHICH WAS THE SAME PICTURE until
+ *        2026-10-08 (it is now a segmented bar that fills per step) — a dot
  *        row with the current slot stretched into a pill, on a screen whose own
  *        header argues the app's two stepped flows must not feel like different
  *        products. Reuse was considered and rejected on two counts:
@@ -41,13 +42,13 @@
  *           for the pill to worm across.
  *
  *        What IS shared is the geometry, deliberately: `progressDot` and
- *        `progressPill` are the same two tokens the wizard animates between, so
- *        the two rows cannot silently drift apart in size.
+ *        `progressPill` are the same two tokens the wizard used to animate
+ *        between, kept as the app's one dot-and-pill size.
  * LINKS: docs/design-refs/onboarding/ob2-life360-gold.jpg (the reference);
  *        docs/design-refs/onboarding/GAP_ANALYSIS.md;
  *        ../screens/OnboardingScreen.tsx (the only consumer);
- *        src/shared/wizard/WizardProgressBar.tsx (the same picture, not reused
- *          — see above);
+ *        src/shared/wizard/WizardProgressBar.tsx (once the same picture, not
+ *          reused — see above);
  *        src/shared/ui/ChoiceChipsMulti.tsx (the `textSecondary`-over-
  *          `surfaceSubtle` precedent, with these exact ratios).
  */

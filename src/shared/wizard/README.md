@@ -20,12 +20,28 @@ several questions per step and marks everything after the first `optional`,
 because unlike the other four its user is not motivated — they are annoyed and
 doing you a favour.
 
+**Moving between screens (2026-10-08 — "janky, slow and not smooth"):**
+
+- **A move takes two commits.** Reanimated plays a leaving view's `exiting`
+  from its LAST render, so the reducer moves `index` first and the screen
+  settles `shownIndex` in a layout effect — the leaving screen re-renders
+  knowing which way it is going (Back slides out right). Never paint between.
+- **A map (`fills`) step never animates;** its neighbour fades
+  (`transitionKind`).
+- **One move at a time.** Next, Back, Edit, a step's Skip and the hardware
+  back are ignored for the length of a move (`motion.standard`; never under
+  reduced motion). Steps get `settled` — the map waits for it before it
+  mounts.
+- **The keyboard drops on every move**, so it never closes mid-slide.
+- **Nothing replays on return:** each step body sits in
+  `<LayoutAnimationConfig skipEntering>`, so a step's own entrances only play
+  for what appears after it mounts.
+
 **Screen anatomy:** header row with the exit X top-left (dirty answers →
-discard confirmation → `router.back()`) and a compact dot-pill progress
-indicator top-right — one free-standing dot per phase (plus review),
-completed dots sage, upcoming sand, the current slot stretched into a pill
-that "worms" to the next slot on advance (the "Step 2 of 4" / "Review"
-wording is screen-reader-only); one question per screen (`display` typography,
+discard confirmation → `router.back()`) and a segmented progress bar beside
+it — one thin segment per phase, each filling a little with every step of its
+phase (the "Step 2 of 3" / "Review" wording is screen-reader-only; it animates
+on the UI thread and never on mount); one question per screen (`display` typography,
 `spacing.xl` padding); fixed keyboard/safe-area-aware footer with a ghost
 Back and a primary Next. Back is deliberately hidden on the first
 screen AND on phase intros — intros advance only (per the flow brief);

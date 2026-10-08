@@ -27,6 +27,13 @@
  *        writes back to it, and the two settings stay independent
  *        (feedLocationStorage's own header and the search-map README say the
  *        same). This is the consumer both of them were written for.
+ *
+ *        READ AHEAD (2026-10-08): the posting form calls
+ *        prefetchDefaultMapCentre() once its slide-up has finished, so by the
+ *        time someone reaches the map step a FOUND centre is already known
+ *        and the map opens on its first frame instead of after a beat of
+ *        placeholder. Only a found centre is reused, for PREFETCH_MAX_AGE_MS;
+ *        "nothing found" still runs the full chain (and its late fresh fix).
  * LINKS: src/features/notifications/screens/AlertWizardScreen.tsx and
  *        src/features/vehicles/post/components/postSteps.tsx (both callers —
  *        each holds a placeholder while status is 'resolving');
@@ -39,6 +46,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { getFreshPositionIfPermitted, getLastKnownPosition } from './expoLocationServices';
 import { loadFeedLocationPref } from './feedLocationStorage';
+import { registerLocationMemory } from './locationMemory';
 import type { GeoCoord } from '@/shared/types';
 
 export interface DefaultMapCentreState {
@@ -52,6 +60,53 @@ export interface DefaultMapCentreState {
 /** Longest the chain may take before we give up and open on the UK view.
  *  A GPS fix can hang indefinitely with no error; the wizard must not. */
 const RESOLVE_TIMEOUT_MS = 2000;
+
+/** How long a read-ahead centre stays good. Short, because on the posting
+ *  wizard the opening point is COMMITTED as the last-seen answer (it drives
+ *  the alert fan-out) — read ahead while the owner is on the first questions,
+ *  not from a visit ten minutes ago. */
+const PREFETCH_MAX_AGE_MS = 2 * 60 * 1000;
+
+let prefetched: { centre: GeoCoord; at: number } | null = null;
+let prefetching: Promise<void> | null = null;
+
+/**
+ * Resolve the opening centre ahead of the screen that needs it. Shared,
+ * bounded by RESOLVE_TIMEOUT_MS, never rejects, never prompts (the same
+ * non-prompting chain as the hook).
+ */
+export function prefetchDefaultMapCentre(): Promise<void> {
+  if (!prefetching) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), RESOLVE_TIMEOUT_MS);
+    });
+    prefetching = Promise.race([resolveCentre().catch(() => null), timeout])
+      .then((centre) => {
+        clearTimeout(timer);
+        if (centre) {
+          prefetched = { centre, at: Date.now() };
+        }
+      })
+      .finally(() => {
+        prefetching = null;
+      });
+  }
+  return prefetching;
+}
+
+/** A read-ahead centre still young enough to open on, or null. */
+function freshPrefetch(): GeoCoord | null {
+  return prefetched && Date.now() - prefetched.at <= PREFETCH_MAX_AGE_MS ? prefetched.centre : null;
+}
+
+/** Forget the read-ahead — on a deliberate sign-out (forgetLocationMemory),
+ *  and in tests. */
+export function resetDefaultMapCentrePrefetch(): void {
+  prefetched = null;
+  prefetching = null;
+}
+registerLocationMemory(resetDefaultMapCentrePrefetch);
 
 async function resolveCentre(): Promise<GeoCoord | null> {
   // 1. The fix the OS already has. NOT a fresh one: measured on the test
@@ -83,10 +138,13 @@ async function resolveCentre(): Promise<GeoCoord | null> {
  *   so a pointless permission read and GPS fix never run.
  */
 export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
-  const [state, setState] = useState<DefaultMapCentreState>(() => ({
-    status: enabled ? 'resolving' : 'ready',
-    centre: null,
-  }));
+  // A read-ahead centre opens the map on its first frame (see the header).
+  // Read ONCE: two reads could straddle the expiry and disagree.
+  const [ahead] = useState(() => (enabled ? freshPrefetch() : null));
+  const startedReady = ahead !== null;
+  const [state, setState] = useState<DefaultMapCentreState>(() =>
+    ahead ? { status: 'ready', centre: ahead } : { status: enabled ? 'resolving' : 'ready', centre: null },
+  );
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -97,7 +155,7 @@ export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
   }, []);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || startedReady) {
       return;
     }
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -132,9 +190,12 @@ export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
       // fix lands. 3-10s on a real handset, and it never prompts (see
       // getFreshPositionIfPermitted's SAFETY note).
       //
-      // The camera moves; nothing is SETTLED. A late centre must never become a
-      // chosen point — on the last-seen step that would turn "wherever the phone
-      // was" into a claim other people act on. LocationPicker enforces that end.
+      // By default the camera moves and nothing is SETTLED: a late centre is
+      // not a chosen point. With `commitInitialCentre` (the post wizard's
+      // last-seen step) it DOES become the answer — the same product call as
+      // the opening centre (2026-09-28), and a fresh fix is where the phone is
+      // now — but never over a point the owner chose or a pan in progress.
+      // LocationPicker enforces both.
       const fresh = await getFreshPositionIfPermitted().catch(() => null);
       if (cancelled || !fresh || !mountedRef.current) return;
       setState((current) =>
@@ -148,7 +209,7 @@ export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [enabled]);
+  }, [enabled, startedReady]);
 
   return state;
 }

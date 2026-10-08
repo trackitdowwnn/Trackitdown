@@ -5,6 +5,8 @@
  *        confirmation, and the async primary-button path (`advance`, `busy`,
  *        `error`) that runs a step's onContinue lookup or the final onComplete
  *        submit — advancing on success, staying put with an error on failure.
+ *        Every move also LOCKS navigation for the length of its transition
+ *        and drops the keyboard (see `move`).
  * WHY:   A thin React shell over the pure logic in navigation.ts, so screens
  *        and chrome stay dumb. The answers object is a single serializable
  *        value and exits funnel through one place, deliberately: that is the
@@ -14,7 +16,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Keyboard } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
+
+import { motion } from '../theme';
 
 import {
   INITIAL_NAV_STATE,
@@ -23,6 +28,7 @@ import {
   flattenFlow,
   phaseProgress,
   wizardReducer,
+  type WizardNavAction,
 } from './navigation';
 import type { WizardFlow } from './types';
 
@@ -63,6 +69,17 @@ export interface WizardControllerOptions<TAnswers> {
   /** Pre-filled answers (e.g. a future saved draft). */
   initialAnswers?: Partial<TAnswers>;
 }
+
+/**
+ * How long the SUBMITTING screen ignores its button after arriving.
+ *
+ * ⚠️ A double-tapped Next on the screen before it must not become a submit —
+ * on Post a car that is "Post & pay" (security review of #142). The move lock
+ * already covers this with motion on; under reduced motion there is no lock,
+ * so the submitting screen arms itself instead. Long enough to outlast a
+ * double-tap, too short for anyone meaning to press it.
+ */
+const SUBMIT_ARM_MS = 300;
 
 /**
  * Pull a user-facing string out of whatever an async action threw. Steps and
@@ -148,26 +165,81 @@ export function useWizardController<TAnswers>(
     [screens, answers],
   );
 
-  const next = useCallback(() => {
+  // ⚠️ ONE MOVE AT A TIME (2026-10-08). A second tap during a transition used
+  // to start a second move with the first still on screen: a double-tapped
+  // Next skipped a step, and Next-then-Back slid three screens at once. Every
+  // move now locks navigation for the length of its transition; a move asked
+  // for meanwhile is dropped, not queued (a queued tap lands on a screen the
+  // owner never saw). Instant under reduced motion — there is no transition
+  // to wait for. `settled` tells steps the same thing, so heavy ones (the
+  // map) can wait for it before they mount.
+  const reduceMotion = useReducedMotion();
+  const lockRef = useRef(false);
+  const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [settled, setSettled] = useState(true);
+  // A move can be asked for AFTER the screen has gone: a step's onContinue
+  // lookup resolving once the owner has left by the X. It must do nothing —
+  // above all not drop the keyboard on whatever screen is now on top.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      lockRef.current = false;
+      if (unlockTimer.current) clearTimeout(unlockTimer.current);
+    };
+  }, []);
+
+  /** Every move goes through here: drop the keyboard (a field left focused
+   *  would otherwise close mid-slide and resize the screen under it), lock,
+   *  dispatch. Internal — the public moves below check the lock first. */
+  const move = useCallback(
+    (action: WizardNavAction) => {
+      if (!mountedRef.current) return;
+      Keyboard.dismiss();
+      dispatch(action);
+      if (reduceMotion) return;
+      lockRef.current = true;
+      setSettled(false);
+      if (unlockTimer.current) clearTimeout(unlockTimer.current);
+      unlockTimer.current = setTimeout(() => {
+        lockRef.current = false;
+        unlockTimer.current = null;
+        setSettled(true);
+      }, motion.standard);
+    },
+    [reduceMotion],
+  );
+
+  const goNext = useCallback(() => {
     // Completing an edit commits it — the snapshot is no longer a fallback.
     editSnapshotRef.current = null;
-    dispatch({ type: 'next', visible });
-  }, [visible]);
+    move({ type: 'next', visible });
+  }, [move, visible]);
+  const next = useCallback(() => {
+    if (lockRef.current) return;
+    goNext();
+  }, [goNext]);
   const back = useCallback(() => {
+    if (lockRef.current) return;
     setError(null);
     if (editSnapshotRef.current !== null) {
       setAnswersState(editSnapshotRef.current);
       editSnapshotRef.current = null;
     }
-    dispatch({ type: 'back', visible });
-  }, [visible]);
+    move({ type: 'back', visible });
+  }, [move, visible]);
   const editStep = useCallback(
     (targetIndex: number) => {
+      if (lockRef.current) return;
       editSnapshotRef.current = answers;
-      dispatch({ type: 'editStep', targetIndex, reviewIndex: nav.index });
+      move({ type: 'editStep', targetIndex, reviewIndex: nav.index });
     },
-    [answers, nav.index],
+    [move, answers, nav.index],
   );
+  /** The screen re-rendered the leaving view with its exit: swap it out (see
+   *  WizardNavState.shownIndex). WizardScreen calls it from a layout effect. */
+  const settle = useCallback(() => dispatch({ type: 'settle' }), []);
 
   // The last screen is the final step (or the review, when the flow has one) —
   // but NOT while editing from review, where the primary button returns to
@@ -182,8 +254,18 @@ export function useWizardController<TAnswers>(
    * success), or a plain forward move. Serialized by `busy` so a double-tap
    * can't fire two lookups or two submits.
    */
+  // When the current screen arrived (see SUBMIT_ARM_MS), and whether an
+  // action is already running. `busy` is state, so two presses inside one
+  // commit would both see it false; the ref is set synchronously.
+  const arrivedAt = useRef(0);
+  useEffect(() => {
+    arrivedAt.current = Date.now();
+  }, [nav.index]);
+  const actingRef = useRef(false);
+
   const advance = useCallback(async () => {
-    if (busy) return;
+    if (busy || lockRef.current || actingRef.current) return;
+    if (isLastScreen && Date.now() - arrivedAt.current < SUBMIT_ARM_MS) return;
     const screen = screens[nav.index];
     const onContinue = screen.kind === 'step' ? screen.step.onContinue : undefined;
     const hasAction = isLastScreen ? Boolean(onComplete) : Boolean(onContinue);
@@ -191,12 +273,13 @@ export function useWizardController<TAnswers>(
     if (!hasAction) {
       // Nothing async to do. The final screen with no onComplete no-ops (the
       // flow is expected to supply one); every other screen just moves on.
-      if (!isLastScreen) next();
+      if (!isLastScreen) goNext();
       return;
     }
 
     setError(null);
     setBusy(true);
+    actingRef.current = true;
     try {
       if (isLastScreen) {
         await onComplete!(answers);
@@ -209,12 +292,16 @@ export function useWizardController<TAnswers>(
         setAnswersState((current) => ({ ...current, ...result }));
       }
       setBusy(false);
-      next();
+      actingRef.current = false;
+      // Not `next`: the press already passed the lock, and a lookup that
+      // outlasts nothing must not be dropped by one.
+      goNext();
     } catch (err) {
       setBusy(false);
+      actingRef.current = false;
       setError(toErrorMessage(err));
     }
-  }, [busy, screens, nav.index, isLastScreen, onComplete, answers, next]);
+  }, [busy, screens, nav.index, isLastScreen, onComplete, answers, goNext]);
 
   const requestExit = useCallback(() => {
     const discard = () => {
@@ -232,13 +319,14 @@ export function useWizardController<TAnswers>(
     //
     // ⚠️ AND ONLY ON THE LAST SCREEN — `busy` alone was too wide, and the cost
     // landed on a different flow entirely. `busy` is also true during a step's
-    // `onContinue`, two of which are reverse-geocodes with no timeout
-    // (postACarFlow, reportSightingFlow → placeLabels.ts, which catches but
-    // cannot detect a hang). With Back hidden and the Android gesture
-    // swallowed, the X is iOS's ONLY way out of a stalled lookup, and a wider
-    // guard took it away. Leaving during an `onContinue` is harmless anyway: it
-    // strands a `next()` dispatch against an unmounted reducer and routes
-    // nowhere. Only the final submit has an onComplete that pops.
+    // `onContinue`, two of which are reverse-geocodes (postACarFlow,
+    // reportSightingFlow → placeLabels.ts) — bounded at LOOKUP_TIMEOUT_MS (4s)
+    // since 2026-10-08, but four seconds of spinner is still long enough to
+    // want out of. With Back hidden and the Android gesture swallowed, the X is
+    // iOS's ONLY way out of one, and a wider guard took it away. Leaving during
+    // an `onContinue` is harmless anyway: the move it ends in does nothing once
+    // the screen has gone (see `move`). Only the final submit has an
+    // onComplete that pops.
     if (busy && isLastScreen) return;
     if (!dirtyRef.current) {
       onExit();
@@ -287,6 +375,13 @@ export function useWizardController<TAnswers>(
     screens,
     screenIndex: nav.index,
     screen: screens[nav.index],
+    /** The screen ON SCREEN, one commit behind screenIndex on a move, and
+     *  the one before it (see WizardNavState.shownIndex). */
+    shownIndex: nav.shownIndex,
+    previousIndex: nav.previousIndex,
+    settle,
+    /** False for the length of a move's transition — see the lock. */
+    settled,
     /** True while on an edit spur: launched from the review screen, or from a
      *  step's own `editStep` (the report flow's check-and-send). */
     isEditingFromReview: nav.returnToIndex !== null,
@@ -318,8 +413,9 @@ export function useWizardController<TAnswers>(
      */
     isLastScreen,
     ctaLabel: ctaLabel(flow, screens, nav, answers),
-    /** Fill fraction (0–1) per phase segment. */
-    progress: phaseProgress(flow, nav.index),
+    /** Fill fraction (0–1) per phase segment. Held where it was while on an
+     *  edit spur: a detour from review is not progress lost (2026-10-08). */
+    progress: phaseProgress(flow, nav.returnToIndex ?? nav.index),
     /** +1 sliding forward, -1 sliding back — drives the transition. */
     direction: nav.direction,
   };

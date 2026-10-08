@@ -25,8 +25,21 @@ interface ExpoLocationModule {
   requestForegroundPermissionsAsync(): Promise<{ status: string }>;
   getForegroundPermissionsAsync(): Promise<{ status: string }>;
   getCurrentPositionAsync(): Promise<{ coords: GeoCoord }>;
-  getLastKnownPositionAsync(): Promise<{ coords: GeoCoord } | null>;
+  getLastKnownPositionAsync(options?: {
+    maxAge?: number;
+    requiredAccuracy?: number;
+  }): Promise<{ coords: GeoCoord } | null>;
 }
+
+/**
+ * How old, and how rough, a cached fix may be and still count. The post
+ * wizard COMMITS the opening point as the last-seen answer (it drives the
+ * alert fan-out), so "wherever the phone was this morning" must read as no
+ * fix at all — the chain then falls through to the feed location or a fresh
+ * fix (security review of #142).
+ */
+const LAST_KNOWN_MAX_AGE_MS = 10 * 60 * 1000;
+const LAST_KNOWN_ACCURACY_M = 200;
 
 interface ExpoAddress {
   name?: string | null;
@@ -85,7 +98,10 @@ export async function getLastKnownPosition(): Promise<GeoCoord | null> {
   try {
     const permission = await location.getForegroundPermissionsAsync();
     if (permission.status !== 'granted') return null;
-    const position = await location.getLastKnownPositionAsync();
+    const position = await location.getLastKnownPositionAsync({
+      maxAge: LAST_KNOWN_MAX_AGE_MS,
+      requiredAccuracy: LAST_KNOWN_ACCURACY_M,
+    });
     if (!position) return null;
     return { latitude: position.coords.latitude, longitude: position.coords.longitude };
   } catch {

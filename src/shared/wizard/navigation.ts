@@ -63,12 +63,30 @@ export interface WizardNavState {
   returnToIndex: number | null;
   /** +1 moving forward, -1 moving back/editing — drives the slide direction. */
   direction: 1 | -1;
+  /**
+   * The screen ON SCREEN — it trails `index` by one commit on every move.
+   *
+   * ⚠️ WHY A MOVE TAKES TWO COMMITS (2026-10-08). Reanimated plays a leaving
+   * view's `exiting` from that view's LAST render. When the move and the key
+   * change land in one commit, the leaving screen never learns which way it
+   * is going: after Next then Back it still carries Next's slide-out-left, so
+   * both screens slide the same way, through each other. So a move first
+   * sets `index` and `direction` with the old screen still keyed — it
+   * re-renders knowing its exit — and the screen then dispatches 'settle'
+   * (in a layout effect, before anything paints) to swap it out.
+   */
+  shownIndex: number;
+  /** The screen that was on screen before `shownIndex` — how the new one
+   *  entered depends on what it replaced (see transitionKind). */
+  previousIndex: number;
 }
 
 export const INITIAL_NAV_STATE: WizardNavState = {
   index: 0,
   returnToIndex: null,
   direction: 1,
+  shownIndex: 0,
+  previousIndex: 0,
 };
 
 export type WizardNavAction =
@@ -93,7 +111,9 @@ export type WizardNavAction =
    * path ends in a Stripe charge, so it resets deterministically instead.
    * Answers live in separate state and are NOT touched.
    */
-  | { type: 'reset' };
+  | { type: 'reset' }
+  /** The screen has re-rendered the leaving view with its exit: swap it out. */
+  | { type: 'settle' };
 
 /**
  * The first screen at or beyond `from` (walking in `step`) that is not being
@@ -124,10 +144,11 @@ export function wizardReducer(
   switch (action.type) {
     case 'next': {
       if (state.returnToIndex !== null) {
-        return { index: state.returnToIndex, returnToIndex: null, direction: 1 };
+        return { ...state, index: state.returnToIndex, returnToIndex: null, direction: 1 };
       }
       const target = Math.min(state.index + 1, action.visible.length - 1);
       return {
+        ...state,
         index: seekVisible(target, 1, action.visible),
         returnToIndex: null,
         direction: 1,
@@ -136,10 +157,11 @@ export function wizardReducer(
     case 'back': {
       // Backing out of a review edit abandons the edit spur, not the flow.
       if (state.returnToIndex !== null) {
-        return { index: state.returnToIndex, returnToIndex: null, direction: -1 };
+        return { ...state, index: state.returnToIndex, returnToIndex: null, direction: -1 };
       }
       const target = Math.max(state.index - 1, 0);
       return {
+        ...state,
         index: seekVisible(target, -1, action.visible),
         returnToIndex: null,
         direction: -1,
@@ -147,13 +169,45 @@ export function wizardReducer(
     }
     case 'editStep':
       return {
+        ...state,
         index: action.targetIndex,
         returnToIndex: action.reviewIndex,
         direction: -1,
       };
     case 'reset':
-      return { ...INITIAL_NAV_STATE, direction: 1 };
+      // shownIndex kept: the reset is a move like any other, and settles.
+      return { ...state, index: 0, returnToIndex: null, direction: 1 };
+    case 'settle':
+      return state.shownIndex === state.index
+        ? state
+        : { ...state, previousIndex: state.shownIndex, shownIndex: state.index };
   }
+}
+
+/** How one screen gives way to another — see transitionKind. */
+export type WizardTransition = 'slide' | 'fade';
+
+/**
+ * How the screen at `from` gives way to the one at `to`.
+ *
+ * 'slide' — the normal case: both slide, in the move's direction.
+ * 'fade' — a `fills` step (a full-bleed map) is at one end. The map side
+ * never animates: sliding a map reads as the whole app moving, and a fills
+ * step can swap its subtree after mount, which strands an entering transform
+ * part-way (WizardScreen). The OTHER side fades instead of sliding, so it
+ * doesn't sweep across a map that is simply there (2026-10-08: the map used
+ * to pop in while its neighbour slid away).
+ */
+export function transitionKind<TAnswers>(
+  screens: WizardScreenDescriptor<TAnswers>[],
+  from: number,
+  to: number,
+): WizardTransition {
+  const fills = (index: number) => {
+    const screen = screens[index];
+    return screen?.kind === 'step' && screen.step.fills === true;
+  };
+  return fills(from) || fills(to) ? 'fade' : 'slide';
 }
 
 /**

@@ -1,8 +1,9 @@
 /**
  * WHAT:  The wizard's container screen — assembles the header row (exit X
- *        left, bubble-stepper progress + label right), the current screen's
- *        content (phase intro / step / review) with horizontal slide
- *        transitions, and the fixed keyboard-aware Back/Next footer (with a
+ *        left, a segmented progress bar right — one segment per phase,
+ *        filling per step), the current screen's content (phase intro /
+ *        step / review), sliding between screens (fading beside a map step),
+ *        and the fixed keyboard-aware Back/Next footer (with a
  *        step's footerNote above the buttons, or ending the body past 1.3×
  *        text). Steps also receive editStep/busy for their own Edit links.
  *        This is the one component a route renders to run a flow.
@@ -10,7 +11,11 @@
  *        onComplete); everything Airbnb-ish — one question per screen,
  *        display typography, slides reversed on Back, step announcements for
  *        screen readers, footer never covered by the keyboard — lives here
- *        once. Keyboard handling is split by platform: iOS uses
+ *        once. Moves take two commits so a leaving screen exits the right
+ *        way, a map step fades its neighbour rather than sliding it, and
+ *        nothing a step had already shown replays its entrance on return
+ *        (2026-10-08, "janky, slow and not smooth").
+ *        Keyboard handling is split by platform: iOS uses
  *        KeyboardAvoidingView padding; Android is edge-to-edge (the window
  *        never resizes) so the footer lifts by the measured keyboard height
  *        (useAndroidKeyboardHeight).
@@ -18,7 +23,7 @@
  *        docs/DESIGN_SYSTEM.md (Motion, Accessibility, Forms).
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   BackHandler,
@@ -31,6 +36,9 @@ import {
   View,
 } from 'react-native';
 import Animated, {
+  FadeIn,
+  FadeOut,
+  LayoutAnimationConfig,
   ReduceMotion,
   SlideInLeft,
   SlideInRight,
@@ -40,9 +48,9 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '../hooks';
-import { spacing, typography, useThemedStyles, type Palette } from '../theme';
+import { motion, spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
-import { firstStepFlatIndex, invalidStepIds, resolveQuestion } from './navigation';
+import { firstStepFlatIndex, invalidStepIds, resolveQuestion, transitionKind } from './navigation';
 import { PhaseIntro } from './PhaseIntro';
 import { blockingNotice, ReviewStep } from './ReviewStep';
 import { WizardFooter } from './WizardFooter';
@@ -51,8 +59,9 @@ import { WizardProgressBar } from './WizardProgressBar';
 import type { WizardFlow } from './types';
 import { useWizardController } from './useWizardController';
 
-/** Step transitions: 250ms ease-out per the design system's motion rules. */
-const SLIDE_MS = 250;
+/** Step transitions: ease-out per the design system's motion rules. A slide
+ *  is screen-scale (standard); the fade beside a map step is a quick
+ *  dissolve (fast). */
 const slideEasing = easeOut;
 
 /**
@@ -144,11 +153,23 @@ export function WizardScreen<TAnswers>({
   const {
     screen,
     screenIndex,
+    shownIndex,
+    previousIndex,
     answers,
     direction,
     busy,
     error,
   } = controller;
+  // The body draws what is ON SCREEN, which trails `screen` by one commit on
+  // a move (see WizardNavState.shownIndex). Everything else — header,
+  // footer, announcements — reads the current screen; the commit between is
+  // never painted.
+  const shown = controller.screens[shownIndex] ?? screen;
+  const { settle } = controller;
+  const leaving = shownIndex !== screenIndex;
+  useLayoutEffect(() => {
+    if (shownIndex !== screenIndex) settle();
+  }, [shownIndex, screenIndex, settle]);
   const keyboardHeight = useAndroidKeyboardHeight();
 
   // A step's footerNote rides with the buttons, except at large text: the
@@ -156,6 +177,7 @@ export function WizardScreen<TAnswers>({
   // phone. Past the fills threshold it ends the scrolling body instead.
   const { fontScale } = useWindowDimensions();
   const footerNote = screen.kind === 'step' ? screen.step.footerNote : undefined;
+  const shownFooterNote = shown.kind === 'step' ? shown.step.footerNote : undefined;
   const noteInBody = (fontScale ?? 1) > FILLS_MAX_FONT_SCALE;
 
   /** A step's `editStep`: jump to that step on a spur that returns here.
@@ -166,7 +188,7 @@ export function WizardScreen<TAnswers>({
     const index = firstStepFlatIndex(flow, stepId);
     if (index !== null && index !== screenIndex) controller.editStep(index);
   };
-  const isFillsStep = screen.kind === 'step' && screen.step.fills === true;
+  const isFillsStep = shown.kind === 'step' && shown.step.fills === true;
 
   // ⚠️ NO SLIDE UNTIL THE FIRST MOVE. The opening screen used to play its
   // SlideInRight as it mounted, while the route itself was still sliding up
@@ -178,10 +200,34 @@ export function WizardScreen<TAnswers>({
   // There's nothing to slide in FROM on the first screen anyway. Set during
   // render (React's "adjust state on prop change" pattern), so the move that
   // flips it animates in the same frame.
-  const [openingIndex] = useState(screenIndex);
+  const [openingIndex] = useState(shownIndex);
   const [hasMoved, setHasMoved] = useState(false);
-  if (!hasMoved && screenIndex !== openingIndex) setHasMoved(true);
-  const slides = !isFillsStep && hasMoved;
+  if (!hasMoved && shownIndex !== openingIndex) setHasMoved(true);
+
+  // How this screen arrived (from the one it replaced) and how it will leave
+  // (towards the one it is about to give way to — known only on the commit
+  // before the swap). A map step never animates; its neighbour fades.
+  const reduce = ReduceMotion.System;
+  const entering = !hasMoved
+    ? undefined
+    : transitionKind(controller.screens, previousIndex, shownIndex) === 'fade'
+      ? isFillsStep
+        ? undefined
+        : FadeIn.duration(motion.fast).easing(slideEasing).reduceMotion(reduce)
+      : (direction === 1 ? SlideInRight : SlideInLeft)
+          .duration(motion.standard)
+          .easing(slideEasing)
+          .reduceMotion(reduce);
+  const exiting = !leaving
+    ? undefined
+    : transitionKind(controller.screens, shownIndex, screenIndex) === 'fade'
+      ? isFillsStep
+        ? undefined
+        : FadeOut.duration(motion.fast).easing(slideEasing).reduceMotion(reduce)
+      : (direction === 1 ? SlideOutLeft : SlideOutRight)
+          .duration(motion.standard)
+          .easing(slideEasing)
+          .reduceMotion(reduce);
 
   // Android system back mirrors in-flow Back (previous screen — even on
   // intros, where the visible button is hidden, because blocking the system
@@ -193,10 +239,10 @@ export function WizardScreen<TAnswers>({
   // BottomSheet registers its Back on open, so picking an option in it put the
   // wizard back on top: Back stepped the wizard back with the sheet still up
   // (2026-09-30 review). Registered once at mount, any sheet opened later wins.
-  const { isFirstScreen, back, requestExit } = controller;
-  const backState = useRef({ busy, isFirstScreen, back, requestExit });
+  const { isFirstScreen, back, requestExit, settled } = controller;
+  const backState = useRef({ busy, isFirstScreen, back, requestExit, settled });
   useEffect(() => {
-    backState.current = { busy, isFirstScreen, back, requestExit };
+    backState.current = { busy, isFirstScreen, back, requestExit, settled };
   });
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -204,6 +250,9 @@ export function WizardScreen<TAnswers>({
       // Swallow the gesture while an async action is in flight so a submit or
       // lookup can't be navigated out from under.
       if (latest.busy) return true;
+      // Mid-move, too — including the exit from the first screen: a Back
+      // then a second back a beat later must not leave the flow.
+      if (!latest.settled) return true;
       if (latest.isFirstScreen) {
         latest.requestExit();
       } else {
@@ -261,16 +310,26 @@ export function WizardScreen<TAnswers>({
     }
   }, [error]);
 
-  // Progress geometry: one dot per phase, plus a final dot for the review
-  // screen when the flow opts in. The label names the dot the bubble is on.
-  const dotCount = flow.phases.length + (flow.review ? 1 : 0);
-  const activeDot = screen.kind === 'review' ? dotCount - 1 : screen.phaseIndex;
-  // "of phases.length", not dotCount: counting the review dot would tell
-  // screen-reader users there are more question phases than exist.
-  const progressLabel =
-    screen.kind === 'review'
-      ? 'Review'
-      : `Step ${screen.phaseIndex + 1} of ${flow.phases.length}`;
+  // One segment per phase, filling a little with every step (phaseProgress).
+  // What a screen reader hears follows the STEPS now the bar does: "Step 3 of
+  // 7" in a one-phase flow, "Your car, part 1 of 3" where there are phases.
+  // A spur from review keeps saying where the owner came from.
+  const progressIndex = controller.isEditingFromReview ? controller.screens.length - 1 : screenIndex;
+  const progressScreen = controller.screens[progressIndex] ?? screen;
+  const progressLabel = (() => {
+    if (progressScreen.kind === 'review') return 'Review';
+    const phase = progressScreen.phaseIndex;
+    if (flow.phases.length > 1) {
+      return `${flow.phases[phase].title}, part ${phase + 1} of ${flow.phases.length}`;
+    }
+    const inPhase = controller.screens.filter(
+      (candidate) => candidate.kind !== 'review' && candidate.phaseIndex === phase,
+    );
+    return `Step ${inPhase.indexOf(progressScreen) + 1} of ${inPhase.length}`;
+  })();
+  // Screens done, not an average of the phases: a long first phase would
+  // otherwise read far behind.
+  const progressPercent = Math.round(((progressIndex + 1) / controller.screens.length) * 100);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -290,15 +349,14 @@ export function WizardScreen<TAnswers>({
           <View style={styles.headerProgress}>
             <WizardProgressBar
               fills={controller.progress}
-              activeIndex={activeDot}
-              dotCount={dotCount}
               label={progressLabel}
+              percent={progressPercent}
             />
           </View>
         </View>
 
-        {/* NO SLIDE ON A FILLS STEP.
-            Two reasons, one cosmetic and one a real bug. A full-bleed map is
+        {/* NO SLIDE ON A FILLS STEP — its neighbour fades instead (see
+            transitionKind). Two reasons, one cosmetic and one a real bug. A full-bleed map is
             the screen, so sliding it reads as the whole app moving rather than
             as one answer replacing another. And more importantly: a fills step
             can swap its subtree after mount (the map waits for its opening
@@ -306,33 +364,21 @@ export function WizardScreen<TAnswers>({
             part-way — the step then sits permanently offset to the right, with
             the footer, which lives outside this wrapper, staying put. */}
         <Animated.View
-          key={screenIndex}
+          key={shownIndex}
           testID="wizard-step-slide"
-          style={styles.flex}
-          entering={
-            !slides
-              ? undefined
-              : (direction === 1 ? SlideInRight : SlideInLeft)
-                  .duration(SLIDE_MS)
-                  .easing(slideEasing)
-                  .reduceMotion(ReduceMotion.System)
-          }
-          exiting={
-            isFillsStep
-              ? undefined
-              : (direction === 1 ? SlideOutLeft : SlideOutRight)
-                  .duration(SLIDE_MS)
-                  .easing(slideEasing)
-                  .reduceMotion(ReduceMotion.System)
-          }
+          // Paints the page: during a fade beside a map, the leaving screen's
+          // text must cover — not sit over — the one arriving.
+          style={styles.stepLayer}
+          entering={entering}
+          exiting={exiting}
         >
-          {screen.kind === 'intro' ? (
+          {shown.kind === 'intro' ? (
             <View style={[styles.content, styles.introContent]}>
               <PhaseIntro
-                phaseNumber={screen.phaseIndex + 1}
+                phaseNumber={shown.phaseIndex + 1}
                 // Non-null: flattenFlow only emits intro descriptors for
                 // phases that declare an intro.
-                intro={flow.phases[screen.phaseIndex].intro!}
+                intro={flow.phases[shown.phaseIndex].intro!}
               />
             </View>
           ) : (
@@ -340,7 +386,7 @@ export function WizardScreen<TAnswers>({
             // flex:1 body (a map) can reach the footer. Everything inside is
             // identical — only the container changes.
             <StepContainer fills={isFillsStep}>
-              {screen.kind === 'step' ? (
+              {shown.kind === 'step' ? (
                 <>
                   <Text
                     accessibilityRole="header"
@@ -349,26 +395,37 @@ export function WizardScreen<TAnswers>({
                       isFillsStep && styles.questionFills,
                     ]}
                   >
-                    {resolveQuestion(screen.step.question, answers)}
+                    {resolveQuestion(shown.step.question, answers)}
                   </Text>
-                  {screen.step.helper ? (
-                    <Text style={styles.helper}>{screen.step.helper}</Text>
+                  {shown.step.helper ? (
+                    <Text style={styles.helper}>{shown.step.helper}</Text>
                   ) : null}
                   <View style={[styles.stepBody, isFillsStep && styles.stepBodyFills]}>
-                    <screen.step.component
-                      answers={answers}
-                      setAnswers={controller.setAnswers}
-                      // A step's own Skip affordance advances without the Next
-                      // gate/action (returns to review on an edit spur).
-                      onSkip={controller.next}
-                      // A step's own Edit links (a check-and-send step). Not
-                      // offered on a spur: a spur from a spur would overwrite
-                      // the return point and the cancel snapshot.
-                      editStep={controller.isEditingFromReview ? undefined : editStepById}
-                      busy={busy}
-                    />
-                    {footerNote && noteInBody ? (
-                      <Text style={styles.footerNoteInBody}>{footerNote}</Text>
+                    {/* skipEntering: what a step had already shown (colour
+                        swatches, feature cards, revealed follow-ups) is simply
+                        there when the step mounts — on return or Back — and
+                        only what appears AFTER mount fades in. */}
+                    <LayoutAnimationConfig skipEntering skipExiting>
+                      <shown.step.component
+                        answers={answers}
+                        setAnswers={controller.setAnswers}
+                        // A step's own Skip affordance advances without the Next
+                        // gate/action (returns to review on an edit spur).
+                        onSkip={controller.next}
+                        // A step's own Edit links (a check-and-send step). Not
+                        // offered on a spur: a spur from a spur would overwrite
+                        // the return point and the cancel snapshot.
+                        editStep={controller.isEditingFromReview ? undefined : editStepById}
+                        busy={busy}
+                        // False for the length of a move's transition: a heavy
+                        // step (the map) waits for it before it mounts.
+                        // A leaving step is drawn once more (for its exit)
+                        // and must not flip to a placeholder as it goes.
+                        settled={leaving ? true : controller.settled}
+                      />
+                    </LayoutAnimationConfig>
+                    {shownFooterNote && noteInBody ? (
+                      <Text style={styles.footerNoteInBody}>{shownFooterNote}</Text>
                     ) : null}
                   </View>
                 </>
@@ -410,6 +467,10 @@ const makeStyles = (c: Palette) =>
     },
     flex: {
       flex: 1,
+    },
+    stepLayer: {
+      flex: 1,
+      backgroundColor: c.background,
     },
     // md, not xl: the 44pt exit target has ~13px of internal padding around its
     // glyph, so md lands the glyph optically on the content's 24px edge.

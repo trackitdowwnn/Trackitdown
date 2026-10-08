@@ -57,6 +57,21 @@ jest.mock('@/shared/wizard', () => ({
 let mockCurrentUser: string | null = 'u1';
 jest.mock('@/features/auth', () => ({ getCurrentUserId: () => mockCurrentUser }));
 
+// The map step's opening centre, read ahead once the slide-up has finished.
+// "After the transition" runs at once here — there is no navigator.
+const mockPrefetchCentre = jest.fn(async () => {});
+jest.mock('@/shared/lib/location/useDefaultMapCentre', () => ({
+  prefetchDefaultMapCentre: () => mockPrefetchCentre(),
+}));
+jest.mock('@/shared/hooks/useAfterTransition', () => ({
+  useAfterTransition: (callback: () => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+    const { useEffect } = require('react');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, like the real hook
+    useEffect(() => callback(), []);
+  },
+}));
+
 // ⚠️ Mocked at the module, not at AsyncStorage: the screen only has to decide
 // WHEN to save, restore and clear — what gets written is postDraftStorage's own
 // suite, and reaching the native module here would fail at import.
@@ -339,6 +354,20 @@ describe('the saved draft', () => {
     // A retry reuses the post — it is not created twice, so not told twice.
     await expect(capturedOnComplete(ANSWERS)).rejects.toBeDefined();
     expect(onPostCreated).toHaveBeenCalledTimes(1);
+  });
+
+  // 2026-10-08: the last-seen map opened after a beat of placeholder while it
+  // looked for where to centre; now that is found during the first questions.
+  it('reads the map step’s opening centre ahead, after the slide-up', async () => {
+    await mount();
+    expect(mockPrefetchCentre).toHaveBeenCalledTimes(1);
+  });
+
+  it('…but not when the answers already hold a location — nothing to look for', async () => {
+    await mount({
+      initialAnswers: { location: { latitude: 53.4, longitude: -2.2, addressLabel: 'Deansgate' } },
+    });
+    expect(mockPrefetchCentre).not.toHaveBeenCalled();
   });
 
   it('offers save & exit to the wizard', async () => {

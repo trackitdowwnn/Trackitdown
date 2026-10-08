@@ -8,11 +8,30 @@
  * LINKS: src/shared/ui/TextField.tsx, docs/TESTING.md.
  */
 
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { Animated } from 'react-native';
 
 import { TextField } from './TextField';
 
 describe('TextField', () => {
+  // 2026-10-08: both animations ran at mount, to the value they already held —
+  // a JS-thread timing in the middle of every wizard slide.
+  it('runs no animation when it mounts, only when focus or value changes', async () => {
+    const timing = jest.spyOn(Animated, 'timing');
+    try {
+      const view = await render(<TextField label="Name" value="Sam" onChangeText={jest.fn()} />);
+      expect(timing).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent(view.getByLabelText('Name'), 'focus');
+      });
+      expect(timing).toHaveBeenCalledTimes(1); // the border tint; the label was already up
+      await act(async () => view.unmount()); // stops the tint mid-flight
+    } finally {
+      timing.mockRestore();
+    }
+  });
+
   it('shows the floating label and helper, revealing the placeholder only on focus', async () => {
     const { getByText, getByTestId } = await render(
       <TextField

@@ -15,7 +15,7 @@
  *        docs/SECURITY_AND_TRUST.md, docs/TESTING.md.
  */
 
-import { expoLocationServices } from './expoLocationServices';
+import { expoLocationServices, getLastKnownPosition } from './expoLocationServices';
 
 // The adapter lazy-requires expo-location on every call, so the factory runs
 // (or re-runs, after a resetModules) at call time. `mockLoadShouldFail` lets a
@@ -27,6 +27,8 @@ const mockExpoLocation = {
   geocodeAsync: jest.fn(),
   requestForegroundPermissionsAsync: jest.fn(),
   getCurrentPositionAsync: jest.fn(),
+  getForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  getLastKnownPositionAsync: jest.fn(async () => ({ coords: { latitude: 51.7521, longitude: -0.4482 } })),
 };
 
 jest.mock('expo-location', () => {
@@ -113,6 +115,19 @@ describe('expoLocationServices.getCurrentPosition', () => {
     // The module never loaded, so neither the prompt nor the read can happen.
     expect(mockExpoLocation.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
     expect(mockExpoLocation.getCurrentPositionAsync).not.toHaveBeenCalled();
+  });
+});
+
+// Security review of #142: the post wizard commits the opening point as the
+// last-seen answer, so a fix from wherever the phone was this morning must not
+// count as "here".
+describe('getLastKnownPosition', () => {
+  it('only accepts a RECENT, reasonably accurate cached fix', async () => {
+    await expect(getLastKnownPosition()).resolves.toEqual(COORD);
+    expect(mockExpoLocation.getLastKnownPositionAsync).toHaveBeenCalledWith({
+      maxAge: 10 * 60 * 1000,
+      requiredAccuracy: 200,
+    });
   });
 });
 
