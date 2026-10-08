@@ -19,6 +19,12 @@
  *        while a photo does not. It is a SIGHTED aid only: each photo
  *        carries its own place ("Blue BMW, photo 2 of 5") for screen
  *        readers, where a counter that updates on scroll-end could be stale.
+ *
+ *        A photo can carry a `badge` — an on-photo pill top-left that scrolls
+ *        with it and is part of its spoken label (the sighting page marks a
+ *        library photo "From photo library", ADR-0003). A photo whose `uri`
+ *        hasn't arrived yet (a signed URL still on its way) is an empty page
+ *        on the frame's own colour, not a broken image.
  * LINKS: src/features/vehicles/components/PostHero.tsx (the detail hero);
  *        src/features/garage/components/VehicleSummaryStep.tsx;
  *        src/shared/ui/MediaIdentityCard.tsx (the display-only rule, and the
@@ -50,7 +56,12 @@ import {
 import { AppImage } from './AppImage';
 
 export interface PhotoPagerProps {
-  photos: { uri: string }[];
+  photos: {
+    /** Undefined while it is still on its way: an empty page until then. */
+    uri?: string;
+    /** A short on-photo pill (e.g. "From photo library"), also spoken. */
+    badge?: string;
+  }[];
   /** Width ÷ height of each page. Ignored when `height` is given. */
   aspectRatio?: number;
   /** A fixed page height (the detail hero sizes itself to the screen). */
@@ -164,20 +175,35 @@ export function PhotoPager({
           }}
           testID={testID ? `${testID}-scroll` : undefined}
         >
-          {photos.map((photo, i) => (
-            <AppImage
-              key={`${photo.uri}-${i}`}
-              uri={photo.uri}
-              accessibilityLabel={
-                photos.length > 1
-                  ? alt
-                    ? `${alt}, photo ${i + 1} of ${photos.length}`
-                    : `Photo ${i + 1} of ${photos.length}`
-                  : alt || undefined
-              }
-              style={{ width, height }}
-            />
-          ))}
+          {photos.map((photo, i) => {
+            const place =
+              photos.length > 1
+                ? alt
+                  ? `${alt}, photo ${i + 1} of ${photos.length}`
+                  : `Photo ${i + 1} of ${photos.length}`
+                : alt || undefined;
+            const label = photo.badge ? [place, photo.badge].filter(Boolean).join(', ') : place;
+            return (
+              <View key={`${photo.uri ?? 'pending'}-${i}`} style={{ width, height }}>
+                {photo.uri ? (
+                  <AppImage uri={photo.uri} accessibilityLabel={label} style={{ width, height }} />
+                ) : null}
+                {photo.badge ? (
+                  <View
+                    style={styles.badge}
+                    pointerEvents="none"
+                    // Read as part of the photo's own label above.
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                  >
+                    <Text style={styles.badgeText} maxFontSizeMultiplier={displayFontScaleCap}>
+                      {photo.badge}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
         </ScrollView>
       ) : null}
       {photos.length > 1 ? (
@@ -221,6 +247,20 @@ const makeStyles = (c: Palette) =>
       paddingVertical: spacing.xs,
     },
     counterText: {
+      ...typography.caption,
+      color: c.textOnMedia,
+    },
+    // Chrome on the photo, like the counter — the same tokens, top-left.
+    badge: {
+      position: 'absolute',
+      top: spacing.md,
+      left: spacing.md,
+      backgroundColor: c.surfaceOverMedia,
+      borderRadius: radii.full,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+    },
+    badgeText: {
       ...typography.caption,
       color: c.textOnMedia,
     },

@@ -20,9 +20,15 @@ const alertPayloadSchema = z
   .object({ type: z.literal('alert'), postId: z.guid() })
   .strict();
 
-/** Someone reported a sighting of the owner's car. */
+/** Someone reported a sighting of the owner's car.
+ *
+ *  `sightingId` is OPTIONAL and accepted BEFORE the server sends it
+ *  (2026-10-08): this schema is strict, so a key it didn't know would fail
+ *  the parse and a tap would open nothing. The app learns the field first
+ *  (this, by OTA); notify-sighting starts sending it after. Without it, the
+ *  tap still opens the post, as it always did. */
 const sightingPayloadSchema = z
-  .object({ type: z.literal('sighting'), postId: z.guid() })
+  .object({ type: z.literal('sighting'), postId: z.guid(), sightingId: z.guid().optional() })
   .strict();
 
 /** A new chat message. NOTE the absence of any content field — message text

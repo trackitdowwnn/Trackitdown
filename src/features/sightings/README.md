@@ -118,11 +118,29 @@ car today — the owner has them.").
   the OWNER's FULL timeline: every sighting as a rail entry (newest first,
   day-grouped, movement hint), tap → the sighting detail.
 - `SightingDetailScreen` (route `src/app/sighting/[sightingId].tsx`,
-  `?postId=…`) — one sighting examined: photos large, the exact point on a
-  map, chips/note, the spotter's passport row (tap → `PublicProfileSheet`,
-  fed from the sighting's narrow payload — no uid exists client-side),
-  **Message** (by sighting id) and **Mark helpful** (owner-side reputation
-  credit; hidden once the status is no longer `unverified`).
+  `?postId=…`) — one sighting examined, laid out like the post page
+  (redesigned 2026-10-08, "hard to read and understand"):
+  - **Hero:** the photos full-bleed and swipeable (`PhotoPager`; a library
+    photo is badged ON the photo), with a floating back header.
+  - **Title:** "Seen near …", when it was seen, and the owner's decision so
+    far ("Your car" / "Credited" / "Not your car", "You decided …").
+  - **Where:** the map, "Approximate — within about N m", and Open in Maps
+    (behind the safety confirm).
+  - **What they saw:** the spotter's answers as labelled rows, in the same
+    words they checked (`sightingDetailRows`), their note, and the owner's
+    marks they could see.
+  - **Spotted by:** their record, and View profile (fed from the narrow
+    payload; no uid exists client-side). "Message" stays here while
+    undecided.
+  - **Safety notice.**
+  - **Pinned decision bar:** "Is this your car?"
+    - **Yes** credits the spotter and can't be undone, so it is confirmed
+      first.
+    - **Not my car** is reversible ("Actually, it is").
+    - After the decision, the bar is Message (by sighting id).
+
+  A "new sighting" push opens this page (`pushRoute`) once the server sends
+  the sighting's id.
 - `MySightingsScreen` (route `src/app/my-sightings.tsx`) — the SPOTTER's own
   history: every sighting they filed, newest first, with the owner's verdict.
   Rows are `ReportCard` + `CarColourTile` (a colour tile → car → where/when →
@@ -182,8 +200,9 @@ fallback chain by construction.
   `get_public_sighting_entries` (the ADR-0008 carve-out: anon-granted,
   active posts only, 5 newest `{sighted_at, locality}` + earlier_count,
   identical empty shape for missing/non-active — no existence oracle);
-  `mark_sighting_helpful` (owner-of-post only, `unverified → helpful` one
-  way, idempotent, bumps the spotter's `sightings_helpful` once, never
+  `mark_sighting_helpful` (owner-of-post only, `unverified` or `not_mine →
+  helpful`, never back — `mark_sighting_not_mine` refuses with
+  ALREADY_COUNTED; idempotent, bumps the spotter's `sightings_helpful` once, never
   re-labels `credited`, opaque `NOT_OWNER` for absent-or-not-yours).
   `get_post_detail` returns the real sighting aggregate.
 - **RLS:** spotters SELECT their own rows (their history); the owner reads via

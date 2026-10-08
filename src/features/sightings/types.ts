@@ -166,6 +166,8 @@ export interface OwnerSighting {
    *  but it is in the union because the row schema accepts it, and a status the
    *  parse rejects fails the WHOLE list rather than one row. */
   status: 'unverified' | 'helpful' | 'not_mine' | 'credited' | 'withdrawn';
+  /** When the owner ruled — null while unreviewed. */
+  reviewedAt: string | null;
   contextFlags: SightingContextFlag[];
   note: string | null;
   areaLabel: string | null;

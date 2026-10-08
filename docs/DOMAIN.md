@@ -588,10 +588,12 @@ Rules that follow, and are not implementation details:
   is still valuable. Poor-accuracy fixes are recorded with their accuracy
   value, never rejected. Each photo carries only its OWN capture-moment fix —
   never a borrowed one. (Approved 2026-07-14 with the sightings feature.)
-- Sightings start as `unverified`. The owner can mark a sighting `helpful`
-  (fed into reputation) — but only a credited sighting pays out. Marking
-  helpful is server-side (`mark_sighting_helpful`, owner-of-post only,
-  `unverified → helpful` exclusively): a `credited` sighting is a payout
+- Sightings start as `unverified`. The owner answers "Is this your car?":
+  yes marks it `helpful` (fed into reputation) — but only a credited sighting
+  pays out — and no marks it `not_mine` (bumps nothing, reversible: helpful
+  accepts it as a source; the reverse is refused, ALREADY_COUNTED). Marking
+  helpful is server-side (`mark_sighting_helpful`, owner-of-post only, from
+  `unverified` or `not_mine`): a `credited` sighting is a payout
   record and never re-labels; re-marking an already-helpful sighting is an
   idempotent no-op, so the spotter's counter can only ever bump once per
   sighting. (Live 2026-07-29 with the timeline feature.)

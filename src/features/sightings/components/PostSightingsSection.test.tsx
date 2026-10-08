@@ -54,6 +54,7 @@ const sighting = (id: string, createdAt: string): OwnerSighting => ({
   id,
   createdAt,
   status: 'unverified',
+  reviewedAt: null,
   contextFlags: [],
   note: 'It was parked outside the bakery',
   areaLabel: 'Camden High Street, London',

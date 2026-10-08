@@ -34,6 +34,7 @@ const sighting = (
   id,
   createdAt,
   status: 'unverified',
+  reviewedAt: null,
   contextFlags: [],
   note: null,
   areaLabel: null,

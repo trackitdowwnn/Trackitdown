@@ -20,6 +20,19 @@ describe('parsePushPayload', () => {
       postId: POST_ID,
     });
     expect(parsePushPayload({ type: 'sighting', postId: POST_ID })?.type).toBe('sighting');
+    // Accepted BEFORE the server sends it (the schema is strict, so an
+    // unknown key would otherwise fail the parse and the tap would open nothing).
+    expect(
+      parsePushPayload({
+        type: 'sighting',
+        postId: POST_ID,
+        sightingId: '99999999-8888-7777-6666-555555555555',
+      }),
+    ).toEqual({
+      type: 'sighting',
+      postId: POST_ID,
+      sightingId: '99999999-8888-7777-6666-555555555555',
+    });
     expect(parsePushPayload({ type: 'recovery', postId: POST_ID })?.type).toBe('recovery');
     expect(parsePushPayload({ type: 'message', threadId: THREAD_ID })).toEqual({
       type: 'message',

@@ -21,6 +21,7 @@ import {
   contextDetailCount,
   contextReviewRows,
   contextSummary,
+  sightingDetailRows,
 } from './contextLabels';
 
 describe('contextLabels — the shared words', () => {
@@ -87,6 +88,34 @@ describe('contextDetailCount', () => {
         note: 'By the bins',
       }),
     ).toBe(7);
+  });
+});
+
+// 2026-10-08: the owner's sighting page reads the spotter's answers under the
+// same labels the spotter checked them under.
+describe('sightingDetailRows — the owner’s "What they saw"', () => {
+  it('uses the SAME words as the spotter’s check-and-send rows', () => {
+    const answers = {
+      contextFlags: ['parked', 'damage_visible'] as const,
+      parkedLikelihood: 'settled' as const,
+      peoplePresence: 'nearby' as const,
+    };
+    const owner = sightingDetailRows({ ...answers, contextFlags: [...answers.contextFlags] });
+    const spotter = contextReviewRows({ ...answers, contextFlags: [...answers.contextFlags] });
+    const shared = ['state', 'people', 'condition'];
+    expect(owner).toEqual(spotter.filter((row) => shared.includes(row.key)));
+    expect(owner.map((row) => row.label)).toEqual([
+      'What it was doing',
+      'Anyone in or near it',
+      'Its condition',
+    ]);
+  });
+
+  it('shows only the questions that were answered', () => {
+    expect(sightingDetailRows({ contextFlags: [] })).toEqual([]);
+    expect(sightingDetailRows({ contextFlags: [], peoplePresence: 'nobody' })).toEqual([
+      { key: 'people', label: 'Anyone in or near it', value: 'No one seen' },
+    ]);
   });
 });
 

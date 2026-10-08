@@ -330,6 +330,10 @@ const ownerSightingSchema = z.object({
   // a status this enum does not know fails the parse for the WHOLE list, so the
   // cost of being wrong here is an owner's entire sightings page.
   status: z.enum(['unverified', 'helpful', 'not_mine', 'credited', 'withdrawn']),
+  // When the owner ruled (20260816130000) — sent since then, read since
+  // 2026-10-08 ("You decided 2 days ago"). Optional so a cached payload from
+  // before it existed still parses.
+  reviewed_at: z.string().nullable().optional(),
   context_flags: z.array(z.enum(SIGHTING_CONTEXT_FLAGS)),
   note: z.string().nullable(),
   area_label: z.string().nullable(),
@@ -379,6 +383,7 @@ export async function fetchPostSightings(postId: string): Promise<OwnerSighting[
     id: row.id,
     createdAt: row.created_at,
     status: row.status,
+    reviewedAt: row.reviewed_at ?? null,
     contextFlags: row.context_flags,
     note: row.note,
     areaLabel: row.area_label,

@@ -21,10 +21,19 @@ import type { PushPayload } from './pushPayload';
  *  on a login wall (features/auth README — guest-first). */
 export function pushRouteFor(payload: PushPayload): Href {
   switch (payload.type) {
-    // An alert, a sighting on your own car, and a recovery all resolve to the
-    // same place: the post. Different reasons to look, one thing to look at.
-    case 'alert':
+    // A sighting of your own car opens THAT sighting — the page where you
+    // answer "is this your car?" (2026-10-08). A payload from before the
+    // server sent the id still opens the post, as it always did.
     case 'sighting':
+      return payload.sightingId
+        ? {
+            pathname: '/sighting/[sightingId]',
+            params: { sightingId: payload.sightingId, postId: payload.postId },
+          }
+        : `/post/${payload.postId}`;
+    // An alert and a recovery resolve to the post. Different reasons to look,
+    // one thing to look at.
+    case 'alert':
     case 'recovery':
     // "A car you reported was found" — the runner-up's ending. The car, not
     // the dispute screen: the post WAS credited, so there is nothing to

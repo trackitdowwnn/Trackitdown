@@ -18,7 +18,16 @@ describe('pushRouteFor', () => {
     expect(pushRouteFor({ type: 'alert', postId: POST_ID })).toBe(`/post/${POST_ID}`);
   });
 
-  it('routes a sighting to the post detail', () => {
+  // 2026-10-08: a sighting opens THAT sighting — where the owner answers
+  // "is this your car?" — once the server sends its id.
+  it('routes a sighting to the sighting itself when its id is sent', () => {
+    expect(pushRouteFor({ type: 'sighting', postId: POST_ID, sightingId: SIGHTING_ID })).toEqual({
+      pathname: '/sighting/[sightingId]',
+      params: { sightingId: SIGHTING_ID, postId: POST_ID },
+    });
+  });
+
+  it('routes a sighting without its id (an older push) to the post detail', () => {
     expect(pushRouteFor({ type: 'sighting', postId: POST_ID })).toBe(`/post/${POST_ID}`);
   });
 

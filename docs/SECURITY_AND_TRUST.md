@@ -62,10 +62,11 @@ commenting standards.
     onboarding (`onboardingSlides.test.ts`, `OnboardingSlide.test.tsx`,
     `OnboardingScreen.test.tsx`), and since 2026-09-30 the report safety sheet
     (`ReportSafetySheet.test.tsx`, plus `ReportSightingScreen.test.tsx` for the
-    deep-link path). **Sighting detail and post sightings have no test
-    asserting the notice renders at all** — two of the five surfaces this rule
-    leans on are unguarded. Stated rather than glossed; closing it is a
-    one-line assertion per suite.
+    deep-link path), and since 2026-10-08 the sighting detail page
+    (`SightingDetailScreen.test.tsx` — the notice, and Open in Maps behind its
+    confirm). **Post sightings still has no test asserting the notice
+    renders** — one surface unguarded. Stated rather than glossed; closing it
+    is a one-line assertion.
 - We never build features that facilitate pursuit: no live navigation
   toward a sighted car, no "car is moving" live tracking, no directions
   from spotter to vehicle.
