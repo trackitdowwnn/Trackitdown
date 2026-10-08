@@ -1,12 +1,12 @@
 /**
  * WHAT:  Mount it above any screen that can take a payment or mint a Stripe
- *        token (the report route, /report-stolen/[vehicleId], /payouts). It
- *        warms Stripe's native SDK AFTER the screen's transition has finished,
- *        and renders its children untouched.
+ *        token (/post-a-car, /report-stolen/[vehicleId], /change-reward,
+ *        /payouts). It warms Stripe's native SDK AFTER the screen's transition
+ *        has finished, and renders its children untouched.
  * WHY:   Until 2026-10-07 this rendered Stripe's <StripeProvider>, which runs
- *        initStripe on every mount — on Android also attaching a Compose view
- *        on the UI thread — right in the middle of the report form's
- *        slide-up. The provider holds no React context (useStripe calls the
+ *        initStripe on every mount — a native re-initialise (and, the first
+ *        time on Android, a Compose view attached on the UI thread) right in
+ *        the middle of the report form's slide-up. The provider holds no React context (useStripe calls the
  *        native module directly), so this now defers the init to after the
  *        slide (useAfterTransition) and every Stripe call awaits
  *        ensureStripeReady, so nothing can reach an uninitialised SDK.

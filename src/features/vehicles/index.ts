@@ -49,7 +49,7 @@ export type { VehicleAnswers, VehicleStepsOptions } from './post/lib/vehicleStep
 export { POST_A_CAR_INITIAL_ANSWERS, postACarFlow } from './post/postACarFlow';
 export { PostACarScreen, type PostACarScreenProps } from './post/screens/PostACarScreen';
 // Read the saved draft ahead of opening the form, so it slides up built.
-export { primePostDraft } from './post/lib/postDraftStorage';
+export { clearPostDraft, primePostDraft } from './post/lib/postDraftStorage';
 export type { PostACarAnswers } from './post/types';
 // The garage saves its photos through the POSTING upload path on purpose: the
 // object lands in post-photos under the caller's own folder, so create_post

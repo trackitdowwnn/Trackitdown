@@ -2,10 +2,10 @@
  * WHAT:  ensureStripeReady — initialises Stripe's native SDK once per app
  *        session (publishable key + Apple Pay merchant id) and returns the
  *        shared promise; every Stripe call awaits it first.
- * WHY:   Stripe's <StripeProvider> runs initStripe on EVERY mount — and on
- *        Android that also attaches a Compose view to the activity on the UI
- *        thread — so it landed in the middle of the report form's slide-up
- *        each time the form opened (2026-10-07). The provider holds no React
+ * WHY:   Stripe's <StripeProvider> runs initStripe on EVERY mount (the first
+ *        call on Android also attaches a Compose view on the UI thread), so a
+ *        native re-initialise landed in the middle of the report form's
+ *        slide-up each time the form opened (2026-10-07). The provider holds no React
  *        context (useStripe calls the native module directly), so it can be
  *        replaced by this: the payment routes warm it AFTER their transition
  *        (BountyPaymentProvider), and the PaymentSheet / bank-token calls

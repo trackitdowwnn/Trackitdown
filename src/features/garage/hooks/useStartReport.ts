@@ -50,8 +50,12 @@ export function useStartReport(): () => void {
     });
     void Promise.race([ready, deadline]).finally(() => {
       clearTimeout(timer);
-      waitingRef.current = false;
       router.push('/post-a-car');
+      // Still guarding for a moment after the push: a tap in the frames
+      // before the new screen covers the + would push it a second time.
+      setTimeout(() => {
+        waitingRef.current = false;
+      }, motion.fast);
     });
   }, [router]);
 }

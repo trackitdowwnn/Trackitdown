@@ -79,7 +79,7 @@ saved answers, so the owner only completes when/where, bounty, review and pay.
   bar's **+** (since 2026-10-07). It slides up once and shows, in place: the
   blank report (no cars to offer), the "Which car?" chooser
   (`ChooseCarStage`: tap-rows plus "It's a different car"), a quiet pending
-  stage (`ReportPending`: the back control, then "Checking your garage…" —
+  stage (`ReportPending`: the exit ✕, then "Getting your report ready…" —
   never a title or car-shaped rows), or the chooser's error view. Choosing
   dissolves into the report (`StageCover`) — no navigation. The first real
   stage is fixed for the visit. See the Nudges section for why the chooser is
@@ -381,8 +381,8 @@ What keeps it honest:
   2026-08-22 bug, when a route chosen while still signed out skipped them).
 - **"Which car?" is never drawn without cars.** A confirmed empty garage (or one
   where every car is already reported) goes straight to the blank wizard; an
-  unknown one shows `ReportPending` — the back control, then "Checking your
-  garage…", no title, no car-shaped rows. The old skeleton told people with no
+  unknown one shows `ReportPending` — the exit ✕, then "Getting your
+  report ready…", no title, no car-shaped rows. The old skeleton told people with no
   cars that they had some (#140).
 - **A stage once shown stays for the visit.** A background revalidation that
   finds cars can't yank away a blank form someone has started on.

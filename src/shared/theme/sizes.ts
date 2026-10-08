@@ -55,6 +55,9 @@ export const sizes = {
   /** Small circled icon button (feed see-all chevron, future photo-corner
    *  buttons). Drawn size only — pad the pressable up to touchTarget. */
   circleButtonSm: 28,
+  /** Square thumbnail on a picker row ("Which car?") — the reference's
+   *  ~56–64pt listing-picker thumb, radius md. */
+  pickerThumb: 64,
   /**
    * Bug-report screenshot thumbnail (added 2026-08-27).
    *

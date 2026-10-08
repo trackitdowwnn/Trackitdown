@@ -107,6 +107,7 @@ import { createBankToken, createIdentityToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
 import { PayoutDetailsForm } from '../components/PayoutDetailsForm';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
+import { ensureStripeReady } from '../lib/stripeReady';
 
 const log = createLogger('payments');
 
@@ -298,6 +299,11 @@ export function PayoutsScreen() {
       // screen — no browser, no bounce page, no deep link.
       if (result.status === 'onboarding_session') {
         primedSecret.current = result.clientSecret;
+        // The embedded component calls native Stripe (bank-account collection,
+        // the authenticated web view), which needs the SDK initialised — no
+        // longer guaranteed by a StripeProvider on mount, so wait for it here.
+        // A failure is left to the component's own error surface.
+        await ensureStripeReady().catch(() => {});
         setConnectInstance(
           loadConnectAndInitialize({
             publishableKey,

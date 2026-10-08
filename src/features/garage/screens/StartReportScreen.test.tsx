@@ -249,10 +249,10 @@ describe('no chooser without cars', () => {
       mockVehicles = { status: 'loading', vehicles: [], retry: mockRetry };
       const { getByTestId, queryByText, queryByTestId } = await renderScreen();
 
-      expect(getByTestId('choose-car-back')).toBeTruthy();
+      expect(getByTestId('report-close')).toBeTruthy();
       expect(queryByText('Which car?')).toBeNull();
       expect(queryByTestId('report-pending-line')).toBeNull();
-      expect(getByTestId('report-pending').props.accessibilityLabel).toBe('Checking your garage');
+      expect(getByTestId('report-pending').props.accessibilityLabel).toBe('Getting your report ready');
     });
 
     it('a slow load adds one neutral line — still never "Which car?"', async () => {
@@ -263,7 +263,7 @@ describe('no chooser without cars', () => {
       await act(async () => {
         jest.advanceTimersByTime(motion.skeletonGrace);
       });
-      expect(getByTestId('report-pending-line')).toHaveTextContent('Checking your garage…');
+      expect(getByTestId('report-pending-line')).toHaveTextContent('Getting your report ready…');
       expect(queryByText('Which car?')).toBeNull();
     });
 
@@ -287,7 +287,7 @@ describe('the escapes', () => {
     mockVehicles = { status: 'error', vehicles: [], retry: mockRetry };
     const { getByText, getByTestId } = await renderScreen();
 
-    expect(getByText("We couldn't load your cars.")).toBeTruthy();
+    expect(getByText("We couldn't check for your saved cars.")).toBeTruthy();
     await act(async () => {
       fireEvent.press(getByText('Report a car from scratch'));
     });
@@ -304,7 +304,7 @@ describe('the escapes', () => {
     await act(async () => {
       view.rerender(<StartReportScreen />);
     });
-    expect(view.getByTestId('choose-car-back')).toBeTruthy();
+    expect(view.getByTestId('report-close')).toBeTruthy();
     expect(view.getByTestId('report-pending-line')).toBeTruthy();
   });
 
@@ -320,7 +320,7 @@ describe('the escapes', () => {
   it('the back control leaves', async () => {
     const { getByTestId } = await renderScreen();
     await act(async () => {
-      fireEvent.press(getByTestId('choose-car-back'));
+      fireEvent.press(getByTestId('report-close'));
     });
     expect(mockBack).toHaveBeenCalled();
   });

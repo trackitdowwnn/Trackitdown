@@ -21,8 +21,8 @@
  */
 
 import { Car, ChevronRight } from 'lucide-react-native';
-import { useCallback } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect } from 'react';
+import { AccessibilityInfo, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { radii, sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
 import { AppImage, Button, ErrorState, PlateChip, Screen, spellPlate } from '@/shared/ui';
@@ -30,9 +30,6 @@ import { AppImage, Button, ErrorState, PlateChip, Screen, spellPlate } from '@/s
 import { vehicleDisplayName } from '../lib/vehicleAnswers';
 import type { SavedVehicle } from '../types';
 import { ReportHeader } from './ReportHeader';
-
-/** Square picker thumbnail (the reference's ~56–64pt), radius md. */
-const THUMB_SIZE = 64;
 
 export type ChooseCarStageProps =
   | {
@@ -97,6 +94,15 @@ export function ChooseCarStage(props: ChooseCarStageProps) {
   const { onDifferent, onBack } = props;
   const onChoose = props.mode === 'cars' ? props.onChoose : undefined;
 
+  // The chooser arrives by dissolving over the pending stage, where focus was
+  // sitting on an element that has just been hidden — so say what's here.
+  const isCars = props.mode === 'cars';
+  useEffect(() => {
+    if (isCars) {
+      AccessibilityInfo.announceForAccessibility('Which car?');
+    }
+  }, [isCars]);
+
   const renderRow = useCallback(
     ({ item }: { item: SavedVehicle }) => (
       <ChooseCarRow vehicle={item} onPress={() => onChoose?.(item)} />
@@ -106,13 +112,15 @@ export function ChooseCarStage(props: ChooseCarStageProps) {
 
   return (
     <Screen>
-      <ReportHeader title="Which car?" onBack={onBack} />
+      {/* No "Which car?" on the error view: a failed load means we DON'T know
+          there are cars, and the title is only ever drawn when there are. */}
+      <ReportHeader title={props.mode === 'cars' ? 'Which car?' : undefined} onBack={onBack} />
 
       {props.mode === 'error' ? (
         <View style={styles.stateBlock}>
           {/* A failed load must never block the report. Retry is offered, but
               carrying on from scratch is always one tap away. */}
-          <ErrorState body="We couldn't load your cars." onRetry={props.onRetry} />
+          <ErrorState body="We couldn't check for your saved cars." onRetry={props.onRetry} />
           <Button label="Report a car from scratch" variant="ghost" onPress={onDifferent} />
         </View>
       ) : (
@@ -173,8 +181,8 @@ const makeStyles = (c: Palette) =>
       backgroundColor: c.surfaceSubtle,
     },
     thumb: {
-      width: THUMB_SIZE,
-      height: THUMB_SIZE,
+      width: sizes.pickerThumb,
+      height: sizes.pickerThumb,
       borderRadius: radii.md,
       overflow: 'hidden',
     },

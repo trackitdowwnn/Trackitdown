@@ -117,7 +117,7 @@ export async function savePostDraft(answers: Partial<PostACarAnswers>): Promise<
       savedAt: new Date().toISOString(),
       answers: pickPersisted(answers),
     };
-    primed = { value: draft.answers };
+    primed = { value: draft.answers, savedAt: Date.now() };
     await AsyncStorage.setItem(KEY, JSON.stringify(draft));
     // ⚠️ COUNTS ONLY. The draft holds a location and a car; nothing about it
     // may reach a log line (docs/LOGGING.md).
@@ -133,6 +133,11 @@ export async function savePostDraft(answers: Partial<PostACarAnswers>): Promise<
  * screen that offers it.
  */
 export async function loadPostDraft(): Promise<PersistedDraftAnswers | null> {
+  return (await readDraft())?.answers ?? null;
+}
+
+/** The draft with WHEN it was saved — the read-ahead needs the age too. */
+async function readDraft(): Promise<{ answers: PersistedDraftAnswers; savedAt: number } | null> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     if (raw === null) {
@@ -152,16 +157,16 @@ export async function loadPostDraft(): Promise<PersistedDraftAnswers | null> {
     // ⚠️ RE-FILTERED ON READ, not trusted. The stored blob is whatever a
     // previous build wrote; a key this build does not persist must not come
     // back into the answers object just because it is on disk.
-    return pickPersisted(parsed.answers as Partial<PostACarAnswers>);
+    return { answers: pickPersisted(parsed.answers as Partial<PostACarAnswers>), savedAt };
   } catch {
     log.warn('post_draft_load_failed');
     return null;
   }
 }
 
-/** Remove it. Called on submit, on discard, and on a failed read. */
+/** Remove it. Called on submit, on discard, on sign-out and on a failed read. */
 export async function clearPostDraft(): Promise<void> {
-  primed = { value: null };
+  primed = { value: null, savedAt: 0 };
   try {
     await AsyncStorage.removeItem(KEY);
   } catch {
@@ -176,9 +181,14 @@ export async function clearPostDraft(): Promise<void> {
 // wizard mid-animation (2026-10-07). So whoever is about to open the form —
 // the + button — primes the read first, and the screen starts from the primed
 // answer synchronously. The async read in the screen is only the fallback.
+//
+// The in-memory copy obeys the same rules as the disk: it carries its saved
+// time so the fortnight expiry still applies within a long-running session,
+// and it is dropped with the disk copy on sign-out (a shared phone must never
+// open one account's draft — a last-seen location — for the next).
 
 /** The last known draft: undefined until read; { value: null } = no draft. */
-let primed: { value: PersistedDraftAnswers | null } | undefined;
+let primed: { value: PersistedDraftAnswers | null; savedAt: number } | undefined;
 let priming: Promise<void> | null = null;
 
 /** Read the draft into memory ahead of opening the form. Shared, never throws. */
@@ -187,11 +197,11 @@ export function primePostDraft(): Promise<void> {
     return Promise.resolve();
   }
   if (!priming) {
-    priming = loadPostDraft()
-      .then((value) => {
+    priming = readDraft()
+      .then((draft) => {
         // A save or clear that landed meanwhile wins over this read.
         if (primed === undefined) {
-          primed = { value };
+          primed = { value: draft?.answers ?? null, savedAt: draft?.savedAt ?? 0 };
         }
       })
       .finally(() => {
@@ -201,9 +211,16 @@ export function primePostDraft(): Promise<void> {
   return priming;
 }
 
-/** The primed draft, synchronously: undefined when not read yet. */
+/** The primed draft, synchronously: undefined when not read yet. A copy that
+ *  has aged past the expiry reads as "no draft". */
 export function peekPrimedDraft(): { value: PersistedDraftAnswers | null } | undefined {
-  return primed;
+  if (primed === undefined) {
+    return undefined;
+  }
+  if (primed.value !== null && Date.now() - primed.savedAt > MAX_AGE_MS) {
+    return { value: null };
+  }
+  return { value: primed.value };
 }
 
 /** Test-only: forget the primed copy. */

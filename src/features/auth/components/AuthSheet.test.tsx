@@ -176,17 +176,41 @@ describe('AuthSheet', () => {
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
     await enterEmailAndCode(screen);
 
-    // A close that never calls back: the fallback must still run it.
-    const handle = mockModalHandle.current as { dismiss: () => void };
-    handle.dismiss = () => {};
-    await act(async () => {
-      setMockStanding('member');
-    });
+    try {
+      // A close that never calls back: the fallback must still run it.
+      const handle = mockModalHandle.current as { dismiss: () => void };
+      handle.dismiss = () => {};
+      await act(async () => {
+        setMockStanding('member');
+      });
 
-    expect(keyboardDismiss).toHaveBeenCalled();
-    expect(run).not.toHaveBeenCalled(); // not alongside the close
-    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
-    keyboardDismiss.mockRestore();
+      expect(keyboardDismiss).toHaveBeenCalled();
+      expect(run).not.toHaveBeenCalled(); // not alongside the close
+      await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    } finally {
+      keyboardDismiss.mockRestore();
+    }
+  });
+
+  it('a close that DOES report back runs it once — the fallback never runs it again', async () => {
+    const run = jest.fn();
+    const screen = await render(<AuthSheet />);
+    await act(async () => {
+      setPendingIntent({ context: 'post_car', run });
+    });
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    await enterEmailAndCode(screen);
+
+    await act(async () => {
+      setMockStanding('member'); // the test double's close calls onDismiss
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+
+    // Past the fallback window: still exactly once.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    });
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it('a NEW user completes the profile BEFORE the continuation runs', async () => {

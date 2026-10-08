@@ -22,9 +22,10 @@
  *        src/features/garage/hooks/useMyVehicles.ts (primes the same store).
  */
 
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 import { useSession } from '@/features/auth';
+import { clearPostDraft } from '@/features/vehicles';
 
 import { loadGarage } from '../lib/loadGarage';
 import {
@@ -65,10 +66,21 @@ export function useHasSavedCar({ enabled }: UseHasSavedCarOptions): SavedCarStat
 
   // SAFETY: the cache holds plates — drop it the moment the session ends.
   // The tab layout mounts this hook for the whole session, so this is the
-  // one place that always sees a sign-out.
+  // one place that always sees a sign-out. The saved report draft goes too:
+  // it is per DEVICE, and it holds where the car was last seen (on a driveway
+  // theft, a home) — the next account on a shared phone must not open it
+  // (security review of #141). Only on a REAL sign-out (signed in, then out),
+  // not on a cold start that is simply signed out.
+  const wasSignedIn = useRef(false);
   useEffect(() => {
-    if (session.status === 'signedOut') {
+    if (session.status === 'signedIn') {
+      wasSignedIn.current = true;
+    } else if (session.status === 'signedOut') {
       invalidateSavedCarSignal();
+      if (wasSignedIn.current) {
+        wasSignedIn.current = false;
+        void clearPostDraft();
+      }
     }
   }, [session.status]);
 

@@ -1,35 +1,32 @@
 /**
- * WHAT:  ReportHeader — the report host's top row: an on-screen back control
- *        and, optionally, a title.
- * WHY:   Headers are hidden app-wide, so a pushed page draws its own way back.
- *        Shared by the chooser ("Which car?") and the pending stage, which
- *        shows the back control WITHOUT a title: the way out is always there,
- *        and a bare chevron says nothing about whether you have cars — the
- *        title is what used to tell people with none that they had some
- *        (2026-10-07).
- * LINKS: src/features/garage/components/ChooseCarStage.tsx;
+ * WHAT:  ReportHeader — the report host's top: the SAME exit ✕ as the posting
+ *        wizard, in the same place, and optionally a title beneath it.
+ * WHY:   The report screen slides up from the bottom and its stages dissolve
+ *        into the wizard, which exits with ✕. A left chevron on a bottom-sheet
+ *        task was the wrong grammar, and a control that sat 4pt away from the
+ *        wizard's ✕ showed BOTH during the dissolve (UI review of #141). So
+ *        this reuses WizardHeader in the wizard's own header geometry: across
+ *        pending → chooser → form, the way out never moves or changes.
+ *        The pending stage shows it WITHOUT a title — the way out is always
+ *        there, and nothing claims you have cars.
+ * LINKS: src/shared/wizard/WizardHeader.tsx (the control);
+ *        src/shared/wizard/WizardScreen.tsx (styles.header — the geometry
+ *          matched here); src/features/garage/components/ChooseCarStage.tsx,
  *        src/features/garage/components/ReportPending.tsx.
  */
 
-import { ChevronLeft } from 'lucide-react-native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { sizes, spacing, typography, usePalette, useThemedStyles, type Palette } from '@/shared/theme';
+import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import { WizardHeader } from '@/shared/wizard';
 
 export function ReportHeader({ title, onBack }: { title?: string; onBack: () => void }) {
   const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
   return (
-    <View style={styles.headerRow}>
-      <Pressable
-        onPress={onBack}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        style={styles.back}
-        testID="choose-car-back"
-      >
-        <ChevronLeft size={sizes.icon} color={palette.textPrimary} />
-      </Pressable>
+    <View>
+      <View style={styles.headerRow}>
+        <WizardHeader onExit={onBack} testID="report-close" />
+      </View>
       {title ? (
         <Text style={styles.title} accessibilityRole="header">
           {title}
@@ -41,26 +38,18 @@ export function ReportHeader({ title, onBack }: { title?: string; onBack: () => 
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
+    // The wizard's header row exactly (WizardScreen styles.header), so the ✕
+    // lands on the same pixels as the form's.
     headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: spacing.xl,
-      paddingTop: spacing.md,
-      gap: spacing.xs,
-      // Holds its height with or without a title, so the title arriving moves
-      // nothing below it.
-      minHeight: sizes.touchTarget + spacing.md,
-    },
-    back: {
-      width: sizes.touchTarget,
-      height: sizes.touchTarget,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginLeft: -(sizes.touchTarget - sizes.icon) / 2,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
     },
     title: {
       ...typography.title,
       color: c.textPrimary,
-      flexShrink: 1,
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.sm,
     },
   });

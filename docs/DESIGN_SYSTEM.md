@@ -767,9 +767,9 @@ to use.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
   **Never a skeleton shaped like an answer the user may not have.** A screen
   that can't yet tell whether it has anything to show (the report screen,
-  before the garage answer lands) shows its back control and nothing else
-  for `motion.skeletonGrace` (400ms), then one neutral line ("Checking your
-  garage…") — no title, no rows shaped like cars. "Which car?" over car-shaped
+  before the garage answer lands) shows its exit ✕ and nothing else for
+  `motion.skeletonGrace` (400ms), then one neutral line ("Getting your report
+  ready…", true whatever the answer) — no title, no rows shaped like cars. "Which car?" over car-shaped
   rows told people with no cars that they had some (`ReportPending`,
   2026-10-07). Better still, wait for the answer BEFORE navigating, bounded
   by the same grace (`useStartReport`), so the screen arrives already built.
@@ -835,9 +835,21 @@ barrel, since it pulls in Reanimated).
   **success/reward moments only** (report-sent, recovery) — the one place
   warmth shows.
 - **Navigation:** platform-native — iOS horizontal push + swipe-back, Android
-  fade-through; the report-sighting wizard presents from the bottom; the
-  post-detail hero uses a subtle cross-fade + scale-from-0.94 for card→detail
-  continuity (not a full shared element).
+  fade-through; full-screen TASK flows present from the bottom (report a
+  sighting, report a stolen car — /post-a-car and /report-stolen/[vehicleId]
+  — and a new alert), and exit with ✕; the post-detail hero uses a subtle
+  cross-fade + scale-from-0.94 for card→detail continuity (not a full shared
+  element).
+- **In-place stages (`StageCover`, 2026-10-07):** when one screen changes
+  what it shows (the report screen: pending → "Which car?" → the form), it
+  does NOT navigate. The outgoing stage stays on top and fades out over
+  `fast` with `easeOut`; the incoming one is simply there underneath, with
+  no `entering`; instant under reduced motion. The outgoing layer takes no
+  touches and is hidden from screen readers, every layer paints the page
+  background, and a stage that returns mid-fade is restored to full
+  opacity. Keep the exit control in the same place across stages (the
+  report screen reuses the wizard's `WizardHeader` geometry) so nothing
+  under the thumb moves.
 - **Lists:** on-screen rows enter with a small staggered `FadeInDown`
   (≤~300ms total); recycled/off-screen cells don't animate.
 - **Reduced motion (part of the system, not a footnote):** every animated
