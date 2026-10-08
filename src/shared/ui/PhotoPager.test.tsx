@@ -128,13 +128,17 @@ describe('PhotoPager', () => {
     expect(view.getByLabelText('Sighting photo, photo 2 of 2, From photo library')).toBeTruthy();
   });
 
-  it('a photo whose link is still on its way is an empty page, not a broken image', async () => {
+  it('a photo still on its way is an empty page — not a broken image, and not silent', async () => {
     const view = await render(
-      <PhotoPager photos={[{ uri: 'https://x/0.jpg' }, {}]} alt="Car" testID="pager" />,
+      <PhotoPager
+        photos={[{ uri: 'https://x/0.jpg' }, { badge: 'From photo library' }]}
+        alt="Car"
+        testID="pager"
+      />,
     );
     await measure(view);
-    expect(view.getByLabelText('Car, photo 1 of 2')).toBeTruthy();
-    expect(view.queryByLabelText('Car, photo 2 of 2')).toBeNull();
+    const pending = view.getByLabelText('Car, photo 2 of 2, From photo library');
+    expect(pending.props.source).toBeUndefined(); // no image yet
   });
 
   it('without a description, each photo is simply "Photo n of m"', async () => {

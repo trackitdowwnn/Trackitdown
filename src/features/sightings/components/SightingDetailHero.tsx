@@ -43,6 +43,7 @@ export function SightingDetailHero({ photos, photoUrls, width, height }: Sightin
       estimatedWidth={width}
       alt="Sighting photo"
       placeholderIcon={Camera}
+      placeholderLabel="No photos with this sighting"
       // Clear of the content sheet's rounded top, which overlaps the hero's
       // last radii.xl points (as on the post page).
       counterBottomInset={radii.xl}

@@ -29,7 +29,7 @@ import type { PostStatus } from '../types';
  * palette. Storing a tone keeps that function pure and defers the one thing
  * that has to be deferred (the colour) to `toneColor` inside the component.
  */
-export type BadgeTone = 'neutral' | 'warning' | 'success';
+export type BadgeTone = 'neutral' | 'warning' | 'success' | 'primary';
 
 /** Badge copy + dot tone per non-active status (active → no badge). */
 const STATUS_BADGES: Partial<Record<PostStatus, { label: string; tone: BadgeTone }>> = {
@@ -48,8 +48,16 @@ const STATUS_BADGES: Partial<Record<PostStatus, { label: string; tone: BadgeTone
 const LIVE_BADGE = { label: 'Live', tone: 'success' } as const;
 
 /** Tone → dot hex, resolved per-render against the palette in effect. */
+// 'primary': an answer the owner gave (a sighting confirmed) — ink, not the
+// success green, which is reserved for payout moments.
 const toneColor = (c: Palette, tone: BadgeTone): string =>
-  tone === 'warning' ? c.warning : tone === 'success' ? c.success : c.textSecondary;
+  tone === 'warning'
+    ? c.warning
+    : tone === 'success'
+      ? c.success
+      : tone === 'primary'
+        ? c.primary
+        : c.textSecondary;
 
 /** Resolve the badge for a status, honouring the owner-only Live opt-in.
  *  Returns null when there's no badge (a public active post). */

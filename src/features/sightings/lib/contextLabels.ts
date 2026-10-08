@@ -3,8 +3,10 @@
  *        for every flag, follow-up and presence answer; the option lists the
  *        context step renders as chips; contextSummary(), which narrates any
  *        sighting-ish shape for the owner; contextReviewRows(), the same facts
- *        as labelled rows for the check-and-send step; and
- *        contextDetailCount(), how many details a report carries.
+ *        as labelled rows for the check-and-send step, and
+ *        sightingDetailRows(), the same rows under the same labels for the
+ *        owner's sighting page ("What they saw"); and contextDetailCount(),
+ *        how many details a report carries.
  * WHY:   The context step, the confirm step, the owner's timeline rows and the
  *        sighting detail page all describe the same facts. One module keeps
  *        the words identical everywhere: the step used to keep its own copies,
@@ -132,7 +134,7 @@ export interface ContextReviewRow {
  * these words (contextReviewRows) and the owner reads them under the same ones
  * (sightingDetailRows) — what they check is what the owner reads.
  */
-export const CONTEXT_ROW_LABELS = {
+const CONTEXT_ROW_LABELS = {
   state: 'What it was doing',
   people: 'Anyone in or near it',
   condition: 'Its condition',

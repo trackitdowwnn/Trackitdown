@@ -1,7 +1,7 @@
 /**
  * WHAT:  "Spotted by" on the owner's sighting page: the spotter's avatar and
- *        first name, their record ("12 sightings · 4 confirmed · 1
- *        recovery"), "Member since July 2026", a "View profile" link, and —
+ *        first name, their record ("12 sightings · 4 confirmed by owners ·
+ *        1 recovery"), "Member since July 2026", a "View profile" link, and —
  *        while the owner hasn't decided yet — "Message {name}", so they can
  *        ask before they answer "Is this your car?".
  * WHY:   How much to trust a sighting is partly how much to trust who sent
@@ -42,12 +42,12 @@ export interface SightingSpotterCardProps {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** "12 sightings · 4 confirmed · 1 recovery" — the parts that are non-zero,
+/** "12 sightings · 4 confirmed by owners · 1 recovery" — the parts that are non-zero,
  *  with sightings always first (it is the denominator of the rest). */
 export function spotterRecordLine(spotter: OwnerSighting['spotter']): string {
   return [
     plural(spotter.sightingsReported, 'sighting', 'sightings'),
-    spotter.sightingsHelpful > 0 ? `${spotter.sightingsHelpful} confirmed` : null,
+    spotter.sightingsHelpful > 0 ? `${spotter.sightingsHelpful} confirmed by owners` : null,
     spotter.recoveriesCredited > 0
       ? plural(spotter.recoveriesCredited, 'recovery', 'recoveries')
       : null,
@@ -76,9 +76,7 @@ export function SightingSpotterCard({
       <View style={styles.top}>
         <Avatar name={spotter.firstName} size="md" />
         <View style={styles.body}>
-          <Text style={styles.name} accessibilityRole="header">
-            {spotter.firstName}
-          </Text>
+          <Text style={styles.name}>{spotter.firstName}</Text>
           <Text style={styles.meta}>{spotterRecordLine(spotter)}</Text>
           {since ? <Text style={styles.meta}>{since}</Text> : null}
         </View>
@@ -92,9 +90,10 @@ export function SightingSpotterCard({
         <Text style={styles.linkLabel}>View profile</Text>
       </Pressable>
       {onMessage ? (
+        // Subtle: encouraged, never competing with the pinned bar's answer.
         <Button
           label={`Message ${spotter.firstName}`}
-          variant="secondary"
+          variant="subtle"
           loading={messaging}
           onPress={onMessage}
         />

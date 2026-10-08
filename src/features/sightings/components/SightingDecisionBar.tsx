@@ -16,13 +16,25 @@
  *        first); "Not my car" moves nothing and can be taken back — which is
  *        what the "Actually, it is" state is. Both are about the CAR, never
  *        the person: they answered a description in good faith.
+ *
+ *        ⚠️ THE SPINNER GOES ON THE ANSWER THAT WAS GIVEN (review of #145):
+ *        a shared "deciding" flag put it on "Yes" while "Not my car" was the
+ *        one being sent — which read as the irreversible answer going out.
+ *        At large text the pair stacks, primary first, rather than wrapping
+ *        each label onto three lines in a bar that is always on screen.
  * LINKS: src/features/sightings/screens/SightingDetailScreen.tsx (owns the
  *          calls and the confirm); src/shared/ui/StickyActionBar.tsx.
  */
 
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  listRowStackFontScale,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 import { Button, StickyActionBar } from '@/shared/ui';
 
 import type { OwnerSighting } from '../types';
@@ -34,7 +46,8 @@ export interface SightingDecisionBarProps {
   onYes: () => void;
   onNotMine: () => void;
   onMessage: () => void;
-  deciding: boolean;
+  /** Which answer is being sent, if any. */
+  pending: 'yes' | 'not_mine' | null;
   messaging: boolean;
 }
 
@@ -45,51 +58,89 @@ export function SightingDecisionBar({
   onYes,
   onNotMine,
   onMessage,
-  deciding,
+  pending,
   messaging,
 }: SightingDecisionBarProps) {
   const styles = useThemedStyles(makeStyles);
+  const { fontScale } = useWindowDimensions();
+  const stacked = (fontScale ?? 1) > listRowStackFontScale;
+  const busy = pending !== null;
 
   if (status === 'unverified') {
+    const yes = (
+      <Button
+        label="Yes, it’s my car"
+        loading={pending === 'yes'}
+        disabled={busy && pending !== 'yes'}
+        onPress={onYes}
+      />
+    );
+    const no = (
+      <Button
+        label="Not my car"
+        variant="secondary"
+        loading={pending === 'not_mine'}
+        disabled={busy && pending !== 'not_mine'}
+        onPress={onNotMine}
+      />
+    );
     return (
       <StickyActionBar testID="sighting-decision-bar">
         <Text style={styles.prompt} accessibilityRole="header">
           Is this your car?
         </Text>
-        <View style={styles.pair}>
-          <View style={styles.half}>
-            <Button
-              label="Not my car"
-              variant="secondary"
-              disabled={deciding}
-              onPress={onNotMine}
-            />
+        {stacked ? (
+          <View style={styles.stack}>
+            {yes}
+            {no}
           </View>
-          <View style={styles.half}>
-            <Button label="Yes, it’s my car" loading={deciding} onPress={onYes} />
+        ) : (
+          <View style={styles.pair}>
+            <View style={styles.half}>{no}</View>
+            <View style={styles.half}>{yes}</View>
           </View>
-        </View>
+        )}
       </StickyActionBar>
     );
   }
 
   if (status === 'not_mine') {
+    // Both secondary: after "not mine" there is nothing to push the owner
+    // towards — the state stays calm.
+    const change = (
+      <Button
+        label="Actually, it is"
+        variant="secondary"
+        loading={pending === 'yes'}
+        disabled={messaging}
+        onPress={onYes}
+      />
+    );
+    const message = (
+      <Button
+        label={`Message ${spotterName}`}
+        variant="secondary"
+        loading={messaging}
+        disabled={busy}
+        onPress={onMessage}
+      />
+    );
     return (
       <StickyActionBar testID="sighting-decision-bar">
-        <Text style={styles.prompt}>You said this isn’t your car.</Text>
-        <View style={styles.pair}>
-          <View style={styles.half}>
-            <Button
-              label="Actually, it is"
-              variant="secondary"
-              loading={deciding}
-              onPress={onYes}
-            />
+        <Text style={styles.prompt} accessibilityRole="header">
+          You said this isn’t your car.
+        </Text>
+        {stacked ? (
+          <View style={styles.stack}>
+            {change}
+            {message}
           </View>
-          <View style={styles.half}>
-            <Button label={`Message ${spotterName}`} loading={messaging} onPress={onMessage} />
+        ) : (
+          <View style={styles.pair}>
+            <View style={styles.half}>{change}</View>
+            <View style={styles.half}>{message}</View>
           </View>
-        </View>
+        )}
       </StickyActionBar>
     );
   }
@@ -106,13 +157,16 @@ const makeStyles = (c: Palette) =>
     prompt: {
       ...typography.cardTitle,
       color: c.textPrimary,
-      marginBottom: spacing.sm,
+      marginBottom: spacing.md,
     },
     pair: {
       flexDirection: 'row',
-      gap: spacing.sm,
+      gap: spacing.md,
     },
     half: {
       flex: 1,
+    },
+    stack: {
+      gap: spacing.md,
     },
   });

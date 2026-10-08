@@ -1,12 +1,15 @@
 /**
  * WHAT:  Tests for the owner's sighting page (redesigned 2026-10-08): its
- *        load / error / gone states; the decision — asked as "Is this your
- *        car?", "Yes" confirmed before it is sent, "Not my car" straight
- *        away and reversible; the decision shown honestly afterwards (a
- *        rejected sighting is "Not your car", never "Marked helpful"), with
- *        when it was made; the sections (where, how exact, what they saw,
- *        the marks, the spotter); the safety notice; Open in Maps behind its
- *        warning; Message opening the thread.
+ *        load / error / gone states, and a crafted link that never fetches;
+ *        the way back, with or without history; the decision — asked as "Is
+ *        this your car?", "Yes" confirmed before it is sent (from either
+ *        state), "Not my car" straight away and reversible, the spinner on
+ *        the answer given; the decision shown honestly afterwards (a rejected
+ *        sighting is "Not your car", never "Marked helpful"), with when it was
+ *        made; one toast whatever `counted` says; the sections (where, how
+ *        exact, what they saw, the marks, the spotter); the safety notice
+ *        beside the point and again before the map; Open in Maps dropping a
+ *        pin; Message opening the thread.
  * WHY:   This page had no test of its own, and shipped two bugs a test would
  *        have caught: the opposite label on a rejected sighting, and the
  *        irreversible "helpful" on one unconfirmed tap. It is also where
@@ -18,7 +21,8 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
-import { ToastProvider } from '@/shared/ui';
+import { mapPinUrl } from '@/shared/lib';
+import { SAFETY_NOTICE_BODY, ToastProvider } from '@/shared/ui';
 
 import type { OwnerSighting } from '../types';
 import { SightingDetailScreen } from './SightingDetailScreen';
@@ -61,8 +65,15 @@ jest.mock('@/shared/ui/AppMap', () => ({ AppMap: 'AppMap', AppMapMarker: 'AppMap
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockReplace = jest.fn();
+const mockCanGoBack = jest.fn();
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: mockPush, back: mockBack }),
+  useRouter: () => ({
+    push: mockPush,
+    back: mockBack,
+    replace: mockReplace,
+    canGoBack: mockCanGoBack,
+  }),
 }));
 
 let mockHook: {
@@ -71,8 +82,12 @@ let mockHook: {
   photoUrls: Record<string, string>;
   retry: jest.Mock;
 };
+const mockHookCall = jest.fn();
 jest.mock('../hooks/usePostSightings', () => ({
-  usePostSightings: () => mockHook,
+  usePostSightings: (postId: string, enabled: boolean) => {
+    mockHookCall(postId, enabled);
+    return mockHook;
+  },
 }));
 
 const mockHelpful = jest.fn();
@@ -82,21 +97,22 @@ jest.mock('../api/sightingApi', () => ({
   markSightingNotMine: (id: string) => mockNotMine(id),
   SightingVerdictError: class SightingVerdictError extends Error {},
 }));
+const { SightingVerdictError } = jest.requireMock('../api/sightingApi') as {
+  SightingVerdictError: new (message: string) => Error;
+};
 
 const mockOpenThread = jest.fn();
 // The deferred chat import, stood in for (Jest can't run a dynamic import).
-jest.mock('../lib/openSpotterThread', () => ({
+jest.mock('../api/openSpotterThread', () => ({
   openSpotterThread: (id: string) => mockOpenThread(id),
 }));
 
-jest.mock('@/features/profile', () => ({
-  __esModule: true,
-  PublicProfileSheet: () => null,
-}));
+const POST_ID = '11111111-1111-4111-8111-111111111111';
+const SIGHTING_ID = '22222222-2222-4222-8222-222222222222';
 
 function sighting(overrides: Partial<OwnerSighting> = {}): OwnerSighting {
   return {
-    id: 's1',
+    id: SIGHTING_ID,
     createdAt: '2026-10-08T10:00:00Z',
     status: 'unverified',
     reviewedAt: null,
@@ -146,8 +162,10 @@ function ready(s: OwnerSighting = sighting()) {
   };
 }
 
-const renderScreen = () =>
-  render(<SightingDetailScreen postId="p1" sightingId="s1" />, { wrapper: ToastProvider });
+const renderScreen = (postId = POST_ID, sightingId = SIGHTING_ID) =>
+  render(<SightingDetailScreen postId={postId} sightingId={sightingId} />, {
+    wrapper: ToastProvider,
+  });
 
 const press = async (node: Parameters<typeof fireEvent.press>[0]) => {
   await act(async () => {
@@ -160,6 +178,7 @@ const last = <T,>(items: T[]) => items[items.length - 1];
 beforeEach(() => {
   jest.clearAllMocks();
   ready();
+  mockCanGoBack.mockReturnValue(true);
   mockHelpful.mockResolvedValue({
     status: 'helpful',
     changed: true,
@@ -188,15 +207,36 @@ describe('SightingDetailScreen — states', () => {
   it('says so, and offers the way back, for a sighting that is gone', async () => {
     mockHook = { status: 'ready', sightings: [], photoUrls: {}, retry: jest.fn() };
     const view = await renderScreen();
-    expect(view.getByText('This sighting isn’t available any more.')).toBeTruthy();
+    expect(view.getByText('This sighting isn’t available any more')).toBeTruthy();
     await press(view.getByText('Go back'));
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('a sighting the spotter withdrew reads as gone — no decision offered', async () => {
+    ready(sighting({ status: 'withdrawn' }));
+    const view = await renderScreen();
+    expect(view.getByText('This sighting isn’t available any more')).toBeTruthy();
+    expect(view.queryByTestId('sighting-decision-bar')).toBeNull();
+  });
+
+  it('⚠️ a crafted link with ids that aren’t ids never fetches', async () => {
+    const view = await renderScreen('p1', 's1');
+    expect(mockHookCall).toHaveBeenCalledWith('p1', false);
+    expect(view.getByText('This sighting isn’t available any more')).toBeTruthy();
   });
 
   it('always has a way back — the header’s back button', async () => {
     const view = await renderScreen();
     await press(view.getByLabelText('Back'));
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('opened from a notification with nothing behind it, back goes to the post', async () => {
+    mockCanGoBack.mockReturnValue(false);
+    const view = await renderScreen();
+    await press(view.getByLabelText('Back'));
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith(`/post/${POST_ID}`);
   });
 });
 
@@ -205,39 +245,85 @@ describe('the decision', () => {
     const view = await renderScreen();
     expect(view.getByTestId('sighting-decision-bar')).toBeTruthy();
     expect(view.getByText('Is this your car?')).toBeTruthy();
+    expect(view.queryByTestId('sighting-decision')).toBeNull();
   });
 
   it('⚠️ "Yes" asks once more before it is sent — it cannot be undone', async () => {
     const view = await renderScreen();
     await press(view.getByRole('button', { name: 'Yes, it’s my car' }));
     expect(mockHelpful).not.toHaveBeenCalled(); // only the confirm so far
+    expect(view.getByText('Confirm it’s your car?')).toBeTruthy();
     expect(view.getByText(/You can’t undo this/)).toBeTruthy();
 
     await press(last(view.getAllByRole('button', { name: 'Yes, it’s my car' })));
-    expect(mockHelpful).toHaveBeenCalledWith('s1');
-    expect(view.getByText('Your car')).toBeTruthy();
+    expect(mockHelpful).toHaveBeenCalledWith(SIGHTING_ID);
+    expect(view.getByText('Confirmed')).toBeTruthy();
     expect(view.getByText(/You decided/)).toBeTruthy();
+    expect(view.getByText('Confirmed — we’ve let Sam know.')).toBeTruthy();
+  });
+
+  it('⚠️ says the same thing when the confirmation didn’t count — no tell', async () => {
+    mockHelpful.mockResolvedValue({
+      status: 'helpful',
+      changed: true,
+      crossedThreshold: null,
+      counted: false,
+    });
+    const view = await renderScreen();
+    await press(view.getByRole('button', { name: 'Yes, it’s my car' }));
+    await press(last(view.getAllByRole('button', { name: 'Yes, it’s my car' })));
+    expect(view.getByText('Confirmed — we’ve let Sam know.')).toBeTruthy();
+    expect(view.queryByText(/credit/i)).toBeNull();
   });
 
   it('"Not my car" is sent straight away — it is reversible', async () => {
     const view = await renderScreen();
     await press(view.getByRole('button', { name: 'Not my car' }));
-    expect(mockNotMine).toHaveBeenCalledWith('s1');
+    expect(mockNotMine).toHaveBeenCalledWith(SIGHTING_ID);
+    expect(view.getByText('Not your car')).toBeTruthy();
+    expect(view.getByText('Marked as not your car. You can change this.')).toBeTruthy();
+  });
+
+  it('the spinner sits on the answer being sent, not the other one', async () => {
+    mockNotMine.mockReturnValue(new Promise(() => {})); // still on its way
+    const view = await renderScreen();
+    await press(view.getByRole('button', { name: 'Not my car' }));
+    expect(view.getByRole('button', { name: 'Not my car', busy: true })).toBeTruthy();
+    expect(view.getByRole('button', { name: 'Yes, it’s my car', busy: false })).toBeDisabled();
+  });
+
+  it('a refused "Not my car" says why, in the server’s own calm words', async () => {
+    mockNotMine.mockRejectedValue(new SightingVerdictError('You’ve already confirmed this one.'));
+    const view = await renderScreen();
+    await press(view.getByRole('button', { name: 'Not my car' }));
+    expect(view.getByText('You’ve already confirmed this one.')).toBeTruthy();
+    expect(view.getByText('Is this your car?')).toBeTruthy();
   });
 
   it('⚠️ a sighting said NOT to be the car reads "Not your car" — never "Marked helpful"', async () => {
     ready(sighting({ status: 'not_mine', reviewedAt: '2026-10-08T11:00:00Z' }));
     const view = await renderScreen();
     expect(view.getByText('Not your car')).toBeTruthy();
+    expect(view.getByLabelText(/^Your answer: Not your car, decided /)).toBeTruthy();
     expect(view.queryByText(/helpful/i)).toBeNull();
     expect(view.getByText('You said this isn’t your car.')).toBeTruthy();
-    expect(view.getByRole('button', { name: 'Actually, it is' })).toBeTruthy();
+  });
+
+  it('⚠️ "Actually, it is" goes through the same confirm', async () => {
+    ready(sighting({ status: 'not_mine', reviewedAt: '2026-10-08T11:00:00Z' }));
+    const view = await renderScreen();
+    await press(view.getByRole('button', { name: 'Actually, it is' }));
+    expect(mockHelpful).not.toHaveBeenCalled();
+    await press(view.getByRole('button', { name: 'Yes, it’s my car' }));
+    expect(mockHelpful).toHaveBeenCalledWith(SIGHTING_ID);
+    expect(view.getByText('Confirmed')).toBeTruthy();
   });
 
   it('once confirmed, the bar is just Message', async () => {
     ready(sighting({ status: 'helpful', reviewedAt: '2026-10-08T11:00:00Z' }));
     const view = await renderScreen();
     expect(view.queryByText('Is this your car?')).toBeNull();
+    expect(view.getByText('Confirmed')).toBeTruthy();
     expect(view.getAllByRole('button', { name: 'Message Sam' })).toHaveLength(1);
   });
 
@@ -279,38 +365,39 @@ describe('the evidence', () => {
     const view = await renderScreen();
     expect(view.getByText('Location couldn’t be captured for this sighting.')).toBeTruthy();
     expect(view.queryByTestId('sighting-open-maps')).toBeNull();
+    expect(view.getByText(SAFETY_NOTICE_BODY)).toBeTruthy();
   });
 
-  it('labels what they saw, quotes their note, and lists your marks they could see', async () => {
+  it('labels what they saw, sets their note apart, and lists your marks they could see', async () => {
     const view = await renderScreen();
     expect(view.getByLabelText('What it was doing, Parked · Looks parked up')).toBeTruthy();
-    expect(view.getByText('“Outside the Tesco on Deansgate”')).toBeTruthy();
+    expect(view.getByText('In their words')).toBeTruthy();
+    expect(view.getByText('Outside the Tesco on Deansgate')).toBeTruthy();
     expect(view.getByText('Dent on the rear door')).toBeTruthy();
   });
 
   it('shows who spotted it, and their record', async () => {
     const view = await renderScreen();
-    expect(view.getByText('12 sightings · 4 confirmed · 1 recovery')).toBeTruthy();
+    expect(view.getByText('12 sightings · 4 confirmed by owners · 1 recovery')).toBeTruthy();
     expect(view.getByText('Member since July 2026')).toBeTruthy();
-  });
-
-  it('⚠️ always shows the safety notice', async () => {
-    const view = await renderScreen();
-    expect(view.getByText(/999/)).toBeTruthy();
   });
 });
 
 describe('the actions', () => {
-  it('⚠️ Open in Maps warns first, then drops a pin', async () => {
+  it('⚠️ the safety notice stands by the point — and again before the map opens', async () => {
     const openURL = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
     try {
       const view = await renderScreen();
+      expect(view.getAllByText(SAFETY_NOTICE_BODY)).toHaveLength(1);
+
       await press(view.getByTestId('sighting-open-maps'));
       expect(openURL).not.toHaveBeenCalled();
       expect(view.getByText('Opening the map — please don’t approach')).toBeTruthy();
+      expect(view.getAllByText(SAFETY_NOTICE_BODY)).toHaveLength(2);
 
+      // A pin — never directions (§1 bans pursuit features).
       await press(last(view.getAllByRole('button', { name: 'Open in Maps' })));
-      expect(openURL).toHaveBeenCalledTimes(1);
+      expect(openURL).toHaveBeenCalledWith(mapPinUrl(53.4794, -2.2453, 'Car sighted here'));
     } finally {
       openURL.mockRestore();
     }
@@ -319,8 +406,7 @@ describe('the actions', () => {
   it('Message opens the conversation by sighting — before deciding, too', async () => {
     const view = await renderScreen();
     await press(view.getByRole('button', { name: 'Message Sam' }));
-    // Behind a deferred import of the chat feature.
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/chat/t1'));
-    expect(mockOpenThread).toHaveBeenCalledWith('s1');
+    expect(mockOpenThread).toHaveBeenCalledWith(SIGHTING_ID);
   });
 });

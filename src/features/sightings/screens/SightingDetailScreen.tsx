@@ -4,10 +4,10 @@
  *        - the spotter's photos full-bleed and swipeable, the back button
  *          floating over them;
  *        - a content sheet with: where and when it was seen, and the owner's
- *          decision so far; "Where" (the map, how exact it is, Open in Maps);
- *          "What they saw" (their answers as labelled rows, their note, the
- *          owner's marks they could see); "Spotted by" (their record);
- *          the safety notice;
+ *          decision so far; "Where" (the map, how exact it is, the safety
+ *          notice, Open in Maps); "What they saw" (their answers as labelled
+ *          rows, their note, the owner's marks they could see); "Spotted by"
+ *          (their record);
  *        - pinned to the bottom, the decision: "Is this your car?".
  * WHY:   Redesigned 2026-10-08 — the owner found the old page "hard to read
  *        and understand": no way back, the photos stacked one under another,
@@ -30,13 +30,17 @@
  *        it is asked once more before it is sent. Both are about the CAR;
  *        neither is a judgement of the spotter, who answered a description in
  *        good faith.
+ *
+ *        A push can open this page directly (pushRoute), so the ids are
+ *        checked before anything is fetched or logged, and "back" with nothing
+ *        behind it goes to the post.
  * LINKS: src/app/sighting/[sightingId].tsx (route);
  *        src/features/sightings/hooks/usePostSightings.ts;
  *        src/features/sightings/api/sightingApi.ts (markSightingHelpful,
- *          markSightingNotMine);
+ *          markSightingNotMine); ../api/openSpotterThread.ts;
  *        ../components/SightingDetailHero.tsx, SightingWhereSection.tsx,
  *          SightingSeenSection.tsx, SightingSpotterCard.tsx,
- *          SightingDecisionBar.tsx;
+ *          SightingDecisionBar.tsx; ../lib/sightingVerdict.ts;
  *        src/features/vehicles/screens/PostDetailScreen.tsx (the same frame);
  *        docs/DOMAIN.md (Reputation v1); docs/SECURITY_AND_TRUST.md §1.
  */
@@ -46,24 +50,27 @@ import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 
 import { Linking, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { z } from 'zod';
 
 import type { PublicProfileSheetProps } from '@/features/profile';
 import { useNow, useTimeAgo } from '@/shared/hooks';
-import { formatDateTimeLabel, mapPinUrl } from '@/shared/lib';
+import { formatDateTimeLabel, mapPinUrl, spokenAgo } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
-import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import { radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import {
   AppHeader,
   ConfirmDialog,
+  EmptyState,
   ErrorState,
   HEADER_BAR_HEIGHT,
   SAFETY_NOTICE_BODY,
-  SafetyNotice,
+  StatusPill,
   useToast,
   type BottomSheetRef,
   type ConfirmDialogRef,
 } from '@/shared/ui';
 
+import { openSpotterThread } from '../api/openSpotterThread';
 import { markSightingHelpful, markSightingNotMine, SightingVerdictError } from '../api/sightingApi';
 import { SightingDecisionBar } from '../components/SightingDecisionBar';
 import { SightingDetailHero } from '../components/SightingDetailHero';
@@ -71,7 +78,7 @@ import { hasSeenDetails, SightingSeenSection } from '../components/SightingSeenS
 import { SightingSpotterCard } from '../components/SightingSpotterCard';
 import { SightingWhereSection } from '../components/SightingWhereSection';
 import { usePostSightings } from '../hooks/usePostSightings';
-import { openSpotterThread } from '../lib/openSpotterThread';
+import { isConfirmedVerdict, isGoneSighting, sightingVerdictLabel } from '../lib/sightingVerdict';
 import type { OwnerSighting } from '../types';
 
 const log = createLogger('sightings');
@@ -83,9 +90,21 @@ const FADE_TRAVEL = 48;
 /** How often "Today, 14:30" re-checks what today is. */
 const CLOCK_TICK_MS = 60_000;
 
+const isGuid = (value: string) => z.guid().safeParse(value).success;
+
 export interface SightingDetailScreenProps {
   postId: string;
   sightingId: string;
+}
+
+/** The answer the owner just gave, until the server's own copy catches up. */
+interface LocalVerdict {
+  status: OwnerSighting['status'];
+  reviewedAt: string | null;
+  /** The server status it was given over. The override holds only while the
+   *  server still says this, so a later change (credited after a recovery,
+   *  an answer from another device) is never masked by a stale local one. */
+  from: OwnerSighting['status'];
 }
 
 export function SightingDetailScreen({ postId, sightingId }: SightingDetailScreenProps) {
@@ -94,8 +113,16 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const { status, sightings, photoUrls, retry } = usePostSightings(postId);
-  const sighting = sightings.find((s) => s.id === sightingId) ?? null;
+
+  // A crafted link (trackitdown://sighting/…) must not reach the RPC or the
+  // logs: an id that isn't one is simply "not available".
+  const idsValid = isGuid(postId) && isGuid(sightingId);
+  const { status, sightings, photoUrls, retry } = usePostSightings(postId, idsValid);
+  const found = idsValid ? (sightings.find((s) => s.id === sightingId) ?? null) : null;
+  // A withdrawn sighting is the spotter's to take back; it reads as gone.
+  const sighting = found && !isGoneSighting(found.status) ? found : null;
+  const loading = idsValid && status === 'loading';
+  const failed = idsValid && status === 'error';
 
   // The header fades in as the hero scrolls away — the post page's frame.
   const heroHeight = Math.round(width * HERO_RATIO);
@@ -109,12 +136,13 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   // The status can advance locally without a refetch; the server is the
   // source of truth and this mirrors its reply only. So does the time of the
   // decision, so "You decided just now" shows at once.
-  const [localStatus, setLocalStatus] = useState<OwnerSighting['status'] | null>(null);
-  const [localReviewedAt, setLocalReviewedAt] = useState<string | null>(null);
-  const effectiveStatus = localStatus ?? sighting?.status ?? 'unverified';
-  const reviewedAt = localReviewedAt ?? sighting?.reviewedAt ?? null;
+  const [local, setLocal] = useState<LocalVerdict | null>(null);
+  const localApplies = local !== null && sighting !== null && sighting.status === local.from;
+  const effectiveStatus = localApplies ? local.status : (sighting?.status ?? 'unverified');
+  const reviewedAt = localApplies ? local.reviewedAt : (sighting?.reviewedAt ?? null);
 
-  const [marking, setMarking] = useState(false);
+  // Which answer is on its way — so the spinner sits on THAT button.
+  const [pending, setPending] = useState<'yes' | 'not_mine' | null>(null);
   const [opening, setOpening] = useState(false);
 
   // Peer profile sheet — component deferred-loaded (profile ↔ sightings graphs
@@ -125,6 +153,13 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
   const peerSheetRef = useRef<BottomSheetRef>(null);
   const mapsConfirmRef = useRef<ConfirmDialogRef>(null);
   const yesConfirmRef = useRef<ConfirmDialogRef>(null);
+
+  // A notification can open this page with nothing behind it.
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else if (isGuid(postId)) router.replace(`/post/${postId}`);
+    else router.replace('/');
+  };
 
   const openSpotterProfile = async () => {
     if (!sighting) return;
@@ -168,48 +203,53 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
     }
   };
 
+  /** Mirror the server's reply; a no-op reply keeps the server's own time. */
+  const recordVerdict = (
+    from: OwnerSighting,
+    result: { status: OwnerSighting['status']; changed: boolean },
+  ) => {
+    setLocal({
+      status: result.status,
+      reviewedAt: result.changed ? new Date().toISOString() : from.reviewedAt,
+      from: from.status,
+    });
+  };
+
   // "Yes, it's my car" — only ever reached through yesConfirmRef: it credits
-  // the spotter and cannot be undone.
+  // the spotter's reputation and cannot be undone.
   const confirmYes = async () => {
-    if (!sighting || marking) return;
-    setMarking(true);
+    if (!sighting || pending) return;
+    setPending('yes');
     try {
       const result = await markSightingHelpful(sighting.id);
-      setLocalStatus(result.status);
+      recordVerdict(sighting, result);
       if (result.changed) {
-        setLocalReviewedAt(new Date().toISOString());
-        // ⚠️ `counted: false` HAS TWO CAUSES AND THEY MUST READ THE SAME.
-        // One is an honest rule — a spotter earns one point per LISTING, so a
-        // second confirmation on the same car records the verdict and bumps
-        // nothing. The other is a collusion flag. The RPC returns the identical
-        // shape for both ON PURPOSE, because copy that distinguished them would
-        // tell someone which signal caught them, and that is a tutorial in
-        // evading it (_shared/collusion.ts). So this says what is TRUE of both
-        // and no more: it counted as a confirmation, not as a new point.
+        // ⚠️ ONE MESSAGE, WHATEVER `counted` SAYS. `counted: false` has two
+        // causes — an honest rule (a spotter earns one point per LISTING) and
+        // a collusion flag — and the RPC returns the identical shape for both
+        // ON PURPOSE: copy that told them apart would tell someone which
+        // signal caught them (_shared/collusion.ts). "Already has credit for
+        // this listing" was true of one cause only, and an owner confirming
+        // their first sighting would know it false (security review of #145).
+        // So this says what is true of every outcome, and nothing more.
         //
         // Never write "this didn't count because…" here.
-        toast.show(
-          result.counted
-            ? `Confirmed — ${sighting.spotter.firstName} gets the credit.`
-            : `Confirmed — ${sighting.spotter.firstName} already has credit for this listing.`,
-          'success',
-        );
+        toast.show(`Confirmed — we’ve let ${sighting.spotter.firstName} know.`, 'success');
       }
     } catch {
       toast.show('We couldn’t confirm that just now.', 'error');
     } finally {
-      setMarking(false);
+      setPending(null);
     }
   };
 
   const markNotMine = async () => {
-    if (!sighting || marking) return;
-    setMarking(true);
+    if (!sighting || pending) return;
+    setPending('not_mine');
     try {
       const result = await markSightingNotMine(sighting.id);
-      setLocalStatus(result.status);
+      recordVerdict(sighting, result);
       if (result.changed) {
-        setLocalReviewedAt(new Date().toISOString());
         // About the CAR, and reversible. Never "rejected", never anything that
         // reads as a verdict on the person: they answered a description in good
         // faith on a car that looked like the one they were shown, and this
@@ -224,13 +264,13 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
         'error',
       );
     } finally {
-      setMarking(false);
+      setPending(null);
     }
   };
 
   useEffect(() => {
-    log.info('sighting_detail_viewed', { postId, sightingId });
-  }, [postId, sightingId]);
+    if (idsValid) log.info('sighting_detail_viewed', { postId, sightingId });
+  }, [idsValid, postId, sightingId]);
 
   const locatedPhoto =
     sighting?.photos.find((photo) => photo.lat !== null && photo.lng !== null) ?? null;
@@ -263,20 +303,21 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: spacing.xl }}
       >
-        {status === 'loading' ? (
+        {loading ? (
           <SightingDetailSkeleton heroHeight={heroHeight} />
-        ) : status === 'error' ? (
+        ) : failed ? (
           <View style={[styles.stateBlock, stateTop]}>
             <ErrorState body="We couldn’t load this sighting." onRetry={retry} />
           </View>
         ) : !sighting ? (
-          // Ready but absent — a stale link (the list changed, or a sighting
-          // was withdrawn). An honest dead-end, no oracle about why.
+          // Ready but absent — a stale link (the list changed, the spotter
+          // withdrew it, or an id that was never one). Not an error: an honest
+          // dead-end with a way back, and no oracle about why.
           <View style={[styles.stateBlock, stateTop]}>
-            <ErrorState
-              body="This sighting isn’t available any more."
-              onRetry={() => router.back()}
-              retryLabel="Go back"
+            <EmptyState
+              title="This sighting isn’t available any more"
+              actionLabel="Go back"
+              onAction={goBack}
             />
           </View>
         ) : (
@@ -292,6 +333,8 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
             <View style={styles.sheet}>
               <SightingTitle sighting={sighting} status={effectiveStatus} reviewedAt={reviewedAt} />
 
+              {/* The safety notice lives here, beside the exact point and
+                  above Open in Maps (SightingWhereSection). */}
               <Section title="Where">
                 <SightingWhereSection
                   point={
@@ -303,6 +346,7 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
                         }
                       : null
                   }
+                  areaLabel={sighting.locationUnavailable ? null : sighting.areaLabel}
                   onOpenMaps={() => mapsConfirmRef.current?.open()}
                 />
               </Section>
@@ -325,25 +369,19 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
                   messaging={opening}
                 />
               </Section>
-
-              {/* Every sighting screen (DOMAIN §1): this is the exact captured
-                  point; the owner may be tempted to act. */}
-              <View style={styles.notice}>
-                <SafetyNotice />
-              </View>
             </View>
           </>
         )}
       </Animated.ScrollView>
 
-      {sighting && status !== 'loading' && status !== 'error' ? (
+      {sighting && !loading && !failed ? (
         <SightingDecisionBar
           status={effectiveStatus}
           spotterName={sighting.spotter.firstName}
           onYes={() => yesConfirmRef.current?.open()}
           onNotMine={() => void markNotMine()}
           onMessage={() => void messageSpotter()}
-          deciding={marking}
+          pending={pending}
           messaging={opening}
         />
       ) : null}
@@ -353,15 +391,17 @@ export function SightingDetailScreen({ postId, sightingId }: SightingDetailScree
         scrollY={scrollY}
         fadeStart={fadeStart}
         fadeEnd={fadeEnd}
-        onBack={() => router.back()}
+        onBack={goBack}
       />
 
-      {/* The irreversible answer, asked once more. Names who gets the credit,
-          because that is what "yes" actually does. */}
+      {/* The irreversible answer, asked once more — in other words than the
+          bar's question, so the second tap reads as a step forward. It
+          promises only what is true: they hear it helped (reputation), which
+          is not the reward — that is the recovery's. */}
       <ConfirmDialog
         ref={yesConfirmRef}
-        title="Is this your car?"
-        body={`Confirming tells ${sighting?.spotter.firstName ?? 'the spotter'} their sighting helped, and they get the credit for spotting it. You can’t undo this.`}
+        title="Confirm it’s your car?"
+        body={`Confirming tells ${sighting?.spotter.firstName ?? 'the spotter'} their sighting helped. You can’t undo this.`}
         confirmLabel="Yes, it’s my car"
         onConfirm={() => void confirmYes()}
       />
@@ -416,15 +456,18 @@ function SightingTitle({
   reviewedAt: string | null;
 }) {
   const styles = useThemedStyles(makeStyles);
-  // When it was SEEN — the first photo's capture time — not when it was sent.
-  const seenAt = sighting.photos[0]?.capturedAt ?? sighting.createdAt;
+  // When it was SEEN: an in-app photo's capture moment. A library photo's
+  // time says nothing about when the car was there (ADR-0003), so without a
+  // live photo this falls back to when the sighting was sent.
+  const seenAt =
+    sighting.photos.find((photo) => photo.source === 'live')?.capturedAt ?? sighting.createdAt;
   const ago = useTimeAgo(seenAt);
   // A held clock, not `new Date()` in render: the React Compiler would freeze
   // that, and "Today" would stay today past midnight.
   const now = useNow(CLOCK_TICK_MS);
-  let when = ago;
+  let date: string | null = null;
   try {
-    when = `${ago} · ${formatDateTimeLabel(seenAt, now)}`;
+    date = formatDateTimeLabel(seenAt, now);
   } catch {
     // An unparseable timestamp costs the date, never the page.
   }
@@ -436,18 +479,23 @@ function SightingTitle({
           ? 'Sighting'
           : `Seen near ${sighting.areaLabel}`}
       </Text>
-      <Text style={styles.meta}>{when}</Text>
-      {status !== 'unverified' ? <DecisionLine status={status} reviewedAt={reviewedAt} /> : null}
+      <Text
+        style={styles.meta}
+        accessibilityLabel={`Seen ${spokenAgo(ago)}${date ? `, ${date}` : ''}`}
+      >
+        {date ? `${ago} · ${date}` : ago}
+      </Text>
+      <DecisionLine status={status} reviewedAt={reviewedAt} />
     </View>
   );
 }
 
-/** The owner's decision, and when they made it.
+/** The owner's decision, and when they made it — read as one line.
  *
- *  ⚠️ MAPPED, not a two-way branch: the old header read `credited ?
- *  'Credited' : 'Marked helpful'`, so a sighting the owner had said was NOT
- *  their car was labelled "Marked helpful" — the exact opposite of their
- *  answer (SightingTimeline fixed the same bug). */
+ *  ⚠️ MAPPED (sightingVerdict), not a two-way branch: the old header read
+ *  `credited ? 'Credited' : 'Marked helpful'`, so a sighting the owner had
+ *  said was NOT their car was labelled "Marked helpful" — the exact opposite
+ *  of their answer (SightingTimeline fixed the same bug). */
 function DecisionLine({
   status,
   reviewedAt,
@@ -456,35 +504,35 @@ function DecisionLine({
   reviewedAt: string | null;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const label =
-    status === 'credited' ? 'Credited' : status === 'not_mine' ? 'Not your car' : 'Your car';
+  // Unconditional (hooks); only shown when there is a time to show.
+  const ago = useTimeAgo(reviewedAt ?? 0);
+  const label = sightingVerdictLabel(status);
+  if (!label) return null;
   return (
-    <View style={styles.decisionRow} testID="sighting-decision">
-      <View style={[styles.pill, status === 'not_mine' && styles.pillMuted]}>
-        <Text style={[styles.pillText, status === 'not_mine' && styles.pillTextMuted]}>
-          {label}
-        </Text>
-      </View>
-      {reviewedAt ? <DecidedAgo reviewedAt={reviewedAt} /> : null}
+    <View
+      style={styles.decisionRow}
+      accessible
+      accessibilityLabel={`Your answer: ${label}${reviewedAt ? `, decided ${spokenAgo(ago)}` : ''}`}
+      testID="sighting-decision"
+    >
+      {/* Primary ink for a confirmation, not success green — sage stays
+          reserved for payout moments; "Not your car" is the quiet one. */}
+      <StatusPill label={label} tone={isConfirmedVerdict(status) ? 'primary' : 'neutral'} />
+      {reviewedAt ? <Text style={styles.meta}>You decided {ago}</Text> : null}
     </View>
   );
 }
 
-function DecidedAgo({ reviewedAt }: { reviewedAt: string }) {
-  const styles = useThemedStyles(makeStyles);
-  const ago = useTimeAgo(reviewedAt);
-  return <Text style={styles.meta}>You decided {ago}</Text>;
-}
-
-/** The page's own shape while it loads: the hero, then the sheet's first lines. */
+/** The page's own shape while it loads: the hero, then the sheet's first
+ *  lines at the heights the real ones will have, so nothing jumps. */
 function SightingDetailSkeleton({ heroHeight }: { heroHeight: number }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View accessibilityLabel="Loading sighting" testID="sighting-detail-skeleton">
+    <View accessible accessibilityLabel="Loading sighting" testID="sighting-detail-skeleton">
       <View style={[styles.skeletonHero, { height: heroHeight }]} />
       <View style={[styles.sheet, styles.skeletonSheet]}>
-        <View style={styles.skeletonLineWide} />
-        <View style={styles.skeletonLine} />
+        <View style={styles.skeletonTitle} />
+        <View style={styles.skeletonMeta} />
       </View>
     </View>
   );
@@ -513,6 +561,7 @@ const makeStyles = (c: Palette) =>
       paddingBottom: spacing.xxl,
       gap: spacing.xs,
     },
+    // The page's title outranks its section titles (24 against 20).
     title: {
       ...typography.title,
       color: c.textPrimary,
@@ -528,25 +577,6 @@ const makeStyles = (c: Palette) =>
       gap: spacing.sm,
       marginTop: spacing.sm,
     },
-    // Primary ink, not success green — sage stays reserved for payout moments.
-    pill: {
-      borderRadius: radii.full,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: c.primary,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
-    },
-    // The quietest outcome of the three, and not a mark against the spotter.
-    pillMuted: {
-      borderColor: c.border,
-    },
-    pillText: {
-      ...typography.label,
-      color: c.primary,
-    },
-    pillTextMuted: {
-      color: c.textSecondary,
-    },
     divider: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: c.border,
@@ -557,28 +587,25 @@ const makeStyles = (c: Palette) =>
       gap: spacing.lg,
     },
     sectionTitle: {
-      ...typography.title,
+      ...typography.sectionTitle,
       color: c.textPrimary,
       includeFontPadding: false,
-    },
-    notice: {
-      paddingBottom: spacing.lg,
     },
     skeletonHero: {
       backgroundColor: c.surfaceSubtle,
     },
     skeletonSheet: {
       paddingTop: spacing.xl,
-      gap: spacing.md,
+      gap: spacing.xs,
     },
-    skeletonLineWide: {
-      height: sizes.skeletonLine,
+    skeletonTitle: {
+      height: typography.title.lineHeight,
       width: '60%',
       borderRadius: radii.sm,
       backgroundColor: c.surfaceSubtle,
     },
-    skeletonLine: {
-      height: sizes.skeletonLine,
+    skeletonMeta: {
+      height: typography.caption.lineHeight,
       width: '40%',
       borderRadius: radii.sm,
       backgroundColor: c.surfaceSubtle,

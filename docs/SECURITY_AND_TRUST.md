@@ -12,7 +12,8 @@ commenting standards.
   or confront anyone; if a crime is in progress call 999.**
   - **Five surfaces, in two forms.** The COMPONENT renders on four —
     `ReportSafetySheet.tsx` (before every sighting report), `PostSightingsScreen.tsx`,
-    `SightingDetailScreen.tsx`, `PostDetailBody.tsx` (post detail) — which
+    `SightingWhereSection.tsx` (the sighting detail page's "Where", beside the
+    exact point), `PostDetailBody.tsx` (post detail) — which
     `grep -rn "<SafetyNotice" src` will confirm. Onboarding is the fifth and
     carries the COPY rather than the component: `onboardingSlides.ts` imports
     `SAFETY_RULE_LINE` from `SafetyNotice.tsx` and `OnboardingSlide.tsx`
@@ -81,7 +82,10 @@ commenting standards.
     - It reads **"Open in Maps"**, not "Directions" — a place, not a journey.
     - It sits **below the SafetyNotice** and behind a **confirm that restates
       that notice verbatim** (the copy is imported from the component, not
-      retyped, so the two cannot drift).
+      retyped, so the two cannot drift). Since the 2026-10-08 redesign the
+      notice sits in the same "Where" section as the map and the link
+      (`SightingWhereSection.tsx`), not sections further down the page: the
+      exact point is where an owner is most tempted to act.
     - The caption handed to the third-party maps app is a fixed, non-identifying
       string — never the plate, the car, or the spotter.
 

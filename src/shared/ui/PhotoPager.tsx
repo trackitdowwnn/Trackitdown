@@ -20,7 +20,7 @@
  *        carries its own place ("Blue BMW, photo 2 of 5") for screen
  *        readers, where a counter that updates on scroll-end could be stale.
  *
- *        A photo can carry a `badge` — an on-photo pill top-left that scrolls
+ *        A photo can carry a `badge` — an on-photo pill bottom-left that scrolls
  *        with it and is part of its spoken label (the sighting page marks a
  *        library photo "From photo library", ADR-0003). A photo whose `uri`
  *        hasn't arrived yet (a signed URL still on its way) is an empty page
@@ -187,10 +187,19 @@ export function PhotoPager({
               <View key={`${photo.uri ?? 'pending'}-${i}`} style={{ width, height }}>
                 {photo.uri ? (
                   <AppImage uri={photo.uri} accessibilityLabel={label} style={{ width, height }} />
-                ) : null}
+                ) : (
+                  // Still on its way: said all the same — its place and its
+                  // badge must not go silent until the link lands.
+                  <View
+                    accessible={Boolean(label)}
+                    accessibilityRole="image"
+                    accessibilityLabel={label}
+                    style={{ width, height }}
+                  />
+                )}
                 {photo.badge ? (
                   <View
-                    style={styles.badge}
+                    style={[styles.badge, { bottom: spacing.md + counterBottomInset }]}
                     pointerEvents="none"
                     // Read as part of the photo's own label above.
                     accessibilityElementsHidden
@@ -250,10 +259,12 @@ const makeStyles = (c: Palette) =>
       ...typography.caption,
       color: c.textOnMedia,
     },
-    // Chrome on the photo, like the counter — the same tokens, top-left.
+    // Chrome on the photo, like the counter — the same tokens, on the same
+    // lifted row (bottom-left, opposite the counter). NOT the top: a full-bleed
+    // hero runs under the status bar and a floating back button, which would
+    // cover it — and ADR-0003 needs a library label unmissable.
     badge: {
       position: 'absolute',
-      top: spacing.md,
       left: spacing.md,
       backgroundColor: c.surfaceOverMedia,
       borderRadius: radii.full,

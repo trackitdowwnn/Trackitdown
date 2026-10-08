@@ -745,7 +745,7 @@ to use.
   inside its card. The interactive picker therefore rounds its corners by
   COVERING them (`MapCornerMask`) rather than clipping.
   ⚠️ **Open question**: the three static map cards (`LastSeenMap`,
-  `SightingsTrailMap`, `SightingDetailScreen`) still clip on both platforms and
+  `SightingsTrailMap`, `SightingWhereSection`) still clip on both platforms and
   are believed fine — possibly because they pass `interactive={false}`, so the
   SurfaceView never handles a gesture. Nobody has checked all four on a device.
   Until someone does, do not unify by copying either treatment onto the other.

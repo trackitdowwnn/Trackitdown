@@ -123,16 +123,16 @@ car today — the owner has them.").
   - **Hero:** the photos full-bleed and swipeable (`PhotoPager`; a library
     photo is badged ON the photo), with a floating back header.
   - **Title:** "Seen near …", when it was seen, and the owner's decision so
-    far ("Your car" / "Credited" / "Not your car", "You decided …").
-  - **Where:** the map, "Approximate — within about N m", and Open in Maps
-    (behind the safety confirm).
+    far ("Confirmed" / "Credited" / "Not your car", "You decided …";
+    `lib/sightingVerdict.ts`, shared with the timeline).
+  - **Where:** the map, "Approximate — within about N m", the safety notice
+    beside the point, then Open in Maps (behind the safety confirm).
   - **What they saw:** the spotter's answers as labelled rows, in the same
     words they checked (`sightingDetailRows`), their note, and the owner's
     marks they could see.
   - **Spotted by:** their record, and View profile (fed from the narrow
     payload; no uid exists client-side). "Message" stays here while
     undecided.
-  - **Safety notice.**
   - **Pinned decision bar:** "Is this your car?"
     - **Yes** credits the spotter and can't be undone, so it is confirmed
       first.
@@ -140,7 +140,8 @@ car today — the owner has them.").
     - After the decision, the bar is Message (by sighting id).
 
   A "new sighting" push opens this page (`pushRoute`) once the server sends
-  the sighting's id.
+  the sighting's id, so the ids are checked before anything is fetched, a
+  withdrawn sighting reads as gone, and back with no history goes to the post.
 - `MySightingsScreen` (route `src/app/my-sightings.tsx`) — the SPOTTER's own
   history: every sighting they filed, newest first, with the owner's verdict.
   Rows are `ReportCard` + `CarColourTile` (a colour tile → car → where/when →
