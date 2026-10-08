@@ -16,6 +16,7 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { AccessibilityInfo } from 'react-native';
 
 import { motion } from '@/shared/theme';
 
@@ -50,7 +51,10 @@ jest.mock('@/shared/lib/logger', () => ({
 }));
 
 // Signed in unless a test says otherwise; the gate is only for guests.
-let mockSession: { status: string; userId: string | null } = { status: 'signedIn', userId: 'u1' };
+let mockSession: { status: string; userId: string | null } = {
+  status: 'signedIn',
+  userId: 'u1',
+};
 const mockRequireAuth = jest.fn();
 jest.mock('@/features/auth', () => ({
   useSession: () => mockSession,
@@ -58,7 +62,11 @@ jest.mock('@/features/auth', () => ({
 }));
 
 const mockRetry = jest.fn();
-let mockVehicles: { status: string; vehicles: SavedVehicle[]; retry: () => void };
+let mockVehicles: {
+  status: string;
+  vehicles: SavedVehicle[];
+  retry: () => void;
+};
 jest.mock('../hooks/useMyVehicles', () => ({
   get useMyVehicles() {
     return () => mockVehicles;
@@ -161,7 +169,9 @@ describe('the cars on offer', () => {
     };
     await renderScreen();
 
-    expect(mockLogInfo).toHaveBeenCalledWith('garage_choose_car_shown', { vehicleCount: 1 });
+    expect(mockLogInfo).toHaveBeenCalledWith('garage_choose_car_shown', {
+      vehicleCount: 1,
+    });
     const logged = JSON.stringify(mockLogInfo.mock.calls);
     expect(logged).not.toContain('AB12');
     expect(logged).not.toContain("Mum's Golf");
@@ -191,7 +201,9 @@ describe('choosing — in place, never another navigation', () => {
       fireEvent.press(getByTestId('choose-car-v1'));
     });
 
-    expect(mockLogInfo).toHaveBeenCalledWith('garage_prefilled_post_launched', { vehicleId: 'v1' });
+    expect(mockLogInfo).toHaveBeenCalledWith('garage_prefilled_post_launched', {
+      vehicleId: 'v1',
+    });
   });
 
   it('"a different car" opens the blank report, with the garage nudge', async () => {
@@ -327,14 +339,76 @@ describe('the escapes', () => {
 });
 
 describe('a guest who arrives without the + button (a deep link)', () => {
-  it('is shown the sign-in sheet, never the form', async () => {
+  beforeEach(() => {
     mockSession = { status: 'signedOut', userId: null };
     mockVehicles = { status: 'ready', vehicles: [], retry: mockRetry };
-    const { queryByTestId, getByTestId } = await renderScreen();
+  });
 
+  it('is shown the sign-in sheet, never the form', async () => {
+    const { queryByTestId, getByText } = await renderScreen();
+
+    expect(mockRequireAuth).toHaveBeenCalledTimes(1);
     expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'post_car' });
     expect(queryByTestId('blank-report')).toBeNull();
-    expect(getByTestId('report-pending')).toBeTruthy();
+    expect(getByText('Sign in to report a stolen car')).toBeTruthy();
+  });
+
+  // Review of #141: closing the sheet used to leave them on "Getting your
+  // report ready…" for ever.
+  it('closing the sheet leaves a way to sign in, and a way out', async () => {
+    const { getByText, getByTestId } = await renderScreen();
+
+    await act(async () => {
+      fireEvent.press(getByText('Sign in'));
+    });
+    expect(mockRequireAuth).toHaveBeenCalledTimes(2);
+    expect(getByTestId('report-close')).toBeTruthy();
+  });
+
+  it('?start=blank does not get a guest past it', async () => {
+    mockParams = { start: 'blank' };
+    const { queryByTestId, getByText } = await renderScreen();
+    expect(queryByTestId('blank-report')).toBeNull();
+    expect(getByText('Sign in to report a stolen car')).toBeTruthy();
+  });
+
+  it('once signed in, the report carries on in place', async () => {
+    const view = await renderScreen();
+    mockSession = { status: 'signedIn', userId: 'u1' };
+    await act(async () => {
+      view.rerender(<StartReportScreen />);
+    });
+    expect(view.getByTestId('blank-report')).toBeTruthy();
+    expect(view.queryByText('Sign in to report a stolen car')).toBeNull();
+  });
+});
+
+// Review of #141: the chooser said "Which car?" aloud even as the first thing on
+// screen, where the reader already lands on it — a double read.
+describe('screen readers', () => {
+  let announce: jest.SpyInstance;
+  beforeEach(() => {
+    announce = jest
+      .spyOn(AccessibilityInfo, 'announceForAccessibility')
+      .mockImplementation(() => {});
+  });
+  afterEach(() => {
+    announce.mockRestore();
+  });
+
+  it('the chooser as the first stage is not announced', async () => {
+    await renderScreen();
+    expect(announce).not.toHaveBeenCalled();
+  });
+
+  it('the chooser arriving over the pending stage is', async () => {
+    mockVehicles = { status: 'loading', vehicles: [], retry: mockRetry };
+    const view = await renderScreen();
+    mockVehicles = { status: 'ready', vehicles: [vehicle()], retry: mockRetry };
+    await act(async () => {
+      view.rerender(<StartReportScreen />);
+    });
+    expect(announce).toHaveBeenCalledWith('Which car?');
   });
 });
 
@@ -355,7 +429,6 @@ describe('a stage once shown stays for the visit', () => {
     expect(view.queryByText('Which car?')).toBeNull();
   });
 
-
   it('a revalidation that finds cars never yanks away the blank form', async () => {
     mockVehicles = { status: 'ready', vehicles: [], retry: mockRetry };
     const view = await renderScreen();
@@ -369,4 +442,3 @@ describe('a stage once shown stays for the visit', () => {
     expect(view.queryByText('Which car?')).toBeNull();
   });
 });
-

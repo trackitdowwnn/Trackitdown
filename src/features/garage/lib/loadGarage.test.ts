@@ -1,7 +1,8 @@
 /**
  * WHAT:  Tests for loadGarage / awaitGarageAnswer and the garage cache they
  *        fill: one fetch shared by every caller, results keyed by user, never
- *        published for a user who has signed out mid-fetch, and a wait that is
+ *        published for a user who has signed out mid-fetch, never published
+ *        (or joined) once a garage write has overtaken it, and a wait that is
  *        always bounded.
  * WHY:   The cache holds number plates and now decides what the report screen
  *        shows on its first frame. A second account seeing the first's cars is
@@ -12,10 +13,18 @@
 
 import type { SavedVehicle } from '../types';
 import { awaitGarageAnswer, loadGarage } from './loadGarage';
-import { garageFor, invalidateSavedCarSignal, isGarageFresh, publishGarage } from './savedCarSignal';
+import {
+  garageFor,
+  invalidateSavedCarSignal,
+  isGarageFresh,
+  markVehiclePosted,
+  publishGarage,
+} from './savedCarSignal';
 
 let mockCurrentUser: string | null = 'u1';
-jest.mock('@/features/auth', () => ({ getCurrentUserId: () => mockCurrentUser }));
+jest.mock('@/features/auth', () => ({
+  getCurrentUserId: () => mockCurrentUser,
+}));
 
 const mockList = jest.fn();
 jest.mock('../api/garageApi', () => ({ listMyVehicles: () => mockList() }));
@@ -65,9 +74,84 @@ describe('loadGarage', () => {
     expect(garageFor('u1')).toBeNull();
   });
 
+  /** A listMyVehicles call that settles only when the test says so. */
+  function deferredList(): (v: SavedVehicle[]) => void {
+    let land: ((v: SavedVehicle[]) => void) | undefined;
+    mockList.mockReturnValueOnce(
+      new Promise<SavedVehicle[]>((resolve) => {
+        land = resolve;
+      }),
+    );
+    return (v) => land?.(v);
+  }
+
+  // Review of #141: a revalidation in flight when a car was deleted would
+  // otherwise publish the old list, deleted car and all, and call it fresh.
+  it('a fetch overtaken by a garage write is never published — it asks again', async () => {
+    const landStale = deferredList();
+    const loading = loadGarage('u1');
+    invalidateSavedCarSignal(); // the car was deleted mid-fetch
+    mockList.mockResolvedValue([]); // the server's answer now
+
+    landStale([car]);
+    await expect(loading).resolves.toBe(true);
+    expect(mockList).toHaveBeenCalledTimes(2);
+    expect(garageFor('u1')?.vehicles).toEqual([]);
+  });
+
+  it('a caller after a garage write never joins the stale fetch', async () => {
+    const landStale = deferredList();
+    const first = loadGarage('u1');
+    invalidateSavedCarSignal();
+    mockList.mockResolvedValue([]);
+    const second = loadGarage('u1');
+
+    expect(mockList).toHaveBeenCalledTimes(2); // its own fetch, not a join
+    await expect(second).resolves.toBe(true);
+    landStale([car]);
+    await first;
+    expect(garageFor('u1')?.vehicles).toEqual([]);
+  });
+
   it('a failed fetch resolves false and caches nothing', async () => {
     mockList.mockRejectedValue(new Error('offline'));
     await expect(loadGarage('u1')).resolves.toBe(false);
+    expect(garageFor('u1')).toBeNull();
+  });
+});
+
+// Review of #141: the server counts a post only once it is paid, so a refetch
+// right after creating one would offer the car straight back.
+describe('markVehiclePosted', () => {
+  it('marks that one car as reported, so the chooser stops offering it', () => {
+    const other = { id: 'v2', plate: 'XY34 ZZZ' } as SavedVehicle;
+    publishGarage('u1', [car, other]);
+    markVehiclePosted('v1');
+
+    const vehicles = garageFor('u1')?.vehicles ?? [];
+    expect(vehicles.find((v) => v.id === 'v1')?.isCurrentlyPosted).toBe(true);
+    expect(vehicles.find((v) => v.id === 'v2')?.isCurrentlyPosted).toBeFalsy();
+  });
+
+  it('a fetch already in flight cannot undo it', async () => {
+    publishGarage('u1', [car]);
+    let land: ((v: SavedVehicle[]) => void) | undefined;
+    mockList.mockReturnValueOnce(
+      new Promise<SavedVehicle[]>((resolve) => {
+        land = resolve;
+      }),
+    );
+    const loading = loadGarage('u1');
+    markVehiclePosted('v1');
+    mockList.mockResolvedValue([{ ...car, isCurrentlyPosted: true }]);
+
+    land?.([car]); // the pre-report answer: not posted
+    await loading;
+    expect(garageFor('u1')?.vehicles[0]?.isCurrentlyPosted).toBe(true);
+  });
+
+  it('does nothing when the car is not cached', () => {
+    markVehiclePosted('v1');
     expect(garageFor('u1')).toBeNull();
   });
 });

@@ -39,6 +39,8 @@ let cached: GarageSnapshot | null = null;
  *  useSyncExternalStore compares — that would re-render every subscriber for
  *  an identical answer without telling them (review of #141). */
 let confirmedAt = 0;
+/** Bumped on every write; see garageGeneration. */
+let generation = 0;
 const subscribers = new Set<() => void>();
 
 function notify(): void {
@@ -98,9 +100,39 @@ export function isGarageFresh(userId: string | null, maxAgeMs: number): boolean 
  * prompt in front of someone who just added one. Also called on sign-out.
  */
 export function invalidateSavedCarSignal(): void {
+  // Bumped even when nothing is cached: a fetch already in flight was asked
+  // for BEFORE this write, so its answer is stale and must not be published
+  // or joined (loadGarage checks the generation).
+  generation += 1;
   if (cached === null) {
     return;
   }
   cached = null;
+  notify();
+}
+
+/** Counts writes (invalidations and local marks) — a fetch started under an
+ *  older one is stale. */
+export function garageGeneration(): number {
+  return generation;
+}
+
+/**
+ * Mark ONE cached car as reported, the moment its post exists (review of
+ * #141). Not a refetch: the server only counts a post as live once it is
+ * paid (list_my_vehicles' is_currently_posted), so a refetch right after
+ * creation would still say "not posted" and the next + would offer the car
+ * again. The next real fetch (or the 30s freshness window ending) replaces
+ * this with the server's own answer.
+ */
+export function markVehiclePosted(vehicleId: string): void {
+  if (!cached || !cached.vehicles.some((v) => v.id === vehicleId && !v.isCurrentlyPosted)) {
+    return;
+  }
+  const vehicles = cached.vehicles.map((v) =>
+    v.id === vehicleId ? { ...v, isCurrentlyPosted: true } : v,
+  );
+  cached = { ...cached, vehicles };
+  generation += 1; // an in-flight fetch from before this would undo it
   notify();
 }

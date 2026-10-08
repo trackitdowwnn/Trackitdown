@@ -22,12 +22,14 @@ import { POST_A_CAR_INITIAL_ANSWERS, PostACarScreen, postACarFlow } from '@/feat
 import { createLogger } from '@/shared/lib/logger';
 
 import { buildPrefilledPostFlow } from '../lib/prefilledPostFlow';
-import { invalidateSavedCarSignal } from '../lib/savedCarSignal';
+import { markVehiclePosted } from '../lib/savedCarSignal';
 import type { SavedVehicle } from '../types';
 
 const log = createLogger('garage');
 
 export function PrefilledReport({ vehicle }: { vehicle: SavedVehicle }) {
+  const vehicleId = vehicle.id;
+  const onPostCreated = useCallback(() => markVehiclePosted(vehicleId), [vehicleId]);
   // Set when the owner taps Edit on the confirm step — restores the full
   // steps, seeded with the same answers.
   const [expanded, setExpanded] = useState(false);
@@ -53,9 +55,10 @@ export function PrefilledReport({ vehicle }: { vehicle: SavedVehicle }) {
     <PostACarScreen
       flow={prefilled.flow}
       initialAnswers={prefilled.initialAnswers}
-      // This car now has a live report: drop the cached garage so the next +
-      // never offers it again.
-      onPostCreated={invalidateSavedCarSignal}
+      // This car now has a report: mark it in the cached garage so the next +
+      // never offers it again. Not a refetch — the server only counts the
+      // post once it is paid, so a refetch now would offer it straight back.
+      onPostCreated={onPostCreated}
     />
   );
 }

@@ -82,7 +82,9 @@ saved answers, so the owner only completes when/where, bounty, review and pay.
   stage (`ReportPending`: the exit ✕, then "Getting your report ready…" —
   never a title or car-shaped rows), or the chooser's error view. Choosing
   dissolves into the report (`StageCover`) — no navigation. The first real
-  stage is fixed for the visit. See the Nudges section for why the chooser is
+  stage is fixed for the visit. A guest who reaches it without the gate (a
+  deep link) gets the sign-in sheet over a "Sign in to report a stolen car"
+  stage, which can ask again if they close the sheet. See the Nudges section for why the chooser is
   not the on-entry interstitial that was rejected.
 - **`ReportSavedCarScreen`** — `/report-stolen/[vehicleId]`, the `/my-cars`
   entry (slides up too). Finds the car (from the shared garage cache when
@@ -386,6 +388,10 @@ What keeps it honest:
   cars that they had some (#140).
 - **A stage once shown stays for the visit.** A background revalidation that
   finds cars can't yank away a blank form someone has started on.
+- **A reported car is never offered again.** Creating a saved car's report
+  marks it posted in the cache (`markVehiclePosted`) rather than refetching:
+  the server only counts a post once it is paid, so a refetch would offer the
+  car straight back.
 - **Never a dead end.** "It's a different car" is always present; a failed
   garage load offers retry *and* "Report a car from scratch"; a retry never
   blanks the page it has already shown.
@@ -430,7 +436,8 @@ module-level cached count over `list_my_vehicles`, fetched lazily behind each
 caller's cheap checks — so a new or already-offered user costs zero network on
 the app's hottest screen. `'unknown'` (guest, failed fetch, request in flight)
 **never nudges**. `garageApi` invalidates it after every write, and
-`useMyVehicles` primes it for free.
+`useMyVehicles` primes it for free. Every write also bumps a generation, so a
+fetch that started before it is never published or joined — it asks again.
 
 Logged as `garage_nudge_shown / _accepted / _dismissed { surface }`.
 

@@ -6,10 +6,11 @@
  * WHY:   Until 2026-10-07 this rendered Stripe's <StripeProvider>, which runs
  *        initStripe on every mount — a native re-initialise (and, the first
  *        time on Android, a Compose view attached on the UI thread) right in
- *        the middle of the report form's slide-up. The provider holds no React context (useStripe calls the
- *        native module directly), so this now defers the init to after the
- *        slide (useAfterTransition) and every Stripe call awaits
- *        ensureStripeReady, so nothing can reach an uninitialised SDK.
+ *        the middle of the report form's slide-up. The provider holds no
+ *        React context (useStripe calls the native module directly), so this
+ *        now defers the init to after the slide (useAfterTransition) and
+ *        every Stripe call awaits ensureStripeReady, so nothing can reach an
+ *        uninitialised SDK.
  *        Scoped to the routes that charge rather than the app root, so the
  *        native module is only engaged where payments actually happen.
  *        Requires a dev build with the @stripe/stripe-react-native config

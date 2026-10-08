@@ -32,6 +32,13 @@
  *        unlock an account), and SecureStore is not an alternative here: iOS
  *        caps a value at ~2KB, which this object exceeds. The mitigations are
  *        the expiry and the clears below, not the storage medium.
+ *
+ * ⚠️ IT BELONGS TO ONE ACCOUNT. The draft records who saved it and is only
+ *        ever offered back to them — a shared phone must never open one
+ *        account's draft (a last-seen location) for the next (security review
+ *        of #141). Checked on read rather than wiped on sign-out: a session
+ *        that merely expires reads as signed out too, and wiping then would
+ *        throw away the owner's own work.
  * LINKS: src/shared/wizard/useWizardController.ts (the seam this fills — it has
  *          carried a TODO(draft-persistence) since the framework was written);
  *        src/features/vehicles/post/screens/PostACarScreen.tsx (restores it);
@@ -40,6 +47,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { getCurrentUserId } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
 
 import type { PostACarAnswers } from '../types';
@@ -91,7 +99,14 @@ export type PersistedDraftAnswers = Partial<Pick<PostACarAnswers, (typeof PERSIS
 
 interface StoredDraft {
   savedAt: string;
+  /** Who saved it. Absent on drafts written before 2026-10-08 — accepted. */
+  ownerId?: string | null;
   answers: PersistedDraftAnswers;
+}
+
+/** True when the signed-in user may see a draft saved by ownerId. */
+function isMine(ownerId: string | null | undefined): boolean {
+  return ownerId === undefined || ownerId === null || ownerId === getCurrentUserId();
 }
 
 /** Copy across only the whitelisted keys that actually have a value. */
@@ -115,9 +130,14 @@ export async function savePostDraft(answers: Partial<PostACarAnswers>): Promise<
   try {
     const draft: StoredDraft = {
       savedAt: new Date().toISOString(),
+      ownerId: getCurrentUserId(),
       answers: pickPersisted(answers),
     };
-    primed = { value: draft.answers, savedAt: Date.now() };
+    primed = {
+      value: draft.answers,
+      savedAt: Date.now(),
+      ownerId: draft.ownerId,
+    };
     await AsyncStorage.setItem(KEY, JSON.stringify(draft));
     // ⚠️ COUNTS ONLY. The draft holds a location and a car; nothing about it
     // may reach a log line (docs/LOGGING.md).
@@ -128,16 +148,21 @@ export async function savePostDraft(answers: Partial<PostACarAnswers>): Promise<
 }
 
 /**
- * The saved draft, or null when there is none, it is too old, or it is
- * unreadable. Every failure is null — a corrupt draft must never break the
- * screen that offers it.
+ * The saved draft, or null when there is none, it is too old, it is
+ * unreadable, or it is someone else's. Every failure is null — a corrupt draft
+ * must never break the screen that offers it.
  */
 export async function loadPostDraft(): Promise<PersistedDraftAnswers | null> {
-  return (await readDraft())?.answers ?? null;
+  const draft = await readDraft();
+  return draft && isMine(draft.ownerId) ? draft.answers : null;
 }
 
 /** The draft with WHEN it was saved — the read-ahead needs the age too. */
-async function readDraft(): Promise<{ answers: PersistedDraftAnswers; savedAt: number } | null> {
+async function readDraft(): Promise<{
+  answers: PersistedDraftAnswers;
+  savedAt: number;
+  ownerId: string | null | undefined;
+} | null> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     if (raw === null) {
@@ -157,16 +182,20 @@ async function readDraft(): Promise<{ answers: PersistedDraftAnswers; savedAt: n
     // ⚠️ RE-FILTERED ON READ, not trusted. The stored blob is whatever a
     // previous build wrote; a key this build does not persist must not come
     // back into the answers object just because it is on disk.
-    return { answers: pickPersisted(parsed.answers as Partial<PostACarAnswers>), savedAt };
+    return {
+      answers: pickPersisted(parsed.answers as Partial<PostACarAnswers>),
+      savedAt,
+      ownerId: typeof parsed.ownerId === 'string' ? parsed.ownerId : undefined,
+    };
   } catch {
     log.warn('post_draft_load_failed');
     return null;
   }
 }
 
-/** Remove it. Called on submit, on discard, on sign-out and on a failed read. */
+/** Remove it. Called on submit, on discard and on a failed read. */
 export async function clearPostDraft(): Promise<void> {
-  primed = { value: null, savedAt: 0 };
+  primed = { value: null, savedAt: 0, ownerId: undefined };
   try {
     await AsyncStorage.removeItem(KEY);
   } catch {
@@ -184,11 +213,16 @@ export async function clearPostDraft(): Promise<void> {
 //
 // The in-memory copy obeys the same rules as the disk: it carries its saved
 // time so the fortnight expiry still applies within a long-running session,
-// and it is dropped with the disk copy on sign-out (a shared phone must never
-// open one account's draft — a last-seen location — for the next).
+// and its owner, so it is only ever offered back to them.
 
 /** The last known draft: undefined until read; { value: null } = no draft. */
-let primed: { value: PersistedDraftAnswers | null; savedAt: number } | undefined;
+let primed:
+  | {
+      value: PersistedDraftAnswers | null;
+      savedAt: number;
+      ownerId: string | null | undefined;
+    }
+  | undefined;
 let priming: Promise<void> | null = null;
 
 /** Read the draft into memory ahead of opening the form. Shared, never throws. */
@@ -201,7 +235,11 @@ export function primePostDraft(): Promise<void> {
       .then((draft) => {
         // A save or clear that landed meanwhile wins over this read.
         if (primed === undefined) {
-          primed = { value: draft?.answers ?? null, savedAt: draft?.savedAt ?? 0 };
+          primed = {
+            value: draft?.answers ?? null,
+            savedAt: draft?.savedAt ?? 0,
+            ownerId: draft?.ownerId,
+          };
         }
       })
       .finally(() => {
@@ -212,12 +250,16 @@ export function primePostDraft(): Promise<void> {
 }
 
 /** The primed draft, synchronously: undefined when not read yet. A copy that
- *  has aged past the expiry reads as "no draft". */
+ *  has aged past the expiry, or belongs to another account, reads as "no
+ *  draft". */
 export function peekPrimedDraft(): { value: PersistedDraftAnswers | null } | undefined {
   if (primed === undefined) {
     return undefined;
   }
-  if (primed.value !== null && Date.now() - primed.savedAt > MAX_AGE_MS) {
+  if (
+    primed.value !== null &&
+    (Date.now() - primed.savedAt > MAX_AGE_MS || !isMine(primed.ownerId))
+  ) {
     return { value: null };
   }
   return { value: primed.value };

@@ -35,6 +35,8 @@ export type ChooseCarStageProps =
   | {
       mode: 'cars';
       vehicles: SavedVehicle[];
+      /** Say "Which car?" aloud on arrival — when it replaces another stage. */
+      announce?: boolean;
       onChoose: (vehicle: SavedVehicle) => void;
       onDifferent: () => void;
       onBack: () => void;
@@ -94,14 +96,15 @@ export function ChooseCarStage(props: ChooseCarStageProps) {
   const { onDifferent, onBack } = props;
   const onChoose = props.mode === 'cars' ? props.onChoose : undefined;
 
-  // The chooser arrives by dissolving over the pending stage, where focus was
-  // sitting on an element that has just been hidden — so say what's here.
-  const isCars = props.mode === 'cars';
+  // When the chooser dissolves in over the pending stage, focus was sitting
+  // on an element that has just been hidden — so say what's here. As the
+  // first stage it says nothing: the reader already lands on it.
+  const announce = props.mode === 'cars' && props.announce === true;
   useEffect(() => {
-    if (isCars) {
+    if (announce) {
       AccessibilityInfo.announceForAccessibility('Which car?');
     }
-  }, [isCars]);
+  }, [announce]);
 
   const renderRow = useCallback(
     ({ item }: { item: SavedVehicle }) => (
@@ -161,7 +164,7 @@ const makeStyles = (c: Palette) =>
   StyleSheet.create({
     stateBlock: {
       paddingHorizontal: spacing.xl,
-      paddingTop: spacing.xl,
+      paddingTop: spacing.lg, // the same top as the other report stages
       gap: spacing.md,
     },
     listContent: {

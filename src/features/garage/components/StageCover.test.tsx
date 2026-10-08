@@ -60,13 +60,11 @@ describe('StageCover', () => {
     });
 
     expect(screen.getByTestId('stage-current')).toHaveTextContent('stage b');
-    const leaving = screen.queryByTestId('stage-leaving', HIDDEN);
-    if (leaving) {
-      // Still mid-fade in this environment: it must be inert.
-      expect(leaving).toHaveTextContent('stage a');
-      expect(leaving.props.pointerEvents).toBe('none');
-      expect(leaving.props.accessibilityElementsHidden).toBe(true);
-    }
+    // Still mid-fade (the double never finishes on its own): it must be inert.
+    const leaving = screen.getByTestId('stage-leaving', HIDDEN);
+    expect(leaving).toHaveTextContent('stage a');
+    expect(leaving.props.pointerEvents).toBe('none');
+    expect(leaving.props.accessibilityElementsHidden).toBe(true);
     // Screen readers find only the current stage.
     expect(screen.queryByText('stage a')).toBeNull();
   });
@@ -121,10 +119,7 @@ describe('StageCover', () => {
       );
     });
 
-    const leaving = screen.queryByTestId('stage-leaving', HIDDEN);
-    if (leaving) {
-      expect(leaving).toHaveTextContent('one car');
-    }
+    expect(screen.getByTestId('stage-leaving', HIDDEN)).toHaveTextContent('one car');
     expect(screen.getByTestId('stage-current')).toHaveTextContent('form');
   });
 });

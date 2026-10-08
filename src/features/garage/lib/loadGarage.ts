@@ -20,23 +20,40 @@
 import { getCurrentUserId } from '@/features/auth';
 
 import { listMyVehicles } from '../api/garageApi';
-import { garageFor, publishGarage } from './savedCarSignal';
+import { garageFor, garageGeneration, publishGarage } from './savedCarSignal';
 
-let inFlight: { userId: string; promise: Promise<boolean> } | null = null;
+let inFlight: {
+  userId: string;
+  gen: number;
+  promise: Promise<boolean>;
+} | null = null;
 
 /**
  * Fetch the user's garage into the cache. Resolves true when it loaded, false
  * when it failed (listMyVehicles already logged it) — never rejects, so a
  * caller that only wants to warm the cache can fire and forget.
+ *
+ * ⚠️ A fetch that started BEFORE a garage write (add / edit / delete, or a car
+ * just reported) is stale: it is never joined, and its answer is never
+ * published — it asks again instead. Otherwise a revalidation in flight when
+ * a car was deleted would publish the old list, deleted car and all, and
+ * mark it fresh (review of #141).
  */
 export function loadGarage(userId: string): Promise<boolean> {
-  if (inFlight && inFlight.userId === userId) {
+  const gen = garageGeneration();
+  if (inFlight && inFlight.userId === userId && inFlight.gen === gen) {
     return inFlight.promise;
   }
-  const promise = listMyVehicles()
-    .then((vehicles) => {
+  const promise: Promise<boolean> = listMyVehicles()
+    .then((vehicles): boolean | Promise<boolean> => {
       if (getCurrentUserId() !== userId) {
         return false; // signed out (or switched) while it was in flight
+      }
+      if (garageGeneration() !== gen) {
+        if (inFlight?.promise === promise) {
+          inFlight = null;
+        }
+        return loadGarage(userId); // a write landed mid-flight: ask again
       }
       publishGarage(userId, vehicles);
       return true;
@@ -47,7 +64,7 @@ export function loadGarage(userId: string): Promise<boolean> {
         inFlight = null;
       }
     });
-  inFlight = { userId, promise };
+  inFlight = { userId, gen, promise };
   return promise;
 }
 

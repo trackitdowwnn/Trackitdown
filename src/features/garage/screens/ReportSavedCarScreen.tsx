@@ -10,7 +10,7 @@
  *        must fail kindly rather than drop someone into a broken wizard at the
  *        worst moment.
  *
- *        While the garage loads it shows ReportPending (back control, then a
+ *        While the garage loads it shows ReportPending (the exit ✕, then a
  *        quiet line) — never FullscreenLoader, a native modal that is for
  *        submit-style waits and popped mid-transition here (2026-10-07).
  * LINKS: src/app/report-stolen/[vehicleId].tsx (route);

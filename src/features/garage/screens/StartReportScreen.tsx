@@ -15,7 +15,9 @@
  *        ⚠️ THE FIRST REAL STAGE IS FIXED FOR THE VISIT. Once the blank report
  *        or the chooser is on screen, a background revalidation can't swap it
  *        out from under someone — a garage that loads "some cars" a moment
- *        after the blank form appeared must not yank the form away.
+ *        after the blank form appeared must not yank the form away. The one
+ *        exception runs the other way: a chooser left with NO car to offer
+ *        (the last one was just reported) gives way to the blank report.
  *
  *        ⚠️ "Which car?" IS NEVER DRAWN WITHOUT CARS. A confirmed empty garage
  *        (or nothing offerable) goes straight to the blank report; an unknown
@@ -33,20 +35,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRequireAuth, useSession } from '@/features/auth';
 import { PostACarScreen } from '@/features/vehicles';
 import { createLogger } from '@/shared/lib/logger';
+import { EmptyState, Screen } from '@/shared/ui';
 
 import { ChooseCarStage } from '../components/ChooseCarStage';
 import { PrefilledReport } from '../components/PrefilledReport';
+import { ReportHeader } from '../components/ReportHeader';
 import { ReportPending } from '../components/ReportPending';
 import { StageCover } from '../components/StageCover';
 import { useMyVehicles } from '../hooks/useMyVehicles';
 import { requestSaveCarNudge } from '../lib/exitNudgeIntent';
-import { invalidateSavedCarSignal } from '../lib/savedCarSignal';
 import type { SavedVehicle } from '../types';
 
 const log = createLogger('garage');
 
 /** What the garage answer, on its own, says to show. */
-type NaturalStage = 'pending' | 'blank' | 'choose' | 'error';
+type NaturalStage = 'signin' | 'pending' | 'blank' | 'choose' | 'error';
 
 export function StartReportScreen() {
   const router = useRouter();
@@ -60,14 +63,16 @@ export function StartReportScreen() {
 
   // A GUEST can arrive here without the + button's gate — a deep link to
   // /post-a-car (review of #141). The form would only fail at create_post, so
-  // they're shown the sign-in sheet; once signed in, this screen carries on.
+  // they're shown the sign-in sheet once, over a sign-in stage that asks
+  // again if they close it; once signed in, this screen carries on.
+  const askToSignIn = useCallback(() => requireAuth({ context: 'post_car' }), [requireAuth]);
   const askedRef = useRef(false);
   useEffect(() => {
     if (session.status === 'signedOut' && !askedRef.current) {
       askedRef.current = true;
-      requireAuth({ context: 'post_car' });
+      askToSignIn();
     }
-  }, [session.status, requireAuth]);
+  }, [session.status, askToSignIn]);
   const isGuest = session.status !== 'signedIn';
 
   // A car with a live listing can't be reported again (create_post refuses
@@ -75,7 +80,9 @@ export function StartReportScreen() {
   const offerable = vehicles.filter((v) => !v.isCurrentlyPosted);
 
   const natural: NaturalStage = isGuest
-    ? 'pending'
+    ? session.status === 'signedOut'
+      ? 'signin'
+      : 'pending'
     : status === 'ready'
       ? offerable.length > 0
         ? 'choose'
@@ -118,12 +125,17 @@ export function StartReportScreen() {
   }, []);
   const goBack = useCallback(() => router.back(), [router]);
 
-  const stage =
-    picked?.kind === 'car'
+  // Signed out (or not yet known) beats even ?start=blank: a guest can't post.
+  const stage = isGuest
+    ? natural
+    : picked?.kind === 'car'
       ? `car:${picked.vehicle.id}`
       : picked?.kind === 'blank'
         ? 'blank'
         : (committed ?? natural);
+  // The chooser announces itself only when it REPLACES another stage — as
+  // the first thing on screen, the screen reader already lands on it.
+  const [firstStage] = useState(stage);
 
   // Funnel events, once each per visit. Ids and counts only — never a plate
   // or a nickname (docs/LOGGING.md). "Skipped" means the GARAGE sent them
@@ -142,16 +154,29 @@ export function StartReportScreen() {
 
   return (
     <StageCover stageKey={stage}>
-      {picked?.kind === 'car' ? (
+      {stage === 'signin' ? (
+        <Screen>
+          <ReportHeader onBack={goBack} />
+          <EmptyState
+            title="Sign in to report a stolen car"
+            body="You'll need an account so spotters can reach you."
+            actionLabel="Sign in"
+            actionVariant="primary"
+            onAction={askToSignIn}
+          />
+        </Screen>
+      ) : picked?.kind === 'car' && !isGuest ? (
         <PrefilledReport vehicle={picked.vehicle} />
       ) : stage === 'blank' ? (
         // The garage's exit nudge: only the blank report offers it — someone
         // reporting a saved car is never asked to save one.
-        <PostACarScreen onAbandon={requestSaveCarNudge} onPostCreated={invalidateSavedCarSignal} />
+        // No onPostCreated: a car reported from scratch isn't in the garage.
+        <PostACarScreen onAbandon={requestSaveCarNudge} />
       ) : stage === 'choose' ? (
         <ChooseCarStage
           mode="cars"
           vehicles={offerable}
+          announce={firstStage !== 'choose'}
           onChoose={choose}
           onDifferent={startBlank}
           onBack={goBack}
