@@ -60,10 +60,11 @@ export interface DefaultMapCentreState {
  *  A GPS fix can hang indefinitely with no error; the wizard must not. */
 const RESOLVE_TIMEOUT_MS = 2000;
 
-/** How long a read-ahead centre stays good. It only decides where a map
- *  OPENS, and the owner can always pan — but a phone that has travelled
- *  since should not open where it was an hour ago. */
-const PREFETCH_MAX_AGE_MS = 10 * 60 * 1000;
+/** How long a read-ahead centre stays good. Short, because on the posting
+ *  wizard the opening point is COMMITTED as the last-seen answer (it drives
+ *  the alert fan-out) — read ahead while the owner is on the first questions,
+ *  not from a visit ten minutes ago. */
+const PREFETCH_MAX_AGE_MS = 2 * 60 * 1000;
 
 let prefetched: { centre: GeoCoord; at: number } | null = null;
 let prefetching: Promise<void> | null = null;
@@ -135,13 +136,12 @@ async function resolveCentre(): Promise<GeoCoord | null> {
  */
 export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
   // A read-ahead centre opens the map on its first frame (see the header).
-  const [startedReady] = useState(() => enabled && freshPrefetch() !== null);
-  const [state, setState] = useState<DefaultMapCentreState>(() => {
-    const ahead = enabled ? freshPrefetch() : null;
-    return ahead
-      ? { status: 'ready', centre: ahead }
-      : { status: enabled ? 'resolving' : 'ready', centre: null };
-  });
+  // Read ONCE: two reads could straddle the expiry and disagree.
+  const [ahead] = useState(() => (enabled ? freshPrefetch() : null));
+  const startedReady = ahead !== null;
+  const [state, setState] = useState<DefaultMapCentreState>(() =>
+    ahead ? { status: 'ready', centre: ahead } : { status: enabled ? 'resolving' : 'ready', centre: null },
+  );
   const mountedRef = useRef(true);
 
   useEffect(() => {

@@ -175,8 +175,8 @@ describe('WizardScreen wiring', () => {
     expect(view.getByRole('button', { name: 'Get started' })).toBeTruthy();
     expect(view.queryByRole('button', { name: 'Back' })).toBeNull();
     expect(view.getByRole('button', { name: 'Exit' })).toBeTruthy();
-    // 2 phases + review = 3 dots; the a11y label counts phases only.
-    expect(view.getByLabelText('Step 1 of 2')).toBeTruthy();
+    // Several phases: the bar is named by the phase it is in.
+    expect(view.getByLabelText('About you, part 1 of 2')).toBeTruthy();
   });
 
   it('disables Next until the step schema passes, then advances', async () => {
@@ -196,7 +196,7 @@ describe('WizardScreen wiring', () => {
 
     await press(view, 'Next');
     expect(view.getByText('Your preferences')).toBeTruthy();
-    expect(view.getByLabelText('Step 2 of 2')).toBeTruthy();
+    expect(view.getByLabelText('Preferences, part 2 of 2')).toBeTruthy();
   });
 
   it('a step can advance past its disabled Next via onSkip', async () => {
@@ -451,6 +451,50 @@ describe('fills steps', () => {
   });
 });
 
+describe('the progress bar', () => {
+  it('names the STEP in a one-phase flow ("Step 2 of 3"), not the phase', async () => {
+    const onePhase: WizardFlow<Answers> = {
+      id: 'one-phase',
+      finalCtaLabel: 'Send',
+      phases: [
+        {
+          id: 'only',
+          title: 'Only',
+          steps: [flow.phases[0].steps[0], flow.phases[1].steps[0], { ...flow.phases[0].steps[0], id: 'again' }],
+        },
+      ],
+    };
+    const view = await render(<WizardScreen flow={onePhase} onExit={jest.fn()} onComplete={jest.fn()} />);
+    expect(view.getByLabelText('Step 1 of 3')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    await press(view, 'Next');
+    expect(view.getByLabelText('Step 2 of 3')).toBeTruthy();
+  });
+
+  it('stays full while editing from review — a detour is not progress lost', async () => {
+    const { view } = await renderWizard();
+    await press(view, 'Get started');
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    await press(view, 'Next');
+    await press(view, 'Continue');
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-colour'));
+    });
+    await press(view, 'Next'); // review
+    const onReview = view.getByLabelText('Review').props.accessibilityValue;
+
+    await act(async () => {
+      fireEvent.press(view.getAllByRole('button', { name: /^Edit/ })[0]);
+    });
+    expect(view.getByText("What's your name?")).toBeTruthy(); // on the spur
+    expect(view.getByLabelText('Review').props.accessibilityValue).toEqual(onReview);
+  });
+});
+
 describe('moving between screens', () => {
   beforeEach(() => {
     mockUnmountedExits.length = 0;
@@ -538,6 +582,23 @@ describe('moving between screens', () => {
         handlers.forEach((handler) => handler());
       });
       expect(view.getByText('Tell us about you')).toBeTruthy();
+    });
+
+    it('ignores the hardware back on the FIRST screen during a move — it would leave the flow', async () => {
+      const handlers: (() => boolean)[] = [];
+      jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+        handlers.push(handler as () => boolean);
+        return { remove: jest.fn() };
+      });
+      const { view, onExit } = await renderWizard();
+      await press(view, 'Get started');
+      await waitOutTheMove();
+      await press(view, 'Back'); // back on the first screen, mid-move
+
+      await act(async () => {
+        handlers.forEach((handler) => handler());
+      });
+      expect(onExit).not.toHaveBeenCalled();
     });
 
     it('tells the step when its move has finished', async () => {

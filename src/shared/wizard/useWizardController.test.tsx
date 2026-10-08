@@ -17,7 +17,7 @@
  */
 
 import { act, renderHook } from '@testing-library/react-native';
-import { AccessibilityInfo, Alert, type AlertButton } from 'react-native';
+import { AccessibilityInfo, Alert, Keyboard, type AlertButton } from 'react-native';
 import * as Reanimated from 'react-native-reanimated';
 import { z } from 'zod';
 
@@ -95,6 +95,16 @@ describe('one move at a time', () => {
     expect(result.current.settled).toBe(true);
     await act(async () => result.current.back());
     expect(result.current.screenIndex).toBe(0);
+  });
+
+  it('a move asked for after the screen has gone does nothing — not even drop the keyboard', async () => {
+    jest.spyOn(Reanimated, 'useReducedMotion').mockReturnValue(false);
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    const { result, unmount } = await renderController(jest.fn());
+    const { next } = result.current;
+    await unmount(); // left by the X mid-lookup
+    next(); // the lookup lands
+    expect(dismiss).not.toHaveBeenCalled();
   });
 
   it('never locks under reduced motion — there is no transition to wait for', async () => {

@@ -1,8 +1,9 @@
 /**
  * WHAT:  The wizard's container screen — assembles the header row (exit X
- *        left, bubble-stepper progress + label right), the current screen's
- *        content (phase intro / step / review) with horizontal slide
- *        transitions, and the fixed keyboard-aware Back/Next footer (with a
+ *        left, a segmented progress bar right — one segment per phase,
+ *        filling per step), the current screen's content (phase intro /
+ *        step / review), sliding between screens (fading beside a map step),
+ *        and the fixed keyboard-aware Back/Next footer (with a
  *        step's footerNote above the buttons, or ending the body past 1.3×
  *        text). Steps also receive editStep/busy for their own Edit links.
  *        This is the one component a route renders to run a flow.
@@ -167,8 +168,8 @@ export function WizardScreen<TAnswers>({
   const { settle } = controller;
   const leaving = shownIndex !== screenIndex;
   useLayoutEffect(() => {
-    if (leaving) settle();
-  }, [leaving, settle]);
+    if (shownIndex !== screenIndex) settle();
+  }, [shownIndex, screenIndex, settle]);
   const keyboardHeight = useAndroidKeyboardHeight();
 
   // A step's footerNote rides with the buttons, except at large text: the
@@ -238,10 +239,10 @@ export function WizardScreen<TAnswers>({
   // BottomSheet registers its Back on open, so picking an option in it put the
   // wizard back on top: Back stepped the wizard back with the sheet still up
   // (2026-09-30 review). Registered once at mount, any sheet opened later wins.
-  const { isFirstScreen, back, requestExit } = controller;
-  const backState = useRef({ busy, isFirstScreen, back, requestExit });
+  const { isFirstScreen, back, requestExit, settled } = controller;
+  const backState = useRef({ busy, isFirstScreen, back, requestExit, settled });
   useEffect(() => {
-    backState.current = { busy, isFirstScreen, back, requestExit };
+    backState.current = { busy, isFirstScreen, back, requestExit, settled };
   });
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -249,6 +250,9 @@ export function WizardScreen<TAnswers>({
       // Swallow the gesture while an async action is in flight so a submit or
       // lookup can't be navigated out from under.
       if (latest.busy) return true;
+      // Mid-move, too — including the exit from the first screen: a Back
+      // then a second back a beat later must not leave the flow.
+      if (!latest.settled) return true;
       if (latest.isFirstScreen) {
         latest.requestExit();
       } else {
@@ -307,11 +311,25 @@ export function WizardScreen<TAnswers>({
   }, [error]);
 
   // One segment per phase, filling a little with every step (phaseProgress).
-  // The label names the phase for screen readers; the review fills them all.
-  const progressLabel =
-    screen.kind === 'review'
-      ? 'Review'
-      : `Step ${screen.phaseIndex + 1} of ${flow.phases.length}`;
+  // What a screen reader hears follows the STEPS now the bar does: "Step 3 of
+  // 7" in a one-phase flow, "Your car, part 1 of 3" where there are phases.
+  // A spur from review keeps saying where the owner came from.
+  const progressIndex = controller.isEditingFromReview ? controller.screens.length - 1 : screenIndex;
+  const progressScreen = controller.screens[progressIndex] ?? screen;
+  const progressLabel = (() => {
+    if (progressScreen.kind === 'review') return 'Review';
+    const phase = progressScreen.phaseIndex;
+    if (flow.phases.length > 1) {
+      return `${flow.phases[phase].title}, part ${phase + 1} of ${flow.phases.length}`;
+    }
+    const inPhase = controller.screens.filter(
+      (candidate) => candidate.kind !== 'review' && candidate.phaseIndex === phase,
+    );
+    return `Step ${inPhase.indexOf(progressScreen) + 1} of ${inPhase.length}`;
+  })();
+  // Screens done, not an average of the phases: a long first phase would
+  // otherwise read far behind.
+  const progressPercent = Math.round(((progressIndex + 1) / controller.screens.length) * 100);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -329,7 +347,11 @@ export function WizardScreen<TAnswers>({
             disabled={busy && controller.isLastScreen}
           />
           <View style={styles.headerProgress}>
-            <WizardProgressBar fills={controller.progress} label={progressLabel} />
+            <WizardProgressBar
+              fills={controller.progress}
+              label={progressLabel}
+              percent={progressPercent}
+            />
           </View>
         </View>
 
@@ -344,7 +366,9 @@ export function WizardScreen<TAnswers>({
         <Animated.View
           key={shownIndex}
           testID="wizard-step-slide"
-          style={styles.flex}
+          // Paints the page: during a fade beside a map, the leaving screen's
+          // text must cover — not sit over — the one arriving.
+          style={styles.stepLayer}
           entering={entering}
           exiting={exiting}
         >
@@ -381,7 +405,7 @@ export function WizardScreen<TAnswers>({
                         swatches, feature cards, revealed follow-ups) is simply
                         there when the step mounts — on return or Back — and
                         only what appears AFTER mount fades in. */}
-                    <LayoutAnimationConfig skipEntering>
+                    <LayoutAnimationConfig skipEntering skipExiting>
                       <shown.step.component
                         answers={answers}
                         setAnswers={controller.setAnswers}
@@ -395,7 +419,9 @@ export function WizardScreen<TAnswers>({
                         busy={busy}
                         // False for the length of a move's transition: a heavy
                         // step (the map) waits for it before it mounts.
-                        settled={controller.settled}
+                        // A leaving step is drawn once more (for its exit)
+                        // and must not flip to a placeholder as it goes.
+                        settled={leaving ? true : controller.settled}
                         advanceSoon={controller.advanceSoon}
                       />
                     </LayoutAnimationConfig>
@@ -442,6 +468,10 @@ const makeStyles = (c: Palette) =>
     },
     flex: {
       flex: 1,
+    },
+    stepLayer: {
+      flex: 1,
+      backgroundColor: c.background,
     },
     // md, not xl: the 44pt exit target has ~13px of internal padding around its
     // glyph, so md lands the glyph optically on the content's 24px edge.

@@ -17,7 +17,7 @@
  *        docs/DESIGN_SYSTEM.md.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { BadgePoundSterling, Megaphone } from 'lucide-react-native';
@@ -73,6 +73,9 @@ import { ModelField } from './ModelField';
 import { YearField } from './YearField';
 
 type StepProps = WizardStepProps<PostACarAnswers>;
+
+/** How long the last-seen pin must rest before its place lookup is warmed. */
+const PIN_REST_MS = 1000;
 
 /**
  * Props for the seven VEHICLE-IDENTITY steps, which the garage reuses. Typed
@@ -255,6 +258,28 @@ export function LastSeenWhenStep({ answers, setAnswers }: StepProps) {
 
 export function LastSeenWhereStep({ answers, setAnswers, settled = true }: StepProps) {
   const styles = useThemedStyles(makeStyles);
+  // Warm the PUBLIC-grain lookup Next will need (onContinue) once the pin has
+  // RESTED — not on every settle of a pan: the picker already geocodes each
+  // settle for its own label, and Apple rate-limits its geocoder (review of
+  // #142). A Next pressed sooner simply does its own lookup. The reward
+  // guidance, a few screens on, is asked for at the same moment, so it is
+  // simply there when that step arrives instead of popping in.
+  const warmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (warmTimer.current) clearTimeout(warmTimer.current);
+    },
+    [],
+  );
+  const warmSoon = (point: { latitude: number; longitude: number }) => {
+    if (warmTimer.current) clearTimeout(warmTimer.current);
+    warmTimer.current = setTimeout(() => {
+      warmTimer.current = null;
+      warmPlaceLabels(point);
+      warmBountyGuidance(point.latitude, point.longitude);
+    }, PIN_REST_MS);
+  };
+
   // Open the camera on the device rather than on the whole UK — most cars are
   // reported from near where they were taken. Only resolved when there is no
   // stored point yet, and it never blocks: if the chain finds nothing the map
@@ -295,15 +320,11 @@ export function LastSeenWhereStep({ answers, setAnswers, settled = true }: StepP
         commitInitialCentre
         onLocationChange={(value) => {
           if (!value.isSettled) {
+            if (warmTimer.current) clearTimeout(warmTimer.current); // moving again
             // Un-settle disables Next until the user commits a point again.
             setAnswers({ location: null });
           } else if (value.addressLabel) {
-            // Start the PUBLIC-grain lookup Next will need (onContinue), so
-            // pressing it usually finds the answer waiting.
-            warmPlaceLabels({ latitude: value.latitude, longitude: value.longitude });
-            // …and the reward guidance, a few screens on, so it is simply
-            // there when that step arrives instead of popping in.
-            warmBountyGuidance(value.latitude, value.longitude);
+            warmSoon({ latitude: value.latitude, longitude: value.longitude });
             // A resolved point: store it + the coarse grouping label for the
             // feed (posts.last_seen_area ≤ 80).
             setAnswers({
@@ -388,7 +409,7 @@ export function BodyTypeStep({ answers, setAnswers, advanceSoon }: VehicleStepPr
 const DESC_MIN_CHARS = 20;
 const DESC_MAX_CHARS = 1000;
 
-export function DescriptionStep({ answers, setAnswers, onSkip }: StepProps) {
+export function DescriptionStep({ answers, setAnswers, onSkip, settled = true }: StepProps) {
   const styles = useThemedStyles(makeStyles);
   const description = answers.descRecognise ?? '';
   // TWO different counts, because they answer two different questions.
@@ -432,6 +453,9 @@ export function DescriptionStep({ answers, setAnswers, onSkip }: StepProps) {
           label="Skip for now"
           testID="description-skip"
           onPress={() => {
+            // Not mid-move: the skip itself would be dropped by the wizard's
+            // lock, and the text cleared with nowhere to go (review of #142).
+            if (!settled) return;
             // Clear rather than submit a fragment. "Skip" means no description,
             // and a stray "blue one" helps no spotter recognise the car while
             // still occupying the space where a real description would go.

@@ -87,19 +87,46 @@ describe('LastSeenWhereStep', () => {
     expect(view.queryByTestId('map')).toBeNull();
   });
 
-  it('a settled, labelled pin starts the place lookup Next will need', async () => {
-    await renderStep(true);
-    await act(async () => {
-      mockPickerProps?.onLocationChange({
-        isSettled: true,
-        latitude: 53.4,
-        longitude: -2.2,
-        addressLabel: 'Deansgate, Manchester',
+  const SETTLED = {
+    isSettled: true,
+    latitude: 53.4,
+    longitude: -2.2,
+    addressLabel: 'Deansgate, Manchester',
+  };
+
+  it('a pin that has RESTED starts the place lookup Next will need', async () => {
+    jest.useFakeTimers();
+    try {
+      await renderStep(true);
+      await act(async () => mockPickerProps?.onLocationChange(SETTLED));
+      expect(mockWarm).not.toHaveBeenCalled(); // not on every settle of a pan
+      await act(async () => {
+        jest.advanceTimersByTime(1000);
       });
-    });
-    expect(mockWarm).toHaveBeenCalledWith({ latitude: 53.4, longitude: -2.2 });
-    // …and the reward guidance, so it is there when the reward step arrives.
-    expect(mockWarmGuidance).toHaveBeenCalledWith(53.4, -2.2);
+      expect(mockWarm).toHaveBeenCalledWith({ latitude: 53.4, longitude: -2.2 });
+      // …and the reward guidance, so it is there when the reward step arrives.
+      expect(mockWarmGuidance).toHaveBeenCalledWith(53.4, -2.2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('a pin moved again before resting starts nothing (the picker already geocodes each settle)', async () => {
+    jest.useFakeTimers();
+    try {
+      await renderStep(true);
+      await act(async () => mockPickerProps?.onLocationChange(SETTLED));
+      await act(async () =>
+        mockPickerProps?.onLocationChange({ isSettled: false, latitude: 53.41, longitude: -2.2 }),
+      );
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+      expect(mockWarm).not.toHaveBeenCalled();
+      expect(mockWarmGuidance).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('a pin still moving starts nothing', async () => {

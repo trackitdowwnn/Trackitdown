@@ -50,38 +50,30 @@ export const LOOKUP_TIMEOUT_MS = 4000;
 const CACHE_SIZE = 20;
 
 /** Rounded to 4 decimal places (~10m): a re-settled pin on the same spot
- *  reuses the answer, and two different streets never share one. */
+ *  reuses the answer. Two points ~10m apart can share one — at a junction,
+ *  two streets — which only ever touches the owner-facing label: `locality`
+ *  never holds a street (see the header). */
 function cacheKey(coord: GeoCoord): string {
   return `${coord.latitude.toFixed(4)},${coord.longitude.toFixed(4)}`;
 }
 
-/** Settled answers AND lookups in flight, so a warm-up and the Next that
- *  follows it share one request. A failed or timed-out lookup is dropped
- *  rather than remembered — the next ask tries again. */
-const cache = new Map<string, Promise<PlaceLabels>>();
-
 /**
- * Best-effort: a geocoding failure — or one slower than LOOKUP_TIMEOUT_MS —
- * returns nulls rather than throwing, because every caller runs inside a
- * wizard step that must not be blocked by the network. A missing label
- * degrades the copy, never the report.
+ * The geocode itself per point — settled, or still in flight — so a warm-up
+ * and the Next that follows share ONE request. Null-resolving entries (a
+ * failure) are dropped so the next ask tries again; a slow one that lands
+ * after an ask has given up on it is still kept for the next ask.
  */
-export function derivePlaceLabelsForCoord(coord: GeoCoord): Promise<PlaceLabels> {
+const cache = new Map<string, Promise<PlaceLabels | null>>();
+
+function lookupFor(coord: GeoCoord): Promise<PlaceLabels | null> {
   const key = cacheKey(coord);
   const known = cache.get(key);
   if (known) {
     return known;
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), LOOKUP_TIMEOUT_MS);
-  });
-  const lookup: Promise<PlaceLabels> = Promise.race([geocode(coord), timeout]).then((labels) => {
-    clearTimeout(timer);
-    if (labels === null) {
-      cache.delete(key); // timed out or failed: ask again next time
-      return EMPTY;
-    }
+  const lookup: Promise<PlaceLabels | null> = geocode(coord).then((labels) => {
+    // Only this entry: an evicted lookup failing must not drop a newer one.
+    if (labels === null && cache.get(key) === lookup) cache.delete(key);
     return labels;
   });
   cache.set(key, lookup);
@@ -92,10 +84,28 @@ export function derivePlaceLabelsForCoord(coord: GeoCoord): Promise<PlaceLabels>
   return lookup;
 }
 
+/**
+ * Best-effort: a geocoding failure — or one slower than LOOKUP_TIMEOUT_MS —
+ * returns nulls rather than throwing, because every caller runs inside a
+ * wizard step that must not be blocked by the network. A missing label
+ * degrades the copy, never the report. Each ask gets the whole time limit,
+ * even when it joins a lookup a warm-up started earlier.
+ */
+export function derivePlaceLabelsForCoord(coord: GeoCoord): Promise<PlaceLabels> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), LOOKUP_TIMEOUT_MS);
+  });
+  return Promise.race([lookupFor(coord), timeout]).then((labels) => {
+    clearTimeout(timer);
+    return labels ?? EMPTY;
+  });
+}
+
 /** Start the lookup for a point the owner is likely to continue with (the map
- *  step's settled pin), so its Next finds the answer waiting. */
+ *  step's resting pin), so its Next finds the answer waiting. */
 export function warmPlaceLabels(coord: GeoCoord): void {
-  void derivePlaceLabelsForCoord(coord);
+  void lookupFor(coord);
 }
 
 /** Test-only: forget every remembered answer. */
