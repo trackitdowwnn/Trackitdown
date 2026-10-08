@@ -98,13 +98,10 @@ export function useMyVehicles(): UseMyVehiclesResult {
     if (session.status === 'loading' || !userId) {
       return;
     }
-    const cached = garageFor(userId);
-    if (cached) {
-      // Already showing the cached garage: never an error screen over it.
-      // Revalidate quietly unless it was loaded moments ago.
-      setLoaded((current) =>
-        current?.userId === userId ? current : { userId, vehicles: cached.vehicles },
-      );
+    if (garageFor(userId)) {
+      // Already showing the cached garage (see `current` below): never an
+      // error screen over it. Revalidate quietly unless it was loaded moments
+      // ago.
       if (!isGarageFresh(userId, FRESH_ENOUGH_MS)) {
         void load('silent');
       }
@@ -131,7 +128,11 @@ export function useMyVehicles(): UseMyVehiclesResult {
   }, [load]);
 
   // Derived per-session view: guests are instantly ready and empty.
-  const current = userId && loaded?.userId === userId ? loaded.vehicles : null;
+  // Falls back to the shared cache, so a mount after the garage is known — or
+  // a user switch onto a known garage — renders it at once, with no loading
+  // beat and no setState-in-effect to get there.
+  const current =
+    userId && loaded?.userId === userId ? loaded.vehicles : (garageFor(userId)?.vehicles ?? null);
   const status: MyVehiclesStatus =
     session.status === 'loading'
       ? 'loading'

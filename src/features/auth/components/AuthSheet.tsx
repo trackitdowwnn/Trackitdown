@@ -130,7 +130,7 @@ export function AuthSheet() {
       openRef.current = true;
       sheetRef.current?.open();
     }
-  }, [intent, standing]);
+  }, [intent, standing, runPendingAction]);
 
   const handleDismiss = () => {
     openRef.current = false;
