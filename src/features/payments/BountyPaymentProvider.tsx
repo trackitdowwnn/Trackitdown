@@ -1,40 +1,37 @@
 /**
- * WHAT:  Wraps its children in Stripe's <StripeProvider>, reading the PUBLIC
- *        publishable key from EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY. Mount it above
- *        any screen that presents the bounty PaymentSheet (the post-a-car route).
- * WHY:   useStripe / PaymentSheet only work inside a StripeProvider, and the
- *        provider needs the publishable key. The publishable key is PUBLIC (safe
- *        to bundle — it can only open the sheet, never move money); the secret +
- *        webhook keys are Edge Function secrets, never in the app. Scoped to the
- *        post-a-car route rather than the app root so the native module is only
- *        engaged where payments actually happen. Requires a dev build with the
- *        @stripe/stripe-react-native config plugin (app.config.ts). The Apple Pay
- *        merchant id mirrors the iOS bundle id (com.olliet97.trackitdown); it is
- *        inert until an Apple Pay merchant id is registered in the Apple Developer
- *        account + a matching entitlement is added to the build.
- * LINKS: app.config.ts (the Stripe config plugin); src/app/post-a-car.tsx
- *          (mounts this); .env.example (EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY);
- *        supabase/functions/README.md (Stripe setup guide).
+ * WHAT:  Mount it above any screen that can take a payment or mint a Stripe
+ *        token (the report route, /report-stolen/[vehicleId], /payouts). It
+ *        warms Stripe's native SDK AFTER the screen's transition has finished,
+ *        and renders its children untouched.
+ * WHY:   Until 2026-10-07 this rendered Stripe's <StripeProvider>, which runs
+ *        initStripe on every mount — on Android also attaching a Compose view
+ *        on the UI thread — right in the middle of the report form's
+ *        slide-up. The provider holds no React context (useStripe calls the
+ *        native module directly), so this now defers the init to after the
+ *        slide (useAfterTransition) and every Stripe call awaits
+ *        ensureStripeReady, so nothing can reach an uninitialised SDK.
+ *        Scoped to the routes that charge rather than the app root, so the
+ *        native module is only engaged where payments actually happen.
+ *        Requires a dev build with the @stripe/stripe-react-native config
+ *        plugin (app.config.ts).
+ * LINKS: src/features/payments/lib/stripeReady.ts (the one init);
+ *        src/shared/hooks/useAfterTransition.ts; src/app/post-a-car.tsx,
+ *        src/app/payouts.tsx (mount this); .env.example
+ *        (EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY); supabase/functions/README.md
+ *        (Stripe setup guide).
  */
 
-import { StripeProvider } from '@stripe/stripe-react-native';
 import type { ReactNode } from 'react';
 
-const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
+import { useAfterTransition } from '@/shared/hooks/useAfterTransition';
 
-// Apple Pay merchant id (iOS only; inert until an Apple Pay merchant id +
-// entitlement are registered). Mirrors the app's bundle id.
-const APPLE_PAY_MERCHANT_ID = 'merchant.com.olliet97.trackitdown';
+import { ensureStripeReady } from './lib/stripeReady';
 
 export function BountyPaymentProvider({ children }: { children: ReactNode }) {
-  // An empty key leaves PaymentSheet init to fail with a surfaced, retryable
-  // error (env not set up yet) rather than crashing — the flow is gated on the
-  // Stripe setup guide, but the rest of the wizard still runs.
-  return (
-    <StripeProvider publishableKey={publishableKey} merchantIdentifier={APPLE_PAY_MERCHANT_ID}>
-      {/* Fragment so StripeProvider always receives a single ReactElement child
-          (its children prop rejects a bare ReactNode). */}
-      <>{children}</>
-    </StripeProvider>
-  );
+  useAfterTransition(() => {
+    // Warm-up only: a failure here is retried by the payment call itself,
+    // which awaits ensureStripeReady and surfaces its own error.
+    ensureStripeReady().catch(() => {});
+  });
+  return <>{children}</>;
 }

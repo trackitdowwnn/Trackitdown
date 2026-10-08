@@ -765,11 +765,14 @@ to use.
   reason). A step whose guidance is one plain sentence uses the wizard's
   `helper` line instead.
 - Loading: skeleton placeholders in `surfaceSubtle`, no spinners on lists.
-  A screen that may turn out to be a REDIRECT (a chooser with possibly
-  nothing to choose) stays blank for `motion.skeletonGrace` (400ms) before
-  drawing its skeleton, and is blank while leaving: a skeleton shaped like
-  the answer tells someone they have something they don't
-  (`ChooseCarToReportScreen`, 2026-10-07).
+  **Never a skeleton shaped like an answer the user may not have.** A screen
+  that can't yet tell whether it has anything to show (the report screen,
+  before the garage answer lands) shows its back control and nothing else
+  for `motion.skeletonGrace` (400ms), then one neutral line ("Checking your
+  garage…") — no title, no rows shaped like cars. "Which car?" over car-shaped
+  rows told people with no cars that they had some (`ReportPending`,
+  2026-10-07). Better still, wait for the answer BEFORE navigating, bounded
+  by the same grace (`useStartReport`), so the screen arrives already built.
   **Sanctioned exception (2026-10-07): work the user just started** may
   show ONE small `ActivityIndicator` in `textSecondary`, in two places only:
   (a) centred on a pending item's `surfaceSubtle` skeleton while it is

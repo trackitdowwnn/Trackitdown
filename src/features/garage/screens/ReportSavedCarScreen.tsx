@@ -36,7 +36,7 @@ import { useMyVehicles } from '../hooks/useMyVehicles';
  * is a loop at the worst possible moment. One constant so a future edit cannot
  * change one exit and leave the other.
  */
-const BLANK_POST_AFTER_PREFILL_FAILURE = '/post-a-car' as const;
+const BLANK_POST_AFTER_PREFILL_FAILURE = '/post-a-car?start=blank' as const;
 
 export interface ReportSavedCarScreenProps {
   vehicleId: string;

@@ -27,7 +27,7 @@
  *        ../components/ReportPending.tsx; ../lib/exitNudgeIntent.ts.
  */
 
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 
 import { PostACarScreen } from '@/features/vehicles';
@@ -48,6 +48,10 @@ type NaturalStage = 'pending' | 'blank' | 'choose' | 'error';
 
 export function StartReportScreen() {
   const router = useRouter();
+  // `?start=blank` opens the blank report directly — for exits that must
+  // never land on the chooser (a saved-car report that failed: offering the
+  // chooser again would be a loop at the worst moment).
+  const { start } = useLocalSearchParams<{ start?: string }>();
   const { status, vehicles, retry } = useMyVehicles();
 
   // A car with a live listing can't be reported again (create_post refuses
@@ -66,7 +70,7 @@ export function StartReportScreen() {
   // The owner's own choice from the chooser (or its error view) beats
   // everything else.
   const [picked, setPicked] = useState<{ kind: 'blank' } | { kind: 'car'; vehicle: SavedVehicle } | null>(
-    null,
+    () => (start === 'blank' ? { kind: 'blank' } : null),
   );
   // The first real stage shown is fixed for the visit (see the header). Set
   // during render — React's pattern for state derived from props — so the

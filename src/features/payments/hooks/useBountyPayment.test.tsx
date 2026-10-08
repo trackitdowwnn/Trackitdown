@@ -16,6 +16,10 @@ import { useBountyPayment } from './useBountyPayment';
 
 const mockInit = jest.fn();
 const mockPresent = jest.fn();
+// Stripe initialises after the screen's transition (2026-10-07), so the
+// sheet must wait for it — pinned by call order below.
+const mockEnsureReady = jest.fn(async () => {});
+jest.mock('../lib/stripeReady', () => ({ ensureStripeReady: () => mockEnsureReady() }));
 jest.mock('@stripe/stripe-react-native', () => ({
   PaymentSheetError: { Canceled: 'Canceled' },
   useStripe: () => ({ initPaymentSheet: mockInit, presentPaymentSheet: mockPresent }),
@@ -25,7 +29,10 @@ jest.mock('@/shared/lib/logger', () => ({
   createLogger: () => ({ info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() }),
 }));
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockEnsureReady.mockResolvedValue(undefined);
+});
 
 async function payBounty() {
   const { result } = await renderHook(() => useBountyPayment());
@@ -33,6 +40,25 @@ async function payBounty() {
 }
 
 describe('useBountyPayment', () => {
+  it('waits for Stripe to be initialised before opening the sheet', async () => {
+    mockInit.mockResolvedValue({ error: undefined });
+    mockPresent.mockResolvedValue({ error: undefined });
+
+    await (await payBounty())('secret');
+    expect(mockEnsureReady.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInit.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('a failed Stripe init is a retryable failure, and no sheet opens', async () => {
+    mockEnsureReady.mockRejectedValue(new Error('native init failed'));
+
+    const result = await (await payBounty())('secret');
+    expect(result.outcome).toBe('failed');
+    expect(mockInit).not.toHaveBeenCalled();
+    expect(mockPresent).not.toHaveBeenCalled();
+  });
+
   it('returns "paid" when the sheet completes', async () => {
     mockInit.mockResolvedValue({ error: undefined });
     mockPresent.mockResolvedValue({ error: undefined });

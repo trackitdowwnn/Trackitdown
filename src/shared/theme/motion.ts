@@ -65,10 +65,10 @@ export const motion = {
   stepRepeat: 120,
   /** FullscreenLoader: minimum time shown, so instant ops don't flash. */
   loaderMinVisible: 600,
-  /** How long a screen that may turn out to be a REDIRECT stays blank before
-   *  it draws its skeleton (ChooseCarToReportScreen). Most answers land well
-   *  inside it, so someone with nothing to choose never sees a chooser —
-   *  only a slow network shows the skeleton. */
+  /** The longest the + button waits for the garage answer and draft before
+   *  opening the report (useStartReport), and how long the report screen's
+   *  pending stage stays bare before its one neutral line (ReportPending).
+   *  Most answers land well inside it. */
   skeletonGrace: 400,
   /** One cycle of a calm loading pulse (PhotoGridPicker's uploading tile). */
   loaderLoop: 1200,

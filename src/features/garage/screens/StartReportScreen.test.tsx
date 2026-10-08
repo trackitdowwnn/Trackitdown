@@ -31,8 +31,10 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 const mockReplace = jest.fn();
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+let mockParams: { start?: string } = {};
 jest.mock('expo-router', () => ({
   useRouter: () => ({ replace: mockReplace, push: mockPush, back: mockBack }),
+  useLocalSearchParams: () => mockParams,
   useFocusEffect: () => {},
 }));
 
@@ -102,6 +104,7 @@ const renderScreen = () => act(async () => render(<StartReportScreen />));
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockParams = {};
   mockVehicles = { status: 'ready', vehicles: [vehicle()], retry: mockRetry };
 });
 
@@ -294,6 +297,15 @@ describe('the escapes', () => {
     });
     expect(view.getByTestId('choose-car-back')).toBeTruthy();
     expect(view.getByTestId('report-pending-line')).toBeTruthy();
+  });
+
+  it('?start=blank opens the blank report even with cars — no chooser loop', async () => {
+    // A saved-car report that failed sends people here; offering the chooser
+    // again would bounce them between the two.
+    mockParams = { start: 'blank' };
+    const { getByTestId, queryByText } = await renderScreen();
+    expect(getByTestId('blank-report')).toBeTruthy();
+    expect(queryByText('Which car?')).toBeNull();
   });
 
   it('the back control leaves', async () => {

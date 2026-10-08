@@ -9,7 +9,7 @@
  *        Also pins the distinction the error branch exists for: a failed load
  *        is NOT a missing car, and must never be reported as one.
  * LINKS: src/features/garage/screens/ReportSavedCarScreen.tsx;
- *        src/features/garage/screens/ChooseCarToReportScreen.tsx;
+ *        src/features/garage/screens/StartReportScreen.tsx;
  *        docs/TESTING.md.
  */
 
@@ -71,7 +71,7 @@ describe('when the garage will not load', () => {
       fireEvent.press(getByText('Report a stolen car from scratch'));
     });
 
-    expect(mockReplace).toHaveBeenCalledWith('/post-a-car');
+    expect(mockReplace).toHaveBeenCalledWith('/post-a-car?start=blank');
   });
 
   it('does not claim the car was deleted', async () => {
@@ -98,6 +98,6 @@ describe('when the car is genuinely gone', () => {
       fireEvent.press(getByText('Report a stolen car'));
     });
 
-    expect(mockReplace).toHaveBeenCalledWith('/post-a-car');
+    expect(mockReplace).toHaveBeenCalledWith('/post-a-car?start=blank');
   });
 });

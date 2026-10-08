@@ -8,7 +8,11 @@ ownership — producing exactly one **draft** post that a moderator later approv
 Built on the shared wizard framework (`src/shared/wizard`). Entered full-screen
 from the **bottom tab bar's centre "+" action** ("Report a stolen car") — a
 route OUTSIDE the `(tabs)` group, so the tab bar is absent for the whole flow.
-(A My Cars entry point can be added later; the route is `/post-a-car`.)
+The route is `/post-a-car`, hosted by the garage's `StartReportScreen`, which
+shows this wizard (blank or prefilled) or the "Which car?" chooser in place,
+after ONE slide-up (2026-10-07). The **+** reads the saved draft first
+(`primePostDraft`), so `PostACarScreen` starts from it on its first frame; the
+draft is cleared on submit and on an explicit Discard.
 
 > **Which world are we building?** The **draft → escrow-charge → pending_verification**
 > world. `create_post` produces a post in status `draft`; the final wizard CTA

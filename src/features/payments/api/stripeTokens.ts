@@ -14,8 +14,8 @@
  *          SDK wrapper and none is needed — it is a JSON REST endpoint. The
  *          `Stripe-Version` header is MANDATORY on every /v2 call.
  *        - Bank details → the RN SDK's own `createToken({type:'BankAccount'})`
- *          (a `btok_`), which needs the StripeProvider that already wraps the
- *          payout screen.
+ *          (a `btok_`), which needs the SDK initialised — awaited via
+ *          ensureStripeReady (lib/stripeReady.ts).
  *
  *        ToS RIDES THE TOKEN, deliberately: Stripe infers acceptance date/IP
  *        from the client call that carries `shown_and_accepted`. Moving
@@ -36,6 +36,8 @@
 import { createToken } from '@stripe/stripe-react-native';
 
 import { PaymentError } from '@/shared/lib/functionError';
+
+import { ensureStripeReady } from '../lib/stripeReady';
 import type { PayoutDetails } from './payoutsApi';
 
 const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
@@ -127,10 +129,18 @@ export interface BankTokenDetails {
 }
 
 /**
- * Mint the bank token via the SDK. Needs a mounted StripeProvider —
- * PayoutsScreen wraps itself in BountyPaymentProvider for exactly this.
+ * Mint the bank token via the SDK. Needs an initialised SDK — awaited here
+ * (ensureStripeReady); PayoutsScreen's BountyPaymentProvider warms it.
  */
 export async function createBankToken(details: BankTokenDetails): Promise<string> {
+  try {
+    await ensureStripeReady();
+  } catch {
+    throw new PaymentError(
+      'We couldn’t reach our payment provider. Please try again.',
+      'STRIPE_UNAVAILABLE',
+    );
+  }
   const holderName =
     details.firstName && details.lastName
       ? `${details.firstName} ${details.lastName}`
