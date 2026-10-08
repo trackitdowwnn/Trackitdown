@@ -99,8 +99,11 @@ function fresh(key: string): { request: Promise<BountyGuidance>; at: number } | 
 /** The guidance for a point if it has already arrived — synchronously, so the
  *  reward step can start from it. Undefined while unknown or in flight. */
 export function peekBountyGuidance(latitude: number, longitude: number): BountyGuidance | undefined {
+  // Read-only (it is called during render): an expired entry is simply not
+  // returned; fetchBountyGuidance clears it when it next asks.
   const key = cacheKey(latitude, longitude);
-  return fresh(key) ? settled.get(key) : undefined;
+  const entry = cache.get(key);
+  return entry && Date.now() - entry.at <= MAX_AGE_MS ? settled.get(key) : undefined;
 }
 
 /** Start the lookup for a point the owner is about to reach the reward with

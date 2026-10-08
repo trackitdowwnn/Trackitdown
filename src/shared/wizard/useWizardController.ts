@@ -188,6 +188,14 @@ export function useWizardController<TAnswers>(
   // map) can wait for it before they mount.
   const reduceMotion = useReducedMotion();
   const lockRef = useRef(false);
+  // An onContinue lookup or the final submit is running. `busy` is state, so
+  // two presses inside one commit would both see it false; this is set
+  // synchronously. Also stops a step's Skip moving under a lookup.
+  const actingRef = useRef(false);
+  // When the current screen was moved to (see SUBMIT_ARM_MS). Stamped in
+  // `move`, on the monotonic clock: an effect would run late after a
+  // lookup-driven move, and a wall clock can jump backwards.
+  const arrivedAt = useRef(0);
   const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [settled, setSettled] = useState(true);
   // A pending auto-advance (see advanceSoon). Any move cancels it.
@@ -224,6 +232,7 @@ export function useWizardController<TAnswers>(
       cancelAutoAdvance();
       Keyboard.dismiss();
       dispatch(action);
+      arrivedAt.current = performance.now();
       const lockMs = auto
         ? Math.max(AUTO_MOVE_LOCK_MS, motion.standard)
         : reduceMotion
@@ -260,7 +269,8 @@ export function useWizardController<TAnswers>(
     move({ type: 'next', visible, blocking });
   }, [move, visible, nav.returnToIndex, nav.index, flow, answers, screens]);
   const next = useCallback(() => {
-    if (lockRef.current) return;
+    // Not mid-move, and not under a lookup: its own move is coming.
+    if (lockRef.current || actingRef.current) return;
     goNext();
   }, [goNext]);
   const back = useCallback(() => {
@@ -297,18 +307,9 @@ export function useWizardController<TAnswers>(
    * success), or a plain forward move. Serialized by `busy` so a double-tap
    * can't fire two lookups or two submits.
    */
-  // When the current screen arrived (see SUBMIT_ARM_MS), and whether an
-  // action is already running. `busy` is state, so two presses inside one
-  // commit would both see it false; the ref is set synchronously.
-  const arrivedAt = useRef(0);
-  useEffect(() => {
-    arrivedAt.current = Date.now();
-  }, [nav.index]);
-  const actingRef = useRef(false);
-
   const advance = useCallback(async () => {
     if (busy || lockRef.current || actingRef.current) return;
-    if (isLastScreen && Date.now() - arrivedAt.current < SUBMIT_ARM_MS) return;
+    if (isLastScreen && performance.now() - arrivedAt.current < SUBMIT_ARM_MS) return;
     const screen = screens[nav.index];
     const onContinue = screen.kind === 'step' ? screen.step.onContinue : undefined;
     const hasAction = isLastScreen ? Boolean(onComplete) : Boolean(onContinue);

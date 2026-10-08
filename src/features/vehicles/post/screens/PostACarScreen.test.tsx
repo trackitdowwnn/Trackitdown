@@ -359,8 +359,15 @@ describe('the saved draft', () => {
   // 2026-10-08: the last-seen map opened after a beat of placeholder while it
   // looked for where to centre; now that is found during the first questions.
   it('reads the map step’s opening centre ahead, after the slide-up', async () => {
+    mockPeekDraft.mockReturnValueOnce({ value: null }); // primed by the + button: no draft
     await mount();
     expect(mockPrefetchCentre).toHaveBeenCalledTimes(1);
+  });
+
+  it('…nor while the saved draft is still being read — it may hold one', async () => {
+    mockPeekDraft.mockReturnValueOnce(undefined);
+    await mount();
+    expect(mockPrefetchCentre).not.toHaveBeenCalled();
   });
 
   it('…but not when the answers already hold a location — nothing to look for', async () => {

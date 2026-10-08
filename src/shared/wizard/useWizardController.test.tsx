@@ -594,6 +594,24 @@ describe('useWizardController — async actions', () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
+  // Confirming review of #143: a step's Skip during an onContinue lookup moved,
+  // and then the lookup's own move went one further — a screen skipped.
+  it('a step’s Skip does nothing while a lookup is running — the lookup moves', async () => {
+    const lookup = deferred<undefined>();
+    const { result } = await renderAsyncController(
+      makeAsyncFlow({ onContinue: () => lookup.promise }),
+      jest.fn(),
+    );
+    await act(async () => {
+      void result.current.advance(); // the lookup starts
+    });
+    await act(async () => result.current.next()); // Skip, mid-lookup
+    expect(result.current.screenIndex).toBe(1);
+
+    await act(async () => lookup.resolve(undefined));
+    expect(result.current.screenIndex).toBe(2); // one move, not two
+  });
+
   it('keeps the wizard intact and shows the error when onComplete fails', async () => {
     const onComplete = jest.fn(async () => {
       throw new Error('Payment could not be taken. Please try again.');

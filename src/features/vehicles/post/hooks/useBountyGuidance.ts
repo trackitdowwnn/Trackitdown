@@ -79,9 +79,8 @@ export function useBountyGuidance(
     return () => {
       cancelled = true;
     };
-    // The RPC snaps the caller's point to a ~1km grid, so re-fetching on a
-    // small coordinate change would spend a request to receive the identical
-    // answer. The location step settles once, which is when this runs.
+    // Runs for each point; a nearby one costs no request — the API's cache
+    // keys on the RPC's own ~1km grid, so it is served the same answer.
   }, [latitude, longitude, pointKey]);
 
   const recommendation = useMemo(() => recommendBounty(guidance), [guidance]);

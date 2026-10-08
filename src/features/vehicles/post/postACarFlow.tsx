@@ -202,10 +202,14 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           // simply fades in later.
           onContinue: async (answers) => {
             if (answers.pricingMode !== 'bounty' || !answers.location) return;
+            let timer: ReturnType<typeof setTimeout> | undefined;
             await Promise.race([
               fetchBountyGuidance(answers.location.latitude, answers.location.longitude),
-              new Promise((resolve) => setTimeout(resolve, motion.skeletonGrace)),
+              new Promise((resolve) => {
+                timer = setTimeout(resolve, motion.skeletonGrace);
+              }),
             ]);
+            clearTimeout(timer);
           },
           reviewLabel: 'Listing',
           reviewValue: (answers) =>

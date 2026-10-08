@@ -69,6 +69,8 @@ const PREFETCH_MAX_AGE_MS = 2 * 60 * 1000;
 
 let prefetched: { centre: GeoCoord; at: number } | null = null;
 let prefetching: Promise<void> | null = null;
+/** Bumped by every forget: a read-ahead from before one must write nothing. */
+let generation = 0;
 
 /**
  * Resolve the opening centre ahead of the screen that needs it. Shared,
@@ -81,16 +83,19 @@ export function prefetchDefaultMapCentre(): Promise<void> {
     const timeout = new Promise<null>((resolve) => {
       timer = setTimeout(() => resolve(null), RESOLVE_TIMEOUT_MS);
     });
-    prefetching = Promise.race([resolveCentre().catch(() => null), timeout])
+    const born = generation;
+    const run: Promise<void> = Promise.race([resolveCentre().catch(() => null), timeout])
       .then((centre) => {
         clearTimeout(timer);
-        if (centre) {
+        if (centre && born === generation) {
           prefetched = { centre, at: Date.now() };
         }
       })
       .finally(() => {
-        prefetching = null;
+        // Only its own slot: a forget may have let a newer read-ahead start.
+        if (prefetching === run) prefetching = null;
       });
+    prefetching = run;
   }
   return prefetching;
 }
@@ -103,6 +108,7 @@ function freshPrefetch(): GeoCoord | null {
 /** Forget the read-ahead — on a deliberate sign-out (forgetLocationMemory),
  *  and in tests. */
 export function resetDefaultMapCentrePrefetch(): void {
+  generation += 1;
   prefetched = null;
   prefetching = null;
 }
