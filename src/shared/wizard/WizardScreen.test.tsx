@@ -5,7 +5,10 @@
  *        jumps and Done returns, Android hardware back mirrors in-flow Back
  *        (exit-confirm on the first screen), step-launched edit spurs (Back
  *        and hardware back cancel a spur into the first screen), and where a
- *        step's footerNote renders (footer, or the body at large text).
+ *        step's footerNote renders (footer, or the body at large text). And
+ *        the moves themselves (2026-10-08): a leaving screen exits the way
+ *        the move goes, a map step's neighbour fades, one move at a time, the
+ *        keyboard drops on every move.
  * WHY:   navigation.test.ts proves the logic and this file proves the
  *        screen actually obeys it; a wiring slip (wrong prop, missing
  *        handler) would ship a wizard whose buttons lie.
@@ -19,6 +22,7 @@ import {
   Alert,
   BackHandler,
   Dimensions,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -33,31 +37,59 @@ jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default,
 );
 
-// Mock at the boundary: WizardScreen needs Animated.View, the slide
-// builders (chainable no-ops here), Easing, and ReduceMotion.
+// Mock at the boundary: WizardScreen needs Animated.View, the layout
+// animation builders, LayoutAnimationConfig and the progress bar's shared
+// values. Each builder carries its NAME, and Animated.View records the
+// `exiting` it had on its LAST render before unmounting — the one Reanimated
+// actually plays, and the whole of the exit-direction bug.
+const mockUnmountedExits: (string | undefined)[] = [];
+let mockReduceMotion = true;
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const { View } = require('react-native');
-  const builder = () => {
-    const chain: Record<string, unknown> = {};
+  const builder = (name: string) => {
+    const chain: Record<string, unknown> = { __name: name };
     chain.duration = () => chain;
     chain.easing = () => chain;
     chain.reduceMotion = () => chain;
     return chain;
   };
+  function MockAnimatedView(props: { exiting?: { __name?: string } }) {
+    const last = React.useRef(props);
+    last.current = props;
+    React.useEffect(
+      () => () => {
+        mockUnmountedExits.push(last.current.exiting?.__name);
+      },
+      [],
+    );
+    return React.createElement(View, props);
+  }
   return {
     __esModule: true,
-    default: { View },
-    Easing: { out: (fn: unknown) => fn, quad: () => 0 },
+    default: { View: MockAnimatedView },
+    Easing: { out: (fn: unknown) => fn, quad: () => 0, cubic: () => 0 },
     ReduceMotion: { System: 'system' },
-    SlideInLeft: builder(),
-    SlideInRight: builder(),
-    SlideOutLeft: builder(),
-    SlideOutRight: builder(),
-    // Deterministic tests: the progress bubble snaps instead of animating.
-    useReducedMotion: () => true,
+    SlideInLeft: builder('SlideInLeft'),
+    SlideInRight: builder('SlideInRight'),
+    SlideOutLeft: builder('SlideOutLeft'),
+    SlideOutRight: builder('SlideOutRight'),
+    FadeIn: builder('FadeIn'),
+    FadeOut: builder('FadeOut'),
+    LayoutAnimationConfig: ({ children }: { children: unknown }) => children,
+    useSharedValue: (value: unknown) => ({ value }),
+    useAnimatedStyle: (fn: () => object) => fn(),
+    withTiming: (value: unknown) => value,
+    // Deterministic by default: no transition lock. The lock's own tests
+    // turn motion back on.
+    useReducedMotion: () => mockReduceMotion,
   };
 });
+
+/** The builder name an entering/exiting prop carries in this double. */
+const animName = (value: unknown) => (value as { __name?: string } | undefined)?.__name;
 
 interface Answers {
   name: string;
@@ -384,16 +416,23 @@ describe('fills steps', () => {
     expect(flattened).toMatchObject({ flex: 1 });
   });
 
-  it('does not slide a fills step, and does slide an ordinary one', async () => {
+  it('never animates a fills step; its neighbour FADES rather than slides', async () => {
     // A fills step can swap its subtree after mount (a map waiting for its
     // opening centre). That stranded the entering transform and left the step
     // permanently offset to the right, with the footer — which lives outside
-    // the animated wrapper — staying put.
+    // the animated wrapper — staying put. And a neighbour sliding across a map
+    // that is simply there read as the app lurching (2026-10-08).
+    mockUnmountedExits.length = 0;
     const view = await renderFills();
     expect(view.getByTestId('wizard-step-slide').props.entering).toBeUndefined();
 
-    await press(view, 'Next');
-    expect(view.getByTestId('wizard-step-slide').props.entering).toBeDefined();
+    await press(view, 'Next'); // map → plain
+    expect(mockUnmountedExits).toEqual([undefined]); // the map just goes
+    expect(animName(view.getByTestId('wizard-step-slide').props.entering)).toBe('FadeIn');
+
+    await press(view, 'Back'); // plain → map
+    expect(mockUnmountedExits).toEqual([undefined, 'FadeOut']);
+    expect(view.getByTestId('wizard-step-slide').props.entering).toBeUndefined();
   });
 
   it('⚠️ does not slide the OPENING screen in, but does once the user has moved', async () => {
@@ -409,6 +448,116 @@ describe('fills steps', () => {
     await press(view, 'Back');
     // Back on the opening screen by a move: that one slides, as a move should.
     expect(view.getByTestId('wizard-step-slide').props.entering).toBeDefined();
+  });
+});
+
+describe('moving between screens', () => {
+  beforeEach(() => {
+    mockUnmountedExits.length = 0;
+  });
+  afterEach(() => {
+    mockReduceMotion = true;
+    jest.restoreAllMocks();
+  });
+
+  // THE bug (2026-10-08, "janky, slow and not smooth"): Reanimated plays a
+  // leaving view's exit from its LAST render. When the move and the swap
+  // landed in one commit, a screen left by Back still carried the exit from
+  // the Next that brought it in — both screens slid left, through each other.
+  it('⚠️ a screen left by Back exits to the RIGHT, even though it arrived by Next', async () => {
+    const { view } = await renderWizard();
+    await press(view, 'Get started'); // intro → name, forwards
+    expect(mockUnmountedExits).toEqual(['SlideOutLeft']);
+
+    await press(view, 'Back'); // name → intro, backwards
+    expect(mockUnmountedExits).toEqual(['SlideOutLeft', 'SlideOutRight']);
+    expect(animName(view.getByTestId('wizard-step-slide').props.entering)).toBe('SlideInLeft');
+  });
+
+  it('…and one left by Next after a Back exits to the left again', async () => {
+    const { view } = await renderWizard();
+    await press(view, 'Get started');
+    await press(view, 'Back');
+    await press(view, 'Get started');
+    expect(mockUnmountedExits).toEqual(['SlideOutLeft', 'SlideOutRight', 'SlideOutLeft']);
+    expect(animName(view.getByTestId('wizard-step-slide').props.entering)).toBe('SlideInRight');
+  });
+
+  it('drops the keyboard on every move', async () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    const { view } = await renderWizard();
+    await press(view, 'Get started');
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    await press(view, 'Back');
+    expect(dismiss).toHaveBeenCalledTimes(2);
+  });
+
+  describe('one move at a time', () => {
+    beforeEach(() => {
+      mockReduceMotion = false;
+    });
+
+    /** Longer than one move's transition (motion.standard). */
+    const waitOutTheMove = () =>
+      act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      });
+
+    it('a double-tapped Next moves ONCE', async () => {
+      const { view } = await renderWizard();
+      await press(view, 'Get started');
+      await act(async () => {
+        fireEvent.press(view.getByTestId('fill-name'));
+      });
+      await waitOutTheMove();
+      const next = view.getByRole('button', { name: 'Next' });
+      await act(async () => {
+        fireEvent.press(next);
+        fireEvent.press(next);
+      });
+      // Phase 2's intro, not past it.
+      expect(view.getByText('Your preferences')).toBeTruthy();
+    });
+
+    it('ignores the hardware back during a move, then honours it', async () => {
+      const handlers: (() => boolean)[] = [];
+      jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+        handlers.push(handler as () => boolean);
+        return { remove: jest.fn() };
+      });
+      const { view } = await renderWizard();
+      await press(view, 'Get started');
+
+      await act(async () => {
+        handlers.forEach((handler) => handler());
+      });
+      expect(view.getByText("What's your name?")).toBeTruthy(); // still here
+
+      await waitOutTheMove();
+      await act(async () => {
+        handlers.forEach((handler) => handler());
+      });
+      expect(view.getByText('Tell us about you')).toBeTruthy();
+    });
+
+    it('tells the step when its move has finished', async () => {
+      const seen: (boolean | undefined)[] = [];
+      const Probe = ({ settled }: WizardStepProps<Answers>) => {
+        seen.push(settled);
+        return null;
+      };
+      const probeFlow: WizardFlow<Answers> = {
+        ...flow,
+        phases: [{ ...flow.phases[0], steps: [{ ...flow.phases[0].steps[0], component: Probe }] }],
+      };
+      const view = await render(
+        <WizardScreen flow={probeFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+      );
+      await press(view, 'Get started');
+      expect(seen[0]).toBe(false); // mounted mid-move
+      await waitOutTheMove();
+      expect(seen[seen.length - 1]).toBe(true);
+    });
   });
 });
 

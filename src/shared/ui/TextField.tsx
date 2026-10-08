@@ -30,7 +30,7 @@
  *   />
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -140,7 +140,16 @@ export function TextField({
   // Start each 200ms transition and stop it on cleanup, so a pending timer never
   // outlives the component (prevents animation leaks in the app and Jest
   // "environment torn down" errors when a field unmounts mid-animation).
+  //
+  // ⚠️ ONLY ON A CHANGE, never on mount (2026-10-08). Both values already
+  // start where they belong, but the effects used to run a 200ms JS-thread
+  // timing to that same value as the field mounted — on a wizard step, in
+  // the middle of the slide that brought it in.
+  const lastFloated = useRef(floated);
+  const lastFocused = useRef(focused);
   useEffect(() => {
+    if (lastFloated.current === floated) return;
+    lastFloated.current = floated;
     const animation = Animated.timing(floatAnim, {
       toValue: floated ? 1 : 0,
       duration: 200,
@@ -152,6 +161,8 @@ export function TextField({
   }, [floated, floatAnim]);
 
   useEffect(() => {
+    if (lastFocused.current === focused) return;
+    lastFocused.current = focused;
     const animation = Animated.timing(focusAnim, {
       toValue: focused ? 1 : 0,
       duration: 200,

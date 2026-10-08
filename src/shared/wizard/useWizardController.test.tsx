@@ -18,6 +18,7 @@
 
 import { act, renderHook } from '@testing-library/react-native';
 import { Alert, type AlertButton } from 'react-native';
+import * as Reanimated from 'react-native-reanimated';
 import { z } from 'zod';
 
 import type { WizardFlow } from './types';
@@ -64,6 +65,46 @@ async function renderController(onExit: () => void) {
   );
   return rendered;
 }
+
+// Reduced motion by default: these cases move several times in a row, and
+// each move otherwise locks navigation for its transition (see 'one move at a
+// time' below, which turns motion back on).
+beforeEach(() => {
+  jest.spyOn(Reanimated, 'useReducedMotion').mockReturnValue(true);
+});
+
+describe('one move at a time', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('drops a move asked for during another one, then takes the next', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(Reanimated, 'useReducedMotion').mockReturnValue(false);
+    const { result } = await renderController(jest.fn());
+
+    await act(async () => result.current.next()); // intro → name
+    expect(result.current.settled).toBe(false);
+    await act(async () => result.current.back()); // mid-move: dropped
+    expect(result.current.screenIndex).toBe(1);
+
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+    });
+    expect(result.current.settled).toBe(true);
+    await act(async () => result.current.back());
+    expect(result.current.screenIndex).toBe(0);
+  });
+
+  it('never locks under reduced motion — there is no transition to wait for', async () => {
+    const { result } = await renderController(jest.fn());
+    await act(async () => result.current.next());
+    await act(async () => result.current.back());
+    expect(result.current.screenIndex).toBe(0);
+    expect(result.current.settled).toBe(true);
+  });
+});
 
 describe('useWizardController', () => {
   afterEach(() => {

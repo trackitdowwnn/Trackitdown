@@ -27,6 +27,13 @@
  *        writes back to it, and the two settings stay independent
  *        (feedLocationStorage's own header and the search-map README say the
  *        same). This is the consumer both of them were written for.
+ *
+ *        READ AHEAD (2026-10-08): the posting form calls
+ *        prefetchDefaultMapCentre() once its slide-up has finished, so by the
+ *        time someone reaches the map step a FOUND centre is already known
+ *        and the map opens on its first frame instead of after a beat of
+ *        placeholder. Only a found centre is reused, for PREFETCH_MAX_AGE_MS;
+ *        "nothing found" still runs the full chain (and its late fresh fix).
  * LINKS: src/features/notifications/screens/AlertWizardScreen.tsx and
  *        src/features/vehicles/post/components/postSteps.tsx (both callers —
  *        each holds a placeholder while status is 'resolving');
@@ -52,6 +59,50 @@ export interface DefaultMapCentreState {
 /** Longest the chain may take before we give up and open on the UK view.
  *  A GPS fix can hang indefinitely with no error; the wizard must not. */
 const RESOLVE_TIMEOUT_MS = 2000;
+
+/** How long a read-ahead centre stays good. It only decides where a map
+ *  OPENS, and the owner can always pan — but a phone that has travelled
+ *  since should not open where it was an hour ago. */
+const PREFETCH_MAX_AGE_MS = 10 * 60 * 1000;
+
+let prefetched: { centre: GeoCoord; at: number } | null = null;
+let prefetching: Promise<void> | null = null;
+
+/**
+ * Resolve the opening centre ahead of the screen that needs it. Shared,
+ * bounded by RESOLVE_TIMEOUT_MS, never rejects, never prompts (the same
+ * non-prompting chain as the hook).
+ */
+export function prefetchDefaultMapCentre(): Promise<void> {
+  if (!prefetching) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), RESOLVE_TIMEOUT_MS);
+    });
+    prefetching = Promise.race([resolveCentre().catch(() => null), timeout])
+      .then((centre) => {
+        clearTimeout(timer);
+        if (centre) {
+          prefetched = { centre, at: Date.now() };
+        }
+      })
+      .finally(() => {
+        prefetching = null;
+      });
+  }
+  return prefetching;
+}
+
+/** A read-ahead centre still young enough to open on, or null. */
+function freshPrefetch(): GeoCoord | null {
+  return prefetched && Date.now() - prefetched.at <= PREFETCH_MAX_AGE_MS ? prefetched.centre : null;
+}
+
+/** Test-only: forget the read-ahead. */
+export function resetDefaultMapCentrePrefetch(): void {
+  prefetched = null;
+  prefetching = null;
+}
 
 async function resolveCentre(): Promise<GeoCoord | null> {
   // 1. The fix the OS already has. NOT a fresh one: measured on the test
@@ -83,10 +134,14 @@ async function resolveCentre(): Promise<GeoCoord | null> {
  *   so a pointless permission read and GPS fix never run.
  */
 export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
-  const [state, setState] = useState<DefaultMapCentreState>(() => ({
-    status: enabled ? 'resolving' : 'ready',
-    centre: null,
-  }));
+  // A read-ahead centre opens the map on its first frame (see the header).
+  const [startedReady] = useState(() => enabled && freshPrefetch() !== null);
+  const [state, setState] = useState<DefaultMapCentreState>(() => {
+    const ahead = enabled ? freshPrefetch() : null;
+    return ahead
+      ? { status: 'ready', centre: ahead }
+      : { status: enabled ? 'resolving' : 'ready', centre: null };
+  });
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -97,7 +152,7 @@ export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
   }, []);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || startedReady) {
       return;
     }
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -148,7 +203,7 @@ export function useDefaultMapCentre(enabled = true): DefaultMapCentreState {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [enabled]);
+  }, [enabled, startedReady]);
 
   return state;
 }

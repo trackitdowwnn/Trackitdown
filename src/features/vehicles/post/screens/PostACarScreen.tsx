@@ -30,6 +30,8 @@ import { useEffect, useRef, useState } from 'react';
 import { getCurrentUserId } from '@/features/auth';
 import { PaymentError, createBountyPaymentIntent, useBountyPayment } from '@/features/payments';
 import { successHaptic } from '@/shared/lib/haptics';
+import { prefetchDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
+import { useAfterTransition } from '@/shared/hooks/useAfterTransition';
 import { useToast } from '@/shared/ui';
 import { WizardScreen, type WizardFlow } from '@/shared/wizard';
 
@@ -112,6 +114,13 @@ export function PostACarScreen({
   // mid-form reads as nobody, and Save and exit must still save it for its
   // owner rather than for no one (security review of #141).
   const [ownerId] = useState(getCurrentUserId);
+
+  // Find where the last-seen map should open while the owner is still on the
+  // first questions, so that step opens on its first frame (2026-10-08).
+  // After the slide-up, never during it; it never prompts for location.
+  useAfterTransition(() => {
+    void prefetchDefaultMapCentre();
+  });
 
   const [draft, setDraft] = useState<{ answers: Partial<PostACarAnswers> } | 'checking' | null>(
     () => {

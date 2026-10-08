@@ -42,6 +42,12 @@ export interface WizardStepProps<TAnswers> {
   /** True while an onContinue lookup or the final submit is in flight, so a
    *  step's own actions (its Edit links) go inert, as ReviewStep's do. */
   busy?: boolean;
+  /**
+   * False for the length of the move that brought this step in (2026-10-08).
+   * A heavy step — the last-seen map — holds a placeholder until it is true,
+   * so mounting it doesn't steal frames from the transition.
+   */
+  settled?: boolean;
 }
 
 export interface WizardStep<TAnswers> {

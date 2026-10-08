@@ -34,6 +34,7 @@ import {
 } from '@/shared/lib/bountyBounds';
 import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { expoLocationServices } from '@/shared/lib/location/expoLocationServices';
+import { warmPlaceLabels } from '@/shared/lib/location/placeLabels';
 import { useDefaultMapCentre } from '@/shared/lib/location/useDefaultMapCentre';
 import {
   CardSelect,
@@ -230,7 +231,7 @@ export function LastSeenWhenStep({ answers, setAnswers }: StepProps) {
   );
 }
 
-export function LastSeenWhereStep({ answers, setAnswers }: StepProps) {
+export function LastSeenWhereStep({ answers, setAnswers, settled = true }: StepProps) {
   const styles = useThemedStyles(makeStyles);
   // Open the camera on the device rather than on the whole UK — most cars are
   // reported from near where they were taken. Only resolved when there is no
@@ -242,7 +243,11 @@ export function LastSeenWhereStep({ answers, setAnswers }: StepProps) {
   // before the centre is known. surfaceSubtle, not a spinner — it is the same
   // colour the map card shows through while its own tiles load, so this reads
   // as the map arriving rather than as a separate loading state.
-  if (defaultCentre.status === 'resolving') {
+  //
+  // It also waits for the move that brought the step in to finish (2026-10-08):
+  // a native map mounting mid-fade cost the transition its frames. The centre
+  // is usually read ahead (PostACarScreen), so this is the only wait left.
+  if (defaultCentre.status === 'resolving' || !settled) {
     return <View style={[styles.mapFrame, styles.mapFramePending]} />;
   }
 
@@ -271,6 +276,9 @@ export function LastSeenWhereStep({ answers, setAnswers }: StepProps) {
             // Un-settle disables Next until the user commits a point again.
             setAnswers({ location: null });
           } else if (value.addressLabel) {
+            // Start the PUBLIC-grain lookup Next will need (onContinue), so
+            // pressing it usually finds the answer waiting.
+            warmPlaceLabels({ latitude: value.latitude, longitude: value.longitude });
             // A resolved point: store it + the coarse grouping label for the
             // feed (posts.last_seen_area ≤ 80).
             setAnswers({

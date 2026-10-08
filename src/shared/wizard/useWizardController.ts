@@ -5,6 +5,8 @@
  *        confirmation, and the async primary-button path (`advance`, `busy`,
  *        `error`) that runs a step's onContinue lookup or the final onComplete
  *        submit — advancing on success, staying put with an error on failure.
+ *        Every move also LOCKS navigation for the length of its transition
+ *        and drops the keyboard (see `move`).
  * WHY:   A thin React shell over the pure logic in navigation.ts, so screens
  *        and chrome stay dumb. The answers object is a single serializable
  *        value and exits funnel through one place, deliberately: that is the
@@ -14,7 +16,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Keyboard } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
+
+import { motion } from '../theme';
 
 import {
   INITIAL_NAV_STATE,
@@ -23,6 +28,7 @@ import {
   flattenFlow,
   phaseProgress,
   wizardReducer,
+  type WizardNavAction,
 } from './navigation';
 import type { WizardFlow } from './types';
 
@@ -148,26 +154,74 @@ export function useWizardController<TAnswers>(
     [screens, answers],
   );
 
-  const next = useCallback(() => {
+  // ⚠️ ONE MOVE AT A TIME (2026-10-08). A second tap during a transition used
+  // to start a second move with the first still on screen: a double-tapped
+  // Next skipped a step, and Next-then-Back slid three screens at once. Every
+  // move now locks navigation for the length of its transition; a move asked
+  // for meanwhile is dropped, not queued (a queued tap lands on a screen the
+  // owner never saw). Instant under reduced motion — there is no transition
+  // to wait for. `settled` tells steps the same thing, so heavy ones (the
+  // map) can wait for it before they mount.
+  const reduceMotion = useReducedMotion();
+  const lockRef = useRef(false);
+  const unlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [settled, setSettled] = useState(true);
+  useEffect(
+    () => () => {
+      if (unlockTimer.current) clearTimeout(unlockTimer.current);
+    },
+    [],
+  );
+
+  /** Every move goes through here: drop the keyboard (a field left focused
+   *  would otherwise close mid-slide and resize the screen under it), lock,
+   *  dispatch. Internal — the public moves below check the lock first. */
+  const move = useCallback(
+    (action: WizardNavAction) => {
+      Keyboard.dismiss();
+      dispatch(action);
+      if (reduceMotion) return;
+      lockRef.current = true;
+      setSettled(false);
+      if (unlockTimer.current) clearTimeout(unlockTimer.current);
+      unlockTimer.current = setTimeout(() => {
+        lockRef.current = false;
+        unlockTimer.current = null;
+        setSettled(true);
+      }, motion.standard);
+    },
+    [reduceMotion],
+  );
+
+  const goNext = useCallback(() => {
     // Completing an edit commits it — the snapshot is no longer a fallback.
     editSnapshotRef.current = null;
-    dispatch({ type: 'next', visible });
-  }, [visible]);
+    move({ type: 'next', visible });
+  }, [move, visible]);
+  const next = useCallback(() => {
+    if (lockRef.current) return;
+    goNext();
+  }, [goNext]);
   const back = useCallback(() => {
+    if (lockRef.current) return;
     setError(null);
     if (editSnapshotRef.current !== null) {
       setAnswersState(editSnapshotRef.current);
       editSnapshotRef.current = null;
     }
-    dispatch({ type: 'back', visible });
-  }, [visible]);
+    move({ type: 'back', visible });
+  }, [move, visible]);
   const editStep = useCallback(
     (targetIndex: number) => {
+      if (lockRef.current) return;
       editSnapshotRef.current = answers;
-      dispatch({ type: 'editStep', targetIndex, reviewIndex: nav.index });
+      move({ type: 'editStep', targetIndex, reviewIndex: nav.index });
     },
-    [answers, nav.index],
+    [move, answers, nav.index],
   );
+  /** The screen re-rendered the leaving view with its exit: swap it out (see
+   *  WizardNavState.shownIndex). WizardScreen calls it from a layout effect. */
+  const settle = useCallback(() => dispatch({ type: 'settle' }), []);
 
   // The last screen is the final step (or the review, when the flow has one) —
   // but NOT while editing from review, where the primary button returns to
@@ -183,7 +237,7 @@ export function useWizardController<TAnswers>(
    * can't fire two lookups or two submits.
    */
   const advance = useCallback(async () => {
-    if (busy) return;
+    if (busy || lockRef.current) return;
     const screen = screens[nav.index];
     const onContinue = screen.kind === 'step' ? screen.step.onContinue : undefined;
     const hasAction = isLastScreen ? Boolean(onComplete) : Boolean(onContinue);
@@ -191,7 +245,7 @@ export function useWizardController<TAnswers>(
     if (!hasAction) {
       // Nothing async to do. The final screen with no onComplete no-ops (the
       // flow is expected to supply one); every other screen just moves on.
-      if (!isLastScreen) next();
+      if (!isLastScreen) goNext();
       return;
     }
 
@@ -209,12 +263,14 @@ export function useWizardController<TAnswers>(
         setAnswersState((current) => ({ ...current, ...result }));
       }
       setBusy(false);
-      next();
+      // Not `next`: the press already passed the lock, and a lookup that
+      // outlasts nothing must not be dropped by one.
+      goNext();
     } catch (err) {
       setBusy(false);
       setError(toErrorMessage(err));
     }
-  }, [busy, screens, nav.index, isLastScreen, onComplete, answers, next]);
+  }, [busy, screens, nav.index, isLastScreen, onComplete, answers, goNext]);
 
   const requestExit = useCallback(() => {
     const discard = () => {
@@ -287,6 +343,13 @@ export function useWizardController<TAnswers>(
     screens,
     screenIndex: nav.index,
     screen: screens[nav.index],
+    /** The screen ON SCREEN, one commit behind screenIndex on a move, and
+     *  the one before it (see WizardNavState.shownIndex). */
+    shownIndex: nav.shownIndex,
+    previousIndex: nav.previousIndex,
+    settle,
+    /** False for the length of a move's transition — see the lock. */
+    settled,
     /** True while on an edit spur: launched from the review screen, or from a
      *  step's own `editStep` (the report flow's check-and-send). */
     isEditingFromReview: nav.returnToIndex !== null,

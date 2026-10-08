@@ -19,9 +19,12 @@ export const sizes = {
   /** Drag-handle grabber bar on sheets (BottomSheet). */
   grabberWidth: 32,
   grabberHeight: 4,
-  /** Wizard header progress: resting dot and the stretched current-step pill. */
+  /** Dot-and-pill progress (onboarding, garage, report timeline): resting
+   *  dot and the stretched current-step pill. */
   progressDot: 8,
   progressPill: 24,
+  /** Wizard header progress: the height of one phase segment. */
+  progressSegment: 4,
   /** Minimum touch target (DESIGN_SYSTEM Accessibility). */
   touchTarget: 44,
   /** MoneySlider: thumb diameter and rail thickness (the touchable row is

@@ -850,6 +850,13 @@ barrel, since it pulls in Reanimated).
   opacity. Keep the exit control in the same place across stages (the
   report screen reuses the wizard's `WizardHeader` geometry) so nothing
   under the thumb moves.
+- **Wizard moves (2026-10-08):** steps slide over `standard`, each in the
+  move's direction, both ways: a step left by Back exits right, never the
+  way it came in. A full-bleed (map) step never moves; its neighbour fades
+  over `fast`. One move at a time, with the keyboard dropped first, and
+  nothing a step had already shown replays its entrance on return. Progress
+  is one segment per phase, filling per step, and animates only on change,
+  never on mount. Mechanics in `src/shared/wizard/README.md`.
 - **Lists:** on-screen rows enter with a small staggered `FadeInDown`
   (≤~300ms total); recycled/off-screen cells don't animate.
 - **Reduced motion (part of the system, not a footnote):** every animated

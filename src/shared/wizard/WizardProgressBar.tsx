@@ -1,138 +1,101 @@
 /**
- * WHAT:  The wizard's dot-pill progress indicator — a row of small
- *        free-standing dots (one per phase, plus review), the current one
- *        stretched into a horizontal pill. Compact, top-right in the header
- *        row; the "Step 2 of 4" wording lives on as the screen-reader label
- *        only.
- * WHY:   Replicates the sticky-bubble-bar pattern the flow design follows:
- *        completed dots fill sage, upcoming dots stay sand, and on advance
- *        the pill "worms" to the next slot — each slot animates its width
- *        (dot ↔ pill) and colour, so the leading edge stretches out before
- *        the trailing edge catches up. 250ms ease-out per the design
- *        system's motion rule; honours OS reduce-motion (snaps). Non-visual
- *        state is exposed via the progressbar role, label, and value.
- * LINKS: src/shared/wizard/WizardScreen.tsx (owner; derives the props from
- *        navigation state); docs/DESIGN_SYSTEM.md (Motion, Accessibility).
+ * WHAT:  The wizard's progress bar — one rounded segment per phase, side by
+ *        side in the header beside the X, each filling with its phase's
+ *        steps. "Step 2 of 3" lives on as the screen-reader label only.
+ * WHY:   It used to be a dot per phase with the current one stretched into a
+ *        pill, so it stood still across a whole phase — eight screens on
+ *        "Post a car" without the bar moving once — and it animated widths
+ *        and colours on the JS thread, eight animations at mount, right as
+ *        the form slid up (2026-10-08, "janky, slow and not smooth"; the
+ *        owner chose segments that fill). Now each step moves the bar a
+ *        little, on the UI thread, and NOTHING animates on mount: a segment
+ *        starts at its value and only animates when it changes. ease-out on
+ *        the standard clock, as every wizard move; instant under reduced
+ *        motion. Exposed as a progressbar with a label and percentage.
+ * LINKS: src/shared/wizard/WizardScreen.tsx (owner);
+ *        src/shared/wizard/navigation.ts (phaseProgress — the fills);
+ *        docs/DESIGN_SYSTEM.md (Motion, Accessibility).
  */
 
-import { useEffect, useState } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import { useEffect, useRef } from 'react';
+import { StyleSheet, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
-import { radii, sizes, spacing, usePalette } from '../theme';
+import { motion, radii, sizes, spacing, usePalette } from '../theme';
+import { easeOut } from '@/shared/theme/motionEasing';
 
 export interface WizardProgressBarProps {
-  /** Fill fraction (0–1) per phase — drives the accessibility percentage. */
+  /** Fill fraction (0–1) per phase, one segment each. */
   fills: number[];
-  /** Slot rendered as the pill (phase index, or the review dot). */
-  activeIndex: number;
-  /** Total dots — phases plus the review dot when the flow has one. */
-  dotCount: number;
-  /** Screen-reader name for the indicator, e.g. "Step 2 of 4" — not shown. */
+  /** Screen-reader name for the bar, e.g. "Step 2 of 3" — not shown. */
   label: string;
 }
 
-/** Morph time — the design system's upper motion bound. */
-const MORPH_MS = 250;
-
-type SlotState = 'done' | 'active' | 'upcoming';
-
-export function WizardProgressBar({ fills, activeIndex, dotCount, label }: WizardProgressBarProps) {
+export function WizardProgressBar({ fills, label }: WizardProgressBarProps) {
   const reduceMotion = useReducedMotion();
-
   const overallPercent = Math.round(
     (fills.reduce((sum, fill) => sum + fill, 0) / Math.max(fills.length, 1)) * 100,
   );
 
   return (
     <View
-      style={styles.dots}
+      style={styles.row}
       accessible
       accessibilityRole="progressbar"
       accessibilityLabel={label}
       accessibilityValue={{ min: 0, max: 100, now: overallPercent }}
     >
-      {Array.from({ length: dotCount }, (_, index) => (
-        <Slot
-          key={index}
-          state={index === activeIndex ? 'active' : index < activeIndex ? 'done' : 'upcoming'}
-          reduceMotion={reduceMotion}
-        />
+      {fills.map((fill, index) => (
+        <Segment key={index} fill={fill} reduceMotion={reduceMotion} />
       ))}
     </View>
   );
 }
 
-/**
- * One slot: a dot that can stretch into the pill. Width and colour animate
- * independently, so during a transition the incoming slot widens while the
- * outgoing one narrows — the sticky "worm" between positions.
- */
-function Slot({ state, reduceMotion }: { state: SlotState; reduceMotion: boolean }) {
-  // The interpolation below is rebuilt on every render, so reading the palette
-  // here is enough — nothing about the slot's colour is captured at module scope.
+function Segment({ fill, reduceMotion }: { fill: number; reduceMotion: boolean }) {
   const palette = usePalette();
-  // JS-driven Animated (width/colour can't use the native driver), matching
-  // the codebase's TextField pattern.
-  const [widthAnim] = useState(() => new Animated.Value(state === 'active' ? 1 : 0));
-  const [colorAnim] = useState(() => new Animated.Value(state === 'upcoming' ? 0 : 1));
-
+  // Starts AT its value: the bar is simply there when the form slides up.
+  const progress = useSharedValue(fill);
+  const lastFill = useRef(fill);
   useEffect(() => {
-    const widthTarget = state === 'active' ? 1 : 0;
-    const colorTarget = state === 'upcoming' ? 0 : 1;
-    if (reduceMotion) {
-      widthAnim.setValue(widthTarget);
-      colorAnim.setValue(colorTarget);
+    if (lastFill.current === fill) {
       return;
     }
-    const animation = Animated.parallel([
-      Animated.timing(widthAnim, {
-        toValue: widthTarget,
-        duration: MORPH_MS,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-      Animated.timing(colorAnim, {
-        toValue: colorTarget,
-        duration: MORPH_MS,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: false,
-      }),
-    ]);
-    animation.start();
-    return () => animation.stop();
-  }, [state, reduceMotion, widthAnim, colorAnim]);
+    lastFill.current = fill;
+    progress.value = reduceMotion
+      ? fill
+      : withTiming(fill, { duration: motion.standard, easing: easeOut });
+  }, [fill, reduceMotion, progress]);
+
+  const fillStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
 
   return (
-    <Animated.View
-      style={[
-        styles.slot,
-        {
-          width: widthAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [sizes.progressDot, sizes.progressPill],
-          }),
-          backgroundColor: colorAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: [palette.borderStrong, palette.primary],
-          }),
-        },
-      ]}
-    />
+    <View style={[styles.track, { backgroundColor: palette.borderStrong }]} testID="wizard-progress-segment">
+      <Animated.View style={[styles.fill, { backgroundColor: palette.primary }, fillStyle]} />
+    </View>
   );
 }
 
-// Geometry only — every colour here is animated per-render in Slot — so this
-// sheet is safe to build once at module scope.
+// Geometry only — the colours come from the palette per render.
 const styles = StyleSheet.create({
-  dots: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
-  slot: {
-    height: sizes.progressDot,
+  track: {
+    flex: 1,
+    height: sizes.progressSegment,
+    borderRadius: radii.sm,
+    overflow: 'hidden',
+  },
+  fill: {
+    height: '100%',
     borderRadius: radii.sm,
   },
 });

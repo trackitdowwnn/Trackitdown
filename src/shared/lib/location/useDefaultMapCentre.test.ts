@@ -18,7 +18,11 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
-import { useDefaultMapCentre } from './useDefaultMapCentre';
+import {
+  prefetchDefaultMapCentre,
+  resetDefaultMapCentrePrefetch,
+  useDefaultMapCentre,
+} from './useDefaultMapCentre';
 
 const mockGetLastKnown = jest.fn();
 const mockGetCurrentPosition = jest.fn();
@@ -50,6 +54,7 @@ const FEED_PREF = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetDefaultMapCentrePrefetch();
   mockGetLastKnown.mockResolvedValue(null);
   mockGetCurrentPosition.mockResolvedValue(null);
   mockGetFresh.mockResolvedValue(null);
@@ -141,6 +146,28 @@ describe('useDefaultMapCentre', () => {
     expect(result.current.status).toBe('ready');
     expect(mockGetLastKnown).not.toHaveBeenCalled();
     expect(mockLoadFeedPref).not.toHaveBeenCalled();
+  });
+
+  // 2026-10-08: the posting form reads the centre ahead, so the map step
+  // opens on its first frame instead of after a beat of placeholder.
+  it('opens READY on a centre read ahead, without asking again', async () => {
+    mockGetLastKnown.mockResolvedValue(DEVICE);
+    await prefetchDefaultMapCentre();
+    mockGetLastKnown.mockClear();
+
+    const { result } = await renderHook(() => useDefaultMapCentre());
+    expect(result.current).toEqual({ status: 'ready', centre: DEVICE });
+    expect(mockGetLastKnown).not.toHaveBeenCalled();
+  });
+
+  it('a read-ahead that found nothing is not reused — the full chain still runs', async () => {
+    await prefetchDefaultMapCentre(); // nothing cached, no feed location
+    mockLoadFeedPref.mockResolvedValue(FEED_PREF);
+
+    const { result } = await renderHook(() => useDefaultMapCentre());
+    await waitFor(() =>
+      expect(result.current.centre).toEqual({ latitude: FEED_PREF.latitude, longitude: FEED_PREF.longitude }),
+    );
   });
 
   it('gives up rather than spinning for ever when the chain hangs', async () => {

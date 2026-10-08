@@ -94,6 +94,8 @@ jest.mock('react-native-reanimated', () => {
     Extrapolation: actual.Extrapolation ?? { CLAMP: 'clamp' },
     useReducedMotion: () => true,
     ReduceMotion: { System: 'system' },
+    // Omitted by the official mock; WizardScreen wraps each step in it.
+    LayoutAnimationConfig: ({ children }: { children: unknown }) => children,
   };
 });
 jest.mock('react-native-safe-area-context', () =>

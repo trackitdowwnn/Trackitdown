@@ -23,6 +23,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Alert, StyleSheet } from 'react-native';
+import * as Reanimated from 'react-native-reanimated';
 
 import { paletteFor } from '@/shared/theme/colors';
 
@@ -134,6 +135,9 @@ const FULL = {
 };
 
 beforeEach(() => {
+  // Reduced motion: these walk the form Next-Next-Next faster than any thumb,
+  // and each wizard move otherwise locks navigation for its transition.
+  jest.spyOn(Reanimated, 'useReducedMotion').mockReturnValue(true);
   jest.clearAllMocks();
   mockCanGoBack.mockReturnValue(true);
   mockRead.mockReturnValue(FULL);
