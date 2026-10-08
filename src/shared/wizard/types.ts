@@ -53,8 +53,10 @@ export interface WizardStepProps<TAnswers> {
    * whose answer is a single pick (2026-10-08). Only if the step is then
    * valid; any move meanwhile cancels it; never under a screen reader. On an
    * edit spur it does what Done does. Call it AFTER a picker has closed.
+   * `delayMs` defaults to motion.autoAdvanceBeat; pickers pass the shorter
+   * motion.autoAdvanceAfterPicker.
    */
-  advanceSoon?: () => void;
+  advanceSoon?: (delayMs?: number) => void;
 }
 
 export interface WizardStep<TAnswers> {

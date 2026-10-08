@@ -22,7 +22,6 @@ jest.mock('../api/bountyGuidanceApi', () => ({ warmBountyGuidance: jest.fn() }))
 const GUIDED = {
   guidance: { rungs: [{ bountyPence: 10000, reach: 12 }], local: null },
   recommendation: { lowPence: 5000, midPence: 10000, highPence: 20000, basis: 'reach' },
-  loading: false,
 };
 let mockGuidance: object = GUIDED;
 jest.mock('../hooks/useBountyGuidance', () => ({
@@ -67,21 +66,14 @@ const props = {
 
 // 2026-10-08: the guidance used to pop in above the slider a beat after the
 // step arrived, pushing the slider down under the owner's thumb.
-describe('BountyStep guidance slot', () => {
+describe('BountyStep guidance', () => {
   afterEach(() => {
     mockGuidance = GUIDED;
   });
 
-  it('holds the panel’s place while the guidance is on its way', async () => {
-    mockGuidance = { guidance: { rungs: [], local: null }, recommendation: null, loading: true };
+  it('holds NO guidance-shaped gap when there is nothing to say', async () => {
+    mockGuidance = { guidance: { rungs: [], local: null }, recommendation: null };
     const view = await render(<BountyStep {...props} />);
-    expect(view.getByTestId('bounty-guidance-pending')).toBeTruthy();
-  });
-
-  it('holds nothing once it is known there is nothing to say', async () => {
-    mockGuidance = { guidance: { rungs: [], local: null }, recommendation: null, loading: false };
-    const view = await render(<BountyStep {...props} />);
-    expect(view.queryByTestId('bounty-guidance-pending')).toBeNull();
     expect(view.queryByTestId('bounty-use-suggested')).toBeNull();
   });
 });

@@ -36,9 +36,11 @@ never opens one person's last-seen location for the next.
 > helper" rule below. **Make, model (picked from the list), year, colour and
 > body type move on by themselves** a beat after the pick (`advanceSoon`):
 > not for "Multicolour / wrapped" or "Other", which open a note; not under a
-> screen reader; never from the submitting screen. The reward guidance and the
-> place label are asked for when the map pin settles, so neither keeps the
-> owner waiting later.
+> screen reader or (Android) any accessibility service; never from the
+> submitting screen. The reward guidance and the place label are asked for
+> once the map pin rests, and choosing a reward waits up to
+> `motion.skeletonGrace` for the guidance, so the reward step arrives with it
+> (a late answer fades in; no placeholder holds a gap open for it).
 
 **Phase 1 — Tell us about your car**
 

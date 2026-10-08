@@ -71,9 +71,13 @@ export const motion = {
    *  Most answers land well inside it. */
   skeletonGrace: 400,
   /** The pause between a wizard pick and the auto-advance to the next step
-   *  (make, model, year, colour, body type — 2026-10-08): long enough to see
-   *  the pick land, short enough to read as one motion. */
-  autoAdvanceBeat: 300,
+   *  (colour, body type — 2026-10-08): long enough to SEE the pick land. A
+   *  swatch's pop is a fast/2 dip plus the springStandard settle (≈400ms), so
+   *  the beat waits that out rather than sliding away mid-spring. */
+  autoAdvanceBeat: 400,
+  /** The same, after a full-screen PICKER has closed (make, model, year): the
+   *  pick was already seen in the picker, so only a short breath. */
+  autoAdvanceAfterPicker: 200,
   /** One cycle of a calm loading pulse (PhotoGridPicker's uploading tile). */
   loaderLoop: 1200,
   /** BrandLoader: dwell time per waiting phrase before it rotates — long

@@ -1,13 +1,20 @@
 /**
  * WHAT:  The two calls behind bounty guidance — read the reach curve and the
  *        local band (get_bounty_guidance), and record what was SHOWN against
- *        what was CHOSEN (log_bounty_recommendation).
+ *        what was CHOSEN (log_bounty_recommendation) — plus a short-lived
+ *        per-area cache of the first, which the map step WARMS so the reward
+ *        step can start from it (peekBountyGuidance / warmBountyGuidance).
  * WHY:   The recommendation is built from distribution facts because those are
  *        the only inputs we hold. The input we would MOST like — "what bounty
  *        levels actually led to a confirmed sighting" — is computable from the
  *        schema, but useless without knowing what we ADVISED: otherwise a
  *        future analysis cannot separate "high bounties recover cars" from "we
  *        told people to set high bounties". The log is that missing half.
+ *
+ *        The cache (2026-10-08) exists because the guidance used to pop in
+ *        above the reward slider a beat after the step arrived. It is keyed
+ *        to the RPC's OWN grid and asks with the snapped point, so the
+ *        server sees no finer a location than it would use anyway.
  *
  *        BOTH ARE NON-FATAL BY DESIGN. This is a supporting line under a slider
  *        on a screen someone reached hours after their car was stolen; a
@@ -19,12 +26,14 @@
  *          (log_bounty_recommendation — silent on refusal, and why);
  *        ../lib/bountyRecommendation.ts (the pure function this feeds);
  *        src/features/notifications/api/alertsApi.ts (fetchAlertReach — the
- *          single-point sibling this generalises).
+ *          single-point sibling this generalises);
+ *        src/shared/lib/location/locationMemory.ts (forgotten on sign-out).
  */
 
 import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
+import { registerLocationMemory } from '@/shared/lib/location/locationMemory';
 import { createLogger } from '@/shared/lib/logger';
 
 import type { BountyGuidance, BountyRecommendation } from '../lib/bountyRecommendation';
@@ -48,65 +57,91 @@ const guidanceSchema = z.object({
     .nullable(),
 });
 
-/**
- * The reach curve and the local band for a point, in one round trip.
- *
- * Returns an EMPTY curve with no local band on any failure, which
- * recommendBounty turns into "no guidance". That is the same answer as a quiet
- * area, and the right one: a supporting line that cannot be computed should
- * disappear, not error.
- */
 const EMPTY: BountyGuidance = { rungs: [], local: null };
 
-/**
- * Answers kept per point, and lookups in flight (2026-10-08). The map step
- * warms this the moment its pin settles, several screens before the reward
- * step, so the guidance is simply THERE when that step slides in rather than
- * popping in above the slider a beat later — and the post's own analytics
- * line (PostACarScreen) reuses it instead of asking again. Keyed to ~100m,
- * finer than the RPC's own ~1km grid, so two keys can share an answer but one
- * key never stands for two. A failure is not kept: the next ask tries again.
- */
-const cache = new Map<string, Promise<BountyGuidance>>();
-const settled = new Map<string, BountyGuidance>();
+/** get_bounty_guidance snaps the caller's point to a 0.01° grid (~1km) —
+ *  20260813100000_bounty_guidance.sql. The cache keys on, and asks with, the
+ *  same snap: one key is exactly one server answer, and the raw pin never
+ *  leaves the device for this. */
+const GRID = 0.01;
+function snap(value: number): number {
+  return Math.round(value / GRID) * GRID;
+}
+function cacheKey(latitude: number, longitude: number): string {
+  return `${snap(latitude).toFixed(2)},${snap(longitude).toFixed(2)}`;
+}
+
+/** How long an answer stays good. Short: it is per-caller (the RPC leaves out
+ *  the caller's own listings) and the reach behind it moves; this only has to
+ *  cover one trip from the map step to the reward step. */
+const MAX_AGE_MS = 5 * 60 * 1000;
 const CACHE_SIZE = 10;
 
-function cacheKey(latitude: number, longitude: number): string {
-  return `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+/** Requests per area — settled or in flight — and the settled answers, which
+ *  peekBountyGuidance reads synchronously. A failure is not kept. */
+const cache = new Map<string, { request: Promise<BountyGuidance>; at: number }>();
+const settled = new Map<string, BountyGuidance>();
+
+function fresh(key: string): { request: Promise<BountyGuidance>; at: number } | undefined {
+  const entry = cache.get(key);
+  if (entry && Date.now() - entry.at > MAX_AGE_MS) {
+    cache.delete(key);
+    settled.delete(key);
+    return undefined;
+  }
+  return entry;
 }
 
-/** The guidance for a point if it has already arrived — synchronously, so a
- *  step can start from it. Undefined while unknown or in flight. */
+/** The guidance for a point if it has already arrived — synchronously, so the
+ *  reward step can start from it. Undefined while unknown or in flight. */
 export function peekBountyGuidance(latitude: number, longitude: number): BountyGuidance | undefined {
-  return settled.get(cacheKey(latitude, longitude));
+  const key = cacheKey(latitude, longitude);
+  return fresh(key) ? settled.get(key) : undefined;
 }
 
-/** Start the lookup for a point the owner is about to reach the reward with. */
+/** Start the lookup for a point the owner is about to reach the reward with
+ *  (the map step, once its pin rests). */
 export function warmBountyGuidance(latitude: number, longitude: number): void {
   void fetchBountyGuidance(latitude, longitude);
 }
 
-/** Test-only: forget every remembered answer. */
+/** Forget every remembered answer — on a deliberate sign-out (it is
+ *  per-caller, and keyed by where their car was), and in tests. */
 export function resetBountyGuidanceCache(): void {
   cache.clear();
   settled.clear();
 }
+registerLocationMemory(resetBountyGuidanceCache);
 
+/**
+ * The reach curve and the local band for a point, in one round trip — shared
+ * with any lookup for the same area already made or in flight (see the cache).
+ *
+ * Returns an EMPTY curve with no local band on any failure, which
+ * recommendBounty turns into "no guidance". That is the same answer as a quiet
+ * area, and the right one: a supporting line that cannot be computed should
+ * disappear, not error. Never rejects.
+ */
 export function fetchBountyGuidance(latitude: number, longitude: number): Promise<BountyGuidance> {
   const key = cacheKey(latitude, longitude);
-  const known = cache.get(key);
+  const known = fresh(key);
   if (known) {
-    return known;
+    return known.request;
   }
-  const request = requestGuidance(latitude, longitude).then((guidance) => {
-    if (guidance === null) {
-      cache.delete(key); // failed: ask again next time
-      return EMPTY;
-    }
-    settled.set(key, guidance);
-    return guidance;
-  });
-  cache.set(key, request);
+  const request: Promise<BountyGuidance> = requestGuidance(snap(latitude), snap(longitude)).then(
+    (guidance) => {
+      // Only for THIS entry: an evicted or replaced request must not write.
+      const mine = cache.get(key)?.request === request;
+      if (guidance === null) {
+        if (mine) cache.delete(key); // failed: ask again next time
+        return EMPTY;
+      }
+      if (mine) settled.set(key, guidance);
+      return guidance;
+    },
+  );
+  cache.set(key, { request, at: Date.now() });
+  settled.delete(key);
   if (cache.size > CACHE_SIZE) {
     const oldest = cache.keys().next().value as string;
     cache.delete(oldest);

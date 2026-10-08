@@ -37,11 +37,15 @@ doing you a favour.
   `<LayoutAnimationConfig skipEntering>`, so a step's own entrances only play
   for what appears after it mounts.
 - **Auto-advance (`advanceSoon`).** A step whose answer is one pick can move
-  on by itself after `motion.autoAdvanceBeat`. A picker calls it from its
-  field's `onPicked` (after the picker has CLOSED, never on its X), so the
-  next slide never plays behind it. It only fires if the step is then valid,
-  any move cancels it, it is off under a screen reader, and it NEVER fires on
-  the submitting screen (there, Next is a payment).
+  on by itself after `motion.autoAdvanceBeat` (or a picker's shorter
+  `autoAdvanceAfterPicker`, from its field's `onPicked` — after the picker has
+  CLOSED, never on its X — so the next slide never plays behind it). It only
+  fires if the step is then valid, any move cancels it, the move it makes
+  locks for at least 400ms even under reduced motion (a habitual Next tap
+  must not skip the next step), it is off under assistive technology
+  (`useAssistiveTechEnabled`), and it NEVER fires on the submitting screen
+  (there, Next is a payment — which also ignores its button for 300ms after
+  arriving).
 - **An edit from review continues to what it broke.** Done visits the first
   required step the answers no longer satisfy (changing the make clears the
   model) before returning to review, still on the spur: Done again, and Back

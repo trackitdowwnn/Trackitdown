@@ -59,6 +59,29 @@ describe('bounty guidance cache', () => {
     expect(mockRpc).toHaveBeenCalledTimes(2);
   });
 
+  it('asks with the RPC’s own ~1km grid point — and nearby pins share the answer', async () => {
+    await fetchBountyGuidance(53.4794, -2.2453);
+    await fetchBountyGuidance(53.4812, -2.2471); // same 0.01° cell
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+    const [, params] = mockRpc.mock.calls[0];
+    expect(params.p_lat).toBeCloseTo(53.48, 10);
+    expect(params.p_lng).toBeCloseTo(-2.25, 10);
+  });
+
+  it('asks again once an answer is older than a few minutes', async () => {
+    const now = jest.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(1_000_000);
+      await fetchBountyGuidance(53.4794, -2.2453);
+      now.mockReturnValue(1_000_000 + 6 * 60 * 1000);
+      expect(peekBountyGuidance(53.4794, -2.2453)).toBeUndefined();
+      await fetchBountyGuidance(53.4794, -2.2453);
+      expect(mockRpc).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('never throws — not even when the client throws synchronously', async () => {
     mockRpc.mockImplementationOnce(() => {
       throw new Error('misconfigured');

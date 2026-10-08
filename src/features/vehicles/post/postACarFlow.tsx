@@ -1,8 +1,8 @@
 /**
  * WHAT:  The post-a-car WizardFlow — the config table that turns the step
- *        components into the 3-phase / review flow: per-step questions, zod gating, and review labels/values. Plus the initial
- *        answers (a sensible starting bounty so the slider and its schema begin
- *        valid).
+ *        components into the 3-phase / review flow: per-step questions, zod
+ *        gating, and review labels/values. Plus the initial answers (a
+ *        sensible starting bounty so the slider and its schema begin valid).
  * WHY:   Flows are DATA, not code (the framework renders everything else). One
  *        readable table keeps the whole flow — order, gating, review copy — in
  *        one auditable place. Plate capture is deferred (removed for now), so
@@ -14,8 +14,8 @@
  *        coming stood between someone whose car was just stolen and the
  *        questions ("janky, slow and not smooth" — the owner chose to trim).
  *        What the first intro said that mattered is kept as ONE line on the
- *        first step (EMPATHY_LINE); the segmented progress bar names the
- *        phases' progress instead.
+ *        first step (EMPATHY_LINE); the segmented progress bar shows how far
+ *        through the phases they are instead.
  * LINKS: src/features/vehicles/post/components/postSteps.tsx (the components);
  *        src/features/vehicles/post/screens/PostACarScreen.tsx (renders this);
  *        src/features/vehicles/post/api/postApi.ts (buildCreatePostParams).
@@ -30,6 +30,9 @@ import { formatPounds, LISTING_FEE_PENCE } from '@/shared/lib/money';
 import { deriveLocalityForCoord } from '@/shared/lib/location/placeLabels';
 import type { WizardFlow } from '@/shared/wizard';
 
+import { motion } from '@/shared/theme/motion';
+
+import { fetchBountyGuidance } from './api/bountyGuidanceApi';
 import { ReviewCostPanel } from './components/ReviewCostPanel';
 import {
   PREVIEW_EDIT_STEP_ID,
@@ -186,6 +189,18 @@ export const postACarFlow: WizardFlow<PostACarAnswers> = {
           // to remove; seeding 'fee' would nudge them off a reward that makes
           // their car more likely to be found. Next stays disabled until they say.
           schema: z.object({ pricingMode: z.enum(['bounty', 'fee']) }),
+          // Choosing a reward: wait a moment for the reward guidance, so the
+          // next step arrives WITH it rather than having it pop in above the
+          // slider (2026-10-08). Usually already here — the map step warmed
+          // it — and never longer than motion.skeletonGrace; a slow answer
+          // simply fades in later.
+          onContinue: async (answers) => {
+            if (answers.pricingMode !== 'bounty' || !answers.location) return;
+            await Promise.race([
+              fetchBountyGuidance(answers.location.latitude, answers.location.longitude),
+              new Promise((resolve) => setTimeout(resolve, motion.skeletonGrace)),
+            ]);
+          },
           reviewLabel: 'Listing',
           reviewValue: (answers) =>
             answers.pricingMode === 'fee'

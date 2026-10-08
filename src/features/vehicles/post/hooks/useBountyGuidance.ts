@@ -40,22 +40,27 @@ export interface UseBountyGuidanceResult {
   guidance: BountyGuidance;
   /** Null when there is nothing honest to say — render no guidance at all. */
   recommendation: BountyRecommendation | null;
-  /** True while a known point's guidance is still on its way — the step
-   *  holds the panel's place rather than letting it pop in (2026-10-08). */
-  loading: boolean;
 }
 
 export function useBountyGuidance(
   latitude: number | null,
   longitude: number | null,
 ): UseBountyGuidanceResult {
-  // Usually already known: the map step warms it when its pin settles.
-  const [state, setState] = useState<{ guidance: BountyGuidance; loading: boolean }>(() => {
-    const known =
-      latitude !== null && longitude !== null ? peekBountyGuidance(latitude, longitude) : undefined;
-    return { guidance: known ?? EMPTY, loading: latitude !== null && longitude !== null && !known };
-  });
-  const { guidance, loading } = state;
+  // Usually already known (2026-10-08): the map step warms it once its pin
+  // rests, and the pricing step waits briefly for it before this step slides
+  // in. Re-seeded during render if the point changes — the "adjust state on
+  // prop change" pattern — so one point's guidance never shows for another.
+  const pointKey = latitude !== null && longitude !== null ? `${latitude},${longitude}` : null;
+  const seed = () =>
+    latitude !== null && longitude !== null ? peekBountyGuidance(latitude, longitude) : undefined;
+  const [state, setState] = useState<{ pointKey: string | null; guidance: BountyGuidance }>(() => ({
+    pointKey,
+    guidance: seed() ?? EMPTY,
+  }));
+  if (state.pointKey !== pointKey) {
+    setState({ pointKey, guidance: seed() ?? EMPTY });
+  }
+  const { guidance } = state;
 
   useEffect(() => {
     if (latitude === null || longitude === null) {
@@ -67,7 +72,7 @@ export function useBountyGuidance(
     void fetchBountyGuidance(latitude, longitude).then((next) => {
       if (!cancelled) {
         setState((current) =>
-          current.guidance === next && !current.loading ? current : { guidance: next, loading: false },
+          current.pointKey !== pointKey || current.guidance === next ? current : { pointKey, guidance: next },
         );
       }
     });
@@ -77,9 +82,9 @@ export function useBountyGuidance(
     // The RPC snaps the caller's point to a ~1km grid, so re-fetching on a
     // small coordinate change would spend a request to receive the identical
     // answer. The location step settles once, which is when this runs.
-  }, [latitude, longitude]);
+  }, [latitude, longitude, pointKey]);
 
   const recommendation = useMemo(() => recommendBounty(guidance), [guidance]);
 
-  return { guidance, recommendation, loading };
+  return { guidance, recommendation };
 }

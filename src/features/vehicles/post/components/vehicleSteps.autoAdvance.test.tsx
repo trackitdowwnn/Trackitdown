@@ -14,7 +14,9 @@
 import { act, render } from '@testing-library/react-native';
 
 import type { VehicleAnswers } from '../lib/vehicleSteps';
-import { BodyTypeStep, ColourStep, MakeStep, YearStep } from './postSteps';
+import { motion } from '@/shared/theme';
+
+import { BodyTypeStep, ColourStep, MakeStep, ModelStep, YearStep } from './postSteps';
 
 // Each field stood in for, exposing the callbacks the step wires up.
 const mockFieldProps: Record<string, Record<string, unknown>> = {};
@@ -25,6 +27,7 @@ const stub = (name: string) => (props: Record<string, unknown>) => {
 jest.mock('./ColourField', () => ({ ColourField: (p: Record<string, unknown>) => stub('colour')(p) }));
 jest.mock('./MakeField', () => ({ MakeField: (p: Record<string, unknown>) => stub('make')(p) }));
 jest.mock('./YearField', () => ({ YearField: (p: Record<string, unknown>) => stub('year')(p) }));
+jest.mock('./ModelField', () => ({ ModelField: (p: Record<string, unknown>) => stub('model')(p) }));
 jest.mock('@/shared/ui', () => ({
   ...jest.requireActual('@/shared/ui'),
   CardSelect: (p: Record<string, unknown>) => stub('bodyType')(p),
@@ -67,14 +70,19 @@ describe('vehicle steps that move on by themselves', () => {
     expect(advanceSoon).toHaveBeenCalledTimes(1);
   });
 
-  it('a picker step moves on only once its picker has closed (onPicked)', async () => {
+  it('a picker step moves on only once its picker has closed — after a shorter beat', async () => {
     const advanceSoon = jest.fn();
     await render(<MakeStep {...props(advanceSoon)} />);
+    await render(<ModelStep {...props(advanceSoon)} answers={{ make: 'BMW' }} />);
     await render(<YearStep {...props(advanceSoon)} />);
-    expect(mockFieldProps.make.onPicked).toBe(advanceSoon);
-    expect(mockFieldProps.year.onPicked).toBe(advanceSoon);
     // Choosing alone moves nothing: the field calls onPicked after closing.
     await act(async () => (mockFieldProps.make.onChange as (m: string) => void)('BMW'));
     expect(advanceSoon).not.toHaveBeenCalled();
+
+    for (const field of ['make', 'model', 'year']) {
+      advanceSoon.mockClear();
+      await act(async () => (mockFieldProps[field].onPicked as () => void)());
+      expect(advanceSoon).toHaveBeenCalledWith(motion.autoAdvanceAfterPicker);
+    }
   });
 });

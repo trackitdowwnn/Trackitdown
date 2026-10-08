@@ -21,6 +21,7 @@ import { AccessibilityInfo, Alert, Keyboard, type AlertButton } from 'react-nati
 import * as Reanimated from 'react-native-reanimated';
 import { z } from 'zod';
 
+import { motion } from '../theme';
 import type { WizardFlow } from './types';
 import { useWizardController } from './useWizardController';
 
@@ -160,12 +161,35 @@ describe('advanceSoon (auto-advance)', () => {
     const { result } = await onAnsweredStep();
     await act(async () => result.current.advanceSoon());
     await act(async () => {
-      jest.advanceTimersByTime(299);
+      jest.advanceTimersByTime(motion.autoAdvanceBeat - 1);
     });
     expect(result.current.screenIndex).toBe(1);
     await act(async () => {
       jest.advanceTimersByTime(1);
     });
+    expect(result.current.screenIndex).toBe(2);
+  });
+
+  it('takes the beat it is given (a picker’s shorter one)', async () => {
+    const { result } = await onAnsweredStep();
+    await act(async () => result.current.advanceSoon(motion.autoAdvanceAfterPicker));
+    await act(async () => {
+      jest.advanceTimersByTime(motion.autoAdvanceAfterPicker);
+    });
+    expect(result.current.screenIndex).toBe(2);
+  });
+
+  // Code review of #143: a habitual Next landing just after the step moved on
+  // by itself acted on the NEXT step — an always-valid year step, skipped
+  // unseen. Even under reduced motion, where ordinary moves don't lock.
+  it('⚠️ a move it makes locks against a stray Next, even under reduced motion', async () => {
+    const { result } = await onAnsweredStep();
+    await act(async () => result.current.advanceSoon());
+    await act(async () => {
+      jest.advanceTimersByTime(motion.autoAdvanceBeat);
+    });
+    expect(result.current.screenIndex).toBe(2);
+    await act(async () => result.current.next()); // the habitual tap
     expect(result.current.screenIndex).toBe(2);
   });
 

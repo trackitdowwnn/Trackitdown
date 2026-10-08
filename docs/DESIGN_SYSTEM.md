@@ -824,7 +824,8 @@ barrel, since it pulls in Reanimated).
   (`mapFly` 500 / `mapPan` 350).
 - **Timings that aren't animations:** `longPress` 350 (hold before a
   long-press fires) · `stepRepeat` 120 (a held TimeSlotPicker stepper repeats
-  about eight times a second).
+  about eight times a second) · `autoAdvanceBeat` 400 / `autoAdvanceAfterPicker`
+  200 (a wizard pick moving on by itself; off under assistive technology).
 - **Easing:** one deceleration curve — `easeOut` — for enters and most timing
   (from `motionEasing.ts`). `easeIn` (exits) / `easeInOut` (reversible moves)
   are added there when a consumer needs one. No ad-hoc quad/cubic mix.
@@ -857,8 +858,10 @@ barrel, since it pulls in Reanimated).
   nothing a step had already shown replays its entrance on return. Progress
   is one segment per phase, filling per step, and animates only on change,
   never on mount. A one-pick step (a make, a colour) moves on by itself
-  after `autoAdvanceBeat` (300ms) — the beat lets the pick be seen landing;
-  never under a screen reader. Mechanics in `src/shared/wizard/README.md`.
+  after `autoAdvanceBeat` (400ms — the swatch's pop settles first; 200ms
+  after a picker closes) — never under a screen reader or, on Android, any
+  accessibility service (Switch Access loses its place when a screen moves
+  by itself). Mechanics in `src/shared/wizard/README.md`.
 - **Lists:** on-screen rows enter with a small staggered `FadeInDown`
   (≤~300ms total); recycled/off-screen cells don't animate.
 - **Reduced motion (part of the system, not a footnote):** every animated

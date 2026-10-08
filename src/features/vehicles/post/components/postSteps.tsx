@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 
 import { BadgePoundSterling, Megaphone } from 'lucide-react-native';
 
@@ -51,6 +52,7 @@ import {
 } from '@/shared/ui';
 import { AppMap } from '@/shared/ui/AppMap';
 import {
+  motion,
   opacity,
   radii,
   sizes,
@@ -59,7 +61,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import type { WizardStepProps } from '@/shared/wizard';
+import { WIZARD_GUTTER, type WizardStepProps } from '@/shared/wizard';
 
 import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
 import { colourChangePatch, isNoteColour } from '@/shared/lib';
@@ -142,8 +144,11 @@ const PRICING_OPTIONS: CardSelectOption<PricingMode>[] = [
 // AUTO-ADVANCE (2026-10-08): make, model, year, colour and body type are
 // one-tap answers, so a pick moves on by itself after a short beat
 // (advanceSoon) — the owner chose this to cut a tap per step. A picker's
-// advance waits for it to finish closing (onPicked). The framework skips it
-// under a screen reader and on an invalid answer, and any move cancels it.
+// advance waits for it to finish closing (onPicked), then only a short breath
+// (the pick was seen in the picker). The framework skips it under assistive
+// technology and on an invalid answer, and any move cancels it.
+const afterPicker = (advanceSoon?: (delayMs?: number) => void) => () =>
+  advanceSoon?.(motion.autoAdvanceAfterPicker);
 
 export function MakeStep({ answers, setAnswers, advanceSoon }: VehicleStepProps) {
   // Its own step (2026-07-23): the make picker earns a screen. Changing the
@@ -154,7 +159,7 @@ export function MakeStep({ answers, setAnswers, advanceSoon }: VehicleStepProps)
     <MakeField
       value={answers.make ?? null}
       onChange={(make) => setAnswers(makeChangePatch(answers.make, make))}
-      onPicked={advanceSoon}
+      onPicked={afterPicker(advanceSoon)}
     />
   );
 }
@@ -167,7 +172,7 @@ export function ModelStep({ answers, setAnswers, advanceSoon }: VehicleStepProps
       make={answers.make ?? ''}
       value={answers.model ?? null}
       onChange={(model) => setAnswers({ model })}
-      onPicked={advanceSoon}
+      onPicked={afterPicker(advanceSoon)}
     />
   );
 }
@@ -196,7 +201,7 @@ export function YearStep({ answers, setAnswers, advanceSoon }: VehicleStepProps)
     <YearField
       value={answers.year ?? null}
       onChange={(year) => setAnswers({ year })}
-      onPicked={advanceSoon}
+      onPicked={afterPicker(advanceSoon)}
     />
   );
 }
@@ -232,12 +237,12 @@ export function PhotosStep({
   setAnswers,
   status,
 }: VehicleStepProps & { status?: Record<string, PhotoTileStatus> }) {
-  // The wizard's body is the window less its side padding (spacing.xl each
-  // side), so the grid can lay its tiles out on its first frame.
+  // The wizard's body is the window less its gutters, so the grid can lay
+  // its tiles out on its first frame.
   const { width } = useWindowDimensions();
   return (
     <PhotoGridPicker
-      estimatedWidth={width - spacing.xl * 2}
+      estimatedWidth={width - WIZARD_GUTTER * 2}
       photos={answers.photos ?? []}
       onChangePhotos={(photos) => setAnswers({ photos })}
       minPhotos={3}
@@ -500,7 +505,7 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
   //
   // The bounty step runs after when-where, so the coordinates are already in
   // `answers`. Null until that step resolves, which the hook handles.
-  const { guidance, recommendation, loading } = useBountyGuidance(
+  const { guidance, recommendation } = useBountyGuidance(
     answers.location?.latitude ?? null,
     answers.location?.longitude ?? null,
   );
@@ -519,7 +524,14 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
           is a statement about other people's choices, not a prediction about
           this car. */}
       {recommendation ? (
-        <View style={styles.bountyGuidance}>
+        // Usually there on arrival (the pricing step waits briefly for it),
+        // so the wizard's skipEntering shows it at once. If it lands later it
+        // FADES in rather than popping — and nothing holds a guidance-shaped
+        // gap open for an answer that is often "nothing to say".
+        <Animated.View
+          entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+          style={styles.bountyGuidance}
+        >
           <Text style={styles.bountyGuidanceLead}>
             {recommendation.basis === 'reach'
               ? `Around ${formatPounds(recommendation.midPence)} reaches most spotters watching this area`
@@ -540,15 +552,7 @@ export function BountyStep({ answers, setAnswers }: StepProps) {
               Use {formatPounds(recommendation.midPence)}
             </Text>
           </Pressable>
-        </View>
-      ) : loading ? (
-        // Its place held, quietly, while it is still on its way — so the
-        // slider below doesn't jump down when it lands. Rare: the map step
-        // asked for it screens ago.
-        <View
-          style={[styles.bountyGuidance, styles.bountyGuidancePending]}
-          testID="bounty-guidance-pending"
-        />
+        </Animated.View>
       ) : null}
 
       <MoneySlider
@@ -606,11 +610,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   bountyGuidanceAction: {
     minHeight: sizes.touchTarget,
     justifyContent: 'center',
-  },
-  // The panel's place while its guidance is on the way: its own surface, at
-  // the height of its one-line form (the action's target plus the padding).
-  bountyGuidancePending: {
-    minHeight: sizes.touchTarget + spacing.md * 2,
   },
   bountyGuidanceActionText: {
     ...typography.label,

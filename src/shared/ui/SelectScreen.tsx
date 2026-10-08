@@ -289,6 +289,11 @@ export function SelectScreen<V extends string | number>({
   useEffect(() => {
     onClosedRef.current = onClosed;
   });
+  // A reopen before the last close finished starts afresh: that close's pick
+  // must not be credited to a later X.
+  useEffect(() => {
+    if (visible) pickedRef.current = false;
+  }, [visible]);
   const wasMounted = useRef(mounted);
   useEffect(() => {
     if (wasMounted.current && !mounted) {

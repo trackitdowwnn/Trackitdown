@@ -158,6 +158,34 @@ describe('SelectScreen', () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    // 2026-10-08: the wizard's auto-advance hangs off this.
+    it('a "Use …" pick is reported as a pick once the screen has closed', async () => {
+      const onClosed = jest.fn();
+      const { view } = await renderScreen({ manualEntry: { onSubmit: jest.fn() }, onClosed });
+      await typeSearch(view, 'Reliant');
+      await act(async () => {
+        fireEvent.press(view.getByText('Use “Reliant”'));
+      });
+      await act(async () => {
+        view.rerender(
+          <SelectScreen
+            visible={false}
+            title="Car make"
+            options={MAKES}
+            value={null}
+            onSelect={jest.fn()}
+            onClose={jest.fn()}
+            manualEntry={{ onSubmit: jest.fn() }}
+            onClosed={onClosed}
+          />,
+        );
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(300); // past the close (the fallback unmount)
+      });
+      expect(onClosed).toHaveBeenCalledWith(true);
+    });
+
     it('shows no standing manual row until the user types (only "Use "<query>"")', async () => {
       const { view } = await renderScreen({ manualEntry: { onSubmit: jest.fn() } });
       // No always-present "isn't listed" row, and no "Use "<query>"" until typing.

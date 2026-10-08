@@ -244,6 +244,11 @@ export interface PhotoGridPickerProps<T extends GridPhoto = PickedPhoto> {
   estimatedWidth?: number;
 }
 
+/** A photo on the device (picked or captured), not one downloaded. */
+function isLocalUri(uri: string): boolean {
+  return /^(file|ph|content|assets-library):/.test(uri);
+}
+
 /** The last measured grid width, for the next mount's first frame. */
 let lastGridWidth = 0;
 
@@ -293,8 +298,9 @@ export function PhotoGridPicker<T extends GridPhoto = PickedPhoto>({
   const captureMode = source === 'capture';
   const coverRow = !captureMode;
 
-  const [gridWidth, setGridWidth] = useState(() => lastGridWidth || estimatedWidth);
-  const gridWidthSv = useSharedValue(lastGridWidth || estimatedWidth);
+  // A caller that knows its layout wins; the remembered width is the fallback.
+  const [gridWidth, setGridWidth] = useState(() => estimatedWidth || lastGridWidth);
+  const gridWidthSv = useSharedValue(estimatedWidth || lastGridWidth);
   // Index being dragged (-1 = none) and the slot it currently hovers.
   const dragFrom = useSharedValue(-1);
   const dragOver = useSharedValue(-1);
@@ -1098,8 +1104,14 @@ function GridTile({
           accessible={false}
           testID={testID ? `${testID}-preview` : undefined}
         >
-          {/* No fade: a picked photo is a local file, already here. */}
-          <AppImage uri={photo.uri} style={styles.tileImage} transition={0} />
+          {/* No fade for a local file — a picked photo is already here, and a
+              fade is just a flash each time the tile mounts. A REMOTE photo
+              (the post editor's uploaded ones) keeps the usual fade. */}
+          <AppImage
+            uri={photo.uri}
+            style={styles.tileImage}
+            transition={isLocalUri(photo.uri) ? 0 : undefined}
+          />
 
           {index === 0 && showCoverChrome ? (
             <View style={styles.coverPillWrap}>

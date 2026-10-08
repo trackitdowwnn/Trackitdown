@@ -153,8 +153,8 @@ export function wizardReducer(
         // required step the answers no longer satisfy, still on the spur
         // (Done again, Back cancels the whole edit), and returns when there
         // is none left.
-        const pending = action.blocking ? action.blocking.findIndex(Boolean) : -1;
-        if (pending !== -1 && pending !== state.index) {
+        const pending = action.blocking ? pendingEditTarget(action.blocking, state.index) : -1;
+        if (pending !== -1) {
           return { ...state, index: pending, direction: pending > state.index ? 1 : -1 };
         }
         return { ...state, index: state.returnToIndex, returnToIndex: null, direction: 1 };
@@ -195,6 +195,17 @@ export function wizardReducer(
         ? state
         : { ...state, previousIndex: state.shownIndex, shownIndex: state.index };
   }
+}
+
+/**
+ * Where Done on an edit spur goes before returning to review: the first
+ * required step the answers no longer satisfy, other than the one being left
+ * (its own Done needs it valid anyway). -1 when there is none — return. The
+ * controller asks the same question to decide whether the spur is still
+ * open, so both read it from here.
+ */
+export function pendingEditTarget(blocking: readonly boolean[], current: number): number {
+  return blocking.findIndex((isBlocking, index) => isBlocking && index !== current);
 }
 
 /** How one screen gives way to another — see transitionKind. */

@@ -166,6 +166,8 @@ async function renderPicker(props: Partial<React.ComponentProps<typeof PhotoGrid
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // The grid remembers its last width across mounts; no test may inherit it.
+  resetPhotoGridWidthMemory();
   mockRequestLibraryPermission.mockResolvedValue(granted);
   mockRequestCameraPermission.mockResolvedValue(granted);
   mockResizePipeline();

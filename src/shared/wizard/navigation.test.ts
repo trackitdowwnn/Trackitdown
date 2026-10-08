@@ -18,6 +18,7 @@ import {
   flattenFlow,
   invalidStepIds,
   phaseProgress,
+  pendingEditTarget,
   resolveQuestion,
   transitionKind,
   reviewGroups,
@@ -245,6 +246,14 @@ describe('settling a move', () => {
     const reset = wizardReducer(navState(4, REVIEW_INDEX), { type: 'reset' });
     expect(reset).toMatchObject({ index: 0, returnToIndex: null, shownIndex: 4 });
     expect(wizardReducer(reset, { type: 'settle' }).shownIndex).toBe(0);
+  });
+});
+
+describe('pendingEditTarget', () => {
+  it('is the first required step left broken — never the one being left', () => {
+    expect(pendingEditTarget([false, true, true], 1)).toBe(2);
+    expect(pendingEditTarget([true, false, true], 2)).toBe(0);
+    expect(pendingEditTarget([false, true, false], 1)).toBe(-1);
   });
 });
 

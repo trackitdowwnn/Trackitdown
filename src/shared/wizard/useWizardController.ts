@@ -21,7 +21,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { Alert, Keyboard } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { useScreenReaderEnabled } from '../hooks/useScreenReaderEnabled';
+import { useAssistiveTechEnabled } from '../hooks/useAssistiveTechEnabled';
 import { motion } from '../theme';
 
 import {
@@ -32,6 +32,7 @@ import {
   invalidStepIds,
   phaseProgress,
   wizardReducer,
+  pendingEditTarget,
   type WizardNavAction,
 } from './navigation';
 import type { WizardFlow } from './types';
@@ -73,6 +74,14 @@ export interface WizardControllerOptions<TAnswers> {
   /** Pre-filled answers (e.g. a future saved draft). */
   initialAnswers?: Partial<TAnswers>;
 }
+
+/**
+ * The least a move started by AUTO-ADVANCE locks for — even under reduced
+ * motion. The owner may press Next out of habit just as the step moves on by
+ * itself; without this the tap lands on the NEXT step and skips it (a year
+ * step is always valid, so it would go unseen). Code review of #143.
+ */
+const AUTO_MOVE_LOCK_MS = 400;
 
 /**
  * How long the SUBMITTING screen ignores its button after arriving.
@@ -201,16 +210,26 @@ export function useWizardController<TAnswers>(
     };
   }, []);
 
+  // Set by an auto-advance just before it moves (see AUTO_MOVE_LOCK_MS).
+  const autoMoveRef = useRef(false);
+
   /** Every move goes through here: drop the keyboard (a field left focused
    *  would otherwise close mid-slide and resize the screen under it), lock,
    *  dispatch. Internal — the public moves below check the lock first. */
   const move = useCallback(
     (action: WizardNavAction) => {
       if (!mountedRef.current) return;
+      const auto = autoMoveRef.current;
+      autoMoveRef.current = false;
       cancelAutoAdvance();
       Keyboard.dismiss();
       dispatch(action);
-      if (reduceMotion) return;
+      const lockMs = auto
+        ? Math.max(AUTO_MOVE_LOCK_MS, motion.standard)
+        : reduceMotion
+          ? 0
+          : motion.standard;
+      if (lockMs === 0) return;
       lockRef.current = true;
       setSettled(false);
       if (unlockTimer.current) clearTimeout(unlockTimer.current);
@@ -218,7 +237,7 @@ export function useWizardController<TAnswers>(
         lockRef.current = false;
         unlockTimer.current = null;
         setSettled(true);
-      }, motion.standard);
+      }, lockMs);
     },
     [reduceMotion, cancelAutoAdvance],
   );
@@ -232,12 +251,14 @@ export function useWizardController<TAnswers>(
     const blocking = invalid
       ? screens.map((screen) => screen.kind === 'step' && invalid.has(screen.step.id))
       : undefined;
-    if (!blocking?.some(Boolean)) {
+    // The same target the reducer will pick (pendingEditTarget): only a spur
+    // that is actually continuing keeps its snapshot.
+    if (!blocking || pendingEditTarget(blocking, nav.index) === -1) {
       // Completing an edit commits it — the snapshot is no longer a fallback.
       editSnapshotRef.current = null;
     }
     move({ type: 'next', visible, blocking });
-  }, [move, visible, nav.returnToIndex, flow, answers, screens]);
+  }, [move, visible, nav.returnToIndex, nav.index, flow, answers, screens]);
   const next = useCallback(() => {
     if (lockRef.current) return;
     goNext();
@@ -337,25 +358,33 @@ export function useWizardController<TAnswers>(
   //
   // ⚠️ AND NEVER FROM THE SUBMITTING SCREEN. There `advance` runs onComplete
   // — on Post a car, "Post & pay". A pick must never become a payment.
-  const screenReader = useScreenReaderEnabled();
-  const latestRef = useRef({ canGoNext, advance, isLastScreen });
+  const assistiveTech = useAssistiveTechEnabled();
+  const latestRef = useRef({ canGoNext, advance, isLastScreen, assistiveTech });
   useEffect(() => {
-    latestRef.current = { canGoNext, advance, isLastScreen };
+    latestRef.current = { canGoNext, advance, isLastScreen, assistiveTech };
   });
-  const advanceSoon = useCallback(() => {
-    if (screenReader) return;
-    cancelAutoAdvance();
-    const fire = () => {
-      autoTimer.current = null;
-      if (lockRef.current) {
-        autoTimer.current = setTimeout(fire, motion.autoAdvanceBeat);
-        return;
-      }
-      const latest = latestRef.current;
-      if (latest.canGoNext && !latest.isLastScreen) void latest.advance();
-    };
-    autoTimer.current = setTimeout(fire, motion.autoAdvanceBeat);
-  }, [screenReader, cancelAutoAdvance]);
+  const advanceSoon = useCallback(
+    (delayMs: number = motion.autoAdvanceBeat) => {
+      if (!mountedRef.current || latestRef.current.assistiveTech) return;
+      cancelAutoAdvance();
+      const fire = () => {
+        autoTimer.current = null;
+        if (lockRef.current) {
+          autoTimer.current = setTimeout(fire, delayMs);
+          return;
+        }
+        const latest = latestRef.current;
+        // Re-checked at fire time: any of these can change during the beat.
+        if (!latest.canGoNext || latest.isLastScreen || latest.assistiveTech) return;
+        autoMoveRef.current = true;
+        void latest.advance().finally(() => {
+          autoMoveRef.current = false;
+        });
+      };
+      autoTimer.current = setTimeout(fire, delayMs);
+    },
+    [cancelAutoAdvance],
+  );
 
   const requestExit = useCallback(() => {
     const discard = () => {
