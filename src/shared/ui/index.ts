@@ -53,6 +53,11 @@ export {
 export { BrandLoader, LOADER_PHRASES, type BrandLoaderProps } from './BrandLoader';
 export { BrandMark, type BrandMarkProps } from './BrandMark';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
+export {
+  DistinctiveFeatureList,
+  type DistinctiveFeatureItem,
+  type DistinctiveFeatureListProps,
+} from './DistinctiveFeatureList';
 export { CarColourTile, type CarColourTileProps } from './CarColourTile';
 export { KeepAliveFace, type KeepAliveFaceProps } from './KeepAliveFace';
 export {
@@ -152,6 +157,7 @@ export {
   type PermissionPrimerContent,
   type PermissionPrimerProps,
 } from './PermissionPrimer';
+export { PhotoPager, type PhotoPagerProps } from './PhotoPager';
 export { PlateChip, PLATE_CHIP_HEIGHT, spellPlate, type PlateChipProps } from './PlateChip';
 export { RadiusSlider, type RadiusSliderProps } from './RadiusSlider';
 export {

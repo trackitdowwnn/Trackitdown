@@ -37,7 +37,7 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -55,7 +55,6 @@ import { useTimeAgo } from '@/shared/hooks';
 import { cardFeePence, formatPounds, refundPence } from '@/shared/lib';
 import { REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
 import {
-  cardSurface,
   radii,
   sizes,
   spacing,
@@ -65,10 +64,10 @@ import {
   type Palette,
 } from '@/shared/theme';
 import {
-  AppImage,
   bountyLabel,
   Button,
   ConfirmDialog,
+  DistinctiveFeatureList,
   type ConfirmDialogRef,
   PlateChip,
   REWARD_ENDED_LABEL,
@@ -181,18 +180,9 @@ export function PostDetailBody({
   // Hooks are unconditional; the "last seen" line gates on data.
   const lastSeenAgo = useTimeAgo(post.lastSeenAt ?? post.createdAt);
 
-  // Distinctive features collapse past the third card (the reference's
-  // "Show all N" pattern). `expanded` is pinned to `collapsible` so the slice
-  // and the button can never disagree: the owner edits marks without this
-  // component unmounting (the editor overlays the same screen), so the list
-  // can shrink under a raw `showAllFeatures` at any time. The flag itself is
-  // NOT reset — expand, trim below three, then add back, and the section
-  // returns expanded. Cosmetic and rare; not worth an effect to chase.
-  const [showAllFeatures, setShowAllFeatures] = useState(false);
+  // Distinctive features: the cards and their "Show all N" collapse live in
+  // the shared DistinctiveFeatureList (also the garage's "Your car" sheet).
   const features = post.distinctiveFeatures;
-  const collapsible = features.length > FEATURE_PREVIEW_COUNT;
-  const expanded = showAllFeatures && collapsible;
-  const visibleFeatures = expanded ? features : features.slice(0, FEATURE_PREVIEW_COUNT);
 
   const hasCoords = post.lat != null && post.lng != null;
 
@@ -540,35 +530,7 @@ export function PostDetailBody({
               ) : null}
             </View>
             {features.length > 0 ? (
-              <>
-                <View style={styles.featureList}>
-                  {visibleFeatures.map((feature, index) => (
-                    // The card is ONE accessible object: the photo is the
-                    // evidence for the description beside it, so a screen
-                    // reader should hear the mark once, not twice.
-                    <View
-                      key={feature.id ?? `${feature.photoUrl}-${index}`}
-                      style={styles.featureCard}
-                      accessible
-                      accessibilityLabel={`Distinctive feature: ${feature.description}`}
-                    >
-                      <AppImage uri={feature.photoUrl} style={styles.featurePhoto} />
-                      <Text style={styles.featureDescription}>{feature.description}</Text>
-                    </View>
-                  ))}
-                </View>
-                {/* Section-level control, so it sits OUTSIDE the list and takes
-                    the section's own 16pt gap (matching "Show more" above). */}
-                {collapsible ? (
-                  <Button
-                    label={
-                      expanded ? 'Show fewer features' : `Show all ${features.length} features`
-                    }
-                    variant="subtle"
-                    onPress={() => setShowAllFeatures((shown) => !shown)}
-                  />
-                ) : null}
-              </>
+              <DistinctiveFeatureList features={features} previewCount={FEATURE_PREVIEW_COUNT} />
             ) : (
               <Text style={styles.proseMissing}>No distinctive features added yet.</Text>
             )}
@@ -1033,41 +995,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   detailValueMissing: {
     color: c.textSecondary,
     textDecorationLine: 'line-through',
-  },
-  // Distinctive features: the reference's card list — a hairline-bordered white
-  // card per mark, its photo inset and rounded, the description carrying the
-  // card as a bold body-size line. The photo is the evidence; the card gives it
-  // standing without pretending to be tappable.
-  featureList: {
-    // 12 — the measured gap between the reference's cards.
-    gap: spacing.md,
-  },
-  featureCard: {
-    // A quiet container, NOT an elevated one: the shared flat card. The
-    // reference's cards are shadowed because they are TAPPABLE; ours are
-    // not, and a shadow would promise an interaction that isn't there.
-    // OwnerCard uses the same cardSurface since its 2026-09-24 redesign.
-    ...cardSurface(c),
-    flexDirection: 'row',
-    alignItems: 'center',
-    // Uniform inset (matching the editor's card for the same content), so the
-    // photo sits optically centred rather than shoved against one edge.
-    gap: spacing.md,
-    padding: spacing.md,
-  },
-  featurePhoto: {
-    width: sizes.featureThumb,
-    // 4:3 by ratio, not a second magic number — the crop can't drift.
-    aspectRatio: 4 / 3,
-    borderRadius: radii.md,
-  },
-  featureDescription: {
-    // cardTitle, NOT heading: bold at body size so the photo stays the hero
-    // (typography.ts). `heading` is this page's stat-numeral tier — a mark must
-    // not carry the same weight as the bounty figure.
-    ...typography.cardTitle,
-    color: c.textPrimary,
-    flex: 1,
   },
   messageOwner: {
     // The section's own gap governs rhythm — no extra top margin (which would

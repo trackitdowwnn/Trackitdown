@@ -42,8 +42,13 @@ posting demands 3 (a spotter needs several angles); the garage allows 0.
 ### Reporting a saved car stolen
 
 `lib/prefilledPostFlow.tsx` swaps the posting flow's `car` phase for a single
-`VehicleSummaryStep` — *"Blue BMW 320d · AB12 CDE · 4 photos"* — seeded with the
+`VehicleSummaryStep` — the **"Your car"** sheet (2026-10-08): every photo to
+swipe (`PhotoPager`), the name and plate, one details line ("Blue · 2019 ·
+Saloon", unknowns left out), the distinctive features
+(`DistinctiveFeatureList`) and "Edit details", with "Continue" — seeded with the
 saved answers, so the owner only completes when/where, bounty, review and pay.
+It replaced "Is this the car?", which asked the owner something they had just
+answered by choosing the car, over one photo and a count.
 
 - **Edit is a flow swap, not a jump.** Tapping it rebuilds with `expanded: true`,
   restoring all seven steps with the SAME answers. The wizard has no

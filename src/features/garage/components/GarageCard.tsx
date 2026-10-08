@@ -1,11 +1,10 @@
 /**
- * WHAT:  GarageCard — one saved car, photography-first: full-width 3:2 cover
+ * WHAT:  GarageCard — one saved car, photography-first: full-width 4:3 cover
  *        photo (no border, no shadow — the photo IS the card), a quiet
  *        "Reported stolen" pill overlaid when the car has a live listing,
  *        then name, meta line, and the owner's PlateChip below. The whole
  *        card is one tap; it renders as a plain display block when no
- *        handler is given (the wizard's "Is this the car?" confirm reuses it
- *        as a genuine preview).
+ *        handler is given.
  * WHY:   Redesigned 2026-07-29 against Airbnb's host Listings-tab card: photo
  *        full-width with text below and status ON the photo, actions behind
  *        the tap rather than buttons on the card. The old row-card (72×54
@@ -19,7 +18,7 @@
  *        this app "nothing to report" IS the good news. (Note: driven by
  *        isCurrentlyPosted, which is dormant until README gap 1 is wired.)
  * LINKS: src/features/garage/screens/MyCarsScreen.tsx (tap → actions sheet);
- *        src/features/garage/components/VehicleSummaryStep.tsx (display use);
+ *        src/features/garage/components/VehicleSummaryStep.tsx (shares the photo ratio);
  *        src/shared/ui/VehicleCard.tsx (the press-scale pattern mirrored
  *        here); docs/DESIGN_SYSTEM.md.
  */
@@ -46,15 +45,15 @@ import { vehicleDisplayName } from '../lib/vehicleAnswers';
 import type { SavedVehicle } from '../types';
 
 /** The card photo's ratio — VehicleCard's PHOTO_ASPECT_RATIO, so a car reads
- *  the same in the garage as on a listing. Exported for the skeleton. */
+ *  the same in the garage as on a listing. Exported for the skeleton and the
+ *  "Your car" sheet's photos. */
 export const GARAGE_PHOTO_ASPECT_RATIO = 4 / 3;
 
 export interface GarageCardProps {
   vehicle: SavedVehicle;
   /**
    * The card's single tap (MyCarsScreen opens the actions sheet). Omit for a
-   * pure display render — the wizard's confirm step shows the card as an
-   * artifact, not a control.
+   * pure display render — an artifact, not a control.
    */
   onPress?: () => void;
   testID?: string;
