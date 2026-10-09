@@ -29,10 +29,15 @@
  *        reads "The spotter withdrew it." The answers wrap at large text —
  *        never "…": the spotter must read what the owner will be told.
  *
- *        ⚠️ FIXED ANSWERS, NO TEXT BOX. The answer reaches the owner's lock
- *        screen as a sentence built in SQL; a stranger's own words can't be
- *        moderated yet (SECURITY_AND_TRUST §3, §7).
- * LINKS: ../lib/withdrawReasons.ts (the answers);
+ *        ⚠️ FIXED ANSWERS — AND ONE OPTIONAL NOTE, IN-APP ONLY (owner request,
+ *        the same day). The answer reaches the owner's lock screen as a
+ *        sentence built in SQL. Choosing "Something else" opens a short text
+ *        box under it ("Tell the owner more", ≤200); the push only says a note
+ *        exists, and the owner reads the words on their listing. It is
+ *        unmoderated (SECURITY_AND_TRUST §3, §7), so the box says plainly who
+ *        reads it. Switching to another answer hides the box but keeps the
+ *        text; it is only ever sent with "Something else".
+ * LINKS: ../lib/withdrawReasons.ts (the answers, the note's rules);
  *        ../screens/MySightingsScreen.tsx (opens it, sends the withdrawal);
  *        src/shared/ui/CardSelect.tsx (the constant-border select rule);
  *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql.
@@ -51,9 +56,10 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { BottomSheet, Button, type BottomSheetRef } from '@/shared/ui';
+import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
 import {
+  MAX_WITHDRAW_NOTE_LENGTH,
   WITHDRAW_REASONS,
   WITHDRAW_REASON_LABELS,
   type WithdrawReason,
@@ -67,8 +73,9 @@ export interface WithdrawSightingSheetRef {
 
 export interface WithdrawSightingSheetProps {
   ref?: Ref<WithdrawSightingSheetRef>;
-  /** Confirmed — with the chosen answer, or null when they skipped it. */
-  onConfirm: (reason: WithdrawReason | null) => void;
+  /** Confirmed — with the chosen answer (null when they skipped it) and,
+   *  with "Something else" only, what they typed (null otherwise). */
+  onConfirm: (reason: WithdrawReason | null, note: string | null) => void;
   /** Closed without taking it back (Cancel, swipe, scrim, Back). */
   onDismiss?: () => void;
 }
@@ -81,14 +88,17 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
   const palette = usePalette();
   const sheetRef = useRef<BottomSheetRef>(null);
   const [reason, setReason] = useState<WithdrawReason | null>(null);
+  const [note, setNote] = useState('');
   // A confirm-close is not a dismissal: onDismiss is for "Cancel".
   const confirmed = useRef(false);
 
   useImperativeHandle(ref, () => ({
     open: () => {
       confirmed.current = false;
-      // Every report starts unanswered — never the last one's answer.
+      // Every report starts unanswered — never the last one's answer, nor
+      // the last one's note.
       setReason(null);
+      setNote('');
       sheetRef.current?.open();
     },
     close: () => sheetRef.current?.close(),
@@ -124,7 +134,7 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
         >
           {WITHDRAW_REASONS.map((value) => {
             const chosen = reason === value;
-            return (
+            const answer = (
               <Pressable
                 key={value}
                 // Tap the chosen answer again to clear it — it is optional.
@@ -144,6 +154,26 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
                 {chosen ? <Check size={sizes.iconSm} color={palette.textPrimary} /> : null}
               </Pressable>
             );
+            if (value !== 'other' || !chosen) return answer;
+            // "Something else", chosen: the note box directly beneath it.
+            return (
+              <View key={value} style={styles.otherBlock}>
+                {answer}
+                <TextField
+                  label="Tell the owner more (optional)"
+                  variant="multiline"
+                  value={note}
+                  onChangeText={setNote}
+                  helperText="Only the owner sees this, in the app."
+                  counter={`${note.length}/${MAX_WITHDRAW_NOTE_LENGTH}`}
+                  // The counter is hidden from screen readers (TextField's
+                  // contract); the limit goes here instead.
+                  accessibilityHint={`Up to ${MAX_WITHDRAW_NOTE_LENGTH} characters. Only the owner sees this.`}
+                  maxLength={MAX_WITHDRAW_NOTE_LENGTH}
+                  testID="withdraw-note"
+                />
+              </View>
+            );
           })}
         </View>
 
@@ -158,7 +188,9 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
               if (confirmed.current) return;
               confirmed.current = true;
               sheetRef.current?.close();
-              onConfirm(reason);
+              // The note only ever goes with "Something else" — text typed
+              // there and then left for another answer is not sent.
+              onConfirm(reason, reason === 'other' && note.trim() !== '' ? note : null);
             }}
           />
           <Button label="Cancel" variant="subtle" onPress={() => sheetRef.current?.close()} />
@@ -195,6 +227,10 @@ const makeStyles = (c: Palette) =>
       color: c.textSecondary,
     },
     options: {
+      gap: spacing.sm,
+    },
+    // "Something else" and its note box read as one answer.
+    otherBlock: {
       gap: spacing.sm,
     },
     // The tag's grey, as a full-width rounded box (owner request). A

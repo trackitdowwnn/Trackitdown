@@ -2,8 +2,9 @@
  * WHAT:  Tests for WithdrawSightingSheet — the question alone as the title,
  *        tagged optional; the four fixed answers in one column, nothing
  *        preselected; confirming with no answer sends null; a chosen answer
- *        is sent; tapping it again clears it; "Cancel" sends nothing; and a
- *        reopened sheet starts unanswered.
+ *        is sent; tapping it again clears it; "Cancel" sends nothing; a
+ *        reopened sheet starts unanswered — and the note box "Something
+ *        else" opens, sent only with that answer, reset on every open.
  * WHY:   The answer reaches an owner's lock screen (as a fixed sentence), so
  *        what the spotter chose must be exactly what is sent — and the
  *        question must stay optional, never a hurdle in front of taking back
@@ -91,15 +92,15 @@ it('is just the question — marked optional — with four fixed answers and non
   ]) {
     expect(s.getByRole('radio', { name: label }).props.accessibilityState.selected).toBe(false);
   }
-  // ⚠️ No text box: the answer reaches the owner as a fixed sentence only.
-  expect(JSON.stringify(s.toJSON())).not.toContain('"type":"TextInput"');
+  // No text box until "Something else" is chosen.
+  expect(s.queryByTestId('withdraw-note')).toBeNull();
 });
 
 it('⚠️ is optional — taking it back with no answer sends null', async () => {
   const s = await setup();
   await s.open();
   await s.press('Take it back');
-  expect(s.onConfirm).toHaveBeenCalledWith(null);
+  expect(s.onConfirm).toHaveBeenCalledWith(null, null);
   expect(s.onDismiss).not.toHaveBeenCalled();
 });
 
@@ -108,7 +109,7 @@ it('sends the answer chosen', async () => {
   await s.open();
   await s.press('I’m not sure it was the car');
   await s.press('Take it back');
-  expect(s.onConfirm).toHaveBeenCalledWith('not_sure');
+  expect(s.onConfirm).toHaveBeenCalledWith('not_sure', null);
 });
 
 it('clears the answer when it is tapped again', async () => {
@@ -117,7 +118,7 @@ it('clears the answer when it is tapped again', async () => {
   await s.press('It wasn’t the car');
   await s.press('It wasn’t the car');
   await s.press('Take it back');
-  expect(s.onConfirm).toHaveBeenCalledWith(null);
+  expect(s.onConfirm).toHaveBeenCalledWith(null, null);
 });
 
 it('"Cancel" takes nothing back', async () => {
@@ -136,7 +137,7 @@ it('⚠️ a reopened sheet starts unanswered — never the last report’s answ
   await s.press('Cancel');
   await s.open();
   await s.press('Take it back');
-  expect(s.onConfirm).toHaveBeenCalledWith(null);
+  expect(s.onConfirm).toHaveBeenCalledWith(null, null);
 });
 
 it('⚠️ takes it back once, however fast the second tap', async () => {
@@ -184,4 +185,84 @@ it('offers "Cancel", not "Keep it"', async () => {
   await s.open();
   expect(s.getByRole('button', { name: 'Cancel' })).toBeTruthy();
   expect(s.queryByText('Keep it')).toBeNull();
+});
+
+describe('the note "Something else" may carry (2026-10-09)', () => {
+  const type = async (s: Awaited<ReturnType<typeof setup>>, text: string) => {
+    await act(async () => {
+      fireEvent.changeText(s.getByTestId('withdraw-note'), text);
+    });
+  };
+
+  it('opens a text box under "Something else" — and only there', async () => {
+    const s = await setup();
+    await s.open();
+    await s.press('It wasn’t the car');
+    expect(s.queryByTestId('withdraw-note')).toBeNull();
+    await s.press('Something else');
+    const box = s.getByTestId('withdraw-note');
+    expect(box.props.maxLength).toBe(200);
+    // Who reads it is said plainly — it is unmoderated.
+    expect(s.getByText('Only the owner sees this, in the app.')).toBeTruthy();
+  });
+
+  it('sends what was typed with "Something else"', async () => {
+    const s = await setup();
+    await s.open();
+    await s.press('Something else');
+    await type(s, 'It was my neighbour’s car');
+    await s.press('Take it back');
+    expect(s.onConfirm).toHaveBeenCalledWith('other', 'It was my neighbour’s car');
+  });
+
+  it('⚠️ never sends the note with another answer — even after typing one', async () => {
+    const s = await setup();
+    await s.open();
+    await s.press('Something else');
+    await type(s, 'typed, then changed my mind');
+    await s.press('I reported it by mistake');
+    expect(s.queryByTestId('withdraw-note')).toBeNull();
+    await s.press('Take it back');
+    expect(s.onConfirm).toHaveBeenCalledWith('mistake', null);
+  });
+
+  it('…nor when "Something else" is cleared', async () => {
+    const s = await setup();
+    await s.open();
+    await s.press('Something else');
+    await type(s, 'a note');
+    await s.press('Something else');
+    await s.press('Take it back');
+    expect(s.onConfirm).toHaveBeenCalledWith(null, null);
+  });
+
+  it('keeps the text when they switch away and back', async () => {
+    const s = await setup();
+    await s.open();
+    await s.press('Something else');
+    await type(s, 'kept');
+    await s.press('I reported it by mistake');
+    await s.press('Something else');
+    expect(s.getByTestId('withdraw-note').props.value).toBe('kept');
+  });
+
+  it('a blank note is no note', async () => {
+    const s = await setup();
+    await s.open();
+    await s.press('Something else');
+    await type(s, '   ');
+    await s.press('Take it back');
+    expect(s.onConfirm).toHaveBeenCalledWith('other', null);
+  });
+
+  it('⚠️ a reopened sheet starts with no note — never the last report’s', async () => {
+    const s = await setup();
+    await s.open();
+    await s.press('Something else');
+    await type(s, 'for the last report');
+    await s.press('Cancel');
+    await s.open();
+    await s.press('Something else');
+    expect(s.getByTestId('withdraw-note').props.value).toBe('');
+  });
 });

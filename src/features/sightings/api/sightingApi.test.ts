@@ -12,12 +12,14 @@
  *        docs/SECURITY_AND_TRUST.md §1.
  */
 
+import { getRecentLogs } from '@/shared/lib/logger';
 import type { EvidencePhoto } from '@/shared/ui';
 
 import {
   buildCreateSightingParams,
   fetchMyReportPhotos,
   fetchPostSightings,
+  fetchPostWithdrawals,
   fetchMySightingRecord,
   fetchSightingQuota,
   markSightingHelpful,
@@ -787,5 +789,104 @@ describe('withdrawSighting — the reason, and telling the owner (2026-10-09)', 
     });
     await expect(withdrawSighting(ID, 'not_the_car')).rejects.toThrow();
     expect(mockInvoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('withdrawSighting — the "Something else" note (2026-10-09)', () => {
+  const ID = '4f3c2b1a-0000-4000-8000-000000000002';
+  // Built from code points so this file holds no invisible characters.
+  const RLO = String.fromCharCode(0x202e);
+  const ZWSP = String.fromCharCode(0x200b);
+
+  beforeEach(() => {
+    mockRpc.mockReset();
+    mockInvoke.mockClear();
+    mockRpc.mockResolvedValue({ data: { sighting_id: ID, withdrawn: true }, error: null });
+  });
+
+  it('sends the note, trimmed, with "Something else"', async () => {
+    await withdrawSighting(ID, 'other', `  Wrong street, sorry ${String.fromCharCode(10)}`);
+    expect(mockRpc).toHaveBeenCalledWith('withdraw_sighting', {
+      p_sighting_id: ID,
+      p_reason: 'other',
+      p_note: 'Wrong street, sorry',
+    });
+  });
+
+  it('⚠️ never sends a note with any other answer', async () => {
+    await withdrawSighting(ID, 'mistake', 'typed then switched');
+    expect(mockRpc).toHaveBeenCalledWith('withdraw_sighting', {
+      p_sighting_id: ID,
+      p_reason: 'mistake',
+    });
+  });
+
+  it('⚠️ leaves p_note out entirely when there is none — the call resolves on either server', async () => {
+    await withdrawSighting(ID, 'other', '   ');
+    expect(mockRpc.mock.calls[0][1]).not.toHaveProperty('p_note');
+  });
+
+  it('strips the hidden characters the server refuses', async () => {
+    await withdrawSighting(ID, 'other', `it was ok${ZWSP} ${RLO}fine`);
+    expect(mockRpc.mock.calls[0][1].p_note).toBe('it was ok fine');
+    // A note of nothing but hidden characters is no note.
+    mockRpc.mockClear();
+    await withdrawSighting(ID, 'other', `${ZWSP}${RLO}`);
+    expect(mockRpc.mock.calls[0][1]).not.toHaveProperty('p_note');
+  });
+
+  it('⚠️ logs whether there was a note — never its words', async () => {
+    await withdrawSighting(ID, 'other', 'my secret words');
+    const logged = JSON.stringify(getRecentLogs());
+    expect(logged).not.toContain('my secret words');
+    // The NEWEST such entry — earlier tests in this file logged their own.
+    const entry = getRecentLogs().findLast((e) => e.message === 'sighting_withdrawn');
+    expect(entry?.data).toMatchObject({ gaveNote: true });
+    // …nor do the words ride the owner's dispatch.
+    expect(JSON.stringify(mockInvoke.mock.calls)).not.toContain('my secret words');
+  });
+});
+
+describe('fetchPostWithdrawals — the owner’s "Taken back" list (2026-10-09)', () => {
+  const POST = 'a1a1a1a1-0000-4000-8000-000000000003';
+
+  beforeEach(() => mockRpc.mockReset());
+
+  it('reads the owner RPC and maps its three fields', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        { withdrawn_at: '2026-10-09T10:00:00Z', reason: 'other', note: 'Wrong street' },
+        { withdrawn_at: '2026-10-08T10:00:00Z', reason: null, note: null },
+      ],
+      error: null,
+    });
+    await expect(fetchPostWithdrawals(POST)).resolves.toEqual([
+      { withdrawnAt: '2026-10-09T10:00:00Z', reason: 'other', note: 'Wrong street' },
+      { withdrawnAt: '2026-10-08T10:00:00Z', reason: null, note: null },
+    ]);
+    expect(mockRpc).toHaveBeenCalledWith('get_post_withdrawals', { p_post_id: POST });
+  });
+
+  it('⚠️ refuses a widened payload — no sighting id or spotter may reach the screen', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ withdrawn_at: '2026-10-09T10:00:00Z', reason: null, note: null, spotter_id: 'x' }],
+      error: null,
+    });
+    await expect(fetchPostWithdrawals(POST)).rejects.toThrow();
+  });
+
+  it('refuses an answer outside the vocabulary', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ withdrawn_at: '2026-10-09T10:00:00Z', reason: 'he was rude', note: null }],
+      error: null,
+    });
+    await expect(fetchPostWithdrawals(POST)).rejects.toThrow();
+  });
+
+  it('throws a calm error when the server refuses', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'P0001', message: 'NOT_OWNER' } });
+    await expect(fetchPostWithdrawals(POST)).rejects.toThrow(
+      'We couldn’t load what was taken back. Please try again.',
+    );
   });
 });

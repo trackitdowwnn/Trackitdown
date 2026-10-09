@@ -67,10 +67,12 @@ jest.mock('expo-router', () => ({
 // lib/ precisely so the screen's `instanceof` narrowing can be tested against
 // the REAL class: a stub here would let these pass while the shipped guard
 // rejected the very error it exists to show.
-const mockWithdraw = jest.fn(async (_sightingId: string, _reason?: string | null) => {});
+const mockWithdraw = jest.fn(
+  async (_sightingId: string, _reason?: string | null, _note?: string | null) => {},
+);
 jest.mock('../api/sightingApi', () => ({
-  withdrawSighting: (sightingId: string, reason?: string | null) =>
-    mockWithdraw(sightingId, reason),
+  withdrawSighting: (sightingId: string, reason?: string | null, note?: string | null) =>
+    mockWithdraw(sightingId, reason, note),
 }));
 
 // The "why are you taking it back?" sheet, fired straight through with a
@@ -79,6 +81,7 @@ jest.mock('../api/sightingApi', () => ({
 // It takes the ref, so a test can see the screen actually OPEN it, and offers
 // dismiss as well as confirm.
 let mockSheetReason: string | null = null;
+let mockSheetNote: string | null = null;
 const mockSheetOpen = jest.fn();
 jest.mock('../components/WithdrawSightingSheet', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
@@ -92,13 +95,13 @@ jest.mock('../components/WithdrawSightingSheet', () => {
       onDismiss,
     }: {
       ref: unknown;
-      onConfirm: (reason: string | null) => void;
+      onConfirm: (reason: string | null, note: string | null) => void;
       onDismiss?: () => void;
     }) => {
       useImperativeHandle(ref, () => ({ open: mockSheetOpen, close: jest.fn() }));
       return (
         <View>
-          <Pressable testID="confirm-withdraw" onPress={() => onConfirm(mockSheetReason)} />
+          <Pressable testID="confirm-withdraw" onPress={() => onConfirm(mockSheetReason, mockSheetNote)} />
           <Pressable testID="dismiss-withdraw" onPress={() => onDismiss?.()} />
         </View>
       );
@@ -499,7 +502,7 @@ describe('taking a report back', () => {
       fireEvent.press(getByTestId('confirm-withdraw'));
     });
     // No answer chosen → the reason travels as null (it is optional).
-    expect(mockWithdraw).toHaveBeenCalledWith('s1', null);
+    expect(mockWithdraw).toHaveBeenCalledWith('s1', null, null);
   });
 
   it('⚠️ "Cancel" forgets the report — a later confirm sends nothing', async () => {
@@ -528,9 +531,28 @@ describe('taking a report back', () => {
       await act(async () => {
         fireEvent.press(getByTestId('confirm-withdraw'));
       });
-      expect(mockWithdraw).toHaveBeenCalledWith('s1', 'not_the_car');
+      expect(mockWithdraw).toHaveBeenCalledWith('s1', 'not_the_car', null);
     } finally {
       mockSheetReason = null;
+    }
+  });
+
+  it('passes the "Something else" note with the withdrawal (2026-10-09)', async () => {
+    mockSheetReason = 'other';
+    mockSheetNote = 'It was my neighbour’s car';
+    try {
+      mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+      const { getByTestId } = await render(<MySightingsScreen />);
+      await act(async () => {
+        fireEvent.press(getByTestId('my-sighting-withdraw-s1'));
+      });
+      await act(async () => {
+        fireEvent.press(getByTestId('confirm-withdraw'));
+      });
+      expect(mockWithdraw).toHaveBeenCalledWith('s1', 'other', 'It was my neighbour’s car');
+    } finally {
+      mockSheetReason = null;
+      mockSheetNote = null;
     }
   });
 
