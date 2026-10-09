@@ -576,9 +576,8 @@ Rules that follow, and are not implementation details:
     land unmoderated there. A tap opens the listing.
   - **"Something else" may say more (2026-10-09)** — an optional note of up
     to 200 characters. The push only says "…and left you a note."; the owner
-    reads the words in the app, on the listing (`get_post_withdrawals`,
-    owner-only, withdrawals they were told about; the app's list ships
-    after the server change).
+    reads the words in the app, in a "Taken back" list on the listing
+    (`get_post_withdrawals`, owner-only, withdrawals they were told about).
     Unmoderated, by the owner's decision (SECURITY_AND_TRUST §3, §7).
 - A sighting = photo(s) + auto-captured GPS location + timestamp + optional
   note. Location and time come from the device at capture; **at least one

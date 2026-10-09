@@ -29,20 +29,28 @@
  *        reads "The spotter withdrew it." The answers wrap at large text —
  *        never "…": the spotter must read what the owner will be told.
  *
- *        ⚠️ FIXED ANSWERS, NO TEXT BOX. The answer reaches the owner's lock
- *        screen as a sentence built in SQL; a stranger's own words can't be
- *        moderated yet (SECURITY_AND_TRUST §3, §7).
- * LINKS: ../lib/withdrawReasons.ts (the answers);
+ *        ⚠️ FIXED ANSWERS — AND ONE OPTIONAL NOTE, IN-APP ONLY (owner request,
+ *        the same day). The answer reaches the owner's lock screen as a
+ *        sentence built in SQL. Choosing "Something else" opens a short text
+ *        box under it ("Tell the owner more", ≤200); the push only says a note
+ *        exists, and the owner reads the words on their listing. It is
+ *        unmoderated (SECURITY_AND_TRUST §3, §7), so the box says plainly who
+ *        reads it. Switching to another answer hides the box but keeps the
+ *        text; it is only ever sent with "Something else".
+ * LINKS: ../lib/withdrawReasons.ts (the answers, the note's rules);
  *        ../screens/MySightingsScreen.tsx (opens it, sends the withdrawal);
  *        src/shared/ui/CardSelect.tsx (the constant-border select rule);
- *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql.
+ *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql;
+ *        supabase/migrations/20261009180000_a_withdrawal_can_say_more.sql.
  */
 
 import { Check } from 'lucide-react-native';
 import { useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 
 import {
+  motion,
   radii,
   sizes,
   spacing,
@@ -51,9 +59,10 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { BottomSheet, Button, type BottomSheetRef } from '@/shared/ui';
+import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
 import {
+  MAX_WITHDRAW_NOTE_LENGTH,
   WITHDRAW_REASONS,
   WITHDRAW_REASON_LABELS,
   type WithdrawReason,
@@ -67,8 +76,9 @@ export interface WithdrawSightingSheetRef {
 
 export interface WithdrawSightingSheetProps {
   ref?: Ref<WithdrawSightingSheetRef>;
-  /** Confirmed — with the chosen answer, or null when they skipped it. */
-  onConfirm: (reason: WithdrawReason | null) => void;
+  /** Confirmed — with the chosen answer (null when they skipped it) and,
+   *  with "Something else" only, what they typed (null otherwise). */
+  onConfirm: (reason: WithdrawReason | null, note: string | null) => void;
   /** Closed without taking it back (Cancel, swipe, scrim, Back). */
   onDismiss?: () => void;
 }
@@ -81,14 +91,17 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
   const palette = usePalette();
   const sheetRef = useRef<BottomSheetRef>(null);
   const [reason, setReason] = useState<WithdrawReason | null>(null);
+  const [note, setNote] = useState('');
   // A confirm-close is not a dismissal: onDismiss is for "Cancel".
   const confirmed = useRef(false);
 
   useImperativeHandle(ref, () => ({
     open: () => {
       confirmed.current = false;
-      // Every report starts unanswered — never the last one's answer.
+      // Every report starts unanswered — never the last one's answer, nor
+      // the last one's note.
       setReason(null);
+      setNote('');
       sheetRef.current?.open();
     },
     close: () => sheetRef.current?.close(),
@@ -117,34 +130,69 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
           </View>
         </View>
 
-        <View
-          style={styles.options}
-          accessibilityRole="radiogroup"
-          accessibilityLabel={`${QUESTION} Optional.`}
-        >
-          {WITHDRAW_REASONS.map((value) => {
-            const chosen = reason === value;
-            return (
-              <Pressable
-                key={value}
-                // Tap the chosen answer again to clear it — it is optional.
-                onPress={() => setReason((current) => (current === value ? null : value))}
-                accessibilityRole="radio"
-                accessibilityLabel={WITHDRAW_REASON_LABELS[value]}
-                accessibilityState={{ selected: chosen }}
-                accessibilityHint={chosen ? 'Double tap to clear' : undefined}
-                style={({ pressed }) => [
-                  styles.option,
-                  chosen && styles.optionChosen,
-                  pressed && styles.optionPressed,
-                ]}
-                testID={`withdraw-reason-${value}`}
-              >
-                <Text style={styles.optionLabel}>{WITHDRAW_REASON_LABELS[value]}</Text>
-                {chosen ? <Check size={sizes.iconSm} color={palette.textPrimary} /> : null}
-              </Pressable>
-            );
-          })}
+        <View style={styles.answers}>
+          {/* Labelled by the question alone: the header above already said
+              it is optional, once. */}
+          <View style={styles.options} accessibilityRole="radiogroup" accessibilityLabel={QUESTION}>
+            {WITHDRAW_REASONS.map((value) => {
+              const chosen = reason === value;
+              return (
+                <Pressable
+                  key={value}
+                  // Tap the chosen answer again to clear it — it is optional.
+                  onPress={() => setReason((current) => (current === value ? null : value))}
+                  accessibilityRole="radio"
+                  accessibilityLabel={WITHDRAW_REASON_LABELS[value]}
+                  accessibilityState={{ selected: chosen }}
+                  accessibilityHint={
+                    chosen
+                      ? 'Double tap to clear'
+                      : value === 'other'
+                        ? 'Opens a box to tell the owner more'
+                        : undefined
+                  }
+                  style={({ pressed }) => [
+                    styles.option,
+                    chosen && styles.optionChosen,
+                    pressed && styles.optionPressed,
+                  ]}
+                  testID={`withdraw-reason-${value}`}
+                >
+                  <Text style={styles.optionLabel}>{WITHDRAW_REASON_LABELS[value]}</Text>
+                  {chosen ? <Check size={sizes.iconSm} color={palette.textPrimary} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+          {/* "Something else", chosen: the note box directly beneath it —
+              OUTSIDE the radio group, so a screen reader never counts a text
+              field among the answers ("Something else" is last, so nothing
+              moves). Fades in, as inline follow-ups do. */}
+          {reason === 'other' ? (
+            <Animated.View
+              entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+            >
+              <TextField
+                label="Tell the owner more"
+                variant="multiline"
+                value={note}
+                onChangeText={setNote}
+                helperText="Only the owner sees this, in the app."
+                counter={`${note.length}/${MAX_WITHDRAW_NOTE_LENGTH}`}
+                // The counter is hidden from screen readers (TextField's
+                // contract); the limit goes here instead. The helper text
+                // already says who reads it.
+                accessibilityHint={`Up to ${MAX_WITHDRAW_NOTE_LENGTH} characters.`}
+                maxLength={MAX_WITHDRAW_NOTE_LENGTH}
+                // A short note, one paragraph: "Done" puts the keyboard away
+                // (a multiline iOS keyboard has no other way down) so Take it
+                // back is never stranded beneath it.
+                returnKeyType="done"
+                submitBehavior="blurAndSubmit"
+                testID="withdraw-note"
+              />
+            </Animated.View>
+          ) : null}
         </View>
 
         <View style={styles.actions}>
@@ -158,7 +206,10 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
               if (confirmed.current) return;
               confirmed.current = true;
               sheetRef.current?.close();
-              onConfirm(reason);
+              // The note only ever goes with "Something else" — text typed
+              // there and then left for another answer is not sent. Sent as
+              // typed: withdrawSighting cleans and trims it (cleanWithdrawNote).
+              onConfirm(reason, reason === 'other' && note.trim() !== '' ? note : null);
             }}
           />
           <Button label="Cancel" variant="subtle" onPress={() => sheetRef.current?.close()} />
@@ -195,6 +246,11 @@ const makeStyles = (c: Palette) =>
       color: c.textSecondary,
     },
     options: {
+      gap: spacing.sm,
+    },
+    // The answers, then — with "Something else" — its note box, 8 below it
+    // so the two read as one answer.
+    answers: {
       gap: spacing.sm,
     },
     // The tag's grey, as a full-width rounded box (owner request). A

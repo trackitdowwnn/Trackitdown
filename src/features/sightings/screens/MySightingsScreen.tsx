@@ -203,14 +203,15 @@ export function MySightingsScreen() {
   }, []);
 
   // With the spotter's optional answer to "why?" (2026-10-09) — passed to
-  // the owner as one fixed sentence when they are told.
+  // the owner as one fixed sentence when they are told — and, with
+  // "Something else", their optional note, which the owner reads in the app.
   const onWithdrawConfirmed = useCallback(
-    async (reason: WithdrawReason | null) => {
+    async (reason: WithdrawReason | null, note: string | null) => {
       if (withdrawing === null) {
         return;
       }
       try {
-        await withdrawSighting(withdrawing, reason);
+        await withdrawSighting(withdrawing, reason, note);
         toast.show(
           'Report taken back — the owner no longer sees it. You can’t re-file it for this car today.',
         );
@@ -383,7 +384,7 @@ export function MySightingsScreen() {
           also asks, optionally, why (WithdrawSightingSheet). */}
       <WithdrawSightingSheet
         ref={withdrawRef}
-        onConfirm={(reason) => void onWithdrawConfirmed(reason)}
+        onConfirm={(reason, note) => void onWithdrawConfirmed(reason, note)}
         onDismiss={() => setWithdrawing(null)}
       />
     </Screen>

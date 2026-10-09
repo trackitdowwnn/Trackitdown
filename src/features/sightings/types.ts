@@ -11,6 +11,8 @@
 
 import type { EvidencePhoto } from '@/shared/ui';
 
+import type { WithdrawReason } from './lib/withdrawReasons';
+
 /** Evidence bounds — mirrored by the create_sighting RPC. Live HERE (not the
  *  api module) so the flow config's module graph stays off the supabase
  *  client (jest-safe, mirroring postACarFlow's direct-import note). */
@@ -218,4 +220,19 @@ export interface PublicSightingEntry {
 export interface PublicSightingEntries {
   entries: PublicSightingEntry[];
   earlierCount: number;
+}
+
+/**
+ * One sighting taken back, as its OWNER sees it (get_post_withdrawals,
+ * 2026-10-09). Only withdrawals the owner was told about. No id, no spotter,
+ * no place, no photo — the notice's own limits.
+ */
+export interface PostWithdrawal {
+  /** When the owner was told it was taken back. */
+  withdrawnAt: string;
+  /** The spotter's answer, or null when they skipped the question. */
+  reason: WithdrawReason | null;
+  /** The spotter's own words — "Something else" only, ≤200, unmoderated.
+   *  Shown in the app as theirs; never logged, never pushed. */
+  note: string | null;
 }

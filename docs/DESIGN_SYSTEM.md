@@ -264,7 +264,9 @@ are build output.
     20pt band between sparse cards out-shouts the cards it is meant to
     organise. A date is a divider, not a section title. My sightings uses the
     same quiet label (`DayHeader`) for its status sections — "Still open",
-    "Answered", "Taken back" (2026-10-09) — for the same reason.
+    "Answered", "Taken back" (2026-10-09) — for the same reason, as does
+    the owner's "Taken back" list under a listing's Sighting activity
+    (`TakenBackList`, 2026-10-09).
   - `heading` 18/24, Bold — in-screen headings
   - `cardTitle` 16/22, Bold — feed-card titles (added 2026-07-11; body
     size at heavier weight, so photos stay the hero of a card)

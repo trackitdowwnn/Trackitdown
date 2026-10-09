@@ -27,7 +27,12 @@ import {
 } from '@/features/notifications';
 import { supabase } from '@/shared/api';
 import { SightingWithdrawError } from '../lib/sightingWithdrawError';
-import type { WithdrawReason } from '../lib/withdrawReasons';
+import {
+  cleanWithdrawNote,
+  MAX_WITHDRAW_NOTE_LENGTH,
+  WITHDRAW_REASONS,
+  type WithdrawReason,
+} from '../lib/withdrawReasons';
 import { createLogger } from '@/shared/lib/logger';
 import type { EvidencePhoto } from '@/shared/ui';
 
@@ -35,6 +40,7 @@ import type {
   CreateSightingParams,
   CreateSightingResult,
   OwnerSighting,
+  PostWithdrawal,
   PublicSightingEntries,
   ReportSightingAnswers,
   SightingQuota,
@@ -373,6 +379,55 @@ const ownerSightingSchema = z.object({
     })
     .strict(),
 });
+
+/** One withdrawal as the owner's list receives it. ⚠️ STRICT: three fields,
+ *  no sighting id, no spotter — a widened RPC fails here rather than
+ *  reaching the screen. */
+const postWithdrawalSchema = z
+  .object({
+    withdrawn_at: z.string(),
+    reason: z.enum(WITHDRAW_REASONS).nullable(),
+    // ⚠️ Counted in CHARACTERS, as the server's char_length does — zod's
+    // .max counts UTF-16 units, so a note of 150 emoji (accepted by the
+    // server via a direct call) would fail the whole list's parse and blank
+    // every withdrawal on the post (security review of this change).
+    note: z
+      .string()
+      .refine((note) => [...note].length <= MAX_WITHDRAW_NOTE_LENGTH)
+      .nullable(),
+  })
+  .strict();
+
+/**
+ * The sightings taken back that the OWNER was told about, newest first
+ * (get_post_withdrawals — owner-only server-side, NOT_OWNER otherwise).
+ * 2026-10-09: where the owner reads a "Something else" note, which never
+ * travels in a push. ⚠️ The note is never logged.
+ * @throws a calm Error when the RPC fails or its payload is refused by the
+ *         strict schema (logged as counts and issue codes only).
+ */
+export async function fetchPostWithdrawals(postId: string): Promise<PostWithdrawal[]> {
+  const { data, error } = await supabase.rpc('get_post_withdrawals', { p_post_id: postId });
+  if (error) {
+    log.warn('get_post_withdrawals failed', { code: error.code });
+    throw new Error('We couldn’t load what was taken back. Please try again.');
+  }
+  const parsed = z.array(postWithdrawalSchema).safeParse(data ?? []);
+  if (!parsed.success) {
+    // SAFETY: how many issues and of what kind — never their messages or
+    // paths, which could carry a note's words.
+    log.warn('get_post_withdrawals payload refused', {
+      issues: parsed.error.issues.length,
+      codes: [...new Set(parsed.error.issues.map((issue) => issue.code))],
+    });
+    throw new Error('We couldn’t load what was taken back. Please try again.');
+  }
+  return parsed.data.map((row) => ({
+    withdrawnAt: row.withdrawn_at,
+    reason: row.reason,
+    note: row.note,
+  }));
+}
 
 /** The owner's sightings on their post (server-enforced NOT_OWNER otherwise).
  *  PRIVACY: the payload's spotter block is first name + reputation only —
@@ -844,15 +899,25 @@ export { SightingWithdrawError };
  * vocabulary — withdrawReasons.ts) and, once the server has accepted the
  * withdrawal, tells the owner (notify-sighting-withdrawn — fire-and-forget,
  * like notifySighting after create: a lost dispatch costs the notice, never
- * the withdrawal).
+ * the withdrawal). With 'other' only, it may carry the spotter's NOTE:
+ * cleaned (cleanWithdrawNote), sent as p_note only when one is left, and
+ * never logged — only whether there was one. The owner reads it in the app.
  */
 export async function withdrawSighting(
   sightingId: string,
   reason: WithdrawReason | null = null,
+  note: string | null = null,
 ): Promise<void> {
+  // A note only ever goes with "Something else" (the server refuses it
+  // otherwise), cleaned of what the server would refuse. ⚠️ p_note is sent
+  // ONLY when there is one: a call without it resolves on the server before
+  // 20261009180000 as well as after, so a withdrawal never depends on the
+  // order the two releases land in.
+  const cleanNote = reason === 'other' ? cleanWithdrawNote(note) : null;
   const { error } = await supabase.rpc('withdraw_sighting', {
     p_sighting_id: sightingId,
     p_reason: reason,
+    ...(cleanNote === null ? {} : { p_note: cleanNote }),
   });
   if (error) {
     const notWithdrawable = error.message.includes('SIGHTING_NOT_WITHDRAWABLE');
@@ -868,6 +933,11 @@ export async function withdrawSighting(
       notWithdrawable ? 'SIGHTING_NOT_WITHDRAWABLE' : 'UNKNOWN',
     );
   }
-  log.info('sighting_withdrawn', { sightingId, gaveReason: reason !== null });
+  // SAFETY: whether there was a note — never its words.
+  log.info('sighting_withdrawn', {
+    sightingId,
+    gaveReason: reason !== null,
+    gaveNote: cleanNote !== null,
+  });
   notifySightingWithdrawn(sightingId);
 }

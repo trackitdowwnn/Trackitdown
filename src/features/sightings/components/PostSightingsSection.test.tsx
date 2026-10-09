@@ -53,6 +53,10 @@ const mockPublicHook = jest.fn();
 jest.mock('../hooks/usePublicSightingEntries', () => ({
   usePublicSightingEntries: (postId: string, enabled: boolean) => mockPublicHook(postId, enabled),
 }));
+const mockWithdrawalsHook = jest.fn();
+jest.mock('../hooks/usePostWithdrawals', () => ({
+  usePostWithdrawals: (postId: string, enabled: boolean) => mockWithdrawalsHook(postId, enabled),
+}));
 
 const sighting = (id: string, createdAt: string): OwnerSighting => ({
   id,
@@ -116,6 +120,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockOwnerHook.mockReturnValue(ownerReady([]));
   mockPublicHook.mockReturnValue(null);
+  mockWithdrawalsHook.mockReturnValue([]);
 });
 
 describe('sightingsSummaryLine', () => {
@@ -269,5 +274,66 @@ describe('public face', () => {
     const empty = await renderSection({ postId: 'p1', isOwner: false });
     expect(empty.queryByText('Sighting activity')).toBeNull();
     expect(empty.queryByText(/No sightings yet/)).toBeNull(); // no owner empty copy either
+  });
+});
+
+describe('"Taken back" — where the owner reads a withdrawal note (2026-10-09)', () => {
+  const withdrawals = [
+    {
+      withdrawnAt: new Date(Date.now() - 2 * 3600_000).toISOString(),
+      reason: 'other' as const,
+      note: 'I think it was my neighbour’s car, sorry',
+    },
+    {
+      withdrawnAt: new Date(Date.now() - 26 * 3600_000).toISOString(),
+      reason: 'not_the_car' as const,
+      note: null,
+    },
+  ];
+
+  it('shows the owner each sighting taken back, and the spotter’s note as theirs', async () => {
+    mockWithdrawalsHook.mockReturnValue(withdrawals);
+    const { getByText, getByTestId } = await renderSection({ postId: 'p1', isOwner: true });
+    expect(mockWithdrawalsHook).toHaveBeenCalledWith('p1', true);
+    expect(getByText('Taken back')).toBeTruthy();
+    expect(getByText('The spotter withdrew it.')).toBeTruthy();
+    expect(getByText('The spotter says it wasn’t your car.')).toBeTruthy();
+    // One element to a screen reader: the label and the words together.
+    expect(getByTestId('taken-back-note')).toBeTruthy();
+    expect(getByText('Written by the spotter')).toBeTruthy();
+    expect(getByText('I think it was my neighbour’s car, sorry')).toBeTruthy();
+  });
+
+  it('holds the list back while the live sightings are still loading', async () => {
+    mockWithdrawalsHook.mockReturnValue(withdrawals);
+    mockOwnerHook.mockReturnValue({
+      status: 'loading',
+      sightings: [],
+      photoUrls: {},
+      retry: jest.fn(),
+    });
+    const { queryByTestId } = await renderSection({ postId: 'p1', isOwner: true });
+    expect(queryByTestId('taken-back')).toBeNull();
+  });
+
+  it('shows it even when no live sighting is left', async () => {
+    mockWithdrawalsHook.mockReturnValue(withdrawals);
+    const { getByText, getByTestId } = await renderSection({ postId: 'p1', isOwner: true });
+    expect(getByText('No sightings yet — spotters in the area have been alerted.')).toBeTruthy();
+    expect(getByTestId('taken-back')).toBeTruthy();
+  });
+
+  it('is absent when nothing was taken back', async () => {
+    const { queryByTestId } = await renderSection({ postId: 'p1', isOwner: true });
+    expect(queryByTestId('taken-back')).toBeNull();
+  });
+
+  it('⚠️ is never asked for, nor shown, on the public face', async () => {
+    mockWithdrawalsHook.mockReturnValue(withdrawals);
+    mockPublicHook.mockReturnValue(publicData([new Date().toISOString()]));
+    const { queryByTestId, queryByText } = await renderSection({ postId: 'p1', isOwner: false });
+    expect(mockWithdrawalsHook).toHaveBeenCalledWith('p1', false);
+    expect(queryByTestId('taken-back')).toBeNull();
+    expect(queryByText(/neighbour/)).toBeNull();
   });
 });

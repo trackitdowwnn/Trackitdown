@@ -8,14 +8,24 @@
  *        INVALID_INPUT — a spotter could not take a report back by picking
  *        it. Lives here (not beside the source) because it reads migration
  *        files, which needs node types — as notificationKinds.test.ts does.
+ *        Since 20261009180000 the "Something else" NOTE too: the app's
+ *        length cap, and the hidden characters it strips, must match what
+ *        withdraw_sighting refuses — or a spotter's withdrawal fails over a
+ *        character they can't see.
  * LINKS: src/features/sightings/lib/withdrawReasons.ts;
- *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql.
+ *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql;
+ *        supabase/migrations/20261009180000_a_withdrawal_can_say_more.sql.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { WITHDRAW_REASONS } from '../../src/features/sightings/lib/withdrawReasons';
+import {
+  cleanWithdrawNote,
+  MAX_WITHDRAW_NOTE_LENGTH,
+  WITHDRAW_REASONS,
+  withdrawalSentence,
+} from '../../src/features/sightings/lib/withdrawReasons';
 
 const MIGRATIONS_DIR = join(__dirname, '../migrations');
 
@@ -43,10 +53,10 @@ function latestRpcReasons(): string[] {
   for (const name of [...files].reverse()) {
     const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
     const body = sql.match(
-      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$\$([\s\S]*?)\$\$/,
+      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$(\w*)\$([\s\S]*?)\$\1\$/i,
     );
     if (!body) continue;
-    const list = body[1].match(/p_reason not in \(([^)]*)\)/);
+    const list = body[2].match(/p_reason not in \(([^)]*)\)/);
     if (!list) throw new Error(`${name}: withdraw_sighting has no p_reason check`);
     return [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
   }
@@ -62,5 +72,76 @@ describe('withdraw reasons', () => {
     // Two lists in SQL (the CHECK and the RPC's pre-check): a migration that
     // widened one but not the other would refuse an answer the app offers.
     expect([...WITHDRAW_REASONS].sort()).toEqual(latestRpcReasons().sort());
+  });
+});
+
+/** The latest withdraw_sighting body. */
+function latestWithdrawBody(): string {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const body = sql.match(
+      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$(\w*)\$([\s\S]*?)\$\1\$/i,
+    );
+    if (body) return body[2];
+  }
+  throw new Error('withdraw_sighting not found in any migration');
+}
+
+describe('the "Something else" note', () => {
+  it('⚠️ the app caps it where withdraw_sighting does', () => {
+    const cap = latestWithdrawBody().match(/char_length\(v_note\) > (\d+)/);
+    expect(cap).not.toBeNull();
+    expect(MAX_WITHDRAW_NOTE_LENGTH).toBe(Number(cap![1]));
+  });
+
+  it('⚠️ the app strips exactly the characters withdraw_sighting refuses', () => {
+    const found = latestWithdrawBody().match(/if v_note ~ '(\[[^']*\])' then/);
+    expect(found).not.toBeNull();
+    // Postgres writes "x" escapes (two hex digits each, here) where JS
+    // wants "u00"; every other escape in the class is spelled the same in
+    // both. The backslash is built, not typed, so no escape is mistyped.
+    const backslash = String.fromCharCode(92);
+    const refused = new RegExp(found![1].split(`${backslash}x`).join(`${backslash}u00`));
+    const mismatches: string[] = [];
+    for (let cp = 1; cp <= 0xffff; cp += 1) {
+      if (cp >= 0xd800 && cp <= 0xdfff) continue;
+      const ch = String.fromCharCode(cp);
+      const appStrips = cleanWithdrawNote(`a${ch}b`) === 'ab';
+      if (refused.test(ch) !== appStrips) mismatches.push(cp.toString(16));
+    }
+    expect(mismatches).toEqual([]);
+  });
+});
+
+/** The latest claim_sighting_withdrawn_notification body — the push copy. */
+function latestClaimBody(): string {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const body = sql.match(
+      /create (?:or replace )?function public\.claim_sighting_withdrawn_notification\([\s\S]*?\$(\w*)\$([\s\S]*?)\$\1\$/i,
+    );
+    if (body) return body[2];
+  }
+  throw new Error('claim_sighting_withdrawn_notification not found in any migration');
+}
+
+describe('the owner’s "Taken back" list', () => {
+  it('⚠️ says, for every answer, the sentence the push gave', () => {
+    // SQL doubles its apostrophes and uses the straight one; the app sets
+    // the typographic one. The WORDS must be the same. (With a note the
+    // push says "…withdrew it and left you a note."; the list says "The
+    // spotter withdrew it." and shows the note itself beneath — so it is
+    // that plain sentence this holds to the SQL.)
+    const push = latestClaimBody().replace(/''/g, "'");
+    for (const reason of [...WITHDRAW_REASONS, null]) {
+      const sentence = withdrawalSentence(reason).replace(/’/g, "'");
+      expect(push).toContain(`'${sentence}'`);
+    }
   });
 });

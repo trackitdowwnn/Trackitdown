@@ -14,6 +14,9 @@
  *        payload types don't overlap. The owner's warm empty state exists;
  *        the public face has NO empty state by design (an absent section
  *        signals nothing to a thief casing the page).
+ *        Since 2026-10-09 the owner face also ends with a quiet "Taken back"
+ *        list (TakenBackList) — where a spotter's "Something else" note is
+ *        read, since it never travels in a push.
  * LINKS: src/features/vehicles/components/PostDetailBody.tsx (host);
  *        src/features/sightings/components/SightingTimeline.tsx;
  *        docs/decisions/ADR-0008-public-sighting-entries.md;
@@ -28,12 +31,14 @@ import { createLogger } from '@/shared/lib/logger';
 import { motion, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { usePostSightings } from '../hooks/usePostSightings';
+import { usePostWithdrawals } from '../hooks/usePostWithdrawals';
 import { usePublicSightingEntries } from '../hooks/usePublicSightingEntries';
 import { isGoneSighting } from '../lib/sightingVerdict';
 import { locatedTrail, type TimelineAnchorSource } from '../lib/timelineModel';
 import type { OwnerSighting, PublicSightingEntry } from '../types';
 import { SightingsTrailMap, type TrailMapPoint } from './SightingsTrailMap';
 import { OwnerSightingTimeline, PublicSightingTimeline } from './SightingTimeline';
+import { TakenBackList } from './TakenBackList';
 
 const log = createLogger('sightings');
 
@@ -90,6 +95,8 @@ export function PostSightingsSection({
   // `enabled`, so exactly one request is ever made per mount.
   const owner = usePostSightings(postId, isOwner);
   const publicEntries = usePublicSightingEntries(postId, !isOwner);
+  // SAFETY: owner face only — the public face makes no request for it.
+  const withdrawals = usePostWithdrawals(postId, isOwner);
 
   const hasPublicContent = !isOwner && (publicEntries?.entries.length ?? 0) > 0;
   // One view log per mount, once real content is on screen (ids only).
@@ -206,6 +213,11 @@ export function PostSightingsSection({
             ) : null}
           </>
         )}
+        {/* Sightings taken back that the owner was told about — and, for
+            "Something else", the spotter's note. Only here: never pushed.
+            Held until the live activity has settled, so it never shows
+            under "Checking…" and then jumps down. */}
+        {owner.status !== 'loading' ? <TakenBackList withdrawals={withdrawals} /> : null}
       </View>
     </View>
   );
