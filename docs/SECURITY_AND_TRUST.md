@@ -194,10 +194,16 @@ commenting standards.
 - **Push notifications leave our infrastructure.** Every push travels through
   Expo and then Apple/Google, so its contents are readable by parties outside
   the app. Therefore:
-  - A push payload carries **ids only** (`postId` / `threadId`), parsed
+  - A push payload carries **ids only** (`postId` / `threadId` /
+    `sightingId`), parsed
     client-side through a `.strict()` schema so a widened payload fails to
     parse rather than being acted on. The client re-fetches everything else
     through RLS after the tap.
+    Accepted trade-off (2026-10-09, #147): the owner's "new sighting" push
+    and that spotter's later pushes about it carry the SAME `sightingId`, so
+    Expo/Apple/Google could link one owner to one spotter per sighting — not
+    only per post. Random ids, nothing about either person rides with them;
+    the ids are not logged client-side for the same reason as `threadId`.
   - The visible push — title or body — may name make, colour and a
     **district-grain** locality. ⚠️ Deliberately field-agnostic since
     2026-09-22, when the copy pass moved the alert's locality and the
