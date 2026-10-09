@@ -555,8 +555,9 @@ begin
     raise exception 'CHECK 12 FAILED: a 200-character note was not stored whole';
   end if;
 
-  -- Blank includes no-break spaces: nothing visible is no note.
-  perform public.withdraw_sighting(v_n5, 'other', E'    \n  ');
+  -- Blank includes no-break, narrow and figure spaces and the Hangul filler:
+  -- nothing visible is no note.
+  perform public.withdraw_sighting(v_n5, 'other', E'   \u00A0\n \u202F\u2007\u3164\u00A0');
   select status, withdraw_note into v_status, v_stored from public.sightings where id = v_n5;
   if v_status <> 'withdrawn' or v_stored is not null then
     raise exception 'CHECK 12 FAILED: a blank note was stored as % (status %)', v_stored, v_status;
@@ -567,7 +568,7 @@ begin
   -- ⚠️ A text-direction override (it can make a line read as something else
   -- on screen) is refused, and nothing is written.
   begin
-    perform public.withdraw_sighting(v_n7, 'other', E'it was fine ‮tsil kcalb');
+    perform public.withdraw_sighting(v_n7, 'other', E'it was fine \u202Etsil kcalb');
     raise exception 'CHECK 12 FAILED: a note with a direction override was accepted';
   exception
     when sqlstate 'P0001' then
@@ -614,7 +615,7 @@ begin
     when check_violation then null;
   end;
   begin
-    update public.sightings set withdraw_note = E'ok ‮' || 'x' where id = v_n1;
+    update public.sightings set withdraw_note = E'ok \u202E' || 'x' where id = v_n1;
     raise exception 'CHECK 12 FAILED: a direction override got past the constraint';
   exception
     when check_violation then null;

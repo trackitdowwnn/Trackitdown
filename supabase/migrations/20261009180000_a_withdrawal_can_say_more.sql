@@ -67,7 +67,7 @@ alter table public.sightings add constraint sightings_withdraw_note_chk
          or (withdraw_reason is not distinct from 'other'
              and char_length(withdraw_note) between 1 and 200
              and withdraw_note = btrim(withdraw_note, E' \t\r\n')
-             and withdraw_note !~ '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F​-‏‪-‮⁦-⁩﻿]'));
+             and withdraw_note !~ '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]'));
 
 -- Restated: its 20261009150000 comment said "there is no free-text reason
 -- anywhere", which stops being true here.
@@ -115,10 +115,11 @@ begin
     raise exception 'INVALID_INPUT';
   end if;
 
-  -- A note with nothing visible in it (only spaces of any kind, including
-  -- no-break ones) is no note — or the push would say "left you a note"
-  -- over a blank.
-  if v_note !~ '[^[:space:] ]' then
+  -- A note with nothing visible in it (only spaces of any kind — no-break,
+  -- figure and narrow ones are named, since [:space:] may not cover them
+  -- under every locale — or the blank-looking Hangul filler) is no note, or
+  -- the push would say "left you a note" over a blank.
+  if v_note !~ '[^[:space:]\u00A0\u2007\u202F\u3164]' then
     v_note := null;
   end if;
 
@@ -130,12 +131,13 @@ begin
     raise exception 'INVALID_INPUT';
   end if;
 
-  -- SAFETY: no control characters (bar tab and line breaks), no zero-width
-  -- characters and no text-direction overrides. Unmoderated words shown to
-  -- a theft victim must read as what they are; a direction override can make
-  -- a line say something else on screen. The app strips the same set before
-  -- sending, so a spotter never meets this refusal.
-  if v_note ~ '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F​-‏‪-‮⁦-⁩﻿]' then
+  -- SAFETY: no control characters (C0 bar tab and line breaks, and C1), no
+  -- soft hyphens, zero-width characters or joiners, and no text-direction
+  -- marks. Unmoderated words shown to a theft victim must read as what they
+  -- are; a direction override can make a line say something else on screen.
+  -- Written as escapes so the set can be read in review. The app strips the
+  -- same set before sending, so a spotter never meets this refusal.
+  if v_note ~ '[\x01-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]' then
     raise exception 'INVALID_INPUT';
   end if;
 
