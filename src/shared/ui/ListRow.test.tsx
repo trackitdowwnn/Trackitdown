@@ -1,7 +1,7 @@
 /**
  * WHAT:  Tests for ListRow — render variants (value, subtitle, destructive),
- *        press wiring, disabled state, chevron-only-when-pressable, and the
- *        combined accessibility label.
+ *        press wiring, disabled state, chevron-only-when-pressable, the
+ *        combined accessibility label, and the optional accessibility hint.
  * WHY:   Every settings row in the app rides on this; a swallowed press or a
  *        missing value in the spoken label breaks hub screens everywhere.
  * LINKS: src/shared/ui/ListRow.tsx; docs/TESTING.md.
@@ -155,5 +155,20 @@ describe('⚠️ the value at large text', () => {
     );
 
     expect(getByTestId('row').props.accessibilityLabel).toBe('Notifications, Not allowed');
+  });
+});
+
+describe('accessibilityHint', () => {
+  it('says what a tap does when the role alone does not — e.g. clearing a chosen answer', async () => {
+    const { getByTestId } = await render(
+      <ListRow
+        title="Something else"
+        selected
+        onPress={() => {}}
+        accessibilityHint="Double tap to clear"
+        testID="row"
+      />,
+    );
+    expect(getByTestId('row').props.accessibilityHint).toBe('Double tap to clear');
   });
 });

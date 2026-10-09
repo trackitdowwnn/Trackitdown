@@ -1,5 +1,6 @@
 /**
- * WHAT:  Tests for WithdrawSightingSheet — the four fixed answers, nothing
+ * WHAT:  Tests for WithdrawSightingSheet — the question alone as the title,
+ *        tagged optional; the four fixed answers in one column, nothing
  *        preselected; confirming with no answer sends null; a chosen answer
  *        is sent; tapping it again clears it; "Keep it" sends nothing; and a
  *        reopened sheet starts unanswered.
@@ -72,17 +73,21 @@ const setup = async () => {
   return { ...view, ref, onConfirm, onDismiss, open, press };
 };
 
-it('asks why, with four fixed answers and none chosen', async () => {
+it('is just the question — marked optional — with four fixed answers and none chosen', async () => {
   const s = await setup();
   await s.open();
-  expect(s.getByText('Take this report back?')).toBeTruthy();
+  expect(s.getByRole('header', { name: 'Why are you taking this back?' })).toBeTruthy();
+  expect(s.getByLabelText('Optional')).toBeTruthy();
+  // The owner asked for the question alone: no old title, no explanation.
+  expect(s.queryByText('Take this report back?')).toBeNull();
+  expect(s.queryByText(/we’ll pass this on/)).toBeNull();
   for (const label of [
     'It wasn’t the car',
     'I’m not sure it was the car',
     'I reported it by mistake',
     'Something else',
   ]) {
-    expect(s.getByRole('radio', { name: label }).props.accessibilityState.checked).toBe(false);
+    expect(s.getByRole('radio', { name: label }).props.accessibilityState.selected).toBe(false);
   }
   // ⚠️ No text box: the answer reaches the owner as a fixed sentence only.
   expect(JSON.stringify(s.toJSON())).not.toContain('"type":"TextInput"');

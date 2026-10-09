@@ -1,40 +1,46 @@
 /**
- * WHAT:  WithdrawSightingSheet — "Take this report back?": what taking it back
- *        means, an OPTIONAL "Why are you taking it back?" with four fixed
- *        answers, then [Take it back] / [Keep it].
+ * WHAT:  WithdrawSightingSheet — "Why are you taking this back?" (with a small
+ *        "Optional" tag), four fixed answers in a single column, then
+ *        [Take it back] / [Keep it].
  * WHY:   2026-10-09 (owner request): the owner is now told when a sighting is
  *        taken back, and wanted to know why. It replaces the plain
- *        ConfirmDialog the withdraw flow used, keeping its words and its
- *        destructive confirm — withdrawing still cannot be undone and still
- *        spends the day's slot for that car.
+ *        ConfirmDialog the withdraw flow used, keeping its destructive confirm.
+ *
+ *        ⚠️ THE QUESTION IS THE WHOLE SHEET (owner request, the same day):
+ *        the "Take this report back?" title and its explanatory lines went,
+ *        and the "Optional. If the owner was told…" sentence became a small
+ *        "Optional" tag beside the question — the owner found the longer
+ *        version too much to read for one tap. The irreversible facts (the
+ *        owner stops seeing it; it can't be re-filed today) are still said by
+ *        the destructive button and the toast that follows.
+ *
+ *        ⚠️ ONE COLUMN, NOT CHIPS (owner: the chips "looked jumbled"). Four
+ *        sentence-length answers wrapped raggedly as chips; ListRow's chooser
+ *        rows sit one per line with a check on the chosen one — the pattern
+ *        CollectionPickerSheet uses for the same job.
  *
  *        ⚠️ OPTIONAL, AND NOTHING PRESELECTED. Taking back a report you doubt
  *        is the right thing to do; the sheet must not make it harder, nor
  *        put words in the spotter's mouth. Tapping the chosen answer again
- *        clears it. No answer → the owner reads "The spotter withdrew it."
+ *        clears it (and a screen reader is told so). No answer → the owner
+ *        reads "The spotter withdrew it."
  *
  *        ⚠️ FIXED ANSWERS, NO TEXT BOX. The answer reaches the owner's lock
  *        screen as a sentence built in SQL; a stranger's own words can't be
- *        moderated yet (SECURITY_AND_TRUST §3, §7). The hint promises only
- *        what the server does: the notice follows a sighting the owner heard
- *        about, on a listing that is still up (the claim's notified_at and
- *        active gates).
- *
- *        Chips, not cards, and one body line (ui review of #150): as cards
- *        with a second paragraph the sheet reached ~660pt and pushed its
- *        buttons below the fold on a small phone (DESIGN_SYSTEM records the
- *        same failure at 740pt).
+ *        moderated yet (SECURITY_AND_TRUST §3, §7).
  * LINKS: ../lib/withdrawReasons.ts (the answers);
  *        ../screens/MySightingsScreen.tsx (opens it, sends the withdrawal);
- *        src/shared/ui/ConfirmDialog.tsx (the shape it extends);
+ *        src/shared/ui/ListRow.tsx (the chooser rows);
+ *        src/features/watchlist/components/CollectionPickerSheet.tsx (the
+ *          same single-column chooser in a sheet);
  *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql.
  */
 
 import { useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { BottomSheet, Button, ChoiceChips, type BottomSheetRef } from '@/shared/ui';
+import { radii, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import { BottomSheet, Button, ListRow, type BottomSheetRef } from '@/shared/ui';
 
 import {
   WITHDRAW_REASONS,
@@ -56,14 +62,9 @@ export interface WithdrawSightingSheetProps {
   onDismiss?: () => void;
 }
 
-const QUESTION = 'Why are you taking it back?';
+const QUESTION = 'Why are you taking this back?';
 
-const OPTIONS = WITHDRAW_REASONS.map((value) => ({
-  value,
-  label: WITHDRAW_REASON_LABELS[value],
-}));
-
-/** "Take this report back?", with an optional why — see the header. */
+/** The question, its answers and the decision — see the header. */
 export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSightingSheetProps) {
   const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
@@ -84,45 +85,41 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
   return (
     <BottomSheet
       ref={sheetRef}
-      title="Take this report back?"
       onDismiss={() => {
         if (!confirmed.current) onDismiss?.();
       }}
     >
-      {/* Three blocks — the consequence, the question, the decision — 24pt
-          apart, so "Take it back" never reads as a fifth answer. */}
       <View style={styles.content}>
-        <Text style={styles.body}>
-          The owner will no longer see it, and you can’t re-file it for this car today.
-        </Text>
-
-        <View style={styles.question}>
-          <Text style={styles.questionLabel} accessibilityRole="header">
+        {/* The sheet's own heading (BottomSheet's title style), with the
+            "Optional" tag beside it rather than a sentence beneath. */}
+        <View style={styles.header}>
+          <Text style={styles.title} accessibilityRole="header">
             {QUESTION}
           </Text>
-          {/* ⚠️ Exactly as wide as the server's promise: the owner hears only
-              if they were told of the sighting AND the listing is still up
-              (the claim's notified_at + active gates). "Something else" sends
-              no reason — the owner reads the same plain sentence as none. */}
-          <Text style={styles.hint}>
-            Optional. If the owner was told about it and the listing is still up, we’ll pass this
-            on.
-          </Text>
-          {/* Chips, not cards (ui review of #150): the design system's
-              control for an optional single answer — lighter than four
-              bordered cards, and `clearable` tells a screen reader that the
-              chosen answer can be tapped again to clear it. */}
-          {/* 16 above the chips (the group's 8 + this 8): the hint belongs to
-              the question, not to the answers. */}
-          <View style={styles.chips}>
-            <ChoiceChips
-              options={OPTIONS}
-              value={reason}
-              onSelect={(value) => setReason((current) => (current === value ? null : value))}
-              clearable
-              accessibilityLabel={`${QUESTION} Optional.`}
-            />
+          <View style={styles.tag} accessible accessibilityLabel="Optional">
+            <Text style={styles.tagText}>Optional</Text>
           </View>
+        </View>
+
+        <View
+          style={styles.list}
+          accessibilityRole="radiogroup"
+          accessibilityLabel={`${QUESTION} Optional.`}
+        >
+          {WITHDRAW_REASONS.map((value) => {
+            const chosen = reason === value;
+            return (
+              <ListRow
+                key={value}
+                title={WITHDRAW_REASON_LABELS[value]}
+                selected={chosen}
+                // Tap the chosen answer again to clear it — it is optional.
+                onPress={() => setReason((current) => (current === value ? null : value))}
+                accessibilityHint={chosen ? 'Double tap to clear' : undefined}
+                testID={`withdraw-reason-${value}`}
+              />
+            );
+          })}
         </View>
 
         <View style={styles.actions}>
@@ -149,29 +146,40 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     content: {
-      gap: spacing.xl,
+      gap: spacing.lg,
     },
-    body: {
-      ...typography.body,
-      color: c.textSecondary,
-    },
-    question: {
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
       gap: spacing.sm,
     },
-    // A question header (DESIGN_SYSTEM: cardTitle, one step under the sheet's
-    // title), with its grey hint beneath.
-    questionLabel: {
-      ...typography.cardTitle,
+    // BottomSheet's own title style, so the sheet reads as titled by the
+    // question.
+    title: {
+      ...typography.heading,
       color: c.textPrimary,
+      flexShrink: 1,
     },
-    hint: {
+    // Small and quiet: a hint, not an instruction.
+    tag: {
+      backgroundColor: c.surfaceSubtle,
+      borderRadius: radii.full,
+      // StatusPill's padding: the app's one small-tag size.
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    tagText: {
       ...typography.caption,
       color: c.textSecondary,
     },
+    // ListRow insets its own content by `md`; pulling the list out by the
+    // same amount lines each answer up with the question above it.
+    list: {
+      marginHorizontal: -spacing.md,
+    },
     actions: {
       gap: spacing.md,
-    },
-    chips: {
       marginTop: spacing.sm,
     },
   });

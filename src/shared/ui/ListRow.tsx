@@ -74,6 +74,10 @@ export interface ListRowProps {
    */
   trailing?: ReactNode;
   disabled?: boolean;
+  /** What tapping does, when the role alone doesn't say — e.g. "Double tap
+   *  to clear" on a chosen answer that can be unchosen (a radio otherwise
+   *  promises it can't). */
+  accessibilityHint?: string;
   testID?: string;
 }
 
@@ -88,6 +92,7 @@ export function ListRow({
   toggled,
   trailing,
   disabled = false,
+  accessibilityHint,
   testID,
 }: ListRowProps) {
   const styles = useThemedStyles(makeStyles);
@@ -138,6 +143,7 @@ export function ListRow({
         ...(toggled === undefined ? {} : { checked: toggled }),
       }}
       accessibilityLabel={[title, value, subtitle].filter(Boolean).join(', ')}
+      accessibilityHint={accessibilityHint}
       testID={testID}
     >
       {Icon ? <Icon size={sizes.icon} color={iconColor} /> : null}

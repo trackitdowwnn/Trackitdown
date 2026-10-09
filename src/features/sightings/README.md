@@ -276,8 +276,9 @@ and Payouts shows nothing for a paid, lapsed or no-reward credit (the reason
 `pushRoute` keeps those pushes away from it).
 
 **Taking a report back** ("Take this back", unverified only) opens
-`WithdrawSightingSheet` (2026-10-09): what it means, an OPTIONAL "Why are you
-taking it back?" with four fixed answers (`lib/withdrawReasons.ts`, mirroring
+`WithdrawSightingSheet` (2026-10-09): just the question — "Why are you taking
+this back?" with a small "Optional" tag — and four fixed answers in one column
+(`ListRow` chooser rows; `lib/withdrawReasons.ts`, mirroring
 `sightings_withdraw_reason_chk`; no text box), then Take it back / Keep it.
 `withdrawSighting(id, reason)` sends the answer and, once the server accepts,
 dispatches `notify-sighting-withdrawn`: the owner — if they had been told about
