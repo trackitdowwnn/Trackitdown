@@ -317,7 +317,11 @@ same place.
 - Read state: nothing auto-marks. Tap marks one (optimistic, RPC behind);
   "Mark all as read" is the bulk affordance; a push TAP marks by kind+payload
   match (`mark_notifications_read_by_payload`) — no per-user row id rides a
-  shared push. All marking via RPCs; clients hold no update grant.
+  shared push. All marking via RPCs; clients hold no update grant. Since
+  2026-10-09 a "new sighting" row carries its `sightingId`, so a push tap
+  marks THAT sighting's row only — not every sighting row for the post, as
+  the old identical `{type, postId}` payloads did. Pushes still collapse per
+  post, so the earlier sightings stay unread in the centre until opened.
 - Badge: `lib/inboxBadge.ts` sums chat unread + center unread; both hooks
   report through it and set the one `inbox` badge. Chat imports us — never
   the reverse.
