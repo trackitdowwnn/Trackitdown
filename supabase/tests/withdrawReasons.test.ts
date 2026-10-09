@@ -34,8 +34,33 @@ function latestReasonCheck(): string[] {
   throw new Error('sightings_withdraw_reason_chk not found in any migration');
 }
 
+/** The values withdraw_sighting's own pre-check accepts, from the latest
+ *  migration that (re)creates it — the gate that answers INVALID_INPUT. */
+function latestRpcReasons(): string[] {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const body = sql.match(
+      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$\$([\s\S]*?)\$\$/,
+    );
+    if (!body) continue;
+    const list = body[1].match(/p_reason not in \(([^)]*)\)/);
+    if (!list) throw new Error(`${name}: withdraw_sighting has no p_reason check`);
+    return [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  }
+  throw new Error('withdraw_sighting with a reason not found in any migration');
+}
+
 describe('withdraw reasons', () => {
-  it('⚠️ the app offers exactly the answers the database accepts', () => {
+  it('⚠️ the app offers exactly the answers the table accepts', () => {
     expect([...WITHDRAW_REASONS].sort()).toEqual(latestReasonCheck().sort());
+  });
+
+  it('⚠️ …and exactly the answers withdraw_sighting itself accepts', () => {
+    // Two lists in SQL (the CHECK and the RPC's pre-check): a migration that
+    // widened one but not the other would refuse an answer the app offers.
+    expect([...WITHDRAW_REASONS].sort()).toEqual(latestRpcReasons().sort());
   });
 });

@@ -15,10 +15,15 @@
  *
  *        ⚠️ FIXED ANSWERS, NO TEXT BOX. The answer reaches the owner's lock
  *        screen as a sentence built in SQL; a stranger's own words can't be
- *        moderated yet (SECURITY_AND_TRUST §3, §7). The copy says the owner is
- *        told "if they were told about it": the notice only follows a
- *        sighting the owner heard about (the claim's notified_at gate), and a
- *        promise wider than that would be untrue.
+ *        moderated yet (SECURITY_AND_TRUST §3, §7). The hint promises only
+ *        what the server does: the notice follows a sighting the owner heard
+ *        about, on a listing that is still up (the claim's notified_at and
+ *        active gates).
+ *
+ *        Chips, not cards, and one body line (ui review of #150): as cards
+ *        with a second paragraph the sheet reached ~660pt and pushed its
+ *        buttons below the fold on a small phone (DESIGN_SYSTEM records the
+ *        same failure at 740pt).
  * LINKS: ../lib/withdrawReasons.ts (the answers);
  *        ../screens/MySightingsScreen.tsx (opens it, sends the withdrawal);
  *        src/shared/ui/ConfirmDialog.tsx (the shape it extends);
@@ -29,7 +34,7 @@ import { useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
-import { BottomSheet, Button, CardSelect, type BottomSheetRef } from '@/shared/ui';
+import { BottomSheet, Button, ChoiceChips, type BottomSheetRef } from '@/shared/ui';
 
 import {
   WITHDRAW_REASONS,
@@ -84,37 +89,54 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
         if (!confirmed.current) onDismiss?.();
       }}
     >
+      {/* Three blocks — the consequence, the question, the decision — 24pt
+          apart, so "Take it back" never reads as a fifth answer. */}
       <View style={styles.content}>
         <Text style={styles.body}>
           The owner will no longer see it, and you can’t re-file it for this car today.
         </Text>
-        <Text style={styles.body}>
-          If they were told about it, we’ll let them know it was taken back — and why, if you say.
-        </Text>
 
         <View style={styles.question}>
           <Text style={styles.questionLabel} accessibilityRole="header">
-            {QUESTION} <Text style={styles.optional}>(optional)</Text>
+            {QUESTION}
           </Text>
-          <CardSelect
+          {/* ⚠️ Exactly as wide as the server's promise: the owner hears only
+              if they were told of the sighting AND the listing is still up
+              (the claim's notified_at + active gates). "Something else" sends
+              no reason — the owner reads the same plain sentence as none. */}
+          <Text style={styles.hint}>
+            Optional. If the owner was told about it and the listing is still up, we’ll pass this
+            on.
+          </Text>
+          {/* Chips, not cards (ui review of #150): the design system's
+              control for an optional single answer — lighter than four
+              bordered cards, and `clearable` tells a screen reader that the
+              chosen answer can be tapped again to clear it. */}
+          <ChoiceChips
             options={OPTIONS}
             value={reason}
-            // Tap the chosen answer again to clear it — it is optional.
             onSelect={(value) => setReason((current) => (current === value ? null : value))}
+            clearable
             accessibilityLabel={`${QUESTION} Optional.`}
           />
         </View>
 
-        <Button
-          label="Take it back"
-          variant="danger"
-          onPress={() => {
-            confirmed.current = true;
-            sheetRef.current?.close();
-            onConfirm(reason);
-          }}
-        />
-        <Button label="Keep it" variant="ghost" onPress={() => sheetRef.current?.close()} />
+        <View style={styles.actions}>
+          <Button
+            label="Take it back"
+            variant="danger"
+            onPress={() => {
+              // One withdrawal per open: a quick double tap while the sheet
+              // closes would send it twice (the second refused, with an error
+              // toast after the success one).
+              if (confirmed.current) return;
+              confirmed.current = true;
+              sheetRef.current?.close();
+              onConfirm(reason);
+            }}
+          />
+          <Button label="Keep it" variant="ghost" onPress={() => sheetRef.current?.close()} />
+        </View>
       </View>
     </BottomSheet>
   );
@@ -123,7 +145,7 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     content: {
-      gap: spacing.md,
+      gap: spacing.xl,
     },
     body: {
       ...typography.body,
@@ -131,13 +153,18 @@ const makeStyles = (c: Palette) =>
     },
     question: {
       gap: spacing.sm,
-      marginTop: spacing.sm,
     },
+    // A question header (DESIGN_SYSTEM: cardTitle, one step under the sheet's
+    // title), with its grey hint beneath.
     questionLabel: {
-      ...typography.label,
+      ...typography.cardTitle,
       color: c.textPrimary,
     },
-    optional: {
+    hint: {
+      ...typography.caption,
       color: c.textSecondary,
+    },
+    actions: {
+      gap: spacing.md,
     },
   });

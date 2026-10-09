@@ -76,14 +76,33 @@ jest.mock('../api/sightingApi', () => ({
 // The "why are you taking it back?" sheet, fired straight through with a
 // chosen answer: what these tests are about is what the screen does WITH a
 // confirmation; the sheet has its own suite.
+// It takes the ref, so a test can see the screen actually OPEN it, and offers
+// dismiss as well as confirm.
 let mockSheetReason: string | null = null;
+const mockSheetOpen = jest.fn();
 jest.mock('../components/WithdrawSightingSheet', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
-  const { Pressable } = require('react-native');
+  const { Pressable, View } = require('react-native');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const { useImperativeHandle } = require('react');
   return {
-    WithdrawSightingSheet: ({ onConfirm }: { onConfirm: (reason: string | null) => void }) => (
-      <Pressable testID="confirm-withdraw" onPress={() => onConfirm(mockSheetReason)} />
-    ),
+    WithdrawSightingSheet: ({
+      ref,
+      onConfirm,
+      onDismiss,
+    }: {
+      ref: unknown;
+      onConfirm: (reason: string | null) => void;
+      onDismiss?: () => void;
+    }) => {
+      useImperativeHandle(ref, () => ({ open: mockSheetOpen, close: jest.fn() }));
+      return (
+        <View>
+          <Pressable testID="confirm-withdraw" onPress={() => onConfirm(mockSheetReason)} />
+          <Pressable testID="dismiss-withdraw" onPress={() => onDismiss?.()} />
+        </View>
+      );
+    },
   };
 });
 
@@ -474,13 +493,30 @@ describe('taking a report back', () => {
     // The tap alone must not call the server: withdrawing a REAL sighting by
     // mistake destroys the spotter's only claim on a bounty, and the rolling
     // rate limit counts the withdrawn row, so the slot is spent either way.
+    // It OPENS the sheet instead.
     expect(mockWithdraw).not.toHaveBeenCalled();
+    expect(mockSheetOpen).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       fireEvent.press(getByTestId('confirm-withdraw'));
     });
     // No answer chosen → the reason travels as null (it is optional).
     expect(mockWithdraw).toHaveBeenCalledWith('s1', null);
+  });
+
+  it('⚠️ "Keep it" forgets the report — a later confirm sends nothing', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('my-sighting-withdraw-s1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('dismiss-withdraw'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-withdraw'));
+    });
+    expect(mockWithdraw).not.toHaveBeenCalled();
   });
 
   it('passes the spotter’s answer to "why?" with the withdrawal (2026-10-09)', async () => {
@@ -511,7 +547,7 @@ describe('taking a report back', () => {
       fireEvent.press(getByTestId('confirm-withdraw'));
     });
 
-    expect(mockToastShow).toHaveBeenCalledWith('Sighting withdrawn — the owner no longer sees it.');
+    expect(mockToastShow).toHaveBeenCalledWith('Report taken back — the owner no longer sees it.');
   });
 
   it('⚠️ shows OUR copy when the owner ruled between render and tap', async () => {
@@ -553,7 +589,7 @@ describe('taking a report back', () => {
     });
 
     expect(mockToastShow).toHaveBeenCalledWith(
-      'We couldn’t withdraw that report. Please try again.',
+      'We couldn’t take that report back. Please try again.',
       'error',
     );
   });

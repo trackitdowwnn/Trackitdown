@@ -131,3 +131,23 @@ it('⚠️ a reopened sheet starts unanswered — never the last report’s answ
   await s.press('Take it back');
   expect(s.onConfirm).toHaveBeenCalledWith(null);
 });
+
+it('⚠️ takes it back once, however fast the second tap', async () => {
+  const s = await setup();
+  await s.open();
+  const confirm = s.getByRole('button', { name: 'Take it back' });
+  await act(async () => {
+    fireEvent.press(confirm);
+    fireEvent.press(confirm);
+  });
+  expect(s.onConfirm).toHaveBeenCalledTimes(1);
+});
+
+it('tells a screen reader the chosen answer can be cleared', async () => {
+  const s = await setup();
+  await s.open();
+  await s.press('Something else');
+  expect(s.getByRole('radio', { name: 'Something else' }).props.accessibilityHint).toBe(
+    'Double tap to clear',
+  );
+});

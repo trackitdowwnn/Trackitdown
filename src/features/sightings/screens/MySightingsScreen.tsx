@@ -210,7 +210,7 @@ export function MySightingsScreen() {
     }
     try {
       await withdrawSighting(withdrawing, reason);
-      toast.show('Sighting withdrawn — the owner no longer sees it.');
+      toast.show('Report taken back — the owner no longer sees it.');
       void refresh();
     } catch (error) {
       // ⚠️ Narrowed to our own class: a raw PostgREST message must never reach
@@ -219,7 +219,7 @@ export function MySightingsScreen() {
       toast.show(
         error instanceof SightingWithdrawError
           ? error.message
-          : 'We couldn’t withdraw that report. Please try again.',
+          : 'We couldn’t take that report back. Please try again.',
         'error',
       );
     } finally {

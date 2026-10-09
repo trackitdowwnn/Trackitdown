@@ -1,6 +1,7 @@
 /**
  * WHAT:  Fire-and-forget triggers for the notifications a user's own
- *        action causes — a sighting they reported, a message they sent.
+ *        action causes — a sighting they reported (or took back), a message
+ *        they sent, a verdict, a credit, a bug report.
  * WHY:   One door, so no feature grows its own functions.invoke and its own
  *        idea of what to do when a push fails. These are deliberately VOID and
  *        never throw: a notification is a side effect of the user's action,
@@ -14,6 +15,7 @@
  *        nobody. Nothing is lost permanently (both are visible in-app); a DB
  *        trigger with pg_net would close it.
  * LINKS: supabase/functions/notify-sighting/index.ts,
+ *        supabase/functions/notify-sighting-withdrawn/index.ts,
  *        supabase/functions/notify-message/index.ts;
  *        src/features/sightings/api/sightingApi.ts and
  *        src/features/chat/api/chatApi.ts (the callers).

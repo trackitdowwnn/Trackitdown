@@ -864,7 +864,7 @@ export async function withdrawSighting(
     throw new SightingWithdrawError(
       notWithdrawable
         ? 'This one can’t be taken back — the owner has already looked at it.'
-        : 'We couldn’t withdraw that report. Please try again.',
+        : 'We couldn’t take that report back. Please try again.',
       notWithdrawable ? 'SIGHTING_NOT_WITHDRAWABLE' : 'UNKNOWN',
     );
   }
