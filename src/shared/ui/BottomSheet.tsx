@@ -39,6 +39,7 @@ import {
   BottomSheetTextInput,
   useBottomSheetTimingConfigs,
   type BottomSheetBackdropProps,
+  type BottomSheetScrollViewMethods,
 } from '@gorhom/bottom-sheet';
 import {
   useCallback,
@@ -49,7 +50,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react';
-import { BackHandler, StyleSheet, Text, useWindowDimensions } from 'react-native';
+import { BackHandler, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '../hooks';
@@ -64,6 +65,44 @@ const ANIMATION_DURATION_MS = 250;
  *  always reads as a sheet (never a full screen) and leaves the scrim
  *  visible as a dismiss target. */
 const MAX_HEIGHT_RATIO = 0.9;
+
+/** The scroll content's top padding — also where the measured content view
+ *  starts, for the keyboard reveal below. */
+const CONTENT_PADDING_TOP = spacing.sm;
+
+/** Room kept clear below a focused input when it is scrolled above the
+ *  keyboard — enough for a TextField's helper/counter row beneath it. */
+const REVEAL_MARGIN = spacing.xxxl;
+
+/**
+ * Where the sheet's scroll view must sit so a focused input's bottom (plus
+ * `margin`) clears the keyboard — or null when it is already in view. All
+ * values in the scroll CONTENT's coordinates except `viewport`, the scroll
+ * view's own height, and `covered`, how much of its bottom the keyboard hides.
+ * An input taller than the visible strip is aligned by its TOP instead, so the
+ * start of what is being typed is never pushed off the top.
+ */
+export function sheetRevealOffset({
+  inputTop,
+  inputBottom,
+  scrollY,
+  viewport,
+  covered,
+  margin,
+}: {
+  inputTop: number;
+  inputBottom: number;
+  scrollY: number;
+  viewport: number;
+  covered: number;
+  margin: number;
+}): number | null {
+  const visible = viewport - covered;
+  if (visible <= 0) return null;
+  const wanted = inputBottom + margin;
+  if (wanted <= scrollY + visible) return null;
+  return Math.max(0, Math.min(wanted - visible, inputTop));
+}
 
 /**
  * The sheet body's side padding. Exported so full-bleed content inside a sheet
@@ -105,6 +144,54 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
   // changes (verified against @gorhom/bottom-sheet 5.2.14), so the sheet
   // would not move.
   const keyboardLift = useAndroidKeyboardHeight();
+
+  // ⚠️ THE LIFT ALONE IS NOT ENOUGH ONCE THE SHEET IS AT ITS CAP (2026-10-09,
+  // owner report: "the keyboard covers what they are typing" in the withdraw
+  // sheet's note box). The padding raises a SHORT sheet clear of the
+  // keyboard, but a tall one stops growing at MAX_HEIGHT_RATIO and starts
+  // scrolling instead — and nothing scrolled, so an input in its lower half
+  // stayed under the keyboard. So while the keyboard is up, the focused input
+  // is scrolled into the strip above it: when the keyboard arrives, and again
+  // whenever the content changes size (dynamic sizing settling, a multiline
+  // field growing a line as they type).
+  const scrollRef = useRef<BottomSheetScrollViewMethods>(null);
+  const contentRef = useRef<View>(null);
+  const viewportHeight = useRef(0);
+  const scrollY = useRef(0);
+  const revealFocusedInput = useCallback(() => {
+    if (keyboardLift === 0) return;
+    const input = TextInput.State.currentlyFocusedInput();
+    const content = contentRef.current;
+    if (!input || !content) return;
+    input.measureLayout(
+      content,
+      (_x, y, _width, height) => {
+        // The content view starts below the container's top padding.
+        const inputTop = CONTENT_PADDING_TOP + y;
+        const offset = sheetRevealOffset({
+          inputTop,
+          inputBottom: inputTop + height,
+          scrollY: scrollY.current,
+          viewport: viewportHeight.current,
+          // The keyboard's reported height excludes the navigation bar, which
+          // the sheet also sits behind.
+          covered: keyboardLift + insets.bottom,
+          margin: REVEAL_MARGIN,
+        });
+        if (offset !== null) scrollRef.current?.scrollTo({ y: offset, animated: true });
+      },
+      // Not inside this sheet (another screen's input) — nothing to reveal.
+      () => {},
+    );
+  }, [keyboardLift, insets.bottom]);
+
+  // When the keyboard arrives: after the sheet has had its open/resize
+  // animation to grow into the lift.
+  useEffect(() => {
+    if (keyboardLift === 0) return;
+    const timer = setTimeout(revealFocusedInput, ANIMATION_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [keyboardLift, revealFocusedInput]);
 
   // Whether the sheet is presented (or presenting/dismissing). Calling the
   // library's dismiss() on a NON-presented modal wedges it permanently: its
@@ -198,6 +285,7 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
       android_keyboardInputMode="adjustResize"
     >
       <BottomSheetScrollView
+        ref={scrollRef}
         // VoiceOver escape gesture (two-finger Z) closes the sheet. Do NOT set
         // accessibilityViewIsModal here — it would hide the sibling backdrop
         // (the labelled "Close sheet" control) from screen readers.
@@ -209,18 +297,33 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
           // height so dynamic sizing raises the sheet clear of the keyboard.
           { paddingBottom: insets.bottom + spacing.xl + keyboardLift },
         ]}
+        // What the reveal above measures against: the scroll view's own
+        // height, where it is scrolled to, and every change of content size.
+        onLayout={(event) => {
+          viewportHeight.current = event.nativeEvent.layout.height;
+        }}
+        // (gorhom forwards this from its UI-thread handler, already
+        // throttled to 16ms.)
+        onScroll={(event) => {
+          scrollY.current = event.nativeEvent.contentOffset.y;
+        }}
+        onContentSizeChange={revealFocusedInput}
       >
-        {title ? (
-          <Text accessibilityRole="header" style={styles.title}>
-            {title}
-          </Text>
-        ) : null}
-        {/* Any TextField in the body renders gorhom's sheet-aware input, which
-            is what makes the sheet rise with the keyboard instead of being
-            covered by it. */}
-        <TextInputHostContext.Provider value={BottomSheetTextInput}>
-          {children}
-        </TextInputHostContext.Provider>
+        {/* collapsable={false}: a real native view, so an input can measure
+            itself against it. */}
+        <View ref={contentRef} collapsable={false}>
+          {title ? (
+            <Text accessibilityRole="header" style={styles.title}>
+              {title}
+            </Text>
+          ) : null}
+          {/* Any TextField in the body renders gorhom's sheet-aware input,
+              which is what makes the sheet rise with the keyboard instead of
+              being covered by it. */}
+          <TextInputHostContext.Provider value={BottomSheetTextInput}>
+            {children}
+          </TextInputHostContext.Provider>
+        </View>
       </BottomSheetScrollView>
     </BottomSheetModal>
   );
@@ -244,7 +347,7 @@ const makeStyles = (c: Palette) =>
     },
     content: {
       paddingHorizontal: SHEET_GUTTER,
-      paddingTop: spacing.sm,
+      paddingTop: CONTENT_PADDING_TOP,
     },
     title: {
       ...typography.heading,
