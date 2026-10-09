@@ -45,8 +45,19 @@ it('⚠️ labels the note as the spotter’s own words', async () => {
   expect(getByText('The spotter withdrew it.')).toBeTruthy();
   expect(getByText('Written by the spotter')).toBeTruthy();
   expect(getByText('Wrong street, sorry')).toBeTruthy();
-  expect(getByTestId('taken-back-note').props.accessibilityLabel).toBe(
-    'Written by the spotter: Wrong street, sorry',
+  // One stop to a screen reader: the sentence, the time in full words, and
+  // the note with whose it is — never the words on their own.
+  expect(getByTestId('taken-back-row').props.accessibilityLabel).toBe(
+    'The spotter withdrew it. 1 hour ago. Written by the spotter: Wrong street, sorry',
+  );
+});
+
+it('speaks a row without a note as the sentence and the time', async () => {
+  const { getByTestId } = await render(
+    <TakenBackList withdrawals={[withdrawal({ reason: 'mistake' })]} />,
+  );
+  expect(getByTestId('taken-back-row').props.accessibilityLabel).toBe(
+    'The spotter sent it by mistake. 1 hour ago.',
   );
 });
 
@@ -66,7 +77,7 @@ it('shows the three newest, then the rest on request', async () => {
   );
   expect(getAllByText('The spotter withdrew it.')).toHaveLength(3);
   await act(async () => {
-    fireEvent.press(getByRole('button', { name: 'Show 2 more taken back' }));
+    fireEvent.press(getByRole('button', { name: 'Show 2 more taken-back sightings' }));
   });
   expect(getAllByText('The spotter withdrew it.')).toHaveLength(5);
   expect(queryByRole('button', { name: /Show \d+ more/ })).toBeNull();

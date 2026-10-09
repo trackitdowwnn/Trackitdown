@@ -890,3 +890,25 @@ describe('fetchPostWithdrawals — the owner’s "Taken back" list (2026-10-09)'
     );
   });
 });
+
+describe('fetchPostWithdrawals — the 200 is characters, as the server counts', () => {
+  beforeEach(() => mockRpc.mockReset());
+
+  it('⚠️ accepts 200 emoji — one stranger’s note must not blank the owner’s list', async () => {
+    // 200 characters, 400 UTF-16 units: the server's char_length allows it.
+    const car = String.fromCodePoint(0x1f697);
+    mockRpc.mockResolvedValue({
+      data: [{ withdrawn_at: '2026-10-09T10:00:00Z', reason: 'other', note: car.repeat(200) }],
+      error: null,
+    });
+    await expect(fetchPostWithdrawals('p1')).resolves.toHaveLength(1);
+  });
+
+  it('refuses 201 characters', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ withdrawn_at: '2026-10-09T10:00:00Z', reason: 'other', note: 'a'.repeat(201) }],
+      error: null,
+    });
+    await expect(fetchPostWithdrawals('p1')).rejects.toThrow();
+  });
+});

@@ -23,10 +23,12 @@
  */
 
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
+import { spokenAgo } from '@/shared/lib';
 import { sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import { DayHeader } from '@/shared/ui';
 
 import { withdrawalSentence } from '../lib/withdrawReasons';
 import type { PostWithdrawal } from '../types';
@@ -47,24 +49,34 @@ export function TakenBackList({ withdrawals }: TakenBackListProps) {
   const hidden = withdrawals.length - shown.length;
 
   return (
-    <View style={styles.block} testID="taken-back">
-      <Text style={styles.heading} accessibilityRole="header">
-        Taken back
-      </Text>
-      {shown.map((withdrawal, index) => (
-        <TakenBackRow key={`${withdrawal.withdrawnAt}-${index}`} withdrawal={withdrawal} />
-      ))}
-      {hidden > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Show ${hidden} more taken back`}
-          onPress={() => setExpanded(true)}
-          style={styles.linkRow}
-          hitSlop={spacing.sm}
-        >
-          <Text style={styles.link}>Show {hidden} more</Text>
-        </Pressable>
-      ) : null}
+    <View testID="taken-back">
+      {/* The shared quiet group label (DESIGN_SYSTEM's carve-out) — My
+          sightings labels its own "Taken back" section with it. Its 16 above
+          / 4 below ties it to the rows beneath, apart from the live
+          activity above. */}
+      <DayHeader label="Taken back" gutter="none" />
+      <View style={styles.rows}>
+        {shown.map((withdrawal, index) => (
+          <TakenBackRow key={`${withdrawal.withdrawnAt}-${index}`} withdrawal={withdrawal} />
+        ))}
+        {hidden > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${hidden} more taken-back sightings`}
+            onPress={() => {
+              setExpanded(true);
+              // The button goes once pressed; say what arrived instead.
+              AccessibilityInfo.announceForAccessibility(
+                `${hidden} more taken-back sightings shown`,
+              );
+            }}
+            style={styles.linkRow}
+            hitSlop={spacing.sm}
+          >
+            <Text style={styles.link}>Show {hidden} more</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -72,21 +84,25 @@ export function TakenBackList({ withdrawals }: TakenBackListProps) {
 function TakenBackRow({ withdrawal }: { withdrawal: PostWithdrawal }) {
   const styles = useThemedStyles(makeStyles);
   const when = useTimeAgo(withdrawal.withdrawnAt);
+  const sentence = withdrawalSentence(withdrawal.reason);
   return (
-    <View style={styles.row}>
+    // ONE stop to a screen reader: the sentence, the time spoken in full
+    // ("5 minutes ago", never "5m" read as metres), then the note with its
+    // label, so the words are never heard apart from whose they are.
+    <View
+      style={styles.row}
+      accessible
+      accessibilityLabel={`${sentence} ${spokenAgo(when)}.${
+        withdrawal.note ? ` Written by the spotter: ${withdrawal.note}` : ''
+      }`}
+      testID="taken-back-row"
+    >
       <View style={styles.line}>
-        <Text style={styles.sentence}>{withdrawalSentence(withdrawal.reason)}</Text>
+        <Text style={styles.sentence}>{sentence}</Text>
         <Text style={styles.when}>{when}</Text>
       </View>
       {withdrawal.note ? (
-        // One element to a screen reader, so the label and the words are
-        // never heard apart: "Written by the spotter: …".
-        <View
-          style={styles.note}
-          accessible
-          accessibilityLabel={`Written by the spotter: ${withdrawal.note}`}
-          testID="taken-back-note"
-        >
+        <View style={styles.note} testID="taken-back-note">
           <Text style={styles.noteLabel}>Written by the spotter</Text>
           <Text style={styles.noteText}>{withdrawal.note}</Text>
         </View>
@@ -97,13 +113,8 @@ function TakenBackRow({ withdrawal }: { withdrawal: PostWithdrawal }) {
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    block: {
-      gap: spacing.md,
-    },
-    // The timeline's day-header voice: a quiet label, not a second title.
-    heading: {
-      ...typography.label,
-      color: c.textSecondary,
+    rows: {
+      gap: spacing.lg,
     },
     row: {
       gap: spacing.sm,

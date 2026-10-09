@@ -222,8 +222,12 @@ commenting standards.
     owner-only and returns no sighting id, spotter or place. The column is
     granted to no client role (the spotter can't read it back either);
     control, zero-width and text-direction characters are refused. The app
-    must never log the words — only whether there was a note (the client
-    half ships separately, after this server change). It is
+    logs only whether there was a note (`gaveNote`), never the words; sends
+    `p_note` only with "Something else" and only when one is left after
+    stripping the same hidden characters (`cleanWithdrawNote`, held to the
+    server's set by `withdrawReasons.test.ts`); parses the owner's list
+    through a strict three-field schema; and fetches it on the owner face
+    only (`usePostWithdrawals`). It is
     **unmoderated** (§7) — the owner accepted that. CHECKS 12–14 assert the
     bounds, that the words never reach the copy, and the owner-only read.
     ⚠️ **Kept as long as the sighting row** — no purge yet. A note may hold
@@ -731,5 +735,5 @@ admits the gap.
   "Something else" note (≤200 characters) reaches the post owner in the app
   unread by anyone first, and there is no way to flag one (when flagging is
   built it needs an opaque per-note handle, never the sighting id). The
-  owner accepted this. The note is kept in-app only (§3); the client must
-  label it as the spotter's words, so it never reads as ours.
+  owner accepted this. The note is kept in-app only (§3) and shown labelled
+  "Written by the spotter" (`TakenBackList`), so it never reads as ours.

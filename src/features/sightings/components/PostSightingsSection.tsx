@@ -214,8 +214,10 @@ export function PostSightingsSection({
           </>
         )}
         {/* Sightings taken back that the owner was told about — and, for
-            "Something else", the spotter's note. Only here: never pushed. */}
-        <TakenBackList withdrawals={withdrawals} />
+            "Something else", the spotter's note. Only here: never pushed.
+            Held until the live activity has settled, so it never shows
+            under "Checking…" and then jumps down. */}
+        {owner.status !== 'loading' ? <TakenBackList withdrawals={withdrawals} /> : null}
       </View>
     </View>
   );

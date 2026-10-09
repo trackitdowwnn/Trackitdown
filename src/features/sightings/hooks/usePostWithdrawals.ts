@@ -9,6 +9,10 @@
  *        render as nothing (no skeleton, no error line), and a failed
  *        BACKGROUND refresh keeps what is on screen. Owner-only: `enabled`
  *        is false on the public face, so no request is made at all.
+ *        ⚠️ HELD WITH ITS POST, and late answers dropped (reviews of this
+ *        change): a screen reused for another post must never show the last
+ *        post's notes under it — not for the moment before its own load
+ *        lands, and not because the old post's request finished last.
  * LINKS: src/features/sightings/api/sightingApi.ts (fetchPostWithdrawals);
  *        src/features/sightings/components/PostSightingsSection.tsx;
  *        src/features/sightings/hooks/usePostSightings.ts (same shape).
@@ -20,25 +24,31 @@ import { useCallback, useState } from 'react';
 import { fetchPostWithdrawals } from '../api/sightingApi';
 import type { PostWithdrawal } from '../types';
 
+/** The owner's "Taken back" rows for `postId` — always [] when not enabled,
+ *  while loading, and if the first load fails. */
 export function usePostWithdrawals(postId: string, enabled = true): PostWithdrawal[] {
-  const [withdrawals, setWithdrawals] = useState<PostWithdrawal[]>([]);
-
-  const load = useCallback(async () => {
-    try {
-      setWithdrawals(await fetchPostWithdrawals(postId));
-    } catch {
-      // Keep whatever is on screen — see the header.
-    }
-  }, [postId]);
+  const [loaded, setLoaded] = useState<{ postId: string; rows: PostWithdrawal[] } | null>(null);
 
   // One request on arrival (a focused screen runs this on mount, and again
   // if `enabled` or the post changes) and one each time it regains focus.
   // setState only ever runs after the await (react-compiler rule).
   useFocusEffect(
     useCallback(() => {
-      if (enabled) void load();
-    }, [enabled, load]),
+      if (!enabled) return undefined;
+      let cancelled = false;
+      void (async () => {
+        try {
+          const rows = await fetchPostWithdrawals(postId);
+          if (!cancelled) setLoaded({ postId, rows });
+        } catch {
+          // Keep whatever is on screen — see the header.
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [enabled, postId]),
   );
 
-  return enabled ? withdrawals : [];
+  return enabled && loaded?.postId === postId ? loaded.rows : [];
 }

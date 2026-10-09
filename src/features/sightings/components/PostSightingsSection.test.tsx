@@ -214,7 +214,12 @@ describe('owner face', () => {
   it('⚠️ while loading: nothing shaped like sightings — a pause, then one neutral line', async () => {
     jest.useFakeTimers();
     try {
-      mockOwnerHook.mockReturnValue({ status: 'loading', sightings: [], photoUrls: {}, retry: jest.fn() });
+      mockOwnerHook.mockReturnValue({
+      status: 'loading',
+      sightings: [],
+      photoUrls: {},
+      retry: jest.fn(),
+    });
       const view = await renderSection({ postId: 'p1', isOwner: true });
       expect(view.getByTestId('sightings-section-pending')).toBeTruthy();
       expect(view.queryByText('Checking for sightings…')).toBeNull(); // the grace
@@ -299,9 +304,16 @@ describe('"Taken back" — where the owner reads a withdrawal note (2026-10-09)'
     expect(getByText('The spotter withdrew it.')).toBeTruthy();
     expect(getByText('The spotter says it wasn’t your car.')).toBeTruthy();
     // One element to a screen reader: the label and the words together.
-    expect(getByTestId('taken-back-note').props.accessibilityLabel).toBe(
-      'Written by the spotter: I think it was my neighbour’s car, sorry',
-    );
+    expect(getByTestId('taken-back-note')).toBeTruthy();
+    expect(getByText('Written by the spotter')).toBeTruthy();
+    expect(getByText('I think it was my neighbour’s car, sorry')).toBeTruthy();
+  });
+
+  it('holds the list back while the live sightings are still loading', async () => {
+    mockWithdrawalsHook.mockReturnValue(withdrawals);
+    mockOwnerHook.mockReturnValue({ status: 'loading', sightings: [], photoUrls: {}, retry: jest.fn() });
+    const { queryByTestId } = await renderSection({ postId: 'p1', isOwner: true });
+    expect(queryByTestId('taken-back')).toBeNull();
   });
 
   it('shows it even when no live sighting is left', async () => {

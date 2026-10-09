@@ -24,6 +24,7 @@ import {
   cleanWithdrawNote,
   MAX_WITHDRAW_NOTE_LENGTH,
   WITHDRAW_REASONS,
+  withdrawalSentence,
 } from '../../src/features/sightings/lib/withdrawReasons';
 
 const MIGRATIONS_DIR = join(__dirname, '../migrations');
@@ -112,5 +113,32 @@ describe('the "Something else" note', () => {
       if (refused.test(ch) !== appStrips) mismatches.push(cp.toString(16));
     }
     expect(mismatches).toEqual([]);
+  });
+});
+
+/** The latest claim_sighting_withdrawn_notification body — the push copy. */
+function latestClaimBody(): string {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const body = sql.match(
+      /create (?:or replace )?function public\.claim_sighting_withdrawn_notification\([\s\S]*?\$\$([\s\S]*?)\$\$/,
+    );
+    if (body) return body[1];
+  }
+  throw new Error('claim_sighting_withdrawn_notification not found in any migration');
+}
+
+describe('the owner’s "Taken back" list', () => {
+  it('⚠️ says, for every answer, the sentence the push gave', () => {
+    // SQL doubles its apostrophes and uses the straight one; the app sets
+    // the typographic one. The WORDS must be the same.
+    const push = latestClaimBody().replace(/''/g, "'");
+    for (const reason of [...WITHDRAW_REASONS, null]) {
+      const sentence = withdrawalSentence(reason).replace(/’/g, "'");
+      expect(push).toContain(`'${sentence}'`);
+    }
   });
 });

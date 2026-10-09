@@ -387,7 +387,14 @@ const postWithdrawalSchema = z
   .object({
     withdrawn_at: z.string(),
     reason: z.enum(WITHDRAW_REASONS).nullable(),
-    note: z.string().max(MAX_WITHDRAW_NOTE_LENGTH).nullable(),
+    // ⚠️ Counted in CHARACTERS, as the server's char_length does — zod's
+    // .max counts UTF-16 units, so a note of 150 emoji (accepted by the
+    // server via a direct call) would fail the whole list's parse and blank
+    // every withdrawal on the post (security review of this change).
+    note: z
+      .string()
+      .refine((note) => [...note].length <= MAX_WITHDRAW_NOTE_LENGTH)
+      .nullable(),
   })
   .strict();
 
@@ -396,6 +403,8 @@ const postWithdrawalSchema = z
  * (get_post_withdrawals — owner-only server-side, NOT_OWNER otherwise).
  * 2026-10-09: where the owner reads a "Something else" note, which never
  * travels in a push. ⚠️ The note is never logged.
+ * @throws a calm Error when the RPC fails or its payload is refused by the
+ *         strict schema (logged as counts and issue codes only).
  */
 export async function fetchPostWithdrawals(postId: string): Promise<PostWithdrawal[]> {
   const { data, error } = await supabase.rpc('get_post_withdrawals', { p_post_id: postId });
@@ -403,10 +412,21 @@ export async function fetchPostWithdrawals(postId: string): Promise<PostWithdraw
     log.warn('get_post_withdrawals failed', { code: error.code });
     throw new Error('We couldn’t load what was taken back. Please try again.');
   }
-  return z
-    .array(postWithdrawalSchema)
-    .parse(data ?? [])
-    .map((row) => ({ withdrawnAt: row.withdrawn_at, reason: row.reason, note: row.note }));
+  const parsed = z.array(postWithdrawalSchema).safeParse(data ?? []);
+  if (!parsed.success) {
+    // SAFETY: how many issues and of what kind — never their messages or
+    // paths, which could carry a note's words.
+    log.warn('get_post_withdrawals payload refused', {
+      issues: parsed.error.issues.length,
+      codes: [...new Set(parsed.error.issues.map((issue) => issue.code))],
+    });
+    throw new Error('We couldn’t load what was taken back. Please try again.');
+  }
+  return parsed.data.map((row) => ({
+    withdrawnAt: row.withdrawn_at,
+    reason: row.reason,
+    note: row.note,
+  }));
 }
 
 /** The owner's sightings on their post (server-enforced NOT_OWNER otherwise).
@@ -879,7 +899,9 @@ export { SightingWithdrawError };
  * vocabulary — withdrawReasons.ts) and, once the server has accepted the
  * withdrawal, tells the owner (notify-sighting-withdrawn — fire-and-forget,
  * like notifySighting after create: a lost dispatch costs the notice, never
- * the withdrawal).
+ * the withdrawal). With 'other' only, it may carry the spotter's NOTE:
+ * cleaned (cleanWithdrawNote), sent as p_note only when one is left, and
+ * never logged — only whether there was one. The owner reads it in the app.
  */
 export async function withdrawSighting(
   sightingId: string,
