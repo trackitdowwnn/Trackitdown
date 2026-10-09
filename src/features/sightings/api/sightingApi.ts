@@ -20,9 +20,14 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { z } from 'zod';
 
-import { notifySighting, notifySightingConfirmed } from '@/features/notifications';
+import {
+  notifySighting,
+  notifySightingConfirmed,
+  notifySightingWithdrawn,
+} from '@/features/notifications';
 import { supabase } from '@/shared/api';
 import { SightingWithdrawError } from '../lib/sightingWithdrawError';
+import type { WithdrawReason } from '../lib/withdrawReasons';
 import { createLogger } from '@/shared/lib/logger';
 import type { EvidencePhoto } from '@/shared/ui';
 
@@ -834,10 +839,20 @@ export { SightingWithdrawError };
  * SIGHTING_NOT_WITHDRAWABLE token covers missing / not-yours / already-ruled
  * alike, so this file cannot tell them apart either: the copy says the one
  * true thing for all three.
+ *
+ * Since 2026-10-09 it carries the spotter's OPTIONAL reason (a closed
+ * vocabulary — withdrawReasons.ts) and, once the server has accepted the
+ * withdrawal, tells the owner (notify-sighting-withdrawn — fire-and-forget,
+ * like notifySighting after create: a lost dispatch costs the notice, never
+ * the withdrawal).
  */
-export async function withdrawSighting(sightingId: string): Promise<void> {
+export async function withdrawSighting(
+  sightingId: string,
+  reason: WithdrawReason | null = null,
+): Promise<void> {
   const { error } = await supabase.rpc('withdraw_sighting', {
     p_sighting_id: sightingId,
+    p_reason: reason,
   });
   if (error) {
     const notWithdrawable = error.message.includes('SIGHTING_NOT_WITHDRAWABLE');
@@ -853,5 +868,6 @@ export async function withdrawSighting(sightingId: string): Promise<void> {
       notWithdrawable ? 'SIGHTING_NOT_WITHDRAWABLE' : 'UNKNOWN',
     );
   }
-  log.info('sighting_withdrawn', { sightingId });
+  log.info('sighting_withdrawn', { sightingId, gaveReason: reason !== null });
+  notifySightingWithdrawn(sightingId);
 }

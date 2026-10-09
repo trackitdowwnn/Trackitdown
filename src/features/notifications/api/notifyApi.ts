@@ -30,6 +30,7 @@ function dispatch(
     | 'notify-message'
     | 'notify-credited'
     | 'notify-sighting-confirmed'
+    | 'notify-sighting-withdrawn'
     | 'notify-bug-report',
   body: Record<string, string>,
 ): void {
@@ -56,6 +57,16 @@ function dispatch(
 /** Tell the post's owner their car was sighted. */
 export function notifySighting(sightingId: string): void {
   dispatch('notify-sighting', { sightingId });
+}
+
+/**
+ * Tell the post's owner a sighting was taken back (2026-10-09). Carries only
+ * the sighting id: the claim checks it is the caller's own withdrawn report
+ * that the owner was told about, and builds the copy — the spotter's optional
+ * reason as one fixed sentence — in SQL.
+ */
+export function notifySightingWithdrawn(sightingId: string): void {
+  dispatch('notify-sighting-withdrawn', { sightingId });
 }
 
 /** Tell the other participant a message arrived. Content never travels. */

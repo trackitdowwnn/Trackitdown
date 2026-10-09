@@ -274,3 +274,13 @@ the listing while it's active (2026-09-03), and carry a door to
 sighting (2026-09-01). No door to Payouts: this payload holds no reward facts,
 and Payouts shows nothing for a paid, lapsed or no-reward credit (the reason
 `pushRoute` keeps those pushes away from it).
+
+**Taking a report back** ("Take this back", unverified only) opens
+`WithdrawSightingSheet` (2026-10-09): what it means, an OPTIONAL "Why are you
+taking it back?" with four fixed answers (`lib/withdrawReasons.ts`, mirroring
+`sightings_withdraw_reason_chk`; no text box), then Take it back / Keep it.
+`withdrawSighting(id, reason)` sends the answer and, once the server accepts,
+dispatches `notify-sighting-withdrawn`: the owner — if they had been told about
+the sighting — gets "A sighting of your … was taken back" with one fixed
+sentence for the reason (`sighting_withdrawn`, unmutable; a tap opens the
+listing).

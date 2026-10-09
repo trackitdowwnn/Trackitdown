@@ -97,7 +97,6 @@ import {
   type Palette,
 } from '@/shared/theme';
 import {
-  ConfirmDialog,
   DayHeader,
   DayHeaderSkeleton,
   EmptyState,
@@ -105,12 +104,16 @@ import {
   Screen,
   ThemedRefreshControl,
   useToast,
-  type ConfirmDialogRef,
 } from '@/shared/ui';
 
 import { withdrawSighting, type MySightingRecordEntry } from '../api/sightingApi';
 import { SightingWithdrawError } from '../lib/sightingWithdrawError';
+import type { WithdrawReason } from '../lib/withdrawReasons';
 import { ReportCard, ReportCardSkeleton } from '../components/ReportCard';
+import {
+  WithdrawSightingSheet,
+  type WithdrawSightingSheetRef,
+} from '../components/WithdrawSightingSheet';
 import { useMyReportPhotos } from '../hooks/useMyReportPhotos';
 import { useMySightingRecord } from '../hooks/useMySightingRecord';
 import { myReportSections, myReportSummary } from '../lib/myReportSections';
@@ -192,19 +195,21 @@ export function MySightingsScreen() {
    * on a real sighting would delete the spotter's only claim on a bounty.
    */
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
-  const withdrawRef = useRef<ConfirmDialogRef>(null);
+  const withdrawRef = useRef<WithdrawSightingSheetRef>(null);
 
   const requestWithdraw = useCallback((sightingId: string) => {
     setWithdrawing(sightingId);
     withdrawRef.current?.open();
   }, []);
 
-  const onWithdrawConfirmed = useCallback(async () => {
+  // With the spotter's optional answer to "why?" (2026-10-09) — passed to
+  // the owner as one fixed sentence when they are told.
+  const onWithdrawConfirmed = useCallback(async (reason: WithdrawReason | null) => {
     if (withdrawing === null) {
       return;
     }
     try {
-      await withdrawSighting(withdrawing);
+      await withdrawSighting(withdrawing, reason);
       toast.show('Sighting withdrawn — the owner no longer sees it.');
       void refresh();
     } catch (error) {
@@ -363,20 +368,16 @@ export function MySightingsScreen() {
         />
       )}
 
-      {/* ⚠️ `destructive`, and the body says the two things that are actually
+      {/* ⚠️ Destructive, and the sheet says the two things that are actually
           irreversible: the owner stops seeing it, and it cannot be re-filed.
           The rate limit counts the withdrawn row on purpose, so someone who
           withdraws a real sighting by mistake has not just hidden it — they
           have spent the slot. Honest, not guilt-trippy: taking back a report
-          you know to be wrong is the right thing to do. */}
-      <ConfirmDialog
+          you know to be wrong is the right thing to do. Since 2026-10-09 it
+          also asks, optionally, why (WithdrawSightingSheet). */}
+      <WithdrawSightingSheet
         ref={withdrawRef}
-        title="Take this report back?"
-        body="The owner will no longer see it, and you can’t re-file it for this car today."
-        confirmLabel="Take it back"
-        cancelLabel="Keep it"
-        destructive
-        onConfirm={() => void onWithdrawConfirmed()}
+        onConfirm={(reason) => void onWithdrawConfirmed(reason)}
         onDismiss={() => setWithdrawing(null)}
       />
     </Screen>
