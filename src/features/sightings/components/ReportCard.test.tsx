@@ -376,3 +376,19 @@ describe('the spotter’s own photo (2026-10-09)', () => {
     expect(onOpenPost).toHaveBeenCalledWith('p1');
   });
 });
+
+describe('a fresh photo link after a failed one (2026-10-09)', () => {
+  it('gets its chance — the tile is for the link that failed, not for good', async () => {
+    atFontScale(1);
+    const view = await render(<ReportCard entry={entry()} photoUrl="https://x/old.jpg" />);
+    await act(async () => {
+      fireEvent(view.getByTestId('my-sighting-photo-s1'), 'error', {
+        nativeEvent: { error: 'expired' },
+      });
+    });
+    expect(view.getByTestId('my-sighting-tile-s1')).toBeTruthy();
+
+    await view.rerender(<ReportCard entry={entry()} photoUrl="https://x/new.jpg" />);
+    expect(view.getByTestId('my-sighting-photo-s1')).toBeTruthy();
+  });
+});

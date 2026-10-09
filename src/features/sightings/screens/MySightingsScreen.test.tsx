@@ -36,12 +36,15 @@ jest.mock('../hooks/useMySightingRecord', () => ({
 
 // The spotter's own photos, by sighting id — fetched and signed beside the
 // list; driven directly here (the hook and its api have their own tests).
-const mockPhotos = jest.fn(
-  (_ids: string[]): { urls: Record<string, string>; loaded: boolean } => ({
-    urls: {},
-    loaded: true,
-  }),
-);
+type Photos = { urls: Record<string, string>; lookedUp: Record<string, true> };
+/** Every report looked up, with these photos. */
+const settled =
+  (urls: Record<string, string> = {}) =>
+  (ids: string[]): Photos => ({
+    urls,
+    lookedUp: Object.fromEntries(ids.map((id) => [id, true as const])),
+  });
+const mockPhotos = jest.fn((ids: string[]): Photos => settled()(ids));
 jest.mock('../hooks/useMyReportPhotos', () => ({
   useMyReportPhotos: (ids: string[]) => mockPhotos(ids),
 }));
@@ -159,7 +162,7 @@ beforeEach(() => {
     .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
   mockUseSession.mockReturnValue({ status: 'signedIn', userId: 'u1' });
   mockUseRecord.mockReturnValue(ready([entry()]));
-  mockPhotos.mockReturnValue({ urls: {}, loaded: true });
+  mockPhotos.mockImplementation(settled());
 });
 
 // Restore, not clear: a spy's implementation survives clearAllMocks.
@@ -278,7 +281,7 @@ describe('⚠️ needs-attention first (2026-10-09)', () => {
 
 describe('the spotter’s own photo (2026-10-09)', () => {
   it('leads the card when there is one, and the colour tile stands in when not', async () => {
-    mockPhotos.mockReturnValue({ urls: { a: 'https://x/a.jpg' }, loaded: true });
+    mockPhotos.mockImplementation(settled({ a: 'https://x/a.jpg' }));
     mockUseRecord.mockReturnValue(ready([entry({ id: 'a' }), entry({ id: 'b' })]));
     const { getByTestId, queryByTestId } = await render(<MySightingsScreen />);
 
@@ -290,7 +293,7 @@ describe('the spotter’s own photo (2026-10-09)', () => {
 
   it('⚠️ shows an empty frame while the photos are looked up — never the tile first', async () => {
     // The tile would claim "no photo" and then be replaced by one.
-    mockPhotos.mockReturnValue({ urls: {}, loaded: false });
+    mockPhotos.mockReturnValue({ urls: {}, lookedUp: {} });
     mockUseRecord.mockReturnValue(ready([entry({ id: 'a' })]));
     const { getByTestId, queryByTestId } = await render(<MySightingsScreen />);
 
@@ -304,23 +307,25 @@ describe('what happens next (2026-10-09)', () => {
   // promised (none is sent for "Not a match"), no counter (a capped
   // confirmation moves none), and nothing about money.
   it.each([
-    ['unverified' as const, 'Their answer will show here.'],
-    ['helpful' as const, 'A recovery would show here.'],
-    ['credited' as const, 'Thanks for the recovery.'],
+    ['unverified' as const, 'Their answer shows here.'],
+    ['helpful' as const, 'Nothing more to do.'],
+    ['credited' as const, 'Thank you.'],
     ['not_mine' as const, 'Thanks for looking.'],
-  ])('a %s report says "%s"', async (status, line) => {
-    mockUseRecord.mockReturnValue(ready([entry({ status })]));
+  ])('a %s report on a live listing says "%s"', async (status, line) => {
+    mockUseRecord.mockReturnValue(ready([entry({ status, postId: 'p1' })]));
     const { getByTestId } = await render(<MySightingsScreen />);
 
     expect(getByTestId('my-sighting-next-s1')).toHaveTextContent(line);
   });
 
-  it('⚠️ an open report on a CLOSED listing doesn’t promise an answer', async () => {
-    // `postId: null` is the server saying the listing has closed.
+  it('⚠️ an open report on a listing that isn’t live promises no answer — but not finality', async () => {
+    // No post id = not active: closed, OR the owner choosing whom to credit,
+    // where an open report may yet be credited. So "no longer live", not
+    // "closed".
     mockUseRecord.mockReturnValue(ready([entry({ status: 'unverified', postId: null })]));
     const { getByTestId } = await render(<MySightingsScreen />);
 
-    expect(getByTestId('my-sighting-next-s1')).toHaveTextContent('This listing has closed.');
+    expect(getByTestId('my-sighting-next-s1')).toHaveTextContent('The listing is no longer live.');
   });
 
   it('a withdrawn report has no next step', async () => {
@@ -387,12 +392,13 @@ describe('a report', () => {
   });
 
   it('reads as one sentence to a screen reader, not three fragments', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ postId: 'p1' })]));
     const { getByLabelText } = await render(<MySightingsScreen />);
 
     expect(
       getByLabelText(
         // Times in words: "3d" would be read as "three d".
-        'Blue Ford, reported in Camden 3 days ago. Waiting on the owner. Their answer will show here.',
+        'Blue Ford, reported in Camden 3 days ago. Waiting on the owner. Their answer shows here.',
       ),
     ).toBeTruthy();
   });

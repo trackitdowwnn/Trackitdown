@@ -74,10 +74,10 @@
  *        reports that can actually open something carry a control.
  *
  *        That is also why the card is now a COLUMN wrapping a row: the door has
- *        to be a SIBLING of the text block, because `main` carries the
- *        accessibility grouping and a control inside a grouped element is
- *        unreachable to VoiceOver (AlertCard's header records that bug in
- *        full). The grouping sits on the photo + text row (2026-10-09; it was
+ *        to be a SIBLING of the grouped row, because a control inside a
+ *        grouped element is unreachable to VoiceOver (AlertCard's header
+ *        records that bug in full). The grouping sits on the photo + text
+ *        row (2026-10-09; it was
  *        `main`, the text alone), so a doorless card reads as one utterance.
  * LINKS: src/shared/ui/CarColourTile.tsx (the fallback visual — moved there
  *          2026-08-28 when chat needed it too);
@@ -163,18 +163,21 @@ const VERDICT: Record<
  * - nothing about money — this payload holds no reward facts, a listing may
  *   have had no reward, and Payouts shows nothing once one is paid or has
  *   lapsed (pushRoute keeps those pushes away from Payouts for that reason).
- * One line beside the photo (~26 characters), so the card stays short.
+ * One line beside the photo (≤ ~24 characters, chevron included), so the card
+ * stays short.
  */
 function nextStepFor(entry: MySightingRecordEntry): string | null {
   switch (entry.status) {
     case 'unverified':
-      // `null` (not merely absent) means the listing has closed: nobody is
-      // going to answer it now, so the card must not say they will.
-      return entry.postId === null ? 'This listing has closed.' : 'Their answer will show here.';
+      // No post id means the listing is not ACTIVE — closed, or the owner
+      // choosing whom to credit (recovery_claimed), where an open report may
+      // yet be credited. (An older server's absent id maps to null as well.)
+      // So not "closed", which reads as final: only that it isn't live.
+      return entry.postId ? 'Their answer shows here.' : 'The listing is no longer live.';
     case 'helpful':
-      return 'A recovery would show here.';
+      return 'Nothing more to do.';
     case 'credited':
-      return 'Thanks for the recovery.';
+      return 'Thank you.';
     case 'not_mine':
       return 'Thanks for looking.';
     case 'withdrawn':
@@ -250,7 +253,8 @@ export interface ReportCardProps {
    * was not would be worse than a flat one.
    */
   onOpenPost?: (postId: string) => void;
-  /** A signed URL for the spotter's own lead photo; absent → the colour tile. */
+  /** A signed URL for the spotter's own lead photo; absent → the colour tile
+   *  (or the empty frame while `photoPending`). */
   photoUrl?: string;
   /** The photos are still being looked up: an empty frame, not the tile —
    *  the tile would briefly claim "no photo" before the photo replaced it. */
@@ -271,8 +275,11 @@ export function ReportCard({
   const markerOffset = useMarkerOffset();
   // A signed link lasts an hour; one that has lapsed (or an object that has
   // gone) falls back to the tile rather than leaving an empty frame.
-  const [photoFailed, setPhotoFailed] = useState(false);
-  const showPhoto = Boolean(photoUrl) && !photoFailed;
+  // The URL that failed, not just "a failure": a fresh link (re-signed when
+  // the set of reports changes) gets its chance.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const photoFailed = photoUrl !== undefined && photoUrl === failedUrl;
+  const showPhoto = photoUrl !== undefined && !photoFailed;
 
   const reported = useTimeAgo(entry.createdAt);
   const ruled = useTimeAgo(entry.reviewedAt ?? entry.createdAt);
@@ -304,23 +311,17 @@ export function ReportCard({
       testID={`my-sighting-${entry.id}`}
       // ⚠️ ONE UTTERANCE, NOT THREE. Ungrouped, a screen reader read the car,
       // then a ·-joined fragment, then a verdict, as three unrelated strings
-      // with no way to tell which report the verdict belonged to. Grouping is
-      // safe here only because the card holds no controls — see the header for
-      // why it is not pressable, and AlertCard for what grouping costs when it
-      // is.
-      // ⚠️ THE GROUPING MOVED OFF THE CARD AND ONTO THE TEXT BLOCK, because the
-      // card can now hold a control. iOS groups an `accessible` element's
-      // children, so a button in here would be unreachable to VoiceOver while
-      // working fine on Android — the exact bug AlertCard's header records, and
-      // why its card is a plain View with separately-labelled parts. Custom
+      // with no way to tell which report the verdict belonged to.
+      // ⚠️ THE GROUPING IS NOT ON THE CARD, because the card holds controls
+      // (the doors). iOS groups an `accessible` element's children, so a button
+      // inside it would be unreachable to VoiceOver while working fine on
+      // Android — the exact bug AlertCard's header records. Custom
       // accessibilityActions would not save it either: Voice Control and Full
-      // Keyboard Access navigate the TREE, and a tree of one element gives them
-      // nothing to tab to.
+      // Keyboard Access navigate the TREE.
       //
-      // The one utterance is preserved by grouping `main` instead, so a card
-      // with no door reads exactly as it did. The tile is safe to leave outside
-      // it: CarColourTile renders no text and sets no accessibility props, so it
-      // is not a focus stop.
+      // So the one utterance lives on the photo + text row (below), and the
+      // doors are its siblings. The photo and tile inside it set no
+      // accessibility props, so neither is a second focus stop.
     >
       {/* ⚠️ THE PHOTO + TEXT ROW IS THE PRESS TARGET (2026-10-09 — it was the
           text block alone, which left the 88pt photo, the obvious thing to
@@ -346,90 +347,90 @@ export function ReportCard({
           entry.reviewedAt ? `, ${spokenAgo(ruled)}` : ''
         }.${nextStep ? ` ${nextStep}` : ''}`}
       >
-      <View
-        style={[styles.row, stacked && styles.rowStacked]}
-        testID={`my-sighting-row-${entry.id}`}
-      >
-      {/* Their own photo leads; an empty frame while it is looked up; the
-          colour tile when there is none (or its link has lapsed). */}
-      {showPhoto ? (
-        <AppImage
-          uri={photoUrl as string}
-          style={styles.photo}
-          recyclingKey={entry.id}
-          onError={() => setPhotoFailed(true)}
-          testID={`my-sighting-photo-${entry.id}`}
-        />
-      ) : photoPending && !photoFailed ? (
-        <View style={styles.photo} testID={`my-sighting-photo-pending-${entry.id}`} />
-      ) : (
-        <CarColourTile
-          colour={entry.car.colour}
-          size={sizes.timelineThumb}
-          radius={radii.md}
-          glyphSize={TILE_GLYPH}
-          testID={`my-sighting-tile-${entry.id}`}
-        />
-      )}
-
-      <View style={[styles.main, stacked && styles.mainStacked]}>
-        <Text style={styles.car} numberOfLines={stacked ? undefined : 1}>
-          {car}
-        </Text>
-        <Text style={styles.when} numberOfLines={stacked ? undefined : 1}>
-          {when}
-        </Text>
-
-        {/* ⚠️ A BARE MARKER AND LABEL, NOT StatusPill — which was the obvious
-            reuse and is wrong on this surface. StatusPill's badge fills with
-            `c.surface` (StatusBadge.tsx), which is exactly this card's colour,
-            so it would render as a dot and a label anyway, looking acceptable
-            by accident rather than by design. Same conclusion AlertCard reached
-            for its "Paused". */}
-        <View style={styles.verdict}>
-          {verdict.celebrated ? (
-            <Check
-              size={sizes.iconSm}
-              color={palette.success}
-              style={{ marginTop: markerOffset(sizes.iconSm) }}
+        <View
+          style={[styles.row, stacked && styles.rowStacked]}
+          testID={`my-sighting-row-${entry.id}`}
+        >
+          {/* Their own photo leads; an empty frame while it is looked up; the
+              colour tile when there is none (or its link has lapsed). */}
+          {showPhoto ? (
+            <AppImage
+              uri={photoUrl}
+              style={styles.photo}
+              recyclingKey={entry.id}
+              onError={() => setFailedUrl(photoUrl)}
+              testID={`my-sighting-photo-${entry.id}`}
             />
+          ) : photoPending && !photoFailed ? (
+            <View style={styles.photo} testID={`my-sighting-photo-pending-${entry.id}`} />
           ) : (
-            <View
-              style={[
-                styles.dot,
-                styles[`dot_${verdict.tone}`],
-                { marginTop: markerOffset(sizes.progressDot) },
-              ]}
-              testID={`my-sighting-dot-${entry.id}`}
+            <CarColourTile
+              colour={entry.car.colour}
+              size={sizes.timelineThumb}
+              radius={radii.md}
+              glyphSize={TILE_GLYPH}
+              testID={`my-sighting-tile-${entry.id}`}
             />
           )}
-          <Text
-            style={[styles.verdictLabel, verdict.tone === 'good' && styles.verdictLabelGood]}
-          >
-            {verdict.label}
-            {/* Its own Text so the emphasis stays on the OUTCOME. Inside the
-                parent it inherited `textPrimary` at Medium on a good row —
-                metadata rendered exactly as loudly as the verdict it dates. */}
-            {ruledSuffix ? <Text style={styles.verdictWhen}>{ruledSuffix}</Text> : null}
-          </Text>
+
+          <View style={[styles.main, stacked && styles.mainStacked]}>
+            <Text style={styles.car} numberOfLines={stacked ? undefined : 1}>
+              {car}
+            </Text>
+            <Text style={styles.when} numberOfLines={stacked ? undefined : 1}>
+              {when}
+            </Text>
+
+            {/* ⚠️ A BARE MARKER AND LABEL, NOT StatusPill — which was the obvious
+                reuse and is wrong on this surface. StatusPill's badge fills with
+                `c.surface` (StatusBadge.tsx), which is exactly this card's colour,
+                so it would render as a dot and a label anyway, looking acceptable
+                by accident rather than by design. Same conclusion AlertCard reached
+                for its "Paused". */}
+            <View style={styles.verdict}>
+              {verdict.celebrated ? (
+                <Check
+                  size={sizes.iconSm}
+                  color={palette.success}
+                  style={{ marginTop: markerOffset(sizes.iconSm) }}
+                />
+              ) : (
+                <View
+                  style={[
+                    styles.dot,
+                    styles[`dot_${verdict.tone}`],
+                    { marginTop: markerOffset(sizes.progressDot) },
+                  ]}
+                  testID={`my-sighting-dot-${entry.id}`}
+                />
+              )}
+              <Text
+                style={[styles.verdictLabel, verdict.tone === 'good' && styles.verdictLabelGood]}
+              >
+                {verdict.label}
+                {/* Its own Text so the emphasis stays on the OUTCOME. Inside the
+                    parent it inherited `textPrimary` at Medium on a good row —
+                    metadata rendered exactly as loudly as the verdict it dates. */}
+                {ruledSuffix ? <Text style={styles.verdictWhen}>{ruledSuffix}</Text> : null}
+              </Text>
+            </View>
+            {/* What happens next — quiet, under the outcome it follows from. */}
+            {nextStep ? (
+              <Text style={styles.nextStep} testID={`my-sighting-next-${entry.id}`}>
+                {nextStep}
+              </Text>
+            ) : null}
+          </View>
+          {/* The affordance, so "tappable" is visible and not just true. It is
+              decoration: the row's label already says this opens the listing. */}
+          {openPost ? (
+            <ChevronRight
+              size={sizes.iconSm}
+              color={palette.textSecondary}
+              style={{ marginTop: markerOffset(sizes.iconSm) }}
+            />
+          ) : null}
         </View>
-        {/* What happens next — quiet, under the outcome it follows from. */}
-        {nextStep ? (
-          <Text style={styles.nextStep} testID={`my-sighting-next-${entry.id}`}>
-            {nextStep}
-          </Text>
-        ) : null}
-      </View>
-      {/* The affordance, so "tappable" is visible and not just true. It is
-          decoration: the row's label already says this opens the listing. */}
-      {openPost ? (
-        <ChevronRight
-          size={sizes.iconSm}
-          color={palette.textSecondary}
-          style={{ marginTop: markerOffset(sizes.iconSm) }}
-        />
-      ) : null}
-      </View>
       </Pressable>
 
       {/* ⚠️ THE DOOR, and the reason this card stopped being flat. Until now
@@ -447,7 +448,7 @@ export function ReportCard({
           onPress={() => onOpenDispute?.(entry.id)}
           accessibilityRole="button"
           // The label has to carry WHICH report, because this button sits
-          // outside the grouped text block and a screen reader arriving here
+          // outside the grouped photo + text row and a screen reader arriving here
           // from below has not heard the car yet.
           accessibilityLabel={`${door.label}. ${car}, reported ${spokenAgo(reported)}`}
           accessibilityHint={door.hint}
@@ -576,9 +577,9 @@ const makeStyles = (c: Palette) =>
     // hairline decision and the reasoning behind it.
     // ⚠️ THE CARD IS A COLUMN AND THE TILE+TEXT ROW IS A CHILD OF IT, since
     // 2026-09-01. It used to BE the row. The dispute door has to be a sibling
-    // of the text block rather than inside it — `main` carries the
-    // accessibility grouping, and a control inside a grouped element is
-    // unreachable to VoiceOver — so the card needed a second slot underneath.
+    // of the grouped photo + text row rather than inside it — a control
+    // inside a grouped element is unreachable to VoiceOver — so the card
+    // needed a second slot underneath.
     // With one child the `gap` is inert, so a card with no door is unchanged.
     card: {
       ...cardSurface(c),
@@ -688,7 +689,7 @@ const makeStyles = (c: Palette) =>
      * and the neutral one are the same mark again — and telling "still open"
      * from "answered and closed" at a glance is the whole reason this tone was
      * added. The ladder is now four SHAPES: hollow ring open, filled grey
-     * closed, filled green helpful, tick credited, with colour reinforcing
+     * closed, filled ink helpful, tick credited, with colour reinforcing
      * rather than carrying. It also reads calmer at density, which matters —
      * most sightings are never ruled on, so a column of these is the common
      * case.

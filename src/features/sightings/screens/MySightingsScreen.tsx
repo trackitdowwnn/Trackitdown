@@ -80,7 +80,7 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useRequireAuth, useSession } from '@/features/auth';
@@ -137,6 +137,7 @@ export function MySightingsScreen() {
   const requireAuth = useRequireAuth();
   const router = useRouter();
   const toast = useToast();
+  const fontScale = useWindowDimensions().fontScale ?? 1;
 
   const { status, entries, refreshing, refresh, retry } = useMySightingRecord();
 
@@ -268,7 +269,7 @@ export function MySightingsScreen() {
           <ReportCard
             entry={item.row}
             photoUrl={photos.urls[item.row.id]}
-            photoPending={!photos.loaded}
+            photoPending={!photos.lookedUp[item.row.id]}
             onOpenDispute={openDispute}
             onWithdraw={requestWithdraw}
             onOpenPost={openPost}
@@ -276,7 +277,7 @@ export function MySightingsScreen() {
         )}
       </Animated.View>
     ),
-    [entranceActive, openDispute, requestWithdraw, openPost, photos],
+    [entranceActive, openDispute, requestWithdraw, openPost, photos.urls, photos.lookedUp],
   );
 
   return (
@@ -302,7 +303,10 @@ export function MySightingsScreen() {
         </Text>
       ) : session.status !== 'signedOut' && status === 'loading' ? (
         <View style={styles.summaryHolder} testID="my-sightings-summary-skeleton">
-          <View style={styles.summarySkeleton} />
+          {/* The line box grows with the text setting; the bar must too. */}
+          <View
+            style={[styles.summarySkeleton, { height: typography.caption.lineHeight * fontScale }]}
+          />
         </View>
       ) : null}
 
@@ -437,8 +441,8 @@ const makeStyles = (c: Palette) =>
       marginTop: -spacing.sm,
       paddingBottom: spacing.md,
     },
+    // Height is set inline: the caption line scaled by the text setting.
     summarySkeleton: {
-      height: typography.caption.lineHeight,
       width: '45%',
       borderRadius: radii.sm,
       backgroundColor: c.surfaceSubtle,
