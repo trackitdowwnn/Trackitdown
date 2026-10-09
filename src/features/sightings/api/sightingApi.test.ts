@@ -16,6 +16,7 @@ import type { EvidencePhoto } from '@/shared/ui';
 
 import {
   buildCreateSightingParams,
+  fetchMyReportPhotos,
   fetchPostSightings,
   fetchMySightingRecord,
   fetchSightingQuota,
@@ -30,6 +31,8 @@ const mockGetUser = jest.fn();
 const mockUpload = jest.fn();
 const mockCreateSignedUrls = jest.fn();
 const mockInvoke = jest.fn();
+const mockTableCall = jest.fn();
+const mockTableRead = jest.fn();
 
 jest.mock('@/shared/api', () => ({
   supabase: {
@@ -42,6 +45,25 @@ jest.mock('@/shared/api', () => ({
       },
     },
     rpc: (...args: unknown[]) => mockRpc(...args),
+    // Table reads (fetchMyReportPhotos): from → select → in → order, which
+    // resolves to whatever mockTableRead returns, with the chain recorded.
+    from: (table: string) => {
+      const chain = {
+        select: (columns: string) => {
+          mockTableCall('select', table, columns);
+          return chain;
+        },
+        in: (column: string, values: unknown[]) => {
+          mockTableCall('in', column, values);
+          return chain;
+        },
+        order: (column: string) => {
+          mockTableCall('order', column);
+          return Promise.resolve(mockTableRead());
+        },
+      };
+      return chain;
+    },
     auth: { getUser: () => mockGetUser() },
     storage: {
       from: () => ({
@@ -644,5 +666,64 @@ describe('markSightingNotMine', () => {
       code: 'UNKNOWN',
       message: expect.stringContaining('Please try again'),
     });
+  });
+});
+
+describe('fetchMyReportPhotos — the spotter’s own lead photos (2026-10-09)', () => {
+  const row = (
+    sighting_id: string,
+    path: string,
+    source: 'live' | 'gallery',
+    position: number,
+  ) => ({ sighting_id, path, source, position });
+
+  beforeEach(() => {
+    mockTableCall.mockClear();
+    mockTableRead.mockReset();
+  });
+
+  it('reads only these four columns of sighting_photos, for these reports', async () => {
+    mockTableRead.mockReturnValue({ data: [], error: null });
+    await fetchMyReportPhotos(['s1', 's2']);
+    expect(mockTableCall).toHaveBeenCalledWith(
+      'select',
+      'sighting_photos',
+      'sighting_id, path, source, position',
+    );
+    expect(mockTableCall).toHaveBeenCalledWith('in', 'sighting_id', ['s1', 's2']);
+  });
+
+  it('⚠️ leads with the first in-app photo — a library photo only when there is none', async () => {
+    mockTableRead.mockReturnValue({
+      data: [
+        row('s1', 'p/u/lib.jpg', 'gallery', 0),
+        row('s1', 'p/u/live.jpg', 'live', 1),
+        row('s1', 'p/u/live2.jpg', 'live', 2),
+        row('s2', 'p/u/only-lib.jpg', 'gallery', 0),
+      ],
+      error: null,
+    });
+    await expect(fetchMyReportPhotos(['s1', 's2'])).resolves.toEqual({
+      s1: 'p/u/live.jpg',
+      s2: 'p/u/only-lib.jpg',
+    });
+  });
+
+  it('asks nothing when there are no reports', async () => {
+    await expect(fetchMyReportPhotos([])).resolves.toEqual({});
+    expect(mockTableCall).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ fails loudly on a wider row than it asked for', async () => {
+    mockTableRead.mockReturnValue({
+      data: [{ ...row('s1', 'p/u/a.jpg', 'live', 0), lat: 53.48 }],
+      error: null,
+    });
+    await expect(fetchMyReportPhotos(['s1'])).rejects.toThrow();
+  });
+
+  it('throws on a read error (the hook keeps the tiles)', async () => {
+    mockTableRead.mockReturnValue({ data: null, error: { message: 'permission denied' } });
+    await expect(fetchMyReportPhotos(['s1'])).rejects.toThrow();
   });
 });

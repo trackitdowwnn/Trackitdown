@@ -403,7 +403,14 @@ commenting standards.
     which is why the check matters more than the function.
   - It nulls the coordinates only. The photo row, the image, and the coarse
     `sightings.area_label` all stay: the promise is about *detailed* location,
-    and `area_label` is what a spotter sees on their own `My reports`.
+    and `area_label` is what a spotter sees on their own "My sightings".
+  - **The spotter sees their OWN photos there (2026-10-09).** Each card leads
+    with the spotter's first in-app photo, read from `sighting_photos` under
+    `sighting_photos_select_own_spotter` (their rows only) and signed under
+    the storage policy for their own uploads — a direct read of four columns
+    (`sighting_id, path, source, position`), never through
+    `my_sighting_record`, which is not widened. No coordinates, nothing of the
+    owner or post, and nobody else's photos.
   - ⚠️ **Scheduling is the remaining weakness.** pg_cron runs
     `release-held-refunds` hourly and that function calls this; nothing
     schedules the purge itself. If the sweep stops firing, retention stops

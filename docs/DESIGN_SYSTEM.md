@@ -260,9 +260,11 @@ are build output.
   - `sectionTitle` 20/26, Bold — feed section headers (added 2026-07-11;
     sits between heading and title so scrolling feeds read in clear bands).
     **Not for DAY/DATE group labels** (carve-out added 2026-08-28): the inbox
-    and My reports both label calendar groups with `label` at `textSecondary`,
-    because a bold 20pt band between sparse cards out-shouts the cards it is
-    meant to organise. A date is a divider, not a section title.
+    labels calendar groups with `label` at `textSecondary`, because a bold
+    20pt band between sparse cards out-shouts the cards it is meant to
+    organise. A date is a divider, not a section title. My sightings uses the
+    same quiet label (`DayHeader`) for its status sections — "Waiting on the
+    owner", "Answered", "Taken back" (2026-10-09) — for the same reason.
   - `heading` 18/24, Bold — in-screen headings
   - `cardTitle` 16/22, Bold — feed-card titles (added 2026-07-11; body
     size at heavier weight, so photos stay the hero of a card)

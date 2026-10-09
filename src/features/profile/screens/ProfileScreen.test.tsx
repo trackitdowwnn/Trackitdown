@@ -247,6 +247,11 @@ describe('signed in', () => {
     expect(getByTestId('row-copy-logs')).toBeTruthy();
   });
 
+  it('names the spotter’s history the way its page does — "My sightings"', async () => {
+    const { getByTestId } = await render(<ProfileScreen />);
+    expect(getByTestId('row-my-sightings')).toHaveTextContent(/My sightings/);
+  });
+
   it('trusted spotters get the avatar badge and the spoken label', async () => {
     mockProfileState = {
       status: 'ready',

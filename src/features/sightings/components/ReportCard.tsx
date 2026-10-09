@@ -1,8 +1,20 @@
 /**
- * WHAT:  ReportCard — one filed sighting on `My reports`: the car as a colour
- *        tile, what it was, where and when it was reported, and what the owner
- *        decided. Plus `ReportCardSkeleton`, its loading twin.
- * WHY:   ⚠️ REDESIGNED 2026-08-27 (owner request, Airbnb language). It was a
+ * WHAT:  ReportCard — one filed sighting on "My sightings": the spotter's own
+ *        photo (or the car as a colour tile), what it was, where and when it
+ *        was reported, what the owner decided, and what happens next. Plus
+ *        `ReportCardSkeleton`, its loading twin.
+ * WHY:   ⚠️ THE PHOTO LEADS SINCE 2026-10-09 (owner request: the page was
+ *        "hard to read", "unclear what happens next", off-style beside the
+ *        owner's photo-first sighting cards). The spotter's FIRST IN-APP
+ *        photo now takes the tile's place, at the owner card's 88pt; the tile
+ *        stays as the fallback — no photo, a link still on its way, or
+ *        evidence the retention job has erased. Safe because it is THEIR
+ *        photo, read through their own-rows RLS and signed by the storage
+ *        policy for their own uploads (fetchMyReportPhotos); the payload
+ *        below is not widened. And each outcome now says what happens next
+ *        (NEXT_STEP), with a door to Payouts on a credited report.
+ *
+ *        ⚠️ REDESIGNED 2026-08-27 (owner request, Airbnb language). It was a
  *        local `RecordRow` inside the screen: three lines of text in a
  *        `surfaceSubtle` box with no border, no picture and no status mark.
  *        The owner's three complaints were that the cards were plain, that the
@@ -88,7 +100,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { CarColourTile } from '@/shared/ui';
+import { AppImage, CarColourTile } from '@/shared/ui';
 
 import type { MySightingRecordEntry } from '../api/sightingApi';
 
@@ -132,6 +144,24 @@ const VERDICT: Record<
   // to be wrong is the right thing to do, and the card must not scold anyone
   // for doing it.
   withdrawn: { label: 'You took this back', tone: 'plain' },
+};
+
+/**
+ * What happens next, per outcome — the line under the verdict (2026-10-09:
+ * "unclear what happens next"). Module-private like VERDICT, and for the same
+ * reason: "Not their car" is spotter-only.
+ *
+ * ⚠️ THE CREDITED LINE PROMISES NOTHING IT CANNOT CHECK. This payload carries
+ * no reward or payout facts (a listing may have had no reward, and a reward's
+ * state lives on Payouts), so it points there rather than saying "you're
+ * getting £X". A withdrawn report has no next step.
+ */
+const NEXT_STEP: Record<MySightingRecordEntry['status'], string | null> = {
+  unverified: 'We’ll let you know when they answer.',
+  helpful: 'Thanks — it counts towards your record.',
+  credited: 'Any reward shows in Payouts.',
+  not_mine: 'Not their car — thanks for looking.',
+  withdrawn: null,
 };
 
 /**
@@ -198,9 +228,20 @@ export interface ReportCardProps {
    * was not would be worse than a flat one.
    */
   onOpenPost?: (postId: string) => void;
+  /** A signed URL for the spotter's own lead photo; absent → the colour tile. */
+  photoUrl?: string;
+  /** Opens Payouts — offered on a credited report, where a reward would show. */
+  onOpenPayouts?: () => void;
 }
 
-export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: ReportCardProps) {
+export function ReportCard({
+  entry,
+  onOpenDispute,
+  onWithdraw,
+  onOpenPost,
+  photoUrl,
+  onOpenPayouts,
+}: ReportCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const stacked = useStackedRow();
@@ -209,7 +250,9 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
   const reported = useTimeAgo(entry.createdAt);
   const ruled = useTimeAgo(entry.reviewedAt ?? entry.createdAt);
   const verdict = VERDICT[entry.status];
+  const nextStep = NEXT_STEP[entry.status];
   const car = describeReportedCar(entry.car);
+  const canOpenPayouts = entry.status === 'credited' && onOpenPayouts !== undefined;
 
   const door = entry.dispute && onOpenDispute ? disputeDoor(entry.dispute) : null;
   // ⚠️ Gated on `unverified` CLIENT-side purely so the control is not offered
@@ -257,7 +300,23 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
         style={[styles.row, stacked && styles.rowStacked]}
         testID={`my-sighting-row-${entry.id}`}
       >
-      <CarColourTile colour={entry.car.colour} testID={`my-sighting-tile-${entry.id}`} />
+      {/* Their own photo leads (no label: the text block beside it already
+          names the car — the photo would be a second, wordless focus stop). */}
+      {photoUrl ? (
+        <AppImage
+          uri={photoUrl}
+          style={styles.photo}
+          recyclingKey={entry.id}
+          testID={`my-sighting-photo-${entry.id}`}
+        />
+      ) : (
+        <CarColourTile
+          colour={entry.car.colour}
+          size={sizes.timelineThumb}
+          radius={radii.md}
+          testID={`my-sighting-tile-${entry.id}`}
+        />
+      )}
 
       {/* ⚠️ THE TEXT BLOCK IS THE PRESS TARGET, not the whole card, and it is
           a Pressable ONLY when there is a post to open (review #16). Keeping
@@ -283,7 +342,9 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
         testID={openPost ? `my-sighting-open-${entry.id}` : undefined}
         accessibilityLabel={`${car}, reported ${
           entry.areaLabel ? `in ${entry.areaLabel} ` : ''
-        }${reported}. ${verdict.label}${entry.reviewedAt ? `, ${ruled}` : ''}`}
+        }${reported}. ${verdict.label}${entry.reviewedAt ? `, ${ruled}` : ''}.${
+          nextStep ? ` ${nextStep}` : ''
+        }`}
       >
         <Text style={styles.car} numberOfLines={1}>
           {car}
@@ -325,6 +386,12 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
             {ruledSuffix ? <Text style={styles.verdictWhen}>{ruledSuffix}</Text> : null}
           </Text>
         </View>
+        {/* What happens next — quiet, under the outcome it follows from. */}
+        {nextStep ? (
+          <Text style={styles.nextStep} testID={`my-sighting-next-${entry.id}`}>
+            {nextStep}
+          </Text>
+        ) : null}
       </Pressable>
       {/* The affordance, so "tappable" is visible and not just true. Outside
           the labelled block: it is decoration, and a screen reader has already
@@ -361,6 +428,22 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
           testID={`my-sighting-dispute-${entry.id}`}
         >
           <Text style={styles.doorLabel}>{door.label}</Text>
+          <ChevronRight size={sizes.iconSm} color={palette.textSecondary} />
+        </Pressable>
+      ) : null}
+
+      {/* The door to Payouts on a credited report — the dispute door's form
+          (a labelled row with a chevron: it opens a screen). */}
+      {canOpenPayouts ? (
+        <Pressable
+          onPress={onOpenPayouts}
+          accessibilityRole="button"
+          accessibilityLabel={`See your payouts. ${car}, reported ${reported}`}
+          accessibilityHint="Opens Payouts"
+          style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
+          testID={`my-sighting-payouts-${entry.id}`}
+        >
+          <Text style={styles.doorLabel}>See your payouts</Text>
           <ChevronRight size={sizes.iconSm} color={palette.textSecondary} />
         </Pressable>
       ) : null}
@@ -417,7 +500,7 @@ export function ReportCardSkeleton() {
             line. This one's contract is HEIGHT PARITY with the card beside it,
             and Text grows with the OS font setting while a View does not: at
             iOS's second Larger Text step the card's column already outgrows the
-            72pt tile and a fixed skeleton stops matching. */}
+            88pt photo and a fixed skeleton stops matching. */}
         <View style={[styles.skeletonLine, { height: typography.cardTitle.lineHeight * scale }]} />
         <View
           style={[
@@ -433,6 +516,14 @@ export function ReportCardSkeleton() {
               { height: typography.label.lineHeight * scale },
             ]}
           />
+          {/* The next-step line most cards carry. */}
+          <View
+            style={[
+              styles.skeletonLine,
+              styles.skeletonLineNarrow,
+              { height: typography.caption.lineHeight * scale },
+            ]}
+          />
         </View>
       </View>
     </View>
@@ -442,7 +533,7 @@ export function ReportCardSkeleton() {
 /**
  * Past the threshold the tile takes its own row, so the verdict — the longest
  * string on the card at 39 characters, or ~48 once a "· 3d ago" is on it — gets
- * the card's full width instead of the ~200pt left beside a 72pt tile.
+ * the card's full width instead of the ~180pt left beside an 88pt photo.
  */
 function useStackedRow(): boolean {
   const { fontScale } = useWindowDimensions();
@@ -603,10 +694,23 @@ const makeStyles = (c: Palette) =>
     },
     verdictLabelGood: { color: c.textPrimary },
     verdictWhen: { color: c.textSecondary },
+    nextStep: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    // The owner's sighting cards' photo size (timelineThumb), so the two
+    // sides of a sighting look like one family; surfaceSubtle behind it while
+    // the image loads.
+    photo: {
+      width: sizes.timelineThumb,
+      height: sizes.timelineThumb,
+      borderRadius: radii.md,
+      backgroundColor: c.surfaceSubtle,
+    },
     skeletonTile: {
-      width: sizes.carTile,
-      height: sizes.carTile,
-      borderRadius: radii.lg,
+      width: sizes.timelineThumb,
+      height: sizes.timelineThumb,
+      borderRadius: radii.md,
       backgroundColor: c.surfaceSubtle,
     },
     skeletonLine: {

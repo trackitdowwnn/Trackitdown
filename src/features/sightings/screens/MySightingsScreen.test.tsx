@@ -1,8 +1,10 @@
 /**
  * WHAT:  Orchestration tests for MySightingsScreen — the five states it can be
- *        in (signed out / loading / error / empty / populated), the four verdict
- *        labels, the "a car" fallback, and the one composed label a screen
- *        reader hears per report.
+ *        in (signed out / loading / error / empty / populated), the sections
+ *        (waiting first) and the summary line, the spotter's own photo or the
+ *        tile, what happens next per outcome and the Payouts door, the four
+ *        verdict labels, the "a car" fallback, and the one composed label a
+ *        screen reader hears per report.
  * WHY:   ⚠️ THIS SCREEN SHIPPED WITH NO TESTS AT ALL. Nothing pinned its copy,
  *        its state switch, or the verdict wording — and the verdict wording is
  *        the most load-bearing copy in the feature: `not_mine` is the absence of
@@ -17,7 +19,7 @@
  *        ../api/sightingApi.ts (MySightingRecordEntry); docs/TESTING.md.
  */
 
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import * as RN from 'react-native';
 
 import type { MySightingRecordEntry } from '../api/sightingApi';
@@ -29,6 +31,13 @@ import { MySightingsScreen } from './MySightingsScreen';
 const mockUseRecord = jest.fn();
 jest.mock('../hooks/useMySightingRecord', () => ({
   useMySightingRecord: () => mockUseRecord(),
+}));
+
+// The spotter's own photos, by sighting id — fetched and signed beside the
+// list; driven directly here (the hook and its api have their own tests).
+const mockPhotos = jest.fn((_ids: string[]): Record<string, string> => ({}));
+jest.mock('../hooks/useMyReportPhotos', () => ({
+  useMyReportPhotos: (ids: string[]) => mockPhotos(ids),
 }));
 
 const mockUseSession = jest.fn();
@@ -97,9 +106,16 @@ jest.mock('@/shared/ui', () => {
     // the same no-photo fallback). This mock replaces the whole module, so
     // anything the screen or ReportCard pulls from it has to be named here or
     // it arrives undefined.
-    DayHeader: ({ label }: { label: string }) => <Text accessibilityRole="header">{label}</Text>,
+    DayHeader: ({ label, testID }: { label: string; testID?: string }) => (
+      <Text accessibilityRole="header" testID={testID}>
+        {label}
+      </Text>
+    ),
     DayHeaderSkeleton: () => <View testID="day-header-skeleton" />,
     CarColourTile: ({ testID }: { testID?: string }) => <View testID={testID} />,
+    AppImage: ({ testID, uri }: { testID?: string; uri: string }) => (
+      <View testID={testID} accessibilityHint={uri} />
+    ),
     ThemedRefreshControl: () => null,
   };
 });
@@ -137,6 +153,7 @@ beforeEach(() => {
     .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
   mockUseSession.mockReturnValue({ status: 'signedIn', userId: 'u1' });
   mockUseRecord.mockReturnValue(ready([entry()]));
+  mockPhotos.mockReturnValue({});
 });
 
 // Restore, not clear: a spy's implementation survives clearAllMocks.
@@ -187,61 +204,97 @@ describe('MySightingsScreen states', () => {
   });
 });
 
-describe('⚠️ grouped by day', () => {
-  // The owner asked for the cards organised by date. The labels are the inbox's
-  // words on purpose — a spotter should not meet two vocabularies for "when" in
-  // one app.
-  it('heads each day with the calendar word for it', async () => {
+describe('⚠️ needs-attention first (2026-10-09)', () => {
+  const mixed = () => [
+    entry({ id: 'a', status: 'helpful', car: { make: 'BMW', colour: 'Black' } }),
+    entry({ id: 'b', status: 'withdrawn', car: { make: 'VW', colour: 'Silver' } }),
+    entry({ id: 'c', status: 'unverified', car: { make: 'Ford', colour: 'Blue' } }),
+    entry({ id: 'd', status: 'not_mine', car: { make: 'Fiat', colour: 'Red' } }),
+  ];
+
+  it('leads with what is still with the owner, then the answered, then the taken back', async () => {
+    mockUseRecord.mockReturnValue(ready(mixed()));
+    const { getAllByRole, getAllByTestId } = await render(<MySightingsScreen />);
+
+    expect(getAllByRole('header').map((node) => node.props.children)).toEqual([
+      'My sightings',
+      'Waiting on the owner',
+      'Answered',
+      'Taken back',
+    ]);
+    // …and the cards in that order, the RPC's order kept within a section.
+    expect(getAllByTestId(/^my-sighting-[a-d]$/).map((node) => node.props.testID)).toEqual([
+      'my-sighting-c',
+      'my-sighting-a',
+      'my-sighting-d',
+      'my-sighting-b',
+    ]);
+  });
+
+  it('leaves out a section with nothing in it', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ status: 'helpful' })]));
+    const { queryByTestId, getByTestId } = await render(<MySightingsScreen />);
+
+    expect(getByTestId('section-answered')).toBeTruthy();
+    expect(queryByTestId('section-waiting')).toBeNull();
+    expect(queryByTestId('section-withdrawn')).toBeNull();
+  });
+
+  it('says how they’re doing under the title — counted from the list', async () => {
     mockUseRecord.mockReturnValue(
-      ready([
-        entry({ id: 'a', createdAt: new Date().toISOString() }),
-        entry({ id: 'b', createdAt: new Date(Date.now() - DAY_MS).toISOString() }),
-      ]),
+      ready([...mixed(), entry({ id: 'e', status: 'credited' })]),
     );
-    const { getByText } = await render(<MySightingsScreen />);
+    const { getByTestId } = await render(<MySightingsScreen />);
 
-    expect(getByText('Today')).toBeTruthy();
-    expect(getByText('Yesterday')).toBeTruthy();
+    // Withdrawn isn't counted; "Not a match" never becomes a number.
+    expect(getByTestId('my-sightings-summary')).toHaveTextContent(
+      '4 reports · 2 confirmed · 1 recovery',
+    );
+  });
+});
+
+describe('the spotter’s own photo (2026-10-09)', () => {
+  it('leads the card when there is one, and the colour tile stands in when not', async () => {
+    mockPhotos.mockReturnValue({ a: 'https://x/a.jpg' });
+    mockUseRecord.mockReturnValue(ready([entry({ id: 'a' }), entry({ id: 'b' })]));
+    const { getByTestId, queryByTestId } = await render(<MySightingsScreen />);
+
+    expect(getByTestId('my-sighting-photo-a').props.accessibilityHint).toBe('https://x/a.jpg');
+    expect(queryByTestId('my-sighting-tile-a')).toBeNull();
+    expect(getByTestId('my-sighting-tile-b')).toBeTruthy();
+    expect(mockPhotos).toHaveBeenCalledWith(['a', 'b']);
+  });
+});
+
+describe('what happens next (2026-10-09)', () => {
+  it.each([
+    ['unverified' as const, 'We’ll let you know when they answer.'],
+    ['helpful' as const, 'Thanks — it counts towards your record.'],
+    ['credited' as const, 'Any reward shows in Payouts.'],
+    ['not_mine' as const, 'Not their car — thanks for looking.'],
+  ])('a %s report says "%s"', async (status, line) => {
+    mockUseRecord.mockReturnValue(ready([entry({ status })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+
+    expect(getByTestId('my-sighting-next-s1')).toHaveTextContent(line);
   });
 
-  it('⚠️ heads a day ONCE, however many reports it holds', async () => {
-    // groupByDay only emits a header when the label changes, which relies on the
-    // RPC's newest-first order. Three headers for three same-day reports would
-    // be the tell that the order assumption broke.
-    const today = new Date().toISOString();
+  it('a withdrawn report has no next step', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ status: 'withdrawn' })]));
+    const { queryByTestId } = await render(<MySightingsScreen />);
+
+    expect(queryByTestId('my-sighting-next-s1')).toBeNull();
+  });
+
+  it('⚠️ a credited report opens Payouts — and only a credited one offers it', async () => {
     mockUseRecord.mockReturnValue(
-      ready([
-        entry({ id: 'a', createdAt: today, car: { make: 'Ford', colour: 'Blue' } }),
-        entry({ id: 'b', createdAt: today, car: { make: 'VW', colour: 'Silver' } }),
-        entry({ id: 'c', createdAt: today, car: { make: 'BMW', colour: 'Black' } }),
-      ]),
+      ready([entry({ id: 'a', status: 'credited' }), entry({ id: 'b', status: 'helpful' })]),
     );
-    const { getAllByText, getByText } = await render(<MySightingsScreen />);
+    const { getByTestId, queryByTestId } = await render(<MySightingsScreen />);
 
-    expect(getAllByText('Today')).toHaveLength(1);
-    expect(getByText('Blue Ford')).toBeTruthy();
-    expect(getByText('Black BMW')).toBeTruthy();
-  });
-
-  it('names older days by date rather than counting back', async () => {
-    // Past "Yesterday", "6 days ago" stops being a word anyone thinks in.
-    const old = new Date('2026-07-23T10:00:00.000Z');
-    mockUseRecord.mockReturnValue(ready([entry({ createdAt: old.toISOString() })]));
-    const { getByText } = await render(<MySightingsScreen />);
-
-    expect(getByText('23 July')).toBeTruthy();
-  });
-
-  it('⚠️ gives a screen reader a real heading to navigate DAYS by', async () => {
-    // ⚠️ THE DAY, NOT THE PAGE TITLE. The first version of this asserted
-    // `name: 'My reports'`, which passed before day grouping existed and would
-    // keep passing if `accessibilityRole="header"` were deleted from the day
-    // label — so the one new affordance in the change was uncovered.
-    mockUseRecord.mockReturnValue(ready([entry({ createdAt: new Date().toISOString() })]));
-    const { getByRole } = await render(<MySightingsScreen />);
-
-    expect(getByRole('header', { name: 'Today' })).toBeTruthy();
-    expect(getByRole('header', { name: 'My sightings' })).toBeTruthy();
+    expect(queryByTestId('my-sighting-payouts-b')).toBeNull();
+    fireEvent.press(getByTestId('my-sighting-payouts-a'));
+    expect(mockPush).toHaveBeenCalledWith('/payouts');
   });
 });
 
@@ -273,9 +326,11 @@ describe('a report', () => {
   it('⚠️ never dates a verdict nobody has given', async () => {
     // NULL reviewed_at means the owner has not looked. Dressing that up as a
     // decision would tell a spotter they had been answered when they had not.
-    const { getByText } = await render(<MySightingsScreen />);
+    // (The words appear twice: the section's title and the card's verdict.)
+    const { getAllByText, queryByText } = await render(<MySightingsScreen />);
 
-    expect(getByText('Waiting on the owner')).toBeTruthy();
+    expect(getAllByText('Waiting on the owner')).toHaveLength(2);
+    expect(queryByText(/Waiting on the owner ·/)).toBeNull();
   });
 
   it('dates the verdict once there is one', async () => {
@@ -296,7 +351,9 @@ describe('a report', () => {
     const { getByLabelText } = await render(<MySightingsScreen />);
 
     expect(
-      getByLabelText('Blue Ford, reported in Camden 3d ago. Waiting on the owner'),
+      getByLabelText(
+        'Blue Ford, reported in Camden 3d ago. Waiting on the owner. We’ll let you know when they answer.',
+      ),
     ).toBeTruthy();
   });
 });
@@ -312,9 +369,10 @@ describe('⚠️ the verdict copy', () => {
     ['credited' as const, 'Credited — this one led to the recovery'],
   ])('reads %s as "%s"', async (status, label) => {
     mockUseRecord.mockReturnValue(ready([entry({ status })]));
-    const { getByText } = await render(<MySightingsScreen />);
+    const { getByTestId } = await render(<MySightingsScreen />);
 
-    expect(getByText(label)).toBeTruthy();
+    // On the card itself (the waiting section's title says the same words).
+    expect(within(getByTestId('my-sighting-s1')).getByText(label)).toBeTruthy();
   });
 });
 
