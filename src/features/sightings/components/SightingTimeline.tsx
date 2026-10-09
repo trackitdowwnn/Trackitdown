@@ -3,7 +3,10 @@
  *        rail treatment: a 2px connector carrying meaning-differentiated
  *        nodes (12px ringed sage dots for sightings, a 16px one-time-pulse
  *        newest dot, 24px icon-in-circle ANCHORS fixing the arc's ends), the
- *        owner's quiet entry cards / the public's single lines off the SAME
+ *        owner's photo-first cards (SightingEntryCard: photo, "Seen near …",
+ *        when, and "Needs your answer" until the owner decides — the detail
+ *        lives on the sighting page since 2026-10-09) / the public's flat
+ *        time-and-place cards off the SAME
  *        rail, day-group headers, and the movement hint as the header's one
  *        insight line. NEWEST-FIRST: terminal (when the arc has ended) at the
  *        top, then sightings newest-down, the ORIGIN — the theft — at the
@@ -36,7 +39,7 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeInDown,
   LinearTransition,
@@ -52,9 +55,9 @@ import Svg, { Defs, Line, LinearGradient, Stop } from 'react-native-svg';
 
 import { timeAgo } from '@/shared/lib/timeAgo';
 import {
+  cardSurface,
   motion,
   radii,
-  shadows,
   sizes,
   spacing,
   typography,
@@ -62,10 +65,8 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { AppImage, Avatar } from '@/shared/ui';
 
-import { contextSummary } from '../lib/contextLabels';
-import { isConfirmedVerdict, sightingVerdictLabel } from '../lib/sightingVerdict';
+import { ENTRY_CARD_FIRST_LINE_Y, SightingEntryCard } from './SightingEntryCard';
 import {
   buildTimelineItems,
   earlierCountLabel,
@@ -77,8 +78,9 @@ import {
 import type { OwnerSighting, PublicSightingEntries } from '../types';
 
 /** Node centres sit on their row's FIRST TEXT LINE centre (optical alignment):
- *  owner cards = row margin + card padding + half the label line;
- *  public/tail lines = row padding + half the body line;
+ *  owner cards = ENTRY_CARD_FIRST_LINE_Y (SightingEntryCard owns its layout);
+ *  public cards = row margin + card padding + half the caption line;
+ *  tail lines = row padding + half the body line;
  *  anchors = row padding + half the cardTitle line. */
 const CARD_NODE_Y = spacing.lg + spacing.lg + typography.caption.lineHeight / 2;
 const LINE_NODE_Y = spacing.lg + typography.body.lineHeight / 2;
@@ -490,6 +492,8 @@ export function OwnerSightingTimeline({
   );
 }
 
+/** A sighting on the owner's rail: its dot, then the photo-first card
+ *  (SightingEntryCard — the card's contents and why live there). */
 function OwnerEntryRow({
   sighting,
   newest,
@@ -508,99 +512,23 @@ function OwnerEntryRow({
   onPress: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
-  const when = `${timeAgo(sighting.createdAt)} · ${clockTime(sighting.createdAt)}`;
-  // Honest location line (DOMAIN: shown honestly, never papered over). The
-  // dashed incoming connector says the same thing decoratively; THIS label
-  // is the accessible truth of it.
-  const where = sighting.locationUnavailable
-    ? 'Location couldn’t be captured'
-    : (sighting.areaLabel ?? 'Captured location');
-  const pills = contextSummary(sighting);
-  const thumbPath = sighting.photos[0]?.path;
-  const thumbUrl = thumbPath ? photoUrls[thumbPath] : undefined;
-
   return (
     <View style={styles.row}>
       <RailCell
         {...flags}
         node={newest ? sizes.timelineDotNewest : sizes.timelineDot}
-        centerY={CARD_NODE_Y}
+        centerY={ENTRY_CARD_FIRST_LINE_Y}
       >
-        {newest ? <NewestPulse centerY={CARD_NODE_Y} /> : null}
-        <SightingDot newest={newest} centerY={CARD_NODE_Y} />
+        {newest ? <NewestPulse centerY={ENTRY_CARD_FIRST_LINE_Y} /> : null}
+        <SightingDot newest={newest} centerY={ENTRY_CARD_FIRST_LINE_Y} />
       </RailCell>
-      <Pressable
+      <SightingEntryCard
+        sighting={sighting}
+        photoUrls={photoUrls}
+        position={position}
+        count={count}
         onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`Sighting ${position} of ${count}, ${where}, ${when}, by ${sighting.spotter.firstName}. Opens details.`}
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-        testID={`timeline-entry-${sighting.id}`}
-      >
-        {/* Text owns the card's width; the thumb TRAILS (design-refs) so the
-            place never fights the photo for room. */}
-        <View style={styles.cardTop}>
-          <View style={styles.cardBody}>
-            <View style={styles.cardTopLine}>
-              <Text style={styles.entryWhen} numberOfLines={1}>
-                {when}
-              </Text>
-              {/* ⚠️ MAPPED, not a two-way branch. This read `credited ? '✓
-                  Credited' : '✓ Helpful'`, so the moment a sighting could be
-                  marked not_mine it would have rendered a rejected report as
-                  "✓ Helpful" — the exact opposite of the owner's verdict, with
-                  a tick on it.
-
-                  No tick on not_mine: the tick means "confirmed", and this is
-                  the absence of a confirmation. Muted, because it is the
-                  quietest outcome of the three and is not a mark against the
-                  spotter. */}
-              {sightingVerdictLabel(sighting.status) ? (
-                <Text
-                  style={
-                    isConfirmedVerdict(sighting.status)
-                      ? styles.statusTag
-                      : [styles.statusTag, styles.statusTagMuted]
-                  }
-                >
-                  {isConfirmedVerdict(sighting.status)
-                    ? `✓ ${sightingVerdictLabel(sighting.status)}`
-                    : sightingVerdictLabel(sighting.status)}
-                </Text>
-              ) : null}
-            </View>
-            <Text style={styles.entryWhere} numberOfLines={2}>
-              {where}
-            </Text>
-          </View>
-          {thumbUrl ? (
-            <AppImage uri={thumbUrl} style={styles.cardThumb} />
-          ) : (
-            <View style={[styles.cardThumb, styles.cardThumbPending]} />
-          )}
-        </View>
-        {pills.length > 0 ? (
-          <View style={styles.pillRow}>
-            {pills.map((pill) => (
-              <View key={pill} style={styles.pill}>
-                <Text style={styles.pillText}>{pill}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-        <View style={styles.cardBottomLine}>
-          <View style={styles.spotterRow}>
-            <Avatar name={sighting.spotter.firstName} size="sm" />
-            <Text style={styles.spotterText} numberOfLines={1}>
-              {sighting.spotter.firstName}
-              {sighting.spotter.sightingsHelpful > 0
-                ? ` · ${sighting.spotter.sightingsHelpful} helpful`
-                : ''}
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={sizes.iconSm} color={palette.textSecondary} />
-        </View>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -718,8 +646,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    // Rail → content offset: node column + this gap ≈ 44px (researched 40–60).
-    gap: spacing.xxl,
+    // Rail → content offset: node column + this gap = 40px, the low end of
+    // the researched 40–60 — the photo-first cards need the width.
+    gap: spacing.lg,
   },
   railCell: {
     width: sizes.timelineRailColumn,
@@ -801,106 +730,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textSecondary,
   },
-  // Owner entries: quiet cards off the rail (the shared surface recipe).
-  card: {
-    flex: 1,
-    gap: spacing.sm,
-    marginVertical: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: c.surface,
-    ...shadows.soft,
-  },
-  cardPressed: {
-    backgroundColor: c.surfaceSubtle,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  cardThumb: {
-    width: sizes.avatarLg,
-    height: sizes.avatarLg,
-    borderRadius: radii.md,
-  },
-  cardThumbPending: {
-    backgroundColor: c.surfaceSubtle,
-  },
-  cardBody: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  cardTopLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  cardBottomLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  entryWhen: {
-    ...typography.caption,
-    color: c.textSecondary,
-    flexShrink: 1,
-  },
-  statusTag: {
-    ...typography.caption,
-    color: c.primary,
-  },
-  /** not_mine only. Secondary ink so the rejected report recedes rather than
-   *  competing with the confirmed ones — it is an outcome, not a warning, and
-   *  the owner may still change it. */
-  statusTagMuted: {
-    color: c.textSecondary,
-  },
-  entryWhere: {
-    // The card's headline (design-refs: quiet time above, the place leading)
-    // — label tier: present without shouting, and two lines may wrap.
-    ...typography.label,
-    color: c.textPrimary,
-  },
-  pillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  pill: {
-    paddingHorizontal: spacing.md,
-    minHeight: sizes.pillHeight,
-    justifyContent: 'center',
-    borderRadius: radii.full,
-    backgroundColor: c.surfaceSubtle,
-  },
-  pillText: {
-    ...typography.caption,
-    color: c.textPrimary,
-  },
-  spotterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flexShrink: 1,
-  },
-  spotterText: {
-    ...typography.caption,
-    color: c.textSecondary,
-    flexShrink: 1,
-  },
-  // Public entries: the same quiet card surface, holding only the fenced
-  // payload — locality leading, time beneath.
+  // Public entries: the owner card's flat surface (cardSurface — a resting
+  // card is a hairline, not a shadow), holding only the fenced payload.
   publicCard: {
+    ...cardSurface(c),
     flex: 1,
     gap: spacing.xs,
     marginVertical: spacing.lg,
     padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: c.surface,
-    ...shadows.soft,
   },
   publicWhere: {
     ...typography.label,

@@ -1,7 +1,8 @@
 /**
  * WHAT:  PostSightingsSection — the detail page's "Sighting activity"
  *        section, serving BOTH faces from one mount point: the owner gets
- *        the rich timeline preview (3 newest + movement hint + "View all"),
+ *        the rich timeline preview (a summary line — "4 sightings · 1 needs
+ *        your answer" — then the 3 newest + movement hint + "View all"),
  *        everyone else gets the restrained public timeline or nothing at
  *        all. Owns its own divider + title chrome so the public-empty case
  *        can vanish entirely (the host page cannot know emptiness).
@@ -24,7 +25,15 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import { createLogger } from '@/shared/lib/logger';
-import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import {
+  cardSurface,
+  radii,
+  sizes,
+  spacing,
+  typography,
+  useThemedStyles,
+  type Palette,
+} from '@/shared/theme';
 
 import { usePostSightings } from '../hooks/usePostSightings';
 import { usePublicSightingEntries } from '../hooks/usePublicSightingEntries';
@@ -37,6 +46,17 @@ const log = createLogger('sightings');
 
 /** Newest entries shown in the owner's on-page preview before "View all". */
 const PREVIEW_LIMIT = 3;
+
+/** "4 sightings · 1 needs your answer" — counted over ALL the owner's
+ *  sightings, not the 3 the preview shows, so a waiting one below the fold is
+ *  never missed. "· all answered" once every one is decided. */
+export function sightingsSummaryLine(sightings: Pick<OwnerSighting, 'status'>[]): string {
+  const total = `${sightings.length} ${sightings.length === 1 ? 'sighting' : 'sightings'}`;
+  const waiting = sightings.filter((s) => s.status === 'unverified').length;
+  if (waiting === 0) return `${total} · ${sightings.length === 1 ? 'answered' : 'all answered'}`;
+  if (sightings.length === 1) return `${total} · needs your answer`;
+  return `${total} · ${waiting} ${waiting === 1 ? 'needs' : 'need'} your answer`;
+}
 
 /** Public entries arrive newest-first; the map walks time forward. Only
  *  snapped points exist here — the server rounded them (ADR-0009). */
@@ -120,15 +140,30 @@ export function PostSightingsSection({
     <View>
       <View style={styles.divider} />
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Sighting activity</Text>
+        {/* The title and its one-line answer to "anything new?", together. */}
+        <View style={styles.titleBlock}>
+          <Text style={styles.sectionTitle}>Sighting activity</Text>
+          {owner.status === 'ready' && owner.sightings.length > 0 ? (
+            <Text style={styles.summary} testID="sightings-summary">
+              {sightingsSummaryLine(owner.sightings)}
+            </Text>
+          ) : null}
+        </View>
         {owner.status === 'loading' ? (
-          <View style={styles.skeletonSet} accessibilityLabel="Loading sightings" testID="sightings-section-skeleton">
+          // The cards' own shape, in line with where they will sit off the
+          // rail — so nothing jumps when they land.
+          <View
+            style={styles.skeletonSet}
+            accessible
+            accessibilityLabel="Loading sightings"
+            testID="sightings-section-skeleton"
+          >
             {[0, 1].map((n) => (
-              <View key={n} style={styles.skeletonRow}>
-                <View style={styles.skeletonDot} />
+              <View key={n} style={styles.skeletonCard}>
+                <View style={styles.skeletonThumb} />
                 <View style={styles.skeletonLines}>
-                  <View style={styles.skeletonLineWide} />
-                  <View style={styles.skeletonLine} />
+                  <View style={styles.skeletonTitle} />
+                  <View style={styles.skeletonMeta} />
                 </View>
               </View>
             ))}
@@ -206,10 +241,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     paddingVertical: spacing.xxl,
     gap: spacing.lg,
   },
+  titleBlock: {
+    gap: spacing.xs,
+  },
   sectionTitle: {
     ...typography.title,
     color: c.textPrimary,
     includeFontPadding: false,
+  },
+  summary: {
+    ...typography.caption,
+    color: c.textSecondary,
   },
   meta: {
     ...typography.body,
@@ -229,30 +271,34 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   skeletonSet: {
     gap: spacing.lg,
   },
-  skeletonRow: {
+  // Indented by the rail column + its gap, as the real cards are.
+  skeletonCard: {
+    ...cardSurface(c),
     flexDirection: 'row',
-    gap: spacing.sm,
     alignItems: 'flex-start',
+    gap: spacing.md,
+    padding: spacing.md,
+    marginLeft: sizes.timelineRailColumn + spacing.lg,
   },
-  skeletonDot: {
-    width: sizes.iconSm,
-    height: sizes.iconSm,
-    borderRadius: radii.full,
+  skeletonThumb: {
+    width: sizes.timelineThumb,
+    height: sizes.timelineThumb,
+    borderRadius: radii.md,
     backgroundColor: c.surfaceSubtle,
   },
   skeletonLines: {
     flex: 1,
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
-  skeletonLineWide: {
-    height: sizes.skeletonLine,
-    width: '60%',
+  skeletonTitle: {
+    height: typography.cardTitle.lineHeight,
+    width: '70%',
     borderRadius: radii.sm,
     backgroundColor: c.surfaceSubtle,
   },
-  skeletonLine: {
-    height: sizes.skeletonLine,
-    width: '40%',
+  skeletonMeta: {
+    height: typography.caption.lineHeight,
+    width: '50%',
     borderRadius: radii.sm,
     backgroundColor: c.surfaceSubtle,
   },

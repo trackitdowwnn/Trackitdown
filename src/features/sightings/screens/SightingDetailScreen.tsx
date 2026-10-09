@@ -78,7 +78,12 @@ import { hasSeenDetails, SightingSeenSection } from '../components/SightingSeenS
 import { SightingSpotterCard } from '../components/SightingSpotterCard';
 import { SightingWhereSection } from '../components/SightingWhereSection';
 import { usePostSightings } from '../hooks/usePostSightings';
-import { isConfirmedVerdict, isGoneSighting, sightingVerdictLabel } from '../lib/sightingVerdict';
+import {
+  isConfirmedVerdict,
+  isGoneSighting,
+  sightingSeenAt,
+  sightingVerdictLabel,
+} from '../lib/sightingVerdict';
 import type { OwnerSighting } from '../types';
 
 const log = createLogger('sightings');
@@ -459,11 +464,8 @@ function SightingTitle({
   reviewedAt: string | null;
 }) {
   const styles = useThemedStyles(makeStyles);
-  // When it was SEEN: an in-app photo's capture moment. A library photo's
-  // time says nothing about when the car was there (ADR-0003), so without a
-  // live photo this falls back to when the sighting was sent.
-  const seenAt =
-    sighting.photos.find((photo) => photo.source === 'live')?.capturedAt ?? sighting.createdAt;
+  // When it was SEEN — the same rule as the timeline card (ADR-0003).
+  const seenAt = sightingSeenAt(sighting);
   const ago = useTimeAgo(seenAt);
   // A held clock, not `new Date()` in render: the React Compiler would freeze
   // that, and "Today" would stay today past midnight.

@@ -807,8 +807,15 @@ to use.
   to the actions-only rule (it mirrors the reference's verification badge
   and stays distinct from any nearby CTA). The second exception is the
   `primary` tone of `StatusPill`: the dot on an owner's "Confirmed" /
-  "Credited" sighting answer (`SightingDetailScreen`) — a settled status, not
-  success green, which stays reserved for payout moments.
+  "Credited" sighting answer (`SightingDetailScreen`, and the owner's
+  timeline cards) — a settled status, not success green, which stays
+  reserved for payout moments. On those cards an undecided sighting wears
+  "Needs your answer" with the `warning` dot (dot only, label in ink): the
+  one status that asks the owner to act.
+- Sighting timeline cards (owner, `SightingEntryCard`, 2026-10-09): flat
+  `cardSurface`, photo first (`sizes.timelineThumb`), the place in
+  `cardTitle`, the time in caption, the status pill — nothing else. The
+  rail-to-card gap is `spacing.lg` (40px offset with the 24px node column).
 - Accessibility: minimum 44pt touch targets (map markers excepted — see Map
   screens), WCAG AA contrast against the
   near-white background (check `primary` and `accentText` on `#F7F7F7`), labels on all interactive

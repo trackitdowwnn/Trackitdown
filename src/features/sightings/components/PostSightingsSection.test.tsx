@@ -2,7 +2,9 @@
  * WHAT:  Tests for PostSightingsSection — the two faces rendering with the
  *        correct DEPTH from one mount point, the per-viewer empty rules
  *        (owner: warm copy; public: the section vanishes), the owner
- *        preview's View-all doorway, and entry tap-through.
+ *        preview's View-all doorway, entry tap-through, and the owner's
+ *        summary line ("4 sightings · 1 needs your answer"), counted over
+ *        every sighting, not just the three shown.
  * WHY:   The face split is the feature's // SAFETY core (ADR-0008): the
  *        public face must render nothing but time + locality — the absence
  *        assertions here (no photos, no spotter name, no note, no owner
@@ -16,7 +18,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import type { OwnerSighting, PublicSightingEntries } from '../types';
-import { PostSightingsSection } from './PostSightingsSection';
+import { PostSightingsSection, sightingsSummaryLine } from './PostSightingsSection';
 
 jest.mock('react-native-reanimated', () => {
   const actual = jest.requireActual('react-native-reanimated/mock');
@@ -114,6 +116,20 @@ beforeEach(() => {
   mockPublicHook.mockReturnValue(null);
 });
 
+describe('sightingsSummaryLine', () => {
+  const of = (...statuses: OwnerSighting['status'][]) => statuses.map((status) => ({ status }));
+
+  it.each([
+    [of('unverified'), '1 sighting · needs your answer'],
+    [of('helpful'), '1 sighting · answered'],
+    [of('unverified', 'helpful', 'not_mine'), '3 sightings · 1 needs your answer'],
+    [of('unverified', 'unverified', 'credited'), '3 sightings · 2 need your answer'],
+    [of('helpful', 'not_mine'), '2 sightings · all answered'],
+  ])('%j → "%s"', (sightings, line) => {
+    expect(sightingsSummaryLine(sightings)).toBe(line);
+  });
+});
+
 describe('face selection', () => {
   it('the owner face never enables the public RPC fetch', async () => {
     await renderSection({ postId: 'p1', isOwner: true });
@@ -161,10 +177,28 @@ describe('owner face', () => {
     });
   });
 
+  it('⚠️ says how many need an answer — counting the ones below the preview too', async () => {
+    const four = ['29', '28', '27', '26'].map((d) =>
+      sighting(`s${d}`, `2026-07-${d}T10:00:00Z`),
+    );
+    // Only the OLDEST — hidden behind "View all" — is still waiting.
+    four[0].status = 'helpful';
+    four[1].status = 'not_mine';
+    four[2].status = 'credited';
+    mockOwnerHook.mockReturnValue(ownerReady(four));
+    const { getByTestId, queryByTestId } = await renderSection({ postId: 'p1', isOwner: true });
+    expect(queryByTestId('timeline-entry-s26')).toBeNull();
+    expect(getByTestId('sightings-summary')).toHaveTextContent('4 sightings · 1 needs your answer');
+  });
+
   it('shows the warm empty state when no sightings exist yet', async () => {
-    const { getByText, queryByText } = await renderSection({ postId: 'p1', isOwner: true });
+    const { getByText, queryByText, queryByTestId } = await renderSection({
+      postId: 'p1',
+      isOwner: true,
+    });
     expect(getByText(/No sightings yet — spotters in the area have been alerted/)).toBeTruthy();
     expect(queryByText(/View all/)).toBeNull();
+    expect(queryByTestId('sightings-summary')).toBeNull();
   });
 
   it('shows a skeleton while loading', async () => {
