@@ -76,8 +76,9 @@ const setup = async () => {
 it('is just the question — marked optional — with four fixed answers and none chosen', async () => {
   const s = await setup();
   await s.open();
-  expect(s.getByRole('header', { name: 'Why are you taking this back?' })).toBeTruthy();
-  expect(s.getByLabelText('Optional')).toBeTruthy();
+  // One element to a screen reader: the question and that it's optional.
+  expect(s.getByRole('header', { name: 'Why are you taking this back? Optional' })).toBeTruthy();
+  expect(s.getByText('Optional')).toBeTruthy();
   // The owner asked for the question alone: no old title, no explanation.
   expect(s.queryByText('Take this report back?')).toBeNull();
   expect(s.queryByText(/we’ll pass this on/)).toBeNull();
@@ -155,4 +156,11 @@ it('tells a screen reader the chosen answer can be cleared', async () => {
   expect(s.getByRole('radio', { name: 'Something else' }).props.accessibilityHint).toBe(
     'Double tap to clear',
   );
+});
+
+it('⚠️ never cuts an answer off — at large text the sentences wrap', async () => {
+  const s = await setup();
+  await s.open();
+  const answer = s.getByText('I’m not sure it was the car');
+  expect(answer.props.numberOfLines).toBeUndefined();
 });

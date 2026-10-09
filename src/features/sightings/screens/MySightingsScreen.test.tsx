@@ -279,9 +279,7 @@ describe('⚠️ needs-attention first (2026-10-09)', () => {
   });
 
   it('says how they’re doing under the title — counted from the list', async () => {
-    mockUseRecord.mockReturnValue(
-      ready([...mixed(), entry({ id: 'e', status: 'credited' })]),
-    );
+    mockUseRecord.mockReturnValue(ready([...mixed(), entry({ id: 'e', status: 'credited' })]));
     const { getByTestId } = await render(<MySightingsScreen />);
 
     // Withdrawn isn't counted; "Not a match" never becomes a number.
@@ -547,7 +545,9 @@ describe('taking a report back', () => {
       fireEvent.press(getByTestId('confirm-withdraw'));
     });
 
-    expect(mockToastShow).toHaveBeenCalledWith('Report taken back — the owner no longer sees it.');
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'Report taken back — the owner no longer sees it. You can’t re-file it for this car today.',
+    );
   });
 
   it('⚠️ shows OUR copy when the owner ruled between render and tap', async () => {
@@ -620,9 +620,7 @@ describe('opening the car a report was about', () => {
     // The server sends null for a closed post, so there is nothing to press.
     // This is the wall that makes closed_uncredited route to the dispute
     // screen rather than the post, and it must not move.
-    mockUseRecord.mockReturnValue(
-      ready([entry({ id: 's1', postId: null, status: 'not_mine' })]),
-    );
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', postId: null, status: 'not_mine' })]));
     const { queryByTestId } = await render(<MySightingsScreen />);
 
     expect(queryByTestId('my-sighting-open-s1')).toBeNull();

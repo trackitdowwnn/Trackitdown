@@ -172,3 +172,14 @@ describe('accessibilityHint', () => {
     expect(getByTestId('row').props.accessibilityHint).toBe('Double tap to clear');
   });
 });
+
+describe('titleLines', () => {
+  it('keeps a settings label to one line by default, and lets a chooser answer wrap', async () => {
+    const one = await render(<ListRow title="Notifications" onPress={() => {}} />);
+    expect(one.getByText('Notifications').props.numberOfLines).toBe(1);
+    const wrap = await render(
+      <ListRow title="I’m not sure it was the car" selected={false} titleLines={0} />,
+    );
+    expect(wrap.getByText('I’m not sure it was the car').props.numberOfLines).toBeUndefined();
+  });
+});

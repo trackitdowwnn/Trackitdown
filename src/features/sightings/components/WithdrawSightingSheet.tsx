@@ -10,9 +10,9 @@
  *        the "Take this report back?" title and its explanatory lines went,
  *        and the "Optional. If the owner was told…" sentence became a small
  *        "Optional" tag beside the question — the owner found the longer
- *        version too much to read for one tap. The irreversible facts (the
- *        owner stops seeing it; it can't be re-filed today) are still said by
- *        the destructive button and the toast that follows.
+ *        version too much to read for one tap. The irreversible facts are
+ *        said by the toast that follows instead: "Report taken back — the
+ *        owner no longer sees it. You can't re-file it for this car today."
  *
  *        ⚠️ ONE COLUMN, NOT CHIPS (owner: the chips "looked jumbled"). Four
  *        sentence-length answers wrapped raggedly as chips; ListRow's chooser
@@ -90,13 +90,18 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
       }}
     >
       <View style={styles.content}>
-        {/* The sheet's own heading (BottomSheet's title style), with the
-            "Optional" tag beside it rather than a sentence beneath. */}
-        <View style={styles.header}>
-          <Text style={styles.title} accessibilityRole="header">
-            {QUESTION}
-          </Text>
-          <View style={styles.tag} accessible accessibilityLabel="Optional">
+        {/* The sheet's own heading (BottomSheet's title style), with a small
+            "Optional" tag ALWAYS beneath it — beside it, it wrapped onto its
+            own line on some phones and not others. One element to a screen
+            reader: "Why are you taking this back? Optional", heard once. */}
+        <View
+          style={styles.header}
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel={`${QUESTION} Optional`}
+        >
+          <Text style={styles.title}>{QUESTION}</Text>
+          <View style={styles.tag}>
             <Text style={styles.tagText}>Optional</Text>
           </View>
         </View>
@@ -116,6 +121,9 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
                 // Tap the chosen answer again to clear it — it is optional.
                 onPress={() => setReason((current) => (current === value ? null : value))}
                 accessibilityHint={chosen ? 'Double tap to clear' : undefined}
+                // The answers are sentences: at large text they wrap, never
+                // "…" — the spotter must read what the owner will be told.
+                titleLines={0}
                 testID={`withdraw-reason-${value}`}
               />
             );
@@ -149,22 +157,20 @@ const makeStyles = (c: Palette) =>
       gap: spacing.lg,
     },
     header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
+      alignItems: 'flex-start',
+      gap: spacing.xs,
     },
     // BottomSheet's own title style, so the sheet reads as titled by the
     // question.
     title: {
       ...typography.heading,
       color: c.textPrimary,
-      flexShrink: 1,
     },
     // Small and quiet: a hint, not an instruction.
     tag: {
       backgroundColor: c.surfaceSubtle,
-      borderRadius: radii.full,
+      // StatusPill's radius — the design system's chip/pill corner.
+      borderRadius: radii.sm,
       // StatusPill's padding: the app's one small-tag size.
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
@@ -175,8 +181,11 @@ const makeStyles = (c: Palette) =>
     },
     // ListRow insets its own content by `md`; pulling the list out by the
     // same amount lines each answer up with the question above it.
+    // A small gap, as CollectionPickerSheet's rows have: without it the
+    // pressed backgrounds of neighbouring answers touch.
     list: {
       marginHorizontal: -spacing.md,
+      gap: spacing.xs,
     },
     actions: {
       gap: spacing.md,

@@ -78,6 +78,10 @@ export interface ListRowProps {
    *  to clear" on a chosen answer that can be unchosen (a radio otherwise
    *  promises it can't). */
   accessibilityHint?: string;
+  /** Lines the title may take; 0 = as many as it needs. Default 1, right for a
+   *  settings label. A chooser whose titles ARE the answers (full sentences)
+   *  passes 0, so large text wraps them rather than cutting them off. */
+  titleLines?: number;
   testID?: string;
 }
 
@@ -93,6 +97,7 @@ export function ListRow({
   trailing,
   disabled = false,
   accessibilityHint,
+  titleLines = 1,
   testID,
 }: ListRowProps) {
   const styles = useThemedStyles(makeStyles);
@@ -148,7 +153,10 @@ export function ListRow({
     >
       {Icon ? <Icon size={sizes.icon} color={iconColor} /> : null}
       <View style={styles.textBlock}>
-        <Text style={[styles.title, { color: titleColor }]} numberOfLines={1}>
+        <Text
+          style={[styles.title, { color: titleColor }]}
+          numberOfLines={titleLines === 0 ? undefined : titleLines}
+        >
           {title}
         </Text>
         {subtitle ? (

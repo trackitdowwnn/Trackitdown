@@ -204,28 +204,33 @@ export function MySightingsScreen() {
 
   // With the spotter's optional answer to "why?" (2026-10-09) — passed to
   // the owner as one fixed sentence when they are told.
-  const onWithdrawConfirmed = useCallback(async (reason: WithdrawReason | null) => {
-    if (withdrawing === null) {
-      return;
-    }
-    try {
-      await withdrawSighting(withdrawing, reason);
-      toast.show('Report taken back — the owner no longer sees it.');
-      void refresh();
-    } catch (error) {
-      // ⚠️ Narrowed to our own class: a raw PostgREST message must never reach
-      // a toast. The SIGHTING_NOT_WITHDRAWABLE copy is the one that matters —
-      // it is what an owner ruling between render and tap looks like.
-      toast.show(
-        error instanceof SightingWithdrawError
-          ? error.message
-          : 'We couldn’t take that report back. Please try again.',
-        'error',
-      );
-    } finally {
-      setWithdrawing(null);
-    }
-  }, [refresh, toast, withdrawing]);
+  const onWithdrawConfirmed = useCallback(
+    async (reason: WithdrawReason | null) => {
+      if (withdrawing === null) {
+        return;
+      }
+      try {
+        await withdrawSighting(withdrawing, reason);
+        toast.show(
+          'Report taken back — the owner no longer sees it. You can’t re-file it for this car today.',
+        );
+        void refresh();
+      } catch (error) {
+        // ⚠️ Narrowed to our own class: a raw PostgREST message must never reach
+        // a toast. The SIGHTING_NOT_WITHDRAWABLE copy is the one that matters —
+        // it is what an owner ruling between render and tap looks like.
+        toast.show(
+          error instanceof SightingWithdrawError
+            ? error.message
+            : 'We couldn’t take that report back. Please try again.',
+          'error',
+        );
+      } finally {
+        setWithdrawing(null);
+      }
+    },
+    [refresh, toast, withdrawing],
+  );
 
   // ⚠️ GATED, BECAUSE THIS IS A FlatList. The mapped lists this idiom came from
   // (alerts, the sighting timeline) mount each row once; a virtualized cell is
@@ -368,8 +373,9 @@ export function MySightingsScreen() {
         />
       )}
 
-      {/* ⚠️ Destructive, and the sheet says the two things that are actually
-          irreversible: the owner stops seeing it, and it cannot be re-filed.
+      {/* ⚠️ Destructive. The two irreversible facts — the owner stops seeing
+          it, and it cannot be re-filed — are said by the toast that follows
+          (the owner asked for the sheet to be just the question, 2026-10-09).
           The rate limit counts the withdrawn row on purpose, so someone who
           withdraws a real sighting by mistake has not just hidden it — they
           have spent the slot. Honest, not guilt-trippy: taking back a report
