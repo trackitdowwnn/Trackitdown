@@ -38,7 +38,16 @@ import {
   useState,
 } from 'react';
 import { CircleAlert, CircleCheck } from 'lucide-react-native';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Keyboard,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -60,24 +69,60 @@ import {
 } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 
+import { useAndroidKeyboardHeight } from '../hooks';
+
 export type ToastKind = 'success' | 'error';
 
-/** Words a toast may hold before it earns extra reading time. */
-const QUICK_READ_WORDS = 6;
+/** A screen's sticky footer above the safe area — StickyActionBar's (and
+ *  PostBottomBar's) 12 + 52pt button + 12. Off the tabs the toast floats a
+ *  gap above it, never flush on its hairline (review of the redesign). */
+const FOOTER_BAR_HEIGHT = spacing.md + sizes.control + spacing.md;
 
 /**
  * How long a toast stays: `motion.toastVisible` for a short one, plus
  * `motion.toastPerWord` for each word past the first few, never past
- * `motion.toastMax` — and an error never under `motion.toastErrorMin`, since
- * it is often the only sign that something failed. "Profile saved" stays
+ * `motion.toastMax` — and never under `motion.toastErrorMin` for an error
+ * (often the only sign that something failed) or a toast with an action (a
+ * screen-reader user needs time to reach its button). "Profile saved" stays
  * 2.5s; "Report taken back — the owner no longer sees it…" (17 words) ~5.8s.
  */
-export function toastDuration(message: string, kind: ToastKind): number {
-  const words = message.trim().split(/\s+/).filter(Boolean).length;
+export function toastDuration(message: string, kind: ToastKind, hasAction = false): number {
+  // Real words only — a standalone "—" is punctuation, not reading.
+  const words = message.split(/\s+/).filter((word) => /\w/.test(word)).length;
   const reading =
-    motion.toastVisible + Math.max(0, words - QUICK_READ_WORDS) * motion.toastPerWord;
-  const floor = kind === 'error' ? motion.toastErrorMin : 0;
+    motion.toastVisible + Math.max(0, words - motion.toastQuickReadWords) * motion.toastPerWord;
+  const floor = kind === 'error' || hasAction ? motion.toastErrorMin : 0;
   return Math.min(motion.toastMax, Math.max(floor, reading));
+}
+
+/** What a screen reader hears. The icon is the only visual sign of the kind,
+ *  so an error says so in words ("Error: …", WCAG 1.3.1); a success needs no
+ *  prefix — its message says what happened. */
+function spokenToast(toast: { message: string; kind: ToastKind }): string {
+  return toast.kind === 'error' ? `Error: ${toast.message}` : toast.message;
+}
+
+/**
+ * The software keyboard's height, on both platforms: Android's measured lift
+ * (useAndroidKeyboardHeight — edge-to-edge stops the window resizing) and
+ * iOS's will-show/will-hide frames. NOT Reanimated's useAnimatedKeyboard,
+ * which takes over the window-insets listener on edge-to-edge Android.
+ */
+function useKeyboardHeight(): number {
+  const androidHeight = useAndroidKeyboardHeight();
+  const [iosHeight, setIosHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    const show = Keyboard.addListener('keyboardWillShow', (event) =>
+      setIosHeight(event.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener('keyboardWillHide', () => setIosHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return Platform.OS === 'ios' ? iosHeight : androidHeight;
 }
 
 /** Optional inline action ("View") — pressing runs it and dismisses. */
@@ -93,6 +138,8 @@ interface ToastValue {
 
 const ToastContext = createContext<ToastValue | null>(null);
 
+/** The app's toast — `show(message, kind?, action?)`. Throws outside a
+ *  ToastProvider, because a screen that lost its provider has a real bug. */
 export function useToast(): ToastValue {
   const context = useContext(ToastContext);
   if (!context) {
@@ -134,6 +181,8 @@ export interface ToastProviderProps {
   aboveTabBar?: boolean;
 }
 
+/** Mounts ONCE at the root (src/app/_layout.tsx, which passes `aboveTabBar`)
+ *  and hosts the app's single toast above every screen. */
 export function ToastProvider({ children, aboveTabBar = false }: ToastProviderProps) {
   'use no memo';
   const styles = useThemedStyles(makeStyles);
@@ -143,13 +192,21 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduceMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const visible = useSharedValue(0);
+  const keyboard = useKeyboardHeight();
   // Just above the tab bar on a tab screen; elsewhere clear of a standard
   // sticky footer button, rather than floating over a tab bar that isn't
-  // there.
-  const bottom = aboveTabBar
-    ? insets.bottom + sizes.tabBar + spacing.md
-    : insets.bottom + sizes.control + spacing.xl;
+  // there. ⚠️ With the keyboard up, above IT (UI review): a "Couldn't save"
+  // behind the keyboard is a failure nobody sees. Off the tabs the footer
+  // rides the keyboard too (StickyActionBar lifts by it), so the toast
+  // still clears it; on the tabs the bar is behind the keyboard.
+  const bottom =
+    insets.bottom +
+    keyboard +
+    (aboveTabBar
+      ? (keyboard > 0 ? 0 : sizes.tabBar) + spacing.md
+      : FOOTER_BAR_HEIGHT + spacing.md);
 
   const show = useCallback(
     (message: string, kind: ToastKind = 'success', action?: ToastAction) => {
@@ -174,9 +231,13 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
     if (!toast) {
       return;
     }
-    // The live region below covers Android; iOS VoiceOver needs an explicit
-    // announcement — error toasts are often the ONLY surfacing of a failure.
-    AccessibilityInfo.announceForAccessibility(toast.message);
+    // The live region below covers Android — announcing there too made
+    // TalkBack say it twice (UI review). iOS VoiceOver needs the explicit
+    // announcement, QUEUED so it never cuts off what is being read — error
+    // toasts are often the ONLY surfacing of a failure.
+    if (Platform.OS === 'ios') {
+      AccessibilityInfo.announceForAccessibilityWithOptions(spokenToast(toast), { queue: true });
+    }
     visible.value = withTiming(1, {
       duration: reduceMotion ? 0 : motion.fast,
       easing: easeOut,
@@ -184,12 +245,31 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
     if (hideTimer.current) {
       clearTimeout(hideTimer.current);
     }
-    hideTimer.current = setTimeout(() => {
-      visible.value = withTiming(0, { duration: reduceMotion ? 0 : motion.fast });
-      // Unmount after the fade so the live region isn't clipped mid-announce.
-      hideTimer.current = setTimeout(() => setToast(null), motion.fast);
-    }, toastDuration(toast.message, toast.kind));
+    let cancelled = false;
+    const scheduleHide = (after: number) => {
+      if (cancelled) return;
+      hideTimer.current = setTimeout(() => {
+        visible.value = withTiming(0, {
+          duration: reduceMotion ? 0 : motion.fast,
+          easing: easeOut,
+        });
+        // Unmount after the fade so the live region isn't clipped mid-announce.
+        hideTimer.current = setTimeout(() => setToast(null), motion.fast);
+      }, after);
+    };
+    const duration = toastDuration(toast.message, toast.kind, Boolean(toast.action));
+    // Android's "Time to take action" accessibility setting can ask for
+    // longer (WCAG 2.2.1); iOS has no such setting.
+    if (Platform.OS === 'android') {
+      AccessibilityInfo.getRecommendedTimeoutMillis(duration).then(
+        (recommended) => scheduleHide(Math.max(duration, recommended)),
+        () => scheduleHide(duration),
+      );
+    } else {
+      scheduleHide(duration);
+    }
     return () => {
+      cancelled = true;
       if (hideTimer.current) {
         clearTimeout(hideTimer.current);
       }
@@ -208,23 +288,23 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
       {children}
       {toast ? (
         <View
-          style={[styles.host, { bottom }]}
           // Only a toast WITH an action may receive taps; a plain toast must
           // never block the screen beneath it.
-          pointerEvents={toast.action ? 'box-none' : 'none'}
+          style={[styles.host, { bottom, pointerEvents: toast.action ? 'box-none' : 'none' }]}
           testID="toast-host"
         >
           <Animated.View
             style={[styles.card, animatedStyle]}
             accessibilityLiveRegion="polite"
             accessible={!toast.action}
-            accessibilityLabel={toast.message}
+            accessibilityLabel={spokenToast(toast)}
             testID={`toast-${toast.kind}`}
           >
             {/* Which kind, at a glance — hidden from screen readers, which
-                hear the message itself. iconSm (18) matches the label's
-                line height, so it sits level with the first line. */}
+                hear "Error: …" instead. Boxed to the first line's height AS
+                SCALED, so it stays level with it at large text sizes. */}
             <View
+              style={[styles.iconBox, { height: typography.label.lineHeight * (fontScale ?? 1) }]}
               accessibilityElementsHidden
               importantForAccessibility="no-hide-descendants"
               testID={`toast-icon-${toast.kind}`}
@@ -237,11 +317,12 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
             </View>
             {/* With an action the card isn't one accessible node — put the
                 live region on the message itself so Android still announces
-                (iOS is covered by announceForAccessibility). No line cap: a
+                (iOS is covered by the announcement above). No line cap: a
                 toast says all of what it has to say. */}
             <Text
               style={styles.message}
               accessibilityLiveRegion={toast.action ? 'polite' : 'none'}
+              accessibilityLabel={toast.action ? spokenToast(toast) : undefined}
               testID="toast-message"
             >
               {toast.message}
@@ -251,8 +332,9 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
                 accessibilityRole="button"
                 accessibilityLabel={toast.action.label}
                 onPress={runAction}
-                // Tops the label line up to the 44pt minimum target.
-                hitSlop={spacing.lg}
+                // A real 44pt box, not hitSlop: Android delivers no touch
+                // outside the card, and a one-line card is only 42pt tall.
+                style={styles.action}
               >
                 <Text style={styles.actionLabel}>{toast.action.label}</Text>
               </Pressable>
@@ -266,21 +348,22 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    // pointerEvents none (above) so it can't block taps beneath it.
+    // The screen's own 24pt gutter, so the card lines up with its content
+    // and footer buttons.
     host: {
       position: 'absolute',
-      left: spacing.lg,
-      right: spacing.lg,
+      left: spacing.xl,
+      right: spacing.xl,
     },
     // A light FLOATING card (DESIGN_SYSTEM: "shadow means floating — map
-    // chrome, sheets, slider thumbs, toasts"). The hairline is load-bearing
-    // in dark mode, where `surface` on `background` is #1E1E1E on #141414 and
-    // the shadow barely registers.
+    // chrome, sheets, slider thumbs, toasts"). `surfaceFloating` steps it up
+    // the ladder in dark, where the shadow barely registers and a `surface`
+    // card would melt into the cards beneath it; the hairline then reads.
     card: {
       flexDirection: 'row',
       alignItems: 'flex-start',
       gap: spacing.md,
-      backgroundColor: c.surface,
+      backgroundColor: c.surfaceFloating,
       borderRadius: radii.lg,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: c.border,
@@ -288,10 +371,25 @@ const makeStyles = (c: Palette) =>
       paddingVertical: spacing.md,
       ...shadows.lifted,
     },
+    iconBox: {
+      justifyContent: 'center',
+    },
     message: {
       ...typography.label,
       color: c.textPrimary,
       flex: 1,
+      // Beside an icon (DESIGN_SYSTEM): Satoshi's font padding would push
+      // the line below the icon on Android.
+      includeFontPadding: false,
+    },
+    // Fills the card's height (cancelling its vertical padding) to reach the
+    // 44pt target while the label stays level with the first line.
+    action: {
+      minHeight: sizes.touchTarget,
+      minWidth: sizes.touchTarget,
+      marginVertical: -spacing.md,
+      justifyContent: 'center',
+      alignItems: 'flex-end',
     },
     // Underline = tappable (design-system convention).
     actionLabel: {

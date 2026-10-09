@@ -19,6 +19,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 |---|---|---|
 | `background` | `#F7F7F7` | app background — cool near-white (Airbnb page) |
 | `surface` | `#FFFFFF` | cards, sheets, inputs |
+| `surfaceFloating` | `#FFFFFF` | something FLOATING over the page — the toast card. One step up the ladder in dark (`#2A2A2A`), where shadow barely registers |
 | `surfaceSubtle` | `#EEEEEE` | secondary surfaces, chips |
 | `surfaceSubtlePressed` | `#E0E0E0` | pressed state of subtle-surface fills |
 | `primary` | `#1A1A1A` | soft near-black — primary buttons, links, active states, selection rings/checks (AAA on `background`) |
@@ -117,6 +118,7 @@ near-white and `textOnPrimary` becomes near-black.
 |---|---|---|---|---|
 | `background` | `#F7F7F7` | `#141414` | — | — |
 | `surface` | `#FFFFFF` | `#1E1E1E` | — | — |
+| `surfaceFloating` | `#FFFFFF` | `#2A2A2A` | — | — |
 | `surfaceSubtle` | `#EEEEEE` | `#2A2A2A` | — | — |
 | `primary` / `accent` / `accentText` | `#1A1A1A` | `#F2F2F2` | 16.5 AAA | 14.9 |
 | `primaryPressed` | `#333333` | `#D6D6D6` | — | — |
@@ -424,15 +426,19 @@ are build output.
   `undefined`, so the set stays a radio group to a screen reader.
 - **EmptyState** — friendly illustration + one-line explanation + action.
 - **Toast** (`useToast().show(message, kind?, action?)`) — a light FLOATING
-  card, redesigned 2026-10-09 (was a near-black text-only pill): `surface`,
-  radius `lg`, hairline `border`, `shadows.lifted`, full width in a 16pt
+  card, redesigned 2026-10-09 (was a near-black text-only pill):
+  `surfaceFloating` (white; one step up the ladder in dark), radius `lg`,
+  hairline `border`, `shadows.lifted`, full width in the screen's 24pt
   gutter. A leading `iconSm` icon says the kind at a glance — `success`
-  tick, `danger` alert; an error is the same calm card, never a red slab.
-  `label` text in `textPrimary`, **never truncated**; an optional
-  underlined text action on the right. It stays as long as it takes to read
-  (`toastDuration`: 2.5s, +300ms a word past six, max 7s, errors ≥4s). Above
-  the tab bar on tab screens, clear of a footer button elsewhere; never
-  blocks taps unless it carries an action.
+  tick, `danger` alert; an error is the same calm card, never a red slab,
+  and says "Error: …" to a screen reader (the icon is hidden). `label` text
+  in `textPrimary`, **never truncated**; an optional underlined text action
+  on the right with a real 44pt box. It stays as long as it takes to read
+  (`toastDuration`: 2.5s, +300ms a word past six, max 7s; errors and
+  action toasts ≥4s; Android's "time to take action" setting can extend it).
+  Above the tab bar on tab screens, a gap above a sticky footer bar
+  elsewhere, and above the keyboard while it is up; never blocks taps unless
+  it carries an action.
 - **AppTabBar** — bottom navigation: `surface` bar, hairline `border` top
   edge, no shadow; 24pt icons (`sizes.icon`) over always-visible `tabLabel`
   text; active `primary`, inactive `textSecondary`; badges in `accentText`

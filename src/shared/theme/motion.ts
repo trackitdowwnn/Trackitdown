@@ -62,9 +62,12 @@ export const motion = {
   /** Toast: extra reading time per word beyond the first few (2026-10-09 —
    *  a 17-word message gone in 2.5s could not be read). */
   toastPerWord: 300,
+  /** Toast: words a message may hold before it earns that extra time. */
+  toastQuickReadWords: 6,
   /** Toast: the longest any toast stays, however long its message. */
   toastMax: 7000,
-  /** Toast: the shortest an ERROR stays — often the only sign of a failure. */
+  /** Toast: the shortest an ERROR stays — often the only sign of a failure —
+   *  and any toast with an action, which needs time to be reached. */
   toastErrorMin: 4000,
   /** Hold duration (ms) before a long-press lifts an element into a drag. */
   longPress: 350,

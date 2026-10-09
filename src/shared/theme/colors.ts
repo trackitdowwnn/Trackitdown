@@ -15,6 +15,10 @@
 export const colors = {
   background: '#F7F7F7',
   surface: '#FFFFFF',
+  // Something FLOATING over the page (the toast card, 2026-10-09): the card
+  // surface in light, one step up the ladder in dark — where a shadow barely
+  // registers and a #1E1E1E card would melt into the #1E1E1E cards under it.
+  surfaceFloating: '#FFFFFF',
   surfaceSubtle: '#EEEEEE',
   // Pressed state of surfaceSubtle fills (chips) — border stays for hairlines.
   surfaceSubtlePressed: '#E0E0E0',
@@ -142,6 +146,7 @@ export type Palette = { readonly [K in ColorToken]: string };
 export const darkColors = {
   background: '#141414',
   surface: '#1E1E1E',
+  surfaceFloating: '#2A2A2A',
   surfaceSubtle: '#2A2A2A',
   surfaceSubtlePressed: '#363636',
   // Near-white: the single accent, inverted. 16.5:1 on the page (AAA).
