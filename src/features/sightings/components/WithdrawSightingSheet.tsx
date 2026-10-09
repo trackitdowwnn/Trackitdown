@@ -112,13 +112,17 @@ export function WithdrawSightingSheet({ ref, onConfirm, onDismiss }: WithdrawSig
               control for an optional single answer — lighter than four
               bordered cards, and `clearable` tells a screen reader that the
               chosen answer can be tapped again to clear it. */}
-          <ChoiceChips
-            options={OPTIONS}
-            value={reason}
-            onSelect={(value) => setReason((current) => (current === value ? null : value))}
-            clearable
-            accessibilityLabel={`${QUESTION} Optional.`}
-          />
+          {/* 16 above the chips (the group's 8 + this 8): the hint belongs to
+              the question, not to the answers. */}
+          <View style={styles.chips}>
+            <ChoiceChips
+              options={OPTIONS}
+              value={reason}
+              onSelect={(value) => setReason((current) => (current === value ? null : value))}
+              clearable
+              accessibilityLabel={`${QUESTION} Optional.`}
+            />
+          </View>
         </View>
 
         <View style={styles.actions}>
@@ -166,5 +170,8 @@ const makeStyles = (c: Palette) =>
     },
     actions: {
       gap: spacing.md,
+    },
+    chips: {
+      marginTop: spacing.sm,
     },
   });
