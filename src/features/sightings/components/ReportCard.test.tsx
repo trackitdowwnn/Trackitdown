@@ -21,7 +21,7 @@
  *        ../screens/MySightingsScreen.test.tsx (the copy and the states).
  */
 
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import * as RN from 'react-native';
 import { StyleSheet } from 'react-native';
 
@@ -36,7 +36,9 @@ const colors = paletteFor('light');
 
 /** ⚠️ Through `Dimensions.get` — see the file header. */
 const atFontScale = (fontScale: number) => {
-  jest.spyOn(RN.Dimensions, 'get').mockReturnValue({ width: 390, height: 844, scale: 3, fontScale });
+  jest
+    .spyOn(RN.Dimensions, 'get')
+    .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale });
 };
 
 afterEach(() => {
@@ -156,8 +158,10 @@ describe('⚠️ the verdict marker', () => {
     expect(dot.backgroundColor).toBeUndefined();
   });
 
+  // helpful in PRIMARY ink since 2026-10-09 — the owner's card marks the same
+  // "Confirmed" in primary, and success green stays for credited's tick.
   it.each([
-    ['helpful' as const, colors.success],
+    ['helpful' as const, colors.primary],
     ['not_mine' as const, colors.borderStrong],
   ])('fills %s with its own colour', async (status, expected) => {
     atFontScale(1);
@@ -219,7 +223,9 @@ describe('⚠️ the dispute door', () => {
     // The old-server case. `dispute` is optional precisely so this bundle can
     // ship AHEAD of the migration — undefined must read as "no door", not crash.
     atFontScale(1);
-    const { queryByTestId } = await render(<ReportCard entry={entry()} onOpenDispute={jest.fn()} />);
+    const { queryByTestId } = await render(
+      <ReportCard entry={entry()} onOpenDispute={jest.fn()} />,
+    );
 
     expect(queryByTestId('my-sighting-dispute-s1')).toBeNull();
   });
@@ -304,17 +310,69 @@ describe('⚠️ the dispute door', () => {
     expect(flat(getByTestId('my-sighting-dispute-s1')).minHeight).toBeGreaterThanOrEqual(44);
   });
 
-  it('⚠️ leaves the text block as one utterance, door or no door', async () => {
-    // The grouping moved from the card onto `main` so the button could exist
-    // outside it. If that regressed, a screen reader would read the car, the
-    // meta line and the verdict as three unrelated fragments.
+  it('⚠️ leaves the photo + text row as one utterance, door or no door', async () => {
+    // The grouping sits on the row (photo + text, since 2026-10-09) so the
+    // door can exist outside it. If that regressed, a screen reader would
+    // read the car, the meta line and the verdict as unrelated fragments.
     atFontScale(1);
-    const { getByText } = await render(
+    const { getByLabelText, getByTestId } = await render(
       <ReportCard entry={disputable()} onOpenDispute={jest.fn()} />,
     );
 
-    const main = getByText('Blue Ford').parent!;
-    expect(main.props.accessible).toBe(true);
-    expect(main.props.accessibilityLabel).toMatch(/Blue Ford, reported in Camden/);
+    const group = getByLabelText(/^Blue Ford, reported in Camden/);
+    expect(group.props.accessible).toBe(true);
+    // The door is NOT inside it — it is its own control.
+    expect(group).not.toContainElement(getByTestId('my-sighting-dispute-s1'));
+  });
+});
+
+describe('the spotter’s own photo (2026-10-09)', () => {
+  it('leads with it when there is one', async () => {
+    atFontScale(1);
+    const { getByTestId, queryByTestId } = await render(
+      <ReportCard entry={entry()} photoUrl="https://x/a.jpg" />,
+    );
+    expect(getByTestId('my-sighting-photo-s1')).toBeTruthy();
+    expect(queryByTestId('my-sighting-tile-s1')).toBeNull();
+  });
+
+  it('⚠️ falls back to the tile when the link fails (signed links lapse)', async () => {
+    atFontScale(1);
+    const { getByTestId, queryByTestId } = await render(
+      <ReportCard entry={entry()} photoUrl="https://x/expired.jpg" />,
+    );
+    await act(async () => {
+      fireEvent(getByTestId('my-sighting-photo-s1'), 'error', {
+        nativeEvent: { error: 'expired' },
+      });
+    });
+    expect(queryByTestId('my-sighting-photo-s1')).toBeNull();
+    expect(getByTestId('my-sighting-tile-s1')).toBeTruthy();
+  });
+
+  it('shows an empty frame while the photos are looked up, not the tile', async () => {
+    atFontScale(1);
+    const { getByTestId, queryByTestId } = await render(
+      <ReportCard entry={entry()} photoPending />,
+    );
+    expect(getByTestId('my-sighting-photo-pending-s1')).toBeTruthy();
+    expect(queryByTestId('my-sighting-tile-s1')).toBeNull();
+  });
+
+  it('⚠️ the photo is part of the press target — it opens the listing too', async () => {
+    atFontScale(1);
+    const onOpenPost = jest.fn();
+    const { getByTestId } = await render(
+      <ReportCard
+        entry={entry({ postId: 'p1' })}
+        photoUrl="https://x/a.jpg"
+        onOpenPost={onOpenPost}
+      />,
+    );
+    expect(getByTestId('my-sighting-open-s1')).toContainElement(
+      getByTestId('my-sighting-photo-s1'),
+    );
+    fireEvent.press(getByTestId('my-sighting-open-s1'));
+    expect(onOpenPost).toHaveBeenCalledWith('p1');
   });
 });

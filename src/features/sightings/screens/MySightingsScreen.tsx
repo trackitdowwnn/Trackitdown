@@ -54,15 +54,15 @@
  *        ⚠️ SECTIONS, NOT DAYS, SINCE 2026-10-09 (owner request: "hard to read",
  *        "can't see how I'm doing", "unclear what happens next"). It was grouped
  *        by day (2026-08-28); a spotter opens this to learn what is still open,
- *        so what is waiting on the owner now leads, then the answered, then
- *        what they took back (myReportSections), under a summary line. Still
- *        one flat array of headers and rows, not a SectionList — nesting costs
- *        virtualization for nothing.
+ *        so "Still open" now leads, then "Answered", then "Taken back"
+ *        (myReportSections), under a summary line. Still one flat array of
+ *        headers and rows, not a SectionList — nesting costs virtualization
+ *        for nothing.
  *
  *        THE SPOTTER'S OWN PHOTOS (useMyReportPhotos) come from their own
  *        `sighting_photos` rows and storage objects, not from
- *        `my_sighting_record`, which stays as narrow as below; the list never
- *        waits for them.
+ *        `my_sighting_record`, which stays as narrow as described above; the
+ *        list never waits for them.
  *
  *        The owner once asked for accordions and this deliberately has none: a
  *        per-CARD accordion would open onto nothing (the payload's fields are
@@ -88,6 +88,7 @@ import { useEntranceGate } from '@/shared/hooks';
 import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
+  radii,
   sizes,
   spacing,
   typography,
@@ -241,12 +242,9 @@ export function MySightingsScreen() {
     [entries],
   );
   const summary = useMemo(() => myReportSummary(entries), [entries]);
-  // The spotter's own photos, filled in beside the list — never in front of it.
-  const photoUrls = useMyReportPhotos(useMemo(() => entries.map((entry) => entry.id), [entries]));
-  const openPayouts = useCallback(() => {
-    log.info('payouts_opened_from_reports');
-    router.push('/payouts');
-  }, [router]);
+  // The spotter's own photos, filled in beside the list — never in front of
+  // it (the hook keys on the id set, so a new array each render is fine).
+  const photos = useMyReportPhotos(entries.map((entry) => entry.id));
 
   const renderRow = useCallback(
     ({ item, index }: { item: (typeof items)[number]; index: number }) => (
@@ -269,16 +267,16 @@ export function MySightingsScreen() {
         ) : (
           <ReportCard
             entry={item.row}
-            photoUrl={photoUrls[item.row.id]}
+            photoUrl={photos.urls[item.row.id]}
+            photoPending={!photos.loaded}
             onOpenDispute={openDispute}
             onWithdraw={requestWithdraw}
             onOpenPost={openPost}
-            onOpenPayouts={openPayouts}
           />
         )}
       </Animated.View>
     ),
-    [entranceActive, openDispute, requestWithdraw, openPost, openPayouts, photoUrls],
+    [entranceActive, openDispute, requestWithdraw, openPost, photos],
   );
 
   return (
@@ -290,11 +288,22 @@ export function MySightingsScreen() {
           My sightings
         </Text>
       </View>
-      {/* How they're doing, at a glance — counted from the list below. */}
+      {/* How they're doing, at a glance — counted from the list below. While
+          it loads, a bar of the same height holds its place, so nothing below
+          moves when the reports land. */}
       {session.status !== 'signedOut' && status === 'ready' && summary ? (
-        <Text style={styles.summary} testID="my-sightings-summary">
+        <Text
+          style={styles.summary}
+          // Commas, not "·", which some screen readers read out as a word.
+          accessibilityLabel={summary.split(' · ').join(', ')}
+          testID="my-sightings-summary"
+        >
           {summary}
         </Text>
+      ) : session.status !== 'signedOut' && status === 'loading' ? (
+        <View style={styles.summaryHolder} testID="my-sightings-summary-skeleton">
+          <View style={styles.summarySkeleton} />
+        </View>
       ) : null}
 
       {session.status === 'signedOut' ? (
@@ -312,15 +321,12 @@ export function MySightingsScreen() {
           accessibilityLabel="Loading your reports"
           accessibilityState={{ busy: true }}
         >
-          {/* ⚠️ A DAY HEADER LEADS THE LIST, so one leads the skeleton too.
-              Grouping made item 0 a header, which put the first real card 46pt
-              below where three bare card skeletons had just promised it would
-              be — the same jump this skeleton exists to prevent, reintroduced
-              by the change that added the headers.
+          {/* ⚠️ A SECTION LABEL LEADS THE LIST, so one leads the skeleton too
+              — without it the first real card lands 46pt below where the
+              skeleton promised it, the jump this skeleton exists to prevent.
 
-              ⚠️ A BAR, NOT THE WORD "Today". Reports are sparse and the newest
-              one usually is not today, so rendering the word would flash a
-              claim that is about to be replaced by a different date. */}
+              ⚠️ A BAR, NOT A WORD: which section comes first ("Still open" or
+              "Answered") isn't known until the reports land. */}
           <DayHeaderSkeleton gutter="none" />
           {/* ⚠️ THE CARD'S OWN GEOMETRY, imported rather than copied. The old
               skeleton was a `height: 96` literal against a 104pt row, so three
@@ -424,23 +430,37 @@ const makeStyles = (c: Palette) =>
       marginTop: -spacing.sm,
       paddingBottom: spacing.md,
     },
+    // The summary's place while loading: the same box, a bar inside it.
+    summaryHolder: {
+      paddingLeft: TITLE_INSET,
+      paddingRight: spacing.xl,
+      marginTop: -spacing.sm,
+      paddingBottom: spacing.md,
+    },
+    summarySkeleton: {
+      height: typography.caption.lineHeight,
+      width: '45%',
+      borderRadius: radii.sm,
+      backgroundColor: c.surfaceSubtle,
+    },
     listContent: {
       paddingHorizontal: spacing.xl,
       paddingBottom: spacing.xxl,
       gap: spacing.md,
     },
     /*
-     * The day label and its skeleton moved to src/shared/ui/DayHeader.tsx on
-     * 2026-08-28, when the inbox's Messages face became the third list to group
-     * by day. Both are rendered here with `gutter="none"` — `listContent`
-     * already sets the 24pt gutter, and a self-padding header would indent
-     * every date to 48.
+     * The section label and its skeleton are src/shared/ui/DayHeader.tsx (the
+     * inbox's quiet group label; this list grouped by day until 2026-10-09).
+     * Both are rendered here with `gutter="none"` — `listContent` already sets
+     * the 24pt gutter, and a self-padding header would indent every label to
+     * 48.
      *
      * The vertical rhythm the shared component carries rides ON TOP of this
-     * list's 12pt gap: 16 above makes 28 between a card and the next day, and 4
-     * below makes 16 from label to its first card. That 12pt differential is
-     * the point — at `md` above, the totals were 24/16 and the label floated
-     * between two groups instead of belonging to the one beneath it.
+     * list's 12pt gap: 16 above makes 28 between a card and the next section,
+     * and 4 below makes 16 from label to its first card. That 12pt
+     * differential is the point — at `md` above, the totals were 24/16 and the
+     * label floated between two groups instead of belonging to the one
+     * beneath it.
      *
      * ⚠️ Both here and on the inbox the label lands on the row's OUTER EDGE —
      * the two are the same arrangement, reached from opposite directions

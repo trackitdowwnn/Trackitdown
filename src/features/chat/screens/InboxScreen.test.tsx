@@ -12,8 +12,7 @@
  *        explained why grouping had to happen AFTER filtering, or a chip left
  *        headers over days it emptied. Both the hazard and its guard left with
  *        the headers; what replaced them is asserted below.
- * LINKS: ./InboxScreen.tsx; ../lib/inboxModel.ts; src/shared/lib/dayGroups.ts;
- *        docs/TESTING.md.
+ * LINKS: ./InboxScreen.tsx; ../lib/inboxModel.ts; docs/TESTING.md.
  */
 
 import { act, fireEvent, render, within } from '@testing-library/react-native';

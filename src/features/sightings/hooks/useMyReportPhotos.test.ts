@@ -31,14 +31,36 @@ it('maps each report to its signed photo', async () => {
   const { result } = await renderHook(() => useMyReportPhotos(['s1', 's2']));
   await flush();
   // s2's photo didn't sign: it simply has no URL, and keeps its tile.
-  expect(result.current).toEqual({ s1: 'https://x/a' });
+  expect(result.current).toEqual({ urls: { s1: 'https://x/a' }, loaded: true });
 });
 
-it('⚠️ a failed read costs the photos — nothing throws', async () => {
+it('is not loaded until the lookup has finished — the cards show empty frames', async () => {
+  let resolve: (paths: Record<string, string>) => void = () => {};
+  mockFetch.mockReturnValue(new Promise((done) => (resolve = done)));
+  mockSign.mockResolvedValue({});
+  const { result } = await renderHook(() => useMyReportPhotos(['s1']));
+  expect(result.current.loaded).toBe(false);
+  await act(async () => resolve({}));
+  expect(result.current.loaded).toBe(true);
+});
+
+it('⚠️ a failed read costs the photos — nothing throws, and the tiles come back', async () => {
   mockFetch.mockRejectedValue(new Error('permission denied'));
   const { result } = await renderHook(() => useMyReportPhotos(['s1']));
   await flush();
-  expect(result.current).toEqual({});
+  expect(result.current).toEqual({ urls: {}, loaded: true });
+});
+
+it('sets nothing after it has gone — a lookup that lands late is dropped', async () => {
+  let resolve: (paths: Record<string, string>) => void = () => {};
+  mockFetch.mockReturnValue(new Promise((done) => (resolve = done)));
+  mockSign.mockResolvedValue({ 'p/u/a.jpg': 'https://x/a' });
+  const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+  const { unmount } = await renderHook(() => useMyReportPhotos(['s1']));
+  await act(async () => unmount());
+  await act(async () => resolve({ s1: 'p/u/a.jpg' }));
+  expect(errors).not.toHaveBeenCalled();
+  errors.mockRestore();
 });
 
 it('fetches once for the same set of reports, in any order', async () => {
@@ -53,8 +75,9 @@ it('fetches once for the same set of reports, in any order', async () => {
   expect(mockFetch).toHaveBeenCalledTimes(1);
 });
 
-it('asks nothing when there are no reports', async () => {
-  await renderHook(() => useMyReportPhotos([]));
+it('asks nothing when there are no reports — and has nothing to wait for', async () => {
+  const { result } = await renderHook(() => useMyReportPhotos([]));
   await flush();
   expect(mockFetch).not.toHaveBeenCalled();
+  expect(result.current.loaded).toBe(true);
 });

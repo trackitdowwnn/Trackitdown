@@ -727,3 +727,18 @@ describe('fetchMyReportPhotos — the spotter’s own lead photos (2026-10-09)',
     await expect(fetchMyReportPhotos(['s1'])).rejects.toThrow();
   });
 });
+
+describe('fetchMyReportPhotos — batching', () => {
+  beforeEach(() => {
+    mockTableCall.mockClear();
+    mockTableRead.mockReset();
+  });
+
+  it('⚠️ reads a long history in batches of 100 — one `in (…)` would outgrow the URL', async () => {
+    mockTableRead.mockReturnValue({ data: [], error: null });
+    const ids = Array.from({ length: 250 }, (_, i) => `s${i}`);
+    await fetchMyReportPhotos(ids);
+    const inCalls = mockTableCall.mock.calls.filter(([kind]) => kind === 'in');
+    expect(inCalls.map(([, , values]) => (values as string[]).length)).toEqual([100, 100, 50]);
+  });
+});

@@ -30,7 +30,7 @@ describe('myReportSections', () => {
       entry('e', 'credited'),
     ]);
     expect(sections.map((s) => [s.title, s.entries.map((e) => e.id)])).toEqual([
-      ['Waiting on the owner', ['c']],
+      ['Still open', ['c']],
       ['Answered', ['a', 'd', 'e']],
       ['Taken back', ['b']],
     ]);
@@ -49,17 +49,20 @@ describe('myReportSummary', () => {
   it.each([
     [of('unverified'), '1 report'],
     [of('unverified', 'not_mine'), '2 reports'],
-    [of('helpful', 'unverified'), '2 reports · 1 confirmed'],
-    [of('credited'), '1 report · 1 confirmed · 1 recovery'],
-    [of('credited', 'credited', 'helpful', 'not_mine'), '4 reports · 3 confirmed · 2 recoveries'],
+    [of('helpful', 'unverified'), '2 reports · 1 helpful'],
+    [of('credited'), '1 report · 1 helpful · 1 recovery'],
+    [of('credited', 'credited', 'helpful', 'not_mine'), '4 reports · 3 helpful · 2 recoveries'],
     // Taking a report back un-files it.
-    [of('withdrawn', 'helpful'), '1 report · 1 confirmed'],
+    [of('withdrawn', 'helpful'), '1 report · 1 helpful'],
   ])('%j → "%s"', (entries, line) => {
     expect(myReportSummary(entries)).toBe(line);
   });
 
-  it('is null when nothing is filed', () => {
+  it('is null only with no reports at all — the empty state speaks then', () => {
     expect(myReportSummary([])).toBeNull();
-    expect(myReportSummary(of('withdrawn'))).toBeNull();
+  });
+
+  it('says so when everything was taken back, rather than vanishing', () => {
+    expect(myReportSummary(of('withdrawn', 'withdrawn'))).toBe('No open reports');
   });
 });

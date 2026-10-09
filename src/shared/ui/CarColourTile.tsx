@@ -1,14 +1,15 @@
 /**
  * WHAT:  CarColourTile — a rounded tile filled with a car's real colour, with a
- *        car silhouette drawn over it. The leading visual on a report card.
- * WHY:   ⚠️ IT IS THE ONLY PICTURE THIS SCREEN IS ALLOWED TO HAVE. `My reports`
- *        lists sightings a spotter filed on OTHER people's cars, and
+ *        car silhouette drawn over it. The fallback visual on a report card,
+ *        and chat's no-photo stand-in.
+ * WHY:   ⚠️ IT WAS THE ONLY PICTURE "My sightings" HAD, until 2026-10-09.
+ *        That page lists sightings a spotter filed on OTHER people's cars, and
  *        `my_sighting_record` deliberately returns no photo, no plate, no
- *        location and no post id — a spotter's own history must not become a
- *        back door into listings they were never shown. So the Airbnb card
- *        anatomy we borrow everywhere else (a photograph leading the row) has
- *        nothing to lead with here, and five reports read as five identical
- *        grey text blocks. The car's COLOUR is the one visual fact the payload
+ *        location — a spotter's own history must not become a back door into
+ *        listings they were never shown. The card now leads with the
+ *        spotter's OWN photo, read separately from their own rows
+ *        (useMyReportPhotos); this tile stands in when there is none or its
+ *        link fails. The car's COLOUR is the one visual fact the payload
  *        carries, and it happens to be the one a person actually remembers.
  *
  *        The fill is `swatchForName`'s hex, which is DATA and not a token
@@ -53,9 +54,10 @@ export interface CarColourTileProps {
   /** The stored colour NAME ("Blue"), not a hex. Unrecognised or blank is a
    *  real state — the RPC coalesces to '' on a sparse post. */
   colour: string | null | undefined;
-  /** Edge length. Defaults to the report card's `carTile` (72). */
+  /** Edge length. Defaults to `carTile` (72); the report card passes its
+   *  88pt photo size. */
   size?: number;
-  /** Corner radius. Defaults to the report card's `radii.lg`. */
+  /** Corner radius. Defaults to `radii.lg`. */
   radius?: number;
   /**
    * The silhouette drawn over the paint. Defaults to `carTileGlyph`, the

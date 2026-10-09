@@ -6,13 +6,15 @@
  * WHY:   ⚠️ THE PHOTO LEADS SINCE 2026-10-09 (owner request: the page was
  *        "hard to read", "unclear what happens next", off-style beside the
  *        owner's photo-first sighting cards). The spotter's FIRST IN-APP
- *        photo now takes the tile's place, at the owner card's 88pt; the tile
- *        stays as the fallback — no photo, a link still on its way, or
- *        evidence the retention job has erased. Safe because it is THEIR
- *        photo, read through their own-rows RLS and signed by the storage
- *        policy for their own uploads (fetchMyReportPhotos); the payload
- *        below is not widened. And each outcome now says what happens next
- *        (NEXT_STEP), with a door to Payouts on a credited report.
+ *        photo now takes the tile's place, at the owner card's 88pt; an empty
+ *        frame while it is looked up, and the tile as the fallback — no photo,
+ *        or a link that fails to load (signed links lapse after an hour).
+ *        Safe because it is THEIR photo, read through their own-rows RLS and
+ *        signed by the storage policy for their own uploads
+ *        (fetchMyReportPhotos); the payload below is not widened. Each
+ *        outcome now says what happens next (nextStepFor) in one short line
+ *        that promises nothing it cannot keep, and the whole photo + text
+ *        row opens the listing.
  *
  *        ⚠️ REDESIGNED 2026-08-27 (owner request, Airbnb language). It was a
  *        local `RecordRow` inside the screen: three lines of text in a
@@ -75,19 +77,22 @@
  *        to be a SIBLING of the text block, because `main` carries the
  *        accessibility grouping and a control inside a grouped element is
  *        unreachable to VoiceOver (AlertCard's header records that bug in
- *        full). The grouping moved from the card onto `main` in the same pass,
- *        so a doorless card reads as one utterance exactly as before.
- * LINKS: src/shared/ui/CarColourTile.tsx (the leading visual, and why it
- *          exists — moved there 2026-08-28 when chat needed it too);
+ *        full). The grouping sits on the photo + text row (2026-10-09; it was
+ *        `main`, the text alone), so a doorless card reads as one utterance.
+ * LINKS: src/shared/ui/CarColourTile.tsx (the fallback visual — moved there
+ *          2026-08-28 when chat needed it too);
+ *        ../hooks/useMyReportPhotos.ts (where the photo comes from);
  *        ../screens/MySightingsScreen.tsx (the only consumer);
  *        ../api/sightingApi.ts (MySightingRecordEntry — read its PRIVACY note
  *          before widening what this row shows).
  */
 
 import { Check, ChevronRight } from 'lucide-react-native';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
+import { spokenAgo } from '@/shared/lib';
 import {
   cardSurface,
   opacity,
@@ -108,7 +113,7 @@ import type { MySightingRecordEntry } from '../api/sightingApi';
  * How each verdict reads to THE PERSON WHO REPORTED IT.
  *
  * ⚠️ NOT EXPORTED, deliberately. `not_mine` → "Not a match" may only ever be
- * rendered on `My reports`, to the spotter themselves — no stranger-facing
+ * rendered on "My sightings", to the spotter themselves — no stranger-facing
  * surface may show a rejection or derive an accuracy figure from one. Keeping
  * the map module-private means the neighbouring public-facing components
  * (PostSightingsSection, SightingTimeline) cannot reach it by accident.
@@ -147,22 +152,39 @@ const VERDICT: Record<
 };
 
 /**
- * What happens next, per outcome — the line under the verdict (2026-10-09:
- * "unclear what happens next"). Module-private like VERDICT, and for the same
- * reason: "Not their car" is spotter-only.
+ * What happens next, per outcome — one short line under the verdict
+ * (2026-10-09: "unclear what happens next"). Module-private like VERDICT.
  *
- * ⚠️ THE CREDITED LINE PROMISES NOTHING IT CANNOT CHECK. This payload carries
- * no reward or payout facts (a listing may have had no reward, and a reward's
- * state lives on Payouts), so it points there rather than saying "you're
- * getting £X". A withdrawn report has no next step.
+ * ⚠️ EVERY LINE PROMISES ONLY WHAT IS TRUE IN EVERY CASE (reviews of #148):
+ * - not "we'll let you know" — no notification is sent for "Not a match",
+ *   pushes can be switched off, and many reports are never answered;
+ * - not "it counts towards your record" — a capped or flagged confirmation
+ *   moves no counter, and copy that varied would tell which;
+ * - nothing about money — this payload holds no reward facts, a listing may
+ *   have had no reward, and Payouts shows nothing once one is paid or has
+ *   lapsed (pushRoute keeps those pushes away from Payouts for that reason).
+ * One line beside the photo (~26 characters), so the card stays short.
  */
-const NEXT_STEP: Record<MySightingRecordEntry['status'], string | null> = {
-  unverified: 'We’ll let you know when they answer.',
-  helpful: 'Thanks — it counts towards your record.',
-  credited: 'Any reward shows in Payouts.',
-  not_mine: 'Not their car — thanks for looking.',
-  withdrawn: null,
-};
+function nextStepFor(entry: MySightingRecordEntry): string | null {
+  switch (entry.status) {
+    case 'unverified':
+      // `null` (not merely absent) means the listing has closed: nobody is
+      // going to answer it now, so the card must not say they will.
+      return entry.postId === null ? 'This listing has closed.' : 'Their answer will show here.';
+    case 'helpful':
+      return 'A recovery would show here.';
+    case 'credited':
+      return 'Thanks for the recovery.';
+    case 'not_mine':
+      return 'Thanks for looking.';
+    case 'withdrawn':
+      return null;
+  }
+}
+
+/** The tile's glyph at the 88pt size, in the proportion `carTileGlyph` keeps
+ *  at the tile's default size (CarColourTile: size alone was a trap). */
+const TILE_GLYPH = Math.round((sizes.timelineThumb * sizes.carTileGlyph) / sizes.carTile);
 
 /**
  * The car as a sentence. Either half may be '' on a sparse post (the RPC
@@ -230,8 +252,9 @@ export interface ReportCardProps {
   onOpenPost?: (postId: string) => void;
   /** A signed URL for the spotter's own lead photo; absent → the colour tile. */
   photoUrl?: string;
-  /** Opens Payouts — offered on a credited report, where a reward would show. */
-  onOpenPayouts?: () => void;
+  /** The photos are still being looked up: an empty frame, not the tile —
+   *  the tile would briefly claim "no photo" before the photo replaced it. */
+  photoPending?: boolean;
 }
 
 export function ReportCard({
@@ -240,19 +263,22 @@ export function ReportCard({
   onWithdraw,
   onOpenPost,
   photoUrl,
-  onOpenPayouts,
+  photoPending = false,
 }: ReportCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const stacked = useStackedRow();
   const markerOffset = useMarkerOffset();
+  // A signed link lasts an hour; one that has lapsed (or an object that has
+  // gone) falls back to the tile rather than leaving an empty frame.
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const showPhoto = Boolean(photoUrl) && !photoFailed;
 
   const reported = useTimeAgo(entry.createdAt);
   const ruled = useTimeAgo(entry.reviewedAt ?? entry.createdAt);
   const verdict = VERDICT[entry.status];
-  const nextStep = NEXT_STEP[entry.status];
+  const nextStep = nextStepFor(entry);
   const car = describeReportedCar(entry.car);
-  const canOpenPayouts = entry.status === 'credited' && onOpenPayouts !== undefined;
 
   const door = entry.dispute && onOpenDispute ? disputeDoor(entry.dispute) : null;
   // ⚠️ Gated on `unverified` CLIENT-side purely so the control is not offered
@@ -296,60 +322,61 @@ export function ReportCard({
       // it: CarColourTile renders no text and sets no accessibility props, so it
       // is not a focus stop.
     >
-      <View
-        style={[styles.row, stacked && styles.rowStacked]}
-        testID={`my-sighting-row-${entry.id}`}
-      >
-      {/* Their own photo leads (no label: the text block beside it already
-          names the car — the photo would be a second, wordless focus stop). */}
-      {photoUrl ? (
-        <AppImage
-          uri={photoUrl}
-          style={styles.photo}
-          recyclingKey={entry.id}
-          testID={`my-sighting-photo-${entry.id}`}
-        />
-      ) : (
-        <CarColourTile
-          colour={entry.car.colour}
-          size={sizes.timelineThumb}
-          radius={radii.md}
-          testID={`my-sighting-tile-${entry.id}`}
-        />
-      )}
-
-      {/* ⚠️ THE TEXT BLOCK IS THE PRESS TARGET, not the whole card, and it is
-          a Pressable ONLY when there is a post to open (review #16). Keeping
-          the press on the element that already carried `accessible` preserves
-          the single utterance — a Pressable with a label reads as one node AND
-          is a control, where a wrapping Pressable around a grouped child would
-          give VoiceOver two stops for one thing.
+      {/* ⚠️ THE PHOTO + TEXT ROW IS THE PRESS TARGET (2026-10-09 — it was the
+          text block alone, which left the 88pt photo, the obvious thing to
+          tap, dead), and it is a press ONLY when there is a post to open
+          (review #16). It is also where the one utterance lives: a Pressable
+          with a label reads as one node AND is the control; the photo inside
+          sets no accessibility props, so it is not a second stop.
 
           `openPost` is null whenever the server sent no id, which is every
-          closed listing. Those cards stay exactly as flat as they have always
-          been, which is the point: a card that looks tappable and is not would
-          be worse than a flat one. */}
+          closed listing. Those cards stay flat, which is the point: a card
+          that looks tappable and is not would be worse than a flat one. */}
       <Pressable
-        style={({ pressed }) => [
-          styles.main,
-          stacked && styles.mainStacked,
-          openPost && pressed && styles.mainPressed,
-        ]}
+        style={({ pressed }) => [openPost && pressed && styles.rowPressed]}
         accessible
         accessibilityRole={openPost ? 'button' : undefined}
         accessibilityHint={openPost ? 'Opens the listing' : undefined}
         onPress={openPost ?? undefined}
         testID={openPost ? `my-sighting-open-${entry.id}` : undefined}
+        // Times spoken in words: "3d" reads as "three d" (DESIGN_SYSTEM).
         accessibilityLabel={`${car}, reported ${
           entry.areaLabel ? `in ${entry.areaLabel} ` : ''
-        }${reported}. ${verdict.label}${entry.reviewedAt ? `, ${ruled}` : ''}.${
-          nextStep ? ` ${nextStep}` : ''
-        }`}
+        }${spokenAgo(reported)}. ${verdict.label}${
+          entry.reviewedAt ? `, ${spokenAgo(ruled)}` : ''
+        }.${nextStep ? ` ${nextStep}` : ''}`}
       >
-        <Text style={styles.car} numberOfLines={1}>
+      <View
+        style={[styles.row, stacked && styles.rowStacked]}
+        testID={`my-sighting-row-${entry.id}`}
+      >
+      {/* Their own photo leads; an empty frame while it is looked up; the
+          colour tile when there is none (or its link has lapsed). */}
+      {showPhoto ? (
+        <AppImage
+          uri={photoUrl as string}
+          style={styles.photo}
+          recyclingKey={entry.id}
+          onError={() => setPhotoFailed(true)}
+          testID={`my-sighting-photo-${entry.id}`}
+        />
+      ) : photoPending && !photoFailed ? (
+        <View style={styles.photo} testID={`my-sighting-photo-pending-${entry.id}`} />
+      ) : (
+        <CarColourTile
+          colour={entry.car.colour}
+          size={sizes.timelineThumb}
+          radius={radii.md}
+          glyphSize={TILE_GLYPH}
+          testID={`my-sighting-tile-${entry.id}`}
+        />
+      )}
+
+      <View style={[styles.main, stacked && styles.mainStacked]}>
+        <Text style={styles.car} numberOfLines={stacked ? undefined : 1}>
           {car}
         </Text>
-        <Text style={styles.when} numberOfLines={1}>
+        <Text style={styles.when} numberOfLines={stacked ? undefined : 1}>
           {when}
         </Text>
 
@@ -392,10 +419,9 @@ export function ReportCard({
             {nextStep}
           </Text>
         ) : null}
-      </Pressable>
-      {/* The affordance, so "tappable" is visible and not just true. Outside
-          the labelled block: it is decoration, and a screen reader has already
-          been told this opens the listing. */}
+      </View>
+      {/* The affordance, so "tappable" is visible and not just true. It is
+          decoration: the row's label already says this opens the listing. */}
       {openPost ? (
         <ChevronRight
           size={sizes.iconSm}
@@ -404,6 +430,7 @@ export function ReportCard({
         />
       ) : null}
       </View>
+      </Pressable>
 
       {/* ⚠️ THE DOOR, and the reason this card stopped being flat. Until now
           /sighting-dispute was reachable ONLY from a push, so a spotter who
@@ -422,28 +449,12 @@ export function ReportCard({
           // The label has to carry WHICH report, because this button sits
           // outside the grouped text block and a screen reader arriving here
           // from below has not heard the car yet.
-          accessibilityLabel={`${door.label}. ${car}, reported ${reported}`}
+          accessibilityLabel={`${door.label}. ${car}, reported ${spokenAgo(reported)}`}
           accessibilityHint={door.hint}
           style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
           testID={`my-sighting-dispute-${entry.id}`}
         >
           <Text style={styles.doorLabel}>{door.label}</Text>
-          <ChevronRight size={sizes.iconSm} color={palette.textSecondary} />
-        </Pressable>
-      ) : null}
-
-      {/* The door to Payouts on a credited report — the dispute door's form
-          (a labelled row with a chevron: it opens a screen). */}
-      {canOpenPayouts ? (
-        <Pressable
-          onPress={onOpenPayouts}
-          accessibilityRole="button"
-          accessibilityLabel={`See your payouts. ${car}, reported ${reported}`}
-          accessibilityHint="Opens Payouts"
-          style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
-          testID={`my-sighting-payouts-${entry.id}`}
-        >
-          <Text style={styles.doorLabel}>See your payouts</Text>
           <ChevronRight size={sizes.iconSm} color={palette.textSecondary} />
         </Pressable>
       ) : null}
@@ -464,7 +475,7 @@ export function ReportCard({
           accessibilityRole="button"
           // Carries the car for the same reason the door's label does: a screen
           // reader arriving here has not heard which report this is.
-          accessibilityLabel={`Take back this report. ${car}, reported ${reported}`}
+          accessibilityLabel={`Take back this report. ${car}, reported ${spokenAgo(reported)}`}
           accessibilityHint="Withdraws it, so the owner no longer sees it"
           style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
           testID={`my-sighting-withdraw-${entry.id}`}
@@ -574,11 +585,16 @@ const makeStyles = (c: Palette) =>
       padding: spacing.lg,
       gap: spacing.md,
     },
+    // Top-aligned, like the owner's sighting card: the text column beside the
+    // 88pt photo can now outgrow it, and a centred photo would float.
     row: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: spacing.md,
     },
+    // Opacity, not the 0.98 scale VehicleCard uses: scaling the row would
+    // shift it against the doors beneath.
+    rowPressed: { opacity: opacity.pressed },
     rowStacked: {
       flexDirection: 'column',
       alignItems: 'flex-start',
@@ -603,7 +619,7 @@ const makeStyles = (c: Palette) =>
       borderTopColor: c.border,
     },
     doorPressed: {
-      opacity: 0.6,
+      opacity: opacity.pressed,
     },
     doorLabel: {
       ...typography.label,
@@ -611,9 +627,6 @@ const makeStyles = (c: Palette) =>
       flex: 1,
     },
     main: { flex: 1, gap: spacing.xs },
-    // Opacity, not the 0.98 scale VehicleCard uses: this is a text block inside
-    // a row, and scaling it would shift the chevron and the tile beside it.
-    mainPressed: { opacity: opacity.pressed },
     // ⚠️ NEUTRALISE THE BASIS WHEN THE CARD IS A COLUMN. `flex: 1` is
     // `flexBasis: 0`, which works while the card's main axis is its definite
     // WIDTH — but `cardStacked` makes the main axis its auto HEIGHT, where
@@ -625,8 +638,8 @@ const makeStyles = (c: Palette) =>
     car: {
       ...typography.cardTitle,
       color: c.textPrimary,
-      // The car is the headline: it is how a spotter recognises which of their
-      // own reports this is, with no plate and no photo on the row.
+      // The car is the headline: with their photo beside it, it is how a
+      // spotter recognises which of their own reports this is (no plate).
       //
       // ⚠️ NO `textTransform: 'capitalize'`, which the old row carried. The
       // data is already canonical — posts.colour stores the enum name ("Blue")
@@ -660,10 +673,12 @@ const makeStyles = (c: Palette) =>
       height: sizes.progressDot,
       borderRadius: radii.sm,
     },
-    /** helpful / credited only. A verdict that went the spotter's way is the
-     *  one moment this screen has to give them, so it takes the colour and the
-     *  ink. Nothing goes red: the other outcomes are not failures. */
-    dot_good: { backgroundColor: c.success },
+    /** helpful (credited draws its tick instead). A verdict that went the
+     *  spotter's way takes the ink. PRIMARY, not success green (2026-10-09):
+     *  the owner's card marks the same "Confirmed" in primary, and sage stays
+     *  for the payout moment — here, the credited tick alone. Nothing goes
+     *  red: the other outcomes are not failures. */
+    dot_good: { backgroundColor: c.primary },
     /**
      * unverified — nobody has looked yet.
      *

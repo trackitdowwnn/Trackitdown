@@ -1,21 +1,24 @@
 /**
- * WHAT:  DayHeader — the calendar label that divides a feed into days ("Today",
- *        "Yesterday", "23 July"), plus DayHeaderSkeleton, the box it occupies
- *        while the feed loads.
- * WHY:   ONE list groups by day (the inbox faces stopped on 2026-09-04) — the inbox's notifications face, the
- *        messages face, and My reports — and each had hand-rolled the same
- *        five style properties. The third copy is where a shared component
- *        stops being premature.
+ * WHAT:  DayHeader — the quiet label that divides a list into groups, plus
+ *        DayHeaderSkeleton, the box it occupies while the list loads. Born as
+ *        a calendar label ("Today", "23 July"); since 2026-10-09 its one
+ *        consumer, My sightings, labels status sections with it ("Still
+ *        open", "Answered", "Taken back").
+ * WHY:   Three lists once grouped by day (the inbox's two faces and My
+ *        reports) and each had hand-rolled the same five style properties.
+ *        The inbox stopped grouping on 2026-09-04 and My sightings moved to
+ *        sections; the quiet-label rule below is why it is still this
+ *        component rather than a section title.
  *
  *        ⚠️ `label` AT `textSecondary`, NOT `sectionTitle`. This is the
  *        2026-08-28 carve-out in DESIGN_SYSTEM.md, and it is deliberately not
  *        configurable: a bold 20pt band between sparse rows out-shouts the rows
  *        it is meant to organise. A date is a divider, not a section title.
  *
- *        ⚠️ THE GUTTER IS A PROP because its remaining consumer genuinely differ.
- *        A flush list whose rows pad themselves (both inbox faces) needs the
- *        header to carry the 24; a list whose CONTENT CONTAINER already pads
- *        (My reports) would otherwise indent every date to 48. Getting this
+ *        ⚠️ THE GUTTER IS A PROP because lists genuinely differ. A flush list
+ *        whose rows pad themselves (the inbox faces did) needs the header to
+ *        carry the 24; a list whose CONTENT CONTAINER already pads (My
+ *        sightings) would otherwise indent every label to 48. Getting this
  *        wrong is invisible in isolation and obvious side by side, which is
  *        exactly the kind of drift a shared component exists to stop.
  *
@@ -26,10 +29,7 @@
  *        post's history — it aligns to the rail, not to a list gutter, and it
  *        divides events within one story rather than grouping rows of a feed.
  *        Left alone deliberately.
- * LINKS: src/shared/lib/dayGroups.ts (the labels this renders);
- *        src/features/notifications/screens/NotificationCenterScreen.tsx,
- *        src/features/chat/screens/InboxScreen.tsx,
- *        src/features/sightings/screens/MySightingsScreen.tsx (the consumers);
+ * LINKS: src/features/sightings/screens/MySightingsScreen.tsx (the consumer);
  *        docs/DESIGN_SYSTEM.md (the carve-out).
  */
 
@@ -42,7 +42,7 @@ import { radii, spacing, typography, useThemedStyles, type Palette } from '@/sha
 export type DayHeaderGutter = 'default' | 'none';
 
 export interface DayHeaderProps {
-  /** The calendar word, from `groupByDay`. */
+  /** The group's quiet label — a day, or (My sightings) a status section. */
   label: string;
   gutter?: DayHeaderGutter;
   /**

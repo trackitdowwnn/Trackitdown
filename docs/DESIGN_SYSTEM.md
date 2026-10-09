@@ -263,8 +263,8 @@ are build output.
     labels calendar groups with `label` at `textSecondary`, because a bold
     20pt band between sparse cards out-shouts the cards it is meant to
     organise. A date is a divider, not a section title. My sightings uses the
-    same quiet label (`DayHeader`) for its status sections — "Waiting on the
-    owner", "Answered", "Taken back" (2026-10-09) — for the same reason.
+    same quiet label (`DayHeader`) for its status sections — "Still open",
+    "Answered", "Taken back" (2026-10-09) — for the same reason.
   - `heading` 18/24, Bold — in-screen headings
   - `cardTitle` 16/22, Bold — feed-card titles (added 2026-07-11; body
     size at heavier weight, so photos stay the hero of a card)
@@ -824,6 +824,16 @@ to use.
   `textSecondary` labels. Above `listRowStackFontScale` the photo takes its
   own row. The rail-to-card gap is `spacing.lg` (40px offset with the 24px
   node column); the rail's dot follows the first line at every text size.
+- Spotter report cards ("My sightings", `ReportCard`, 2026-10-09): the same
+  family as the owner's — `cardSurface` at `spacing.lg`, the spotter's own
+  photo at `sizes.timelineThumb` (an empty `surfaceSubtle` frame while it
+  loads, `CarColourTile` at the same size when there is none), top-aligned.
+  Then the car (`cardTitle`), "area · time ago" (caption), the bare marker +
+  verdict (helpful a `primary` dot, credited the `success` tick, open a
+  `warning` ring, not-a-match `borderStrong`), and ONE short next-step line
+  in caption — kept to one line beside the photo. The photo + text row is the
+  press target when the listing is live. Door rows (dispute, take back) sit
+  below a hairline, each ≥ 44pt.
 - Accessibility: minimum 44pt touch targets (map markers excepted — see Map
   screens), WCAG AA contrast against the
   near-white background (check `primary` and `accentText` on `#F7F7F7`), labels on all interactive

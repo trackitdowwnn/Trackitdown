@@ -2,7 +2,8 @@
  * WHAT:  Orchestration tests for MySightingsScreen — the five states it can be
  *        in (signed out / loading / error / empty / populated), the sections
  *        (waiting first) and the summary line, the spotter's own photo or the
- *        tile, what happens next per outcome and the Payouts door, the four
+ *        tile (and the empty frame while it loads), what happens next per
+ *        outcome (promising nothing it can't keep), the four
  *        verdict labels, the "a car" fallback, and the one composed label a
  *        screen reader hears per report.
  * WHY:   ⚠️ THIS SCREEN SHIPPED WITH NO TESTS AT ALL. Nothing pinned its copy,
@@ -35,7 +36,12 @@ jest.mock('../hooks/useMySightingRecord', () => ({
 
 // The spotter's own photos, by sighting id — fetched and signed beside the
 // list; driven directly here (the hook and its api have their own tests).
-const mockPhotos = jest.fn((_ids: string[]): Record<string, string> => ({}));
+const mockPhotos = jest.fn(
+  (_ids: string[]): { urls: Record<string, string>; loaded: boolean } => ({
+    urls: {},
+    loaded: true,
+  }),
+);
 jest.mock('../hooks/useMyReportPhotos', () => ({
   useMyReportPhotos: (ids: string[]) => mockPhotos(ids),
 }));
@@ -153,7 +159,7 @@ beforeEach(() => {
     .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 1 });
   mockUseSession.mockReturnValue({ status: 'signedIn', userId: 'u1' });
   mockUseRecord.mockReturnValue(ready([entry()]));
-  mockPhotos.mockReturnValue({});
+  mockPhotos.mockReturnValue({ urls: {}, loaded: true });
 });
 
 // Restore, not clear: a spy's implementation survives clearAllMocks.
@@ -218,7 +224,7 @@ describe('⚠️ needs-attention first (2026-10-09)', () => {
 
     expect(getAllByRole('header').map((node) => node.props.children)).toEqual([
       'My sightings',
-      'Waiting on the owner',
+      'Still open',
       'Answered',
       'Taken back',
     ]);
@@ -247,15 +253,32 @@ describe('⚠️ needs-attention first (2026-10-09)', () => {
     const { getByTestId } = await render(<MySightingsScreen />);
 
     // Withdrawn isn't counted; "Not a match" never becomes a number.
-    expect(getByTestId('my-sightings-summary')).toHaveTextContent(
-      '4 reports · 2 confirmed · 1 recovery',
-    );
+    const summary = getByTestId('my-sightings-summary');
+    expect(summary).toHaveTextContent('4 reports · 2 helpful · 1 recovery');
+    // Spoken with commas — some screen readers say "·" aloud.
+    expect(summary.props.accessibilityLabel).toBe('4 reports, 2 helpful, 1 recovery');
+  });
+
+  it('holds the summary’s place while loading — and shows no count it doesn’t have', async () => {
+    mockUseRecord.mockReturnValue({ ...ready([entry()]), status: 'loading' });
+    const { getByTestId, queryByTestId } = await render(<MySightingsScreen />);
+
+    expect(getByTestId('my-sightings-summary-skeleton')).toBeTruthy();
+    expect(queryByTestId('my-sightings-summary')).toBeNull();
+  });
+
+  it('shows no summary to someone signed out', async () => {
+    mockUseSession.mockReturnValue({ status: 'signedOut' });
+    const { queryByTestId } = await render(<MySightingsScreen />);
+
+    expect(queryByTestId('my-sightings-summary')).toBeNull();
+    expect(queryByTestId('my-sightings-summary-skeleton')).toBeNull();
   });
 });
 
 describe('the spotter’s own photo (2026-10-09)', () => {
   it('leads the card when there is one, and the colour tile stands in when not', async () => {
-    mockPhotos.mockReturnValue({ a: 'https://x/a.jpg' });
+    mockPhotos.mockReturnValue({ urls: { a: 'https://x/a.jpg' }, loaded: true });
     mockUseRecord.mockReturnValue(ready([entry({ id: 'a' }), entry({ id: 'b' })]));
     const { getByTestId, queryByTestId } = await render(<MySightingsScreen />);
 
@@ -264,19 +287,40 @@ describe('the spotter’s own photo (2026-10-09)', () => {
     expect(getByTestId('my-sighting-tile-b')).toBeTruthy();
     expect(mockPhotos).toHaveBeenCalledWith(['a', 'b']);
   });
+
+  it('⚠️ shows an empty frame while the photos are looked up — never the tile first', async () => {
+    // The tile would claim "no photo" and then be replaced by one.
+    mockPhotos.mockReturnValue({ urls: {}, loaded: false });
+    mockUseRecord.mockReturnValue(ready([entry({ id: 'a' })]));
+    const { getByTestId, queryByTestId } = await render(<MySightingsScreen />);
+
+    expect(getByTestId('my-sighting-photo-pending-a')).toBeTruthy();
+    expect(queryByTestId('my-sighting-tile-a')).toBeNull();
+  });
 });
 
 describe('what happens next (2026-10-09)', () => {
+  // ⚠️ Every line holds in EVERY case (reviews of #148): no notification is
+  // promised (none is sent for "Not a match"), no counter (a capped
+  // confirmation moves none), and nothing about money.
   it.each([
-    ['unverified' as const, 'We’ll let you know when they answer.'],
-    ['helpful' as const, 'Thanks — it counts towards your record.'],
-    ['credited' as const, 'Any reward shows in Payouts.'],
-    ['not_mine' as const, 'Not their car — thanks for looking.'],
+    ['unverified' as const, 'Their answer will show here.'],
+    ['helpful' as const, 'A recovery would show here.'],
+    ['credited' as const, 'Thanks for the recovery.'],
+    ['not_mine' as const, 'Thanks for looking.'],
   ])('a %s report says "%s"', async (status, line) => {
     mockUseRecord.mockReturnValue(ready([entry({ status })]));
     const { getByTestId } = await render(<MySightingsScreen />);
 
     expect(getByTestId('my-sighting-next-s1')).toHaveTextContent(line);
+  });
+
+  it('⚠️ an open report on a CLOSED listing doesn’t promise an answer', async () => {
+    // `postId: null` is the server saying the listing has closed.
+    mockUseRecord.mockReturnValue(ready([entry({ status: 'unverified', postId: null })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+
+    expect(getByTestId('my-sighting-next-s1')).toHaveTextContent('This listing has closed.');
   });
 
   it('a withdrawn report has no next step', async () => {
@@ -286,15 +330,11 @@ describe('what happens next (2026-10-09)', () => {
     expect(queryByTestId('my-sighting-next-s1')).toBeNull();
   });
 
-  it('⚠️ a credited report opens Payouts — and only a credited one offers it', async () => {
-    mockUseRecord.mockReturnValue(
-      ready([entry({ id: 'a', status: 'credited' }), entry({ id: 'b', status: 'helpful' })]),
-    );
-    const { getByTestId, queryByTestId } = await render(<MySightingsScreen />);
+  it('⚠️ never sends anyone to Payouts — this page knows nothing about rewards', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ id: 'a', status: 'credited' })]));
+    const { queryByText } = await render(<MySightingsScreen />);
 
-    expect(queryByTestId('my-sighting-payouts-b')).toBeNull();
-    fireEvent.press(getByTestId('my-sighting-payouts-a'));
-    expect(mockPush).toHaveBeenCalledWith('/payouts');
+    expect(queryByText(/payout|reward/i)).toBeNull();
   });
 });
 
@@ -326,10 +366,9 @@ describe('a report', () => {
   it('⚠️ never dates a verdict nobody has given', async () => {
     // NULL reviewed_at means the owner has not looked. Dressing that up as a
     // decision would tell a spotter they had been answered when they had not.
-    // (The words appear twice: the section's title and the card's verdict.)
-    const { getAllByText, queryByText } = await render(<MySightingsScreen />);
+    const { getByText, queryByText } = await render(<MySightingsScreen />);
 
-    expect(getAllByText('Waiting on the owner')).toHaveLength(2);
+    expect(getByText('Waiting on the owner')).toBeTruthy();
     expect(queryByText(/Waiting on the owner ·/)).toBeNull();
   });
 
@@ -352,7 +391,8 @@ describe('a report', () => {
 
     expect(
       getByLabelText(
-        'Blue Ford, reported in Camden 3d ago. Waiting on the owner. We’ll let you know when they answer.',
+        // Times in words: "3d" would be read as "three d".
+        'Blue Ford, reported in Camden 3 days ago. Waiting on the owner. Their answer will show here.',
       ),
     ).toBeTruthy();
   });

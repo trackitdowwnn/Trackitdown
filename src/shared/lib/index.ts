@@ -16,7 +16,6 @@ export {
   GLYPH_ON_LIGHT,
   type CarColour,
 } from './carColours';
-export { groupByDay, type DayGrouped } from './dayGroups';
 export {
   formatDateLabel,
   formatDateLabelCompact,

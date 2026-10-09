@@ -3,8 +3,8 @@
  *        the tile as a fill, that an unrecognised colour degrades instead of
  *        rendering a transparent hole, and that the glyph ink follows the
  *        swatch's `light` flag.
- * WHY:   ⚠️ THE TILE IS THE ONLY PICTURE `My reports` IS ALLOWED TO HAVE, so
- *        "it renders" is not the contract — WHICH colour it renders is. Nothing
+ * WHY:   ⚠️ THE TILE STANDS IN FOR A PHOTO ON "My sightings" (and in chat),
+ *        so "it renders" is not the contract — WHICH colour it renders is. Nothing
  *        else in the suite would notice if `swatchForName` were passed the make
  *        instead of the colour, or if the fallback branch were dropped: both
  *        produce a plausible-looking square.
