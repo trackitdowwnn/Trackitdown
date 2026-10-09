@@ -42,7 +42,7 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   FadeInDown,
   LinearTransition,
@@ -56,6 +56,7 @@ import Animated, {
 import { useEffect } from 'react';
 import Svg, { Defs, Line, LinearGradient, Stop } from 'react-native-svg';
 
+import { formatClock } from '@/shared/lib';
 import { timeAgo } from '@/shared/lib/timeAgo';
 import {
   cardSurface,
@@ -85,11 +86,10 @@ import type { OwnerSighting, PublicSightingEntries } from '../types';
 
 /** Node centres sit on their row's FIRST TEXT LINE centre (optical alignment):
  *  owner cards = useEntryCardFirstLineY() (SightingEntryCard owns its layout);
- *  public cards = row margin + card padding + half the place line (label —
- *  the same 18pt line box as caption);
+ *  public cards = row margin + card padding + half the place line, scaled
+ *  with the text (computed in PublicSightingTimeline);
  *  tail lines = row padding + half the body line;
  *  anchors = row padding + half the cardTitle line. */
-const CARD_NODE_Y = spacing.lg + spacing.lg + typography.caption.lineHeight / 2;
 const LINE_NODE_Y = spacing.lg + typography.body.lineHeight / 2;
 const ANCHOR_NODE_Y = spacing.lg + typography.cardTitle.lineHeight / 2;
 const DASH = [sizes.timelineDash, sizes.timelineDash];
@@ -99,8 +99,15 @@ const PULSE_OPACITY = 0.35;
 /** How often the day stops re-check what today is. */
 const CLOCK_TICK_MS = 60_000;
 
-function clockTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+/** "2h ago · 14:32" for a public card — the shared clock format, as on the
+ *  owner card. An unparseable time costs the clock, never the card. */
+function publicWhen(iso: string, now: Date): string {
+  const ago = timeAgo(iso, now);
+  try {
+    return `${ago} · ${formatClock(iso)}`;
+  } catch {
+    return ago;
+  }
 }
 
 // --- The rail plan -----------------------------------------------------------------
@@ -428,6 +435,10 @@ export function OwnerSightingTimeline({
   const palette = usePalette();
   // Hint is computed over ALL sightings even when the list is limited — the
   // preview must not claim a different journey than the full timeline.
+  // The hint (like the trail map) walks the sightings in the order the
+  // SERVER received them — a path through space, where server order is the
+  // trusted one; the list below orders by when each car was seen. Within
+  // sightingSeenAt's one-hour clamp the two rarely differ.
   const hint = showHint ? movementHint(sightings) : null;
   // ONE time for the order, the day stops and the cards: when the car was
   // seen (sightingSeenAt — clamped to the server's clock). Grouping by when
@@ -568,8 +579,13 @@ export interface PublicSightingTimelineProps {
  *  post data the page already shows. */
 export function PublicSightingTimeline({ data, anchors }: PublicSightingTimelineProps) {
   const styles = useThemedStyles(makeStyles);
-  // A held clock for the day stops — see OwnerSightingTimeline.
+  // A held clock for the day stops and each card's age — see
+  // OwnerSightingTimeline.
   const now = useNow(CLOCK_TICK_MS);
+  // The dot on the place line's centre at every text size (the owner card's
+  // useEntryCardFirstLineY rule).
+  const { fontScale } = useWindowDimensions();
+  const cardNodeY = spacing.lg + spacing.lg + (typography.label.lineHeight * (fontScale ?? 1)) / 2;
   const items = buildTimelineItems(data.entries, (entry) => entry.sightedAt, now);
   const tail = earlierCountLabel(data.earlierCount);
   const entryCount = data.entries.length;
@@ -617,15 +633,15 @@ export function PublicSightingTimeline({ data, anchors }: PublicSightingTimeline
             accessible
             accessibilityLabel={`Sighting ${position} of ${entryCount}, ${
               item.entry.locality ? `near ${item.entry.locality}` : 'location withheld'
-            }, ${timeAgo(item.entry.sightedAt)}`}
+            }, ${timeAgo(item.entry.sightedAt, now)}`}
           >
             <RailCell
               {...flags[index]}
               node={item.newest ? sizes.timelineDotNewest : sizes.timelineDot}
-              centerY={CARD_NODE_Y}
+              centerY={cardNodeY}
             >
-              {item.newest ? <NewestPulse centerY={CARD_NODE_Y} /> : null}
-              <SightingDot newest={item.newest} centerY={CARD_NODE_Y} />
+              {item.newest ? <NewestPulse centerY={cardNodeY} /> : null}
+              <SightingDot newest={item.newest} centerY={cardNodeY} />
             </RailCell>
             {/* The owner face's card surface holding ONLY what the public
                 payload carries — the faces read as one family, the fence
@@ -637,7 +653,7 @@ export function PublicSightingTimeline({ data, anchors }: PublicSightingTimeline
                 {item.entry.locality ? `Sighted near ${item.entry.locality}` : 'Sighted'}
               </Text>
               <Text style={styles.publicWhen} numberOfLines={1}>
-                {timeAgo(item.entry.sightedAt)} · {clockTime(item.entry.sightedAt)}
+                {publicWhen(item.entry.sightedAt, now)}
               </Text>
             </View>
           </Animated.View>

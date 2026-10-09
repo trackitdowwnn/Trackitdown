@@ -129,6 +129,7 @@ describe('sightingsSummaryLine', () => {
     [of('helpful', 'not_mine'), '2 sightings · nothing waiting on you'],
     // A withdrawn one was never answered — and is not counted at all.
     [of('helpful', 'withdrawn'), '1 sighting · nothing waiting on you'],
+    [of('withdrawn'), null],
   ])('%j → "%s"', (sightings, line) => {
     expect(sightingsSummaryLine(sightings)).toBe(line);
   });
@@ -251,7 +252,9 @@ describe('public face', () => {
     expect(queryByTestId(/timeline-entry-/)).toBeNull(); // nothing tappable
     // Nothing of the owner's decisions either: the summary line is theirs.
     expect(queryByTestId('sightings-summary')).toBeNull();
-    expect(queryByText(/needs your answer|waiting on you|Confirmed|Not your car/i)).toBeNull();
+    expect(
+      queryByText(/needs your answer|waiting on you|answered|Confirmed|Credited|Not your car/i),
+    ).toBeNull();
   });
 
   it('renders NO section while loading — absence, not a skeleton', async () => {

@@ -80,7 +80,7 @@ function useStacked(): boolean {
  */
 export function useEntryCardFirstLineY(): number {
   const { fontScale } = useWindowDimensions();
-  const stacked = (fontScale ?? 1) > listRowStackFontScale;
+  const stacked = useStacked();
   const firstLine = stacked
     ? sizes.timelineThumb
     : typography.cardTitle.lineHeight * (fontScale ?? 1);
@@ -107,8 +107,8 @@ export function SightingEntryCard({
 }: SightingEntryCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
-  const stacked = useStacked();
   const { fontScale } = useWindowDimensions();
+  const stacked = (fontScale ?? 1) > listRowStackFontScale;
 
   const seenAt = sightingSeenAt(sighting);
   const ago = useTimeAgo(seenAt);

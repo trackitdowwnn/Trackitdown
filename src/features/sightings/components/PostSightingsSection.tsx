@@ -43,10 +43,11 @@ const PREVIEW_LIMIT = 3;
 /** "4 sightings · 1 needs your answer" — counted over ALL the owner's
  *  sightings, not the 3 the preview shows, so a waiting one below the fold is
  *  never missed. "· nothing waiting on you" once every one is decided. */
-export function sightingsSummaryLine(all: Pick<OwnerSighting, 'status'>[]): string {
+export function sightingsSummaryLine(all: Pick<OwnerSighting, 'status'>[]): string | null {
   // A withdrawn sighting was never answered — it is not counted at all (the
   // owner RPC filters them; this holds if one ever slips through).
   const sightings = all.filter((s) => !isGoneSighting(s.status));
+  if (sightings.length === 0) return null;
   const total = `${sightings.length} ${sightings.length === 1 ? 'sighting' : 'sightings'}`;
   const waiting = sightings.filter((s) => s.status === 'unverified').length;
   if (waiting === 0) return `${total} · nothing waiting on you`;
@@ -132,6 +133,7 @@ export function PostSightingsSection({
   }
 
   // OWNER FACE — the section always renders: activity, or the warm empty.
+  const summary = owner.status === 'ready' ? sightingsSummaryLine(owner.sightings) : null;
   return (
     <View>
       <View style={styles.divider} />
@@ -139,9 +141,9 @@ export function PostSightingsSection({
         {/* The title and its one-line answer to "anything new?", together. */}
         <View style={styles.titleBlock}>
           <Text style={styles.sectionTitle}>Sighting activity</Text>
-          {owner.status === 'ready' && owner.sightings.length > 0 ? (
+          {summary ? (
             <Text style={styles.summary} testID="sightings-summary">
-              {sightingsSummaryLine(owner.sightings)}
+              {summary}
             </Text>
           ) : null}
         </View>
