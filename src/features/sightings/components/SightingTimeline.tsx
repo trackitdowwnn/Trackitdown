@@ -3,7 +3,10 @@
  *        rail treatment: a 2px connector carrying meaning-differentiated
  *        nodes (12px ringed sage dots for sightings, a 16px one-time-pulse
  *        newest dot, 24px icon-in-circle ANCHORS fixing the arc's ends), the
- *        owner's quiet entry cards / the public's single lines off the SAME
+ *        owner's photo-first cards (SightingEntryCard: photo, "Seen near …",
+ *        when, and "Needs your answer" until the owner decides — the detail
+ *        lives on the sighting page since 2026-10-09) / the public's flat
+ *        time-and-place cards off the SAME
  *        rail, day-group headers, and the movement hint as the header's one
  *        insight line. NEWEST-FIRST: terminal (when the arc has ended) at the
  *        top, then sightings newest-down, the ORIGIN — the theft — at the
@@ -32,11 +35,14 @@
  *        docs/DESIGN_SYSTEM.md (timeline geometry tokens; sage-node sanction);
  *        docs/design-refs/timelime/ (the reference set this treatment draws
  *        on: day-groups as RAIL STOPS so the rail reads as a time axis;
- *        quiet-time-then-bold-place row hierarchy; ✓-marked status chips).
+ *        the place leading with the time quiet beneath; a status marker on
+ *        each owner card);
+ *        src/features/sightings/components/SightingEntryCard.tsx (the
+ *        owner's card).
  */
 
 import { Feather } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   FadeInDown,
   LinearTransition,
@@ -50,11 +56,12 @@ import Animated, {
 import { useEffect } from 'react';
 import Svg, { Defs, Line, LinearGradient, Stop } from 'react-native-svg';
 
+import { formatClock } from '@/shared/lib';
 import { timeAgo } from '@/shared/lib/timeAgo';
 import {
+  cardSurface,
   motion,
   radii,
-  shadows,
   sizes,
   spacing,
   typography,
@@ -62,10 +69,11 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { AppImage, Avatar } from '@/shared/ui';
 
-import { contextSummary } from '../lib/contextLabels';
-import { isConfirmedVerdict, sightingVerdictLabel } from '../lib/sightingVerdict';
+import { useNow } from '@/shared/hooks';
+
+import { sightingSeenAt } from '../lib/sightingVerdict';
+import { SightingEntryCard, useEntryCardFirstLineY } from './SightingEntryCard';
 import {
   buildTimelineItems,
   earlierCountLabel,
@@ -77,19 +85,29 @@ import {
 import type { OwnerSighting, PublicSightingEntries } from '../types';
 
 /** Node centres sit on their row's FIRST TEXT LINE centre (optical alignment):
- *  owner cards = row margin + card padding + half the label line;
- *  public/tail lines = row padding + half the body line;
+ *  owner cards = useEntryCardFirstLineY() (SightingEntryCard owns its layout);
+ *  public cards = row margin + card padding + half the place line, scaled
+ *  with the text (computed in PublicSightingTimeline);
+ *  tail lines = row padding + half the body line;
  *  anchors = row padding + half the cardTitle line. */
-const CARD_NODE_Y = spacing.lg + spacing.lg + typography.caption.lineHeight / 2;
 const LINE_NODE_Y = spacing.lg + typography.body.lineHeight / 2;
 const ANCHOR_NODE_Y = spacing.lg + typography.cardTitle.lineHeight / 2;
 const DASH = [sizes.timelineDash, sizes.timelineDash];
 const RAIL_X = sizes.timelineRailColumn / 2;
 /** Halo peak opacity for the one-time pulse (drawn emphasis, not a token). */
 const PULSE_OPACITY = 0.35;
+/** How often the day stops re-check what today is. */
+const CLOCK_TICK_MS = 60_000;
 
-function clockTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+/** "2h ago · 14:32" for a public card — the shared clock format, as on the
+ *  owner card. An unparseable time costs the clock, never the card. */
+function publicWhen(iso: string, now: Date): string {
+  const ago = timeAgo(iso, now);
+  try {
+    return `${ago} · ${formatClock(iso)}`;
+  } catch {
+    return ago;
+  }
 }
 
 // --- The rail plan -----------------------------------------------------------------
@@ -417,14 +435,28 @@ export function OwnerSightingTimeline({
   const palette = usePalette();
   // Hint is computed over ALL sightings even when the list is limited — the
   // preview must not claim a different journey than the full timeline.
+  // The hint (like the trail map) walks the sightings in the order the
+  // SERVER received them — a path through space, where server order is the
+  // trusted one; the list below orders by when each car was seen. Within
+  // sightingSeenAt's one-hour clamp the two rarely differ.
   const hint = showHint ? movementHint(sightings) : null;
+  // ONE time for the order, the day stops and the cards: when the car was
+  // seen (sightingSeenAt — clamped to the server's clock). Grouping by when
+  // it was SENT put a card reading "Yesterday" under a "Today" stop.
   const shown = limit
     ? [...sightings]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .sort(
+          (a, b) =>
+            new Date(sightingSeenAt(b)).getTime() - new Date(sightingSeenAt(a)).getTime(),
+        )
         .slice(0, limit)
     : sightings;
   const elidedCount = sightings.length - shown.length;
-  const items = buildTimelineItems(shown, (s) => s.createdAt);
+  // A held clock, not buildTimelineItems' default `new Date()`: the React
+  // Compiler would freeze that, and "Today" would outlive midnight while the
+  // cards beside it (useTimeAgo) moved on.
+  const now = useNow(CLOCK_TICK_MS);
+  const items = buildTimelineItems(shown, sightingSeenAt, now);
   const hasTerminal = anchors ? terminalAnchor(anchors.status) !== null : false;
 
   // The render plan, top-down; railFlags styles whole connectors across it.
@@ -490,6 +522,8 @@ export function OwnerSightingTimeline({
   );
 }
 
+/** A sighting on the owner's rail: its dot, then the photo-first card
+ *  (SightingEntryCard — the card's contents and why live there). */
 function OwnerEntryRow({
   sighting,
   newest,
@@ -508,99 +542,24 @@ function OwnerEntryRow({
   onPress: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
-  const palette = usePalette();
-  const when = `${timeAgo(sighting.createdAt)} · ${clockTime(sighting.createdAt)}`;
-  // Honest location line (DOMAIN: shown honestly, never papered over). The
-  // dashed incoming connector says the same thing decoratively; THIS label
-  // is the accessible truth of it.
-  const where = sighting.locationUnavailable
-    ? 'Location couldn’t be captured'
-    : (sighting.areaLabel ?? 'Captured location');
-  const pills = contextSummary(sighting);
-  const thumbPath = sighting.photos[0]?.path;
-  const thumbUrl = thumbPath ? photoUrls[thumbPath] : undefined;
-
+  const firstLineY = useEntryCardFirstLineY();
   return (
     <View style={styles.row}>
       <RailCell
         {...flags}
         node={newest ? sizes.timelineDotNewest : sizes.timelineDot}
-        centerY={CARD_NODE_Y}
+        centerY={firstLineY}
       >
-        {newest ? <NewestPulse centerY={CARD_NODE_Y} /> : null}
-        <SightingDot newest={newest} centerY={CARD_NODE_Y} />
+        {newest ? <NewestPulse centerY={firstLineY} /> : null}
+        <SightingDot newest={newest} centerY={firstLineY} />
       </RailCell>
-      <Pressable
+      <SightingEntryCard
+        sighting={sighting}
+        photoUrls={photoUrls}
+        position={position}
+        count={count}
         onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`Sighting ${position} of ${count}, ${where}, ${when}, by ${sighting.spotter.firstName}. Opens details.`}
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-        testID={`timeline-entry-${sighting.id}`}
-      >
-        {/* Text owns the card's width; the thumb TRAILS (design-refs) so the
-            place never fights the photo for room. */}
-        <View style={styles.cardTop}>
-          <View style={styles.cardBody}>
-            <View style={styles.cardTopLine}>
-              <Text style={styles.entryWhen} numberOfLines={1}>
-                {when}
-              </Text>
-              {/* ⚠️ MAPPED, not a two-way branch. This read `credited ? '✓
-                  Credited' : '✓ Helpful'`, so the moment a sighting could be
-                  marked not_mine it would have rendered a rejected report as
-                  "✓ Helpful" — the exact opposite of the owner's verdict, with
-                  a tick on it.
-
-                  No tick on not_mine: the tick means "confirmed", and this is
-                  the absence of a confirmation. Muted, because it is the
-                  quietest outcome of the three and is not a mark against the
-                  spotter. */}
-              {sightingVerdictLabel(sighting.status) ? (
-                <Text
-                  style={
-                    isConfirmedVerdict(sighting.status)
-                      ? styles.statusTag
-                      : [styles.statusTag, styles.statusTagMuted]
-                  }
-                >
-                  {isConfirmedVerdict(sighting.status)
-                    ? `✓ ${sightingVerdictLabel(sighting.status)}`
-                    : sightingVerdictLabel(sighting.status)}
-                </Text>
-              ) : null}
-            </View>
-            <Text style={styles.entryWhere} numberOfLines={2}>
-              {where}
-            </Text>
-          </View>
-          {thumbUrl ? (
-            <AppImage uri={thumbUrl} style={styles.cardThumb} />
-          ) : (
-            <View style={[styles.cardThumb, styles.cardThumbPending]} />
-          )}
-        </View>
-        {pills.length > 0 ? (
-          <View style={styles.pillRow}>
-            {pills.map((pill) => (
-              <View key={pill} style={styles.pill}>
-                <Text style={styles.pillText}>{pill}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-        <View style={styles.cardBottomLine}>
-          <View style={styles.spotterRow}>
-            <Avatar name={sighting.spotter.firstName} size="sm" />
-            <Text style={styles.spotterText} numberOfLines={1}>
-              {sighting.spotter.firstName}
-              {sighting.spotter.sightingsHelpful > 0
-                ? ` · ${sighting.spotter.sightingsHelpful} helpful`
-                : ''}
-            </Text>
-          </View>
-          <Feather name="chevron-right" size={sizes.iconSm} color={palette.textSecondary} />
-        </View>
-      </Pressable>
+      />
     </View>
   );
 }
@@ -620,7 +579,14 @@ export interface PublicSightingTimelineProps {
  *  post data the page already shows. */
 export function PublicSightingTimeline({ data, anchors }: PublicSightingTimelineProps) {
   const styles = useThemedStyles(makeStyles);
-  const items = buildTimelineItems(data.entries, (entry) => entry.sightedAt);
+  // A held clock for the day stops and each card's age — see
+  // OwnerSightingTimeline.
+  const now = useNow(CLOCK_TICK_MS);
+  // The dot on the place line's centre at every text size (the owner card's
+  // useEntryCardFirstLineY rule).
+  const { fontScale } = useWindowDimensions();
+  const cardNodeY = spacing.lg + spacing.lg + (typography.label.lineHeight * (fontScale ?? 1)) / 2;
+  const items = buildTimelineItems(data.entries, (entry) => entry.sightedAt, now);
   const tail = earlierCountLabel(data.earlierCount);
   const entryCount = data.entries.length;
   const hasTerminal = anchors ? terminalAnchor(anchors.status) !== null : false;
@@ -667,27 +633,27 @@ export function PublicSightingTimeline({ data, anchors }: PublicSightingTimeline
             accessible
             accessibilityLabel={`Sighting ${position} of ${entryCount}, ${
               item.entry.locality ? `near ${item.entry.locality}` : 'location withheld'
-            }, ${timeAgo(item.entry.sightedAt)}`}
+            }, ${timeAgo(item.entry.sightedAt, now)}`}
           >
             <RailCell
               {...flags[index]}
               node={item.newest ? sizes.timelineDotNewest : sizes.timelineDot}
-              centerY={CARD_NODE_Y}
+              centerY={cardNodeY}
             >
-              {item.newest ? <NewestPulse centerY={CARD_NODE_Y} /> : null}
-              <SightingDot newest={item.newest} centerY={CARD_NODE_Y} />
+              {item.newest ? <NewestPulse centerY={cardNodeY} /> : null}
+              <SightingDot newest={item.newest} centerY={cardNodeY} />
             </RailCell>
             {/* The owner face's card surface holding ONLY what the public
                 payload carries — the faces read as one family, the fence
                 (time + locality, nothing else) is unchanged (ADR-0008). */}
             <View style={styles.publicCard}>
-              {/* Same line order as the owner card: quiet time above, the
-                  place leading below — one visual language, two depths. */}
-              <Text style={styles.publicWhen} numberOfLines={1}>
-                {timeAgo(item.entry.sightedAt)} · {clockTime(item.entry.sightedAt)}
-              </Text>
+              {/* Same line order as the owner card: the place leading, the
+                  quiet time beneath — one visual language, two depths. */}
               <Text style={styles.publicWhere} numberOfLines={2}>
                 {item.entry.locality ? `Sighted near ${item.entry.locality}` : 'Sighted'}
+              </Text>
+              <Text style={styles.publicWhen} numberOfLines={1}>
+                {publicWhen(item.entry.sightedAt, now)}
               </Text>
             </View>
           </Animated.View>
@@ -718,8 +684,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    // Rail → content offset: node column + this gap ≈ 44px (researched 40–60).
-    gap: spacing.xxl,
+    // Rail → content offset: node column + this gap = 40px, the low end of
+    // the researched 40–60 — the photo-first cards need the width.
+    gap: spacing.lg,
   },
   railCell: {
     width: sizes.timelineRailColumn,
@@ -801,106 +768,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textSecondary,
   },
-  // Owner entries: quiet cards off the rail (the shared surface recipe).
-  card: {
-    flex: 1,
-    gap: spacing.sm,
-    marginVertical: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: c.surface,
-    ...shadows.soft,
-  },
-  cardPressed: {
-    backgroundColor: c.surfaceSubtle,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  cardThumb: {
-    width: sizes.avatarLg,
-    height: sizes.avatarLg,
-    borderRadius: radii.md,
-  },
-  cardThumbPending: {
-    backgroundColor: c.surfaceSubtle,
-  },
-  cardBody: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  cardTopLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  cardBottomLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  entryWhen: {
-    ...typography.caption,
-    color: c.textSecondary,
-    flexShrink: 1,
-  },
-  statusTag: {
-    ...typography.caption,
-    color: c.primary,
-  },
-  /** not_mine only. Secondary ink so the rejected report recedes rather than
-   *  competing with the confirmed ones — it is an outcome, not a warning, and
-   *  the owner may still change it. */
-  statusTagMuted: {
-    color: c.textSecondary,
-  },
-  entryWhere: {
-    // The card's headline (design-refs: quiet time above, the place leading)
-    // — label tier: present without shouting, and two lines may wrap.
-    ...typography.label,
-    color: c.textPrimary,
-  },
-  pillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  pill: {
-    paddingHorizontal: spacing.md,
-    minHeight: sizes.pillHeight,
-    justifyContent: 'center',
-    borderRadius: radii.full,
-    backgroundColor: c.surfaceSubtle,
-  },
-  pillText: {
-    ...typography.caption,
-    color: c.textPrimary,
-  },
-  spotterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flexShrink: 1,
-  },
-  spotterText: {
-    ...typography.caption,
-    color: c.textSecondary,
-    flexShrink: 1,
-  },
-  // Public entries: the same quiet card surface, holding only the fenced
-  // payload — locality leading, time beneath.
+  // Public entries: the owner card's flat surface (cardSurface — a resting
+  // card is a hairline, not a shadow), holding only the fenced payload.
   publicCard: {
+    ...cardSurface(c),
     flex: 1,
     gap: spacing.xs,
     marginVertical: spacing.lg,
     padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: c.surface,
-    ...shadows.soft,
   },
   publicWhere: {
     ...typography.label,

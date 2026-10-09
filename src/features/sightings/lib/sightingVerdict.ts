@@ -1,7 +1,9 @@
 /**
  * WHAT:  sightingVerdict — the owner's decision on a sighting, in words: the
  *        label each surface shows ("Confirmed", "Credited", "Not your car"),
- *        its tone, and whether the page should treat the sighting as gone.
+ *        its tone, whether the page should treat the sighting as gone, the
+ *        timeline card's pill (with "Needs your answer" while undecided), and
+ *        when the car was seen (sightingSeenAt).
  *        Exhaustive over the status union, so a new status can't fall
  *        through into the wrong label.
  * WHY:   Two surfaces had drifted into two vocabularies ("✓ Helpful" on the
@@ -43,4 +45,45 @@ export function isConfirmedVerdict(status: SightingStatus): boolean {
 /** A withdrawn sighting is "do not act on this": the page shows it as gone. */
 export function isGoneSighting(status: SightingStatus): boolean {
   return status === 'withdrawn';
+}
+
+/** The status an owner's timeline card wears — including the undecided state,
+ *  which the timeline must SAY ("Needs your answer", a warning ring) so the
+ *  owner can tell at a glance which sightings are waiting on them. */
+export function sightingCardStatus(
+  status: SightingStatus,
+): { label: string; tone: 'warning' | 'primary' | 'neutral' } | null {
+  if (status === 'unverified') return { label: 'Needs your answer', tone: 'warning' };
+  const label = sightingVerdictLabel(status);
+  if (!label) return null;
+  return { label, tone: isConfirmedVerdict(status) ? 'primary' : 'neutral' };
+}
+
+/** How long before it was sent an in-app photo may have been taken and still
+ *  count as when the car was seen — a spotter takes the photo, then answers
+ *  a few questions. */
+const SEEN_BEFORE_SENT_MS = 60 * 60 * 1000;
+/** Device clocks drift a little ahead of the server's. */
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+/** When the car was SEEN: the first in-app photo's capture moment. A library
+ *  photo's time says nothing about when the car was there (ADR-0003), so
+ *  without a live photo this is when the sighting was sent. One rule, so the
+ *  timeline (its order, its day headers, its cards) and the sighting page all
+ *  say the same time.
+ *
+ *  ⚠️ CLAMPED TO THE SERVER'S CLOCK (security review of #146). `capturedAt`
+ *  comes from the spotter's phone and the server checks only that it exists,
+ *  so a wrong — or set — clock could make a sighting look fresher or older to
+ *  the owner. A capture time is believed only inside the hour before the
+ *  server received the sighting; anything else falls back to when it was sent. */
+export function sightingSeenAt(sighting: Pick<OwnerSighting, 'photos' | 'createdAt'>): string {
+  const captured = sighting.photos.find((photo) => photo.source === 'live')?.capturedAt;
+  if (!captured) return sighting.createdAt;
+  const capturedMs = new Date(captured).getTime();
+  const sentMs = new Date(sighting.createdAt).getTime();
+  if (Number.isNaN(capturedMs) || Number.isNaN(sentMs)) return sighting.createdAt;
+  const believable =
+    capturedMs >= sentMs - SEEN_BEFORE_SENT_MS && capturedMs <= sentMs + CLOCK_SKEW_MS;
+  return believable ? captured : sighting.createdAt;
 }

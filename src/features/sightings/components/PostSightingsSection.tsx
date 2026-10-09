@@ -1,7 +1,8 @@
 /**
  * WHAT:  PostSightingsSection — the detail page's "Sighting activity"
  *        section, serving BOTH faces from one mount point: the owner gets
- *        the rich timeline preview (3 newest + movement hint + "View all"),
+ *        the rich timeline preview (a summary line — "4 sightings · 1 needs
+ *        your answer" — then the 3 newest + movement hint + "View all"),
  *        everyone else gets the restrained public timeline or nothing at
  *        all. Owns its own divider + title chrome so the public-empty case
  *        can vanish entirely (the host page cannot know emptiness).
@@ -21,13 +22,14 @@
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { createLogger } from '@/shared/lib/logger';
-import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
+import { motion, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { usePostSightings } from '../hooks/usePostSightings';
 import { usePublicSightingEntries } from '../hooks/usePublicSightingEntries';
+import { isGoneSighting } from '../lib/sightingVerdict';
 import { locatedTrail, type TimelineAnchorSource } from '../lib/timelineModel';
 import type { OwnerSighting, PublicSightingEntry } from '../types';
 import { SightingsTrailMap, type TrailMapPoint } from './SightingsTrailMap';
@@ -37,6 +39,21 @@ const log = createLogger('sightings');
 
 /** Newest entries shown in the owner's on-page preview before "View all". */
 const PREVIEW_LIMIT = 3;
+
+/** "4 sightings · 1 needs your answer" — counted over ALL the owner's
+ *  sightings, not the 3 the preview shows, so a waiting one below the fold is
+ *  never missed. "· nothing waiting on you" once every one is decided. */
+export function sightingsSummaryLine(all: Pick<OwnerSighting, 'status'>[]): string | null {
+  // A withdrawn sighting was never answered — it is not counted at all (the
+  // owner RPC filters them; this holds if one ever slips through).
+  const sightings = all.filter((s) => !isGoneSighting(s.status));
+  if (sightings.length === 0) return null;
+  const total = `${sightings.length} ${sightings.length === 1 ? 'sighting' : 'sightings'}`;
+  const waiting = sightings.filter((s) => s.status === 'unverified').length;
+  if (waiting === 0) return `${total} · nothing waiting on you`;
+  if (sightings.length === 1) return `${total} · needs your answer`;
+  return `${total} · ${waiting} ${waiting === 1 ? 'needs' : 'need'} your answer`;
+}
 
 /** Public entries arrive newest-first; the map walks time forward. Only
  *  snapped points exist here — the server rounded them (ADR-0009). */
@@ -116,23 +133,22 @@ export function PostSightingsSection({
   }
 
   // OWNER FACE — the section always renders: activity, or the warm empty.
+  const summary = owner.status === 'ready' ? sightingsSummaryLine(owner.sightings) : null;
   return (
     <View>
       <View style={styles.divider} />
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Sighting activity</Text>
+        {/* The title and its one-line answer to "anything new?", together. */}
+        <View style={styles.titleBlock}>
+          <Text style={styles.sectionTitle}>Sighting activity</Text>
+          {summary ? (
+            <Text style={styles.summary} testID="sightings-summary">
+              {summary}
+            </Text>
+          ) : null}
+        </View>
         {owner.status === 'loading' ? (
-          <View style={styles.skeletonSet} accessibilityLabel="Loading sightings" testID="sightings-section-skeleton">
-            {[0, 1].map((n) => (
-              <View key={n} style={styles.skeletonRow}>
-                <View style={styles.skeletonDot} />
-                <View style={styles.skeletonLines}>
-                  <View style={styles.skeletonLineWide} />
-                  <View style={styles.skeletonLine} />
-                </View>
-              </View>
-            ))}
-          </View>
+          <SightingsPending />
         ) : owner.status === 'error' ? (
           <>
             <Text style={styles.meta}>We couldn’t load your sightings just now.</Text>
@@ -195,6 +211,35 @@ export function PostSightingsSection({
   );
 }
 
+/**
+ * While the owner's sightings load: nothing for `motion.skeletonGrace`, then
+ * one neutral line — true whatever the answer.
+ *
+ * ⚠️ NOT A SKELETON SHAPED LIKE SIGHTINGS (DESIGN_SYSTEM, Loading: "never a
+ * skeleton shaped like an answer the user may not have"; review of #146). Most
+ * posts have none yet, and for someone whose car was stolen, sighting-shaped
+ * cards that turn into "No sightings yet" read as something arriving and then
+ * vanishing.
+ */
+function SightingsPending() {
+  const styles = useThemedStyles(makeStyles);
+  // A held timer, not a render-time clock: the React Compiler would freeze it.
+  const [graceOver, setGraceOver] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setGraceOver(true), motion.skeletonGrace);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <View testID="sightings-section-pending">
+      {graceOver ? (
+        <Text style={styles.meta} accessibilityRole="progressbar">
+          Checking for sightings…
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const makeStyles = (c: Palette) => StyleSheet.create({
   // Mirrors the host page's section chrome (PostDetailBody) so this section
   // reads as native to the page: hairline divider, 32pt rhythm, title tier.
@@ -206,10 +251,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     paddingVertical: spacing.xxl,
     gap: spacing.lg,
   },
+  titleBlock: {
+    gap: spacing.xs,
+  },
   sectionTitle: {
     ...typography.title,
     color: c.textPrimary,
     includeFontPadding: false,
+  },
+  summary: {
+    ...typography.caption,
+    color: c.textSecondary,
   },
   meta: {
     ...typography.body,
@@ -225,35 +277,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.label,
     color: c.textPrimary,
     textDecorationLine: 'underline',
-  },
-  skeletonSet: {
-    gap: spacing.lg,
-  },
-  skeletonRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'flex-start',
-  },
-  skeletonDot: {
-    width: sizes.iconSm,
-    height: sizes.iconSm,
-    borderRadius: radii.full,
-    backgroundColor: c.surfaceSubtle,
-  },
-  skeletonLines: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-  skeletonLineWide: {
-    height: sizes.skeletonLine,
-    width: '60%',
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
-  },
-  skeletonLine: {
-    height: sizes.skeletonLine,
-    width: '40%',
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
   },
 });

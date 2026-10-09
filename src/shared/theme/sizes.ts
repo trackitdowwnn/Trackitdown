@@ -138,7 +138,8 @@ export const sizes = {
    *  a 24px node column carrying a 2px rail; 12px sighting dots with a 2px
    *  page-colour ring so they sit crisply ON the rail; 16px newest dot;
    *  24px icon-in-circle anchor nodes. Content offset from the rail is the
-   *  column + spacing.xxl gap (~44px, inside the researched 40–60 range). */
+   *  column + spacing.lg gap (40px — the low end of the researched 40–60,
+   *  since 2026-10-09: the photo-first cards need the width back). */
   timelineRailColumn: 24,
   timelineRailStroke: 2,
   timelineDot: 12,
@@ -150,6 +151,10 @@ export const sizes = {
   timelineTick: 6,
   /** Dash rhythm (on/off, svg units) for the uncertainty segment. */
   timelineDash: 4,
+  /** The owner timeline card's leading photo (2026-10-09, photo-first). Its
+   *  own token, not `avatarXl`/`avatarLg`: those are sized for faces. Above
+   *  listRowStackFontScale it takes its own row and the words the width. */
+  timelineThumb: 88,
   /** Map-pin family (drawn geometry; the PRESSABLE around a tappable pin is
    *  padded up to touchTarget — same rule as sliderThumb). */
   mapPin: 14,

@@ -150,19 +150,29 @@ car today — the owner has them.").
   this surface is allowed. The one place a `not_mine` verdict is ever shown,
   and only to the spotter themselves.
 - `PostSightingsSection` — the detail page's "Sighting activity" section,
-  BOTH faces from one mount: owner preview (3 newest + warm empty + "View
-  all") vs `PublicSightingTimeline` — or nothing at all (public sees no
-  section while it's empty; absence is deliberate).
+  BOTH faces from one mount: owner preview (a summary line — "4 sightings ·
+  1 needs your answer", counted over all of them — then the 3 newest + warm
+  empty + "View all"; while loading, a pause then "Checking for sightings…",
+  never sighting-shaped placeholders) vs `PublicSightingTimeline` — or
+  nothing at all (public sees no section while it's empty; absence is
+  deliberate).
 
 ## The timeline's two faces (// SAFETY — the load-bearing rule)
 
 One visual language (`SightingTimeline`: sage rail, day groups, newest dot
 emphasised, NEWEST-FIRST — a live theft reads most-recent-down), two depths:
 
-- **Owner:** everything `get_post_sightings` carries — time, area, thumbs,
-  spotter chip, note, status — plus the client-side movement hint ("Most
-  recent sighting is 2.1 mi north-east of the first"), computable only from
-  coordinates the owner's payload already holds.
+- **Owner:** photo-first cards (`SightingEntryCard`, redesigned 2026-10-09
+  — the old card was "too busy"): the in-app photo ("+N" for the rest),
+  "Seen near …", the clock time it was seen, and a status — **"Needs your
+  answer"** (a warning ring) until the owner decides, then "Confirmed" /
+  "Credited" / "Not your car". The order, the day stops and the cards all
+  use one time, `sightingSeenAt` (the sighting page's rule): the in-app
+  photo's capture time, believed only within the hour before the server
+  received the sighting, since it comes from the spotter's phone. The context, the note and the
+  spotter live on the sighting page a tap away. Plus the client-side
+  movement hint ("Most recent sighting is 2.1 mi north-east of the first"),
+  computable only from coordinates the owner's payload already holds.
 - **Public/spotter/guest:** `get_public_sighting_entries` ONLY — 5 newest
   `{sighted_at, locality}` + an earlier-count. No ids, no coordinates, no
   photos, no spotter fields, no notes — the strict zod shape is the client
