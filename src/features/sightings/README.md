@@ -139,8 +139,9 @@ car today — the owner has them.").
     - **Not my car** is reversible ("Actually, it is").
     - After the decision, the bar is Message (by sighting id).
 
-  A "new sighting" push opens this page (`pushRoute`) once the server sends
-  the sighting's id, so the ids are checked before anything is fetched, a
+  A "new sighting" push opens this page (`pushRoute`; notify-sighting sends
+  the sighting's id since 2026-10-09 — older notifications still open the
+  post), so the ids are checked before anything is fetched, a
   withdrawn sighting reads as gone, and back with no history goes to the post.
 - `MySightingsScreen` (route `src/app/my-sightings.tsx`) — the SPOTTER's own
   history: every sighting they filed, newest first, with the owner's verdict.

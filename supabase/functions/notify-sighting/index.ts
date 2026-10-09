@@ -11,7 +11,9 @@
  *        is killed mid-call notifies nobody. Nothing is lost permanently — the
  *        sighting is in the owner's list either way — but a DB trigger with
  *        pg_net would close it.
+ *        The push opens the sighting itself (/sighting/[id]), not the post.
  * LINKS: ../_shared/push.ts (sendToUsers);
+ *        src/features/notifications/lib/pushRoute.ts (where a tap goes);
  *        supabase/migrations/20260802140000_notification_claims.sql
  *        (claim_sighting_notification — the copy is built THERE);
  *        src/features/sightings/README.md; docs/ROADMAP.md.
@@ -66,7 +68,13 @@ Deno.serve(async (request) => {
       kind: 'sighting',
       title: claim.title as string,
       body: claim.body as string,
-      data: { type: 'sighting', postId: claim.post_id as string },
+      // sightingId opens THIS sighting rather than the post (2026-10-09). The
+      // app accepted it before the server sent it (pushPayload's strict
+      // schema was widened first, shipped in #145), so older builds were
+      // never handed a field they would reject. It is the sighting the owner
+      // already owns — nothing about the spotter. The stored row gets the
+      // same object, so a tapped push still marks its row read (exact match).
+      data: { type: 'sighting', postId: claim.post_id as string, sightingId },
       // Several spotters can report the same car in a day (3 each, per the
       // sighting rate limit). Collapse per post so the owner gets a live
       // banner, not a pile — the full list is in the app.
