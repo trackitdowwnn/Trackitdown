@@ -745,7 +745,7 @@ to use.
   inside its card. The interactive picker therefore rounds its corners by
   COVERING them (`MapCornerMask`) rather than clipping.
   ⚠️ **Open question**: the three static map cards (`LastSeenMap`,
-  `SightingsTrailMap`, `SightingDetailScreen`) still clip on both platforms and
+  `SightingsTrailMap`, `SightingWhereSection`) still clip on both platforms and
   are believed fine — possibly because they pass `interactive={false}`, so the
   SurfaceView never handles a gesture. Nobody has checked all four on a device.
   Until someone does, do not unify by copying either treatment onto the other.
@@ -805,7 +805,10 @@ to use.
   a findable-but-quiet muted-danger action on the root. The trusted-spotter
   avatar chip fills with `primary` as a STATUS mark — a sanctioned exception
   to the actions-only rule (it mirrors the reference's verification badge
-  and stays distinct from any nearby CTA).
+  and stays distinct from any nearby CTA). The second exception is the
+  `primary` tone of `StatusPill`: the dot on an owner's "Confirmed" /
+  "Credited" sighting answer (`SightingDetailScreen`) — a settled status, not
+  success green, which stays reserved for payout moments.
 - Accessibility: minimum 44pt touch targets (map markers excepted — see Map
   screens), WCAG AA contrast against the
   near-white background (check `primary` and `accentText` on `#F7F7F7`), labels on all interactive

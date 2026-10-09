@@ -65,6 +65,7 @@ import {
 import { AppImage, Avatar } from '@/shared/ui';
 
 import { contextSummary } from '../lib/contextLabels';
+import { isConfirmedVerdict, sightingVerdictLabel } from '../lib/sightingVerdict';
 import {
   buildTimelineItems,
   earlierCountLabel,
@@ -554,19 +555,17 @@ function OwnerEntryRow({
                   the absence of a confirmation. Muted, because it is the
                   quietest outcome of the three and is not a mark against the
                   spotter. */}
-              {sighting.status !== 'unverified' ? (
+              {sightingVerdictLabel(sighting.status) ? (
                 <Text
                   style={
-                    sighting.status === 'not_mine'
-                      ? [styles.statusTag, styles.statusTagMuted]
-                      : styles.statusTag
+                    isConfirmedVerdict(sighting.status)
+                      ? styles.statusTag
+                      : [styles.statusTag, styles.statusTagMuted]
                   }
                 >
-                  {sighting.status === 'credited'
-                    ? '✓ Credited'
-                    : sighting.status === 'not_mine'
-                      ? 'Not your car'
-                      : '✓ Helpful'}
+                  {isConfirmedVerdict(sighting.status)
+                    ? `✓ ${sightingVerdictLabel(sighting.status)}`
+                    : sightingVerdictLabel(sighting.status)}
                 </Text>
               ) : null}
             </View>

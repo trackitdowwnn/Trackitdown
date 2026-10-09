@@ -39,6 +39,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
+import { spokenAgo } from '@/shared/lib';
 import {
   cardSurface,
   opacity,
@@ -70,16 +71,6 @@ type StepProps = WizardStepProps<ReportSightingAnswers>;
 export const REPORT_PRIVACY_LINE =
   'Only the owner sees your photos and the exact spot. They’ll see your first name, not your contact details.';
 
-/** "5m ago" → "5 minutes ago" for screen readers: VoiceOver reads a bare
- *  "5m" as five metres, which beside a map and "Approximate location" means
- *  the wrong thing. */
-function spokenAgo(ago: string): string {
-  return ago
-    .replace(/^([0-9]+)m ago$/, (_, n) => `${n} ${n === '1' ? 'minute' : 'minutes'} ago`)
-    .replace(/^([0-9]+)h ago$/, (_, n) => `${n} ${n === '1' ? 'hour' : 'hours'} ago`)
-    .replace(/^([0-9]+)d ago$/, (_, n) => `${n} ${n === '1' ? 'day' : 'days'} ago`)
-    .replace(/^([0-9]+)w ago$/, (_, n) => `${n} ${n === '1' ? 'week' : 'weeks'} ago`);
-}
 
 /** "Photo taken 5m ago", spoken in full. Nothing when there's no photo. */
 function TakenLine({ ago }: { ago: string | null }) {

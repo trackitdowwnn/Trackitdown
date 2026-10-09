@@ -111,6 +111,36 @@ describe('PhotoPager', () => {
     expect(handlers).toEqual([]);
   });
 
+  // The sighting page marks a library photo ON the photo (ADR-0003).
+  it('a photo’s badge is drawn on it and spoken with it', async () => {
+    const view = await render(
+      <PhotoPager
+        photos={[
+          { uri: 'https://x/0.jpg' },
+          { uri: 'https://x/1.jpg', badge: 'From photo library' },
+        ]}
+        alt="Sighting photo"
+        testID="pager"
+      />,
+    );
+    await measure(view);
+    expect(view.getByText('From photo library', HIDDEN)).toBeTruthy();
+    expect(view.getByLabelText('Sighting photo, photo 2 of 2, From photo library')).toBeTruthy();
+  });
+
+  it('a photo still on its way is an empty page — not a broken image, and not silent', async () => {
+    const view = await render(
+      <PhotoPager
+        photos={[{ uri: 'https://x/0.jpg' }, { badge: 'From photo library' }]}
+        alt="Car"
+        testID="pager"
+      />,
+    );
+    await measure(view);
+    const pending = view.getByLabelText('Car, photo 2 of 2, From photo library');
+    expect(pending.props.source).toBeUndefined(); // no image yet
+  });
+
   it('without a description, each photo is simply "Photo n of m"', async () => {
     const view = await render(<PhotoPager photos={photos(2)} testID="pager" />);
     await measure(view);

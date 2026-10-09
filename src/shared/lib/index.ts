@@ -35,6 +35,7 @@ export { isValidEmail } from './email';
 export { legalHref, LEGAL_PUBLIC_URLS, type LegalDoc } from './legal';
 export { createLogger, type LogEntry, type LogSink } from './logger';
 export { mapPinUrl } from './mapsLink';
+export { spokenAgo } from './spokenAgo';
 export {
   bountyParam,
   cardFeePence,

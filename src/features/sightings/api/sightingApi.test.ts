@@ -362,6 +362,18 @@ describe('fetchPostSightings (PRIVACY strictness)', () => {
     expect(rows[0].confirmedFeatures).toEqual([]);
   });
 
+  // 2026-10-08: the server has sent reviewed_at since 20260816130000; the
+  // client used to drop it, so the owner never saw when they had decided.
+  it('reads when the owner decided — and a payload without it still parses', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ ...baseRow, status: 'not_mine', reviewed_at: '2026-07-15T09:00:00Z' }, baseRow],
+      error: null,
+    });
+    const rows = await fetchPostSightings(POST_ID);
+    expect(rows[0].reviewedAt).toBe('2026-07-15T09:00:00Z');
+    expect(rows[1].reviewedAt).toBeNull();
+  });
+
   it('parses the context-v2 fields on a new sighting', async () => {
     mockRpc.mockResolvedValue({
       data: [

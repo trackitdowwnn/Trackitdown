@@ -3,8 +3,10 @@
  *        for every flag, follow-up and presence answer; the option lists the
  *        context step renders as chips; contextSummary(), which narrates any
  *        sighting-ish shape for the owner; contextReviewRows(), the same facts
- *        as labelled rows for the check-and-send step; and
- *        contextDetailCount(), how many details a report carries.
+ *        as labelled rows for the check-and-send step, and
+ *        sightingDetailRows(), the same rows under the same labels for the
+ *        owner's sighting page ("What they saw"); and contextDetailCount(),
+ *        how many details a report carries.
  * WHY:   The context step, the confirm step, the owner's timeline rows and the
  *        sighting detail page all describe the same facts. One module keeps
  *        the words identical everywhere: the step used to keep its own copies,
@@ -128,6 +130,70 @@ export interface ContextReviewRow {
 }
 
 /**
+ * The questions' row labels, ONE copy: the spotter checks their answers under
+ * these words (contextReviewRows) and the owner reads them under the same ones
+ * (sightingDetailRows) — what they check is what the owner reads.
+ */
+const CONTEXT_ROW_LABELS = {
+  state: 'What it was doing',
+  people: 'Anyone in or near it',
+  condition: 'Its condition',
+} as const;
+
+/**
+ * What the car was doing, who was with it, and its condition, as labelled
+ * rows — only the questions that were answered ("Not sure" stores nothing,
+ * so it never appears). Shared by both sides of a sighting.
+ */
+function answeredContextRows(source: ContextSummarySource): ContextReviewRow[] {
+  const flags = source.contextFlags ?? [];
+  const rows: ContextReviewRow[] = [];
+
+  const state: string[] = [];
+  for (const flag of flags) {
+    if (!(VEHICLE_STATE_FLAGS as readonly string[]).includes(flag)) continue;
+    state.push(FLAG_LABELS[flag]);
+    if (flag === 'parked' && source.parkedLikelihood) {
+      state.push(PARKED_LIKELIHOOD_LABELS[source.parkedLikelihood]);
+    }
+    if (flag === 'driving' && source.direction) state.push(directionLabel(source.direction));
+  }
+  if (state.length > 0) {
+    rows.push({ key: 'state', label: CONTEXT_ROW_LABELS.state, value: state.join(' · ') });
+  }
+
+  // The 3-way answer; the legacy people_nearby flag only when it's absent.
+  const people = source.peoplePresence
+    ? PEOPLE_PRESENCE_LABELS[source.peoplePresence]
+    : flags.includes('people_nearby')
+      ? FLAG_LABELS.people_nearby
+      : null;
+  if (people) rows.push({ key: 'people', label: CONTEXT_ROW_LABELS.people, value: people });
+
+  const condition = flags
+    .filter((flag) => (CONDITION_FLAGS as readonly string[]).includes(flag))
+    .map((flag) => FLAG_LABELS[flag]);
+  if (condition.length > 0) {
+    rows.push({
+      key: 'condition',
+      label: CONTEXT_ROW_LABELS.condition,
+      value: condition.join(' · '),
+    });
+  }
+  return rows;
+}
+
+/**
+ * The owner's "What they saw" on the sighting page (2026-10-08): the same
+ * labelled rows the spotter checked before sending, in place of the one dense
+ * "Parked · Heading north · 2 people" line the page used to print. The marks
+ * and the note have sections of their own there.
+ */
+export function sightingDetailRows(source: ContextSummarySource): ContextReviewRow[] {
+  return answeredContextRows(source);
+}
+
+/**
  * Everything the spotter said, as labelled rows for the check-and-send step:
  * the state with its follow-up, the people, the condition, the marks they
  * saw, and the note. The SAME words as contextSummary (what they check is
@@ -135,36 +201,7 @@ export interface ContextReviewRow {
  * appears nowhere (it stores nothing). The marks keep the owner's order.
  */
 export function contextReviewRows(answers: Partial<ReportSightingAnswers>): ContextReviewRow[] {
-  const flags = answers.contextFlags ?? [];
-  const rows: ContextReviewRow[] = [];
-
-  const state: string[] = [];
-  for (const flag of flags) {
-    if (!(VEHICLE_STATE_FLAGS as readonly string[]).includes(flag)) continue;
-    state.push(FLAG_LABELS[flag]);
-    if (flag === 'parked' && answers.parkedLikelihood) {
-      state.push(PARKED_LIKELIHOOD_LABELS[answers.parkedLikelihood]);
-    }
-    if (flag === 'driving' && answers.direction) state.push(directionLabel(answers.direction));
-  }
-  if (state.length > 0) {
-    rows.push({ key: 'state', label: 'What it was doing', value: state.join(' · ') });
-  }
-
-  // The 3-way answer; the legacy people_nearby flag only when it's absent.
-  const people = answers.peoplePresence
-    ? PEOPLE_PRESENCE_LABELS[answers.peoplePresence]
-    : flags.includes('people_nearby')
-      ? FLAG_LABELS.people_nearby
-      : null;
-  if (people) rows.push({ key: 'people', label: 'Anyone in or near it', value: people });
-
-  const condition = flags
-    .filter((flag) => (CONDITION_FLAGS as readonly string[]).includes(flag))
-    .map((flag) => FLAG_LABELS[flag]);
-  if (condition.length > 0) {
-    rows.push({ key: 'condition', label: 'Its condition', value: condition.join(' · ') });
-  }
+  const rows = answeredContextRows(answers);
 
   const confirmed = answers.confirmedFeatureIds ?? [];
   const marks = (answers.confirmableFeatures ?? [])

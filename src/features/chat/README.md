@@ -17,7 +17,8 @@ third signed-in user AND anon. There is no compose flow anywhere.
 
 ## Entry points (both parties)
 
-- **Owner:** "Message ‹first name›" on a sighting row (PostSightingsScreen).
+- **Owner:** "Message ‹first name›" on the sighting page (SightingDetailScreen,
+  via `openThreadForSighting` — by sighting id).
 - **Spotter:** "Message the owner" on the report-success screen (and the
   future sighting-history screen).
 - **Inbox tab:** existing threads only.
