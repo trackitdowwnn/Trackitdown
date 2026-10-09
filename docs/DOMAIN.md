@@ -572,8 +572,14 @@ Rules that follow, and are not implementation details:
     is still live: "A sighting of your blue BMW was taken back". The spotter
     may say why — an OPTIONAL, closed answer (`withdraw_reason`: it wasn't
     the car / not sure / by mistake / something else) that reaches the owner
-    as one fixed sentence. Never free text: it would land unmoderated on a
-    theft victim's lock screen. A tap opens the listing.
+    as one fixed sentence. Never free text on the lock screen: it would
+    land unmoderated there. A tap opens the listing.
+  - **"Something else" may say more (2026-10-09)** — an optional note of up
+    to 200 characters. The push only says "…and left you a note."; the owner
+    reads the words in the app, on the listing (`get_post_withdrawals`,
+    owner-only, withdrawals they were told about; the app's list ships
+    after the server change).
+    Unmoderated, by the owner's decision (SECURITY_AND_TRUST §3, §7).
 - A sighting = photo(s) + auto-captured GPS location + timestamp + optional
   note. Location and time come from the device at capture; **at least one
   photo must be a live in-app capture** — that capture is the evidence a
