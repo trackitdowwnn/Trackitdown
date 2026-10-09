@@ -79,10 +79,13 @@ Deno.serve(async (request) => {
       body: claim.body as string,
       // sightingId opens THIS sighting rather than the post (2026-10-09). The
       // app accepted it before the server sent it (pushPayload's strict
-      // schema was widened first, shipped in #145), so older builds were
-      // never handed a field they would reject. It is the sighting the owner
-      // already owns — nothing about the spotter. The stored row gets the
-      // same object, so a tapped push still marks its row read (exact match).
+      // schema was widened first, in #145) — but only builds that took that
+      // OTA: it went out on the `preview` update branch alone. A build
+      // running an older embedded bundle rejects the field and its tap opens
+      // nothing, so publish to any other channel before relying on it
+      // there. It is the sighting the owner already owns — nothing about the
+      // spotter. The stored row gets the same object, so a tapped push still
+      // marks its row read (exact match).
       data: { type: 'sighting', postId: claim.post_id as string, sightingId },
       // Several spotters can report the same car in a day (3 each, per the
       // sighting rate limit). Collapse per post so the owner gets a live

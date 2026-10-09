@@ -202,8 +202,10 @@ commenting standards.
     Accepted trade-off (2026-10-09, #147): the owner's "new sighting" push
     and that spotter's later pushes about it carry the SAME `sightingId`, so
     Expo/Apple/Google could link one owner to one spotter per sighting — not
-    only per post. Random ids, nothing about either person rides with them;
-    the ids are not logged client-side for the same reason as `threadId`.
+    only per post. Random ids, nothing about either person rides with them.
+    The push-open log omits them (as it omits `threadId`); the sighting
+    screens do log them, to our own first-party telemetry, which carries no
+    user id — so nothing there widens what the push services see.
   - The visible push — title or body — may name make, colour and a
     **district-grain** locality. ⚠️ Deliberately field-agnostic since
     2026-09-22, when the copy pass moved the alert's locality and the
