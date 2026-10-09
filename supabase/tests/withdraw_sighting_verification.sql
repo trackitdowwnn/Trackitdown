@@ -29,13 +29,19 @@
 -- floored at 0 · 8 grants · 9 the optional reason (closed vocabulary; free
 -- text refused before any write) · 10 ⚠️ the owner's notice: once, to the
 -- owner, only if they heard of the sighting, only while live, fixed copy per
--- reason, no plate or place · 11 the claim is service-role only.
+-- reason, no plate or place · 11 the claim is service-role only · 12 the
+-- note "Something else" may carry (trimmed, ≤200, refused with any other
+-- answer) · 13 ⚠️ the push says a note exists, never its words · 14 ⚠️
+-- get_post_withdrawals: owner only, told-about only, three fields, and the
+-- column itself unreadable by any client.
 -- LINKS: supabase/migrations/20260903100000_withdraw_a_sighting.sql;
 --        supabase/migrations/20260805100000_refund_holds_and_disputes.sql;
 --        supabase/migrations/20260801180000_sighting_photo_source.sql
 --          (create_sighting's rate-limit window);
 --        supabase/migrations/20261009150000_a_withdrawal_says_why.sql
 --          (the reason, the claim, the new-sighting gate);
+--        supabase/migrations/20261009180000_a_withdrawal_can_say_more.sql
+--          (the note, get_post_withdrawals);
 --        supabase/functions/notify-sighting-withdrawn/index.ts.
 --
 -- SELF-ASSERTING: every check RAISES on failure (ON_ERROR_STOP=1). Everything
@@ -212,8 +218,9 @@ end $$;
 -- -----------------------------------------------------------------------------
 do $$
 declare
-  -- (uuid, text) since 20261009150000 — the optional reason.
-  v_fn text := 'public.withdraw_sighting(uuid, text)';
+  -- (uuid, text, text) since 20261009180000 — the optional reason, and the
+  -- note that may go with "Something else".
+  v_fn text := 'public.withdraw_sighting(uuid, text, text)';
 begin
   if to_regprocedure(v_fn) is null then
     raise exception 'CHECK 8 FAILED: % does not exist', v_fn;
@@ -332,10 +339,10 @@ begin
      or (v_doc ->> 'post_id')::uuid <> v_post then
     raise exception 'CHECK 10 FAILED: the first claim did not go to the owner (%)', v_doc;
   end if;
-  if (v_doc ->> 'title') <> 'A sighting of your Black BMW was taken back' then
+  if (v_doc ->> 'title') is distinct from 'A sighting of your Black BMW was taken back' then
     raise exception 'CHECK 10 FAILED: title was %', v_doc ->> 'title';
   end if;
-  if (v_doc ->> 'body') <> 'The spotter says it wasn''t your car.' then
+  if (v_doc ->> 'body') is distinct from 'The spotter says it wasn''t your car.' then
     raise exception 'CHECK 10 FAILED: body for not_the_car was %', v_doc ->> 'body';
   end if;
   -- ⚠️ No plate, no place, no spotter — in either line.
@@ -350,17 +357,17 @@ begin
 
   -- No reason → the plain sentence.
   v_doc := public.claim_sighting_withdrawn_notification(v_b, v_spotter);
-  if (v_doc ->> 'body') <> 'The spotter withdrew it.' then
+  if (v_doc ->> 'body') is distinct from 'The spotter withdrew it.' then
     raise exception 'CHECK 10 FAILED: body with no reason was %', v_doc ->> 'body';
   end if;
 
   -- Every reason's sentence: by mistake, and something else (the plain one).
   v_doc := public.claim_sighting_withdrawn_notification(v_f, v_spotter);
-  if (v_doc ->> 'body') <> 'The spotter sent it by mistake.' then
+  if (v_doc ->> 'body') is distinct from 'The spotter sent it by mistake.' then
     raise exception 'CHECK 10 FAILED: body for mistake was %', v_doc ->> 'body';
   end if;
   v_doc := public.claim_sighting_withdrawn_notification(v_g, v_spotter);
-  if (v_doc ->> 'body') <> 'The spotter withdrew it.' then
+  if (v_doc ->> 'body') is distinct from 'The spotter withdrew it.' then
     raise exception 'CHECK 10 FAILED: body for other was %', v_doc ->> 'body';
   end if;
 
@@ -407,10 +414,10 @@ begin
      set make = repeat('M', 40), colour = repeat('C', 40)
    where id = v_post;
   v_doc := public.claim_sighting_withdrawn_notification(v_e, v_spotter);
-  if (v_doc ->> 'title') not like '% was taken back' then
+  if coalesce(v_doc ->> 'title', '') not like '% was taken back' then
     raise exception 'CHECK 10 FAILED: a long make cut "was taken back" off the title (%)', v_doc ->> 'title';
   end if;
-  if (v_doc ->> 'body') <> 'The spotter wasn''t sure it was your car.' then
+  if (v_doc ->> 'body') is distinct from 'The spotter wasn''t sure it was your car.' then
     raise exception 'CHECK 10 FAILED: body for not_sure was %', v_doc ->> 'body';
   end if;
 
@@ -418,7 +425,7 @@ begin
   insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable, notified_at)
   values ('dddd0000-0000-0000-0000-0000000000b1', v_post, v_spotter, 'withdrawn', 'Ancoats', true, now());
   v_doc := public.claim_sighting_withdrawn_notification('dddd0000-0000-0000-0000-0000000000b1', v_spotter);
-  if (v_doc ->> 'title') <> 'A sighting of your BMW was taken back' then
+  if (v_doc ->> 'title') is distinct from 'A sighting of your BMW was taken back' then
     raise exception 'CHECK 10 FAILED: a blank colour left the title as %', v_doc ->> 'title';
   end if;
 
@@ -441,13 +448,316 @@ begin
   if not has_function_privilege('service_role', v_fn, 'EXECUTE') then
     raise exception 'CHECK 11 FAILED: service_role cannot EXECUTE %', v_fn;
   end if;
-  -- ⚠️ ONE withdraw_sighting: a stray one-argument overload beside the new
-  -- one would make the app's one-argument call ambiguous to PostgREST.
-  if to_regprocedure('public.withdraw_sighting(uuid)') is not null then
-    raise exception 'CHECK 11 FAILED: the old withdraw_sighting(uuid) still exists beside (uuid, text)';
+  -- ⚠️ ONE withdraw_sighting: a stray shorter overload beside the new one
+  -- would make the app's one- or two-argument call ambiguous to PostgREST.
+  if to_regprocedure('public.withdraw_sighting(uuid)') is not null
+     or to_regprocedure('public.withdraw_sighting(uuid, text)') is not null then
+    raise exception 'CHECK 11 FAILED: an old withdraw_sighting overload still exists beside (uuid, text, text)';
   end if;
 
   raise notice 'withdraw_sighting CHECK 11 passed';
+end $$;
+
+-- -----------------------------------------------------------------------------
+-- CHECKS 12-14 — the note "Something else" may carry (20261009180000).
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_post     uuid := 'a1a1a1a1-0000-0000-0000-000000000003';
+  v_owner    uuid := '22222222-2222-2222-2222-222222222222';
+  v_spotter  uuid := '11111111-1111-1111-1111-111111111111';
+  v_other    uuid := '33333333-3333-3333-3333-333333333333';
+  v_n1       uuid := 'dddd0000-0000-0000-0000-0000000000c1';  -- other + a note (padded)
+  v_n2       uuid := 'dddd0000-0000-0000-0000-0000000000c2';  -- note with not_sure: refused
+  v_n3       uuid := 'dddd0000-0000-0000-0000-0000000000c3';  -- note with no reason: refused
+  v_n4       uuid := 'dddd0000-0000-0000-0000-0000000000c4';  -- 201 refused, then 200 accepted
+  v_n5       uuid := 'dddd0000-0000-0000-0000-0000000000c5';  -- other + a blank note
+  v_n6       uuid := 'dddd0000-0000-0000-0000-0000000000c6';  -- other + a note, owner never told
+  v_n7       uuid := 'dddd0000-0000-0000-0000-0000000000c7';  -- a direction override: refused
+  v_n8       uuid := 'dddd0000-0000-0000-0000-0000000000c8';  -- told, with a note, on the owner's OTHER post
+  v_post2    uuid := 'a1a1a1a1-0000-0000-0000-000000000008';  -- also v_owner's (white VW)
+  v_note     text := 'I think it was my neighbour''s car, sorry';
+  v_doc      jsonb;
+  v_list     jsonb;
+  v_status   text;
+  v_stored   text;
+begin
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable, notified_at)
+  values
+    (v_n1, v_post, v_spotter, 'unverified', 'Ancoats', true, now()),
+    (v_n2, v_post, v_spotter, 'unverified', 'Ancoats', true, now()),
+    (v_n3, v_post, v_spotter, 'unverified', 'Ancoats', true, now()),
+    (v_n4, v_post, v_spotter, 'unverified', 'Ancoats', true, now()),
+    (v_n5, v_post, v_spotter, 'unverified', 'Ancoats', true, now()),
+    (v_n6, v_post, v_spotter, 'unverified', 'Ancoats', true, null),
+    (v_n7, v_post, v_spotter, 'unverified', 'Ancoats', true, now());
+  -- Written directly, already withdrawn and told: only to prove the list is
+  -- one POST's, not every post the caller owns.
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable,
+                                notified_at, withdraw_reason, withdraw_note, withdrawn_notified_at)
+  values (v_n8, v_post2, v_spotter, 'withdrawn', 'Salford', true,
+          now(), 'other', 'OTHER POST NOTE', now() + interval '3 minutes');
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+
+  -- -------------------------------------------------------------------
+  -- CHECK 12 — the note: stored trimmed with "Something else"; refused
+  -- (before any write) with any other answer, with none, or over 200; a
+  -- blank one is no note.
+  -- -------------------------------------------------------------------
+  perform public.withdraw_sighting(v_n1, 'other', E'  ' || v_note || E' \n');
+  select withdraw_note into v_stored from public.sightings where id = v_n1;
+  if v_stored is distinct from v_note then
+    raise exception 'CHECK 12 FAILED: the note was stored as % (expected it trimmed)', v_stored;
+  end if;
+
+  begin
+    perform public.withdraw_sighting(v_n2, 'not_sure', 'a note');
+    raise exception 'CHECK 12 FAILED: a note was accepted with not_sure';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'INVALID_INPUT' then
+        raise exception 'CHECK 12 FAILED: a note with not_sure raised % rather than INVALID_INPUT', sqlerrm;
+      end if;
+  end;
+  begin
+    perform public.withdraw_sighting(v_n3, null, 'a note');
+    raise exception 'CHECK 12 FAILED: a note was accepted with no answer';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'INVALID_INPUT' then
+        raise exception 'CHECK 12 FAILED: a note with no answer raised % rather than INVALID_INPUT', sqlerrm;
+      end if;
+  end;
+  begin
+    perform public.withdraw_sighting(v_n4, 'other', repeat('a', 201));
+    raise exception 'CHECK 12 FAILED: a 201-character note was accepted';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'INVALID_INPUT' then
+        raise exception 'CHECK 12 FAILED: a long note raised % rather than INVALID_INPUT', sqlerrm;
+      end if;
+  end;
+  -- Every refusal wrote nothing: still open, no reason, no note.
+  if exists (
+    select 1 from public.sightings
+     where id in (v_n2, v_n3, v_n4)
+       and (status <> 'unverified' or withdraw_reason is not null or withdraw_note is not null)
+  ) then
+    raise exception 'CHECK 12 FAILED: a refused note still wrote';
+  end if;
+
+  -- Exactly 200 is allowed.
+  perform public.withdraw_sighting(v_n4, 'other', repeat('a', 200));
+  select withdraw_note into v_stored from public.sightings where id = v_n4;
+  if char_length(v_stored) is distinct from 200 then
+    raise exception 'CHECK 12 FAILED: a 200-character note was not stored whole';
+  end if;
+
+  -- Blank includes no-break spaces: nothing visible is no note.
+  perform public.withdraw_sighting(v_n5, 'other', E'    \n  ');
+  select status, withdraw_note into v_status, v_stored from public.sightings where id = v_n5;
+  if v_status <> 'withdrawn' or v_stored is not null then
+    raise exception 'CHECK 12 FAILED: a blank note was stored as % (status %)', v_stored, v_status;
+  end if;
+
+  perform public.withdraw_sighting(v_n6, 'other', 'NEVER TOLD NOTE');
+
+  -- ⚠️ A text-direction override (it can make a line read as something else
+  -- on screen) is refused, and nothing is written.
+  begin
+    perform public.withdraw_sighting(v_n7, 'other', E'it was fine ‮tsil kcalb');
+    raise exception 'CHECK 12 FAILED: a note with a direction override was accepted';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'INVALID_INPUT' then
+        raise exception 'CHECK 12 FAILED: a direction override raised % rather than INVALID_INPUT', sqlerrm;
+      end if;
+  end;
+  if (select status from public.sightings where id = v_n7) <> 'unverified' then
+    raise exception 'CHECK 12 FAILED: a refused note still withdrew the sighting';
+  end if;
+
+  -- The constraint, for any writer: no note without "other" — ⚠️ including
+  -- a NULL answer, where a bare `= 'other'` would let it through — and none
+  -- untrimmed, empty, over 200, or carrying a direction override.
+  begin
+    update public.sightings set withdraw_note = 'hi' where id = v_n2;
+    raise exception 'CHECK 12 FAILED: a note was set on a sighting with no answer';
+  exception
+    when check_violation then null;
+  end;
+  begin
+    update public.sightings set status = 'withdrawn', withdraw_reason = 'mistake', withdraw_note = 'hi'
+     where id = v_n2;
+    raise exception 'CHECK 12 FAILED: a note was set beside a "mistake" answer';
+  exception
+    when check_violation then null;
+  end;
+  begin
+    update public.sightings set withdraw_note = ' padded ' where id = v_n1;
+    raise exception 'CHECK 12 FAILED: an untrimmed note got past the constraint';
+  exception
+    when check_violation then null;
+  end;
+  begin
+    update public.sightings set withdraw_note = '' where id = v_n1;
+    raise exception 'CHECK 12 FAILED: an empty note got past the constraint';
+  exception
+    when check_violation then null;
+  end;
+  begin
+    update public.sightings set withdraw_note = repeat('b', 201) where id = v_n1;
+    raise exception 'CHECK 12 FAILED: a 201-character note got past the constraint';
+  exception
+    when check_violation then null;
+  end;
+  begin
+    update public.sightings set withdraw_note = E'ok ‮' || 'x' where id = v_n1;
+    raise exception 'CHECK 12 FAILED: a direction override got past the constraint';
+  exception
+    when check_violation then null;
+  end;
+
+  -- -------------------------------------------------------------------
+  -- CHECK 13 — ⚠️ the push says a note EXISTS, never what it says.
+  -- (Called as the test's superuser: the claim is service-role only.)
+  -- -------------------------------------------------------------------
+  v_doc := public.claim_sighting_withdrawn_notification(v_n1, v_spotter);
+  if (v_doc ->> 'body') is distinct from 'The spotter withdrew it and left you a note.' then
+    raise exception 'CHECK 13 FAILED: body with a note was %', v_doc ->> 'body';
+  end if;
+  if position('neighbour' in (v_doc ->> 'title') || (v_doc ->> 'body')) > 0 then
+    raise exception 'CHECK 13 FAILED: the spotter''s words reached the push (%)', v_doc;
+  end if;
+  v_doc := public.claim_sighting_withdrawn_notification(v_n4, v_spotter);
+  -- Claimed first: a refusal has no title or body, and would pass the
+  -- absence check below without testing anything.
+  if (v_doc ->> 'claimed') is distinct from 'true' then
+    raise exception 'CHECK 13 FAILED: the 200-character note''s withdrawal was not claimed (%)', v_doc;
+  end if;
+  if position('aaaa' in (v_doc ->> 'title') || (v_doc ->> 'body')) > 0 then
+    raise exception 'CHECK 13 FAILED: the spotter''s words reached the push (%)', v_doc;
+  end if;
+  -- The owner never heard of v_n6's sighting, so it is never claimed — which
+  -- is what keeps its note out of CHECK 14's list.
+  if public.claim_sighting_withdrawn_notification(v_n6, v_spotter) <> '{"claimed": false}'::jsonb then
+    raise exception 'CHECK 13 FAILED: a withdrawal the owner never heard about was claimed';
+  end if;
+  -- A blank note is no note.
+  v_doc := public.claim_sighting_withdrawn_notification(v_n5, v_spotter);
+  if (v_doc ->> 'body') is distinct from 'The spotter withdrew it.' then
+    raise exception 'CHECK 13 FAILED: body with a blank note was %', v_doc ->> 'body';
+  end if;
+
+  -- -------------------------------------------------------------------
+  -- CHECK 14 — get_post_withdrawals: the owner only; only what they were
+  -- told about; three fields and no more; newest first.
+  -- -------------------------------------------------------------------
+  update public.sightings set withdrawn_notified_at = now() + interval '2 minutes' where id = v_n1;
+  update public.sightings set withdrawn_notified_at = now() + interval '1 minute'  where id = v_n4;
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  v_list := public.get_post_withdrawals(v_post);
+
+  if jsonb_typeof(v_list) <> 'array' or jsonb_array_length(v_list) = 0 then
+    raise exception 'CHECK 14 FAILED: the owner got no list (%)', v_list;
+  end if;
+  if (v_list -> 0 ->> 'note') is distinct from v_note
+     or (v_list -> 0 ->> 'reason') is distinct from 'other'
+     or (v_list -> 1 ->> 'note') is distinct from repeat('a', 200) then
+    raise exception 'CHECK 14 FAILED: not newest first, or the note was lost (%)', v_list -> 0;
+  end if;
+  -- ⚠️ Three fields — no sighting id, no spotter, no place.
+  if exists (
+    select 1 from jsonb_array_elements(v_list) e
+     where (select array_agg(k order by k) from jsonb_object_keys(e) k)
+           <> array['note', 'reason', 'withdrawn_at']
+  ) then
+    raise exception 'CHECK 14 FAILED: an entry carried more than withdrawn_at, reason, note (%)', v_list -> 0;
+  end if;
+  -- Only the withdrawals the owner was told about.
+  if exists (select 1 from jsonb_array_elements(v_list) e where e ->> 'note' = 'NEVER TOLD NOTE') then
+    raise exception 'CHECK 14 FAILED: a note on a withdrawal the owner was never told about was shown';
+  end if;
+  -- …and only THIS post's, though the owner has another with a newer one.
+  if exists (select 1 from jsonb_array_elements(v_list) e where e ->> 'note' = 'OTHER POST NOTE') then
+    raise exception 'CHECK 14 FAILED: a withdrawal on the owner''s OTHER post was listed';
+  end if;
+  if jsonb_array_length(v_list) <> (
+    select count(*) from public.sightings
+     where post_id = v_post and status = 'withdrawn' and withdrawn_notified_at is not null
+  ) then
+    raise exception 'CHECK 14 FAILED: the list is not exactly the withdrawals the owner was told about';
+  end if;
+
+  -- Nobody else — a stranger, and a missing post, get the same token.
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  begin
+    perform public.get_post_withdrawals(v_post);
+    raise exception 'CHECK 14 FAILED: a stranger read the owner''s withdrawals';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'NOT_OWNER' then
+        raise exception 'CHECK 14 FAILED: a stranger got % rather than NOT_OWNER', sqlerrm;
+      end if;
+  end;
+  begin
+    perform public.get_post_withdrawals('a1a1a1a1-0000-0000-0000-0000000000ff');
+    raise exception 'CHECK 14 FAILED: a missing post returned a list';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'NOT_OWNER' then
+        raise exception 'CHECK 14 FAILED: a missing post raised % rather than NOT_OWNER', sqlerrm;
+      end if;
+  end;
+  -- …nor the SPOTTER, who wrote it.
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+  begin
+    perform public.get_post_withdrawals(v_post);
+    raise exception 'CHECK 14 FAILED: the spotter read the owner''s withdrawals';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'NOT_OWNER' then
+        raise exception 'CHECK 14 FAILED: the spotter got % rather than NOT_OWNER', sqlerrm;
+      end if;
+  end;
+  perform set_config('request.jwt.claims', null, true);
+  begin
+    perform public.get_post_withdrawals(v_post);
+    raise exception 'CHECK 14 FAILED: no session read the owner''s withdrawals';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'NOT_AUTHENTICATED' then
+        raise exception 'CHECK 14 FAILED: no session raised % rather than NOT_AUTHENTICATED', sqlerrm;
+      end if;
+  end;
+
+  -- ⚠️ The column itself is no client's to read — not even the spotter's —
+  -- so get_post_withdrawals stays its only reader.
+  if has_column_privilege('authenticated', 'public.sightings', 'withdraw_note', 'SELECT')
+     or has_column_privilege('anon', 'public.sightings', 'withdraw_note', 'SELECT') then
+    raise exception 'CHECK 14 FAILED: a client role can SELECT sightings.withdraw_note directly';
+  end if;
+  -- …nor write it: a note is set once, through withdraw_sighting, and a
+  -- withdrawn row can't be withdrawn again — so what the owner reads is
+  -- what was sent.
+  if has_column_privilege('authenticated', 'public.sightings', 'withdraw_note', 'UPDATE')
+     or has_column_privilege('authenticated', 'public.sightings', 'withdraw_note', 'INSERT')
+     or has_column_privilege('anon', 'public.sightings', 'withdraw_note', 'UPDATE')
+     or has_column_privilege('anon', 'public.sightings', 'withdraw_note', 'INSERT') then
+    raise exception 'CHECK 14 FAILED: a client role can write sightings.withdraw_note directly';
+  end if;
+  if has_function_privilege('anon', 'public.get_post_withdrawals(uuid)', 'EXECUTE')
+     or not has_function_privilege('authenticated', 'public.get_post_withdrawals(uuid)', 'EXECUTE') then
+    raise exception 'CHECK 14 FAILED: get_post_withdrawals grants are wrong (anon in, or authenticated out)';
+  end if;
+
+  raise notice 'withdraw_sighting CHECKS 12-14 passed';
 end $$;
 
 rollback;

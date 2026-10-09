@@ -214,6 +214,21 @@ commenting standards.
     alone. Free text would land unmoderated (§7) on a theft victim's lock
     screen. `withdraw_sighting_verification` CHECK 10 asserts the copy per
     reason and that no plate or place appears.
+    **The one exception is in-app, never pushed** (owner decision,
+    2026-10-09): with "Something else" the spotter may add a note
+    (`sightings.withdraw_note`, ≤200 characters, trimmed, CHECK-bound to
+    `other`). The push only says a note exists ("…and left you a note.");
+    the words are read after the tap through `get_post_withdrawals`, which is
+    owner-only and returns no sighting id, spotter or place. The column is
+    granted to no client role (the spotter can't read it back either);
+    control, zero-width and text-direction characters are refused. The app
+    must never log the words — only whether there was a note (the client
+    half ships separately, after this server change). It is
+    **unmoderated** (§7) — the owner accepted that. CHECKS 12–14 assert the
+    bounds, that the words never reach the copy, and the owner-only read.
+    ⚠️ **Kept as long as the sighting row** — no purge yet. A note may hold
+    personal data; nulling it some time after the post closes is an open
+    follow-up.
   - The visible push — title or body — may name make, colour and a
     **district-grain** locality. ⚠️ Deliberately field-agnostic since
     2026-09-22, when the copy pass moved the alert's locality and the
@@ -712,3 +727,9 @@ admits the gap.
   why. A console action leaves no trace beyond the row it changed.
 - No ownership-verification queue — verification itself was removed by
   ADR-0007, so there is nothing to queue.
+- ⚠️ **No check on a withdrawal note** (2026-10-09). A spotter's
+  "Something else" note (≤200 characters) reaches the post owner in the app
+  unread by anyone first, and there is no way to flag one (when flagging is
+  built it needs an opaque per-note handle, never the sighting id). The
+  owner accepted this. The note is kept in-app only (§3); the client must
+  label it as the spotter's words, so it never reads as ours.
