@@ -60,6 +60,14 @@ describe.each([
     expect(contrast(palette[token], palette.surface)).toBeGreaterThanOrEqual(3);
   });
 
+  it('the toast card reads on `surfaceFloating`: its text at AA, its icons at 3:1', () => {
+    // 2026-10-09: the redesigned Toast sits on surfaceFloating, which in dark
+    // is a step lighter than `surface` — so its ink is checked there too.
+    expect(contrast(palette.textPrimary, palette.surfaceFloating)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(palette.success, palette.surfaceFloating)).toBeGreaterThanOrEqual(3);
+    expect(contrast(palette.danger, palette.surfaceFloating)).toBeGreaterThanOrEqual(3);
+  });
+
   it.each(GRAPHIC_TOKENS_ON_PAGE)('%s also clears 3:1 on the PAGE', (token) => {
     // `borderStrong` was excluded from this until 2026-08-25 because it
     // genuinely did not clear it in light (2.832). Raising it to #8F8F8F fixed
@@ -81,8 +89,10 @@ describe.each([
     expect(contrast(palette.textOnPrimary, palette.primary)).toBeGreaterThanOrEqual(4.5);
   });
 
-  // The selected map pill and the Toast pill print `textOnPrimary` on
-  // `surfaceInverse`. That only holds because `primary` and `surfaceInverse`
+  // The selected map pill prints `textOnPrimary` on `surfaceInverse` (the
+  // Toast did too until its 2026-10-09 redesign as a light card — its
+  // `success`/`danger` icons on `surface` are covered by the token checks
+  // above). That only holds because `primary` and `surfaceInverse`
   // happen to invert together — if `primary` ever regains a colour, this is
   // what fails, rather than the selected pill silently going unreadable.
   it('reads its on-fill ink on the inverse surface at AA', () => {
