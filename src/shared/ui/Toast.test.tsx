@@ -1,6 +1,7 @@
 /**
- * WHAT:  Tests for Toast — show renders the message, error kind styles as
- *        error, a new toast replaces the current, auto-dismiss after the
+ * WHAT:  Tests for Toast — show renders the message with the icon for its
+ *        kind (2026-10-09 card redesign), long messages wrap uncut and stay
+ *        longer (toastDuration), it sits above the tab bar only on tab screens, a new toast replaces the current, auto-dismiss after the
  *        visible window, useToast outside the provider throws, and the
  *        optional inline action (renders, runs onPress, dismisses; a plain
  *        toast stays non-pressable).
@@ -11,10 +12,10 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
-import { motion } from '../theme';
-import { type ToastAction, ToastProvider, useToast } from './Toast';
+import { motion, sizes } from '../theme';
+import { type ToastAction, ToastProvider, toastDuration, useToast } from './Toast';
 
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
@@ -82,7 +83,7 @@ describe('Toast', () => {
     expect(queryByText('Profile saved')).toBeNull();
   });
 
-  it('error kind renders the error pill', async () => {
+  it('error kind renders the error card', async () => {
     const { getByTestId } = await render(
       <ToastProvider>
         <Trigger message="Something went wrong" kind="error" />
@@ -159,5 +160,101 @@ describe('Toast', () => {
       'useToast must be used inside a ToastProvider',
     );
     silence.mockRestore();
+  });
+
+  describe('the card (2026-10-09 redesign)', () => {
+    // The icon is hidden from screen readers, so queries must opt in to see it.
+    const HIDDEN = { includeHiddenElements: true };
+    const LONG =
+      'Report taken back — the owner no longer sees it. You can’t re-file it for this car today.';
+
+    const showIn = async (
+      message: string,
+      kind?: 'success' | 'error',
+      props: { aboveTabBar?: boolean } = {},
+    ) => {
+      const view = await render(
+        <ToastProvider {...props}>
+          <Trigger message={message} kind={kind} />
+        </ToastProvider>,
+      );
+      await act(async () => {
+        fireEvent.press(view.getByTestId('trigger'));
+      });
+      return view;
+    };
+
+    it('says which kind it is with an icon — a tick, or an alert', async () => {
+      const ok = await showIn('Profile saved');
+      expect(ok.getByTestId('toast-icon-success', HIDDEN)).toBeTruthy();
+      expect(ok.queryByTestId('toast-icon-error', HIDDEN)).toBeNull();
+      await ok.unmount();
+      const bad = await showIn('Couldn’t save that.', 'error');
+      expect(bad.getByTestId('toast-icon-error', HIDDEN)).toBeTruthy();
+      expect(bad.queryByTestId('toast-icon-success', HIDDEN)).toBeNull();
+    });
+
+    it('keeps the icon from screen readers — they hear the message', async () => {
+      const { getByTestId } = await showIn('Profile saved');
+      expect(getByTestId('toast-icon-success', HIDDEN).props.importantForAccessibility).toBe(
+        'no-hide-descendants',
+      );
+      expect(getByTestId('toast-success').props.accessibilityLabel).toBe('Profile saved');
+    });
+
+    it('⚠️ never cuts a long message off', async () => {
+      const { getByTestId } = await showIn(LONG);
+      expect(getByTestId('toast-message').props.numberOfLines).toBeUndefined();
+    });
+
+    it('⚠️ stays long enough to read a long message', async () => {
+      const { queryByText } = await showIn(LONG);
+      // Still there when a short toast would long be gone…
+      await act(async () => {
+        jest.advanceTimersByTime(motion.toastVisible + motion.fast + 1);
+      });
+      expect(queryByText(LONG)).toBeTruthy();
+      // …and gone once its own reading time has passed.
+      await act(async () => {
+        jest.advanceTimersByTime(toastDuration(LONG, 'success'));
+      });
+      expect(queryByText(LONG)).toBeNull();
+    });
+
+    it('clears the tab bar on a tab screen, and a footer button elsewhere', async () => {
+      const onTabs = await showIn('Saved', 'success', { aboveTabBar: true });
+      const tabBottom = StyleSheet.flatten(onTabs.getByTestId('toast-host').props.style).bottom;
+      await onTabs.unmount();
+      const elsewhere = await showIn('Saved');
+      const stackBottom = StyleSheet.flatten(
+        elsewhere.getByTestId('toast-host').props.style,
+      ).bottom;
+      // Above the tab bar where there is one…
+      expect(tabBottom).toBeGreaterThan(sizes.tabBar);
+      // …and above a standard sticky footer button where there isn't.
+      expect(stackBottom).toBeGreaterThan(sizes.control);
+      expect(stackBottom).not.toBe(tabBottom);
+    });
+  });
+});
+
+describe('toastDuration — how long a toast stays', () => {
+  it('gives a short message the standard window', () => {
+    expect(toastDuration('Profile saved', 'success')).toBe(motion.toastVisible);
+  });
+
+  it('adds reading time for each word past the first few', () => {
+    const twelveWords = 'one two three four five six seven eight nine ten eleven twelve';
+    expect(toastDuration(twelveWords, 'success')).toBe(
+      motion.toastVisible + 6 * motion.toastPerWord,
+    );
+  });
+
+  it('never stays longer than the cap', () => {
+    expect(toastDuration('word '.repeat(200), 'success')).toBe(motion.toastMax);
+  });
+
+  it('keeps an error up for at least the error minimum', () => {
+    expect(toastDuration('Couldn’t save.', 'error')).toBe(motion.toastErrorMin);
   });
 });

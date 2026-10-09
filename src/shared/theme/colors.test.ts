@@ -81,8 +81,10 @@ describe.each([
     expect(contrast(palette.textOnPrimary, palette.primary)).toBeGreaterThanOrEqual(4.5);
   });
 
-  // The selected map pill and the Toast pill print `textOnPrimary` on
-  // `surfaceInverse`. That only holds because `primary` and `surfaceInverse`
+  // The selected map pill prints `textOnPrimary` on `surfaceInverse` (the
+  // Toast did too until its 2026-10-09 redesign as a light card — its
+  // `success`/`danger` icons on `surface` are covered by the token checks
+  // above). That only holds because `primary` and `surfaceInverse`
   // happen to invert together — if `primary` ever regains a colour, this is
   // what fails, rather than the selected pill silently going unreadable.
   it('reads its on-fill ink on the inverse surface at AA', () => {

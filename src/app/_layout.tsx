@@ -21,7 +21,13 @@ import { useFonts } from 'expo-font';
 // furniture, ours supplies the app palette. Both are mounted, and having two
 // things called ThemeProvider in one file is exactly how the wrong one ends up
 // wrapping the wrong subtree.
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider as NavigationThemeProvider } from 'expo-router';
+import {
+  DarkTheme,
+  DefaultTheme,
+  Stack,
+  ThemeProvider as NavigationThemeProvider,
+  useSegments,
+} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
@@ -132,6 +138,10 @@ function RootLayoutContent() {
 
   const navTheme = useMemo(() => navigationTheme(scheme, palette), [scheme, palette]);
 
+  // Where the toast floats: just above the tab bar on a tab screen, clear of
+  // a footer button elsewhere (Toast's aboveTabBar).
+  const onTabs = useSegments()[0] === '(tabs)';
+
   // A published update used to need TWO cold starts to show (expo-updates
   // downloads on one launch and runs it on the next). This reloads into a
   // fresh download while the app is still in its first seconds — and only
@@ -188,7 +198,7 @@ function RootLayoutContent() {
             sheet calling useToast() threw "must be used inside a ToastProvider".
             The toast still paints on top: it renders after {children}, and the
             portal host is inside those children. */}
-        <ToastProvider>
+        <ToastProvider aboveTabBar={onTabs}>
           <BottomSheetModalProvider>
             <AuthGate>
               <Stack

@@ -56,8 +56,16 @@ export const motion = {
   liftScale: 1.05,
   /** AppTabBar: peak of the gentle icon spring on tab press. */
   tabPressScale: 1.15,
-  /** Toast: how long a toast stays before auto-dismissing. */
+  /** Toast: how long a SHORT toast stays before auto-dismissing. Longer ones
+   *  stay longer — see toastPerWord / toastMax and Toast's toastDuration. */
   toastVisible: 2500,
+  /** Toast: extra reading time per word beyond the first few (2026-10-09 —
+   *  a 17-word message gone in 2.5s could not be read). */
+  toastPerWord: 300,
+  /** Toast: the longest any toast stays, however long its message. */
+  toastMax: 7000,
+  /** Toast: the shortest an ERROR stays — often the only sign of a failure. */
+  toastErrorMin: 4000,
   /** Hold duration (ms) before a long-press lifts an element into a drag. */
   longPress: 350,
   /** Repeat interval (ms) of a held stepper (TimeSlotPicker): about eight

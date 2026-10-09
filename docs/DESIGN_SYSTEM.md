@@ -34,7 +34,7 @@ tokens; it never hard-codes hex values, pixel sizes, or font names.
 | `danger` | `#C0281E` | destructive actions, errors (clear red, kept distinct from the near-black primary) |
 | `dangerPressed` | `#A21F16` | pressed state of danger |
 | `textOnPrimary` | `#FFFFFF` | text/icons on `primary` and `danger` fills |
-| `surfaceInverse` | `#222222` | the surface that is the INVERSE OF THE PAGE — the feed's floating map pill, the selected map pin, the Toast pill. **Flips with the theme** (near-white on dark). Named separately from `textPrimary` so text tweaks never restyle fills |
+| `surfaceInverse` | `#222222` | the surface that is the INVERSE OF THE PAGE — the feed's floating map pill, the selected map pin. **Flips with the theme** (near-white on dark). Named separately from `textPrimary` so text tweaks never restyle fills |
 | `surfaceInversePressed` | `#3A3A3A` | pressed state of `surfaceInverse` |
 | `surfaceOverMedia` | `#222222` | chrome sitting on PHOTOGRAPHY — the photo-viewer backdrop and close button, camera counters, the hero photo-count pill, photo-tile status pills. **Identical in both palettes**: a photo is as bright in dark mode as in light, so its chrome must not flip |
 | `surfaceOverMediaPressed` | `#3A3A3A` | pressed state of the above |
@@ -423,6 +423,16 @@ are build output.
   in a group where nothing is chosen yet pass `selected={false}`, never
   `undefined`, so the set stays a radio group to a screen reader.
 - **EmptyState** — friendly illustration + one-line explanation + action.
+- **Toast** (`useToast().show(message, kind?, action?)`) — a light FLOATING
+  card, redesigned 2026-10-09 (was a near-black text-only pill): `surface`,
+  radius `lg`, hairline `border`, `shadows.lifted`, full width in a 16pt
+  gutter. A leading `iconSm` icon says the kind at a glance — `success`
+  tick, `danger` alert; an error is the same calm card, never a red slab.
+  `label` text in `textPrimary`, **never truncated**; an optional
+  underlined text action on the right. It stays as long as it takes to read
+  (`toastDuration`: 2.5s, +300ms a word past six, max 7s, errors ≥4s). Above
+  the tab bar on tab screens, clear of a footer button elsewhere; never
+  blocks taps unless it carries an action.
 - **AppTabBar** — bottom navigation: `surface` bar, hairline `border` top
   edge, no shadow; 24pt icons (`sizes.icon`) over always-visible `tabLabel`
   text; active `primary`, inactive `textSecondary`; badges in `accentText`

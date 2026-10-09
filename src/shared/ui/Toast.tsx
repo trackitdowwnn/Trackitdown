@@ -1,15 +1,25 @@
 /**
- * WHAT:  Toast — transient confirmation pill (success or error) floating
+ * WHAT:  Toast — a transient confirmation card (success or error) floating
  *        above the bottom of the screen, plus the ToastProvider/useToast
  *        pair any screen calls to show one.
  * WHY:   Non-blocking moments (profile saved, logs copied) need lightweight
  *        confirmation — a FullscreenLoader or alert would be heavier than
- *        the action. One toast at a time (a new one replaces the current),
- *        auto-dismissing after motion.toastVisible; announced to screen
- *        readers via a polite live region. Success is the warm near-black
- *        pill; errors use the muted danger tone — never alarm-red drama.
+ *        the action. One toast at a time (a new one replaces the current);
+ *        announced to screen readers via a polite live region.
+ *
+ *        ⚠️ REDESIGNED 2026-10-09 (owner: "plain / off-style", "hard to tell
+ *        good vs bad", "long messages look wrong"). Was a near-black pill,
+ *        text only, cut to two lines and gone in 2.5s whatever it said.
+ *        Now a light floating CARD — `surface`, `lg` radius, hairline edge,
+ *        the floating shadow — with a leading icon that says which kind it
+ *        is at a glance (a `success` tick, a `danger` alert; the error is the
+ *        same calm card, never a red slab). The text WRAPS FULLY, and the
+ *        toast stays for as long as it takes to read (toastDuration).
+ *        Placed just above the tab bar on tab screens and clear of a footer
+ *        button elsewhere, rather than everywhere pretending a tab bar exists.
  * LINKS: src/app/_layout.tsx (provider mounts once at the root);
- *        src/features/profile (first consumer); docs/DESIGN_SYSTEM.md.
+ *        src/shared/theme/motion.ts (toast timings); docs/DESIGN_SYSTEM.md
+ *        (Core components: Toast).
  *
  * Usage:
  *   const toast = useToast();
@@ -27,6 +37,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { CircleAlert, CircleCheck } from 'lucide-react-native';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -43,12 +54,31 @@ import {
   sizes,
   spacing,
   typography,
+  usePalette,
   useThemedStyles,
   type Palette,
 } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 
 export type ToastKind = 'success' | 'error';
+
+/** Words a toast may hold before it earns extra reading time. */
+const QUICK_READ_WORDS = 6;
+
+/**
+ * How long a toast stays: `motion.toastVisible` for a short one, plus
+ * `motion.toastPerWord` for each word past the first few, never past
+ * `motion.toastMax` — and an error never under `motion.toastErrorMin`, since
+ * it is often the only sign that something failed. "Profile saved" stays
+ * 2.5s; "Report taken back — the owner no longer sees it…" (17 words) ~5.8s.
+ */
+export function toastDuration(message: string, kind: ToastKind): number {
+  const words = message.trim().split(/\s+/).filter(Boolean).length;
+  const reading =
+    motion.toastVisible + Math.max(0, words - QUICK_READ_WORDS) * motion.toastPerWord;
+  const floor = kind === 'error' ? motion.toastErrorMin : 0;
+  return Math.min(motion.toastMax, Math.max(floor, reading));
+}
 
 /** Optional inline action ("View") — pressing runs it and dismisses. */
 export interface ToastAction {
@@ -94,15 +124,32 @@ interface ActiveToast {
   id: number;
 }
 
-export function ToastProvider({ children }: { children: ReactNode }) {
+export interface ToastProviderProps {
+  children: ReactNode;
+  /**
+   * Whether the screen showing is a TAB screen, so the toast sits just above
+   * the tab bar; otherwise it clears a standard footer button. The root
+   * layout knows the route and passes it — this primitive stays router-free.
+   */
+  aboveTabBar?: boolean;
+}
+
+export function ToastProvider({ children, aboveTabBar = false }: ToastProviderProps) {
   'use no memo';
   const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const [toast, setToast] = useState<ActiveToast | null>(null);
   const nextId = useRef(0);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reduceMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
   const visible = useSharedValue(0);
+  // Just above the tab bar on a tab screen; elsewhere clear of a standard
+  // sticky footer button, rather than floating over a tab bar that isn't
+  // there.
+  const bottom = aboveTabBar
+    ? insets.bottom + sizes.tabBar + spacing.md
+    : insets.bottom + sizes.control + spacing.xl;
 
   const show = useCallback(
     (message: string, kind: ToastKind = 'success', action?: ToastAction) => {
@@ -141,7 +188,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       visible.value = withTiming(0, { duration: reduceMotion ? 0 : motion.fast });
       // Unmount after the fade so the live region isn't clipped mid-announce.
       hideTimer.current = setTimeout(() => setToast(null), motion.fast);
-    }, motion.toastVisible);
+    }, toastDuration(toast.message, toast.kind));
     return () => {
       if (hideTimer.current) {
         clearTimeout(hideTimer.current);
@@ -161,42 +208,55 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       {toast ? (
         <View
-          style={[styles.host, { bottom: insets.bottom + sizes.tabBar + spacing.lg }]}
+          style={[styles.host, { bottom }]}
           // Only a toast WITH an action may receive taps; a plain toast must
           // never block the screen beneath it.
           pointerEvents={toast.action ? 'box-none' : 'none'}
           testID="toast-host"
         >
           <Animated.View
-            style={[styles.pill, toast.kind === 'error' && styles.pillError, animatedStyle]}
+            style={[styles.card, animatedStyle]}
             accessibilityLiveRegion="polite"
             accessible={!toast.action}
             accessibilityLabel={toast.message}
             testID={`toast-${toast.kind}`}
           >
-            <View style={styles.pillRow}>
-              {/* With an action the pill isn't one accessible node — put the
-                  live region on the message itself so Android still
-                  announces (iOS is covered by announceForAccessibility). */}
-              <Text
-                style={styles.message}
-                numberOfLines={2}
-                accessibilityLiveRegion={toast.action ? 'polite' : 'none'}
-              >
-                {toast.message}
-              </Text>
-              {toast.action ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={toast.action.label}
-                  onPress={runAction}
-                  // Tops the label line up to the 44pt minimum target.
-                  hitSlop={spacing.lg}
-                >
-                  <Text style={styles.actionLabel}>{toast.action.label}</Text>
-                </Pressable>
-              ) : null}
+            {/* Which kind, at a glance — hidden from screen readers, which
+                hear the message itself. iconSm (18) matches the label's
+                line height, so it sits level with the first line. */}
+            <View
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              testID={`toast-icon-${toast.kind}`}
+            >
+              {toast.kind === 'error' ? (
+                <CircleAlert size={sizes.iconSm} color={palette.danger} />
+              ) : (
+                <CircleCheck size={sizes.iconSm} color={palette.success} />
+              )}
             </View>
+            {/* With an action the card isn't one accessible node — put the
+                live region on the message itself so Android still announces
+                (iOS is covered by announceForAccessibility). No line cap: a
+                toast says all of what it has to say. */}
+            <Text
+              style={styles.message}
+              accessibilityLiveRegion={toast.action ? 'polite' : 'none'}
+              testID="toast-message"
+            >
+              {toast.message}
+            </Text>
+            {toast.action ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={toast.action.label}
+                onPress={runAction}
+                // Tops the label line up to the 44pt minimum target.
+                hitSlop={spacing.lg}
+              >
+                <Text style={styles.actionLabel}>{toast.action.label}</Text>
+              </Pressable>
+            ) : null}
           </Animated.View>
         </View>
       ) : null}
@@ -204,52 +264,39 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Colour targets deliberately unchanged by the theming migration: the pill is
-// filled with `textPrimary` and inked with `textOnPrimary`, a pairing that
-// inverts correctly on its own — dark pill on a light page, light pill on a
-// dark one — so the toast keeps standing off its background in both schemes.
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    // Above the tab bar so it never covers navigation; pointerEvents none so
-    // it can't block taps beneath it.
+    // pointerEvents none (above) so it can't block taps beneath it.
     host: {
       position: 'absolute',
-      left: spacing.xl,
-      right: spacing.xl,
-      alignItems: 'center',
+      left: spacing.lg,
+      right: spacing.lg,
     },
-    pill: {
-      // surfaceInverse, not textPrimary (2026-08-10). An INK token used as a
-      // fill is the exact coupling shadows.ts was decoupled to kill, and
-      // colors.ts names surfaceInverse so "a text-colour tweak never silently
-      // restyles a fill". The two tokens hold identical values in both
-      // palettes, so this is a zero-pixel change — which is why it is worth
-      // making now rather than after they diverge.
-      backgroundColor: c.surfaceInverse,
-      borderRadius: radii.full,
+    // A light FLOATING card (DESIGN_SYSTEM: "shadow means floating — map
+    // chrome, sheets, slider thumbs, toasts"). The hairline is load-bearing
+    // in dark mode, where `surface` on `background` is #1E1E1E on #141414 and
+    // the shadow barely registers.
+    card: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.md,
+      backgroundColor: c.surface,
+      borderRadius: radii.lg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: c.border,
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.md,
-      maxWidth: '100%',
-      ...shadows.soft,
-    },
-    pillError: {
-      backgroundColor: c.danger,
-    },
-    pillRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
+      ...shadows.lifted,
     },
     message: {
       ...typography.label,
-      color: c.textOnPrimary,
-      textAlign: 'center',
-      flexShrink: 1,
+      color: c.textPrimary,
+      flex: 1,
     },
-    // Underline = tappable (design-system convention), on the pill's dark fill.
+    // Underline = tappable (design-system convention).
     actionLabel: {
       ...typography.label,
-      color: c.textOnPrimary,
+      color: c.textPrimary,
       textDecorationLine: 'underline',
     },
   });
