@@ -289,10 +289,14 @@ begin
     return jsonb_build_object('claimed', false);
   end if;
 
+  -- The withdrawn gate is repeated HERE too: a withdrawal committing between
+  -- the SELECT above and this UPDATE is re-checked against the new row
+  -- (READ COMMITTED), so it can't slip a "spotted" push through.
   update public.sightings
      set notified_at = now()
    where id = p_sighting_id
      and notified_at is null
+     and status <> 'withdrawn'
   returning id into v_claimed;
 
   if v_claimed is null then
@@ -312,6 +316,9 @@ $$;
 
 revoke execute on function public.claim_sighting_notification(uuid, uuid) from public, anon, authenticated;
 grant  execute on function public.claim_sighting_notification(uuid, uuid) to service_role;
+
+comment on function public.claim_sighting_notification(uuid, uuid) is
+  'Authorises AND claims the sighting -> POST OWNER push exactly once. SERVICE ROLE ONLY (the actor is a parameter, not auth.uid(): the caller is an Edge Function that already verified the end-user JWT — a client grant would let a user nominate themselves as the actor). Returns {"claimed": true, user_id (post owner), post_id, title, body} on the single winning call, and the IDENTICAL {"claimed": false} for every refusal — missing sighting, actor is not the sighting''s spotter (AUTHORISATION), sighting already WITHDRAWN (2026-10-09 — checked in the select AND the claim update, so a withdrawal mid-claim cannot slip through), post not active, owner is the actor, or already notified — so it is no existence oracle. Idempotent via a conditional update of sightings.notified_at (REPLAY). SAFETY: title "Your {colour} {make} was spotted" (each left(...,32), title bounded at 80); body the fixed don''t-approach line — never the plate, the spotter''s identity, the sighting location or the note (SECURITY_AND_TRUST §1). Does not send, and does not write push_sends; post_id is the kind=''sighting'' subject_id for that ledger.';
 
 
 -- =============================================================================
