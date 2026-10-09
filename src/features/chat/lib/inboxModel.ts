@@ -35,7 +35,8 @@ import type { InboxThread } from '../types';
  * emptied), and newest-first input (`groupByDay` opens a header only when the
  * label CHANGES, so out-of-order input printed a day twice).
  *
- * `groupByDay` in shared/lib is untouched — MySightingsScreen still uses it.
+ * `groupByDay` itself was deleted on 2026-10-09, when My sightings — its last
+ * consumer — moved from day groups to status sections.
  */
 
 /** The inbox filter chips, in display order. */

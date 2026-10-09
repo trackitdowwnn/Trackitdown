@@ -241,8 +241,9 @@ export const sizes = {
    *  timelineRailStroke and mapPinRing are tokens rather than literals. */
   alertGlyphStroke: 1,
   /**
-   * The colour tile leading a report card (added 2026-08-27) — the car's own
-   * paint, standing in for the photograph this screen is not allowed to have.
+   * The colour tile's default size (added 2026-08-27) — the car's own paint,
+   * standing in for a photograph (the report card now sizes it to its 88pt
+   * photo, `timelineThumb`, since 2026-10-09).
    *
    * ⚠️ ITS OWN TOKEN, NOT `avatarLg`, which is the same 72 today. `alertThumb`
    * exists for exactly this reason one screen over, and `screenshotThumb` spends

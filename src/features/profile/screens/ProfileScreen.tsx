@@ -339,7 +339,9 @@ function LoadedProfile({
             happened to the thing I put in. */}
         <ListRow
           icon={Binoculars}
-          title="My reports"
+          // The page's own title (2026-10-09) — the row said "My reports"
+          // while the page it opened said "My sightings".
+          title="My sightings"
           onPress={() => router.push('/my-sightings')}
           testID="row-my-sightings"
         />

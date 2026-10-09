@@ -1,8 +1,22 @@
 /**
- * WHAT:  ReportCard — one filed sighting on `My reports`: the car as a colour
- *        tile, what it was, where and when it was reported, and what the owner
- *        decided. Plus `ReportCardSkeleton`, its loading twin.
- * WHY:   ⚠️ REDESIGNED 2026-08-27 (owner request, Airbnb language). It was a
+ * WHAT:  ReportCard — one filed sighting on "My sightings": the spotter's own
+ *        photo (or the car as a colour tile), what it was, where and when it
+ *        was reported, what the owner decided, and what happens next. Plus
+ *        `ReportCardSkeleton`, its loading twin.
+ * WHY:   ⚠️ THE PHOTO LEADS SINCE 2026-10-09 (owner request: the page was
+ *        "hard to read", "unclear what happens next", off-style beside the
+ *        owner's photo-first sighting cards). The spotter's FIRST IN-APP
+ *        photo now takes the tile's place, at the owner card's 88pt; an empty
+ *        frame while it is looked up, and the tile as the fallback — no photo,
+ *        or a link that fails to load (signed links lapse after an hour).
+ *        Safe because it is THEIR photo, read through their own-rows RLS and
+ *        signed by the storage policy for their own uploads
+ *        (fetchMyReportPhotos); the payload below is not widened. Each
+ *        outcome now says what happens next (nextStepFor) in one short line
+ *        that promises nothing it cannot keep, and the whole photo + text
+ *        row opens the listing.
+ *
+ *        ⚠️ REDESIGNED 2026-08-27 (owner request, Airbnb language). It was a
  *        local `RecordRow` inside the screen: three lines of text in a
  *        `surfaceSubtle` box with no border, no picture and no status mark.
  *        The owner's three complaints were that the cards were plain, that the
@@ -60,22 +74,25 @@
  *        reports that can actually open something carry a control.
  *
  *        That is also why the card is now a COLUMN wrapping a row: the door has
- *        to be a SIBLING of the text block, because `main` carries the
- *        accessibility grouping and a control inside a grouped element is
- *        unreachable to VoiceOver (AlertCard's header records that bug in
- *        full). The grouping moved from the card onto `main` in the same pass,
- *        so a doorless card reads as one utterance exactly as before.
- * LINKS: src/shared/ui/CarColourTile.tsx (the leading visual, and why it
- *          exists — moved there 2026-08-28 when chat needed it too);
+ *        to be a SIBLING of the grouped row, because a control inside a
+ *        grouped element is unreachable to VoiceOver (AlertCard's header
+ *        records that bug in full). The grouping sits on the photo + text
+ *        row (2026-10-09; it was
+ *        `main`, the text alone), so a doorless card reads as one utterance.
+ * LINKS: src/shared/ui/CarColourTile.tsx (the fallback visual — moved there
+ *          2026-08-28 when chat needed it too);
+ *        ../hooks/useMyReportPhotos.ts (where the photo comes from);
  *        ../screens/MySightingsScreen.tsx (the only consumer);
  *        ../api/sightingApi.ts (MySightingRecordEntry — read its PRIVACY note
  *          before widening what this row shows).
  */
 
 import { Check, ChevronRight } from 'lucide-react-native';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { useTimeAgo } from '@/shared/hooks';
+import { spokenAgo } from '@/shared/lib';
 import {
   cardSurface,
   opacity,
@@ -88,7 +105,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import { CarColourTile } from '@/shared/ui';
+import { AppImage, CarColourTile } from '@/shared/ui';
 
 import type { MySightingRecordEntry } from '../api/sightingApi';
 
@@ -96,7 +113,7 @@ import type { MySightingRecordEntry } from '../api/sightingApi';
  * How each verdict reads to THE PERSON WHO REPORTED IT.
  *
  * ⚠️ NOT EXPORTED, deliberately. `not_mine` → "Not a match" may only ever be
- * rendered on `My reports`, to the spotter themselves — no stranger-facing
+ * rendered on "My sightings", to the spotter themselves — no stranger-facing
  * surface may show a rejection or derive an accuracy figure from one. Keeping
  * the map module-private means the neighbouring public-facing components
  * (PostSightingsSection, SightingTimeline) cannot reach it by accident.
@@ -133,6 +150,44 @@ const VERDICT: Record<
   // for doing it.
   withdrawn: { label: 'You took this back', tone: 'plain' },
 };
+
+/**
+ * What happens next, per outcome — one short line under the verdict
+ * (2026-10-09: "unclear what happens next"). Module-private like VERDICT.
+ *
+ * ⚠️ EVERY LINE PROMISES ONLY WHAT IS TRUE IN EVERY CASE (reviews of #148):
+ * - not "we'll let you know" — no notification is sent for "Not a match",
+ *   pushes can be switched off, and many reports are never answered;
+ * - not "it counts towards your record" — a capped or flagged confirmation
+ *   moves no counter, and copy that varied would tell which;
+ * - nothing about money — this payload holds no reward facts, a listing may
+ *   have had no reward, and Payouts shows nothing once one is paid or has
+ *   lapsed (pushRoute keeps those pushes away from Payouts for that reason).
+ * One line beside the photo (≤ ~24 characters, chevron included), so the card
+ * stays short.
+ */
+function nextStepFor(entry: MySightingRecordEntry): string | null {
+  switch (entry.status) {
+    case 'unverified':
+      // No post id means the listing is not ACTIVE — closed, or the owner
+      // choosing whom to credit (recovery_claimed), where an open report may
+      // yet be credited. (An older server's absent id maps to null as well.)
+      // So not "closed", which reads as final: only that it isn't live.
+      return entry.postId ? 'Their answer shows here.' : 'The listing is no longer live.';
+    case 'helpful':
+      return 'Nothing more to do.';
+    case 'credited':
+      return 'Thank you.';
+    case 'not_mine':
+      return 'Thanks for looking.';
+    case 'withdrawn':
+      return null;
+  }
+}
+
+/** The tile's glyph at the 88pt size, in the proportion `carTileGlyph` keeps
+ *  at the tile's default size (CarColourTile: size alone was a trap). */
+const TILE_GLYPH = Math.round((sizes.timelineThumb * sizes.carTileGlyph) / sizes.carTile);
 
 /**
  * The car as a sentence. Either half may be '' on a sparse post (the RPC
@@ -198,17 +253,38 @@ export interface ReportCardProps {
    * was not would be worse than a flat one.
    */
   onOpenPost?: (postId: string) => void;
+  /** A signed URL for the spotter's own lead photo; absent → the colour tile
+   *  (or the empty frame while `photoPending`). */
+  photoUrl?: string;
+  /** The photos are still being looked up: an empty frame, not the tile —
+   *  the tile would briefly claim "no photo" before the photo replaced it. */
+  photoPending?: boolean;
 }
 
-export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: ReportCardProps) {
+export function ReportCard({
+  entry,
+  onOpenDispute,
+  onWithdraw,
+  onOpenPost,
+  photoUrl,
+  photoPending = false,
+}: ReportCardProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   const stacked = useStackedRow();
   const markerOffset = useMarkerOffset();
+  // A signed link lasts an hour; one that has lapsed (or an object that has
+  // gone) falls back to the tile rather than leaving an empty frame.
+  // The URL that failed, not just "a failure": a fresh link (re-signed when
+  // the set of reports changes) gets its chance.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const photoFailed = photoUrl !== undefined && photoUrl === failedUrl;
+  const showPhoto = photoUrl !== undefined && !photoFailed;
 
   const reported = useTimeAgo(entry.createdAt);
   const ruled = useTimeAgo(entry.reviewedAt ?? entry.createdAt);
   const verdict = VERDICT[entry.status];
+  const nextStep = nextStepFor(entry);
   const car = describeReportedCar(entry.car);
 
   const door = entry.dispute && onOpenDispute ? disputeDoor(entry.dispute) : null;
@@ -235,108 +311,127 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
       testID={`my-sighting-${entry.id}`}
       // ⚠️ ONE UTTERANCE, NOT THREE. Ungrouped, a screen reader read the car,
       // then a ·-joined fragment, then a verdict, as three unrelated strings
-      // with no way to tell which report the verdict belonged to. Grouping is
-      // safe here only because the card holds no controls — see the header for
-      // why it is not pressable, and AlertCard for what grouping costs when it
-      // is.
-      // ⚠️ THE GROUPING MOVED OFF THE CARD AND ONTO THE TEXT BLOCK, because the
-      // card can now hold a control. iOS groups an `accessible` element's
-      // children, so a button in here would be unreachable to VoiceOver while
-      // working fine on Android — the exact bug AlertCard's header records, and
-      // why its card is a plain View with separately-labelled parts. Custom
+      // with no way to tell which report the verdict belonged to.
+      // ⚠️ THE GROUPING IS NOT ON THE CARD, because the card holds controls
+      // (the doors). iOS groups an `accessible` element's children, so a button
+      // inside it would be unreachable to VoiceOver while working fine on
+      // Android — the exact bug AlertCard's header records. Custom
       // accessibilityActions would not save it either: Voice Control and Full
-      // Keyboard Access navigate the TREE, and a tree of one element gives them
-      // nothing to tab to.
+      // Keyboard Access navigate the TREE.
       //
-      // The one utterance is preserved by grouping `main` instead, so a card
-      // with no door reads exactly as it did. The tile is safe to leave outside
-      // it: CarColourTile renders no text and sets no accessibility props, so it
-      // is not a focus stop.
+      // So the one utterance lives on the photo + text row (below), and the
+      // doors are its siblings. The photo and tile inside it set no
+      // accessibility props, so neither is a second focus stop.
     >
-      <View
-        style={[styles.row, stacked && styles.rowStacked]}
-        testID={`my-sighting-row-${entry.id}`}
-      >
-      <CarColourTile colour={entry.car.colour} testID={`my-sighting-tile-${entry.id}`} />
-
-      {/* ⚠️ THE TEXT BLOCK IS THE PRESS TARGET, not the whole card, and it is
-          a Pressable ONLY when there is a post to open (review #16). Keeping
-          the press on the element that already carried `accessible` preserves
-          the single utterance — a Pressable with a label reads as one node AND
-          is a control, where a wrapping Pressable around a grouped child would
-          give VoiceOver two stops for one thing.
+      {/* ⚠️ THE PHOTO + TEXT ROW IS THE PRESS TARGET (2026-10-09 — it was the
+          text block alone, which left the 88pt photo, the obvious thing to
+          tap, dead), and it is a press ONLY when there is a post to open
+          (review #16). It is also where the one utterance lives: a Pressable
+          with a label reads as one node AND is the control; the photo inside
+          sets no accessibility props, so it is not a second stop.
 
           `openPost` is null whenever the server sent no id, which is every
-          closed listing. Those cards stay exactly as flat as they have always
-          been, which is the point: a card that looks tappable and is not would
-          be worse than a flat one. */}
+          closed listing. Those cards stay flat, which is the point: a card
+          that looks tappable and is not would be worse than a flat one. */}
       <Pressable
-        style={({ pressed }) => [
-          styles.main,
-          stacked && styles.mainStacked,
-          openPost && pressed && styles.mainPressed,
-        ]}
+        style={({ pressed }) => [openPost && pressed && styles.rowPressed]}
         accessible
         accessibilityRole={openPost ? 'button' : undefined}
         accessibilityHint={openPost ? 'Opens the listing' : undefined}
         onPress={openPost ?? undefined}
         testID={openPost ? `my-sighting-open-${entry.id}` : undefined}
+        // Times spoken in words: "3d" reads as "three d" (DESIGN_SYSTEM).
         accessibilityLabel={`${car}, reported ${
           entry.areaLabel ? `in ${entry.areaLabel} ` : ''
-        }${reported}. ${verdict.label}${entry.reviewedAt ? `, ${ruled}` : ''}`}
+        }${spokenAgo(reported)}. ${verdict.label}${
+          entry.reviewedAt ? `, ${spokenAgo(ruled)}` : ''
+        }.${nextStep ? ` ${nextStep}` : ''}`}
       >
-        <Text style={styles.car} numberOfLines={1}>
-          {car}
-        </Text>
-        <Text style={styles.when} numberOfLines={1}>
-          {when}
-        </Text>
-
-        {/* ⚠️ A BARE MARKER AND LABEL, NOT StatusPill — which was the obvious
-            reuse and is wrong on this surface. StatusPill's badge fills with
-            `c.surface` (StatusBadge.tsx), which is exactly this card's colour,
-            so it would render as a dot and a label anyway, looking acceptable
-            by accident rather than by design. Same conclusion AlertCard reached
-            for its "Paused". */}
-        <View style={styles.verdict}>
-          {verdict.celebrated ? (
-            <Check
-              size={sizes.iconSm}
-              color={palette.success}
-              style={{ marginTop: markerOffset(sizes.iconSm) }}
+        <View
+          style={[styles.row, stacked && styles.rowStacked]}
+          testID={`my-sighting-row-${entry.id}`}
+        >
+          {/* Their own photo leads; an empty frame while it is looked up; the
+              colour tile when there is none (or its link has lapsed). */}
+          {showPhoto ? (
+            <AppImage
+              uri={photoUrl}
+              style={styles.photo}
+              recyclingKey={entry.id}
+              onError={() => setFailedUrl(photoUrl)}
+              testID={`my-sighting-photo-${entry.id}`}
             />
+          ) : photoPending && !photoFailed ? (
+            <View style={styles.photo} testID={`my-sighting-photo-pending-${entry.id}`} />
           ) : (
-            <View
-              style={[
-                styles.dot,
-                styles[`dot_${verdict.tone}`],
-                { marginTop: markerOffset(sizes.progressDot) },
-              ]}
-              testID={`my-sighting-dot-${entry.id}`}
+            <CarColourTile
+              colour={entry.car.colour}
+              size={sizes.timelineThumb}
+              radius={radii.md}
+              glyphSize={TILE_GLYPH}
+              testID={`my-sighting-tile-${entry.id}`}
             />
           )}
-          <Text
-            style={[styles.verdictLabel, verdict.tone === 'good' && styles.verdictLabelGood]}
-          >
-            {verdict.label}
-            {/* Its own Text so the emphasis stays on the OUTCOME. Inside the
-                parent it inherited `textPrimary` at Medium on a good row —
-                metadata rendered exactly as loudly as the verdict it dates. */}
-            {ruledSuffix ? <Text style={styles.verdictWhen}>{ruledSuffix}</Text> : null}
-          </Text>
+
+          <View style={[styles.main, stacked && styles.mainStacked]}>
+            <Text style={styles.car} numberOfLines={stacked ? undefined : 1}>
+              {car}
+            </Text>
+            <Text style={styles.when} numberOfLines={stacked ? undefined : 1}>
+              {when}
+            </Text>
+
+            {/* ⚠️ A BARE MARKER AND LABEL, NOT StatusPill — which was the obvious
+                reuse and is wrong on this surface. StatusPill's badge fills with
+                `c.surface` (StatusBadge.tsx), which is exactly this card's colour,
+                so it would render as a dot and a label anyway, looking acceptable
+                by accident rather than by design. Same conclusion AlertCard reached
+                for its "Paused". */}
+            <View style={styles.verdict}>
+              {verdict.celebrated ? (
+                <Check
+                  size={sizes.iconSm}
+                  color={palette.success}
+                  style={{ marginTop: markerOffset(sizes.iconSm) }}
+                />
+              ) : (
+                <View
+                  style={[
+                    styles.dot,
+                    styles[`dot_${verdict.tone}`],
+                    { marginTop: markerOffset(sizes.progressDot) },
+                  ]}
+                  testID={`my-sighting-dot-${entry.id}`}
+                />
+              )}
+              <Text
+                style={[styles.verdictLabel, verdict.tone === 'good' && styles.verdictLabelGood]}
+              >
+                {verdict.label}
+                {/* Its own Text so the emphasis stays on the OUTCOME. Inside the
+                    parent it inherited `textPrimary` at Medium on a good row —
+                    metadata rendered exactly as loudly as the verdict it dates. */}
+                {ruledSuffix ? <Text style={styles.verdictWhen}>{ruledSuffix}</Text> : null}
+              </Text>
+            </View>
+            {/* What happens next — quiet, under the outcome it follows from. */}
+            {nextStep ? (
+              <Text style={styles.nextStep} testID={`my-sighting-next-${entry.id}`}>
+                {nextStep}
+              </Text>
+            ) : null}
+          </View>
+          {/* The affordance, so "tappable" is visible and not just true. It is
+              decoration: the row's label already says this opens the listing. */}
+          {openPost ? (
+            <ChevronRight
+              size={sizes.iconSm}
+              color={palette.textSecondary}
+              style={{ marginTop: markerOffset(sizes.iconSm) }}
+            />
+          ) : null}
         </View>
       </Pressable>
-      {/* The affordance, so "tappable" is visible and not just true. Outside
-          the labelled block: it is decoration, and a screen reader has already
-          been told this opens the listing. */}
-      {openPost ? (
-        <ChevronRight
-          size={sizes.iconSm}
-          color={palette.textSecondary}
-          style={{ marginTop: markerOffset(sizes.iconSm) }}
-        />
-      ) : null}
-      </View>
 
       {/* ⚠️ THE DOOR, and the reason this card stopped being flat. Until now
           /sighting-dispute was reachable ONLY from a push, so a spotter who
@@ -353,9 +448,9 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
           onPress={() => onOpenDispute?.(entry.id)}
           accessibilityRole="button"
           // The label has to carry WHICH report, because this button sits
-          // outside the grouped text block and a screen reader arriving here
+          // outside the grouped photo + text row and a screen reader arriving here
           // from below has not heard the car yet.
-          accessibilityLabel={`${door.label}. ${car}, reported ${reported}`}
+          accessibilityLabel={`${door.label}. ${car}, reported ${spokenAgo(reported)}`}
           accessibilityHint={door.hint}
           style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
           testID={`my-sighting-dispute-${entry.id}`}
@@ -381,7 +476,7 @@ export function ReportCard({ entry, onOpenDispute, onWithdraw, onOpenPost }: Rep
           accessibilityRole="button"
           // Carries the car for the same reason the door's label does: a screen
           // reader arriving here has not heard which report this is.
-          accessibilityLabel={`Take back this report. ${car}, reported ${reported}`}
+          accessibilityLabel={`Take back this report. ${car}, reported ${spokenAgo(reported)}`}
           accessibilityHint="Withdraws it, so the owner no longer sees it"
           style={({ pressed }) => [styles.door, pressed && styles.doorPressed]}
           testID={`my-sighting-withdraw-${entry.id}`}
@@ -417,7 +512,7 @@ export function ReportCardSkeleton() {
             line. This one's contract is HEIGHT PARITY with the card beside it,
             and Text grows with the OS font setting while a View does not: at
             iOS's second Larger Text step the card's column already outgrows the
-            72pt tile and a fixed skeleton stops matching. */}
+            88pt photo and a fixed skeleton stops matching. */}
         <View style={[styles.skeletonLine, { height: typography.cardTitle.lineHeight * scale }]} />
         <View
           style={[
@@ -433,6 +528,14 @@ export function ReportCardSkeleton() {
               { height: typography.label.lineHeight * scale },
             ]}
           />
+          {/* The next-step line most cards carry. */}
+          <View
+            style={[
+              styles.skeletonLine,
+              styles.skeletonLineNarrow,
+              { height: typography.caption.lineHeight * scale },
+            ]}
+          />
         </View>
       </View>
     </View>
@@ -442,7 +545,7 @@ export function ReportCardSkeleton() {
 /**
  * Past the threshold the tile takes its own row, so the verdict — the longest
  * string on the card at 39 characters, or ~48 once a "· 3d ago" is on it — gets
- * the card's full width instead of the ~200pt left beside a 72pt tile.
+ * the card's full width instead of the ~180pt left beside an 88pt photo.
  */
 function useStackedRow(): boolean {
   const { fontScale } = useWindowDimensions();
@@ -474,20 +577,25 @@ const makeStyles = (c: Palette) =>
     // hairline decision and the reasoning behind it.
     // ⚠️ THE CARD IS A COLUMN AND THE TILE+TEXT ROW IS A CHILD OF IT, since
     // 2026-09-01. It used to BE the row. The dispute door has to be a sibling
-    // of the text block rather than inside it — `main` carries the
-    // accessibility grouping, and a control inside a grouped element is
-    // unreachable to VoiceOver — so the card needed a second slot underneath.
+    // of the grouped photo + text row rather than inside it — a control
+    // inside a grouped element is unreachable to VoiceOver — so the card
+    // needed a second slot underneath.
     // With one child the `gap` is inert, so a card with no door is unchanged.
     card: {
       ...cardSurface(c),
       padding: spacing.lg,
       gap: spacing.md,
     },
+    // Top-aligned, like the owner's sighting card: the text column beside the
+    // 88pt photo can now outgrow it, and a centred photo would float.
     row: {
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: spacing.md,
     },
+    // Opacity, not the 0.98 scale VehicleCard uses: scaling the row would
+    // shift it against the doors beneath.
+    rowPressed: { opacity: opacity.pressed },
     rowStacked: {
       flexDirection: 'column',
       alignItems: 'flex-start',
@@ -512,7 +620,7 @@ const makeStyles = (c: Palette) =>
       borderTopColor: c.border,
     },
     doorPressed: {
-      opacity: 0.6,
+      opacity: opacity.pressed,
     },
     doorLabel: {
       ...typography.label,
@@ -520,9 +628,6 @@ const makeStyles = (c: Palette) =>
       flex: 1,
     },
     main: { flex: 1, gap: spacing.xs },
-    // Opacity, not the 0.98 scale VehicleCard uses: this is a text block inside
-    // a row, and scaling it would shift the chevron and the tile beside it.
-    mainPressed: { opacity: opacity.pressed },
     // ⚠️ NEUTRALISE THE BASIS WHEN THE CARD IS A COLUMN. `flex: 1` is
     // `flexBasis: 0`, which works while the card's main axis is its definite
     // WIDTH — but `cardStacked` makes the main axis its auto HEIGHT, where
@@ -534,8 +639,8 @@ const makeStyles = (c: Palette) =>
     car: {
       ...typography.cardTitle,
       color: c.textPrimary,
-      // The car is the headline: it is how a spotter recognises which of their
-      // own reports this is, with no plate and no photo on the row.
+      // The car is the headline: with their photo beside it, it is how a
+      // spotter recognises which of their own reports this is (no plate).
       //
       // ⚠️ NO `textTransform: 'capitalize'`, which the old row carried. The
       // data is already canonical — posts.colour stores the enum name ("Blue")
@@ -569,10 +674,12 @@ const makeStyles = (c: Palette) =>
       height: sizes.progressDot,
       borderRadius: radii.sm,
     },
-    /** helpful / credited only. A verdict that went the spotter's way is the
-     *  one moment this screen has to give them, so it takes the colour and the
-     *  ink. Nothing goes red: the other outcomes are not failures. */
-    dot_good: { backgroundColor: c.success },
+    /** helpful (credited draws its tick instead). A verdict that went the
+     *  spotter's way takes the ink. PRIMARY, not success green (2026-10-09):
+     *  the owner's card marks the same "Confirmed" in primary, and sage stays
+     *  for the payout moment — here, the credited tick alone. Nothing goes
+     *  red: the other outcomes are not failures. */
+    dot_good: { backgroundColor: c.primary },
     /**
      * unverified — nobody has looked yet.
      *
@@ -582,7 +689,7 @@ const makeStyles = (c: Palette) =>
      * and the neutral one are the same mark again — and telling "still open"
      * from "answered and closed" at a glance is the whole reason this tone was
      * added. The ladder is now four SHAPES: hollow ring open, filled grey
-     * closed, filled green helpful, tick credited, with colour reinforcing
+     * closed, filled ink helpful, tick credited, with colour reinforcing
      * rather than carrying. It also reads calmer at density, which matters —
      * most sightings are never ruled on, so a column of these is the common
      * case.
@@ -603,10 +710,23 @@ const makeStyles = (c: Palette) =>
     },
     verdictLabelGood: { color: c.textPrimary },
     verdictWhen: { color: c.textSecondary },
+    nextStep: {
+      ...typography.caption,
+      color: c.textSecondary,
+    },
+    // The owner's sighting cards' photo size (timelineThumb), so the two
+    // sides of a sighting look like one family; surfaceSubtle behind it while
+    // the image loads.
+    photo: {
+      width: sizes.timelineThumb,
+      height: sizes.timelineThumb,
+      borderRadius: radii.md,
+      backgroundColor: c.surfaceSubtle,
+    },
     skeletonTile: {
-      width: sizes.carTile,
-      height: sizes.carTile,
-      borderRadius: radii.lg,
+      width: sizes.timelineThumb,
+      height: sizes.timelineThumb,
+      borderRadius: radii.md,
       backgroundColor: c.surfaceSubtle,
     },
     skeletonLine: {

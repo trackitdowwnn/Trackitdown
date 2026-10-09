@@ -2,16 +2,15 @@
  * WHAT:  Tests for DayHeader and DayHeaderSkeleton — the heading semantics, and
  *        the gutter prop that lets one component serve a flush list and a
  *        padded one.
- * WHY:   Three lists now share this (both inbox faces and My reports) and they
- *        do NOT agree about who owns the horizontal gutter: a flush list whose
- *        rows pad themselves needs the header to carry the 24, while My
- *        reports' content container already pads and would double it to 48.
+ * WHY:   Lists do NOT agree about who owns the horizontal gutter: a flush list
+ *        whose rows pad themselves needs the header to carry the 24, while My
+ *        sightings' content container already pads and would double it to 48.
  *        That is invisible in isolation and obvious side by side, so it is
  *        pinned here rather than rediscovered.
  *
  *        The heading role is the affordance: it is what lets a screen reader's
  *        rotor jump between days instead of scrolling through them.
- * LINKS: ./DayHeader.tsx; src/shared/lib/dayGroups.ts (the labels);
+ * LINKS: ./DayHeader.tsx;
  *        docs/DESIGN_SYSTEM.md (the 2026-08-28 day-label carve-out).
  */
 

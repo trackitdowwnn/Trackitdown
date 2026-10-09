@@ -1,5 +1,5 @@
 /**
- * WHAT:  Route for "My reports" — every sighting the signed-in spotter has
+ * WHAT:  Route for "My sightings" — every sighting the signed-in spotter has
  *        filed, one push from Profile (OUTSIDE the (tabs) group, so no tab bar).
  * WHY:   Route files stay thin (docs/ARCHITECTURE.md rule 3): this imports the
  *        feature screen and nothing else.

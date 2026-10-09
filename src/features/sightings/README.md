@@ -143,13 +143,18 @@ car today — the owner has them.").
   the sighting's id since 2026-10-09 — older notifications still open the
   post), so the ids are checked before anything is fetched, a
   withdrawn sighting reads as gone, and back with no history goes to the post.
-- `MySightingsScreen` (route `src/app/my-sightings.tsx`) — the SPOTTER's own
-  history: every sighting they filed, newest first, with the owner's verdict.
-  Rows are `ReportCard` + `CarColourTile` (a colour tile → car → where/when →
-  a marked outcome), and the tile exists because `my_sighting_record` carries
-  no photo, plate, location or post id — the car's colour is the only picture
-  this surface is allowed. The one place a `not_mine` verdict is ever shown,
-  and only to the spotter themselves.
+- `MySightingsScreen` (route `src/app/my-sightings.tsx`; Profile → "My
+  sightings") — the SPOTTER's own history, redesigned 2026-10-09: a summary
+  line ("12 reports · 4 helpful · 1 recovery", `myReportSummary`), then
+  sections — "Still open", "Answered", "Taken back" (`myReportSections`).
+  Rows are `ReportCard`: the spotter's OWN first in-app photo
+  (`useMyReportPhotos` — their own `sighting_photos` rows, signed; NOT via
+  `my_sighting_record`, which still carries no photo, plate or location; an
+  empty frame while it loads) with `CarColourTile` as the fallback → car →
+  where/when → a marked outcome → one short "what happens next" line that
+  promises nothing it can't keep (no notification, no counter, no money). The
+  one place a `not_mine` verdict is ever shown, and only to the spotter
+  themselves; the summary never counts one.
 - `PostSightingsSection` — the detail page's "Sighting activity" section,
   BOTH faces from one mount: owner preview (a summary line — "4 sightings ·
   1 needs your answer", counted over all of them — then the 3 newest + warm
@@ -263,7 +268,9 @@ face; the OWNER's interactive trail map shipped 2026-07-30 in
 `SightingsTrailMap`, drawn purely from the owner payload) · video · crediting
 (recovery flow's write) · push delivery.
 
-Spotter history UI **shipped** — `MySightingsScreen`, above. Still out: making
-its cards pressable, which would need somewhere to go. The dispute route
-(`SightingDisputeScreen`) is reachable only from a push today, so a spotter who
-dismissed the notification cannot reach it at all.
+Spotter history UI **shipped** — `MySightingsScreen`, above. Its cards open
+the listing while it's active (2026-09-03), and carry a door to
+`SightingDisputeScreen` where a refund hold names the
+sighting (2026-09-01). No door to Payouts: this payload holds no reward facts,
+and Payouts shows nothing for a paid, lapsed or no-reward credit (the reason
+`pushRoute` keeps those pushes away from it).

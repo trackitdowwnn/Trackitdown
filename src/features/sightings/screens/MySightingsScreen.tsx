@@ -1,7 +1,9 @@
 /**
- * WHAT:  MySightingsScreen — the pushed "My reports" page (reached from
- *        Profile): every sighting the signed-in spotter has filed, newest
- *        first, with what the owner decided and when.
+ * WHAT:  MySightingsScreen — the pushed "My sightings" page (reached from
+ *        Profile): every sighting the signed-in spotter has filed — a summary
+ *        line ("12 reports · 4 confirmed · 1 recovery"), then the reports in
+ *        sections, "Waiting on the owner" first, each card leading with their
+ *        own photo and saying what the owner decided and what happens next.
  * WHY:   A spotter could see three cumulative lifetime numbers on their profile
  *        and nothing else — no list, no "pending", no way to learn what became
  *        of report #7. They do the work of this product and then it goes quiet
@@ -49,18 +51,23 @@
  *        the same 24pt gutter and 12pt rhythm as every other list in the app.
  *        The card itself lives in ../components/ReportCard.tsx.
  *
- *        ⚠️ GROUPED BY DAY 2026-08-28 (owner request). The list is one flat
- *        array of headers and rows from `groupByDay`, not a SectionList — the
- *        inbox already produces exactly this shape, and nesting sections costs
- *        virtualization for nothing.
+ *        ⚠️ SECTIONS, NOT DAYS, SINCE 2026-10-09 (owner request: "hard to read",
+ *        "can't see how I'm doing", "unclear what happens next"). It was grouped
+ *        by day (2026-08-28); a spotter opens this to learn what is still open,
+ *        so "Still open" now leads, then "Answered", then "Taken back"
+ *        (myReportSections), under a summary line. Still one flat array of
+ *        headers and rows, not a SectionList — nesting costs virtualization
+ *        for nothing.
  *
- *        The owner asked for accordions and this deliberately has none, for two
- *        reasons worth keeping written down. A per-CARD accordion would open
- *        onto nothing: `my_sighting_record` returns six fields and the card
- *        already shows all six, and the payload must not widen. Collapsible
- *        DAY groups would then be a tap to reveal, usually, a single card,
- *        because reports are sparse. Airbnb's own history lists don't collapse
- *        either — they use plain section headers, which is what this is.
+ *        THE SPOTTER'S OWN PHOTOS (useMyReportPhotos) come from their own
+ *        `sighting_photos` rows and storage objects, not from
+ *        `my_sighting_record`, which stays as narrow as described above; the
+ *        list never waits for them.
+ *
+ *        The owner once asked for accordions and this deliberately has none: a
+ *        per-CARD accordion would open onto nothing (the payload's fields are
+ *        all on the card, and it must not widen), and Airbnb's own history
+ *        lists don't collapse either — they use plain section headers.
  * LINKS: src/app/my-sightings.tsx (route);
  *        src/features/sightings/components/ReportCard.tsx (the row AND its
  *          skeleton — they share styles so the two cannot drift);
@@ -73,15 +80,15 @@
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeInDown, ReduceMotion } from 'react-native-reanimated';
 
 import { useRequireAuth, useSession } from '@/features/auth';
 import { useEntranceGate } from '@/shared/hooks';
-import { groupByDay } from '@/shared/lib';
 import { createLogger } from '@/shared/lib/logger';
 import {
   motion,
+  radii,
   sizes,
   spacing,
   typography,
@@ -101,10 +108,16 @@ import {
   type ConfirmDialogRef,
 } from '@/shared/ui';
 
-import { withdrawSighting } from '../api/sightingApi';
+import { withdrawSighting, type MySightingRecordEntry } from '../api/sightingApi';
 import { SightingWithdrawError } from '../lib/sightingWithdrawError';
 import { ReportCard, ReportCardSkeleton } from '../components/ReportCard';
+import { useMyReportPhotos } from '../hooks/useMyReportPhotos';
 import { useMySightingRecord } from '../hooks/useMySightingRecord';
+import { myReportSections, myReportSummary } from '../lib/myReportSections';
+
+type ListItem =
+  | { type: 'header'; key: string; label: string }
+  | { type: 'row'; key: string; row: MySightingRecordEntry };
 
 const log = createLogger('sightings');
 
@@ -113,12 +126,18 @@ const log = createLogger('sightings');
  *  300ms, the house ceiling for a list. Matches the timeline. */
 const STAGGER_CAP = 6;
 
+/** Where the title's first letter sits: the gutter, plus the back button's
+ *  44pt box less the half it is pulled left by (`back`), plus the row gap. */
+const TITLE_INSET =
+  spacing.xl + sizes.touchTarget - (sizes.touchTarget - sizes.icon) / 2 + spacing.xs;
+
 export function MySightingsScreen() {
   const styles = useThemedStyles(makeStyles);
   const session = useSession();
   const requireAuth = useRequireAuth();
   const router = useRouter();
   const toast = useToast();
+  const fontScale = useWindowDimensions().fontScale ?? 1;
 
   const { status, entries, refreshing, refresh, retry } = useMySightingRecord();
 
@@ -211,11 +230,22 @@ export function MySightingsScreen() {
   // DATA arrives, so the entrance is confined to the first paint.
   const entranceActive = useEntranceGate(status === 'ready');
 
-  // ⚠️ ONE FLAT ARRAY OF HEADERS AND ROWS, not nested sections — a section list
-  // costs virtualization, and `groupByDay` already produces exactly this shape
-  // for the inbox. Grouping only inserts a header when the day label changes,
-  // so it relies on the RPC's newest-first order, which it has.
-  const items = useMemo(() => groupByDay(entries), [entries]);
+  // ⚠️ ONE FLAT ARRAY OF HEADERS AND ROWS, not a SectionList — nesting costs
+  // virtualization. Needs-attention first (2026-10-09): what is still with
+  // the owner, then what was answered, then what the spotter took back —
+  // each newest first, the RPC's order (myReportSections).
+  const items = useMemo<ListItem[]>(
+    () =>
+      myReportSections(entries).flatMap((section) => [
+        { type: 'header' as const, key: `section-${section.key}`, label: section.title },
+        ...section.entries.map((row) => ({ type: 'row' as const, key: row.id, row })),
+      ]),
+    [entries],
+  );
+  const summary = useMemo(() => myReportSummary(entries), [entries]);
+  // The spotter's own photos, filled in beside the list — never in front of
+  // it (the hook keys on the id set, so a new array each render is fine).
+  const photos = useMyReportPhotos(entries.map((entry) => entry.id));
 
   const renderRow = useCallback(
     ({ item, index }: { item: (typeof items)[number]; index: number }) => (
@@ -231,15 +261,15 @@ export function MySightingsScreen() {
         }
       >
         {item.type === 'header' ? (
-          // The same calendar words the inbox uses — "Today", "Yesterday", then
-          // "23 July", and now literally the same component.
+          // The inbox's section label component, reused for the sections.
           // `gutter="none"`: this list's contentContainerStyle already sets the
-          // 24pt gutter, so a header that padded itself would indent every date
-          // to 48.
-          <DayHeader label={item.label} gutter="none" />
+          // 24pt gutter, so a header that padded itself would indent to 48.
+          <DayHeader label={item.label} gutter="none" testID={item.key} />
         ) : (
           <ReportCard
             entry={item.row}
+            photoUrl={photos.urls[item.row.id]}
+            photoPending={!photos.lookedUp[item.row.id]}
             onOpenDispute={openDispute}
             onWithdraw={requestWithdraw}
             onOpenPost={openPost}
@@ -247,7 +277,7 @@ export function MySightingsScreen() {
         )}
       </Animated.View>
     ),
-    [entranceActive, openDispute, requestWithdraw, openPost],
+    [entranceActive, openDispute, requestWithdraw, openPost, photos.urls, photos.lookedUp],
   );
 
   return (
@@ -259,6 +289,26 @@ export function MySightingsScreen() {
           My sightings
         </Text>
       </View>
+      {/* How they're doing, at a glance — counted from the list below. While
+          it loads, a bar of the same height holds its place, so nothing below
+          moves when the reports land. */}
+      {session.status !== 'signedOut' && status === 'ready' && summary ? (
+        <Text
+          style={styles.summary}
+          // Commas, not "·", which some screen readers read out as a word.
+          accessibilityLabel={summary.split(' · ').join(', ')}
+          testID="my-sightings-summary"
+        >
+          {summary}
+        </Text>
+      ) : session.status !== 'signedOut' && status === 'loading' ? (
+        <View style={styles.summaryHolder} testID="my-sightings-summary-skeleton">
+          {/* The line box grows with the text setting; the bar must too. */}
+          <View
+            style={[styles.summarySkeleton, { height: typography.caption.lineHeight * fontScale }]}
+          />
+        </View>
+      ) : null}
 
       {session.status === 'signedOut' ? (
         <EmptyState
@@ -275,15 +325,12 @@ export function MySightingsScreen() {
           accessibilityLabel="Loading your reports"
           accessibilityState={{ busy: true }}
         >
-          {/* ⚠️ A DAY HEADER LEADS THE LIST, so one leads the skeleton too.
-              Grouping made item 0 a header, which put the first real card 46pt
-              below where three bare card skeletons had just promised it would
-              be — the same jump this skeleton exists to prevent, reintroduced
-              by the change that added the headers.
+          {/* ⚠️ A SECTION LABEL LEADS THE LIST, so one leads the skeleton too
+              — without it the first real card lands 46pt below where the
+              skeleton promised it, the jump this skeleton exists to prevent.
 
-              ⚠️ A BAR, NOT THE WORD "Today". Reports are sparse and the newest
-              one usually is not today, so rendering the word would flash a
-              claim that is about to be replaced by a different date. */}
+              ⚠️ A BAR, NOT A WORD: which section comes first ("Still open" or
+              "Answered") isn't known until the reports land. */}
           <DayHeaderSkeleton gutter="none" />
           {/* ⚠️ THE CARD'S OWN GEOMETRY, imported rather than copied. The old
               skeleton was a `height: 96` literal against a 104pt row, so three
@@ -377,23 +424,47 @@ const makeStyles = (c: Palette) =>
       color: c.textPrimary,
       flexShrink: 1,
     },
+    // Under the title and aligned with its first letter, close to it: it
+    // belongs to the title, not to the list.
+    summary: {
+      ...typography.caption,
+      color: c.textSecondary,
+      paddingLeft: TITLE_INSET,
+      paddingRight: spacing.xl,
+      marginTop: -spacing.sm,
+      paddingBottom: spacing.md,
+    },
+    // The summary's place while loading: the same box, a bar inside it.
+    summaryHolder: {
+      paddingLeft: TITLE_INSET,
+      paddingRight: spacing.xl,
+      marginTop: -spacing.sm,
+      paddingBottom: spacing.md,
+    },
+    // Height is set inline: the caption line scaled by the text setting.
+    summarySkeleton: {
+      width: '45%',
+      borderRadius: radii.sm,
+      backgroundColor: c.surfaceSubtle,
+    },
     listContent: {
       paddingHorizontal: spacing.xl,
       paddingBottom: spacing.xxl,
       gap: spacing.md,
     },
     /*
-     * The day label and its skeleton moved to src/shared/ui/DayHeader.tsx on
-     * 2026-08-28, when the inbox's Messages face became the third list to group
-     * by day. Both are rendered here with `gutter="none"` — `listContent`
-     * already sets the 24pt gutter, and a self-padding header would indent
-     * every date to 48.
+     * The section label and its skeleton are src/shared/ui/DayHeader.tsx (the
+     * inbox's quiet group label; this list grouped by day until 2026-10-09).
+     * Both are rendered here with `gutter="none"` — `listContent` already sets
+     * the 24pt gutter, and a self-padding header would indent every label to
+     * 48.
      *
      * The vertical rhythm the shared component carries rides ON TOP of this
-     * list's 12pt gap: 16 above makes 28 between a card and the next day, and 4
-     * below makes 16 from label to its first card. That 12pt differential is
-     * the point — at `md` above, the totals were 24/16 and the label floated
-     * between two groups instead of belonging to the one beneath it.
+     * list's 12pt gap: 16 above makes 28 between a card and the next section,
+     * and 4 below makes 16 from label to its first card. That 12pt
+     * differential is the point — at `md` above, the totals were 24/16 and the
+     * label floated between two groups instead of belonging to the one
+     * beneath it.
      *
      * ⚠️ Both here and on the inbox the label lands on the row's OUTER EDGE —
      * the two are the same arrangement, reached from opposite directions

@@ -428,6 +428,70 @@ export async function signSightingPhotoUrls(paths: string[]): Promise<Record<str
   return urls;
 }
 
+/** Report ids per photo read — ~37 characters each in the query string. */
+const MY_REPORT_PHOTO_BATCH = 100;
+
+// .strict(): this read must stay exactly these four columns of the spotter's
+// OWN photo rows; anything wider fails loudly rather than flowing on.
+const myReportPhotoRowSchema = z
+  .object({
+    sighting_id: z.string(),
+    path: z.string(),
+    source: z.enum(['live', 'gallery']),
+    position: z.number(),
+  })
+  .strict();
+
+/**
+ * The photo each of the spotter's OWN reports leads with on "My sightings":
+ * sighting id → storage path, the first in-app photo, else the first photo.
+ *
+ * PRIVACY: read straight from `sighting_photos` under the existing RLS
+ * policy `sighting_photos_select_own_spotter` — a spotter sees the rows of
+ * their own sightings and nobody else's — and signed by the storage policy
+ * that lets them read their own uploads. `my_sighting_record` is NOT widened
+ * (its strict schema would reject a new key on older builds), so nothing an
+ * owner or another spotter holds is involved. (The path does begin with the
+ * post's id — the spotter's own upload path — and post RLS still hides a
+ * closed post.) A photo whose object is gone, or whose link fails, leaves the
+ * card its tile. The retention job nulls coordinates only; it never deletes
+ * photos.
+ *
+ * The ids are read in batches: `my_sighting_record` has no limit, and a long
+ * history in one `in (…)` would outgrow the URL the request travels in.
+ */
+export async function fetchMyReportPhotos(sightingIds: string[]): Promise<Record<string, string>> {
+  if (sightingIds.length === 0) return {};
+  const batches: string[][] = [];
+  for (let i = 0; i < sightingIds.length; i += MY_REPORT_PHOTO_BATCH) {
+    batches.push(sightingIds.slice(i, i + MY_REPORT_PHOTO_BATCH));
+  }
+  const rows = (
+    await Promise.all(
+      batches.map(async (ids) => {
+        const { data, error } = await supabase
+          .from('sighting_photos')
+          .select('sighting_id, path, source, position')
+          .in('sighting_id', ids)
+          .order('position', { ascending: true });
+        if (error) throw new Error(error.message);
+        return z.array(myReportPhotoRowSchema).parse(data ?? []);
+      }),
+    )
+  ).flat();
+  const lead: Record<string, { path: string; live: boolean }> = {};
+  for (const row of rows) {
+    const current = lead[row.sighting_id];
+    const live = row.source === 'live';
+    // Rows arrive in position order: keep the first, unless a later one is
+    // the first in-app photo and the kept one is from the library.
+    if (!current || (live && !current.live)) {
+      lead[row.sighting_id] = { path: row.path, live };
+    }
+  }
+  return Object.fromEntries(Object.entries(lead).map(([id, photo]) => [id, photo.path]));
+}
+
 // --- Public timeline entries (ADR-0008) ---------------------------------------------
 
 // .strict() everywhere: the fence is the SHAPE. A widened RPC leaking a
