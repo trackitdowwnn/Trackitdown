@@ -35,6 +35,7 @@ moves.
 | --- | --- | --- |
 | `notify-spotters` | `stripe-webhook`, **service-role only** | claim the post (`posts.alerts_sent_at`), match enabled `alert_zones` with `ST_DWithin`, apply the 3-per-rolling-24h cap, fan out one push |
 | `notify-sighting` | the app, after `create_sighting` | tell the post's owner. `claim_sighting_notification` verifies the caller really is that sighting's spotter |
+| `notify-sighting-withdrawn` | the app, after `withdraw_sighting` | tell the post's owner a sighting was taken back, with the spotter's optional reason as a fixed sentence. `claim_sighting_withdrawn_notification` verifies the caller's own withdrawn sighting the owner was told about, once |
 | `notify-message` | the app, after `send_message` | tell the other participant. Sender first name + post context only — **content never transits push** |
 | `process-push-receipts` | `notify-spotters`, fire-and-forget | drain Expo receipts ≥15 min old and prune `DeviceNotRegistered` tokens |
 
@@ -174,6 +175,7 @@ security fails every send with `UNAUTHORIZED`.
 ```bash
 npx supabase functions deploy notify-spotters
 npx supabase functions deploy notify-sighting
+npx supabase functions deploy notify-sighting-withdrawn
 npx supabase functions deploy notify-message
 npx supabase functions deploy process-push-receipts
 npx supabase functions deploy connect-onboarding

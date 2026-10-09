@@ -56,6 +56,10 @@ export function pushRouteFor(payload: PushPayload): Href {
     // expiry (PR5) must not send this kind before that state exists.
     case 'reward_ending':
     case 'reward_ended':
+    // "A sighting of your … was taken back" — the listing: the withdrawn
+    // sighting is no longer shown to the owner, so its own page would only
+    // say it isn't available (20261009150000).
+    case 'sighting_withdrawn':
       return `/post/${payload.postId}`;
     case 'message':
       return `/chat/${payload.threadId}`;

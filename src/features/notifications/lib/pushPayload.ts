@@ -145,6 +145,13 @@ const payoutLapsedPayloadSchema = z
   .object({ type: z.literal('payout_lapsed'), sightingId: z.guid() })
   .strict();
 
+/** "A sighting of your blue BMW was taken back" — the POST id only: the
+ *  withdrawn sighting is no longer shown to the owner, so the listing is
+ *  where a tap goes. Nothing about the spotter rides it (20261009150000). */
+const sightingWithdrawnPayloadSchema = z
+  .object({ type: z.literal('sighting_withdrawn'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -164,6 +171,7 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   rewardEndedPayloadSchema,
   payoutReminderPayloadSchema,
   payoutLapsedPayloadSchema,
+  sightingWithdrawnPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

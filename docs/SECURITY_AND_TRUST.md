@@ -206,6 +206,14 @@ commenting standards.
     The push-open log omits them (as it omits `threadId`); the sighting
     screens do log them, to our own first-party telemetry, which carries no
     user id — so nothing there widens what the push services see.
+  - **A spotter's reason never reaches a push as their words** (2026-10-09,
+    `sighting_withdrawn`). Why a sighting was taken back is a CLOSED
+    vocabulary (`sightings.withdraw_reason`, CHECK-constrained, refused with
+    INVALID_INPUT before any write), turned into one fixed sentence by
+    `claim_sighting_withdrawn_notification` in SQL; its payload is the post id
+    alone. Free text would land unmoderated (§7) on a theft victim's lock
+    screen. `withdraw_sighting_verification` CHECK 10 asserts the copy per
+    reason and that no plate or place appears.
   - The visible push — title or body — may name make, colour and a
     **district-grain** locality. ⚠️ Deliberately field-agnostic since
     2026-09-22, when the copy pass moved the alert's locality and the

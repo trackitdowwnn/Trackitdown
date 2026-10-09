@@ -51,6 +51,10 @@ describe('pushRouteFor', () => {
     expect(pushRouteFor({ type: 'message', threadId: THREAD_ID })).toBe(`/chat/${THREAD_ID}`);
   });
 
+  it('routes a sighting taken back to the owner’s listing — the sighting itself is gone', () => {
+    expect(pushRouteFor({ type: 'sighting_withdrawn', postId: POST_ID })).toBe(`/post/${POST_ID}`);
+  });
+
   it('routes "you’ve earned" to payouts, not to the car', () => {
     // The context of this tap is the money getting an address. The post id
     // still travels (analytics, future deep-link needs) but the destination is

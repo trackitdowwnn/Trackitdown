@@ -97,6 +97,8 @@ describe('notification_category', () => {
     // spotter's reward is about to go, and went, back to the owner.
     expect(sqlMap.payout_reminder).toBeUndefined();
     expect(sqlMap.payout_lapsed).toBeUndefined();
+    // sighting_withdrawn (2026-10-09) follows sighting: never silenceable.
+    expect(sqlMap.sighting_withdrawn).toBeUndefined();
     expect(UNMUTABLE_KINDS).toEqual([
       'sighting',
       'closed_uncredited',
@@ -106,6 +108,7 @@ describe('notification_category', () => {
       'reward_ended',
       'payout_reminder',
       'payout_lapsed',
+      'sighting_withdrawn',
     ]);
   });
 

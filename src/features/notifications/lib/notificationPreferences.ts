@@ -8,7 +8,9 @@
  *        `notificationKinds.ts` already has, and for the same reason: a
  *        mismatch here is a switch that lies about what it does.
  *
- *        ⚠️ TWO KINDS ARE ABSENT ON PURPOSE, and their absence is the feature:
+ *        ⚠️ SOME KINDS ARE ABSENT ON PURPOSE (UNMUTABLE_KINDS below lists them
+ *        all); the first two were the founding cases, and their absence is the
+ *        feature:
  *          * `sighting` — someone has reported seeing YOUR stolen car. The one
  *            notification the whole product exists to deliver.
  *          * `closed_uncredited` — a post you reported on closed without
@@ -26,7 +28,7 @@
  *        screen states this rather than hiding it.
  * LINKS: supabase/migrations/20260824170000_notification_preferences.sql
  *          (notification_category — the authority this mirrors);
- *        ./notificationKinds.ts (the full set of eleven);
+ *        ./notificationKinds.ts (the full set);
  *        src/features/profile/screens/SettingsScreen.tsx (the switches).
  */
 
@@ -98,6 +100,9 @@ export const UNMUTABLE_KINDS: readonly NotificationKind[] = (() => {
       // to the owner (20261007100000) — never silenceable either.
       'payout_reminder',
       'payout_lapsed',
+      // Follows `sighting` (20261009150000): an owner told about a sighting
+      // must be able to learn it was taken back.
+      'sighting_withdrawn',
     ] as NotificationKind[]
   ).filter((kind) => !mapped.has(kind));
 })();
