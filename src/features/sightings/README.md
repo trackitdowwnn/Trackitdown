@@ -279,9 +279,19 @@ and Payouts shows nothing for a paid, lapsed or no-reward credit (the reason
 `WithdrawSightingSheet` (2026-10-09): just the question — "Why are you taking
 this back?" with a small "Optional" tag — and four fixed answers in one column
 (light grey rounded boxes, a primary outline on the chosen one; `lib/withdrawReasons.ts`, mirroring
-`sightings_withdraw_reason_chk`; no text box), then Take it back / Cancel.
-`withdrawSighting(id, reason)` sends the answer and, once the server accepts,
-dispatches `notify-sighting-withdrawn`: the owner — if they had been told about
-the sighting — gets "A sighting of your … was taken back" with one fixed
-sentence for the reason (`sighting_withdrawn`, unmutable; a tap opens the
-listing).
+`sightings_withdraw_reason_chk`), then Take it back / Cancel. Choosing
+"Something else" opens a text box under it ("Tell the owner more", ≤200,
+`MAX_WITHDRAW_NOTE_LENGTH`), sent only with that answer.
+`withdrawSighting(id, reason, note)` sends the answer, plus the note cleaned
+of the hidden characters the server refuses (`cleanWithdrawNote`). It sends
+`p_note` only when there is one, and never logs its words. Once the server
+accepts, it dispatches `notify-sighting-withdrawn`: the owner — if they had
+been told about the sighting — gets "A sighting of your … was taken back" with
+one fixed sentence for the reason, or "…and left you a note." The note itself
+is never pushed (`sighting_withdrawn`, unmutable; a tap opens the listing).
+There, the owner face of `PostSightingsSection` ends with `TakenBackList`
+(`usePostWithdrawals` → `get_post_withdrawals`, owner-only): each withdrawal
+they were told about, the same sentence, and the note set apart as "Written by
+the spotter" — a stranger's unmoderated words (SECURITY_AND_TRUST §7).
+`supabase/tests/withdrawReasons.test.ts` holds the cap and the
+hidden-character set to the server's.

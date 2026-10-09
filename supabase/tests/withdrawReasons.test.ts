@@ -8,14 +8,23 @@
  *        INVALID_INPUT — a spotter could not take a report back by picking
  *        it. Lives here (not beside the source) because it reads migration
  *        files, which needs node types — as notificationKinds.test.ts does.
+ *        Since 20261009180000 the "Something else" NOTE too: the app's
+ *        length cap, and the hidden characters it strips, must match what
+ *        withdraw_sighting refuses — or a spotter's withdrawal fails over a
+ *        character they can't see.
  * LINKS: src/features/sightings/lib/withdrawReasons.ts;
- *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql.
+ *        supabase/migrations/20261009150000_a_withdrawal_says_why.sql;
+ *        supabase/migrations/20261009180000_a_withdrawal_can_say_more.sql.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { WITHDRAW_REASONS } from '../../src/features/sightings/lib/withdrawReasons';
+import {
+  cleanWithdrawNote,
+  MAX_WITHDRAW_NOTE_LENGTH,
+  WITHDRAW_REASONS,
+} from '../../src/features/sightings/lib/withdrawReasons';
 
 const MIGRATIONS_DIR = join(__dirname, '../migrations');
 
@@ -62,5 +71,46 @@ describe('withdraw reasons', () => {
     // Two lists in SQL (the CHECK and the RPC's pre-check): a migration that
     // widened one but not the other would refuse an answer the app offers.
     expect([...WITHDRAW_REASONS].sort()).toEqual(latestRpcReasons().sort());
+  });
+});
+
+/** The latest withdraw_sighting body. */
+function latestWithdrawBody(): string {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort();
+  for (const name of [...files].reverse()) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
+    const body = sql.match(
+      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$\$([\s\S]*?)\$\$/,
+    );
+    if (body) return body[1];
+  }
+  throw new Error('withdraw_sighting not found in any migration');
+}
+
+describe('the "Something else" note', () => {
+  it('⚠️ the app caps it where withdraw_sighting does', () => {
+    const cap = latestWithdrawBody().match(/char_length\(v_note\) > (\d+)/);
+    expect(cap).not.toBeNull();
+    expect(MAX_WITHDRAW_NOTE_LENGTH).toBe(Number(cap![1]));
+  });
+
+  it('⚠️ the app strips exactly the characters withdraw_sighting refuses', () => {
+    const found = latestWithdrawBody().match(/if v_note ~ '(\[[^']*\])' then/);
+    expect(found).not.toBeNull();
+    // Postgres writes "x" escapes (two hex digits each, here) where JS
+    // wants "u00"; every other escape in the class is spelled the same in
+    // both. The backslash is built, not typed, so no escape is mistyped.
+    const backslash = String.fromCharCode(92);
+    const refused = new RegExp(found![1].split(`${backslash}x`).join(`${backslash}u00`));
+    const mismatches: string[] = [];
+    for (let cp = 1; cp <= 0xffff; cp += 1) {
+      if (cp >= 0xd800 && cp <= 0xdfff) continue;
+      const ch = String.fromCharCode(cp);
+      const appStrips = cleanWithdrawNote(`a${ch}b`) === 'ab';
+      if (refused.test(ch) !== appStrips) mismatches.push(cp.toString(16));
+    }
+    expect(mismatches).toEqual([]);
   });
 });

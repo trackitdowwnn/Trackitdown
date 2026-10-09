@@ -101,7 +101,10 @@ jest.mock('../components/WithdrawSightingSheet', () => {
       useImperativeHandle(ref, () => ({ open: mockSheetOpen, close: jest.fn() }));
       return (
         <View>
-          <Pressable testID="confirm-withdraw" onPress={() => onConfirm(mockSheetReason, mockSheetNote)} />
+          <Pressable
+            testID="confirm-withdraw"
+            onPress={() => onConfirm(mockSheetReason, mockSheetNote)}
+          />
           <Pressable testID="dismiss-withdraw" onPress={() => onDismiss?.()} />
         </View>
       );

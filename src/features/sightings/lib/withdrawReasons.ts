@@ -63,8 +63,8 @@ export const MAX_WITHDRAW_NOTE_LENGTH = 200;
 // characters and text-direction marks — the set withdraw_sighting refuses,
 // written as escapes so the set can be read in review. Stripped here
 // so a spotter never meets that refusal for a character they can't see.
-// eslint-disable-next-line no-control-regex -- matching control characters is the point
-const HIDDEN_CHARACTERS = /[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
+const HIDDEN_CHARACTERS =
+  /[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g;
 
 /** The note as it is sent: hidden characters stripped, trimmed, and null
  *  when nothing visible is left — a blank note is no note. */
