@@ -19,8 +19,8 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { createRef } from 'react';
-import { BackHandler, Keyboard, Platform, StyleSheet, Text, TextInput } from 'react-native';
+import { createRef, type ReactNode } from 'react';
+import { BackHandler, Dimensions, Keyboard, Platform, StyleSheet, Text, TextInput } from 'react-native';
 
 import { BottomSheet, sheetRevealOffset, type BottomSheetRef } from './BottomSheet';
 import { TextField } from './TextField';
@@ -318,6 +318,10 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
   // they are typing" — a tall sheet stops growing at its cap and scrolls,
   // and nothing scrolled the box into view.
   const keyboardHandlers: Record<string, (event?: unknown) => void> = {};
+  /** Content taller than the sheet's 90% cap — the case that scrolls. */
+  const pastCap = () => Dimensions.get('window').height;
+  /** Content the sheet can still grow to fit. */
+  const belowCap = () => Dimensions.get('window').height * 0.5;
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -341,24 +345,36 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
   /** A focused input at `y` (in the sheet content), `height` tall. */
   const focusInputAt = (y: number, height: number) =>
     jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue({
-      measureLayout: (_relativeTo: unknown, onSuccess: (...args: number[]) => void) =>
-        onSuccess(0, y, 300, height),
+      measureLayout: (relativeTo: unknown, onSuccess: (...args: number[]) => void) => {
+        // Measured against the sheet's own content view, never nothing.
+        expect(relativeTo).toBeTruthy();
+        onSuccess(0, y, 300, height);
+      },
     } as never);
 
-  it('scrolls once the keyboard is up and the sheet has grown', async () => {
-    const { sheetRef, view } = renderSheet();
-    const { getByTestId } = await view;
+  /** Open the sheet, give it a 700-tall viewport, and raise a 300 keyboard. */
+  async function openWithKeyboard(children?: ReactNode) {
+    const sheetRef = createRef<BottomSheetRef>();
+    const view = await render(
+      <BottomSheet ref={sheetRef}>{children ?? <Text>Sheet body</Text>}</BottomSheet>,
+    );
     await act(async () => sheetRef.current?.open());
-    await act(async () => {
-      fireEvent(getByTestId('sheet-scroll-view'), 'layout', {
-        nativeEvent: { layout: { height: 700 } },
+    const layout = async () =>
+      act(async () => {
+        fireEvent(view.getByTestId('sheet-scroll-view'), 'layout', {
+          nativeEvent: { layout: { height: 700 } },
+        });
       });
-    });
-    focusInputAt(500, 120);
-
+    await layout();
     await act(async () => {
       keyboardHandlers.keyboardDidShow?.({ endCoordinates: { height: 300 } });
     });
+    return { sheetRef, view, layout };
+  }
+
+  it('scrolls once the keyboard is up and the sheet has grown', async () => {
+    focusInputAt(500, 120);
+    await openWithKeyboard();
     // Not before the sheet has had time to grow into the lift.
     expect(mockSheetScrollTo).not.toHaveBeenCalled();
     await act(async () => {
@@ -368,29 +384,94 @@ describe('⚠️ BottomSheet scrolls the focused input above the keyboard (Andro
     expect(mockSheetScrollTo).toHaveBeenCalledWith({ y: 276, animated: true });
   });
 
-  it('scrolls again as a multiline field grows while they type', async () => {
-    const { sheetRef, view } = renderSheet();
-    const { getByTestId } = await view;
-    await act(async () => sheetRef.current?.open());
-    const scroll = getByTestId('sheet-scroll-view');
+  it('scrolls again as a multiline field grows past the cap while they type', async () => {
+    focusInputAt(500, 120);
+    const { view } = await openWithKeyboard();
     await act(async () => {
-      fireEvent(scroll, 'layout', { nativeEvent: { layout: { height: 700 } } });
+      jest.advanceTimersByTime(250);
+    });
+    expect(mockSheetScrollTo).toHaveBeenCalledTimes(1);
+    // The scroll lands; then the field grows a line.
+    await act(async () => {
+      fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
+        nativeEvent: { contentOffset: { y: 276 } },
+      });
+    });
+    focusInputAt(500, 150);
+    await act(async () => {
+      fireEvent(view.getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, pastCap());
+    });
+    expect(mockSheetScrollTo).toHaveBeenLastCalledWith({ y: 306, animated: true });
+  });
+
+  it('⚠️ never scrolls a short sheet that is about to grow to fit — no jiggle', async () => {
+    focusInputAt(500, 120);
+    const { view } = await openWithKeyboard();
+    await act(async () => {
+      fireEvent(view.getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, belowCap());
+    });
+    expect(mockSheetScrollTo).not.toHaveBeenCalled();
+  });
+
+  it('counts where the sheet is already scrolled', async () => {
+    focusInputAt(500, 120);
+    const { view } = await openWithKeyboard();
+    await act(async () => {
+      fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
+        nativeEvent: { contentOffset: { y: 300 } },
+      });
+      jest.advanceTimersByTime(250);
+    });
+    expect(mockSheetScrollTo).not.toHaveBeenCalled();
+  });
+
+  it('reveals a field focused while the keyboard is already up', async () => {
+    const { view } = await openWithKeyboard(
+      <TextField label="Second field" value="" onChangeText={() => {}} />,
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+    });
+    mockSheetScrollTo.mockClear();
+    // Focus moves: the keyboard height and content size stay the same.
+    focusInputAt(600, 56);
+    await act(async () => {
+      fireEvent(view.getByTestId('sheet-aware-input'), 'focus', {});
+    });
+    // 8 + 600 + 56 + 48 = 712; visible 400.
+    expect(mockSheetScrollTo).toHaveBeenCalledWith({ y: 312, animated: true });
+  });
+
+  it('⚠️ starts from the top again after the sheet is closed and reopened', async () => {
+    focusInputAt(500, 120);
+    const { sheetRef, view, layout } = await openWithKeyboard();
+    await act(async () => {
+      fireEvent(view.getByTestId('sheet-scroll-view'), 'scroll', {
+        nativeEvent: { contentOffset: { y: 276 } },
+      });
+      keyboardHandlers.keyboardDidHide?.();
+    });
+    await act(async () => sheetRef.current?.close());
+    // A fresh scroll view at 0 — no scroll event says so.
+    await act(async () => sheetRef.current?.open());
+    await layout();
+    mockSheetScrollTo.mockClear();
+    await act(async () => {
       keyboardHandlers.keyboardDidShow?.({ endCoordinates: { height: 300 } });
     });
-    focusInputAt(200, 150);
     await act(async () => {
-      fireEvent(scroll, 'contentSizeChange', 390, 1200);
+      jest.advanceTimersByTime(250);
     });
-    expect(mockSheetScrollTo).toHaveBeenCalledWith({ y: 6, animated: true });
+    expect(mockSheetScrollTo).toHaveBeenCalledWith({ y: 276, animated: true });
   });
 
   it('does nothing while the keyboard is down', async () => {
     const { sheetRef, view } = renderSheet();
-    const { getByTestId } = await view;
+    await view;
     await act(async () => sheetRef.current?.open());
     focusInputAt(500, 120);
     await act(async () => {
-      fireEvent(getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, 1200);
+      fireEvent((await view).getByTestId('sheet-scroll-view'), 'contentSizeChange', 390, pastCap());
       jest.advanceTimersByTime(1000);
     });
     expect(mockSheetScrollTo).not.toHaveBeenCalled();
