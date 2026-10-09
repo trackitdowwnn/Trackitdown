@@ -24,6 +24,7 @@ import {
   markSightingNotMine,
   submitSighting,
   SightingSubmissionError,
+  withdrawSighting,
 } from './sightingApi';
 
 const mockRpc = jest.fn();
@@ -740,5 +741,51 @@ describe('fetchMyReportPhotos — batching', () => {
     await fetchMyReportPhotos(ids);
     const inCalls = mockTableCall.mock.calls.filter(([kind]) => kind === 'in');
     expect(inCalls.map(([, , values]) => (values as string[]).length)).toEqual([100, 100, 50]);
+  });
+});
+
+describe('withdrawSighting — the reason, and telling the owner (2026-10-09)', () => {
+  const ID = '4f3c2b1a-0000-4000-8000-000000000001';
+
+  beforeEach(() => {
+    mockRpc.mockReset();
+    mockInvoke.mockClear();
+  });
+
+  it('sends the spotter’s answer with the withdrawal', async () => {
+    mockRpc.mockResolvedValue({ data: { sighting_id: ID, withdrawn: true }, error: null });
+    await withdrawSighting(ID, 'not_sure');
+    expect(mockRpc).toHaveBeenCalledWith('withdraw_sighting', {
+      p_sighting_id: ID,
+      p_reason: 'not_sure',
+    });
+  });
+
+  it('sends null when the question was skipped — it is optional', async () => {
+    mockRpc.mockResolvedValue({ data: { sighting_id: ID, withdrawn: true }, error: null });
+    await withdrawSighting(ID);
+    expect(mockRpc).toHaveBeenCalledWith('withdraw_sighting', {
+      p_sighting_id: ID,
+      p_reason: null,
+    });
+  });
+
+  it('⚠️ tells the owner once the server has taken it back — by sighting id only', async () => {
+    mockRpc.mockResolvedValue({ data: { sighting_id: ID, withdrawn: true }, error: null });
+    await withdrawSighting(ID, 'mistake');
+    expect(mockInvoke).toHaveBeenCalledWith('notify-sighting-withdrawn', {
+      body: { sightingId: ID },
+    });
+    // The reason never rides the dispatch: the claim reads it from the row.
+    expect(JSON.stringify(mockInvoke.mock.calls)).not.toContain('mistake');
+  });
+
+  it('⚠️ tells nobody when the withdrawal was refused', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: { code: 'P0001', message: 'SIGHTING_NOT_WITHDRAWABLE' },
+    });
+    await expect(withdrawSighting(ID, 'not_the_car')).rejects.toThrow();
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 });

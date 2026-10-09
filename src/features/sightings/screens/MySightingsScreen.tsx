@@ -97,7 +97,6 @@ import {
   type Palette,
 } from '@/shared/theme';
 import {
-  ConfirmDialog,
   DayHeader,
   DayHeaderSkeleton,
   EmptyState,
@@ -105,12 +104,16 @@ import {
   Screen,
   ThemedRefreshControl,
   useToast,
-  type ConfirmDialogRef,
 } from '@/shared/ui';
 
 import { withdrawSighting, type MySightingRecordEntry } from '../api/sightingApi';
 import { SightingWithdrawError } from '../lib/sightingWithdrawError';
+import type { WithdrawReason } from '../lib/withdrawReasons';
 import { ReportCard, ReportCardSkeleton } from '../components/ReportCard';
+import {
+  WithdrawSightingSheet,
+  type WithdrawSightingSheetRef,
+} from '../components/WithdrawSightingSheet';
 import { useMyReportPhotos } from '../hooks/useMyReportPhotos';
 import { useMySightingRecord } from '../hooks/useMySightingRecord';
 import { myReportSections, myReportSummary } from '../lib/myReportSections';
@@ -192,35 +195,42 @@ export function MySightingsScreen() {
    * on a real sighting would delete the spotter's only claim on a bounty.
    */
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
-  const withdrawRef = useRef<ConfirmDialogRef>(null);
+  const withdrawRef = useRef<WithdrawSightingSheetRef>(null);
 
   const requestWithdraw = useCallback((sightingId: string) => {
     setWithdrawing(sightingId);
     withdrawRef.current?.open();
   }, []);
 
-  const onWithdrawConfirmed = useCallback(async () => {
-    if (withdrawing === null) {
-      return;
-    }
-    try {
-      await withdrawSighting(withdrawing);
-      toast.show('Sighting withdrawn — the owner no longer sees it.');
-      void refresh();
-    } catch (error) {
-      // ⚠️ Narrowed to our own class: a raw PostgREST message must never reach
-      // a toast. The SIGHTING_NOT_WITHDRAWABLE copy is the one that matters —
-      // it is what an owner ruling between render and tap looks like.
-      toast.show(
-        error instanceof SightingWithdrawError
-          ? error.message
-          : 'We couldn’t withdraw that report. Please try again.',
-        'error',
-      );
-    } finally {
-      setWithdrawing(null);
-    }
-  }, [refresh, toast, withdrawing]);
+  // With the spotter's optional answer to "why?" (2026-10-09) — passed to
+  // the owner as one fixed sentence when they are told.
+  const onWithdrawConfirmed = useCallback(
+    async (reason: WithdrawReason | null) => {
+      if (withdrawing === null) {
+        return;
+      }
+      try {
+        await withdrawSighting(withdrawing, reason);
+        toast.show(
+          'Report taken back — the owner no longer sees it. You can’t re-file it for this car today.',
+        );
+        void refresh();
+      } catch (error) {
+        // ⚠️ Narrowed to our own class: a raw PostgREST message must never reach
+        // a toast. The SIGHTING_NOT_WITHDRAWABLE copy is the one that matters —
+        // it is what an owner ruling between render and tap looks like.
+        toast.show(
+          error instanceof SightingWithdrawError
+            ? error.message
+            : 'We couldn’t take that report back. Please try again.',
+          'error',
+        );
+      } finally {
+        setWithdrawing(null);
+      }
+    },
+    [refresh, toast, withdrawing],
+  );
 
   // ⚠️ GATED, BECAUSE THIS IS A FlatList. The mapped lists this idiom came from
   // (alerts, the sighting timeline) mount each row once; a virtualized cell is
@@ -363,20 +373,17 @@ export function MySightingsScreen() {
         />
       )}
 
-      {/* ⚠️ `destructive`, and the body says the two things that are actually
-          irreversible: the owner stops seeing it, and it cannot be re-filed.
+      {/* ⚠️ Destructive. The two irreversible facts — the owner stops seeing
+          it, and it cannot be re-filed — are said by the toast that follows
+          (the owner asked for the sheet to be just the question, 2026-10-09).
           The rate limit counts the withdrawn row on purpose, so someone who
           withdraws a real sighting by mistake has not just hidden it — they
           have spent the slot. Honest, not guilt-trippy: taking back a report
-          you know to be wrong is the right thing to do. */}
-      <ConfirmDialog
+          you know to be wrong is the right thing to do. Since 2026-10-09 it
+          also asks, optionally, why (WithdrawSightingSheet). */}
+      <WithdrawSightingSheet
         ref={withdrawRef}
-        title="Take this report back?"
-        body="The owner will no longer see it, and you can’t re-file it for this car today."
-        confirmLabel="Take it back"
-        cancelLabel="Keep it"
-        destructive
-        onConfirm={() => void onWithdrawConfirmed()}
+        onConfirm={(reason) => void onWithdrawConfirmed(reason)}
         onDismiss={() => setWithdrawing(null)}
       />
     </Screen>

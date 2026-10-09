@@ -67,10 +67,44 @@ jest.mock('expo-router', () => ({
 // lib/ precisely so the screen's `instanceof` narrowing can be tested against
 // the REAL class: a stub here would let these pass while the shipped guard
 // rejected the very error it exists to show.
-const mockWithdraw = jest.fn(async (_sightingId: string) => {});
+const mockWithdraw = jest.fn(async (_sightingId: string, _reason?: string | null) => {});
 jest.mock('../api/sightingApi', () => ({
-  withdrawSighting: (sightingId: string) => mockWithdraw(sightingId),
+  withdrawSighting: (sightingId: string, reason?: string | null) =>
+    mockWithdraw(sightingId, reason),
 }));
+
+// The "why are you taking it back?" sheet, fired straight through with a
+// chosen answer: what these tests are about is what the screen does WITH a
+// confirmation; the sheet has its own suite.
+// It takes the ref, so a test can see the screen actually OPEN it, and offers
+// dismiss as well as confirm.
+let mockSheetReason: string | null = null;
+const mockSheetOpen = jest.fn();
+jest.mock('../components/WithdrawSightingSheet', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const { Pressable, View } = require('react-native');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+  const { useImperativeHandle } = require('react');
+  return {
+    WithdrawSightingSheet: ({
+      ref,
+      onConfirm,
+      onDismiss,
+    }: {
+      ref: unknown;
+      onConfirm: (reason: string | null) => void;
+      onDismiss?: () => void;
+    }) => {
+      useImperativeHandle(ref, () => ({ open: mockSheetOpen, close: jest.fn() }));
+      return (
+        <View>
+          <Pressable testID="confirm-withdraw" onPress={() => onConfirm(mockSheetReason)} />
+          <Pressable testID="dismiss-withdraw" onPress={() => onDismiss?.()} />
+        </View>
+      );
+    },
+  };
+});
 
 const mockToastShow = jest.fn();
 jest.mock('@/shared/ui', () => {
@@ -78,11 +112,6 @@ jest.mock('@/shared/ui', () => {
   const { View, Text, Pressable } = require('react-native');
   return {
     useToast: () => ({ show: mockToastShow }),
-    // The confirm is fired straight through: what these tests are about is what
-    // the screen does WITH a confirmation, and the dialog has its own suite.
-    ConfirmDialog: ({ onConfirm }: { onConfirm: () => void }) => (
-      <Pressable testID="confirm-withdraw" onPress={onConfirm} />
-    ),
     Screen: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
     EmptyState: ({
       title,
@@ -250,9 +279,7 @@ describe('⚠️ needs-attention first (2026-10-09)', () => {
   });
 
   it('says how they’re doing under the title — counted from the list', async () => {
-    mockUseRecord.mockReturnValue(
-      ready([...mixed(), entry({ id: 'e', status: 'credited' })]),
-    );
+    mockUseRecord.mockReturnValue(ready([...mixed(), entry({ id: 'e', status: 'credited' })]));
     const { getByTestId } = await render(<MySightingsScreen />);
 
     // Withdrawn isn't counted; "Not a match" never becomes a number.
@@ -464,12 +491,47 @@ describe('taking a report back', () => {
     // The tap alone must not call the server: withdrawing a REAL sighting by
     // mistake destroys the spotter's only claim on a bounty, and the rolling
     // rate limit counts the withdrawn row, so the slot is spent either way.
+    // It OPENS the sheet instead.
     expect(mockWithdraw).not.toHaveBeenCalled();
+    expect(mockSheetOpen).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       fireEvent.press(getByTestId('confirm-withdraw'));
     });
-    expect(mockWithdraw).toHaveBeenCalledWith('s1');
+    // No answer chosen → the reason travels as null (it is optional).
+    expect(mockWithdraw).toHaveBeenCalledWith('s1', null);
+  });
+
+  it('⚠️ "Cancel" forgets the report — a later confirm sends nothing', async () => {
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+    const { getByTestId } = await render(<MySightingsScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('my-sighting-withdraw-s1'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('dismiss-withdraw'));
+    });
+    await act(async () => {
+      fireEvent.press(getByTestId('confirm-withdraw'));
+    });
+    expect(mockWithdraw).not.toHaveBeenCalled();
+  });
+
+  it('passes the spotter’s answer to "why?" with the withdrawal (2026-10-09)', async () => {
+    mockSheetReason = 'not_the_car';
+    try {
+      mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
+      const { getByTestId } = await render(<MySightingsScreen />);
+      await act(async () => {
+        fireEvent.press(getByTestId('my-sighting-withdraw-s1'));
+      });
+      await act(async () => {
+        fireEvent.press(getByTestId('confirm-withdraw'));
+      });
+      expect(mockWithdraw).toHaveBeenCalledWith('s1', 'not_the_car');
+    } finally {
+      mockSheetReason = null;
+    }
   });
 
   it('says what happened, in the owner’s terms', async () => {
@@ -483,7 +545,9 @@ describe('taking a report back', () => {
       fireEvent.press(getByTestId('confirm-withdraw'));
     });
 
-    expect(mockToastShow).toHaveBeenCalledWith('Sighting withdrawn — the owner no longer sees it.');
+    expect(mockToastShow).toHaveBeenCalledWith(
+      'Report taken back — the owner no longer sees it. You can’t re-file it for this car today.',
+    );
   });
 
   it('⚠️ shows OUR copy when the owner ruled between render and tap', async () => {
@@ -525,7 +589,7 @@ describe('taking a report back', () => {
     });
 
     expect(mockToastShow).toHaveBeenCalledWith(
-      'We couldn’t withdraw that report. Please try again.',
+      'We couldn’t take that report back. Please try again.',
       'error',
     );
   });
@@ -556,9 +620,7 @@ describe('opening the car a report was about', () => {
     // The server sends null for a closed post, so there is nothing to press.
     // This is the wall that makes closed_uncredited route to the dispute
     // screen rather than the post, and it must not move.
-    mockUseRecord.mockReturnValue(
-      ready([entry({ id: 's1', postId: null, status: 'not_mine' })]),
-    );
+    mockUseRecord.mockReturnValue(ready([entry({ id: 's1', postId: null, status: 'not_mine' })]));
     const { queryByTestId } = await render(<MySightingsScreen />);
 
     expect(queryByTestId('my-sighting-open-s1')).toBeNull();

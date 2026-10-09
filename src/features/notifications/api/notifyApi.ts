@@ -1,6 +1,7 @@
 /**
  * WHAT:  Fire-and-forget triggers for the notifications a user's own
- *        action causes — a sighting they reported, a message they sent.
+ *        action causes — a sighting they reported (or took back), a message
+ *        they sent, a verdict, a credit, a bug report.
  * WHY:   One door, so no feature grows its own functions.invoke and its own
  *        idea of what to do when a push fails. These are deliberately VOID and
  *        never throw: a notification is a side effect of the user's action,
@@ -14,6 +15,7 @@
  *        nobody. Nothing is lost permanently (both are visible in-app); a DB
  *        trigger with pg_net would close it.
  * LINKS: supabase/functions/notify-sighting/index.ts,
+ *        supabase/functions/notify-sighting-withdrawn/index.ts,
  *        supabase/functions/notify-message/index.ts;
  *        src/features/sightings/api/sightingApi.ts and
  *        src/features/chat/api/chatApi.ts (the callers).
@@ -30,6 +32,7 @@ function dispatch(
     | 'notify-message'
     | 'notify-credited'
     | 'notify-sighting-confirmed'
+    | 'notify-sighting-withdrawn'
     | 'notify-bug-report',
   body: Record<string, string>,
 ): void {
@@ -56,6 +59,16 @@ function dispatch(
 /** Tell the post's owner their car was sighted. */
 export function notifySighting(sightingId: string): void {
   dispatch('notify-sighting', { sightingId });
+}
+
+/**
+ * Tell the post's owner a sighting was taken back (2026-10-09). Carries only
+ * the sighting id: the claim checks it is the caller's own withdrawn report
+ * that the owner was told about, and builds the copy — the spotter's optional
+ * reason as one fixed sentence — in SQL.
+ */
+export function notifySightingWithdrawn(sightingId: string): void {
+  dispatch('notify-sighting-withdrawn', { sightingId });
 }
 
 /** Tell the other participant a message arrived. Content never travels. */

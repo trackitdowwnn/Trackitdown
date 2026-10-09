@@ -30,6 +30,7 @@ export {
   notifyMessage,
   notifySighting,
   notifySightingConfirmed,
+  notifySightingWithdrawn,
 } from './api/notifyApi';
 
 // The Inbox badge aggregator (chat unread + center unread → one number).
