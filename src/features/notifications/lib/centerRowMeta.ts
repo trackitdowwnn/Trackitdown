@@ -43,6 +43,7 @@ import {
   MessageCircle,
   Scale,
   Trash2,
+  Undo2,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -168,6 +169,10 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   // Never needsAttention. It is recognition, not a task, and an accent bar
   // would turn a thank-you into a chore.
   sighting_confirmed: { Icon: BadgeCheck, tone: 'success', needsAttention: false },
+  // A sighting taken back (20261009150000): a fact, nothing to do — calm and
+  // neutral, the "undo" of the sighting row's eye. Never a warning: the
+  // spotter withdrawing a report they doubt is the right thing to do.
+  sighting_withdrawn: { Icon: Undo2, tone: 'neutral', needsAttention: false },
   // Never rendered — chat is excluded from the center — but the map is total
   // over NotificationKind so a stray row degrades to a sane row, not a crash.
   message: { Icon: MessageCircle, tone: 'neutral', needsAttention: false },

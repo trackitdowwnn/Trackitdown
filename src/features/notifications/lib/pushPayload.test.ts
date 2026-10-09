@@ -79,6 +79,24 @@ describe('parsePushPayload', () => {
     ).toBeNull();
   });
 
+  it('accepts a sighting taken back — the post id, and nothing about the spotter', () => {
+    expect(parsePushPayload({ type: 'sighting_withdrawn', postId: POST_ID })).toEqual({
+      type: 'sighting_withdrawn',
+      postId: POST_ID,
+    });
+    // No sighting id, no reason, no spotter: the copy carries the reason.
+    for (const extra of [
+      { sightingId: POST_ID },
+      { reason: 'not_the_car' },
+      { spotterId: POST_ID },
+    ]) {
+      expect(
+        pushPayloadSchema.safeParse({ type: 'sighting_withdrawn', postId: POST_ID, ...extra })
+          .success,
+      ).toBe(false);
+    }
+  });
+
   it('has no payload variant that permits an unknown key', () => {
     // Belt to the braces above: every option is strict, so this holds for
     // variants added later without anyone remembering to test them.

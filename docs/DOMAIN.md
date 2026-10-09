@@ -567,6 +567,13 @@ Rules that follow, and are not implementation details:
     nothing.
   - `sightings_reported` decreases with it. That counter is the spotter's
     standing as an OWNER sees it, so a retracted report must not inflate it.
+  - **The owner is told (2026-10-09)** — `sighting_withdrawn`, unmutable,
+    once, and only if they had been told about the sighting and the listing
+    is still live: "A sighting of your blue BMW was taken back". The spotter
+    may say why — an OPTIONAL, closed answer (`withdraw_reason`: it wasn't
+    the car / not sure / by mistake / something else) that reaches the owner
+    as one fixed sentence. Never free text: it would land unmoderated on a
+    theft victim's lock screen. A tap opens the listing.
 - A sighting = photo(s) + auto-captured GPS location + timestamp + optional
   note. Location and time come from the device at capture; **at least one
   photo must be a live in-app capture** — that capture is the evidence a
@@ -630,7 +637,9 @@ Rules that follow, and are not implementation details:
   (a rolling 24-hour window, not a midnight reset).
 - Every sighting screen and notification carries the safety line: report
   from a distance — never approach the vehicle or confront anyone. Call
-  999 if a crime is in progress. For the REPORT flow it's carried by the
+  999 if a crime is in progress. The ONE exception is `sighting_withdrawn`
+  (2026-10-09): it tells the owner a sighting should NOT be acted on and names
+  no place, so "don't approach" would read as if it still should be. For the REPORT flow it's carried by the
   safety sheet shown before the camera, every time (owner decision,
   2026-09-30: one firm moment at the start rather than a banner on each
   step of a speed flow); the photos step keeps "From a distance" in view.

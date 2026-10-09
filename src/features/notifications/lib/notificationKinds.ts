@@ -53,6 +53,10 @@ export const NOTIFICATION_KINDS = [
   // "We couldn't send your reward" — the deadline passed and it went back to
   // the owner; the recovery still counts on their record.
   'payout_lapsed',
+  // "A sighting of your blue BMW was taken back" — to the OWNER, when a
+  // spotter withdraws a sighting they had been told about, with the spotter's
+  // optional reason as one fixed sentence (20261009150000). Opens the listing.
+  'sighting_withdrawn',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

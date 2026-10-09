@@ -23,7 +23,10 @@
 -- else's, and one opaque token for every refusal · 4 it vanishes from the
 -- owner's list and the public map · 5 ⚠️ it is outside the money paths ·
 -- 6 ⚠️ it does NOT free a rate-limit slot · 7 the reputation counter drops,
--- floored at 0 · 8 grants.
+-- floored at 0 · 8 grants · 9 the optional reason (closed vocabulary; free
+-- text refused before any write) · 10 ⚠️ the owner's notice: once, to the
+-- owner, only if they heard of the sighting, only while live, fixed copy per
+-- reason, no plate or place · 11 the claim is service-role only.
 -- LINKS: supabase/migrations/20260903100000_withdraw_a_sighting.sql;
 --        supabase/migrations/20260805100000_refund_holds_and_disputes.sql;
 --        supabase/migrations/20260801180000_sighting_photo_source.sql
@@ -192,7 +195,8 @@ end $$;
 -- -----------------------------------------------------------------------------
 do $$
 declare
-  v_fn text := 'public.withdraw_sighting(uuid)';
+  -- (uuid, text) since 20261009150000 — the optional reason.
+  v_fn text := 'public.withdraw_sighting(uuid, text)';
 begin
   if to_regprocedure(v_fn) is null then
     raise exception 'CHECK 8 FAILED: % does not exist', v_fn;
@@ -205,6 +209,158 @@ begin
   end if;
 
   raise notice 'withdraw_sighting CHECK 8 passed';
+end $$;
+
+-- -----------------------------------------------------------------------------
+-- CHECKS 9-11 — the reason, and telling the owner (20261009150000).
+-- -----------------------------------------------------------------------------
+do $$
+declare
+  v_post     uuid := 'a1a1a1a1-0000-0000-0000-000000000003';  -- active black BMW, BD21 WSE
+  v_owner    uuid := '22222222-2222-2222-2222-222222222222';
+  v_spotter  uuid := '11111111-1111-1111-1111-111111111111';
+  v_other    uuid := '33333333-3333-3333-3333-333333333333';
+  v_a        uuid := 'dddd0000-0000-0000-0000-0000000000a1';  -- told, then withdrawn: not the car
+  v_b        uuid := 'dddd0000-0000-0000-0000-0000000000a2';  -- told, withdrawn, no reason
+  v_c        uuid := 'dddd0000-0000-0000-0000-0000000000a3';  -- NEVER told, withdrawn
+  v_d        uuid := 'dddd0000-0000-0000-0000-0000000000a4';  -- refused reason stays unverified
+  v_e        uuid := 'dddd0000-0000-0000-0000-0000000000a5';  -- told, withdrawn, post later closed
+  v_doc      jsonb;
+  v_reason   text;
+  v_status   text;
+begin
+  insert into public.sightings (id, post_id, spotter_id, status, area_label, location_unavailable, notified_at)
+  values
+    (v_a, v_post, v_spotter, 'unverified', 'Ancoats', true, now()),
+    (v_b, v_post, v_spotter, 'unverified', 'Ancoats', true, now()),
+    (v_c, v_post, v_spotter, 'unverified', 'Ancoats', true, null),
+    (v_d, v_post, v_spotter, 'unverified', 'Ancoats', true, now()),
+    (v_e, v_post, v_spotter, 'unverified', 'Ancoats', true, now());
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+
+  -- -------------------------------------------------------------------
+  -- CHECK 9 — the reason is stored; skipping it stores NULL; an answer
+  -- outside the vocabulary is refused BEFORE anything is written.
+  -- -------------------------------------------------------------------
+  perform public.withdraw_sighting(v_a, 'not_the_car');
+  select withdraw_reason into v_reason from public.sightings where id = v_a;
+  if v_reason is distinct from 'not_the_car' then
+    raise exception 'CHECK 9 FAILED: the reason was not stored (got %)', v_reason;
+  end if;
+
+  -- The one-argument call today's app makes still resolves.
+  perform public.withdraw_sighting(v_b);
+  select withdraw_reason into v_reason from public.sightings where id = v_b;
+  if v_reason is not null then
+    raise exception 'CHECK 9 FAILED: a skipped reason stored %', v_reason;
+  end if;
+
+  perform public.withdraw_sighting(v_c, 'mistake');
+  perform public.withdraw_sighting(v_e, 'not_sure');
+
+  begin
+    perform public.withdraw_sighting(v_d, 'he was rude to me');
+    raise exception 'CHECK 9 FAILED: free text was accepted as a reason';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'INVALID_INPUT' then
+        raise exception 'CHECK 9 FAILED: an unknown reason raised % rather than INVALID_INPUT', sqlerrm;
+      end if;
+  end;
+  select status, withdraw_reason into v_status, v_reason from public.sightings where id = v_d;
+  if v_status <> 'unverified' or v_reason is not null then
+    raise exception 'CHECK 9 FAILED: a refused reason still wrote (status %, reason %)', v_status, v_reason;
+  end if;
+
+  -- -------------------------------------------------------------------
+  -- CHECK 10 — the owner's notice: once, only to the right owner, only if
+  -- they heard about the sighting, only while the listing is live; the
+  -- copy is fixed per reason and carries nothing else.
+  -- (Called as the test's superuser: the claim is service-role only.)
+  -- -------------------------------------------------------------------
+  v_doc := public.claim_sighting_withdrawn_notification(v_a, v_spotter);
+  if (v_doc ->> 'claimed') <> 'true'
+     or (v_doc ->> 'user_id')::uuid <> v_owner
+     or (v_doc ->> 'post_id')::uuid <> v_post then
+    raise exception 'CHECK 10 FAILED: the first claim did not go to the owner (%)', v_doc;
+  end if;
+  if (v_doc ->> 'title') <> 'A sighting of your Black BMW was taken back' then
+    raise exception 'CHECK 10 FAILED: title was %', v_doc ->> 'title';
+  end if;
+  if (v_doc ->> 'body') <> 'The spotter says it wasn''t your car.' then
+    raise exception 'CHECK 10 FAILED: body for not_the_car was %', v_doc ->> 'body';
+  end if;
+  -- ⚠️ No plate, no place, no spotter — in either line.
+  if (v_doc ->> 'title') || (v_doc ->> 'body') ~* '(BD21|Ancoats|Manchester)' then
+    raise exception 'CHECK 10 FAILED: the notice leaked a plate or a place (%)', v_doc;
+  end if;
+
+  -- REPLAY: once only.
+  if (public.claim_sighting_withdrawn_notification(v_a, v_spotter) ->> 'claimed') <> 'false' then
+    raise exception 'CHECK 10 FAILED: the same withdrawal was claimed twice';
+  end if;
+
+  -- No reason → the plain sentence.
+  v_doc := public.claim_sighting_withdrawn_notification(v_b, v_spotter);
+  if (v_doc ->> 'body') <> 'The spotter withdrew it.' then
+    raise exception 'CHECK 10 FAILED: body with no reason was %', v_doc ->> 'body';
+  end if;
+
+  -- AUTHORISATION: not the spotter → the shared refusal, and nothing claimed.
+  if public.claim_sighting_withdrawn_notification(v_e, v_other) <> '{"claimed": false}'::jsonb then
+    raise exception 'CHECK 10 FAILED: a stranger claimed the notice';
+  end if;
+  -- …nor the owner.
+  if public.claim_sighting_withdrawn_notification(v_e, v_owner) <> '{"claimed": false}'::jsonb then
+    raise exception 'CHECK 10 FAILED: the owner claimed the notice about their own listing';
+  end if;
+
+  -- The owner was never told of this sighting → nothing to retract.
+  if public.claim_sighting_withdrawn_notification(v_c, v_spotter) <> '{"claimed": false}'::jsonb then
+    raise exception 'CHECK 10 FAILED: a withdrawal was announced for a sighting the owner never heard about';
+  end if;
+
+  -- Not withdrawn → refused.
+  if public.claim_sighting_withdrawn_notification(v_d, v_spotter) <> '{"claimed": false}'::jsonb then
+    raise exception 'CHECK 10 FAILED: a sighting that is still open was announced as withdrawn';
+  end if;
+
+  -- A listing that is no longer live → refused (and still unclaimed).
+  update public.posts set status = 'recovered' where id = v_post;
+  if public.claim_sighting_withdrawn_notification(v_e, v_spotter) <> '{"claimed": false}'::jsonb then
+    raise exception 'CHECK 10 FAILED: a withdrawal was announced on a closed listing';
+  end if;
+  update public.posts set status = 'active' where id = v_post;
+
+  -- …and the not_sure sentence, once it is live again.
+  v_doc := public.claim_sighting_withdrawn_notification(v_e, v_spotter);
+  if (v_doc ->> 'body') <> 'The spotter wasn''t sure it was your car.' then
+    raise exception 'CHECK 10 FAILED: body for not_sure was %', v_doc ->> 'body';
+  end if;
+
+  raise notice 'withdraw_sighting CHECKS 9-10 passed';
+end $$;
+
+-- CHECK 11 — the claim is SERVICE ROLE ONLY: a client grant would let a user
+-- nominate themselves as the actor and defeat the authorisation.
+do $$
+declare
+  v_fn text := 'public.claim_sighting_withdrawn_notification(uuid, uuid)';
+begin
+  if to_regprocedure(v_fn) is null then
+    raise exception 'CHECK 11 FAILED: % does not exist', v_fn;
+  end if;
+  if has_function_privilege('anon', v_fn, 'EXECUTE')
+     or has_function_privilege('authenticated', v_fn, 'EXECUTE') then
+    raise exception 'CHECK 11 FAILED: % is callable by a client role', v_fn;
+  end if;
+  if not has_function_privilege('service_role', v_fn, 'EXECUTE') then
+    raise exception 'CHECK 11 FAILED: service_role cannot EXECUTE %', v_fn;
+  end if;
+
+  raise notice 'withdraw_sighting CHECK 11 passed';
 end $$;
 
 rollback;
