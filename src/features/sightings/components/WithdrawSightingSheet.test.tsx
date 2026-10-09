@@ -2,7 +2,7 @@
  * WHAT:  Tests for WithdrawSightingSheet — the question alone as the title,
  *        tagged optional; the four fixed answers in one column, nothing
  *        preselected; confirming with no answer sends null; a chosen answer
- *        is sent; tapping it again clears it; "Keep it" sends nothing; and a
+ *        is sent; tapping it again clears it; "Cancel" sends nothing; and a
  *        reopened sheet starts unanswered.
  * WHY:   The answer reaches an owner's lock screen (as a fixed sentence), so
  *        what the spotter chose must be exactly what is sent — and the
@@ -14,6 +14,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { createRef } from 'react';
+import { StyleSheet } from 'react-native';
 
 import { WithdrawSightingSheet, type WithdrawSightingSheetRef } from './WithdrawSightingSheet';
 
@@ -64,7 +65,7 @@ const setup = async () => {
   const press = async (name: string) => {
     await act(async () => {
       fireEvent.press(
-        view.getByRole(name.startsWith('Take') || name === 'Keep it' ? 'button' : 'radio', {
+        view.getByRole(name.startsWith('Take') || name === 'Cancel' ? 'button' : 'radio', {
           name,
         }),
       );
@@ -119,11 +120,11 @@ it('clears the answer when it is tapped again', async () => {
   expect(s.onConfirm).toHaveBeenCalledWith(null);
 });
 
-it('"Keep it" takes nothing back', async () => {
+it('"Cancel" takes nothing back', async () => {
   const s = await setup();
   await s.open();
   await s.press('I reported it by mistake');
-  await s.press('Keep it');
+  await s.press('Cancel');
   expect(s.onConfirm).not.toHaveBeenCalled();
   expect(s.onDismiss).toHaveBeenCalledTimes(1);
 });
@@ -132,7 +133,7 @@ it('⚠️ a reopened sheet starts unanswered — never the last report’s answ
   const s = await setup();
   await s.open();
   await s.press('Something else');
-  await s.press('Keep it');
+  await s.press('Cancel');
   await s.open();
   await s.press('Take it back');
   expect(s.onConfirm).toHaveBeenCalledWith(null);
@@ -163,4 +164,24 @@ it('⚠️ never cuts an answer off — at large text the sentences wrap', async
   await s.open();
   const answer = s.getByText('I’m not sure it was the car');
   expect(answer.props.numberOfLines).toBeUndefined();
+});
+
+it('outlines the chosen answer — and only that one, without moving anything', async () => {
+  const s = await setup();
+  await s.open();
+  await s.press('It wasn’t the car');
+  const flat = (id: string) => StyleSheet.flatten(s.getByTestId(id).props.style);
+  const chosen = flat('withdraw-reason-not_the_car');
+  const other = flat('withdraw-reason-not_sure');
+  expect(chosen.borderColor).not.toBe('transparent');
+  expect(other.borderColor).toBe('transparent');
+  // The same border width either way: choosing only changes its colour.
+  expect(chosen.borderWidth).toBe(other.borderWidth);
+});
+
+it('offers "Cancel", not "Keep it"', async () => {
+  const s = await setup();
+  await s.open();
+  expect(s.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+  expect(s.queryByText('Keep it')).toBeNull();
 });

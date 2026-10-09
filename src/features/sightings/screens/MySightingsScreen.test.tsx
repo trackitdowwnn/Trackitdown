@@ -502,7 +502,7 @@ describe('taking a report back', () => {
     expect(mockWithdraw).toHaveBeenCalledWith('s1', null);
   });
 
-  it('⚠️ "Keep it" forgets the report — a later confirm sends nothing', async () => {
+  it('⚠️ "Cancel" forgets the report — a later confirm sends nothing', async () => {
     mockUseRecord.mockReturnValue(ready([entry({ id: 's1', status: 'unverified' })]));
     const { getByTestId } = await render(<MySightingsScreen />);
     await act(async () => {

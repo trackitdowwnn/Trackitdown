@@ -74,14 +74,6 @@ export interface ListRowProps {
    */
   trailing?: ReactNode;
   disabled?: boolean;
-  /** What tapping does, when the role alone doesn't say — e.g. "Double tap
-   *  to clear" on a chosen answer that can be unchosen (a radio otherwise
-   *  promises it can't). */
-  accessibilityHint?: string;
-  /** Lines the title may take; 0 = as many as it needs. Default 1, right for a
-   *  settings label. A chooser whose titles ARE the answers (full sentences)
-   *  passes 0, so large text wraps them rather than cutting them off. */
-  titleLines?: number;
   testID?: string;
 }
 
@@ -96,8 +88,6 @@ export function ListRow({
   toggled,
   trailing,
   disabled = false,
-  accessibilityHint,
-  titleLines = 1,
   testID,
 }: ListRowProps) {
   const styles = useThemedStyles(makeStyles);
@@ -148,15 +138,11 @@ export function ListRow({
         ...(toggled === undefined ? {} : { checked: toggled }),
       }}
       accessibilityLabel={[title, value, subtitle].filter(Boolean).join(', ')}
-      accessibilityHint={accessibilityHint}
       testID={testID}
     >
       {Icon ? <Icon size={sizes.icon} color={iconColor} /> : null}
       <View style={styles.textBlock}>
-        <Text
-          style={[styles.title, { color: titleColor }]}
-          numberOfLines={titleLines === 0 ? undefined : titleLines}
-        >
+        <Text style={[styles.title, { color: titleColor }]} numberOfLines={1}>
           {title}
         </Text>
         {subtitle ? (

@@ -278,8 +278,8 @@ and Payouts shows nothing for a paid, lapsed or no-reward credit (the reason
 **Taking a report back** ("Take this back", unverified only) opens
 `WithdrawSightingSheet` (2026-10-09): just the question — "Why are you taking
 this back?" with a small "Optional" tag — and four fixed answers in one column
-(`ListRow` chooser rows; `lib/withdrawReasons.ts`, mirroring
-`sightings_withdraw_reason_chk`; no text box), then Take it back / Keep it.
+(light grey rounded boxes, a primary outline on the chosen one; `lib/withdrawReasons.ts`, mirroring
+`sightings_withdraw_reason_chk`; no text box), then Take it back / Cancel.
 `withdrawSighting(id, reason)` sends the answer and, once the server accepts,
 dispatches `notify-sighting-withdrawn`: the owner — if they had been told about
 the sighting — gets "A sighting of your … was taken back" with one fixed

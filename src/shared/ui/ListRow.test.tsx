@@ -1,7 +1,7 @@
 /**
  * WHAT:  Tests for ListRow — render variants (value, subtitle, destructive),
- *        press wiring, disabled state, chevron-only-when-pressable, the
- *        combined accessibility label, and the optional accessibility hint.
+ *        press wiring, disabled state, chevron-only-when-pressable, and the
+ *        combined accessibility label.
  * WHY:   Every settings row in the app rides on this; a swallowed press or a
  *        missing value in the spoken label breaks hub screens everywhere.
  * LINKS: src/shared/ui/ListRow.tsx; docs/TESTING.md.
@@ -155,31 +155,5 @@ describe('⚠️ the value at large text', () => {
     );
 
     expect(getByTestId('row').props.accessibilityLabel).toBe('Notifications, Not allowed');
-  });
-});
-
-describe('accessibilityHint', () => {
-  it('says what a tap does when the role alone does not — e.g. clearing a chosen answer', async () => {
-    const { getByTestId } = await render(
-      <ListRow
-        title="Something else"
-        selected
-        onPress={() => {}}
-        accessibilityHint="Double tap to clear"
-        testID="row"
-      />,
-    );
-    expect(getByTestId('row').props.accessibilityHint).toBe('Double tap to clear');
-  });
-});
-
-describe('titleLines', () => {
-  it('keeps a settings label to one line by default, and lets a chooser answer wrap', async () => {
-    const one = await render(<ListRow title="Notifications" onPress={() => {}} />);
-    expect(one.getByText('Notifications').props.numberOfLines).toBe(1);
-    const wrap = await render(
-      <ListRow title="I’m not sure it was the car" selected={false} titleLines={0} />,
-    );
-    expect(wrap.getByText('I’m not sure it was the car').props.numberOfLines).toBeUndefined();
   });
 });
