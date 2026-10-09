@@ -53,10 +53,10 @@ function latestRpcReasons(): string[] {
   for (const name of [...files].reverse()) {
     const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
     const body = sql.match(
-      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$\$([\s\S]*?)\$\$/,
+      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$(\w*)\$([\s\S]*?)\$\1\$/i,
     );
     if (!body) continue;
-    const list = body[1].match(/p_reason not in \(([^)]*)\)/);
+    const list = body[2].match(/p_reason not in \(([^)]*)\)/);
     if (!list) throw new Error(`${name}: withdraw_sighting has no p_reason check`);
     return [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
   }
@@ -83,9 +83,9 @@ function latestWithdrawBody(): string {
   for (const name of [...files].reverse()) {
     const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
     const body = sql.match(
-      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$\$([\s\S]*?)\$\$/,
+      /create (?:or replace )?function public\.withdraw_sighting\([\s\S]*?\$(\w*)\$([\s\S]*?)\$\1\$/i,
     );
-    if (body) return body[1];
+    if (body) return body[2];
   }
   throw new Error('withdraw_sighting not found in any migration');
 }
@@ -124,9 +124,9 @@ function latestClaimBody(): string {
   for (const name of [...files].reverse()) {
     const sql = readFileSync(join(MIGRATIONS_DIR, name), 'utf8');
     const body = sql.match(
-      /create (?:or replace )?function public\.claim_sighting_withdrawn_notification\([\s\S]*?\$\$([\s\S]*?)\$\$/,
+      /create (?:or replace )?function public\.claim_sighting_withdrawn_notification\([\s\S]*?\$(\w*)\$([\s\S]*?)\$\1\$/i,
     );
-    if (body) return body[1];
+    if (body) return body[2];
   }
   throw new Error('claim_sighting_withdrawn_notification not found in any migration');
 }
@@ -134,7 +134,10 @@ function latestClaimBody(): string {
 describe('the owner’s "Taken back" list', () => {
   it('⚠️ says, for every answer, the sentence the push gave', () => {
     // SQL doubles its apostrophes and uses the straight one; the app sets
-    // the typographic one. The WORDS must be the same.
+    // the typographic one. The WORDS must be the same. (With a note the
+    // push says "…withdrew it and left you a note."; the list says "The
+    // spotter withdrew it." and shows the note itself beneath — so it is
+    // that plain sentence this holds to the SQL.)
     const push = latestClaimBody().replace(/''/g, "'");
     for (const reason of [...WITHDRAW_REASONS, null]) {
       const sentence = withdrawalSentence(reason).replace(/’/g, "'");

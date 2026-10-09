@@ -904,11 +904,18 @@ describe('fetchPostWithdrawals — the 200 is characters, as the server counts',
     await expect(fetchPostWithdrawals('p1')).resolves.toHaveLength(1);
   });
 
-  it('refuses 201 characters', async () => {
+  it('refuses 201 characters — calmly, and without logging a word of it', async () => {
+    const note = `REFUSEDNOTE${'a'.repeat(190)}`;
     mockRpc.mockResolvedValue({
-      data: [{ withdrawn_at: '2026-10-09T10:00:00Z', reason: 'other', note: 'a'.repeat(201) }],
+      data: [{ withdrawn_at: '2026-10-09T10:00:00Z', reason: 'other', note }],
       error: null,
     });
-    await expect(fetchPostWithdrawals('p1')).rejects.toThrow();
+    await expect(fetchPostWithdrawals('p1')).rejects.toThrow(
+      'We couldn’t load what was taken back. Please try again.',
+    );
+    // The refusal is logged as counts and codes only — never the note.
+    expect(JSON.stringify(getRecentLogs())).not.toContain('REFUSEDNOTE');
+    expect(getRecentLogs().findLast((e) => e.message === 'get_post_withdrawals payload refused'))
+      .toBeTruthy();
   });
 });
