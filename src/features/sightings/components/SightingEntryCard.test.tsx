@@ -2,9 +2,11 @@
  * WHAT:  Tests for SightingEntryCard — the owner's photo-first timeline card:
  *        the in-app photo leads, "+N" for the rest, an empty box while a link
  *        is on its way and a frame mark with no photos; the place (or the
- *        honest "Location couldn't be captured"); the pill for every status,
- *        "Needs your answer" while undecided; nothing else on the card (no
- *        context pills, no spotter); one spoken label; the tap.
+ *        honest "Location couldn't be captured"); the time — the in-app
+ *        photo's clock time, or when it was sent if the phone's clock is
+ *        implausible; the status for every state, "Needs your answer" while
+ *        undecided; nothing else on the card (no context pills, no spotter);
+ *        one spoken label; the tap.
  * WHY:   The card was redesigned (2026-10-09) because it was too busy and
  *        never said which sightings were waiting on the owner. These pin both
  *        halves: what it shows, and what it no longer shows.
@@ -13,6 +15,8 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+
+import { formatClock } from '@/shared/lib';
 
 import type { OwnerSighting } from '../types';
 import { SightingEntryCard } from './SightingEntryCard';
@@ -100,16 +104,34 @@ describe('the photo', () => {
     expect(one.queryByText(/^\+/)).toBeNull();
   });
 
-  it('is an empty box while its link is on the way — not a broken image', async () => {
+  it('is an empty box while its link is on the way — not a broken image, not "no photos"', async () => {
     const view = await renderCard(sighting(), {});
     expect(thumbUri(view)).toBeUndefined();
     expect(view.getByTestId('timeline-entry-thumb-s1')).toBeTruthy();
+    expect(view.queryByTestId('timeline-entry-no-photo-s1')).toBeNull();
   });
 
   it('shows a frame mark when the sighting has no photos', async () => {
     const view = await renderCard(sighting({ photos: [] }));
     expect(thumbUri(view)).toBeUndefined();
-    expect(view.getByTestId('timeline-entry-thumb-s1')).toBeTruthy();
+    expect(view.getByTestId('timeline-entry-no-photo-s1')).toBeTruthy();
+  });
+});
+
+describe('the time', () => {
+  it('is when the in-app photo was taken — the clock only, the rail names the day', async () => {
+    const view = await renderCard();
+    // Taken 09:55, sent 10:00: the card says 09:55.
+    expect(view.getByText(new RegExp(` · ${formatClock(livePhoto.capturedAt)}$`))).toBeTruthy();
+    expect(view.queryByText(new RegExp(formatClock('2026-10-08T10:00:00Z')))).toBeNull();
+    expect(view.queryByText(/Today|Yesterday/)).toBeNull();
+  });
+
+  it('⚠️ falls back to when it was sent if the phone’s clock is implausible', async () => {
+    const view = await renderCard(
+      sighting({ photos: [{ ...livePhoto, capturedAt: '2026-10-01T09:55:00Z' }] }),
+    );
+    expect(view.getByText(new RegExp(` · ${formatClock('2026-10-08T10:00:00Z')}$`))).toBeTruthy();
   });
 });
 

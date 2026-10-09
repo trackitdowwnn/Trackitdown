@@ -152,8 +152,8 @@ export const sizes = {
   /** Dash rhythm (on/off, svg units) for the uncertainty segment. */
   timelineDash: 4,
   /** The owner timeline card's leading photo (2026-10-09, photo-first). Its
-   *  own token, not `avatarXl`/`avatarLg`: those are sized for faces. Tall
-   *  enough to hold the card's three lines beside it. */
+   *  own token, not `avatarXl`/`avatarLg`: those are sized for faces. Above
+   *  listRowStackFontScale it takes its own row and the words the width. */
   timelineThumb: 88,
   /** Map-pin family (drawn geometry; the PRESSABLE around a tappable pin is
    *  padded up to touchTarget — same rule as sliderThumb). */

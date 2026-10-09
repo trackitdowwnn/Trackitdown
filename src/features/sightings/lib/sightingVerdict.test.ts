@@ -78,6 +78,24 @@ describe('sightingSeenAt', () => {
     ).toBe('2026-10-08T09:55:00Z');
   });
 
+  it.each([
+    ['days before it was sent', '2026-10-01T10:00:00Z'],
+    ['more than an hour before', '2026-10-08T08:30:00Z'],
+    ['in the future', '2026-10-08T12:00:00Z'],
+    ['unparseable', 'not a time'],
+  ])('⚠️ is when it was sent if the phone’s clock put the photo %s', (_, capturedAt) => {
+    expect(sightingSeenAt({ createdAt, photos: [photo('live', capturedAt)] })).toBe(createdAt);
+  });
+
+  it('believes a capture up to an hour before sending, and a few minutes of clock drift', () => {
+    expect(sightingSeenAt({ createdAt, photos: [photo('live', '2026-10-08T09:05:00Z')] })).toBe(
+      '2026-10-08T09:05:00Z',
+    );
+    expect(sightingSeenAt({ createdAt, photos: [photo('live', '2026-10-08T10:03:00Z')] })).toBe(
+      '2026-10-08T10:03:00Z',
+    );
+  });
+
   it('is when it was sent when every photo is from the library — or there are none', () => {
     expect(sightingSeenAt({ createdAt, photos: [photo('gallery', '2026-09-01T08:00:00Z')] })).toBe(
       createdAt,

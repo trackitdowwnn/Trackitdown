@@ -17,6 +17,8 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
+import { motion } from '@/shared/theme';
+
 import type { OwnerSighting, PublicSightingEntries } from '../types';
 import { PostSightingsSection, sightingsSummaryLine } from './PostSightingsSection';
 
@@ -121,10 +123,12 @@ describe('sightingsSummaryLine', () => {
 
   it.each([
     [of('unverified'), '1 sighting · needs your answer'],
-    [of('helpful'), '1 sighting · answered'],
+    [of('helpful'), '1 sighting · nothing waiting on you'],
     [of('unverified', 'helpful', 'not_mine'), '3 sightings · 1 needs your answer'],
     [of('unverified', 'unverified', 'credited'), '3 sightings · 2 need your answer'],
-    [of('helpful', 'not_mine'), '2 sightings · all answered'],
+    [of('helpful', 'not_mine'), '2 sightings · nothing waiting on you'],
+    // A withdrawn one was never answered — and is not counted at all.
+    [of('helpful', 'withdrawn'), '1 sighting · nothing waiting on you'],
   ])('%j → "%s"', (sightings, line) => {
     expect(sightingsSummaryLine(sightings)).toBe(line);
   });
@@ -201,10 +205,21 @@ describe('owner face', () => {
     expect(queryByTestId('sightings-summary')).toBeNull();
   });
 
-  it('shows a skeleton while loading', async () => {
-    mockOwnerHook.mockReturnValue({ status: 'loading', sightings: [], photoUrls: {}, retry: jest.fn() });
-    const { getByTestId } = await renderSection({ postId: 'p1', isOwner: true });
-    expect(getByTestId('sightings-section-skeleton')).toBeTruthy();
+  it('⚠️ while loading: nothing shaped like sightings — a pause, then one neutral line', async () => {
+    jest.useFakeTimers();
+    try {
+      mockOwnerHook.mockReturnValue({ status: 'loading', sightings: [], photoUrls: {}, retry: jest.fn() });
+      const view = await renderSection({ postId: 'p1', isOwner: true });
+      expect(view.getByTestId('sightings-section-pending')).toBeTruthy();
+      expect(view.queryByText('Checking for sightings…')).toBeNull(); // the grace
+      await act(async () => {
+        jest.advanceTimersByTime(motion.skeletonGrace);
+      });
+      expect(view.getByText('Checking for sightings…')).toBeTruthy();
+      expect(view.queryByTestId(/timeline-entry-/)).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('offers a retry on error', async () => {
@@ -234,6 +249,9 @@ describe('public face', () => {
     expect(queryByText(/bakery/)).toBeNull(); // no notes
     expect(queryByText(/Camden High Street/)).toBeNull(); // no street-grain place
     expect(queryByTestId(/timeline-entry-/)).toBeNull(); // nothing tappable
+    // Nothing of the owner's decisions either: the summary line is theirs.
+    expect(queryByTestId('sightings-summary')).toBeNull();
+    expect(queryByText(/needs your answer|waiting on you|Confirmed|Not your car/i)).toBeNull();
   });
 
   it('renders NO section while loading — absence, not a skeleton', async () => {

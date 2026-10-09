@@ -1,8 +1,8 @@
 /**
  * WHAT:  Tests for contextLabels: the words for every context answer, the
- *        option lists the context step renders, contextSummary()'s narration
- *        order, contextReviewRows() (the check-and-send rows), and
- *        contextDetailCount().
+ *        option lists the context step renders, sightingDetailRows() (the
+ *        owner's "What they saw" rows), contextReviewRows() (the
+ *        check-and-send rows), and contextDetailCount().
  * WHY:   The spotter's chips and the owner's summaries share these words; a
  *        drift between them is the bug the 2026-10-01 redesign removed. The
  *        detail count drives the step's Skip / Continue label, so a "Not sure"
@@ -20,7 +20,6 @@ import {
   STAYING_OPTIONS,
   contextDetailCount,
   contextReviewRows,
-  contextSummary,
   sightingDetailRows,
 } from './contextLabels';
 
@@ -40,28 +39,36 @@ describe('contextLabels — the shared words', () => {
 
   it('still names a legacy street-parked row', () => {
     expect(PARKED_LIKELIHOOD_LABELS.street).toBe('Street parked');
-    expect(contextSummary({ contextFlags: ['parked'], parkedLikelihood: 'street' })).toEqual([
-      'Parked',
-      'Street parked',
+    expect(sightingDetailRows({ contextFlags: ['parked'], parkedLikelihood: 'street' })).toEqual([
+      { key: 'state', label: 'What it was doing', value: 'Parked · Street parked' },
     ]);
   });
 
-  it('narrates state, its follow-up, condition, then people — in the chip words', () => {
+  it('gives the owner state with its follow-up, people and condition — in the chip words', () => {
     expect(
-      contextSummary({
+      sightingDetailRows({
         contextFlags: ['driving', 'damage_visible'],
         direction: 'NE',
         peoplePresence: 'in_vehicle',
       }),
-    ).toEqual(['Moving', 'Heading north-east', 'Damage visible', 'Someone in it']);
+    ).toEqual([
+      { key: 'state', label: 'What it was doing', value: 'Moving · Heading north-east' },
+      { key: 'people', label: 'Anyone in or near it', value: 'Someone in it' },
+      { key: 'condition', label: 'Its condition', value: 'Damage visible' },
+    ]);
     expect(FLAG_LABELS.being_loaded).toBe('Being loaded or towed');
   });
 
   it('drops the legacy people flag when the 3-way answer exists', () => {
     expect(
-      contextSummary({ contextFlags: ['parked', 'people_nearby'], peoplePresence: 'nobody' }),
-    ).toEqual(['Parked', 'No one seen']);
-    expect(contextSummary({ contextFlags: ['people_nearby'] })).toEqual(['People nearby']);
+      sightingDetailRows({ contextFlags: ['parked', 'people_nearby'], peoplePresence: 'nobody' }),
+    ).toEqual([
+      { key: 'state', label: 'What it was doing', value: 'Parked' },
+      { key: 'people', label: 'Anyone in or near it', value: 'No one seen' },
+    ]);
+    expect(sightingDetailRows({ contextFlags: ['people_nearby'] })).toEqual([
+      { key: 'people', label: 'Anyone in or near it', value: 'People nearby' },
+    ]);
   });
 });
 
@@ -169,17 +176,17 @@ describe('contextReviewRows — the check-and-send rows', () => {
     ).toEqual([{ key: 'people', label: 'Anyone in or near it', value: 'No one seen' }]);
   });
 
-  it('says everything contextSummary says (one vocabulary)', () => {
+  it('what the spotter checks is what the owner reads (one vocabulary)', () => {
     const answers = {
       contextFlags: ['parked', 'looks_intact'] as const,
       parkedLikelihood: 'settled' as const,
       peoplePresence: 'nearby' as const,
     };
-    const rowText = contextReviewRows({ ...answers, contextFlags: [...answers.contextFlags] })
-      .map((row) => row.value)
-      .join(' · ');
-    for (const part of contextSummary({ ...answers, contextFlags: [...answers.contextFlags] })) {
-      expect(rowText).toContain(part);
-    }
+    const checked = contextReviewRows({ ...answers, contextFlags: [...answers.contextFlags] });
+    const owner = sightingDetailRows({ ...answers, contextFlags: [...answers.contextFlags] });
+    // The spotter's rows add marks and the note, which the owner's page shows
+    // in sections of its own; the context rows themselves are identical.
+    expect(checked.filter((row) => owner.some((o) => o.key === row.key))).toEqual(owner);
+    expect(owner.length).toBe(3);
   });
 });

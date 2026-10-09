@@ -22,21 +22,14 @@
 
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { createLogger } from '@/shared/lib/logger';
-import {
-  cardSurface,
-  radii,
-  sizes,
-  spacing,
-  typography,
-  useThemedStyles,
-  type Palette,
-} from '@/shared/theme';
+import { motion, sizes, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 
 import { usePostSightings } from '../hooks/usePostSightings';
 import { usePublicSightingEntries } from '../hooks/usePublicSightingEntries';
+import { isGoneSighting } from '../lib/sightingVerdict';
 import { locatedTrail, type TimelineAnchorSource } from '../lib/timelineModel';
 import type { OwnerSighting, PublicSightingEntry } from '../types';
 import { SightingsTrailMap, type TrailMapPoint } from './SightingsTrailMap';
@@ -49,11 +42,14 @@ const PREVIEW_LIMIT = 3;
 
 /** "4 sightings · 1 needs your answer" — counted over ALL the owner's
  *  sightings, not the 3 the preview shows, so a waiting one below the fold is
- *  never missed. "· all answered" once every one is decided. */
-export function sightingsSummaryLine(sightings: Pick<OwnerSighting, 'status'>[]): string {
+ *  never missed. "· nothing waiting on you" once every one is decided. */
+export function sightingsSummaryLine(all: Pick<OwnerSighting, 'status'>[]): string {
+  // A withdrawn sighting was never answered — it is not counted at all (the
+  // owner RPC filters them; this holds if one ever slips through).
+  const sightings = all.filter((s) => !isGoneSighting(s.status));
   const total = `${sightings.length} ${sightings.length === 1 ? 'sighting' : 'sightings'}`;
   const waiting = sightings.filter((s) => s.status === 'unverified').length;
-  if (waiting === 0) return `${total} · ${sightings.length === 1 ? 'answered' : 'all answered'}`;
+  if (waiting === 0) return `${total} · nothing waiting on you`;
   if (sightings.length === 1) return `${total} · needs your answer`;
   return `${total} · ${waiting} ${waiting === 1 ? 'needs' : 'need'} your answer`;
 }
@@ -150,24 +146,7 @@ export function PostSightingsSection({
           ) : null}
         </View>
         {owner.status === 'loading' ? (
-          // The cards' own shape, in line with where they will sit off the
-          // rail — so nothing jumps when they land.
-          <View
-            style={styles.skeletonSet}
-            accessible
-            accessibilityLabel="Loading sightings"
-            testID="sightings-section-skeleton"
-          >
-            {[0, 1].map((n) => (
-              <View key={n} style={styles.skeletonCard}>
-                <View style={styles.skeletonThumb} />
-                <View style={styles.skeletonLines}>
-                  <View style={styles.skeletonTitle} />
-                  <View style={styles.skeletonMeta} />
-                </View>
-              </View>
-            ))}
-          </View>
+          <SightingsPending />
         ) : owner.status === 'error' ? (
           <>
             <Text style={styles.meta}>We couldn’t load your sightings just now.</Text>
@@ -230,6 +209,35 @@ export function PostSightingsSection({
   );
 }
 
+/**
+ * While the owner's sightings load: nothing for `motion.skeletonGrace`, then
+ * one neutral line — true whatever the answer.
+ *
+ * ⚠️ NOT A SKELETON SHAPED LIKE SIGHTINGS (DESIGN_SYSTEM, Loading: "never a
+ * skeleton shaped like an answer the user may not have"; review of #146). Most
+ * posts have none yet, and for someone whose car was stolen, sighting-shaped
+ * cards that turn into "No sightings yet" read as something arriving and then
+ * vanishing.
+ */
+function SightingsPending() {
+  const styles = useThemedStyles(makeStyles);
+  // A held timer, not a render-time clock: the React Compiler would freeze it.
+  const [graceOver, setGraceOver] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setGraceOver(true), motion.skeletonGrace);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <View testID="sightings-section-pending">
+      {graceOver ? (
+        <Text style={styles.meta} accessibilityRole="progressbar">
+          Checking for sightings…
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const makeStyles = (c: Palette) => StyleSheet.create({
   // Mirrors the host page's section chrome (PostDetailBody) so this section
   // reads as native to the page: hairline divider, 32pt rhythm, title tier.
@@ -267,39 +275,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.label,
     color: c.textPrimary,
     textDecorationLine: 'underline',
-  },
-  skeletonSet: {
-    gap: spacing.lg,
-  },
-  // Indented by the rail column + its gap, as the real cards are.
-  skeletonCard: {
-    ...cardSurface(c),
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-    padding: spacing.md,
-    marginLeft: sizes.timelineRailColumn + spacing.lg,
-  },
-  skeletonThumb: {
-    width: sizes.timelineThumb,
-    height: sizes.timelineThumb,
-    borderRadius: radii.md,
-    backgroundColor: c.surfaceSubtle,
-  },
-  skeletonLines: {
-    flex: 1,
-    gap: spacing.xs,
-  },
-  skeletonTitle: {
-    height: typography.cardTitle.lineHeight,
-    width: '70%',
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
-  },
-  skeletonMeta: {
-    height: typography.caption.lineHeight,
-    width: '50%',
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
   },
 });

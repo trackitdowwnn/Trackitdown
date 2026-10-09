@@ -47,8 +47,8 @@ export function isGoneSighting(status: SightingStatus): boolean {
   return status === 'withdrawn';
 }
 
-/** The pill an owner's timeline card wears — including the undecided state,
- *  which the timeline must SAY ("Needs your answer", warning ink) so the
+/** The status an owner's timeline card wears — including the undecided state,
+ *  which the timeline must SAY ("Needs your answer", a warning ring) so the
  *  owner can tell at a glance which sightings are waiting on them. */
 export function sightingCardStatus(
   status: SightingStatus,
@@ -59,10 +59,31 @@ export function sightingCardStatus(
   return { label, tone: isConfirmedVerdict(status) ? 'primary' : 'neutral' };
 }
 
+/** How long before it was sent an in-app photo may have been taken and still
+ *  count as when the car was seen — a spotter takes the photo, then answers
+ *  a few questions. */
+const SEEN_BEFORE_SENT_MS = 60 * 60 * 1000;
+/** Device clocks drift a little ahead of the server's. */
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
+
 /** When the car was SEEN: the first in-app photo's capture moment. A library
  *  photo's time says nothing about when the car was there (ADR-0003), so
  *  without a live photo this is when the sighting was sent. One rule, so the
- *  timeline card and the sighting page say the same time. */
+ *  timeline (its order, its day headers, its cards) and the sighting page all
+ *  say the same time.
+ *
+ *  ⚠️ CLAMPED TO THE SERVER'S CLOCK (security review of #146). `capturedAt`
+ *  comes from the spotter's phone and the server checks only that it exists,
+ *  so a wrong — or set — clock could make a sighting look fresher or older to
+ *  the owner. A capture time is believed only inside the hour before the
+ *  server received the sighting; anything else falls back to when it was sent. */
 export function sightingSeenAt(sighting: Pick<OwnerSighting, 'photos' | 'createdAt'>): string {
-  return sighting.photos.find((photo) => photo.source === 'live')?.capturedAt ?? sighting.createdAt;
+  const captured = sighting.photos.find((photo) => photo.source === 'live')?.capturedAt;
+  if (!captured) return sighting.createdAt;
+  const capturedMs = new Date(captured).getTime();
+  const sentMs = new Date(sighting.createdAt).getTime();
+  if (Number.isNaN(capturedMs) || Number.isNaN(sentMs)) return sighting.createdAt;
+  const believable =
+    capturedMs >= sentMs - SEEN_BEFORE_SENT_MS && capturedMs <= sentMs + CLOCK_SKEW_MS;
+  return believable ? captured : sighting.createdAt;
 }

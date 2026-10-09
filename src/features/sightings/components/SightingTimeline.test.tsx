@@ -14,7 +14,7 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import type { TimelineAnchorSource } from '../lib/timelineModel';
+import { timelineDayLabel, type TimelineAnchorSource } from '../lib/timelineModel';
 import type { OwnerSighting } from '../types';
 import { OwnerSightingTimeline, PublicSightingTimeline, railFlags } from './SightingTimeline';
 
@@ -110,11 +110,51 @@ describe('owner face', () => {
         anchors={anchors}
       />,
     );
-    expect(view.getByTestId('timeline-entry-s4')).toBeTruthy();
-    expect(view.getByTestId('timeline-entry-s2')).toBeTruthy();
+    // Newest first, top-down.
+    expect(view.getAllByTestId(/^timeline-entry-s\d$/).map((node) => node.props.testID)).toEqual([
+      'timeline-entry-s4',
+      'timeline-entry-s3',
+      'timeline-entry-s2',
+    ]);
     expect(view.queryByTestId('timeline-entry-s1')).toBeNull();
     expect(view.getByText('…and 1 earlier sighting')).toBeTruthy();
     expect(view.getByText('Reported stolen')).toBeTruthy();
+  });
+
+  it('⚠️ orders and groups by when the car was SEEN — the card and its day stop agree', async () => {
+    // Photographed late on the 23rd, sent just after midnight: it sits under
+    // the 23rd, where its card's time puts it, not under the 24th. LOCAL
+    // times — day stops are local days, whatever zone the test runs in.
+    const local = (day: number, hour: number, minute: number) =>
+      new Date(2026, 6, day, hour, minute).toISOString();
+    const lateNight = sighting('s9', local(24, 0, 10), {
+      photos: [
+        {
+          path: 'p.jpg',
+          lat: null,
+          lng: null,
+          accuracyM: null,
+          capturedAt: local(23, 23, 50),
+          source: 'live',
+        },
+      ],
+    });
+    const view = await render(
+      <OwnerSightingTimeline
+        sightings={[lateNight, sighting('s8', local(24, 8, 0))]}
+        photoUrls={{}}
+        onEntryPress={jest.fn()}
+      />,
+    );
+    const lines = view
+      .getAllByText(/^(Today|Yesterday|\w{3} \d{1,2} \w{3}|Seen near Street s\d)$/)
+      .map((node) => node.props.children as string);
+    expect(lines).toEqual([
+      timelineDayLabel(local(24, 8, 0)),
+      'Seen near Street s8',
+      timelineDayLabel(local(23, 23, 50)),
+      'Seen near Street s9',
+    ]);
   });
 
   it('counts each card against the whole list for screen readers', async () => {

@@ -35,7 +35,10 @@
  *        docs/DESIGN_SYSTEM.md (timeline geometry tokens; sage-node sanction);
  *        docs/design-refs/timelime/ (the reference set this treatment draws
  *        on: day-groups as RAIL STOPS so the rail reads as a time axis;
- *        quiet-time-then-bold-place row hierarchy; ✓-marked status chips).
+ *        the place leading with the time quiet beneath; a status marker on
+ *        each owner card);
+ *        src/features/sightings/components/SightingEntryCard.tsx (the
+ *        owner's card).
  */
 
 import { Feather } from '@expo/vector-icons';
@@ -66,7 +69,10 @@ import {
   type Palette,
 } from '@/shared/theme';
 
-import { ENTRY_CARD_FIRST_LINE_Y, SightingEntryCard } from './SightingEntryCard';
+import { useNow } from '@/shared/hooks';
+
+import { sightingSeenAt } from '../lib/sightingVerdict';
+import { SightingEntryCard, useEntryCardFirstLineY } from './SightingEntryCard';
 import {
   buildTimelineItems,
   earlierCountLabel,
@@ -78,8 +84,9 @@ import {
 import type { OwnerSighting, PublicSightingEntries } from '../types';
 
 /** Node centres sit on their row's FIRST TEXT LINE centre (optical alignment):
- *  owner cards = ENTRY_CARD_FIRST_LINE_Y (SightingEntryCard owns its layout);
- *  public cards = row margin + card padding + half the caption line;
+ *  owner cards = useEntryCardFirstLineY() (SightingEntryCard owns its layout);
+ *  public cards = row margin + card padding + half the place line (label —
+ *  the same 18pt line box as caption);
  *  tail lines = row padding + half the body line;
  *  anchors = row padding + half the cardTitle line. */
 const CARD_NODE_Y = spacing.lg + spacing.lg + typography.caption.lineHeight / 2;
@@ -89,6 +96,8 @@ const DASH = [sizes.timelineDash, sizes.timelineDash];
 const RAIL_X = sizes.timelineRailColumn / 2;
 /** Halo peak opacity for the one-time pulse (drawn emphasis, not a token). */
 const PULSE_OPACITY = 0.35;
+/** How often the day stops re-check what today is. */
+const CLOCK_TICK_MS = 60_000;
 
 function clockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -420,13 +429,23 @@ export function OwnerSightingTimeline({
   // Hint is computed over ALL sightings even when the list is limited — the
   // preview must not claim a different journey than the full timeline.
   const hint = showHint ? movementHint(sightings) : null;
+  // ONE time for the order, the day stops and the cards: when the car was
+  // seen (sightingSeenAt — clamped to the server's clock). Grouping by when
+  // it was SENT put a card reading "Yesterday" under a "Today" stop.
   const shown = limit
     ? [...sightings]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .sort(
+          (a, b) =>
+            new Date(sightingSeenAt(b)).getTime() - new Date(sightingSeenAt(a)).getTime(),
+        )
         .slice(0, limit)
     : sightings;
   const elidedCount = sightings.length - shown.length;
-  const items = buildTimelineItems(shown, (s) => s.createdAt);
+  // A held clock, not buildTimelineItems' default `new Date()`: the React
+  // Compiler would freeze that, and "Today" would outlive midnight while the
+  // cards beside it (useTimeAgo) moved on.
+  const now = useNow(CLOCK_TICK_MS);
+  const items = buildTimelineItems(shown, sightingSeenAt, now);
   const hasTerminal = anchors ? terminalAnchor(anchors.status) !== null : false;
 
   // The render plan, top-down; railFlags styles whole connectors across it.
@@ -512,15 +531,16 @@ function OwnerEntryRow({
   onPress: () => void;
 }) {
   const styles = useThemedStyles(makeStyles);
+  const firstLineY = useEntryCardFirstLineY();
   return (
     <View style={styles.row}>
       <RailCell
         {...flags}
         node={newest ? sizes.timelineDotNewest : sizes.timelineDot}
-        centerY={ENTRY_CARD_FIRST_LINE_Y}
+        centerY={firstLineY}
       >
-        {newest ? <NewestPulse centerY={ENTRY_CARD_FIRST_LINE_Y} /> : null}
-        <SightingDot newest={newest} centerY={ENTRY_CARD_FIRST_LINE_Y} />
+        {newest ? <NewestPulse centerY={firstLineY} /> : null}
+        <SightingDot newest={newest} centerY={firstLineY} />
       </RailCell>
       <SightingEntryCard
         sighting={sighting}
@@ -548,7 +568,9 @@ export interface PublicSightingTimelineProps {
  *  post data the page already shows. */
 export function PublicSightingTimeline({ data, anchors }: PublicSightingTimelineProps) {
   const styles = useThemedStyles(makeStyles);
-  const items = buildTimelineItems(data.entries, (entry) => entry.sightedAt);
+  // A held clock for the day stops — see OwnerSightingTimeline.
+  const now = useNow(CLOCK_TICK_MS);
+  const items = buildTimelineItems(data.entries, (entry) => entry.sightedAt, now);
   const tail = earlierCountLabel(data.earlierCount);
   const entryCount = data.entries.length;
   const hasTerminal = anchors ? terminalAnchor(anchors.status) !== null : false;
@@ -609,13 +631,13 @@ export function PublicSightingTimeline({ data, anchors }: PublicSightingTimeline
                 payload carries — the faces read as one family, the fence
                 (time + locality, nothing else) is unchanged (ADR-0008). */}
             <View style={styles.publicCard}>
-              {/* Same line order as the owner card: quiet time above, the
-                  place leading below — one visual language, two depths. */}
-              <Text style={styles.publicWhen} numberOfLines={1}>
-                {timeAgo(item.entry.sightedAt)} · {clockTime(item.entry.sightedAt)}
-              </Text>
+              {/* Same line order as the owner card: the place leading, the
+                  quiet time beneath — one visual language, two depths. */}
               <Text style={styles.publicWhere} numberOfLines={2}>
                 {item.entry.locality ? `Sighted near ${item.entry.locality}` : 'Sighted'}
+              </Text>
+              <Text style={styles.publicWhen} numberOfLines={1}>
+                {timeAgo(item.entry.sightedAt)} · {clockTime(item.entry.sightedAt)}
               </Text>
             </View>
           </Animated.View>

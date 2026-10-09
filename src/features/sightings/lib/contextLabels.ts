@@ -1,14 +1,13 @@
 /**
  * WHAT:  The one vocabulary for a sighting's structured context: the labels
  *        for every flag, follow-up and presence answer; the option lists the
- *        context step renders as chips; contextSummary(), which narrates any
- *        sighting-ish shape for the owner; contextReviewRows(), the same facts
- *        as labelled rows for the check-and-send step, and
- *        sightingDetailRows(), the same rows under the same labels for the
- *        owner's sighting page ("What they saw"); and contextDetailCount(),
- *        how many details a report carries.
- * WHY:   The context step, the confirm step, the owner's timeline rows and the
- *        sighting detail page all describe the same facts. One module keeps
+ *        context step renders as chips; contextReviewRows(), the answers as
+ *        labelled rows for the check-and-send step, and sightingDetailRows(),
+ *        the same rows under the same labels for the owner's sighting page
+ *        ("What they saw"); and contextDetailCount(), how many details a
+ *        report carries.
+ * WHY:   The context step, the confirm step and the owner's sighting page all
+ *        describe the same facts. One module keeps
  *        the words identical everywhere: the step used to keep its own copies,
  *        so the spotter tapped "Being loaded or towed" and the owner read
  *        "Being loaded/towed" (2026-10-01 redesign). The step's chips ARE these
@@ -19,8 +18,8 @@
  *        change: only the words do.
  * LINKS: src/features/sightings/types.ts (the vocabularies);
  *        src/features/sightings/components/sightingSteps.tsx (ContextStep),
- *        components/ConfirmStep.tsx (contextReviewRows), SightingTimeline.tsx,
- *        screens/SightingDetailScreen.tsx.
+ *        components/ConfirmStep.tsx (contextReviewRows),
+ *        components/SightingSeenSection.tsx (sightingDetailRows).
  */
 
 import {
@@ -87,39 +86,13 @@ export function directionLabel(direction: DrivingDirection): string {
   return `Heading ${DIRECTION_LABELS[direction]}`;
 }
 
-/** The subset of a sighting the summary needs — answers (undefined) and
+/** The subset of a sighting the rows need — answers (undefined) and
  *  OwnerSighting (null) both satisfy it. */
 export interface ContextSummarySource {
   contextFlags?: SightingContextFlag[] | null;
   parkedLikelihood?: ParkedLikelihood | null;
   direction?: DrivingDirection | null;
   peoplePresence?: PeoplePresence | null;
-}
-
-/**
- * Friendly display parts. New reports narrate state → its follow-up →
- * condition → people (the wizard stores flags in that order); legacy rows
- * narrate in their stored flag order. The people_nearby FLAG renders only
- * when no presence field exists (old sightings) — a new report narrates
- * people via the 3-way answer.
- */
-export function contextSummary(source: ContextSummarySource): string[] {
-  const flags = source.contextFlags ?? [];
-  const parts: string[] = [];
-  for (const flag of flags) {
-    if (flag === 'people_nearby' && source.peoplePresence) continue;
-    parts.push(FLAG_LABELS[flag] ?? flag);
-    if (flag === 'parked' && source.parkedLikelihood) {
-      parts.push(PARKED_LIKELIHOOD_LABELS[source.parkedLikelihood]);
-    }
-    if (flag === 'driving' && source.direction) {
-      parts.push(directionLabel(source.direction));
-    }
-  }
-  if (source.peoplePresence) {
-    parts.push(PEOPLE_PRESENCE_LABELS[source.peoplePresence]);
-  }
-  return parts;
 }
 
 /** One labelled row of the check-and-send step's "What you saw". */
@@ -196,7 +169,7 @@ export function sightingDetailRows(source: ContextSummarySource): ContextReviewR
 /**
  * Everything the spotter said, as labelled rows for the check-and-send step:
  * the state with its follow-up, the people, the condition, the marks they
- * saw, and the note. The SAME words as contextSummary (what they check is
+ * saw, and the note. The SAME rows as sightingDetailRows (what they check is
  * what the owner reads); only answered questions appear, and "Not sure"
  * appears nowhere (it stores nothing). The marks keep the owner's order.
  */

@@ -806,16 +806,22 @@ to use.
   avatar chip fills with `primary` as a STATUS mark — a sanctioned exception
   to the actions-only rule (it mirrors the reference's verification badge
   and stays distinct from any nearby CTA). The second exception is the
-  `primary` tone of `StatusPill`: the dot on an owner's "Confirmed" /
-  "Credited" sighting answer (`SightingDetailScreen`, and the owner's
-  timeline cards) — a settled status, not success green, which stays
-  reserved for payout moments. On those cards an undecided sighting wears
-  "Needs your answer" with the `warning` dot (dot only, label in ink): the
-  one status that asks the owner to act.
+  `primary` dot on an owner's "Confirmed" / "Credited" sighting answer
+  (`StatusPill`'s `primary` tone on `SightingDetailScreen`; the same filled
+  dot on the owner's timeline cards) — a settled status, not success green,
+  which stays reserved for payout moments.
 - Sighting timeline cards (owner, `SightingEntryCard`, 2026-10-09): flat
-  `cardSurface`, photo first (`sizes.timelineThumb`), the place in
-  `cardTitle`, the time in caption, the status pill — nothing else. The
-  rail-to-card gap is `spacing.lg` (40px offset with the 24px node column).
+  `cardSurface` at the house `spacing.lg` padding, photo first
+  (`sizes.timelineThumb`), the place in `cardTitle`, the clock time in
+  caption (the rail's day stop names the day), and a bare marker + label
+  status — nothing else, no chevron. A bare marker, NOT `StatusPill`: the
+  pill's `surface` fill showed as a white box on the pressed card (ReportCard
+  records the same trap). "Needs your answer" is a `warning` RING with its
+  label in full ink — a ring so it differs from the answered states in
+  shape, not only hue; the answered states are filled dots with
+  `textSecondary` labels. Above `listRowStackFontScale` the photo takes its
+  own row. The rail-to-card gap is `spacing.lg` (40px offset with the 24px
+  node column); the rail's dot follows the first line at every text size.
 - Accessibility: minimum 44pt touch targets (map markers excepted — see Map
   screens), WCAG AA contrast against the
   near-white background (check `primary` and `accentText` on `#F7F7F7`), labels on all interactive
