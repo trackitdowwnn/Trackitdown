@@ -637,12 +637,14 @@ Rules that follow, and are not implementation details:
   (a rolling 24-hour window, not a midnight reset).
 - Every sighting screen and notification carries the safety line: report
   from a distance — never approach the vehicle or confront anyone. Call
-  999 if a crime is in progress. The ONE exception is `sighting_withdrawn`
-  (2026-10-09): it tells the owner a sighting should NOT be acted on and names
-  no place, so "don't approach" would read as if it still should be. For the REPORT flow it's carried by the
+  999 if a crime is in progress. For the REPORT flow it's carried by the
   safety sheet shown before the camera, every time (owner decision,
   2026-09-30: one firm moment at the start rather than a banner on each
   step of a speed flow); the photos step keeps "From a distance" in view.
+  The ONE notification without it is `sighting_withdrawn` (2026-10-09): it
+  tells the owner a sighting should NOT be acted on and names no place, so
+  "don't approach" would read as if it still should be. A tap opens the
+  listing, where the SafetyNotice is.
 
 ## Notifications
 

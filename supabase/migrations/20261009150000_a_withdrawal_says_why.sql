@@ -10,6 +10,8 @@
 --             one-argument call still resolves (named args + the default).
 --          3. claim_sighting_withdrawn_notification — SERVICE ROLE ONLY: the
 --             authorisation, the once-only claim, and the copy, built here.
+--          3b. claim_sighting_notification gains one gate: a sighting already
+--             withdrawn is never announced as new.
 --          4. Kind 'sighting_withdrawn' (UNMUTABLE, like 'sighting').
 -- WHY:   Owner request (2026-10-09). A withdrawn sighting simply vanished from
 --        the owner's listing, so an owner who had been told "Your blue BMW was
@@ -35,6 +37,15 @@
 --        line") exists because a sighting notice can send an owner towards
 --        their car. This one tells them a sighting should NOT be acted on, and
 --        names no place; "don't approach" would read as if it still should be.
+--
+-- SAFETY NOTE ON DESTRUCTIVE STATEMENTS: ONE drop function —
+--        withdraw_sighting(uuid), recreated as (uuid, text DEFAULT NULL) in
+--        the same transaction, so every existing call (the app's named
+--        one-argument call, the suite's positional ones) still resolves; and
+--        TWO check constraints (notifications_kind_chk, push_sends_kind_chk)
+--        dropped and re-added WIDER (one kind added, none removed). Everything
+--        else is additive: two nullable columns, one CHECK, one new function,
+--        one restated function (claim_sighting_notification, one gate added).
 -- LINKS: supabase/migrations/20260903100000_withdraw_a_sighting.sql (the RPC);
 --        supabase/migrations/20260922120000_pushes_say_the_news_first.sql
 --          (claim_sighting_notification — the model);
@@ -51,8 +62,12 @@ alter table public.sightings
   add column withdraw_reason text null,
   add column withdrawn_notified_at timestamptz null;
 
+-- A reason only ever belongs to a withdrawn sighting — defence in depth
+-- against a service-role write setting one on a live report.
 alter table public.sightings add constraint sightings_withdraw_reason_chk
-  check (withdraw_reason in ('not_the_car', 'not_sure', 'mistake', 'other'));
+  check (withdraw_reason is null
+         or (status = 'withdrawn'
+             and withdraw_reason in ('not_the_car', 'not_sure', 'mistake', 'other')));
 
 comment on column public.sightings.withdraw_reason is
   'Why the spotter took the sighting back (2026-10-09): not_the_car | not_sure | mistake | other, or NULL when they skipped the question (it is optional) or the sighting was never withdrawn. A CLOSED vocabulary on purpose — it reaches the owner only as fixed, server-built copy (claim_sighting_withdrawn_notification); there is no free-text reason anywhere.';
@@ -157,12 +172,15 @@ begin
   --   s.withdrawn_notified_at is null -- REPLAY: not already told
   --   s.notified_at is not null       -- the owner HEARD about it to begin with
   --   p.status = 'active'             -- a closed listing's owner isn't chasing
-  -- SAFETY: make / colour are unbounded owner-authored text — left(…, 32) each
-  -- before assembly, exactly as the sighting push does.
+  -- SAFETY: make / colour are unbounded owner-authored text, bounded BEFORE
+  -- the sentence is assembled (SECURITY_AND_TRUST §3) — at 22 each, not the
+  -- sighting push's 32: "A sighting of your " (19) + 22 + " " + 22 + " was
+  -- taken back" (15) = 79, so no make, however long, can cut "was taken
+  -- back" off the title and leave it reading like a NEW sighting.
   select p.owner_id,
          p.id,
-         left(coalesce(nullif(btrim(p.make),   ''), 'car'), 32),
-         left(coalesce(nullif(btrim(p.colour), ''), ''),    32),
+         left(coalesce(nullif(btrim(p.make),   ''), 'car'), 22),
+         left(coalesce(nullif(btrim(p.colour), ''), ''),    22),
          s.withdraw_reason
     into v_owner, v_post_id, v_make, v_colour, v_reason
   from public.sightings s
@@ -212,12 +230,88 @@ end;
 $$;
 
 comment on function public.claim_sighting_withdrawn_notification(uuid, uuid) is
-  'Authorises AND claims the sighting-withdrawn -> POST OWNER push exactly once. SERVICE ROLE ONLY (the actor is a parameter: the caller is an Edge Function that already verified the end-user JWT). Returns {"claimed": true, user_id (post owner), post_id, title, body} on the single winning call, and the IDENTICAL {"claimed": false} for every refusal — missing sighting, actor not its spotter (AUTHORISATION), not withdrawn, owner never notified of the sighting (notified_at null), post not active, owner is the actor, or already notified — so it is no existence oracle. Idempotent via a conditional update of sightings.withdrawn_notified_at (REPLAY). SAFETY: title = the car (make/colour, each left(...,32)) + "was taken back", bounded at 80; body = one FIXED sentence per withdraw_reason (no free text exists). No plate, no place, no spotter identity. Deliberately carries no don''t-approach line: it tells the owner a sighting should NOT be acted on.';
+  'Authorises AND claims the sighting-withdrawn -> POST OWNER push exactly once. SERVICE ROLE ONLY (the actor is a parameter: the caller is an Edge Function that already verified the end-user JWT). Returns {"claimed": true, user_id (post owner), post_id, title, body} on the single winning call, and the IDENTICAL {"claimed": false} for every refusal — missing sighting, actor not its spotter (AUTHORISATION), not withdrawn, owner never notified of the sighting (notified_at null), post not active, owner is the actor, or already notified — so it is no existence oracle. Idempotent via a conditional update of sightings.withdrawn_notified_at (REPLAY). SAFETY: title = the car (make/colour, each left(...,22) BEFORE assembly, so the 80-char title always keeps "was taken back") + "was taken back"; body = one FIXED sentence per withdraw_reason (no free text exists). No plate, no place, no spotter identity. Deliberately carries no don''t-approach line: it tells the owner a sighting should NOT be acted on.';
 
 revoke execute on function public.claim_sighting_withdrawn_notification(uuid, uuid)
   from public, anon, authenticated;
 grant execute on function public.claim_sighting_withdrawn_notification(uuid, uuid)
   to service_role;
+
+
+-- =============================================================================
+-- 3b. claim_sighting_notification — restated from 20260922120000 with ONE
+--     added gate: never announce a sighting that has already been withdrawn.
+-- =============================================================================
+-- ⚠️ WHY, NOW (security review of this change): a spotter could file a
+-- sighting, keep the "new sighting" push from going (kill the app before the
+-- client invokes notify-sighting), withdraw it — and THEN invoke
+-- notify-sighting, so the owner is told "your car was spotted" about a report
+-- already taken back, with the withdrawal notice refused because the owner
+-- "never heard". `and s.status <> 'withdrawn'` closes it. Everything else is
+-- the 20260922120000 body, unchanged — including the lower-case, unbroken
+-- "don't approach" token alerts_verification CHECK 23 matches with LIKE.
+create or replace function public.claim_sighting_notification(
+  p_sighting_id uuid,
+  p_actor       uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_owner   uuid;
+  v_post_id uuid;
+  v_make    text;
+  v_colour  text;
+  v_claimed uuid;
+begin
+  if p_sighting_id is null or p_actor is null then
+    return jsonb_build_object('claimed', false);
+  end if;
+
+  -- Every gate in ONE predicate (see 20260922120000 for each line's reason),
+  -- plus: s.status <> 'withdrawn' — a report taken back is never announced.
+  select p.owner_id,
+         p.id,
+         left(coalesce(nullif(btrim(p.make),   ''), 'car'), 32),
+         left(coalesce(nullif(btrim(p.colour), ''), ''),    32)
+    into v_owner, v_post_id, v_make, v_colour
+  from public.sightings s
+  join public.posts p on p.id = s.post_id
+  where s.id = p_sighting_id
+    and s.spotter_id = p_actor
+    and s.notified_at is null
+    and s.status <> 'withdrawn'
+    and p.status = 'active';
+
+  if not found or v_owner = p_actor then
+    return jsonb_build_object('claimed', false);
+  end if;
+
+  update public.sightings
+     set notified_at = now()
+   where id = p_sighting_id
+     and notified_at is null
+  returning id into v_claimed;
+
+  if v_claimed is null then
+    return jsonb_build_object('claimed', false);
+  end if;
+
+  return jsonb_build_object(
+    'claimed', true,
+    'user_id', v_owner,
+    'post_id', v_post_id,
+    'title',   left(regexp_replace(format('Your %s %s was spotted', v_colour, v_make), '\s+', ' ', 'g'), 80),
+    -- ⚠️ "don''t approach" STAYS LOWER-CASE AND UNBROKEN (alerts_verification
+    -- CHECK 23 matches it with LIKE).
+    'body', left('Someone reported seeing it — don''t approach, let the police handle it.', 150));
+end;
+$$;
+
+revoke execute on function public.claim_sighting_notification(uuid, uuid) from public, anon, authenticated;
+grant  execute on function public.claim_sighting_notification(uuid, uuid) to service_role;
 
 
 -- =============================================================================
@@ -247,4 +341,4 @@ alter table public.push_sends add constraint push_sends_kind_chk
                   'sighting_withdrawn'));
 
 comment on function public.notification_category(text) is
-  'Maps a notification kind to its mutable preference category, or NULL when the kind may not be muted (sighting, sighting_withdrawn, closed_uncredited, still_missing, deletion_soon, reward_ending, reward_ended, payout_reminder, payout_lapsed) or is not yet classified. NULL always means "deliver". sighting_withdrawn (2026-10-09) follows sighting: an owner told about a sighting must be able to learn it was taken back.';
+  'Maps a notification kind to its mutable preference category, or NULL when the kind may not be muted (sighting, sighting_withdrawn, closed_uncredited, still_missing, deletion_soon, reward_ending, reward_ended, payout_reminder, payout_lapsed) or is not yet classified. NULL always means "deliver". reward_ending / reward_ended are the notice a reward''s automatic refund must follow (ADR-0020); payout_reminder / payout_lapsed are the notice a credited spotter''s reward is about to go, and went, back to the owner. sighting_withdrawn (2026-10-09) follows sighting: an owner told about a sighting must be able to learn it was taken back.';
