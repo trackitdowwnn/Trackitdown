@@ -49,7 +49,8 @@ const SECTIONED_FROM = 20;
 const MODEL_ENTRY: ManualEntryButton = {
   label: 'Not listed? Type it in',
   accessibilityLabel: 'Not listed? Type your model in',
-  fieldLabel: 'Your car’s model',
+  sheetTitle: 'Type your car’s model',
+  fieldLabel: 'Model',
   submitLabel: 'Use this model',
   helper: 'As it’s shown on your logbook (V5C)',
 };

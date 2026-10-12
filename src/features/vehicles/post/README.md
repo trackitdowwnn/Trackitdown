@@ -79,7 +79,8 @@ never opens one person's last-seen location for the next.
    never popular; a model DfT also counts as a car (Transit, Hilux) ranks by
    that car count. A free-typed make (no list) drops to a plain free-text model input.
    Both pickers float a **"Not listed? Type it in"** pill (2026-10-12) that
-   opens a type-it-in box (`SelectField` `manualEntryButton`; ≤40 characters,
+   raises a type-it-in bottom sheet over the list (`SelectField`
+   `manualEntryButton`; ≤40 characters,
    `MAX_MANUAL_VEHICLE_TEXT`); filters never show it. The
    chosen make is folded into the step **title** ("Which BMW model?") via a
    dynamic `question` (a function of the answers, resolved by the framework's

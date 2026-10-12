@@ -50,7 +50,8 @@ const MAKE_OPTIONS: SelectOption<string>[] = CAR_MAKES.map((make) => ({
 const MAKE_ENTRY: ManualEntryButton = {
   label: 'Not listed? Type it in',
   accessibilityLabel: 'Not listed? Type your make in',
-  fieldLabel: 'Your car’s make',
+  sheetTitle: 'Type your car’s make',
+  fieldLabel: 'Make',
   submitLabel: 'Use this make',
   helper: 'As it’s shown on your logbook (V5C)',
 };

@@ -91,6 +91,9 @@
     "resolver": "react-native-worklets/jest/resolver",
     "testTimeout": 15000,
     "globalSetup": "<rootDir>/jest/globalSetup.js",
+    "setupFiles": [
+      "<rootDir>/node_modules/react-native-gesture-handler/jestSetup.js"
+    ],
     "collectCoverageFrom": [
       "src/**/*.{ts,tsx}",
       "!src/**/*.d.ts"

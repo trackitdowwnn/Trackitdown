@@ -12,7 +12,7 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Keyboard } from 'react-native';
+import { AccessibilityInfo, Keyboard } from 'react-native';
 
 import { SelectScreen, fitAnchors } from './SelectScreen';
 import type { SelectOption } from './selectOptions';
@@ -21,6 +21,39 @@ jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   require('react-native-safe-area-context/jest/mock').default,
 );
+
+// The type-it-in sheet (2026-10-12) shows only once presented, so its content
+// is absent until the pill opens it — the house visibility-aware modal.
+jest.mock('@gorhom/bottom-sheet', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const mock = require('@gorhom/bottom-sheet/mock');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const ReactNative = require('react-native');
+  class VisibilityAwareBottomSheetModal extends React.Component {
+    state = { visible: false };
+    present = () => {
+      this.setState({ visible: true });
+      this.props.onChange?.(0);
+    };
+    dismiss = () => {
+      if (!this.state.visible) return;
+      this.setState({ visible: false });
+      this.props.onChange?.(-1);
+      this.props.onDismiss?.();
+    };
+    render() {
+      return this.state.visible ? this.props.children : null;
+    }
+  }
+  return {
+    ...mock,
+    BottomSheetModal: VisibilityAwareBottomSheetModal,
+    BottomSheetScrollView: (props: object) => React.createElement(ReactNative.ScrollView, props),
+    BottomSheetTextInput: (props: object) => React.createElement(ReactNative.TextInput, props),
+  };
+});
 
 // Mock at the boundary: SelectScreen needs Animated.View, the slide/fade
 // builders (chainable no-ops here), Easing, and ReduceMotion. withCallback
@@ -223,7 +256,8 @@ describe('SelectScreen', () => {
     const BUTTON = {
       label: 'Not listed? Type it in',
       accessibilityLabel: 'Not listed? Type your make in',
-      fieldLabel: 'Your car’s make',
+      sheetTitle: 'Type your car’s make',
+      fieldLabel: 'Make',
       submitLabel: 'Use this make',
       helper: 'As it’s shown on your logbook (V5C)',
     };
@@ -255,17 +289,21 @@ describe('SelectScreen', () => {
       expect(view.getByText('Use “Reliant”')).toBeTruthy();
     });
 
-    it('opens a type-it-in box in place of the list', async () => {
+    it('opens a type-it-in sheet over the list', async () => {
       const { view } = await withPill();
       await openBox(view);
       expect(view.getByTestId('select-manual-entry')).toBeTruthy();
+      expect(view.getByText('Type your car’s make')).toBeTruthy();
       const input = view.getByTestId('select-manual-input');
-      expect(input.props.autoFocus).toBe(true);
+      // Focused once the sheet has risen, not mid-slide (no autoFocus).
+      expect(input.props.autoFocus).toBeUndefined();
       expect(input.props.maxLength).toBe(40);
       expect(view.getByText('As it’s shown on your logbook (V5C)')).toBeTruthy();
       // …and spoken with the field, which TextField would otherwise not read.
       expect(input.props.accessibilityHint).toBe('As it’s shown on your logbook (V5C)');
-      // The list (and its pill) make way.
+      // The list stays behind the sheet — but out of a screen reader's
+      // reach while it's up; only its pill steps aside.
+      expect(view.getByText('BMW', { includeHiddenElements: true })).toBeTruthy();
       expect(view.queryByText('BMW')).toBeNull();
       expect(view.queryByTestId('select-manual-pill')).toBeNull();
     });
@@ -320,14 +358,15 @@ describe('SelectScreen', () => {
       expect(onSubmit).toHaveBeenCalledWith('Trabant');
     });
 
-    it('"Back to the list" returns to the list', async () => {
+    it('Cancel closes the sheet, back to the list', async () => {
       const { view, onClose } = await withPill();
       await openBox(view);
       await act(async () => {
-        fireEvent.press(view.getByRole('button', { name: 'Back to the list' }));
+        fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
       });
       expect(view.queryByTestId('select-manual-entry')).toBeNull();
       expect(view.getByText('BMW')).toBeTruthy();
+      expect(view.getByTestId('select-manual-pill')).toBeTruthy();
       expect(onClose).not.toHaveBeenCalled();
     });
 
@@ -361,7 +400,7 @@ describe('SelectScreen', () => {
       expect(onClosed).toHaveBeenCalledWith(true);
     });
 
-    it('Android Back steps out of the box first, without closing the picker', async () => {
+    it('Android Back closes the sheet first, without closing the picker', async () => {
       const { view, onClose } = await withPill();
       await openBox(view);
       await act(async () => {
@@ -376,20 +415,20 @@ describe('SelectScreen', () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('keeps what was typed across "Back to the list" and back again', async () => {
+    it('keeps what was typed across Cancel and back again', async () => {
       const { view } = await withPill();
       await openBox(view);
       await act(async () => {
         fireEvent.changeText(view.getByTestId('select-manual-input'), 'Trabant');
       });
       await act(async () => {
-        fireEvent.press(view.getByRole('button', { name: 'Back to the list' }));
+        fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
       });
       await openBox(view);
       expect(view.getByTestId('select-manual-input').props.value).toBe('Trabant');
     });
 
-    it('a reopened picker starts at the list, never in the last box', async () => {
+    it('⚠️ a reopened picker starts at the list, never with the last sheet up', async () => {
       const { view } = await withPill();
       await openBox(view);
       const at = (visible: boolean) => (
@@ -435,6 +474,46 @@ describe('SelectScreen', () => {
         fireEvent.press(view.getByText(`Use “${long}”`));
       });
       expect(onSubmit).toHaveBeenCalledWith('x'.repeat(40));
+    });
+
+    it('Cancel hands screen-reader focus back to the pill', async () => {
+      const send = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent');
+      const { view } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        jest.advanceTimersByTime(300); // the field's own focus, once risen
+      });
+      send.mockClear();
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith(expect.anything(), 'focus');
+      send.mockRestore();
+    });
+
+    it('…but not after "Use this make" — the picker closes with the sheet', async () => {
+      const send = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent');
+      const { view } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      send.mockClear();
+      await act(async () => {
+        fireEvent.changeText(view.getByTestId('select-manual-input'), 'Trabant');
+      });
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Use this make' }));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(send).not.toHaveBeenCalled();
+      send.mockRestore();
     });
 
     it('comes back when the keyboard is closed without leaving the search (Android Back)', async () => {

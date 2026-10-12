@@ -26,6 +26,39 @@ jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default,
 );
 
+// The type-it-in sheet (2026-10-12) shows only once presented, so its content
+// is absent until the pill opens it — the house visibility-aware modal.
+jest.mock('@gorhom/bottom-sheet', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const React = require('react');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const mock = require('@gorhom/bottom-sheet/mock');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  const ReactNative = require('react-native');
+  class VisibilityAwareBottomSheetModal extends React.Component {
+    state = { visible: false };
+    present = () => {
+      this.setState({ visible: true });
+      this.props.onChange?.(0);
+    };
+    dismiss = () => {
+      if (!this.state.visible) return;
+      this.setState({ visible: false });
+      this.props.onChange?.(-1);
+      this.props.onDismiss?.();
+    };
+    render() {
+      return this.state.visible ? this.props.children : null;
+    }
+  }
+  return {
+    ...mock,
+    BottomSheetModal: VisibilityAwareBottomSheetModal,
+    BottomSheetScrollView: (props: object) => React.createElement(ReactNative.ScrollView, props),
+    BottomSheetTextInput: (props: object) => React.createElement(ReactNative.TextInput, props),
+  };
+});
+
 // Reanimated's own mock, not a hand-built stub: the shared UI barrel these
 // fields import loads BottomSheet and MoneySlider, which call into far more of
 // Reanimated at import than the picker does. A thin stub loaded fine alone and
