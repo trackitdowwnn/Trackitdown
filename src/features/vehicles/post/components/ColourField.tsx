@@ -6,12 +6,12 @@
  *        wrapped" or "Other") selects it AND opens a BottomSheet to capture the
  *        free-text specifics (re-tapping reopens it to edit).
  * WHY:   A named-swatch grid — not a spectrum/hex picker — is the right pattern
- *        for a dozen real colours (research). The NAME label is a hard
+ *        for the ~twenty real colours a V5C records (research). The NAME label is a hard
  *        accessibility requirement, not decoration: ~4.5% of users have colour-
  *        vision deficiency and a colour-blind spotter reads the word — so
  *        colour is NEVER the sole signal (DESIGN_SYSTEM: never encode by colour
- *        alone). Light swatches (white/silver/gold) get a border so they don't
- *        vanish on the light background. The stored value is the canonical NAME
+ *        alone). Every swatch gets a border so none vanishes, pale or dark,
+ *        on either theme. The stored value is the canonical NAME
  *        (a clean enum); the note is stored separately (→ owner_note) so it
  *        never pollutes the colour value. The note lives in a focused sheet
  *        opened on selection (no inline input), keeping the grid uncluttered.
@@ -23,7 +23,15 @@
 
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, View, type TextInput } from 'react-native';
+import {
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  type TextInput,
+} from 'react-native';
 import Animated, {
   FadeInDown,
   ReduceMotion,
@@ -36,6 +44,7 @@ import Animated, {
 
 import { lightHaptic } from '@/shared/lib/haptics';
 import {
+  listRowStackFontScale,
   motion,
   radii,
   sizes,
@@ -45,12 +54,15 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
+import { fontFamilies } from '@/shared/theme/typography';
 import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
 import {
   CAR_COLOURS,
   canonicalColourName,
   type CarColour,
+  colourIsComplete,
+  glyphInkFor,
   isNoteColour,
   swatchForName,
 } from '@/shared/lib';
@@ -67,8 +79,6 @@ export interface ColourFieldProps {
   note: string;
   onChange: (colour: string) => void;
   onChangeNote: (note: string) => void;
-  /** The escape note sheet's Done — after the keyboard and sheet have gone. */
-  onDone?: () => void;
   error?: string;
 }
 
@@ -79,6 +89,9 @@ const FALLBACK_NOTE_COPY = {
   placeholder: 'e.g. matte black wrap over silver',
   helper: 'Tell spotters about the wrap or finish.',
 };
+
+/** A swatch's full box: the swatch, its ring gap and its ring, both sides. */
+const SWATCH_BOX = sizes.colourSwatch + 2 * (sizes.colourSwatchRingGap + sizes.colourSwatchRing);
 
 /** Per-cell stagger (matches SelectScreen): ≤~6 steps so the cascade lands in
  *  the ≤300ms budget (docs/DESIGN_SYSTEM.md Motion — lists). */
@@ -123,6 +136,7 @@ function SwatchCell({
         accessibilityRole="radio"
         accessibilityLabel={colour.name}
         accessibilityState={{ checked: selected }}
+        accessibilityHint={colour.note ? 'Opens a box to describe it' : undefined}
         onPress={handlePress}
         style={styles.cellPressable}
       >
@@ -148,7 +162,9 @@ function SwatchCell({
               <View style={[styles.swatchHalf, { backgroundColor: colour.secondaryHex }]} />
             ) : null}
             {colour.icon ? (
-              <Feather name={colour.icon} size={sizes.iconSm} color={palette.textSecondary} />
+              // The swatch's own ink, not a theme one: the fill never flips, so a
+              // themed grey went to ~2:1 on it in dark mode (UI review).
+              <Feather name={colour.icon} size={sizes.iconSm} color={glyphInkFor(colour)} />
             ) : null}
           </View>
           {selected ? (
@@ -157,8 +173,9 @@ function SwatchCell({
             </View>
           ) : null}
         </Animated.View>
-        {/* The chosen name a weight up: the selection reads in WORDS too,
-            never by the ring's colour alone (owner request, 2026-10-12). */}
+        {/* The chosen name a weight up — the same SIZE, so nothing rewraps
+            and no row moves under the finger: the selection reads in WORDS
+            too, never by the ring's colour alone (owner request, 2026-10-12). */}
         <Text style={[styles.swatchLabel, selected && styles.swatchLabelSelected]} numberOfLines={2}>
           {colour.name}
         </Text>
@@ -167,79 +184,120 @@ function SwatchCell({
   );
 }
 
-export function ColourField({
-  value,
-  note,
-  onChange,
-  onChangeNote,
-  onDone,
-  error,
-}: ColourFieldProps) {
+export function ColourField({ value, note, onChange, onChangeNote, error }: ColourFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
   const noteRef = useRef<TextInput>(null);
   const [sheetUp, setSheetUp] = useState(false);
+  // Done pressed on a blank required note: the box says why (UI review —
+  // a disabled Done said nothing to anyone).
+  const [noteError, setNoteError] = useState<string | undefined>(undefined);
+  const { width, fontScale } = useWindowDimensions();
   // A retired name (an old "Brown / Beige") still selects its swatch.
   const chosen = canonicalColourName(value);
   const chosenSwatch = swatchForName(value);
-  // Each escape asks its own question (2026-10-12): "What colour is it?" for
-  // Other, "Describe the wrap" for Multicolour / wrapped.
+  // Each escape asks its own question (2026-10-12).
   const copy = chosenSwatch?.noteCopy ?? FALLBACK_NOTE_COPY;
-  const noteMissing = Boolean(chosenSwatch?.noteRequired) && note.trim() === '';
+  const noteMissing = !colourIsComplete(value, note);
+
+  // FOUR columns where four swatches and their gaps fit; three at large text
+  // or on a narrow phone, where four would overflow their cells and split
+  // names mid-word (UI review). Rows of flex:1 cells — never measured widths.
+  const fitsFour =
+    width - 2 * spacing.xl >= 4 * SWATCH_BOX + 3 * spacing.sm &&
+    (fontScale ?? 1) <= listRowStackFontScale;
+  const rows = chunk(CAR_COLOURS, fitsFour ? 4 : 3);
+
+  const openSheet = () => {
+    setNoteError(undefined);
+    setSheetUp(true);
+    sheetRef.current?.open();
+  };
 
   // Selecting an escape colour ("Multicolour / wrapped" / "Other") opens the
   // note sheet straight away — no separate trigger field. Re-tapping the same
   // escape swatch reopens it to edit the note.
   const handleSelect = (name: string) => {
     onChange(name);
-    if (isNoteColour(name)) {
-      setSheetUp(true);
-      sheetRef.current?.open();
-    }
+    if (isNoteColour(name)) openSheet();
   };
 
   // The box takes focus once the sheet has RISEN, not as it mounts — a
-  // keyboard raised mid-slide made the sheet jump twice (#158's lesson).
+  // keyboard raised mid-slide made the sheet jump twice (#158's lesson). A
+  // small margin past the slide, so it never lands on the last frame.
   useEffect(() => {
     if (!sheetUp) return undefined;
-    const timer = setTimeout(() => noteRef.current?.focus(), motion.standard);
+    const timer = setTimeout(() => noteRef.current?.focus(), motion.standard + motion.fast);
     return () => clearTimeout(timer);
   }, [sheetUp]);
 
-  // Done takes the keyboard with the sheet, then hands back to the step.
+  // Done takes the keyboard with the sheet — or, for a blank required note,
+  // says what's missing and keeps the box.
   const finishNote = () => {
-    if (noteMissing) return;
+    if (noteMissing) {
+      setNoteError('Say what colour it is');
+      noteRef.current?.focus();
+      return;
+    }
     Keyboard.dismiss();
     sheetRef.current?.close();
-    onDone?.();
   };
 
-  // A quiet confirmation in WORDS of what is chosen — with the note, if any.
-  const summary = chosen
-    ? note.trim() && chosenSwatch?.note
-      ? `Selected: ${chosen} — ${note.trim()}`
-      : `Selected: ${chosen}`
-    : null;
+  // What is chosen, in WORDS. "Other" is named by its description; a
+  // multicolour shows its note beside it.
+  const describedNote = note.trim();
+  const summary = !chosen
+    ? null
+    : chosenSwatch?.noteRequired && describedNote
+      ? `Selected: ${describedNote}`
+      : chosenSwatch?.note && describedNote
+        ? `Selected: ${chosen} — ${describedNote}`
+        : `Selected: ${chosen}`;
 
   return (
     <View style={styles.stack}>
       <View accessibilityRole="radiogroup" accessibilityLabel="Car colour" style={styles.grid}>
-        {CAR_COLOURS.map((colour, index) => (
-          <SwatchCell
-            key={colour.name}
-            colour={colour}
-            index={index}
-            selected={chosen === colour.name}
-            onSelect={handleSelect}
-          />
+        {rows.map((row, rowIndex) => (
+          <View key={row[0].name} style={styles.row}>
+            {row.map((colour, cellIndex) => (
+              <SwatchCell
+                key={colour.name}
+                colour={colour}
+                index={rowIndex * row.length + cellIndex}
+                selected={chosen === colour.name}
+                onSelect={handleSelect}
+              />
+            ))}
+            {/* Spacers keep a short last row's cells the same width. */}
+            {Array.from({ length: (fitsFour ? 4 : 3) - row.length }, (_, i) => (
+              <View key={`spacer-${i}`} style={styles.cell} />
+            ))}
+          </View>
         ))}
       </View>
 
-      {summary ? (
-        <Text style={styles.summary} accessibilityLiveRegion="polite" testID="colour-summary">
-          {summary}
-        </Text>
-      ) : null}
+      {/* Not a live region: the radio's own state announces the pick, and
+          this line would re-speak on every keystroke in the sheet. */}
+      <View style={styles.summaryRow}>
+        {summary ? (
+          <Text style={styles.summary} testID="colour-summary">
+            {summary}
+          </Text>
+        ) : null}
+        {/* "Other" with nothing said: name what's missing, and the way back
+            to the box (re-tapping the swatch is not discoverable). */}
+        {chosen && noteMissing ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add the colour"
+            onPress={openSheet}
+            hitSlop={spacing.md}
+            style={styles.addLink}
+          >
+            <Text style={styles.addLinkText}>Add the colour</Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -253,6 +311,7 @@ export function ColourField({
         onDismiss={() => {
           Keyboard.dismiss();
           setSheetUp(false);
+          setNoteError(undefined);
         }}
       >
         <View style={styles.sheetBody}>
@@ -262,17 +321,28 @@ export function ColourField({
             variant="multiline"
             placeholder={copy.placeholder}
             value={note}
-            onChangeText={onChangeNote}
+            onChangeText={(text) => {
+              setNoteError(undefined);
+              onChangeNote(text);
+            }}
             maxLength={120}
             helperText={copy.helper}
             accessibilityHint={copy.helper}
+            error={noteError}
             testID="colour-note-input"
           />
-          <Button label="Done" onPress={finishNote} disabled={noteMissing} />
+          <Button label="Done" onPress={finishNote} />
         </View>
       </BottomSheet>
     </View>
   );
+}
+
+/** `items` in rows of `size`. */
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size));
+  return rows;
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
@@ -280,15 +350,15 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     gap: spacing.xl,
   },
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
     rowGap: spacing.xl,
   },
-  // FOUR columns (2026-10-12): the V5C palette's twenty fill five even rows,
-  // where three columns left a ragged last row of two.
+  row: {
+    flexDirection: 'row',
+    columnGap: spacing.sm,
+  },
+  // Equal flex cells in each row (DESIGN_SYSTEM: never measured widths).
   cell: {
-    width: '23%',
+    flex: 1,
   },
   cellPressable: {
     alignItems: 'center',
@@ -311,11 +381,8 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Light fills would vanish on the light page — a hairline keeps them legible.
-  // ⚠️ The swatch fills are literal CAR colours, so they never move with the
-  // theme; only the ring does. On the dark page it is the DARK swatches that
-  // now need this edge, and `colour.light` no longer selects the right ones —
-  // a design call, deliberately left alone by this mechanical pass.
+  // Every swatch's edge (see the SwatchCell comment): pale fills vanish on the
+  // light page and dark ones on the dark page, so none goes without it.
   swatchBordered: {
     borderWidth: 1,
     borderColor: c.borderStrong,
@@ -347,14 +414,35 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textPrimary,
     textAlign: 'center',
+    minHeight: 2 * typography.caption.lineHeight,
   },
+  // Two lines reserved for every name, so a row is the same height whatever
+  // is picked; selection changes the WEIGHT only, never the size.
   swatchLabelSelected: {
-    ...typography.label,
+    fontFamily: fontFamilies.medium,
   },
-  // "Selected: Blue" under the grid — quiet, secondary ink.
+  // "Selected: Blue" under the grid — quiet, secondary ink — with, for an
+  // undescribed Other, the underlined way back to its box.
+  summaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    columnGap: spacing.md,
+    rowGap: spacing.xs,
+    minHeight: typography.caption.lineHeight,
+  },
   summary: {
     ...typography.caption,
     color: c.textSecondary,
+  },
+  addLink: {
+    minHeight: sizes.touchTarget,
+    justifyContent: 'center',
+  },
+  addLinkText: {
+    ...typography.label,
+    color: c.textPrimary,
+    textDecorationLine: 'underline',
   },
   sheetBody: {
     gap: spacing.xl,

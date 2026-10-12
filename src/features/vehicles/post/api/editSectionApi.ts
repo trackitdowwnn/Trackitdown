@@ -19,6 +19,7 @@
  */
 
 import { supabase } from '@/shared/api';
+import { canonicalColourName } from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import type { PickedPhoto } from '@/shared/ui';
 
@@ -102,7 +103,7 @@ export async function saveCarDetails(postId: string, input: CarDetailsInput): Pr
     p_post_id: postId,
     p_make: input.make,
     p_model: input.model,
-    p_colour: input.colour,
+    p_colour: canonicalColourName(input.colour) ?? input.colour,
     p_owner_note: emptyToNull(input.colourNote),
     p_year: input.year ?? null,
     p_body_type: input.bodyType ?? null,

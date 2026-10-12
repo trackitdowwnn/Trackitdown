@@ -151,6 +151,16 @@ describe('colourFromDvla (pre-select mapping)', () => {
     ]);
   });
 
+  it('⚠️ a stored colour that is an Object property name never crashes', () => {
+    // posts.colour is free text: "toString" once read an inherited function
+    // from the alias table and threw on every screen drawing the car.
+    for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(() => swatchForName(name)).not.toThrow();
+      expect(swatchForName(name)).toBeUndefined();
+      expect(canonicalColourName(name)).toBe(name);
+    }
+  });
+
   it('⚠️ still resolves a retired name — an old "Brown / Beige" is Brown', () => {
     expect(swatchForName('Brown / Beige')?.name).toBe('Brown');
     expect(swatchForName('  brown / beige ')?.name).toBe('Brown');

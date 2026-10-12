@@ -1,10 +1,12 @@
 /**
  * WHAT:  CAR_COLOURS — the curated palette of real UK car colours for the
  *        post-a-car colour step (swatch grid), plus the DVLA colour → swatch
- *        mapping (`colourFromDvla`), lookups (`swatchForName`, `isNoteColour`),
- *        and `colourChangePatch` (clears the free-text note when the picked
- *        colour isn't a note colour).
- * WHY:   Cars come in ~a dozen real colours, so a curated NAMED-swatch set is
+ *        mapping (`colourFromDvla`), lookups (`swatchForName` — which resolves a
+ *        retired name through `LEGACY_COLOUR_ALIASES` —, `canonicalColourName`,
+ *        `isNoteColour`), `colourIsComplete` (Other needs its note), and
+ *        `colourChangePatch` (clears the free-text note when the picked colour
+ *        isn't a note colour).
+ * WHY:   Cars come in the ~twenty colours a V5C records, so a curated NAMED-swatch set is
  *        the right pattern — a free colour/hex picker would add friction and
  *        produce useless values like "#8B8C8E". The stored value is the
  *        canonical NAME (posts.colour), a clean enum that drives the card /
@@ -111,8 +113,8 @@ export const CAR_COLOURS: CarColour[] = [
   { name: 'Gold', hex: '#C9A227', light: true },
   { name: 'Purple', hex: '#5B3A82' },
   { name: 'Bronze', hex: '#8C6A3F' },
-  { name: 'Maroon', hex: '#5E1A26' },
-  { name: 'Turquoise', hex: '#1F7F7C' },
+  { name: 'Maroon', hex: '#6E1F2C' },
+  { name: 'Turquoise', hex: '#2A9FA3' },
   { name: 'Pink', hex: '#E7A1B6', light: true },
   { name: 'Cream', hex: '#EEE5CC', light: true },
   // Escapes — both open the note sheet, each with its own question.
@@ -121,14 +123,16 @@ export const CAR_COLOURS: CarColour[] = [
   // a spotter nothing.
   {
     name: 'Multicolour / wrapped',
-    hex: '#2B4C7E',
-    secondaryHex: '#C7CCD1',
+    // A neutral pairing — it says "two colours" without naming a real one.
+    hex: '#1A1A1A',
+    secondaryHex: '#C9A227',
     note: true,
     noteCopy: {
-      title: 'Describe the wrap',
-      label: 'Wrap',
-      placeholder: 'e.g. matte black over silver',
-      helper: 'Spotters look for the wrap first.',
+      // Covers factory two-tone paint (DVLA MULTICOLOUR) as well as a wrap.
+      title: 'Describe the colours',
+      label: 'Colours',
+      placeholder: 'e.g. red with a black roof, or a matte black wrap',
+      helper: 'Spotters notice this first.',
     },
   },
   {
@@ -139,10 +143,11 @@ export const CAR_COLOURS: CarColour[] = [
     noteRequired: true,
     icon: 'more-horizontal',
     noteCopy: {
-      title: 'What colour is it?',
+      // Every V5C colour has its own swatch, so Other is the shade itself.
+      title: 'Name the colour',
       label: 'Colour',
-      placeholder: 'e.g. Teal',
-      helper: 'As it’s shown on your logbook (V5C).',
+      placeholder: 'e.g. Champagne or lime green',
+      helper: 'Required — the shade or name you’d use to describe it.',
     },
   },
 ];
@@ -184,7 +189,11 @@ export function swatchForName(name: string | null | undefined): CarColour | unde
   const typed = (name ?? '').trim().toLowerCase();
   if (!typed) return undefined;
   // A retired name (LEGACY_COLOUR_ALIASES) resolves to the swatch it is now.
-  const target = (LEGACY_COLOUR_ALIASES[typed] ?? typed).toLowerCase();
+  // ⚠️ OWN keys only (code review): posts.colour is free text, and a stored
+  // "toString" or "__proto__" would otherwise read an inherited property and
+  // crash every screen that draws the car.
+  const alias = Object.hasOwn(LEGACY_COLOUR_ALIASES, typed) ? LEGACY_COLOUR_ALIASES[typed] : typed;
+  const target = alias.toLowerCase();
   return CAR_COLOURS.find((colour) => colour.name.toLowerCase() === target);
 }
 
@@ -199,7 +208,7 @@ export function canonicalColourName(name: string | null | undefined): string | n
 export function colourIsComplete(
   colour: string | null | undefined,
   note: string | null | undefined,
-) {
+): boolean {
   const swatch = swatchForName(colour);
   if (!swatch) return Boolean(colour?.trim());
   return !swatch.noteRequired || Boolean(note?.trim());

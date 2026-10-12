@@ -49,7 +49,8 @@ export const PREVIEW_EDIT_STEP_ID = 'photos';
  */
 function identityLine(answers: Partial<PostACarAnswers>): string {
   const swatch = swatchForName(answers.colour);
-  const colour = swatch?.note ? answers.colourNote?.trim() : answers.colour;
+  // swatch.name, not the raw answer: a retired "Brown / Beige" reads as Brown.
+  const colour = swatch?.note ? answers.colourNote?.trim() : (swatch?.name ?? answers.colour);
   const parts = [colour, answers.make, answers.model].filter(
     (part): part is string => Boolean(part?.trim()),
   );

@@ -23,7 +23,7 @@
 
 import { z } from 'zod';
 
-import { colourIsComplete } from '@/shared/lib';
+import { canonicalColourName, colourIsComplete } from '@/shared/lib';
 import { photoListSchema, type PickedPhoto } from '@/shared/ui';
 import type { WizardStep } from '@/shared/wizard';
 
@@ -120,7 +120,8 @@ export function buildVehicleSteps<TAnswers extends VehicleAnswers>({
         }),
       reviewLabel: 'Colour',
       reviewValue: (answers) => {
-        const colour = answers.colour ?? '';
+        // A retired name ("Brown / Beige") reads as its current one.
+        const colour = canonicalColourName(answers.colour) ?? '';
         const noteText = answers.colourNote?.trim();
         return noteText ? `${colour} — ${noteText}` : colour;
       },

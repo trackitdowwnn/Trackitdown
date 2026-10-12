@@ -22,6 +22,7 @@
 import { z } from 'zod';
 
 import { isRemotePhoto, supabase, uploadOwnFolderPhoto } from '@/shared/api';
+import { canonicalColourName } from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import type { PickedPhoto } from '@/shared/ui';
 
@@ -227,7 +228,7 @@ async function buildSaveParams(
     p_plate: emptyToNull(answers.plate),
     p_make: answers.make,
     p_model: answers.model,
-    p_colour: answers.colour,
+    p_colour: canonicalColourName(answers.colour) ?? answers.colour,
     // Only escape colours ("Multicolour / wrapped", "Other") carry a note.
     p_colour_note: emptyToNull(answers.colourNote ?? ''),
     p_year: answers.year ?? null,

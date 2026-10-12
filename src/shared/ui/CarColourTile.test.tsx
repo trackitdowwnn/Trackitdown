@@ -18,6 +18,8 @@
 import { render } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
+import { swatchForName } from '@/shared/lib';
+
 import { CarColourTile } from './CarColourTile';
 
 // ⚠️ NO MOCK. This suite used to mock `@/features/vehicles` and
@@ -106,9 +108,9 @@ describe('CarColourTile', () => {
   });
 
   it('⚠️ paints a two-tone fill and no glyph at all', async () => {
-    // "Multicolour / wrapped" puts #C7CCD1 over the right half of #2B4C7E, and
-    // no ink is legible across that seam — white is 1.6:1 on the one side,
-    // near-black 2.02:1 on the other. The tile becomes a pure sample of paint.
+    // "Multicolour / wrapped" puts one fill over the right half of another,
+    // and no single ink is legible across that seam. The tile becomes a pure
+    // sample of paint. (Fills read from the palette: they changed 2026-10-12.)
     //
     // ⚠️ THE TWO FILLS ARE ASSERTED, NOT JUST THE GLYPH'S ABSENCE. The first
     // version of this test checked only that two ink strings were missing, and
@@ -120,8 +122,9 @@ describe('CarColourTile', () => {
       <CarColourTile colour="Multicolour / wrapped" testID="tile" />,
     );
 
-    expect(fillOf(getByTestId('tile'))).toBe('#2B4C7E');
-    expect(fillOf(getByTestId('tile-secondary'))).toBe('#C7CCD1');
+    const multicolour = swatchForName('Multicolour / wrapped')!;
+    expect(fillOf(getByTestId('tile'))).toBe(multicolour.hex);
+    expect(fillOf(getByTestId('tile-secondary'))).toBe(multicolour.secondaryHex);
     expect(strokes(toJSON())).toHaveLength(0);
   });
 });
