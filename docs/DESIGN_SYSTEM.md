@@ -436,8 +436,9 @@ are build output.
   on the right with a real 44pt box. It stays as long as it takes to read
   (`toastDuration`: 2.5s, +300ms a word past six, max 7s; errors and
   action toasts ≥4s; Android's "time to take action" setting can extend it).
-  Above the tab bar on tab screens, a gap above a sticky footer bar
-  elsewhere, and above the keyboard while it is up; never blocks taps unless
+  Near the bottom edge (16pt above the safe area, 2026-10-12 owner request —
+  even over a bottom button bar, for its few seconds), just above the tab bar
+  on tab screens, and above the keyboard while it is up; never blocks taps unless
   it carries an action.
 - **AppTabBar** — bottom navigation: `surface` bar, hairline `border` top
   edge, no shadow; 24pt icons (`sizes.icon`) over always-visible `tabLabel`

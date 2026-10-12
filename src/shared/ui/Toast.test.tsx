@@ -260,7 +260,7 @@ describe('Toast', () => {
       expect(view.queryByText(LONG)).toBeTruthy();
     });
 
-    it('clears the tab bar on a tab screen, and a footer bar elsewhere', async () => {
+    it('sits near the bottom edge — just above the tab bar on a tab screen', async () => {
       const onTabs = await showIn('Saved', 'success', { aboveTabBar: true });
       const tabBottom = StyleSheet.flatten(onTabs.getByTestId('toast-host').props.style).bottom;
       await onTabs.unmount();
@@ -268,11 +268,11 @@ describe('Toast', () => {
       const stackBottom = StyleSheet.flatten(
         elsewhere.getByTestId('toast-host').props.style,
       ).bottom;
-      // Above the tab bar where there is one…
-      expect(tabBottom).toBeGreaterThan(sizes.tabBar);
-      // …and a gap above a sticky footer bar (12 + 52 + 12) where there
-      // isn't — never flush on its hairline.
-      expect(stackBottom).toBeGreaterThan(spacing.md + sizes.control + spacing.md);
+      // Near the bottom edge where there is no tab bar (owner request,
+      // 2026-10-12)… (the safe-area mock's bottom inset is 0)
+      expect(stackBottom).toBe(spacing.lg);
+      // …and just above the tab bar where there is one, never over it.
+      expect(tabBottom).toBe(sizes.tabBar + spacing.md);
     });
 
     it('⚠️ rises above the keyboard, so an error is never hidden behind it', async () => {

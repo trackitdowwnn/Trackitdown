@@ -15,8 +15,9 @@
  *        is at a glance (a `success` tick, a `danger` alert; the error is the
  *        same calm card, never a red slab). The text WRAPS FULLY, and the
  *        toast stays for as long as it takes to read (toastDuration).
- *        Placed just above the tab bar on tab screens and clear of a footer
- *        button elsewhere, rather than everywhere pretending a tab bar exists.
+ *        Placed near the bottom edge (owner request, 2026-10-12) — just
+ *        above the tab bar on tab screens, so it never hides navigation —
+ *        and above the keyboard while it is up.
  * LINKS: src/app/_layout.tsx (provider mounts once at the root);
  *        src/shared/theme/motion.ts (toast timings); docs/DESIGN_SYSTEM.md
  *        (Core components: Toast).
@@ -72,11 +73,6 @@ import { easeOut } from '@/shared/theme/motionEasing';
 import { useAndroidKeyboardHeight } from '../hooks';
 
 export type ToastKind = 'success' | 'error';
-
-/** A screen's sticky footer above the safe area — StickyActionBar's (and
- *  PostBottomBar's) 12 + 52pt button + 12. Off the tabs the toast floats a
- *  gap above it, never flush on its hairline (review of the redesign). */
-const FOOTER_BAR_HEIGHT = spacing.md + sizes.control + spacing.md;
 
 /**
  * How long a toast stays: `motion.toastVisible` for a short one, plus
@@ -175,7 +171,7 @@ export interface ToastProviderProps {
   children: ReactNode;
   /**
    * Whether the screen showing is a TAB screen, so the toast sits just above
-   * the tab bar; otherwise it clears a standard footer button. The root
+   * the tab bar; otherwise it sits near the bottom edge. The root
    * layout knows the route and passes it — this primitive stays router-free.
    */
   aboveTabBar?: boolean;
@@ -195,22 +191,18 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
   const { fontScale } = useWindowDimensions();
   const visible = useSharedValue(0);
   const keyboard = useKeyboardHeight();
-  // Just above the tab bar on a tab screen; elsewhere clear of a standard
-  // sticky footer button, rather than floating over a tab bar that isn't
-  // there. ⚠️ With the keyboard up, above IT (UI review): a "Couldn't save"
-  // behind the keyboard is a failure nobody sees. Off the tabs the footer
-  // rides the keyboard too (StickyActionBar lifts by it), so the toast
-  // still clears it; on the tabs the bar is behind the keyboard.
-  // iOS's keyboard height already includes the home-indicator inset; with no
-  // footer padding to cancel it (the tabs), adding the inset again floated the
-  // toast ~34pt high. Android's height excludes the nav bar, so it keeps it.
+  // NEAR THE BOTTOM EDGE (owner request, 2026-10-12): just above the safe
+  // area on a stack screen — even over a bottom button bar, for its few
+  // seconds — and just above the tab bar on a tab screen, so it never hides
+  // navigation. ⚠️ With the keyboard up, above IT (UI review): a "Couldn't
+  // save" behind the keyboard is a failure nobody sees; the tab bar is then
+  // behind the keyboard. iOS's keyboard height already includes the
+  // home-indicator inset, so it is not added twice; Android's excludes the
+  // nav bar, so the inset stays.
   const keyboardTop =
-    aboveTabBar && Platform.OS === 'ios' && keyboard > 0 ? keyboard : insets.bottom + keyboard;
+    Platform.OS === 'ios' && keyboard > 0 ? keyboard : insets.bottom + keyboard;
   const bottom =
-    keyboardTop +
-    (aboveTabBar
-      ? (keyboard > 0 ? 0 : sizes.tabBar) + spacing.md
-      : FOOTER_BAR_HEIGHT + spacing.md);
+    keyboardTop + (aboveTabBar && keyboard === 0 ? sizes.tabBar + spacing.md : spacing.lg);
 
   const show = useCallback(
     (message: string, kind: ToastKind = 'success', action?: ToastAction) => {
@@ -352,8 +344,7 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
 
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
-    // The screen's own 24pt gutter, so the card lines up with its content
-    // and footer buttons.
+    // The screen's own 24pt gutter, so the card lines up with its content.
     host: {
       position: 'absolute',
       left: spacing.xl,
