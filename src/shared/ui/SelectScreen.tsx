@@ -10,8 +10,9 @@
  *        value with no exact match surfaces a "Use "<query>"" row; its
  *        `maxLength` bounds every way free text gets in, and its `button`
  *        floats a "Not listed? Type it in" pill — first for screen readers,
- *        hidden while searching — that swaps the list for a type-it-in box,
- *        which Android Back steps out of first, 2026-10-12);
+ *        hidden while searching — that raises a type-it-in BOTTOM SHEET over
+ *        the dimmed list (hosted inside this Modal by SheetHost), which
+ *        Android Back closes first, 2026-10-12);
  *        `showIndex` for an A–Z jump-scroll rail; `stagger` for a restrained
  *        first-load row cascade; `anyOption` for a filter's "Any make" first
  *        row; `pinnedLayout="grid"` to draw the pinned group as two-up tiles
@@ -48,13 +49,13 @@
  */
 
 import { Feather } from '@expo/vector-icons';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { Check } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   FlatList,
   Keyboard,
-  ScrollView,
   Modal,
   Pressable,
   StyleSheet,
@@ -63,6 +64,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -74,7 +76,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useAndroidKeyboardHeight } from '../hooks';
 import { lightHaptic, selectionHaptic } from '../lib/haptics';
 import {
   listRowStackFontScale,
@@ -91,6 +92,7 @@ import {
   type Palette,
 } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
+import { BottomSheet, type BottomSheetRef } from './BottomSheet';
 import { Button } from './Button';
 import { EmptyState } from './EmptyState';
 import {
@@ -126,6 +128,8 @@ export interface ManualEntryButton {
   label: string;
   /** Spoken for the pill, e.g. "Not listed? Type your make in". */
   accessibilityLabel?: string;
+  /** The sheet's title, e.g. "Type your car's make". */
+  sheetTitle: string;
   /** The text box's label, e.g. "Your car's make". */
   fieldLabel: string;
   /** The confirm button, e.g. "Use this make". */
@@ -225,12 +229,15 @@ export function SelectScreen<V extends string | number>({
   const [prevVisible, setPrevVisible] = useState(visible);
   // Whether the pinned grid has cascaded in on this open.
   const [gridStaggered, setGridStaggered] = useState(false);
-  // The type-it-in box (manualEntry.button): open, and what is typed in it.
+  // The type-it-in sheet (manualEntry.button): up, and what is typed in it.
   const [entering, setEntering] = useState(false);
   const [draft, setDraft] = useState('');
+  const entrySheetRef = useRef<BottomSheetRef>(null);
+  // Whether the sheet is closing because its text was used (the picker
+  // closes with it) rather than cancelled (focus goes back to the pill).
+  const submittingRef = useRef(false);
   // The search box's focus — the pill steps aside while the keyboard is up.
   const [searchFocused, setSearchFocused] = useState(false);
-  const keyboard = useAndroidKeyboardHeight();
   // Closing the keyboard with Android Back (or the gesture) doesn't blur the
   // search, so the pill would stay hidden with nothing typed; the keyboard
   // going away counts as leaving the search.
@@ -252,7 +259,7 @@ export function SelectScreen<V extends string | number>({
       setQuery('');
       setDebouncedQuery('');
       setGridStaggered(false);
-      // Every open starts at the list, never in the last open's box.
+      // Every open starts at the list, never with the last open's sheet.
       setEntering(false);
       setDraft('');
       setSearchFocused(false);
@@ -382,42 +389,55 @@ export function SelectScreen<V extends string | number>({
   // while the search is focused (the keyboard would sit on it).
   const entryButton = manualEntry?.button;
   const showEntryPill = entryButton != null && !searching && !entering && !searchFocused;
-  // Opening the box keeps what was typed there before "Back to the list" (a
-  // query only carries over in the moment before the search filters, since
-  // the pill steps aside while searching).
+  // Opening the sheet keeps what was typed there before Cancel (a query only
+  // carries over in the moment before the search filters, since the pill
+  // steps aside while searching).
   const openEntry = () => {
     lightHaptic();
     const carried = boundManual(query);
     setDraft((previous) => (carried ? carried : previous));
+    submittingRef.current = false;
     setEntering(true);
+    entrySheetRef.current?.open();
   };
   const submitDraft = () => {
-    if (draft.trim().length > 0) submitManual(draft);
+    if (draft.trim().length === 0) return;
+    // The sheet and the picker close together; no focus to hand back.
+    submittingRef.current = true;
+    entrySheetRef.current?.close();
+    submitManual(draft);
   };
-  // Leaving the box puts screen-reader focus back on the pill that opened it.
-  const leaveEntry = () => {
+  // However the sheet goes (Cancel, swipe, scrim, Back): back to the list,
+  // with screen-reader focus on the pill that opened it.
+  const handleEntryDismissed = () => {
     setEntering(false);
-    setFocusPillOnShow(true);
+    if (!submittingRef.current) setFocusPillOnShow(true);
   };
-  // Android Back steps out of the box first; only then closes the picker.
+  // Android Back reaches the Modal before the sheet's own handler: it closes
+  // the sheet first, and only then the picker.
   const handleRequestClose = () => {
     if (entering) {
-      leaveEntry();
+      entrySheetRef.current?.close();
       return;
     }
     onClose();
   };
 
-  // Screen-reader focus follows the box: onto its field when it opens, back
-  // onto the pill when it closes — the control that had focus unmounted, and
-  // autoFocus raises the keyboard without reliably moving that focus.
+  // The picker closing takes its sheet with it — or a fast close-and-reopen
+  // (the Modal kept mounted through its exit) would reopen with the sheet up.
+  useEffect(() => {
+    if (!visible) entrySheetRef.current?.close();
+  }, [visible]);
+
+  // Screen-reader focus onto the sheet's field once it has risen — autoFocus
+  // raises the keyboard without reliably moving that focus.
   useEffect(() => {
     if (!entering) return;
     const timer = setTimeout(() => {
       if (entryInputRef.current) {
         AccessibilityInfo.sendAccessibilityEvent(entryInputRef.current, 'focus');
       }
-    }, motion.fast);
+    }, motion.standard);
     return () => clearTimeout(timer);
   }, [entering]);
   useEffect(() => {
@@ -469,6 +489,7 @@ export function SelectScreen<V extends string | number>({
           `transparent`, so without this the sheet's slide/fade would reveal the
           screen behind it (e.g. the wizard's Next button bleeding through and
           flickering on Android). The sheet animates over this solid fill. */}
+      <SheetHost enabled={entryButton != null}>
       <View style={styles.backdrop}>
       {visible ? (
         <Animated.View
@@ -527,289 +548,297 @@ export function SelectScreen<V extends string | number>({
                 <View style={styles.close} />
               </View>
 
-              {entering && entryButton ? (
-                // The type-it-in box, in place of the search and the list.
-                // At the TOP, so the keyboard never covers the field; and it
-                // scrolls, so at large text on a small phone the buttons are
-                // still reachable above the keyboard.
-                <Animated.View
-                  style={styles.flex}
-                  entering={FadeIn.duration(motion.fast)
-                    .easing(motionEasing)
-                    .reduceMotion(ReduceMotion.System)}
-                  testID="select-manual-entry"
-                >
-                  <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    // ⚠️ Room for the keyboard, or there is nothing to scroll
-                    // (re-review): iOS insets itself; edge-to-edge Android
-                    // doesn't resize the window, so the content pads by the
-                    // measured keyboard (as WizardScreen and StickyActionBar).
-                    automaticallyAdjustKeyboardInsets
-                    contentContainerStyle={[styles.entry, { paddingBottom: spacing.xl + keyboard }]}
-                  >
-                    <TextField
-                      ref={entryInputRef}
-                      label={entryButton.fieldLabel}
-                      value={draft}
-                      onChangeText={setDraft}
-                      helperText={entryButton.helper}
-                      // TextField speaks only its label; the hint rides here.
-                      accessibilityHint={entryButton.helper}
-                      maxLength={maxManual}
-                      autoFocus
-                      autoCorrect={false}
-                      autoCapitalize="words"
-                      returnKeyType="done"
-                      onSubmitEditing={submitDraft}
-                      testID="select-manual-input"
-                    />
-                    <View style={styles.entryActions}>
-                      <Button
-                        label={entryButton.submitLabel}
-                        onPress={submitDraft}
-                        disabled={draft.trim().length === 0}
-                      />
-                      <Button label="Back to the list" variant="ghost" onPress={leaveEntry} />
-                    </View>
-                  </ScrollView>
-                </Animated.View>
-              ) : (
-                <>
-                  <View style={styles.searchWrap}>
-                    <View style={styles.search}>
+              <View style={styles.searchWrap}>
+                <View style={styles.search}>
+                  <Feather
+                    name="search"
+                    size={sizes.iconSm}
+                    color={palette.textSecondary}
+                  />
+                  <TextInput
+                    ref={searchRef}
+                    value={query}
+                    onChangeText={setQuery}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    placeholder={searchPlaceholder}
+                    placeholderTextColor={palette.textSecondary}
+                    autoCorrect={false}
+                    accessibilityLabel={searchPlaceholder}
+                    // Its "Use "<query>"" row submits this as free text.
+                    maxLength={maxManual}
+                    style={styles.searchInput}
+                  />
+                  {query.length > 0 ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear search"
+                      onPress={() => setQuery('')}
+                      style={styles.clearSearch}
+                    >
                       <Feather
-                        name="search"
+                        name="x-circle"
                         size={sizes.iconSm}
                         color={palette.textSecondary}
                       />
-                      <TextInput
-                        ref={searchRef}
-                        value={query}
-                        onChangeText={setQuery}
-                        onFocus={() => setSearchFocused(true)}
-                        onBlur={() => setSearchFocused(false)}
-                        placeholder={searchPlaceholder}
-                        placeholderTextColor={palette.textSecondary}
-                        autoCorrect={false}
-                        accessibilityLabel={searchPlaceholder}
-                        // Its "Use "<query>"" row submits this as free text.
-                        maxLength={maxManual}
-                        style={styles.searchInput}
-                      />
-                      {query.length > 0 ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Clear search"
-                          onPress={() => setQuery('')}
-                          style={styles.clearSearch}
-                        >
-                          <Feather
-                            name="x-circle"
-                            size={sizes.iconSm}
-                            color={palette.textSecondary}
-                          />
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  </View>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
 
-                  {/* An empty list with an Any row still renders the list, so the
-                      Any row is there to pick (a filter showing a model with no
-                      list behind it). */}
-                  {items.length === 0 && !showAnyRow ? (
-                    debouncedQuery ? (
-                      <EmptyState
-                        title={`No matches for “${debouncedQuery}”`}
-                        body={
-                          manualEntry
-                            ? 'Not in the list? Add it as you typed it.'
-                            : 'Check the spelling or try a shorter search.'
-                        }
-                        actionLabel={manualEntry ? `Use “${debouncedQuery.trim()}”` : 'Clear search'}
-                        onAction={
-                          manualEntry ? () => submitManual(debouncedQuery) : () => setQuery('')
-                        }
-                      />
-                    ) : (
-                      <EmptyState title="Nothing to choose from yet" />
-                    )
-                  ) : (
-                    <View style={styles.flex}>
-                      {/* The floating "Not listed?" pill. FIRST in the tree so a
-                          screen reader reaches it before ~110 rows (it is drawn
-                          over the list by zIndex, not by order). Fades in and
-                          out as searching hides it. Measured, so the list's
-                          last rows scroll clear of it at any text size. */}
-                      {showEntryPill && entryButton ? (
-                        <Animated.View
-                          style={styles.entryPillWrap}
-                          entering={FadeIn.duration(motion.fast)
-                            .easing(motionEasing)
-                            .reduceMotion(ReduceMotion.System)}
-                          exiting={FadeOut.duration(motion.fast)
-                            .easing(motionEasing)
-                            .reduceMotion(ReduceMotion.System)}
-                          onLayout={(event) => setPillHeight(event.nativeEvent.layout.height)}
-                        >
-                          <Pressable
-                            ref={pillRef}
-                            accessibilityRole="button"
-                            accessibilityLabel={entryButton.accessibilityLabel ?? entryButton.label}
-                            onPress={openEntry}
-                            style={({ pressed }) => [
-                              styles.entryPill,
-                              pressed && styles.entryPillPressed,
-                            ]}
-                            testID="select-manual-pill"
-                          >
-                            <Feather name="edit-2" size={sizes.iconSm} color={palette.textOnPrimary} />
-                            <Text style={styles.entryPillLabel}>{entryButton.label}</Text>
-                          </Pressable>
-                        </Animated.View>
-                      ) : null}
-                      <FlatList
-                        ref={listRef}
-                        accessibilityRole="radiogroup"
-                        // Named, so a screen reader doesn't say "radio group" with
-                        // nothing to tell it from the tiles' own group inside.
-                        accessibilityLabel={title}
-                        data={items}
-                        keyExtractor={(item) => item.key}
-                        // ⚠️ SHIFTED BY ONE when there's a list header: FlatList
-                        // counts ListHeaderComponent as cell 0. Unshifted, "Popular
-                        // makes" pinned the Any row and no letter header stuck
-                        // (2026-09-30 UI review).
-                        stickyHeaderIndices={stickyHeaderIndices(items).map(
-                          (index) => index + (hasListHeader ? 1 : 0),
-                        )}
-                        keyboardShouldPersistTaps="handled"
-                        keyboardDismissMode="on-drag"
-                        contentContainerStyle={[
-                          styles.listContent,
-                          // Clear the index rail so the last rows aren't hidden under it.
-                          showIndex && !searching ? styles.listContentIndexed : null,
-                          // Room for the last rows to scroll clear of the pill.
-                          showEntryPill
-                            ? { paddingBottom: spacing.xl + pillHeight + spacing.xl }
-                            : null,
+              {/* An empty list with an Any row still renders the list, so the
+                  Any row is there to pick (a filter showing a model with no
+                  list behind it). */}
+              {items.length === 0 && !showAnyRow ? (
+                debouncedQuery ? (
+                  <EmptyState
+                    title={`No matches for “${debouncedQuery}”`}
+                    body={
+                      manualEntry
+                        ? 'Not in the list? Add it as you typed it.'
+                        : 'Check the spelling or try a shorter search.'
+                    }
+                    actionLabel={manualEntry ? `Use “${debouncedQuery.trim()}”` : 'Clear search'}
+                    onAction={
+                      manualEntry ? () => submitManual(debouncedQuery) : () => setQuery('')
+                    }
+                  />
+                ) : (
+                  <EmptyState title="Nothing to choose from yet" />
+                )
+              ) : (
+                <View style={styles.flex}>
+                  {/* The floating "Not listed?" pill. FIRST in the tree so a
+                      screen reader reaches it before ~110 rows (it is drawn
+                      over the list by zIndex, not by order). Fades in and
+                      out as searching hides it. Measured, so the list's
+                      last rows scroll clear of it at any text size. */}
+                  {showEntryPill && entryButton ? (
+                    <Animated.View
+                      style={styles.entryPillWrap}
+                      entering={FadeIn.duration(motion.fast)
+                        .easing(motionEasing)
+                        .reduceMotion(ReduceMotion.System)}
+                      exiting={FadeOut.duration(motion.fast)
+                        .easing(motionEasing)
+                        .reduceMotion(ReduceMotion.System)}
+                      onLayout={(event) => setPillHeight(event.nativeEvent.layout.height)}
+                    >
+                      <Pressable
+                        ref={pillRef}
+                        accessibilityRole="button"
+                        accessibilityLabel={entryButton.accessibilityLabel ?? entryButton.label}
+                        onPress={openEntry}
+                        style={({ pressed }) => [
+                          styles.entryPill,
+                          pressed && styles.entryPillPressed,
                         ]}
-                        // Every row renders up front (a make list is ~110 items, a
-                        // model list rarely 80), so the rail's scrollToIndex always
-                        // has its target measured and lands exactly. Rows grow with
-                        // dynamic type, so a fixed getItemLayout would drift.
-                        initialNumToRender={Math.min(items.length, MAX_RENDERED_UP_FRONT)}
-                        // Past that cap: approximate, then settle on the real row,
-                        // once. A second failure stays at the approximation rather
-                        // than looping.
-                        onScrollToIndexFailed={(info) => {
-                          listRef.current?.scrollToOffset({
-                            offset: info.averageItemLength * info.index,
-                            animated: false,
-                          });
-                          if (retriedIndex.current === info.index) return;
-                          retriedIndex.current = info.index;
-                          if (retryTimer.current) clearTimeout(retryTimer.current);
-                          retryTimer.current = setTimeout(
-                            () => listRef.current?.scrollToIndex({ index: info.index, animated: false }),
-                            0,
-                          );
-                        }}
-                        ListHeaderComponent={
-                          hasListHeader ? (
-                            <>
-                              {showAnyRow && anyOption ? (
-                                <AnyRow
-                                  label={anyOption.label}
-                                  selected={value === null}
-                                  // Line up with the rows' labels when they carry icons.
-                                  indented={options.some((option) => option.icon != null)}
-                                  onPress={() => {
-                                    lightHaptic();
-                                    anyOption.onSelect();
-                                    onClose();
-                                  }}
-                                />
-                              ) : null}
-                              {showUseQuery ? (
-                                <ManualRow
-                                  label={`Use “${debouncedQuery.trim()}”`}
-                                  onPress={() => submitManual(debouncedQuery)}
-                                />
-                              ) : null}
-                              {showGrid ? (
-                                <PinnedGrid
-                                  title={pinnedTitle ?? RECENT_SECTION_TITLE}
-                                  tiles={pinnedTiles}
-                                  selectedValue={value}
-                                  onSelect={handleSelect}
-                                  // Once per open: clearing a search brings the
-                                  // grid back without replaying the cascade.
-                                  stagger={stagger && !gridStaggered}
-                                  // Its first layout, just after the cascade has
-                                  // started: from then on this open, no replay.
-                                  onShown={stagger && !gridStaggered ? () => setGridStaggered(true) : undefined}
-                                />
-                              ) : null}
-                              {showGrid && allTitle ? (
-                                <View style={styles.groupHeader}>
-                                  <Text accessibilityRole="header" style={styles.groupTitle}>
-                                    {allTitle}
-                                  </Text>
-                                </View>
-                              ) : null}
-                            </>
-                          ) : null
+                        testID="select-manual-pill"
+                      >
+                        <Feather name="edit-2" size={sizes.iconSm} color={palette.textOnPrimary} />
+                        <Text style={styles.entryPillLabel}>{entryButton.label}</Text>
+                      </Pressable>
+                    </Animated.View>
+                  ) : null}
+                  <FlatList
+                    ref={listRef}
+                    accessibilityRole="radiogroup"
+                    // Named, so a screen reader doesn't say "radio group" with
+                    // nothing to tell it from the tiles' own group inside.
+                    accessibilityLabel={title}
+                    data={items}
+                    keyExtractor={(item) => item.key}
+                    // ⚠️ SHIFTED BY ONE when there's a list header: FlatList
+                    // counts ListHeaderComponent as cell 0. Unshifted, "Popular
+                    // makes" pinned the Any row and no letter header stuck
+                    // (2026-09-30 UI review).
+                    stickyHeaderIndices={stickyHeaderIndices(items).map(
+                      (index) => index + (hasListHeader ? 1 : 0),
+                    )}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    contentContainerStyle={[
+                      styles.listContent,
+                      // Clear the index rail so the last rows aren't hidden under it.
+                      showIndex && !searching ? styles.listContentIndexed : null,
+                      // Room for the last rows to scroll clear of the pill.
+                      showEntryPill
+                        ? { paddingBottom: spacing.xl + pillHeight + spacing.xl }
+                        : null,
+                    ]}
+                    // Every row renders up front (a make list is ~110 items, a
+                    // model list rarely 80), so the rail's scrollToIndex always
+                    // has its target measured and lands exactly. Rows grow with
+                    // dynamic type, so a fixed getItemLayout would drift.
+                    initialNumToRender={Math.min(items.length, MAX_RENDERED_UP_FRONT)}
+                    // Past that cap: approximate, then settle on the real row,
+                    // once. A second failure stays at the approximation rather
+                    // than looping.
+                    onScrollToIndexFailed={(info) => {
+                      listRef.current?.scrollToOffset({
+                        offset: info.averageItemLength * info.index,
+                        animated: false,
+                      });
+                      if (retriedIndex.current === info.index) return;
+                      retriedIndex.current = info.index;
+                      if (retryTimer.current) clearTimeout(retryTimer.current);
+                      retryTimer.current = setTimeout(
+                        () => listRef.current?.scrollToIndex({ index: info.index, animated: false }),
+                        0,
+                      );
+                    }}
+                    ListHeaderComponent={
+                      hasListHeader ? (
+                        <>
+                          {showAnyRow && anyOption ? (
+                            <AnyRow
+                              label={anyOption.label}
+                              selected={value === null}
+                              // Line up with the rows' labels when they carry icons.
+                              indented={options.some((option) => option.icon != null)}
+                              onPress={() => {
+                                lightHaptic();
+                                anyOption.onSelect();
+                                onClose();
+                              }}
+                            />
+                          ) : null}
+                          {showUseQuery ? (
+                            <ManualRow
+                              label={`Use “${debouncedQuery.trim()}”`}
+                              onPress={() => submitManual(debouncedQuery)}
+                            />
+                          ) : null}
+                          {showGrid ? (
+                            <PinnedGrid
+                              title={pinnedTitle ?? RECENT_SECTION_TITLE}
+                              tiles={pinnedTiles}
+                              selectedValue={value}
+                              onSelect={handleSelect}
+                              // Once per open: clearing a search brings the
+                              // grid back without replaying the cascade.
+                              stagger={stagger && !gridStaggered}
+                              // Its first layout, just after the cascade has
+                              // started: from then on this open, no replay.
+                              onShown={stagger && !gridStaggered ? () => setGridStaggered(true) : undefined}
+                            />
+                          ) : null}
+                          {showGrid && allTitle ? (
+                            <View style={styles.groupHeader}>
+                              <Text accessibilityRole="header" style={styles.groupTitle}>
+                                {allTitle}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </>
+                      ) : null
+                    }
+                    renderItem={({ item, index }) => (
+                      <SelectRow
+                        item={item}
+                        selectedValue={value}
+                        onSelect={handleSelect}
+                        // A hairline between two rows, never beside a header.
+                        // …or below the Any / "Use…" row when one sits right
+                        // on top of the first row (no grid or heading between).
+                        divider={
+                          item.kind === 'option' &&
+                          (items[index - 1]?.kind === 'option' ||
+                            (index === 0 && !showGrid && (showAnyRow || showUseQuery)))
                         }
-                        renderItem={({ item, index }) => (
-                          <SelectRow
-                            item={item}
-                            selectedValue={value}
-                            onSelect={handleSelect}
-                            // A hairline between two rows, never beside a header.
-                            // …or below the Any / "Use…" row when one sits right
-                            // on top of the first row (no grid or heading between).
-                            divider={
-                              item.kind === 'option' &&
-                              (items[index - 1]?.kind === 'option' ||
-                                (index === 0 && !showGrid && (showAnyRow || showUseQuery)))
-                            }
-                            // The first screenful only: with every row rendered up
-                            // front, staggering all ~110 would start them together
-                            // off-screen, against the Motion rule and heavy on
-                            // low-end Android.
-                            // With a grid, the tiles ARE the first screenful: the
-                            // rows start far below, so they don't animate.
-                            stagger={
-                              stagger && !searching && !showGrid && index < STAGGERED_ROWS ? index : undefined
-                            }
-                          />
-                        )}
+                        // The first screenful only: with every row rendered up
+                        // front, staggering all ~110 would start them together
+                        // off-screen, against the Motion rule and heavy on
+                        // low-end Android.
+                        // With a grid, the tiles ARE the first screenful: the
+                        // rows start far below, so they don't animate.
+                        stagger={
+                          stagger && !searching && !showGrid && index < STAGGERED_ROWS ? index : undefined
+                        }
                       />
-                      {showIndex && !searching ? (
-                        <IndexRail
-                          // Only the A–Z letter sections — a multi-word pinned
-                          // header (e.g. "Popular makes") would put a stray letter
-                          // on the rail; that group sits at the top anyway.
-                          // "#" heads the numbered models (208, 3 Series).
-                          anchors={sectionAnchors(items).filter((anchor) => /^([A-Z]|#)$/.test(anchor.title))}
-                          onJump={(index) => {
-                            // A fresh jump gets its own one retry.
-                            retriedIndex.current = null;
-                            listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0 });
-                          }}
-                        />
-                      ) : null}
-                    </View>
-                  )}
-                </>
+                    )}
+                  />
+                  {showIndex && !searching ? (
+                    <IndexRail
+                      // Only the A–Z letter sections — a multi-word pinned
+                      // header (e.g. "Popular makes") would put a stray letter
+                      // on the rail; that group sits at the top anyway.
+                      // "#" heads the numbered models (208, 3 Series).
+                      anchors={sectionAnchors(items).filter((anchor) => /^([A-Z]|#)$/.test(anchor.title))}
+                      onJump={(index) => {
+                        // A fresh jump gets its own one retry.
+                        retriedIndex.current = null;
+                        listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0 });
+                      }}
+                    />
+                  ) : null}
+                </View>
               )}
             </SafeAreaView>
           </Animated.View>
         </Animated.View>
       ) : null}
       </View>
+      {/* The type-it-in sheet, over the (dimmed) list — owner request,
+          2026-10-12. Hosted by SheetHost INSIDE this Modal: the app's root
+          sheet host sits behind the Modal's window. */}
+      {entryButton ? (
+        <BottomSheet
+          ref={entrySheetRef}
+          title={entryButton.sheetTitle}
+          onDismiss={handleEntryDismissed}
+        >
+          <View style={styles.entry} testID="select-manual-entry">
+            <TextField
+              ref={entryInputRef}
+              label={entryButton.fieldLabel}
+              value={draft}
+              onChangeText={setDraft}
+              helperText={entryButton.helper}
+              // TextField speaks only its label; the hint rides here.
+              accessibilityHint={entryButton.helper}
+              maxLength={maxManual}
+              autoFocus
+              autoCorrect={false}
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={submitDraft}
+              testID="select-manual-input"
+            />
+            <View style={styles.entryActions}>
+              <Button
+                label={entryButton.submitLabel}
+                onPress={submitDraft}
+                disabled={draft.trim().length === 0}
+              />
+              <Button
+                label="Cancel"
+                variant="ghost"
+                onPress={() => entrySheetRef.current?.close()}
+              />
+            </View>
+          </View>
+        </BottomSheet>
+      ) : null}
+      </SheetHost>
     </Modal>
+  );
+}
+
+/**
+ * A sheet layer INSIDE the picker's Modal, for the type-it-in sheet. A Modal
+ * is its own native window: the app's root BottomSheetModalProvider draws
+ * behind it, and on Android gestures don't reach a Modal's window without its
+ * own GestureHandlerRootView — the documented gorhom/RNGH set-up. Only where a
+ * caller asked for the pill (`enabled`), so every other picker is unchanged.
+ */
+function SheetHost({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
+  if (!enabled) return <>{children}</>;
+  return (
+    <GestureHandlerRootView style={styles.flex}>
+      <BottomSheetModalProvider>{children}</BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -1239,10 +1268,9 @@ const makeStyles = (c: Palette) =>
       textAlign: 'center',
     },
     // The type-it-in box: the screen's gutter, the field, then its actions.
+    // The sheet already carries the gutter and the bottom safe area.
     entry: {
-      paddingHorizontal: spacing.xl,
-      paddingTop: spacing.md,
-      paddingBottom: spacing.xl,
+      paddingTop: spacing.xs,
     },
     // A clearer break between the field and what to do with it.
     entryActions: {

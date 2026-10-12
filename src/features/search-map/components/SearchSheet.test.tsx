@@ -23,6 +23,13 @@ jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default,
 );
 
+// SelectScreen hosts a type-it-in BottomSheet (2026-10-12); the library's own
+// mock keeps its real Reanimated wiring out of this suite.
+jest.mock('@gorhom/bottom-sheet', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  require('@gorhom/bottom-sheet/mock'),
+);
+
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
   const { View } = require('react-native');
