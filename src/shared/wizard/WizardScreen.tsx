@@ -27,6 +27,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import {
   AccessibilityInfo,
   BackHandler,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -174,7 +175,36 @@ export function WizardScreen<TAnswers>({
   useLayoutEffect(() => {
     if (shownIndex !== screenIndex) settle();
   }, [shownIndex, screenIndex, settle]);
-  const keyboardHeight = useAndroidKeyboardHeight();
+  const measuredKeyboard = useAndroidKeyboardHeight();
+  // ⚠️ A MOVE DROPS THE FOOTER'S KEYBOARD LIFT AT ONCE, not when the keyboard
+  // reports it has gone (owner report, 2026-10-12: after a typed make and
+  // model, the colour step "freezes for a few seconds" — no scroll, no colour,
+  // while the footer's button still worked). `move` dismisses the keyboard and
+  // dispatches in one go, so the arriving step used to MOUNT with the footer
+  // still lifted — one keyboard shorter — and keyboardDidHide's taller layout
+  // then landed mid-SlideIn. Reanimated rebuilds each frame of an entering
+  // animation from the mount-time view (no `layout` config here), so the
+  // step's native frame stayed short: Android delivers no touch outside it,
+  // so its lower part was dead while still drawn, and the footer — outside
+  // the layer — was the only thing that worked. Typed-in answers are the only
+  // way to leave a step with the keyboard up, which is why list picks never
+  // did it. So the lift is suppressed from the move's own commit until the
+  // keyboard is really down (or shows again for the new step).
+  const [liftSuppressed, setLiftSuppressed] = useState(false);
+  const [liftScreenIndex, setLiftScreenIndex] = useState(screenIndex);
+  if (screenIndex !== liftScreenIndex) {
+    setLiftScreenIndex(screenIndex);
+    if (measuredKeyboard > 0) setLiftSuppressed(true);
+  }
+  if (liftSuppressed && measuredKeyboard === 0) setLiftSuppressed(false);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    // A field on the new step raising the keyboard before the old one's hide
+    // was reported: lift for it as normal.
+    const show = Keyboard.addListener('keyboardDidShow', () => setLiftSuppressed(false));
+    return () => show.remove();
+  }, []);
+  const keyboardHeight = liftSuppressed ? 0 : measuredKeyboard;
 
   // A step's footerNote rides with the buttons, except at large text: the
   // footer never scrolls, and a wrapped note there ate a third of a small
@@ -372,17 +402,14 @@ export function WizardScreen<TAnswers>({
           testID="wizard-step-slide"
           // Paints the page: during a fade beside a map, the leaving screen's
           // text must cover — not sit over — the one arriving.
-          // ⚠️ A LEAVING screen takes no touches (owner report, 2026-10-12:
-          // after a typed make and model, the colour step "freezes for a few
-          // seconds" — no scroll, no colour, while the footer's button still
-          // worked). Reanimated keeps an exiting view in the native tree, over
-          // the area the new step occupies, until its exit has played; when
-          // that runs late — the step was left with the keyboard up, so its
-          // exit overlaps the keyboard closing — the invisible leaving step
-          // swallowed every tap and scroll meant for the arriving one. The
-          // footer lives outside this layer, which is why it still worked.
-          // Its last render before unmounting is this `leaving` one, so the
-          // exiting copy keeps `pointerEvents: 'none'`.
+          // A LEAVING screen takes no touches — hardening only, NOT the cause
+          // of the 2026-10-12 "colour step freezes" report (that was the
+          // arriving step's frame, see liftSuppressed above). Reanimated keeps
+          // an exiting view in the native tree until its exit has played; it
+          // is drawn below the arriving layer, but where they don't overlap
+          // it should never take a tap. Android diffs the leaving commit on
+          // its own, so the exiting copy keeps `pointerEvents: 'none'`; on
+          // iOS the two commits merge and this is a no-op.
           style={[styles.stepLayer, leaving && styles.stepLayerLeaving]}
           entering={entering}
           exiting={exiting}
@@ -457,7 +484,10 @@ export function WizardScreen<TAnswers>({
           )}
         </Animated.View>
 
-        <View style={[styles.footer, { paddingBottom: spacing.sm + keyboardHeight }]}>
+        <View
+          style={[styles.footer, { paddingBottom: spacing.sm + keyboardHeight }]}
+          testID="wizard-footer"
+        >
           <WizardFooter
             ctaLabel={controller.ctaLabel}
             canProceed={controller.canGoNext}

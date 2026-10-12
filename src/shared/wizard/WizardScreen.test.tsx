@@ -23,6 +23,7 @@ import {
   BackHandler,
   Dimensions,
   Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -552,6 +553,46 @@ describe('moving between screens', () => {
     expect(
       StyleSheet.flatten(view.getByTestId('wizard-step-slide').props.style).pointerEvents,
     ).toBeUndefined();
+  });
+
+  it('⚠️ a move drops the footer’s keyboard lift at once — the next step mounts full height', async () => {
+    // Owner report (2026-10-12): after a typed make and model the colour step
+    // froze. The step mounted with the footer still lifted by the keyboard,
+    // and the taller layout from keyboardDidHide never reached its entering
+    // animation's frame — its lower part took no touches.
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const handlers: Record<string, ((event?: unknown) => void)[]> = {};
+    const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+      name: string,
+      handler: (event?: unknown) => void,
+    ) => {
+      (handlers[name] ??= []).push(handler);
+      return { remove: jest.fn() };
+    }) as unknown as typeof Keyboard.addListener);
+    const fire = async (name: string, event?: unknown) => {
+      await act(async () => {
+        for (const handler of handlers[name] ?? []) handler(event);
+      });
+    };
+    const footerPad = (view: Awaited<ReturnType<typeof render>>) =>
+      StyleSheet.flatten(view.getByTestId('wizard-footer').props.style).paddingBottom;
+
+    const { view } = await renderWizard();
+    const resting = footerPad(view);
+    await fire('keyboardDidShow', { endCoordinates: { height: 300 } });
+    expect(footerPad(view)).toBe(resting + 300);
+
+    // The move itself — before any keyboardDidHide — drops the lift.
+    await press(view, 'Get started');
+    expect(footerPad(view)).toBe(resting);
+    await fire('keyboardDidHide');
+    expect(footerPad(view)).toBe(resting);
+
+    // A field on the new step raising the keyboard lifts the footer again.
+    await fire('keyboardDidShow', { endCoordinates: { height: 280 } });
+    expect(footerPad(view)).toBe(resting + 280);
+    listen.mockRestore();
+    jest.restoreAllMocks();
   });
 
   it('drops the keyboard on every move', async () => {
