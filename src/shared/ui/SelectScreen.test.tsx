@@ -476,6 +476,35 @@ describe('SelectScreen', () => {
       expect(onSubmit).toHaveBeenCalledWith('x'.repeat(40));
     });
 
+    it('⚠️ closes the keyboard with the sheet — Cancel, Back, and a submit', async () => {
+      // Owner report (2026-10-12): Cancel left the keyboard open.
+      const dismiss = jest.spyOn(Keyboard, 'dismiss');
+      const { view } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
+      });
+      expect(dismiss).toHaveBeenCalled();
+
+      dismiss.mockClear();
+      await openBox(view);
+      await act(async () => {
+        fireEvent(view.getByTestId('select-screen-modal'), 'requestClose');
+      });
+      expect(dismiss).toHaveBeenCalled();
+
+      dismiss.mockClear();
+      await openBox(view);
+      await act(async () => {
+        fireEvent.changeText(view.getByTestId('select-manual-input'), 'Trabant');
+      });
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Use this make' }));
+      });
+      expect(dismiss).toHaveBeenCalled();
+      dismiss.mockRestore();
+    });
+
     it('Cancel hands screen-reader focus back to the pill', async () => {
       const send = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent');
       const { view } = await withPill();
