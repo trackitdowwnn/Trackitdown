@@ -97,10 +97,22 @@ never opens one person's last-seen location for the next.
    alone); the chosen name goes bold and "Selected: …" confirms it. Since
    2026-10-12 the palette is the V5C/DVLA vocabulary (20, four columns; an old
    "Brown / Beige" resolves to Brown). The escapes ("Multicolour / wrapped" /
-   "Other") open a note sheet that asks its own question ("Describe the wrap" /
-   "What colour is it?"), focused once risen; "Other" can't go on without
-   its description. The note is stored separately (`colourNote` →
-   `owner_note`) so it never pollutes the colour enum.
+   "Other") open a note sheet that asks its own question ("Describe the
+   colours" / "Name the colour"), focused once risen; "Other" can't go on
+   without its description. The note is stored separately (`colourNote` →
+   `owner_note`) so it never pollutes the colour enum. Under the grid,
+   optional **Paint finish** chips (Metallic / Matt / Pearl / Two-tone roof;
+   re-tap clears; hidden only for an escape) → `colourFinish` →
+   `colour_finish` (20261012100000). An escape drops it (`colourChangePatch`),
+   and every write sends it — the edit RPCs replace it, so a save without it
+   would wipe it. One form wherever it shows (`colourWithFinish`): "Blue ·
+   Metallic" in the summary, review, Car details and the garage's "Your
+   car"; not on cards or in push copy.
+   ⚠️ **A NEW FINISH SHIPS APP-FIRST.** The app reads a finish it doesn't
+   know as none, and the edit RPCs are full replaces — so a build that
+   predates a new value ERASES it on the owner's next edit. Widen
+   `COLOUR_FINISH_VALUES` and OTA it before the server's CHECK accepts the
+   new value.
 4. **Body type** (`BodyTypeStep` → `CardSelect`) — optional Airbnb-style icon
    cards (Hatchback/Saloon/Estate/SUV/… with a glyph + subtext; `lib/bodyTypes`).
    Stored verbatim on `posts.body_type`. Also editable via the CarDetailsEditor.

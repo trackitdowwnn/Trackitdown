@@ -35,7 +35,7 @@ import { Car } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { BODY_TYPE_UNKNOWN } from '@/features/vehicles';
-import { swatchForName } from '@/shared/lib/carColours';
+import { colourWithFinish, swatchForName } from '@/shared/lib/carColours';
 import {
   opacity,
   radii,
@@ -75,9 +75,12 @@ function makeAndModel(vehicle: SavedVehicle): string {
  * preview does ("Other" says nothing a spotter can use).
  */
 export function vehicleDetailLine(vehicle: SavedVehicle): string {
+  // A plain colour with its finish ("Blue · Metallic"), as Car details will
+  // show it to spotters.
+  const plain = vehicle.colour?.trim();
   const colour = swatchForName(vehicle.colour)?.note
     ? vehicle.colourNote?.trim()
-    : vehicle.colour?.trim();
+    : plain && colourWithFinish(plain, vehicle.colourFinish);
   const bodyType = vehicle.bodyType?.trim();
   return [
     colour || null,

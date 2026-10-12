@@ -1,6 +1,6 @@
 /**
  * WHAT:  CarDetailsEditor — edits the car's identity: make, model, colour (+ its
- *        note), body type, and year, on a draft or a live post (the server
+ *        note or finish), body type, and year, on a draft or a live post (the server
  *        has allowed live edits since 20260731110000_edit_car_details_when_live).
  *        Prefills from the post.
  * WHY:   Reuses the wizard's Make/Model/Colour/BodyType/Year steps stacked (each
@@ -45,6 +45,7 @@ export function CarDetailsEditor({
     model: post.model,
     colour: post.colour,
     colourNote: post.ownerNote ?? '',
+    colourFinish: post.colourFinish ?? null,
     year: post.year ?? null,
     bodyType: post.bodyType ?? null,
   });
@@ -73,6 +74,9 @@ export function CarDetailsEditor({
           model: answers.model as string,
           colour: answers.colour as string,
           colourNote: answers.colourNote ?? '',
+          // Sent on every save — the RPC replaces it, so leaving it out
+          // would wipe it.
+          colourFinish: answers.colourFinish ?? null,
           year: answers.year ?? null,
           bodyType: answers.bodyType ?? null,
         })

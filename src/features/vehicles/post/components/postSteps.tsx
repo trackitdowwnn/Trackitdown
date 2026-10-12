@@ -184,12 +184,14 @@ export function ColourStep({ answers, setAnswers }: VehicleStepProps) {
     <ColourField
       value={answers.colour ?? null}
       note={answers.colourNote ?? ''}
+      finish={answers.colourFinish ?? null}
       // ⚠️ NO AUTO-ADVANCE ON A PICK (owner decision, 2026-10-12): a pick may
-      // need a note, and the summary and "Add the colour" link (and the
-      // optional finish, to come) sit under the grid — the step waits for
-      // Next rather than moving on from under them.
+      // need a note, and the summary, the "Add the colour" link and the
+      // optional finish sit under the grid — the step waits for Next rather
+      // than moving on from under them.
       onChange={(colour) => setAnswers(colourChangePatch(colour))}
       onChangeNote={(colourNote) => setAnswers({ colourNote })}
+      onChangeFinish={(colourFinish) => setAnswers({ colourFinish })}
     />
   );
 }

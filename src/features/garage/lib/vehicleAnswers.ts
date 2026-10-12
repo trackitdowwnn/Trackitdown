@@ -37,6 +37,7 @@ export function toAnswers(vehicle: SavedVehicle): AddVehicleAnswers {
     model: vehicle.model,
     colour: vehicle.colour,
     colourNote: vehicle.colourNote ?? '',
+    colourFinish: vehicle.colourFinish ?? null,
     year: vehicle.year,
     bodyType: vehicle.bodyType,
     distinctiveFeatures: vehicle.distinctiveFeatures.map((feature) => ({

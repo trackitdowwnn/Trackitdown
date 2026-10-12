@@ -354,6 +354,18 @@ describe('review values', () => {
     expect(stepById('colour').reviewValue?.({ colour: 'Blue' })).toBe('Blue');
   });
 
+  it('appends the paint finish to the colour review when one is chosen', () => {
+    expect(stepById('colour').reviewValue?.({ colour: 'Blue', colourFinish: 'metallic' })).toBe(
+      'Blue · Metallic',
+    );
+    expect(stepById('colour').reviewValue?.({ colour: 'Blue', colourFinish: null })).toBe('Blue');
+    // A finish the server held under an escape (it doesn't tie the two) is
+    // not shown — submit won't send it either.
+    expect(
+      stepById('colour').reviewValue?.({ colour: 'Multicolour / wrapped', colourFinish: 'metallic' }),
+    ).toBe('Multicolour / wrapped');
+  });
+
   it('reviews distinctive features as a count', () => {
     expect(
       stepById('distinctive-features').reviewValue?.({

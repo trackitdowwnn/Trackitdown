@@ -25,7 +25,11 @@
 import { z } from 'zod';
 
 import { supabase, uploadOwnFolderPhoto } from '@/shared/api';
-import { canonicalColourName } from '@/shared/lib/carColours';
+import {
+  canonicalColourName,
+  COLOUR_FINISH_VALUES,
+  savedColourFinish,
+} from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import { formatPounds } from '@/shared/lib/money';
 import type { PhotoTileStatus } from '@/shared/ui';
@@ -58,6 +62,7 @@ export const CREATE_POST_ERROR_MESSAGES: Record<string, string> = {
   PHOTO_COUNT: 'Add between 3 and 6 photos of your car.',
   INVALID_STOLEN_FROM: 'Where it was taken from wasn’t recognised. Please reselect it.',
   INVALID_KEYS_TAKEN: 'The “keys taken” answer wasn’t recognised. Please reselect it.',
+  INVALID_COLOUR_FINISH: 'The paint finish wasn’t recognised. Please reselect it.',
   // These indicate a client/upload bug (postApi always sends own-folder refs),
   // not something the user typed — keep the copy generic and retryable.
   INVALID_PHOTO_URL: 'We couldn’t attach one of your photos. Please try again.',
@@ -107,6 +112,10 @@ const submitAnswersSchema = z.object({
   colour: z.string().min(1),
   // Free-text note for an escape colour (wrapped/other) → owner_note; '' otherwise.
   colourNote: z.string().default(''),
+  // The optional paint finish. `.catch(null)`: a draft restored from disk is
+  // not re-validated, and an unreadable finish must cost the finish, never
+  // the submit.
+  colourFinish: z.enum(COLOUR_FINISH_VALUES).nullish().catch(null),
   // Mirrors the posts.year CHECK (1900–2100) — defense in depth with the step.
   year: z.number().int().min(1900).max(2100).nullish(),
   bodyType: z.string().nullish(),
@@ -252,6 +261,8 @@ export function buildCreatePostParams(
     // Provenance only: nothing displays it, and the post keeps its own full
     // snapshot, so deleting the garage car later cannot alter this listing.
     p_vehicle_id: answers.fromVehicleId ?? null,
+    // None under an escape colour, whatever the answers still hold.
+    p_colour_finish: savedColourFinish(answers.colour, answers.colourFinish),
   };
 }
 

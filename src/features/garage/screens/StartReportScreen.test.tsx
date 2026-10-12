@@ -103,6 +103,7 @@ function vehicle(overrides: Partial<SavedVehicle> = {}): SavedVehicle {
     model: '320d',
     colour: 'Blue',
     colourNote: null,
+    colourFinish: null,
     year: 2019,
     bodyType: 'Saloon',
     nickname: null,

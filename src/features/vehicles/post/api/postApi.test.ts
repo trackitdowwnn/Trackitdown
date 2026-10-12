@@ -21,6 +21,7 @@ import {
   submitPost,
   type SubmitReadyAnswers,
 } from './postApi';
+import type { PostACarAnswers } from '../types';
 
 const mockRpc = jest.fn();
 const mockUpload = jest.fn();
@@ -253,6 +254,18 @@ describe('buildCreatePostParams', () => {
     expect(buildCreatePostParams(readyAnswers({ colourNote: '   ' }), uploads).p_owner_note).toBeNull();
   });
 
+  it('sends the paint finish for a plain colour, and none under an escape', () => {
+    const uploads = { photoUrls: ['a', 'b', 'c'] };
+    const finishFor = (overrides: Partial<SubmitReadyAnswers>) =>
+      buildCreatePostParams(readyAnswers(overrides), uploads).p_colour_finish;
+
+    expect(finishFor({ colourFinish: 'metallic' })).toBe('metallic');
+    expect(finishFor({ colourFinish: null })).toBeNull();
+    expect(finishFor({})).toBeNull(); // never touched
+    // The chips hide for an escape and the patch drops it; this is the last word.
+    expect(finishFor({ colour: 'Other', colourNote: 'Champagne', colourFinish: 'pearl' })).toBeNull();
+  });
+
 });
 
 describe('createPost', () => {
@@ -342,6 +355,21 @@ describe('submitPost', () => {
     expect(params.p_year).toBeNull();
     expect(params.p_feature_keys).toBeNull();
     expect(params.p_verification_path).toBeNull();
+    expect(params.p_colour_finish).toBeNull();
+  });
+
+  it('⚠️ an unreadable finish (a restored draft) costs the finish, never the submit', async () => {
+    mockRpc.mockResolvedValue({
+      data: { post_id: '55555555-5555-5555-5555-555555555555', status: 'draft' },
+      error: null,
+    });
+    // Drafts are re-filtered by KEY on read, not by value.
+    const restored = { ...readyAnswers(), colourFinish: 'satin' } as unknown as Partial<PostACarAnswers>;
+
+    const result = await submitPost(restored);
+
+    expect(result.status).toBe('draft');
+    expect((mockRpc.mock.calls[0][1] as Record<string, unknown>).p_colour_finish).toBeNull();
   });
 
   it('always creates a plate-less post (p_plate null — plate capture deferred)', async () => {

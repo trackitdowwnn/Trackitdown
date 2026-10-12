@@ -15,6 +15,7 @@
 import { z } from 'zod';
 
 import { supabase } from '@/shared/api';
+import { toColourFinish } from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import type { PostStatus } from '@/shared/types';
 
@@ -56,6 +57,10 @@ const visibleSchema = z.object({
   make: z.string(),
   model: z.string(),
   colour: z.string(),
+  // The optional paint finish (20261012100000). A plain string, narrowed by
+  // toColourFinish: a finish this build doesn't know must cost the finish,
+  // never the whole listing.
+  colour_finish: z.string().nullish(),
   // Nullable since 2026-08-20 (ADR-0014): a no-reward listing has no bounty.
   bounty_amount_pence: z.number().int().nullable(),
   // A lapsed reward (ADR-0020, 20261006100000). Optional so an app that
@@ -109,6 +114,7 @@ function toPostDetail(row: VisibleRow): PostDetail {
     make: row.make,
     model: row.model,
     colour: row.colour,
+    colourFinish: toColourFinish(row.colour_finish) ?? undefined,
     plate: row.plate,
     year: row.year ?? undefined,
     bodyType: row.body_type ?? undefined,

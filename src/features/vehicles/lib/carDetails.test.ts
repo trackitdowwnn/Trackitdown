@@ -43,6 +43,18 @@ describe('buildCarDetailRows', () => {
     expect(firstMissing).toBeGreaterThan(lastPresent);
   });
 
+  it('puts the paint finish on the colour row, not a row of its own', async () => {
+    const rows = buildCarDetailRows({ ...base, colourFinish: 'metallic' });
+    expect(rows[0].label).toBe('Colour: Blue · Metallic');
+    expect(rows.filter((row) => row.label.includes('Metallic'))).toHaveLength(1);
+    // Not said is not a gap: the flow never asks for it.
+    expect(buildCarDetailRows(base).some((row) => /finish/i.test(row.label))).toBe(false);
+    // Never "Other · Metallic": the server doesn't tie finish to colour.
+    expect(buildCarDetailRows({ ...base, colour: 'Other', colourFinish: 'metallic' })[0].label).toBe(
+      'Colour: Other',
+    );
+  });
+
   it('names a gap for every fact the flow asks for but the post lacks', async () => {
     const missing = buildCarDetailRows(base)
       .filter((row) => row.missing)

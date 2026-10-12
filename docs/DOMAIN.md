@@ -863,7 +863,7 @@ unpublished, unsearchable, and carries no money or lifecycle state.
   wizard keeps the real photos step.
 - **A post SNAPSHOTS the vehicle; it never references it.** Posting from the
   garage copies the car's details onto the post (posts already store make /
-  model / colour / year / body type / plate denormalised, with their own photo
+  model / colour (+ note and finish) / year / body type / plate denormalised, with their own photo
   and distinctive-feature rows). `posts.vehicle_id` is provenance only —
   nothing reads it for display, and it is `ON DELETE SET NULL`. Editing or
   deleting a saved car a year later therefore CANNOT alter or orphan a

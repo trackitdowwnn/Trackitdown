@@ -27,6 +27,7 @@ function vehicle(overrides: Partial<SavedVehicle> = {}): SavedVehicle {
     model: '320d',
     colour: 'Blue',
     colourNote: null,
+    colourFinish: null,
     year: 2019,
     bodyType: 'Saloon',
     nickname: null,
@@ -60,6 +61,12 @@ describe('vehicleDetailLine', () => {
     );
     // "Other" says nothing a spotter can use — the review preview drops it too.
     expect(vehicleDetailLine(vehicle({ colour: 'Other', colourNote: null }))).toBe('2019 · Saloon');
+  });
+
+  it('carries the paint finish beside a plain colour, as Car details will show it', () => {
+    expect(vehicleDetailLine(vehicle({ colourFinish: 'metallic' }))).toBe(
+      'Blue · Metallic · 2019 · Saloon',
+    );
   });
 });
 

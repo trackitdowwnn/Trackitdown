@@ -2,8 +2,10 @@
  * WHAT:  Tests for ColourField — selection writes the canonical colour name,
  *        every swatch shows its NAME label (the accessibility guarantee), light
  *        swatches render a border, the note trigger appears only for the escapes
- *        and opens a sheet whose input captures text, and a pre-set colour (incl.
- *        a DVLA-mapped one) pre-selects its swatch.
+ *        and opens a sheet whose input captures text, a pre-set colour (incl.
+ *        a DVLA-mapped one) pre-selects its swatch, and the optional finish
+ *        is there from the start, says "optional" once, clears on a second
+ *        tap, and goes with an escape.
  * WHY:   The colour is a clean enum a colour-blind spotter reads by NAME, so a
  *        missing name label, a light swatch that vanishes, or a note leaking
  *        under a plain colour are real defects — pinned here.
@@ -16,7 +18,7 @@ import React from 'react';
 import { Keyboard, StyleSheet } from 'react-native';
 
 import { ColourField } from './ColourField';
-import { CAR_COLOURS, colourFromDvla } from '@/shared/lib';
+import { CAR_COLOURS, colourChangePatch, colourFromDvla, type ColourFinish } from '@/shared/lib';
 
 jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
@@ -260,5 +262,124 @@ describe('ColourField — the V5C palette and smarter escapes (2026-10-12)', () 
       fireEvent.press(view.getByRole('button', { name: 'Done' }));
     });
     expect(dismiss).toHaveBeenCalled();
+  });
+});
+
+/** The field wired as ColourStep wires it: a colour change goes through
+ *  colourChangePatch, so the finish behaves as it does in the app. */
+function WithFinish({ onFinish }: { onFinish?: (finish: ColourFinish | null) => void }) {
+  const [answers, setAnswers] = React.useState<{
+    colour: string | null;
+    colourNote?: string;
+    colourFinish?: ColourFinish | null;
+  }>({ colour: null });
+  const patch = (next: Partial<typeof answers>) => setAnswers((current) => ({ ...current, ...next }));
+  return (
+    <ColourField
+      value={answers.colour}
+      note={answers.colourNote ?? ''}
+      finish={answers.colourFinish ?? null}
+      onChange={(colour) => patch(colourChangePatch(colour))}
+      onChangeNote={(colourNote) => patch({ colourNote })}
+      onChangeFinish={(colourFinish) => {
+        onFinish?.(colourFinish);
+        patch({ colourFinish });
+      }}
+    />
+  );
+}
+
+describe('ColourField — the optional finish (2026-10-12)', () => {
+  const chip = (view: Awaited<ReturnType<typeof render>>, label: string) =>
+    view.getByRole('radio', { name: label });
+
+  it('is there from the start, not revealed below the fold by a pick', async () => {
+    const view = await render(<WithFinish />);
+
+    expect(view.getByText('Paint finish')).toBeTruthy();
+    expect(view.getByText('Optional')).toBeTruthy();
+    for (const label of ['Metallic', 'Matt', 'Pearl', 'Two-tone roof']) {
+      expect(chip(view, label).props.accessibilityState).toMatchObject({ checked: false });
+    }
+  });
+
+  it('says "optional" once to a screen reader: one header, then the question alone', async () => {
+    const view = await render(<WithFinish />);
+
+    const head = view.getByLabelText('Paint finish, optional');
+    expect(head.props.accessible).toBe(true);
+    expect(head.props.accessibilityRole).toBe('header');
+    expect(view.getByTestId('colour-finish').props.accessibilityLabel ?? '').not.toMatch(
+      /optional/i,
+    );
+    expect(view.getByLabelText('Paint finish').props.accessibilityRole).toBe('radiogroup');
+  });
+
+  it('a finish picked before the colour is kept when a plain colour follows', async () => {
+    const view = await render(<WithFinish />);
+    await act(async () => {
+      fireEvent.press(chip(view, 'Matt'));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Black'));
+    });
+
+    expect(view.getByTestId('colour-summary').props.children).toBe('Selected: Black · Matt');
+  });
+
+  it('picks a finish, names it in the summary, and clears it on a second tap', async () => {
+    const onFinish = jest.fn();
+    const view = await render(<WithFinish onFinish={onFinish} />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Blue'));
+    });
+
+    await act(async () => {
+      fireEvent.press(chip(view, 'Metallic'));
+    });
+    expect(onFinish).toHaveBeenLastCalledWith('metallic');
+    expect(chip(view, 'Metallic').props.accessibilityState).toMatchObject({ checked: true });
+    expect(view.getByTestId('colour-summary').props.children).toBe('Selected: Blue · Metallic');
+    // The chosen chip says it can be taken back.
+    expect(chip(view, 'Metallic').props.accessibilityHint).toBe('Double tap to clear');
+
+    await act(async () => {
+      fireEvent.press(chip(view, 'Metallic'));
+    });
+    expect(onFinish).toHaveBeenLastCalledWith(null);
+    expect(chip(view, 'Metallic').props.accessibilityState).toMatchObject({ checked: false });
+    expect(view.getByTestId('colour-summary').props.children).toBe('Selected: Blue');
+  });
+
+  it('keeps the finish across plain colours, and drops it for an escape', async () => {
+    const onFinish = jest.fn();
+    const view = await render(<WithFinish onFinish={onFinish} />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Blue'));
+    });
+    await act(async () => {
+      fireEvent.press(chip(view, 'Pearl'));
+    });
+
+    // Blue corrected to Grey is still pearl.
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Grey'));
+    });
+    expect(chip(view, 'Pearl').props.accessibilityState).toMatchObject({ checked: true });
+
+    // A wrap has no single paint to finish: the chips go, and so does the answer.
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Multicolour / wrapped'));
+    });
+    expect(view.queryByText('Paint finish')).toBeNull();
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('White'));
+    });
+    expect(chip(view, 'Pearl').props.accessibilityState).toMatchObject({ checked: false });
+  });
+
+  it('shows no chips where the caller takes no finish', async () => {
+    const { queryByText } = await renderField({ value: 'Blue' });
+    expect(queryByText('Paint finish')).toBeNull();
   });
 });

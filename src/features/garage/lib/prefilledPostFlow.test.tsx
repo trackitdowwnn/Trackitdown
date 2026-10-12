@@ -75,6 +75,7 @@ function vehicle(overrides: Partial<SavedVehicle> = {}): SavedVehicle {
     model: '320d',
     colour: 'Blue',
     colourNote: null,
+    colourFinish: null,
     year: 2019,
     bodyType: 'Saloon',
     nickname: null,
@@ -200,6 +201,12 @@ describe('prefilled answers', () => {
     );
 
     expect(initialAnswers.colourNote).toBe('matte black wrap over silver');
+  });
+
+  it('carries the paint finish through to the post', () => {
+    const { initialAnswers } = build(vehicle({ colour: 'Blue', colourFinish: 'metallic' }));
+
+    expect(initialAnswers.colourFinish).toBe('metallic');
   });
 });
 
