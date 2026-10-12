@@ -12,6 +12,7 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
+import { Keyboard } from 'react-native';
 
 import { SelectScreen, fitAnchors } from './SelectScreen';
 import type { SelectOption } from './selectOptions';
@@ -434,6 +435,28 @@ describe('SelectScreen', () => {
         fireEvent.press(view.getByText(`Use “${long}”`));
       });
       expect(onSubmit).toHaveBeenCalledWith('x'.repeat(40));
+    });
+
+    it('comes back when the keyboard is closed without leaving the search (Android Back)', async () => {
+      const handlers: Record<string, () => void> = {};
+      const spy = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+        name: string,
+        handler: () => void,
+      ) => {
+        handlers[name] = handler;
+        return { remove: jest.fn() };
+      }) as unknown as typeof Keyboard.addListener);
+      const { view } = await withPill();
+      await act(async () => {
+        fireEvent(view.getByLabelText('Search'), 'focus');
+      });
+      expect(view.queryByTestId('select-manual-pill')).toBeNull();
+      // Back closes the keyboard; the search is never blurred.
+      await act(async () => {
+        handlers.keyboardDidHide?.();
+      });
+      expect(view.getByTestId('select-manual-pill')).toBeTruthy();
+      spy.mockRestore();
     });
   });
 
