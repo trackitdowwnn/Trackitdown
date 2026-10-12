@@ -23,6 +23,7 @@ import {
   BackHandler,
   Dimensions,
   Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -43,12 +44,14 @@ jest.mock('react-native-safe-area-context', () =>
 // `exiting` it had on its LAST render before unmounting — the one Reanimated
 // actually plays, and the whole of the exit-direction bug.
 const mockUnmountedExits: (string | undefined)[] = [];
+// …and whether that last render could take touches (see the leaving test).
+const mockUnmountedPointerEvents: (string | undefined)[] = [];
 let mockReduceMotion = true;
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const React = require('react');
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
-  const { View } = require('react-native');
+  const { StyleSheet, View } = require('react-native');
   const builder = (name: string) => {
     const chain: Record<string, unknown> = { __name: name };
     chain.duration = () => chain;
@@ -56,12 +59,13 @@ jest.mock('react-native-reanimated', () => {
     chain.reduceMotion = () => chain;
     return chain;
   };
-  function MockAnimatedView(props: { exiting?: { __name?: string } }) {
+  function MockAnimatedView(props: { exiting?: { __name?: string }; style?: unknown }) {
     const last = React.useRef(props);
     last.current = props;
     React.useEffect(
       () => () => {
         mockUnmountedExits.push(last.current.exiting?.__name);
+        mockUnmountedPointerEvents.push(StyleSheet.flatten(last.current.style)?.pointerEvents);
       },
       [],
     );
@@ -533,6 +537,62 @@ describe('moving between screens', () => {
     await press(view, 'Get started');
     expect(mockUnmountedExits).toEqual(['SlideOutLeft', 'SlideOutRight', 'SlideOutLeft']);
     expect(animName(view.getByTestId('wizard-step-slide').props.entering)).toBe('SlideInRight');
+  });
+
+  it('⚠️ a leaving screen takes no touches — its exiting copy can’t swallow the next step’s', async () => {
+    // Owner report (2026-10-12): after a typed make and model the colour step
+    // froze for seconds — no scroll, no colour — while the footer still
+    // worked. Reanimated keeps the exiting view over the new step until its
+    // exit has played; that copy must be untouchable.
+    mockUnmountedPointerEvents.length = 0;
+    const { view } = await renderWizard();
+    await press(view, 'Get started');
+    await press(view, 'Back');
+    expect(mockUnmountedPointerEvents).toEqual(['none', 'none']);
+    // …while the screen on show takes touches as normal.
+    expect(
+      StyleSheet.flatten(view.getByTestId('wizard-step-slide').props.style).pointerEvents,
+    ).toBeUndefined();
+  });
+
+  it('⚠️ a move drops the footer’s keyboard lift at once — the next step mounts full height', async () => {
+    // Owner report (2026-10-12): after a typed make and model the colour step
+    // froze. The step mounted with the footer still lifted by the keyboard,
+    // and the taller layout from keyboardDidHide never reached its entering
+    // animation's frame — its lower part took no touches.
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const handlers: Record<string, ((event?: unknown) => void)[]> = {};
+    const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+      name: string,
+      handler: (event?: unknown) => void,
+    ) => {
+      (handlers[name] ??= []).push(handler);
+      return { remove: jest.fn() };
+    }) as unknown as typeof Keyboard.addListener);
+    const fire = async (name: string, event?: unknown) => {
+      await act(async () => {
+        for (const handler of handlers[name] ?? []) handler(event);
+      });
+    };
+    const footerPad = (view: Awaited<ReturnType<typeof render>>) =>
+      StyleSheet.flatten(view.getByTestId('wizard-footer').props.style).paddingBottom;
+
+    const { view } = await renderWizard();
+    const resting = footerPad(view);
+    await fire('keyboardDidShow', { endCoordinates: { height: 300 } });
+    expect(footerPad(view)).toBe(resting + 300);
+
+    // The move itself — before any keyboardDidHide — drops the lift.
+    await press(view, 'Get started');
+    expect(footerPad(view)).toBe(resting);
+    await fire('keyboardDidHide');
+    expect(footerPad(view)).toBe(resting);
+
+    // A field on the new step raising the keyboard lifts the footer again.
+    await fire('keyboardDidShow', { endCoordinates: { height: 280 } });
+    expect(footerPad(view)).toBe(resting + 280);
+    listen.mockRestore();
+    jest.restoreAllMocks();
   });
 
   it('drops the keyboard on every move', async () => {
