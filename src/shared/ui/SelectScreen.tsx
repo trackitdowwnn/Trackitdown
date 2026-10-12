@@ -53,6 +53,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   FlatList,
+  Keyboard,
   ScrollView,
   Modal,
   Pressable,
@@ -73,6 +74,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAndroidKeyboardHeight } from '../hooks';
 import { lightHaptic, selectionHaptic } from '../lib/haptics';
 import {
   listRowStackFontScale,
@@ -228,6 +230,14 @@ export function SelectScreen<V extends string | number>({
   const [draft, setDraft] = useState('');
   // The search box's focus — the pill steps aside while the keyboard is up.
   const [searchFocused, setSearchFocused] = useState(false);
+  const keyboard = useAndroidKeyboardHeight();
+  // Closing the keyboard with Android Back (or the gesture) doesn't blur the
+  // search, so the pill would stay hidden with nothing typed; the keyboard
+  // going away counts as leaving the search.
+  useEffect(() => {
+    const hide = Keyboard.addListener('keyboardDidHide', () => setSearchFocused(false));
+    return () => hide.remove();
+  }, []);
   // Screen-reader focus to restore onto the pill after the box closes.
   const [focusPillOnShow, setFocusPillOnShow] = useState(false);
   // The pill's measured height, so the list's last rows scroll clear of it at
@@ -372,8 +382,9 @@ export function SelectScreen<V extends string | number>({
   // while the search is focused (the keyboard would sit on it).
   const entryButton = manualEntry?.button;
   const showEntryPill = entryButton != null && !searching && !entering && !searchFocused;
-  // Opening the box carries over a query if there is one; otherwise it keeps
-  // what was typed there before "Back to the list".
+  // Opening the box keeps what was typed there before "Back to the list" (a
+  // query only carries over in the moment before the search filters, since
+  // the pill steps aside while searching).
   const openEntry = () => {
     lightHaptic();
     const carried = boundManual(query);
@@ -530,7 +541,12 @@ export function SelectScreen<V extends string | number>({
                 >
                   <ScrollView
                     keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={styles.entry}
+                    // ⚠️ Room for the keyboard, or there is nothing to scroll
+                    // (re-review): iOS insets itself; edge-to-edge Android
+                    // doesn't resize the window, so the content pads by the
+                    // measured keyboard (as WizardScreen and StickyActionBar).
+                    automaticallyAdjustKeyboardInsets
+                    contentContainerStyle={[styles.entry, { paddingBottom: spacing.xl + keyboard }]}
                   >
                     <TextField
                       ref={entryInputRef}
