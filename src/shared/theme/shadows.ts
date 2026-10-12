@@ -45,7 +45,9 @@ export const shadows = {
   /** The deeper shadow an element casts WHILE lifted toward the user (the pin
    *  badge as the map pans beneath it) — ALSO sanctioned at rest for small
    *  white circles floating over photography (header buttons, map expand
-   *  badge), which need the depth to stay legible on a busy image. */
+   *  badge), which need the depth to stay legible on a busy image — and for
+   *  the Toast card (2026-10-09), which floats over whatever is beneath it,
+   *  photos and the map included. */
   lifted: {
     shadowColor: SHADOW_CAST,
     shadowOpacity: 0.16,
