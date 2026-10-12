@@ -26,10 +26,6 @@ jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default,
 );
 
-// Reanimated's own mock, not a hand-built stub: the shared UI barrel these
-// fields import loads BottomSheet and MoneySlider, which call into far more of
-// Reanimated at import than the picker does. A thin stub loaded fine alone and
-// failed in the full run, depending on what another suite had cached.
 // The type-it-in sheet (2026-10-12) shows only once presented, so its content
 // is absent until the pill opens it — the house visibility-aware modal.
 jest.mock('@gorhom/bottom-sheet', () => {
@@ -63,6 +59,10 @@ jest.mock('@gorhom/bottom-sheet', () => {
   };
 });
 
+// Reanimated's own mock, not a hand-built stub: the shared UI barrel these
+// fields import loads BottomSheet and MoneySlider, which call into far more of
+// Reanimated at import than the picker does. A thin stub loaded fine alone and
+// failed in the full run, depending on what another suite had cached.
 jest.mock('react-native-reanimated', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   require('react-native-reanimated/mock'),

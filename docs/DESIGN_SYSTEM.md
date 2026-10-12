@@ -501,7 +501,7 @@ GOV.UK both advise against dropdowns for long lists).
     before the rows, and it fades aside while searching or while the search
     is focused. It raises a type-it-in **bottom sheet** over the dimmed list
     (owner request, the same day; the shared `BottomSheet`, hosted inside the
-    picker's Modal): "Type your car’s make", a `TextField` ("Your car’s make",
+    picker's Modal): "Type your car’s make", a `TextField` ("Make",
     "As it’s shown on your logbook (V5C)", spoken as its hint), then "Use this
     make" and a ghost "Cancel"; Cancel, swipe-down, the scrim and Android Back
     return to the list, and screen-reader focus moves onto the field and back

@@ -35,7 +35,9 @@
  *        handleSelect for where checkboxes + a Done button plug in.
  * LINKS: src/shared/ui/SelectField.tsx (trigger); src/shared/ui/
  *        selectOptions.ts (filtering/grouping logic); src/shared/ui/
- *        EmptyState.tsx; docs/DESIGN_SYSTEM.md (Motion, Accessibility).
+ *        EmptyState.tsx; src/shared/ui/BottomSheet.tsx (the type-it-in
+ *        sheet, and its ref contract); docs/DESIGN_SYSTEM.md (Motion,
+ *        Accessibility).
  *
  * Usage:
  *   <SelectScreen
@@ -120,7 +122,7 @@ const STAGGERED_ROWS = 12;
 
 /**
  * The floating "not listed" way in (owner request, 2026-10-12): a pill over
- * the list that opens a small type-it-in box in place of the list. The copy is
+ * the list that raises a type-it-in bottom sheet over it. The copy is
  * the caller's, so the picker stays generic ("Use this make" / "this model").
  */
 export interface ManualEntryButton {
@@ -429,11 +431,14 @@ export function SelectScreen<V extends string | number>({
     if (!visible) entrySheetRef.current?.close();
   }, [visible]);
 
-  // Screen-reader focus onto the sheet's field once it has risen — autoFocus
-  // raises the keyboard without reliably moving that focus.
+  // The field takes focus once the sheet has RISEN, not as it mounts:
+  // autoFocus raised the keyboard mid-slide, and on Android the keyboard lift
+  // then snapped the sheet a second time (UI review). Screen-reader focus
+  // goes there too — focusing an input doesn't reliably move it.
   useEffect(() => {
     if (!entering) return;
     const timer = setTimeout(() => {
+      entryInputRef.current?.focus();
       if (entryInputRef.current) {
         AccessibilityInfo.sendAccessibilityEvent(entryInputRef.current, 'focus');
       }
@@ -494,6 +499,11 @@ export function SelectScreen<V extends string | number>({
       {visible ? (
         <Animated.View
           style={styles.sheet}
+          // While the type-it-in sheet is up, the list behind its scrim is
+          // out of a screen reader's reach (the shared BottomSheet doesn't
+          // trap focus; the scrim's "Close sheet" is a sibling, still reached).
+          importantForAccessibility={entering ? 'no-hide-descendants' : 'auto'}
+          accessibilityElementsHidden={entering}
           entering={SlideInDown.duration(MOTION_MS).easing(motionEasing).reduceMotion(
             ReduceMotion.System,
           )}
@@ -661,8 +671,10 @@ export function SelectScreen<V extends string | number>({
                       styles.listContent,
                       // Clear the index rail so the last rows aren't hidden under it.
                       showIndex && !searching ? styles.listContentIndexed : null,
-                      // Room for the last rows to scroll clear of the pill.
-                      showEntryPill
+                      // Room for the last rows to scroll clear of the pill —
+                      // kept while the sheet is up, so the list doesn't jump
+                      // under its scrim.
+                      entryButton != null && !searching && !searchFocused
                         ? { paddingBottom: spacing.xl + pillHeight + spacing.xl }
                         : null,
                     ]}
@@ -798,7 +810,6 @@ export function SelectScreen<V extends string | number>({
               // TextField speaks only its label; the hint rides here.
               accessibilityHint={entryButton.helper}
               maxLength={maxManual}
-              autoFocus
               autoCorrect={false}
               autoCapitalize="words"
               returnKeyType="done"
@@ -831,6 +842,8 @@ export function SelectScreen<V extends string | number>({
  * behind it, and on Android gestures don't reach a Modal's window without its
  * own GestureHandlerRootView — the documented gorhom/RNGH set-up. Only where a
  * caller asked for the pill (`enabled`), so every other picker is unchanged.
+ * Flipping `enabled` swaps the wrapper and so remounts the picker's body —
+ * fine while callers pass a constant button (MakeField/ModelField do).
  */
 function SheetHost({ enabled, children }: { enabled: boolean; children: ReactNode }) {
   const styles = useThemedStyles(makeStyles);
@@ -1267,14 +1280,13 @@ const makeStyles = (c: Palette) =>
       flexShrink: 1,
       textAlign: 'center',
     },
-    // The type-it-in box: the screen's gutter, the field, then its actions.
-    // The sheet already carries the gutter and the bottom safe area.
+    // The type-it-in sheet's body — the field, then its actions (the sheet
+    // carries the gutter and the bottom safe area). CollectionPickerSheet's
+    // create mode, the same field-then-buttons sheet, spaces it the same.
     entry: {
-      paddingTop: spacing.xs,
+      gap: spacing.xl,
     },
-    // A clearer break between the field and what to do with it.
     entryActions: {
-      marginTop: spacing.lg,
       gap: spacing.md,
     },
     // Extra right padding so rows clear the index rail when it's shown.

@@ -50,7 +50,7 @@ const MODEL_ENTRY: ManualEntryButton = {
   label: 'Not listed? Type it in',
   accessibilityLabel: 'Not listed? Type your model in',
   sheetTitle: 'Type your car’s model',
-  fieldLabel: 'Your car’s model',
+  fieldLabel: 'Model',
   submitLabel: 'Use this model',
   helper: 'As it’s shown on your logbook (V5C)',
 };

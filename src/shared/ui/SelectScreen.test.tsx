@@ -12,7 +12,7 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Keyboard } from 'react-native';
+import { AccessibilityInfo, Keyboard } from 'react-native';
 
 import { SelectScreen, fitAnchors } from './SelectScreen';
 import type { SelectOption } from './selectOptions';
@@ -22,11 +22,6 @@ jest.mock('react-native-safe-area-context', () =>
   require('react-native-safe-area-context/jest/mock').default,
 );
 
-// Mock at the boundary: SelectScreen needs Animated.View, the slide/fade
-// builders (chainable no-ops here), Easing, and ReduceMotion. withCallback
-// callbacks are CAPTURED so tests can fire them late, the way Reanimated
-// fires a stale exit callback on-device after a fast close→reopen.
-const mockExitCallbacks: ((finished: boolean) => void)[] = [];
 // The type-it-in sheet (2026-10-12) shows only once presented, so its content
 // is absent until the pill opens it — the house visibility-aware modal.
 jest.mock('@gorhom/bottom-sheet', () => {
@@ -60,6 +55,11 @@ jest.mock('@gorhom/bottom-sheet', () => {
   };
 });
 
+// Mock at the boundary: SelectScreen needs Animated.View, the slide/fade
+// builders (chainable no-ops here), Easing, and ReduceMotion. withCallback
+// callbacks are CAPTURED so tests can fire them late, the way Reanimated
+// fires a stale exit callback on-device after a fast close→reopen.
+const mockExitCallbacks: ((finished: boolean) => void)[] = [];
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const { View } = require('react-native');
@@ -257,7 +257,7 @@ describe('SelectScreen', () => {
       label: 'Not listed? Type it in',
       accessibilityLabel: 'Not listed? Type your make in',
       sheetTitle: 'Type your car’s make',
-      fieldLabel: 'Your car’s make',
+      fieldLabel: 'Make',
       submitLabel: 'Use this make',
       helper: 'As it’s shown on your logbook (V5C)',
     };
@@ -295,13 +295,16 @@ describe('SelectScreen', () => {
       expect(view.getByTestId('select-manual-entry')).toBeTruthy();
       expect(view.getByText('Type your car’s make')).toBeTruthy();
       const input = view.getByTestId('select-manual-input');
-      expect(input.props.autoFocus).toBe(true);
+      // Focused once the sheet has risen, not mid-slide (no autoFocus).
+      expect(input.props.autoFocus).toBeUndefined();
       expect(input.props.maxLength).toBe(40);
       expect(view.getByText('As it’s shown on your logbook (V5C)')).toBeTruthy();
       // …and spoken with the field, which TextField would otherwise not read.
       expect(input.props.accessibilityHint).toBe('As it’s shown on your logbook (V5C)');
-      // The list stays behind the sheet; only its pill steps aside.
-      expect(view.getByText('BMW')).toBeTruthy();
+      // The list stays behind the sheet — but out of a screen reader's
+      // reach while it's up; only its pill steps aside.
+      expect(view.getByText('BMW', { includeHiddenElements: true })).toBeTruthy();
+      expect(view.queryByText('BMW')).toBeNull();
       expect(view.queryByTestId('select-manual-pill')).toBeNull();
     });
 
@@ -471,6 +474,46 @@ describe('SelectScreen', () => {
         fireEvent.press(view.getByText(`Use “${long}”`));
       });
       expect(onSubmit).toHaveBeenCalledWith('x'.repeat(40));
+    });
+
+    it('Cancel hands screen-reader focus back to the pill', async () => {
+      const send = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent');
+      const { view } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        jest.advanceTimersByTime(300); // the field's own focus, once risen
+      });
+      send.mockClear();
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Cancel' }));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith(expect.anything(), 'focus');
+      send.mockRestore();
+    });
+
+    it('…but not after "Use this make" — the picker closes with the sheet', async () => {
+      const send = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent');
+      const { view } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      send.mockClear();
+      await act(async () => {
+        fireEvent.changeText(view.getByTestId('select-manual-input'), 'Trabant');
+      });
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Use this make' }));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(send).not.toHaveBeenCalled();
+      send.mockRestore();
     });
 
     it('comes back when the keyboard is closed without leaving the search (Android Back)', async () => {
