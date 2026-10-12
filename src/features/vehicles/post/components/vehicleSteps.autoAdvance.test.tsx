@@ -1,7 +1,7 @@
 /**
  * WHAT:  Tests for which vehicle steps move on by themselves (advanceSoon):
- *        a plain colour and a body type do; an escape colour ("Multicolour /
- *        wrapped", "Other"), which opens a note to fill in, does not; the
+ *        a body type does; colour does not (2026-10-12: its optional finish
+ *        sits under the grid, so it waits for Next — escapes never did); the
  *        pickers (make, model, year) hand it to their field's onPicked, so it
  *        runs after the picker has closed.
  * WHY:   2026-10-08 — the owner chose auto-advance on make, model, year,
@@ -48,14 +48,14 @@ const props = (advanceSoon: () => void): Props => ({
 });
 
 describe('vehicle steps that move on by themselves', () => {
-  it('a plain colour moves on', async () => {
+  it('⚠️ colour does NOT move on — its optional finish sits under the grid (2026-10-12)', async () => {
     const advanceSoon = jest.fn();
     await render(<ColourStep {...props(advanceSoon)} />);
     await act(async () => (mockFieldProps.colour.onChange as (c: string) => void)('Blue'));
-    expect(advanceSoon).toHaveBeenCalledTimes(1);
+    expect(advanceSoon).not.toHaveBeenCalled();
   });
 
-  it('an escape colour does NOT — it opens a note to fill in', async () => {
+  it('nor does an escape colour — it opens a note to fill in', async () => {
     const advanceSoon = jest.fn();
     await render(<ColourStep {...props(advanceSoon)} />);
     await act(async () => (mockFieldProps.colour.onChange as (c: string) => void)('Multicolour / wrapped'));

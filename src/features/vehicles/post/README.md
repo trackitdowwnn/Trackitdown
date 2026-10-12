@@ -33,9 +33,9 @@ never opens one person's last-seen location for the next.
 > ONE line under the first question — "Sorry this happened — let's get the
 > details." (`EMPATHY_LINE`) — on Post a car only, never on the garage's
 > add-a-car flow, which shares these steps. It is the one exception to the "no
-> helper" rule below. **Make, model (picked from the list), year, colour and
-> body type move on by themselves** a beat after the pick (`advanceSoon`):
-> not for "Multicolour / wrapped" or "Other", which open a note; not under a
+> helper" rule below. **Make, model (picked from the list), year and body
+> type move on by themselves** a beat after the pick (`advanceSoon`) — not
+> colour (2026-10-12: its optional finish sits under the grid); not under a
 > screen reader or (Android) any accessibility service; never from the
 > submitting screen, nor on an edit from review (Done there can land on "Post
 > & pay"). The place label is warmed once the map pin rests; the reward
@@ -94,9 +94,13 @@ never opens one person's last-seen location for the next.
    hexes). The stored value is the canonical NAME (a clean enum driving the
    card/detail colour text and future colour filters), never a hex. Every
    swatch shows its name (colour-blind spotters read the word — never colour
-   alone). Light swatches (white/silver/gold) get a border. The escapes
-   ("Multicolour / wrapped" / "Other") open a free-text note stored separately
-   (`colourNote` → `owner_note`) so it never pollutes the colour enum.
+   alone); the chosen name goes bold and "Selected: …" confirms it. Since
+   2026-10-12 the palette is the V5C/DVLA vocabulary (20, four columns; an old
+   "Brown / Beige" resolves to Brown). The escapes ("Multicolour / wrapped" /
+   "Other") open a note sheet that asks its own question ("Describe the wrap" /
+   "What colour is it?"), focused once risen; "Other" can't go on without
+   its description. The note is stored separately (`colourNote` →
+   `owner_note`) so it never pollutes the colour enum.
 4. **Body type** (`BodyTypeStep` → `CardSelect`) — optional Airbnb-style icon
    cards (Hatchback/Saloon/Estate/SUV/… with a glyph + subtext; `lib/bodyTypes`).
    Stored verbatim on `posts.body_type`. Also editable via the CarDetailsEditor.

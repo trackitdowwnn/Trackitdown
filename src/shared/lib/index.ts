@@ -7,14 +7,17 @@
 
 export {
   CAR_COLOURS,
+  canonicalColourName,
   colourChangePatch,
   colourFromDvla,
+  colourIsComplete,
   glyphInkFor,
   isNoteColour,
   swatchForName,
   GLYPH_ON_DARK,
   GLYPH_ON_LIGHT,
   type CarColour,
+  type NoteCopy,
 } from './carColours';
 export {
   formatDateLabel,

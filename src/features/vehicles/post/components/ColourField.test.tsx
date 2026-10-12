@@ -12,7 +12,8 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import React from 'react';
+import { Keyboard, StyleSheet } from 'react-native';
 
 import { ColourField } from './ColourField';
 import { CAR_COLOURS, colourFromDvla } from '@/shared/lib';
@@ -147,5 +148,117 @@ describe('ColourField', () => {
     const { getByLabelText } = await renderField({ value: colourFromDvla('SILVER') });
 
     expect(getByLabelText('Silver').props.accessibilityState).toMatchObject({ checked: true });
+  });
+});
+
+/** ColourField with its value and note held in state, as the step holds them. */
+function Stateful() {
+  const [colour, setColour] = React.useState<string | null>(null);
+  const [note, setNote] = React.useState('');
+  return (
+    <ColourField value={colour} note={note} onChange={setColour} onChangeNote={setNote} />
+  );
+}
+
+describe('ColourField — the V5C palette and smarter escapes (2026-10-12)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('offers every V5C colour — Beige, Maroon, Turquoise, Pink and Cream among them', async () => {
+    const { getByLabelText, queryByLabelText } = await renderField();
+    for (const name of ['Brown', 'Beige', 'Maroon', 'Turquoise', 'Pink', 'Cream']) {
+      expect(getByLabelText(name)).toBeTruthy();
+    }
+    expect(queryByLabelText('Brown / Beige')).toBeNull();
+  });
+
+  it('⚠️ an old "Brown / Beige" opens with Brown selected', async () => {
+    const { getByLabelText } = await renderField({ value: 'Brown / Beige' });
+    expect(getByLabelText('Brown').props.accessibilityState).toMatchObject({ checked: true });
+  });
+
+  it('says what is chosen in words; the chosen name changes weight, never size', async () => {
+    const { getByTestId, getByText } = await renderField({ value: 'Blue' });
+    expect(getByTestId('colour-summary').props.children).toBe('Selected: Blue');
+    // Not a live region: the radio's state already announces the pick.
+    expect(getByTestId('colour-summary').props.accessibilityLiveRegion).toBeUndefined();
+    const chosen = StyleSheet.flatten(getByText('Blue').props.style);
+    const other = StyleSheet.flatten(getByText('Red').props.style);
+    expect(chosen.fontFamily).not.toBe(other.fontFamily);
+    expect(chosen.fontSize).toBe(other.fontSize);
+  });
+
+  it('⚠️ "Other" asks to name the colour, and Done says what’s missing instead of moving on', async () => {
+    const view = await render(<Stateful />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Other'));
+    });
+    expect(view.getByText('Name the colour')).toBeTruthy();
+    // Done is never a dead control: pressed blank, it explains.
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Done' }));
+    });
+    expect(view.getByText('Say what colour it is')).toBeTruthy();
+    expect(view.getByTestId('colour-note-input')).toBeTruthy(); // still open
+    await act(async () => {
+      fireEvent.changeText(view.getByTestId('colour-note-input'), 'Champagne');
+    });
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Done' }));
+    });
+    expect(view.queryByTestId('colour-note-input')).toBeNull();
+    // Named by its description.
+    expect(view.getByTestId('colour-summary').props.children).toBe('Selected: Champagne');
+  });
+
+  it('an undescribed "Other" offers the way back to its box', async () => {
+    const view = await render(<Stateful />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Other'));
+    });
+    // Dismissed blank (swipe, scrim, Back)…
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Done' }));
+    });
+    expect(view.getByRole('button', { name: 'Add the colour' })).toBeTruthy();
+  });
+
+  it('the multicolour sheet asks to describe the colours, and its note is optional', async () => {
+    const view = await render(<Stateful />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Multicolour / wrapped'));
+    });
+    expect(view.getByText('Describe the colours')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Done' }));
+    });
+    expect(view.queryByTestId('colour-note-input')).toBeNull();
+    expect(view.queryByRole('button', { name: 'Add the colour' })).toBeNull();
+  });
+
+  it('the escape swatches say they open a box', async () => {
+    const { getByLabelText } = await renderField();
+    expect(getByLabelText('Other').props.accessibilityHint).toBe('Opens a box to describe it');
+    expect(getByLabelText('Blue').props.accessibilityHint).toBeUndefined();
+  });
+
+  it('focuses the box only once the sheet has risen, and Done takes the keyboard with it', async () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    const view = await render(<Stateful />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Multicolour / wrapped'));
+    });
+    // Not focused as it mounts: no autoFocus.
+    expect(view.getByTestId('colour-note-input').props.autoFocus).toBeUndefined();
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Done' }));
+    });
+    expect(dismiss).toHaveBeenCalled();
   });
 });

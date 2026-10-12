@@ -30,6 +30,7 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 
+import { canonicalColourName } from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import { EmptyState, ErrorState, FullscreenLoader, useToast } from '@/shared/ui';
 import { WizardScreen } from '@/shared/wizard';
@@ -64,7 +65,8 @@ function toAnswers(alert: Alert): Partial<AlertAnswers> {
     radiusMiles: alert.radiusMiles,
     make: alert.criteria.make,
     model: alert.criteria.model,
-    colour: alert.criteria.colour,
+    // A retired name ("Brown / Beige") opens as its current chip.
+    colour: canonicalColourName(alert.criteria.colour),
     bodyType: alert.criteria.bodyType,
     minBountyPence: alert.criteria.minBountyPence,
     recencyDays: alert.criteria.recencyDays,

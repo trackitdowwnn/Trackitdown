@@ -25,6 +25,7 @@
 import { z } from 'zod';
 
 import { supabase, uploadOwnFolderPhoto } from '@/shared/api';
+import { canonicalColourName } from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import { formatPounds } from '@/shared/lib/money';
 import type { PhotoTileStatus } from '@/shared/ui';
@@ -201,7 +202,8 @@ export function buildCreatePostParams(
     p_plate: null,
     p_make: answers.make,
     p_model: answers.model,
-    p_colour: answers.colour,
+    // A retired name ("Brown / Beige") is written as its current one.
+    p_colour: canonicalColourName(answers.colour) ?? answers.colour,
     // Optional fields can arrive undefined (untouched steps) — coerce to null.
     p_year: answers.year ?? null,
     p_body_type: answers.bodyType ?? null,

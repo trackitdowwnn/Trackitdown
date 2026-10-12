@@ -25,6 +25,7 @@ import {
   YearStep,
 } from '../../post/components/postSteps';
 import type { PostACarAnswers } from '../../post';
+import { colourIsComplete } from '@/shared/lib';
 import { spacing } from '@/shared/theme';
 
 import type { PostDetail } from '../../types';
@@ -50,8 +51,14 @@ export function CarDetailsEditor({
   const setAnswers = (patch: Partial<PostACarAnswers>) =>
     setLocal((current) => ({ ...current, ...patch }));
 
+  // The same rule as the wizard's colour step: "Other" needs its description
+  // (colourIsComplete, 2026-10-12) — this editor reuses ColourStep but has
+  // its own gate, so it must ask too.
   const complete = Boolean(
-    answers.make?.trim() && answers.model?.trim() && answers.colour?.trim(),
+    answers.make?.trim() &&
+      answers.model?.trim() &&
+      answers.colour?.trim() &&
+      colourIsComplete(answers.colour, answers.colourNote),
   );
 
   return (

@@ -20,6 +20,8 @@
 import type { Feather } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
+import { canonicalColourName } from '@/shared/lib/carColours';
+
 import type { PostDetail } from '../types';
 
 export type FeatherName = ComponentProps<typeof Feather>['name'];
@@ -42,7 +44,7 @@ export function buildCarDetailRows(post: PostDetail): CarDetailRow[] {
 
   // Identity facts.
   const present: CarDetailRow[] = [
-    { key: 'colour', icon: 'droplet', label: `Colour: ${post.colour}` },
+    { key: 'colour', icon: 'droplet', label: `Colour: ${canonicalColourName(post.colour) ?? post.colour}` },
     ...(post.year ? [{ key: 'year', icon: 'calendar' as const, label: `Year: ${post.year}` }] : []),
     ...(post.plate ? [{ key: 'plate', icon: 'hash' as const, label: `Plate: ${post.plate}` }] : []),
     ...(knownBodyType

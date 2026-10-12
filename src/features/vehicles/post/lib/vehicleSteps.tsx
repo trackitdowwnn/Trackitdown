@@ -23,6 +23,7 @@
 
 import { z } from 'zod';
 
+import { canonicalColourName, colourIsComplete } from '@/shared/lib';
 import { photoListSchema, type PickedPhoto } from '@/shared/ui';
 import type { WizardStep } from '@/shared/wizard';
 
@@ -109,10 +110,18 @@ export function buildVehicleSteps<TAnswers extends VehicleAnswers>({
       id: 'colour',
       question: 'What colour is it?',
       component: ColourStep,
-      schema: z.object({ colour: z.string().trim().min(1) }),
+      // "Other" needs its description (2026-10-12): alone it tells a spotter
+      // nothing, so Next waits for it. Any other colour is complete as picked.
+      schema: z
+        .object({ colour: z.string().trim().min(1), colourNote: z.string().nullish() })
+        .refine((answers) => colourIsComplete(answers.colour, answers.colourNote), {
+          message: 'Say what colour it is',
+          path: ['colourNote'],
+        }),
       reviewLabel: 'Colour',
       reviewValue: (answers) => {
-        const colour = answers.colour ?? '';
+        // A retired name ("Brown / Beige") reads as its current one.
+        const colour = canonicalColourName(answers.colour) ?? '';
         const noteText = answers.colourNote?.trim();
         return noteText ? `${colour} — ${noteText}` : colour;
       },

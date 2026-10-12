@@ -12,8 +12,10 @@
 
 import {
   CAR_COLOURS,
+  canonicalColourName,
   colourChangePatch,
   colourFromDvla,
+  colourIsComplete,
   glyphInkFor,
   isNoteColour,
   swatchForName,
@@ -131,10 +133,49 @@ describe('colourFromDvla (pre-select mapping)', () => {
     expect(colourFromDvla('Blue')).toBe('Blue');
   });
 
-  it('folds near shades onto their nearest swatch', () => {
-    expect(colourFromDvla('MAROON')).toBe('Red');
-    expect(colourFromDvla('CREAM')).toBe('Brown / Beige');
-    expect(colourFromDvla('BEIGE')).toBe('Brown / Beige');
+  it('⚠️ gives every V5C colour its own swatch — no folding into a neighbour (2026-10-12)', () => {
+    // A pink car used to be posted as "Purple" and a maroon one as "Red".
+    expect(colourFromDvla('MAROON')).toBe('Maroon');
+    expect(colourFromDvla('TURQUOISE')).toBe('Turquoise');
+    expect(colourFromDvla('PINK')).toBe('Pink');
+    expect(colourFromDvla('CREAM')).toBe('Cream');
+    expect(colourFromDvla('BEIGE')).toBe('Beige');
+    expect(colourFromDvla('BROWN')).toBe('Brown');
+  });
+
+  it('offers twenty colours, the two escapes last', () => {
+    expect(CAR_COLOURS).toHaveLength(20);
+    expect(CAR_COLOURS.slice(-2).map((colour) => colour.name)).toEqual([
+      'Multicolour / wrapped',
+      'Other',
+    ]);
+  });
+
+  it('⚠️ a stored colour that is an Object property name never crashes', () => {
+    // posts.colour is free text: "toString" once read an inherited function
+    // from the alias table and threw on every screen drawing the car.
+    for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+      expect(() => swatchForName(name)).not.toThrow();
+      expect(swatchForName(name)).toBeUndefined();
+      expect(canonicalColourName(name)).toBe(name);
+    }
+  });
+
+  it('⚠️ still resolves a retired name — an old "Brown / Beige" is Brown', () => {
+    expect(swatchForName('Brown / Beige')?.name).toBe('Brown');
+    expect(swatchForName('  brown / beige ')?.name).toBe('Brown');
+    expect(canonicalColourName('Brown / Beige')).toBe('Brown');
+    expect(canonicalColourName('Chartreuse')).toBe('Chartreuse');
+    expect(canonicalColourName(null)).toBeNull();
+  });
+
+  it('⚠️ "Other" is only complete with a description; the wrap and plain colours always are', () => {
+    expect(colourIsComplete('Other', '')).toBe(false);
+    expect(colourIsComplete('Other', '   ')).toBe(false);
+    expect(colourIsComplete('Other', 'Teal')).toBe(true);
+    expect(colourIsComplete('Multicolour / wrapped', '')).toBe(true);
+    expect(colourIsComplete('Blue', '')).toBe(true);
+    expect(colourIsComplete('', '')).toBe(false);
   });
 
   it('normalises case and punctuation (e.g. "Multi-colour")', () => {

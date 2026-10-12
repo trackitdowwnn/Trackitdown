@@ -26,6 +26,7 @@
 
 import { z } from 'zod';
 
+import { canonicalColourName } from '@/shared/lib/carColours';
 import { formatDateLabelCompact } from '@/shared/lib/dateTimeLabel';
 import { RADIUS_MAX_MILES, RADIUS_MIN_MILES } from '@/shared/lib/distance';
 import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
@@ -51,7 +52,7 @@ export const SEARCH_BOUNTY_MAX_PENCE = MAX_BOUNTY_PENCE;
 export const SEARCH_YEAR_MIN = 1900;
 export const SEARCH_YEAR_MAX = 2100;
 
-/** Cap on a multi-select facet. The whole vocabulary is 15 colours / 9 body
+/** Cap on a multi-select facet. The whole vocabulary is 20 colours / 9 body
  *  types, so anything longer is a crafted param rather than a user. Mirrored
  *  server-side in the migration. */
 export const SEARCH_MAX_FACET_VALUES = 32;
@@ -183,6 +184,8 @@ export function exclusiveEndIso(iso: string): string {
  * (expo-router state restoration, a dev-client reload) would silently discard
  * the user's whole search rather than just the one field that moved.
  *   v1 (pre-2026-08-10): `colour: string | null`, no bodyTypes/year.
+ *   2026-10-12: a retired colour name ("Brown / Beige") folds to its current
+ *   one, deduped.
  * Zod strips unknown keys, so the stale `colour` needs no deletion.
  */
 function migrateLegacyCriteria(raw: unknown): unknown {
@@ -192,6 +195,18 @@ function migrateLegacyCriteria(raw: unknown): unknown {
   const value = { ...(raw as Record<string, unknown>) };
   if (!('colours' in value) && 'colour' in value) {
     value.colours = typeof value.colour === 'string' ? [value.colour] : [];
+  }
+  // A retired colour name ("Brown / Beige", 2026-10-12) becomes its current
+  // one, or it would match no chip — an active filter nobody could see or
+  // clear — and nothing new on the server.
+  if (Array.isArray(value.colours)) {
+    value.colours = [
+      ...new Set(
+        value.colours.map((colour: unknown) =>
+          typeof colour === 'string' ? (canonicalColourName(colour) ?? colour) : colour,
+        ),
+      ),
+    ];
   }
   return value;
 }
