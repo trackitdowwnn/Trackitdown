@@ -402,16 +402,27 @@ export function SelectScreen<V extends string | number>({
     setEntering(true);
     entrySheetRef.current?.open();
   };
+  // ⚠️ The keyboard goes WITH the sheet (owner report, 2026-10-12: "if I
+  // click on cancel the keyboard stays open"). Closing the sheet doesn't blur
+  // its field — gorhom's own keyboard handling doesn't reach inside this
+  // Modal — so it is dismissed explicitly, before the sheet slides away.
+  const closeEntry = () => {
+    Keyboard.dismiss();
+    entrySheetRef.current?.close();
+  };
   const submitDraft = () => {
     if (draft.trim().length === 0) return;
     // The sheet and the picker close together; no focus to hand back.
     submittingRef.current = true;
-    entrySheetRef.current?.close();
+    closeEntry();
     submitManual(draft);
   };
   // However the sheet goes (Cancel, swipe, scrim, Back): back to the list,
-  // with screen-reader focus on the pill that opened it.
+  // with screen-reader focus on the pill that opened it. The keyboard is
+  // dismissed here too, for the swipe and the scrim, which don't pass
+  // through closeEntry.
   const handleEntryDismissed = () => {
+    Keyboard.dismiss();
     setEntering(false);
     if (!submittingRef.current) setFocusPillOnShow(true);
   };
@@ -419,7 +430,7 @@ export function SelectScreen<V extends string | number>({
   // the sheet first, and only then the picker.
   const handleRequestClose = () => {
     if (entering) {
-      entrySheetRef.current?.close();
+      closeEntry();
       return;
     }
     onClose();
@@ -825,7 +836,7 @@ export function SelectScreen<V extends string | number>({
               <Button
                 label="Cancel"
                 variant="ghost"
-                onPress={() => entrySheetRef.current?.close()}
+                onPress={closeEntry}
               />
             </View>
           </View>
