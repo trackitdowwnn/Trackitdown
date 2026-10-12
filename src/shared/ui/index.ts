@@ -173,7 +173,7 @@ export {
 } from './SafetyNotice';
 export { Screen, ThemedRefreshControl, type ScreenProps } from './Screen';
 export { SelectField, type SelectFieldProps } from './SelectField';
-export { SelectScreen, type SelectScreenProps } from './SelectScreen';
+export { SelectScreen, type ManualEntryButton, type SelectScreenProps } from './SelectScreen';
 export { type SelectOption } from './selectOptions';
 export {
   StatusBadge,

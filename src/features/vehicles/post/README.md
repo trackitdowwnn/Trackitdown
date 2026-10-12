@@ -77,7 +77,10 @@ never opens one person's last-seen location for the next.
    free-text row; 20+ models get A–Z sections and the rail. Common van-only
    models (Ranger, Transit Connect) are listed at count 0, after the cars and
    never popular; a model DfT also counts as a car (Transit, Hilux) ranks by
-   that car count. A free-typed make (no list) drops to a plain free-text model input. The
+   that car count. A free-typed make (no list) drops to a plain free-text model input.
+   Both pickers float a **"Not listed? Type it in"** pill (2026-10-12) that
+   opens a type-it-in box (`SelectField` `manualEntryButton`; ≤40 characters,
+   `MAX_MANUAL_VEHICLE_TEXT`); filters never show it. The
    chosen make is folded into the step **title** ("Which BMW model?") via a
    dynamic `question` (a function of the answers, resolved by the framework's
    `resolveQuestion`) — no separate make chip in the body.

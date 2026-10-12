@@ -39,7 +39,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '../theme';
-import { SelectScreen } from './SelectScreen';
+import { SelectScreen, type ManualEntryButton } from './SelectScreen';
 import type { SelectOption } from './selectOptions';
 
 /** After a clear, before focus moves: long enough for the re-render to land
@@ -75,6 +75,9 @@ export interface SelectFieldProps<V extends string | number> {
    *  row for unlisted values, and the field shows a chosen value even when it
    *  isn't one of `options`. `onChange` receives the free text as `V`. */
   allowManualEntry?: boolean;
+  /** With `allowManualEntry`: a floating "Not listed?" pill on the picker that
+   *  opens a type-it-in box (2026-10-12 — car make/model). Its copy. */
+  manualEntryButton?: ManualEntryButton;
   /**
    * Filters, where "nothing chosen" is itself a choice: the picker leads with
    * an `anyLabel` row ("Any make"), and a chosen value gets a clear (×)
@@ -110,6 +113,7 @@ export function SelectField<V extends string | number>({
   showIndex,
   stagger,
   allowManualEntry = false,
+  manualEntryButton,
   clearable,
   pinnedLayout,
   allTitle,
@@ -254,7 +258,11 @@ export function SelectField<V extends string | number>({
         stagger={stagger}
         // Free text is a valid value for these fields (V is string), so the
         // "Use "<query>"" row feeds the typed make straight to onChange.
-        manualEntry={allowManualEntry ? { onSubmit: (text) => onChange(text as V) } : undefined}
+        manualEntry={
+          allowManualEntry
+            ? { onSubmit: (text) => onChange(text as V), button: manualEntryButton }
+            : undefined
+        }
         anyOption={clearable ? { label: clearable.anyLabel, onSelect: clearable.onClear } : undefined}
         pinnedLayout={pinnedLayout}
         allTitle={allTitle}

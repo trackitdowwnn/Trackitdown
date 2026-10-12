@@ -153,6 +153,14 @@ export function makeKeywords(label: string): string[] {
 }
 
 /**
+ * The longest make or model anyone may TYPE IN (the "Not listed? Type it in"
+ * box, 2026-10-12). Mirrors `alert_zones.make/model` (≤40, the only bound
+ * the database has): a car posted with a longer name could never be matched
+ * by an alert. The DfT list's longest label is well under it.
+ */
+export const MAX_MANUAL_VEHICLE_TEXT = 40;
+
+/**
  * The make as this app should store it, or the input trimmed if it recognises
  * nothing.
  *

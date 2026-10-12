@@ -186,10 +186,11 @@ describe('SelectScreen', () => {
       expect(onClosed).toHaveBeenCalledWith(true);
     });
 
-    it('shows no standing manual row until the user types (only "Use "<query>"")', async () => {
+    it('without a `button`, shows no standing way in until the user types', async () => {
       const { view } = await renderScreen({ manualEntry: { onSubmit: jest.fn() } });
-      // No always-present "isn't listed" row, and no "Use "<query>"" until typing.
-      expect(view.queryByText(/isn’t listed/)).toBeNull();
+      // No floating pill unless the caller asked for one (2026-10-12: only
+      // car make/model do), and no "Use "<query>"" until typing.
+      expect(view.queryByTestId('select-manual-pill')).toBeNull();
       expect(view.queryByText(/^Use /)).toBeNull();
     });
 
@@ -212,6 +213,115 @@ describe('SelectScreen', () => {
       await typeSearch(view, 'VW');
       expect(view.queryByText(/^Use /)).toBeNull();
       expect(view.getByText('Volkswagen')).toBeTruthy();
+    });
+  });
+
+  describe('the floating "Not listed?" pill (2026-10-12, owner request)', () => {
+    const BUTTON = {
+      label: 'Not listed? Type it in',
+      accessibilityLabel: 'Not listed? Type your make in',
+      fieldLabel: 'Your car’s make',
+      submitLabel: 'Use this make',
+      helper: 'As it’s written on the car',
+      maxLength: 40,
+    };
+    const withPill = (overrides: Partial<Parameters<typeof SelectScreen<string>>[0]> = {}) => {
+      const onSubmit = jest.fn();
+      return renderScreen({ manualEntry: { onSubmit, button: BUTTON }, ...overrides }).then(
+        (rendered) => ({ ...rendered, onSubmit }),
+      );
+    };
+    const openBox = async (view: Awaited<ReturnType<typeof render>>) => {
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Not listed? Type your make in' }));
+      });
+    };
+
+    it('floats over the list before anything is typed', async () => {
+      const { view } = await withPill();
+      expect(view.getByTestId('select-manual-pill')).toBeTruthy();
+      expect(view.getByText('Not listed? Type it in')).toBeTruthy();
+    });
+
+    it('steps aside while searching — the "Use …" row offers the same', async () => {
+      const { view } = await withPill();
+      await typeSearch(view, 'Reliant');
+      expect(view.queryByTestId('select-manual-pill')).toBeNull();
+      expect(view.getByText('Use “Reliant”')).toBeTruthy();
+    });
+
+    it('opens a type-it-in box in place of the list', async () => {
+      const { view } = await withPill();
+      await openBox(view);
+      expect(view.getByTestId('select-manual-entry')).toBeTruthy();
+      const input = view.getByTestId('select-manual-input');
+      expect(input.props.autoFocus).toBe(true);
+      expect(input.props.maxLength).toBe(40);
+      expect(view.getByText('As it’s written on the car')).toBeTruthy();
+      // The list (and its pill) make way.
+      expect(view.queryByText('BMW')).toBeNull();
+      expect(view.queryByTestId('select-manual-pill')).toBeNull();
+    });
+
+    it('carries over anything already typed in the search', async () => {
+      const { view } = await withPill();
+      await act(async () => {
+        fireEvent.changeText(view.getByLabelText('Search'), 'Trab');
+      });
+      // Before the debounce, so the pill is still up.
+      await openBox(view);
+      expect(view.getByTestId('select-manual-input').props.value).toBe('Trab');
+    });
+
+    it('cannot be used blank', async () => {
+      const { view, onSubmit } = await withPill();
+      await openBox(view);
+      const use = view.getByRole('button', { name: 'Use this make' });
+      expect(use.props.accessibilityState).toMatchObject({ disabled: true });
+      await act(async () => {
+        fireEvent.changeText(view.getByTestId('select-manual-input'), '   ');
+      });
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Use this make' }));
+      });
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('submits the trimmed text and closes as a pick', async () => {
+      const { view, onSubmit, onClose } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        fireEvent.changeText(view.getByTestId('select-manual-input'), '  Trabant ');
+      });
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Use this make' }));
+      });
+      expect(onSubmit).toHaveBeenCalledWith('Trabant');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('submits from the keyboard’s Done key too', async () => {
+      const { view, onSubmit } = await withPill();
+      await openBox(view);
+      const input = view.getByTestId('select-manual-input');
+      await act(async () => {
+        fireEvent.changeText(input, 'Trabant');
+      });
+      await act(async () => {
+        fireEvent(view.getByTestId('select-manual-input'), 'submitEditing');
+      });
+      expect(onSubmit).toHaveBeenCalledWith('Trabant');
+    });
+
+    it('"Back to the list" returns to the list', async () => {
+      const { view, onClose } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Back to the list' }));
+      });
+      expect(view.queryByTestId('select-manual-entry')).toBeNull();
+      expect(view.getByText('BMW')).toBeTruthy();
+      expect(onClose).not.toHaveBeenCalled();
     });
   });
 
