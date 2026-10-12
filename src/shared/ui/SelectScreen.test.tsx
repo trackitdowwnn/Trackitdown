@@ -1,7 +1,9 @@
 /**
  * WHAT:  Tests for SelectScreen — debounced filtering, selection returning
  *        the chosen value and closing, the selected row's checked state,
- *        and the empty-search state with its clear action.
+ *        the empty-search state with its clear action, free-text entry
+ *        ("Use "<query>"", its length cap) and the floating "Not listed?"
+ *        pill with its type-it-in box (2026-10-12).
  * WHY:   Every select in the app funnels choices through this screen; a
  *        filter that eats matches or a selection that returns the wrong
  *        value would corrupt form data app-wide.
@@ -222,12 +224,14 @@ describe('SelectScreen', () => {
       accessibilityLabel: 'Not listed? Type your make in',
       fieldLabel: 'Your car’s make',
       submitLabel: 'Use this make',
-      helper: 'As it’s written on the car',
-      maxLength: 40,
+      helper: 'As it’s shown on your logbook (V5C)',
     };
     const withPill = (overrides: Partial<Parameters<typeof SelectScreen<string>>[0]> = {}) => {
       const onSubmit = jest.fn();
-      return renderScreen({ manualEntry: { onSubmit, button: BUTTON }, ...overrides }).then(
+      return renderScreen({
+        manualEntry: { onSubmit, maxLength: 40, button: BUTTON },
+        ...overrides,
+      }).then(
         (rendered) => ({ ...rendered, onSubmit }),
       );
     };
@@ -257,7 +261,9 @@ describe('SelectScreen', () => {
       const input = view.getByTestId('select-manual-input');
       expect(input.props.autoFocus).toBe(true);
       expect(input.props.maxLength).toBe(40);
-      expect(view.getByText('As it’s written on the car')).toBeTruthy();
+      expect(view.getByText('As it’s shown on your logbook (V5C)')).toBeTruthy();
+      // …and spoken with the field, which TextField would otherwise not read.
+      expect(input.props.accessibilityHint).toBe('As it’s shown on your logbook (V5C)');
       // The list (and its pill) make way.
       expect(view.queryByText('BMW')).toBeNull();
       expect(view.queryByTestId('select-manual-pill')).toBeNull();
@@ -322,6 +328,112 @@ describe('SelectScreen', () => {
       expect(view.queryByTestId('select-manual-entry')).toBeNull();
       expect(view.getByText('BMW')).toBeTruthy();
       expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ a box submit is reported as a pick once closed — the wizard advances on it', async () => {
+      const onClosed = jest.fn();
+      const { view } = await withPill({ onClosed });
+      await openBox(view);
+      await act(async () => {
+        fireEvent.changeText(view.getByTestId('select-manual-input'), 'Trabant');
+      });
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Use this make' }));
+      });
+      await act(async () => {
+        view.rerender(
+          <SelectScreen
+            visible={false}
+            title="Car make"
+            options={MAKES}
+            value={null}
+            onSelect={jest.fn()}
+            onClose={jest.fn()}
+            manualEntry={{ onSubmit: jest.fn(), maxLength: 40, button: BUTTON }}
+            onClosed={onClosed}
+          />,
+        );
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(onClosed).toHaveBeenCalledWith(true);
+    });
+
+    it('Android Back steps out of the box first, without closing the picker', async () => {
+      const { view, onClose } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        fireEvent(view.getByTestId('select-screen-modal'), 'requestClose');
+      });
+      expect(view.queryByTestId('select-manual-entry')).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+      // A second Back, at the list, closes it.
+      await act(async () => {
+        fireEvent(view.getByTestId('select-screen-modal'), 'requestClose');
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps what was typed across "Back to the list" and back again', async () => {
+      const { view } = await withPill();
+      await openBox(view);
+      await act(async () => {
+        fireEvent.changeText(view.getByTestId('select-manual-input'), 'Trabant');
+      });
+      await act(async () => {
+        fireEvent.press(view.getByRole('button', { name: 'Back to the list' }));
+      });
+      await openBox(view);
+      expect(view.getByTestId('select-manual-input').props.value).toBe('Trabant');
+    });
+
+    it('a reopened picker starts at the list, never in the last box', async () => {
+      const { view } = await withPill();
+      await openBox(view);
+      const at = (visible: boolean) => (
+        <SelectScreen
+          visible={visible}
+          title="Car make"
+          options={MAKES}
+          value={null}
+          onSelect={jest.fn()}
+          onClose={jest.fn()}
+          manualEntry={{ onSubmit: jest.fn(), maxLength: 40, button: BUTTON }}
+        />
+      );
+      await act(async () => {
+        view.rerender(at(false));
+      });
+      await act(async () => {
+        view.rerender(at(true));
+      });
+      expect(view.queryByTestId('select-manual-entry')).toBeNull();
+      expect(view.getByTestId('select-manual-pill')).toBeTruthy();
+    });
+
+    it('steps aside while the search is focused — the keyboard would sit on it', async () => {
+      const { view } = await withPill();
+      await act(async () => {
+        fireEvent(view.getByLabelText('Search'), 'focus');
+      });
+      expect(view.queryByTestId('select-manual-pill')).toBeNull();
+      await act(async () => {
+        fireEvent(view.getByLabelText('Search'), 'blur');
+      });
+      expect(view.getByTestId('select-manual-pill')).toBeTruthy();
+    });
+
+    it('⚠️ bounds the search’s "Use …" row too — no way round the cap', async () => {
+      const { view, onSubmit } = await withPill();
+      expect(view.getByLabelText('Search').props.maxLength).toBe(40);
+      // A paste that slipped past the input is still cut at the cap.
+      const long = 'x'.repeat(45);
+      await typeSearch(view, long);
+      await act(async () => {
+        fireEvent.press(view.getByText(`Use “${long}”`));
+      });
+      expect(onSubmit).toHaveBeenCalledWith('x'.repeat(40));
     });
   });
 

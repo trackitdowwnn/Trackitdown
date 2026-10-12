@@ -6,7 +6,9 @@
  *        a search that ignores accents and knows the other names ("vw",
  *        "merc", "skoda"). Two modes:
  *          - answering (posting, garage, the listing editor): a free-typed make
- *            is allowed for anything unlisted ("Use "<query>"");
+ *            is allowed for anything unlisted ("Use "<query>""), and a
+ *            floating "Not listed? Type it in" pill offers it up front
+ *            (2026-10-12) — at most 40 characters either way;
  *          - `filter` (search, alerts): an "Any make" row leads, a × clears the
  *            field, and only listed makes can be picked.
  * WHY:   Make is the car's primary identity, so it earns the roomy picker
@@ -50,8 +52,7 @@ const MAKE_ENTRY: ManualEntryButton = {
   accessibilityLabel: 'Not listed? Type your make in',
   fieldLabel: 'Your car’s make',
   submitLabel: 'Use this make',
-  helper: 'As it’s written on the car',
-  maxLength: MAX_MANUAL_VEHICLE_TEXT,
+  helper: 'As it’s shown on your logbook (V5C)',
 };
 
 export interface MakeFieldProps {
@@ -112,6 +113,8 @@ export function MakeField({ value, onChange, onPicked, error, filter }: MakeFiel
       // 2026-10-12): typing into search was the only way in, and nothing on
       // the page told anyone it was there.
       manualEntryButton={filter ? undefined : MAKE_ENTRY}
+      // Every way free text gets in — the search's "Use …" row too.
+      manualEntryMaxLength={MAX_MANUAL_VEHICLE_TEXT}
       clearable={
         filter
           ? { anyLabel: 'Any make', clearLabel: 'Clear make', onClear: filter.onClear }

@@ -2,8 +2,9 @@
  * WHAT:  CAR_MAKES — every car make on the app's list, A–Z, each tagged with
  *        its section letter and whether it's in the "Popular makes" group;
  *        POPULAR_MAKES (the ten most common in the UK, most first);
- *        canonicaliseMake; and makeKeywords (the other names a make is typed
- *        as, for the picker's search).
+ *        canonicaliseMake; makeKeywords (the other names a make is typed
+ *        as, for the picker's search); and MAX_MANUAL_VEHICLE_TEXT, the
+ *        longest make or model anyone may type in.
  * WHY:   The list is generated from DfT vehicle licensing statistics
  *        (carTaxonomy.generated.ts, Open Government Licence v3.0), replacing a
  *        hand-typed 47 (2026-09-30). It isn't AutoTrader's: their terms forbid

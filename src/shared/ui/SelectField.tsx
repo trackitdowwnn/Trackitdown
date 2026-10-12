@@ -78,6 +78,9 @@ export interface SelectFieldProps<V extends string | number> {
   /** With `allowManualEntry`: a floating "Not listed?" pill on the picker that
    *  opens a type-it-in box (2026-10-12 — car make/model). Its copy. */
   manualEntryButton?: ManualEntryButton;
+  /** With `allowManualEntry`: the longest free text that can get in, by the
+   *  search's "Use …" row and the type-it-in box alike. */
+  manualEntryMaxLength?: number;
   /**
    * Filters, where "nothing chosen" is itself a choice: the picker leads with
    * an `anyLabel` row ("Any make"), and a chosen value gets a clear (×)
@@ -114,6 +117,7 @@ export function SelectField<V extends string | number>({
   stagger,
   allowManualEntry = false,
   manualEntryButton,
+  manualEntryMaxLength,
   clearable,
   pinnedLayout,
   allTitle,
@@ -260,7 +264,11 @@ export function SelectField<V extends string | number>({
         // "Use "<query>"" row feeds the typed make straight to onChange.
         manualEntry={
           allowManualEntry
-            ? { onSubmit: (text) => onChange(text as V), button: manualEntryButton }
+            ? {
+                onSubmit: (text) => onChange(text as V),
+                maxLength: manualEntryMaxLength,
+                button: manualEntryButton,
+              }
             : undefined
         }
         anyOption={clearable ? { label: clearable.anyLabel, onSelect: clearable.onClear } : undefined}

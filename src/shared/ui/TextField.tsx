@@ -30,7 +30,7 @@
  *   />
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type Ref } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -38,6 +38,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type TextInput,
   type TextInputProps,
 } from 'react-native';
 
@@ -88,6 +89,9 @@ export interface TextFieldProps
   variant?: TextFieldVariant;
   /** Disables input and mutes the field. */
   disabled?: boolean;
+  /** The input itself (React 19 ref-as-prop, forwarded through `...rest`) —
+   *  e.g. to move screen-reader focus onto it. */
+  ref?: Ref<TextInput>;
 }
 
 /** Per-variant TextInput defaults; callers can still override via ...rest. */

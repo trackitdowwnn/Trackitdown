@@ -7,7 +7,11 @@
  *        (default off, so existing selects are unchanged): `autoFocusSearch`
  *        false for browse-first pickers; `pinnedTitle` to head the pinned
  *        group ("Popular makes"); `manualEntry` for free-text selects (typing a
- *        value with no exact match surfaces a "Use "<query>"" row);
+ *        value with no exact match surfaces a "Use "<query>"" row; its
+ *        `maxLength` bounds every way free text gets in, and its `button`
+ *        floats a "Not listed? Type it in" pill — first for screen readers,
+ *        hidden while searching — that swaps the list for a type-it-in box,
+ *        which Android Back steps out of first, 2026-10-12);
  *        `showIndex` for an A–Z jump-scroll rail; `stagger` for a restrained
  *        first-load row cascade; `anyOption` for a filter's "Any make" first
  *        row; `pinnedLayout="grid"` to draw the pinned group as two-up tiles
@@ -49,6 +53,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   FlatList,
+  ScrollView,
   Modal,
   Pressable,
   StyleSheet,
@@ -123,10 +128,9 @@ export interface ManualEntryButton {
   fieldLabel: string;
   /** The confirm button, e.g. "Use this make". */
   submitLabel: string;
-  /** A quiet hint under the box, e.g. "As it's written on the car". */
+  /** A quiet hint under the box (and spoken with it), e.g. "As it's shown
+   *  on your logbook (V5C)". */
   helper?: string;
-  /** The longest entry allowed. */
-  maxLength: number;
 }
 
 export interface SelectScreenProps<V extends string | number> {
@@ -160,8 +164,14 @@ export interface SelectScreenProps<V extends string | number> {
   /** Free-text escape hatch for non-enum selects (car make/model). When set, a
    *  query with no exact match offers a "Use "<query>"" row that submits the
    *  typed text via `onSubmit`. With `button`, a floating "Not listed?" pill
-   *  also offers it before anything is typed (see ManualEntryButton). */
-  manualEntry?: { onSubmit: (text: string) => void; button?: ManualEntryButton };
+   *  also offers it before anything is typed (see ManualEntryButton).
+   *  `maxLength` bounds EVERY way free text gets in — the search box (whose
+   *  "Use "<query>"" row submits it) as well as the type-it-in box. */
+  manualEntry?: {
+    onSubmit: (text: string) => void;
+    maxLength?: number;
+    button?: ManualEntryButton;
+  };
   /** Show an A–Z jump-scroll index rail down the right edge (long lists). */
   showIndex?: boolean;
   /** Soft stagger-in of rows on the first open (restrained motion). */
@@ -216,6 +226,15 @@ export function SelectScreen<V extends string | number>({
   // The type-it-in box (manualEntry.button): open, and what is typed in it.
   const [entering, setEntering] = useState(false);
   const [draft, setDraft] = useState('');
+  // The search box's focus — the pill steps aside while the keyboard is up.
+  const [searchFocused, setSearchFocused] = useState(false);
+  // Screen-reader focus to restore onto the pill after the box closes.
+  const [focusPillOnShow, setFocusPillOnShow] = useState(false);
+  // The pill's measured height, so the list's last rows scroll clear of it at
+  // any text size.
+  const [pillHeight, setPillHeight] = useState(0);
+  const entryInputRef = useRef<TextInput>(null);
+  const pillRef = useRef<View>(null);
   if (visible !== prevVisible) {
     setPrevVisible(visible);
     if (visible) {
@@ -226,6 +245,8 @@ export function SelectScreen<V extends string | number>({
       // Every open starts at the list, never in the last open's box.
       setEntering(false);
       setDraft('');
+      setSearchFocused(false);
+      setFocusPillOnShow(false);
     }
   }
   // Reanimated can deliver a close's exit callback AFTER a fast reopen;
@@ -334,33 +355,68 @@ export function SelectScreen<V extends string | number>({
     wasMounted.current = mounted;
   }, [mounted]);
 
+  const maxManual = manualEntry?.maxLength;
+  /** Bounded here as well as by the inputs' maxLength: a paste that slipped
+   *  past an input must still never store more (code review, 2026-10-12). */
+  const boundManual = (text: string) =>
+    (maxManual ? text.trim().slice(0, maxManual) : text).trim();
+
   const submitManual = (text: string) => {
     pickedRef.current = true;
-    manualEntry?.onSubmit(text.trim());
+    manualEntry?.onSubmit(boundManual(text));
     onClose();
   };
 
-  // The floating "Not listed?" pill — only where the caller asked for it, and
-  // not while searching: the "Use "<query>"" row offers the same thing there.
+  // The floating "Not listed?" pill — only where the caller asked for it; not
+  // while searching (the "Use "<query>"" row offers the same thing there), nor
+  // while the search is focused (the keyboard would sit on it).
   const entryButton = manualEntry?.button;
-  const showEntryPill = entryButton != null && !searching && !entering;
-  // Opening the box carries over anything already typed in the search.
+  const showEntryPill = entryButton != null && !searching && !entering && !searchFocused;
+  // Opening the box carries over a query if there is one; otherwise it keeps
+  // what was typed there before "Back to the list".
   const openEntry = () => {
     lightHaptic();
-    setDraft(query.trim().slice(0, entryButton?.maxLength));
+    const carried = boundManual(query);
+    setDraft((previous) => (carried ? carried : previous));
     setEntering(true);
   };
   const submitDraft = () => {
     if (draft.trim().length > 0) submitManual(draft);
   };
+  // Leaving the box puts screen-reader focus back on the pill that opened it.
+  const leaveEntry = () => {
+    setEntering(false);
+    setFocusPillOnShow(true);
+  };
   // Android Back steps out of the box first; only then closes the picker.
   const handleRequestClose = () => {
     if (entering) {
-      setEntering(false);
+      leaveEntry();
       return;
     }
     onClose();
   };
+
+  // Screen-reader focus follows the box: onto its field when it opens, back
+  // onto the pill when it closes — the control that had focus unmounted, and
+  // autoFocus raises the keyboard without reliably moving that focus.
+  useEffect(() => {
+    if (!entering) return;
+    const timer = setTimeout(() => {
+      if (entryInputRef.current) {
+        AccessibilityInfo.sendAccessibilityEvent(entryInputRef.current, 'focus');
+      }
+    }, motion.fast);
+    return () => clearTimeout(timer);
+  }, [entering]);
+  useEffect(() => {
+    if (!focusPillOnShow || !showEntryPill) return;
+    const timer = setTimeout(() => {
+      setFocusPillOnShow(false);
+      if (pillRef.current) AccessibilityInfo.sendAccessibilityEvent(pillRef.current, 'focus');
+    }, motion.fast);
+    return () => clearTimeout(timer);
+  }, [focusPillOnShow, showEntryPill]);
 
   // Tell screen-reader users how the result set changed as they type.
   useEffect(() => {
@@ -394,6 +450,7 @@ export function SelectScreen<V extends string | number>({
       statusBarTranslucent
       animationType="none"
       onRequestClose={handleRequestClose}
+      testID="select-screen-modal"
       onShow={autoFocusSearch ? () => searchRef.current?.focus() : undefined}
     >
       {/* Static opaque backdrop — covers the screen the WHOLE time the modal is
@@ -461,35 +518,45 @@ export function SelectScreen<V extends string | number>({
 
               {entering && entryButton ? (
                 // The type-it-in box, in place of the search and the list.
-                // At the TOP, so the keyboard never covers it.
+                // At the TOP, so the keyboard never covers the field; and it
+                // scrolls, so at large text on a small phone the buttons are
+                // still reachable above the keyboard.
                 <Animated.View
-                  style={styles.entry}
-                  entering={FadeIn.duration(motion.fast).reduceMotion(ReduceMotion.System)}
+                  style={styles.flex}
+                  entering={FadeIn.duration(motion.fast)
+                    .easing(motionEasing)
+                    .reduceMotion(ReduceMotion.System)}
                   testID="select-manual-entry"
                 >
-                  <TextField
-                    label={entryButton.fieldLabel}
-                    value={draft}
-                    onChangeText={setDraft}
-                    helperText={entryButton.helper}
-                    maxLength={entryButton.maxLength}
-                    autoFocus
-                    autoCorrect={false}
-                    autoCapitalize="words"
-                    returnKeyType="done"
-                    onSubmitEditing={submitDraft}
-                    testID="select-manual-input"
-                  />
-                  <Button
-                    label={entryButton.submitLabel}
-                    onPress={submitDraft}
-                    disabled={draft.trim().length === 0}
-                  />
-                  <Button
-                    label="Back to the list"
-                    variant="ghost"
-                    onPress={() => setEntering(false)}
-                  />
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={styles.entry}
+                  >
+                    <TextField
+                      ref={entryInputRef}
+                      label={entryButton.fieldLabel}
+                      value={draft}
+                      onChangeText={setDraft}
+                      helperText={entryButton.helper}
+                      // TextField speaks only its label; the hint rides here.
+                      accessibilityHint={entryButton.helper}
+                      maxLength={maxManual}
+                      autoFocus
+                      autoCorrect={false}
+                      autoCapitalize="words"
+                      returnKeyType="done"
+                      onSubmitEditing={submitDraft}
+                      testID="select-manual-input"
+                    />
+                    <View style={styles.entryActions}>
+                      <Button
+                        label={entryButton.submitLabel}
+                        onPress={submitDraft}
+                        disabled={draft.trim().length === 0}
+                      />
+                      <Button label="Back to the list" variant="ghost" onPress={leaveEntry} />
+                    </View>
+                  </ScrollView>
                 </Animated.View>
               ) : (
                 <>
@@ -504,10 +571,14 @@ export function SelectScreen<V extends string | number>({
                         ref={searchRef}
                         value={query}
                         onChangeText={setQuery}
+                        onFocus={() => setSearchFocused(true)}
+                        onBlur={() => setSearchFocused(false)}
                         placeholder={searchPlaceholder}
                         placeholderTextColor={palette.textSecondary}
                         autoCorrect={false}
                         accessibilityLabel={searchPlaceholder}
+                        // Its "Use "<query>"" row submits this as free text.
+                        maxLength={maxManual}
                         style={styles.searchInput}
                       />
                       {query.length > 0 ? (
@@ -549,6 +620,38 @@ export function SelectScreen<V extends string | number>({
                     )
                   ) : (
                     <View style={styles.flex}>
+                      {/* The floating "Not listed?" pill. FIRST in the tree so a
+                          screen reader reaches it before ~110 rows (it is drawn
+                          over the list by zIndex, not by order). Fades in and
+                          out as searching hides it. Measured, so the list's
+                          last rows scroll clear of it at any text size. */}
+                      {showEntryPill && entryButton ? (
+                        <Animated.View
+                          style={styles.entryPillWrap}
+                          entering={FadeIn.duration(motion.fast)
+                            .easing(motionEasing)
+                            .reduceMotion(ReduceMotion.System)}
+                          exiting={FadeOut.duration(motion.fast)
+                            .easing(motionEasing)
+                            .reduceMotion(ReduceMotion.System)}
+                          onLayout={(event) => setPillHeight(event.nativeEvent.layout.height)}
+                        >
+                          <Pressable
+                            ref={pillRef}
+                            accessibilityRole="button"
+                            accessibilityLabel={entryButton.accessibilityLabel ?? entryButton.label}
+                            onPress={openEntry}
+                            style={({ pressed }) => [
+                              styles.entryPill,
+                              pressed && styles.entryPillPressed,
+                            ]}
+                            testID="select-manual-pill"
+                          >
+                            <Feather name="edit-2" size={sizes.iconSm} color={palette.textOnPrimary} />
+                            <Text style={styles.entryPillLabel}>{entryButton.label}</Text>
+                          </Pressable>
+                        </Animated.View>
+                      ) : null}
                       <FlatList
                         ref={listRef}
                         accessibilityRole="radiogroup"
@@ -571,7 +674,9 @@ export function SelectScreen<V extends string | number>({
                           // Clear the index rail so the last rows aren't hidden under it.
                           showIndex && !searching ? styles.listContentIndexed : null,
                           // Room for the last rows to scroll clear of the pill.
-                          showEntryPill ? styles.listContentWithPill : null,
+                          showEntryPill
+                            ? { paddingBottom: spacing.xl + pillHeight + spacing.xl }
+                            : null,
                         ]}
                         // Every row renders up front (a make list is ~110 items, a
                         // model list rarely 80), so the rail's scrollToIndex always
@@ -678,23 +783,6 @@ export function SelectScreen<V extends string | number>({
                             listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0 });
                           }}
                         />
-                      ) : null}
-                      {showEntryPill && entryButton ? (
-                        <View style={styles.entryPillWrap}>
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={entryButton.accessibilityLabel ?? entryButton.label}
-                            onPress={openEntry}
-                            style={({ pressed }) => [
-                              styles.entryPill,
-                              pressed && styles.entryPillPressed,
-                            ]}
-                            testID="select-manual-pill"
-                          >
-                            <Feather name="edit-2" size={sizes.iconSm} color={palette.textOnPrimary} />
-                            <Text style={styles.entryPillLabel}>{entryButton.label}</Text>
-                          </Pressable>
-                        </View>
                       ) : null}
                     </View>
                   )}
@@ -1098,18 +1186,19 @@ const makeStyles = (c: Palette) =>
     listContent: {
       paddingBottom: spacing.xl,
     },
-    listContentWithPill: {
-      paddingBottom: spacing.xl + sizes.touchTarget + spacing.xl,
-    },
     // The floating "Not listed?" pill — the feed's Map pill, the house
     // floating control: the inverse fill, a full radius and the lifted shadow
-    // (it floats over the list). Bottom-centre, over the list's own space.
+    // (it floats over the list). Bottom-centre within the screen's gutter, so
+    // at large text it wraps rather than running under the letter rail.
     entryPillWrap: {
       position: 'absolute',
-      left: 0,
-      right: 0,
+      left: spacing.xl,
+      right: spacing.xl,
       bottom: spacing.xl,
       alignItems: 'center',
+      // Drawn over the list although it comes first in the tree (for screen
+      // readers); the shadow's elevation is on the pill, not this wrap.
+      zIndex: 1,
       // Taps beside the pill reach the list beneath.
       pointerEvents: 'box-none',
     },
@@ -1121,6 +1210,7 @@ const makeStyles = (c: Palette) =>
       borderRadius: radii.full,
       minHeight: sizes.touchTarget,
       paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.sm,
       ...shadows.lifted,
     },
     entryPillPressed: {
@@ -1129,11 +1219,18 @@ const makeStyles = (c: Palette) =>
     entryPillLabel: {
       ...typography.label,
       color: c.textOnPrimary,
+      flexShrink: 1,
+      textAlign: 'center',
     },
-    // The type-it-in box: the screen's gutter, the field then its two actions.
+    // The type-it-in box: the screen's gutter, the field, then its actions.
     entry: {
       paddingHorizontal: spacing.xl,
       paddingTop: spacing.md,
+      paddingBottom: spacing.xl,
+    },
+    // A clearer break between the field and what to do with it.
+    entryActions: {
+      marginTop: spacing.lg,
       gap: spacing.md,
     },
     // Extra right padding so rows clear the index rail when it's shown.

@@ -496,12 +496,17 @@ GOV.UK both advise against dropdowns for long lists).
     front with a floating **"Not listed? Type it in"** pill (owner decision
     2026-10-12; it was hidden behind typing, and nothing said it was there).
     The pill is the feed's Map-pill look (`surfaceInverse`, full radius,
-    `shadows.lifted`), bottom-centre over the list, and steps aside while
-    searching. It opens a type-it-in box IN PLACE OF the list, at the top so
-    the keyboard never covers it: a `TextField` ("Your car's make", "As it's
-    written on the car"), "Use this make", and "Back to the list". Typed
-    makes and models are capped at 40 characters (`MAX_MANUAL_VEHICLE_TEXT`,
-    the `alert_zones` bound) and canonicalised like any typed value.
+    `shadows.lifted`), bottom-centre over the list within the gutter
+    (wrapping at large text), FIRST in the tree so a screen reader meets it
+    before the rows, and it fades aside while searching or while the search
+    is focused. It opens a type-it-in box IN PLACE OF the list, at the top so
+    the keyboard never covers the field, and scrollable: a `TextField`
+    ("Your car’s make", "As it’s shown on your logbook (V5C)", spoken as its
+    hint), then "Use this make" and a ghost "Back to the list"; screen-reader
+    focus moves onto the field and back onto the pill. Typed makes and models
+    are capped at 40 characters (`MAX_MANUAL_VEHICLE_TEXT`, the `alert_zones`
+    bound) by EVERY way in, the search's "Use …" row included, and
+    canonicalised like any typed value.
   - Filtering (search, alerts) passes `clearable`: an "Any …" radio row leads
     the list, checked while nothing is chosen, and a filled field gets a ×
     (a sibling of the field, so screen readers can reach it). No free text.
