@@ -184,6 +184,8 @@ export function exclusiveEndIso(iso: string): string {
  * (expo-router state restoration, a dev-client reload) would silently discard
  * the user's whole search rather than just the one field that moved.
  *   v1 (pre-2026-08-10): `colour: string | null`, no bodyTypes/year.
+ *   2026-10-12: a retired colour name ("Brown / Beige") folds to its current
+ *   one, deduped.
  * Zod strips unknown keys, so the stale `colour` needs no deletion.
  */
 function migrateLegacyCriteria(raw: unknown): unknown {

@@ -206,7 +206,8 @@ export function ColourField({ value, note, onChange, onChangeNote, error }: Colo
   const fitsFour =
     width - 2 * spacing.xl >= 4 * SWATCH_BOX + 3 * spacing.sm &&
     (fontScale ?? 1) <= listRowStackFontScale;
-  const rows = chunk(CAR_COLOURS, fitsFour ? 4 : 3);
+  const columns = fitsFour ? 4 : 3;
+  const rows = chunk(CAR_COLOURS, columns);
 
   const openSheet = () => {
     setNoteError(undefined);
@@ -258,18 +259,18 @@ export function ColourField({ value, note, onChange, onChangeNote, error }: Colo
     <View style={styles.stack}>
       <View accessibilityRole="radiogroup" accessibilityLabel="Car colour" style={styles.grid}>
         {rows.map((row, rowIndex) => (
-          <View key={row[0].name} style={styles.row}>
+          <View key={`row-${rowIndex}`} style={styles.row}>
             {row.map((colour, cellIndex) => (
               <SwatchCell
                 key={colour.name}
                 colour={colour}
-                index={rowIndex * row.length + cellIndex}
+                index={rowIndex * columns + cellIndex}
                 selected={chosen === colour.name}
                 onSelect={handleSelect}
               />
             ))}
             {/* Spacers keep a short last row's cells the same width. */}
-            {Array.from({ length: (fitsFour ? 4 : 3) - row.length }, (_, i) => (
+            {Array.from({ length: columns - row.length }, (_, i) => (
               <View key={`spacer-${i}`} style={styles.cell} />
             ))}
           </View>

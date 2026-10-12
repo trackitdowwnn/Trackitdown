@@ -922,10 +922,11 @@ barrel, since it pulls in Reanimated).
   is one segment per phase, filling per step, and animates only on change,
   never on mount. A one-pick step (a make, a body type) moves on by itself
   after `autoAdvanceBeat` (400ms — the card's press settles first; 200ms
-  after a picker closes). Not colour, since 2026-10-12: its optional finish
-  sits under the grid, so it waits for Next — never under a screen reader or, on Android, any
+  after a picker closes) — never under a screen reader or, on Android, any
   accessibility service (Switch Access loses its place when a screen moves
-  by itself). Mechanics in `src/shared/wizard/README.md`.
+  by itself). Colour waits for Next since 2026-10-12: a pick may need a note,
+  and its summary, its "Add the colour" link (and the optional finish to
+  come) sit under the grid. Mechanics in `src/shared/wizard/README.md`.
 - **Lists:** on-screen rows enter with a small staggered `FadeInDown`
   (≤~300ms total); recycled/off-screen cells don't animate.
 - **Reduced motion (part of the system, not a footnote):** every animated
