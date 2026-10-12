@@ -291,8 +291,7 @@ export function savedColourFinish(
 
 /**
  * "Blue · Metallic" — a colour with its finish, the ONE form wherever both
- * show (the step's summary, the review row, Car details, the garage's "Your
- * car"). " · " is "with a finish"; " — " stays an escape's "described as".
+ * show (the review row, Car details, the garage's "Your car"). " · " is "with a finish"; " — " stays an escape's "described as".
  * Applies savedColourFinish, so a finish the server holds under an escape
  * (it doesn't tie the two) never reads "Other · Metallic".
  */

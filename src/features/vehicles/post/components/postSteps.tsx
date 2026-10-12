@@ -221,9 +221,6 @@ export function ColourStep({
       <ColourField
         value={answers.colour ?? null}
         note={answers.colourNote ?? ''}
-        // The summary says "Blue · Metallic" — except over the editor's row,
-        // which says the finish itself.
-        finish={finishAsRow ? null : finish}
         // ⚠️ NO AUTO-ADVANCE ON A PICK (owner decision, 2026-10-12): a pick
         // may need a note, and Next asks the finish — the step waits for Next
         // rather than moving on from under them.

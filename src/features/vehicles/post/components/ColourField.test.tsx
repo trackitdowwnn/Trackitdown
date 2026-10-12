@@ -3,8 +3,8 @@
  *        every swatch shows its NAME label (the accessibility guarantee), light
  *        swatches render a border, the note trigger appears only for the escapes
  *        and opens a sheet whose input captures text, a pre-set colour (incl.
- *        a DVLA-mapped one) pre-selects its swatch, and the paint finish is
- *        only NAMED in the summary (it is asked in PaintFinishSheet).
+ *        a DVLA-mapped one) pre-selects its swatch, there is no "Selected:"
+ *        line, and the paint finish is not asked here (PaintFinishSheet is).
  * WHY:   The colour is a clean enum a colour-blind spotter reads by NAME, so a
  *        missing name label, a light swatch that vanishes, or a note leaking
  *        under a plain colour are real defects — pinned here.
@@ -181,11 +181,10 @@ describe('ColourField — the V5C palette and smarter escapes (2026-10-12)', () 
     expect(getByLabelText('Brown').props.accessibilityState).toMatchObject({ checked: true });
   });
 
-  it('says what is chosen in words; the chosen name changes weight, never size', async () => {
-    const { getByTestId, getByText } = await renderField({ value: 'Blue' });
-    expect(getByTestId('colour-summary').props.children).toBe('Selected: Blue');
-    // Not a live region: the radio's state already announces the pick.
-    expect(getByTestId('colour-summary').props.accessibilityLiveRegion).toBeUndefined();
+  it('the chosen name changes weight, never size — and no "Selected:" line repeats it', async () => {
+    const { getByText, queryByText } = await renderField({ value: 'Blue' });
+    // Owner request, 2026-10-12: the ring, tick and bolder name say it.
+    expect(queryByText(/^Selected:/)).toBeNull();
     const chosen = StyleSheet.flatten(getByText('Blue').props.style);
     const other = StyleSheet.flatten(getByText('Red').props.style);
     expect(chosen.fontFamily).not.toBe(other.fontFamily);
@@ -211,8 +210,8 @@ describe('ColourField — the V5C palette and smarter escapes (2026-10-12)', () 
       fireEvent.press(view.getByRole('button', { name: 'Done' }));
     });
     expect(view.queryByTestId('colour-note-input')).toBeNull();
-    // Named by its description.
-    expect(view.getByTestId('colour-summary').props.children).toBe('Selected: Champagne');
+    // Described: the way back to the box is no longer needed.
+    expect(view.queryByRole('button', { name: 'Add the colour' })).toBeNull();
   });
 
   it('an undescribed "Other" offers the way back to its box', async () => {
@@ -264,19 +263,8 @@ describe('ColourField — the V5C palette and smarter escapes (2026-10-12)', () 
   });
 });
 
-describe('ColourField — the finish, in words only (2026-10-12)', () => {
-  // It is asked in PaintFinishSheet on the way out (ColourStep); here it is
-  // only named.
-  it('names a plain colour with its finish in the summary', async () => {
-    const { getByTestId } = await renderField({ value: 'Blue', finish: 'metallic' });
-    expect(getByTestId('colour-summary').props.children).toBe('Selected: Blue · Metallic');
-  });
-
-  it('never names a finish under an escape', async () => {
-    const { getByTestId } = await renderField({ value: 'Multicolour / wrapped', finish: 'pearl' });
-    expect(getByTestId('colour-summary').props.children).toBe('Selected: Multicolour / wrapped');
-  });
-
+describe('ColourField — the finish is not asked here (2026-10-12)', () => {
+  // It is asked in PaintFinishSheet on the way out (ColourStep).
   it('asks nothing about the finish itself — no chips under the grid', async () => {
     const { queryByText, queryByRole } = await renderField({ value: 'Blue' });
     expect(queryByText('Paint finish')).toBeNull();

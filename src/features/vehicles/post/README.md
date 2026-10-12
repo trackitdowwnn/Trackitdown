@@ -94,7 +94,8 @@ never opens one person's last-seen location for the next.
    hexes). The stored value is the canonical NAME (a clean enum driving the
    card/detail colour text and future colour filters), never a hex. Every
    swatch shows its name (colour-blind spotters read the word — never colour
-   alone); the chosen name goes bold and "Selected: …" confirms it. Since
+   alone); the chosen one gets a ring, a tick and a bolder name (no
+   "Selected: …" line since 2026-10-12, owner request). Since
    2026-10-12 the palette is the V5C/DVLA vocabulary (20, four columns; an old
    "Brown / Beige" resolves to Brown). The escapes ("Multicolour / wrapped" /
    "Other") open a note sheet that asks its own question ("Describe the
@@ -111,8 +112,8 @@ never opens one person's last-seen location for the next.
    `colour_finish` (20261012100000). An escape drops it (`colourChangePatch`),
    and every write sends it — the edit RPCs replace it, so a save without it
    would wipe it. One form wherever it shows (`colourWithFinish`): "Blue ·
-   Metallic" in the summary, review, Car details and the garage's "Your
-   car"; not on cards or in push copy.
+   Metallic" in the review, Car details and the garage's "Your car"; not on
+   cards or in push copy.
    ⚠️ **A NEW FINISH SHIPS APP-FIRST.** The app reads a finish it doesn't
    know as none, and the edit RPCs are full replaces — so a build that
    predates a new value ERASES it on the owner's next edit. Widen

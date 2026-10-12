@@ -925,7 +925,7 @@ barrel, since it pulls in Reanimated).
   after a picker closes) — never under a screen reader or, on Android, any
   accessibility service (Switch Access loses its place when a screen moves
   by itself). Colour waits for Next since 2026-10-12: a pick may need a note,
-  its summary and "Add the colour" link sit under the grid, and a plain
+  an undescribed "Other" shows "Add the colour" under the grid, and a plain
   colour's Next asks the paint finish in a sheet (a step can claim Next).
   Mechanics in `src/shared/wizard/README.md`.
 - **Lists:** on-screen rows enter with a small staggered `FadeInDown`
