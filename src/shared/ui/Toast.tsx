@@ -201,9 +201,13 @@ export function ToastProvider({ children, aboveTabBar = false }: ToastProviderPr
   // behind the keyboard is a failure nobody sees. Off the tabs the footer
   // rides the keyboard too (StickyActionBar lifts by it), so the toast
   // still clears it; on the tabs the bar is behind the keyboard.
+  // iOS's keyboard height already includes the home-indicator inset; with no
+  // footer padding to cancel it (the tabs), adding the inset again floated the
+  // toast ~34pt high. Android's height excludes the nav bar, so it keeps it.
+  const keyboardTop =
+    aboveTabBar && Platform.OS === 'ios' && keyboard > 0 ? keyboard : insets.bottom + keyboard;
   const bottom =
-    insets.bottom +
-    keyboard +
+    keyboardTop +
     (aboveTabBar
       ? (keyboard > 0 ? 0 : sizes.tabBar) + spacing.md
       : FOOTER_BAR_HEIGHT + spacing.md);
@@ -384,11 +388,13 @@ const makeStyles = (c: Palette) =>
     },
     // Fills the card's height (cancelling its vertical padding) to reach the
     // 44pt target while the label stays level with the first line.
+    // PADDED, not centred: the label's top always meets the message's first
+    // line at 12pt, at any text size; the box never drops under 44pt.
     action: {
       minHeight: sizes.touchTarget,
       minWidth: sizes.touchTarget,
       marginVertical: -spacing.md,
-      justifyContent: 'center',
+      paddingVertical: spacing.md,
       alignItems: 'flex-end',
     },
     // Underline = tappable (design-system convention).
@@ -396,5 +402,6 @@ const makeStyles = (c: Palette) =>
       ...typography.label,
       color: c.textPrimary,
       textDecorationLine: 'underline',
+      includeFontPadding: false,
     },
   });
