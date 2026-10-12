@@ -43,12 +43,14 @@ jest.mock('react-native-safe-area-context', () =>
 // `exiting` it had on its LAST render before unmounting — the one Reanimated
 // actually plays, and the whole of the exit-direction bug.
 const mockUnmountedExits: (string | undefined)[] = [];
+// …and whether that last render could take touches (see the leaving test).
+const mockUnmountedPointerEvents: (string | undefined)[] = [];
 let mockReduceMotion = true;
 jest.mock('react-native-reanimated', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const React = require('react');
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
-  const { View } = require('react-native');
+  const { StyleSheet, View } = require('react-native');
   const builder = (name: string) => {
     const chain: Record<string, unknown> = { __name: name };
     chain.duration = () => chain;
@@ -56,12 +58,13 @@ jest.mock('react-native-reanimated', () => {
     chain.reduceMotion = () => chain;
     return chain;
   };
-  function MockAnimatedView(props: { exiting?: { __name?: string } }) {
+  function MockAnimatedView(props: { exiting?: { __name?: string }; style?: unknown }) {
     const last = React.useRef(props);
     last.current = props;
     React.useEffect(
       () => () => {
         mockUnmountedExits.push(last.current.exiting?.__name);
+        mockUnmountedPointerEvents.push(StyleSheet.flatten(last.current.style)?.pointerEvents);
       },
       [],
     );
@@ -533,6 +536,22 @@ describe('moving between screens', () => {
     await press(view, 'Get started');
     expect(mockUnmountedExits).toEqual(['SlideOutLeft', 'SlideOutRight', 'SlideOutLeft']);
     expect(animName(view.getByTestId('wizard-step-slide').props.entering)).toBe('SlideInRight');
+  });
+
+  it('⚠️ a leaving screen takes no touches — its exiting copy can’t swallow the next step’s', async () => {
+    // Owner report (2026-10-12): after a typed make and model the colour step
+    // froze for seconds — no scroll, no colour — while the footer still
+    // worked. Reanimated keeps the exiting view over the new step until its
+    // exit has played; that copy must be untouchable.
+    mockUnmountedPointerEvents.length = 0;
+    const { view } = await renderWizard();
+    await press(view, 'Get started');
+    await press(view, 'Back');
+    expect(mockUnmountedPointerEvents).toEqual(['none', 'none']);
+    // …while the screen on show takes touches as normal.
+    expect(
+      StyleSheet.flatten(view.getByTestId('wizard-step-slide').props.style).pointerEvents,
+    ).toBeUndefined();
   });
 
   it('drops the keyboard on every move', async () => {

@@ -372,7 +372,18 @@ export function WizardScreen<TAnswers>({
           testID="wizard-step-slide"
           // Paints the page: during a fade beside a map, the leaving screen's
           // text must cover — not sit over — the one arriving.
-          style={styles.stepLayer}
+          // ⚠️ A LEAVING screen takes no touches (owner report, 2026-10-12:
+          // after a typed make and model, the colour step "freezes for a few
+          // seconds" — no scroll, no colour, while the footer's button still
+          // worked). Reanimated keeps an exiting view in the native tree, over
+          // the area the new step occupies, until its exit has played; when
+          // that runs late — the step was left with the keyboard up, so its
+          // exit overlaps the keyboard closing — the invisible leaving step
+          // swallowed every tap and scroll meant for the arriving one. The
+          // footer lives outside this layer, which is why it still worked.
+          // Its last render before unmounting is this `leaving` one, so the
+          // exiting copy keeps `pointerEvents: 'none'`.
+          style={[styles.stepLayer, leaving && styles.stepLayerLeaving]}
           entering={entering}
           exiting={exiting}
         >
@@ -476,6 +487,10 @@ const makeStyles = (c: Palette) =>
     stepLayer: {
       flex: 1,
       backgroundColor: c.background,
+    },
+    // The screen on its way out: still drawn for its exit, never touched.
+    stepLayerLeaving: {
+      pointerEvents: 'none',
     },
     // md, not xl: the 44pt exit target has ~13px of internal padding around its
     // glyph, so md lands the glyph optically on the content's 24px edge.
