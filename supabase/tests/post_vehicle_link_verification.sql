@@ -168,17 +168,27 @@ end $$;
 -- that forgot the revoke would hand anon the post-creation boundary. The old
 -- 22-type signature must ALSO be gone — two overloads would make every
 -- named-argument call from PostgREST ambiguous.
+--
+-- Found BY NAME, not by a typed signature (2026-10-12): 20261012100000 added
+-- p_colour_finish, and a pinned 23-type list would fail here for the wrong
+-- reason. What matters is unchanged — one create_post, it takes
+-- p_vehicle_id, and its grants are right.
 -- -----------------------------------------------------------------------------
 do $$
 declare
-  v_new text := 'public.create_post(text, text, text, text, int, text, text, text, text, text, text, text, timestamptz, double precision, double precision, text, int, text[], text[], text, jsonb, text, uuid)';
-  v_old text := 'public.create_post(text, text, text, text, int, text, text, text, text, text, text, text, timestamptz, double precision, double precision, text, int, text[], text[], text, jsonb, text)';
+  v_new oid;
+  v_n   int;
 begin
-  if to_regprocedure(v_new) is null then
-    raise exception 'CHECK 8 FAILED: the 23-argument create_post does not exist -- the recreate did not run';
+  select count(*) into v_n from pg_proc
+   where proname = 'create_post' and pronamespace = 'public'::regnamespace;
+  if v_n <> 1 then
+    raise exception 'CHECK 8 FAILED: % create_post overloads exist. Two make every PostgREST named-argument call ambiguous (42725)', v_n;
   end if;
-  if to_regprocedure(v_old) is not null then
-    raise exception 'CHECK 8 FAILED: the OLD 22-argument create_post still exists. Two overloads make every PostgREST named-argument call ambiguous (42725)';
+  select p.oid into v_new from pg_proc p
+   where p.proname = 'create_post' and p.pronamespace = 'public'::regnamespace
+     and 'p_vehicle_id' = any(p.proargnames);
+  if v_new is null then
+    raise exception 'CHECK 8 FAILED: create_post has no p_vehicle_id parameter -- the recreate did not run';
   end if;
   if has_function_privilege('anon', v_new, 'EXECUTE') then
     raise exception 'CHECK 8 FAILED: anon can EXECUTE create_post -- the drop took the revoke with it and it was not restated';

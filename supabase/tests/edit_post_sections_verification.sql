@@ -635,7 +635,9 @@ end $$;
 do $$
 declare
   v_sigs text[] := array[
-    'public.update_post_car_details(uuid, text, text, text, text, int, text)',
+    -- Gained a trailing, defaulted p_colour_finish in 20261012100000 (same
+    -- exact-signature rule as update_post_last_seen below).
+    'public.update_post_car_details(uuid, text, text, text, text, int, text, text)',
     'public.update_post_photos(uuid, text[])',
     -- Gained a trailing, defaulted p_last_seen_locality in 20260802110000.
     -- has_function_privilege resolves by EXACT signature, so the 5-arg form
