@@ -192,3 +192,71 @@ describe('ModelField', () => {
     expect(rows(view)[0]).toBe('Any BMW model');
   });
 });
+
+describe('the floating "Not listed?" pill (2026-10-12, owner request)', () => {
+  /** Tap the pill, type, and use it. */
+  async function typeItIn(view: View, pill: string, text: string, submit: string) {
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: pill }));
+    });
+    await act(async () => {
+      fireEvent.changeText(view.getByTestId('select-manual-input'), text);
+    });
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: submit }));
+    });
+  }
+
+  it('make: a car not on the list can be typed in from the pill', async () => {
+    const onChange = jest.fn();
+    const view = await render(<MakeField value={null} onChange={onChange} />);
+    await open(view, /^Make, not selected/);
+    await typeItIn(view, 'Not listed? Type your make in', 'Trabant', 'Use this make');
+    expect(onChange).toHaveBeenCalledWith('Trabant');
+  });
+
+  it('⚠️ make: a typed-in make that IS listed is stored as the list has it', async () => {
+    // So it still meets a spotter's alert for "Volkswagen".
+    const onChange = jest.fn();
+    const view = await render(<MakeField value={null} onChange={onChange} />);
+    await open(view, /^Make, not selected/);
+    await typeItIn(view, 'Not listed? Type your make in', 'vw', 'Use this make');
+    expect(onChange).toHaveBeenCalledWith('Volkswagen');
+  });
+
+  it('model: the same pill, canonicalised against the make', async () => {
+    const onChange = jest.fn();
+    const view = await render(<ModelField make="Volkswagen" value={null} onChange={onChange} />);
+    await open(view, /^Model, not selected/);
+    await typeItIn(view, 'Not listed? Type your model in', 'golf', 'Use this model');
+    expect(onChange).toHaveBeenCalledWith('Golf');
+  });
+
+  it('caps what can be typed at 40 characters', async () => {
+    const view = await render(<MakeField value={null} onChange={jest.fn()} />);
+    await open(view, /^Make, not selected/);
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Not listed? Type your make in' }));
+    });
+    expect(view.getByTestId('select-manual-input').props.maxLength).toBe(40);
+  });
+
+  it('…as does the plain model box for a make with no list', async () => {
+    const view = await render(<ModelField make="Trabant" value={null} onChange={jest.fn()} />);
+    expect(view.getByLabelText('Model').props.maxLength).toBe(40);
+  });
+
+  it('⚠️ filters never offer it — they only match listed makes', async () => {
+    const make = await render(
+      <MakeField value={null} onChange={jest.fn()} filter={{ onClear: jest.fn() }} />,
+    );
+    await open(make, /^Make, Any make/);
+    expect(make.queryByTestId('select-manual-pill')).toBeNull();
+
+    const model = await render(
+      <ModelField make="BMW" value={null} onChange={jest.fn()} filter={{ onClear: jest.fn() }} />,
+    );
+    await open(model, /^Model, Any BMW model/);
+    expect(model.queryByTestId('select-manual-pill')).toBeNull();
+  });
+});

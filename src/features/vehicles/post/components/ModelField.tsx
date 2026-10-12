@@ -4,9 +4,10 @@
  *        common in the UK, most first) above the make's models A–Z, with
  *        sticky letters and a letter rail once the list is long. Two modes,
  *        like MakeField:
- *          - answering: a free-typed model is allowed ("Use "<query>""), and a
- *            make with no model list (one typed in by hand) drops to a plain
- *            text field;
+ *          - answering: a free-typed model is allowed ("Use "<query>"", or the
+ *            floating "Not listed? Type it in" pill, 2026-10-12; at most 40
+ *            characters), and a make with no model list (one typed in by
+ *            hand) drops to a plain text field, bounded the same;
  *          - `filter` (search, alerts): "Any <Make> model" leads, a × clears
  *            it, listed models only, and nothing renders for a make with no
  *            list, unless the filter already has a model, which then shows
@@ -25,8 +26,15 @@
  *        src/shared/ui/SelectField.tsx (+ SelectScreen) — the picker.
  */
 
-import { EmptyState, SelectField, TextField, type SelectOption } from '@/shared/ui';
+import {
+  EmptyState,
+  SelectField,
+  TextField,
+  type ManualEntryButton,
+  type SelectOption,
+} from '@/shared/ui';
 
+import { MAX_MANUAL_VEHICLE_TEXT } from '@/shared/lib/carMakes';
 import {
   canonicaliseModel,
   modelSection,
@@ -36,6 +44,15 @@ import {
 
 /** From this many models, the list gets A–Z sections and the letter rail. */
 const SECTIONED_FROM = 20;
+
+/** The floating "Not listed?" way in on the model picker (2026-10-12). */
+const MODEL_ENTRY: ManualEntryButton = {
+  label: 'Not listed? Type it in',
+  accessibilityLabel: 'Not listed? Type your model in',
+  fieldLabel: 'Your car’s model',
+  submitLabel: 'Use this model',
+  helper: 'As it’s shown on your logbook (V5C)',
+};
 
 export interface ModelFieldProps {
   /** The make chosen in the previous step — drives which models are offered. */
@@ -101,6 +118,8 @@ export function ModelField({ make, value, onChange, onPicked, error, filter }: M
         value={value ?? ''}
         onChangeText={onChange}
         error={error}
+        // The same bound as the type-it-in box (MAX_MANUAL_VEHICLE_TEXT).
+        maxLength={MAX_MANUAL_VEHICLE_TEXT}
       />
     );
   }
@@ -126,6 +145,9 @@ export function ModelField({ make, value, onChange, onPicked, error, filter }: M
       showIndex={sectioned}
       stagger
       allowManualEntry={!filter}
+      // The floating "Not listed?" pill, as on the make picker (2026-10-12).
+      manualEntryButton={filter ? undefined : MODEL_ENTRY}
+      manualEntryMaxLength={MAX_MANUAL_VEHICLE_TEXT}
       clearable={
         filter
           ? { anyLabel: `Any ${make} model`, clearLabel: 'Clear model', onClear: filter.onClear }

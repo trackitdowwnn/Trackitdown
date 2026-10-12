@@ -7,7 +7,11 @@
  *        (default off, so existing selects are unchanged): `autoFocusSearch`
  *        false for browse-first pickers; `pinnedTitle` to head the pinned
  *        group ("Popular makes"); `manualEntry` for free-text selects (typing a
- *        value with no exact match surfaces a "Use "<query>"" row);
+ *        value with no exact match surfaces a "Use "<query>"" row; its
+ *        `maxLength` bounds every way free text gets in, and its `button`
+ *        floats a "Not listed? Type it in" pill — first for screen readers,
+ *        hidden while searching — that swaps the list for a type-it-in box,
+ *        which Android Back steps out of first, 2026-10-12);
  *        `showIndex` for an A–Z jump-scroll rail; `stagger` for a restrained
  *        first-load row cascade; `anyOption` for a filter's "Any make" first
  *        row; `pinnedLayout="grid"` to draw the pinned group as two-up tiles
@@ -49,6 +53,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   FlatList,
+  ScrollView,
   Modal,
   Pressable,
   StyleSheet,
@@ -74,6 +79,7 @@ import {
   motion,
   indexRailFontScaleCap,
   radii,
+  shadows,
   shrinkToFitMinScale,
   sizes,
   spacing,
@@ -83,6 +89,7 @@ import {
   type Palette,
 } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
+import { Button } from './Button';
 import { EmptyState } from './EmptyState';
 import {
   RECENT_SECTION_TITLE,
@@ -95,6 +102,7 @@ import {
   type SelectListItem,
   type SelectOption,
 } from './selectOptions';
+import { TextField } from './TextField';
 
 /** Open/close motion, at the design system's upper bound. */
 const MOTION_MS = motion.standard;
@@ -105,6 +113,25 @@ const FILTER_DEBOUNCE_MS = 150;
 const MAX_RENDERED_UP_FRONT = 250;
 /** Rows that get the first-open stagger: about one screenful. */
 const STAGGERED_ROWS = 12;
+
+/**
+ * The floating "not listed" way in (owner request, 2026-10-12): a pill over
+ * the list that opens a small type-it-in box in place of the list. The copy is
+ * the caller's, so the picker stays generic ("Use this make" / "this model").
+ */
+export interface ManualEntryButton {
+  /** The pill's words, e.g. "Not listed? Type it in". */
+  label: string;
+  /** Spoken for the pill, e.g. "Not listed? Type your make in". */
+  accessibilityLabel?: string;
+  /** The text box's label, e.g. "Your car's make". */
+  fieldLabel: string;
+  /** The confirm button, e.g. "Use this make". */
+  submitLabel: string;
+  /** A quiet hint under the box (and spoken with it), e.g. "As it's shown
+   *  on your logbook (V5C)". */
+  helper?: string;
+}
 
 export interface SelectScreenProps<V extends string | number> {
   visible: boolean;
@@ -136,8 +163,15 @@ export interface SelectScreenProps<V extends string | number> {
   autoFocusSearch?: boolean;
   /** Free-text escape hatch for non-enum selects (car make/model). When set, a
    *  query with no exact match offers a "Use "<query>"" row that submits the
-   *  typed text via `onSubmit`. */
-  manualEntry?: { onSubmit: (text: string) => void };
+   *  typed text via `onSubmit`. With `button`, a floating "Not listed?" pill
+   *  also offers it before anything is typed (see ManualEntryButton).
+   *  `maxLength` bounds EVERY way free text gets in — the search box (whose
+   *  "Use "<query>"" row submits it) as well as the type-it-in box. */
+  manualEntry?: {
+    onSubmit: (text: string) => void;
+    maxLength?: number;
+    button?: ManualEntryButton;
+  };
   /** Show an A–Z jump-scroll index rail down the right edge (long lists). */
   showIndex?: boolean;
   /** Soft stagger-in of rows on the first open (restrained motion). */
@@ -189,6 +223,18 @@ export function SelectScreen<V extends string | number>({
   const [prevVisible, setPrevVisible] = useState(visible);
   // Whether the pinned grid has cascaded in on this open.
   const [gridStaggered, setGridStaggered] = useState(false);
+  // The type-it-in box (manualEntry.button): open, and what is typed in it.
+  const [entering, setEntering] = useState(false);
+  const [draft, setDraft] = useState('');
+  // The search box's focus — the pill steps aside while the keyboard is up.
+  const [searchFocused, setSearchFocused] = useState(false);
+  // Screen-reader focus to restore onto the pill after the box closes.
+  const [focusPillOnShow, setFocusPillOnShow] = useState(false);
+  // The pill's measured height, so the list's last rows scroll clear of it at
+  // any text size.
+  const [pillHeight, setPillHeight] = useState(0);
+  const entryInputRef = useRef<TextInput>(null);
+  const pillRef = useRef<View>(null);
   if (visible !== prevVisible) {
     setPrevVisible(visible);
     if (visible) {
@@ -196,6 +242,11 @@ export function SelectScreen<V extends string | number>({
       setQuery('');
       setDebouncedQuery('');
       setGridStaggered(false);
+      // Every open starts at the list, never in the last open's box.
+      setEntering(false);
+      setDraft('');
+      setSearchFocused(false);
+      setFocusPillOnShow(false);
     }
   }
   // Reanimated can deliver a close's exit callback AFTER a fast reopen;
@@ -304,11 +355,68 @@ export function SelectScreen<V extends string | number>({
     wasMounted.current = mounted;
   }, [mounted]);
 
+  const maxManual = manualEntry?.maxLength;
+  /** Bounded here as well as by the inputs' maxLength: a paste that slipped
+   *  past an input must still never store more (code review, 2026-10-12). */
+  const boundManual = (text: string) =>
+    (maxManual ? text.trim().slice(0, maxManual) : text).trim();
+
   const submitManual = (text: string) => {
     pickedRef.current = true;
-    manualEntry?.onSubmit(text.trim());
+    manualEntry?.onSubmit(boundManual(text));
     onClose();
   };
+
+  // The floating "Not listed?" pill — only where the caller asked for it; not
+  // while searching (the "Use "<query>"" row offers the same thing there), nor
+  // while the search is focused (the keyboard would sit on it).
+  const entryButton = manualEntry?.button;
+  const showEntryPill = entryButton != null && !searching && !entering && !searchFocused;
+  // Opening the box carries over a query if there is one; otherwise it keeps
+  // what was typed there before "Back to the list".
+  const openEntry = () => {
+    lightHaptic();
+    const carried = boundManual(query);
+    setDraft((previous) => (carried ? carried : previous));
+    setEntering(true);
+  };
+  const submitDraft = () => {
+    if (draft.trim().length > 0) submitManual(draft);
+  };
+  // Leaving the box puts screen-reader focus back on the pill that opened it.
+  const leaveEntry = () => {
+    setEntering(false);
+    setFocusPillOnShow(true);
+  };
+  // Android Back steps out of the box first; only then closes the picker.
+  const handleRequestClose = () => {
+    if (entering) {
+      leaveEntry();
+      return;
+    }
+    onClose();
+  };
+
+  // Screen-reader focus follows the box: onto its field when it opens, back
+  // onto the pill when it closes — the control that had focus unmounted, and
+  // autoFocus raises the keyboard without reliably moving that focus.
+  useEffect(() => {
+    if (!entering) return;
+    const timer = setTimeout(() => {
+      if (entryInputRef.current) {
+        AccessibilityInfo.sendAccessibilityEvent(entryInputRef.current, 'focus');
+      }
+    }, motion.fast);
+    return () => clearTimeout(timer);
+  }, [entering]);
+  useEffect(() => {
+    if (!focusPillOnShow || !showEntryPill) return;
+    const timer = setTimeout(() => {
+      setFocusPillOnShow(false);
+      if (pillRef.current) AccessibilityInfo.sendAccessibilityEvent(pillRef.current, 'focus');
+    }, motion.fast);
+    return () => clearTimeout(timer);
+  }, [focusPillOnShow, showEntryPill]);
 
   // Tell screen-reader users how the result set changed as they type.
   useEffect(() => {
@@ -341,7 +449,8 @@ export function SelectScreen<V extends string | number>({
       transparent
       statusBarTranslucent
       animationType="none"
-      onRequestClose={onClose}
+      onRequestClose={handleRequestClose}
+      testID="select-screen-modal"
       onShow={autoFocusSearch ? () => searchRef.current?.focus() : undefined}
     >
       {/* Static opaque backdrop — covers the screen the WHOLE time the modal is
@@ -407,191 +516,277 @@ export function SelectScreen<V extends string | number>({
                 <View style={styles.close} />
               </View>
 
-              <View style={styles.searchWrap}>
-                <View style={styles.search}>
-                  <Feather
-                    name="search"
-                    size={sizes.iconSm}
-                    color={palette.textSecondary}
-                  />
-                  <TextInput
-                    ref={searchRef}
-                    value={query}
-                    onChangeText={setQuery}
-                    placeholder={searchPlaceholder}
-                    placeholderTextColor={palette.textSecondary}
-                    autoCorrect={false}
-                    accessibilityLabel={searchPlaceholder}
-                    style={styles.searchInput}
-                  />
-                  {query.length > 0 ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Clear search"
-                      onPress={() => setQuery('')}
-                      style={styles.clearSearch}
-                    >
+              {entering && entryButton ? (
+                // The type-it-in box, in place of the search and the list.
+                // At the TOP, so the keyboard never covers the field; and it
+                // scrolls, so at large text on a small phone the buttons are
+                // still reachable above the keyboard.
+                <Animated.View
+                  style={styles.flex}
+                  entering={FadeIn.duration(motion.fast)
+                    .easing(motionEasing)
+                    .reduceMotion(ReduceMotion.System)}
+                  testID="select-manual-entry"
+                >
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={styles.entry}
+                  >
+                    <TextField
+                      ref={entryInputRef}
+                      label={entryButton.fieldLabel}
+                      value={draft}
+                      onChangeText={setDraft}
+                      helperText={entryButton.helper}
+                      // TextField speaks only its label; the hint rides here.
+                      accessibilityHint={entryButton.helper}
+                      maxLength={maxManual}
+                      autoFocus
+                      autoCorrect={false}
+                      autoCapitalize="words"
+                      returnKeyType="done"
+                      onSubmitEditing={submitDraft}
+                      testID="select-manual-input"
+                    />
+                    <View style={styles.entryActions}>
+                      <Button
+                        label={entryButton.submitLabel}
+                        onPress={submitDraft}
+                        disabled={draft.trim().length === 0}
+                      />
+                      <Button label="Back to the list" variant="ghost" onPress={leaveEntry} />
+                    </View>
+                  </ScrollView>
+                </Animated.View>
+              ) : (
+                <>
+                  <View style={styles.searchWrap}>
+                    <View style={styles.search}>
                       <Feather
-                        name="x-circle"
+                        name="search"
                         size={sizes.iconSm}
                         color={palette.textSecondary}
                       />
-                    </Pressable>
-                  ) : null}
-                </View>
-              </View>
+                      <TextInput
+                        ref={searchRef}
+                        value={query}
+                        onChangeText={setQuery}
+                        onFocus={() => setSearchFocused(true)}
+                        onBlur={() => setSearchFocused(false)}
+                        placeholder={searchPlaceholder}
+                        placeholderTextColor={palette.textSecondary}
+                        autoCorrect={false}
+                        accessibilityLabel={searchPlaceholder}
+                        // Its "Use "<query>"" row submits this as free text.
+                        maxLength={maxManual}
+                        style={styles.searchInput}
+                      />
+                      {query.length > 0 ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Clear search"
+                          onPress={() => setQuery('')}
+                          style={styles.clearSearch}
+                        >
+                          <Feather
+                            name="x-circle"
+                            size={sizes.iconSm}
+                            color={palette.textSecondary}
+                          />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
 
-              {/* An empty list with an Any row still renders the list, so the
-                  Any row is there to pick (a filter showing a model with no
-                  list behind it). */}
-              {items.length === 0 && !showAnyRow ? (
-                debouncedQuery ? (
-                  <EmptyState
-                    title={`No matches for “${debouncedQuery}”`}
-                    body={
-                      manualEntry
-                        ? 'Not in the list? Add it as you typed it.'
-                        : 'Check the spelling or try a shorter search.'
-                    }
-                    actionLabel={manualEntry ? `Use “${debouncedQuery.trim()}”` : 'Clear search'}
-                    onAction={
-                      manualEntry ? () => submitManual(debouncedQuery) : () => setQuery('')
-                    }
-                  />
-                ) : (
-                  <EmptyState title="Nothing to choose from yet" />
-                )
-              ) : (
-                <View style={styles.flex}>
-                  <FlatList
-                    ref={listRef}
-                    accessibilityRole="radiogroup"
-                    // Named, so a screen reader doesn't say "radio group" with
-                    // nothing to tell it from the tiles' own group inside.
-                    accessibilityLabel={title}
-                    data={items}
-                    keyExtractor={(item) => item.key}
-                    // ⚠️ SHIFTED BY ONE when there's a list header: FlatList
-                    // counts ListHeaderComponent as cell 0. Unshifted, "Popular
-                    // makes" pinned the Any row and no letter header stuck
-                    // (2026-09-30 UI review).
-                    stickyHeaderIndices={stickyHeaderIndices(items).map(
-                      (index) => index + (hasListHeader ? 1 : 0),
-                    )}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                    contentContainerStyle={[
-                      styles.listContent,
-                      // Clear the index rail so the last rows aren't hidden under it.
-                      showIndex && !searching ? styles.listContentIndexed : null,
-                    ]}
-                    // Every row renders up front (a make list is ~110 items, a
-                    // model list rarely 80), so the rail's scrollToIndex always
-                    // has its target measured and lands exactly. Rows grow with
-                    // dynamic type, so a fixed getItemLayout would drift.
-                    initialNumToRender={Math.min(items.length, MAX_RENDERED_UP_FRONT)}
-                    // Past that cap: approximate, then settle on the real row,
-                    // once. A second failure stays at the approximation rather
-                    // than looping.
-                    onScrollToIndexFailed={(info) => {
-                      listRef.current?.scrollToOffset({
-                        offset: info.averageItemLength * info.index,
-                        animated: false,
-                      });
-                      if (retriedIndex.current === info.index) return;
-                      retriedIndex.current = info.index;
-                      if (retryTimer.current) clearTimeout(retryTimer.current);
-                      retryTimer.current = setTimeout(
-                        () => listRef.current?.scrollToIndex({ index: info.index, animated: false }),
-                        0,
-                      );
-                    }}
-                    ListHeaderComponent={
-                      hasListHeader ? (
-                        <>
-                          {showAnyRow && anyOption ? (
-                            <AnyRow
-                              label={anyOption.label}
-                              selected={value === null}
-                              // Line up with the rows' labels when they carry icons.
-                              indented={options.some((option) => option.icon != null)}
-                              onPress={() => {
-                                lightHaptic();
-                                anyOption.onSelect();
-                                onClose();
-                              }}
-                            />
-                          ) : null}
-                          {showUseQuery ? (
-                            <ManualRow
-                              label={`Use “${debouncedQuery.trim()}”`}
-                              onPress={() => submitManual(debouncedQuery)}
-                            />
-                          ) : null}
-                          {showGrid ? (
-                            <PinnedGrid
-                              title={pinnedTitle ?? RECENT_SECTION_TITLE}
-                              tiles={pinnedTiles}
-                              selectedValue={value}
-                              onSelect={handleSelect}
-                              // Once per open: clearing a search brings the
-                              // grid back without replaying the cascade.
-                              stagger={stagger && !gridStaggered}
-                              // Its first layout, just after the cascade has
-                              // started: from then on this open, no replay.
-                              onShown={stagger && !gridStaggered ? () => setGridStaggered(true) : undefined}
-                            />
-                          ) : null}
-                          {showGrid && allTitle ? (
-                            <View style={styles.groupHeader}>
-                              <Text accessibilityRole="header" style={styles.groupTitle}>
-                                {allTitle}
-                              </Text>
-                            </View>
-                          ) : null}
-                        </>
-                      ) : null
-                    }
-                    renderItem={({ item, index }) => (
-                      <SelectRow
-                        item={item}
-                        selectedValue={value}
-                        onSelect={handleSelect}
-                        // A hairline between two rows, never beside a header.
-                        // …or below the Any / "Use…" row when one sits right
-                        // on top of the first row (no grid or heading between).
-                        divider={
-                          item.kind === 'option' &&
-                          (items[index - 1]?.kind === 'option' ||
-                            (index === 0 && !showGrid && (showAnyRow || showUseQuery)))
+                  {/* An empty list with an Any row still renders the list, so the
+                      Any row is there to pick (a filter showing a model with no
+                      list behind it). */}
+                  {items.length === 0 && !showAnyRow ? (
+                    debouncedQuery ? (
+                      <EmptyState
+                        title={`No matches for “${debouncedQuery}”`}
+                        body={
+                          manualEntry
+                            ? 'Not in the list? Add it as you typed it.'
+                            : 'Check the spelling or try a shorter search.'
                         }
-                        // The first screenful only: with every row rendered up
-                        // front, staggering all ~110 would start them together
-                        // off-screen, against the Motion rule and heavy on
-                        // low-end Android.
-                        // With a grid, the tiles ARE the first screenful: the
-                        // rows start far below, so they don't animate.
-                        stagger={
-                          stagger && !searching && !showGrid && index < STAGGERED_ROWS ? index : undefined
+                        actionLabel={manualEntry ? `Use “${debouncedQuery.trim()}”` : 'Clear search'}
+                        onAction={
+                          manualEntry ? () => submitManual(debouncedQuery) : () => setQuery('')
                         }
                       />
-                    )}
-                  />
-                  {showIndex && !searching ? (
-                    <IndexRail
-                      // Only the A–Z letter sections — a multi-word pinned
-                      // header (e.g. "Popular makes") would put a stray letter
-                      // on the rail; that group sits at the top anyway.
-                      // "#" heads the numbered models (208, 3 Series).
-                      anchors={sectionAnchors(items).filter((anchor) => /^([A-Z]|#)$/.test(anchor.title))}
-                      onJump={(index) => {
-                        // A fresh jump gets its own one retry.
-                        retriedIndex.current = null;
-                        listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0 });
-                      }}
-                    />
-                  ) : null}
-                </View>
+                    ) : (
+                      <EmptyState title="Nothing to choose from yet" />
+                    )
+                  ) : (
+                    <View style={styles.flex}>
+                      {/* The floating "Not listed?" pill. FIRST in the tree so a
+                          screen reader reaches it before ~110 rows (it is drawn
+                          over the list by zIndex, not by order). Fades in and
+                          out as searching hides it. Measured, so the list's
+                          last rows scroll clear of it at any text size. */}
+                      {showEntryPill && entryButton ? (
+                        <Animated.View
+                          style={styles.entryPillWrap}
+                          entering={FadeIn.duration(motion.fast)
+                            .easing(motionEasing)
+                            .reduceMotion(ReduceMotion.System)}
+                          exiting={FadeOut.duration(motion.fast)
+                            .easing(motionEasing)
+                            .reduceMotion(ReduceMotion.System)}
+                          onLayout={(event) => setPillHeight(event.nativeEvent.layout.height)}
+                        >
+                          <Pressable
+                            ref={pillRef}
+                            accessibilityRole="button"
+                            accessibilityLabel={entryButton.accessibilityLabel ?? entryButton.label}
+                            onPress={openEntry}
+                            style={({ pressed }) => [
+                              styles.entryPill,
+                              pressed && styles.entryPillPressed,
+                            ]}
+                            testID="select-manual-pill"
+                          >
+                            <Feather name="edit-2" size={sizes.iconSm} color={palette.textOnPrimary} />
+                            <Text style={styles.entryPillLabel}>{entryButton.label}</Text>
+                          </Pressable>
+                        </Animated.View>
+                      ) : null}
+                      <FlatList
+                        ref={listRef}
+                        accessibilityRole="radiogroup"
+                        // Named, so a screen reader doesn't say "radio group" with
+                        // nothing to tell it from the tiles' own group inside.
+                        accessibilityLabel={title}
+                        data={items}
+                        keyExtractor={(item) => item.key}
+                        // ⚠️ SHIFTED BY ONE when there's a list header: FlatList
+                        // counts ListHeaderComponent as cell 0. Unshifted, "Popular
+                        // makes" pinned the Any row and no letter header stuck
+                        // (2026-09-30 UI review).
+                        stickyHeaderIndices={stickyHeaderIndices(items).map(
+                          (index) => index + (hasListHeader ? 1 : 0),
+                        )}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="on-drag"
+                        contentContainerStyle={[
+                          styles.listContent,
+                          // Clear the index rail so the last rows aren't hidden under it.
+                          showIndex && !searching ? styles.listContentIndexed : null,
+                          // Room for the last rows to scroll clear of the pill.
+                          showEntryPill
+                            ? { paddingBottom: spacing.xl + pillHeight + spacing.xl }
+                            : null,
+                        ]}
+                        // Every row renders up front (a make list is ~110 items, a
+                        // model list rarely 80), so the rail's scrollToIndex always
+                        // has its target measured and lands exactly. Rows grow with
+                        // dynamic type, so a fixed getItemLayout would drift.
+                        initialNumToRender={Math.min(items.length, MAX_RENDERED_UP_FRONT)}
+                        // Past that cap: approximate, then settle on the real row,
+                        // once. A second failure stays at the approximation rather
+                        // than looping.
+                        onScrollToIndexFailed={(info) => {
+                          listRef.current?.scrollToOffset({
+                            offset: info.averageItemLength * info.index,
+                            animated: false,
+                          });
+                          if (retriedIndex.current === info.index) return;
+                          retriedIndex.current = info.index;
+                          if (retryTimer.current) clearTimeout(retryTimer.current);
+                          retryTimer.current = setTimeout(
+                            () => listRef.current?.scrollToIndex({ index: info.index, animated: false }),
+                            0,
+                          );
+                        }}
+                        ListHeaderComponent={
+                          hasListHeader ? (
+                            <>
+                              {showAnyRow && anyOption ? (
+                                <AnyRow
+                                  label={anyOption.label}
+                                  selected={value === null}
+                                  // Line up with the rows' labels when they carry icons.
+                                  indented={options.some((option) => option.icon != null)}
+                                  onPress={() => {
+                                    lightHaptic();
+                                    anyOption.onSelect();
+                                    onClose();
+                                  }}
+                                />
+                              ) : null}
+                              {showUseQuery ? (
+                                <ManualRow
+                                  label={`Use “${debouncedQuery.trim()}”`}
+                                  onPress={() => submitManual(debouncedQuery)}
+                                />
+                              ) : null}
+                              {showGrid ? (
+                                <PinnedGrid
+                                  title={pinnedTitle ?? RECENT_SECTION_TITLE}
+                                  tiles={pinnedTiles}
+                                  selectedValue={value}
+                                  onSelect={handleSelect}
+                                  // Once per open: clearing a search brings the
+                                  // grid back without replaying the cascade.
+                                  stagger={stagger && !gridStaggered}
+                                  // Its first layout, just after the cascade has
+                                  // started: from then on this open, no replay.
+                                  onShown={stagger && !gridStaggered ? () => setGridStaggered(true) : undefined}
+                                />
+                              ) : null}
+                              {showGrid && allTitle ? (
+                                <View style={styles.groupHeader}>
+                                  <Text accessibilityRole="header" style={styles.groupTitle}>
+                                    {allTitle}
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </>
+                          ) : null
+                        }
+                        renderItem={({ item, index }) => (
+                          <SelectRow
+                            item={item}
+                            selectedValue={value}
+                            onSelect={handleSelect}
+                            // A hairline between two rows, never beside a header.
+                            // …or below the Any / "Use…" row when one sits right
+                            // on top of the first row (no grid or heading between).
+                            divider={
+                              item.kind === 'option' &&
+                              (items[index - 1]?.kind === 'option' ||
+                                (index === 0 && !showGrid && (showAnyRow || showUseQuery)))
+                            }
+                            // The first screenful only: with every row rendered up
+                            // front, staggering all ~110 would start them together
+                            // off-screen, against the Motion rule and heavy on
+                            // low-end Android.
+                            // With a grid, the tiles ARE the first screenful: the
+                            // rows start far below, so they don't animate.
+                            stagger={
+                              stagger && !searching && !showGrid && index < STAGGERED_ROWS ? index : undefined
+                            }
+                          />
+                        )}
+                      />
+                      {showIndex && !searching ? (
+                        <IndexRail
+                          // Only the A–Z letter sections — a multi-word pinned
+                          // header (e.g. "Popular makes") would put a stray letter
+                          // on the rail; that group sits at the top anyway.
+                          // "#" heads the numbered models (208, 3 Series).
+                          anchors={sectionAnchors(items).filter((anchor) => /^([A-Z]|#)$/.test(anchor.title))}
+                          onJump={(index) => {
+                            // A fresh jump gets its own one retry.
+                            retriedIndex.current = null;
+                            listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0 });
+                          }}
+                        />
+                      ) : null}
+                    </View>
+                  )}
+                </>
               )}
             </SafeAreaView>
           </Animated.View>
@@ -990,6 +1185,53 @@ const makeStyles = (c: Palette) =>
     },
     listContent: {
       paddingBottom: spacing.xl,
+    },
+    // The floating "Not listed?" pill — the feed's Map pill, the house
+    // floating control: the inverse fill, a full radius and the lifted shadow
+    // (it floats over the list). Bottom-centre within the screen's gutter, so
+    // at large text it wraps rather than running under the letter rail.
+    entryPillWrap: {
+      position: 'absolute',
+      left: spacing.xl,
+      right: spacing.xl,
+      bottom: spacing.xl,
+      alignItems: 'center',
+      // Drawn over the list although it comes first in the tree (for screen
+      // readers); the shadow's elevation is on the pill, not this wrap.
+      zIndex: 1,
+      // Taps beside the pill reach the list beneath.
+      pointerEvents: 'box-none',
+    },
+    entryPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      backgroundColor: c.surfaceInverse,
+      borderRadius: radii.full,
+      minHeight: sizes.touchTarget,
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.sm,
+      ...shadows.lifted,
+    },
+    entryPillPressed: {
+      backgroundColor: c.surfaceInversePressed,
+    },
+    entryPillLabel: {
+      ...typography.label,
+      color: c.textOnPrimary,
+      flexShrink: 1,
+      textAlign: 'center',
+    },
+    // The type-it-in box: the screen's gutter, the field, then its actions.
+    entry: {
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.xl,
+    },
+    // A clearer break between the field and what to do with it.
+    entryActions: {
+      marginTop: spacing.lg,
+      gap: spacing.md,
     },
     // Extra right padding so rows clear the index rail when it's shown.
     listContentIndexed: {

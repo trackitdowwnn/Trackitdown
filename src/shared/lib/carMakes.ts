@@ -2,8 +2,9 @@
  * WHAT:  CAR_MAKES — every car make on the app's list, A–Z, each tagged with
  *        its section letter and whether it's in the "Popular makes" group;
  *        POPULAR_MAKES (the ten most common in the UK, most first);
- *        canonicaliseMake; and makeKeywords (the other names a make is typed
- *        as, for the picker's search).
+ *        canonicaliseMake; makeKeywords (the other names a make is typed
+ *        as, for the picker's search); and MAX_MANUAL_VEHICLE_TEXT, the
+ *        longest make or model anyone may type in.
  * WHY:   The list is generated from DfT vehicle licensing statistics
  *        (carTaxonomy.generated.ts, Open Government Licence v3.0), replacing a
  *        hand-typed 47 (2026-09-30). It isn't AutoTrader's: their terms forbid
@@ -151,6 +152,14 @@ for (const [alias, label] of Object.entries(MAKE_ALIASES)) {
 export function makeKeywords(label: string): string[] {
   return KEYWORDS.get(label) ?? [];
 }
+
+/**
+ * The longest make or model anyone may TYPE IN (the "Not listed? Type it in"
+ * box, 2026-10-12). Mirrors `alert_zones.make/model` (≤40, the only bound
+ * the database has): a car posted with a longer name could never be matched
+ * by an alert. The DfT list's longest label is well under it.
+ */
+export const MAX_MANUAL_VEHICLE_TEXT = 40;
 
 /**
  * The make as this app should store it, or the input trimmed if it recognises

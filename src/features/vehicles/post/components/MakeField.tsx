@@ -6,7 +6,9 @@
  *        a search that ignores accents and knows the other names ("vw",
  *        "merc", "skoda"). Two modes:
  *          - answering (posting, garage, the listing editor): a free-typed make
- *            is allowed for anything unlisted ("Use "<query>"");
+ *            is allowed for anything unlisted ("Use "<query>""), and a
+ *            floating "Not listed? Type it in" pill offers it up front
+ *            (2026-10-12) — at most 40 characters either way;
  *          - `filter` (search, alerts): an "Any make" row leads, a × clears the
  *            field, and only listed makes can be picked.
  * WHY:   Make is the car's primary identity, so it earns the roomy picker
@@ -25,9 +27,15 @@
 
 import { useCallback } from 'react';
 
-import { SelectField, type SelectOption } from '@/shared/ui';
+import { SelectField, type ManualEntryButton, type SelectOption } from '@/shared/ui';
 
-import { CAR_MAKES, POPULAR_MAKES, canonicaliseMake, makeKeywords } from '@/shared/lib/carMakes';
+import {
+  CAR_MAKES,
+  MAX_MANUAL_VEHICLE_TEXT,
+  POPULAR_MAKES,
+  canonicaliseMake,
+  makeKeywords,
+} from '@/shared/lib/carMakes';
 
 /** Static once — CAR_MAKES never changes at runtime. Value === label so a pick
  *  writes the make string straight into the answer. */
@@ -37,6 +45,15 @@ const MAKE_OPTIONS: SelectOption<string>[] = CAR_MAKES.map((make) => ({
   section: make.section,
   keywords: makeKeywords(make.label),
 }));
+
+/** The floating "Not listed?" way in on the make picker (2026-10-12). */
+const MAKE_ENTRY: ManualEntryButton = {
+  label: 'Not listed? Type it in',
+  accessibilityLabel: 'Not listed? Type your make in',
+  fieldLabel: 'Your car’s make',
+  submitLabel: 'Use this make',
+  helper: 'As it’s shown on your logbook (V5C)',
+};
 
 export interface MakeFieldProps {
   /** The selected make (free text — may be unlisted), or null. */
@@ -92,6 +109,12 @@ export function MakeField({ value, onChange, onPicked, error, filter }: MakeFiel
       // Answering: any make not on the list is enterable as typed. A filter
       // offers only listed makes, the ones a car can actually be posted as.
       allowManualEntry={!filter}
+      // …and says so up front with a floating pill (owner request,
+      // 2026-10-12): typing into search was the only way in, and nothing on
+      // the page told anyone it was there.
+      manualEntryButton={filter ? undefined : MAKE_ENTRY}
+      // Every way free text gets in — the search's "Use …" row too.
+      manualEntryMaxLength={MAX_MANUAL_VEHICLE_TEXT}
       clearable={
         filter
           ? { anyLabel: 'Any make', clearLabel: 'Clear make', onClear: filter.onClear }
