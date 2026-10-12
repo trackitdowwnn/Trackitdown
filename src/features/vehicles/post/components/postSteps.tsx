@@ -14,6 +14,8 @@
  *        src/features/vehicles/post/types.ts (PostACarAnswers);
  *        src/shared/ui (TextField, ChoiceChips(Multi), PhotoGridPicker,
  *        MoneySlider, LocationPicker); ./LastSeenTimeField.tsx (the when step);
+ *        ./PaintFinishSheet.tsx (ColourStep asks the finish on Next, through
+ *          the wizard's claimNext — src/shared/wizard/types.ts);
  *        docs/DESIGN_SYSTEM.md.
  */
 
@@ -42,6 +44,7 @@ import {
   type CardSelectOption,
   ChoiceChips,
   defaultBountyPanelCopy,
+  FieldTrigger,
   LocationPicker,
   MoneySlider,
   PhotoGridPicker,
@@ -63,11 +66,17 @@ import {
 import { WIZARD_GUTTER, type WizardStepProps } from '@/shared/wizard';
 
 import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
-import { colourChangePatch } from '@/shared/lib';
+import {
+  canonicalColourName,
+  colourChangePatch,
+  colourFinishLabel,
+  colourTakesFinish,
+} from '@/shared/lib';
 import { makeChangePatch } from '@/shared/lib/carModels';
 import type { VehicleAnswers } from '../lib/vehicleSteps';
 import type { PostACarAnswers, PricingMode } from '../types';
 import { ColourField } from './ColourField';
+import { PaintFinishSheet, type PaintFinishSheetRef } from './PaintFinishSheet';
 import { DistinctiveFeaturesField } from './DistinctiveFeaturesField';
 import { MakeField } from './MakeField';
 import { ModelField } from './ModelField';
@@ -176,23 +185,82 @@ export function ModelStep({ answers, setAnswers, advanceSoon }: VehicleStepProps
   );
 }
 
-export function ColourStep({ answers, setAnswers }: VehicleStepProps) {
+export function ColourStep({
+  answers,
+  setAnswers,
+  claimNext,
+  finishAsRow = false,
+}: VehicleStepProps & {
+  /** The Car details editor: no wizard, no Next — the finish is a row under
+   *  the grid that opens the same sheet. */
+  finishAsRow?: boolean;
+}) {
   // Its own step (2026-07-23): the swatch grid earns a screen. Switching to a
   // plain colour clears any wrapped/other note (colourChangePatch) so a note
   // never rides under a colour it doesn't describe.
+  const styles = useThemedStyles(makeStyles);
+  const sheetRef = useRef<PaintFinishSheetRef>(null);
+  // The wizard's `proceed` while the sheet is up from a claimed Next.
+  const proceedRef = useRef<(() => void) | null>(null);
+  const takesFinish = colourTakesFinish(answers.colour);
+  const finish = answers.colourFinish ?? null;
+
+  // ⚠️ THE FINISH IS ASKED ON THE WAY OUT (owner request, 2026-10-12): a
+  // plain colour's Next opens the paint-finish sheet, and a tap there moves
+  // on. An escape has no single paint to finish, so its Next just moves.
+  useEffect(() => {
+    if (finishAsRow || !takesFinish || !claimNext) return undefined;
+    return claimNext((proceed) => {
+      proceedRef.current = proceed;
+      sheetRef.current?.open();
+    });
+  }, [claimNext, takesFinish, finishAsRow]);
+
   return (
-    <ColourField
-      value={answers.colour ?? null}
-      note={answers.colourNote ?? ''}
-      finish={answers.colourFinish ?? null}
-      // ⚠️ NO AUTO-ADVANCE ON A PICK (owner decision, 2026-10-12): a pick may
-      // need a note, and the summary, the "Add the colour" link and the
-      // optional finish sit under the grid — the step waits for Next rather
-      // than moving on from under them.
-      onChange={(colour) => setAnswers(colourChangePatch(colour))}
-      onChangeNote={(colourNote) => setAnswers({ colourNote })}
-      onChangeFinish={(colourFinish) => setAnswers({ colourFinish })}
-    />
+    <View style={styles.stack}>
+      <ColourField
+        value={answers.colour ?? null}
+        note={answers.colourNote ?? ''}
+        // The summary says "Blue · Metallic" — except over the editor's row,
+        // which says the finish itself.
+        finish={finishAsRow ? null : finish}
+        // ⚠️ NO AUTO-ADVANCE ON A PICK (owner decision, 2026-10-12): a pick
+        // may need a note, and Next asks the finish — the step waits for Next
+        // rather than moving on from under them.
+        onChange={(colour) => setAnswers(colourChangePatch(colour))}
+        onChangeNote={(colourNote) => setAnswers({ colourNote })}
+      />
+      {finishAsRow && takesFinish ? (
+        // The form's own field shape (Make, Model and Year beside it), not a
+        // settings row (UI review).
+        <FieldTrigger
+          label="Paint finish"
+          value={colourFinishLabel(finish)}
+          placeholder="Paint finish (optional)"
+          icon="chevron-down"
+          accessibilityLabel={`Paint finish, ${colourFinishLabel(finish) ?? 'not added'}`}
+          onPress={() => {
+            proceedRef.current = null; // a row only sets it; nothing moves
+            sheetRef.current?.open();
+          }}
+          testID="paint-finish-row"
+        />
+      ) : null}
+      <PaintFinishSheet
+        ref={sheetRef}
+        // "What's the finish on the blue?" — a retired name reads as its current one.
+        colour={canonicalColourName(answers.colour)}
+        value={finish}
+        onPick={(colourFinish) => setAnswers({ colourFinish })}
+        // Moves on only once the sheet has GONE — never a step sliding away
+        // under a closing sheet (#160's lesson). A swipe stays put.
+        onClosed={(picked) => {
+          const proceed = proceedRef.current;
+          proceedRef.current = null;
+          if (picked) proceed?.();
+        }}
+      />
+    </View>
   );
 }
 

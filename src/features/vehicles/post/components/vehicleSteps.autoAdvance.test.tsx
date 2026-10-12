@@ -1,7 +1,7 @@
 /**
  * WHAT:  Tests for which vehicle steps move on by themselves (advanceSoon):
- *        a body type does; colour does not (2026-10-12: its optional finish
- *        sits under the grid, so it waits for Next — escapes never did); the
+ *        a body type does; colour does not (2026-10-12: its Next asks the
+ *        paint finish in a sheet, so it waits for Next — escapes never did); the
  *        pickers (make, model, year) hand it to their field's onPicked, so it
  *        runs after the picker has closed.
  * WHY:   2026-10-08 — the owner chose auto-advance on make, model, year,
@@ -28,6 +28,7 @@ jest.mock('./ColourField', () => ({ ColourField: (p: Record<string, unknown>) =>
 jest.mock('./MakeField', () => ({ MakeField: (p: Record<string, unknown>) => stub('make')(p) }));
 jest.mock('./YearField', () => ({ YearField: (p: Record<string, unknown>) => stub('year')(p) }));
 jest.mock('./ModelField', () => ({ ModelField: (p: Record<string, unknown>) => stub('model')(p) }));
+jest.mock('./PaintFinishSheet', () => ({ PaintFinishSheet: () => null }));
 jest.mock('@/shared/ui', () => ({
   ...jest.requireActual('@/shared/ui'),
   CardSelect: (p: Record<string, unknown>) => stub('bodyType')(p),
@@ -48,7 +49,7 @@ const props = (advanceSoon: () => void): Props => ({
 });
 
 describe('vehicle steps that move on by themselves', () => {
-  it('⚠️ colour does NOT move on — its optional finish sits under the grid (2026-10-12)', async () => {
+  it('⚠️ colour does NOT move on — its Next asks the paint finish (2026-10-12)', async () => {
     const advanceSoon = jest.fn();
     await render(<ColourStep {...props(advanceSoon)} />);
     await act(async () => (mockFieldProps.colour.onChange as (c: string) => void)('Blue'));

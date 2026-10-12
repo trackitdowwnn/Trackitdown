@@ -354,6 +354,13 @@ describe('review values', () => {
     expect(stepById('colour').reviewValue?.({ colour: 'Blue' })).toBe('Blue');
   });
 
+  it('tells a screen reader that a plain colour’s Next asks the paint finish', () => {
+    const hint = stepById('colour').ctaHint as (a: Partial<PostACarAnswers>) => string | undefined;
+    expect(hint({ colour: 'Blue' })).toBe('Asks about the paint finish');
+    expect(hint({ colour: 'Other' })).toBeUndefined(); // its Next just moves
+    expect(hint({})).toBeUndefined();
+  });
+
   it('appends the paint finish to the colour review when one is chosen', () => {
     expect(stepById('colour').reviewValue?.({ colour: 'Blue', colourFinish: 'metallic' })).toBe(
       'Blue · Metallic',

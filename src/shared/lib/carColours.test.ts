@@ -19,6 +19,7 @@ import {
   colourFinishLabel,
   colourFromDvla,
   colourIsComplete,
+  colourTakesFinish,
   colourWithFinish,
   glyphInkFor,
   isNoteColour,
@@ -149,6 +150,19 @@ describe('the paint finish', () => {
       'Pearl',
       'Two-tone roof',
     ]);
+  });
+
+  it('asks the finish of a plain colour only — never an escape, never nothing', () => {
+    expect(colourTakesFinish('Blue')).toBe(true);
+    expect(colourTakesFinish('Brown / Beige')).toBe(true); // a retired name is Brown
+    expect(colourTakesFinish('Other')).toBe(false);
+    expect(colourTakesFinish('Multicolour / wrapped')).toBe(false);
+    expect(colourTakesFinish('')).toBe(false);
+    expect(colourTakesFinish(undefined)).toBe(false);
+  });
+
+  it('gives each finish a line saying what it looks like', () => {
+    for (const finish of COLOUR_FINISHES) expect(finish.hint.length).toBeGreaterThan(0);
   });
 
   it('writes a colour with its finish in one form, and never under an escape', () => {

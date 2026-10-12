@@ -14,6 +14,7 @@ export {
   colourFinishLabel,
   colourFromDvla,
   colourIsComplete,
+  colourTakesFinish,
   colourWithFinish,
   glyphInkFor,
   isNoteColour,

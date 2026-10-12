@@ -85,7 +85,9 @@ export function CarDetailsEditor({
       <View style={{ gap: spacing.xl }}>
         <MakeStep answers={answers} setAnswers={setAnswers} />
         <ModelStep answers={answers} setAnswers={setAnswers} />
-        <ColourStep answers={answers} setAnswers={setAnswers} />
+        {/* No Next here, so the finish is a row under the grid that opens
+            the same sheet the wizard asks on Next. */}
+        <ColourStep answers={answers} setAnswers={setAnswers} finishAsRow />
         <BodyTypeStep answers={answers} setAnswers={setAnswers} />
         <YearStep answers={answers} setAnswers={setAnswers} />
       </View>

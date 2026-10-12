@@ -21,6 +21,9 @@ import { spacing, typography, useThemedStyles, type Palette } from '../theme';
 export interface WizardFooterProps {
   /** Label of the primary button (Next / Get started / Publish / Done). */
   ctaLabel: string;
+  /** The primary button's screen-reader hint, when Next does more than move
+   *  on (WizardStep.ctaHint). */
+  ctaHint?: string;
   /** Primary button disabled while the current step fails validation. */
   canProceed: boolean;
   /** Primary button shows a spinner while an async action is in flight. */
@@ -38,6 +41,7 @@ export interface WizardFooterProps {
 
 export function WizardFooter({
   ctaLabel,
+  ctaHint,
   canProceed,
   loading = false,
   showBack,
@@ -64,7 +68,13 @@ export function WizardFooter({
           <Button label="Back" variant="ghost" fullWidth={false} onPress={onBack} />
         ) : null}
         <View style={styles.primary}>
-          <Button label={ctaLabel} onPress={onNext} disabled={!canProceed} loading={loading} />
+          <Button
+            label={ctaLabel}
+            onPress={onNext}
+            disabled={!canProceed}
+            loading={loading}
+            accessibilityHint={ctaHint}
+          />
         </View>
       </View>
     </>

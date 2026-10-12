@@ -57,6 +57,22 @@ export interface WizardStepProps<TAnswers> {
    * motion.autoAdvanceAfterPicker.
    */
   advanceSoon?: (delayMs?: number) => void;
+  /**
+   * Take over the footer's Next for a moment (2026-10-12): a step that must
+   * ask one more thing on the way out — the colour step's paint-finish sheet.
+   * Register in an effect; the call returns its own release, so
+   * `useEffect(() => claimNext?.(handler), [claimNext, …])` is the whole use.
+   *
+   * While claimed, a VALID Next calls `handler(proceed)` instead of moving
+   * (never on the submitting screen, never from auto-advance). The step calls
+   * `proceed()` when it is done — and only then does the usual Next run: its
+   * onContinue, an edit spur's return to review. Never calling it is "stay
+   * here". A claim sets nothing busy: Back and the X behave as ever.
+   *
+   * UNDEFINED on the copy of a step drawn for its exit, so a leaving step
+   * can never claim the screen arriving after it.
+   */
+  claimNext?: (handler: (proceed: () => void) => void) => () => void;
 }
 
 export interface WizardStep<TAnswers> {
@@ -143,6 +159,12 @@ export interface WizardStep<TAnswers> {
    *  answers lets an optional step say "Skip" until something is added, then
    *  "Continue": one way on, labelled for what it does. */
   ctaLabel?: string | ((answers: Partial<TAnswers>) => string);
+  /** A screen-reader hint on the primary button while ON this step — for a
+   *  Next that does something besides move on (the colour step's "Asks about
+   *  the paint finish", via claimNext) — an edit spur's Done included, since a
+   *  claim holds there too. Never on the submitting screen, where no claim
+   *  applies. */
+  ctaHint?: string | ((answers: Partial<TAnswers>) => string | undefined);
   /**
    * One quiet line directly above this step's footer buttons: reassurance
    * that belongs beside the commitment, not in the body (the report flow's

@@ -244,13 +244,21 @@ export function colourChangePatch(colour: string): {
 export const COLOUR_FINISH_VALUES = ['metallic', 'matte', 'pearl', 'two_tone_roof'] as const;
 export type ColourFinish = (typeof COLOUR_FINISH_VALUES)[number];
 
-/** The finish chips, in the order a spotter would notice them. */
-export const COLOUR_FINISHES: { value: ColourFinish; label: string }[] = [
-  { value: 'metallic', label: 'Metallic' },
+/** Whether a colour is asked its finish: one is chosen and it isn't an escape
+ *  (a wrap or "Other" has no single paint to finish). The colour step's Next
+ *  and its screen-reader hint both read this, so they can't disagree. */
+export function colourTakesFinish(colour: string | null | undefined): boolean {
+  return Boolean(colour?.trim()) && !isNoteColour(colour);
+}
+
+/** The finish options (PaintFinishSheet), in the order a spotter would notice
+ *  them. `hint` is what each LOOKS like, for an owner unsure of the word. */
+export const COLOUR_FINISHES: { value: ColourFinish; label: string; hint: string }[] = [
+  { value: 'metallic', label: 'Metallic', hint: 'Sparkles in sunlight' },
   // British "matt" on screen (UI review); the stored value keeps the CHECK's spelling.
-  { value: 'matte', label: 'Matt' },
-  { value: 'pearl', label: 'Pearl' },
-  { value: 'two_tone_roof', label: 'Two-tone roof' },
+  { value: 'matte', label: 'Matt', hint: 'Flat, with no shine' },
+  { value: 'pearl', label: 'Pearl', hint: 'Shifts colour as you walk past' },
+  { value: 'two_tone_roof', label: 'Two-tone roof', hint: 'The roof is a different colour' },
 ];
 
 /** A stored or restored value as a finish, or null. Anything unrecognised — a

@@ -51,6 +51,16 @@ doing you a favour.
   required step the answers no longer satisfy (changing the make clears the
   model) before returning to review, still on the spur: Done again, and Back
   cancels the whole edit.
+- **A step can claim Next (`claimNext`, 2026-10-12).** For one more question on
+  the way out — the colour step's paint-finish sheet. The step registers a
+  handler in an effect (the call returns its release); a VALID Next then calls
+  `handler(proceed)` instead of moving, and `proceed()` runs the ordinary Next
+  (its `onContinue`, an edit spur's return to review). Never calling it means
+  stay. A claim is pinned to its screen by position and descriptor, is never
+  honoured on the submitting screen or by auto-advance, sets nothing busy (Back
+  and the X work as ever), and the copy of a step drawn for its exit gets no
+  `claimNext`. Pair it with `ctaHint`, so a screen reader hears what Next will
+  do.
 
 **Screen anatomy:** header row with the exit X top-left (dirty answers →
 discard confirmation → `router.back()`) and a segmented progress bar beside
