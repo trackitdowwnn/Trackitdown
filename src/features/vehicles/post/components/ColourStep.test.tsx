@@ -168,10 +168,10 @@ describe('ColourStep — the paint finish, asked on Next (2026-10-12)', () => {
     expect(claim).not.toBeNull();
   });
 
-  it('the summary names the finish, and the sheet names the colour', async () => {
+  it('the sheet names the colour, and ticks the stored finish', async () => {
     await render(<Harness initial={{ colour: 'Brown / Beige', colourFinish: 'matte' }} />);
-    expect(mockColourProps.finish).toBe('matte');
     expect(mockSheet.props.colour).toBe('Brown'); // a retired name, as it is now
+    expect(mockSheet.props.value).toBe('matte');
   });
 });
 
@@ -196,8 +196,6 @@ describe('ColourStep — the Car details editor (finishAsRow)', () => {
     expect(screen.getByTestId('paint-finish-row').props.accessibilityLabel).toBe(
       'Paint finish, Two-tone roof',
     );
-    // Said once, by the row — not again in the grid's summary.
-    expect(mockColourProps.finish).toBeNull();
   });
 
   it('has no row for an escape colour', async () => {

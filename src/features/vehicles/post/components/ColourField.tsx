@@ -6,7 +6,8 @@
  *        wrapped" or "Other") selects it AND opens a BottomSheet to capture the
  *        free-text specifics (re-tapping reopens it to edit). The paint finish
  *        is NOT asked here: ColourStep asks it on the way out, in
- *        PaintFinishSheet (2026-10-12); this only names it in the summary.
+ *        PaintFinishSheet (2026-10-12). No "Selected: …" line under the grid
+ *        (owner request, the same day): the ring, tick and bolder name say it.
  * WHY:   A named-swatch grid — not a spectrum/hex picker — is the right pattern
  *        for the ~twenty real colours a V5C records (research). The NAME label is a hard
  *        accessibility requirement, not decoration: ~4.5% of users have colour-
@@ -63,9 +64,7 @@ import {
   CAR_COLOURS,
   canonicalColourName,
   type CarColour,
-  type ColourFinish,
   colourIsComplete,
-  colourWithFinish,
   glyphInkFor,
   isNoteColour,
   swatchForName,
@@ -83,9 +82,6 @@ export interface ColourFieldProps {
   note: string;
   onChange: (colour: string) => void;
   onChangeNote: (note: string) => void;
-  /** The paint finish, for the summary only ("Selected: Blue · Metallic") —
-   *  it is asked in PaintFinishSheet, on the way out of the step. */
-  finish?: ColourFinish | null;
   error?: string;
 }
 
@@ -196,7 +192,6 @@ export function ColourField({
   note,
   onChange,
   onChangeNote,
-  finish = null,
   error,
 }: ColourFieldProps) {
   const styles = useThemedStyles(makeStyles);
@@ -258,17 +253,6 @@ export function ColourField({
     sheetRef.current?.close();
   };
 
-  // What is chosen, in WORDS. "Other" is named by its description; a
-  // multicolour shows its note beside it; a plain colour, its finish.
-  const describedNote = note.trim();
-  const summary = !chosen
-    ? null
-    : chosenSwatch?.noteRequired && describedNote
-      ? `Selected: ${describedNote}`
-      : chosenSwatch?.note
-        ? `Selected: ${describedNote ? `${chosen} — ${describedNote}` : chosen}`
-        : `Selected: ${colourWithFinish(chosen, finish)}`;
-
   return (
     <View style={styles.stack}>
       <View accessibilityRole="radiogroup" accessibilityLabel="Car colour" style={styles.grid}>
@@ -291,28 +275,21 @@ export function ColourField({
         ))}
       </View>
 
-      {/* Not a live region: the radio's own state announces the pick, and
-          this line would re-speak on every keystroke in the sheet. */}
-      <View style={styles.summaryRow}>
-        {summary ? (
-          <Text style={styles.summary} testID="colour-summary">
-            {summary}
-          </Text>
-        ) : null}
-        {/* "Other" with nothing said: name what's missing, and the way back
-            to the box (re-tapping the swatch is not discoverable). */}
-        {chosen && noteMissing ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add the colour"
-            onPress={openSheet}
-            hitSlop={spacing.md}
-            style={styles.addLink}
-          >
-            <Text style={styles.addLinkText}>Add the colour</Text>
-          </Pressable>
-        ) : null}
-      </View>
+      {/* No "Selected: …" line under the grid (owner request, 2026-10-12):
+          the ring, the tick and the bolder name already say it. Only an
+          "Other" with nothing said gets a line — what's missing, and the way
+          back to its box (re-tapping the swatch is not discoverable). */}
+      {chosen && noteMissing ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add the colour"
+          onPress={openSheet}
+          hitSlop={spacing.md}
+          style={styles.addLink}
+        >
+          <Text style={styles.addLinkText}>Add the colour</Text>
+        </Pressable>
+      ) : null}
 
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -436,21 +413,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   swatchLabelSelected: {
     fontFamily: fontFamilies.medium,
   },
-  // "Selected: Blue" under the grid — quiet, secondary ink — with, for an
-  // undescribed Other, the underlined way back to its box.
-  summaryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    columnGap: spacing.md,
-    rowGap: spacing.xs,
-    minHeight: typography.caption.lineHeight,
-  },
-  summary: {
-    ...typography.caption,
-    color: c.textSecondary,
-  },
+  // For an undescribed Other: the underlined way back to its box.
   addLink: {
+    alignSelf: 'flex-start',
     minHeight: sizes.touchTarget,
     justifyContent: 'center',
   },
