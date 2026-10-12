@@ -743,3 +743,262 @@ describe('save & exit', () => {
     expect(buttons.map((button) => button.text)).toEqual(['Keep editing', 'Discard']);
   });
 });
+
+// A step can claim Next (2026-10-12): the colour step asks the paint finish in
+// a sheet on the way out. The claim must hold only where it was made, never
+// on the submitting screen, never by itself — and `proceed` must be the
+// ordinary Next (its onContinue, an edit spur's return to review).
+describe('a step that claims Next', () => {
+  interface CarAnswers {
+    make: string;
+    model: string;
+  }
+  const step = (id: keyof CarAnswers, extra: Partial<WizardFlow<CarAnswers>['phases'][0]['steps'][0]> = {}) => ({
+    id,
+    question: `${id}?`,
+    component: () => null,
+    schema: z.object({ [id]: z.string().min(1) }),
+    ...extra,
+  });
+  const reviewed = (makeExtra = {}): WizardFlow<CarAnswers> => ({
+    id: 'claim-test',
+    finalCtaLabel: 'Post',
+    review: {},
+    phases: [{ id: 'car', title: 'Car', steps: [step('make', makeExtra), step('model')] }],
+  });
+  // make(0), model(1), review(2)
+  async function onMake(flowUnderTest = reviewed(), initialAnswers = { make: 'BMW', model: '320d' }) {
+    return renderHook(
+      ({ f }: { f: WizardFlow<CarAnswers> }) =>
+        useWizardController<CarAnswers>(f, { onExit: jest.fn(), initialAnswers }),
+      { initialProps: { f: flowUnderTest } },
+    );
+  }
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('Next hands over to the claim and stays; proceed is the ordinary Next', async () => {
+    const { result } = await onMake();
+    let proceed: (() => void) | undefined;
+    const handler = jest.fn((p: () => void) => {
+      proceed = p;
+    });
+    await act(async () => {
+      result.current.claimNextAt(0, handler);
+    });
+
+    await act(async () => result.current.advance());
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result.current.screenIndex).toBe(0);
+
+    await act(async () => proceed?.());
+    expect(result.current.screenIndex).toBe(1);
+  });
+
+  it('proceed runs the step’s onContinue, as Next would', async () => {
+    const onContinue = jest.fn(async () => ({ model: 'M3' }));
+    const { result } = await onMake(reviewed({ onContinue }));
+    let proceed: (() => void) | undefined;
+    await act(async () => {
+      result.current.claimNextAt(0, (p) => {
+        proceed = p;
+      });
+    });
+
+    await act(async () => result.current.advance());
+    expect(onContinue).not.toHaveBeenCalled();
+
+    await act(async () => proceed?.());
+    expect(onContinue).toHaveBeenCalledTimes(1);
+    expect(result.current.answers.model).toBe('M3');
+    expect(result.current.screenIndex).toBe(1);
+  });
+
+  it('is ignored while the step is not valid', async () => {
+    const { result } = await onMake(reviewed(), { make: '', model: '' });
+    const handler = jest.fn();
+    await act(async () => {
+      result.current.claimNextAt(0, handler);
+    });
+    await act(async () => result.current.advance());
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ is never honoured on the submitting screen', async () => {
+    const onComplete = jest.fn();
+    const noReview: WizardFlow<CarAnswers> = { ...reviewed(), review: undefined };
+    const { result } = await renderHook(() =>
+      useWizardController<CarAnswers>(noReview, {
+        onExit: jest.fn(),
+        onComplete,
+        initialAnswers: { make: 'BMW', model: '320d' },
+      }),
+    );
+    await act(async () => result.current.next()); // model — the last step
+    const handler = jest.fn();
+    await act(async () => {
+      result.current.claimNextAt(1, handler);
+    });
+    await waitForSubmitArm();
+    await act(async () => result.current.advance());
+    expect(handler).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('a released claim, or one made for another screen, is ignored', async () => {
+    const { result } = await onMake();
+    const released = jest.fn();
+    const elsewhere = jest.fn();
+    await act(async () => {
+      const release = result.current.claimNextAt(0, released);
+      release();
+    });
+    await act(async () => result.current.advance());
+    expect(released).not.toHaveBeenCalled();
+    expect(result.current.screenIndex).toBe(1);
+
+    await act(async () => {
+      result.current.claimNextAt(0, elsewhere); // made for make; we're on model
+    });
+    await act(async () => result.current.advance());
+    expect(elsewhere).not.toHaveBeenCalled();
+    expect(result.current.screenIndex).toBe(2);
+  });
+
+  it('a late release never clears a newer claim', async () => {
+    const { result } = await onMake();
+    const newer = jest.fn();
+    await act(async () => {
+      const releaseOld = result.current.claimNextAt(0, jest.fn());
+      result.current.claimNextAt(0, newer);
+      releaseOld();
+    });
+    await act(async () => result.current.advance());
+    expect(newer).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ a claim on a screen list that has since been rebuilt is ignored', async () => {
+    const rendered = await onMake();
+    const handler = jest.fn();
+    await act(async () => {
+      rendered.result.current.claimNextAt(0, handler);
+    });
+    // The prefilled post's Edit: a new screen list, reset to the same index.
+    await rendered.rerender({ f: reviewed() });
+    await act(async () => rendered.result.current.advance());
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('auto-advance never opens it — the claim is the owner’s to trigger', async () => {
+    jest.useFakeTimers();
+    const { result } = await onMake();
+    const handler = jest.fn();
+    await act(async () => {
+      result.current.claimNextAt(0, handler);
+    });
+    await act(async () => result.current.advanceSoon());
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+    });
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.current.screenIndex).toBe(0);
+  });
+
+  it('on an edit spur, proceed is Done: back to review, the edit kept', async () => {
+    const { result } = await onMake();
+    await act(async () => result.current.next());
+    await act(async () => result.current.next()); // review
+    await act(async () => result.current.editStep(0));
+    await act(async () => result.current.setAnswers({ make: 'Audi', model: '320d' }));
+    let proceed: (() => void) | undefined;
+    await act(async () => {
+      result.current.claimNextAt(0, (p) => {
+        proceed = p;
+      });
+    });
+
+    await act(async () => result.current.advance());
+    expect(result.current.screenIndex).toBe(0);
+    await act(async () => proceed?.());
+
+    expect(result.current.screenIndex).toBe(2);
+    expect(result.current.isEditingFromReview).toBe(false);
+    expect(result.current.answers.make).toBe('Audi');
+  });
+
+  it('⚠️ proceed works once — a second call can never skip a screen', async () => {
+    const { result } = await onMake();
+    let proceed: (() => void) | undefined;
+    await act(async () => {
+      result.current.claimNextAt(0, (p) => {
+        proceed = p;
+      });
+    });
+    await act(async () => result.current.advance());
+
+    await act(async () => {
+      proceed?.();
+      proceed?.();
+    });
+    expect(result.current.screenIndex).toBe(1);
+    await act(async () => proceed?.());
+    expect(result.current.screenIndex).toBe(1);
+  });
+
+  it('a released claim’s proceed does nothing', async () => {
+    const { result } = await onMake();
+    let proceed: (() => void) | undefined;
+    let release: (() => void) | undefined;
+    await act(async () => {
+      release = result.current.claimNextAt(0, (p) => {
+        proceed = p;
+      });
+    });
+    await act(async () => result.current.advance());
+    await act(async () => release?.());
+
+    await act(async () => proceed?.());
+    expect(result.current.screenIndex).toBe(0);
+  });
+
+  it('a proceed that comes after the owner has moved on does nothing', async () => {
+    const { result } = await onMake();
+    await act(async () => result.current.next()); // model
+    let proceed: (() => void) | undefined;
+    await act(async () => {
+      result.current.claimNextAt(1, (p) => {
+        proceed = p;
+      });
+    });
+    await act(async () => result.current.advance());
+    await act(async () => result.current.back()); // Back, sheet or no sheet
+
+    await act(async () => proceed?.());
+    expect(result.current.screenIndex).toBe(0);
+  });
+
+  it('carries the step’s ctaHint — but never on the submitting screen', async () => {
+    const hinted: WizardFlow<CarAnswers> = {
+      ...reviewed(),
+      phases: [
+        {
+          id: 'car',
+          title: 'Car',
+          steps: [
+            step('make', { ctaHint: (a: Partial<CarAnswers>) => (a.make ? 'Asks more' : undefined) }),
+            step('model', { ctaHint: 'Never seen' }),
+          ],
+        },
+      ],
+      review: undefined,
+    };
+    const { result } = await onMake(hinted);
+    expect(result.current.ctaHint).toBe('Asks more');
+    await act(async () => result.current.next());
+    expect(result.current.isLastScreen).toBe(true);
+    expect(result.current.ctaHint).toBeUndefined();
+  });
+});

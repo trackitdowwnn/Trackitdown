@@ -17,6 +17,7 @@
  */
 
 import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { useEffect } from 'react';
 import {
   AccessibilityInfo,
   Alert,
@@ -915,5 +916,130 @@ describe('step-launched edit spurs', () => {
       within(view.getByTestId('wizard-step-scroll')).getByText('Only the owner sees this.'),
     ).toBeTruthy();
     expect(view.getAllByText('Only the owner sees this.')).toHaveLength(1);
+  });
+});
+
+// A step can claim Next (2026-10-12) — the wiring the controller suite can't
+// see: the step on screen is handed claimNext, Next reaches its handler, the
+// copy drawn for its exit is handed none, and a step's ctaHint reaches the
+// button a screen reader hears.
+describe('a step that claims Next — wiring', () => {
+  beforeEach(() => {
+    mockReduceMotion = true;
+  });
+
+  type Claim = WizardStepProps<Answers>['claimNext'];
+  const given: Claim[] = [];
+  let handlerCalls = 0;
+  let lastProceed: (() => void) | undefined;
+  function ClaimingStep({ setAnswers, claimNext }: WizardStepProps<Answers>) {
+    given.push(claimNext);
+    useEffect(
+      () =>
+        claimNext?.((proceed) => {
+          handlerCalls += 1;
+          lastProceed = proceed;
+        }),
+      [claimNext],
+    );
+    return (
+      <Pressable testID="fill-name" onPress={() => setAnswers({ name: 'Jane' })}>
+        <Text>fill name</Text>
+      </Pressable>
+    );
+  }
+  const claimFlow: WizardFlow<Answers> = {
+    ...flow,
+    phases: [
+      {
+        ...flow.phases[0],
+        steps: [
+          {
+            ...flow.phases[0].steps[0],
+            component: ClaimingStep,
+            ctaHint: (answers) => (answers.name ? 'Asks one more thing' : undefined),
+          },
+        ],
+      },
+      flow.phases[1],
+    ],
+  };
+
+  beforeEach(() => {
+    given.length = 0;
+    handlerCalls = 0;
+    lastProceed = undefined;
+  });
+
+  it('Next reaches the step’s claim and stays; its proceed moves on', async () => {
+    const view = await render(
+      <WizardScreen flow={claimFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    await press(view, 'Get started');
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+
+    await press(view, 'Next');
+    expect(handlerCalls).toBe(1);
+    expect(view.getByText("What's your name?")).toBeTruthy(); // still here
+
+    await act(async () => lastProceed?.());
+    expect(view.getByText('Your preferences')).toBeTruthy();
+  });
+
+  it('⚠️ the copy drawn for the step’s exit is handed no claimNext', async () => {
+    const view = await render(
+      <WizardScreen flow={claimFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    await press(view, 'Get started');
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    expect(typeof given[given.length - 1]).toBe('function');
+
+    await press(view, 'Next');
+    await act(async () => lastProceed?.());
+
+    // Its last render was the leaving one — and it had nothing to claim with.
+    expect(given[given.length - 1]).toBeUndefined();
+  });
+
+  it('a step returned to by Back claims afresh', async () => {
+    // A plain step straight after it (an intro would hide Back).
+    const twoSteps: WizardFlow<Answers> = {
+      ...claimFlow,
+      phases: [
+        { ...claimFlow.phases[0], steps: [claimFlow.phases[0].steps[0], flow.phases[1].steps[0]] },
+      ],
+    };
+    const view = await render(
+      <WizardScreen flow={twoSteps} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    await press(view, 'Get started');
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    await press(view, 'Next');
+    await act(async () => lastProceed?.());
+    await press(view, 'Back');
+    expect(view.getByText("What's your name?")).toBeTruthy();
+
+    await press(view, 'Next');
+    expect(handlerCalls).toBe(2);
+  });
+
+  it('the step’s ctaHint reaches the Next a screen reader hears', async () => {
+    const view = await render(
+      <WizardScreen flow={claimFlow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    await press(view, 'Get started');
+    expect(view.getByRole('button', { name: 'Next' }).props.accessibilityHint).toBeUndefined();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('fill-name'));
+    });
+    expect(view.getByRole('button', { name: 'Next' }).props.accessibilityHint).toBe(
+      'Asks one more thing',
+    );
   });
 });

@@ -26,6 +26,7 @@ import { z } from 'zod';
 import {
   canonicalColourName,
   colourIsComplete,
+  colourTakesFinish,
   colourWithFinish,
   type ColourFinish,
 } from '@/shared/lib';
@@ -56,8 +57,9 @@ export interface VehicleAnswers {
   colour: string;
   /** Free-text specifics for an escape colour ("Multicolour / wrapped"). */
   colourNote: string;
-  /** The optional paint finish under the grid (2026-10-12) — null when not
-   *  said. Only a plain colour has one: colourChangePatch drops it for an escape. */
+  /** The optional paint finish, asked in a sheet on the colour step's Next
+   *  (2026-10-12) — null when not said or "Not sure". Only a plain colour has
+   *  one: colourChangePatch drops it for an escape. */
   colourFinish: ColourFinish | null;
   year: number | null;
   bodyType: string | null;
@@ -118,6 +120,10 @@ export function buildVehicleSteps<TAnswers extends VehicleAnswers>({
       id: 'colour',
       question: 'What colour is it?',
       component: ColourStep,
+      // A plain colour's Next asks the paint finish in a sheet (ColourStep
+      // claims it, 2026-10-12) — so a screen reader hears that before it opens.
+      ctaHint: (answers) =>
+        colourTakesFinish(answers.colour) ? 'Asks about the paint finish' : undefined,
       // "Other" needs its description (2026-10-12): alone it tells a spotter
       // nothing, so Next waits for it. Any other colour is complete as picked.
       schema: z

@@ -8,7 +8,8 @@
  *        Every move also LOCKS navigation for the length of its transition
  *        and drops the keyboard (see `move`). One-pick steps can move on by
  *        themselves (`advanceSoon`), and an edit from review visits any
- *        answer it broke before returning (2026-10-08).
+ *        answer it broke before returning (2026-10-08). A step can claim Next
+ *        to ask one more thing on the way out (`claimNextAt`, 2026-10-12).
  * WHY:   A thin React shell over the pure logic in navigation.ts, so screens
  *        and chrome stay dumb. The answers object is a single serializable
  *        value and exits funnel through one place, deliberately: that is the
@@ -35,7 +36,15 @@ import {
   pendingEditTarget,
   type WizardNavAction,
 } from './navigation';
-import type { WizardFlow } from './types';
+import type { WizardFlow, WizardScreenDescriptor } from './types';
+
+/** A step's claim on Next (WizardStepProps.claimNext), pinned to the screen
+ *  that made it — by position AND by descriptor, see `claimNextAt`. */
+interface NextClaim<TAnswers> {
+  index: number;
+  screen: WizardScreenDescriptor<TAnswers>;
+  handler: (proceed: () => void) => void;
+}
 
 export interface WizardControllerOptions<TAnswers> {
   /** Called when the user leaves the flow (X, confirmed discard). */
@@ -103,6 +112,16 @@ function toErrorMessage(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
   if (typeof err === 'string' && err) return err;
   return 'Something went wrong. Please try again.';
+}
+
+function resolveCtaHint<TAnswers>(
+  screen: WizardScreenDescriptor<TAnswers>,
+  isLastScreen: boolean,
+  answers: Partial<TAnswers>,
+): string | undefined {
+  if (isLastScreen || screen.kind !== 'step') return undefined;
+  const hint = screen.step.ctaHint;
+  return typeof hint === 'function' ? hint(answers) : hint;
 }
 
 export function useWizardController<TAnswers>(
@@ -221,6 +240,39 @@ export function useWizardController<TAnswers>(
   // Set by an auto-advance just before it moves (see AUTO_MOVE_LOCK_MS).
   const autoMoveRef = useRef(false);
 
+  // A step's claim on Next (2026-10-12; WizardStepProps.claimNext). One at a
+  // time: only the step on screen is handed claimNext.
+  const claimRef = useRef<NextClaim<TAnswers> | null>(null);
+  /**
+   * Register `handler` for the screen at `index`; returns its release.
+   *
+   * ⚠️ PINNED BY POSITION *AND* DESCRIPTOR. Under reduced motion there is no
+   * move lock, so on the first commit of a move the leaving step's cleanup has
+   * not run yet — the index check keeps its claim off the new screen. And a
+   * flow whose screen list changes (the prefilled post's Edit) resets to the
+   * same index over DIFFERENT screens — the descriptor check catches that.
+   * The release clears only its OWN claim, so a late cleanup can never wipe a
+   * newer one.
+   */
+  const claimNextAt = useCallback(
+    (index: number, handler: (proceed: () => void) => void) => {
+      const claim: NextClaim<TAnswers> = { index, screen: screens[index], handler };
+      claimRef.current = claim;
+      return () => {
+        if (claimRef.current === claim) claimRef.current = null;
+      };
+    },
+    [screens],
+  );
+  /** The claim on the screen at `index`, if it is still that screen's. */
+  const claimFor = useCallback(
+    (index: number) => {
+      const claim = claimRef.current;
+      return claim && claim.index === index && claim.screen === screens[index] ? claim : null;
+    },
+    [screens],
+  );
+
   /** Every move goes through here: drop the keyboard (a field left focused
    *  would otherwise close mid-slide and resize the screen under it), lock,
    *  dispatch. Internal — the public moves below check the lock first. */
@@ -300,17 +352,53 @@ export function useWizardController<TAnswers>(
   const isLastScreen =
     nav.returnToIndex === null && nav.index === screens.length - 1;
 
+  const canGoNext = canProceed(flow, screens[nav.index], answers);
+
+  // What a claim's `proceed` calls back into, read when it is CALLED — the
+  // sheet closes long after the render that handed it out.
+  const proceedRef = useRef<{ index: number; run: (skipClaim: boolean) => Promise<void> } | null>(
+    null,
+  );
+
   /**
    * The single primary-button handler. Routes to the right behaviour for the
-   * current screen: run the step's onContinue (merge its patch, then advance),
-   * run the final onComplete (submit; stay put on failure, don't navigate on
-   * success), or a plain forward move. Serialized by `busy` so a double-tap
-   * can't fire two lookups or two submits.
+   * current screen: hand it to a step that has claimed Next, run the step's
+   * onContinue (merge its patch, then advance), run the final onComplete
+   * (submit; stay put on failure, don't navigate on success), or a plain
+   * forward move. Serialized by `busy` so a double-tap can't fire two lookups
+   * or two submits. `skipClaim` is the claim's own `proceed` coming back.
    */
-  const advance = useCallback(async () => {
+  const runAdvance = useCallback(async (skipClaim: boolean) => {
     if (busy || lockRef.current || actingRef.current) return;
     if (isLastScreen && performance.now() - arrivedAt.current < SUBMIT_ARM_MS) return;
     const screen = screens[nav.index];
+
+    // A claimed Next (WizardStepProps.claimNext): the step asks its last
+    // question, then calls `proceed` — which comes back here and runs the
+    // usual Next. NEVER on the submitting screen ("Post & pay" is not a
+    // step's to hold), and only when the step is valid: the button's disabled
+    // state gates a press, but `advance` itself never checked.
+    if (!skipClaim && !isLastScreen && screen.kind === 'step' && canGoNext) {
+      const claim = claimFor(nav.index);
+      if (claim) {
+        const claimedIndex = nav.index;
+        // ONE-SHOT, and only while THIS claim stands (code review): a step
+        // calling proceed twice in one tick has no lock to stop it under
+        // reduced motion and would skip a screen; and any move, reset or
+        // release ends the claim by identity — as the release itself does —
+        // rather than by an index another screen might share.
+        let used = false;
+        claim.handler(() => {
+          if (used) return;
+          const latest = proceedRef.current;
+          if (claimRef.current !== claim || !latest || latest.index !== claimedIndex) return;
+          used = true;
+          void latest.run(true);
+        });
+        return;
+      }
+    }
+
     const onContinue = screen.kind === 'step' ? screen.step.onContinue : undefined;
     const hasAction = isLastScreen ? Boolean(onComplete) : Boolean(onContinue);
 
@@ -345,9 +433,14 @@ export function useWizardController<TAnswers>(
       actingRef.current = false;
       setError(toErrorMessage(err));
     }
-  }, [busy, screens, nav.index, isLastScreen, onComplete, answers, goNext]);
-
-  const canGoNext = canProceed(flow, screens[nav.index], answers);
+  }, [busy, screens, nav.index, isLastScreen, canGoNext, claimFor, onComplete, answers, goNext]);
+  /** The footer's handler. No parameter of its own: the Button passes a
+   *  press event, which must never read as `skipClaim`. */
+  const advance = useCallback(() => runAdvance(false), [runAdvance]);
+  const currentIndex = nav.index;
+  useEffect(() => {
+    proceedRef.current = { index: currentIndex, run: runAdvance };
+  });
 
   // ⚠️ AUTO-ADVANCE (2026-10-08): a one-pick step (make, model, year, colour,
   // body type) moves on by itself a beat after the pick, saving a tap per
@@ -366,9 +459,18 @@ export function useWizardController<TAnswers>(
   // owner presses Done themselves.
   const assistiveTech = useAssistiveTechEnabled();
   const editing = nav.returnToIndex !== null;
-  const latestRef = useRef({ canGoNext, advance, isLastScreen, assistiveTech, editing });
+  const index = nav.index;
+  const latestRef = useRef({
+    canGoNext,
+    advance,
+    claimFor,
+    index,
+    isLastScreen,
+    assistiveTech,
+    editing,
+  });
   useEffect(() => {
-    latestRef.current = { canGoNext, advance, isLastScreen, assistiveTech, editing };
+    latestRef.current = { canGoNext, advance, claimFor, index, isLastScreen, assistiveTech, editing };
   });
   const advanceSoon = useCallback(
     (delayMs: number = motion.autoAdvanceBeat) => {
@@ -386,6 +488,9 @@ export function useWizardController<TAnswers>(
         if (!latest.canGoNext || latest.isLastScreen || latest.assistiveTech || latest.editing) {
           return;
         }
+        // Nor on a claimed step: auto-advance never opens anything the owner
+        // didn't ask for — the claim is theirs to trigger with Next.
+        if (latest.claimFor(latest.index)) return;
         autoMoveRef.current = true;
         void latest.advance().finally(() => {
           autoMoveRef.current = false;
@@ -493,6 +598,12 @@ export function useWizardController<TAnswers>(
     canGoNext,
     /** Move on after a short beat — see the auto-advance note above. */
     advanceSoon,
+    /** Register a step's claim on Next for the screen at `index` (see
+     *  WizardStepProps.claimNext); returns its release. */
+    claimNextAt,
+    /** The primary button's screen-reader hint (WizardStep.ctaHint), or
+     *  undefined. Never on the submitting screen. */
+    ctaHint: resolveCtaHint(screens[nav.index], isLastScreen, answers),
     // NOT on an edit spur: a spur into an intro-less flow's first step (the
     // report flow's camera, from its check-and-send) must still show Back,
     // and the hardware back must cancel the edit, not offer to discard the

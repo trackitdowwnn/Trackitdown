@@ -23,7 +23,7 @@
  *        docs/DESIGN_SYSTEM.md (Motion, Accessibility, Forms).
  */
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo,
   BackHandler,
@@ -223,6 +223,16 @@ export function WizardScreen<TAnswers>({
     if (index !== null && index !== screenIndex) controller.editStep(index);
   };
   const isFillsStep = shown.kind === 'step' && shown.step.fills === true;
+
+  // A step's claim on Next (WizardStepProps.claimNext), pinned to the screen
+  // DRAWN — shownIndex, not screenIndex: on a move's first commit they differ,
+  // and a step may only ever claim its own screen. The leaving copy is handed
+  // none (below), so its effect releases whatever it held.
+  const { claimNextAt } = controller;
+  const claimNext = useCallback(
+    (handler: (proceed: () => void) => void) => claimNextAt(shownIndex, handler),
+    [claimNextAt, shownIndex],
+  );
 
   // ⚠️ NO SLIDE UNTIL THE FIRST MOVE. The opening screen used to play its
   // SlideInRight as it mounted, while the route itself was still sliding up
@@ -465,6 +475,7 @@ export function WizardScreen<TAnswers>({
                         // and must not flip to a placeholder as it goes.
                         settled={leaving ? true : controller.settled}
                         advanceSoon={controller.advanceSoon}
+                        claimNext={leaving ? undefined : claimNext}
                       />
                     </LayoutAnimationConfig>
                     {shownFooterNote && noteInBody ? (
@@ -490,6 +501,7 @@ export function WizardScreen<TAnswers>({
         >
           <WizardFooter
             ctaLabel={controller.ctaLabel}
+            ctaHint={controller.ctaHint}
             canProceed={controller.canGoNext}
             loading={busy}
             // No Back while busy — can't abandon an in-flight lookup/submit.

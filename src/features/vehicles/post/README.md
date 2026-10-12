@@ -35,7 +35,7 @@ never opens one person's last-seen location for the next.
 > add-a-car flow, which shares these steps. It is the one exception to the "no
 > helper" rule below. **Make, model (picked from the list), year and body
 > type move on by themselves** a beat after the pick (`advanceSoon`) — not
-> colour (2026-10-12: its optional finish sits under the grid); not under a
+> colour (2026-10-12: its Next asks the paint finish in a sheet); not under a
 > screen reader or (Android) any accessibility service; never from the
 > submitting screen, nor on an edit from review (Done there can land on "Post
 > & pay"). The place label is warmed once the map pin rests; the reward
@@ -100,9 +100,14 @@ never opens one person's last-seen location for the next.
    "Other") open a note sheet that asks its own question ("Describe the
    colours" / "Name the colour"), focused once risen; "Other" can't go on
    without its description. The note is stored separately (`colourNote` →
-   `owner_note`) so it never pollutes the colour enum. Under the grid,
-   optional **Paint finish** chips (Metallic / Matt / Pearl / Two-tone roof;
-   re-tap clears; hidden only for an escape) → `colourFinish` →
+   `owner_note`) so it never pollutes the colour enum. The optional **paint
+   finish is asked on the way out** (owner request, 2026-10-12): a plain
+   colour's Next opens `PaintFinishSheet` (Metallic / Matt / Pearl / Two-tone
+   roof, each with a line on what it looks like, then "Not sure" = null) —
+   `ColourStep` claims the wizard's Next (`claimNext`), and a tap there saves
+   it and moves on once the sheet has gone. A swipe stays on the step; an
+   escape's Next just moves. The Car details editor (no Next) has a "Paint
+   finish" row that opens the same sheet. → `colourFinish` →
    `colour_finish` (20261012100000). An escape drops it (`colourChangePatch`),
    and every write sends it — the edit RPCs replace it, so a save without it
    would wipe it. One form wherever it shows (`colourWithFinish`): "Blue ·
