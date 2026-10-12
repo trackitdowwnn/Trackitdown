@@ -63,7 +63,7 @@ import {
 import { WIZARD_GUTTER, type WizardStepProps } from '@/shared/wizard';
 
 import { BODY_TYPE_OPTIONS } from '../lib/bodyTypes';
-import { colourChangePatch, isNoteColour } from '@/shared/lib';
+import { colourChangePatch } from '@/shared/lib';
 import { makeChangePatch } from '@/shared/lib/carModels';
 import type { VehicleAnswers } from '../lib/vehicleSteps';
 import type { PostACarAnswers, PricingMode } from '../types';
@@ -176,7 +176,7 @@ export function ModelStep({ answers, setAnswers, advanceSoon }: VehicleStepProps
   );
 }
 
-export function ColourStep({ answers, setAnswers, advanceSoon }: VehicleStepProps) {
+export function ColourStep({ answers, setAnswers }: VehicleStepProps) {
   // Its own step (2026-07-23): the swatch grid earns a screen. Switching to a
   // plain colour clears any wrapped/other note (colourChangePatch) so a note
   // never rides under a colour it doesn't describe.
@@ -184,12 +184,10 @@ export function ColourStep({ answers, setAnswers, advanceSoon }: VehicleStepProp
     <ColourField
       value={answers.colour ?? null}
       note={answers.colourNote ?? ''}
-      onChange={(colour) => {
-        setAnswers(colourChangePatch(colour));
-        // Not for "Multicolour / wrapped" or "Other": those open a note to
-        // fill in, and moving on would take the step away from under it.
-        if (!isNoteColour(colour)) advanceSoon?.();
-      }}
+      // ⚠️ NO AUTO-ADVANCE ON A PICK (owner decision, 2026-10-12): the
+      // optional finish sits under the grid, so the step waits for Next
+      // rather than moving on before it can be chosen.
+      onChange={(colour) => setAnswers(colourChangePatch(colour))}
       onChangeNote={(colourNote) => setAnswers({ colourNote })}
     />
   );

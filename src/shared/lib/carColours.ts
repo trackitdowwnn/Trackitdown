@@ -67,6 +67,19 @@ export interface CarColour {
   secondaryHex?: string;
   /** Present ⇒ draw this glyph instead of a plain fill (the "Other" escape). */
   icon?: FeatherName;
+  /** An escape's note sheet copy — each asks its own question (2026-10-12). */
+  noteCopy?: NoteCopy;
+  /** The escape cannot be used without its note (Other: "Other" alone tells
+   *  a spotter nothing). */
+  noteRequired?: boolean;
+}
+
+/** What an escape colour's note sheet says (ColourField renders it). */
+export interface NoteCopy {
+  title: string;
+  label: string;
+  placeholder: string;
+  helper: string;
 }
 
 /**
@@ -74,6 +87,14 @@ export interface CarColour {
  * dominate the DVLA registration data), then the two escapes. NOT exhaustive:
  * "Other" always catches the long tail, so the grid can under-offer but never
  * trap. Hexes are DATA — realistic shades, not tokens (see file header).
+ *
+ * ⚠️ THE V5C VOCABULARY (owner request, 2026-10-12): every colour the DVLA
+ * records — the word on the owner's logbook and the one police use — has its
+ * own swatch. "Brown / Beige" split into Brown and Beige, and Maroon,
+ * Turquoise, Pink and Cream joined (they used to fold into a neighbour, so a
+ * pink car was posted as "Purple"). Twenty in all: the grid's four columns
+ * fill five even rows. A stored "Brown / Beige" still resolves — see
+ * LEGACY_COLOUR_ALIASES.
  */
 export const CAR_COLOURS: CarColour[] = [
   { name: 'Black', hex: '#1A1A1A' },
@@ -85,15 +106,56 @@ export const CAR_COLOURS: CarColour[] = [
   { name: 'Green', hex: '#2E5A43' },
   { name: 'Orange', hex: '#E2601C' },
   { name: 'Yellow', hex: '#EFC93D', light: true },
-  { name: 'Brown / Beige', hex: '#6B4A2B' },
+  { name: 'Brown', hex: '#6B4A2B' },
+  { name: 'Beige', hex: '#D6C3A1', light: true },
   { name: 'Gold', hex: '#C9A227', light: true },
   { name: 'Purple', hex: '#5B3A82' },
   { name: 'Bronze', hex: '#8C6A3F' },
-  // Escapes — both open the note field. Multicolour shows a two-tone swatch
-  // (a wrap is one colour over another); Other is a neutral glyph swatch.
-  { name: 'Multicolour / wrapped', hex: '#2B4C7E', secondaryHex: '#C7CCD1', note: true },
-  { name: 'Other', hex: '#E4E4E4', light: true, note: true, icon: 'more-horizontal' },
+  { name: 'Maroon', hex: '#5E1A26' },
+  { name: 'Turquoise', hex: '#1F7F7C' },
+  { name: 'Pink', hex: '#E7A1B6', light: true },
+  { name: 'Cream', hex: '#EEE5CC', light: true },
+  // Escapes — both open the note sheet, each with its own question.
+  // Multicolour shows a two-tone swatch (a wrap is one colour over another);
+  // Other is a neutral glyph swatch, and needs its note: "Other" alone tells
+  // a spotter nothing.
+  {
+    name: 'Multicolour / wrapped',
+    hex: '#2B4C7E',
+    secondaryHex: '#C7CCD1',
+    note: true,
+    noteCopy: {
+      title: 'Describe the wrap',
+      label: 'Wrap',
+      placeholder: 'e.g. matte black over silver',
+      helper: 'Spotters look for the wrap first.',
+    },
+  },
+  {
+    name: 'Other',
+    hex: '#E4E4E4',
+    light: true,
+    note: true,
+    noteRequired: true,
+    icon: 'more-horizontal',
+    noteCopy: {
+      title: 'What colour is it?',
+      label: 'Colour',
+      placeholder: 'e.g. Teal',
+      helper: 'As it’s shown on your logbook (V5C).',
+    },
+  },
 ];
+
+/**
+ * Colours the app once offered under another name, mapped to the swatch they
+ * are now. A stored value (an old listing, a garage car, a saved alert, a
+ * recent search) still draws and selects its swatch. Server-side these rows
+ * are folded to the new name by a migration (the colour-finish PR).
+ */
+export const LEGACY_COLOUR_ALIASES: Record<string, string> = {
+  'brown / beige': 'Brown',
+};
 
 /**
  * The two inks anything drawn ON TOP OF a swatch may take, selected by `light`.
@@ -119,9 +181,28 @@ export function glyphInkFor(swatch: CarColour): string {
 
 /** Case-exact-ish lookup of a swatch by its canonical name (trimmed, case-insensitive). */
 export function swatchForName(name: string | null | undefined): CarColour | undefined {
-  const target = (name ?? '').trim().toLowerCase();
-  if (!target) return undefined;
+  const typed = (name ?? '').trim().toLowerCase();
+  if (!typed) return undefined;
+  // A retired name (LEGACY_COLOUR_ALIASES) resolves to the swatch it is now.
+  const target = (LEGACY_COLOUR_ALIASES[typed] ?? typed).toLowerCase();
   return CAR_COLOURS.find((colour) => colour.name.toLowerCase() === target);
+}
+
+/** The canonical swatch name for a stored colour (a retired name becomes its
+ *  current one), or the input unchanged when it isn't on the list. */
+export function canonicalColourName(name: string | null | undefined): string | null {
+  if (name == null) return null;
+  return swatchForName(name)?.name ?? name;
+}
+
+/** Whether `colour` can be used as it stands — Other needs its note. */
+export function colourIsComplete(
+  colour: string | null | undefined,
+  note: string | null | undefined,
+) {
+  const swatch = swatchForName(colour);
+  if (!swatch) return Boolean(colour?.trim());
+  return !swatch.noteRequired || Boolean(note?.trim());
 }
 
 /** Whether picking this colour should reveal the free-text note field. */
@@ -141,9 +222,9 @@ export function colourChangePatch(colour: string): { colour: string; colourNote?
 
 /**
  * DVLA colour vocabulary (normalised: upper-case, alphanumerics only) → our
- * canonical swatch name. DVLA's set is small and maps cleanly; a few shades
- * fold into their nearest swatch (maroon→Red, cream→Brown/Beige), and colours
- * with no swatch (pink, turquoise) fall to a sensible neighbour or Other.
+ * canonical swatch name. Since 2026-10-12 every DVLA colour has its own
+ * swatch (the V5C vocabulary), so the map is one-to-one; only the spellings
+ * of multicolour differ.
  */
 export const DVLA_COLOUR_MAP: Record<string, string> = {
   BLACK: 'Black',
@@ -152,17 +233,17 @@ export const DVLA_COLOUR_MAP: Record<string, string> = {
   SILVER: 'Silver',
   BLUE: 'Blue',
   RED: 'Red',
-  MAROON: 'Red',
+  MAROON: 'Maroon',
   GREEN: 'Green',
-  TURQUOISE: 'Green',
+  TURQUOISE: 'Turquoise',
   ORANGE: 'Orange',
   YELLOW: 'Yellow',
-  BROWN: 'Brown / Beige',
-  BEIGE: 'Brown / Beige',
-  CREAM: 'Brown / Beige',
+  BROWN: 'Brown',
+  BEIGE: 'Beige',
+  CREAM: 'Cream',
   GOLD: 'Gold',
   PURPLE: 'Purple',
-  PINK: 'Purple',
+  PINK: 'Pink',
   BRONZE: 'Bronze',
   MULTICOLOUR: 'Multicolour / wrapped',
   MULTICOLOR: 'Multicolour / wrapped',

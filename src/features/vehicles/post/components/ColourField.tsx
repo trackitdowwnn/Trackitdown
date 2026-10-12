@@ -22,8 +22,8 @@
  */
 
 import { Feather } from '@expo/vector-icons';
-import { useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Keyboard, Pressable, StyleSheet, Text, View, type TextInput } from 'react-native';
 import Animated, {
   FadeInDown,
   ReduceMotion,
@@ -47,7 +47,13 @@ import {
 } from '@/shared/theme';
 import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
 
-import { CAR_COLOURS, type CarColour, isNoteColour } from '@/shared/lib';
+import {
+  CAR_COLOURS,
+  canonicalColourName,
+  type CarColour,
+  isNoteColour,
+  swatchForName,
+} from '@/shared/lib';
 
 /* eslint-disable react-hooks/immutability -- Reanimated SharedValues are
    deliberately mutable (scale.value is written from the press handler to drive
@@ -61,8 +67,18 @@ export interface ColourFieldProps {
   note: string;
   onChange: (colour: string) => void;
   onChangeNote: (note: string) => void;
+  /** The escape note sheet's Done — after the keyboard and sheet have gone. */
+  onDone?: () => void;
   error?: string;
 }
+
+/** The note sheet's words for a colour with no copy of its own. */
+const FALLBACK_NOTE_COPY = {
+  title: 'Colour details',
+  label: 'Details',
+  placeholder: 'e.g. matte black wrap over silver',
+  helper: 'Tell spotters about the wrap or finish.',
+};
 
 /** Per-cell stagger (matches SelectScreen): ≤~6 steps so the cascade lands in
  *  the ≤300ms budget (docs/DESIGN_SYSTEM.md Motion — lists). */
@@ -141,7 +157,9 @@ function SwatchCell({
             </View>
           ) : null}
         </Animated.View>
-        <Text style={styles.swatchLabel} numberOfLines={2}>
+        {/* The chosen name a weight up: the selection reads in WORDS too,
+            never by the ring's colour alone (owner request, 2026-10-12). */}
+        <Text style={[styles.swatchLabel, selected && styles.swatchLabelSelected]} numberOfLines={2}>
           {colour.name}
         </Text>
       </Pressable>
@@ -149,9 +167,25 @@ function SwatchCell({
   );
 }
 
-export function ColourField({ value, note, onChange, onChangeNote, error }: ColourFieldProps) {
+export function ColourField({
+  value,
+  note,
+  onChange,
+  onChangeNote,
+  onDone,
+  error,
+}: ColourFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
+  const noteRef = useRef<TextInput>(null);
+  const [sheetUp, setSheetUp] = useState(false);
+  // A retired name (an old "Brown / Beige") still selects its swatch.
+  const chosen = canonicalColourName(value);
+  const chosenSwatch = swatchForName(value);
+  // Each escape asks its own question (2026-10-12): "What colour is it?" for
+  // Other, "Describe the wrap" for Multicolour / wrapped.
+  const copy = chosenSwatch?.noteCopy ?? FALLBACK_NOTE_COPY;
+  const noteMissing = Boolean(chosenSwatch?.noteRequired) && note.trim() === '';
 
   // Selecting an escape colour ("Multicolour / wrapped" / "Other") opens the
   // note sheet straight away — no separate trigger field. Re-tapping the same
@@ -159,9 +193,33 @@ export function ColourField({ value, note, onChange, onChangeNote, error }: Colo
   const handleSelect = (name: string) => {
     onChange(name);
     if (isNoteColour(name)) {
+      setSheetUp(true);
       sheetRef.current?.open();
     }
   };
+
+  // The box takes focus once the sheet has RISEN, not as it mounts — a
+  // keyboard raised mid-slide made the sheet jump twice (#158's lesson).
+  useEffect(() => {
+    if (!sheetUp) return undefined;
+    const timer = setTimeout(() => noteRef.current?.focus(), motion.standard);
+    return () => clearTimeout(timer);
+  }, [sheetUp]);
+
+  // Done takes the keyboard with the sheet, then hands back to the step.
+  const finishNote = () => {
+    if (noteMissing) return;
+    Keyboard.dismiss();
+    sheetRef.current?.close();
+    onDone?.();
+  };
+
+  // A quiet confirmation in WORDS of what is chosen — with the note, if any.
+  const summary = chosen
+    ? note.trim() && chosenSwatch?.note
+      ? `Selected: ${chosen} — ${note.trim()}`
+      : `Selected: ${chosen}`
+    : null;
 
   return (
     <View style={styles.stack}>
@@ -171,11 +229,17 @@ export function ColourField({ value, note, onChange, onChangeNote, error }: Colo
             key={colour.name}
             colour={colour}
             index={index}
-            selected={value === colour.name}
+            selected={chosen === colour.name}
             onSelect={handleSelect}
           />
         ))}
       </View>
+
+      {summary ? (
+        <Text style={styles.summary} accessibilityLiveRegion="polite" testID="colour-summary">
+          {summary}
+        </Text>
+      ) : null}
 
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -183,18 +247,28 @@ export function ColourField({ value, note, onChange, onChangeNote, error }: Colo
         </Text>
       ) : null}
 
-      <BottomSheet ref={sheetRef} title="Colour details">
+      <BottomSheet
+        ref={sheetRef}
+        title={copy.title}
+        onDismiss={() => {
+          Keyboard.dismiss();
+          setSheetUp(false);
+        }}
+      >
         <View style={styles.sheetBody}>
           <TextField
-            label="Details"
+            ref={noteRef}
+            label={copy.label}
             variant="multiline"
-            placeholder="e.g. matte black wrap over silver"
+            placeholder={copy.placeholder}
             value={note}
             onChangeText={onChangeNote}
             maxLength={120}
-            helperText="Tell spotters about the wrap or finish."
+            helperText={copy.helper}
+            accessibilityHint={copy.helper}
+            testID="colour-note-input"
           />
-          <Button label="Done" onPress={() => sheetRef.current?.close()} />
+          <Button label="Done" onPress={finishNote} disabled={noteMissing} />
         </View>
       </BottomSheet>
     </View>
@@ -211,8 +285,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     justifyContent: 'space-between',
     rowGap: spacing.xl,
   },
+  // FOUR columns (2026-10-12): the V5C palette's twenty fill five even rows,
+  // where three columns left a ragged last row of two.
   cell: {
-    width: '30%',
+    width: '23%',
   },
   cellPressable: {
     alignItems: 'center',
@@ -271,6 +347,14 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.caption,
     color: c.textPrimary,
     textAlign: 'center',
+  },
+  swatchLabelSelected: {
+    ...typography.label,
+  },
+  // "Selected: Blue" under the grid — quiet, secondary ink.
+  summary: {
+    ...typography.caption,
+    color: c.textSecondary,
   },
   sheetBody: {
     gap: spacing.xl,

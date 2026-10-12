@@ -12,7 +12,8 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import React from 'react';
+import { Keyboard, StyleSheet } from 'react-native';
 
 import { ColourField } from './ColourField';
 import { CAR_COLOURS, colourFromDvla } from '@/shared/lib';
@@ -147,5 +148,98 @@ describe('ColourField', () => {
     const { getByLabelText } = await renderField({ value: colourFromDvla('SILVER') });
 
     expect(getByLabelText('Silver').props.accessibilityState).toMatchObject({ checked: true });
+  });
+});
+
+/** ColourField with its value and note held in state, as the step holds them. */
+function Stateful({ onDone }: { onDone?: () => void }) {
+  const [colour, setColour] = React.useState<string | null>(null);
+  const [note, setNote] = React.useState('');
+  return (
+    <ColourField
+      value={colour}
+      note={note}
+      onChange={setColour}
+      onChangeNote={setNote}
+      onDone={onDone}
+    />
+  );
+}
+
+describe('ColourField — the V5C palette and smarter escapes (2026-10-12)', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('offers every V5C colour — Beige, Maroon, Turquoise, Pink and Cream among them', async () => {
+    const { getByLabelText, queryByLabelText } = await renderField();
+    for (const name of ['Brown', 'Beige', 'Maroon', 'Turquoise', 'Pink', 'Cream']) {
+      expect(getByLabelText(name)).toBeTruthy();
+    }
+    expect(queryByLabelText('Brown / Beige')).toBeNull();
+  });
+
+  it('⚠️ an old "Brown / Beige" opens with Brown selected', async () => {
+    const { getByLabelText } = await renderField({ value: 'Brown / Beige' });
+    expect(getByLabelText('Brown').props.accessibilityState).toMatchObject({ checked: true });
+  });
+
+  it('says what is chosen in words, and the chosen name goes bold', async () => {
+    const { getByTestId, getByText } = await renderField({ value: 'Blue' });
+    expect(getByTestId('colour-summary').props.children).toBe('Selected: Blue');
+    const chosen = StyleSheet.flatten(getByText('Blue').props.style);
+    const other = StyleSheet.flatten(getByText('Red').props.style);
+    expect(chosen.fontFamily).not.toBe(other.fontFamily);
+  });
+
+  it('"Other" asks what colour it is — and Done waits for an answer', async () => {
+    const onDone = jest.fn();
+    const view = await render(<Stateful onDone={onDone} />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Other'));
+    });
+    expect(view.getByText('What colour is it?')).toBeTruthy();
+    const done = view.getByRole('button', { name: 'Done' });
+    expect(done.props.accessibilityState).toMatchObject({ disabled: true });
+    await act(async () => {
+      fireEvent.changeText(view.getByTestId('colour-note-input'), 'Teal');
+    });
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Done' }));
+    });
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(view.getByTestId('colour-summary').props.children).toBe('Selected: Other — Teal');
+  });
+
+  it('the wrap asks to describe it, and its note is optional', async () => {
+    const onDone = jest.fn();
+    const view = await render(<Stateful onDone={onDone} />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Multicolour / wrapped'));
+    });
+    expect(view.getByText('Describe the wrap')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Done' }));
+    });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('focuses the box once the sheet has risen, and Done takes the keyboard with it', async () => {
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    const view = await render(<Stateful />);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText('Multicolour / wrapped'));
+    });
+    // Not focused as it mounts: no autoFocus.
+    expect(view.getByTestId('colour-note-input').props.autoFocus).toBeUndefined();
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: 'Done' }));
+    });
+    expect(dismiss).toHaveBeenCalled();
   });
 });
