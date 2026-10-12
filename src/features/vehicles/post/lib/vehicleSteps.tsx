@@ -23,7 +23,12 @@
 
 import { z } from 'zod';
 
-import { canonicalColourName, colourIsComplete } from '@/shared/lib';
+import {
+  canonicalColourName,
+  colourIsComplete,
+  colourWithFinish,
+  type ColourFinish,
+} from '@/shared/lib';
 import { photoListSchema, type PickedPhoto } from '@/shared/ui';
 import type { WizardStep } from '@/shared/wizard';
 
@@ -51,6 +56,9 @@ export interface VehicleAnswers {
   colour: string;
   /** Free-text specifics for an escape colour ("Multicolour / wrapped"). */
   colourNote: string;
+  /** The optional paint finish under the grid (2026-10-12) — null when not
+   *  said. Only a plain colour has one: colourChangePatch drops it for an escape. */
+  colourFinish: ColourFinish | null;
   year: number | null;
   bodyType: string | null;
   distinctiveFeatures: DistinctiveFeature[];
@@ -123,7 +131,11 @@ export function buildVehicleSteps<TAnswers extends VehicleAnswers>({
         // A retired name ("Brown / Beige") reads as its current one.
         const colour = canonicalColourName(answers.colour) ?? '';
         const noteText = answers.colourNote?.trim();
-        return noteText ? `${colour} — ${noteText}` : colour;
+        // An escape is "described as" its note; a plain colour carries its
+        // finish ("Blue · Metallic" — the one form, and none under an escape).
+        return noteText
+          ? `${colour} — ${noteText}`
+          : colourWithFinish(colour, answers.colourFinish);
       },
     },
     {

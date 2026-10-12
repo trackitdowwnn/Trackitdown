@@ -2,7 +2,8 @@
  * WHAT:  Tests for the car-colour palette + helpers: every swatch carries a
  *        name (the accessibility guarantee), light swatches are flagged, the
  *        two escapes open the note field, the DVLA colour → swatch mapping, and
- *        colourChangePatch clearing the note when the colour isn't a note colour.
+ *        colourChangePatch clearing the note when the colour isn't a note colour
+ *        (and the finish when it is); the finish vocabulary and its guards.
  * WHY:   The colour is a CLEAN ENUM (canonical names drive the card/detail text
  *        and future filters), and a colour-blind spotter reads the NAME — so a
  *        nameless or duplicated swatch, or a note leaking under a plain colour,
@@ -12,13 +13,18 @@
 
 import {
   CAR_COLOURS,
+  COLOUR_FINISHES,
   canonicalColourName,
   colourChangePatch,
+  colourFinishLabel,
   colourFromDvla,
   colourIsComplete,
+  colourWithFinish,
   glyphInkFor,
   isNoteColour,
+  savedColourFinish,
   swatchForName,
+  toColourFinish,
 } from './carColours';
 
 /** WCAG 2.1 relative luminance for a #rrggbb string — same maths as
@@ -114,15 +120,66 @@ describe('swatchForName / isNoteColour', () => {
 });
 
 describe('colourChangePatch (note ↔ colour dependency)', () => {
-  it('clears the note when switching to a non-note colour', () => {
+  it('clears the note when switching to a non-note colour, and keeps the finish', () => {
+    // No colourFinish key: a metallic Blue corrected to Grey is still metallic.
     expect(colourChangePatch('Blue')).toEqual({ colour: 'Blue', colourNote: '' });
   });
 
-  it('keeps the note field open (unchanged) for a note colour', () => {
+  it('keeps the note (unchanged) for a note colour, and drops the finish', () => {
     expect(colourChangePatch('Multicolour / wrapped')).toEqual({
       colour: 'Multicolour / wrapped',
+      colourFinish: null,
     });
     expect(colourChangePatch('Other')).not.toHaveProperty('colourNote');
+  });
+});
+
+describe('the paint finish', () => {
+  it('offers exactly the four values the colour_finish CHECK accepts', () => {
+    // 20261012100000: check (colour_finish in ('metallic','matte','pearl','two_tone_roof')).
+    expect(COLOUR_FINISHES.map((option) => option.value)).toEqual([
+      'metallic',
+      'matte',
+      'pearl',
+      'two_tone_roof',
+    ]);
+    expect(COLOUR_FINISHES.map((option) => option.label)).toEqual([
+      'Metallic',
+      'Matt', // British on screen; the stored value keeps the CHECK's 'matte'
+      'Pearl',
+      'Two-tone roof',
+    ]);
+  });
+
+  it('writes a colour with its finish in one form, and never under an escape', () => {
+    expect(colourWithFinish('Blue', 'metallic')).toBe('Blue · Metallic');
+    expect(colourWithFinish('Blue', null)).toBe('Blue');
+    expect(colourWithFinish('Blue', 'satin')).toBe('Blue');
+    expect(colourWithFinish('Other', 'pearl')).toBe('Other');
+  });
+
+  it('reads anything unrecognised as "not said", never throws', () => {
+    expect(toColourFinish('pearl')).toBe('pearl');
+    expect(toColourFinish('satin')).toBeNull(); // a finish from a newer server
+    expect(toColourFinish('Metallic')).toBeNull(); // a label is not a value
+    expect(toColourFinish(null)).toBeNull();
+    expect(toColourFinish(undefined)).toBeNull();
+    expect(toColourFinish(42)).toBeNull();
+  });
+
+  it('labels a known finish and nothing else', () => {
+    expect(colourFinishLabel('two_tone_roof')).toBe('Two-tone roof');
+    expect(colourFinishLabel(null)).toBeNull();
+    expect(colourFinishLabel('satin')).toBeNull();
+  });
+
+  it('saves no finish under an escape colour, whatever the answers hold', () => {
+    expect(savedColourFinish('Blue', 'matte')).toBe('matte');
+    expect(savedColourFinish('Blue', null)).toBeNull();
+    expect(savedColourFinish('Other', 'matte')).toBeNull();
+    expect(savedColourFinish('Multicolour / wrapped', 'pearl')).toBeNull();
+    // A retired name is a plain colour (it resolves to Brown).
+    expect(savedColourFinish('Brown / Beige', 'metallic')).toBe('metallic');
   });
 });
 

@@ -4,7 +4,9 @@
  *        beneath (always visible), a primary ring + check badge on selection,
  *        and a gentle spring pop on tap. Tapping an escape ("Multicolour /
  *        wrapped" or "Other") selects it AND opens a BottomSheet to capture the
- *        free-text specifics (re-tapping reopens it to edit).
+ *        free-text specifics (re-tapping reopens it to edit). Under the grid,
+ *        an optional "Paint finish" chip row (metallic, matt, pearl, two-tone
+ *        roof), hidden only for an escape — 2026-10-12.
  * WHY:   A named-swatch grid — not a spectrum/hex picker — is the right pattern
  *        for the ~twenty real colours a V5C records (research). The NAME label is a hard
  *        accessibility requirement, not decoration: ~4.5% of users have colour-
@@ -55,13 +57,16 @@ import {
   type Palette,
 } from '@/shared/theme';
 import { fontFamilies } from '@/shared/theme/typography';
-import { BottomSheet, Button, TextField, type BottomSheetRef } from '@/shared/ui';
+import { BottomSheet, Button, ChoiceChips, TextField, type BottomSheetRef } from '@/shared/ui';
 
 import {
   CAR_COLOURS,
+  COLOUR_FINISHES,
   canonicalColourName,
   type CarColour,
+  type ColourFinish,
   colourIsComplete,
+  colourWithFinish,
   glyphInkFor,
   isNoteColour,
   swatchForName,
@@ -79,6 +84,11 @@ export interface ColourFieldProps {
   note: string;
   onChange: (colour: string) => void;
   onChangeNote: (note: string) => void;
+  /** The optional paint finish, or null. */
+  finish?: ColourFinish | null;
+  /** Present ⇒ the finish chips show under a plain colour (never an escape —
+   *  there is no single paint to finish). Re-tapping the chosen one clears it. */
+  onChangeFinish?: (finish: ColourFinish | null) => void;
   error?: string;
 }
 
@@ -184,7 +194,15 @@ function SwatchCell({
   );
 }
 
-export function ColourField({ value, note, onChange, onChangeNote, error }: ColourFieldProps) {
+export function ColourField({
+  value,
+  note,
+  onChange,
+  onChangeNote,
+  finish = null,
+  onChangeFinish,
+  error,
+}: ColourFieldProps) {
   const styles = useThemedStyles(makeStyles);
   const sheetRef = useRef<BottomSheetRef>(null);
   const noteRef = useRef<TextInput>(null);
@@ -245,15 +263,22 @@ export function ColourField({ value, note, onChange, onChangeNote, error }: Colo
   };
 
   // What is chosen, in WORDS. "Other" is named by its description; a
-  // multicolour shows its note beside it.
+  // multicolour shows its note beside it; a plain colour, its finish.
   const describedNote = note.trim();
   const summary = !chosen
     ? null
     : chosenSwatch?.noteRequired && describedNote
       ? `Selected: ${describedNote}`
-      : chosenSwatch?.note && describedNote
-        ? `Selected: ${chosen} — ${describedNote}`
-        : `Selected: ${chosen}`;
+      : chosenSwatch?.note
+        ? `Selected: ${describedNote ? `${chosen} — ${describedNote}` : chosen}`
+        : `Selected: ${colourWithFinish(chosen, finish)}`;
+
+  // The finish (2026-10-12) is ALWAYS there, not revealed by a pick: under a
+  // twenty-swatch grid a reveal lands below the fold, unseen (UI review;
+  // DESIGN_SYSTEM — a hint that only appears after a pick is always there
+  // instead). Only an escape hides it — there's no single paint to finish —
+  // and colourChangePatch drops the answer with it.
+  const showFinish = Boolean(onChangeFinish && !chosenSwatch?.note);
 
   return (
     <View style={styles.stack}>
@@ -299,6 +324,34 @@ export function ColourField({ value, note, onChange, onChangeNote, error }: Colo
           </Pressable>
         ) : null}
       </View>
+
+      {showFinish ? (
+        <View style={styles.finish}>
+          {/* "Paint finish", not "Finish" — a bare "Finish" over a footer
+              CTA reads as "finish the step". One element to a screen
+              reader, "Paint finish, optional", heard once (the
+              WithdrawSightingSheet head). */}
+          <View
+            style={styles.finishHead}
+            accessible
+            accessibilityRole="header"
+            accessibilityLabel="Paint finish, optional"
+          >
+            <Text style={styles.finishTitle}>Paint finish</Text>
+            <Text style={styles.finishHint}>Optional</Text>
+          </View>
+          <ChoiceChips
+            options={COLOUR_FINISHES}
+            value={finish}
+            // Tapping the chosen finish again takes it back to "not said".
+            onSelect={(picked) => onChangeFinish?.(picked === finish ? null : picked)}
+            // The question alone: the header has already said it's optional.
+            accessibilityLabel="Paint finish"
+            clearable
+            testID="colour-finish"
+          />
+        </View>
+      ) : null}
 
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -444,6 +497,25 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.label,
     color: c.textPrimary,
     textDecorationLine: 'underline',
+  },
+  // "Paint finish / Optional" over its chips — the sightings follow-up
+  // questions' head (title, then a quiet hint), a size down: it is part of
+  // this step, not a step of its own. The extra top margin makes 32pt (xxl,
+  // between questions) — at the stack's 24 it read as another grid row.
+  finish: {
+    gap: spacing.md,
+    marginTop: spacing.sm,
+  },
+  finishHead: {
+    gap: spacing.xs,
+  },
+  finishTitle: {
+    ...typography.label,
+    color: c.textPrimary,
+  },
+  finishHint: {
+    ...typography.caption,
+    color: c.textSecondary,
   },
   sheetBody: {
     gap: spacing.xl,

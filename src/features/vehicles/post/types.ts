@@ -13,6 +13,8 @@
  *        supabase/migrations/20260713190000_post_a_car.sql (create_post).
  */
 
+import type { ColourFinish } from '@/shared/lib';
+
 import type { VehicleAnswers } from './lib/vehicleSteps';
 
 /** Where the car was taken from — mirrors the posts.stolen_from CHECK. */
@@ -35,8 +37,8 @@ export interface LastSeenLocation {
  */
 export interface PostACarAnswers extends VehicleAnswers {
   // --- Phase 1: the car -----------------------------------------------------
-  // The vehicle-identity slice (make, model, colour, colourNote, year, bodyType,
-  // distinctiveFeatures, photos) is INHERITED from VehicleAnswers — the same
+  // The vehicle-identity slice (make, model, colour, colourNote, colourFinish,
+  // year, bodyType, distinctiveFeatures, photos) is INHERITED from VehicleAnswers — the same
   // fields the garage collects, so one shared step table serves both flows. See
   // post/lib/vehicleSteps.tsx. Plate capture is deferred here (the garage does
   // collect one); buildCreatePostParams sends p_plate: null.
@@ -145,6 +147,9 @@ export interface CreatePostParams {
    * escrow. The server IGNORES an id the caller does not own.
    */
   p_vehicle_id: string | null;
+  /** The optional paint finish (20261012100000); null when not said, and
+   *  always null under an escape colour (savedColourFinish). */
+  p_colour_finish: ColourFinish | null;
 }
 
 /** What create_post returns on success. */

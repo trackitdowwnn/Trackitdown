@@ -13,13 +13,15 @@
  *        the create path's upload helpers + error map. Throws a PostSubmissionError
  *        (plain-English message) so each editor surfaces it and stays open.
  * LINKS: supabase/migrations/20260727130000_edit_post_sections.sql (the 7 RPCs);
+ *        supabase/migrations/20261012100000_a_colour_has_a_finish.sql
+ *          (update_post_car_details' p_colour_finish);
  *        src/features/vehicles/post/api/postApi.ts (upload helpers, error map,
  *          PostSubmissionError);
  *        src/features/vehicles/components/editors/* (the consumers).
  */
 
 import { supabase } from '@/shared/api';
-import { canonicalColourName } from '@/shared/lib/carColours';
+import { canonicalColourName, type ColourFinish, savedColourFinish } from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import type { PickedPhoto } from '@/shared/ui';
 
@@ -93,11 +95,14 @@ export interface CarDetailsInput {
   model: string;
   colour: string;
   colourNote: string;
+  /** Required, not optional: the RPC is a full replace, so a save that left
+   *  it out would wipe a stored finish (20261012100000). */
+  colourFinish: ColourFinish | null;
   year: number | null;
   bodyType: string | null;
 }
 
-/** Car details (make/model/colour/colourNote→owner_note/year/bodyType). Draft only. */
+/** Car details (make/model/colour/colourNote→owner_note/colourFinish/year/bodyType). */
 export async function saveCarDetails(postId: string, input: CarDetailsInput): Promise<void> {
   await callSectionRpc('update_post_car_details', {
     p_post_id: postId,
@@ -107,6 +112,7 @@ export async function saveCarDetails(postId: string, input: CarDetailsInput): Pr
     p_owner_note: emptyToNull(input.colourNote),
     p_year: input.year ?? null,
     p_body_type: input.bodyType ?? null,
+    p_colour_finish: savedColourFinish(input.colour, input.colourFinish),
   });
 }
 

@@ -20,7 +20,7 @@
 import type { Feather } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 
-import { canonicalColourName } from '@/shared/lib/carColours';
+import { canonicalColourName, colourWithFinish } from '@/shared/lib/carColours';
 
 import type { PostDetail } from '../types';
 
@@ -42,9 +42,11 @@ export function buildCarDetailRows(post: PostDetail): CarDetailRow[] {
   const knownBodyType =
     post.bodyType && post.bodyType !== 'Not sure' ? post.bodyType : null;
 
-  // Identity facts.
+  // Identity facts. The finish rides on the colour ("Blue · Metallic"): it is
+  // half of the same fact, not a row of its own.
+  const colour = colourWithFinish(canonicalColourName(post.colour) ?? post.colour, post.colourFinish);
   const present: CarDetailRow[] = [
-    { key: 'colour', icon: 'droplet', label: `Colour: ${canonicalColourName(post.colour) ?? post.colour}` },
+    { key: 'colour', icon: 'droplet', label: `Colour: ${colour}` },
     ...(post.year ? [{ key: 'year', icon: 'calendar' as const, label: `Year: ${post.year}` }] : []),
     ...(post.plate ? [{ key: 'plate', icon: 'hash' as const, label: `Plate: ${post.plate}` }] : []),
     ...(knownBodyType

@@ -3,9 +3,10 @@
  *        post-a-car colour step (swatch grid), plus the DVLA colour → swatch
  *        mapping (`colourFromDvla`), lookups (`swatchForName` — which resolves a
  *        retired name through `LEGACY_COLOUR_ALIASES` —, `canonicalColourName`,
- *        `isNoteColour`), `colourIsComplete` (Other needs its note), and
+ *        `isNoteColour`), `colourIsComplete` (Other needs its note),
  *        `colourChangePatch` (clears the free-text note when the picked colour
- *        isn't a note colour).
+ *        isn't a note colour, and the finish when it is), and the optional
+ *        paint finish (`COLOUR_FINISHES`, `toColourFinish`, `savedColourFinish`).
  * WHY:   Cars come in the ~twenty colours a V5C records, so a curated NAMED-swatch set is
  *        the right pattern — a free colour/hex picker would add friction and
  *        produce useless values like "#8B8C8E". The stored value is the
@@ -223,10 +224,73 @@ export function isNoteColour(name: string | null | undefined): boolean {
  * The answers patch for a colour change — drops the note unless the new colour
  * is a note colour, so a "matte black wrap" note never rides under a plain
  * "Blue" (mirrors the make→model dependency: dependent free text is cleared
- * when its owner changes).
+ * when its owner changes). The reverse holds for the finish: an escape has no
+ * single paint to finish, so picking one drops it. Plain → plain keeps it (a
+ * metallic Blue corrected to Grey is still metallic).
  */
-export function colourChangePatch(colour: string): { colour: string; colourNote?: string } {
-  return isNoteColour(colour) ? { colour } : { colour, colourNote: '' };
+export function colourChangePatch(colour: string): {
+  colour: string;
+  colourNote?: string;
+  colourFinish?: null;
+} {
+  return isNoteColour(colour) ? { colour, colourFinish: null } : { colour, colourNote: '' };
+}
+
+/**
+ * A paint finish — the optional second half of a colour (2026-10-12). Mirrors
+ * the posts/vehicles `colour_finish` CHECK (20261012100000). NULL means "not
+ * said", never "solid": most owners won't know or care, and that is fine.
+ */
+export const COLOUR_FINISH_VALUES = ['metallic', 'matte', 'pearl', 'two_tone_roof'] as const;
+export type ColourFinish = (typeof COLOUR_FINISH_VALUES)[number];
+
+/** The finish chips, in the order a spotter would notice them. */
+export const COLOUR_FINISHES: { value: ColourFinish; label: string }[] = [
+  { value: 'metallic', label: 'Metallic' },
+  // British "matt" on screen (UI review); the stored value keeps the CHECK's spelling.
+  { value: 'matte', label: 'Matt' },
+  { value: 'pearl', label: 'Pearl' },
+  { value: 'two_tone_roof', label: 'Two-tone roof' },
+];
+
+/** A stored or restored value as a finish, or null. Anything unrecognised — a
+ *  value from a newer server, a corrupt draft — reads as "not said" rather than
+ *  failing a whole parse over an optional detail. */
+export function toColourFinish(value: unknown): ColourFinish | null {
+  return (COLOUR_FINISH_VALUES as readonly unknown[]).includes(value)
+    ? (value as ColourFinish)
+    : null;
+}
+
+/** "Metallic" for `metallic`; null when there is none. */
+export function colourFinishLabel(finish: unknown): string | null {
+  const known = toColourFinish(finish);
+  return known ? (COLOUR_FINISHES.find((option) => option.value === known)?.label ?? null) : null;
+}
+
+/**
+ * The finish as it is SAVED: none for an escape colour, whatever the answers
+ * hold. colourChangePatch already drops it on the way in; this is the same
+ * rule at every write (create_post, update_post_car_details, add/update_vehicle)
+ * so a stale value can't ride under "Other".
+ */
+export function savedColourFinish(
+  colour: string | null | undefined,
+  finish: unknown,
+): ColourFinish | null {
+  return isNoteColour(colour) ? null : toColourFinish(finish);
+}
+
+/**
+ * "Blue · Metallic" — a colour with its finish, the ONE form wherever both
+ * show (the step's summary, the review row, Car details, the garage's "Your
+ * car"). " · " is "with a finish"; " — " stays an escape's "described as".
+ * Applies savedColourFinish, so a finish the server holds under an escape
+ * (it doesn't tie the two) never reads "Other · Metallic".
+ */
+export function colourWithFinish(colour: string, finish: unknown): string {
+  const label = colourFinishLabel(savedColourFinish(colour, finish));
+  return label ? `${colour} · ${label}` : colour;
 }
 
 /**

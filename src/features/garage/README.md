@@ -116,7 +116,8 @@ the reference's own split between managing and choosing.
 
 ```
 vehicles                      id, user_id → profiles ON DELETE CASCADE,
-                              plate?, make, model, colour, year?, body_type?,
+                              plate?, make, model, colour, colour_note?,
+                              colour_finish?, year?, body_type?,
                               nickname?, verification_state (RESERVED — no
                               writer), created_at, updated_at
 vehicle_photos                vehicle_id CASCADE, url, position

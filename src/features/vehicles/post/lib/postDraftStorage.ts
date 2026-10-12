@@ -83,6 +83,7 @@ const PERSISTED_KEYS = [
   'model',
   'colour',
   'colourNote',
+  'colourFinish',
   'year',
   'bodyType',
   'lastSeenAt',

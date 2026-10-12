@@ -13,6 +13,8 @@
  *        Logs are [garage], ids only — NEVER plates (docs/LOGGING.md): a plate
  *        is personal data and the garage holds them for cars never stolen.
  * LINKS: supabase/migrations/20260801100000_garage_vehicles.sql (the 4 RPCs);
+ *        supabase/migrations/20261012100000_a_colour_has_a_finish.sql
+ *          (p_colour_finish on add/update_vehicle; list_my_vehicles returns it);
  *        src/features/garage/hooks/useMyVehicles.ts (consumer);
  *        src/shared/api/photoUpload.ts (the upload both features share);
  *        src/features/garage/lib/vehicleSaveError.ts;
@@ -22,7 +24,7 @@
 import { z } from 'zod';
 
 import { isRemotePhoto, supabase, uploadOwnFolderPhoto } from '@/shared/api';
-import { canonicalColourName } from '@/shared/lib/carColours';
+import { canonicalColourName, savedColourFinish, toColourFinish } from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import type { PickedPhoto } from '@/shared/ui';
 
@@ -45,6 +47,7 @@ const GARAGE_ERROR_MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'Please log in to save a car.',
   MISSING_REQUIRED: 'Please add the make, model and colour.',
   INVALID_PLATE: 'That number plate doesn’t look right.',
+  INVALID_COLOUR_FINISH: 'The paint finish wasn’t recognised. Please reselect it.',
   PHOTO_COUNT: 'You can add up to 6 photos.',
   INVALID_PHOTO_URL: 'One of your photos didn’t upload properly. Please try again.',
   DISTINCTIVE_FEATURES_COUNT: 'You can add up to 8 distinctive features.',
@@ -72,6 +75,9 @@ const vehicleRowSchema = z.object({
   model: z.string(),
   colour: z.string(),
   colour_note: z.string().nullable(),
+  // 20261012100000. A plain string narrowed by toColourFinish, so a finish
+  // this build doesn't know costs the finish, never the whole garage.
+  colour_finish: z.string().nullish(),
   year: z.number().int().nullable(),
   body_type: z.string().nullable(),
   nickname: z.string().nullable(),
@@ -93,6 +99,7 @@ function toSavedVehicle(row: VehicleRow): SavedVehicle {
     model: row.model,
     colour: row.colour,
     colourNote: row.colour_note,
+    colourFinish: toColourFinish(row.colour_finish),
     year: row.year,
     bodyType: row.body_type,
     nickname: row.nickname,
@@ -198,6 +205,7 @@ function withDefaults(answers: Partial<AddVehicleAnswers>): AddVehicleAnswers {
     model: '',
     colour: '',
     colourNote: '',
+    colourFinish: null,
     year: null,
     bodyType: null,
     distinctiveFeatures: [],
@@ -236,6 +244,8 @@ async function buildSaveParams(
     p_nickname: emptyToNull(answers.nickname),
     p_photo_urls: photoUrls,
     p_distinctive_features: features,
+    // Every save sends it (update_vehicle replaces it); none under an escape.
+    p_colour_finish: savedColourFinish(answers.colour, answers.colourFinish),
   };
 }
 

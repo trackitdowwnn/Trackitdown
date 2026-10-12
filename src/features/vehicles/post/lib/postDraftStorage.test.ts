@@ -66,6 +66,7 @@ function answers(): Partial<PostACarAnswers> {
     make: 'BMW',
     model: '320d',
     colour: 'Blue',
+    colourFinish: 'pearl',
     year: 2019,
     lastSeenArea: 'Manchester',
     location: { latitude: 53.48, longitude: -2.24, addressLabel: 'Manchester' },
@@ -102,6 +103,7 @@ describe('savePostDraft', () => {
       make: 'BMW',
       model: '320d',
       colour: 'Blue',
+      colourFinish: 'pearl',
       year: 2019,
       location: {
         latitude: 53.48,

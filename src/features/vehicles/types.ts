@@ -11,6 +11,7 @@
  *        src/shared/types/posts.ts (PostStatus).
  */
 
+import type { ColourFinish } from '@/shared/lib/carColours';
 import type { PostStatus } from '@/shared/types';
 
 /** One hero photo. The upload/EXIF pipeline is the posting feature's; here we
@@ -63,6 +64,8 @@ export interface PostDetail {
   make: string;
   model: string;
   colour: string;
+  /** The optional paint finish ("Blue · Metallic"); absent when not said. */
+  colourFinish?: ColourFinish;
   /** Null for a plate-less post (make/model are the identity). */
   plate: string | null;
   year?: number;

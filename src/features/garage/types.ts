@@ -18,6 +18,7 @@
  */
 
 import type { DistinctiveFeature } from '@/features/vehicles';
+import type { ColourFinish } from '@/shared/lib/carColours';
 import type { PickedPhoto } from '@/shared/ui';
 
 /** Reserved lifecycle for a future ownership check. NOTHING writes anything but
@@ -51,6 +52,8 @@ export interface SavedVehicle {
    *  Kept so a wrapped car doesn't lose the detail that identifies it — and so a
    *  post prefilled from it doesn't either. */
   colourNote: string | null;
+  /** The optional paint finish — carried into a post started from this car. */
+  colourFinish: ColourFinish | null;
   year: number | null;
   bodyType: string | null;
   /** Friendly label, e.g. "Mum's Golf". Falls back to make + model in the UI. */
@@ -81,6 +84,7 @@ export interface AddVehicleAnswers {
   model: string;
   colour: string;
   colourNote: string;
+  colourFinish: ColourFinish | null;
   year: number | null;
   bodyType: string | null;
   distinctiveFeatures: DistinctiveFeature[];
@@ -117,6 +121,9 @@ export interface SaveVehicleParams {
   p_nickname: string | null;
   p_photo_urls: string[];
   p_distinctive_features: { photo_url: string; description: string }[];
+  /** Sent on EVERY save: update_vehicle is a full replace, so leaving it out
+   *  would wipe a stored finish (20261012100000). */
+  p_colour_finish: ColourFinish | null;
 }
 
 /** The most vehicles one account may save. Beyond this the CTA explains kindly

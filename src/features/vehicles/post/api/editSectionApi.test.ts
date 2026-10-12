@@ -68,6 +68,7 @@ describe('editSectionApi', () => {
       model: '320d',
       colour: 'Blue',
       colourNote: '   ',
+      colourFinish: 'metallic',
       year: 2019,
       bodyType: null,
     });
@@ -79,7 +80,26 @@ describe('editSectionApi', () => {
       p_owner_note: null,
       p_year: 2019,
       p_body_type: null,
+      p_colour_finish: 'metallic',
     });
+  });
+
+  // The RPC is a full replace: a save without the finish would wipe it, so
+  // "none" goes as an explicit null — and an escape colour never carries one.
+  it.each([
+    ['no finish', 'Blue', null],
+    ['an escape colour', 'Other', 'pearl'],
+  ] as const)('saveCarDetails sends p_colour_finish null for %s', async (_case, colour, finish) => {
+    await saveCarDetails('p1', {
+      make: 'BMW',
+      model: '320d',
+      colour,
+      colourNote: 'Champagne',
+      colourFinish: finish,
+      year: null,
+      bodyType: null,
+    });
+    expect(mockRpc.mock.calls[0][1]).toHaveProperty('p_colour_finish', null);
   });
 
   it('saveTheftContext trims desc to null and passes enums through', async () => {

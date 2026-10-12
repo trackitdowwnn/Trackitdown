@@ -14,7 +14,7 @@
 
 import { VehicleSaveError } from '../lib/vehicleSaveError';
 
-import { addVehicle, deleteVehicle, listMyVehicles } from './garageApi';
+import { addVehicle, deleteVehicle, listMyVehicles, updateVehicle } from './garageApi';
 
 const mockRpc = jest.fn();
 const mockUpload = jest.fn(async (_userId: string, _photo: unknown, index: number, prefix = '') =>
@@ -137,6 +137,22 @@ describe('listMyVehicles', () => {
     expect(vehicle.colourNote).toBe('matte black wrap over silver');
   });
 
+  it('carries the paint finish, and reads one it does not know as none', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        row({ colour_finish: 'metallic' }),
+        row({ id: POST_ID, colour_finish: 'satin' }), // a finish from a newer server
+        row({ id: '33333333-3333-3333-3333-333333333333', colour_finish: null }),
+      ],
+      error: null,
+    });
+
+    const vehicles = await listMyVehicles();
+
+    // The whole garage still parses: the finish is optional, the car is not.
+    expect(vehicles.map((vehicle) => vehicle.colourFinish)).toEqual(['metallic', null, null]);
+  });
+
   it('fails loudly on a shape drift rather than rendering garbage', async () => {
     mockRpc.mockResolvedValue({ data: [row({ id: 'not-a-uuid' })], error: null });
     await expect(listMyVehicles()).rejects.toThrow();
@@ -205,9 +221,39 @@ describe('addVehicle', () => {
     expect(params.p_plate).toBeNull();
     expect(params.p_nickname).toBeNull();
     expect(params.p_colour_note).toBeNull();
+    expect(params.p_colour_finish).toBeNull();
     expect(params.p_year).toBeNull();
     expect(params.p_body_type).toBeNull();
     expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  it('sends the paint finish for a plain colour, and none under an escape', async () => {
+    mockRpc.mockResolvedValue({ data: { vehicle_id: VEHICLE_ID }, error: null });
+
+    await addVehicle({ make: 'BMW', model: '320d', colour: 'Blue', colourFinish: 'matte' });
+    await addVehicle({
+      make: 'BMW',
+      model: '320d',
+      colour: 'Other',
+      colourNote: 'Champagne',
+      colourFinish: 'matte',
+    });
+
+    expect(mockRpc.mock.calls[0][1].p_colour_finish).toBe('matte');
+    expect(mockRpc.mock.calls[1][1].p_colour_finish).toBeNull();
+  });
+
+  // update_vehicle is a FULL replace (20261012100000): a save without the key
+  // would wipe a stored finish, so a cleared one goes as an explicit null.
+  it('update always sends p_colour_finish — null when cleared', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null });
+
+    await updateVehicle(VEHICLE_ID, { make: 'BMW', model: '320d', colour: 'Blue', colourFinish: null });
+
+    expect(mockRpc).toHaveBeenCalledWith(
+      'update_vehicle',
+      expect.objectContaining({ p_vehicle_id: VEHICLE_ID, p_colour_finish: null }),
+    );
   });
 
   it('trims an empty plate and nickname to SQL NULL', async () => {

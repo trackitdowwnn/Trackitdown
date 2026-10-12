@@ -8,15 +8,22 @@
 export {
   CAR_COLOURS,
   canonicalColourName,
+  COLOUR_FINISHES,
+  COLOUR_FINISH_VALUES,
   colourChangePatch,
+  colourFinishLabel,
   colourFromDvla,
   colourIsComplete,
+  colourWithFinish,
   glyphInkFor,
   isNoteColour,
+  savedColourFinish,
   swatchForName,
+  toColourFinish,
   GLYPH_ON_DARK,
   GLYPH_ON_LIGHT,
   type CarColour,
+  type ColourFinish,
   type NoteCopy,
 } from './carColours';
 export {
