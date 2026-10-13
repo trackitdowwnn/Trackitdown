@@ -20,7 +20,8 @@
     "      push.test.ts in here produces errors about the module under test",
     "      rather than the test, which is noise, not coverage. Those two stay",
     "      untypechecked and the reason is now written down. refundEscrow.test.ts",
-    "      (2026-10-05) imports Deno code the same way and is excluded likewise.",
+    "      (2026-10-05) imports Deno code the same way and is excluded likewise,",
+    "      as is payoutAccountState.test.ts (2026-10-13).",
     "RUN:  npm run typecheck (which runs this too), or npm run typecheck:tests."
   ],
   "extends": "../../tsconfig.json",
