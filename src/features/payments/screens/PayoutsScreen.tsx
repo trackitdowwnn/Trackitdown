@@ -64,6 +64,11 @@
  *        src/app/payouts.tsx; docs/DESIGN_SYSTEM.md (tone).
  */
 
+// ⚠️ ConnectAccountOnboarding renders in `react-native-webview`, a PEER
+// dependency the SDK imports lazily. Until 2026-10-13 it wasn't installed: the
+// import failed with only a console.error, `onLoadError` never fired, and the
+// ID check opened onto a blank modal on every device. It is native — removing
+// it, or an APK built before it, brings that back, and no OTA can fix it.
 import {
   ConnectAccountOnboarding,
   ConnectComponentsProvider,
