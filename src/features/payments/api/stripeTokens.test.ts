@@ -102,9 +102,10 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function mockFetch(response: { ok: boolean; body?: unknown }) {
+function mockFetch(response: { ok: boolean; status?: number; body?: unknown }) {
   const fetchMock = jest.fn(async () => ({
     ok: response.ok,
+    status: response.status ?? (response.ok ? 200 : 400),
     json: async () => response.body ?? {},
   }));
   globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -171,6 +172,22 @@ describe('createIdentityToken', () => {
     expect(body.identity.individual).not.toHaveProperty('phone');
     expect(body.identity.individual.address).not.toHaveProperty('line2');
   });
+
+  it.each([429, 500, 503])(
+    '⚠️ a %i is Stripe busy or down, not a refusal — a retry, never the irreversible path',
+    async (status) => {
+      // DETAILS_REJECTED leads to "Continue with Stripe", which spends the
+      // prefill window for good; nothing about the details was judged here.
+      mockFetch({ ok: false, status });
+
+      const error = await createIdentityToken(details, 'alex@example.com').catch(
+        (err: unknown) => err,
+      );
+
+      expect(error).toBeInstanceOf(PaymentError);
+      expect((error as PaymentError).code).toBe('STRIPE_UNAVAILABLE');
+    },
+  );
 
   it('⚠️ never puts the rejection body in front of a person', async () => {
     // Stripe's rejection can echo the values it rejected. This one echoes a

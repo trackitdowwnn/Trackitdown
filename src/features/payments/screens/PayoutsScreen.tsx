@@ -4,13 +4,16 @@
  *        (credit-time setup means exactly that), a bounty waiting for details,
  *        part way, being checked, or ready.
  *
- *        THREE FLOWS LIVE HERE, in this order of preference:
- *          1. `PayoutDetailsForm` — our own native form. Stripe allows us to
- *             submit bank details and identity fields only while the prefill
- *             window is open, so this runs FIRST and the server refuses to mint
- *             a session (`details_required`) until it has.
+ *        FOUR FLOWS START HERE, in this order of preference:
+ *          1. The payout-setup WIZARD (`/payout-setup`, 2026-10-13; it was the
+ *             single-page PayoutDetailsForm) — our own native steps. Stripe
+ *             allows us to submit bank details and identity fields only while
+ *             the prefill window is open, so this runs FIRST and the server
+ *             refuses to mint a session (`details_required`) until it has. It
+ *             is its own pushed screen and hands its ending back through
+ *             payoutSetupOutcome, read here on focus.
  *          2. `ConnectAccountOnboarding` — Stripe's embedded component, in-app,
- *             for whatever our form could not say and the liveness check only
+ *             for whatever our steps could not say and the liveness check only
  *             they can do.
  *          3. `BankDetailsForm` — changing WHERE the money lands on a working
  *             account: three fields, in-app, both account generations (the
@@ -21,10 +24,11 @@
  *             LOGIN LINK (account_update links are refused when Stripe
  *             collects requirements — found as a spinner-to-nowhere,
  *             2026-08-04).
- *        Our form cannot describe a company or a non-UK account, so a
- *        `DETAILS_REJECTED` offers "Continue with Stripe", which spends the
- *        prefill window deliberately rather than leaving someone permanently
- *        unpayable behind a form that can never satisfy Stripe.
+ *        Our steps cannot describe a company or a non-UK account, so a refusal
+ *        there leaves 'rejected' behind, and this screen offers "Continue with
+ *        Stripe", which spends the prefill window deliberately rather than
+ *        leaving someone permanently unpayable behind steps that can never
+ *        satisfy Stripe — but only while nothing has reached Stripe yet.
  * WHY:   `release-payout` refuses to transfer until Stripe says a spotter is
  *        payable, and nothing in the app could create that account. Every
  *        credited bounty sat on the platform balance while both parties were
@@ -54,7 +58,7 @@
  *        including the query string would fail to match the expiry redirect and
  *        hang the session with no way out but the back button.
  * LINKS: ../api/payoutsApi.ts; ../hooks/usePayoutAccount.ts;
- *        ../components/PayoutDetailsForm.tsx (flow 1);
+ *        ./PayoutSetupScreen.tsx + ../lib/payoutSetupOutcome.ts (flow 1);
  *        supabase/functions/submit-payout-details/index.ts (where it goes);
  *        supabase/functions/connect-onboarding/index.ts (session, link, gate);
  *        src/app/payouts.tsx; docs/DESIGN_SYSTEM.md (tone).
@@ -66,15 +70,14 @@ import {
   loadConnectAndInitialize,
   type StripeConnectInstance,
 } from '@stripe/stripe-react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useRequireAuth } from '@/features/auth';
-import { supabase } from '@/shared/api';
+import { useRequireAuth, useSession } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
 import { formatPounds } from '@/shared/lib/money';
 import {
@@ -97,16 +100,11 @@ import {
 } from '@/shared/ui';
 
 import { PaymentError } from '@/shared/lib/functionError';
-import {
-  fetchMyPendingCredit,
-  startConnectOnboarding,
-  submitPayoutTokens,
-  type PayoutDetails,
-} from '../api/payoutsApi';
-import { createBankToken, createIdentityToken } from '../api/stripeTokens';
+import { fetchMyPendingCredit, startConnectOnboarding, submitPayoutTokens } from '../api/payoutsApi';
+import { createBankToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
-import { PayoutDetailsForm } from '../components/PayoutDetailsForm';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
+import { takePayoutSetupOutcome } from '../lib/payoutSetupOutcome';
 import { ensureStripeReady } from '../lib/stripeReady';
 
 const log = createLogger('payments');
@@ -186,14 +184,16 @@ export function PayoutsScreen() {
   const toast = useToast();
   const requireAuth = useRequireAuth();
   const { status, settling, refresh, settleReturn } = usePayoutAccount();
+  const session = useSession();
+  const userId = session.status === 'signedIn' ? session.userId : null;
   const params = useLocalSearchParams<{ onboarding?: string }>();
+  const router = useRouter();
   const [opening, setOpening] = useState(false);
-  const [showForm, setShowForm] = useState(false);
   // "Update bank details" on a ready account: three fields, in the app. The
   // browser hop this replaced was a dead end for legacy Express accounts —
   // Stripe refuses `account_update` links when it collects requirements.
   const [showBankForm, setShowBankForm] = useState(false);
-  // Stripe refused what our form can describe. Offers the way past.
+  // Stripe refused what the setup steps can describe. Offers the way past.
   const [detailsRejected, setDetailsRejected] = useState(false);
   const [bankRejected, setBankRejected] = useState(false);
   // The earn moment's context: "You've earned £X". Server-derived via
@@ -201,7 +201,7 @@ export function PayoutsScreen() {
   //
   // TRI-STATE, and the third state is load-bearing: `undefined` means "still
   // asking", `null` means "asked — nothing waiting". notStarted branches on
-  // that difference (setup form vs nothing-to-set-up), and collapsing them
+  // that difference (setup card vs nothing-to-set-up), and collapsing them
   // would flash the wrong screen at everyone for the length of one fetch.
   const [pendingCreditPence, setPendingCreditPence] = useState<number | null | undefined>(
     undefined,
@@ -242,6 +242,22 @@ export function PayoutsScreen() {
     consumedParam.current = true;
     settleReturn();
   }, [params.onboarding, settleReturn]);
+
+  // The setup wizard's ending, read once as this screen comes back into view
+  // (see payoutSetupOutcome) — and only if THIS user left it. Sent → the
+  // settling window, exactly as a return from Stripe arms it; refused → the
+  // "Continue with Stripe" card.
+  useFocusEffect(
+    useCallback(() => {
+      const outcome = takePayoutSetupOutcome(userId);
+      if (outcome === 'submitted') {
+        setDetailsRejected(false);
+        settleReturn();
+      } else if (outcome === 'rejected') {
+        setDetailsRejected(true);
+      }
+    }, [settleReturn, userId]),
+  );
 
   // The secret the SDK is about to ask for. Deciding WHICH flow to run costs one
   // call, and throwing its answer away would make the component fetch a second
@@ -287,11 +303,11 @@ export function PayoutsScreen() {
         return;
       }
 
-      // OUR FORM FIRST. The server refuses to mint a session until it has run,
-      // because doing so would permanently close the window in which we are
-      // allowed to submit bank details at all.
+      // OUR STEPS FIRST. The server refuses to mint a session until they have
+      // run, because doing so would permanently close the window in which we
+      // are allowed to submit bank details at all.
       if (result.status === 'details_required') {
-        setShowForm(true);
+        router.push('/payout-setup');
         return;
       }
 
@@ -343,60 +359,16 @@ export function PayoutsScreen() {
       setOpening(false);
     }
     },
-    [fetchClientSecret, opening, palette, refresh, settleReturn, toast],
+    [fetchClientSecret, opening, palette, refresh, router, settleReturn, toast],
   );
 
   /**
-   * The credit-time path (ADR-0010): everything they typed becomes two Stripe
-   * tokens ON THE PHONE — identity via the publishable key, bank via the SDK —
-   * and our server receives two opaque ids. Compare the previous generation,
-   * which POSTed the raw sort code through our Edge Function: with this,
-   * nothing sensitive touches our infrastructure at all.
-   *
-   * On success the settling machinery takes over: Stripe usually activates a
-   * clean GB individual in seconds, and the bounded re-check window catches it.
+   * Spend the prefill window deliberately and let Stripe ask instead — for a
+   * spotter whose details Stripe refused in the setup wizard: a company, a
+   * non-UK account, something its fields have no word for. Without this way
+   * past, they are gated forever behind steps that can never satisfy Stripe.
    */
-  const onSubmitDetails = useCallback(
-    async (details: PayoutDetails) => {
-      setOpening(true);
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        const email = userData.user?.email;
-        if (!email) {
-          throw new PaymentError('Please log in again, then try once more.', 'NOT_AUTHENTICATED');
-        }
-
-        const accountToken = await createIdentityToken(details, email);
-        const bankToken = await createBankToken(details);
-        await submitPayoutTokens({ accountToken, bankToken });
-
-        setShowForm(false);
-        settleReturn();
-      } catch (error) {
-        // Stripe would not take what our form can describe — a company, a
-        // non-UK account, something these fields have no word for. Without a
-        // way past, that spotter is gated forever behind a form that can never
-        // satisfy it. The "Continue with Stripe" card offers the legacy hosted
-        // path, which can ask for anything.
-        if (error instanceof PaymentError && error.code === 'DETAILS_REJECTED') {
-          setDetailsRejected(true);
-        }
-        toast.show(
-          error instanceof PaymentError
-            ? error.message
-            : 'We couldn’t save your details. Please try again.',
-          'error',
-        );
-      } finally {
-        setOpening(false);
-      }
-    },
-    [settleReturn, toast],
-  );
-
-  /** Spend the prefill window deliberately and let Stripe ask instead. */
   const onSkipPrefill = useCallback(async () => {
-    setShowForm(false);
     setDetailsRejected(false);
     await open({ skipPrefill: true });
   }, [open]);
@@ -504,8 +476,8 @@ export function PayoutsScreen() {
       // Button — the one that starts the flow — so it was not merely clipped
       // but unreachable.
       contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
-      // The form is ten fields deep; without this the last two sit under the
-      // keyboard and the first tap on Continue is spent dismissing it.
+      // The bank form's last field sits low; without this it hides under the
+      // keyboard and the first tap on Save is spent dismissing it.
       keyboardAware
       // The settling window stops after ~14s. Without a pull-to-refresh,
       // "Stripe is checking your details" is a dead end until the screen is
@@ -574,22 +546,19 @@ export function PayoutsScreen() {
           has been demonstrated rather than promised). */}
       {/* ⚠️ "PASS STRAIGHT ON" AND "NEVER STORE", NEVER "NEVER SEE". This line
           first read "we never see or store them" and a test caught it within
-          the minute — PayoutDetailsForm:154 records why: the details are POSTed
-          to our own Edge Function and held in memory on the way to Stripe, so
-          "never store" is true and "never see" is the sentence a regulator
-          would quote back. Worded to match the form exactly; two promises about
+          the minute. "Never store" holds on every path the details have ever
+          taken; "never see" is the claim a regulator would test hardest, and
+          it was false for the server-side route this app used to take. Worded
+          to match PayoutTermsNotice (payoutSetupSteps.tsx); two promises about
           the same data in different words is how one of them drifts.
 
-          ⚠️ AND NOT WHILE EITHER FORM IS OPEN, which a second test caught by
-          finding the sentence twice on one screen. Both forms already carry it
-          beside the fields, which is the better place for it — a promise about
-          what happens to a sort code belongs next to the sort code. This
-          footnote exists only for the states where NO form is showing
-          (unfinished, verifying), because that is where the reassurance used to
-          disappear entirely: it lived in the `notStarted` copy alone, so it
-          vanished the moment setup began and never returned while Stripe was
-          holding things up. */}
-      {status !== 'guest' && status !== 'loading' && status !== 'ready' && !showForm && !showBankForm && !connectInstance ? (
+          ⚠️ AND NOT WHILE THE BANK FORM IS OPEN, which a test caught by
+          finding the sentence twice on one screen: the form carries it beside
+          the fields, the better place for a promise about a sort code. (The
+          setup wizard carries its own, on its own screen.) This footnote is for
+          the states where no form is showing (unfinished, verifying), because
+          that is where the reassurance used to disappear entirely. */}
+      {status !== 'guest' && status !== 'loading' && status !== 'ready' && !showBankForm && !connectInstance ? (
         <Text style={styles.trust} testID="payouts-trust">
           We pass your bank details straight to Stripe and never store them.
         </Text>
@@ -609,33 +578,35 @@ export function PayoutsScreen() {
         />
       );
     }
-    if (showForm) {
+    // ⚠️ ONLY WHILE THERE IS STILL NOTHING TO LOSE. "Continue with Stripe"
+    // spends the prefill window for good; once details have reached Stripe
+    // (verifying, ready) the card would offer a button with no purpose and one
+    // irreversible effect, so the account's own state wins.
+    if (detailsRejected && (status === 'notStarted' || status === 'unfinished')) {
       return (
-        <>
-          <PayoutDetailsForm
-            onSubmit={onSubmitDetails}
-            onCancel={() => setShowForm(false)}
-            busy={opening}
+        <View style={styles.card} testID="payouts-details-rejected">
+          <Text style={styles.cardTitle} accessibilityRole="header">
+            Stripe needs something else
+          </Text>
+          <Text style={styles.cardBody}>
+            Our steps cover a UK account in your own name. If that isn’t you — a company,
+            or an account elsewhere — Stripe can ask for the right details directly.
+          </Text>
+          <Button
+            label="Continue with Stripe"
+            onPress={() => void onSkipPrefill()}
+            loading={opening}
           />
-          {detailsRejected ? (
-            <View style={styles.card} testID="payouts-details-rejected">
-              <Text style={styles.cardTitle} accessibilityRole="header">
-                Stripe needs something else
-              </Text>
-              <Text style={styles.cardBody}>
-                This form covers a UK account in your own name. If that isn’t you — a
-                company, or an account elsewhere — Stripe can ask for the right details
-                directly.
-              </Text>
-              <Button
-                label="Continue with Stripe"
-                variant="secondary"
-                onPress={() => void onSkipPrefill()}
-                loading={opening}
-              />
-            </View>
-          ) : null}
-        </>
+          <Button
+            label="Try our steps again"
+            variant="ghost"
+            onPress={() => {
+              setDetailsRejected(false);
+              router.push('/payout-setup');
+            }}
+            disabled={opening}
+          />
+        </View>
       );
     }
     if (showBankForm) {

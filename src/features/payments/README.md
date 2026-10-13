@@ -81,17 +81,23 @@ is the NORMAL first outcome, not a failure, and the bounty waits in escrow.
   platform submit bank details and identity fields for an Express account
   itself: *"you can update all information **until you create an Account Link or
   Account Session**, after which some properties can no longer be updated."*
-  That window is why `PayoutDetailsForm` can exist at all, and it **shuts
-  permanently and silently** on the first session. So `connect-onboarding`
-  answers `details_required` and refuses to mint one until our form has run.
+  That window is why our own setup steps (the `/payout-setup` wizard,
+  `PayoutSetupScreen`; until 2026-10-13 the single-page `PayoutDetailsForm`)
+  can exist at all, and it **shuts permanently and silently** on the first
+  session. So `connect-onboarding` answers `details_required` and refuses to
+  mint one until our steps have run — and no step of that wizard talks to
+  Stripe before its final "Send to Stripe".
   Anything that mints a session earlier — a stray call, a "warm it up" ping —
   destroys the feature for that account forever, with no error.
-  - Bank details go as a **raw dictionary**, never a token. A `btok_` from
-    `createToken({type:'BankAccount'})` may only be attached where
-    `controller.requirement_collection` is `application`; Express is not.
-  - **We never store them.** They transit `submit-payout-details` to Stripe and
-    are gone. Not a column, not a log, not a masked tail — there is a test in
-    `payoutsApi.test.ts` asserting they never reach a log call.
+  - **Tokenised on the phone (ADR-0010).** The wizard mints an identity token
+    (v2 account token, publishable key) and a bank `btok_` (the SDK's
+    `createToken`) on the device, and `create-payout-account` receives the two
+    opaque ids. The older raw-dictionary route through `submit-payout-details`
+    survives server-side; the app no longer calls it.
+  - **We never store them.** Not a column, not a log, not a masked tail, not a
+    draft — the wizard offers no "save for later". Tests in
+    `payoutsApi.test.ts` and `PayoutSetupScreen.test.tsx` assert nothing typed
+    reaches a log call.
 - **Setup is in-app; changing details is not.** `ConnectAccountOnboarding`
   (Stripe's own RN component, GA in SDK 0.69.0) handles what our form could not
   via an **Account Session**. Stripe has no React Native component for managing

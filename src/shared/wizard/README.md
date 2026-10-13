@@ -11,7 +11,11 @@ answers shape so consuming flows get full type safety.
 **Who consumes it:** five real flows — post-a-car (details → photos → last
 seen → bounty; the verification step was removed by ADR-0007), add-a-vehicle
 in the garage, report-a-sighting, the alert wizard, and report-a-bug (added
-2026-08-27). Read any of those as the reference. The dev-only `/wizard-demo`
+2026-08-27). A sixth, payout setup (2026-10-13, `features/payments`), groups
+its fields like report-a-bug and is the first to use `review.header` for TERMS
+rather than a preview: the identity token attests they were shown, and the
+header keeps them on screen whenever the pinned submit button is. Read any of
+those as the reference. The dev-only `/wizard-demo`
 route was deleted 2026-08-01: once real consumers existed, a fake one could
 only drift out of date.
 

@@ -13,6 +13,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { PaymentError } from '@/shared/lib/functionError';
+import { setPayoutSetupOutcome, takePayoutSetupOutcome } from '../lib/payoutSetupOutcome';
 import { PayoutsScreen } from './PayoutsScreen';
 
 jest.mock('react-native-safe-area-context', () =>
@@ -46,23 +47,30 @@ jest.mock('@stripe/stripe-react-native', () => {
 
 const mockSetParams = jest.fn();
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
 let mockParams: { onboarding?: string } = {};
+// The latest focus effect, so a test can play "Payouts comes back into view"
+// (the setup wizard going back) by calling it.
+let mockFocus: (() => void) | null = null;
 jest.mock('expo-router', () => ({
   useRouter: () => ({
     back: jest.fn(),
-    push: jest.fn(),
+    push: mockPush,
     replace: mockReplace,
     setParams: mockSetParams,
     canGoBack: mockCanGoBack,
   }),
   useLocalSearchParams: () => mockParams,
-  useFocusEffect: () => {},
+  useFocusEffect: (effect: () => void) => {
+    mockFocus = effect;
+  },
 }));
 
 const mockRequireAuth = jest.fn();
 jest.mock('@/features/auth', () => ({
   useRequireAuth: () => mockRequireAuth,
+  useSession: () => ({ status: 'signedIn', userId: 'user-1' }),
 }));
 
 const mockShowToast = jest.fn();
@@ -119,26 +127,18 @@ jest.mock('../hooks/usePayoutAccount', () => ({
 
 const STRIPE_URL = 'https://connect.stripe.com/setup/abc';
 
-/** Fill every required field so `submit()` reaches the api rather than zod. */
-const fillForm = async (getByTestId: (id: string) => unknown) => {
-  const type = async (id: string, value: string) => {
-    await act(async () => {
-      fireEvent.changeText(getByTestId(id) as never, value);
-    });
-  };
-  await type('payout-first-name', 'Ada');
-  await type('payout-last-name', 'Lovelace');
-  await type('payout-dob', '01041990');
-  await type('payout-address-1', '12 Bridge Street');
-  await type('payout-city', 'Manchester');
-  await type('payout-postcode', 'M1 1AA');
-  await type('payout-sort-code', '108800');
-  await type('payout-account-number', '00012345');
-  await type('payout-confirm-account-number', '00012345');
+/** Payouts coming back into view, as it does when the setup wizard goes back. */
+const refocus = async () => {
+  await act(async () => {
+    mockFocus?.();
+  });
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Nothing left over from a previous test's wizard.
+  takePayoutSetupOutcome(null);
+  mockFocus = null;
   mockParams = {};
   mockAccountState = { status: 'notStarted', settling: false };
   mockStart.mockResolvedValue({ status: 'onboarding_session', clientSecret: 'accs_secret_123' });
@@ -179,27 +179,9 @@ describe('⚠️ the status chip and the trust line (Airbnb pass, 2026-08-26)', 
     expect(queryByText(/error|problem|failed|rejected/i)).toBeNull();
   });
 
-  it('⚠️ does not repeat the bank-details promise while a form is open', async () => {
-    // Caught by an existing test finding the sentence TWICE on one screen. Both
-    // forms carry it beside the fields, which is where a promise about a sort
-    // code belongs; the footnote exists only for the states where no form is
-    // showing, because that is where the reassurance used to vanish entirely —
-    // it lived in the `notStarted` copy alone.
-    mockStart.mockResolvedValue({ status: 'details_required' });
-    const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
-
-    expect(queryByTestId('payouts-trust')).toBeTruthy();
-
-    await act(async () => {
-      fireEvent.press(getByText('Add your details'));
-    });
-
-    expect(queryByTestId('payouts-trust')).toBeNull();
-  });
-
   it('⚠️ says "never store", never "never see"', async () => {
-    // The claim that is true. PayoutDetailsForm:154 records the distinction:
-    // the details are POSTed to our own Edge Function on the way to Stripe, so
+    // The claim that is true. PayoutTermsNotice records the distinction:
+    // the server-side route this app used to take saw the details in transit, so
     // "never see" is the sentence a regulator would quote back. This footnote
     // reintroduced it once already, within a minute of being written.
     mockAccountState = { status: 'verifying', settling: false };
@@ -285,59 +267,56 @@ describe('what each state says', () => {
   });
 });
 
-describe('our own form comes first', () => {
-  it('shows the native form rather than handing straight to Stripe', async () => {
+describe('our own steps come first (the setup wizard, 2026-10-13)', () => {
+  it('opens the setup wizard rather than handing straight to Stripe', async () => {
     // The window in which we may submit bank details at all closes the moment a
-    // session exists, so the server says details_required until our form runs.
+    // session exists, so the server says details_required until our steps run.
     mockStart.mockResolvedValue({ status: 'details_required' });
-    const { getByText, getByTestId, queryByTestId } = await act(async () =>
-      render(<PayoutsScreen />),
-    );
+    const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
 
     await act(async () => {
       fireEvent.press(getByText('Add your details'));
     });
 
-    expect(getByTestId('payout-details-form')).toBeTruthy();
+    expect(mockPush).toHaveBeenCalledWith('/payout-setup');
     expect(queryByTestId('connect-onboarding')).toBeNull();
     expect(mockOpenAuth).not.toHaveBeenCalled();
   });
 
-  it('promises only what is true about the bank details', async () => {
-    // It said "we never SEE or store" them, which is half false: they are
-    // POSTed to our own Edge Function and held in memory on the way to Stripe.
-    // "Pass straight on" and "never store" are both true; the other one is the
-    // sentence a regulator would quote back.
-    mockStart.mockResolvedValue({ status: 'details_required' });
-    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
-    await act(async () => {
-      fireEvent.press(getByText('Add your details'));
-    });
-    expect(getByText(/never store them/i)).toBeTruthy();
-    expect(queryByText(/never see/i)).toBeNull();
+  it('arms the settling window when the wizard comes back having sent', async () => {
+    // Same as a return from Stripe: until the webhook lands, someone who just
+    // sent everything reads like someone who gave up.
+    await act(async () => render(<PayoutsScreen />));
+    setPayoutSetupOutcome('submitted', 'user-1');
+    await refocus();
+
+    expect(mockSettleReturn).toHaveBeenCalledTimes(1);
   });
 
-  it('offers Stripe when our form cannot describe them', async () => {
-    // A company, or a non-UK account. Our ten fields have no word for either,
-    // so without this the spotter is gated forever behind a form that can
-    // never satisfy Stripe — permanently unpayable.
-    mockStart.mockResolvedValue({ status: 'details_required' });
-    // The REAL PaymentError — the screen tests `instanceof`, and only the api
-    // module is mocked, so `functionError` is the genuine article here. The
-    // rejection comes from the identity tokeniser: Stripe refused the identity
-    // itself, before anything reached our server.
-    mockIdentityToken.mockRejectedValue(
-      new PaymentError('Stripe couldn’t accept those details.', 'DETAILS_REJECTED'),
-    );
+  it('does nothing on an ordinary return — no outcome, no settling', async () => {
+    // Backing out of the wizard, or coming back from anywhere else.
+    await act(async () => render(<PayoutsScreen />));
+    await refocus();
 
+    expect(mockSettleReturn).not.toHaveBeenCalled();
+  });
+
+  it('reads an outcome once: a second return does not settle again', async () => {
+    await act(async () => render(<PayoutsScreen />));
+    setPayoutSetupOutcome('submitted', 'user-1');
+    await refocus();
+    await refocus();
+
+    expect(mockSettleReturn).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers Stripe when our steps cannot describe them', async () => {
+    // A company, or a non-UK account. Our fields have no word for either, so
+    // without this the spotter is gated forever behind steps that can never
+    // satisfy Stripe — permanently unpayable.
     const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
-    await act(async () => {
-      fireEvent.press(getByText('Add your details'));
-    });
-    await fillForm(getByTestId);
-    await act(async () => {
-      fireEvent.press(getByText('Continue'));
-    });
+    setPayoutSetupOutcome('rejected', 'user-1');
+    await refocus();
 
     expect(getByTestId('payouts-details-rejected')).toBeTruthy();
     mockStart.mockResolvedValue({ status: 'onboarding_session', clientSecret: 'accs_1' });
@@ -348,33 +327,41 @@ describe('our own form comes first', () => {
     expect(mockStart).toHaveBeenCalledWith({ skipPrefill: true });
   });
 
-  it('offers a way out of ten fields of bank and identity data', async () => {
-    mockStart.mockResolvedValue({ status: 'details_required' });
-    const { getByText, getByTestId, queryByTestId } = await act(async () =>
-      render(<PayoutsScreen />),
-    );
-    await act(async () => {
-      fireEvent.press(getByText('Add your details'));
-    });
-    expect(getByTestId('payout-details-form')).toBeTruthy();
+  it('⚠️ ignores an outcome another user left behind', async () => {
+    // A stale 'rejected' would show this spotter a button that spends their
+    // prefill window for good (security review, 2026-10-13).
+    const { queryByTestId } = await act(async () => render(<PayoutsScreen />));
+    setPayoutSetupOutcome('rejected', 'someone-else');
+    await refocus();
 
-    await act(async () => {
-      fireEvent.press(getByText('Not now'));
-    });
-    // Back to the screen they came from, not out of the app entirely.
-    expect(queryByTestId('payout-details-form')).toBeNull();
-    expect(getByTestId('payouts-notStarted')).toBeTruthy();
+    expect(queryByTestId('payouts-details-rejected')).toBeNull();
+    expect(mockSettleReturn).not.toHaveBeenCalled();
   });
 
-  it('does not claim they are finished — Stripe still has questions', async () => {
-    // Saying "done" and then showing a Stripe verification screen would be a
-    // bait and switch.
-    mockStart.mockResolvedValue({ status: 'details_required' });
-    const { getByText } = await act(async () => render(<PayoutsScreen />));
+  it('⚠️ never offers "Continue with Stripe" once details have reached Stripe', async () => {
+    // Being checked or ready: the button would have no purpose and one
+    // irreversible effect. The account's own state wins.
+    mockAccountState = { status: 'verifying', settling: false };
+    const { queryByTestId, getByTestId } = await act(async () => render(<PayoutsScreen />));
+    setPayoutSetupOutcome('rejected', 'user-1');
+    await refocus();
+
+    expect(queryByTestId('payouts-details-rejected')).toBeNull();
+    expect(getByTestId('payouts-verifying')).toBeTruthy();
+  });
+
+  it('…or lets them try our steps again', async () => {
+    // A typo can read as a refusal too; Stripe is not the only way past.
+    const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
+    setPayoutSetupOutcome('rejected', 'user-1');
+    await refocus();
+
     await act(async () => {
-      fireEvent.press(getByText('Add your details'));
+      fireEvent.press(getByText('Try our steps again'));
     });
-    expect(getByText(/may ask to verify your identity/i)).toBeTruthy();
+    expect(mockPush).toHaveBeenCalledWith('/payout-setup');
+    expect(queryByTestId('payouts-details-rejected')).toBeNull();
+    expect(mockStart).not.toHaveBeenCalled();
   });
 });
 
