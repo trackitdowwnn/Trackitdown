@@ -29,5 +29,5 @@
     "noEmit": true
   },
   "include": ["**/*.ts"],
-  "exclude": ["push.test.ts", "refundEscrow.test.ts"]
+  "exclude": ["push.test.ts", "refundEscrow.test.ts", "payoutAccountState.test.ts"]
 }
