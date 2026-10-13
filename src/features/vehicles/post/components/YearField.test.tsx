@@ -40,7 +40,7 @@ jest.mock('react-native-reanimated', () => {
   return {
     __esModule: true,
     default: { View },
-    Easing: { out: (fn: unknown) => fn, quad: () => 0 },
+    Easing: { in: (fn: unknown) => fn, out: (fn: unknown) => fn, quad: () => 0 },
     ReduceMotion: { System: 'system' },
     FadeIn: builder(),
     FadeInDown: builder(),

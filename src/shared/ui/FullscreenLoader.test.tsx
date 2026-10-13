@@ -44,6 +44,7 @@ jest.mock('react-native-reanimated', () => {
     __esModule: true,
     default: { View, Text },
     Easing: {
+      in: (fn: unknown) => fn,
       out: (fn: unknown) => fn,
       inOut: (fn: unknown) => fn,
       quad: () => 0,

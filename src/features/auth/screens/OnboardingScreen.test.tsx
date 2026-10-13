@@ -64,7 +64,7 @@ jest.mock('react-native-reanimated', () => {
     default: { View, createAnimatedComponent: (component: unknown) => component },
     // motionEasing runs Easing.out(Easing.cubic) at MODULE scope — both must
     // exist here or importing the screen throws before a single test runs.
-    Easing: { out: (fn: unknown) => fn, cubic: () => 0 },
+    Easing: { in: (fn: unknown) => fn, out: (fn: unknown) => fn, cubic: () => 0 },
     ReduceMotion: { System: 'system' },
     SlideInLeft: builder(),
     SlideInRight: builder(),

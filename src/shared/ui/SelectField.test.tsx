@@ -40,7 +40,7 @@ jest.mock('react-native-reanimated', () => {
   return {
     __esModule: true,
     default: { View },
-    Easing: { out: (fn: unknown) => fn, quad: () => 0 },
+    Easing: { in: (fn: unknown) => fn, out: (fn: unknown) => fn, quad: () => 0 },
     ReduceMotion: { System: 'system' },
     FadeIn: builder(),
     FadeOut: builder(),
@@ -126,7 +126,7 @@ describe('SelectField', () => {
       expect(onPicked).not.toHaveBeenCalled(); // still closing
 
       await act(async () => {
-        jest.advanceTimersByTime(300); // past the close animation
+        jest.advanceTimersByTime(450); // past the close and its fallback margin
       });
       expect(onPicked).toHaveBeenCalledTimes(1);
     });
@@ -138,7 +138,7 @@ describe('SelectField', () => {
         fireEvent.press(view.getByLabelText('Close'));
       });
       await act(async () => {
-        jest.advanceTimersByTime(300);
+        jest.advanceTimersByTime(450);
       });
       expect(onPicked).not.toHaveBeenCalled();
     });

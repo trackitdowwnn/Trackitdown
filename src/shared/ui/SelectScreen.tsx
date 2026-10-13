@@ -23,9 +23,11 @@
  * WHY:   Dropdown menus cramp on mobile; the Airbnb pattern gives every
  *        select in the app (car make, colour, future filters) room to
  *        search and generous touch targets. Presented as a self-contained
- *        RN Modal (slide-up + fade, 200–250ms ease-out, reversed on close,
- *        reduce-motion aware) so any screen can open one without route
- *        wiring. The list is a FlatList (headers as items +
+ *        RN Modal so any screen can open one without route wiring: it slides
+ *        up over 300ms easing out while the screen behind dims away under a
+ *        fading backdrop, and leaves over 300ms easing IN — gathering speed,
+ *        so it glides off rather than being yanked (2026-10-12) —
+ *        reduce-motion aware. The list is a FlatList (headers as items +
  *        stickyHeaderIndices) — FlashList was assessed but does not support
  *        sticky section headers, a core requirement. The DfT car list
  *        (2026-09-30) made these longer (~90 makes, ~110 rows with their
@@ -93,7 +95,8 @@ import {
   useThemedStyles,
   type Palette,
 } from '../theme';
-import { easeOut } from '@/shared/theme/motionEasing';
+import { easeIn, easeOut } from '@/shared/theme/motionEasing';
+import { holdFullscreenOverlay } from '../hooks';
 import { BottomSheet, type BottomSheetRef } from './BottomSheet';
 import { Button } from './Button';
 import { EmptyState } from './EmptyState';
@@ -110,8 +113,17 @@ import {
 } from './selectOptions';
 import { TextField } from './TextField';
 
-/** Open/close motion, at the design system's upper bound. */
-const MOTION_MS = motion.standard;
+/**
+ * Open and close (2026-10-12, owner report: "very snappy, not very nice").
+ * The ENTRANCE takes `slow` — it travels the whole height — decelerating
+ * (easeOut). The EXIT is shorter, as exits should be, and accelerates
+ * (easeIn, a quad), so it glides away from under the finger rather than being
+ * yanked: an easeOut exit is at full speed on its first frame. A cubic was
+ * tried and judged too slow to start for a close a tap triggers (motion
+ * review): the pick read as "did it register?".
+ */
+const OPEN_MS = motion.slow;
+const CLOSE_MS = motion.standard;
 const motionEasing = easeOut;
 /** Debounce before a keystroke re-filters the list. */
 const FILTER_DEBOUNCE_MS = 150;
@@ -276,24 +288,37 @@ export function SelectScreen<V extends string | number>({
   if (visible && !mounted) {
     setMounted(true);
   }
+  // The screen behind holds its keyboard lift still for as long as this is
+  // mounted — open, closing, and its search keyboard going down
+  // (fullscreenOverlay.ts).
+  useEffect(() => {
+    if (!mounted) return undefined;
+    return holdFullscreenOverlay();
+  }, [mounted]);
+
   // Fallback unmount for the close animation; the exit callback below
-  // normally lands first (see exiting= on the sheet).
+  // normally lands first (see exiting= on the sheet). Past the exit's own
+  // length, with a margin: an easeIn exit carries much of its travel in its
+  // last frames, so a timer racing it would cut the glide off mid-air.
   useEffect(() => {
     if (visible) {
       return;
     }
-    const timer = setTimeout(() => setMounted(false), MOTION_MS);
+    const timer = setTimeout(() => setMounted(false), CLOSE_MS + motion.fast);
     return () => clearTimeout(timer);
   }, [visible]);
 
-  // Focus can't ride only on Modal onShow: a reopen within the exit window
-  // reuses the mounted Modal (no onShow), but the content remounted. Skipped
-  // for browse-first pickers (autoFocusSearch=false) so the list leads.
+  // ⚠️ SEARCH FOCUSES ONCE THE SHEET HAS RISEN (2026-10-12), not as it shows
+  // — the type-it-in sheet's rule. A keyboard raised mid-slide lifts the
+  // screen BEHIND (the wizard's Android footer), and since the backdrop now
+  // fades rather than covering it from the first frame, that lift would show
+  // as the Next button jumping. Skipped for browse-first pickers
+  // (autoFocusSearch=false) so the list leads.
   useEffect(() => {
     if (!visible || !autoFocusSearch) {
       return;
     }
-    const timer = setTimeout(() => searchRef.current?.focus(), 0);
+    const timer = setTimeout(() => searchRef.current?.focus(), OPEN_MS);
     return () => clearTimeout(timer);
   }, [visible, autoFocusSearch]);
 
@@ -498,15 +523,30 @@ export function SelectScreen<V extends string | number>({
       animationType="none"
       onRequestClose={handleRequestClose}
       testID="select-screen-modal"
-      onShow={autoFocusSearch ? () => searchRef.current?.focus() : undefined}
     >
-      {/* Static opaque backdrop — covers the screen the WHOLE time the modal is
-          mounted (through both the enter and exit animations). The Modal is
-          `transparent`, so without this the sheet's slide/fade would reveal the
-          screen behind it (e.g. the wizard's Next button bleeding through and
-          flickering on Android). The sheet animates over this solid fill. */}
       <SheetHost enabled={entryButton != null}>
-      <View style={styles.backdrop}>
+      <View style={styles.flex}>
+      {/* ⚠️ THE BACKDROP FADES WITH THE SHEET (2026-10-12, owner report: "very
+          snappy"). It used to be a STATIC opaque fill for the whole time the
+          Modal was mounted: the screen behind vanished in one frame on open,
+          and on close the sheet slid away over blank page before the screen
+          came back in one frame — two hard cuts round every pick. Now the
+          screen behind dims away as the sheet rises and returns as it leaves.
+          Opacity only — no translate on a just-shown Modal.
+          The fill was there against the wizard's Next button bleeding through
+          and flickering on Android (65c612e). That flicker was the search
+          keyboard rising MID-SLIDE and lifting the footer behind the
+          transparent Modal; search now focuses only once the sheet has risen
+          (below), so the screen behind holds still while it shows. */}
+      {visible ? (
+        <Animated.View
+          style={styles.backdrop}
+          pointerEvents="none"
+          testID="select-screen-backdrop"
+          entering={FadeIn.duration(OPEN_MS).easing(easeOut).reduceMotion(ReduceMotion.System)}
+          exiting={FadeOut.duration(CLOSE_MS).easing(easeIn).reduceMotion(ReduceMotion.System)}
+        />
+      ) : null}
       {visible ? (
         <Animated.View
           style={styles.sheet}
@@ -515,14 +555,15 @@ export function SelectScreen<V extends string | number>({
           // trap focus; the scrim's "Close sheet" is a sibling, still reached).
           importantForAccessibility={entering ? 'no-hide-descendants' : 'auto'}
           accessibilityElementsHidden={entering}
-          entering={SlideInDown.duration(MOTION_MS).easing(motionEasing).reduceMotion(
+          entering={SlideInDown.duration(OPEN_MS).easing(easeOut).reduceMotion(
             ReduceMotion.System,
           )}
           // Unmount when the exit actually finishes (reduce-motion makes it
           // instant), not after a fixed delay — the timer above is a fallback
           // so a dropped callback can't leave an invisible Modal eating touches.
-          exiting={SlideOutDown.duration(MOTION_MS)
-            .easing(motionEasing)
+          // easeIn: it glides away from under the finger, never yanked.
+          exiting={SlideOutDown.duration(CLOSE_MS)
+            .easing(easeIn)
             .reduceMotion(ReduceMotion.System)
             .withCallback((finished) => {
               'worklet';
@@ -531,14 +572,12 @@ export function SelectScreen<V extends string | number>({
               }
             })}
         >
+          {/* The content fades in as the sheet rises, but does NOT fade out:
+              a solid sheet glides away, rather than dissolving as it slides
+              (the backdrop's fade carries the close). */}
           <Animated.View
             style={styles.flex}
-            entering={FadeIn.duration(MOTION_MS).easing(motionEasing).reduceMotion(
-              ReduceMotion.System,
-            )}
-            exiting={FadeOut.duration(MOTION_MS).easing(motionEasing).reduceMotion(
-              ReduceMotion.System,
-            )}
+            entering={FadeIn.duration(OPEN_MS).easing(easeOut).reduceMotion(ReduceMotion.System)}
           >
             <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
               <View style={styles.header}>
@@ -1013,7 +1052,7 @@ function PinnedGrid<V extends string | number>({
                       ? FadeInDown.duration(motion.fast)
                           .easing(motionEasing)
                           // After the sheet's own slide-in, not during it.
-                          .delay(MOTION_MS + Math.min(index, STAGGER_MAX_STEPS) * STAGGER_STEP_MS)
+                          .delay(OPEN_MS + Math.min(index, STAGGER_MAX_STEPS) * STAGGER_STEP_MS)
                           .reduceMotion(ReduceMotion.System)
                       : undefined
                   }
@@ -1190,12 +1229,9 @@ const makeStyles = (c: Palette) =>
     flex: {
       flex: 1,
     },
-    // Static opaque fill behind the animating sheet, so the transparent Modal
-    // never reveals the screen behind it during the slide/fade (Android bleed-
-    // through / footer flicker). Same colour as the sheet so the content appears
-    // to rise over one continuous surface.
+    // The page colour behind the sheet, faded with it (see the JSX note).
     backdrop: {
-      flex: 1,
+      ...StyleSheet.absoluteFill,
       backgroundColor: c.background,
     },
     sheet: {

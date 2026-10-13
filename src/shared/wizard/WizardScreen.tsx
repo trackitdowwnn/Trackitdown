@@ -48,7 +48,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useAndroidKeyboardHeight } from '../hooks';
+import { useAndroidKeyboardHeight, useFullscreenOverlayOpen } from '../hooks';
 import { motion, spacing, typography, useThemedStyles, type Palette } from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { firstStepFlatIndex, invalidStepIds, resolveQuestion, transitionKind } from './navigation';
@@ -196,6 +196,18 @@ export function WizardScreen<TAnswers>({
     setLiftScreenIndex(screenIndex);
     if (measuredKeyboard > 0) setLiftSuppressed(true);
   }
+  // ⚠️ NOR FOR A PICKER'S KEYBOARD (2026-10-12, motion review). Keyboard
+  // events are global, so a search typed in a full-screen picker lifted this
+  // footer behind it — seen once the picker's backdrop began to fade, as Next
+  // hanging at keyboard height and snapping down while the picker closed.
+  // The lift ignores the keyboard while an overlay is up, and stays down
+  // after it goes until that keyboard has really hidden.
+  const overlayOpen = useFullscreenOverlayOpen();
+  const [liftOverlayOpen, setLiftOverlayOpen] = useState(overlayOpen);
+  if (overlayOpen !== liftOverlayOpen) {
+    setLiftOverlayOpen(overlayOpen);
+    if (!overlayOpen && measuredKeyboard > 0) setLiftSuppressed(true);
+  }
   if (liftSuppressed && measuredKeyboard === 0) setLiftSuppressed(false);
   useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
@@ -204,7 +216,7 @@ export function WizardScreen<TAnswers>({
     const show = Keyboard.addListener('keyboardDidShow', () => setLiftSuppressed(false));
     return () => show.remove();
   }, []);
-  const keyboardHeight = liftSuppressed ? 0 : measuredKeyboard;
+  const keyboardHeight = liftSuppressed || overlayOpen ? 0 : measuredKeyboard;
 
   // A step's footerNote rides with the buttons, except at large text: the
   // footer never scrolls, and a wrapped note there ate a third of a small

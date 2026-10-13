@@ -18,7 +18,8 @@ export const motion = {
   fast: 200,
   /** Screen-scale moves: modals, sheets, wizard slides. */
   standard: 250,
-  /** Larger transitions: the post-detail hero continuity cross-fade. */
+  /** Larger transitions: the post-detail hero continuity cross-fade, and the
+   *  full-screen picker (SelectScreen) rising. */
   slow: 300,
   /** Map fly-to (LocationPicker search pick / locate). A geographic camera
    *  move legitimately runs longer than UI motion — a sanctioned exception to
@@ -86,9 +87,11 @@ export const motion = {
    *  swatch's pop is a fast/2 dip plus the springStandard settle (≈400ms), so
    *  the beat waits that out rather than sliding away mid-spring. */
   autoAdvanceBeat: 400,
-  /** The same, after a full-screen PICKER has closed (make, model, year): the
-   *  pick was already seen in the picker, so only a short breath. */
-  autoAdvanceAfterPicker: 200,
+  /** The same, after a full-screen PICKER has closed (make, model, year). It
+   *  starts only once the picker has GONE, and is long enough to see the
+   *  filled field ("BMW") before the step slides on — 200ms read as one move
+   *  chasing another (2026-10-12, owner report: "very snappy"). */
+  autoAdvanceAfterPicker: 300,
   /** One cycle of a calm loading pulse (PhotoGridPicker's uploading tile). */
   loaderLoop: 1200,
   /** BrandLoader: dwell time per waiting phrase before it rotates — long
