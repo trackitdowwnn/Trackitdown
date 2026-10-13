@@ -258,7 +258,7 @@ describe('what each state says', () => {
     // The distinction the feature turns on: nothing is being asked of them.
     mockAccountState = { status: 'verifying', settling: false };
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
-    expect(getByText('Stripe is checking your details')).toBeTruthy();
+    expect(getByText('Your details are being checked')).toBeTruthy();
     expect(queryByText('Pick up where you left off')).toBeNull();
     expect(getByText(/switch payouts on the moment it’s done/i)).toBeTruthy();
   });
@@ -341,7 +341,7 @@ describe('our own steps come first (the setup wizard, 2026-10-13)', () => {
     expect(getByTestId('payouts-details-rejected')).toBeTruthy();
     mockStart.mockResolvedValue({ status: 'onboarding_session', clientSecret: 'accs_1' });
     await act(async () => {
-      fireEvent.press(getByText('Continue with Stripe'));
+      fireEvent.press(getByText('Set up another way'));
     });
     // Spends the prefill window deliberately, which beats being unpayable.
     expect(mockStart).toHaveBeenCalledWith({ skipPrefill: true });
@@ -358,7 +358,7 @@ describe('our own steps come first (the setup wizard, 2026-10-13)', () => {
     expect(mockSettleReturn).not.toHaveBeenCalled();
   });
 
-  it('⚠️ never offers "Continue with Stripe" once details have reached Stripe', async () => {
+  it('⚠️ never offers "Set up another way" once details have been sent', async () => {
     // Being checked or ready: the button would have no purpose and one
     // irreversible effect. The account's own state wins.
     mockAccountState = { status: 'verifying', settling: false };
@@ -395,7 +395,7 @@ describe('setting up — inside the app', () => {
       fireEvent.press(getByText('Add your details'));
     });
     await act(async () => {
-      fireEvent.press(getByText('Continue to Stripe'));
+      fireEvent.press(getByText('Start the check'));
     });
 
     expect(getByTestId('connect-onboarding')).toBeTruthy();
@@ -433,14 +433,14 @@ describe('setting up — inside the app', () => {
     expect(getByTestId('payouts-notStarted')).toBeTruthy();
   });
 
-  it('no heads-up for someone who just chose "Continue with Stripe" — that was the yes', async () => {
+  it('no heads-up for someone who just chose "Set up another way" — that was the yes', async () => {
     const { getByText, getByTestId, queryByTestId } = await act(async () =>
       render(<PayoutsScreen />),
     );
     setPayoutSetupOutcome('rejected', 'user-1');
     await refocus();
     await act(async () => {
-      fireEvent.press(getByText('Continue with Stripe'));
+      fireEvent.press(getByText('Set up another way'));
     });
 
     expect(queryByTestId('payouts-stripe-intro')).toBeNull();
@@ -455,7 +455,7 @@ describe('setting up — inside the app', () => {
       fireEvent.press(getByText('Add your details'));
     });
     await act(async () => {
-      fireEvent.press(getByText('Continue to Stripe'));
+      fireEvent.press(getByText('Start the check'));
     });
     mockSettleReturn.mockClear();
 
@@ -590,7 +590,7 @@ describe('changing bank details — in the app, no browser', () => {
     expect(getByTestId('payouts-bank-rejected')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.press(getByText('Continue with Stripe'));
+      fireEvent.press(getByText('Update another way'));
     });
     // The server decides which surface that is: an account_update link for v2
     // accounts, a LOGIN LINK for legacy Express — either way, a browser.
@@ -665,7 +665,7 @@ describe('the progress tracker (2026-10-13)', () => {
     const { getByTestId, getByLabelText } = await act(async () => render(<PayoutsScreen />));
 
     expect(getByTestId('payouts-steps-done-details')).toBeTruthy();
-    expect(getByLabelText(/Stripe’s check, in progress\. .*switch payouts on/)).toBeTruthy();
+    expect(getByLabelText(/ID check, in progress\. .*switch payouts on/)).toBeTruthy();
   });
 
   it('says nothing when there is nothing to track', async () => {
@@ -700,5 +700,37 @@ describe('the end of the road — a reward sent (PR2b)', () => {
     expect(getByText(/^Sent 13 October/)).toBeTruthy();
     // The tracker stands in for the chip here too.
     expect(queryByTestId('payouts-pill-ready')).toBeNull();
+  });
+});
+
+describe('⚠️ no payment provider named (owner request, 2026-10-13)', () => {
+  /** Every visible text node that says "Stripe". */
+  const named = (view: Awaited<ReturnType<typeof render>>) =>
+    view.queryAllByText(/Stripe/).map((node) => String(node.props.children));
+
+  it.each(['notStarted', 'unfinished', 'verifying', 'ready'])('%s says "Stripe" nowhere', async (status) => {
+    mockAccountState = { status, settling: false };
+    const view = await act(async () => render(<PayoutsScreen />));
+    expect(named(view)).toEqual([]);
+  });
+
+  it('nor while settling, on the ID-check heads-up, or on the refusal card', async () => {
+    mockAccountState = { status: 'unfinished', settling: true };
+    const settling = await act(async () => render(<PayoutsScreen />));
+    expect(named(settling)).toEqual([]);
+
+    mockAccountState = { status: 'notStarted', settling: false };
+    const intro = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(intro.getByText('Add your details'));
+    });
+    expect(intro.getByTestId('payouts-stripe-intro')).toBeTruthy();
+    expect(named(intro)).toEqual([]);
+
+    const refused = await act(async () => render(<PayoutsScreen />));
+    setPayoutSetupOutcome('rejected', 'user-1');
+    await refocus();
+    expect(refused.getByTestId('payouts-details-rejected')).toBeTruthy();
+    expect(named(refused)).toEqual([]);
   });
 });

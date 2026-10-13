@@ -138,16 +138,16 @@ const COPY: Record<
     // "Straight to Stripe" became literally true with client-side tokenisation
     // (ADR-0010): the details never touch our server. And not "you only do it
     // once": this screen itself models Stripe coming back for more.
-    body: 'Your details go straight to Stripe — we never see or store your bank details. It takes about a minute.',
+    body: 'Your details go straight to our payment partner, and we never store your bank details. It takes about a minute.',
     action: 'Add your details',
   },
   unfinished: {
     title: 'Pick up where you left off',
-    body: 'Stripe still needs a few details before a reward can reach you. Your progress is saved.',
+    body: 'A few more details are needed before a reward can reach you. Your progress is saved.',
     action: 'Continue setting up',
   },
   verifying: {
-    title: 'Stripe is checking your details',
+    title: 'Your details are being checked',
     body: 'This usually takes a few minutes — sometimes a day if they need a closer look. You don’t need to wait here; we’ll switch payouts on the moment they’re done.',
     action: 'Add or update details',
   },
@@ -389,7 +389,7 @@ export function PayoutsScreen() {
       const message =
         error instanceof PaymentError
           ? error.message
-          : 'We couldn’t open Stripe. Please try again.';
+          : 'We couldn’t open that just now. Please try again.';
       log.warn('payout onboarding failed', {
         code: error instanceof PaymentError ? error.code : 'BROWSER',
       });
@@ -523,7 +523,7 @@ export function PayoutsScreen() {
             // the button is still there.
             log.warn('payout onboarding load failed', { type: event?.error?.type });
             setConnectInstance(null);
-            toast.show('We couldn’t open Stripe. Please try again.', 'error');
+            toast.show('We couldn’t open the ID check. Please try again.', 'error');
           }}
         />
       </ConnectComponentsProvider>
@@ -624,7 +624,7 @@ export function PayoutsScreen() {
           that is where the reassurance used to disappear entirely. */}
       {status !== 'guest' && status !== 'loading' && status !== 'ready' && !showBankForm && !connectInstance ? (
         <Text style={styles.trust} testID="payouts-trust">
-          We pass your bank details straight to Stripe and never store them.
+          We pass your bank details straight to our payment partner and never store them.
         </Text>
       ) : null}
     </Screen>
@@ -653,15 +653,17 @@ export function PayoutsScreen() {
           {tracker}
           {/* Not "last", not "first payout": `open` reaches this from any
               not-yet-ready state, and Stripe can come back for more. */}
+          {/* No provider named (owner, 2026-10-13): what happens and how long
+              is what helps; whose screen it is helps nobody. */}
           <Text style={styles.cardTitle} accessibilityRole="header">
-            A quick check with Stripe
+            A quick ID check
           </Text>
           <Text style={styles.cardBody}>
-            Stripe confirms it’s really you. It takes about two minutes, and they may ask for
-            a photo of your ID. You’ll come straight back here.
+            We need to confirm it’s really you. It takes about two minutes, and you may be
+            asked for a photo of your ID. You’ll come straight back here.
           </Text>
           <Button
-            label="Continue to Stripe"
+            label="Start the check"
             onPress={() => void launchStripe()}
             loading={launching}
           />
@@ -681,14 +683,14 @@ export function PayoutsScreen() {
       return (
         <View style={styles.card} testID="payouts-details-rejected">
           <Text style={styles.cardTitle} accessibilityRole="header">
-            Stripe needs something else
+            We need different details
           </Text>
           <Text style={styles.cardBody}>
             Our steps cover a UK account in your own name. If that isn’t you — a company,
-            or an account elsewhere — Stripe can ask for the right details directly.
+            or an account elsewhere — you can set up payouts another way instead.
           </Text>
           <Button
-            label="Continue with Stripe"
+            label="Set up another way"
             onPress={() => void onSkipPrefill()}
             loading={opening}
           />
@@ -718,14 +720,13 @@ export function PayoutsScreen() {
           {bankRejected ? (
             <View style={styles.card} testID="payouts-bank-rejected">
               <Text style={styles.cardTitle} accessibilityRole="header">
-                Stripe needs something else
+                That account couldn’t be added here
               </Text>
               <Text style={styles.cardBody}>
-                If Stripe can’t take that account here, their own page can sort it out
-                directly.
+                You can update your bank details another way instead.
               </Text>
               <Button
-                label="Continue with Stripe"
+                label="Update another way"
                 variant="secondary"
                 onPress={() => void onBankViaStripe()}
                 loading={opening}
@@ -751,7 +752,7 @@ export function PayoutsScreen() {
           {/* The tracker's current step says this when it is drawn. */}
           {tracker ? null : (
             <Text style={styles.cardBody}>
-              We’re waiting for Stripe to confirm. This usually takes a moment.
+              We’re waiting for confirmation. This usually takes a moment.
             </Text>
           )}
           {/* Skips the wait rather than escaping a dead end — the window ends
@@ -800,8 +801,8 @@ export function PayoutsScreen() {
             to check one thing.
 
             ⚠️ IT DOES NOT REPLACE THE HEADING. "Being checked" is the state;
-            "Stripe is checking your details" is who is doing it and therefore
-            why the app cannot hurry it. Dropping the heading for the chip would
+            "Your details are being checked" says what is happening and so why
+            the app cannot hurry it. Dropping the heading for the chip would
             trade an explanation for a label on the one screen where people are
             most inclined to suspect they are being stalled. */}
         {/* ⚠️ THE TRACKER TAKES THE PILL'S PLACE when there is one: its

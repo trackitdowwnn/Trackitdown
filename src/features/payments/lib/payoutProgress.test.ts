@@ -50,7 +50,7 @@ describe('payoutProgress', () => {
       'payouts-on:upcoming',
       'reward:upcoming',
     ]);
-    expect(steps?.[1]?.detail).toMatch(/needs a few more details from you. Your progress is saved/);
+    expect(steps?.[1]?.detail).toMatch(/A few more details are needed from you. Your progress is saved/);
   });
 
   it('⚠️ verifying waits on Stripe, and says what happens next', () => {
@@ -59,12 +59,12 @@ describe('payoutProgress', () => {
     expect(steps?.[1]?.detail).toMatch(/switch payouts on the moment/);
   });
 
-  it('settling: their details count as sent, and Stripe is confirming', () => {
+  it('settling: their details count as sent, and confirmation is awaited', () => {
     // A row with both flags false reads as "never started" until the webhook
     // lands; someone who just sent everything must not be told to start.
     const steps = payoutProgress({ status: 'notStarted', settling: true, pendingCreditPence: 19000 });
     expect(steps?.[0]?.state).toBe('done');
-    expect(steps?.[1]?.detail).toMatch(/Waiting for Stripe to confirm/);
+    expect(steps?.[1]?.detail).toMatch(/Waiting for confirmation/);
   });
 
   it('ready with a reward waiting: it is on its way — never "arrived"', () => {

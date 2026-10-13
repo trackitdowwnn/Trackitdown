@@ -54,7 +54,7 @@ const log = createLogger('payments');
 
 const SEND_FAILED = 'We couldn’t send your details. Please try again.';
 const REFUSED =
-  'Stripe couldn’t accept those details. Check them and send again — or go back for another way to set up.';
+  'Those details couldn’t be accepted. Check them and send again — or go back for another way to set up.';
 const ALREADY_SET_UP =
   'Payouts were already set up, so nothing changed. To change your bank, use “Update bank details”.';
 

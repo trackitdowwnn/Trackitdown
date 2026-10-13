@@ -3,7 +3,7 @@
  *        review, and the one send.
  * WHY:   It replaced a single eleven-field form (2026-10-13), and the old
  *        form's promises have to survive the move: nothing reaches Stripe
- *        before "Send to Stripe" (the prefill window), the terms are shown
+ *        before "Send my details" (the prefill window), the terms are shown
  *        before that button (a legal claim), nothing typed is logged, a failed
  *        send keeps every answer, and a refusal our fields can't fix sends the
  *        spotter back to Payouts with a way past.
@@ -114,7 +114,7 @@ async function walkToReview(view: View) {
 async function send(view: View) {
   await waitForSubmitArm();
   await act(async () => {
-    fireEvent.press(view.getByText('Send to Stripe'));
+    fireEvent.press(view.getByText('Send my details'));
   });
 }
 
@@ -143,7 +143,7 @@ describe('the steps', () => {
     await walkToReview(view);
 
     expect(view.getByText('Check and send')).toBeTruthy();
-    expect(view.getByText('Send to Stripe')).toBeTruthy();
+    expect(view.getByText('Send my details')).toBeTruthy();
   });
 
   it('stays on a step until it is answered', async () => {
@@ -225,8 +225,26 @@ describe('the review', () => {
 
     expect(view.getByTestId('payout-terms')).toBeTruthy();
     expect(view.getByText('Stripe Connected Account Agreement')).toBeTruthy();
-    // Saying "done" and then showing Stripe's check would be a bait and switch.
-    expect(view.getByText(/may ask to verify your identity/i)).toBeTruthy();
+    // Saying "done" and then showing an ID check would be a bait and switch.
+    expect(view.getByText(/may be asked to verify your identity/i)).toBeTruthy();
+  });
+
+  it('⚠️ names no payment provider — except the agreement, which the law needs', async () => {
+    // Owner request (2026-10-13): no "Stripe" in the app's own words. The one
+    // exception is the Connected Account Agreement's name: the identity token
+    // attests it was shown, so its link must say what it is.
+    const view = await render(<PayoutSetupScreen />);
+    const named = () =>
+      view
+        .queryAllByText(/Stripe/)
+        .map((node) => String(node.props.children))
+        .filter((text) => text !== 'Stripe Connected Account Agreement');
+
+    expect(named()).toEqual([]);
+    await walkToReview(view);
+    expect(named()).toEqual([]);
+    // Not vacuous: the query does see the one name allowed to stay.
+    expect(view.queryAllByText(/Stripe/).length).toBeGreaterThan(0);
   });
 
   it('⚠️ says "never store", never "never see"', async () => {
@@ -241,7 +259,7 @@ describe('the review', () => {
 });
 
 describe('the send', () => {
-  it('⚠️ reaches Stripe only on "Send to Stripe" — the prefill window', async () => {
+  it('⚠️ reaches Stripe only on "Send my details" — the prefill window', async () => {
     const view = await render(<PayoutSetupScreen />);
     await walkToReview(view);
 
@@ -293,7 +311,7 @@ describe('the send', () => {
     await walkToReview(view);
     await send(view);
 
-    await waitFor(() => expect(view.getByText(/Stripe couldn’t accept those details/)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(/Those details couldn’t be accepted/)).toBeTruthy());
     expect(view.getByText(/go back for another way to set up/)).toBeTruthy();
     expect(mockBack).not.toHaveBeenCalled();
     expect(mockSubmitTokens).not.toHaveBeenCalled();
@@ -309,7 +327,7 @@ describe('the send', () => {
     const view = await render(<PayoutSetupScreen />);
     await walkToReview(view);
     await send(view);
-    await waitFor(() => expect(view.getByText(/Stripe couldn’t accept/)).toBeTruthy());
+    await waitFor(() => expect(view.getByText(/couldn’t be accepted/)).toBeTruthy());
 
     await send(view);
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
