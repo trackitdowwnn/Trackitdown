@@ -105,6 +105,7 @@ import { PaymentError } from '@/shared/lib/functionError';
 import {
   fetchMyLatestPayout,
   fetchMyPendingCredit,
+  syncMyPayoutAccount,
   startConnectOnboarding,
   submitPayoutTokens,
 } from '../api/payoutsApi';
@@ -262,6 +263,35 @@ export function PayoutsScreen() {
   // (see payoutSetupOutcome) — and only if THIS user left it. Sent → the
   // settling window, exactly as a return from Stripe arms it; refused → the
   // "Continue with Stripe" card.
+  // ⚠️ CHECK WITH STRIPE, DON'T JUST WAIT (2026-10-13). "Being checked" used
+  // to move only when the account.updated webhook arrived — and when it
+  // didn't, the screen said "usually a few minutes" forever. So whenever this
+  // screen shows a not-yet-ready account, it asks the server to read the
+  // account from Stripe (sync-payout-account: read-only, never a session) and
+  // then re-reads. Once per visit: on the first not-ready status, and again
+  // each time the screen comes back into view.
+  const checkWithStripe = useCallback(async () => {
+    await syncMyPayoutAccount();
+    refresh();
+  }, [refresh]);
+  const checkedThisVisit = useRef(false);
+  const statusNow = useRef(status);
+  useEffect(() => {
+    statusNow.current = status;
+  });
+  const checkIfWaiting = useCallback(
+    (current: PayoutAccountStatus) => {
+      if (checkedThisVisit.current) return;
+      if (current !== 'verifying' && current !== 'unfinished') return;
+      checkedThisVisit.current = true;
+      void checkWithStripe();
+    },
+    [checkWithStripe],
+  );
+  useEffect(() => {
+    checkIfWaiting(status);
+  }, [status, checkIfWaiting]);
+
   useFocusEffect(
     useCallback(() => {
       const outcome = takePayoutSetupOutcome(userId);
@@ -271,7 +301,10 @@ export function PayoutsScreen() {
       } else if (outcome === 'rejected') {
         setDetailsRejected(true);
       }
-    }, [settleReturn, userId]),
+      // A new visit: check with Stripe again if it's still waiting.
+      checkedThisVisit.current = false;
+      checkIfWaiting(statusNow.current);
+    }, [checkIfWaiting, settleReturn, userId]),
   );
 
   // The secret the SDK is about to ask for. Deciding WHICH flow to run costs one
@@ -549,7 +582,8 @@ export function PayoutsScreen() {
       // "Stripe is checking your details" is a dead end until the screen is
       // left and re-entered — which the hook's own comment already assumed
       // existed.
-      onRefresh={refresh}
+      // Pull to refresh asks Stripe too, not just our row.
+      onRefresh={() => void checkWithStripe()}
       refreshing={status === 'loading'}
     >
       <View style={styles.headerRow}>
@@ -758,7 +792,7 @@ export function PayoutsScreen() {
           {/* Skips the wait rather than escaping a dead end — the window ends
               by itself, and once it does this card is gone. It is here so
               somebody who knows they finished need not watch a spinner. */}
-          <Button label="Check again" variant="secondary" onPress={refresh} />
+          <Button label="Check again" variant="secondary" onPress={() => void checkWithStripe()} />
         </View>
       );
     }

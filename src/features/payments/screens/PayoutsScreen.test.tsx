@@ -88,11 +88,13 @@ const mockStart = jest.fn();
 const mockSubmitTokens = jest.fn();
 const mockPendingCredit = jest.fn();
 const mockLatestPayout = jest.fn();
+const mockSyncAccount = jest.fn(async () => {});
 jest.mock('../api/payoutsApi', () => ({
   startConnectOnboarding: (...args: unknown[]) => mockStart(...args),
   submitPayoutTokens: (...args: unknown[]) => mockSubmitTokens(...args),
   fetchMyPendingCredit: (...args: unknown[]) => mockPendingCredit(...(args as [])),
   fetchMyLatestPayout: (...args: unknown[]) => mockLatestPayout(...(args as [])),
+  syncMyPayoutAccount: (...args: unknown[]) => mockSyncAccount(...(args as [])),
 }));
 
 // The tokenisers go straight to Stripe from the device; in a test they answer
@@ -732,5 +734,37 @@ describe('⚠️ no payment provider named (owner request, 2026-10-13)', () => {
     await refocus();
     expect(refused.getByTestId('payouts-details-rejected')).toBeTruthy();
     expect(named(refused)).toEqual([]);
+  });
+});
+
+describe('⚠️ checks with Stripe instead of only waiting for the webhook (2026-10-13)', () => {
+  it.each(['verifying', 'unfinished'])('%s: asks the server to check with Stripe, then re-reads', async (status) => {
+    mockAccountState = { status, settling: false };
+    await act(async () => render(<PayoutsScreen />));
+    expect(mockSyncAccount).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it.each(['notStarted', 'ready', 'guest'])('%s: nothing to check — no call', async (status) => {
+    mockAccountState = { status, settling: false };
+    await act(async () => render(<PayoutsScreen />));
+    expect(mockSyncAccount).not.toHaveBeenCalled();
+  });
+
+  it('once per visit — and again when the screen comes back into view', async () => {
+    mockAccountState = { status: 'verifying', settling: false };
+    await act(async () => render(<PayoutsScreen />));
+    await refocus();
+    expect(mockSyncAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it('"Check again" checks with Stripe, not just our row', async () => {
+    mockAccountState = { status: 'unfinished', settling: true };
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    mockSyncAccount.mockClear();
+    await act(async () => {
+      fireEvent.press(getByText('Check again'));
+    });
+    expect(mockSyncAccount).toHaveBeenCalledTimes(1);
   });
 });

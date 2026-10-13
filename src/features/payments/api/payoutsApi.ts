@@ -276,6 +276,20 @@ export async function fetchMyPendingCredit(): Promise<{
   return { postId: row.post_id as string, transferPence: Number(row.transfer_pence) };
 }
 
+/**
+ * Ask the server to check the caller's payee account with Stripe and record
+ * what it finds (sync-payout-account) — so "being checked" moves on even when
+ * the account.updated webhook never arrives (2026-10-13). Read-only at Stripe:
+ * it never opens a session. Never throws: the screen re-reads either way, and
+ * a failed check just leaves it saying what it said.
+ */
+export async function syncMyPayoutAccount(): Promise<void> {
+  const { error } = await supabase.functions.invoke('sync-payout-account', { body: {} });
+  if (error) {
+    log.warn('sync-payout-account failed');
+  }
+}
+
 /** How long a sent reward stays on the Payouts tracker as its last step. */
 export const SENT_SHOWN_DAYS = 30;
 
