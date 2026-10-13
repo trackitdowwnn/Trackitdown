@@ -31,9 +31,9 @@
  *        stickyHeaderIndices) — FlashList was assessed but does not support
  *        sticky section headers, a core requirement. The DfT car list
  *        (2026-09-30) made these longer (~90 makes, ~110 rows with their
- *        letter headers; up to ~50 models),
- *        still small enough to render whole, which keeps the rail's jumps
- *        exact. Single-select in v1; see the TODO(multi-select) in
+ *        letter headers; up to ~50 models): the open builds only a
+ *        screenful, the rest once the sheet has risen (FIRST_SCREEN_ROWS,
+ *        2026-10-13). Single-select in v1; see the TODO(multi-select) in
  *        handleSelect for where checkboxes + a Done button plug in.
  * LINKS: src/shared/ui/SelectField.tsx (trigger); src/shared/ui/
  *        selectOptions.ts (filtering/grouping logic); src/shared/ui/
@@ -127,8 +127,16 @@ const CLOSE_MS = motion.standard;
 const motionEasing = easeOut;
 /** Debounce before a keystroke re-filters the list. */
 const FILTER_DEBOUNCE_MS = 150;
-/** Lists up to this long render every row on open (see initialNumToRender). */
-const MAX_RENDERED_UP_FRONT = 250;
+/**
+ * ⚠️ ROWS BUILT WHILE THE SHEET RISES (2026-10-13, owner report: "looks like
+ * it's frozen for a split second and the window just appears"). Building every
+ * row up front — ~110 makes with their headers, each a handful of native views
+ * — blocked the first frame for longer than the 300ms slide, and the slide runs
+ * on the clock: it was over before the screen could draw it, so the picker
+ * appeared already in place. The open now builds about a screenful under the
+ * tiles; the rest follows once the sheet has risen (see `settled`).
+ */
+const FIRST_SCREEN_ROWS = 20;
 /** Rows that get the first-open stagger: about one screenful. */
 const STAGGERED_ROWS = 12;
 
@@ -243,6 +251,9 @@ export function SelectScreen<V extends string | number>({
   const [prevVisible, setPrevVisible] = useState(visible);
   // Whether the pinned grid has cascaded in on this open.
   const [gridStaggered, setGridStaggered] = useState(false);
+  // Whether the sheet has risen on this open: until then the list holds only
+  // its first screenful (FIRST_SCREEN_ROWS) and the letter rail waits.
+  const [settled, setSettled] = useState(false);
   // The type-it-in sheet (manualEntry.button): up, and what is typed in it.
   const [entering, setEntering] = useState(false);
   const [draft, setDraft] = useState('');
@@ -273,6 +284,7 @@ export function SelectScreen<V extends string | number>({
       setQuery('');
       setDebouncedQuery('');
       setGridStaggered(false);
+      setSettled(false);
       // Every open starts at the list, never with the last open's sheet.
       setEntering(false);
       setDraft('');
@@ -322,6 +334,13 @@ export function SelectScreen<V extends string | number>({
     return () => clearTimeout(timer);
   }, [visible, autoFocusSearch]);
 
+  // The rest of the list, once the sheet has risen (FIRST_SCREEN_ROWS).
+  useEffect(() => {
+    if (!visible) return undefined;
+    const timer = setTimeout(() => setSettled(true), OPEN_MS);
+    return () => clearTimeout(timer);
+  }, [visible]);
+
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), FILTER_DEBOUNCE_MS);
     return () => clearTimeout(timer);
@@ -334,6 +353,9 @@ export function SelectScreen<V extends string | number>({
     () => buildSelectList(options, debouncedQuery, pinnedInList, pinnedTitle),
     [options, debouncedQuery, pinnedInList, pinnedTitle],
   );
+  // What the list holds: a screenful while the sheet rises, then everything.
+  // A prefix, so its sticky indices and dividers read the same either way.
+  const shownItems = settled ? items : items.slice(0, FIRST_SCREEN_ROWS);
   const pinnedTiles = useMemo(
     () =>
       pinnedLayout === 'grid'
@@ -706,13 +728,13 @@ export function SelectScreen<V extends string | number>({
                     // Named, so a screen reader doesn't say "radio group" with
                     // nothing to tell it from the tiles' own group inside.
                     accessibilityLabel={title}
-                    data={items}
+                    data={shownItems}
                     keyExtractor={(item) => item.key}
                     // ⚠️ SHIFTED BY ONE when there's a list header: FlatList
                     // counts ListHeaderComponent as cell 0. Unshifted, "Popular
                     // makes" pinned the Any row and no letter header stuck
                     // (2026-09-30 UI review).
-                    stickyHeaderIndices={stickyHeaderIndices(items).map(
+                    stickyHeaderIndices={stickyHeaderIndices(shownItems).map(
                       (index) => index + (hasListHeader ? 1 : 0),
                     )}
                     keyboardShouldPersistTaps="handled"
@@ -728,14 +750,14 @@ export function SelectScreen<V extends string | number>({
                         ? { paddingBottom: spacing.xl + pillHeight + spacing.xl }
                         : null,
                     ]}
-                    // Every row renders up front (a make list is ~110 items, a
-                    // model list rarely 80), so the rail's scrollToIndex always
-                    // has its target measured and lands exactly. Rows grow with
-                    // dynamic type, so a fixed getItemLayout would drift.
-                    initialNumToRender={Math.min(items.length, MAX_RENDERED_UP_FRONT)}
-                    // Past that cap: approximate, then settle on the real row,
-                    // once. A second failure stays at the approximation rather
-                    // than looping.
+                    // The first screenful only (FIRST_SCREEN_ROWS): the rest is
+                    // added once the sheet has risen, in FlatList's own small
+                    // batches, so no one frame builds the whole list. Rows grow
+                    // with dynamic type, so a fixed getItemLayout would drift.
+                    initialNumToRender={FIRST_SCREEN_ROWS}
+                    // A rail jump to a row not yet built: approximate, then
+                    // settle on the real row, once. A second failure stays at
+                    // the approximation rather than looping.
                     onScrollToIndexFailed={(info) => {
                       listRef.current?.scrollToOffset({
                         offset: info.averageItemLength * info.index,
@@ -805,7 +827,7 @@ export function SelectScreen<V extends string | number>({
                         // on top of the first row (no grid or heading between).
                         divider={
                           item.kind === 'option' &&
-                          (items[index - 1]?.kind === 'option' ||
+                          (shownItems[index - 1]?.kind === 'option' ||
                             (index === 0 && !showGrid && (showAnyRow || showUseQuery)))
                         }
                         // The first screenful only: with every row rendered up
@@ -820,7 +842,8 @@ export function SelectScreen<V extends string | number>({
                       />
                     )}
                   />
-                  {showIndex && !searching ? (
+                  {/* Once the whole list is there to jump into (`settled`). */}
+                  {showIndex && !searching && settled ? (
                     <IndexRail
                       // Only the A–Z letter sections — a multi-word pinned
                       // header (e.g. "Popular makes") would put a stray letter
@@ -1188,9 +1211,11 @@ function IndexRail({
   const shown = fitAnchors(anchors, room, letterHeight);
 
   return (
-    <View
+    // Fades in: it arrives once the sheet has risen, not with it.
+    <Animated.View
       style={styles.indexRail}
       pointerEvents="box-none"
+      entering={FadeIn.duration(motion.fast).easing(motionEasing).reduceMotion(ReduceMotion.System)}
       onLayout={(event) => setRoom(event.nativeEvent.layout.height)}
     >
       {shown.map((anchor, position) => (
@@ -1220,7 +1245,7 @@ function IndexRail({
           </Text>
         </Pressable>
       ))}
-    </View>
+    </Animated.View>
   );
 }
 

@@ -78,6 +78,13 @@ async function open(view: View, label: RegExp) {
   });
 }
 
+/** Past the picker's 300ms rise: the whole list, and the letter rail, are in. */
+async function settle() {
+  await act(async () => {
+    jest.advanceTimersByTime(300);
+  });
+}
+
 async function search(view: View, text: string, placeholder: string) {
   await act(async () => {
     fireEvent.changeText(view.getByLabelText(placeholder), text);
@@ -110,7 +117,8 @@ describe('MakeField', () => {
     expect(view.getByRole('header', { name: 'All makes' })).toBeTruthy();
     // Ten tiles, then the A–Z starts (Abarth), not the popular ten again.
     expect(rows(view)[10]).toBe('Abarth');
-    // The A–Z rail is there for the long list.
+    // The A–Z rail is there for the long list, once the sheet has risen.
+    await settle();
     expect(view.getByLabelText('Jump to S')).toBeTruthy();
   });
 
@@ -168,6 +176,7 @@ describe('ModelField', () => {
     expect(view.getByText('Popular BMW models')).toBeTruthy();
     expect(rows(view).slice(0, 2)).toEqual(['3 Series', '1 Series']);
     // Numbered models sit under "#", reachable from the rail, spoken "numbers".
+    await settle();
     expect(view.getByLabelText('Jump to numbers')).toBeTruthy();
     expect(view.getByLabelText('Jump to X')).toBeTruthy();
   });

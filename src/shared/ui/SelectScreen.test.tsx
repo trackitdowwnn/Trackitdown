@@ -636,6 +636,52 @@ describe('SelectScreen', () => {
     });
   });
 
+  describe('⚠️ opens light (2026-10-13, owner report: "frozen for a split second")', () => {
+    // 60 makes over 6 letters: 66 list items with their headers.
+    const LONG: SelectOption[] = Array.from({ length: 60 }, (_, i) => {
+      const letter = 'ABCDEF'[Math.floor(i / 10)];
+      return { value: `${letter}${i}`, label: `${letter}-make ${i}`, section: letter };
+    });
+    const listLength = (view: Awaited<ReturnType<typeof render>>) =>
+      (view.getByLabelText('Car make').props.data as unknown[]).length;
+
+    it('builds a screenful while the sheet rises, the rest (and the rail) once risen', async () => {
+      const { view } = await renderScreen({ options: LONG, showIndex: true });
+      // Every row built in the first frame blocked it past the 300ms slide,
+      // so the picker appeared already in place.
+      expect(listLength(view)).toBe(20);
+      expect(view.queryByLabelText('Jump to A')).toBeNull();
+
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(listLength(view)).toBe(66);
+      expect(view.getByLabelText('Jump to F')).toBeTruthy();
+    });
+
+    it('starts light again on every open', async () => {
+      const props = {
+        title: 'Car make',
+        options: LONG,
+        value: null,
+        onSelect: jest.fn(),
+        onClose: jest.fn(),
+      };
+      const view = await render(<SelectScreen visible {...props} />);
+      await act(async () => {
+        jest.advanceTimersByTime(300);
+      });
+      expect(listLength(view)).toBe(66);
+
+      await view.rerender(<SelectScreen visible={false} {...props} />);
+      await act(async () => {
+        jest.advanceTimersByTime(450); // gone
+      });
+      await view.rerender(<SelectScreen visible {...props} />);
+      expect(listLength(view)).toBe(20);
+    });
+  });
+
   it('divides rows with a hairline, never beside a section header', async () => {
     const { view } = await renderScreen();
     // A: Aston Martin, Audi (one divider between); B: BMW alone (none).
