@@ -87,10 +87,12 @@ jest.mock('@/shared/ui', () => {
 const mockStart = jest.fn();
 const mockSubmitTokens = jest.fn();
 const mockPendingCredit = jest.fn();
+const mockLatestPayout = jest.fn();
 jest.mock('../api/payoutsApi', () => ({
   startConnectOnboarding: (...args: unknown[]) => mockStart(...args),
   submitPayoutTokens: (...args: unknown[]) => mockSubmitTokens(...args),
   fetchMyPendingCredit: (...args: unknown[]) => mockPendingCredit(...(args as [])),
+  fetchMyLatestPayout: (...args: unknown[]) => mockLatestPayout(...(args as [])),
 }));
 
 // The tokenisers go straight to Stripe from the device; in a test they answer
@@ -148,6 +150,7 @@ beforeEach(() => {
   // that is the ONLY person the setup card exists for. The nothing-waiting
   // case gets its own tests.
   mockPendingCredit.mockResolvedValue({ postId: 'post-1', transferPence: 19000 });
+  mockLatestPayout.mockResolvedValue(null);
   mockIdentityToken.mockResolvedValue('accttok_test_1');
   mockBankToken.mockResolvedValue('btok_test_1');
   mockSubmitTokens.mockResolvedValue('submitted');
@@ -678,5 +681,25 @@ describe('the progress tracker (2026-10-13)', () => {
     });
     expect(getByTestId('payouts-stripe-intro')).toBeTruthy();
     expect(getByTestId('payouts-steps')).toBeTruthy();
+  });
+});
+
+describe('the end of the road — a reward sent (PR2b)', () => {
+  it('shows every step done, and when the reward was sent', async () => {
+    mockAccountState = { status: 'ready', settling: false };
+    mockPendingCredit.mockResolvedValue(null);
+    mockLatestPayout.mockResolvedValue({
+      postId: 'post-1',
+      transferPence: 19000,
+      sentAt: '2026-10-13T11:00:00Z',
+    });
+    const { getByTestId, getByText, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+
+    expect(getByTestId('payouts-steps-done-reward')).toBeTruthy();
+    expect(getByText(/^Sent 13 October/)).toBeTruthy();
+    // The tracker stands in for the chip here too.
+    expect(queryByTestId('payouts-pill-ready')).toBeNull();
   });
 });

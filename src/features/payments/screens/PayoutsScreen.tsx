@@ -102,7 +102,12 @@ import {
 } from '@/shared/ui';
 
 import { PaymentError } from '@/shared/lib/functionError';
-import { fetchMyPendingCredit, startConnectOnboarding, submitPayoutTokens } from '../api/payoutsApi';
+import {
+  fetchMyLatestPayout,
+  fetchMyPendingCredit,
+  startConnectOnboarding,
+  submitPayoutTokens,
+} from '../api/payoutsApi';
 import { createBankToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
@@ -209,13 +214,20 @@ export function PayoutsScreen() {
   const [pendingCreditPence, setPendingCreditPence] = useState<number | null | undefined>(
     undefined,
   );
+  // The reward most recently SENT, within the window — the tracker's end.
+  const [latestPayout, setLatestPayout] = useState<Awaited<
+    ReturnType<typeof fetchMyLatestPayout>
+  >>(null);
   useEffect(() => {
     if (status === 'guest' || status === 'loading') {
       return;
     }
     let cancelled = false;
-    void fetchMyPendingCredit().then((credit) => {
+    // Together, so the tracker never draws "nothing waiting" for a moment
+    // before the sent reward arrives to end the road.
+    void Promise.all([fetchMyPendingCredit(), fetchMyLatestPayout()]).then(([credit, sent]) => {
       if (!cancelled) {
+        setLatestPayout(sent);
         setPendingCreditPence(credit?.transferPence ?? null);
       }
     });
@@ -490,7 +502,7 @@ export function PayoutsScreen() {
   // detail), near-verbatim (UI review): the current step's detail now says
   // who is waiting and how long, the title says what this is, the button
   // what to do. With no tracker (ready, nothing waiting) the pill returns.
-  const progress = payoutProgress({ status, settling, pendingCreditPence });
+  const progress = payoutProgress({ status, settling, pendingCreditPence, latestPayout });
   const tracker = progress ? (
     <>
       <ProgressSteps steps={progress} testID="payouts-steps" />

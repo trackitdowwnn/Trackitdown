@@ -16,6 +16,8 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 
 import { PaymentError } from '@/shared/lib/functionError';
 import {
+  SENT_SHOWN_DAYS,
+  fetchMyLatestPayout,
   fetchMyPayoutAccount,
   fetchPayoutsRelevant,
   startConnectOnboarding,
@@ -295,5 +297,33 @@ describe('fetchPayoutsRelevant', () => {
     // A null answer (or a shape change) must fail toward hidden, never shown.
     mockRpc.mockResolvedValue({ data: null, error: null });
     await expect(fetchPayoutsRelevant()).resolves.toBe(false);
+  });
+});
+
+describe('fetchMyLatestPayout (PR2b)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const row = (daysAgo: number) => ({
+    post_id: 'post-9',
+    transfer_pence: 19000,
+    sent_at: new Date(Date.now() - daysAgo * DAY).toISOString(),
+  });
+
+  it('asks the caller-scoped RPC and returns the reward sent', async () => {
+    mockRpc.mockResolvedValue({ data: [row(2)], error: null });
+    const sent = await fetchMyLatestPayout();
+    expect(mockRpc).toHaveBeenCalledWith('my_latest_payout');
+    expect(sent).toMatchObject({ postId: 'post-9', transferPence: 19000 });
+  });
+
+  it('lets an old payout go: only one sent within the window ends the road', async () => {
+    mockRpc.mockResolvedValue({ data: [row(SENT_SHOWN_DAYS + 1)], error: null });
+    await expect(fetchMyLatestPayout()).resolves.toBeNull();
+  });
+
+  it('nothing sent, or a failed read, is null — never a reason to fail the screen', async () => {
+    mockRpc.mockResolvedValue({ data: [], error: null });
+    await expect(fetchMyLatestPayout()).resolves.toBeNull();
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
+    await expect(fetchMyLatestPayout()).resolves.toBeNull();
   });
 });
