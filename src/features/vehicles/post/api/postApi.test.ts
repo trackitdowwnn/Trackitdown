@@ -18,6 +18,7 @@ import {
   PostSubmissionError,
   buildCreatePostParams,
   createPost,
+  fetchMyPostStatus,
   submitPost,
   type SubmitReadyAnswers,
 } from './postApi';
@@ -26,10 +27,25 @@ import type { PostACarAnswers } from '../types';
 const mockRpc = jest.fn();
 const mockUpload = jest.fn();
 const mockGetUser = jest.fn();
+// posts.select('status').eq('id', …).maybeSingle() — fetchMyPostStatus's read.
+const mockPostSelect = jest.fn();
+const mockPostEq = jest.fn();
+const mockPostMaybeSingle = jest.fn();
 
 jest.mock('@/shared/api/supabase', () => ({
   supabase: {
     rpc: (...args: unknown[]) => mockRpc(...args),
+    from: (table: string) => ({
+      select: (columns: string) => {
+        mockPostSelect(table, columns);
+        return {
+          eq: (column: string, value: unknown) => {
+            mockPostEq(column, value);
+            return { maybeSingle: () => mockPostMaybeSingle() };
+          },
+        };
+      },
+    }),
     auth: { getUser: (...args: unknown[]) => mockGetUser(...args) },
     storage: {
       from: (bucket: string) => ({
@@ -454,5 +470,21 @@ describe('submitPost', () => {
 
     await expect(submitPost(readyAnswers())).rejects.toMatchObject({ code: 'NOT_AUTHENTICATED' });
     expect(mockRpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchMyPostStatus (the payment confirmation, PR3)', () => {
+  it('reads one post’s status — only the status column', async () => {
+    mockPostMaybeSingle.mockResolvedValue({ data: { status: 'active' }, error: null });
+    await expect(fetchMyPostStatus('p1')).resolves.toBe('active');
+    expect(mockPostSelect).toHaveBeenCalledWith('posts', 'status');
+    expect(mockPostEq).toHaveBeenCalledWith('id', 'p1');
+  });
+
+  it('a failed or empty read is null — a blip while watching, not a failed payment', async () => {
+    mockPostMaybeSingle.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
+    await expect(fetchMyPostStatus('p1')).resolves.toBeNull();
+    mockPostMaybeSingle.mockResolvedValue({ data: null, error: null });
+    await expect(fetchMyPostStatus('p1')).resolves.toBeNull();
   });
 });

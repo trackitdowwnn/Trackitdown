@@ -134,6 +134,21 @@ jest.mock('@/features/payments', () => {
   };
 });
 
+// The confirmation that follows a payment (PR3): captured, not rendered — its
+// own suite covers what it shows; here it is what the screen hands it.
+let capturedConfirmation: {
+  postId: string;
+  mode: 'reward' | 'fee';
+  amountPence: number;
+  onViewListing: () => void;
+} | null = null;
+jest.mock('../components/PaymentConfirmation', () => ({
+  PaymentConfirmation: (props: NonNullable<typeof capturedConfirmation>) => {
+    capturedConfirmation = props;
+    return null;
+  },
+}));
+
 const mockReplace = jest.fn();
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
@@ -156,23 +171,51 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockPeekDraft.mockReturnValue(undefined);
   wizardRenders = 0;
+  capturedConfirmation = null;
   mockSubmitPost.mockResolvedValue({ postId: 'p1', status: 'draft' });
   mockCreateIntent.mockResolvedValue('pi_secret_123');
 });
 
 describe('handleComplete', () => {
-  it('creates the draft, takes payment, and routes to the new post on success', async () => {
+  it('creates the draft, takes payment, and shows the confirmation on success', async () => {
     mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
     await mount();
 
-    await capturedOnComplete(ANSWERS);
+    await act(async () => {
+      await capturedOnComplete(ANSWERS);
+    });
 
     expect(mockSubmitPost).toHaveBeenCalledTimes(1);
     expect(mockCreateIntent).toHaveBeenCalledWith('p1');
     expect(mockPayBounty).toHaveBeenCalledWith('pi_secret_123');
     expect(mockSuccessHaptic).toHaveBeenCalledTimes(1);
-    expect(mockToastShow).toHaveBeenCalledWith(expect.stringContaining('going live'), 'success');
+    // ⚠️ NOT a toast and a jump (PR3, 2026-10-13): those landed on a listing
+    // the webhook hadn't made live yet. The confirmation watches for it.
+    expect(mockToastShow).not.toHaveBeenCalled();
+    expect(capturedConfirmation).toMatchObject({ postId: 'p1', mode: 'reward', amountPence: 50000 });
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('"View your listing" replaces the route — back never returns into the wizard', async () => {
+    mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
+    await mount();
+    await act(async () => {
+      await capturedOnComplete(ANSWERS);
+    });
+
+    capturedConfirmation?.onViewListing();
     expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('a £5 listing confirms as the fee, not as a reward', async () => {
+    mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
+    await mount();
+    await act(async () => {
+      await capturedOnComplete({ pricingMode: 'fee', bountyAmountPence: 50000 });
+    });
+
+    // The slider always holds a value; the MODE decides what was paid.
+    expect(capturedConfirmation).toMatchObject({ mode: 'fee', amountPence: 500 });
   });
 
   it('MONEY: a retry after a cancelled payment reuses the draft — no second submitPost', async () => {
@@ -185,11 +228,13 @@ describe('handleComplete', () => {
 
     // Retry: pays this time. The draft must NOT be created again.
     mockPayBounty.mockResolvedValueOnce({ outcome: 'paid', message: null });
-    await capturedOnComplete(ANSWERS);
+    await act(async () => {
+      await capturedOnComplete(ANSWERS);
+    });
 
     expect(mockSubmitPost).toHaveBeenCalledTimes(1); // ← created once, reused on retry
     expect(mockCreateIntent).toHaveBeenCalledTimes(2); // ← intent reopened (server-idempotent)
-    expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+    expect(capturedConfirmation?.postId).toBe('p1');
   });
 
   it('records what was advised against what was chosen — once, on first creation', async () => {
