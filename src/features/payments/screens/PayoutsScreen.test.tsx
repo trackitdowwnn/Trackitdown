@@ -88,7 +88,7 @@ const mockStart = jest.fn();
 const mockSubmitTokens = jest.fn();
 const mockPendingCredit = jest.fn();
 const mockLatestPayout = jest.fn();
-const mockSyncAccount = jest.fn(async () => {});
+const mockSyncAccount = jest.fn(async () => ({ needsBank: false }));
 jest.mock('../api/payoutsApi', () => ({
   startConnectOnboarding: (...args: unknown[]) => mockStart(...args),
   submitPayoutTokens: (...args: unknown[]) => mockSubmitTokens(...args),
@@ -766,5 +766,33 @@ describe('⚠️ checks with Stripe instead of only waiting for the webhook (202
       fireEvent.press(getByText('Check again'));
     });
     expect(mockSyncAccount).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('⚠️ a missing bank is asked for in our own form, not Stripe’s screen (2026-10-13)', () => {
+  afterEach(() => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false });
+  });
+
+  it('Stripe waiting on a bank: "Add your bank account" opens the bank form — no session', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: true });
+    mockAccountState = { status: 'unfinished', settling: false };
+    const { getByText, getByTestId, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('One more thing: your bank account')).toBeTruthy();
+    expect(queryByText('Continue setting up')).toBeNull();
+    await act(async () => {
+      fireEvent.press(getByText('Add your bank account'));
+    });
+    expect(getByTestId('bank-details-form')).toBeTruthy();
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('no bank needed: the card is as before', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false });
+    mockAccountState = { status: 'unfinished', settling: false };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+    expect(queryByText('One more thing: your bank account')).toBeNull();
+    expect(getByText('Continue setting up')).toBeTruthy();
   });
 });

@@ -270,8 +270,13 @@ export function PayoutsScreen() {
   // account from Stripe (sync-payout-account: read-only, never a session) and
   // then re-reads. Once per visit: on the first not-ready status, and again
   // each time the screen comes back into view.
+  // Stripe is holding payouts until a bank is attached (from the check above).
+  // Then the card asks for one in our own form — never Stripe's screen, which
+  // is for what only Stripe can collect (2026-10-13).
+  const [needsBank, setNeedsBank] = useState(false);
   const checkWithStripe = useCallback(async () => {
-    await syncMyPayoutAccount();
+    const result = await syncMyPayoutAccount();
+    setNeedsBank(result.needsBank);
     refresh();
   }, [refresh]);
   const checkedThisVisit = useRef(false);
@@ -288,9 +293,18 @@ export function PayoutsScreen() {
     },
     [checkWithStripe],
   );
+  // The first not-ready status of a visit. Inlined rather than via
+  // checkIfWaiting: the state lands in the promise's callback, never in the
+  // effect body.
   useEffect(() => {
-    checkIfWaiting(status);
-  }, [status, checkIfWaiting]);
+    if (checkedThisVisit.current) return;
+    if (status !== 'verifying' && status !== 'unfinished') return;
+    checkedThisVisit.current = true;
+    void syncMyPayoutAccount().then((result) => {
+      setNeedsBank(result.needsBank);
+      refresh();
+    });
+  }, [status, refresh]);
 
   useFocusEffect(
     useCallback(() => {
@@ -459,7 +473,8 @@ export function PayoutsScreen() {
         setShowBankForm(false);
         setBankRejected(false);
         toast.show('Done — rewards will go to your new account.');
-        refresh();
+        // Ask Stripe, not just our row: a bank was what it was waiting for.
+        void checkWithStripe();
       } catch (error) {
         // A refusal our three fields cannot explain (an account Stripe cannot
         // pay, an API restriction on this account's generation): keep the form
@@ -477,7 +492,7 @@ export function PayoutsScreen() {
         setOpening(false);
       }
     },
-    [refresh, toast],
+    [checkWithStripe, toast],
   );
 
   /** The Stripe-surface fallback for a bank change our form couldn't land. */
@@ -521,6 +536,8 @@ export function PayoutsScreen() {
   // ready) the refusal card would offer a button with no purpose and one
   // irreversible effect, so the account's own state wins.
   const showRejected = detailsRejected && (status === 'notStarted' || status === 'unfinished');
+  // Not ready, and what Stripe is waiting for is a bank: ask for it ourselves.
+  const askBank = needsBank && (status === 'unfinished' || status === 'verifying');
   // The earn moment's second sentence: "tell us where" only while nobody has.
   // Under a tracker reading "Your details — done" it would contradict it.
   const earnedLine =
@@ -850,7 +867,7 @@ export function PayoutsScreen() {
           />
         )}
         <Text style={styles.cardTitle} accessibilityRole="header">
-          {COPY[status].title}
+          {askBank ? 'One more thing: your bank account' : COPY[status].title}
         </Text>
         {tracker ? null : <Text style={styles.cardBody}>{COPY[status].body}</Text>}
         {linkExpired ? (
@@ -859,16 +876,19 @@ export function PayoutsScreen() {
           </Text>
         ) : null}
         <Button
-          label={COPY[status].action}
+          label={askBank ? 'Add your bank account' : COPY[status].action}
           loading={opening}
           // Ready means "change where the money lands" — three fields, in the
-          // app, both account generations. Every other state still needs a
-          // Stripe surface of one kind or another, and `open` picks which.
-          onPress={() => (status === 'ready' ? setShowBankForm(true) : void open())}
+          // app, both account generations. So does a missing bank (askBank).
+          // Every other state still needs a Stripe surface of one kind or
+          // another, and `open` picks which.
+          onPress={() => (status === 'ready' || askBank ? setShowBankForm(true) : void open())}
           // Primary only where the next move is THEIRS. Verifying waits on
           // Stripe; a near-black button under "we'll switch payouts on the
           // moment it's done" would contradict the sentence (UI review).
-          variant={status === 'ready' || status === 'verifying' ? 'secondary' : 'primary'}
+          variant={
+            askBank ? 'primary' : status === 'ready' || status === 'verifying' ? 'secondary' : 'primary'
+          }
         />
       </View>
     );

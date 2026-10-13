@@ -26,7 +26,7 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
-import { readPayoutAccountState } from '../_shared/payoutAccountState.ts';
+import { ensureBusinessUrl, readPayoutAccountState } from '../_shared/payoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
 Deno.serve(async (request) => {
@@ -64,7 +64,7 @@ Deno.serve(async (request) => {
   if (!fresh) {
     // Stripe unreadable: the row stands, and the screen says what it said.
     console.warn('[payments] payout sync read failed', { accountId: existing.accountId });
-    return jsonResponse({ status: 'unchanged', payoutsEnabled: existing.payoutsEnabled });
+    return jsonResponse({ status: 'unchanged', payoutsEnabled: existing.payoutsEnabled, needsBank: false });
   }
 
   if (
@@ -96,5 +96,19 @@ Deno.serve(async (request) => {
     await releaseAllPendingFor(admin, stripe, userId);
   }
 
-  return jsonResponse({ status: 'synced', payoutsEnabled: fresh.payoutsEnabled });
+  // Stripe's routine "website" requirement is the platform's to answer, never
+  // the spotter's (accounts made before create-payout-account sent it). Set
+  // here, quietly; Stripe re-evaluates and the next check sees the result.
+  if (fresh.needsWebsite) {
+    const set = await ensureBusinessUrl(stripe, existing.accountId);
+    console.log('[payments] payout account website supplied', { accountId: existing.accountId, set });
+  }
+
+  // `needsBank`: no bank attached — the app asks for one in its own form
+  // rather than sending the spotter to Stripe's screen for it.
+  return jsonResponse({
+    status: 'synced',
+    payoutsEnabled: fresh.payoutsEnabled,
+    needsBank: fresh.needsBank,
+  });
 });
