@@ -81,6 +81,7 @@ import { useRequireAuth, useSession } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
 import { formatPounds } from '@/shared/lib/money';
 import {
+  cardSurface,
   radii,
   sizes,
   spacing,
@@ -93,6 +94,7 @@ import {
   Button,
   EmptyState,
   ErrorState,
+  ProgressSteps,
   Screen,
   StatusPill,
   useToast,
@@ -104,6 +106,7 @@ import { fetchMyPendingCredit, startConnectOnboarding, submitPayoutTokens } from
 import { createBankToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
+import { payoutProgress } from '../lib/payoutProgress';
 import { takePayoutSetupOutcome } from '../lib/payoutSetupOutcome';
 import { ensureStripeReady } from '../lib/stripeReady';
 
@@ -287,6 +290,33 @@ export function PayoutsScreen() {
     return result.clientSecret;
   }, []);
 
+  // Stripe's embedded step has been introduced and is waiting for "Continue".
+  const [stripeIntro, setStripeIntro] = useState(false);
+  // "Continue to Stripe" pressed, the SDK still warming: the heads-up stays
+  // up with a busy button rather than blinking back to the status card.
+  const [launching, setLaunching] = useState(false);
+
+  /** Render Stripe's embedded onboarding over this screen, in the app. */
+  const launchStripe = useCallback(async () => {
+    setLaunching(true);
+    // The embedded component calls native Stripe (bank-account collection, the
+    // authenticated web view), which needs the SDK initialised — no longer
+    // guaranteed by a StripeProvider on mount, so wait for it here. A failure
+    // is left to the component's own error surface.
+    await ensureStripeReady().catch(() => {});
+    setLaunching(false);
+    setStripeIntro(false);
+    setConnectInstance(
+      loadConnectAndInitialize({
+        publishableKey,
+        fetchClientSecret,
+        // Stripe's embedded UI takes a hex VALUE, so it reads the live palette —
+        // the near-black in light, the near-white in dark.
+        appearance: { variables: { colorPrimary: palette.primary } },
+      }),
+    );
+  }, [fetchClientSecret, palette]);
+
   const open = useCallback(
     async (options: { skipPrefill?: boolean } = {}) => {
     if (opening) {
@@ -315,20 +345,17 @@ export function PayoutsScreen() {
       // screen — no browser, no bounce page, no deep link.
       if (result.status === 'onboarding_session') {
         primedSecret.current = result.clientSecret;
-        // The embedded component calls native Stripe (bank-account collection,
-        // the authenticated web view), which needs the SDK initialised — no
-        // longer guaranteed by a StripeProvider on mount, so wait for it here.
-        // A failure is left to the component's own error surface.
-        await ensureStripeReady().catch(() => {});
-        setConnectInstance(
-          loadConnectAndInitialize({
-            publishableKey,
-            fetchClientSecret,
-            // Stripe's embedded UI takes a hex VALUE, so it reads the live
-            // palette — the near-black in light, the near-white in dark.
-            appearance: { variables: { colorPrimary: palette.primary } },
-          }),
-        );
+        // ⚠️ A HEADS-UP FIRST (2026-10-13, PR2 of the payments UX plan):
+        // Stripe's own screen used to arrive unannounced, in Stripe's styling,
+        // asking for things our steps hadn't — which reads as "something went
+        // wrong". The card says who, why and how long, and Continue opens it.
+        // Not for someone who just chose "Continue with Stripe": they already
+        // said yes to exactly this.
+        if (options.skipPrefill) {
+          await launchStripe();
+        } else {
+          setStripeIntro(true);
+        }
         return;
       }
 
@@ -359,7 +386,7 @@ export function PayoutsScreen() {
       setOpening(false);
     }
     },
-    [fetchClientSecret, opening, palette, refresh, router, settleReturn, toast],
+    [launchStripe, opening, refresh, router, settleReturn, toast],
   );
 
   /**
@@ -444,6 +471,33 @@ export function PayoutsScreen() {
     [],
   );
 
+  // ⚠️ ONLY WHILE THERE IS STILL NOTHING TO LOSE. "Continue with Stripe" spends
+  // the prefill window for good; once details have reached Stripe (verifying,
+  // ready) the refusal card would offer a button with no purpose and one
+  // irreversible effect, so the account's own state wins.
+  const showRejected = detailsRejected && (status === 'notStarted' || status === 'unfinished');
+  // The earn moment's second sentence: "tell us where" only while nobody has.
+  // Under a tracker reading "Your details — done" it would contradict it.
+  const earnedLine =
+    status === 'notStarted'
+      ? 'Your sighting led to a recovery. Tell us where to send it.'
+      : 'Your sighting led to a recovery.';
+
+  // WHERE THEY ARE ON THE ROAD (2026-10-13, owner: "not much if any progress
+  // indicators"). ⚠️ INSIDE the card that holds the button, IN PLACE OF the
+  // pill and the paragraph — not a card of its own above it. As a separate
+  // card it said the state four or five times over (pill, title, body, step,
+  // detail), near-verbatim (UI review): the current step's detail now says
+  // who is waiting and how long, the title says what this is, the button
+  // what to do. With no tracker (ready, nothing waiting) the pill returns.
+  const progress = payoutProgress({ status, settling, pendingCreditPence });
+  const tracker = progress ? (
+    <>
+      <ProgressSteps steps={progress} testID="payouts-steps" />
+      <View style={styles.divider} />
+    </>
+  ) : null;
+
   // Stripe's own full-screen modal (a native UIKit sheet on iOS, an RN Modal on
   // Android), so it is rendered instead of the page rather than inside it.
   if (connectInstance) {
@@ -516,7 +570,7 @@ export function PayoutsScreen() {
             // The curly apostrophe, matching the visible text and the house
             // style — a label that reads differently from the words on screen
             // is the kind of drift nobody sees until someone compares them.
-            accessibilityLabel={`You’ve earned ${formatPounds(pendingCreditPence)}. Your sighting led to a recovery. Tell us where to send it.`}
+            accessibilityLabel={`You’ve earned ${formatPounds(pendingCreditPence)}. ${earnedLine}`}
           >
             {/* ⚠️ NO `accessibilityElementsHidden` ON THE CHILDREN. It was
                 here first and was both redundant and harmful: `accessible` on
@@ -526,9 +580,7 @@ export function PayoutsScreen() {
                 and would take it from any tooling that reads the same tree. */}
             <Text style={styles.earnedLabel}>You’ve earned</Text>
             <Text style={styles.earnedAmount}>{formatPounds(pendingCreditPence)}</Text>
-            <Text style={styles.earnedBody}>
-              Your sighting led to a recovery. Tell us where to send it.
-            </Text>
+            <Text style={styles.earnedBody}>{earnedLine}</Text>
           </View>
         </View>
       ) : null}
@@ -578,11 +630,42 @@ export function PayoutsScreen() {
         />
       );
     }
-    // ⚠️ ONLY WHILE THERE IS STILL NOTHING TO LOSE. "Continue with Stripe"
-    // spends the prefill window for good; once details have reached Stripe
-    // (verifying, ready) the card would offer a button with no purpose and one
-    // irreversible effect, so the account's own state wins.
-    if (detailsRejected && (status === 'notStarted' || status === 'unfinished')) {
+    if (stripeIntro) {
+      // The heads-up before Stripe's embedded step (see `open`). Says who is
+      // asking, why, and how long — the three things an unannounced Stripe
+      // screen left people guessing.
+      return (
+        <View style={styles.card} testID="payouts-stripe-intro">
+          {/* The road stays in view as Stripe takes over: this is a step on
+              it, not a detour. */}
+          {tracker}
+          {/* Not "last", not "first payout": `open` reaches this from any
+              not-yet-ready state, and Stripe can come back for more. */}
+          <Text style={styles.cardTitle} accessibilityRole="header">
+            A quick check with Stripe
+          </Text>
+          <Text style={styles.cardBody}>
+            Stripe confirms it’s really you. It takes about two minutes, and they may ask for
+            a photo of your ID. You’ll come straight back here.
+          </Text>
+          <Button
+            label="Continue to Stripe"
+            onPress={() => void launchStripe()}
+            loading={launching}
+          />
+          <Button
+            label="Not now"
+            variant="ghost"
+            disabled={launching}
+            onPress={() => {
+              setStripeIntro(false);
+              primedSecret.current = null;
+            }}
+          />
+        </View>
+      );
+    }
+    if (showRejected) {
       return (
         <View style={styles.card} testID="payouts-details-rejected">
           <Text style={styles.cardTitle} accessibilityRole="header">
@@ -649,12 +732,16 @@ export function PayoutsScreen() {
       // someone who gave up, and guessing wrong blames the wrong person.
       return (
         <View style={styles.card} testID="payouts-settling">
+          {tracker}
           <Text style={styles.cardTitle} accessibilityRole="header">
             Nearly there
           </Text>
-          <Text style={styles.cardBody}>
-            We’re waiting for Stripe to confirm. This usually takes a moment.
-          </Text>
+          {/* The tracker's current step says this when it is drawn. */}
+          {tracker ? null : (
+            <Text style={styles.cardBody}>
+              We’re waiting for Stripe to confirm. This usually takes a moment.
+            </Text>
+          )}
           {/* Skips the wait rather than escaping a dead end — the window ends
               by itself, and once it does this card is gone. It is here so
               somebody who knows they finished need not watch a spinner. */}
@@ -705,15 +792,20 @@ export function PayoutsScreen() {
             why the app cannot hurry it. Dropping the heading for the chip would
             trade an explanation for a label on the one screen where people are
             most inclined to suspect they are being stalled. */}
-        <StatusPill
-          label={STATUS_PILL[status].label}
-          tone={STATUS_PILL[status].tone}
-          testID={`payouts-pill-${status}`}
-        />
+        {/* ⚠️ THE TRACKER TAKES THE PILL'S PLACE when there is one: its
+            current marker is the at-a-glance state now, and the pill beside it
+            was the same fact twice. Its detail replaces the paragraph too. */}
+        {tracker ?? (
+          <StatusPill
+            label={STATUS_PILL[status].label}
+            tone={STATUS_PILL[status].tone}
+            testID={`payouts-pill-${status}`}
+          />
+        )}
         <Text style={styles.cardTitle} accessibilityRole="header">
           {COPY[status].title}
         </Text>
-        <Text style={styles.cardBody}>{COPY[status].body}</Text>
+        {tracker ? null : <Text style={styles.cardBody}>{COPY[status].body}</Text>}
         {linkExpired ? (
           <Text style={styles.note}>
             That link expired — they only last a few minutes. Start again for a fresh one.
@@ -726,7 +818,10 @@ export function PayoutsScreen() {
           // app, both account generations. Every other state still needs a
           // Stripe surface of one kind or another, and `open` picks which.
           onPress={() => (status === 'ready' ? setShowBankForm(true) : void open())}
-          variant={status === 'ready' ? 'secondary' : 'primary'}
+          // Primary only where the next move is THEIRS. Verifying waits on
+          // Stripe; a near-black button under "we'll switch payouts on the
+          // moment it's done" would contradict the sentence (UI review).
+          variant={status === 'ready' || status === 'verifying' ? 'secondary' : 'primary'}
         />
       </View>
     );
@@ -786,11 +881,17 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     color: c.textPrimary,
     flexShrink: 1,
   },
+  // The house card: flat, with the hairline that is its only edge in dark mode
+  // (DESIGN_SYSTEM Card).
   card: {
+    ...cardSurface(c),
     gap: spacing.md,
     padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: c.surface,
+  },
+  // Between the tracker and the title under it.
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: c.border,
   },
   // surfaceInverse: this card is the page's one inverted block, so it flips
   // with the theme and stays the thing that stands out against the page.

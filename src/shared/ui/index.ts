@@ -34,6 +34,12 @@ export {
   type MediaIdentityCardProps,
 } from './MediaIdentityCard';
 export { NudgeRow, type NudgeRowProps } from './NudgeRow';
+export {
+  ProgressSteps,
+  type ProgressStep,
+  type ProgressStepState,
+  type ProgressStepsProps,
+} from './ProgressSteps';
 export { StatBand, type StatBandCell } from './StatBand';
 export { ToastProvider, useToast, useOptionalToast, type ToastKind } from './Toast';
 export {
