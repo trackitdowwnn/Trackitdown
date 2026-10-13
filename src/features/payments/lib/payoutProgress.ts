@@ -9,11 +9,10 @@
  *        a test without rendering a screen.
  *
  *        ⚠️ ONLY WHAT THE APP CAN ACTUALLY SEE. The payments ledger is never
- *        client-readable (payments_foundation's SAFETY note), so the last step
- *        knows "a reward is waiting" (my_pending_credit) and nothing later:
- *        not when it was sent, never when it reached a bank. It therefore
- *        never claims either. "Sent on 13 Oct" needs a caller-scoped RPC —
- *        PR2b, a migration of its own.
+ *        client-readable (payments_foundation's SAFETY note). Two narrow
+ *        reads stand in: my_pending_credit (a reward waiting) and, since
+ *        PR2b, my_latest_payout (a reward sent, and when). Nothing sees a
+ *        BANK, so no step ever says a reward arrived.
  *
  *        WHO IS WAITING ON WHOM is the point of each `detail`, as it is of the
  *        pill: "unfinished" waits on THEM, "verifying" on Stripe. Saying "all
@@ -22,6 +21,7 @@
  *        src/shared/ui/ProgressSteps.tsx; ./payoutProgress.test.ts.
  */
 
+import { formatTermDate } from '@/shared/lib/dateTimeLabel';
 import { formatPounds } from '@/shared/lib/money';
 import type { ProgressStep } from '@/shared/ui';
 
@@ -33,6 +33,9 @@ export interface PayoutProgressInput {
   settling: boolean;
   /** The credited-but-unsent reward, or null for none (undefined: still asking). */
   pendingCreditPence: number | null | undefined;
+  /** The most recent reward SENT within the window (fetchMyLatestPayout), or
+   *  null. Only read once nothing else is waiting. */
+  latestPayout?: { transferPence: number; sentAt: string } | null;
 }
 
 /**
@@ -44,11 +47,31 @@ export function payoutProgress({
   status,
   settling,
   pendingCreditPence,
+  latestPayout,
 }: PayoutProgressInput): ProgressStep[] | null {
   if (status === 'guest' || status === 'loading' || status === 'error') return null;
   // Still asking whether a reward waits — don't draw a road that may vanish.
   if (pendingCreditPence === undefined) return null;
   const credit = pendingCreditPence;
+
+  // ⚠️ THE ROAD'S END (PR2b, my_latest_payout). Payouts on, nothing waiting,
+  // and a reward sent recently: every step done, the last one saying WHEN. It
+  // says "sent" — Stripe moved it to their account — and never "arrived":
+  // the bank's side is Stripe's payout schedule, which nothing here can see.
+  // A reward still waiting outranks it: that is the road they are on now.
+  if (status === 'ready' && credit === null && latestPayout) {
+    return [
+      { id: 'details', label: 'Your details', state: 'done' },
+      { id: 'check', label: 'Stripe’s check', state: 'done' },
+      { id: 'payouts-on', label: 'Payouts on', state: 'done' },
+      {
+        id: 'reward',
+        label: `Your ${formatPounds(latestPayout.transferPence)} reward`,
+        state: 'done',
+        detail: `Sent ${formatTermDate(latestPayout.sentAt)} — your bank may take a few days to show it.`,
+      },
+    ];
+  }
   // Credit-time setup: with nothing waiting, "not started" is the expected
   // state, and "ready" has nothing left to show.
   if (credit === null && (status === 'notStarted' || status === 'ready')) return null;

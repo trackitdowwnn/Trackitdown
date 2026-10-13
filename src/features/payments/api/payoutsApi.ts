@@ -276,6 +276,42 @@ export async function fetchMyPendingCredit(): Promise<{
   return { postId: row.post_id as string, transferPence: Number(row.transfer_pence) };
 }
 
+/** How long a sent reward stays on the Payouts tracker as its last step. */
+export const SENT_SHOWN_DAYS = 30;
+
+/**
+ * The caller's most recently SENT reward, if it was sent within
+ * SENT_SHOWN_DAYS — or null. "Sent" is Stripe's transfer to their account,
+ * never "in your bank" (see the migration). The window is applied HERE, at
+ * fetch time, not during render: a render-time "now" is memoised by the React
+ * Compiler on device, so a clock read there goes stale.
+ *
+ * Null on error, as fetchMyPendingCredit is: the tracker's last step is an
+ * enhancement, never a reason to fail the screen.
+ */
+export async function fetchMyLatestPayout(): Promise<{
+  transferPence: number;
+  sentAt: string;
+} | null> {
+  const { data, error } = await supabase.rpc('my_latest_payout');
+  if (error) {
+    log.warn('my_latest_payout failed', { code: error.code });
+    return null;
+  }
+  const row = Array.isArray(data) ? data[0] : null;
+  // The server already drops a release with no recorded transfer; this is the
+  // same refusal one level up — "Your £0.00 reward" must be unreachable.
+  if (!row?.sent_at || row.transfer_pence == null) {
+    return null;
+  }
+  const sentAt = String(row.sent_at);
+  const ageMs = Date.now() - new Date(sentAt).getTime();
+  if (!(ageMs <= SENT_SHOWN_DAYS * 24 * 60 * 60 * 1000)) {
+    return null;
+  }
+  return { transferPence: Number(row.transfer_pence), sentAt };
+}
+
 /**
  * Read my own payee account, or null if I have never started.
  *
