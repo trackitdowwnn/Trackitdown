@@ -144,6 +144,11 @@ export interface PostDetailBodyProps {
    *  ("Your £200 reward runs until 4 December.") — passed only while the
    *  listing's banner shows no card, so the date is said once (ADR-0020). */
   rewardTermLine?: string | null;
+  /** OWNER only, once a closed listing's reward has settled: "Paid out" or
+   *  "Refunded", in place of the original £ figure — which otherwise reads as
+   *  a reward still on offer (PR4, 2026-10-13; the "Your reward" card above
+   *  says when and how much). */
+  rewardOutcome?: 'Paid out' | 'Refunded' | null;
 }
 
 function Divider() {
@@ -171,6 +176,7 @@ export function PostDetailBody({
   onDeactivate,
   onRecovered,
   rewardTermLine,
+  rewardOutcome = null,
 }: PostDetailBodyProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
@@ -286,19 +292,32 @@ export function PostDetailBody({
                   // A reward that ENDED reads "Ended" under this cell's
                   // "Reward" label: the full "Reward ended" truncates here
                   // (REWARD_ENDED_SHORT), so the screen reader gets the phrase.
-                  style={post.bountyPence === null ? styles.statValueNone : styles.statValueBounty}
+                  style={
+                    post.bountyPence === null || rewardOutcome
+                      ? styles.statValueNone
+                      : styles.statValueBounty
+                  }
                   numberOfLines={1}
-                  accessibilityLabel={rewardEnded ? REWARD_ENDED_LABEL : undefined}
+                  accessibilityLabel={
+                    rewardOutcome
+                      ? `Reward ${rewardOutcome.toLowerCase()}`
+                      : rewardEnded
+                        ? REWARD_ENDED_LABEL
+                        : undefined
+                  }
                 >
                   {/* Narrowed on the field, not via `noReward` — so the compiler
                       sees the null is gone and no cast is needed. formatPounds
                       throws on a non-integer, which is why this is a real guard
-                      rather than a formality. */}
-                  {post.bountyPence === null
-                    ? rewardEnded
-                      ? REWARD_ENDED_SHORT
-                      : bountyLabel(null)
-                    : formatPounds(post.bountyPence)}
+                      rather than a formality. A settled reward on a closed
+                      listing says where it went instead (rewardOutcome). */}
+                  {rewardOutcome
+                    ? rewardOutcome
+                    : post.bountyPence === null
+                      ? rewardEnded
+                        ? REWARD_ENDED_SHORT
+                        : bountyLabel(null)
+                      : formatPounds(post.bountyPence)}
                 </Text>
                 {onEditBounty ? (
                   <SectionEditButton

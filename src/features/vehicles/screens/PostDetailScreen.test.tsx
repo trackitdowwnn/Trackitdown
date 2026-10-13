@@ -103,6 +103,11 @@ const mockExitCheck = jest.fn(async () => ({
 }));
 // The owner's reward status — driven per test; null = not read (the default).
 let mockRewardStatus: unknown = null;
+// The owner's reward history (PR4) — null unless a test gives one.
+let mockRewardTimeline: unknown = null;
+const mockUseMyRewardTimeline = jest.fn((_postId: string, enabled: boolean) =>
+  enabled ? mockRewardTimeline : null,
+);
 const mockUseMyRewardStatus = jest.fn((_postId: string, _enabled: boolean) => ({
   status: mockRewardStatus,
   readAt: Date.parse('2026-10-06T12:00:00Z'),
@@ -116,6 +121,16 @@ jest.mock('@/features/payments', () => {
     useDeactivatePost: () => ({ deactivate: mockDeactivate, pending: false }),
     exitCheck: (...args: unknown[]) => mockExitCheck(...(args as [])),
     useMyRewardStatus: (postId: string, enabled: boolean) => mockUseMyRewardStatus(postId, enabled),
+    // The reward history (PR4): the REAL step rules, a stubbed read.
+    useMyRewardTimeline: (postId: string, enabled: boolean) =>
+      mockUseMyRewardTimeline(postId, enabled),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+    rewardTimeline: require('@/features/payments/lib/rewardTimeline').rewardTimeline,
+    RewardTimelineCard: () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory
+      const { Text } = require('react-native');
+      return <Text>reward-timeline-card</Text>;
+    },
     hasRewardTermCard: term.hasRewardTermCard,
     quietRewardTermLine: term.quietRewardTermLine,
     // The banner's states have their own tests; here it is a marker.
@@ -245,6 +260,61 @@ describe('PostDetailScreen', () => {
     const { getByText, queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
     expect(getByText('Manage listing')).toBeTruthy();
     expect(queryByText("I've seen this car")).toBeNull();
+  });
+
+  describe('"Your reward" — where the money went (PR4, 2026-10-13)', () => {
+    afterEach(() => {
+      mockRewardTimeline = null;
+    });
+
+    const refunded = {
+      postStatus: 'cancelled',
+      rewards: [
+        {
+          status: 'refunded',
+          amountPence: 25000,
+          capturedAt: '2026-10-01T10:00:00Z',
+          termEndsAt: '2026-11-30T23:59:59Z',
+          releasedAt: null,
+          refundedAt: '2026-10-16T09:00:00Z',
+          refundedPence: 24605,
+          supersededAt: null,
+          holdUntil: '2026-10-16T08:00:00Z',
+          holdReason: 'deactivate',
+        },
+      ],
+      creditedAt: null,
+      disputeOpen: false,
+    };
+
+    it('an owner’s cancelled listing shows the card, and "Refunded" in place of a stale £', async () => {
+      mockRewardTimeline = refunded;
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true, status: 'cancelled' } });
+      const { getByText, queryByText } = await render(<PostDetailScreen postId="p1" />, {
+        wrapper: ToastProvider,
+      });
+      expect(getByText('reward-timeline-card')).toBeTruthy();
+      expect(getByText('Refunded')).toBeTruthy();
+      // The fixture's reward is £500: that figure must no longer read as on offer.
+      expect(queryByText('£500')).toBeNull();
+      expect(mockUseMyRewardTimeline).toHaveBeenLastCalledWith('p1', true);
+    });
+
+    it('a LIVE listing is the term card’s to tell — the history is not even asked for', async () => {
+      mockRewardTimeline = refunded;
+      setResult('ready', { kind: 'visible', post: { ...post, isOwner: true } });
+      const { queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      expect(queryByText('reward-timeline-card')).toBeNull();
+      expect(mockUseMyRewardTimeline).toHaveBeenLastCalledWith('p1', false);
+    });
+
+    it('never for anyone but the owner', async () => {
+      mockRewardTimeline = refunded;
+      setResult('ready', { kind: 'visible', post: { ...post, status: 'cancelled' } });
+      const { queryByText } = await render(<PostDetailScreen postId="p1" />, { wrapper: ToastProvider });
+      expect(queryByText('reward-timeline-card')).toBeNull();
+      expect(mockUseMyRewardTimeline).toHaveBeenLastCalledWith('p1', false);
+    });
   });
 
   it('hidden (recovered): shows the warm closed state, no detail or bottom bar', async () => {
