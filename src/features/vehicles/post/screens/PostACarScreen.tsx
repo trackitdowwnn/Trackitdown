@@ -256,6 +256,9 @@ export function PostACarScreen({
         {...confirmation}
         // Replace, so back never returns into the finished wizard.
         onViewListing={() => router.replace(`/post/${confirmation.postId}`)}
+        // Leaves the flow, as the wizard's ✕ did. NOT onAbandon: the car is
+        // listed — "you were only exploring" would be the wrong sentence.
+        onClose={() => router.back()}
       />
     );
   }

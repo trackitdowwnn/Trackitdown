@@ -141,6 +141,7 @@ let capturedConfirmation: {
   mode: 'reward' | 'fee';
   amountPence: number;
   onViewListing: () => void;
+  onClose: () => void;
 } | null = null;
 jest.mock('../components/PaymentConfirmation', () => ({
   PaymentConfirmation: (props: NonNullable<typeof capturedConfirmation>) => {
@@ -205,6 +206,21 @@ describe('handleComplete', () => {
 
     capturedConfirmation?.onViewListing();
     expect(mockReplace).toHaveBeenCalledWith('/post/p1');
+  });
+
+  it('the ✕ after paying leaves the flow — and is never "only exploring"', async () => {
+    // onAbandon offers the garage to someone who was browsing; this person has
+    // just listed a stolen car.
+    const onAbandon = jest.fn();
+    mockPayBounty.mockResolvedValue({ outcome: 'paid', message: null });
+    await mount({ onAbandon });
+    await act(async () => {
+      await capturedOnComplete(ANSWERS);
+    });
+
+    capturedConfirmation?.onClose();
+    expect(mockBack).toHaveBeenCalledTimes(1);
+    expect(onAbandon).not.toHaveBeenCalled();
   });
 
   it('a £5 listing confirms as the fee, not as a reward', async () => {
