@@ -689,7 +689,6 @@ describe('the end of the road — a reward sent (PR2b)', () => {
     mockAccountState = { status: 'ready', settling: false };
     mockPendingCredit.mockResolvedValue(null);
     mockLatestPayout.mockResolvedValue({
-      postId: 'post-1',
       transferPence: 19000,
       sentAt: '2026-10-13T11:00:00Z',
     });

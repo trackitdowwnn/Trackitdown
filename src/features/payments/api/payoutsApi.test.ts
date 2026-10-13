@@ -303,7 +303,6 @@ describe('fetchPayoutsRelevant', () => {
 describe('fetchMyLatestPayout (PR2b)', () => {
   const DAY = 24 * 60 * 60 * 1000;
   const row = (daysAgo: number) => ({
-    post_id: 'post-9',
     transfer_pence: 19000,
     sent_at: new Date(Date.now() - daysAgo * DAY).toISOString(),
   });
@@ -312,11 +311,16 @@ describe('fetchMyLatestPayout (PR2b)', () => {
     mockRpc.mockResolvedValue({ data: [row(2)], error: null });
     const sent = await fetchMyLatestPayout();
     expect(mockRpc).toHaveBeenCalledWith('my_latest_payout');
-    expect(sent).toMatchObject({ postId: 'post-9', transferPence: 19000 });
+    expect(sent).toMatchObject({ transferPence: 19000 });
   });
 
   it('lets an old payout go: only one sent within the window ends the road', async () => {
     mockRpc.mockResolvedValue({ data: [row(SENT_SHOWN_DAYS + 1)], error: null });
+    await expect(fetchMyLatestPayout()).resolves.toBeNull();
+  });
+
+  it('a row with no recorded transfer is null — never "£0.00 sent"', async () => {
+    mockRpc.mockResolvedValue({ data: [{ ...row(1), transfer_pence: null }], error: null });
     await expect(fetchMyLatestPayout()).resolves.toBeNull();
   });
 

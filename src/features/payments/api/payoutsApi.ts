@@ -290,7 +290,6 @@ export const SENT_SHOWN_DAYS = 30;
  * enhancement, never a reason to fail the screen.
  */
 export async function fetchMyLatestPayout(): Promise<{
-  postId: string;
   transferPence: number;
   sentAt: string;
 } | null> {
@@ -300,7 +299,9 @@ export async function fetchMyLatestPayout(): Promise<{
     return null;
   }
   const row = Array.isArray(data) ? data[0] : null;
-  if (!row?.post_id || !row.sent_at) {
+  // The server already drops a release with no recorded transfer; this is the
+  // same refusal one level up — "Your £0.00 reward" must be unreachable.
+  if (!row?.sent_at || row.transfer_pence == null) {
     return null;
   }
   const sentAt = String(row.sent_at);
@@ -308,11 +309,7 @@ export async function fetchMyLatestPayout(): Promise<{
   if (!(ageMs <= SENT_SHOWN_DAYS * 24 * 60 * 60 * 1000)) {
     return null;
   }
-  return {
-    postId: row.post_id as string,
-    transferPence: Number(row.transfer_pence),
-    sentAt,
-  };
+  return { transferPence: Number(row.transfer_pence), sentAt };
 }
 
 /**
