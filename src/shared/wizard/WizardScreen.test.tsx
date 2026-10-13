@@ -18,6 +18,8 @@
 
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { useEffect } from 'react';
+
+import { holdFullscreenOverlay } from '../hooks';
 import {
   AccessibilityInfo,
   Alert,
@@ -75,7 +77,7 @@ jest.mock('react-native-reanimated', () => {
   return {
     __esModule: true,
     default: { View: MockAnimatedView },
-    Easing: { out: (fn: unknown) => fn, quad: () => 0, cubic: () => 0 },
+    Easing: { in: (fn: unknown) => fn, out: (fn: unknown) => fn, quad: () => 0, cubic: () => 0 },
     ReduceMotion: { System: 'system' },
     SlideInLeft: builder('SlideInLeft'),
     SlideInRight: builder('SlideInRight'),
@@ -590,6 +592,49 @@ describe('moving between screens', () => {
     expect(footerPad(view)).toBe(resting);
 
     // A field on the new step raising the keyboard lifts the footer again.
+    await fire('keyboardDidShow', { endCoordinates: { height: 280 } });
+    expect(footerPad(view)).toBe(resting + 280);
+    listen.mockRestore();
+    jest.restoreAllMocks();
+  });
+
+  it('⚠️ never lifts the footer for a picker’s keyboard — open, or closing', async () => {
+    // Motion review (2026-10-12): keyboard events are global, so a search
+    // typed in a full-screen picker lifted Next behind it — seen hanging and
+    // snapping down once the picker's backdrop began to fade.
+    jest.replaceProperty(Platform, 'OS', 'android');
+    const handlers: Record<string, ((event?: unknown) => void)[]> = {};
+    const listen = jest.spyOn(Keyboard, 'addListener').mockImplementation(((
+      name: string,
+      handler: (event?: unknown) => void,
+    ) => {
+      (handlers[name] ??= []).push(handler);
+      return { remove: jest.fn() };
+    }) as unknown as typeof Keyboard.addListener);
+    const fire = async (name: string, event?: unknown) => {
+      await act(async () => {
+        for (const handler of handlers[name] ?? []) handler(event);
+      });
+    };
+    const footerPad = (view: Awaited<ReturnType<typeof render>>) =>
+      StyleSheet.flatten(view.getByTestId('wizard-footer').props.style).paddingBottom;
+
+    const { view } = await renderWizard();
+    const resting = footerPad(view);
+
+    let release: () => void = () => {};
+    await act(async () => {
+      release = holdFullscreenOverlay(); // a picker opens over the wizard
+    });
+    await fire('keyboardDidShow', { endCoordinates: { height: 300 } }); // its search
+    expect(footerPad(view)).toBe(resting);
+
+    await act(async () => release()); // the picker has gone…
+    expect(footerPad(view)).toBe(resting); // …its keyboard not yet reported down
+    await fire('keyboardDidHide');
+    expect(footerPad(view)).toBe(resting);
+
+    // A field of the wizard's own still lifts it.
     await fire('keyboardDidShow', { endCoordinates: { height: 280 } });
     expect(footerPad(view)).toBe(resting + 280);
     listen.mockRestore();

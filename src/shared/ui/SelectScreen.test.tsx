@@ -12,8 +12,9 @@
  */
 
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { AccessibilityInfo, Keyboard } from 'react-native';
+import { AccessibilityInfo, Keyboard, TextInput } from 'react-native';
 
+import { useFullscreenOverlayOpen } from '../hooks';
 import { SelectScreen, fitAnchors } from './SelectScreen';
 import type { SelectOption } from './selectOptions';
 
@@ -78,7 +79,7 @@ jest.mock('react-native-reanimated', () => {
   return {
     __esModule: true,
     default: { View },
-    Easing: { out: (fn: unknown) => fn, quad: () => 0 },
+    Easing: { in: (fn: unknown) => fn, out: (fn: unknown) => fn, quad: () => 0 },
     ReduceMotion: { System: 'system' },
     FadeIn: builder(),
     FadeInDown: builder(),
@@ -217,7 +218,7 @@ describe('SelectScreen', () => {
         );
       });
       await act(async () => {
-        jest.advanceTimersByTime(300); // past the close (the fallback unmount)
+        jest.advanceTimersByTime(450); // past the close and its fallback margin
       });
       expect(onClosed).toHaveBeenCalledWith(true);
     });
@@ -395,7 +396,7 @@ describe('SelectScreen', () => {
         );
       });
       await act(async () => {
-        jest.advanceTimersByTime(300);
+        jest.advanceTimersByTime(450); // past the close and its fallback margin
       });
       expect(onClosed).toHaveBeenCalledWith(true);
     });
@@ -693,7 +694,7 @@ describe('SelectScreen', () => {
     expect(view.toJSON()).not.toBeNull();
 
     await act(async () => {
-      jest.advanceTimersByTime(300); // past MOTION_MS
+      jest.advanceTimersByTime(450); // past CLOSE_MS and the fallback margin
     });
     expect(view.toJSON()).toBeNull();
   });
@@ -761,6 +762,83 @@ describe('SelectScreen', () => {
     });
 
     expect(view.getByText('BMW')).toBeTruthy();
+  });
+
+  // 2026-10-12, owner report: "very snappy". The page colour behind the sheet
+  // used to be a STATIC fill — the screen behind vanished in one frame on
+  // open and came back in one frame after the sheet had gone.
+  it('⚠️ fades its backdrop with the sheet — never a static fill round the close', async () => {
+    const { view } = await renderScreen();
+    const backdrop = view.getByTestId('select-screen-backdrop');
+    expect(backdrop.props.pointerEvents).toBe('none');
+
+    await act(async () => {
+      view.rerender(
+        <SelectScreen
+          visible={false}
+          title="Car make"
+          options={MAKES}
+          value={null}
+          onSelect={jest.fn()}
+          onClose={jest.fn()}
+        />,
+      );
+    });
+    // Closing: the backdrop leaves WITH the sheet (its own fade-out), while
+    // the Modal shell waits out the exit — nothing opaque is left behind.
+    expect(view.toJSON()).not.toBeNull();
+    expect(view.queryByTestId('select-screen-backdrop')).toBeNull();
+  });
+
+  it('tells the screen behind it is covered — until it has fully gone', async () => {
+    // The wizard footer reads this so a picker's keyboard never lifts Next.
+    const states: boolean[] = [];
+    function Probe() {
+      states.push(useFullscreenOverlayOpen());
+      return null;
+    }
+    const probe = await render(<Probe />);
+    const { view } = await renderScreen();
+    expect(states[states.length - 1]).toBe(true);
+
+    await act(async () => {
+      view.rerender(
+        <SelectScreen
+          visible={false}
+          title="Car make"
+          options={MAKES}
+          value={null}
+          onSelect={jest.fn()}
+          onClose={jest.fn()}
+        />,
+      );
+    });
+    expect(states[states.length - 1]).toBe(true); // still closing
+    await act(async () => {
+      jest.advanceTimersByTime(450);
+    });
+    expect(states[states.length - 1]).toBe(false);
+    await probe.unmount();
+  });
+
+  it('focuses search only once the sheet has risen — never mid-slide', async () => {
+    // A keyboard raised mid-slide lifts the screen behind (the wizard's
+    // footer), which now shows through the fading backdrop.
+    // RN's jest preset puts a shared focus spy on the mocked TextInput's
+    // prototype (mockComponent's instanceMethods).
+    const focus = (TextInput as unknown as { prototype: { focus: jest.Mock } }).prototype.focus;
+    focus.mockClear();
+    await renderScreen();
+
+    await act(async () => {
+      jest.advanceTimersByTime(100);
+    });
+    expect(focus).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(250); // past the 300ms rise
+    });
+    expect(focus).toHaveBeenCalled();
   });
 
   it('shows the empty state for a fruitless search and clears it', async () => {

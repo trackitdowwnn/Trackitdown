@@ -39,7 +39,8 @@ doing you a favour.
 - **Auto-advance (`advanceSoon`).** A step whose answer is one pick can move
   on by itself after `motion.autoAdvanceBeat` (or a picker's shorter
   `autoAdvanceAfterPicker`, from its field's `onPicked` — after the picker has
-  CLOSED, never on its X — so the next slide never plays behind it). It only
+  CLOSED, never on its X — so the next slide never plays behind it, and the
+  filled field is seen for a moment first). It only
   fires if the step is then valid, any move cancels it, the move it makes
   locks for at least 400ms even under reduced motion (a habitual Next tap
   must not skip the next step), it is off under assistive technology

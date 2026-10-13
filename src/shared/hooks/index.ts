@@ -5,6 +5,7 @@
  * LINKS: docs/ARCHITECTURE.md (shared/hooks).
  */
 
+export { holdFullscreenOverlay, useFullscreenOverlayOpen } from './fullscreenOverlay';
 export { LIVE_REFRESH_MS } from './liveRefresh';
 export { useAndroidKeyboardHeight } from './useAndroidKeyboardHeight';
 export { useEntranceGate } from './useEntranceGate';

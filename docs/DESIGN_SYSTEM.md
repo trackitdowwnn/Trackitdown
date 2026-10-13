@@ -883,15 +883,26 @@ barrel, since it pulls in Reanimated).
 
 - **Durations:** `instant` 0 (reduced-motion fallback) · `fast` 200 (micro:
   fades, press, label floats) · `standard` 250 (screen-scale: sheets, slides)
-  · `slow` 300 (hero continuity). Map camera moves are sanctioned exceptions
-  (`mapFly` 500 / `mapPan` 350).
+  · `slow` 300 (hero continuity; the full-screen picker opening). Map camera
+  moves are sanctioned exceptions (`mapFly` 500 / `mapPan` 350).
 - **Timings that aren't animations:** `longPress` 350 (hold before a
   long-press fires) · `stepRepeat` 120 (a held TimeSlotPicker stepper repeats
   about eight times a second) · `autoAdvanceBeat` 400 / `autoAdvanceAfterPicker`
-  200 (a wizard pick moving on by itself; off under assistive technology).
-- **Easing:** one deceleration curve — `easeOut` — for enters and most timing
-  (from `motionEasing.ts`). `easeIn` (exits) / `easeInOut` (reversible moves)
-  are added there when a consumer needs one. No ad-hoc quad/cubic mix.
+  300 (a wizard pick moving on by itself; off under assistive technology).
+- **Easing:** `easeOut` (deceleration) for enters and most timing, and
+  `easeIn` (acceleration) for a pronounced EXIT, so a full-screen surface
+  glides away instead of being yanked — both from `motionEasing.ts`.
+  `easeInOut` (reversible moves) is added there when a consumer needs it. No
+  ad-hoc quad/cubic mix.
+- **Full-screen picker (`SelectScreen`, 2026-10-12):** opens over `slow` with
+  `easeOut` and closes over `standard` with `easeIn` (a quad — exits are
+  shorter than entrances, and a cubic started too slowly after a tap). Its
+  page-colour backdrop FADES with the sheet, so the screen behind dims away
+  and comes back — never a one-frame cut. While it is up, the screen behind
+  ignores its keyboard (`holdFullscreenOverlay`). Search focuses only once
+  the sheet has risen, so a rising keyboard never shifts the screen behind
+  mid-slide. After a pick, a wizard
+  waits `autoAdvanceAfterPicker` with the filled field on show, then slides on.
 - **Springs (three feels, one source):** `springGentle` (critically damped,
   zero wobble) — the sanctioned default for calm owner-facing motion;
   `springStandard` (a hair of life) for touch feedback and floating surfaces
@@ -921,7 +932,7 @@ barrel, since it pulls in Reanimated).
   nothing a step had already shown replays its entrance on return. Progress
   is one segment per phase, filling per step, and animates only on change,
   never on mount. A one-pick step (a make, a body type) moves on by itself
-  after `autoAdvanceBeat` (400ms — the card's press settles first; 200ms
+  after `autoAdvanceBeat` (400ms — the card's press settles first; 300ms
   after a picker closes) — never under a screen reader or, on Android, any
   accessibility service (Switch Access loses its place when a screen moves
   by itself). Colour waits for Next since 2026-10-12: a pick may need a note,

@@ -51,6 +51,7 @@ jest.mock('react-native-reanimated', () => {
     // motionEasing.ts evaluates Easing.out(Easing.cubic) at module scope, so a
     // mock missing this throws on import rather than failing a test.
     Easing: {
+      in: (easing: unknown) => easing,
       out: (easing: unknown) => easing,
       cubic: (t: number) => t * t * t,
       linear: (t: number) => t,
