@@ -58,6 +58,9 @@ export { ChangeRewardScreen } from './screens/ChangeRewardScreen';
 export { RewardTermBanner } from './components/RewardTermBanner';
 export { useMyRewardStatus, type MyRewardStatusState } from './hooks/useMyRewardStatus';
 export { hasRewardTermCard, quietRewardTermLine, rewardTermLine } from './lib/rewardTerm';
+export { RewardTimelineCard } from './components/RewardTimelineCard';
+export { useMyRewardTimeline } from './hooks/useMyRewardTimeline';
+export { rewardTimeline, type RewardTimelineView } from './lib/rewardTimeline';
 export {
   CHANGE_REWARD_ERROR_MESSAGES,
   type RewardStatus,

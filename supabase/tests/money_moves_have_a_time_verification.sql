@@ -65,6 +65,30 @@ begin
     raise exception 'CHECK 3 FAILED: a later write moved released_at to % — the stamp must be the moment money moved, once', v_row.released_at;
   end if;
 
+  -- CHECK 3b — each guard ALONE holds (security review: the case above needs
+  -- both broken to fail). The "only while null" guard on a REAL change of
+  -- status: a superseded row already carrying refunded_at keeps it.
+  insert into public.payments
+    (post_id, stripe_payment_intent_id, status, amount_pence, captured_at, superseded_at, refunded_at)
+  values
+    ('a1a1a1a1-0000-0000-0000-000000000007', 'pi_moment_preset', 'superseded', 25000,
+     now() - interval '9 days', now() - interval '3 days', now() - interval '2 days')
+  returning id into v_pay;
+  update public.payments set status = 'refunded' where id = v_pay;
+  select refunded_at into v_row from public.payments where id = v_pay;
+  if v_row.refunded_at > now() - interval '47 hours' then
+    raise exception 'CHECK 3b FAILED: a real change of status moved an existing refunded_at';
+  end if;
+  -- …and the "real change" guard: a same-status replay stamps nothing.
+  update public.payments set released_at = null
+   where stripe_payment_intent_id = 'pi_moment_1';
+  update public.payments set status = 'released'
+   where stripe_payment_intent_id = 'pi_moment_1';
+  select released_at into v_row from public.payments where stripe_payment_intent_id = 'pi_moment_1';
+  if v_row.released_at is not null then
+    raise exception 'CHECK 3b FAILED: a same-status replay stamped released_at';
+  end if;
+
   -- CHECK 4 — refunded stamps refunded_at, on an update AND on an insert.
   insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, captured_at)
   values ('a1a1a1a1-0000-0000-0000-000000000004', 'pi_moment_2', 'held', 25000, now() - interval '5 days')
@@ -81,6 +105,21 @@ begin
   select refunded_at into v_row from public.payments where id = v_pay;
   if v_row.refunded_at is null then
     raise exception 'CHECK 4 FAILED: a payment inserted as refunded carries no refunded_at';
+  end if;
+
+  -- CHECK 4b — the renewal route, through the REAL writer: a superseded
+  -- reward refunded by reconcile_payment_refund is stamped too.
+  insert into public.payments
+    (post_id, stripe_payment_intent_id, status, amount_pence, captured_at, superseded_at)
+  values
+    ('a1a1a1a1-0000-0000-0000-000000000008', 'pi_moment_superseded', 'superseded', 25000,
+     now() - interval '20 days', now() - interval '1 day')
+  returning id into v_pay;
+  perform public.reconcile_payment_refund('pi_moment_superseded', 're_moment_superseded', 24605);
+  select status, refunded_at into v_row from public.payments where id = v_pay;
+  if v_row.status <> 'refunded' or v_row.refunded_at is null then
+    raise exception 'CHECK 4b FAILED: superseded → refunded via reconcile_payment_refund left status % / refunded_at %',
+      v_row.status, v_row.refunded_at;
   end if;
 
   raise notice 'money moments CHECKS 1-4 passed';
@@ -160,6 +199,13 @@ begin
   if (select count(*) from jsonb_object_keys(v_reward)) <> 10 then
     raise exception 'CHECK 7 FAILED: a reward''s fields widened beyond the ten it was built with: %', v_reward;
   end if;
+  -- …and the top level is exactly these four: a new key carrying a hold or
+  -- dispute id (random uuids, which the pattern above would miss) fails here.
+  if array(select jsonb_object_keys(v_json) order by 1)
+     <> array['creditedAt', 'disputeOpen', 'postStatus', 'rewards'] then
+    raise exception 'CHECK 7 FAILED: the timeline''s top level widened: %',
+      array(select jsonb_object_keys(v_json) order by 1);
+  end if;
 
   -- CHECK 8 — ⚠️ anyone else: POST_NOT_FOUND, the same as a missing post.
   perform set_config('request.jwt.claims',
@@ -171,6 +217,32 @@ begin
   end;
   if not v_caught then
     raise exception 'CHECK 8 FAILED: the credited spotter read the owner''s reward timeline';
+  end if;
+
+  -- The same refusal for a post that doesn't exist — so neither is an oracle
+  -- for the other — even asked by a real owner.
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  v_caught := false;
+  begin
+    perform public.get_my_reward_timeline(gen_random_uuid());
+  exception when others then
+    v_caught := sqlerrm like '%POST_NOT_FOUND%';
+  end;
+  if not v_caught then
+    raise exception 'CHECK 8 FAILED: a missing post did not read as POST_NOT_FOUND';
+  end if;
+
+  -- And nobody signed in: NOT_AUTHENTICATED.
+  perform set_config('request.jwt.claims', '', true);
+  v_caught := false;
+  begin
+    perform public.get_my_reward_timeline(v_post);
+  exception when others then
+    v_caught := sqlerrm like '%NOT_AUTHENTICATED%';
+  end;
+  if not v_caught then
+    raise exception 'CHECK 8 FAILED: a caller with no session was not refused NOT_AUTHENTICATED';
   end if;
 
   raise notice 'reward timeline CHECKS 5-8 passed';

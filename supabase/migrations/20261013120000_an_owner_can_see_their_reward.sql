@@ -33,7 +33,7 @@
 -- LINKS: supabase/migrations/20261006110000_a_fee_is_a_fact.sql
 --          (get_my_reward_status, the live-reward read this complements);
 --        supabase/migrations/20261013110000_money_moves_have_a_time.sql;
---        src/features/payments/api/rewardChangeApi.ts (the client);
+--        src/features/payments/api/rewardTimelineApi.ts (the client);
 --        supabase/tests/money_moves_have_a_time_verification.sql.
 -- -----------------------------------------------------------------------------
 
@@ -98,6 +98,18 @@ comment on function public.get_my_reward_timeline(uuid) is
 
 revoke all on function public.get_my_reward_timeline(uuid) from public, anon;
 grant execute on function public.get_my_reward_timeline(uuid) to authenticated;
+
+-- Assert the grants in the deploy itself, as 20261006110000 does: one owner's
+-- money must never be callable by anon.
+do $$
+begin
+  if has_function_privilege('anon', 'public.get_my_reward_timeline(uuid)', 'execute') then
+    raise exception 'get_my_reward_timeline is executable by anon';
+  end if;
+  if not has_function_privilege('authenticated', 'public.get_my_reward_timeline(uuid)', 'execute') then
+    raise exception 'get_my_reward_timeline is not executable by authenticated';
+  end if;
+end $$;
 
 -- =============================================================================
 -- END OF MIGRATION

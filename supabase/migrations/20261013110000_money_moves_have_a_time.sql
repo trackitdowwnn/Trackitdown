@@ -22,9 +22,12 @@
 --
 -- BACKFILL: existing rows get the best moment the ledger has, and it is an
 --        ESTIMATE, said here rather than hidden:
---        - released: the earlier of payout_notified_at (the "sent" push, a few
---          seconds after release) and updated_at;
---        - refunded: updated_at — at or after the refund, never before it.
+--        - released: the earlier of payout_notified_at (the "sent" push —
+--          seconds after release, or up to an hour from the hourly sweep) and
+--          updated_at;
+--        - refunded: the earlier of payout_lapse_notified_at (a lapsed
+--          payout's push, which moved updated_at) and updated_at — at or
+--          after the refund, never before it.
 --        The updated_at trigger is suspended around the backfill (the
 --        20261005110000 pattern) so it doesn't stamp every row with today.
 --
@@ -43,7 +46,7 @@ alter table public.payments
 comment on column public.payments.released_at is
   'When the reward was paid out (status became released). Stamped once by payments_stamp_money_moment. Rows released before 2026-10-13 carry an estimate: the earlier of payout_notified_at and updated_at.';
 comment on column public.payments.refunded_at is
-  'When the payment was refunded (status became refunded). Stamped once by payments_stamp_money_moment. Rows refunded before 2026-10-13 carry an estimate: updated_at, at or after the refund.';
+  'When the payment was refunded (status became refunded). Stamped once by payments_stamp_money_moment. Rows refunded before 2026-10-13 carry an estimate: the earlier of payout_lapse_notified_at and updated_at, at or after the refund.';
 
 create or replace function public.stamp_payment_money_moment()
 returns trigger
@@ -81,7 +84,7 @@ update public.payments
    and released_at is null;
 
 update public.payments
-   set refunded_at = updated_at
+   set refunded_at = least(payout_lapse_notified_at, updated_at)
  where status = 'refunded'
    and refunded_at is null;
 

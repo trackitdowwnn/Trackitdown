@@ -36,6 +36,9 @@ import { useRequireAuth } from '@/features/auth';
 import {
   RewardTermBanner,
   hasRewardTermCard,
+  RewardTimelineCard,
+  rewardTimeline,
+  useMyRewardTimeline,
   quietRewardTermLine,
   useMyRewardStatus,
 } from '@/features/payments';
@@ -139,6 +142,16 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
     canDeactivate(visiblePost) &&
     (visiblePost.bountyPence !== null || visiblePost.rewardEnded);
   const rewardTerm = useMyRewardStatus(postId, showsRewardTerm);
+
+  // "Your reward" (PR4, 2026-10-13): where the owner's reward money went once
+  // the listing stopped being live — paid out, refunded, or on a refund hold.
+  // Owner-only, and only off a live listing: a live one's held reward is the
+  // term card's to tell (rewardTimeline returns null there regardless).
+  const showsRewardHistory =
+    visiblePost !== null &&
+    visiblePost.isOwner &&
+    !['draft', 'pending_verification', 'active'].includes(visiblePost.status);
+  const rewardHistory = rewardTimeline(useMyRewardTimeline(postId, showsRewardHistory));
 
   // The "More stolen cars nearby" rail — waits for the post (its coords
   // centre the query), quietly empty on failure.
@@ -404,8 +417,17 @@ export function PostDetailScreen({ postId }: PostDetailScreenProps) {
                   />
                 </View>
               ) : null}
+              {/* Above the body, where the term card sits on a live listing:
+                  on a closed one this is the reward's ending, and the first
+                  thing an owner coming back to it wants to know. */}
+              {rewardHistory ? (
+                <View style={styles.stillMissing}>
+                  <RewardTimelineCard steps={rewardHistory.steps} />
+                </View>
+              ) : null}
               <PostDetailBody
                 post={result.post}
+                rewardOutcome={rewardHistory?.outcome ?? null}
                 onOpenMap={() => onOpenMap(result.post)}
                 onReport={onReport}
                 onMessageOwner={
