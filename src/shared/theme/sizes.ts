@@ -25,6 +25,8 @@ export const sizes = {
   progressPill: 24,
   /** Wizard header progress: the height of one phase segment. */
   progressSegment: 4,
+  /** ProgressSteps: the check inside a done step's 24pt disc. */
+  progressStepCheck: 14,
   /** Minimum touch target (DESIGN_SYSTEM Accessibility). */
   touchTarget: 44,
   /** MoneySlider: thumb diameter and rail thickness (the touchable row is

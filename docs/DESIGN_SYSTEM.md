@@ -378,6 +378,23 @@ are build output.
   and went back, ADR-0020), both in `textSecondary` at the tag's size. The
   post-detail stat cell, already labelled "Reward", shows the short "Ended"
   (`REWARD_ENDED_SHORT`) because the full phrase truncates there.
+- **ProgressSteps** (2026-10-13) — a short vertical tracker for a process
+  that passes through several hands (first: Payouts — your details → Stripe's
+  check → payouts on → your reward). Each step is `done` (ink disc + white
+  check), `current` (ink ring round a dot) or `upcoming` (`borderStrong`
+  ring), joined by a `timelineRailStroke` line — `borderStrong` ahead, ink
+  behind — in the timeline's 24pt column, so the app's two rails agree.
+  Monochrome on purpose: "done" means "behind you", not "succeeded", so it
+  borrows no status hue. The CURRENT label leads in `cardTitle`; done labels
+  sit back in `body` ink, upcoming in `body` grey. Labels are nouns ("Your
+  £190 reward"), never claims ("sent"). The marker centres on its label's
+  first line at any font scale. Static: no pulsing dot for a wait that can take
+  a day. Give the CURRENT step a one-line `detail` saying who is waiting on
+  whom and how long. One accessible stop per step, spoken as "Step 2 of 4,
+  Stripe's check, in progress. …". **Inside the card that holds the action,
+  in place of the StatusPill and the paragraph** — as a card of its own above
+  the status card it said the state four or five times (Payouts, UI review
+  2026-10-13). Not a wizard's progress — that is `WizardProgressBar`.
 - **StatBand** — the stat row: equal-width cells split by vertical
   hairlines, each a `sectionTitle` number over a `caption` label (~2:1, the
   measured reference ratio). Degrades by omission — pass only the cells you

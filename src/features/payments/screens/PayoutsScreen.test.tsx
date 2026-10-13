@@ -155,18 +155,28 @@ beforeEach(() => {
 
 describe('⚠️ the status chip and the trust line (Airbnb pass, 2026-08-26)', () => {
   it.each([
-    ['notStarted', 'Not set up'],
-    ['unfinished', 'Action needed'],
-    ['verifying', 'Being checked'],
-    ['ready', 'Ready'],
-  ])('marks %s as "%s" before a word of prose is read', async (status, label) => {
-    // The reference marks a payout method's state with a badge; ours said the
-    // same things only in a heading and a paragraph. People open this screen to
-    // check one thing.
+    ['notStarted', 'details'],
+    ['unfinished', 'check'],
+    ['verifying', 'check'],
+    ['ready', 'reward'],
+  ])('⚠️ %s: the tracker marks the state, in place of the chip', async (status, current) => {
+    // The state must be legible before a word is read. Since the tracker
+    // (2026-10-13) its current marker does that; a chip beside it was the
+    // same fact twice (UI review).
     mockAccountState = { status, settling: false };
-    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    const { getByTestId, queryByTestId } = await act(async () => render(<PayoutsScreen />));
 
-    expect(getByText(label)).toBeTruthy();
+    expect(getByTestId(`payouts-steps-current-${current}`)).toBeTruthy();
+    expect(queryByTestId(`payouts-pill-${status}`)).toBeNull();
+  });
+
+  it('marks ready as "Ready" with the chip when there is no road left to show', async () => {
+    mockPendingCredit.mockResolvedValue(null);
+    mockAccountState = { status: 'ready', settling: false };
+    const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('Ready')).toBeTruthy();
+    expect(queryByTestId('payouts-steps')).toBeNull();
   });
 
   it('⚠️ never reads as an error, even when something is needed', async () => {
@@ -247,9 +257,16 @@ describe('what each state says', () => {
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
     expect(getByText('Stripe is checking your details')).toBeTruthy();
     expect(queryByText('Pick up where you left off')).toBeNull();
-    expect(getByText(/don’t need to wait here/i)).toBeTruthy();
+    expect(getByText(/switch payouts on the moment it’s done/i)).toBeTruthy();
   });
 
+  it('only asks "tell us where" while nobody has', async () => {
+    // Under a tracker reading "Your details — done", it would contradict it.
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByLabelText, queryByText } = await act(async () => render(<PayoutsScreen />));
+    expect(getByLabelText('You’ve earned £190. Your sighting led to a recovery.')).toBeTruthy();
+    expect(queryByText(/Tell us where to send it/)).toBeNull();
+  });
   it('confirms when money can actually reach them', async () => {
     mockAccountState = { status: 'ready', settling: false };
     const { getByText } = await act(async () => render(<PayoutsScreen />));
@@ -374,9 +391,57 @@ describe('setting up — inside the app', () => {
     await act(async () => {
       fireEvent.press(getByText('Add your details'));
     });
+    await act(async () => {
+      fireEvent.press(getByText('Continue to Stripe'));
+    });
 
     expect(getByTestId('connect-onboarding')).toBeTruthy();
     expect(mockOpenAuth).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ announces Stripe’s step before opening it — who, why, how long', async () => {
+    // Stripe's own screen used to arrive unannounced, in Stripe's styling,
+    // asking for things our steps hadn't — which reads as "something broke".
+    const { getByText, getByTestId, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+    await act(async () => {
+      fireEvent.press(getByText('Add your details'));
+    });
+
+    expect(getByTestId('payouts-stripe-intro')).toBeTruthy();
+    expect(getByText(/about two minutes/)).toBeTruthy();
+    expect(queryByTestId('connect-onboarding')).toBeNull();
+  });
+
+  it('"Not now" on the heads-up goes back to where they were, with nothing opened', async () => {
+    const { getByText, getByTestId, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+    await act(async () => {
+      fireEvent.press(getByText('Add your details'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Not now'));
+    });
+
+    expect(queryByTestId('payouts-stripe-intro')).toBeNull();
+    expect(queryByTestId('connect-onboarding')).toBeNull();
+    expect(getByTestId('payouts-notStarted')).toBeTruthy();
+  });
+
+  it('no heads-up for someone who just chose "Continue with Stripe" — that was the yes', async () => {
+    const { getByText, getByTestId, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+    setPayoutSetupOutcome('rejected', 'user-1');
+    await refocus();
+    await act(async () => {
+      fireEvent.press(getByText('Continue with Stripe'));
+    });
+
+    expect(queryByTestId('payouts-stripe-intro')).toBeNull();
+    expect(getByTestId('connect-onboarding')).toBeTruthy();
   });
 
   it('settles when the component closes — exiting is not proof of anything', async () => {
@@ -385,6 +450,9 @@ describe('setting up — inside the app', () => {
     const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
       fireEvent.press(getByText('Add your details'));
+    });
+    await act(async () => {
+      fireEvent.press(getByText('Continue to Stripe'));
     });
     mockSettleReturn.mockClear();
 
@@ -576,5 +644,39 @@ describe('getting out', () => {
       fireEvent.press(getByTestId('payouts-back'));
     });
     expect(mockReplace).toHaveBeenCalledWith('/(tabs)/profile');
+  });
+});
+
+describe('the progress tracker (2026-10-13)', () => {
+  it('shows where they are: details next, everything else still to come', async () => {
+    const { getByTestId } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByTestId('payouts-steps')).toBeTruthy();
+    expect(getByTestId('payouts-steps-current-details')).toBeTruthy();
+    expect(getByTestId('payouts-steps-upcoming-check')).toBeTruthy();
+    expect(getByTestId('payouts-steps-upcoming-reward')).toBeTruthy();
+  });
+
+  it('puts the wait on Stripe while it checks', async () => {
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByTestId, getByLabelText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByTestId('payouts-steps-done-details')).toBeTruthy();
+    expect(getByLabelText(/Stripe’s check, in progress\. .*switch payouts on/)).toBeTruthy();
+  });
+
+  it('says nothing when there is nothing to track', async () => {
+    mockPendingCredit.mockResolvedValue(null);
+    const { queryByTestId } = await act(async () => render(<PayoutsScreen />));
+    expect(queryByTestId('payouts-steps')).toBeNull();
+  });
+
+  it('stays in view on the heads-up before Stripe — a step on the road, not a detour', async () => {
+    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(getByText('Add your details'));
+    });
+    expect(getByTestId('payouts-stripe-intro')).toBeTruthy();
+    expect(getByTestId('payouts-steps')).toBeTruthy();
   });
 });
