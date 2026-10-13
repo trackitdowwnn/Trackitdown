@@ -32,6 +32,7 @@ import {
 } from '@/shared/lib/carColours';
 import { createLogger } from '@/shared/lib/logger';
 import { formatPounds } from '@/shared/lib/money';
+import type { PostStatus } from '@/shared/types';
 import type { PhotoTileStatus } from '@/shared/ui';
 
 import { MAX_BOUNTY_PENCE, MIN_BOUNTY_PENCE } from '@/shared/lib/bountyBounds';
@@ -395,4 +396,27 @@ export async function submitPost(
   }
 
   return createPost(buildCreatePostParams(ready, { photoUrls, distinctiveFeatureUrls }));
+}
+
+/**
+ * The status of one of the caller's OWN posts, or null if it can't be read.
+ * For the payment confirmation (PR3 of the payments UX plan, 2026-10-13): after
+ * the card is taken, the server's webhook makes the listing live, and the
+ * screen watches for that moment rather than guessing at it.
+ *
+ * The owner's own row only: posts_select_own scopes the read to
+ * owner_id = auth.uid(), and `status` is in the authenticated column grant.
+ * Null on any failure — a blip while watching is not a failed payment.
+ */
+export async function fetchMyPostStatus(postId: string): Promise<PostStatus | null> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('status')
+    .eq('id', postId)
+    .maybeSingle();
+  if (error) {
+    log.warn('post status read failed', { code: error.code });
+    return null;
+  }
+  return (data?.status as PostStatus | undefined) ?? null;
 }
