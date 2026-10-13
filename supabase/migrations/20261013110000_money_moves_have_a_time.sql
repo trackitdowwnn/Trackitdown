@@ -39,9 +39,31 @@
 --        supabase/migrations/20260802220000_release_payout.sql (mark_recovery_paid).
 -- -----------------------------------------------------------------------------
 
+-- ⚠️ IF NOT EXISTS: PRODUCTION ALREADY HAS THEM (deploy of 2026-10-13 failed
+-- on "column released_at already exists"). An unmerged branch's migration —
+-- 20260925100000_the_reward_is_the_reward, on feat/reward-is-the-reward —
+-- added both to the live table without ever reaching main, together with its
+-- own stamping trigger (payments_stamp_settled_at) and a freeze
+-- (payments_split_is_fixed: a date, once set, can't be rewritten). Same names,
+-- same type, same meaning, so this adopts them rather than fighting them:
+-- add only where missing (a fresh database, CI), assert the type either way,
+-- and let the two stamping triggers coexist — both write now() on the same
+-- status change, and neither ever moves a set date, so the freeze is never hit.
 alter table public.payments
-  add column released_at timestamptz,
-  add column refunded_at timestamptz;
+  add column if not exists released_at timestamptz,
+  add column if not exists refunded_at timestamptz;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'payments'
+       and column_name in ('released_at', 'refunded_at')
+       and data_type <> 'timestamp with time zone'
+  ) then
+    raise exception 'payments.released_at / refunded_at exist with an unexpected type';
+  end if;
+end $$;
 
 comment on column public.payments.released_at is
   'When the reward was paid out (status became released). Stamped once by payments_stamp_money_moment. Rows released before 2026-10-13 carry an estimate: the earlier of payout_notified_at and updated_at.';
@@ -70,7 +92,7 @@ comment on function public.stamp_payment_money_moment() is
 
 revoke all on function public.stamp_payment_money_moment() from public, anon, authenticated;
 
-create trigger payments_stamp_money_moment
+create or replace trigger payments_stamp_money_moment
   before insert or update of status on public.payments
   for each row execute function public.stamp_payment_money_moment();
 

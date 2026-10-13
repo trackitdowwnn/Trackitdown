@@ -249,6 +249,67 @@ begin
 end $$;
 
 -- -----------------------------------------------------------------------------
+-- CHECK 10 — ⚠️ PRODUCTION'S DRIFT: the unmerged 20260925100000 put its own
+-- stamping trigger and a date FREEZE on the live payments table (see the
+-- migration's header). Installed here as they are there — the freeze's date
+-- half; CI has no `pricing` columns for its split half — a release and a
+-- refund must still go through, stamped, with no PAYMENT_SETTLED_AT_IMMUTABLE.
+-- -----------------------------------------------------------------------------
+create function public.test_branch_stamp() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if new.status = 'released' and old.status is distinct from 'released' then new.released_at := now(); end if;
+  if new.status = 'refunded' and old.status is distinct from 'refunded' then new.refunded_at := now(); end if;
+  return new;
+end $$;
+create function public.test_branch_freeze() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if (old.released_at is not null and new.released_at is distinct from old.released_at)
+     or (old.refunded_at is not null and new.refunded_at is distinct from old.refunded_at) then
+    raise exception 'PAYMENT_SETTLED_AT_IMMUTABLE';
+  end if;
+  return new;
+end $$;
+create trigger payments_stamp_settled_at before update on public.payments
+  for each row execute function public.test_branch_stamp();
+create trigger payments_split_is_fixed before update on public.payments
+  for each row execute function public.test_branch_freeze();
+
+do $$
+declare
+  v_pay uuid;
+  v_row record;
+begin
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, captured_at)
+  values ('a1a1a1a1-0000-0000-0000-000000000001', 'pi_drift_1', 'held', 25000, now() - interval '3 days')
+  returning id into v_pay;
+  update public.payments
+     set status = 'released', stripe_transfer_id = 'tr_drift_1',
+         transfer_amount_pence = 23750, platform_fee_pence = 1250
+   where id = v_pay;
+  update public.payments set payout_notified_at = now() where id = v_pay;
+  select released_at into v_row from public.payments where id = v_pay;
+  if v_row.released_at is null then
+    raise exception 'CHECK 10 FAILED: with the drifted triggers, a release was not stamped';
+  end if;
+
+  insert into public.payments (post_id, stripe_payment_intent_id, status, amount_pence, captured_at)
+  values ('a1a1a1a1-0000-0000-0000-000000000002', 'pi_drift_2', 'held', 25000, now() - interval '3 days')
+  returning id into v_pay;
+  update public.payments set status = 'refunded', refunded_amount_pence = 24605 where id = v_pay;
+  select refunded_at into v_row from public.payments where id = v_pay;
+  if v_row.refunded_at is null then
+    raise exception 'CHECK 10 FAILED: with the drifted triggers, a refund was not stamped';
+  end if;
+
+  raise notice 'reward timeline CHECK 10 passed';
+end $$;
+
+drop trigger payments_stamp_settled_at on public.payments;
+drop trigger payments_split_is_fixed on public.payments;
+drop function public.test_branch_stamp();
+drop function public.test_branch_freeze();
+
+-- -----------------------------------------------------------------------------
 -- CHECK 9 — grants. Anon never reaches it; the stamp trigger function is not
 -- callable by clients.
 -- -----------------------------------------------------------------------------
