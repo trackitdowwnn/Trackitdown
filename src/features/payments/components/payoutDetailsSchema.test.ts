@@ -5,13 +5,17 @@
  *        once onboarding starts. So a value that slips through is a rejection
  *        we cannot see, explain, or fix for the spotter — the failure lands
  *        days later as "why haven't I been paid".
- * LINKS: ./payoutDetailsSchema.ts; ./PayoutDetailsForm.tsx.
+ * LINKS: ./payoutDetailsSchema.ts; ./payoutSetupSteps.tsx.
  */
 
 import {
+  buildAboutYouSchema,
+  buildAddressSchema,
   buildBankDetailsSchema,
   buildPayoutDetailsSchema,
   digitsOnly,
+  formatDob,
+  formatSortCode,
   parseUkDate,
 } from './payoutDetailsSchema';
 
@@ -154,5 +158,44 @@ describe('the bank-only schema', () => {
       confirmAccountNumber: '00012345',
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe('the setup wizard’s steps (2026-10-13)', () => {
+  it('splits the whole form into steps that each check only their own fields', () => {
+    // Each step gates its own Next, so it must pass on its own slice alone.
+    expect(buildAboutYouSchema(NOW).safeParse(valid).success).toBe(true);
+    expect(buildAddressSchema().safeParse(valid).success).toBe(true);
+    expect(buildBankDetailsSchema().safeParse(valid).success).toBe(true);
+    expect(buildAddressSchema().safeParse({ firstName: 'Ada' }).success).toBe(false);
+  });
+
+  it('keeps the age rule on the "about you" step', () => {
+    const result = buildAboutYouSchema(NOW).safeParse({ ...valid, dob: '01/01/2015' });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('typing the separators for them', () => {
+  it.each([
+    ['1', '1'],
+    ['10', '10'],
+    ['108', '10-8'],
+    ['1088', '10-88'],
+    ['108800', '10-88-00'],
+    ['1088001', '10-88-00'],
+    ['10 88 00', '10-88-00'],
+    ['10-88-00', '10-88-00'],
+  ])('sort code %s → %s', (typed, shown) => {
+    expect(formatSortCode(typed)).toBe(shown);
+  });
+
+  it.each([
+    ['0', '0'],
+    ['0104', '01/04'],
+    ['01041990', '01/04/1990'],
+    ['010419901', '01/04/1990'],
+  ])('date of birth %s → %s', (typed, shown) => {
+    expect(formatDob(typed)).toBe(shown);
   });
 });

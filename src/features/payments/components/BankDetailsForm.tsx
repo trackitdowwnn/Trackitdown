@@ -18,7 +18,7 @@
  * PII:   same posture as the full form — the values live in component state,
  *        become a single-use `btok_` on the phone, and are gone. Never logged.
  * LINKS: ./payoutDetailsSchema.ts (buildBankDetailsSchema — shared bank trio);
- *        ./PayoutDetailsForm.tsx (the full earn-moment sibling);
+ *        ./payoutSetupSteps.tsx (the full earn-moment wizard);
  *        ../api/stripeTokens.ts (createBankToken);
  *        supabase/functions/create-payout-account/index.ts (the RE-BANK branch).
  */
@@ -32,7 +32,8 @@ import { Button, TextField } from '@/shared/ui';
 import { buildBankDetailsSchema, digitsOnly } from './payoutDetailsSchema';
 
 export interface BankDetailsFormProps {
-  /** Submits to Stripe. Handles its own failures — see PayoutDetailsForm. */
+  /** Submits to Stripe. Handles its own failures, so a rejection here is
+   *  never an unhandled one. */
   onSubmit: (details: { sortCode: string; accountNumber: string }) => Promise<void>;
   onCancel: () => void;
   busy?: boolean;

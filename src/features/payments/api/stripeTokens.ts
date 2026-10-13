@@ -28,7 +28,7 @@
  *        Tokens are single-use and expire in ten minutes, which also bounds
  *        what a leaked one could ever do.
  * LINKS: docs/decisions/ADR-0010-whitelabel-payouts.md;
- *        ../components/PayoutDetailsForm.tsx (the caller);
+ *        ../screens/PayoutSetupScreen.tsx (the caller);
  *        supabase/functions/create-payout-account/index.ts (where the ids go);
  *        BountyPaymentProvider.tsx (why the publishable key is bundle-safe).
  */
@@ -76,9 +76,9 @@ export async function createIdentityToken(
       identity: {
         entity_type: 'individual',
         attestations: {
-          // The form showed our terms and the Stripe Connected Account
-          // Agreement, and Continue was the acceptance. Date/IP are observed
-          // by Stripe from THIS request.
+          // The setup wizard's review showed our terms and the Stripe
+          // Connected Account Agreement, and "Send to Stripe" was the
+          // acceptance. Date/IP are observed by Stripe from THIS request.
           terms_of_service: { account: { shown_and_accepted: true } },
         },
         individual: {
@@ -102,6 +102,17 @@ export async function createIdentityToken(
   if (!response.ok) {
     // The response body can echo rejected identity values — never read into a
     // log or an error message. A fixed string is all the caller gets.
+    //
+    // ⚠️ BUSY OR DOWN IS NOT A REFUSAL (security review, 2026-10-13). A 429 or
+    // a 5xx says nothing about the details, and DETAILS_REJECTED leads to
+    // "Continue with Stripe", which spends the prefill window for good. Those
+    // get a retry instead; only Stripe actually answering "no" is a refusal.
+    if (response.status === 429 || response.status >= 500) {
+      throw new PaymentError(
+        'We couldn’t reach our payment provider. Please try again.',
+        'STRIPE_UNAVAILABLE',
+      );
+    }
     throw new PaymentError(
       'Stripe couldn’t accept those details. Please check them and try again.',
       'DETAILS_REJECTED',

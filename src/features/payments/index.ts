@@ -53,6 +53,7 @@ export {
 } from './hooks/usePayoutAccount';
 export { usePayoutsRelevant } from './hooks/usePayoutsRelevant';
 export { PayoutsScreen } from './screens/PayoutsScreen';
+export { PayoutSetupScreen } from './screens/PayoutSetupScreen';
 export { ChangeRewardScreen } from './screens/ChangeRewardScreen';
 export { RewardTermBanner } from './components/RewardTermBanner';
 export { useMyRewardStatus, type MyRewardStatusState } from './hooks/useMyRewardStatus';

@@ -213,6 +213,10 @@ function RootLayoutContent() {
                     rather than a lateral push. */}
                 <Stack.Screen name="report-sighting" options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="post-a-car" options={{ animation: 'slide_from_bottom' }} />
+                {/* No edge swipe: the wizard holds its X and Android back while
+                    the details are on their way to Stripe, and the iOS gesture
+                    would slip past both — skipping the discard prompt too. */}
+                <Stack.Screen name="payout-setup" options={{ gestureEnabled: false }} />
                 {/* Reporting a SAVED car from /my-cars is the same task as the
                     + button's report, so it arrives the same way: one slide
                     up, never a sideways push (2026-10-07). */}

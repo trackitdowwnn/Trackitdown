@@ -11,7 +11,7 @@
  *        code, 8-digit account number. Both are accepted with spaces and
  *        dashes because that is how they are printed on a card and a statement,
  *        and refusing the format someone is copying from is a small cruelty.
- * LINKS: ./PayoutDetailsForm.tsx; ../api/payoutsApi.ts (PayoutDetails);
+ * LINKS: ./payoutSetupSteps.tsx; ./BankDetailsForm.tsx; ../api/payoutsApi.ts (PayoutDetails);
  *        supabase/functions/submit-payout-details/index.ts (re-validates).
  */
 
@@ -83,35 +83,76 @@ const accountNumbersMatch = [
 ] as const;
 
 /**
- * `now` is injected rather than read inside the schema so the age rule is
- * testable without freezing the clock, and so a test written today still passes
- * in five years.
+ * The identity fields, by step of the setup wizard (2026-10-13): "About you"
+ * and "Your address". `now` is injected rather than read inside the schema so
+ * the age rule is testable without freezing the clock, and so a test written
+ * today still passes in five years.
  */
+function aboutYouFields(now: Date) {
+  return {
+    firstName: z.string().trim().min(1, 'Enter your first name'),
+    lastName: z.string().trim().min(1, 'Enter your last name'),
+    dob: z
+      .string()
+      .trim()
+      .refine((value) => parseUkDate(value) !== null, 'Use the format DD/MM/YYYY')
+      .refine((value) => {
+        const date = parseUkDate(value);
+        return date === null || date.getTime() <= now.getTime();
+      }, 'That date is in the future')
+      .refine((value) => {
+        const date = parseUkDate(value);
+        return date === null || ageOn(date, now) >= MIN_AGE_YEARS;
+      }, 'You need to be 18 or over to be paid'),
+    phone: z.string().trim().optional(),
+  };
+}
+
+const addressFields = {
+  addressLine1: z.string().trim().min(1, 'Enter your address'),
+  addressLine2: z.string().trim().optional(),
+  city: z.string().trim().min(1, 'Enter your town or city'),
+  postalCode: z.string().trim().min(1, 'Enter your postcode'),
+};
+
+/** The wizard's "About you" step. */
+export function buildAboutYouSchema(now: Date = new Date()) {
+  return z.object(aboutYouFields(now));
+}
+
+/** The wizard's "Your address" step. */
+export function buildAddressSchema() {
+  return z.object(addressFields);
+}
+
+/** Everything at once — the submit's last check, and the tests' contract. */
 export function buildPayoutDetailsSchema(now: Date = new Date()) {
   return z
-    .object({
-      firstName: z.string().trim().min(1, 'Enter your first name'),
-      lastName: z.string().trim().min(1, 'Enter your last name'),
-      dob: z
-        .string()
-        .trim()
-        .refine((value) => parseUkDate(value) !== null, 'Use the format DD/MM/YYYY')
-        .refine((value) => {
-          const date = parseUkDate(value);
-          return date === null || date.getTime() <= now.getTime();
-        }, 'That date is in the future')
-        .refine((value) => {
-          const date = parseUkDate(value);
-          return date === null || ageOn(date, now) >= MIN_AGE_YEARS;
-        }, 'You need to be 18 or over to be paid'),
-      phone: z.string().trim().optional(),
-      addressLine1: z.string().trim().min(1, 'Enter your address'),
-      addressLine2: z.string().trim().optional(),
-      city: z.string().trim().min(1, 'Enter your town or city'),
-      postalCode: z.string().trim().min(1, 'Enter your postcode'),
-      ...bankFields,
-    })
+    .object({ ...aboutYouFields(now), ...addressFields, ...bankFields })
     .refine(...accountNumbersMatch);
+}
+
+/**
+ * Types the dashes for them, as the date of birth types its slashes: 123456
+ * reads back as 12-34-56, the way a sort code is printed on a card. Digits
+ * only in, so a pasted "12 34 56" lands the same way.
+ */
+export function formatSortCode(value: string): string {
+  return digitsOnly(value)
+    .slice(0, 6)
+    .replace(/(\d{2})(?=\d)/g, '$1-');
+}
+
+/**
+ * Types the slashes for them. The iOS number pad has no `/` key at all, so
+ * without this the only way to satisfy DD/MM/YYYY is to paste: they type eight
+ * digits and the separators appear. (Moved from PayoutDetailsForm, 2026-10-13.)
+ */
+export function formatDob(value: string): string {
+  const digits = digitsOnly(value).slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
 /** The bank-only replacement form ("that account didn't work" / new bank). */
