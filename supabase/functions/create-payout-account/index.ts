@@ -41,6 +41,7 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { ensureBusinessUrl, PLATFORM_URL } from '../_shared/payoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
 Deno.serve(async (request) => {
@@ -120,10 +121,31 @@ Deno.serve(async (request) => {
 
   // --- CREATE: the earn-moment first run --------------------------------------
   if (existing.accountId) {
-    // An account already exists and an identity token was sent anyway. Stripe
-    // treats identity as immutable-ish post-verification; the honest answer is
-    // "you're set up" rather than a second account splitting their history.
-    return jsonResponse({ status: 'already_exists' });
+    // An account already exists and the full setup was sent again. NOT a
+    // second account (that would split their history) — but ⚠️ NOT "nothing
+    // changed" either (2026-10-13). That answer threw the bank away, and the
+    // commonest way here is exactly a first run whose BANK failed after the
+    // account was made: the retry's good bank was discarded, the account sat
+    // `restricted` on `external_account`, and the spotter was sent to an ID
+    // check for a bank account. So the bank is attached, as RE-BANK does, and
+    // the platform's website supplied. Identity stays as first given: Stripe
+    // treats it as settled once verification has started.
+    try {
+      await stripe.accounts.createExternalAccount(existing.accountId, {
+        external_account: bankToken,
+        default_for_currency: true,
+      });
+    } catch (err) {
+      console.error('[payments] payout bank attach (existing) failed', (err as Error).message);
+      return errorResponse(
+        'DETAILS_REJECTED',
+        'Stripe couldn’t accept that bank account. Please check it and try again.',
+        400,
+      );
+    }
+    await ensureBusinessUrl(stripe, existing.accountId);
+    console.log('[payments] payout setup re-run attached bank', { accountId: existing.accountId });
+    return jsonResponse({ status: 'submitted', payoutsActive: existing.payoutsEnabled });
   }
   if (!hasAccountToken) {
     return errorResponse('BAD_REQUEST', 'Malformed request.', 400);
@@ -141,6 +163,10 @@ Deno.serve(async (request) => {
       dashboard: 'none',
       defaults: {
         currency: 'gbp',
+        // Stripe asks EVERY payee account for a website (2026-10-13: it held
+        // payouts `restricted` on this alone). A spotter has none; the
+        // platform's is what a marketplace supplies.
+        profile: { business_url: PLATFORM_URL },
         responsibilities: {
           fees_collector: 'application',
           losses_collector: 'application',

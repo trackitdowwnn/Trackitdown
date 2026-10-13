@@ -11,7 +11,11 @@
 
 import type Stripe from 'stripe';
 
-import { readPayoutAccountState } from '../functions/_shared/payoutAccountState';
+import {
+  PLATFORM_URL,
+  ensureBusinessUrl,
+  readPayoutAccountState,
+} from '../functions/_shared/payoutAccountState';
 
 type Fake = {
   v2?: () => Promise<unknown>;
@@ -35,7 +39,7 @@ describe('readPayoutAccountState', () => {
       // v1's flag is false — for a v2 account it is not the one to trust.
       v1: async () => ({ payouts_enabled: false, details_submitted: false }),
     });
-    await expect(readPayoutAccountState(stripe, 'acct_1')).resolves.toEqual({
+    await expect(readPayoutAccountState(stripe, 'acct_1')).resolves.toMatchObject({
       payoutsEnabled: true,
       detailsSubmitted: false,
     });
@@ -55,7 +59,7 @@ describe('readPayoutAccountState', () => {
       v2: async () => v2Account(undefined),
       v1: async () => ({ payouts_enabled: true, details_submitted: true }),
     });
-    await expect(readPayoutAccountState(stripe, 'acct_1')).resolves.toEqual({
+    await expect(readPayoutAccountState(stripe, 'acct_1')).resolves.toMatchObject({
       payoutsEnabled: true,
       detailsSubmitted: true,
     });
@@ -64,7 +68,7 @@ describe('readPayoutAccountState', () => {
   it('v2 unreadable: v1 decides', async () => {
     const stripe = fakeStripe({ v1: async () => ({ payouts_enabled: false, details_submitted: true }) });
     const state = await readPayoutAccountState(stripe, 'acct_1');
-    expect(state).toEqual({ payoutsEnabled: false, detailsSubmitted: true });
+    expect(state).toMatchObject({ payoutsEnabled: false, detailsSubmitted: true });
   });
 
   it('v1 unreadable: the v2 capability still answers', async () => {
@@ -83,6 +87,47 @@ describe('readPayoutAccountState', () => {
     expect(
       (stripe as unknown as { v2: { core: { accounts: { retrieve: jest.Mock } } } }).v2.core.accounts
         .retrieve,
-    ).toHaveBeenCalledWith('acct_9', { include: ['configuration.recipient'] });
+    ).toHaveBeenCalledWith('acct_9', { include: ['configuration.recipient', 'requirements'] });
+  });
+});
+
+describe('the requirements we can meet ourselves (2026-10-13)', () => {
+  const withRequirements = (descriptions: string[]) => ({
+    configuration: { recipient: { capabilities: { stripe_balance: { payouts: { status: 'restricted' } } } } },
+    requirements: { entries: descriptions.map((description) => ({ description })) },
+  });
+
+  it('reports a missing bank and a missing website — the account Stripe held', async () => {
+    const stripe = fakeStripe({
+      v2: async () => withRequirements(['defaults.profile.business_url', 'external_account']),
+      v1: async () => ({ payouts_enabled: false, details_submitted: false }),
+    });
+    await expect(readPayoutAccountState(stripe, 'acct_1')).resolves.toEqual({
+      payoutsEnabled: false,
+      detailsSubmitted: false,
+      needsBank: true,
+      needsWebsite: true,
+    });
+  });
+
+  it('asks for nothing it can’t see — a legacy account reports no needs', async () => {
+    const stripe = fakeStripe({ v1: async () => ({ payouts_enabled: false, details_submitted: true }) });
+    const state = await readPayoutAccountState(stripe, 'acct_1');
+    expect(state).toMatchObject({ needsBank: false, needsWebsite: false });
+  });
+
+  it('supplies the platform’s website, and says whether it could', async () => {
+    const update = jest.fn(async () => ({}));
+    const stripe = { v2: { core: { accounts: { update } } } } as unknown as Stripe;
+    await expect(ensureBusinessUrl(stripe, 'acct_7')).resolves.toBe(true);
+    expect(update).toHaveBeenCalledWith('acct_7', {
+      defaults: { profile: { business_url: PLATFORM_URL } },
+    });
+    expect(PLATFORM_URL).toBe('https://trackitdown.co.uk');
+
+    const failing = {
+      v2: { core: { accounts: { update: jest.fn(async () => Promise.reject(new Error('no'))) } } },
+    } as unknown as Stripe;
+    await expect(ensureBusinessUrl(failing, 'acct_7')).resolves.toBe(false);
   });
 });
