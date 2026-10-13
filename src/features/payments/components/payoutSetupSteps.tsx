@@ -217,9 +217,15 @@ export function PayoutTermsNotice() {
           (ADR-0010), but the sentence is kept to what holds across both the
           tokenised path and the server-side fallback. */}
       <Text style={styles.note}>
-        We pass these straight to Stripe, who handle the payments and the ID check, and we
-        never store them.
+        We pass these straight to our payment partner, who handles payments and the ID
+        check, and we never store them.
       </Text>
+      {/* ⚠️ THE ONE PROVIDER NAME KEPT (owner asked for none in the app,
+          2026-10-13). The agreement is a named legal document: the identity
+          token attests it was SHOWN and accepted, so the link must say what it
+          is. Renaming it ("our partner's terms") would weaken exactly the
+          claim `shown_and_accepted: true` makes. Everything around it says
+          "payment partner". */}
       <Text style={styles.note}>
         By sending you agree to{' '}
         <Text
@@ -237,7 +243,7 @@ export function PayoutTermsNotice() {
         >
           Stripe Connected Account Agreement
         </Text>
-        . Stripe may ask to verify your identity before your first payout.
+        . You may be asked to verify your identity before your first payout.
       </Text>
     </View>
   );

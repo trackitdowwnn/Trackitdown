@@ -62,7 +62,7 @@ export function payoutProgress({
   if (status === 'ready' && credit === null && latestPayout) {
     return [
       { id: 'details', label: 'Your details', state: 'done' },
-      { id: 'check', label: 'Stripe’s check', state: 'done' },
+      { id: 'check', label: 'ID check', state: 'done' },
       { id: 'payouts-on', label: 'Payouts on', state: 'done' },
       {
         id: 'reward',
@@ -88,7 +88,7 @@ export function payoutProgress({
     },
     {
       id: 'check',
-      label: 'Stripe’s check',
+      label: 'ID check',
       state: checkDone ? 'done' : detailsDone ? 'current' : 'upcoming',
       detail: checkDone || !detailsDone ? undefined : checkDetail(status, settling),
     },
@@ -117,9 +117,9 @@ export function payoutProgress({
 }
 
 function checkDetail(status: PayoutAccountStatus, settling: boolean): string {
-  if (settling) return 'Waiting for Stripe to confirm — usually a moment.';
+  if (settling) return 'Waiting for confirmation — usually a moment.';
   // "Saved" carried over from the card's paragraph, which the tracker
   // replaces: someone told to go back to Stripe fears starting again.
-  if (status === 'unfinished') return 'Stripe needs a few more details from you. Your progress is saved.';
+  if (status === 'unfinished') return 'A few more details are needed from you. Your progress is saved.';
   return 'Usually a few minutes, sometimes a day. We’ll switch payouts on the moment it’s done.';
 }

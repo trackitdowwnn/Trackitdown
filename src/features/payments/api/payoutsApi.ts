@@ -161,7 +161,7 @@ export async function startConnectOnboarding(
 const DETAILS_ERROR_MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'You need to log in to set up payouts.',
   INVALID_DETAILS: 'Please check your details and try again.',
-  DETAILS_REJECTED: 'Stripe couldn’t accept those details. Please check them and try again.',
+  DETAILS_REJECTED: 'Those details couldn’t be accepted. Please check them and try again.',
   LOOKUP_FAILED: 'We couldn’t save your details. Please try again.',
   STRIPE_ERROR: 'We couldn’t save your details. Please try again.',
   LEDGER_ERROR: 'Your details are saved. Please check back shortly.',
@@ -198,7 +198,7 @@ export async function submitPayoutDetails(details: PayoutDetails): Promise<void>
 
 const TOKENS_ERROR_MESSAGES: Record<string, string> = {
   NOT_AUTHENTICATED: 'You need to log in to set up payouts.',
-  DETAILS_REJECTED: 'Stripe couldn’t accept those details. Please check them and try again.',
+  DETAILS_REJECTED: 'Those details couldn’t be accepted. Please check them and try again.',
   LOOKUP_FAILED: 'We couldn’t save your details. Please try again.',
   LEDGER_ERROR: 'We couldn’t save your details. Please try again.',
   BAD_REQUEST: 'We couldn’t save your details. Please try again.',

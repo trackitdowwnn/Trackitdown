@@ -82,8 +82,8 @@ export function BankDetailsForm({ onSubmit, onCancel, busy = false }: BankDetail
       {/* "From then on", not "immediately": a payout already on its way to the
           old account is not recalled by this. */}
       <Text style={styles.lede}>
-        Your new account goes straight to Stripe — we never store it. Rewards are sent
-        there from then on.
+        Your new account goes straight to our payment partner — we never store it.
+        Rewards are sent there from then on.
       </Text>
 
       <TextField

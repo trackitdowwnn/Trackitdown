@@ -19,7 +19,7 @@
  *        Static, on purpose: no pulsing "current" dot. Motion here would say
  *        "something is happening right now" about a check that can take a day.
  *
- *        ONE ACCESSIBLE STOP PER STEP, reading "Step 2 of 4, Stripe's check,
+ *        ONE ACCESSIBLE STOP PER STEP, reading "Step 2 of 4, ID check,
  *        in progress. Usually a few minutes." — the marker alone can't be
  *        seen by a screen reader, so the state is spoken in words.
  * LINKS: src/features/payments/screens/PayoutsScreen.tsx (first consumer);
@@ -44,7 +44,7 @@ export type ProgressStepState = 'done' | 'current' | 'upcoming';
 export interface ProgressStep {
   /** Stable id — the React key and the testID suffix. */
   id: string;
-  /** A noun phrase — "Your details", "Stripe’s check" — never a claim like
+  /** A noun phrase — "Your details", "ID check" — never a claim like
    *  "Sent": the marker and the spoken state carry where it has got to. */
   label: string;
   state: ProgressStepState;

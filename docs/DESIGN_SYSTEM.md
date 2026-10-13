@@ -391,7 +391,8 @@ are build output.
   first line at any font scale. Static: no pulsing dot for a wait that can take
   a day. Give the CURRENT step a one-line `detail` saying who is waiting on
   whom and how long. One accessible stop per step, spoken as "Step 2 of 4,
-  Stripe's check, in progress. …". **Inside the card that holds the action,
+  ID check, in progress. …". Name no payment provider in a step (owner,
+  2026-10-13). **Inside the card that holds the action,
   in place of the StatusPill and the paragraph** — as a card of its own above
   the status card it said the state four or five times (Payouts, UI review
   2026-10-13). Not a wizard's progress — that is `WizardProgressBar`.

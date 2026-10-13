@@ -176,7 +176,7 @@ describe('createIdentityToken', () => {
   it.each([429, 500, 503])(
     '⚠️ a %i is Stripe busy or down, not a refusal — a retry, never the irreversible path',
     async (status) => {
-      // DETAILS_REJECTED leads to "Continue with Stripe", which spends the
+      // DETAILS_REJECTED leads to "Set up another way", which spends the
       // prefill window for good; nothing about the details was judged here.
       mockFetch({ ok: false, status });
 
@@ -204,7 +204,7 @@ describe('createIdentityToken', () => {
     expect(error).toBeInstanceOf(PaymentError);
     expect((error as PaymentError).code).toBe('DETAILS_REJECTED');
     expect((error as PaymentError).message).toBe(
-      'Stripe couldn’t accept those details. Please check them and try again.',
+      'Those details couldn’t be accepted. Please check them and try again.',
     );
     for (const secret of SECRETS) {
       expect((error as PaymentError).message).not.toContain(secret);
@@ -334,7 +334,7 @@ describe('createBankToken', () => {
     const error = await createBankToken(details).catch((err: unknown) => err);
 
     expect((error as PaymentError).message).toBe(
-      'Stripe couldn’t accept that bank account. Please check it and try again.',
+      'That bank account couldn’t be accepted. Please check it and try again.',
     );
     expect((error as PaymentError).message).not.toContain('00012345');
     expect(everythingLogged()).not.toContain('00012345');

@@ -75,7 +75,7 @@ export function buildPayoutSetupFlow(now: Date = new Date()): WizardFlow<PayoutS
           {
             id: 'address',
             question: 'Where do you live?',
-            helper: 'Stripe checks this with your name — nothing is posted to you.',
+            helper: 'It’s checked against your name — nothing is posted to you.',
             component: AddressStep,
             schema: buildAddressSchema(),
             reviewLabel: 'Home address',
@@ -113,7 +113,10 @@ export function buildPayoutSetupFlow(now: Date = new Date()): WizardFlow<PayoutS
       // they are on screen whenever the button is.
       header: () => <PayoutTermsNotice />,
     },
-    // Says where the details go, which is what the spotter is agreeing to.
-    finalCtaLabel: 'Send to Stripe',
+    // Says what happens, never a vague "Finish". Not "Send to Stripe": the
+    // owner wants no payment provider named in the app's own words
+    // (2026-10-13); the terms on this screen name the agreement, which is the
+    // one place the law needs it.
+    finalCtaLabel: 'Send my details',
   };
 }

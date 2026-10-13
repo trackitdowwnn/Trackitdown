@@ -114,7 +114,7 @@ export async function createIdentityToken(
       );
     }
     throw new PaymentError(
-      'Stripe couldn’t accept those details. Please check them and try again.',
+      'Those details couldn’t be accepted. Please check them and try again.',
       'DETAILS_REJECTED',
     );
   }
@@ -168,7 +168,7 @@ export async function createBankToken(details: BankTokenDetails): Promise<string
 
   if (error || !token?.id) {
     throw new PaymentError(
-      'Stripe couldn’t accept that bank account. Please check it and try again.',
+      'That bank account couldn’t be accepted. Please check it and try again.',
       'DETAILS_REJECTED',
     );
   }
