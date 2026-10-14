@@ -12,8 +12,8 @@
 import type Stripe from 'stripe';
 
 import {
-  PLATFORM_URL,
-  ensureBusinessUrl,
+  PRODUCT_DESCRIPTION,
+  ensureProfile,
   readPayoutAccountState,
 } from '../functions/_shared/payoutAccountState';
 
@@ -106,7 +106,7 @@ describe('the requirements we can meet ourselves (2026-10-13)', () => {
       payoutsEnabled: false,
       detailsSubmitted: false,
       needsBank: true,
-      needsWebsite: true,
+      needsProfile: true,
       // Both are ours to meet — neither is "one more thing from you".
       needsAction: false,
     });
@@ -115,7 +115,7 @@ describe('the requirements we can meet ourselves (2026-10-13)', () => {
   it('asks for nothing it can’t see — a legacy account reports no needs', async () => {
     const stripe = fakeStripe({ v1: async () => ({ payouts_enabled: false, details_submitted: true }) });
     const state = await readPayoutAccountState(stripe, 'acct_1');
-    expect(state).toMatchObject({ needsBank: false, needsWebsite: false, needsAction: false });
+    expect(state).toMatchObject({ needsBank: false, needsProfile: false, needsAction: false });
   });
 
   describe('who is waiting on whom (2026-10-14)', () => {
@@ -182,22 +182,37 @@ describe('the requirements we can meet ourselves (2026-10-13)', () => {
           minimum_deadline: { status: 'currently_due' },
         },
       ]);
-      expect(state).toMatchObject({ needsBank: true, needsWebsite: true, needsAction: false });
+      expect(state).toMatchObject({ needsBank: true, needsProfile: true, needsAction: false });
+    });
+
+    it('a description requirement is ours too (Stripe may name it either way)', async () => {
+      const state = await read([
+        {
+          description: 'defaults.profile.product_description',
+          awaiting_action_from: 'user',
+          minimum_deadline: { status: 'currently_due' },
+        },
+      ]);
+      expect(state).toMatchObject({ needsProfile: true, needsAction: false });
     });
   });
 
-  it('supplies the platform’s website, and says whether it could', async () => {
+  it('supplies a description, never a shared URL, and says whether it could', async () => {
     const update = jest.fn(async () => ({}));
     const stripe = { v2: { core: { accounts: { update } } } } as unknown as Stripe;
-    await expect(ensureBusinessUrl(stripe, 'acct_7')).resolves.toBe(true);
+    await expect(ensureProfile(stripe, 'acct_7')).resolves.toBe(true);
     expect(update).toHaveBeenCalledWith('acct_7', {
-      defaults: { profile: { business_url: PLATFORM_URL } },
+      defaults: { profile: { product_description: PRODUCT_DESCRIPTION } },
     });
-    expect(PLATFORM_URL).toBe('https://trackitdown.co.uk');
 
     const failing = {
       v2: { core: { accounts: { update: jest.fn(async () => Promise.reject(new Error('no'))) } } },
     } as unknown as Stripe;
-    await expect(ensureBusinessUrl(failing, 'acct_7')).resolves.toBe(false);
+    await expect(ensureProfile(failing, 'acct_7')).resolves.toBe(false);
+  });
+
+  it('the description meets Stripe’s rules: 10+ characters, and no URL in it', () => {
+    expect(PRODUCT_DESCRIPTION.length).toBeGreaterThanOrEqual(10);
+    expect(PRODUCT_DESCRIPTION).not.toMatch(/https?:|www\.|\.co\.uk|\.com/i);
   });
 });

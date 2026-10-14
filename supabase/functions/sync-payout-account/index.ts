@@ -29,7 +29,7 @@ import { createServiceRoleClient, createStripeClient } from '../_shared/clients.
 import { findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
 import { applyPayoutAccountState } from '../_shared/applyPayoutAccountState.ts';
-import { ensureBusinessUrl, readPayoutAccountState } from '../_shared/payoutAccountState.ts';
+import { ensureProfile, readPayoutAccountState } from '../_shared/payoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
 Deno.serve(async (request) => {
@@ -93,12 +93,13 @@ Deno.serve(async (request) => {
     return errorResponse('LEDGER_ERROR', 'We couldn’t check your payouts. Please try again.', 500);
   }
 
-  // Stripe's routine "website" requirement is the platform's to answer, never
-  // the spotter's (accounts made before create-payout-account sent it). Set
-  // here, quietly; Stripe re-evaluates and the next check sees the result.
-  if (fresh.needsWebsite) {
-    const set = await ensureBusinessUrl(stripe, existing.accountId);
-    console.log('[payments] payout account website supplied', { accountId: existing.accountId, set });
+  // Stripe's routine "website or description" requirement is the platform's to
+  // answer, never the spotter's (accounts made before create-payout-account
+  // sent it). Set here, quietly; Stripe re-evaluates and the next check sees
+  // the result.
+  if (fresh.needsProfile) {
+    const set = await ensureProfile(stripe, existing.accountId);
+    console.log('[payments] payout account description supplied', { accountId: existing.accountId, set });
   }
 
   // `needsBank`: no bank attached — the app asks for one in its own form

@@ -46,6 +46,23 @@ export function parseUkDate(value: string): Date | null {
   return date;
 }
 
+/**
+ * A UK phone number as typed — 07700 900123, +44 7700 900123, 0044…, even
+ * "+44 (0)7700…" — in the international form Stripe takes (+447700900123), or
+ * null if it isn't one. UK numbers only, like the rest of this form: ten
+ * national digits starting 1, 2, 3 (landlines, non-geographic) or 7 (mobiles).
+ */
+export function toUkE164(value: string): string | null {
+  const compact = value.replace(/[\s\-().]/g, '');
+  let national: string | null = null;
+  if (compact.startsWith('+44')) national = compact.slice(3);
+  else if (compact.startsWith('0044')) national = compact.slice(4);
+  else if (compact.startsWith('0')) national = compact.slice(1);
+  // "+44 (0)7700…" leaves the trunk 0 behind once the brackets go.
+  if (national?.startsWith('0')) national = national.slice(1);
+  return national !== null && /^[1237]\d{9}$/.test(national) ? `+44${national}` : null;
+}
+
 /** Whole years between a date and now. */
 function ageOn(date: Date, now: Date): number {
   let age = now.getUTCFullYear() - date.getUTCFullYear();
@@ -104,7 +121,14 @@ function aboutYouFields(now: Date) {
         const date = parseUkDate(value);
         return date === null || ageOn(date, now) >= MIN_AGE_YEARS;
       }, 'You need to be 18 or over to be paid'),
-    phone: z.string().trim().optional(),
+    // ⚠️ REQUIRED since 2026-10-14. Stripe requires a phone for a UK payee
+    // account; asked "(optional)" here, a spotter who skipped it was held by
+    // Stripe AFTER sending — the one place nothing on screen could explain.
+    phone: z
+      .string()
+      .trim()
+      .min(1, 'Enter your phone number')
+      .refine((value) => toUkE164(value) !== null, 'Enter a UK number, like 07700 900123'),
   };
 }
 
