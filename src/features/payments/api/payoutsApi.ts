@@ -103,6 +103,8 @@ export interface PayoutAccount {
   bankPayout: BankPayout | null;
   /** When they last replaced their bank in our form, or null. */
   bankReplacedAt: string | null;
+  /** When payouts last switched on (2026-10-14), or null if unknown. */
+  payoutsEnabledAt: string | null;
 }
 
 export interface BankPayout {
@@ -298,6 +300,10 @@ export async function fetchMyPendingCredit(): Promise<{
   postId: string;
   transferPence: number;
   underReview: boolean;
+  /** When the owner credited the sighting (2026-10-14), or null if unknown. */
+  creditedAt: string | null;
+  /** The car the reward was for — make and colour only, never the plate. */
+  car: { make: string | null; colour: string | null };
 } | null> {
   const { data, error } = await supabase.rpc('my_pending_credit');
   if (error) {
@@ -312,6 +318,12 @@ export async function fetchMyPendingCredit(): Promise<{
     postId: row.post_id as string,
     transferPence: Number(row.transfer_pence),
     underReview: row.under_review === true,
+    // Null from a server that predates 20261014130000 — no date, no car.
+    creditedAt: (row.credited_at as string | null | undefined) ?? null,
+    car: {
+      make: (row.make as string | null | undefined) ?? null,
+      colour: (row.colour as string | null | undefined) ?? null,
+    },
   };
 }
 
@@ -392,7 +404,7 @@ export async function fetchMyPayoutAccount(userId: string): Promise<PayoutAccoun
     // OTA, so they always exist first. One literal: supabase-js types the row
     // from the string, and a concatenation loses that.
     .select(
-      'stripe_account_id, onboarding_complete, payouts_enabled, last_payout_status, last_payout_arrival_date, last_payout_created_at, bank_replaced_at',
+      'stripe_account_id, onboarding_complete, payouts_enabled, last_payout_status, last_payout_arrival_date, last_payout_created_at, bank_replaced_at, payouts_enabled_at',
     )
     .eq('profile_id', userId)
     .maybeSingle();
@@ -418,5 +430,6 @@ export async function fetchMyPayoutAccount(userId: string): Promise<PayoutAccoun
           }
         : null,
     bankReplacedAt: (data.bank_replaced_at as string | null) ?? null,
+    payoutsEnabledAt: (data.payouts_enabled_at as string | null) ?? null,
   };
 }

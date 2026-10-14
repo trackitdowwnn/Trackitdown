@@ -271,9 +271,10 @@ describe('fetchMyPayoutAccount', () => {
       stripeAccountId: 'acct_123',
       onboardingComplete: true,
       payoutsEnabled: false,
-      // No payout to their bank yet, no bank replaced.
+      // No payout to their bank yet, no bank replaced, no "payouts on" date.
       bankPayout: null,
       bankReplacedAt: null,
+      payoutsEnabledAt: null,
     });
   });
 
@@ -378,8 +379,33 @@ describe('fetchMyPendingCredit', () => {
       postId: 'post-1',
       transferPence: 19000,
       underReview: true,
+      // A row without the 2026-10-14 columns: no date, no car — never a guess.
+      creditedAt: null,
+      car: { make: null, colour: null },
     });
     expect(mockRpc).toHaveBeenCalledWith('my_pending_credit');
+  });
+
+  it('carries the credit’s moment and the car — make and colour, never a plate (2026-10-14)', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        {
+          post_id: 'post-1',
+          transfer_pence: 19000,
+          under_review: false,
+          credited_at: '2026-10-13T10:00:00Z',
+          make: 'BMW',
+          colour: 'Blue',
+        },
+      ],
+      error: null,
+    });
+    const credit = await fetchMyPendingCredit();
+    expect(credit).toMatchObject({
+      creditedAt: '2026-10-13T10:00:00Z',
+      car: { make: 'BMW', colour: 'Blue' },
+    });
+    expect(JSON.stringify(credit)).not.toMatch(/plate/i);
   });
 
   it('a server that predates under_review reads as not held — never a false alarm', async () => {
