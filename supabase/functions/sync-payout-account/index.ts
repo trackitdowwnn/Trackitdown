@@ -67,7 +67,12 @@ Deno.serve(async (request) => {
   if (!fresh) {
     // Stripe unreadable: the row stands, and the screen says what it said.
     console.warn('[payments] payout sync read failed', { accountId: existing.accountId });
-    return jsonResponse({ status: 'unchanged', payoutsEnabled: existing.payoutsEnabled, needsBank: false });
+    return jsonResponse({
+      status: 'unchanged',
+      payoutsEnabled: existing.payoutsEnabled,
+      needsBank: false,
+      needsAction: false,
+    });
   }
 
   // Record it, and if they have just become payable, pay what they're owed —
@@ -98,9 +103,13 @@ Deno.serve(async (request) => {
 
   // `needsBank`: no bank attached — the app asks for one in its own form
   // rather than sending the spotter to Stripe's screen for it.
+  // `needsAction` (2026-10-14): Stripe is waiting on THEM for something only
+  // its own screen collects (a photo ID) — the app says so instead of "being
+  // checked". Additive: an app that predates it ignores the field.
   return jsonResponse({
     status: 'synced',
     payoutsEnabled: fresh.payoutsEnabled,
     needsBank: fresh.needsBank,
+    needsAction: fresh.needsAction,
   });
 });

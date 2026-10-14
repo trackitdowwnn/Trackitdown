@@ -36,6 +36,8 @@ export interface PayoutProgressInput {
   /** The most recent reward SENT within the window (fetchMyLatestPayout), or
    *  null. Only read once nothing else is waiting. */
   latestPayout?: { transferPence: number; sentAt: string } | null;
+  /** Stripe is waiting on THEM (sync-payout-account's needsAction, 2026-10-14). */
+  needsAction?: boolean;
 }
 
 /**
@@ -48,6 +50,7 @@ export function payoutProgress({
   settling,
   pendingCreditPence,
   latestPayout,
+  needsAction = false,
 }: PayoutProgressInput): ProgressStep[] | null {
   if (status === 'guest' || status === 'loading' || status === 'error') return null;
   // Still asking whether a reward waits — don't draw a road that may vanish.
@@ -90,7 +93,7 @@ export function payoutProgress({
       id: 'check',
       label: 'ID check',
       state: checkDone ? 'done' : detailsDone ? 'current' : 'upcoming',
-      detail: checkDone || !detailsDone ? undefined : checkDetail(status, settling),
+      detail: checkDone || !detailsDone ? undefined : checkDetail(status, settling, needsAction),
     },
     {
       id: 'payouts-on',
@@ -116,8 +119,12 @@ export function payoutProgress({
   return steps;
 }
 
-function checkDetail(status: PayoutAccountStatus, settling: boolean): string {
+function checkDetail(status: PayoutAccountStatus, settling: boolean, needsAction: boolean): string {
   if (settling) return 'Waiting for confirmation — usually a moment.';
+  // ⚠️ WAITING ON THEM, said plainly (2026-10-14). Before this, an account
+  // Stripe wanted a photo ID for read "Usually a few minutes… we'll switch
+  // payouts on" — telling someone to wait for a check that was waiting on them.
+  if (needsAction) return 'Waiting on you — a quick photo ID check, about two minutes.';
   // "Saved" carried over from the card's paragraph, which the tracker
   // replaces: someone told to go back to Stripe fears starting again.
   if (status === 'unfinished') return 'A few more details are needed from you. Your progress is saved.';

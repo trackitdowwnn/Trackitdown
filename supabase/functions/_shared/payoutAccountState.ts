@@ -56,6 +56,35 @@ export interface PayoutAccountState {
   needsBank: boolean;
   /** Stripe still wants the website — the platform supplies it. */
   needsWebsite: boolean;
+  /**
+   * Stripe is waiting on the SPOTTER for something only its own screen can
+   * collect — typically a photo ID after the typed details didn't verify
+   * (2026-10-14). Not the bank or website: those are ours to meet above. The
+   * screen must say "we need one more thing from you", never "being checked".
+   */
+  needsAction: boolean;
+}
+
+/** The parts of a v2 requirement entry this reads (older API answers may lack them). */
+type RequirementEntry = {
+  description: string;
+  awaiting_action_from?: string;
+  minimum_deadline?: { status?: string };
+};
+
+/**
+ * WHO IS WAITING ON WHOM. A requirement is the spotter's to act on when Stripe
+ * says it is awaiting the `user` (with a platform-collected account, that is
+ * us — and through us, them) and it is due NOW (`currently_due` / `past_due`;
+ * an `eventually_due` one blocks nothing yet). `awaiting_action_from: stripe`
+ * is Stripe reviewing — genuinely "being checked".
+ */
+function spotterMustAct(entry: RequirementEntry): boolean {
+  if (entry.description === REQUIREMENT_BANK || entry.description === REQUIREMENT_WEBSITE) {
+    return false;
+  }
+  const due = entry.minimum_deadline?.status;
+  return entry.awaiting_action_from === 'user' && (due === 'currently_due' || due === 'past_due');
 }
 
 /** The account's state from Stripe, or null if Stripe couldn't be read. */
@@ -64,19 +93,21 @@ export async function readPayoutAccountState(
   accountId: string,
 ): Promise<PayoutAccountState | null> {
   let v2Payouts: string | undefined;
-  let outstanding: string[] = [];
+  let entries: RequirementEntry[] = [];
   try {
     const account = await stripe.v2.core.accounts.retrieve(accountId, {
       include: ['configuration.recipient', 'requirements'],
     });
     v2Payouts = account.configuration?.recipient?.capabilities?.stripe_balance?.payouts?.status;
-    outstanding = (account.requirements?.entries ?? []).map((entry) => entry.description);
+    entries = account.requirements?.entries ?? [];
   } catch {
     // A legacy account, or a blip: v1 below decides.
   }
+  const outstanding = entries.map((entry) => entry.description);
   const needs = {
     needsBank: outstanding.includes(REQUIREMENT_BANK),
     needsWebsite: outstanding.includes(REQUIREMENT_WEBSITE),
+    needsAction: entries.some(spotterMustAct),
   };
 
   try {

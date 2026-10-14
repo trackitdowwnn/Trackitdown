@@ -107,13 +107,83 @@ describe('the requirements we can meet ourselves (2026-10-13)', () => {
       detailsSubmitted: false,
       needsBank: true,
       needsWebsite: true,
+      // Both are ours to meet — neither is "one more thing from you".
+      needsAction: false,
     });
   });
 
   it('asks for nothing it can’t see — a legacy account reports no needs', async () => {
     const stripe = fakeStripe({ v1: async () => ({ payouts_enabled: false, details_submitted: true }) });
     const state = await readPayoutAccountState(stripe, 'acct_1');
-    expect(state).toMatchObject({ needsBank: false, needsWebsite: false });
+    expect(state).toMatchObject({ needsBank: false, needsWebsite: false, needsAction: false });
+  });
+
+  describe('who is waiting on whom (2026-10-14)', () => {
+    const withEntries = (entries: object[]) => ({
+      configuration: { recipient: { capabilities: { stripe_balance: { payouts: { status: 'restricted' } } } } },
+      requirements: { entries },
+    });
+    const read = (entries: object[]) =>
+      readPayoutAccountState(
+        fakeStripe({ v2: async () => withEntries(entries), v1: async () => ({}) }),
+        'acct_1',
+      );
+
+    it('⚠️ a photo ID Stripe is waiting on the spotter for: needsAction', async () => {
+      const state = await read([
+        {
+          description: 'identity.individual.verification.document',
+          awaiting_action_from: 'user',
+          minimum_deadline: { status: 'currently_due' },
+        },
+      ]);
+      expect(state?.needsAction).toBe(true);
+    });
+
+    it('past due counts too', async () => {
+      const state = await read([
+        {
+          description: 'identity.individual.verification.document',
+          awaiting_action_from: 'user',
+          minimum_deadline: { status: 'past_due' },
+        },
+      ]);
+      expect(state?.needsAction).toBe(true);
+    });
+
+    it('Stripe reviewing is NOT the spotter’s to act on — that is "being checked"', async () => {
+      const state = await read([
+        {
+          description: 'identity.individual.verification.document',
+          awaiting_action_from: 'stripe',
+          minimum_deadline: { status: 'currently_due' },
+        },
+      ]);
+      expect(state?.needsAction).toBe(false);
+    });
+
+    it('something only eventually due blocks nothing yet', async () => {
+      const state = await read([
+        {
+          description: 'identity.individual.verification.document',
+          awaiting_action_from: 'user',
+          minimum_deadline: { status: 'eventually_due' },
+        },
+      ]);
+      expect(state?.needsAction).toBe(false);
+    });
+
+    it('the bank and the website are ours to meet, never "one more thing from you"', async () => {
+      const state = await read([
+        { description: 'external_account', awaiting_action_from: 'user', minimum_deadline: { status: 'currently_due' } },
+        {
+          description: 'defaults.profile.business_url',
+          awaiting_action_from: 'user',
+          minimum_deadline: { status: 'currently_due' },
+        },
+      ]);
+      expect(state).toMatchObject({ needsBank: true, needsWebsite: true, needsAction: false });
+    });
   });
 
   it('supplies the platform’s website, and says whether it could', async () => {

@@ -116,6 +116,7 @@ import {
 } from '../api/payoutsApi';
 import { createBankToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
+import { usePollWhileChecking } from '../hooks/usePollWhileChecking';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
 import { payoutProgress } from '../lib/payoutProgress';
 import { takePayoutSetupOutcome } from '../lib/payoutSetupOutcome';
@@ -129,6 +130,11 @@ const RETURN_PREFIX = 'trackitdown://payouts';
 /** PUBLIC key — it can open a flow, never move money. Same one the escrow
  *  PaymentSheet uses; see BountyPaymentProvider for why bundling it is safe. */
 const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
+
+/** While "being checked" is on screen: ask the server every POLL_MS, at most
+ *  POLL_LIMIT times per visit — two minutes, then pull-to-refresh is there. */
+const POLL_MS = 10_000;
+const POLL_LIMIT = 12;
 
 /** What each state says. Calm, and never blaming someone for Stripe's queue. */
 const COPY: Record<
@@ -279,9 +285,14 @@ export function PayoutsScreen() {
   // Then the card asks for one in our own form — never Stripe's screen, which
   // is for what only Stripe can collect (2026-10-13).
   const [needsBank, setNeedsBank] = useState(false);
+  // Stripe is waiting on THEM for something only its own screen collects
+  // (2026-10-14) — said as "we need one more thing from you", never as
+  // "being checked", which told people to wait for a check waiting on them.
+  const [needsAction, setNeedsAction] = useState(false);
   const checkWithStripe = useCallback(async () => {
     const result = await syncMyPayoutAccount();
     setNeedsBank(result.needsBank);
+    setNeedsAction(result.needsAction);
     refresh();
   }, [refresh]);
   const checkedThisVisit = useRef(false);
@@ -307,9 +318,30 @@ export function PayoutsScreen() {
     checkedThisVisit.current = true;
     void syncMyPayoutAccount().then((result) => {
       setNeedsBank(result.needsBank);
+      setNeedsAction(result.needsAction);
       refresh();
     });
   }, [status, refresh]);
+
+  // KEEP ASKING WHILE IT SAYS "BEING CHECKED" (2026-10-14). One check on
+  // arrival came seconds too early for a test-mode check that finishes in
+  // seconds, and nothing asked again — the owner had to tap an unrelated
+  // button to move on. So while this screen is in view and Stripe is the one
+  // deciding, keep asking, a bounded number of times (the v2 account events
+  // reach the server too; this is the screen's own backstop). Not while the
+  // spotter is the one being waited on: nothing changes until they act.
+  // ⚠️ Registered BEFORE the focus effect below, which the screen's tests
+  // drive as "the latest focus effect".
+  const needsActionNow = useRef(needsAction);
+  useEffect(() => {
+    needsActionNow.current = needsAction;
+  });
+  const stillBeingChecked = useCallback(
+    () => statusNow.current === 'verifying' && !needsActionNow.current,
+    [],
+  );
+  const checkAgain = useCallback(() => void checkWithStripe(), [checkWithStripe]);
+  usePollWhileChecking(stillBeingChecked, checkAgain, { everyMs: POLL_MS, times: POLL_LIMIT });
 
   useFocusEffect(
     useCallback(() => {
@@ -382,14 +414,19 @@ export function PayoutsScreen() {
   }, [fetchClientSecret, palette]);
 
   const open = useCallback(
-    async (options: { skipPrefill?: boolean } = {}) => {
+    // `skipIntro` is the app's alone, never sent: the "one more thing from
+    // you" card has already said what the check is, so a second card saying
+    // it again would be a tap for nothing.
+    async (options: { skipPrefill?: boolean; skipIntro?: boolean } = {}) => {
     if (opening) {
       return;
     }
     setOpening(true);
     setBrowserSaidExpired(false);
     try {
-      const result = await startConnectOnboarding(options);
+      const result = await startConnectOnboarding(
+        options.skipPrefill ? { skipPrefill: true } : {},
+      );
       if (result.status === 'already_enabled') {
         // Nothing to open — the server had nothing left to ask for. Re-read so
         // the screen agrees with it.
@@ -415,7 +452,7 @@ export function PayoutsScreen() {
         // wrong". The card says who, why and how long, and Continue opens it.
         // Not for someone who just chose "Continue with Stripe": they already
         // said yes to exactly this.
-        if (options.skipPrefill) {
+        if (options.skipPrefill || options.skipIntro) {
           await launchStripe();
         } else {
           setStripeIntro(true);
@@ -517,7 +554,10 @@ export function PayoutsScreen() {
     setConnectInstance(null);
     primedSecret.current = null;
     settleReturn();
-  }, [settleReturn]);
+    // And ask Stripe, not just our row: leaving the check is exactly when
+    // what it wanted may have just been given (Stripe: re-fetch on exit).
+    void checkWithStripe();
+  }, [checkWithStripe, settleReturn]);
 
   // Leaving mid-session must not strand an orphaned iOS sheet behind us.
   //
@@ -543,6 +583,9 @@ export function PayoutsScreen() {
   const showRejected = detailsRejected && (status === 'notStarted' || status === 'unfinished');
   // Not ready, and what Stripe is waiting for is a bank: ask for it ourselves.
   const askBank = needsBank && (status === 'unfinished' || status === 'verifying');
+  // Not ready, and Stripe is waiting on THEM for its own check (a bank, if
+  // missing too, comes first: it is ours, and quicker).
+  const askCheck = needsAction && !askBank && (status === 'unfinished' || status === 'verifying');
   // The earn moment's second sentence: "tell us where" only while nobody has.
   // Under a tracker reading "Your details — done" it would contradict it.
   const earnedLine =
@@ -557,7 +600,13 @@ export function PayoutsScreen() {
   // detail), near-verbatim (UI review): the current step's detail now says
   // who is waiting and how long, the title says what this is, the button
   // what to do. With no tracker (ready, nothing waiting) the pill returns.
-  const progress = payoutProgress({ status, settling, pendingCreditPence, latestPayout });
+  const progress = payoutProgress({
+    status,
+    settling,
+    pendingCreditPence,
+    latestPayout,
+    needsAction: askCheck,
+  });
   const tracker = progress ? (
     <>
       <ProgressSteps steps={progress} testID="payouts-steps" />
@@ -573,6 +622,12 @@ export function PayoutsScreen() {
         <ConnectAccountOnboarding
           title="Set up payouts"
           onExit={onOnboardingExit}
+          // Only what is due NOW — what's blocking the reward — not everything
+          // Stripe might want one day (2026-10-14). Least asked, soonest paid.
+          collectionOptions={{ fields: 'currently_due' }}
+          // Where people stop, for us to see; the step name only, never what
+          // they typed. Not for logic: Stripe says not to rely on it.
+          onStepChange={({ step }) => log.info('payout check step', { step })}
           onLoadError={(event) => {
             // Never surface Stripe's internals; the screen behind is intact and
             // the button is still there.
@@ -866,33 +921,53 @@ export function PayoutsScreen() {
             was the same fact twice. Its detail replaces the paragraph too. */}
         {tracker ?? (
           <StatusPill
-            label={STATUS_PILL[status].label}
-            tone={STATUS_PILL[status].tone}
+            // Waiting on them reads as theirs to do, whatever our row says.
+            label={STATUS_PILL[askCheck ? 'unfinished' : status].label}
+            tone={STATUS_PILL[askCheck ? 'unfinished' : status].tone}
             testID={`payouts-pill-${status}`}
           />
         )}
         <Text style={styles.cardTitle} accessibilityRole="header">
-          {askBank ? 'One more thing: your bank account' : COPY[status].title}
+          {askBank
+            ? 'One more thing: your bank account'
+            : askCheck
+              ? 'We need one more thing from you'
+              : COPY[status].title}
         </Text>
-        {tracker ? null : <Text style={styles.cardBody}>{COPY[status].body}</Text>}
+        {tracker ? null : (
+          <Text style={styles.cardBody}>
+            {askCheck
+              ? 'Our payment partner couldn’t confirm it’s you from the details you sent. A quick photo ID check sorts it — about two minutes.'
+              : COPY[status].body}
+          </Text>
+        )}
         {linkExpired ? (
           <Text style={styles.note}>
             That link expired — they only last a few minutes. Start again for a fresh one.
           </Text>
         ) : null}
         <Button
-          label={askBank ? 'Add your bank account' : COPY[status].action}
+          label={askBank ? 'Add your bank account' : askCheck ? 'Start the check' : COPY[status].action}
           loading={opening}
           // Ready means "change where the money lands" — three fields, in the
           // app, both account generations. So does a missing bank (askBank).
           // Every other state still needs a Stripe surface of one kind or
-          // another, and `open` picks which.
-          onPress={() => (status === 'ready' || askBank ? setShowBankForm(true) : void open())}
+          // another, and `open` picks which. The check opens straight away:
+          // this card already said what it is.
+          onPress={() =>
+            status === 'ready' || askBank
+              ? setShowBankForm(true)
+              : void open(askCheck ? { skipIntro: true } : {})
+          }
           // Primary only where the next move is THEIRS. Verifying waits on
           // Stripe; a near-black button under "we'll switch payouts on the
           // moment it's done" would contradict the sentence (UI review).
           variant={
-            askBank ? 'primary' : status === 'ready' || status === 'verifying' ? 'secondary' : 'primary'
+            askBank || askCheck
+              ? 'primary'
+              : status === 'ready' || status === 'verifying'
+                ? 'secondary'
+                : 'primary'
           }
         />
       </View>
