@@ -466,6 +466,12 @@ Rules that follow, and are not implementation details:
     `my_sightings` preference rather than `money` (there is no money in it).
     It is persisted like every other kind, so the Inbox is no longer silent.
 
+    ⚠️ **Only the server half shipped on 2026-09-02.** The owner's app never
+    started CALLING `notify-credited` on `nextStep: 'done'` (its old "don't
+    call — it burns the claim" rule outlived the fix), so no fee-listing
+    spotter was actually told until **2026-10-14**, when `RecoverPostScreen`
+    began calling it there too.
+
     ⚠️ The payment lookup gained `kind = 'bounty_escrow'` in the same change.
     Without it a £5 fee row would have been read as a bounty and produced
     *"You've earned £4.75"* on a listing carrying no reward — inventing exactly

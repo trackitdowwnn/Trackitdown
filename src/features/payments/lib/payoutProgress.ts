@@ -38,6 +38,8 @@ export interface PayoutProgressInput {
   latestPayout?: { transferPence: number; sentAt: string } | null;
   /** Stripe is waiting on THEM (sync-payout-account's needsAction, 2026-10-14). */
   needsAction?: boolean;
+  /** A check holds the waiting reward's payout (my_pending_credit, 2026-10-14). */
+  underReview?: boolean;
 }
 
 /**
@@ -51,6 +53,7 @@ export function payoutProgress({
   pendingCreditPence,
   latestPayout,
   needsAction = false,
+  underReview = false,
 }: PayoutProgressInput): ProgressStep[] | null {
   if (status === 'guest' || status === 'loading' || status === 'error') return null;
   // Still asking whether a reward waits — don't draw a road that may vanish.
@@ -111,9 +114,15 @@ export function payoutProgress({
       // Payouts on with a reward still waiting means the release is under
       // way: it runs the moment an account becomes payable.
       state: checkDone ? 'current' : 'upcoming',
-      detail: checkDone
-        ? 'On its way — your bank may take a few days to show it.'
-        : undefined,
+      // ⚠️ NOT "on its way" while a check holds it (2026-10-14): that read as
+      // money moving for as long as a review took. That a check is under way
+      // is theirs to know; why is never shown (the reasons stay server-side).
+      // The `payout_sent` push says when it does go.
+      detail: !checkDone
+        ? undefined
+        : underReview
+          ? 'A quick check before we send it. We’ll let you know the moment it’s on its way.'
+          : 'On its way — your bank may take a few days to show it.',
     });
   }
   return steps;

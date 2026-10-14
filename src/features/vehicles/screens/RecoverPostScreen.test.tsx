@@ -453,13 +453,11 @@ describe('a no-reward listing (nextStep: done)', () => {
     // The two calls that would 409 / no-op on an already-terminal post.
     expect(mockRefund).not.toHaveBeenCalled();
     expect(mockRelease).not.toHaveBeenCalled();
-    // ...and NOT the credited push. `claim_credited_notification` consumes the
-    // one-shot `credited_notified_at` claim BEFORE it checks for a held payment,
-    // so calling it on a fee post burns that claim FOREVER and still sends
-    // nothing — permanently silencing the spotter even after a non-money push
-    // ships. Pinned here so a future "let's tell them" refactor cannot quietly
-    // destroy the claim it will need. See DOMAIN.md's known gap.
-    expect(mockNotifyCredited).not.toHaveBeenCalled();
+    // ...but the spotter IS told (2026-10-14). Since 2026-09-02 the claim
+    // builds a non-money `credited_no_reward` push and claims its one-shot only
+    // once there is copy to send, so this call is safe — and without it the
+    // credit, which IS the reward on this listing, arrived in silence.
+    expect(mockNotifyCredited).toHaveBeenCalledWith('p1');
     // ...and the owner is told it worked, not that it failed.
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
     const said = mockShowToast.mock.calls.map((c) => String(c[0])).join(' | ');

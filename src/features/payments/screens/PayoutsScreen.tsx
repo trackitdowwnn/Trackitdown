@@ -230,6 +230,9 @@ export function PayoutsScreen() {
   const [latestPayout, setLatestPayout] = useState<Awaited<
     ReturnType<typeof fetchMyLatestPayout>
   >>(null);
+  // A check holds the waiting reward's payout (2026-10-14) — the tracker says
+  // so rather than "on its way".
+  const [creditUnderReview, setCreditUnderReview] = useState(false);
   useEffect(() => {
     if (status === 'guest' || status === 'loading') {
       return;
@@ -241,6 +244,7 @@ export function PayoutsScreen() {
       if (!cancelled) {
         setLatestPayout(sent);
         setPendingCreditPence(credit?.transferPence ?? null);
+        setCreditUnderReview(credit?.underReview === true);
       }
     });
     return () => {
@@ -606,6 +610,7 @@ export function PayoutsScreen() {
     pendingCreditPence,
     latestPayout,
     needsAction: askCheck,
+    underReview: creditUnderReview,
   });
   const tracker = progress ? (
     <>

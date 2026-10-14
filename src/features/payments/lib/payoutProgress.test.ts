@@ -59,6 +59,24 @@ describe('payoutProgress', () => {
     expect(steps?.[1]?.detail).toMatch(/switch payouts on the moment/);
   });
 
+  it('⚠️ a check holding the payout (2026-10-14): never "on its way", never why', () => {
+    const steps = payoutProgress({
+      status: 'ready',
+      settling: false,
+      pendingCreditPence: 19000,
+      underReview: true,
+    });
+    expect(steps?.[3]?.state).toBe('current');
+    expect(steps?.[3]?.detail).toMatch(/^A quick check before we send it/);
+    expect(steps?.[3]?.detail).not.toMatch(/on its way —|bank may take/);
+    expect(steps?.[3]?.detail).not.toMatch(/fraud|collusion|flag|suspicious/i);
+  });
+
+  it('…and once the check clears, "on its way" as before', () => {
+    const steps = payoutProgress({ status: 'ready', settling: false, pendingCreditPence: 19000 });
+    expect(steps?.[3]?.detail).toMatch(/^On its way/);
+  });
+
   it('⚠️ Stripe waiting on THEM (2026-10-14): never "we\'ll switch payouts on"', () => {
     const steps = payoutProgress({
       status: 'verifying',
