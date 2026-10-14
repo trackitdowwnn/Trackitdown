@@ -18,26 +18,40 @@
  */
 
 import { useFocusEffect } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
+/**
+ * `spent` turns true once this visit's allowance is used up — the screen's cue
+ * to stop SHOWING that it is checking (the "working" marker, "checking now"),
+ * because from then on it isn't (2026-10-14). A new visit starts fresh.
+ */
 export function usePollWhileChecking(
   shouldPoll: () => boolean,
   check: () => void,
   { everyMs = 10_000, times = 12 }: { everyMs?: number; times?: number } = {},
-): void {
+): { spent: boolean } {
+  const [spent, setSpent] = useState(false);
   useFocusEffect(
     useCallback(() => {
       let asked = 0;
+      // A fresh allowance for this visit; set from a callback, never
+      // synchronously in the effect.
+      const fresh = setTimeout(() => setSpent(false), 0);
       const timer = setInterval(() => {
         if (!shouldPoll()) return;
         asked += 1;
         if (asked > times) {
           clearInterval(timer);
+          setSpent(true);
           return;
         }
         check();
       }, everyMs);
-      return () => clearInterval(timer);
+      return () => {
+        clearTimeout(fresh);
+        clearInterval(timer);
+      };
     }, [shouldPoll, check, everyMs, times]),
   );
+  return { spent };
 }

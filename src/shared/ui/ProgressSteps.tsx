@@ -16,8 +16,13 @@
  *        in body weight (still ink — they happened), steps to come in grey, so
  *        "now" is the first thing read without reading the markers at all.
  *
- *        Static, on purpose: no pulsing "current" dot. Motion here would say
+ *        Static BY DEFAULT: no pulsing "current" dot. Motion here would say
  *        "something is happening right now" about a check that can take a day.
+ *        EXCEPT while it is true (2026-10-14, owner: "some visual that
+ *        something is happening"): a step marked `working` breathes — the
+ *        caller sets it only while the app is actually checking, and clears it
+ *        when it stops, so the motion never outlives the claim. Reduce Motion
+ *        keeps it still; the step's detail says "checking now" in words.
  *
  *        ONE ACCESSIBLE STOP PER STEP, reading "Step 2 of 4, ID check,
  *        in progress. Usually a few minutes." — the marker alone can't be
@@ -27,9 +32,20 @@
  */
 
 import { Check } from 'lucide-react-native';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import Animated, {
+  Easing,
+  cancelAnimation,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
 import {
+  motion,
   radii,
   sizes,
   spacing,
@@ -51,6 +67,9 @@ export interface ProgressStep {
   /** One sentence under the label — say it for the CURRENT step; it is how
    *  "how long" and "who is waiting on whom" get said. */
   detail?: string;
+  /** The current step's marker breathes — ONLY while something is actually
+   *  being done right now (see the header). Ignored on other states. */
+  working?: boolean;
 }
 
 export interface ProgressStepsProps {
@@ -120,7 +139,11 @@ export function ProgressSteps({ steps, testID }: ProgressStepsProps) {
                   </View>
                 ) : step.state === 'current' ? (
                   <View style={[styles.marker, styles.markerCurrent]} testID={markerID}>
-                    <View style={styles.markerDot} />
+                    {step.working ? (
+                      <WorkingDot testID={`${markerID}-working`} />
+                    ) : (
+                      <View style={styles.markerDot} />
+                    )}
                   </View>
                 ) : (
                   <View style={[styles.marker, styles.markerUpcoming]} testID={markerID} />
@@ -143,6 +166,39 @@ export function ProgressSteps({ steps, testID }: ProgressStepsProps) {
       })}
     </View>
   );
+}
+
+/**
+ * The current marker's dot, breathing: fades and swells, slowly, for as long
+ * as it is mounted — which is exactly as long as the step is `working`.
+ * Reduce Motion: the plain dot, still.
+ */
+function WorkingDot({ testID }: { testID: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const reduceMotion = useReducedMotion();
+  const breath = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    breath.set(
+      withRepeat(
+        withTiming(1, { duration: motion.progressWorking, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true,
+      ),
+    );
+    return () => cancelAnimation(breath);
+  }, [breath, reduceMotion]);
+
+  const animated = useAnimatedStyle(() => ({
+    opacity: 1 - breath.get() * 0.6,
+    transform: [{ scale: 1 + breath.get() * 0.35 }],
+  }));
+
+  if (reduceMotion) {
+    return <View style={styles.markerDot} testID={testID} />;
+  }
+  return <Animated.View style={[styles.markerDot, animated]} testID={testID} />;
 }
 
 const makeStyles = (c: Palette) =>

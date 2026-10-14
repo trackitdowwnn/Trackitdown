@@ -32,6 +32,10 @@ export const motion = {
    *  swell, never looping. Longer than UI motion because it's an ambient
    *  emphasis, not a transition — a sanctioned exception like mapFly. */
   timelinePulse: 700,
+  /** ProgressSteps' "working" marker — one half of a slow breathe, looped ONLY
+   *  while the app is actually checking (2026-10-14, owner: "some visual that
+   *  something is happening"). Slow on purpose: alive, not urgent. */
+  progressWorking: 900,
 
   // --- Springs (Reanimated withSpring configs; duration + dampingRatio form
   // gives a predictable settle time. Three feels, one source: calm by default,

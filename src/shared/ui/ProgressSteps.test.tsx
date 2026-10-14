@@ -10,6 +10,7 @@
 import { render } from '@testing-library/react-native';
 import * as RN from 'react-native';
 import { StyleSheet } from 'react-native';
+import * as Reanimated from 'react-native-reanimated';
 
 import { sizes, typography } from '../theme';
 
@@ -79,5 +80,36 @@ describe('⚠️ the marker stays on the label’s first line at any text size',
     // Each row measures its OWN label: done and upcoming use body type.
     const bodyLine = typography.body.lineHeight * 2;
     expect(markerOffset(view, 'step-done-a')).toBe((bodyLine - sizes.timelineRailColumn) / 2);
+  });
+});
+
+describe('ProgressSteps — a step that is working (2026-10-14)', () => {
+  beforeEach(() => atFontScale(1));
+
+  const working: ProgressStep[] = [
+    { id: 'a', label: 'Your details', state: 'done' },
+    { id: 'b', label: 'ID check', state: 'current', detail: 'Checking now.', working: true },
+  ];
+
+  it('the current marker breathes only when the step says it is working', async () => {
+    const view = await render(<ProgressSteps steps={working} />);
+    expect(view.getByTestId('step-current-b-working')).toBeTruthy();
+
+    const still = await render(<ProgressSteps steps={STEPS} />);
+    expect(still.queryByTestId('step-current-b-working')).toBeNull();
+  });
+
+  it('`working` on a step that is not current draws nothing extra', async () => {
+    const view = await render(
+      <ProgressSteps steps={[{ id: 'a', label: 'Done', state: 'done', working: true }]} />,
+    );
+    expect(view.queryByTestId('step-done-a-working')).toBeNull();
+  });
+
+  it('⚠️ Reduce Motion: still a dot, just a still one — and the words still say it', async () => {
+    jest.spyOn(Reanimated, 'useReducedMotion').mockReturnValue(true);
+    const view = await render(<ProgressSteps steps={working} />);
+    expect(view.getByTestId('step-current-b-working')).toBeTruthy();
+    expect(view.getByLabelText(/ID check, in progress\. Checking now\./)).toBeTruthy();
   });
 });

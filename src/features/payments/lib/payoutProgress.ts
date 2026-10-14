@@ -41,6 +41,9 @@ export interface PayoutProgressInput {
   needsAction?: boolean;
   /** A check holds the waiting reward's payout (my_pending_credit, 2026-10-14). */
   underReview?: boolean;
+  /** The app is checking with Stripe RIGHT NOW (the bounded re-checks,
+   *  2026-10-14) — the ID check step breathes and says so. */
+  checkingNow?: boolean;
   /** The latest payout to their BANK (payout.* webhooks, 2026-10-14). */
   bankPayout?: BankPayout | null;
   /** When they last replaced their bank in our form. */
@@ -95,6 +98,7 @@ export function payoutProgress({
   latestPayout,
   needsAction = false,
   underReview = false,
+  checkingNow = false,
   bankPayout,
   bankReplacedAt,
 }: PayoutProgressInput): ProgressStep[] | null {
@@ -145,7 +149,14 @@ export function payoutProgress({
       id: 'check',
       label: 'ID check',
       state: checkDone ? 'done' : detailsDone ? 'current' : 'upcoming',
-      detail: checkDone || !detailsDone ? undefined : checkDetail(status, settling, needsAction),
+      detail:
+        checkDone || !detailsDone
+          ? undefined
+          : checkDetail(status, settling, needsAction, checkingNow),
+      // ⚠️ MOTION ONLY WHILE TRUE (2026-10-14): the marker breathes while the
+      // app is actually asking — the settle window or the bounded re-checks —
+      // never while it waits on THEM, and never after the checks stop.
+      working: !checkDone && detailsDone && !needsAction && (settling || checkingNow),
     },
     {
       id: 'payouts-on',
@@ -177,7 +188,12 @@ export function payoutProgress({
   return steps;
 }
 
-function checkDetail(status: PayoutAccountStatus, settling: boolean, needsAction: boolean): string {
+function checkDetail(
+  status: PayoutAccountStatus,
+  settling: boolean,
+  needsAction: boolean,
+  checkingNow: boolean,
+): string {
   if (settling) return 'Waiting for confirmation — usually a moment.';
   // ⚠️ WAITING ON THEM, said plainly (2026-10-14). Before this, an account
   // Stripe wanted a photo ID for read "Usually a few minutes… we'll switch
@@ -186,5 +202,7 @@ function checkDetail(status: PayoutAccountStatus, settling: boolean, needsAction
   // "Saved" carried over from the card's paragraph, which the tracker
   // replaces: someone told to go back to Stripe fears starting again.
   if (status === 'unfinished') return 'A few more details are needed from you. Your progress is saved.';
+  // While the app is asking, say so — the words the breathing marker shows.
+  if (checkingNow) return 'Checking with our payment partner now — this usually takes a moment.';
   return 'Usually a few minutes, sometimes a day. We’ll switch payouts on the moment it’s done.';
 }

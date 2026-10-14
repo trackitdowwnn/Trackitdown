@@ -262,7 +262,9 @@ describe('what each state says', () => {
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
     expect(getByText('Your details are being checked')).toBeTruthy();
     expect(queryByText('Pick up where you left off')).toBeNull();
-    expect(getByText(/switch payouts on the moment it’s done/i)).toBeTruthy();
+    // On arrival the app is checking with Stripe itself, and says so
+    // (2026-10-14); the "few minutes" line follows once the checks stop.
+    expect(getByText(/Checking with our payment partner now/)).toBeTruthy();
   });
 
   it('only asks "tell us where" while nobody has', async () => {
@@ -667,7 +669,18 @@ describe('the progress tracker (2026-10-13)', () => {
     const { getByTestId, getByLabelText } = await act(async () => render(<PayoutsScreen />));
 
     expect(getByTestId('payouts-steps-done-details')).toBeTruthy();
-    expect(getByLabelText(/ID check, in progress\. .*switch payouts on/)).toBeTruthy();
+    expect(getByLabelText(/ID check, in progress\. Checking with our payment partner now/)).toBeTruthy();
+    // ⚠️ "Some visual that something is happening" (owner, 2026-10-14): the
+    // marker breathes while the app is actually checking.
+    expect(getByTestId('payouts-steps-current-check-working')).toBeTruthy();
+  });
+
+  it('a spotter Stripe is waiting on gets no "checking" motion — nothing is happening until they act', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: true } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { queryByTestId } = await act(async () => render(<PayoutsScreen />));
+    expect(queryByTestId('payouts-steps-current-check-working')).toBeNull();
+    mockSyncAccount.mockResolvedValue({ needsBank: false });
   });
 
   it('says nothing when there is nothing to track', async () => {
