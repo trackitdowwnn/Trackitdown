@@ -9,7 +9,7 @@
  * LINKS: ./usePollWhileChecking.ts.
  */
 
-import { renderHook } from '@testing-library/react-native';
+import { act, renderHook } from '@testing-library/react-native';
 
 import { usePollWhileChecking } from './usePollWhileChecking';
 
@@ -48,6 +48,18 @@ describe('usePollWhileChecking', () => {
 
     jest.advanceTimersByTime(60_000);
     expect(check).toHaveBeenCalledTimes(3);
+  });
+
+  it('says when the allowance is spent — the screen stops showing it is checking', async () => {
+    const { result } = await renderHook(() =>
+      usePollWhileChecking(() => true, jest.fn(), { everyMs: 1000, times: 2 }),
+    );
+    expect(result.current.spent).toBe(false);
+
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    expect(result.current.spent).toBe(true);
   });
 
   it('skips while there is nothing to wait for, without spending the allowance', async () => {

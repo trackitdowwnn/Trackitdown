@@ -78,6 +78,33 @@ describe('payoutProgress', () => {
     expect(steps?.[3]?.detail).toMatch(/^On its way/);
   });
 
+  describe('"something is happening" (owner, 2026-10-14)', () => {
+    const check = (input: Partial<Parameters<typeof payoutProgress>[0]>) =>
+      payoutProgress({ status: 'verifying', settling: false, pendingCreditPence: 19000, ...input })?.[1];
+
+    it('while the app checks: the marker works and the line says so', () => {
+      const step = check({ checkingNow: true });
+      expect(step?.working).toBe(true);
+      expect(step?.detail).toMatch(/^Checking with our payment partner now/);
+    });
+
+    it('⚠️ once the checks stop: still, and the honest "few minutes" line', () => {
+      const step = check({ checkingNow: false });
+      expect(step?.working).toBe(false);
+      expect(step?.detail).toMatch(/Usually a few minutes/);
+    });
+
+    it('the settle window counts as checking — it is re-reading', () => {
+      expect(check({ settling: true })?.working).toBe(true);
+    });
+
+    it('⚠️ never while Stripe waits on THEM — nothing happens until they act', () => {
+      const step = check({ checkingNow: true, needsAction: true });
+      expect(step?.working).toBe(false);
+      expect(step?.detail).toMatch(/^Waiting on you/);
+    });
+  });
+
   it('⚠️ Stripe waiting on THEM (2026-10-14): never "we\'ll switch payouts on"', () => {
     const steps = payoutProgress({
       status: 'verifying',

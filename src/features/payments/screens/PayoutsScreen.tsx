@@ -345,7 +345,10 @@ export function PayoutsScreen() {
     [],
   );
   const checkAgain = useCallback(() => void checkWithStripe(), [checkWithStripe]);
-  usePollWhileChecking(stillBeingChecked, checkAgain, { everyMs: POLL_MS, times: POLL_LIMIT });
+  const { spent: pollSpent } = usePollWhileChecking(stillBeingChecked, checkAgain, {
+    everyMs: POLL_MS,
+    times: POLL_LIMIT,
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -590,6 +593,9 @@ export function PayoutsScreen() {
   // Not ready, and Stripe is waiting on THEM for its own check (a bank, if
   // missing too, comes first: it is ours, and quicker).
   const askCheck = needsAction && !askBank && (status === 'unfinished' || status === 'verifying');
+  // The app is asking Stripe right now: the bounded re-checks are running for
+  // an account Stripe is reviewing (not one waiting on the spotter).
+  const checkingNow = status === 'verifying' && !askBank && !askCheck && !pollSpent;
   // A bank refused their payout and they haven't given new details since
   // (2026-10-14): the money is back in their balance and the bank disabled,
   // so nothing reaches them until they act. Our bank form is the fix.
@@ -622,6 +628,9 @@ export function PayoutsScreen() {
     latestPayout,
     needsAction: askCheck,
     underReview: creditUnderReview,
+    // "Something is happening" (owner, 2026-10-14) — and only while it is:
+    // being checked by Stripe, not waiting on them, and the re-checks running.
+    checkingNow,
     bankPayout,
     bankReplacedAt: account?.bankReplacedAt ?? null,
   });
