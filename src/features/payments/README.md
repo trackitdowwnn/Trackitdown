@@ -45,11 +45,14 @@ this one eight days earlier and nobody noticed until no-bounty listings failed
 to charge at all. The live design won because it is what runs — not because it
 is the better of the two.
 
-**Payout (spotter).** `connect-onboarding` creates an Express account and hands
-back a hosted link; Stripe's `account.updated` webhook writes
-`payouts_enabled`; `release-payout` transfers 95% on a credited recovery and the
-5% remainder simply stays (ADR-0002 — transfer math, never an
-`application_fee_amount`).
+**Payout (spotter).** A spotter's payee account is an **Accounts v2** recipient
+account, made by `create-payout-account` from two tokens minted on the phone in
+the `/payout-setup` wizard (ADR-0010). Legacy Express accounts, made by
+`connect-onboarding` with a hosted link, still exist and still work.
+`release-payout` transfers 95% on a credited recovery and the 5% remainder
+simply stays (ADR-0002 — transfer math, never an `application_fee_amount`).
+Stripe then pays the payee balance out to their bank on its own schedule, and
+the `payout.*` webhooks say how that went (2026-10-14).
 
 **Why KYC is asked for late.** A spotter has no Stripe account until they want
 one. DOMAIN says to ask at the first credited sighting, not at signup — bank
@@ -69,14 +72,24 @@ is the NORMAL first outcome, not a failure, and the bounty waits in escrow.
   `deactivate-post` returns early for them: no owner-denial gate, no 72-hour
   hold, no dispute window — those protect a spotter's claim on a *bounty*, and
   there is none. `cancel_fee_listing` delists and moves nothing.
-- **`payouts_enabled` has exactly one writer**: the `account.updated` branch of
-  `stripe-webhook`. Not the onboarding function, which deliberately records a
-  new account as *not* payable — returning from Stripe's flow does not mean
-  verification passed, and a spotter who merely *looks* payable makes
-  `release-payout` fail at the transfer instead of waiting politely.
-  ⚠️ `account.updated` must be enabled on the Stripe webhook endpoint by hand;
-  it is not a default for a payments-only integration, and without it the whole
-  payout path fails silently.
+- **`payouts_enabled` is only ever copied FROM STRIPE — never inferred.** It
+  used to have one writer (the `account.updated` webhook), and that was the
+  bug: v2 accounts announce "payable" with v2 **thin** events, which nothing
+  listened for, so a spotter Stripe had approved sat on "being checked"
+  (2026-10-14, ADR-0022). Today every writer reads Stripe first:
+  - the v2 thin events in `stripe-webhook` and the screen's own check
+    (`sync-payout-account`), both through ONE step,
+    `_shared/applyPayoutAccountState.ts` — record, then release on the
+    not-payable → payable edge;
+  - `create-payout-account`, from Stripe's answer at creation;
+  - `connect-onboarding`'s reconcile, before it decides what to open;
+  - v1 `account.updated`, for legacy Express accounts.
+
+  A spotter who merely *looks* payable makes `release-payout` fail at the
+  transfer instead of waiting politely, which is why none of these guesses.
+  ⚠️ The webhook endpoints are set up by hand: see `supabase/functions/README.md`
+  steps 5, 5b (v2 thin events, "Your account" scope) and 5c (connected-account
+  `payout.*` events). Each has its own signing secret.
 - **THE PREFILL WINDOW — the most important thing on this page.** Stripe lets a
   platform submit bank details and identity fields for an Express account
   itself: *"you can update all information **until you create an Account Link or
@@ -191,6 +204,42 @@ The logic lives in `supabase/migrations/20261005130000_a_reward_can_be_changed.s
   checks `rewardEnded` first.
 - The logic lives in `supabase/migrations/20261005140000_a_reward_has_a_term.sql`
   and `20261006100000_a_reward_can_end.sql`.
+
+## Low-friction payments (2026-10-14, PRs #179–#185)
+
+Researched against Stripe's docs and how marketplaces pay casual earners; the
+rule underneath every change is **say who is waiting on whom**.
+
+- **"Being checked" moves by itself.** v2 thin events reach `stripe-webhook`
+  (ADR-0022); Payouts also asks every 10s for two minutes while it says
+  "being checked" (`usePollWhileChecking`), and again when the in-app check
+  closes.
+- **"We need one more thing from you."** `readPayoutAccountState` reports
+  `needsAction`: a requirement awaiting the user and due now (not the bank or
+  the profile, which we meet ourselves). Payouts says so and opens the in-app
+  check directly, asking only for `currently_due` fields.
+- **Asked up front.** Phone is required (Stripe requires it for a UK payee),
+  sent as +44… (`toUkE164`). The "website" every account is asked for is a
+  product description (`ensureProfile`), not one shared URL Stripe can refuse.
+- **A held payout says so.** `my_pending_credit.under_review` — a check holds
+  it, never why — so the tracker says "A quick check before we send it", not
+  "on its way".
+- **To the bank.** `payout.*` events record the latest payout to the bank
+  (`record_payout_event`, forward-only); the tracker says "due Friday" / "paid
+  into your bank", and a refused payout asks for new bank details (our form),
+  with one `payout_failed` push.
+- **The owner's side.** `sync-post-payment` lets the confirmation screens ask
+  Stripe instead of waiting only for the webhook; `_shared/afterCapture.ts` is
+  what follows a capture on either path, including a once-per-listing
+  `listing_live` push. A bank's 3D Secure return lands back on the payment
+  (`src/app/+native-intent.tsx` → `lib/stripeReturn.ts`).
+- **Native (app 1.1.0).** Stripe RN SDK 0.81.0; Google Pay first in the
+  PaymentSheet, in Google's test environment for any non-live key.
+  `react-native-webview` (#178) is what lets the in-app ID check load at all.
+
+Still open: Google Pay production access (Google Pay & Wallet Console) before
+a live key; `expo-build-properties` `ios.useFrameworks: 'dynamic'` before the
+first iOS build (SDK ≥ 0.78 resolves through Swift Package Manager).
 
 ## Not here
 

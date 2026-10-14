@@ -4,6 +4,12 @@
 `payments` · **Date:** 2026-09-02 · Buys back the property ADR-0014 recorded
 losing, and closes the whole-app review's finding #13
 
+> **Note (2026-10-14):** this design shipped — migrations
+> `20260902120000_payment_status_collected.sql` and
+> `20260902130000_fee_collected_not_held.sql` are on main and in production (a
+> fee lands in `collected`, never `held`). The status line above was never
+> updated; this note records the fact without re-deciding anything.
+
 ## Context
 
 ADR-0014 shipped a second pricing mode — a fixed £5 listing fee instead of an
