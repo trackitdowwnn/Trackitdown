@@ -19,6 +19,8 @@
  *        submitted" (20261013130000). The release is the same idempotent,
  *        collusion-gated core the webhook calls.
  * LINKS: ../_shared/payoutAccountState.ts (the read);
+ *        ../_shared/applyPayoutAccountState.ts (record + release, shared with
+ *          the webhook's v2 account events);
  *        ../stripe-webhook/index.ts (account.updated, the push version);
  *        src/features/payments/api/payoutsApi.ts (syncMyPayoutAccount).
  */
@@ -26,6 +28,7 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
+import { applyPayoutAccountState } from '../_shared/applyPayoutAccountState.ts';
 import { ensureBusinessUrl, readPayoutAccountState } from '../_shared/payoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
@@ -67,33 +70,22 @@ Deno.serve(async (request) => {
     return jsonResponse({ status: 'unchanged', payoutsEnabled: existing.payoutsEnabled, needsBank: false });
   }
 
-  if (
-    fresh.payoutsEnabled !== existing.payoutsEnabled ||
-    (fresh.detailsSubmitted && !existing.onboardingComplete)
-  ) {
-    const { error } = await admin.rpc('upsert_connected_account', {
-      p_profile_id: userId,
-      p_stripe_account_id: existing.accountId,
-      // Never undone here or in the RPC: our own steps ARE the submission for
-      // a v2 account, whatever v1's flag says (20261013130000).
-      p_onboarding_complete: existing.onboardingComplete || fresh.detailsSubmitted,
-      p_payouts_enabled: fresh.payoutsEnabled,
-    });
-    if (error) {
-      console.error('[payments] payout sync write failed', error.message);
-      return errorResponse('LEDGER_ERROR', 'We couldn’t check your payouts. Please try again.', 500);
-    }
-    // Flags only — never a name, never a bank detail.
-    console.log('[payments] payout account synced', {
+  // Record it, and if they have just become payable, pay what they're owed —
+  // the same step the webhook's v2 account events take (one definition).
+  const applied = await applyPayoutAccountState(
+    admin,
+    {
+      profileId: userId,
       accountId: existing.accountId,
-      payoutsEnabled: fresh.payoutsEnabled,
-    });
-  }
-
-  // Just became payable: pay what they're owed, as the webhook would have.
-  // Idempotent and collusion-gated inside; never throws.
-  if (fresh.payoutsEnabled && !existing.payoutsEnabled) {
-    await releaseAllPendingFor(admin, stripe, userId);
+      onboardingComplete: existing.onboardingComplete,
+      payoutsEnabled: existing.payoutsEnabled,
+    },
+    fresh,
+    (profileId) => releaseAllPendingFor(admin, stripe, profileId),
+  );
+  if (!applied.ok) {
+    console.error('[payments] payout sync write failed', applied.error);
+    return errorResponse('LEDGER_ERROR', 'We couldn’t check your payouts. Please try again.', 500);
   }
 
   // Stripe's routine "website" requirement is the platform's to answer, never
