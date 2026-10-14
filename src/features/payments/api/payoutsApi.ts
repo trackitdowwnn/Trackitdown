@@ -283,18 +283,20 @@ export async function fetchMyPendingCredit(): Promise<{
  * it never opens a session. Never throws: the screen re-reads either way, and
  * a failed check just leaves it saying what it said.
  */
-export async function syncMyPayoutAccount(): Promise<{ needsBank: boolean }> {
-  const { data, error } = await supabase.functions.invoke<{ needsBank?: boolean }>(
-    'sync-payout-account',
-    { body: {} },
-  );
+export async function syncMyPayoutAccount(): Promise<{ needsBank: boolean; needsAction: boolean }> {
+  const { data, error } = await supabase.functions.invoke<{
+    needsBank?: boolean;
+    needsAction?: boolean;
+  }>('sync-payout-account', { body: {} });
   if (error) {
     log.warn('sync-payout-account failed');
-    return { needsBank: false };
+    return { needsBank: false, needsAction: false };
   }
   // Stripe holds payouts until a bank is attached (2026-10-13): the app then
-  // asks for one in its own form, never Stripe's screen.
-  return { needsBank: data?.needsBank === true };
+  // asks for one in its own form, never Stripe's screen. `needsAction`
+  // (2026-10-14): Stripe is waiting on THEM for something only its own screen
+  // collects — the screen says so rather than "being checked".
+  return { needsBank: data?.needsBank === true, needsAction: data?.needsAction === true };
 }
 
 /** How long a sent reward stays on the Payouts tracker as its last step. */

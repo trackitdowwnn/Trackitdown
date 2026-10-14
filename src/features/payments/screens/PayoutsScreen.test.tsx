@@ -796,3 +796,71 @@ describe('⚠️ a missing bank is asked for in our own form, not Stripe’s scr
     expect(getByText('Continue setting up')).toBeTruthy();
   });
 });
+
+describe('⚠️ waiting on THEM is said plainly, never "being checked" (2026-10-14)', () => {
+  afterEach(() => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false });
+  });
+
+  it('Stripe wants a photo ID: the card says so, and the tracker says who it waits on', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: true } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('We need one more thing from you')).toBeTruthy();
+    expect(queryByText('Your details are being checked')).toBeNull();
+    expect(getByText(/Waiting on you/)).toBeTruthy();
+    // The old line told them to wait for a check that was waiting on them.
+    expect(queryByText(/Usually a few minutes/)).toBeNull();
+  });
+
+  it('"Start the check" opens the check straight away — the card already explained it', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: true } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByText, getByTestId, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+
+    await act(async () => {
+      fireEvent.press(getByText('Start the check'));
+    });
+    // Nothing extra reaches the server: skipIntro is the app's alone.
+    expect(mockStart).toHaveBeenCalledWith({});
+    expect(queryByTestId('payouts-stripe-intro')).toBeNull();
+    expect(getByTestId('connect-onboarding')).toBeTruthy();
+  });
+
+  it('leaving the check asks Stripe again, not just our row', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: true } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      fireEvent.press(getByText('Start the check'));
+    });
+    mockSyncAccount.mockClear();
+
+    await act(async () => {
+      fireEvent.press(getByTestId('connect-onboarding'));
+    });
+    expect(mockSyncAccount).toHaveBeenCalledTimes(1);
+    expect(mockSettleReturn).toHaveBeenCalled();
+  });
+
+  it('a missing bank comes first — ours to ask, and quicker', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: true, needsAction: true } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('One more thing: your bank account')).toBeTruthy();
+    expect(queryByText('We need one more thing from you')).toBeNull();
+  });
+
+  it('Stripe still reviewing: "being checked", as before', async () => {
+    mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: false } as never);
+    mockAccountState = { status: 'verifying', settling: false };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('Your details are being checked')).toBeTruthy();
+    expect(queryByText('We need one more thing from you')).toBeNull();
+  });
+});

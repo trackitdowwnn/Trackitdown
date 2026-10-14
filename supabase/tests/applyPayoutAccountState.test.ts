@@ -35,6 +35,7 @@ const fresh = (over: Partial<PayoutAccountState> = {}): PayoutAccountState => ({
   detailsSubmitted: false,
   needsBank: false,
   needsWebsite: false,
+  needsAction: false,
   ...over,
 });
 

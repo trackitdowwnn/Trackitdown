@@ -59,6 +59,18 @@ describe('payoutProgress', () => {
     expect(steps?.[1]?.detail).toMatch(/switch payouts on the moment/);
   });
 
+  it('⚠️ Stripe waiting on THEM (2026-10-14): never "we\'ll switch payouts on"', () => {
+    const steps = payoutProgress({
+      status: 'verifying',
+      settling: false,
+      pendingCreditPence: 19000,
+      needsAction: true,
+    });
+    expect(steps?.[1]?.state).toBe('current');
+    expect(steps?.[1]?.detail).toMatch(/^Waiting on you/);
+    expect(steps?.[1]?.detail).not.toMatch(/switch payouts on/);
+  });
+
   it('settling: their details count as sent, and confirmation is awaited', () => {
     // A row with both flags false reads as "never started" until the webhook
     // lands; someone who just sent everything must not be told to start.

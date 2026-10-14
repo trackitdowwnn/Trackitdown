@@ -119,9 +119,10 @@ In **Workbench → Webhooks → Create an event destination**:
 - Payload style: **Thin**.
 - Events: `v2.core.account[configuration.recipient].capability_status_updated`
   and `v2.core.account[requirements].updated`.
-- Scope: v2 events about connected accounts are documented under **"Your
-  account"** in one Stripe guide and **"Connected accounts"** in another —
-  create it in test mode, set a spotter up, and check which one delivers.
+- Events from: **Your account**. Stripe's Accounts v2 migration guide: for
+  v2 Accounts representing connected accounts, "v2 `Events` use the **Your
+  account** scope, while v1 `Events` use the **Connected accounts** scope" —
+  so this is NOT the scope the v1 Connect endpoint in step 5 uses.
 - Destination: the SAME URL as step 5 (`.../stripe-webhook`).
 - Copy this destination's **own** signing secret and set it:
 ```bash
