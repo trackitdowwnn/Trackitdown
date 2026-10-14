@@ -196,17 +196,14 @@ export function RecoverPostScreen({ postId, bountyPence }: RecoverPostScreenProp
         // (a no-op) and then toast "we'll send the bounty automatically", which
         // promises the owner and the spotter money that does not exist.
         claimedRef.current = true;
-        // NOT notifyCredited: that push is a MONEY push ("You've earned £X",
-        // routing to /payouts). Its SQL reads the amount from a held/released
-        // payment and returns {claimed:false} rather than invent a number — a
-        // fee listing's payment is `collected`, so calling it here would send
-        // nothing at all. Left uncalled rather than called-as-a-no-op so the
-        // absence is legible.
-        //
-        // ⚠️ KNOWN GAP, recorded in DOMAIN.md: the spotter is credited and
-        // currently learns it only by opening the app. Closing it needs a
-        // non-money credited push (copy + kind + migration) — deliberately not
-        // smuggled into this change.
+        // TELL THE SPOTTER (2026-10-14). claim_credited_notification has built
+        // a NON-money push for this since 2026-09-02 — `credited_no_reward`,
+        // "Your sighting found the car", → /my-sightings — and claims its
+        // one-shot only once it has copy to send, so calling it here no longer
+        // burns anything. The server half shipped then; this call never did,
+        // so the gap DOMAIN.md records as closed stayed open on the client.
+        // Fire-and-forget, as on the bounty path below.
+        notifyCredited(postId);
         toast.show('They’re credited. The recovery is added to their spotter record.');
         router.back();
         return;

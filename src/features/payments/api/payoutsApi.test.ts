@@ -19,6 +19,7 @@ import {
   SENT_SHOWN_DAYS,
   fetchMyLatestPayout,
   fetchMyPayoutAccount,
+  fetchMyPendingCredit,
   fetchPayoutsRelevant,
   startConnectOnboarding,
   submitPayoutDetails,
@@ -329,5 +330,32 @@ describe('fetchMyLatestPayout (PR2b)', () => {
     await expect(fetchMyLatestPayout()).resolves.toBeNull();
     mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
     await expect(fetchMyLatestPayout()).resolves.toBeNull();
+  });
+});
+
+describe('fetchMyPendingCredit', () => {
+  it('reads the caller-scoped RPC: the post, their share, and whether a check holds it', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ post_id: 'post-1', transfer_pence: 19000, under_review: true }],
+      error: null,
+    });
+    await expect(fetchMyPendingCredit()).resolves.toEqual({
+      postId: 'post-1',
+      transferPence: 19000,
+      underReview: true,
+    });
+    expect(mockRpc).toHaveBeenCalledWith('my_pending_credit');
+  });
+
+  it('a server that predates under_review reads as not held — never a false alarm', async () => {
+    mockRpc.mockResolvedValue({ data: [{ post_id: 'post-1', transfer_pence: 19000 }], error: null });
+    await expect(fetchMyPendingCredit()).resolves.toMatchObject({ underReview: false });
+  });
+
+  it('nothing waiting, or a failed read, is null', async () => {
+    mockRpc.mockResolvedValue({ data: [], error: null });
+    await expect(fetchMyPendingCredit()).resolves.toBeNull();
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
+    await expect(fetchMyPendingCredit()).resolves.toBeNull();
   });
 });

@@ -259,10 +259,16 @@ export async function fetchPayoutsRelevant(): Promise<boolean> {
   return data === true;
 }
 
-/** The caller's credited-but-unpaid bounty, or null. Powers "You've earned £X". */
+/**
+ * The caller's credited-but-unpaid bounty, or null. Powers "You've earned £X".
+ * `underReview` (2026-10-14): a check is holding the payout — never why — so
+ * the tracker says so instead of "on its way". False from a server that
+ * predates the column.
+ */
 export async function fetchMyPendingCredit(): Promise<{
   postId: string;
   transferPence: number;
+  underReview: boolean;
 } | null> {
   const { data, error } = await supabase.rpc('my_pending_credit');
   if (error) {
@@ -273,7 +279,11 @@ export async function fetchMyPendingCredit(): Promise<{
   if (!row?.post_id) {
     return null;
   }
-  return { postId: row.post_id as string, transferPence: Number(row.transfer_pence) };
+  return {
+    postId: row.post_id as string,
+    transferPence: Number(row.transfer_pence),
+    underReview: row.under_review === true,
+  };
 }
 
 /**

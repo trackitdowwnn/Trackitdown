@@ -797,6 +797,26 @@ describe('⚠️ a missing bank is asked for in our own form, not Stripe’s scr
   });
 });
 
+describe('⚠️ a payout held for a check says so, never "on its way" (2026-10-14)', () => {
+  it('payouts on, reward held for review: the tracker says a check, not that it moved', async () => {
+    mockPendingCredit.mockResolvedValue({ postId: 'post-1', transferPence: 19000, underReview: true });
+    mockAccountState = { status: 'ready', settling: false };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText(/A quick check before we send it/)).toBeTruthy();
+    expect(queryByText(/On its way/)).toBeNull();
+  });
+
+  it('no check: "on its way", as before', async () => {
+    mockPendingCredit.mockResolvedValue({ postId: 'post-1', transferPence: 19000, underReview: false });
+    mockAccountState = { status: 'ready', settling: false };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText(/On its way/)).toBeTruthy();
+    expect(queryByText(/A quick check before we send it/)).toBeNull();
+  });
+});
+
 describe('⚠️ waiting on THEM is said plainly, never "being checked" (2026-10-14)', () => {
   afterEach(() => {
     mockSyncAccount.mockResolvedValue({ needsBank: false });
