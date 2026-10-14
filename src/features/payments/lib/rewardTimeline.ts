@@ -38,7 +38,10 @@ export interface RewardTimelineView {
   outcome: 'Paid out' | 'Refunded' | null;
 }
 
-const on = (iso: string | null) => (iso ? ` on ${formatTermDate(iso)}` : '');
+// THE DATE IS THE STEP'S `meta` (2026-10-14, ProgressSteps v2): beside the
+// label, the same place on every tracker in the app, instead of folded into a
+// sentence. Undefined when unknown — no date rather than a guessed one.
+const dated = (iso: string | null | undefined) => (iso ? formatTermDate(iso) : undefined);
 
 /** The card's steps, or null when there is nothing for it to say. */
 export function rewardTimeline(timeline: RewardTimeline | null): RewardTimelineView | null {
@@ -51,7 +54,8 @@ export function rewardTimeline(timeline: RewardTimeline | null): RewardTimelineV
       id: 'reward',
       label: `Your ${formatPounds(latest.amountPence)} reward`,
       state: 'done',
-      detail: `Held from ${formatTermDate(latest.capturedAt)}.`,
+      meta: dated(latest.capturedAt),
+      detail: 'Held for the spotter who finds it.',
     },
   ];
   const credit: ProgressStep | null = timeline.creditedAt
@@ -59,7 +63,7 @@ export function rewardTimeline(timeline: RewardTimeline | null): RewardTimelineV
         id: 'credit',
         label: 'Credited sighting',
         state: 'done',
-        detail: `You credited a sighting${on(timeline.creditedAt)}.`,
+        meta: dated(timeline.creditedAt),
       }
     : null;
 
@@ -69,7 +73,8 @@ export function rewardTimeline(timeline: RewardTimeline | null): RewardTimelineV
       id: 'payout',
       label: 'Payout',
       state: 'done',
-      detail: `Paid to the spotter${on(latest.releasedAt)}.`,
+      meta: dated(latest.releasedAt),
+      detail: 'Paid to the spotter.',
     });
     return { steps, outcome: 'Paid out' };
   }
@@ -81,7 +86,8 @@ export function rewardTimeline(timeline: RewardTimeline | null): RewardTimelineV
         id: 'hold',
         label: 'Refund hold',
         state: 'done',
-        detail: `Held until ${formatTermDate(latest.holdUntil)} in case a sighting was contested.`,
+        meta: `Until ${formatTermDate(latest.holdUntil)}`,
+        detail: 'In case a sighting was contested.',
       });
     }
     const refunded = latest.refundedPence;
@@ -90,12 +96,13 @@ export function rewardTimeline(timeline: RewardTimeline | null): RewardTimelineV
       id: 'refund',
       label: 'Refund',
       state: 'done',
+      meta: dated(latest.refundedAt),
       detail:
         refunded !== null
-          ? `${formatPounds(refunded)} back to your card${on(latest.refundedAt)}${
+          ? `${formatPounds(refunded)} back to your card${
               kept > 0 ? ` — the ${formatPounds(kept)} card fee was kept` : ''
             }.`
-          : `Back to your card${on(latest.refundedAt)}.`,
+          : 'Back to your card.',
     });
     return { steps, outcome: 'Refunded' };
   }
@@ -117,9 +124,10 @@ export function rewardTimeline(timeline: RewardTimeline | null): RewardTimelineV
       id: 'hold',
       label: 'Refund hold',
       state: 'current',
+      meta: `Until ${formatTermDate(latest.holdUntil)}`,
       detail: timeline.disputeOpen
         ? 'A spotter has contested this, so it’s being reviewed before anything moves.'
-        : `Your refund is sent after ${formatTermDate(latest.holdUntil)}, unless a sighting is contested.`,
+        : 'Your refund is sent then, unless a sighting is contested.',
     });
     steps.push({ id: 'refund', label: 'Refund', state: 'upcoming' });
     return { steps, outcome: null };

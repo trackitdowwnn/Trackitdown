@@ -57,8 +57,11 @@ describe('rewardTimeline', () => {
     );
     expect(shape(view)).toEqual(['reward:done', 'credit:done', 'payout:done']);
     expect(view?.steps[0]?.label).toBe('Your £250 reward');
-    expect(view?.steps[0]?.detail).toBe('Held from 1 October.');
-    expect(view?.steps[2]?.detail).toBe('Paid to the spotter on 12 October.');
+    // Dates beside the label (`meta`, 2026-10-14), not folded into sentences.
+    expect(view?.steps[0]?.meta).toBe('1 October');
+    expect(view?.steps[1]?.meta).toBe('12 October');
+    expect(view?.steps[2]?.meta).toBe('12 October');
+    expect(view?.steps[2]?.detail).toBe('Paid to the spotter.');
     expect(view?.outcome).toBe('Paid out');
   });
 
@@ -78,9 +81,9 @@ describe('rewardTimeline', () => {
       }),
     );
     expect(shape(view)).toEqual(['reward:done', 'hold:done', 'refund:done']);
-    expect(view?.steps[2]?.detail).toBe(
-      '£246.05 back to your card on 16 October — the £3.95 card fee was kept.',
-    );
+    expect(view?.steps[1]?.meta).toBe('Until 16 October');
+    expect(view?.steps[2]?.meta).toBe('16 October');
+    expect(view?.steps[2]?.detail).toBe('£246.05 back to your card — the £3.95 card fee was kept.');
     expect(view?.outcome).toBe('Refunded');
   });
 
@@ -91,7 +94,8 @@ describe('rewardTimeline', () => {
         rewards: [reward({ status: 'refunded', refundedPence: 25000, refundedAt: '2026-10-16T09:00:00Z' })],
       }),
     );
-    expect(view?.steps.at(-1)?.detail).toBe('£250 back to your card on 16 October.');
+    expect(view?.steps.at(-1)?.detail).toBe('£250 back to your card.');
+    expect(view?.steps.at(-1)?.meta).toBe('16 October');
   });
 
   it('⚠️ credited but not yet sent: the payout is waiting — never "paid"', () => {
@@ -111,9 +115,8 @@ describe('rewardTimeline', () => {
       }),
     );
     expect(shape(view)).toEqual(['reward:done', 'hold:current', 'refund:upcoming']);
-    expect(view?.steps[1]?.detail).toBe(
-      'Your refund is sent after 16 October, unless a sighting is contested.',
-    );
+    expect(view?.steps[1]?.meta).toBe('Until 16 October');
+    expect(view?.steps[1]?.detail).toBe('Your refund is sent then, unless a sighting is contested.');
   });
 
   it('a contested hold says it’s being reviewed, not a date it may miss', () => {
