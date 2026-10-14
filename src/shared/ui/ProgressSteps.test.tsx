@@ -7,7 +7,7 @@
  * LINKS: ./ProgressSteps.tsx.
  */
 
-import { render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import * as RN from 'react-native';
 import { StyleSheet } from 'react-native';
 import * as Reanimated from 'react-native-reanimated';
@@ -80,6 +80,92 @@ describe('⚠️ the marker stays on the label’s first line at any text size',
     // Each row measures its OWN label: done and upcoming use body type.
     const bodyLine = typography.body.lineHeight * 2;
     expect(markerOffset(view, 'step-done-a')).toBe((bodyLine - sizes.timelineRailColumn) / 2);
+  });
+});
+
+describe('ProgressSteps v2 — dates, "needs you", one action, heading, collapse (2026-10-14)', () => {
+  beforeEach(() => atFontScale(1));
+
+  it('a date sits beside the label, and is spoken with it', async () => {
+    const view = await render(
+      <ProgressSteps
+        steps={[{ id: 'a', label: 'Reward sent', state: 'done', meta: '13 October' }]}
+      />,
+    );
+    expect(view.getByText('13 October')).toBeTruthy();
+    expect(view.getByLabelText('Step 1 of 1, Reward sent, done. 13 October.')).toBeTruthy();
+  });
+
+  it('⚠️ "needs you" is a SHAPE ("!") and a spoken state — never colour alone', async () => {
+    const view = await render(
+      <ProgressSteps
+        steps={[
+          { id: 'a', label: 'Your details', state: 'done' },
+          { id: 'b', label: 'ID check', state: 'attention', detail: 'A quick photo ID check.' },
+        ]}
+      />,
+    );
+    expect(view.getByTestId('step-attention-b')).toBeTruthy();
+    expect(view.getByLabelText(/ID check, needs you\. A quick photo ID check\./)).toBeTruthy();
+  });
+
+  it('the one action shows under a current or attention step, and does its job', async () => {
+    const onPress = jest.fn();
+    const view = await render(
+      <ProgressSteps
+        steps={[
+          { id: 'a', label: 'Done', state: 'done', action: { label: 'Never shown', onPress } },
+          { id: 'b', label: 'ID check', state: 'attention', action: { label: 'Start the check', onPress } },
+        ]}
+      />,
+    );
+    expect(view.queryByText('Never shown')).toBeNull();
+    await act(async () => {
+      fireEvent.press(view.getByText('Start the check'));
+    });
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ the action sits OUTSIDE the spoken stop — a screen reader can reach it', async () => {
+    const view = await render(
+      <ProgressSteps
+        steps={[
+          {
+            id: 'b',
+            label: 'ID check',
+            state: 'attention',
+            action: { label: 'Start the check', onPress: jest.fn() },
+          },
+        ]}
+      />,
+    );
+    const stop = view.getByLabelText(/ID check, needs you/);
+    // The button is not a descendant of the accessible stop (which would swallow it).
+    expect(within(stop).queryByText('Start the check')).toBeNull();
+    expect(view.getByText('Start the check')).toBeTruthy();
+  });
+
+  it('names the tracker with a heading', async () => {
+    const view = await render(<ProgressSteps steps={STEPS} heading="Your reward" />);
+    expect(view.getByRole('header', { name: 'Your reward' })).toBeTruthy();
+  });
+
+  it('a finished road starts as one line, and opens into the full list', async () => {
+    const view = await render(
+      <ProgressSteps
+        steps={STEPS}
+        testID="road"
+        collapsed={{ summary: 'Paid 16 October · £190', expandLabel: 'View details' }}
+      />,
+    );
+    expect(view.getByText('Paid 16 October · £190')).toBeTruthy();
+    expect(view.queryByTestId('road-done-a')).toBeNull();
+
+    await act(async () => {
+      fireEvent.press(view.getByTestId('road-expand'));
+    });
+    expect(view.getByTestId('road-done-a')).toBeTruthy();
+    expect(view.queryByText('Paid 16 October · £190')).toBeNull();
   });
 });
 

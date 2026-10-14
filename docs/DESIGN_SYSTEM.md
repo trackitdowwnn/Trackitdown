@@ -395,7 +395,14 @@ are build output.
   a one-line `detail` saying who is waiting on
   whom and how long. One accessible stop per step, spoken as "Step 2 of 4,
   ID check, in progress. …". Name no payment provider in a step (owner,
-  2026-10-13). **Inside the card that holds the action,
+  2026-10-13). **v2 (2026-10-14):** `meta` puts a date beside the label —
+  a real date on every step behind them, a cautious "Expected by …" on the
+  step ahead (wraps under the label at large text); `attention` is the step
+  waiting on THEM — a "!" in the ring (shape, not colour) spoken "needs you";
+  `action` puts the ONE button for that step under it, outside the step's
+  spoken stop so a screen reader reaches it; `heading` names the tracker;
+  `collapsed` folds a finished road into one line ("Paid 16 Oct · £190 ·
+  View details"). **Inside the card that holds the action,
   in place of the StatusPill and the paragraph** — as a card of its own above
   the status card it said the state four or five times (Payouts, UI review
   2026-10-13). Not a wizard's progress — that is `WizardProgressBar`.

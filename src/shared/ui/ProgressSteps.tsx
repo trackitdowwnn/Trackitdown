@@ -32,8 +32,8 @@
  */
 
 import { Check } from 'lucide-react-native';
-import { useEffect } from 'react';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -55,7 +55,14 @@ import {
   type Palette,
 } from '../theme';
 
-export type ProgressStepState = 'done' | 'current' | 'upcoming';
+import { Button } from './Button';
+
+/**
+ * `attention` (2026-10-14): the current step is waiting on THE PERSON READING
+ * — a photo ID, new bank details. Told apart from `current` by SHAPE (a "!"
+ * in the ring), never by colour alone, and spoken as "needs you".
+ */
+export type ProgressStepState = 'done' | 'current' | 'attention' | 'upcoming';
 
 export interface ProgressStep {
   /** Stable id — the React key and the testID suffix. */
@@ -64,23 +71,36 @@ export interface ProgressStep {
    *  "Sent": the marker and the spoken state carry where it has got to. */
   label: string;
   state: ProgressStepState;
+  /** A date or an expectation beside the label — "13 October", "Expected
+   *  by Thu 16 October" (2026-10-14). A real date on every step behind them,
+   *  a cautious one on the step ahead. */
+  meta?: string;
   /** One sentence under the label — say it for the CURRENT step; it is how
    *  "how long" and "who is waiting on whom" get said. */
   detail?: string;
   /** The current step's marker breathes — ONLY while something is actually
    *  being done right now (see the header). Ignored on other states. */
   working?: boolean;
+  /** The ONE thing to do, under a current or attention step (2026-10-14).
+   *  Outside the step's spoken stop, so a screen reader can reach it. */
+  action?: { label: string; onPress: () => void; testID?: string };
 }
 
 export interface ProgressStepsProps {
   steps: ProgressStep[];
   /** Prefixes every step's testIDs, so two trackers on a screen never clash. */
   testID?: string;
+  /** Names the tracker — a header above it ("Your reward"). */
+  heading?: string;
+  /** A finished road, as one line ("Paid 16 Oct · £190") that opens into the
+   *  full list (2026-10-14). Absent: the list, always. */
+  collapsed?: { summary: string; expandLabel: string };
 }
 
 const STATE_WORDS: Record<ProgressStepState, string> = {
   done: 'done',
   current: 'in progress',
+  attention: 'needs you',
   upcoming: 'not started',
 };
 
@@ -92,10 +112,11 @@ const STROKE = sizes.timelineRailStroke;
 const LABEL_TYPE: Record<ProgressStepState, { lineHeight: number }> = {
   done: typography.body,
   current: typography.cardTitle,
+  attention: typography.cardTitle,
   upcoming: typography.body,
 };
 
-export function ProgressSteps({ steps, testID }: ProgressStepsProps) {
+export function ProgressSteps({ steps, testID, heading, collapsed }: ProgressStepsProps) {
   const styles = useThemedStyles(makeStyles);
   const palette = usePalette();
   // ⚠️ THE MARKER SITS ON THE LABEL'S FIRST LINE AT ANY TEXT SIZE. The line box
@@ -104,68 +125,132 @@ export function ProgressSteps({ steps, testID }: ProgressStepsProps) {
   // the trap SightingEntryCard's useEntryCardFirstLineY already solved).
   // Whichever is shorter is pushed down to centre on the other.
   const { fontScale } = useWindowDimensions();
+  // A finished road starts folded; opening it is the reader's choice.
+  const [expanded, setExpanded] = useState(false);
+
+  const header = heading ? (
+    <Text style={styles.heading} accessibilityRole="header">
+      {heading}
+    </Text>
+  ) : null;
+
+  if (collapsed && !expanded) {
+    return (
+      <View testID={testID}>
+        {header}
+        <View style={styles.collapsedRow}>
+          <View style={[styles.marker, styles.markerDone]} importantForAccessibility="no">
+            <Check size={sizes.progressStepCheck} color={palette.textOnPrimary} strokeWidth={3} />
+          </View>
+          <Text style={styles.collapsedSummary}>{collapsed.summary}</Text>
+          <Pressable
+            onPress={() => setExpanded(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`${collapsed.expandLabel}: ${collapsed.summary}`}
+            hitSlop={spacing.sm}
+            testID={testID ? `${testID}-expand` : undefined}
+          >
+            <Text style={styles.expand}>{collapsed.expandLabel}</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <View accessibilityRole="list" testID={testID}>
-      {steps.map((step, index) => {
-        const last = index === steps.length - 1;
-        const firstLine = LABEL_TYPE[step.state].lineHeight * (fontScale ?? 1);
-        const markerOffset = Math.max(0, (firstLine - MARKER) / 2);
-        const textOffset = Math.max(0, (MARKER - firstLine) / 2);
-        const markerID = `${testID ?? 'step'}-${step.state}-${step.id}`;
-        const spoken = [
-          `Step ${index + 1} of ${steps.length}, ${step.label}, ${STATE_WORDS[step.state]}.`,
-          step.detail,
-        ]
-          .filter(Boolean)
-          .join(' ');
-        return (
-          <View
-            key={step.id}
-            style={styles.row}
-            accessible
-            accessibilityLabel={spoken}
-            testID={testID ? `${testID}-${step.id}` : undefined}
-          >
-            <View style={styles.rail}>
-              <View style={{ marginTop: markerOffset }}>
-                {step.state === 'done' ? (
-                  <View style={[styles.marker, styles.markerDone]} testID={markerID}>
-                    <Check
-                      size={sizes.progressStepCheck}
-                      color={palette.textOnPrimary}
-                      strokeWidth={3}
-                    />
-                  </View>
-                ) : step.state === 'current' ? (
-                  <View style={[styles.marker, styles.markerCurrent]} testID={markerID}>
-                    {step.working ? (
-                      <WorkingDot testID={`${markerID}-working`} />
-                    ) : (
-                      <View style={styles.markerDot} />
-                    )}
-                  </View>
-                ) : (
-                  <View style={[styles.marker, styles.markerUpcoming]} testID={markerID} />
+    <View testID={testID}>
+      {header}
+      <View accessibilityRole="list">
+        {steps.map((step, index) => {
+          const last = index === steps.length - 1;
+          const firstLine = LABEL_TYPE[step.state].lineHeight * (fontScale ?? 1);
+          const markerOffset = Math.max(0, (firstLine - MARKER) / 2);
+          const textOffset = Math.max(0, (MARKER - firstLine) / 2);
+          const markerID = `${testID ?? 'step'}-${step.state}-${step.id}`;
+          const spoken = [
+            `Step ${index + 1} of ${steps.length}, ${step.label}, ${STATE_WORDS[step.state]}.`,
+            step.meta ? `${step.meta}.` : undefined,
+            step.detail,
+          ]
+            .filter(Boolean)
+            .join(' ');
+          const showAction = step.action && (step.state === 'current' || step.state === 'attention');
+          return (
+            <View
+              key={step.id}
+              style={styles.row}
+              testID={testID ? `${testID}-${step.id}` : undefined}
+            >
+              {/* Drawn, not read: the markers carry no text (the "!" is hidden),
+                  so a screen reader passes them; the stop beside says it. */}
+              <View style={styles.rail}>
+                <View style={{ marginTop: markerOffset }}>
+                  <Marker step={step} markerID={markerID} />
+                </View>
+                {/* The line to the next step, inked once this step is behind
+                    them — so the filled part of the rail is the way they came. */}
+                {last ? null : (
+                  <View style={[styles.line, step.state === 'done' ? styles.lineDone : null]} />
                 )}
               </View>
-              {/* The line to the next step, inked once this step is behind
-                  them — so the filled part of the rail is the way they came. */}
-              {last ? null : (
-                <View style={[styles.line, step.state === 'done' ? styles.lineDone : null]} />
-              )}
+              <View style={[styles.column, last ? null : styles.textSpaced]}>
+                {/* ONE accessible stop per step — the button below sits OUTSIDE
+                    it, or a screen reader could never reach it (2026-10-14). */}
+                <View
+                  style={[styles.text, { paddingTop: textOffset }]}
+                  accessible
+                  accessibilityLabel={spoken}
+                >
+                  <View style={styles.labelRow}>
+                    <Text style={[styles.label, styles[`label_${step.state}`]]}>{step.label}</Text>
+                    {step.meta ? <Text style={styles.meta}>{step.meta}</Text> : null}
+                  </View>
+                  {step.detail ? <Text style={styles.detail}>{step.detail}</Text> : null}
+                </View>
+                {showAction && step.action ? (
+                  <View style={styles.action} testID={step.action.testID ?? `${markerID}-action`}>
+                    <Button label={step.action.label} onPress={step.action.onPress} />
+                  </View>
+                ) : null}
+              </View>
             </View>
-            <View
-              style={[styles.text, { paddingTop: textOffset }, last ? null : styles.textSpaced]}
-            >
-              <Text style={[styles.label, styles[`label_${step.state}`]]}>{step.label}</Text>
-              {step.detail ? <Text style={styles.detail}>{step.detail}</Text> : null}
-            </View>
-          </View>
-        );
-      })}
+          );
+        })}
+      </View>
     </View>
   );
+}
+
+/** The step's marker: done ✓, current ring (breathing when working), "!" for
+ *  attention, hollow when upcoming — four SHAPES, so colour is never the cue. */
+function Marker({ step, markerID }: { step: ProgressStep; markerID: string }) {
+  const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
+  if (step.state === 'done') {
+    return (
+      <View style={[styles.marker, styles.markerDone]} testID={markerID}>
+        <Check size={sizes.progressStepCheck} color={palette.textOnPrimary} strokeWidth={3} />
+      </View>
+    );
+  }
+  if (step.state === 'current') {
+    return (
+      <View style={[styles.marker, styles.markerCurrent]} testID={markerID}>
+        {step.working ? <WorkingDot testID={`${markerID}-working`} /> : <View style={styles.markerDot} />}
+      </View>
+    );
+  }
+  if (step.state === 'attention') {
+    return (
+      <View style={[styles.marker, styles.markerCurrent]} testID={markerID}>
+        {/* Shape, not words: "needs you" is spoken by the step's stop. */}
+        <Text style={styles.attentionGlyph} accessibilityElementsHidden importantForAccessibility="no">
+          !
+        </Text>
+      </View>
+    );
+  }
+  return <View style={[styles.marker, styles.markerUpcoming]} testID={markerID} />;
 }
 
 /**
@@ -249,15 +334,26 @@ const makeStyles = (c: Palette) =>
     lineDone: {
       backgroundColor: c.primary,
     },
-    text: {
+    column: {
       flex: 1,
+    },
+    text: {
       gap: spacing.xs,
     },
     textSpaced: {
       paddingBottom: spacing.lg,
     },
+    // Label and its date share a line; at large text the date wraps under.
+    labelRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
+      columnGap: spacing.sm,
+    },
     label: {
       color: c.textPrimary,
+      flexShrink: 1,
     },
     label_done: {
       ...typography.body,
@@ -265,12 +361,47 @@ const makeStyles = (c: Palette) =>
     label_current: {
       ...typography.cardTitle,
     },
+    label_attention: {
+      ...typography.cardTitle,
+    },
     label_upcoming: {
       ...typography.body,
+      color: c.textSecondary,
+    },
+    meta: {
+      ...typography.caption,
       color: c.textSecondary,
     },
     detail: {
       ...typography.caption,
       color: c.textSecondary,
+    },
+    attentionGlyph: {
+      ...typography.label,
+      color: c.primary,
+      lineHeight: sizes.progressStepCheck,
+    },
+    action: {
+      marginTop: spacing.md,
+    },
+    heading: {
+      ...typography.heading,
+      color: c.textPrimary,
+      marginBottom: spacing.md,
+    },
+    collapsedRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    collapsedSummary: {
+      ...typography.body,
+      color: c.textPrimary,
+      flex: 1,
+    },
+    expand: {
+      ...typography.label,
+      color: c.textPrimary,
+      textDecorationLine: 'underline',
     },
   });
