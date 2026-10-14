@@ -27,13 +27,17 @@ insert into public.payments (id, post_id, stripe_payment_intent_id, status, amou
 values
   -- Post 61: its one and only capture — the go-live.
   ('ee000061-0000-0000-0000-00000000000a', 'ee000000-0000-0000-0000-000000000061', 'pi_ll_first', 'held', 20000, now()),
-  -- Post 62: captured 50 days ago, then renewed today.
-  ('ee000062-0000-0000-0000-00000000000a', 'ee000000-0000-0000-0000-000000000062', 'pi_ll_old', 'superseded', 20000, now() - interval '50 days'),
+  -- Post 62: renewed today (its first capture, 50 days ago, is below).
   ('ee000062-0000-0000-0000-00000000000b', 'ee000000-0000-0000-0000-000000000062', 'pi_ll_renew', 'held', 20000, now()),
   -- Post 63: still a draft.
   ('ee000063-0000-0000-0000-00000000000a', 'ee000000-0000-0000-0000-000000000063', 'pi_ll_draft', 'held', 20000, now()),
   -- Post 64: an intent never captured.
   ('ee000064-0000-0000-0000-00000000000a', 'ee000000-0000-0000-0000-000000000064', 'pi_ll_uncaptured', 'requires_payment', 20000, null);
+-- Post 62's first capture, replaced by the renewal (a superseded row carries
+-- its superseded_at: payments_superseded_stamped_chk).
+insert into public.payments (id, post_id, stripe_payment_intent_id, status, amount_pence, captured_at, superseded_at)
+values ('ee000062-0000-0000-0000-00000000000a', 'ee000000-0000-0000-0000-000000000062', 'pi_ll_old', 'superseded', 20000,
+        now() - interval '50 days', now());
 
 do $$
 declare
