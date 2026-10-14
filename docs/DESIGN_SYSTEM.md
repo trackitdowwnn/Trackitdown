@@ -388,8 +388,11 @@ are build output.
   borrows no status hue. The CURRENT label leads in `cardTitle`; done labels
   sit back in `body` ink, upcoming in `body` grey. Labels are nouns ("Your
   £190 reward"), never claims ("sent"). The marker centres on its label's
-  first line at any font scale. Static: no pulsing dot for a wait that can take
-  a day. Give the CURRENT step a one-line `detail` saying who is waiting on
+  first line at any font scale. Static by default — no pulsing dot for a wait
+  that can take a day — EXCEPT a current step marked `working`, whose dot
+  breathes (`motion.progressWorking`) only while the app is actually doing
+  something (2026-10-14); Reduce Motion keeps it still. Give the CURRENT step
+  a one-line `detail` saying who is waiting on
   whom and how long. One accessible stop per step, spoken as "Step 2 of 4,
   ID check, in progress. …". Name no payment provider in a step (owner,
   2026-10-13). **Inside the card that holds the action,

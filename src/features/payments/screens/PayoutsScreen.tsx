@@ -233,6 +233,12 @@ export function PayoutsScreen() {
   // A check holds the waiting reward's payout (2026-10-14) — the tracker says
   // so rather than "on its way".
   const [creditUnderReview, setCreditUnderReview] = useState(false);
+  // ⚠️ "COULDN'T CHECK" IS NOT "NOTHING OWED" (2026-10-14). A failed read
+  // used to land as null — "Nothing to set up" to someone owed £190 on a bad
+  // connection. It is remembered separately, and the one state that would
+  // otherwise say "nothing" says "couldn't check" with a retry instead.
+  const [creditCheckFailed, setCreditCheckFailed] = useState(false);
+  const [creditAttempt, setCreditAttempt] = useState(0);
   useEffect(() => {
     if (status === 'guest' || status === 'loading') {
       return;
@@ -240,17 +246,28 @@ export function PayoutsScreen() {
     let cancelled = false;
     // Together, so the tracker never draws "nothing waiting" for a moment
     // before the sent reward arrives to end the road.
-    void Promise.all([fetchMyPendingCredit(), fetchMyLatestPayout()]).then(([credit, sent]) => {
+    void Promise.all([
+      fetchMyPendingCredit().then(
+        (credit) => ({ ok: true as const, credit }),
+        () => ({ ok: false as const, credit: null }),
+      ),
+      fetchMyLatestPayout(),
+    ]).then(([read, sent]) => {
       if (!cancelled) {
         setLatestPayout(sent);
-        setPendingCreditPence(credit?.transferPence ?? null);
-        setCreditUnderReview(credit?.underReview === true);
+        setCreditCheckFailed(!read.ok);
+        setPendingCreditPence(read.credit?.transferPence ?? null);
+        setCreditUnderReview(read.credit?.underReview === true);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [status]);
+  }, [status, creditAttempt]);
+  const retryCreditCheck = useCallback(() => {
+    setPendingCreditPence(undefined);
+    setCreditAttempt((attempt) => attempt + 1);
+  }, []);
   const [browserSaidExpired, setBrowserSaidExpired] = useState(false);
   // Two ways to learn the link expired, and only one of them needs storing.
   // Deriving the deep-link half keeps the effect below free of any setState —
@@ -903,7 +920,7 @@ export function PayoutsScreen() {
     if (status === 'error') {
       return (
         <ErrorState
-          title="Couldn't load your payout details"
+          title="Couldn’t load your payout details"
           body="Check your connection and try again."
           onRetry={refresh}
         />
@@ -919,6 +936,16 @@ export function PayoutsScreen() {
       if (pendingCreditPence === undefined) {
         // Still asking which of those two this is — don't flash either.
         return <PayoutsSkeleton />;
+      }
+      if (pendingCreditPence === null && creditCheckFailed) {
+        // Never "nothing to set up" on a read we couldn't make.
+        return (
+          <ErrorState
+            title="Couldn’t check for rewards"
+            body="Check your connection and try again."
+            onRetry={retryCreditCheck}
+          />
+        );
       }
       if (pendingCreditPence === null) {
         return (
@@ -977,6 +1004,11 @@ export function PayoutsScreen() {
             That link expired — they only last a few minutes. Start again for a fresh one.
           </Text>
         ) : null}
+        {/* ⚠️ NO BUTTON WHILE STRIPE IS CHECKING (2026-10-14). "Add or update
+            details" under "we'll switch payouts on the moment it's done" asked
+            them to act while telling them to wait — and the only thing it
+            could open was Stripe's screen for details they had just sent. */}
+        {status === 'verifying' && !askBank && !askCheck ? null : (
         <Button
           label={
             askBank
@@ -1009,6 +1041,7 @@ export function PayoutsScreen() {
                 : 'primary'
           }
         />
+        )}
       </View>
     );
   }

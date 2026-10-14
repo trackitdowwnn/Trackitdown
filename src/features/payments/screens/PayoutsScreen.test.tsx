@@ -810,6 +810,38 @@ describe('⚠️ a missing bank is asked for in our own form, not Stripe’s scr
   });
 });
 
+describe('payout experience fixes (2026-10-14)', () => {
+  it('⚠️ a reward check that FAILED never says "Nothing to set up" — it offers a retry', async () => {
+    mockPendingCredit.mockRejectedValueOnce(new Error('offline'));
+    mockAccountState = { status: 'notStarted', settling: false };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('Couldn’t check for rewards')).toBeTruthy();
+    expect(queryByText('Nothing to set up')).toBeNull();
+
+    // The retry asks again — and this time there is a reward to set up for.
+    mockPendingCredit.mockResolvedValueOnce({ postId: 'post-1', transferPence: 19000 });
+    await act(async () => {
+      fireEvent.press(getByText('Try again'));
+    });
+    expect(mockPendingCredit).toHaveBeenCalledTimes(2);
+    expect(getByText('Add your details')).toBeTruthy();
+  });
+
+  it('nothing owed, read fine: "Nothing to set up", as before', async () => {
+    mockPendingCredit.mockResolvedValue(null);
+    mockAccountState = { status: 'notStarted', settling: false };
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    expect(getByText('Nothing to set up')).toBeTruthy();
+  });
+
+  it('while Stripe is checking there is no button — nothing for them to do', async () => {
+    mockAccountState = { status: 'verifying', settling: false };
+    const { queryByText } = await act(async () => render(<PayoutsScreen />));
+    expect(queryByText('Add or update details')).toBeNull();
+  });
+});
+
 describe('⚠️ a payout the bank refused asks for new details (2026-10-14)', () => {
   const bounced = (bankReplacedAt: string | null) => ({
     stripeAccountId: 'acct_1',

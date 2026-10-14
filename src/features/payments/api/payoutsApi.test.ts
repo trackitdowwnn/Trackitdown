@@ -387,10 +387,13 @@ describe('fetchMyPendingCredit', () => {
     await expect(fetchMyPendingCredit()).resolves.toMatchObject({ underReview: false });
   });
 
-  it('nothing waiting, or a failed read, is null', async () => {
+  it('nothing waiting is null', async () => {
     mockRpc.mockResolvedValue({ data: [], error: null });
     await expect(fetchMyPendingCredit()).resolves.toBeNull();
+  });
+
+  it('⚠️ a FAILED read throws — never null, which would mean "nothing owed" (2026-10-14)', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
-    await expect(fetchMyPendingCredit()).resolves.toBeNull();
+    await expect(fetchMyPendingCredit()).rejects.toBeInstanceOf(PaymentError);
   });
 });
