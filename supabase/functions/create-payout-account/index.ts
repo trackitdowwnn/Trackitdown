@@ -34,8 +34,9 @@
  *        supabase/functions/_shared/connectAccount.ts (find/record);
  *        supabase/functions/connect-onboarding/index.ts (the legacy path,
  *          which keeps serving pre-existing Express-dashboard accounts);
- *        src/features/payments/components/PayoutDetailsForm.tsx (the form
- *          that mints both tokens).
+ *        src/features/payments/screens/PayoutSetupScreen.tsx (the /payout-setup
+ *          wizard, which replaced PayoutDetailsForm on 2026-10-13: the steps
+ *          that mint both tokens).
  */
 
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
