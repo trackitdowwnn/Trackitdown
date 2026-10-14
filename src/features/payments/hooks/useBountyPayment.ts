@@ -35,6 +35,19 @@ export interface BountyPaymentResult {
 
 const PAYMENT_FAILED_MESSAGE = 'Your payment didn’t go through. Please try again.';
 
+/**
+ * GOOGLE PAY, FIRST (2026-10-14, payments plan PR7): one tap, the phone's own
+ * authentication instead of a bank's 3D Secure step, and no card typed in.
+ * Google's TEST environment until Google grants production access — tied to
+ * the key, so a live key (pk_live_…) is the only thing that leaves it, and a
+ * test key can never reach a real wallet.
+ */
+const GOOGLE_PAY = {
+  merchantCountryCode: 'GB',
+  currencyCode: 'GBP',
+  testEnv: !(process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '').startsWith('pk_live_'),
+} as const;
+
 export function useBountyPayment() {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
@@ -59,6 +72,7 @@ export function useBountyPayment() {
         // bounty must be funds-in before the post enters verification.
         allowsDelayedPaymentMethods: false,
         returnURL: 'trackitdown://stripe-redirect',
+        googlePay: GOOGLE_PAY,
       });
       if (initResult.error) {
         log.warn('PaymentSheet init failed', { code: initResult.error.code });
