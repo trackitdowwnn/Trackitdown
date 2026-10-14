@@ -105,6 +105,8 @@ export interface PayoutAccount {
   bankReplacedAt: string | null;
   /** When payouts last switched on (2026-10-14), or null if unknown. */
   payoutsEnabledAt: string | null;
+  /** When their details were sent through our setup steps, or null. */
+  detailsSubmittedAt: string | null;
 }
 
 export interface BankPayout {
@@ -404,7 +406,7 @@ export async function fetchMyPayoutAccount(userId: string): Promise<PayoutAccoun
     // OTA, so they always exist first. One literal: supabase-js types the row
     // from the string, and a concatenation loses that.
     .select(
-      'stripe_account_id, onboarding_complete, payouts_enabled, last_payout_status, last_payout_arrival_date, last_payout_created_at, bank_replaced_at, payouts_enabled_at',
+      'stripe_account_id, onboarding_complete, payouts_enabled, last_payout_status, last_payout_arrival_date, last_payout_created_at, bank_replaced_at, payouts_enabled_at, details_submitted_at',
     )
     .eq('profile_id', userId)
     .maybeSingle();
@@ -431,5 +433,6 @@ export async function fetchMyPayoutAccount(userId: string): Promise<PayoutAccoun
         : null,
     bankReplacedAt: (data.bank_replaced_at as string | null) ?? null,
     payoutsEnabledAt: (data.payouts_enabled_at as string | null) ?? null,
+    detailsSubmittedAt: (data.details_submitted_at as string | null) ?? null,
   };
 }
