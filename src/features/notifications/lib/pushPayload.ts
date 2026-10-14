@@ -152,6 +152,11 @@ const sightingWithdrawnPayloadSchema = z
   .object({ type: z.literal('sighting_withdrawn'), postId: z.guid() })
   .strict();
 
+/** "Your bank couldn't accept your reward" — the payouts screen is the whole
+ *  errand (its bank form), so, like payout_reminder, the payload names
+ *  nothing: no payout id, no amount, no bank (20261014110000). */
+const payoutFailedPayloadSchema = z.object({ type: z.literal('payout_failed') }).strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -172,6 +177,7 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   payoutReminderPayloadSchema,
   payoutLapsedPayloadSchema,
   sightingWithdrawnPayloadSchema,
+  payoutFailedPayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

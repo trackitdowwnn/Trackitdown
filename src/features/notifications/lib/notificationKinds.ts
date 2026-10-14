@@ -57,6 +57,10 @@ export const NOTIFICATION_KINDS = [
   // spotter withdraws a sighting they had been told about, with the spotter's
   // optional reason as one fixed sentence (20261009150000). Opens the listing.
   'sighting_withdrawn',
+  // "Your bank couldn't accept your reward" — Stripe's payout to the spotter's
+  // bank failed and the bank is disabled; new details resend it
+  // (20261014110000). Opens Payouts, where the bank form is.
+  'payout_failed',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

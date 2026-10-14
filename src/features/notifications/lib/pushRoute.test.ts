@@ -47,6 +47,11 @@ describe('pushRouteFor', () => {
     expect(pushRouteFor({ type: 'payout_lapsed', sightingId: SIGHTING_ID })).toBe('/my-sightings');
   });
 
+  // A bank refused the payout: the bank form on Payouts is the whole fix.
+  it('routes a failed payout to the bank form on Payouts', () => {
+    expect(pushRouteFor({ type: 'payout_failed' })).toBe('/payouts');
+  });
+
   it('routes a message to its chat thread', () => {
     expect(pushRouteFor({ type: 'message', threadId: THREAD_ID })).toBe(`/chat/${THREAD_ID}`);
   });

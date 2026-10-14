@@ -99,6 +99,9 @@ describe('notification_category', () => {
     expect(sqlMap.payout_lapsed).toBeUndefined();
     // sighting_withdrawn (2026-10-09) follows sighting: never silenceable.
     expect(sqlMap.sighting_withdrawn).toBeUndefined();
+    // payout_failed (2026-10-14): a bank refused the payout and the money
+    // waits on new details — as unsilenceable as the reminder.
+    expect(sqlMap.payout_failed).toBeUndefined();
     expect(UNMUTABLE_KINDS).toEqual([
       'sighting',
       'closed_uncredited',
@@ -109,6 +112,7 @@ describe('notification_category', () => {
       'payout_reminder',
       'payout_lapsed',
       'sighting_withdrawn',
+      'payout_failed',
     ]);
   });
 

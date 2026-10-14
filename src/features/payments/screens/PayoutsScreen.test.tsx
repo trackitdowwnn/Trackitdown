@@ -117,12 +117,12 @@ jest.mock('@/shared/api', () => ({
 
 const mockSettleReturn = jest.fn();
 const mockRefresh = jest.fn();
-let mockAccountState: { status: string; settling: boolean };
+let mockAccountState: { status: string; settling: boolean; account?: unknown };
 jest.mock('../hooks/usePayoutAccount', () => ({
   get usePayoutAccount() {
     return () => ({
-      ...mockAccountState,
       account: null,
+      ...mockAccountState,
       refresh: mockRefresh,
       settleReturn: mockSettleReturn,
     });
@@ -794,6 +794,44 @@ describe('⚠️ a missing bank is asked for in our own form, not Stripe’s scr
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
     expect(queryByText('One more thing: your bank account')).toBeNull();
     expect(getByText('Continue setting up')).toBeTruthy();
+  });
+});
+
+describe('⚠️ a payout the bank refused asks for new details (2026-10-14)', () => {
+  const bounced = (bankReplacedAt: string | null) => ({
+    stripeAccountId: 'acct_1',
+    onboardingComplete: true,
+    payoutsEnabled: true,
+    bankPayout: { status: 'failed', arrivalDate: '2026-10-16', createdAt: '2026-10-14T06:00:00Z' },
+    bankReplacedAt,
+  });
+
+  it('says so, and "Add your bank details again" opens our bank form', async () => {
+    mockPendingCredit.mockResolvedValue(null);
+    mockAccountState = { status: 'ready', settling: false, account: bounced(null) };
+    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('Your bank couldn’t accept your reward')).toBeTruthy();
+    expect(getByText(/safe, and waiting for you/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByText('Add your bank details again'));
+    });
+    expect(getByTestId('bank-details-form')).toBeTruthy();
+    // Our own form — never a session at Stripe.
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('new details since the refusal: back to "Payouts are on", no alarm', async () => {
+    mockPendingCredit.mockResolvedValue(null);
+    mockAccountState = {
+      status: 'ready',
+      settling: false,
+      account: bounced('2026-10-15T09:00:00Z'),
+    };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(queryByText('Your bank couldn’t accept your reward')).toBeNull();
+    expect(getByText('Payouts are on')).toBeTruthy();
   });
 });
 
