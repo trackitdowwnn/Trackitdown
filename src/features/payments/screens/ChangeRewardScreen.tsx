@@ -81,6 +81,7 @@ import {
   setRewardRenewalAmount,
   type RewardStatus,
 } from '../api/rewardChangeApi';
+import { syncPostPayment } from '../api/paymentsApi';
 import { useBountyPayment } from '../hooks/useBountyPayment';
 
 const log = createLogger('payments');
@@ -219,6 +220,13 @@ export function ChangeRewardScreen({ postId, initialMode, wait = realWait }: Cha
       for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt += 1) {
         await wait(POLL_INTERVAL_MS);
         if (!mounted.current) return;
+        // ⚠️ ASK, DON'T ONLY WAIT (2026-10-14): once mid-way and once before
+        // giving up, the server checks this payment with Stripe and records it
+        // if it has gone through — the webhook is no longer the only way in.
+        if (attempt === 3 || attempt === POLL_ATTEMPTS - 1) {
+          await syncPostPayment(postId);
+          if (!mounted.current) return;
+        }
         try {
           const next = await fetchMyRewardStatus(postId);
           if (next.rewardId && next.rewardId !== status.rewardId) {

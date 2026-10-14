@@ -106,6 +106,9 @@ export const UNMUTABLE_KINDS: readonly NotificationKind[] = (() => {
       // A bank refused the payout and the money waits on new details
       // (20261014110000) — as unsilenceable as the reminder.
       'payout_failed',
+      // Once per listing, ever: the receipt for the payment that took it live
+      // (20261014120000). Nothing to mute.
+      'listing_live',
     ] as NotificationKind[]
   ).filter((kind) => !mapped.has(kind));
 })();

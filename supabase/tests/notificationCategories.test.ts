@@ -102,6 +102,8 @@ describe('notification_category', () => {
     // payout_failed (2026-10-14): a bank refused the payout and the money
     // waits on new details — as unsilenceable as the reminder.
     expect(sqlMap.payout_failed).toBeUndefined();
+    // listing_live (2026-10-14): once per listing — the payment's receipt.
+    expect(sqlMap.listing_live).toBeUndefined();
     expect(UNMUTABLE_KINDS).toEqual([
       'sighting',
       'closed_uncredited',
@@ -113,6 +115,7 @@ describe('notification_category', () => {
       'payout_lapsed',
       'sighting_withdrawn',
       'payout_failed',
+      'listing_live',
     ]);
   });
 

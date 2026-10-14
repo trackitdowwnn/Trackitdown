@@ -71,6 +71,12 @@ jest.mock('../hooks/useBountyPayment', () => ({
   useBountyPayment: () => ({ payBounty: (...a: unknown[]) => mockPay(...a) }),
 }));
 
+// The server's check with Stripe mid-wait (sync-post-payment, 2026-10-14).
+const mockSync = jest.fn(async (_postId: string) => {});
+jest.mock('../api/paymentsApi', () => ({
+  syncPostPayment: (...a: unknown[]) => mockSync(...(a as [string])),
+}));
+
 jest.mock('@/shared/lib/logger', () => ({
   createLogger: () => ({ info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() }),
 }));
@@ -289,5 +295,9 @@ describe('ChangeRewardScreen', () => {
     expect(mockToast).toHaveBeenCalledWith(
       'Payment received — we’re confirming it. Check your listing in a moment.',
     );
+    // ⚠️ Not only waiting (2026-10-14): mid-way and before giving up, the
+    // server checked the payment with Stripe — twice, for this post only.
+    expect(mockSync).toHaveBeenCalledTimes(2);
+    expect(new Set(mockSync.mock.calls.map(([id]) => id)).size).toBe(1);
   });
 });

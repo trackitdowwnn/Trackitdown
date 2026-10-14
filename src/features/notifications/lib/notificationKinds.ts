@@ -61,6 +61,9 @@ export const NOTIFICATION_KINDS = [
   // bank failed and the bank is disabled; new details resend it
   // (20261014110000). Opens Payouts, where the bank form is.
   'payout_failed',
+  // "Your listing is live" — to the OWNER, once per listing, when the payment
+  // that took it live is confirmed (20261014120000). Opens the listing.
+  'listing_live',
 ] as const;
 
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];

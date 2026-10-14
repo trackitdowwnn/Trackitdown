@@ -56,6 +56,8 @@ export function pushRouteFor(payload: PushPayload): Href {
     // expiry (PR5) must not send this kind before that state exists.
     case 'reward_ending':
     case 'reward_ended':
+    // "Your listing is live" — their own listing (20261014120000).
+    case 'listing_live':
     // "A sighting of your … was taken back" — the listing: the withdrawn
     // sighting is no longer shown to the owner, so its own page would only
     // say it isn't available (20261009150000).

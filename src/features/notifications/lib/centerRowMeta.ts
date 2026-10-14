@@ -91,6 +91,8 @@ export const CENTER_ROW_META: Record<NotificationKind, CenterRowMeta> = {
   alert: { Icon: Bell, tone: 'neutral', needsAttention: false },
   sighting: { Icon: Eye, tone: 'neutral', needsAttention: false },
   recovery: { Icon: CheckCircle2, tone: 'success', needsAttention: false },
+  // Good news with nothing to do: their payment landed and spotters can see it.
+  listing_live: { Icon: CheckCircle2, tone: 'success', needsAttention: false },
   // The money is sitting there and only the reader can unlock it, so the label
   // is the errand rather than the good news the title already carries.
   credited: {

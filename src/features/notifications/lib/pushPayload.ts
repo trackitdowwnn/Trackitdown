@@ -157,6 +157,12 @@ const sightingWithdrawnPayloadSchema = z
  *  nothing: no payout id, no amount, no bank (20261014110000). */
 const payoutFailedPayloadSchema = z.object({ type: z.literal('payout_failed') }).strict();
 
+/** "Your listing is live" — the POST id: the tap opens their own listing
+ *  (20261014120000). */
+const listingLivePayloadSchema = z
+  .object({ type: z.literal('listing_live'), postId: z.guid() })
+  .strict();
+
 export const pushPayloadSchema = z.discriminatedUnion('type', [
   alertPayloadSchema,
   sightingPayloadSchema,
@@ -178,6 +184,7 @@ export const pushPayloadSchema = z.discriminatedUnion('type', [
   payoutLapsedPayloadSchema,
   sightingWithdrawnPayloadSchema,
   payoutFailedPayloadSchema,
+  listingLivePayloadSchema,
 ]);
 
 export type PushPayload = z.infer<typeof pushPayloadSchema>;

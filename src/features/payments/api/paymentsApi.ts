@@ -121,6 +121,20 @@ export interface ExitCheck {
 }
 
 /**
+ * Ask the server to check a post's payment WITH STRIPE and record it if it has
+ * gone through (sync-post-payment, 2026-10-14) — so a slow webhook no longer
+ * leaves a charged listing in draft, or a paid reward change unrecorded, while
+ * a screen waits. Sends the post id and nothing else; the server proves
+ * ownership and believes only Stripe. Never throws: the caller keeps watching.
+ */
+export async function syncPostPayment(postId: string): Promise<void> {
+  const { error } = await supabase.functions.invoke('sync-post-payment', { body: { postId } });
+  if (error) {
+    log.warn('sync-post-payment failed');
+  }
+}
+
+/**
  * Ask whether an exit-with-refund on this post needs the attestation step,
  * and for exactly which sightings. Server-derived (the one SQL definition of
  * "recent uncredited") so the client can never show fewer sightings than the

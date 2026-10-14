@@ -37,6 +37,7 @@
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 
+import { syncPostPayment } from '@/features/payments';
 import { REWARD_TERM_DAYS } from '@/shared/lib/bountyBounds';
 import { lightHaptic } from '@/shared/lib/haptics';
 import { formatPounds, refundPence } from '@/shared/lib/money';
@@ -61,6 +62,12 @@ import { fetchMyPostStatus } from '../api/postApi';
 /** As ChangeRewardScreen: eight looks, 1.5s apart — about twelve seconds. */
 export const CONFIRM_ATTEMPTS = 8;
 export const CONFIRM_INTERVAL_MS = 1500;
+/**
+ * The looks before which the server checks the payment WITH STRIPE
+ * (sync-post-payment, 2026-10-14) rather than only waiting for the webhook:
+ * once it has had a fair chance (~4.5s), and once more before saying "slow".
+ */
+export const SYNC_BEFORE_ATTEMPTS: readonly number[] = [3, CONFIRM_ATTEMPTS - 1];
 
 type Phase = 'confirming' | 'live' | 'slow';
 
@@ -102,6 +109,13 @@ export function PaymentConfirmation({
         // closes, and a fixed pause would hold back the moment it has.
         if (attempt > 0) {
           await new Promise((resolve) => setTimeout(resolve, CONFIRM_INTERVAL_MS));
+          if (cancelled) return;
+        }
+        // ⚠️ ASK, DON'T ONLY WAIT (2026-10-14): the listing used to go live
+        // only when the webhook arrived. The server checks with Stripe and
+        // records the payment itself if it has gone through.
+        if (SYNC_BEFORE_ATTEMPTS.includes(attempt)) {
+          await syncPostPayment(postId);
           if (cancelled) return;
         }
         // A failed read is a blip, not a failed payment: keep looking.
