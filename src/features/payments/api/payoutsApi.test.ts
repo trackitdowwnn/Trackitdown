@@ -271,7 +271,42 @@ describe('fetchMyPayoutAccount', () => {
       stripeAccountId: 'acct_123',
       onboardingComplete: true,
       payoutsEnabled: false,
+      // No payout to their bank yet, no bank replaced.
+      bankPayout: null,
+      bankReplacedAt: null,
     });
+  });
+
+  it('carries the latest payout to their bank (2026-10-14)', async () => {
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        stripe_account_id: 'acct_123',
+        onboarding_complete: true,
+        payouts_enabled: true,
+        last_payout_status: 'in_transit',
+        last_payout_arrival_date: '2026-10-20',
+        last_payout_created_at: '2026-10-15T09:00:00Z',
+        bank_replaced_at: null,
+      },
+      error: null,
+    });
+    await expect(fetchMyPayoutAccount(USER_ID)).resolves.toMatchObject({
+      bankPayout: { status: 'in_transit', arrivalDate: '2026-10-20', createdAt: '2026-10-15T09:00:00Z' },
+    });
+  });
+
+  it('an unknown payout status reads as no payout — never a guess', async () => {
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        stripe_account_id: 'acct_123',
+        onboarding_complete: true,
+        payouts_enabled: true,
+        last_payout_status: 'something_new',
+        last_payout_created_at: '2026-10-15T09:00:00Z',
+      },
+      error: null,
+    });
+    await expect(fetchMyPayoutAccount(USER_ID)).resolves.toMatchObject({ bankPayout: null });
   });
 
   it('throws on a read failure rather than reporting "not set up"', async () => {

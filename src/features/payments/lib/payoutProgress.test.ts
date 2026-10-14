@@ -7,6 +7,7 @@
  * LINKS: ./payoutProgress.ts.
  */
 
+import type { BankPayout } from '../api/payoutsApi';
 import { payoutProgress } from './payoutProgress';
 
 const states = (input: Parameters<typeof payoutProgress>[0]) =>
@@ -138,7 +139,7 @@ describe('payoutProgress — a reward sent (PR2b)', () => {
     expect(steps?.[3]?.detail).toMatch(/^Sent 13 October/);
   });
 
-  it('⚠️ says "sent", never that it arrived — nothing here can see a bank', () => {
+  it('⚠️ says "sent", never that it arrived — until Stripe reports a payout', () => {
     const steps = payoutProgress({
       status: 'ready',
       settling: false,
@@ -169,5 +170,56 @@ describe('payoutProgress — a reward sent (PR2b)', () => {
       latestPayout: sent,
     });
     expect(steps?.[1]?.state).toBe('current');
+  });
+});
+
+describe('payoutProgress — the bank leg (2026-10-14)', () => {
+  const sent = { transferPence: 19000, sentAt: '2026-10-13T11:00:00Z' };
+  const road = (bankPayout: BankPayout | null, bankReplacedAt: string | null = null) =>
+    payoutProgress({
+      status: 'ready',
+      settling: false,
+      pendingCreditPence: null,
+      latestPayout: sent,
+      bankPayout,
+      bankReplacedAt,
+    })?.[3];
+  const payout = (status: BankPayout['status'], createdAt = '2026-10-14T06:00:00Z'): BankPayout => ({
+    status,
+    arrivalDate: '2026-10-16',
+    createdAt,
+  });
+
+  it('on its way to the bank: when it is due, and still the current step', () => {
+    const step = road(payout('in_transit'));
+    expect(step?.state).toBe('current');
+    expect(step?.detail).toBe('On its way to your bank — due Friday 16 October.');
+  });
+
+  it('paid into the bank: the road is done, with the day', () => {
+    const step = road(payout('paid'));
+    expect(step?.state).toBe('done');
+    expect(step?.detail).toBe('Paid into your bank on Friday 16 October.');
+  });
+
+  it('⚠️ refused by the bank: says so and what to do — and is NOT done', () => {
+    const step = road(payout('failed'));
+    expect(step?.state).toBe('current');
+    expect(step?.detail).toMatch(/couldn’t accept it\. Add your bank details again/);
+  });
+
+  it('refused, then new details given: resending, not a problem', () => {
+    const step = road(payout('failed'), '2026-10-15T09:00:00Z');
+    expect(step?.state).toBe('current');
+    expect(step?.detail).toMatch(/^Sending it again to your new account/);
+  });
+
+  it('⚠️ a payout from BEFORE this reward was sent cannot be carrying it', () => {
+    const step = road(payout('paid', '2026-10-01T06:00:00Z'));
+    expect(step?.detail).toMatch(/^Sent 13 October/);
+  });
+
+  it('no payout yet: "sent", as before', () => {
+    expect(road(null)?.detail).toMatch(/^Sent 13 October/);
   });
 });

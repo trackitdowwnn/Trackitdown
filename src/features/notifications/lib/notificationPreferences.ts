@@ -103,6 +103,9 @@ export const UNMUTABLE_KINDS: readonly NotificationKind[] = (() => {
       // Follows `sighting` (20261009150000): an owner told about a sighting
       // must be able to learn it was taken back.
       'sighting_withdrawn',
+      // A bank refused the payout and the money waits on new details
+      // (20261014110000) — as unsilenceable as the reminder.
+      'payout_failed',
     ] as NotificationKind[]
   ).filter((kind) => !mapped.has(kind));
 })();

@@ -74,6 +74,9 @@ export function pushRouteFor(payload: PushPayload): Href {
     case 'dispute_upheld':
     // "£X on its way" lands where the money's status lives, not on the car.
     case 'payout_sent':
+    // "Your bank couldn't accept your reward" — the bank form lives there
+    // (20261014110000).
+    case 'payout_failed':
       return '/payouts';
     // The dispute surface: filing (closed_uncredited) and the resolved answer
     // (rejected) are the same screen in different states — it reads its own

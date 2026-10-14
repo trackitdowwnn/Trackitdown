@@ -95,7 +95,31 @@ export interface PayoutAccount {
   onboardingComplete: boolean;
   /** Stripe says money can reach them. The only flag that matters to a payout. */
   payoutsEnabled: boolean;
+  /**
+   * The latest payout from their payee account to their BANK (2026-10-14,
+   * from Stripe's payout.* webhooks), or null if Stripe has made none yet.
+   * Per account, not per reward: a payout pays out a balance.
+   */
+  bankPayout: BankPayout | null;
+  /** When they last replaced their bank in our form, or null. */
+  bankReplacedAt: string | null;
 }
+
+export interface BankPayout {
+  status: 'pending' | 'in_transit' | 'paid' | 'failed' | 'canceled';
+  /** YYYY-MM-DD — the day Stripe expects it in their bank. */
+  arrivalDate: string | null;
+  /** When Stripe created the payout (ISO). */
+  createdAt: string;
+}
+
+const BANK_PAYOUT_STATUSES: readonly BankPayout['status'][] = [
+  'pending',
+  'in_transit',
+  'paid',
+  'failed',
+  'canceled',
+];
 
 /**
  * Ask for a hosted onboarding link (creating the Express account if needed).
@@ -358,7 +382,13 @@ export async function fetchMyLatestPayout(): Promise<{
 export async function fetchMyPayoutAccount(userId: string): Promise<PayoutAccount | null> {
   const { data, error } = await supabase
     .from('stripe_connected_accounts')
-    .select('stripe_account_id, onboarding_complete, payouts_enabled')
+    // ⚠️ The last_payout_* and bank_replaced_at columns arrive with
+    // 20261014110000: the server deploys on merge, the app only by a later
+    // OTA, so they always exist first. One literal: supabase-js types the row
+    // from the string, and a concatenation loses that.
+    .select(
+      'stripe_account_id, onboarding_complete, payouts_enabled, last_payout_status, last_payout_arrival_date, last_payout_created_at, bank_replaced_at',
+    )
     .eq('profile_id', userId)
     .maybeSingle();
 
@@ -373,5 +403,15 @@ export async function fetchMyPayoutAccount(userId: string): Promise<PayoutAccoun
     stripeAccountId: data.stripe_account_id as string,
     onboardingComplete: Boolean(data.onboarding_complete),
     payoutsEnabled: Boolean(data.payouts_enabled),
+    bankPayout:
+      BANK_PAYOUT_STATUSES.includes(data.last_payout_status as BankPayout['status']) &&
+      data.last_payout_created_at
+        ? {
+            status: data.last_payout_status as BankPayout['status'],
+            arrivalDate: (data.last_payout_arrival_date as string | null) ?? null,
+            createdAt: data.last_payout_created_at as string,
+          }
+        : null,
+    bankReplacedAt: (data.bank_replaced_at as string | null) ?? null,
   };
 }

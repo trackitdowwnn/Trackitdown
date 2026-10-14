@@ -203,7 +203,7 @@ export function PayoutsScreen() {
   const insets = useSafeAreaInsets();
   const toast = useToast();
   const requireAuth = useRequireAuth();
-  const { status, settling, refresh, settleReturn } = usePayoutAccount();
+  const { status, account, settling, refresh, settleReturn } = usePayoutAccount();
   const session = useSession();
   const userId = session.status === 'signedIn' ? session.userId : null;
   const params = useLocalSearchParams<{ onboarding?: string }>();
@@ -590,6 +590,17 @@ export function PayoutsScreen() {
   // Not ready, and Stripe is waiting on THEM for its own check (a bank, if
   // missing too, comes first: it is ours, and quicker).
   const askCheck = needsAction && !askBank && (status === 'unfinished' || status === 'verifying');
+  // A bank refused their payout and they haven't given new details since
+  // (2026-10-14): the money is back in their balance and the bank disabled,
+  // so nothing reaches them until they act. Our bank form is the fix.
+  const bankPayout = account?.bankPayout ?? null;
+  const payoutBounced =
+    status === 'ready' &&
+    bankPayout?.status === 'failed' &&
+    !(
+      account?.bankReplacedAt &&
+      Date.parse(account.bankReplacedAt) > Date.parse(bankPayout.createdAt)
+    );
   // The earn moment's second sentence: "tell us where" only while nobody has.
   // Under a tracker reading "Your details — done" it would contradict it.
   const earnedLine =
@@ -611,6 +622,8 @@ export function PayoutsScreen() {
     latestPayout,
     needsAction: askCheck,
     underReview: creditUnderReview,
+    bankPayout,
+    bankReplacedAt: account?.bankReplacedAt ?? null,
   });
   const tracker = progress ? (
     <>
@@ -927,8 +940,8 @@ export function PayoutsScreen() {
         {tracker ?? (
           <StatusPill
             // Waiting on them reads as theirs to do, whatever our row says.
-            label={STATUS_PILL[askCheck ? 'unfinished' : status].label}
-            tone={STATUS_PILL[askCheck ? 'unfinished' : status].tone}
+            label={STATUS_PILL[askCheck || payoutBounced ? 'unfinished' : status].label}
+            tone={STATUS_PILL[askCheck || payoutBounced ? 'unfinished' : status].tone}
             testID={`payouts-pill-${status}`}
           />
         )}
@@ -937,13 +950,17 @@ export function PayoutsScreen() {
             ? 'One more thing: your bank account'
             : askCheck
               ? 'We need one more thing from you'
-              : COPY[status].title}
+              : payoutBounced
+                ? 'Your bank couldn’t accept your reward'
+                : COPY[status].title}
         </Text>
         {tracker ? null : (
           <Text style={styles.cardBody}>
             {askCheck
               ? 'Our payment partner couldn’t confirm it’s you from the details you sent. A quick photo ID check sorts it — about two minutes.'
-              : COPY[status].body}
+              : payoutBounced
+                ? 'It’s safe, and waiting for you. Add your bank details again and we’ll send it.'
+                : COPY[status].body}
           </Text>
         )}
         {linkExpired ? (
@@ -952,7 +969,15 @@ export function PayoutsScreen() {
           </Text>
         ) : null}
         <Button
-          label={askBank ? 'Add your bank account' : askCheck ? 'Start the check' : COPY[status].action}
+          label={
+            askBank
+              ? 'Add your bank account'
+              : askCheck
+                ? 'Start the check'
+                : payoutBounced
+                  ? 'Add your bank details again'
+                  : COPY[status].action
+          }
           loading={opening}
           // Ready means "change where the money lands" — three fields, in the
           // app, both account generations. So does a missing bank (askBank).
@@ -968,7 +993,7 @@ export function PayoutsScreen() {
           // Stripe; a near-black button under "we'll switch payouts on the
           // moment it's done" would contradict the sentence (UI review).
           variant={
-            askBank || askCheck
+            askBank || askCheck || payoutBounced
               ? 'primary'
               : status === 'ready' || status === 'verifying'
                 ? 'secondary'

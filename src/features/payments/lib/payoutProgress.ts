@@ -25,6 +25,7 @@ import { formatTermDate } from '@/shared/lib/dateTimeLabel';
 import { formatPounds } from '@/shared/lib/money';
 import type { ProgressStep } from '@/shared/ui';
 
+import type { BankPayout } from '../api/payoutsApi';
 import type { PayoutAccountStatus } from '../hooks/usePayoutAccount';
 
 export interface PayoutProgressInput {
@@ -40,6 +41,46 @@ export interface PayoutProgressInput {
   needsAction?: boolean;
   /** A check holds the waiting reward's payout (my_pending_credit, 2026-10-14). */
   underReview?: boolean;
+  /** The latest payout to their BANK (payout.* webhooks, 2026-10-14). */
+  bankPayout?: BankPayout | null;
+  /** When they last replaced their bank in our form. */
+  bankReplacedAt?: string | null;
+}
+
+/**
+ * The bank leg of the most recent reward SENT, said plainly (2026-10-14).
+ * Only a payout made AFTER that reward was sent can be carrying it, so an
+ * older one (or none yet) says nothing beyond "sent", as before. A refused
+ * payout with new details since reads as resending, not as a problem.
+ */
+function bankLegDetail(
+  sentAt: string,
+  bankPayout: BankPayout | null | undefined,
+  bankReplacedAt: string | null | undefined,
+): { detail: string; done: boolean } | null {
+  if (!bankPayout || Date.parse(bankPayout.createdAt) < Date.parse(sentAt)) return null;
+  const arrives = bankPayout.arrivalDate ? formatTermDate(bankPayout.arrivalDate, true) : null;
+  switch (bankPayout.status) {
+    case 'pending':
+    case 'in_transit':
+      return arrives
+        ? { detail: `On its way to your bank — due ${arrives}.`, done: false }
+        : null;
+    case 'paid':
+      return {
+        detail: arrives ? `Paid into your bank on ${arrives}.` : 'Paid into your bank.',
+        done: true,
+      };
+    case 'failed':
+      return bankReplacedAt && Date.parse(bankReplacedAt) > Date.parse(bankPayout.createdAt)
+        ? { detail: 'Sending it again to your new account — usually within a few days.', done: false }
+        : {
+            detail: 'Your bank couldn’t accept it. Add your bank details again and we’ll send it.',
+            done: false,
+          };
+    default:
+      return null;
+  }
 }
 
 /**
@@ -54,6 +95,8 @@ export function payoutProgress({
   latestPayout,
   needsAction = false,
   underReview = false,
+  bankPayout,
+  bankReplacedAt,
 }: PayoutProgressInput): ProgressStep[] | null {
   if (status === 'guest' || status === 'loading' || status === 'error') return null;
   // Still asking whether a reward waits — don't draw a road that may vanish.
@@ -66,6 +109,10 @@ export function payoutProgress({
   // the bank's side is Stripe's payout schedule, which nothing here can see.
   // A reward still waiting outranks it: that is the road they are on now.
   if (status === 'ready' && credit === null && latestPayout) {
+    // ⚠️ THE BANK LEG, WHEN STRIPE HAS TOLD US (2026-10-14). Before, the road
+    // ended at "sent", because the payout to their bank was invisible. A
+    // refused payout keeps this step CURRENT: it is not done until it lands.
+    const bankLeg = bankLegDetail(latestPayout.sentAt, bankPayout, bankReplacedAt);
     return [
       { id: 'details', label: 'Your details', state: 'done' },
       { id: 'check', label: 'ID check', state: 'done' },
@@ -73,8 +120,10 @@ export function payoutProgress({
       {
         id: 'reward',
         label: `Your ${formatPounds(latestPayout.transferPence)} reward`,
-        state: 'done',
-        detail: `Sent ${formatTermDate(latestPayout.sentAt)} — your bank may take a few days to show it.`,
+        state: bankLeg && !bankLeg.done ? 'current' : 'done',
+        detail:
+          bankLeg?.detail ??
+          `Sent ${formatTermDate(latestPayout.sentAt)} — your bank may take a few days to show it.`,
       },
     ];
   }

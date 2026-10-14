@@ -108,6 +108,15 @@ Deno.serve(async (request) => {
         default_for_currency: true,
       });
       console.log('[payments] payout bank replaced', { accountId: existing.accountId });
+      // So Payouts can tell "a payout failed — add new details" apart from
+      // "new details added — resending" (2026-10-14). Best effort: the bank
+      // is replaced either way, and that is what Stripe pays to.
+      const { error: stampError } = await admin.rpc('record_bank_replaced', {
+        p_stripe_account_id: existing.accountId,
+      });
+      if (stampError) {
+        console.warn('[payments] bank replaced stamp failed', stampError.message);
+      }
       return jsonResponse({ status: 'bank_updated' });
     } catch (err) {
       console.error('[payments] payout bank replace failed', (err as Error).message);

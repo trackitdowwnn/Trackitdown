@@ -135,6 +135,26 @@ it (`_shared/applyPayoutAccountState.ts`), so order and duplicates are harmless.
 
 Local testing: `stripe listen --thin-events 'v2.core.account[configuration.recipient].capability_status_updated,v2.core.account[requirements].updated' --forward-thin-to http://localhost:54321/functions/v1/stripe-webhook`.
 
+### 5c. Register the connected-accounts endpoint (payouts to spotters' banks)
+A v1 endpoint listens to **Your account** OR **Connected accounts**, never both.
+The step-5 endpoint is "Your account"; Stripe's payouts from spotters' payee
+accounts to their banks are **connected-account** events, so they need a
+second endpoint. Without it the tracker stops at "Sent", and a payout a bank
+refuses is never asked about.
+
+In **Workbench → Webhooks → Add destination**:
+- Events from: **Connected accounts**. Payload style: **Snapshot**.
+- Events: `payout.created`, `payout.updated`, `payout.paid`, `payout.failed`,
+  `payout.canceled` (and `account.updated`, which legacy accounts use).
+- Destination: the SAME URL as step 5 (`.../stripe-webhook`).
+- Copy its **own** signing secret and set it:
+```bash
+npx supabase secrets set STRIPE_CONNECT_WEBHOOK_SECRET=whsec_...
+```
+`stripe-webhook` tries the step-5 secret, then this one, then the 5b thin one.
+Unset, everything is as before. `record_payout_event` ignores out-of-order
+deliveries; a failed payout pushes the spotter once (`payout_failed`).
+
 ### 6. Rebuild the app (native module)
 `@stripe/stripe-react-native` is a native module with an Expo config plugin
 (`app.config.ts`), so it needs a **new dev build** — it is not hot-reloadable:

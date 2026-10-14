@@ -14,7 +14,9 @@
  *        charge.refund.updated with status failed emails the operator. v2 THIN
  *        account events (their own destination and secret, 2026-10-14) re-read
  *        a spotter's payee account and pay them if it just became payable —
- *        see handleThinEvent at the bottom.
+ *        see handleThinEvent at the bottom. payout.* (from the connected-
+ *        accounts endpoint and its own secret, 2026-10-14) records a spotter's
+ *        payout to their bank, and a failed one pushes them once.
  *
  *        The succeeded branch serves BOTH pricing modes through ONE function,
  *        mark_post_payment_held, which reads the post: a NULL bounty is a free
@@ -63,6 +65,7 @@ import {
 import { syncPayoutAccountFromStripe } from '../_shared/applyPayoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
+import { notifyUsers } from '../_shared/push.ts';
 import { refundSupersededForPost } from '../_shared/refundEscrow.ts';
 
 // NOTE: no CORS / preflight — Stripe calls this server-to-server, not a browser.
@@ -84,18 +87,35 @@ Deno.serve(async (request) => {
 
   // Verify the signature over the RAW request body. constructEventAsync +
   // the SubtleCrypto provider is the Deno-compatible verification path.
+  //
+  // TWO v1 SECRETS (2026-10-14): a v1 endpoint listens to "Your account" OR
+  // "Connected accounts", never both, so the connected-account events —
+  // payout.* from spotters' accounts, and v1 account.updated — come from a
+  // second endpoint with its own secret (STRIPE_CONNECT_WEBHOOK_SECRET,
+  // optional: unset, everything is as before).
   const rawBody = await request.text();
-  let event: Stripe.Event;
-  try {
-    event = await stripe.webhooks.constructEventAsync(
-      rawBody,
-      signature,
-      webhookSecret,
-      undefined,
-      stripeCryptoProvider,
-    );
-  } catch (err) {
-    // Not a v1 event under the v1 secret. It may be a v2 THIN event from the
+  const v1Secrets = [webhookSecret, Deno.env.get('STRIPE_CONNECT_WEBHOOK_SECRET')].filter(
+    (secret): secret is string => Boolean(secret),
+  );
+  let verified: Stripe.Event | null = null;
+  let verifyError: unknown = null;
+  for (const secret of v1Secrets) {
+    try {
+      verified = await stripe.webhooks.constructEventAsync(
+        rawBody,
+        signature,
+        secret,
+        undefined,
+        stripeCryptoProvider,
+      );
+      break;
+    } catch (err) {
+      verifyError = err;
+    }
+  }
+  if (!verified) {
+    const err = verifyError;
+    // Not a v1 event under either v1 secret. It may be a v2 THIN event from the
     // event destination, which signs with its own secret (2026-10-14) — tried
     // only when that secret is configured, so without it nothing changes.
     const thinSecret = Deno.env.get('STRIPE_THIN_WEBHOOK_SECRET');
@@ -120,6 +140,7 @@ Deno.serve(async (request) => {
     console.error('[payments] webhook signature verification failed', (err as Error).message);
     return new Response('Invalid signature', { status: 400 });
   }
+  const event: Stripe.Event = verified;
 
   const admin = createServiceRoleClient();
 
@@ -146,6 +167,9 @@ Deno.serve(async (request) => {
   // Set when this event took a post live, so spotter alerts can be dispatched
   // AFTER the money state is fully recorded (see the bottom of this function).
   let wentLiveIntentId: string | null = null;
+  // Set when this event recorded a FAILED payout to a spotter's bank, so its
+  // one push goes out after the event is recorded (bottom of this function).
+  let failedPayout: { accountId: string; payoutId: string } | null = null;
 
   // Route the handled event types to the idempotent money-state functions.
   try {
@@ -310,6 +334,37 @@ Deno.serve(async (request) => {
           await releaseAllPendingFor(admin, stripe, profileId);
         }
       }
+    } else if (event.type.startsWith('payout.') && event.account) {
+      // THE LAST LEG (2026-10-14): Stripe's payout from a spotter's payee
+      // account to their BANK — "arrives Tue" on the tracker, and a failure
+      // (closed account, wrong details) asks them for new details instead of
+      // leaving the money in a balance they cannot see. `event.account` is
+      // set because these come from the CONNECTED-accounts endpoint. A record
+      // only: no money moves here. record_payout_event ignores accounts we
+      // never recorded and late, out-of-order deliveries.
+      const payout = event.data.object as Stripe.Payout;
+      const { data: recorded, error } = await admin.rpc('record_payout_event', {
+        p_stripe_account_id: event.account,
+        p_payout_id: payout.id,
+        p_status: payout.status,
+        p_amount_pence: payout.amount,
+        // Stripe's arrival_date is a unix time at midnight UTC of the day.
+        p_arrival_date: payout.arrival_date
+          ? new Date(payout.arrival_date * 1000).toISOString().slice(0, 10)
+          : null,
+        p_created_at: new Date(payout.created * 1000).toISOString(),
+        p_failure_code: payout.failure_code ?? null,
+      });
+      if (error) throw error;
+      // Ids and a status only — never a bank detail or an amount.
+      console.log('[payments] payout recorded', {
+        accountId: event.account,
+        status: payout.status,
+        applied: Boolean(recorded?.applied),
+      });
+      if (recorded?.applied && recorded.failed) {
+        failedPayout = { accountId: event.account, payoutId: payout.id };
+      }
     }
     // Any other event type: no action, but still recorded below as processed.
   } catch (err) {
@@ -415,6 +470,33 @@ Deno.serve(async (request) => {
       .EdgeRuntime;
     if (typeof runtime?.waitUntil === 'function') runtime.waitUntil(refundReplaced);
     else await refundReplaced;
+  }
+
+  // --- A bank refused a spotter's payout (2026-10-14) --------------------------
+  // One push per failed payout, claimed against the payout id, so a replayed
+  // event or a second payout.* about the same failure sends nothing more. Same
+  // posture as the alerts above: after the event is recorded, never rethrown —
+  // the record is what matters; Payouts shows the failure either way.
+  if (failedPayout) {
+    try {
+      const { data: claim, error } = await admin.rpc('claim_payout_failed_notification', {
+        p_stripe_account_id: failedPayout.accountId,
+        p_payout_id: failedPayout.payoutId,
+      });
+      if (error) {
+        console.error('[notifications] payout_failed claim failed', error.message);
+      } else if (claim?.claimed) {
+        await notifyUsers(admin, [claim.user_id as string], {
+          kind: 'payout_failed',
+          title: claim.title as string,
+          body: claim.body as string,
+          data: { type: 'payout_failed' },
+          collapseKey: `payout_failed:${failedPayout.payoutId}`,
+        });
+      }
+    } catch (err) {
+      console.error('[notifications] payout_failed push failed', (err as Error).message);
+    }
   }
 
   return new Response(JSON.stringify({ received: true }), { status: 200 });
