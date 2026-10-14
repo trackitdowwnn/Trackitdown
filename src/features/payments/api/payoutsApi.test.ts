@@ -275,6 +275,7 @@ describe('fetchMyPayoutAccount', () => {
       bankPayout: null,
       bankReplacedAt: null,
       payoutsEnabledAt: null,
+      detailsSubmittedAt: null,
     });
   });
 
