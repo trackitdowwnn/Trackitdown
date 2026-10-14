@@ -11,7 +11,10 @@
  *        "Reward ended", 20261006130000), and a superseded payment (renewed,
  *        or a stray capture) never touches it. The
  *        exit functions and the sweep are authoritative; this reconciles them.
- *        charge.refund.updated with status failed emails the operator.
+ *        charge.refund.updated with status failed emails the operator. v2 THIN
+ *        account events (their own destination and secret, 2026-10-14) re-read
+ *        a spotter's payee account and pay them if it just became payable —
+ *        see handleThinEvent at the bottom.
  *
  *        The succeeded branch serves BOTH pricing modes through ONE function,
  *        mark_post_payment_held, which reads the post: a NULL bounty is a free
@@ -57,6 +60,7 @@ import {
   requireEnv,
   stripeCryptoProvider,
 } from '../_shared/clients.ts';
+import { syncPayoutAccountFromStripe } from '../_shared/applyPayoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
 import { refundSupersededForPost } from '../_shared/refundEscrow.ts';
@@ -91,6 +95,27 @@ Deno.serve(async (request) => {
       stripeCryptoProvider,
     );
   } catch (err) {
+    // Not a v1 event under the v1 secret. It may be a v2 THIN event from the
+    // event destination, which signs with its own secret (2026-10-14) — tried
+    // only when that secret is configured, so without it nothing changes.
+    const thinSecret = Deno.env.get('STRIPE_THIN_WEBHOOK_SECRET');
+    if (thinSecret) {
+      let notification: ThinEventNotification | null = null;
+      try {
+        notification = await stripe.parseEventNotificationAsync(
+          rawBody,
+          signature,
+          thinSecret,
+          undefined,
+          stripeCryptoProvider,
+        );
+      } catch {
+        notification = null;
+      }
+      if (notification) {
+        return handleThinEvent(stripe, notification);
+      }
+    }
     // A bad signature is the one case we reject — it isn't really Stripe.
     console.error('[payments] webhook signature verification failed', (err as Error).message);
     return new Response('Invalid signature', { status: 400 });
@@ -394,3 +419,84 @@ Deno.serve(async (request) => {
 
   return new Response(JSON.stringify({ received: true }), { status: 200 });
 });
+
+/** The part of a v2 thin event this endpoint reads: what happened, and to what. */
+type ThinEventNotification = {
+  id: string;
+  type: string;
+  related_object?: { id: string; type: string } | null;
+};
+
+/**
+ * A v2 THIN event (2026-10-14) — only an id, a type and the object it is
+ * about. Accounts v2 announce "can now be paid" this way
+ * (`v2.core.account[configuration.recipient].capability_status_updated`,
+ * `v2.core.account[requirements].updated`), and the v1 account.updated above
+ * is not to be relied on for them. Without this, a spotter's account became
+ * payable and nothing here heard it: the screen said "being checked" and the
+ * reward they were owed waited for them to reopen it.
+ *
+ * Any v2 account event triggers the same thing: read the account from Stripe
+ * and apply it (applyPayoutAccountState — record, then release on the
+ * false → true edge, collusion gate inside). Reading rather than trusting the
+ * event makes order and duplicates harmless. Same dedup discipline as v1:
+ * process first, record the id after.
+ */
+async function handleThinEvent(
+  stripe: Stripe,
+  notification: ThinEventNotification,
+): Promise<Response> {
+  const admin = createServiceRoleClient();
+
+  const { data: existing, error: lookupError } = await admin
+    .from('stripe_webhook_events')
+    .select('event_id')
+    .eq('event_id', notification.id)
+    .maybeSingle();
+  if (lookupError) {
+    console.error('[payments] dedup lookup failed', lookupError.message);
+    return new Response('Dedup failed', { status: 500 });
+  }
+  if (existing) {
+    return new Response(JSON.stringify({ received: true, deduped: true }), { status: 200 });
+  }
+
+  const accountId = notification.related_object?.id;
+  if (notification.type.startsWith('v2.core.account') && accountId?.startsWith('acct_')) {
+    try {
+      const result = await syncPayoutAccountFromStripe(admin, stripe, accountId, (profileId) =>
+        releaseAllPendingFor(admin, stripe, profileId),
+      );
+      if (result.outcome === 'unreadable') {
+        // A Stripe blip — 500 so the event comes back and is read again.
+        console.error('[payments] v2 account event: account unreadable', { accountId });
+        return new Response('Account unreadable', { status: 500 });
+      }
+      if (result.outcome === 'unknown_account') {
+        // Not one we recorded (another integration, or a test account whose
+        // row was cleared). Never guessed at — that would risk a stranger.
+        console.warn('[payments] v2 account event for an unrecorded account', { accountId });
+      } else {
+        console.log('[payments] v2 account event applied', {
+          type: notification.type,
+          accountId,
+          changed: result.changed,
+          becamePayable: result.becamePayable,
+        });
+      }
+    } catch (err) {
+      console.error('[payments] v2 account event processing failed', (err as Error).message);
+      return new Response('Processing failed', { status: 500 });
+    }
+  }
+  // Any other thin event type: no action, but recorded as processed.
+
+  const { error: recordError } = await admin.rpc('claim_stripe_event', {
+    p_event_id: notification.id,
+  });
+  if (recordError) {
+    console.error('[payments] recording processed event failed', recordError.message);
+    return new Response('Record failed', { status: 500 });
+  }
+  return new Response(JSON.stringify({ received: true }), { status: 200 });
+}

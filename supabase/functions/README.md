@@ -109,6 +109,31 @@ npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 (Re-deploy `stripe-webhook` after setting it if it was already deployed.)
 
+### 5b. Register the v2 account event destination (payee accounts)
+Spotters' payee accounts are **Accounts v2**, and Stripe announces "this account
+can now be paid" with v2 **thin** events, not v1 `account.updated` (Stripe's
+v2 guidance is not to rely on it). Without this destination a spotter whose
+check finishes sits on "being checked" until they reopen Payouts.
+
+In **Workbench → Webhooks → Create an event destination**:
+- Payload style: **Thin**.
+- Events: `v2.core.account[configuration.recipient].capability_status_updated`
+  and `v2.core.account[requirements].updated`.
+- Scope: v2 events about connected accounts are documented under **"Your
+  account"** in one Stripe guide and **"Connected accounts"** in another —
+  create it in test mode, set a spotter up, and check which one delivers.
+- Destination: the SAME URL as step 5 (`.../stripe-webhook`).
+- Copy this destination's **own** signing secret and set it:
+```bash
+npx supabase secrets set STRIPE_THIN_WEBHOOK_SECRET=whsec_...
+```
+`stripe-webhook` tries the step-5 secret first, then this one. Until it is set,
+thin deliveries are refused (400) and Stripe retries them — nothing else
+changes. Each event makes the function read the account from Stripe and apply
+it (`_shared/applyPayoutAccountState.ts`), so order and duplicates are harmless.
+
+Local testing: `stripe listen --thin-events 'v2.core.account[configuration.recipient].capability_status_updated,v2.core.account[requirements].updated' --forward-thin-to http://localhost:54321/functions/v1/stripe-webhook`.
+
 ### 6. Rebuild the app (native module)
 `@stripe/stripe-react-native` is a native module with an Expo config plugin
 (`app.config.ts`), so it needs a **new dev build** — it is not hot-reloadable:
