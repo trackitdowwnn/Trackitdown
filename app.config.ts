@@ -90,13 +90,23 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // Function secrets, never bundled. See supabase/functions/README.md.
     // The plugin MUST be configured with props (a bare string makes withStripeIos
     // throw on props.merchantIdentifier). merchantIdentifier matches
-    // APPLE_PAY_MERCHANT_ID in src/features/payments/lib/stripeReady.ts; both stay inert until Apple
-    // Pay / Google Pay are actually set up.
+    // APPLE_PAY_MERCHANT_ID in src/features/payments/lib/stripeReady.ts; Apple
+    // Pay stays inert until it is set up for iOS.
+    //
+    // GOOGLE PAY ON (2026-10-14, payments plan PR7): offered first in the
+    // PaymentSheet (useBountyPayment). This adds the Google Pay meta-data to
+    // the Android manifest, so it takes a new native build — no OTA can.
+    //
+    // ⚠️ iOS, BEFORE THE FIRST iOS BUILD: from @stripe/stripe-react-native
+    // 0.78 the iOS SDK resolves through Swift Package Manager and needs
+    // dynamic frameworks — expo-build-properties `ios.useFrameworks: 'dynamic'`
+    // (its README has the workarounds). Not set here: there is no iOS build
+    // yet, and the setting changes how every iOS pod links.
     [
       '@stripe/stripe-react-native',
       {
         merchantIdentifier: 'merchant.com.olliet97.trackitdown',
-        enableGooglePay: false,
+        enableGooglePay: true,
       },
     ],
   ];

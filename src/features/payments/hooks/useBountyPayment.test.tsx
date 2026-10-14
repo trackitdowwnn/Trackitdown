@@ -67,6 +67,13 @@ describe('useBountyPayment', () => {
     expect(mockInit).toHaveBeenCalledWith(
       expect.objectContaining({ paymentIntentClientSecret: 'secret' }),
     );
+    // ⚠️ Google Pay offered (2026-10-14) — in GOOGLE'S TEST environment for any
+    // key that is not live, so a test key can never reach a real wallet.
+    expect(mockInit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        googlePay: { merchantCountryCode: 'GB', currencyCode: 'GBP', testEnv: true },
+      }),
+    );
   });
 
   it('returns "cancelled" when the user dismisses the sheet', async () => {
