@@ -26,7 +26,8 @@
  *        a fee post must reach spotters exactly as an escrowed one does. When
  *        a capture CHANGES a live listing's reward, the reward it replaced is
  *        now 'superseded' — and this function refunds it straight away, after
- *        the event is recorded (refundSupersededForPost; the sweep retries).
+ *        the event is recorded (_shared/afterCapture.ts, with the alerts and
+ *        the owner's "your listing is live"; the sweep retries the refund).
  *
  *        Fees are never refunded: a fee is never 'held' or 'superseded', and
  *        reconcile_payment_refund leaves any other status unchanged, so a
@@ -62,11 +63,11 @@ import {
   requireEnv,
   stripeCryptoProvider,
 } from '../_shared/clients.ts';
+import { followUpCapture } from '../_shared/afterCapture.ts';
 import { syncPayoutAccountFromStripe } from '../_shared/applyPayoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 import { sendOpsAlert } from '../_shared/opsAlert.ts';
 import { notifyUsers } from '../_shared/push.ts';
-import { refundSupersededForPost } from '../_shared/refundEscrow.ts';
 
 // NOTE: no CORS / preflight — Stripe calls this server-to-server, not a browser.
 // The endpoint takes the RAW body (signature is computed over the exact bytes),
@@ -385,91 +386,17 @@ Deno.serve(async (request) => {
     return new Response('Record failed', { status: 500 });
   }
 
-  // --- Spotter alerts (features/notifications) --------------------------------
-  // A paid post is LIVE-ON-PAYMENT, and this is the moment spotters should hear
-  // about it. Deliberately LAST: the money transition and its dedup record have
-  // already committed, so nothing below can affect them.
-  //
-  // NEVER RETHROWS. An alert failure must not turn a settled payment into a
-  // Stripe retry — the money is the point, the push is a nudge. And because
-  // this handler processes-first-records-after, a retry re-runs everything:
-  // notify-spotters claims posts.alerts_sent_at itself, so a re-run finds the
-  // post already claimed and sends nothing. That claim is what let us wire this
-  // up WITHOUT modifying mark_post_payment_held.
+  // --- What follows a capture --------------------------------------------------
+  // Spotters alerted, a replaced reward refunded, the owner told it is live —
+  // in _shared/afterCapture.ts since 2026-10-14, because sync-post-payment
+  // records captures too and must have exactly the same consequences.
+  // Deliberately LAST: the money transition and its dedup record have already
+  // committed, so nothing there can affect them. NEVER RETHROWS, every step is
+  // idempotent (a Stripe retry re-runs it harmlessly), and each runs off the
+  // response path — a fan-out slower than Stripe's delivery timeout would make
+  // Stripe record a settled payment as a failed delivery.
   if (wentLiveIntentId) {
-    try {
-      const { data: payment } = await admin
-        .from('payments')
-        .select('post_id')
-        .eq('stripe_payment_intent_id', wentLiveIntentId)
-        .maybeSingle();
-      if (payment?.post_id) {
-        // NOT awaited. notify-spotters awaits the whole chunked Expo fan-out
-        // (100 tokens per request), so awaiting it here would put unbounded
-        // latency on the money path for a nudge — and a fan-out slower than
-        // Stripe's delivery timeout makes Stripe record a SETTLED payment as
-        // a failed delivery and retry it. The retry is safe (dedupe above +
-        // the alerts_sent_at claim), but repeated timeouts degrade endpoint
-        // health. Fire-and-forget matches what this function's own comment
-        // and supabase/functions/README.md already claim it does.
-        const dispatch = admin.functions
-          .invoke('notify-spotters', { body: { postId: payment.post_id } })
-          .then(({ error }) => {
-            if (error) console.error('[notifications] alert dispatch failed', error.message);
-          })
-          .catch((err) =>
-            console.error('[notifications] alert dispatch failed', (err as Error).message),
-          );
-
-        // A bare un-awaited promise can be killed when the isolate returns its
-        // response — possibly before the request is even sent. waitUntil is
-        // Supabase's documented way to keep it alive past the response. Where
-        // it isn't available we fall back to awaiting: slower, but a lost
-        // alert is worse than a slow webhook, and the claim makes a Stripe
-        // retry harmless either way.
-        const runtime = (globalThis as { EdgeRuntime?: { waitUntil?(p: Promise<unknown>): void } })
-          .EdgeRuntime;
-        if (typeof runtime?.waitUntil === 'function') runtime.waitUntil(dispatch);
-        else await dispatch;
-      }
-    } catch (err) {
-      console.error('[notifications] alert dispatch failed', (err as Error).message);
-    }
-  }
-
-  // --- The replaced reward goes home (2026-10-05) -----------------------------
-  // A capture that changed a live listing's reward left the old payment
-  // `superseded`: owed back to the owner. Refund it now rather than at the next
-  // hourly sweep — the owner was told "your current reward is refunded once the
-  // new one is held". Same placement and posture as the alerts: after the money
-  // state and its dedup record committed, never rethrowing, never failing this
-  // event. The sweep (refunds_due) is the retry, under the same per-payment key.
-  // Kept off the response path like the alerts: two Stripe calls per refund
-  // are latency Stripe's delivery timeout should never wait on (the event is
-  // already recorded — a slow refund must not turn into a redelivery).
-  if (wentLiveIntentId) {
-    const capturedIntentId = wentLiveIntentId;
-    const refundReplaced = (async () => {
-      try {
-        const { data: payment } = await admin
-          .from('payments')
-          .select('post_id')
-          .eq('stripe_payment_intent_id', capturedIntentId)
-          .maybeSingle();
-        if (payment?.post_id) {
-          const refunded = await refundSupersededForPost(admin, stripe, payment.post_id);
-          if (refunded > 0) {
-            console.log('[payments] replaced reward refunded', { postId: payment.post_id, refunded });
-          }
-        }
-      } catch (err) {
-        console.error('[payments] replaced reward refund failed', (err as Error).message);
-      }
-    })();
-    const runtime = (globalThis as { EdgeRuntime?: { waitUntil?(p: Promise<unknown>): void } })
-      .EdgeRuntime;
-    if (typeof runtime?.waitUntil === 'function') runtime.waitUntil(refundReplaced);
-    else await refundReplaced;
+    await followUpCapture(admin, stripe, wentLiveIntentId);
   }
 
   // --- A bank refused a spotter's payout (2026-10-14) --------------------------

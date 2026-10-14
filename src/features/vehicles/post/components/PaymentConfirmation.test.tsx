@@ -10,7 +10,12 @@
 
 import { act, fireEvent, render } from '@testing-library/react-native';
 
-import { CONFIRM_ATTEMPTS, CONFIRM_INTERVAL_MS, PaymentConfirmation } from './PaymentConfirmation';
+import {
+  CONFIRM_ATTEMPTS,
+  CONFIRM_INTERVAL_MS,
+  PaymentConfirmation,
+  SYNC_BEFORE_ATTEMPTS,
+} from './PaymentConfirmation';
 
 jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
@@ -25,6 +30,12 @@ jest.mock('../api/postApi', () => ({
 const mockLightHaptic = jest.fn();
 jest.mock('@/shared/lib/haptics', () => ({
   lightHaptic: () => mockLightHaptic(),
+}));
+
+// The server's check with Stripe (sync-post-payment, 2026-10-14).
+const mockSync = jest.fn();
+jest.mock('@/features/payments', () => ({
+  syncPostPayment: (...args: unknown[]) => mockSync(...args),
 }));
 
 type View = Awaited<ReturnType<typeof render>>;
@@ -57,6 +68,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockStatus.mockReset().mockResolvedValue('draft');
   mockLightHaptic.mockReset();
+  mockSync.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -98,6 +110,25 @@ describe('PaymentConfirmation', () => {
     await tick();
     expect(mockStatus).toHaveBeenCalledWith('p1');
     expect(view.getByText('Your car is live')).toBeTruthy();
+  });
+
+  it('⚠️ asks the server to check with Stripe — mid-way and before saying "slow" (2026-10-14)', async () => {
+    const view = await renderIt();
+    await settle();
+    for (let attempt = 1; attempt < CONFIRM_ATTEMPTS; attempt += 1) {
+      await tick();
+    }
+    // Before look 4 and before the last: the webhook is no longer the only way in.
+    expect(mockSync).toHaveBeenCalledTimes(SYNC_BEFORE_ATTEMPTS.length);
+    expect(mockSync).toHaveBeenCalledWith('p1');
+    expect(view.getByTestId('payment-confirmation-slow')).toBeTruthy();
+  });
+
+  it('a listing live at once never needs the check', async () => {
+    mockStatus.mockResolvedValue('active');
+    await renderIt();
+    await settle();
+    expect(mockSync).not.toHaveBeenCalled();
   });
 
   it('⚠️ slower than the watch: says so plainly, never claims success, and the way on leads', async () => {

@@ -24,6 +24,7 @@ export {
   createBountyPaymentIntent,
   deactivatePost,
   exitCheck,
+  syncPostPayment,
   type DeactivateResult,
   type ExitCheck,
 } from './api/paymentsApi';

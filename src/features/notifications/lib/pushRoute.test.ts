@@ -52,6 +52,11 @@ describe('pushRouteFor', () => {
     expect(pushRouteFor({ type: 'payout_failed' })).toBe('/payouts');
   });
 
+  // The owner's "your listing is live" opens the listing itself.
+  it('routes "your listing is live" to the owner’s listing', () => {
+    expect(pushRouteFor({ type: 'listing_live', postId: POST_ID })).toBe(`/post/${POST_ID}`);
+  });
+
   it('routes a message to its chat thread', () => {
     expect(pushRouteFor({ type: 'message', threadId: THREAD_ID })).toBe(`/chat/${THREAD_ID}`);
   });
