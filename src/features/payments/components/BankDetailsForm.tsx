@@ -29,7 +29,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
 import { Button, TextField } from '@/shared/ui';
 
-import { buildBankDetailsSchema, digitsOnly } from './payoutDetailsSchema';
+import { buildBankDetailsSchema, digitsOnly, formatSortCode } from './payoutDetailsSchema';
 
 export interface BankDetailsFormProps {
   /** Submits to Stripe. Handles its own failures, so a rejection here is
@@ -53,11 +53,26 @@ export function BankDetailsForm({ onSubmit, onCancel, busy = false }: BankDetail
   const [errors, setErrors] = useState<Partial<Record<keyof Fields, string>>>({});
 
   const set = useCallback(
-    (key: keyof Fields) => (value: string) => {
-      setFields((current) => ({ ...current, [key]: value }));
+    (key: keyof Fields, format?: (value: string) => string) => (value: string) => {
+      setFields((current) => ({ ...current, [key]: format ? format(value) : value }));
       setErrors((current) => (current[key] ? { ...current, [key]: undefined } : current));
     },
     [],
+  );
+
+  // On leaving a field, as the setup wizard does (2026-10-14): a wrong sort
+  // code said on the spot, not after "Save". Only for a field with something
+  // in it — an untouched field is not an error yet.
+  const check = useCallback(
+    (key: keyof Fields) => () => {
+      if (!fields[key]) return;
+      const parsed = buildBankDetailsSchema().safeParse(fields);
+      const issue = parsed.success
+        ? undefined
+        : parsed.error.issues.find((candidate) => candidate.path[0] === key);
+      setErrors((current) => ({ ...current, [key]: issue?.message }));
+    },
+    [fields],
   );
 
   const submit = useCallback(async () => {
@@ -86,30 +101,46 @@ export function BankDetailsForm({ onSubmit, onCancel, busy = false }: BankDetail
         Rewards are sent there from then on.
       </Text>
 
+      {/* The same three fields as the setup wizard's bank step
+          (payoutSetupSteps.tsx), typed the same way: the sort code takes its
+          own dashes (12-34-56), lengths are capped, and nothing autocorrects
+          or autofills a bank number. */}
       <TextField
         label="Sort code"
         value={fields.sortCode}
-        onChangeText={set('sortCode')}
+        onChangeText={set('sortCode', formatSortCode)}
+        onBlur={check('sortCode')}
         error={errors.sortCode}
         helperText="6 digits"
         keyboardType="number-pad"
+        maxLength={8}
+        autoCorrect={false}
+        autoComplete="off"
         testID="bank-sort-code"
       />
       <TextField
         label="Account number"
         value={fields.accountNumber}
         onChangeText={set('accountNumber')}
+        onBlur={check('accountNumber')}
         error={errors.accountNumber}
         helperText="8 digits"
         keyboardType="number-pad"
+        maxLength={9}
+        autoCorrect={false}
+        autoComplete="off"
         testID="bank-account-number"
       />
       <TextField
         label="Confirm account number"
         value={fields.confirmAccountNumber}
         onChangeText={set('confirmAccountNumber')}
+        onBlur={check('confirmAccountNumber')}
         error={errors.confirmAccountNumber}
         keyboardType="number-pad"
+        maxLength={9}
+        autoCorrect={false}
+        autoComplete="off"
         testID="bank-confirm-account-number"
       />
 

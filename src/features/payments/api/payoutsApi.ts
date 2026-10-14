@@ -284,10 +284,15 @@ export async function fetchPayoutsRelevant(): Promise<boolean> {
 }
 
 /**
- * The caller's credited-but-unpaid bounty, or null. Powers "You've earned £X".
- * `underReview` (2026-10-14): a check is holding the payout — never why — so
- * the tracker says so instead of "on its way". False from a server that
- * predates the column.
+ * The caller's credited-but-unpaid bounty, or null when there is none.
+ * Powers "You've earned £X". `underReview` (2026-10-14): a check is holding
+ * the payout — never why — so the tracker says so instead of "on its way".
+ * False from a server that predates the column.
+ *
+ * @throws PaymentError when the read FAILS (2026-10-14). It used to return
+ *   null then — and null means "nothing waiting", so a spotter owed £190 on a
+ *   bad connection was told "Nothing to set up". "None" and "couldn't check"
+ *   are different answers; the screen says which.
  */
 export async function fetchMyPendingCredit(): Promise<{
   postId: string;
@@ -297,7 +302,7 @@ export async function fetchMyPendingCredit(): Promise<{
   const { data, error } = await supabase.rpc('my_pending_credit');
   if (error) {
     log.warn('my_pending_credit failed', { code: error.code });
-    return null; // the context line is enhancement, never a blocker
+    throw new PaymentError('We couldn’t check for rewards.', error.code ?? 'UNKNOWN');
   }
   const row = Array.isArray(data) ? data[0] : null;
   if (!row?.post_id) {
