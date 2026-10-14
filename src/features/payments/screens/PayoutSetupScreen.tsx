@@ -45,7 +45,12 @@ import { WizardScreen } from '@/shared/wizard';
 
 import { submitPayoutTokens, type PayoutTokensResult } from '../api/payoutsApi';
 import { createBankToken, createIdentityToken } from '../api/stripeTokens';
-import { buildPayoutDetailsSchema, digitsOnly, parseUkDate } from '../components/payoutDetailsSchema';
+import {
+  buildPayoutDetailsSchema,
+  digitsOnly,
+  parseUkDate,
+  toUkE164,
+} from '../components/payoutDetailsSchema';
 import { EMPTY_PAYOUT_SETUP, type PayoutSetupAnswers } from '../lib/payoutSetupAnswers';
 import { buildPayoutSetupFlow } from '../lib/payoutSetupFlow';
 import { setPayoutSetupOutcome } from '../lib/payoutSetupOutcome';
@@ -115,7 +120,9 @@ export function PayoutSetupScreen() {
       lastName: parsed.data.lastName,
       // Stripe wants YYYY-MM-DD; the person typed DD/MM/YYYY.
       dob: date.toISOString().slice(0, 10),
-      phone: parsed.data.phone || undefined,
+      // International form (+44…), the one Stripe takes; the schema has
+      // already refused anything that isn't a UK number.
+      phone: toUkE164(parsed.data.phone) ?? undefined,
       addressLine1: parsed.data.addressLine1,
       addressLine2: parsed.data.addressLine2 || undefined,
       city: parsed.data.city,

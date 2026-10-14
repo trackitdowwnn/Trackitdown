@@ -110,7 +110,10 @@ export function AboutYouStep(props: StepProps) {
         {...field('dob', { format: formatDob, digits: 8 })}
       />
       <TextField
-        label="Phone (optional)"
+        label="Phone"
+        // Why we ask, in the place they wonder: required since 2026-10-14,
+        // because our payment partner holds payouts without one.
+        helperText="Our payment partner needs one to pay you"
         keyboardType="phone-pad"
         autoComplete="tel"
         testID="payout-phone"

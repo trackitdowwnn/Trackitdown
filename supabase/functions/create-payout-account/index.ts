@@ -41,7 +41,7 @@
 import { createServiceRoleClient, createStripeClient } from '../_shared/clients.ts';
 import { findConnectAccount } from '../_shared/connectAccount.ts';
 import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.ts';
-import { ensureBusinessUrl, PLATFORM_URL } from '../_shared/payoutAccountState.ts';
+import { ensureProfile, PRODUCT_DESCRIPTION } from '../_shared/payoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
 Deno.serve(async (request) => {
@@ -143,7 +143,7 @@ Deno.serve(async (request) => {
         400,
       );
     }
-    await ensureBusinessUrl(stripe, existing.accountId);
+    await ensureProfile(stripe, existing.accountId);
     console.log('[payments] payout setup re-run attached bank', { accountId: existing.accountId });
     return jsonResponse({ status: 'submitted', payoutsActive: existing.payoutsEnabled });
   }
@@ -163,10 +163,11 @@ Deno.serve(async (request) => {
       dashboard: 'none',
       defaults: {
         currency: 'gbp',
-        // Stripe asks EVERY payee account for a website (2026-10-13: it held
-        // payouts `restricted` on this alone). A spotter has none; the
-        // platform's is what a marketplace supplies.
-        profile: { business_url: PLATFORM_URL },
+        // Stripe asks EVERY payee account for a website or a description
+        // (2026-10-13: it held payouts `restricted` on this alone). A spotter
+        // has no website; a description of what they're paid for is the
+        // answer, rather than one platform URL Stripe can refuse (2026-10-14).
+        profile: { product_description: PRODUCT_DESCRIPTION },
         responsibilities: {
           fees_collector: 'application',
           losses_collector: 'application',

@@ -2,8 +2,8 @@
  * WHAT:  readPayoutAccountState — asks Stripe, directly, whether a spotter's
  *        payee account can be paid, for either generation of account, and
  *        which of Stripe's outstanding requirements we can meet ourselves.
- *        ensureBusinessUrl — supplies the one requirement every account has
- *        and no spotter should be asked for.
+ *        ensureProfile — supplies the one requirement every account has and
+ *        no spotter should be asked for: what the account is for.
  * WHY:   2026-10-13: an owner set payouts up in test mode and sat on "Your
  *        details are being checked" indefinitely. Our row's payouts_enabled is
  *        written by ONE thing — the account.updated webhook — and if that
@@ -17,8 +17,13 @@
  *        (Stripe's routine "what's your website?", asked of EVERY account and
  *        never sent by create-payout-account). Both are ours to supply, so the
  *        read reports them: the bank goes back to the spotter as our own
- *        three-field form, the website the platform fills in (PLATFORM_URL).
- *        Stripe's own screen is then only for what genuinely needs it.
+ *        three-field form, the website the platform fills in. Stripe's own
+ *        screen is then only for what genuinely needs it.
+ *
+ *        2026-10-14: a DESCRIPTION, not the website (owner's choice). Stripe
+ *        accepts a product description in place of a URL, and can refuse one
+ *        shared platform URL on every account (`invalid_url_denylisted`).
+ *        Stripe may name the requirement either way, so both count.
  *
  *        TWO GENERATIONS. Accounts made by create-payout-account are Accounts
  *        v2 with the recipient configuration, and "can be paid" is the
@@ -37,15 +42,21 @@
 import type Stripe from 'npm:stripe@22.4.0';
 
 /**
- * The website Stripe asks every payee account for (owner's choice,
- * 2026-10-13). A spotter is an individual with no site of their own; a
- * marketplace supplies its own, which is what Stripe expects of a platform.
+ * What a spotter's payee account is for — Stripe's "business URL or product
+ * description", which every account is asked and no spotter has an answer
+ * to. A description rather than the platform's URL (owner's choice,
+ * 2026-10-14): Stripe can refuse one URL shared by every account. At least 10
+ * characters and no URL, Stripe's two rules for it.
  */
-export const PLATFORM_URL = 'https://trackitdown.co.uk';
+export const PRODUCT_DESCRIPTION =
+  'One-off reward payments for helping recover stolen cars through Trackitdown.';
 
-/** Stripe's names for the two requirements we can meet without Stripe's UI. */
+/** Stripe's names for the requirements we can meet without Stripe's UI. */
 export const REQUIREMENT_BANK = 'external_account';
-export const REQUIREMENT_WEBSITE = 'defaults.profile.business_url';
+export const REQUIREMENT_PROFILE = [
+  'defaults.profile.business_url',
+  'defaults.profile.product_description',
+];
 
 export interface PayoutAccountState {
   payoutsEnabled: boolean;
@@ -54,8 +65,8 @@ export interface PayoutAccountState {
   detailsSubmitted: boolean;
   /** No bank account attached — the spotter adds one in our form. */
   needsBank: boolean;
-  /** Stripe still wants the website — the platform supplies it. */
-  needsWebsite: boolean;
+  /** Stripe still wants a website or description — the platform supplies it. */
+  needsProfile: boolean;
   /**
    * Stripe is waiting on the SPOTTER for something only its own screen can
    * collect — typically a photo ID after the typed details didn't verify
@@ -80,7 +91,7 @@ type RequirementEntry = {
  * is Stripe reviewing — genuinely "being checked".
  */
 function spotterMustAct(entry: RequirementEntry): boolean {
-  if (entry.description === REQUIREMENT_BANK || entry.description === REQUIREMENT_WEBSITE) {
+  if (entry.description === REQUIREMENT_BANK || REQUIREMENT_PROFILE.includes(entry.description)) {
     return false;
   }
   const due = entry.minimum_deadline?.status;
@@ -106,7 +117,7 @@ export async function readPayoutAccountState(
   const outstanding = entries.map((entry) => entry.description);
   const needs = {
     needsBank: outstanding.includes(REQUIREMENT_BANK),
-    needsWebsite: outstanding.includes(REQUIREMENT_WEBSITE),
+    needsProfile: outstanding.some((description) => REQUIREMENT_PROFILE.includes(description)),
     needsAction: entries.some(spotterMustAct),
   };
 
@@ -126,15 +137,15 @@ export async function readPayoutAccountState(
 }
 
 /**
- * Give a v2 payee account the platform's website, so Stripe's routine
- * "business URL" requirement never lands on a spotter. True if it was set.
+ * Give a v2 payee account its description, so Stripe's routine "website or
+ * description" requirement never lands on a spotter. True if it was set.
  * Never throws: a failure leaves the requirement where it was, and the next
  * check tries again.
  */
-export async function ensureBusinessUrl(stripe: Stripe, accountId: string): Promise<boolean> {
+export async function ensureProfile(stripe: Stripe, accountId: string): Promise<boolean> {
   try {
     await stripe.v2.core.accounts.update(accountId, {
-      defaults: { profile: { business_url: PLATFORM_URL } },
+      defaults: { profile: { product_description: PRODUCT_DESCRIPTION } },
     });
     return true;
   } catch {

@@ -17,6 +17,7 @@ import {
   formatDob,
   formatSortCode,
   parseUkDate,
+  toUkE164,
 } from './payoutDetailsSchema';
 
 /** Fixed so the age rule is tested against a known clock, not today's. */
@@ -125,8 +126,42 @@ describe('the rules', () => {
     expect(errorFor('postalCode', { postalCode: '' })).toBe('Enter your postcode');
   });
 
-  it('treats the phone and second address line as genuinely optional', () => {
-    expect(parse({ phone: '', addressLine2: '' }).success).toBe(true);
+  it('treats the second address line as genuinely optional', () => {
+    expect(parse({ addressLine2: '' }).success).toBe(true);
+  });
+
+  it('⚠️ needs a phone (2026-10-14) — Stripe holds a UK payee without one', () => {
+    // Asked "(optional)", a skipped phone surfaced AFTER sending, as a hold
+    // nothing on screen could explain. Asked here, it costs one field.
+    expect(errorFor('phone', { phone: '' })).toBe('Enter your phone number');
+    expect(errorFor('phone', { phone: '12345' })).toBe('Enter a UK number, like 07700 900123');
+    expect(parse({ phone: '+44 7700 900123' }).success).toBe(true);
+  });
+});
+
+describe('toUkE164', () => {
+  it.each([
+    ['07700 900123', '+447700900123'],
+    ['07700900123', '+447700900123'],
+    ['+44 7700 900123', '+447700900123'],
+    ['+44 (0)7700 900123', '+447700900123'],
+    ['0044 7700 900123', '+447700900123'],
+    ['020 7946 0000', '+442079460000'],
+    ['0161-496-0000', '+441614960000'],
+  ])('%s → %s', (typed, e164) => {
+    expect(toUkE164(typed)).toBe(e164);
+  });
+
+  it.each([
+    ['', 'empty'],
+    ['7700900123', 'no 0 or +44 — ambiguous'],
+    ['0770090012', 'a digit short'],
+    ['077009001234', 'a digit long'],
+    ['+1 415 555 0100', 'not UK'],
+    ['0800 123 4567x', 'not a number'],
+    ['05700 900123', '05 is not a range we pay to'],
+  ])('refuses %s (%s)', (typed) => {
+    expect(toUkE164(typed)).toBeNull();
   });
 });
 

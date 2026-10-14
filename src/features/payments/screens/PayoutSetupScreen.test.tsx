@@ -100,6 +100,7 @@ async function walkToReview(view: View) {
   await type(view, 'payout-first-name', 'Ada');
   await type(view, 'payout-last-name', 'Lovelace');
   await type(view, 'payout-dob', '01041990');
+  await type(view, 'payout-phone', '07700 900123');
   await next(view);
   await type(view, 'payout-address-1', '12 Bridge Street');
   await type(view, 'payout-city', 'Manchester');
@@ -172,6 +173,7 @@ describe('the steps', () => {
 
     await type(view, 'payout-first-name', 'Ada');
     await type(view, 'payout-last-name', 'Lovelace');
+    await type(view, 'payout-phone', '07700 900123');
     await next(view);
     await type(view, 'payout-address-1', '12 Bridge Street');
     await type(view, 'payout-city', 'Manchester');
@@ -186,6 +188,7 @@ describe('the steps', () => {
     await type(view, 'payout-first-name', 'Ada');
     await type(view, 'payout-last-name', 'Lovelace');
     await type(view, 'payout-dob', '01041990');
+    await type(view, 'payout-phone', '07700 900123');
     await next(view);
     await type(view, 'payout-address-1', '12 Bridge Street');
     await type(view, 'payout-city', 'Manchester');
@@ -280,6 +283,8 @@ describe('the send', () => {
         lastName: 'Lovelace',
         // Stripe's YYYY-MM-DD, from the DD/MM/YYYY they typed.
         dob: '1990-04-01',
+        // The international form Stripe takes, from "07700 900123".
+        phone: '+447700900123',
         // Digits, not the dashes on screen.
         sortCode: '108800',
         accountNumber: '00012345',
