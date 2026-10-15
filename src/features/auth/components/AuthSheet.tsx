@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Keyboard, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { createLogger, isValidEmail } from '@/shared/lib';
 import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
@@ -27,8 +27,10 @@ import {
   AuthActionError,
   createProfile,
   requestEmailOtp,
+  isAppleWebSignInConfigured,
   isGoogleSignInConfigured,
   signInWithApple,
+  signInWithAppleWeb,
   signInWithGoogle,
   verifyEmailOtp,
   type SocialResult,
@@ -292,10 +294,14 @@ function EmailStep({
       />
       <Button label="Continue" onPress={handleContinue} disabled={!canContinue} loading={busy} />
       <SocialSignInButtons
-        onApple={() => handleSocial(signInWithApple)}
+        // iOS: Apple's native sheet. Android: Apple's web flow (no native kit).
+        onApple={() =>
+          handleSocial(Platform.OS === 'android' ? signInWithAppleWeb : signInWithApple)
+        }
         onGoogle={() => handleSocial(signInWithGoogle)}
         disabled={busy}
         showGoogle={isGoogleSignInConfigured()}
+        showAppleWeb={Platform.OS === 'android' && isAppleWebSignInConfigured()}
       />
       {socialError ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">

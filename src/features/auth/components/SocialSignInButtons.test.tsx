@@ -44,10 +44,10 @@ function nodesOfType(node: unknown, type: string, found: Record<string, unknown>
 /** react-native-svg packs colours into an ARGB int. #4285F4 -> 0xFF4285F4. */
 const argb = (hex: string) => (0xff000000 + parseInt(hex.slice(1), 16)) >>> 0;
 
-const renderIn = (scheme: 'light' | 'dark', showGoogle = true) =>
+const renderIn = (scheme: 'light' | 'dark', showGoogle = true, showAppleWeb = false) =>
   render(
     <ThemeControlsContext.Provider value={{ preference: scheme, scheme, setPreference: jest.fn() }}>
-      <SocialSignInButtons {...props} showGoogle={showGoogle} />
+      <SocialSignInButtons {...props} showGoogle={showGoogle} showAppleWeb={showAppleWeb} />
     </ThemeControlsContext.Provider>,
   );
 
@@ -130,5 +130,61 @@ describe('⚠️ the brands’ own colours (owner: "with the correct colours")',
     jest.replaceProperty(Platform, 'OS', 'ios');
     await renderIn(scheme);
     expect(mockAppleButton).toHaveBeenCalledWith(expect.objectContaining({ buttonStyle: style }));
+  });
+});
+
+describe('Apple on Android — our button, Apple’s rules (2026-10-15)', () => {
+  const appleStyle = (view: Awaited<ReturnType<typeof renderIn>>) =>
+    StyleSheet.flatten(view.getByTestId('apple-sign-in').props.style);
+  const appleInk = (view: Awaited<ReturnType<typeof renderIn>>) =>
+    StyleSheet.flatten(view.getByText('Continue with Apple').props.style).color;
+  const logoFill = (view: Awaited<ReturnType<typeof renderIn>>) =>
+    (nodesOfType(view.toJSON(), 'RNSVGPath')
+      .map((path) => (path.fill as { payload: number }).payload >>> 0)
+      .find((fill) => fill === argb('#FFFFFF') || fill === argb('#000000')));
+
+  beforeEach(() => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+  });
+
+  it('⚠️ switched off until the setup is done: no Apple button at all', async () => {
+    const view = await renderIn('light', true, false);
+    expect(view.queryByText('Continue with Apple')).toBeNull();
+  });
+
+  it('light: black, with the Apple logo and title in white', async () => {
+    const view = await renderIn('light', false, true);
+    expect(appleStyle(view)).toMatchObject({ backgroundColor: '#000000' });
+    expect(appleInk(view)).toBe('#FFFFFF');
+    expect(logoFill(view)).toBe(argb('#FFFFFF'));
+  });
+
+  it('dark: white, with the logo and title in black', async () => {
+    const view = await renderIn('dark', false, true);
+    expect(appleStyle(view)).toMatchObject({ backgroundColor: '#FFFFFF' });
+    expect(appleInk(view)).toBe('#000000');
+    expect(logoFill(view)).toBe(argb('#000000'));
+  });
+
+  it('Apple first, then Google — at least as prominent as any other', async () => {
+    const view = await renderIn('light', true, true);
+    const order = view
+      .getAllByRole('button')
+      .map((button) => button.props.accessibilityLabel as string);
+    expect(order).toEqual(['Continue with Apple', 'Continue with Google']);
+  });
+
+  it('one accessible button; the logo is hidden from screen readers', async () => {
+    const view = await renderIn('light', false, true);
+    expect(view.getByRole('button', { name: 'Continue with Apple' })).toBeTruthy();
+    expect(view.queryByTestId('apple-logo')).toBeNull();
+    expect(view.getByTestId('apple-logo', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('iOS never draws it — the native button is Apple’s own', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const view = await renderIn('light', false, true);
+    expect(view.queryByTestId('apple-sign-in')).toBeNull();
+    expect(view.getByText('Continue with Apple')).toBeTruthy(); // the native one
   });
 });

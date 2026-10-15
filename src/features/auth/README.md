@@ -347,13 +347,45 @@ hourly budget). Raise it in the dashboard only if beta feedback needs it.
    - **First name:** a new user from Google finds "What should we call you?"
      already filled with their Google first name. It's still theirs to change.
 3. **Apple** needs a new build (its entitlement comes from the plugin).
-   - **Android: deliberately not offered (owner, 2026-10-15).** Apple has no
-     Android sign-in kit, so it would be a web round trip. It needs a $99/yr
-     Apple Developer membership and a client-secret JWT that **expires every 6
-     months** and silently breaks sign-in when it lapses. Every tester is on
-     Android, where people pick Google. Revisit with the iOS build. A future
-     Android flow needs one idempotent return handler (Android can report
-     'dismiss' on success) and a named owner for the key rotation.
+   - **Android: Apple's web flow (built 2026-10-15; switched OFF until set
+     up).** Apple has no Android sign-in kit, so Android uses Supabase OAuth:
+     Apple's page in an in-app browser, then back on
+     `trackitdown://auth-callback` (`lib/oauthReturn.ts`,
+     `signInWithAppleWeb`, `+native-intent`). There is one idempotent return
+     handler, because Android can report a success as 'dismiss' and the
+     same URL can arrive three ways. The button stays hidden until
+     `EXPO_PUBLIC_APPLE_SIGN_IN=true` is in the bundle.
+     **Setup (owner, once):**
+     1. **Enrol** in the Apple Developer Program (developer.apple.com,
+        $99/yr; approval can take 1–2 days).
+     2. **Certificates, IDs & Profiles → Identifiers → +**
+        - **App ID:** bundle `com.olliet97.trackitdown`, tick *Sign in with
+          Apple*.
+        - **Services ID:** e.g. `com.olliet97.trackitdown.signin`. Enable
+          *Sign in with Apple*, then **Configure**: primary App ID = the one
+          above, Domain = `lbbbxelbembseohxjhkv.supabase.co`, Return URL =
+          `https://lbbbxelbembseohxjhkv.supabase.co/auth/v1/callback`.
+     3. **Keys → +**: tick *Sign in with Apple* (configure it to the App ID),
+        then download the **.p8**. You can only download it once. Note the
+        **Key ID**, and the **Team ID** (top right of the account).
+     4. **Supabase → Authentication → Sign In / Providers → Apple:**
+        - enable it;
+        - **Client IDs** = `<Services ID>,com.olliet97.trackitdown` (the
+          second lets the iPhone's native button through too);
+        - **Secret Key** = the JWT that Supabase's Apple guide generates from
+          the .p8, Key ID, Team ID and Services ID;
+        - save.
+     5. **Supabase → Authentication → URL Configuration → Redirect URLs:**
+        add `trackitdown://auth-callback`.
+     6. Then: `EXPO_PUBLIC_APPLE_SIGN_IN=true` in EAS `preview`, and an OTA.
+     - **⚠️ RENEWAL: the Secret Key expires after at most 6 months.** When it
+       does, Apple sign-in stops silently. Regenerate it from the same .p8
+       (steps 3–4) before then. A reminder is scheduled for about 2 weeks
+       ahead of the expiry; the date is recorded here once the key exists.
+     - **Accounts:** an Apple "Hide My Email" address (`…@privaterelay.appleid.com`)
+       is a different account from the same person's email-code or Google
+       sign-in. That's accepted for now. Apple sends the user's name only on
+       the FIRST sign-in; it prefills the name step then and never after.
 
 **Brand buttons (2026-10-15).** `SocialSignInButtons` follows each company's
 rules, not our monochrome theme. Google uses its official four-colour G on

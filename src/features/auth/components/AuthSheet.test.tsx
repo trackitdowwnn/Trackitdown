@@ -12,7 +12,7 @@
  */
 
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { Keyboard } from 'react-native';
+import { Keyboard, Platform } from 'react-native';
 
 import type { AuthStanding } from '../hooks/useAuthStanding';
 import { clearPendingIntent, consumePendingIntent, setPendingIntent } from '../gate/gateIntent';
@@ -62,8 +62,22 @@ jest.mock('./SocialSignInButtons', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   const { Text } = require('react-native');
   return {
-    SocialSignInButtons: ({ onGoogle, showGoogle }: { onGoogle: () => void; showGoogle?: boolean }) =>
-      showGoogle ? <Text onPress={onGoogle}>Continue with Google</Text> : null,
+    SocialSignInButtons: ({
+      onGoogle,
+      onApple,
+      showGoogle,
+      showAppleWeb,
+    }: {
+      onGoogle: () => void;
+      onApple: () => void;
+      showGoogle?: boolean;
+      showAppleWeb?: boolean;
+    }) => (
+      <>
+        {showAppleWeb ? <Text onPress={onApple}>Continue with Apple</Text> : null}
+        {showGoogle ? <Text onPress={onGoogle}>Continue with Google</Text> : null}
+      </>
+    ),
   };
 });
 jest.mock('./AuthLegalNotice', () => ({ AuthLegalNotice: () => null }));
@@ -108,12 +122,17 @@ jest.mock('../api/authApi', () => ({
   requestEmailOtp: (...a: unknown[]) => mockRequestEmailOtp(...a),
   verifyEmailOtp: (...a: unknown[]) => mockVerifyEmailOtp(...a),
   createProfile: (...a: unknown[]) => mockCreateProfile(...a),
-  signInWithApple: jest.fn(),
+  signInWithApple: () => mockSignInWithApple(),
+  signInWithAppleWeb: () => mockSignInWithAppleWeb(),
   signInWithGoogle: () => mockSignInWithGoogle(),
   isGoogleSignInConfigured: () => mockGoogleConfigured(),
+  isAppleWebSignInConfigured: () => mockAppleWebConfigured(),
 }));
 const mockSignInWithGoogle = jest.fn();
 const mockGoogleConfigured = jest.fn(() => true);
+const mockSignInWithApple = jest.fn();
+const mockSignInWithAppleWeb = jest.fn();
+const mockAppleWebConfigured = jest.fn(() => true);
 
 const mockSession = { status: 'signedIn', userId: 'u1' };
 jest.mock('../hooks/useSession', () => ({ useSession: () => mockSession }));
@@ -351,5 +370,52 @@ describe('Continue with Google (2026-10-15)', () => {
     const screen = await openSheet();
     expect(screen.queryByText('Continue with Google')).toBeNull();
     mockGoogleConfigured.mockReturnValue(true);
+  });
+});
+
+describe('Sign in with Apple — Android takes the web flow (2026-10-15)', () => {
+  async function openSheet() {
+    const screen = await render(<AuthSheet />);
+    await act(async () => {
+      setPendingIntent({ context: 'post_car', run: jest.fn() });
+    });
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    return screen;
+  }
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    mockAppleWebConfigured.mockReturnValue(true);
+  });
+
+  it('Android: "Continue with Apple" signs in through Apple’s web page, never the iOS sheet', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    mockSignInWithAppleWeb.mockResolvedValue({ cancelled: false, userId: 'u1', firstName: 'Sam' });
+    const screen = await openSheet();
+    await act(async () => {
+      fireEvent.press(screen.getByText('Continue with Apple'));
+    });
+    expect(mockSignInWithAppleWeb).toHaveBeenCalledTimes(1);
+    expect(mockSignInWithApple).not.toHaveBeenCalled();
+
+    // A new user lands on the name step with Apple's first name in it.
+    await act(async () => {
+      setMockStanding('incomplete');
+    });
+    await waitFor(() => expect(screen.getByText('What should we call you?')).toBeTruthy());
+    expect(screen.getByLabelText('First name').props.value).toBe('Sam');
+  });
+
+  it('⚠️ Android, not set up yet: no Apple button', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    mockAppleWebConfigured.mockReturnValue(false);
+    const screen = await openSheet();
+    expect(screen.queryByText('Continue with Apple')).toBeNull();
+  });
+
+  it('iOS: never the web button — the native one is Apple’s own', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    const screen = await openSheet();
+    expect(screen.queryByText('Continue with Apple')).toBeNull();
   });
 });

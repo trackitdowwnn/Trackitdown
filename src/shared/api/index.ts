@@ -5,7 +5,7 @@
  * LINKS: docs/ARCHITECTURE.md (shared/ rules).
  */
 
-export { supabase } from './supabase';
+export { resetOAuthHandshake, supabase, supabaseOAuthHandshake } from './supabase';
 export {
   POST_PHOTOS_BUCKET,
   isRemotePhoto,

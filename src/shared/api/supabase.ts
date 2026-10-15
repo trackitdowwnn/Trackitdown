@@ -50,3 +50,70 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+/**
+ * Keeps ONLY the PKCE code verifier, in the keychain, so it survives the app
+ * being killed behind the browser; anything else the handshake client would
+ * store (its copy of the session) lives in memory and is never persisted —
+ * the real session belongs to `supabase` above.
+ */
+const verifierOnlyStorage = (): SupportedStorage => {
+  const memory = new Map<string, string>();
+  const persisted = (key: string) => key.endsWith('-code-verifier');
+  return {
+    getItem: (key) =>
+      persisted(key) ? SecureStore.getItemAsync(key) : Promise.resolve(memory.get(key) ?? null),
+    setItem: (key, value) => {
+      if (persisted(key)) return SecureStore.setItemAsync(key, value);
+      memory.set(key, value);
+      return Promise.resolve();
+    },
+    removeItem: (key) => {
+      if (persisted(key)) return SecureStore.deleteItemAsync(key);
+      memory.delete(key);
+      return Promise.resolve();
+    },
+  };
+};
+
+let handshake: ReturnType<typeof createClient> | null = null;
+
+/**
+ * A second client used ONLY to start a web sign-in (Sign in with Apple on
+ * Android) and redeem its one-time code — PKCE (2026-10-15, security review).
+ *
+ * ⚠️ WHY A SECOND CLIENT. The return carries a code only THIS device can
+ * redeem (it holds the verifier made when the sign-in started), so a forged
+ * `trackitdown://auth-callback` link, an app that intercepts the scheme, or a
+ * replayed return can sign nobody in. Switching `supabase` itself to PKCE
+ * would change the flow for every sign-in path — the email code included —
+ * so the handshake lives here and hands the session to `supabase` with
+ * setSession. No auto-refresh, nothing persisted but the verifier: it never
+ * holds a session of its own past the hand-over. Created on first use.
+ */
+export function supabaseOAuthHandshake(): ReturnType<typeof createClient> {
+  handshake ??= createClient(supabaseUrl!, supabaseAnonKey!, {
+    auth: {
+      flowType: 'pkce',
+      storage: verifierOnlyStorage(),
+      // Its own key: never the main session's.
+      storageKey: 'trackitdown-oauth-handshake',
+      persistSession: true,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+  return handshake;
+}
+
+/**
+ * Drop the handshake client after each code exchange (security review,
+ * 2026-10-15). It holds a copy of the session in memory once it has redeemed
+ * a code; left alive, a later call could refresh with the same refresh token
+ * and get the app's real session revoked. NOT `signOut()` — that would revoke
+ * the real session on the server. The verifier stays in the keychain, where
+ * the next sign-in replaces it.
+ */
+export function resetOAuthHandshake(): void {
+  handshake = null;
+}
