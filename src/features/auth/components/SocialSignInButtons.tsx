@@ -30,10 +30,21 @@ export interface SocialSignInButtonsProps {
   onGoogle: () => void;
   /** Disabled while another sign-in action is in flight. */
   disabled?: boolean;
+  /** False until Google is set up in this bundle — a button that can only
+   *  fail is worse than none (2026-10-15). */
+  showGoogle?: boolean;
 }
 
-export function SocialSignInButtons({ onApple, onGoogle, disabled }: SocialSignInButtonsProps) {
+export function SocialSignInButtons({
+  onApple,
+  onGoogle,
+  disabled,
+  showGoogle = true,
+}: SocialSignInButtonsProps) {
   const styles = useThemedStyles(makeStyles);
+  const showApple = Platform.OS === 'ios';
+  // Nothing to offer (Android, Google not set up): no lonely "or" either.
+  if (!showApple && !showGoogle) return null;
 
   return (
     <View style={styles.root}>
@@ -43,7 +54,7 @@ export function SocialSignInButtons({ onApple, onGoogle, disabled }: SocialSignI
         <View style={styles.line} />
       </View>
 
-      {Platform.OS === 'ios' ? (
+      {showApple ? (
         // pointerEvents gates the native Apple button on `disabled` too — it
         // has no disabled prop — so a busy state blocks BOTH providers.
         <View
@@ -60,12 +71,14 @@ export function SocialSignInButtons({ onApple, onGoogle, disabled }: SocialSignI
         </View>
       ) : null}
 
-      <Button
-        label="Continue with Google"
-        variant="secondary"
-        onPress={onGoogle}
-        disabled={disabled}
-      />
+      {showGoogle ? (
+        <Button
+          label="Continue with Google"
+          variant="secondary"
+          onPress={onGoogle}
+          disabled={disabled}
+        />
+      ) : null}
     </View>
   );
 }
