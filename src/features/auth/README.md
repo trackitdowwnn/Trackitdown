@@ -347,6 +347,20 @@ hourly budget). Raise it in the dashboard only if beta feedback needs it.
    - **First name:** a new user from Google finds "What should we call you?"
      already filled with their Google first name. It's still theirs to change.
 3. **Apple** needs a new build (its entitlement comes from the plugin).
+   - **Android: deliberately not offered (owner, 2026-10-15).** Apple has no
+     Android sign-in kit, so it would be a web round trip. It needs a $99/yr
+     Apple Developer membership and a client-secret JWT that **expires every 6
+     months** and silently breaks sign-in when it lapses. Every tester is on
+     Android, where people pick Google. Revisit with the iOS build. A future
+     Android flow needs one idempotent return handler (Android can report
+     'dismiss' on success) and a named owner for the key rotation.
+
+**Brand buttons (2026-10-15).** `SocialSignInButtons` follows each company's
+rules, not our monochrome theme. Google uses its official four-colour G on
+white with a `#747775` border and `#1F1F1F` text, or its dark variant
+`#131314`/`#8E918F`/`#E3E3E3`, in Roboto Medium. Apple uses its native button,
+BLACK on light and WHITE on dark. The colours are pinned by
+`SocialSignInButtons.test.tsx`; don't swap them for palette tokens.
 
 ## Notes / follow-ups
 
