@@ -132,11 +132,32 @@ function aboutYouFields(now: Date) {
   };
 }
 
+/** A UK postcode, however it's spaced or cased ("m11aa", "M1 1AA"). */
+const UK_POSTCODE = /^(GIR0AA|[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2})$/;
+
+/** "m11aa" → "M1 1AA": upper case, one space before the last three — the
+ *  form a postcode is printed in, and the one sent on. */
+export function normalizePostcode(value: string): string {
+  const compact = value.replace(/\s+/g, '').toUpperCase();
+  return compact.length > 3 ? `${compact.slice(0, -3)} ${compact.slice(-3)}` : compact;
+}
+
+export function isUkPostcode(value: string): boolean {
+  return UK_POSTCODE.test(value.replace(/\s+/g, '').toUpperCase());
+}
+
 const addressFields = {
+  // FIRST on the step since 2026-10-14 (PR6): typed first, it's the field the
+  // phone's address autofill keys on, and checked first, a non-UK address is
+  // caught before three more boxes are filled.
+  postalCode: z
+    .string()
+    .trim()
+    .min(1, 'Enter your postcode')
+    .refine(isUkPostcode, 'Enter a UK postcode, like M1 1AA'),
   addressLine1: z.string().trim().min(1, 'Enter your address'),
   addressLine2: z.string().trim().optional(),
   city: z.string().trim().min(1, 'Enter your town or city'),
-  postalCode: z.string().trim().min(1, 'Enter your postcode'),
 };
 
 /** The wizard's "About you" step. */

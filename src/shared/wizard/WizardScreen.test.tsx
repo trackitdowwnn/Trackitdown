@@ -178,6 +178,46 @@ async function press(view: Awaited<ReturnType<typeof render>>, name: string | Re
   });
 }
 
+describe('a step’s eyebrow (2026-10-14)', () => {
+  it('draws it above the question — and nothing for a step without one', async () => {
+    const withEyebrow: WizardFlow<Answers> = {
+      id: 'eyebrow-test',
+      finalCtaLabel: 'Send',
+      phases: [
+        {
+          id: 'p',
+          title: 'P',
+          steps: [
+            {
+              id: 'name',
+              eyebrow: 'Step 1 of 2 · about a minute',
+              question: "What's your name?",
+              component: makeStep('name', 'Jane'),
+              schema: z.object({ name: z.string().min(1) }),
+            },
+            {
+              id: 'colour',
+              question: 'Favourite colour?',
+              component: makeStep('colour', 'Sage'),
+              schema: z.object({ colour: z.string().min(1) }),
+            },
+          ],
+        },
+      ],
+    };
+    const view = await render(
+      <WizardScreen flow={withEyebrow} onExit={jest.fn()} onComplete={jest.fn()} />,
+    );
+    expect(view.getByText('Step 1 of 2 · about a minute')).toBeTruthy();
+  });
+
+  it('the shared flows without one are untouched', async () => {
+    const { view } = await renderWizard();
+    await press(view, 'Get started');
+    expect(view.queryByText(/^Step \d of \d ·/)).toBeNull();
+  });
+});
+
 describe('WizardScreen wiring', () => {
   afterEach(() => {
     jest.restoreAllMocks();

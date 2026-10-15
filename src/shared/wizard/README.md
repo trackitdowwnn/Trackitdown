@@ -107,6 +107,11 @@ cancels the edit instead of offering to discard the flow. A step's
 `onContinue` runs again on its spur's Done, so funnel logs count a second
 `step_completed` after an edit.
 
+**`eyebrow`** on a step renders one quiet caption line ABOVE its question —
+where they are and how long is left ("Step 2 of 3 · under a minute left").
+The progress bar's own label is spoken only; this is for a short flow that
+wants it seen (payout setup, 2026-10-14). Omit it and nothing is drawn.
+
 **`footerNote`** on a step renders one quiet caption line just above its
 footer buttons (lg above, sm below, so it reads as about the button):
 reassurance beside the commitment it's about ("Only the owner sees…"). A

@@ -63,8 +63,10 @@ jest.mock('@/shared/api', () => ({
 }));
 
 const mockSubmitTokens = jest.fn();
+const mockFirstName = jest.fn();
 jest.mock('../api/payoutsApi', () => ({
   submitPayoutTokens: (...args: unknown[]) => mockSubmitTokens(...args),
+  fetchMyFirstName: () => mockFirstName(),
 }));
 
 const mockIdentityToken = jest.fn();
@@ -95,21 +97,21 @@ const waitForSubmitArm = () =>
     await new Promise((resolve) => setTimeout(resolve, 320));
   });
 
-/** Every step answered, ending on the review screen. */
-async function walkToReview(view: View) {
+/** Every step answered, ending on the last one — the bank, and the send.
+ *  (Three screens since PR6: the review folded into the bank step.) */
+async function walkToSend(view: View) {
   await type(view, 'payout-first-name', 'Ada');
   await type(view, 'payout-last-name', 'Lovelace');
   await type(view, 'payout-dob', '01041990');
   await type(view, 'payout-phone', '07700 900123');
   await next(view);
+  await type(view, 'payout-postcode', 'm11aa');
   await type(view, 'payout-address-1', '12 Bridge Street');
   await type(view, 'payout-city', 'Manchester');
-  await type(view, 'payout-postcode', 'M1 1AA');
   await next(view);
   await type(view, 'payout-sort-code', '108800');
   await type(view, 'payout-account-number', '00012345');
   await type(view, 'payout-confirm-account-number', '00012345');
-  await next(view);
 }
 
 async function send(view: View) {
@@ -134,17 +136,75 @@ beforeEach(() => {
   mockIdentityToken.mockResolvedValue('accttok_test_1');
   mockBankToken.mockResolvedValue('btok_test_1');
   mockSubmitTokens.mockResolvedValue('submitted');
+  mockFirstName.mockResolvedValue(null);
 });
 
 describe('the steps', () => {
-  it('walks about you → address → bank → check and send', async () => {
+  it('⚠️ three screens, not four: about you → address → bank, which sends', async () => {
+    // Owner: "setup feels long" (2026-10-14). The review folded into the bank
+    // step; there is no fourth screen to reach.
     const view = await render(<PayoutSetupScreen />);
     expect(view.getByText('Who are we paying?')).toBeTruthy();
 
-    await walkToReview(view);
+    await walkToSend(view);
 
+    expect(view.getByText('Where should your reward go?')).toBeTruthy();
     expect(view.getByText('Check and send')).toBeTruthy();
     expect(view.getByText('Send my details')).toBeTruthy();
+    expect(view.queryByText('Next')).toBeNull();
+  });
+
+  it('says where they are and how long is left, on every step', async () => {
+    const view = await render(<PayoutSetupScreen />);
+    expect(view.getByText('Step 1 of 3 · about a minute')).toBeTruthy();
+    await type(view, 'payout-first-name', 'Ada');
+    await type(view, 'payout-last-name', 'Lovelace');
+    await type(view, 'payout-dob', '01041990');
+    await type(view, 'payout-phone', '07700 900123');
+    await next(view);
+    expect(view.getByText('Step 2 of 3 · under a minute left')).toBeTruthy();
+  });
+
+  it('starts the first name from their profile — a suggestion they can change', async () => {
+    mockFirstName.mockResolvedValue('Ada');
+    const view = await render(<PayoutSetupScreen />);
+    await waitFor(() => expect(view.getByTestId('payout-first-name').props.value).toBe('Ada'));
+
+    await type(view, 'payout-first-name', 'Augusta');
+    expect(view.getByTestId('payout-first-name').props.value).toBe('Augusta');
+  });
+
+  it('⚠️ never puts the suggestion over what they already typed', async () => {
+    let resolve: (name: string) => void = () => {};
+    mockFirstName.mockReturnValue(new Promise<string>((r) => (resolve = r)));
+    const view = await render(<PayoutSetupScreen />);
+    await type(view, 'payout-first-name', 'Augusta');
+    await act(async () => {
+      resolve('Ada');
+    });
+    expect(view.getByTestId('payout-first-name').props.value).toBe('Augusta');
+  });
+
+  it('asks for the postcode first, in capitals, and only a UK one', async () => {
+    const view = await render(<PayoutSetupScreen />);
+    await type(view, 'payout-first-name', 'Ada');
+    await type(view, 'payout-last-name', 'Lovelace');
+    await type(view, 'payout-dob', '01041990');
+    await type(view, 'payout-phone', '07700 900123');
+    await next(view);
+
+    // First in the step, as the phone's autofill expects.
+    const inputs = view.getAllByTestId(/^payout-(postcode|address-1|address-2|city)$/);
+    expect(inputs[0]?.props.testID).toBe('payout-postcode');
+
+    await type(view, 'payout-postcode', 'sw1a1aa');
+    expect(view.getByTestId('payout-postcode').props.value).toBe('SW1A1AA');
+
+    await type(view, 'payout-postcode', '12345');
+    await act(async () => {
+      fireEvent(view.getByTestId('payout-postcode'), 'blur');
+    });
+    expect(view.getByText('Enter a UK postcode, like M1 1AA')).toBeTruthy();
   });
 
   it('stays on a step until it is answered', async () => {
@@ -198,12 +258,14 @@ describe('the steps', () => {
     await type(view, 'payout-account-number', '00012345');
     await type(view, 'payout-confirm-account-number', '00012354');
     // ⚠️ SAID WHILE THE BOX IS STILL FOCUSED (code review, 2026-10-13): a tap
-    // on the disabled Next blurs nothing, so waiting for a blur left the
+    // on the disabled button blurs nothing, so waiting for a blur left the
     // refusal unexplained. Full length counts as finished.
     expect(view.getByText('These don’t match — check both')).toBeTruthy();
-    await next(view);
+    await send(view);
 
-    expect(view.queryByText('Check and send')).toBeNull();
+    // Nothing leaves while they don't match.
+    expect(mockIdentityToken).not.toHaveBeenCalled();
+    expect(mockSubmitTokens).not.toHaveBeenCalled();
   });
 
   it('…and says an impossible date the moment it is complete', async () => {
@@ -213,20 +275,43 @@ describe('the steps', () => {
   });
 });
 
-describe('the review', () => {
-  it('confirms the account by its last four, never the whole number', async () => {
+describe('check and send — on the bank step (PR6)', () => {
+  it('checks the other two steps in one place', async () => {
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
 
-    expect(view.getByText('Sort code 10-88-00 · account ending 2345')).toBeTruthy();
-    expect(view.queryByText(/00012345/)).toBeNull();
+    expect(view.getByText('Ada Lovelace · born 01/04/1990 · 07700 900123')).toBeTruthy();
+    expect(view.getByText('12 Bridge Street, Manchester, M11AA')).toBeTruthy();
   });
 
-  it('shows the terms before the button — "Send" is the acceptance', async () => {
+  it('Edit goes to that step, and "Done" comes straight back to send', async () => {
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
 
-    expect(view.getByTestId('payout-terms')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(view.getByTestId('payout-summary-address-edit'));
+    });
+    expect(view.getByText('Where do you live?')).toBeTruthy();
+    await type(view, 'payout-city', 'Salford');
+    await act(async () => {
+      fireEvent.press(view.getByText('Done'));
+    });
+
+    expect(view.getByText('Where should your reward go?')).toBeTruthy();
+    expect(view.getByText('12 Bridge Street, Salford, M11AA')).toBeTruthy();
+    // The bank they'd typed is still there.
+    expect(view.getByTestId('payout-sort-code').props.value).toBe('10-88-00');
+  });
+
+  it('⚠️ shows the terms FIRST on the step that sends — "Send" is the acceptance', async () => {
+    // The identity token attests the terms were SHOWN. The send button is
+    // pinned, so the terms open the step (on screen on arrival, with it),
+    // never below fields they could be scrolled past.
+    const view = await render(<PayoutSetupScreen />);
+    await walkToSend(view);
+
+    const order = view.getAllByTestId(/^payout-(terms|sort-code)$/).map((n) => n.props.testID);
+    expect(order).toEqual(['payout-terms', 'payout-sort-code']);
     expect(view.getByText('Stripe Connected Account Agreement')).toBeTruthy();
     // Saying "done" and then showing an ID check would be a bait and switch.
     expect(view.getByText(/may be asked to verify your identity/i)).toBeTruthy();
@@ -244,7 +329,7 @@ describe('the review', () => {
         .filter((text) => text !== 'Stripe Connected Account Agreement');
 
     expect(named()).toEqual([]);
-    await walkToReview(view);
+    await walkToSend(view);
     expect(named()).toEqual([]);
     // Not vacuous: the query does see the one name allowed to stay.
     expect(view.queryAllByText(/Stripe/).length).toBeGreaterThan(0);
@@ -254,7 +339,7 @@ describe('the review', () => {
     // "Never see" is the claim a regulator would test hardest, and it was
     // false for the server-side route this app used to take.
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
 
     expect(view.getByText(/never store them/i)).toBeTruthy();
     expect(view.queryByText(/never see/i)).toBeNull();
@@ -264,7 +349,7 @@ describe('the review', () => {
 describe('the send', () => {
   it('⚠️ reaches Stripe only on "Send my details" — the prefill window', async () => {
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
 
     expect(mockIdentityToken).not.toHaveBeenCalled();
     expect(mockBankToken).not.toHaveBeenCalled();
@@ -273,7 +358,7 @@ describe('the send', () => {
 
   it('tokenises on the phone and sends only the two ids', async () => {
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
 
     await waitFor(() => expect(mockSubmitTokens).toHaveBeenCalled());
@@ -299,7 +384,7 @@ describe('the send', () => {
 
   it('goes back to Payouts having left "submitted" for it', async () => {
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
 
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
@@ -313,14 +398,14 @@ describe('the send', () => {
       new PaymentError('Stripe couldn’t accept those details.', 'DETAILS_REJECTED'),
     );
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
 
     await waitFor(() => expect(view.getByText(/Those details couldn’t be accepted/)).toBeTruthy());
     expect(view.getByText(/go back for another way to set up/)).toBeTruthy();
     expect(mockBack).not.toHaveBeenCalled();
     expect(mockSubmitTokens).not.toHaveBeenCalled();
-    expect(view.getByText('Sort code 10-88-00 · account ending 2345')).toBeTruthy();
+    expect(view.getByTestId('payout-account-number').props.value).toBe('00012345');
     // …and should they give up, Payouts offers Stripe's own route.
     expect(takePayoutSetupOutcome('user-1')).toBe('rejected');
   });
@@ -330,7 +415,7 @@ describe('the send', () => {
       .mockRejectedValueOnce(new PaymentError('No.', 'DETAILS_REJECTED'))
       .mockResolvedValue('accttok_test_2');
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
     await waitFor(() => expect(view.getByText(/couldn’t be accepted/)).toBeTruthy());
 
@@ -344,7 +429,7 @@ describe('the send', () => {
     // would be a promise about money that isn't true.
     mockSubmitTokens.mockResolvedValue('already_exists');
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
 
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
@@ -357,7 +442,7 @@ describe('the send', () => {
     // With the edge swipe off, a bare back() here would be no way out at all.
     mockCanGoBack.mockReturnValue(false);
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/payouts'));
@@ -375,7 +460,7 @@ describe('the send', () => {
   it('an unreachable session is a retry, not "log in again"', async () => {
     mockGetUser.mockResolvedValue({ data: { user: null }, error: new Error('offline') });
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
 
     await waitFor(() =>
@@ -388,7 +473,7 @@ describe('the send', () => {
   it('⚠️ leaves its outcome for THIS user only', async () => {
     // Someone else signing in before Payouts next looks must not inherit it.
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
     await waitFor(() => expect(mockBack).toHaveBeenCalled());
 
@@ -400,7 +485,7 @@ describe('the send', () => {
   it('any other failure stays put, answers intact, with a message to retry on', async () => {
     mockSubmitTokens.mockRejectedValue(new Error('network'));
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
 
     await waitFor(() =>
@@ -408,8 +493,8 @@ describe('the send', () => {
     );
     expect(mockBack).not.toHaveBeenCalled();
     expect(takePayoutSetupOutcome('user-1')).toBeNull();
-    // Still on review, with what they typed.
-    expect(view.getByText('Sort code 10-88-00 · account ending 2345')).toBeTruthy();
+    // Still on the last step, with what they typed.
+    expect(view.getByTestId('payout-sort-code').props.value).toBe('10-88-00');
   });
 
   it('⚠️ logs nothing they typed when a send fails', async () => {
@@ -420,7 +505,7 @@ describe('the send', () => {
       new PaymentError('Something went wrong.', 'STRIPE_ERROR'),
     );
     const view = await render(<PayoutSetupScreen />);
-    await walkToReview(view);
+    await walkToSend(view);
     await send(view);
     await waitFor(() => expect(view.getByText('Something went wrong.')).toBeTruthy());
 

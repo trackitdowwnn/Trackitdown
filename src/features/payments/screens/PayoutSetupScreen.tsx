@@ -48,6 +48,7 @@ import { createBankToken, createIdentityToken } from '../api/stripeTokens';
 import {
   buildPayoutDetailsSchema,
   digitsOnly,
+  normalizePostcode,
   parseUkDate,
   toUkE164,
 } from '../components/payoutDetailsSchema';
@@ -108,8 +109,9 @@ export function PayoutSetupScreen() {
    *   button and keeps every answer — for anything short of a send that landed.
    */
   const send = async (answers: Partial<PayoutSetupAnswers>) => {
-    // The review gate already re-checked every step; this is the whole-form
-    // rule set once more (the account numbers matching) before anything leaves.
+    // ⚠️ THE ONLY WHOLE-FORM CHECK since the review screen folded into the
+    // bank step (PR6): the last step's Next gates only its own fields. Every
+    // rule, once more, before anything leaves.
     const parsed = buildPayoutDetailsSchema().safeParse({ ...EMPTY_PAYOUT_SETUP, ...answers });
     const date = parsed.success ? parseUkDate(parsed.data.dob) : null;
     if (!parsed.success || !date) {
@@ -126,7 +128,8 @@ export function PayoutSetupScreen() {
       addressLine1: parsed.data.addressLine1,
       addressLine2: parsed.data.addressLine2 || undefined,
       city: parsed.data.city,
-      postalCode: parsed.data.postalCode,
+      // "m11aa" as typed → "M1 1AA", as printed.
+      postalCode: normalizePostcode(parsed.data.postalCode),
       sortCode: digitsOnly(parsed.data.sortCode),
       accountNumber: digitsOnly(parsed.data.accountNumber),
     };

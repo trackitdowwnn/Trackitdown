@@ -17,6 +17,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { PaymentError } from '@/shared/lib/functionError';
 import {
   SENT_SHOWN_DAYS,
+  fetchMyFirstName,
   fetchMyLatestPayout,
   fetchMyPayoutAccount,
   fetchMyPendingCredit,
@@ -31,8 +32,12 @@ const mockMaybeSingle = jest.fn();
 const mockEq = jest.fn(() => ({ maybeSingle: mockMaybeSingle }));
 const mockSelect = jest.fn(() => ({ eq: mockEq }));
 const mockFrom = jest.fn(() => ({ select: mockSelect }));
+const mockGetSession = jest.fn();
 jest.mock('@/shared/api', () => ({
   supabase: {
+    auth: {
+      getSession: () => mockGetSession(),
+    },
     functions: {
       invoke: (...args: unknown[]) => mockInvoke(...args),
     },
@@ -422,5 +427,39 @@ describe('fetchMyPendingCredit', () => {
   it('⚠️ a FAILED read throws — never null, which would mean "nothing owed" (2026-10-14)', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
     await expect(fetchMyPendingCredit()).rejects.toBeInstanceOf(PaymentError);
+  });
+});
+
+describe('fetchMyFirstName (setup prefill, PR6)', () => {
+  const signedIn = { data: { session: { user: { id: 'user-1' } } } };
+
+  it('reads MY first name — my own row, nothing else', async () => {
+    mockGetSession.mockResolvedValue(signedIn);
+    mockMaybeSingle.mockResolvedValue({ data: { first_name: ' Ada ' }, error: null });
+
+    await expect(fetchMyFirstName()).resolves.toBe('Ada');
+    expect(mockFrom).toHaveBeenCalledWith('profiles');
+    expect(mockSelect).toHaveBeenCalledWith('first_name');
+    expect(mockEq).toHaveBeenCalledWith('id', 'user-1');
+  });
+
+  it('no session, no read — null', async () => {
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+    await expect(fetchMyFirstName()).resolves.toBeNull();
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it('a failed read is null, never a reason to fail the step — and logs no name', async () => {
+    mockGetSession.mockResolvedValue(signedIn);
+    mockMaybeSingle.mockResolvedValue({ data: null, error: { code: 'PGRST301' } });
+
+    await expect(fetchMyFirstName()).resolves.toBeNull();
+    expect(JSON.stringify(mockLogCalls)).not.toContain('Ada');
+  });
+
+  it('an empty name is no suggestion at all', async () => {
+    mockGetSession.mockResolvedValue(signedIn);
+    mockMaybeSingle.mockResolvedValue({ data: { first_name: '  ' }, error: null });
+    await expect(fetchMyFirstName()).resolves.toBeNull();
   });
 });

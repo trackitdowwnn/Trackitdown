@@ -86,6 +86,13 @@ export interface WizardStep<TAnswers> {
   question: string | ((answers: Partial<TAnswers>) => string);
   /** Optional supporting sentence under the question. */
   helper?: string;
+  /**
+   * One quiet line ABOVE the question — where they are and how long is left
+   * ("Step 2 of 3 · under a minute left"). The progress bar's own label is
+   * spoken only; this is for a short flow that wants it seen (payout setup,
+   * 2026-10-14). Omit it and nothing is drawn.
+   */
+  eyebrow?: string;
   component: ComponentType<WizardStepProps<TAnswers>>;
   /**
    * Validates this step's slice of the answers; Next is disabled until

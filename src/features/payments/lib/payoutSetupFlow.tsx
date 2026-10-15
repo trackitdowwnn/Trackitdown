@@ -1,18 +1,20 @@
 /**
- * WHAT:  The payout-setup wizard — about you, your address, where to pay you,
- *        then check and send — on the shared wizard framework.
+ * WHAT:  The payout-setup wizard — about you, your address, then where to pay
+ *        you and send — on the shared wizard framework.
  * WHY:   Replaces PayoutDetailsForm's single eleven-field page (2026-10-13,
  *        owner request: no progress, no sense of how far along). A flow is
- *        data; the framework draws the progress bar, gates each Next on the
- *        step's schema, and ends on a review screen with Edit links.
+ *        data; the framework draws the progress bar and gates each Next on the
+ *        step's schema.
  *
- *        ⚠️ THREE PHASES OF ONE STEP, not one phase of three. The progress bar
- *        draws one segment per phase, so this gives three segments that fill
- *        as the spotter goes — the progress they asked for — and the review
- *        screen groups the answers under the same three names.
+ *        ⚠️ THREE SCREENS, NOT FOUR (2026-10-14, PR6; owner: "setup feels
+ *        long"). The review screen folded into the bank step: it opens with
+ *        the terms and ends with a compact "Check and send" of the other two
+ *        steps, each with an Edit that comes straight back. Each step says
+ *        where they are and how long is left ("Step 2 of 3 · under a minute
+ *        left") — the bar alone said neither in words.
  *
  *        ⚠️ THE PREFILL WINDOW. Nothing in this flow talks to Stripe until the
- *        final "Send to Stripe" — no step has an `onContinue`. Minting an
+ *        final "Send my details" — no step has an `onContinue`. Minting an
  *        Account Session (or link) before these details reach Stripe would
  *        shut, for good, the window in which we may submit them at all
  *        (payments/README.md). The host submits; the flow only collects.
@@ -22,27 +24,13 @@
 
 import type { WizardFlow } from '@/shared/wizard';
 
-import {
-  AboutYouStep,
-  AddressStep,
-  BankStep,
-  PayoutTermsNotice,
-} from '../components/payoutSetupSteps';
+import { AboutYouStep, AddressStep, BankStep } from '../components/payoutSetupSteps';
 import {
   buildAboutYouSchema,
   buildAddressSchema,
   buildBankDetailsSchema,
-  digitsOnly,
 } from '../components/payoutDetailsSchema';
 import type { PayoutSetupAnswers } from './payoutSetupAnswers';
-
-/** "Sort code 12-34-56 · account ending 5678" — the last four, as a bank
- *  statement shows it, so the review confirms the account without repeating
- *  the whole number on screen. */
-export function describeBank(answers: Partial<PayoutSetupAnswers>): string {
-  const account = digitsOnly(answers.accountNumber ?? '');
-  return `Sort code ${answers.sortCode ?? ''} · account ending ${account.slice(-4)}`;
-}
 
 /** `now` for the age rule, injected for the tests (see payoutDetailsSchema). */
 export function buildPayoutSetupFlow(now: Date = new Date()): WizardFlow<PayoutSetupAnswers> {
@@ -55,16 +43,11 @@ export function buildPayoutSetupFlow(now: Date = new Date()): WizardFlow<PayoutS
         steps: [
           {
             id: 'about-you',
+            eyebrow: 'Step 1 of 3 · about a minute',
             question: 'Who are we paying?',
             helper: 'As it appears on your bank account.',
             component: AboutYouStep,
             schema: buildAboutYouSchema(now),
-            reviewLabel: 'Name and date of birth',
-            reviewValue: (answers) => {
-              const name = `${answers.firstName ?? ''} ${answers.lastName ?? ''}`.trim();
-              const phone = answers.phone?.trim();
-              return [name, `Born ${answers.dob ?? ''}`, phone].filter(Boolean).join('\n');
-            },
           },
         ],
       },
@@ -74,16 +57,11 @@ export function buildPayoutSetupFlow(now: Date = new Date()): WizardFlow<PayoutS
         steps: [
           {
             id: 'address',
+            eyebrow: 'Step 2 of 3 · under a minute left',
             question: 'Where do you live?',
             helper: 'It’s checked against your name — nothing is posted to you.',
             component: AddressStep,
             schema: buildAddressSchema(),
-            reviewLabel: 'Home address',
-            reviewValue: (answers) =>
-              [answers.addressLine1, answers.addressLine2, answers.city, answers.postalCode]
-                .map((part) => part?.trim())
-                .filter(Boolean)
-                .join(', '),
           },
         ],
       },
@@ -93,29 +71,18 @@ export function buildPayoutSetupFlow(now: Date = new Date()): WizardFlow<PayoutS
         steps: [
           {
             id: 'bank',
+            eyebrow: 'Step 3 of 3 · last step',
             question: 'Where should your reward go?',
             helper: 'A UK bank account in your name.',
             component: BankStep,
             schema: buildBankDetailsSchema(),
-            reviewLabel: 'Bank account',
-            reviewValue: describeBank,
           },
         ],
       },
     ],
-    review: {
-      title: 'Check and send',
-      // ⚠️ THE HEADER, NOT THE FOOTER (security review, 2026-10-13). The send
-      // button is pinned and never scrolls; a footer notice sat below three
-      // answer groups, so on a small phone or at large text "Send to Stripe"
-      // could be pressed without the terms ever being on screen — and the
-      // identity token attests that they were SHOWN. Directly under the title
-      // they are on screen whenever the button is.
-      header: () => <PayoutTermsNotice />,
-    },
     // Says what happens, never a vague "Finish". Not "Send to Stripe": the
     // owner wants no payment provider named in the app's own words
-    // (2026-10-13); the terms on this screen name the agreement, which is the
+    // (2026-10-13); the terms on this step name the agreement, which is the
     // one place the law needs it.
     finalCtaLabel: 'Send my details',
   };
