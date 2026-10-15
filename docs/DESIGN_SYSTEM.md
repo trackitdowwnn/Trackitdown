@@ -345,7 +345,11 @@ are build output.
   beside a primary: the safety sheet's "Call 999"), `subtle`. Height 52,
   radius `md`, full-width by default. An optional leading Feather `icon`
   takes the label's colour. **BottomSheet** closes on swipe, scrim tap and
-  Android Back (Back closes the sheet only, never the screen under it).
+  Android Back (Back closes the sheet only, never the screen under it). It
+  also has a **visible close (X)**, top right, level with the title
+  (2026-10-15, NN/g: none of the other three can be seen). It's a 44pt target
+  labelled "Close", on the same close path, so `onDismiss` runs exactly as on
+  a swipe. `hideClose` opts out; no sheet uses it today.
 - **Card** — `surface`, radius `lg`, 16px padding, and **flat: a
   `hairlineWidth` border, no shadow**. Use `cardSurface(palette)` from
   `@/shared/theme` rather than hand-rolling the box.
