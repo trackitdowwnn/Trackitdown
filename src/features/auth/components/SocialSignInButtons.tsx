@@ -15,9 +15,12 @@
  *            "G", unmodified, on a white button with a #747775 border and
  *            #1F1F1F text — or the dark variant (#131314 / #8E918F / #E3E3E3)
  *            in dark mode — in Roboto Medium (Android's system font).
- *          • Apple (HIG): Apple's own native button, black in light mode and
- *            white in dark mode. iOS only: Apple has no Android sign-in kit,
- *            and Apple on Android waits for the iOS build (owner, 2026-10-15).
+ *          • Apple (HIG): Apple's own native button on iOS, black in light
+ *            mode and white in dark mode. On Android — which has no native
+ *            Apple button, since Apple has no Android kit — our own button
+ *            drawn to Apple's custom-button rules (logo + title in one ink,
+ *            on black or white), switched off until the Apple Developer setup
+ *            is done (owner asked for it, 2026-10-15).
  * LINKS: src/features/auth/components/AuthSheet.tsx (owner);
  *        src/features/auth/api/authApi.ts (signInWithApple/Google);
  *        src/features/auth/README.md (provider setup);
@@ -47,6 +50,9 @@ export interface SocialSignInButtonsProps {
   /** False until Google is set up in this bundle — a button that can only
    *  fail is worse than none (2026-10-15). */
   showGoogle?: boolean;
+  /** Android's Apple button (Apple's web flow) — false until the Apple
+   *  Developer + Supabase setup is done. iOS always has the native one. */
+  showAppleWeb?: boolean;
 }
 
 export function SocialSignInButtons({
@@ -54,12 +60,14 @@ export function SocialSignInButtons({
   onGoogle,
   disabled,
   showGoogle = true,
+  showAppleWeb = false,
 }: SocialSignInButtonsProps) {
   const styles = useThemedStyles(makeStyles);
   const { scheme } = useThemeControls();
   const showApple = Platform.OS === 'ios';
-  // Nothing to offer (Android, Google not set up): no lonely "or" either.
-  if (!showApple && !showGoogle) return null;
+  const showAppleOnAndroid = Platform.OS === 'android' && showAppleWeb;
+  // Nothing to offer: no lonely "or" either.
+  if (!showApple && !showAppleOnAndroid && !showGoogle) return null;
 
   return (
     <View style={styles.root}>
@@ -89,6 +97,12 @@ export function SocialSignInButtons({
             onPress={onApple}
           />
         </View>
+      ) : null}
+
+      {/* Apple first, as on iOS — its guidelines want it at least as
+          prominent as any other sign-in. */}
+      {showAppleOnAndroid ? (
+        <AppleSignInButton onPress={onApple} disabled={disabled} dark={scheme === 'dark'} />
       ) : null}
 
       {showGoogle ? (
@@ -175,6 +189,76 @@ function GoogleLogo() {
 /** Google's guidelines: an 18–20dp mark. */
 const GOOGLE_LOGO = 20;
 
+/**
+ * Apple's colours for a custom "Continue with Apple" button (HIG): black with
+ * a white logo on a light background, white with a black logo on a dark one.
+ * Brand values, deliberately not palette tokens.
+ */
+const APPLE = {
+  light: { fill: '#000000', ink: '#FFFFFF' },
+  dark: { fill: '#FFFFFF', ink: '#000000' },
+} as const;
+
+/**
+ * "Continue with Apple" on ANDROID — Apple's web sign-in, which has no native
+ * button there, drawn to Apple's HIG for custom buttons: the Apple logo and
+ * the title in one colour, on black or white, at the same size as Google's.
+ */
+function AppleSignInButton({
+  onPress,
+  disabled,
+  dark,
+}: {
+  onPress: () => void;
+  disabled?: boolean;
+  dark: boolean;
+}) {
+  const styles = useThemedStyles(makeStyles);
+  const colours = dark ? APPLE.dark : APPLE.light;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel="Continue with Apple"
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      testID="apple-sign-in"
+      style={({ pressed }) => [
+        styles.brandButton,
+        styles.appleButton,
+        { backgroundColor: colours.fill },
+        pressed && !disabled ? styles.pressed : null,
+        disabled ? styles.disabled : null,
+      ]}
+    >
+      <AppleLogo colour={colours.ink} />
+      <Text style={[styles.appleLabel, { color: colours.ink }]}>Continue with Apple</Text>
+    </Pressable>
+  );
+}
+
+/** The Apple logo, in the button's ink. */
+function AppleLogo({ colour }: { colour: string }) {
+  return (
+    <Svg
+      width={APPLE_LOGO * (814 / 1000)}
+      height={APPLE_LOGO}
+      viewBox="0 0 814 1000"
+      testID="apple-logo"
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
+      <Path
+        fill={colour}
+        d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76.5 0-103.7 40.8-165.9 40.8s-105.6-57-155.5-127C46.7 790.7 0 663 0 541.8c0-194.4 126.4-297.5 250.8-297.5 66.1 0 121.2 43.4 162.7 43.4 39.5 0 101.1-46 176.3-46 28.5 0 130.9 2.6 198.3 99.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"
+      />
+    </Svg>
+  );
+}
+
+/** The Apple mark's height — level with Google's G. */
+const APPLE_LOGO = 20;
+
 const makeStyles = (c: Palette) =>
   StyleSheet.create({
     root: {
@@ -210,6 +294,19 @@ const makeStyles = (c: Palette) =>
     },
     // Google asks for Roboto Medium: Android's system sans at medium weight.
     googleLabel: {
+      fontSize: typography.body.fontSize,
+      fontFamily: Platform.OS === 'android' ? 'sans-serif-medium' : undefined,
+      fontWeight: Platform.OS === 'android' ? undefined : '500',
+    },
+    appleButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      borderRadius: radii.md,
+      paddingHorizontal: spacing.md,
+    },
+    appleLabel: {
       fontSize: typography.body.fontSize,
       fontFamily: Platform.OS === 'android' ? 'sans-serif-medium' : undefined,
       fontWeight: Platform.OS === 'android' ? undefined : '500',

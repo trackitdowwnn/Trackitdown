@@ -129,3 +129,55 @@ describe('the Supabase client', () => {
     expect(() => loadWith({ url: '', key: KEY })).toThrow(/Missing Supabase config/);
   });
 });
+
+describe('the PKCE handshake client (Sign in with Apple on Android, 2026-10-15)', () => {
+  type AuthOptions = {
+    flowType: string;
+    storageKey: string;
+    autoRefreshToken: boolean;
+    detectSessionInUrl: boolean;
+    storage: {
+      getItem: (k: string) => Promise<string | null>;
+      setItem: (k: string, v: string) => Promise<void>;
+      removeItem: (k: string) => Promise<void>;
+    };
+  };
+  const handshakeOptions = () =>
+    (mockCreateClient.mock.calls[1]?.[2] as { auth: AuthOptions }).auth;
+
+  it('is made only when first used — never at boot', () => {
+    loadWith({ url: URL, key: KEY });
+    expect(mockCreateClient).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ is PKCE, with its own storage key — never the app session’s — and no refresh', () => {
+    const mod = loadWith({ url: URL, key: KEY });
+    mod.supabaseOAuthHandshake();
+    mod.supabaseOAuthHandshake();
+    expect(mockCreateClient).toHaveBeenCalledTimes(2); // made once
+    expect(handshakeOptions()).toMatchObject({
+      flowType: 'pkce',
+      storageKey: 'trackitdown-oauth-handshake',
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    });
+    // The main client is untouched: no flowType, so not PKCE.
+    expect((mockCreateClient.mock.calls[0]?.[2] as { auth: { flowType?: string } }).auth.flowType)
+      .toBeUndefined();
+  });
+
+  it('⚠️ keeps only the verifier in the keychain; its session copy never leaves memory', async () => {
+    const mod = loadWith({ url: URL, key: KEY });
+    mod.supabaseOAuthHandshake();
+    const { storage } = handshakeOptions();
+
+    await storage.setItem('trackitdown-oauth-handshake-code-verifier', 'v');
+    expect(mockSetItemAsync).toHaveBeenCalledWith('trackitdown-oauth-handshake-code-verifier', 'v');
+
+    await storage.setItem('trackitdown-oauth-handshake', '{"access_token":"t"}');
+    expect(mockSetItemAsync).toHaveBeenCalledTimes(1); // the session was NOT persisted
+    await expect(storage.getItem('trackitdown-oauth-handshake')).resolves.toBe('{"access_token":"t"}');
+    await storage.removeItem('trackitdown-oauth-handshake');
+    await expect(storage.getItem('trackitdown-oauth-handshake')).resolves.toBeNull();
+  });
+});

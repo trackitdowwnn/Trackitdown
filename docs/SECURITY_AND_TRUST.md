@@ -359,6 +359,31 @@ commenting standards.
   (access + refresh) are stored in the OS keychain via expo-secure-store,
   encrypted at rest — never in plaintext AsyncStorage. Emails are personal data:
   never logged in full (redactEmail).
+- **Sign in with Apple on Android is a web round trip, done with PKCE
+  (2026-10-15).** Apple has no Android kit, so Supabase OAuth sends the user
+  back on `trackitdown://auth-callback?code=…`.
+  - **Why not tokens in the URL:** the first draft carried the tokens
+    themselves (the implicit flow), and the security review found three ways
+    in:
+    - **Login forgery:** any web page or QR code could open such a link with
+      an attacker's tokens and sign the victim into the attacker's account.
+    - **Interception:** an app claiming the same scheme could take the
+      tokens.
+    - **Replay:** Android re-delivers launch links.
+  - **How it works now:** the URL carries only a one-time code. Only this
+    device can redeem it, because it holds the verifier made when the
+    sign-in started (`supabaseOAuthHandshake`, a separate PKCE-only client
+    that keeps nothing but that verifier in the keychain). Redeeming spends
+    both.
+  - **What's refused:** token URLs are ignored outright, and a return
+    arriving while someone is signed in changes nothing.
+  - **Why a separate client:** the app's own client is untouched, so the
+    email-code sign-in is unaffected.
+  - **Handling:** the session goes to `supabase.auth.setSession` (then the
+    keychain, as above). It's never logged, and each return is taken once
+    (`oauthReturn.ts`).
+  - **Apple's client secret expires after at most 6 months;** renewal is in
+    the auth README.
 - Spotter GPS is captured **only** at the moment of reporting a sighting —
   no background location tracking anywhere in the app.
 - **In-memory location speed caches** (2026-10-08, #142): recent reverse-geocode

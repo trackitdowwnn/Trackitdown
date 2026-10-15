@@ -21,10 +21,24 @@
 // crash the WHOLE app at startup (this file is on the AuthGate → _layout path)
 // on any binary without them (Expo Go, or a build predating them). Email OTP
 // must always boot; social fails gracefully only when its button is tapped.
+// expo-web-browser (Apple's web flow on Android) is a core Expo module, in
+// Expo Go and every build — so it is imported normally.
 
-import { supabase } from '@/shared/api';
+import * as WebBrowser from 'expo-web-browser';
+import { Linking } from 'react-native';
+
+import { supabase, supabaseOAuthHandshake } from '@/shared/api';
 import { createLogger } from '@/shared/lib';
 import { redactEmail } from '@/shared/lib/logger';
+
+import {
+  OAUTH_REDIRECT,
+  completeOAuthReturn,
+  latestOAuthReturn,
+  oauthReturnsHandled,
+  parseOAuthReturn,
+  type OAuthOutcome,
+} from '../lib/oauthReturn';
 
 const log = createLogger('auth');
 
@@ -162,6 +176,75 @@ export async function signInWithApple(): Promise<SocialResult> {
     if (err instanceof AuthActionError) throw err;
     log.error('social_signin_failed', { provider: 'apple' });
     throw new AuthActionError(SOCIAL_FAILED, 'SOCIAL_FAILED');
+  }
+}
+
+/**
+ * Whether Sign in with Apple on Android is switched on in this bundle — off
+ * until the Apple Developer setup + Supabase's Apple provider are done
+ * (README). Like Google's gate: never a button that can only fail.
+ */
+export function isAppleWebSignInConfigured(): boolean {
+  return process.env.EXPO_PUBLIC_APPLE_SIGN_IN === 'true';
+}
+
+/** How long a 'dismiss' waits for the return to land by another path. */
+const RETURN_GRACE_MS = 1500;
+const RETURN_POLL_MS = 100;
+
+/**
+ * Sign in with Apple on ANDROID (2026-10-15): Apple has no Android sign-in
+ * kit, so it is Supabase's web flow — Apple's page in an in-app browser, then
+ * back on `trackitdown://auth-callback` with the session's tokens.
+ *
+ * ⚠️ A 'dismiss' IS NOT A CANCEL ON ANDROID. The browser often reports a
+ * real success that way, so the Linking listener (subscribed BEFORE the
+ * browser opens) and +native-intent both feed the same idempotent
+ * completeOAuthReturn, and a 'dismiss' waits a beat for either to land
+ * before calling it a cancel. Cancel stays quiet; a failure is SOCIAL_FAILED.
+ */
+export async function signInWithAppleWeb(): Promise<SocialResult> {
+  // On the PKCE handshake client: it makes (and keeps) the verifier that alone
+  // can redeem the code Apple's return brings back — see oauthReturn.ts.
+  const { data, error } = await supabaseOAuthHandshake().auth.signInWithOAuth({
+    provider: 'apple',
+    options: { redirectTo: OAUTH_REDIRECT, skipBrowserRedirect: true, scopes: 'name email' },
+  });
+  if (error || !data?.url) {
+    log.error('social_signin_failed', { provider: 'apple', via: 'web', stage: 'start', code: error?.code });
+    throw new AuthActionError(SOCIAL_FAILED, 'SOCIAL_FAILED');
+  }
+
+  const before = oauthReturnsHandled();
+  let fromLink: Promise<OAuthOutcome> | null = null;
+  const subscription = Linking.addEventListener('url', ({ url }) => {
+    if (parseOAuthReturn(url)) fromLink = completeOAuthReturn(url);
+  });
+  try {
+    let outcome: OAuthOutcome = null;
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(data.url, OAUTH_REDIRECT);
+      if (result.type === 'success') outcome = await completeOAuthReturn(result.url);
+    } catch {
+      log.error('social_signin_failed', { provider: 'apple', via: 'web', stage: 'browser' });
+      throw new AuthActionError(SOCIAL_FAILED, 'SOCIAL_FAILED');
+    }
+    // Landed another way — the Linking event, or +native-intent.
+    for (let waited = 0; !outcome && waited <= RETURN_GRACE_MS; waited += RETURN_POLL_MS) {
+      const other: Promise<OAuthOutcome> | null =
+        fromLink ?? (oauthReturnsHandled() > before ? latestOAuthReturn() : null);
+      if (other) {
+        outcome = await other;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, RETURN_POLL_MS));
+    }
+
+    if (!outcome || ('error' in outcome && outcome.cancelled)) return { cancelled: true };
+    if ('error' in outcome) throw new AuthActionError(SOCIAL_FAILED, 'SOCIAL_FAILED');
+    return { cancelled: false, userId: outcome.userId, firstName: outcome.firstName };
+  } finally {
+    subscription.remove();
   }
 }
 
