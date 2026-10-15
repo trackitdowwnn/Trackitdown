@@ -17,7 +17,18 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
+  Keyboard,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { createLogger, isValidEmail } from '@/shared/lib';
 import { motion, spacing, typography, useThemedStyles, type Palette } from '@/shared/theme';
@@ -39,6 +50,7 @@ import {
   usePendingIntent,
 } from '../gate/gateIntent';
 import { invalidateProfileCheck, useAuthStanding } from '../hooks/useAuthStanding';
+import { useClipboardCode } from '../hooks/useClipboardCode';
 import { useResendCountdown } from '../hooks/useResendCountdown';
 import { useSession } from '../hooks/useSession';
 import { AuthLegalNotice } from './AuthLegalNotice';
@@ -49,6 +61,8 @@ const log = createLogger('auth');
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 const RESEND_SECONDS = 60;
+// Supabase's `otp_length` (supabase/config.toml + the hosted dashboard).
+const CODE_LENGTH = 8;
 /** Longest a completed gate waits for the sheet to report it has closed
  *  before running its action anyway. */
 const CLOSE_FALLBACK_MS = 600;
@@ -312,20 +326,36 @@ function OtpStep({
   const [resending, setResending] = useState(false);
   const { secondsLeft, canResend, restart } = useResendCountdown(RESEND_SECONDS);
 
-  const handleComplete = async (fullCode: string) => {
+  const handleComplete = async (fullCode: string, fromClipboard = false) => {
     setSubmitting(true);
     setErrorText(null);
     try {
       await verifyEmailOtp(email, fullCode);
       // Success: the session flips and AuthSheet advances (profile step or
       // resolve). Leave submitting on so the boxes stay busy until the move.
+      // A code we took from the clipboard is spent — don't leave it there.
+      if (fromClipboard) void Clipboard.setStringAsync('').catch(() => {});
     } catch (err) {
+      // Typed or pasted, a code that failed is never offered from the
+      // clipboard again on this step.
+      markTried(fullCode);
       setCode('');
       setErrorNonce((n) => n + 1);
       setErrorText(err instanceof AuthActionError ? err.message : GENERIC_ERROR);
       setSubmitting(false);
     }
   };
+
+  // CODE AUTOFILL (2026-10-15): back from their email with the code copied,
+  // it fills itself in and signs them in — Android only (see the hook).
+  const { markTried } = useClipboardCode({
+    enabled: !submitting && code.length < CODE_LENGTH,
+    onCode: (found) => {
+      setCode(found);
+      AccessibilityInfo.announceForAccessibility('Code filled from your clipboard');
+      void handleComplete(found, true);
+    },
+  });
 
   const handleResend = async () => {
     // Guard the async window: canResend stays true during the request, so a
@@ -353,10 +383,18 @@ function OtpStep({
       <OtpInput
         value={code}
         onChangeText={setCode}
-        onComplete={handleComplete}
+        onComplete={(full) => void handleComplete(full)}
+        length={CODE_LENGTH}
         submitting={submitting}
         errorNonce={errorNonce}
       />
+
+      {/* Sets the expectation for the autofill, so the boxes filling on their
+          own after a trip to Gmail is no surprise. Android only: iOS offers
+          the code above the keyboard itself. */}
+      {Platform.OS === 'android' ? (
+        <Text style={styles.hint}>Copy the code from the email — we’ll fill it in.</Text>
+      ) : null}
 
       {errorText ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -448,5 +486,9 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   error: {
     ...typography.caption,
     color: c.danger,
+  },
+  hint: {
+    ...typography.caption,
+    color: c.textSecondary,
   },
 });
