@@ -389,6 +389,33 @@ export async function fetchMyLatestPayout(): Promise<{
 }
 
 /**
+ * My profile's first name, to start the setup's "First name" box with — or
+ * null. A SUGGESTION only (2026-10-14, PR6): profiles hold just a first name,
+ * and it may not be the one on their bank account, so the box stays editable
+ * and the step never overwrites what they've typed.
+ *
+ * Read here rather than through profile's hooks: profile already imports
+ * payments (the Payouts row), so the reverse would be a cycle. Null on any
+ * failure — a prefill is never a reason to fail the step. Never logged.
+ */
+export async function fetchMyFirstName(): Promise<string | null> {
+  const { data: auth } = await supabase.auth.getSession();
+  const userId = auth.session?.user.id;
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('first_name')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) {
+    log.warn('first name prefill failed', { code: error.code });
+    return null;
+  }
+  const name = data?.first_name?.trim();
+  return name ? name : null;
+}
+
+/**
  * Read my own payee account, or null if I have never started.
  *
  * `maybeSingle`, not `single`: having no row is the normal state for everyone

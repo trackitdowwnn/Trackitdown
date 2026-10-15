@@ -16,6 +16,7 @@ import {
   digitsOnly,
   formatDob,
   formatSortCode,
+  normalizePostcode,
   parseUkDate,
   toUkE164,
 } from './payoutDetailsSchema';
@@ -124,6 +125,22 @@ describe('the rules', () => {
     expect(errorFor('addressLine1', { addressLine1: '' })).toBe('Enter your address');
     expect(errorFor('city', { city: '' })).toBe('Enter your town or city');
     expect(errorFor('postalCode', { postalCode: '' })).toBe('Enter your postcode');
+  });
+
+  it.each(['M1 1AA', 'm11aa', 'SW1A 1AA', 'EC1A1BB', 'B33 8TH', 'GIR 0AA'])(
+    'takes %s as a UK postcode, however it’s spaced or cased',
+    (postalCode) => {
+      expect(errorFor('postalCode', { postalCode })).toBeNull();
+    },
+  );
+
+  it.each(['12345', '75001', 'M1', 'SW1A 1A'])('refuses %s — not a UK postcode', (postalCode) => {
+    expect(errorFor('postalCode', { postalCode })).toBe('Enter a UK postcode, like M1 1AA');
+  });
+
+  it('normalises a postcode to how it is printed', () => {
+    expect(normalizePostcode('m11aa')).toBe('M1 1AA');
+    expect(normalizePostcode(' sw1a  1aa ')).toBe('SW1A 1AA');
   });
 
   it('treats the second address line as genuinely optional', () => {

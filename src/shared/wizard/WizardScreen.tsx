@@ -452,6 +452,9 @@ export function WizardScreen<TAnswers>({
             <StepContainer fills={isFillsStep}>
               {shown.kind === 'step' ? (
                 <>
+                  {shown.step.eyebrow ? (
+                    <Text style={styles.eyebrow}>{shown.step.eyebrow}</Text>
+                  ) : null}
                   <Text
                     accessibilityRole="header"
                     style={[
@@ -600,6 +603,12 @@ const makeStyles = (c: Palette) =>
       ...typography.body,
       color: c.textSecondary,
       marginTop: spacing.md,
+    },
+    // A step's eyebrow: quiet, above the question it introduces.
+    eyebrow: {
+      ...typography.caption,
+      color: c.textSecondary,
+      marginBottom: spacing.sm,
     },
     stepBody: {
       marginTop: spacing.xxl,
