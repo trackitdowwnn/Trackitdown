@@ -58,6 +58,46 @@ describe('OtpInput', () => {
     expect(onComplete).toHaveBeenCalledWith('12345678');
   });
 
+  it('⚠️ has NO native maxLength — it cut "1234 5678" to 7 digits before the strip', async () => {
+    // Found 2026-10-15 (UI best-practice pass). The native limit applies to
+    // the RAW text, so a code copied with a space or hyphen (9 characters)
+    // arrived as 7 digits and never submitted — and pasting is what WCAG
+    // 3.3.8 says a code field must allow. Jest's changeText skips native
+    // limits, so the guard is the prop itself: the cut happens after the strip.
+    await renderOtp();
+    expect(screen.getByTestId('otp-hidden-input').props.maxLength).toBeUndefined();
+  });
+
+  it.each(['1234 5678', '1234-5678'])('a code pasted as %j submits whole', async (pasted) => {
+    const { onComplete } = await renderOtp();
+    await type(pasted);
+    expect(onComplete).toHaveBeenCalledWith('12345678');
+  });
+
+  it('splits the boxes into halves — 4 + 4 — as a code is read aloud', async () => {
+    await renderOtp({ value: '12345678' });
+    const box = (i: number) =>
+      StyleSheet.flatten(
+        screen.getByTestId(`otp-box-${i}`, { includeHiddenElements: true }).props.style,
+      );
+    // The fifth box starts the second group; the others sit at the usual gap.
+    expect(box(4).marginLeft).toBeGreaterThan(0);
+    expect(box(3).marginLeft ?? 0).toBe(0);
+  });
+
+  it('⚠️ screen readers get ONE labelled code field — never eight boxes', async () => {
+    await renderOtp({ value: '1234' });
+    expect(screen.queryByText('1')).toBeNull(); // the box digits are hidden
+    expect(screen.getByLabelText('8-digit verification code')).toBeTruthy();
+  });
+
+  it('says it is busy while the code is checked', async () => {
+    await renderOtp({ value: '12345678', submitting: true });
+    expect(screen.getByTestId('otp-hidden-input').props.accessibilityState).toMatchObject({
+      busy: true,
+    });
+  });
+
   it('caps input at the code length', async () => {
     const { onComplete } = await renderOtp();
     await type('123456789');

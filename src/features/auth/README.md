@@ -195,11 +195,26 @@ without re-tapping.
   profile row confirmed — so a continued action can rely on post-auth data.
 - Dismissal (swipe/backdrop) = graceful cancel: intent dropped, no nagging.
 
-**AuthSheet steps** (internal sheet navigation, sliding horizontally, keyboard-
-aware, dynamic height): email entry → `OtpInput` (6 boxes, auto-submit, shake
-on a wrong code, 60s resend) → new users only: first name (the public
-identity, DOMAIN). Social buttons (Apple iOS-only, Google) sit on the email
-step. An orphaned session (killed mid-sign-up) opens the sheet directly at the
+**AuthSheet steps** (internal sheet navigation, sliding horizontally, a fade
+only under Reduce Motion, keyboard-aware, dynamic height). Each step change is
+announced to screen readers.
+
+1. **Email.** The social buttons come FIRST (Apple, then Google), then "or",
+   then the email field. Its hint says what happens next, a malformed address
+   gets GOV.UK's inline message, and Continue is enabled once anything is
+   typed.
+2. **`OtpInput`.** `CODE_LENGTH` boxes, grouped in halves.
+   - Pasting "1234 5678" works (no native maxLength).
+   - It auto-submits, with the notice "We'll check it as soon as it's in" and
+     a **Verify** button too (WCAG F36).
+   - A wrong code shakes the boxes, and the error clears as they retype.
+   - A 60s resend shows "New code sent to …" afterwards.
+   - A spam and expiry hint.
+3. **First name (new users only)**, under the title "Welcome to Trackitdown".
+   It's the public identity (DOMAIN).
+
+Apple is native on iOS. On Android it's the web flow, or "Coming soon" until
+switched on. An orphaned session (killed mid-sign-up) opens the sheet directly at the
 first-name step on the next gated action. "New user" == **no `profiles` row**
 (`hasProfile` via `.maybeSingle()`).
 

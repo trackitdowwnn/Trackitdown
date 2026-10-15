@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 
 import {
+  displayFontScaleCap,
   opacity,
   radii,
   sizes,
@@ -83,6 +84,10 @@ export function OtpInput({
     ).start();
   }, [errorNonce, shakeX]);
 
+  // ⚠️ STRIP, THEN CUT (2026-10-15, UI best-practice pass). A native
+  // `maxLength` cut the RAW text first, so a code copied as "1234 5678" (9
+  // characters) arrived as 7 digits and never submitted — pasting is the one
+  // thing WCAG 3.3.8 says a code field must allow. No native maxLength now.
   const handleChange = (raw: string) => {
     const digits = raw.replace(/[^0-9]/g, '').slice(0, length);
     onChangeText(digits);
@@ -107,9 +112,13 @@ export function OtpInput({
   };
 
   const activeIndex = value.length;
+  // Read in halves, as a code is said aloud: 3+3 or 4+4 (2026-10-15).
+  const groupSize = length % 2 === 0 && length >= 6 ? length / 2 : length;
 
   return (
-    <Pressable onPress={refocus}>
+    // Not a control of its own: the one labelled input below is what assistive
+    // tech reads — never eight boxes, one digit at a time.
+    <Pressable onPress={refocus} accessible={false}>
       <Animated.View style={[styles.row, { transform: [{ translateX: shakeX }] }]}>
         {Array.from({ length }).map((_, index) => {
           const filled = index < value.length;
@@ -117,15 +126,20 @@ export function OtpInput({
           return (
             <View
               key={index}
+              testID={`otp-box-${index}`}
               style={[
                 styles.box,
+                index === groupSize && index > 0 && styles.groupStart,
                 filled && styles.boxFilled,
                 active && !submitting && styles.boxActive,
                 submitting && styles.boxSubmitting,
               ]}
-              importantForAccessibility="no"
+              importantForAccessibility="no-hide-descendants"
+              accessibilityElementsHidden
             >
-              <Text style={styles.digit}>{value[index] ?? ''}</Text>
+              <Text style={styles.digit} maxFontSizeMultiplier={displayFontScaleCap}>
+                {value[index] ?? ''}
+              </Text>
             </View>
           );
         })}
@@ -148,10 +162,10 @@ export function OtpInput({
         keyboardType="number-pad"
         textContentType="oneTimeCode"
         autoComplete="one-time-code"
-        maxLength={length}
         caretHidden
         autoFocus={autoFocus}
         accessibilityLabel={`${length}-digit verification code`}
+        accessibilityState={{ busy: submitting }}
       />
     </Pressable>
   );
@@ -172,6 +186,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // The gap between the two halves of the code.
+  groupStart: {
+    marginLeft: spacing.md,
   },
   boxFilled: {
     borderColor: c.borderStrong,

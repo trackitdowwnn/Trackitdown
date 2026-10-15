@@ -137,6 +137,12 @@ const mockAppleWebConfigured = jest.fn(() => true);
 const mockSession = { status: 'signedIn', userId: 'u1' };
 jest.mock('../hooks/useSession', () => ({ useSession: () => mockSession }));
 
+// The resend countdown, finished: no test here waits a minute. (Its own
+// timing is useResendCountdown.test's.)
+jest.mock('../hooks/useResendCountdown', () => ({
+  useResendCountdown: () => ({ secondsLeft: 0, canResend: true, restart: jest.fn() }),
+}));
+
 async function enterEmailAndCode(screen: Awaited<ReturnType<typeof render>>) {
   await act(async () => {
     fireEvent.changeText(screen.getByLabelText('Email'), 'sam@example.com');
@@ -433,5 +439,121 @@ describe('Sign in with Apple — Android takes the web flow (2026-10-15)', () =>
     jest.replaceProperty(Platform, 'OS', 'ios');
     const screen = await openSheet();
     expect(screen.queryByText('Continue with Apple')).toBeNull();
+  });
+});
+
+describe('sign-in best-practice pass (2026-10-15)', () => {
+  async function openSheet() {
+    const screen = await render(<AuthSheet />);
+    await act(async () => {
+      setPendingIntent({ context: 'post_car', run: jest.fn() });
+    });
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    return screen;
+  }
+
+  async function toCodeStep(screen: Awaited<ReturnType<typeof render>>) {
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Email'), 'sam@example.com');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Continue'));
+    });
+    await waitFor(() => expect(screen.getByText(/Enter the code we emailed/)).toBeTruthy());
+  }
+
+  it('the no-typing ways come first: Google above the email field', async () => {
+    const screen = await openSheet();
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf('Continue with Google')).toBeLessThan(tree.indexOf('digit code.'));
+  });
+
+  it('says what happens next, before they commit: "We’ll email you an 8-digit code."', async () => {
+    const screen = await openSheet();
+    expect(screen.getByText('We’ll email you an 8-digit code.')).toBeTruthy();
+  });
+
+  it('⚠️ a malformed address SAYS so (GOV.UK) — never just a greyed-out button', async () => {
+    const screen = await openSheet();
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Email'), 'sam@');
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByText('Continue'));
+    });
+    expect(screen.getByText('Enter an email address like name@example.com')).toBeTruthy();
+    expect(mockRequestEmailOtp).not.toHaveBeenCalled();
+
+    // …and the message goes as soon as they fix it.
+    await act(async () => {
+      fireEvent.changeText(screen.getByLabelText('Email, error: Enter an email address like name@example.com'), 'sam@example.com');
+    });
+    expect(screen.queryByText('Enter an email address like name@example.com')).toBeNull();
+  });
+
+  it('shows where the code went, and that it’s checked automatically', async () => {
+    const screen = await openSheet();
+    await toCodeStep(screen);
+    expect(screen.getByText('sam@example.com')).toBeTruthy();
+    expect(screen.getByText('We’ll check it as soon as it’s in.')).toBeTruthy();
+    expect(screen.getByText(/check your spam folder/)).toBeTruthy();
+  });
+
+  it('⚠️ Verify submits a shorter code by hand — the 8 → 6 switch can never strand anyone', async () => {
+    const screen = await openSheet();
+    await toCodeStep(screen);
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '123456');
+    });
+    expect(mockVerifyEmailOtp).not.toHaveBeenCalled(); // not complete, so not automatic
+    await act(async () => {
+      fireEvent.press(screen.getByText('Verify'));
+    });
+    expect(mockVerifyEmailOtp).toHaveBeenCalledWith('sam@example.com', '123456');
+  });
+
+  it('a wrong code’s message goes as soon as they start again', async () => {
+    mockVerifyEmailOtp.mockRejectedValueOnce(
+      Object.assign(new Error('That code didn’t match — check the latest email.'), {
+        code: 'INVALID_OTP',
+      }),
+    );
+    const screen = await openSheet();
+    await toCodeStep(screen);
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345678');
+    });
+    await waitFor(() => expect(screen.getByText(/Something went wrong|didn’t match/)).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '1');
+    });
+    expect(screen.queryByText(/Something went wrong|didn’t match/)).toBeNull();
+  });
+
+  it('a resend says so: "New code sent to …"', async () => {
+    const screen = await openSheet();
+    await toCodeStep(screen);
+    mockRequestEmailOtp.mockClear();
+    await act(async () => {
+      fireEvent.press(screen.getByText('Resend code'));
+    });
+    expect(mockRequestEmailOtp).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('otp-resent')).toBeTruthy();
+    expect(screen.getByText('New code sent to sam@example.com.')).toBeTruthy();
+  });
+
+  it('once signed in, the sheet says "Welcome to Trackitdown" — not "Log in to …"', async () => {
+    const screen = await openSheet();
+    await toCodeStep(screen);
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('otp-hidden-input'), '12345678');
+    });
+    await act(async () => {
+      setMockStanding('incomplete');
+    });
+    await waitFor(() => expect(screen.getByText('What should we call you?')).toBeTruthy());
+    expect(screen.getByText('Welcome to Trackitdown')).toBeTruthy();
+    expect(screen.queryByText('Log in to post your car')).toBeNull();
   });
 });
