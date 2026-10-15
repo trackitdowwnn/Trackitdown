@@ -107,6 +107,9 @@ export interface PayoutAccount {
   payoutsEnabledAt: string | null;
   /** When their details were sent through our setup steps, or null. */
   detailsSubmittedAt: string | null;
+  /** The last four digits of the bank Stripe pays into, as Stripe reports
+   *  it (2026-10-15, PR7) — "account ending 5678" — or null. */
+  bankLast4: string | null;
 }
 
 export interface BankPayout {
@@ -429,11 +432,12 @@ export async function fetchMyPayoutAccount(userId: string): Promise<PayoutAccoun
   const { data, error } = await supabase
     .from('stripe_connected_accounts')
     // ⚠️ The last_payout_* and bank_replaced_at columns arrive with
-    // 20261014110000: the server deploys on merge, the app only by a later
-    // OTA, so they always exist first. One literal: supabase-js types the row
-    // from the string, and a concatenation loses that.
+    // 20261014110000, bank_last4 with 20261015100000: the server deploys on
+    // merge, the app only by a later OTA, so they always exist first — publish
+    // only after the deploy run is green, or this read fails. One literal:
+    // supabase-js types the row from the string, and a concatenation loses that.
     .select(
-      'stripe_account_id, onboarding_complete, payouts_enabled, last_payout_status, last_payout_arrival_date, last_payout_created_at, bank_replaced_at, payouts_enabled_at, details_submitted_at',
+      'stripe_account_id, onboarding_complete, payouts_enabled, last_payout_status, last_payout_arrival_date, last_payout_created_at, bank_replaced_at, payouts_enabled_at, details_submitted_at, bank_last4',
     )
     .eq('profile_id', userId)
     .maybeSingle();
@@ -461,5 +465,7 @@ export async function fetchMyPayoutAccount(userId: string): Promise<PayoutAccoun
     bankReplacedAt: (data.bank_replaced_at as string | null) ?? null,
     payoutsEnabledAt: (data.payouts_enabled_at as string | null) ?? null,
     detailsSubmittedAt: (data.details_submitted_at as string | null) ?? null,
+    // Four digits or nothing — a label must never show anything else.
+    bankLast4: /^\d{4}$/.test(String(data.bank_last4 ?? '')) ? (data.bank_last4 as string) : null,
   };
 }

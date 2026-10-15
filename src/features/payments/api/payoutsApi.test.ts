@@ -281,7 +281,17 @@ describe('fetchMyPayoutAccount', () => {
       bankReplacedAt: null,
       payoutsEnabledAt: null,
       detailsSubmittedAt: null,
+      bankLast4: null,
     });
+  });
+
+  it('carries the bank’s last four — four digits or nothing (PR7)', async () => {
+    const row = { stripe_account_id: 'acct_123', onboarding_complete: true, payouts_enabled: true };
+    mockMaybeSingle.mockResolvedValue({ data: { ...row, bank_last4: '5678' }, error: null });
+    await expect(fetchMyPayoutAccount(USER_ID)).resolves.toMatchObject({ bankLast4: '5678' });
+
+    mockMaybeSingle.mockResolvedValue({ data: { ...row, bank_last4: '00012345' }, error: null });
+    await expect(fetchMyPayoutAccount(USER_ID)).resolves.toMatchObject({ bankLast4: null });
   });
 
   it('carries the latest payout to their bank (2026-10-14)', async () => {

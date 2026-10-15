@@ -45,6 +45,34 @@ import { errorResponse, jsonResponse, preflightResponse } from '../_shared/http.
 import { ensureProfile, PRODUCT_DESCRIPTION } from '../_shared/payoutAccountState.ts';
 import { releaseAllPendingFor } from '../_shared/releasePayout.ts';
 
+/**
+ * "Paid into account ending 5678" (2026-10-15, PR7): the last four of the
+ * bank Stripe just attached, as Stripe reports it. Best effort — the bank is
+ * attached either way, and sync-payout-account refreshes it later. Never
+ * logs the digits.
+ *
+ * ⚠️ NEVER THROWS. It runs inside the attach's try, whose catch answers
+ * DETAILS_REJECTED — a blip here must not tell someone their bank was refused.
+ */
+async function recordAttachedBank(
+  admin: ReturnType<typeof createServiceRoleClient>,
+  accountId: string,
+  attached: { last4?: string | null },
+): Promise<void> {
+  if (!attached.last4) return;
+  try {
+    const { error } = await admin.rpc('record_bank_last4', {
+      p_stripe_account_id: accountId,
+      p_last4: attached.last4,
+    });
+    if (error) {
+      console.warn('[payments] bank last4 record failed', { accountId });
+    }
+  } catch {
+    console.warn('[payments] bank last4 record failed', { accountId });
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return preflightResponse();
@@ -104,11 +132,12 @@ Deno.serve(async (request) => {
   // every future bounty kept going to the account they were trying to leave.
   if (existing.accountId && !hasAccountToken) {
     try {
-      await stripe.accounts.createExternalAccount(existing.accountId, {
+      const attached = await stripe.accounts.createExternalAccount(existing.accountId, {
         external_account: bankToken,
         default_for_currency: true,
       });
       console.log('[payments] payout bank replaced', { accountId: existing.accountId });
+      await recordAttachedBank(admin, existing.accountId, attached);
       // So Payouts can tell "a payout failed — add new details" apart from
       // "new details added — resending" (2026-10-14). Best effort: the bank
       // is replaced either way, and that is what Stripe pays to.
@@ -141,10 +170,11 @@ Deno.serve(async (request) => {
     // the platform's website supplied. Identity stays as first given: Stripe
     // treats it as settled once verification has started.
     try {
-      await stripe.accounts.createExternalAccount(existing.accountId, {
+      const attached = await stripe.accounts.createExternalAccount(existing.accountId, {
         external_account: bankToken,
         default_for_currency: true,
       });
+      await recordAttachedBank(admin, existing.accountId, attached);
     } catch (err) {
       console.error('[payments] payout bank attach (existing) failed', (err as Error).message);
       return errorResponse(
@@ -237,9 +267,10 @@ Deno.serve(async (request) => {
 
   // --- The bank ---------------------------------------------------------------
   try {
-    await stripe.accounts.createExternalAccount(accountId, {
+    const attached = await stripe.accounts.createExternalAccount(accountId, {
       external_account: bankToken,
     });
+    await recordAttachedBank(admin, accountId, attached);
   } catch (err) {
     // The account exists and is recorded; only the bank failed. DETAILS_REJECTED
     // sends the form's bank fields back into edit, and the retry lands in the

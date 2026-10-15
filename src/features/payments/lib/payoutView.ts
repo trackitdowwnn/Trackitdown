@@ -65,7 +65,7 @@ export interface PayoutViewInput {
   latestPayout: { transferPence: number; sentAt: string } | null;
   account: Pick<
     PayoutAccount,
-    'bankPayout' | 'bankReplacedAt' | 'payoutsEnabledAt' | 'detailsSubmittedAt'
+    'bankPayout' | 'bankReplacedAt' | 'payoutsEnabledAt' | 'detailsSubmittedAt' | 'bankLast4'
   > | null;
 }
 
@@ -91,6 +91,8 @@ export type PayoutView =
       kind: 'ready';
       chip: { label: string; tone: ChipTone };
       status: string;
+      /** Where rewards go — "Rewards go to account ending 5678" — or null. */
+      detail: string | null;
       action: { label: string; intent: 'bank' };
     }
   | {
@@ -256,6 +258,7 @@ function readyView(input: PayoutViewInput, now: Date): PayoutView {
       latestPayout.sentAt,
       account?.bankPayout ?? null,
       account?.bankReplacedAt ?? null,
+      account?.bankLast4 ?? null,
       now,
     );
     return {
@@ -285,17 +288,21 @@ function readyView(input: PayoutViewInput, now: Date): PayoutView {
     bounced &&
     account?.bankReplacedAt != null &&
     Date.parse(account.bankReplacedAt) > Date.parse(account.bankPayout?.createdAt ?? '');
+  const last4 = account?.bankLast4 ?? null;
   return bounced && !rebanked
     ? {
         kind: 'ready',
         chip: { label: COPY.chip.actionNeeded, tone: 'warning' },
         status: COPY.status.bankRefused,
+        // Not "rewards go to" the account that just refused one.
+        detail: null,
         action: { label: COPY.action.updateBank, intent: 'bank' },
       }
     : {
         kind: 'ready',
         chip: { label: COPY.chip.ready, tone: 'success' },
         status: COPY.status.ready,
+        detail: last4 ? COPY.detail.rewardsGoTo(last4) : null,
         action: { label: COPY.action.updateBank, intent: 'bank' },
       };
 }
@@ -309,6 +316,7 @@ function bankLeg(
   sentAt: string,
   payout: BankPayout | null,
   bankReplacedAt: string | null,
+  bankLast4: string | null,
   now: Date,
 ): {
   step: PayoutStep;
@@ -317,6 +325,13 @@ function bankLeg(
   paidOn: string | null;
 } {
   const onItsWay = { label: COPY.chip.onItsWay, tone: 'neutral' as const };
+  // ⚠️ NAME THE BANK ONLY IF IT'S THE ONE THIS PAYOUT WENT TO (PR7). The last
+  // four is the CURRENT default bank; changed since the payout, it would send
+  // them looking in the wrong account.
+  const last4 =
+    payout && bankLast4 && !(bankReplacedAt && Date.parse(bankReplacedAt) > Date.parse(payout.createdAt))
+      ? bankLast4
+      : null;
   if (!payout || Date.parse(payout.createdAt) < Date.parse(sentAt) || payout.status === 'canceled') {
     return {
       step: step('bank', COPY.step.bank, 'current', { detail: COPY.detail.bankMayTakeDays }),
@@ -329,7 +344,7 @@ function bankLeg(
     const day = payout.arrivalDate ?? payout.createdAt;
     return {
       step: step('bank', COPY.step.bank, 'done', { meta: onDay(day) }),
-      status: COPY.status.paidOn(day),
+      status: last4 ? COPY.status.paidInto(last4, day) : COPY.status.paidOn(day),
       chip: { label: COPY.chip.paid, tone: 'success' },
       paidOn: day,
     };
@@ -360,7 +375,11 @@ function bankLeg(
   return {
     step: step('bank', COPY.step.bank, 'current', {
       meta: arrival ? `Expected by ${byDay(arrival)}` : undefined,
-      detail: overdue ? COPY.detail.overdue : COPY.detail.onItsWay,
+      detail: overdue
+        ? COPY.detail.overdue
+        : last4
+          ? COPY.detail.onItsWayTo(last4)
+          : COPY.detail.onItsWay,
     }),
     status: arrival ? COPY.status.arrivesBy(arrival) : COPY.status.sentOn(sentAt),
     chip: onItsWay,

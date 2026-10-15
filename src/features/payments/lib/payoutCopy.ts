@@ -49,6 +49,8 @@ export const COPY = {
     // The chip says "On its way"; the line says when (the budget caught both).
     arrivesBy: (iso: string) => `Arrives by ${byDay(iso)}`,
     paidOn: (iso: string) => `Paid into your bank on ${onDay(iso)}`,
+    // Where to look, as a statement says it (PR7) — 8 words, the budget's edge.
+    paidInto: (last4: string, iso: string) => `Paid into account ending ${last4} on ${onDay(iso)}`,
     bankRefused: 'Your bank couldn’t accept it',
     resending: 'Sending it again to your new account',
     ready: 'Payouts are on',
@@ -66,6 +68,8 @@ export const COPY = {
     review: 'A quick check before we send it. Nothing for you to do.',
     sending: 'We’re sending it now. Nothing for you to do.',
     onItsWay: 'On its way to your bank.',
+    onItsWayTo: (last4: string) => `On its way to account ending ${last4}.`,
+    rewardsGoTo: (last4: string) => `Rewards go to account ending ${last4}.`,
     overdue: 'Your bank should show it by now. If not, check again tomorrow.',
     bankMayTakeDays: 'Your bank may take a few days to show it.',
     bankRefused: 'Your bank couldn’t accept it. It’s safe and waiting for you.',

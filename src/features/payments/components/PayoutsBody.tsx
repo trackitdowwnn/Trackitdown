@@ -108,6 +108,7 @@ export function PayoutsReadyCard({
       <Text style={styles.title} accessibilityRole="header">
         {view.status}
       </Text>
+      {view.detail ? <Text style={styles.body}>{view.detail}</Text> : null}
       {linkExpired ? <Text style={styles.note}>{LINK_EXPIRED}</Text> : null}
       <Button
         label={view.action.label}
