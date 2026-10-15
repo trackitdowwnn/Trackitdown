@@ -7,7 +7,12 @@ existed here until 2026-08-03; it was a Stripe SDK wrapper and two error maps.
 Primary actors: **owner** (pays), **spotter** (is paid). The client never
 computes an amount, never decides who is payable, and never holds a secret.
 
-**Screens** — `PayoutsScreen` (route `src/app/payouts.tsx`).
+**Screens** — `PayoutsScreen` (route `src/app/payouts.tsx`). Since 2026-10-14 it
+decides nothing itself: `lib/payoutView.ts` turns the account, the waiting
+reward and the last payout into ONE view (hero, chip, the road's steps and its
+one action), `lib/payoutCopy.ts` holds every word under a tested budget, and
+`components/PayoutsHero.tsx` + `components/PayoutsBody.tsx` draw it. A new
+state is a row in `payoutView.test.ts` first.
 **Hooks** — `useBountyPayment` (presents the PaymentSheet), `useDeactivatePost`
 (refund + take down), `usePayoutAccount` (the payee state machine).
 **Api** — `paymentsApi.ts` (escrow), `payoutsApi.ts` (Connect),

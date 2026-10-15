@@ -81,6 +81,31 @@ describe('payoutView — kinds', () => {
     const view = payoutView(base({ status: 'ready', credit: null, account: account() }), NOW);
     expect(view).toMatchObject({ kind: 'ready', action: { intent: 'bank' } });
   });
+
+  it('⚠️ a refused bank payout with no reward in view still needs them — never "Payouts are on"', () => {
+    const bounced = { status: 'failed' as const, arrivalDate: null, createdAt: '2026-10-14T06:00:00Z' };
+    const view = payoutView(
+      base({ status: 'ready', credit: null, account: account({ bankPayout: bounced }) }),
+      NOW,
+    );
+    expect(view).toMatchObject({
+      kind: 'ready',
+      chip: { label: 'Action needed', tone: 'warning' },
+      status: COPY.status.bankRefused,
+      action: { intent: 'bank' },
+    });
+
+    // New details since: no alarm.
+    const rebanked = payoutView(
+      base({
+        status: 'ready',
+        credit: null,
+        account: account({ bankPayout: bounced, bankReplacedAt: '2026-10-15T09:00:00Z' }),
+      }),
+      NOW,
+    );
+    expect(rebanked).toMatchObject({ kind: 'ready', status: COPY.status.ready });
+  });
 });
 
 describe('payoutView — not set up yet: the setup leads', () => {
@@ -122,6 +147,16 @@ describe('payoutView — not set up yet: the setup leads', () => {
     const view = journey(payoutView(base({ status: 'verifying', settling: true }), NOW));
     expect(view.steps[1]).toMatchObject({ working: true, detail: COPY.detail.settling });
   });
+
+  it.each(['notStarted', 'unfinished'] as const)(
+    '⚠️ the settle window outranks %s — never "continue" to someone who just sent it all',
+    (status) => {
+      const view = journey(payoutView(base({ status, settling: true, needsBank: true }), NOW));
+      expect(states(view)).toEqual(['details:done', 'check:current', 'sent:upcoming', 'bank:upcoming']);
+      expect(view.steps.some((s) => s.action)).toBe(false);
+      expect(view.chip).toEqual({ label: 'Being checked', tone: 'neutral' });
+    },
+  );
 
   it('⚠️ a photo ID needed: the check NEEDS THEM — "!" and its one action', () => {
     const view = journey(
@@ -222,6 +257,23 @@ describe('payoutView — payouts on: the money leads', () => {
   it('bounced, then new details given: resending — not a problem any more', () => {
     const view = sent(payout('failed'), { bankReplacedAt: '2026-10-14T09:00:00Z' });
     expect(view.steps[3]).toMatchObject({ state: 'current', detail: COPY.detail.resending });
+  });
+
+  it('a reward still waiting outranks one already sent — that is the road now', () => {
+    const view = journey(
+      payoutView(base({ status: 'ready', latestPayout: SENT, account: account() }), NOW),
+    );
+    expect(view.steps[2]).toMatchObject({ id: 'sent', state: 'current' });
+    expect(view.hero.amountPence).toBe(19000);
+  });
+
+  it('a sent reward is only the end of the road once payouts are on', () => {
+    // (Migrated from payoutProgress.) An account Stripe has paused shows its
+    // setup, not a "sent" it can't currently follow.
+    const view = journey(
+      payoutView(base({ status: 'verifying', credit: null, latestPayout: SENT }), NOW),
+    );
+    expect(states(view)).toEqual(['details:done', 'check:current', 'sent:upcoming', 'bank:upcoming']);
   });
 
   it('⚠️ a bank payout from BEFORE this reward was sent cannot be carrying it', () => {

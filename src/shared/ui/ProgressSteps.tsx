@@ -83,7 +83,7 @@ export interface ProgressStep {
   working?: boolean;
   /** The ONE thing to do, under a current or attention step (2026-10-14).
    *  Outside the step's spoken stop, so a screen reader can reach it. */
-  action?: { label: string; onPress: () => void; testID?: string };
+  action?: { label: string; onPress: () => void; testID?: string; loading?: boolean };
 }
 
 export interface ProgressStepsProps {
@@ -209,7 +209,11 @@ export function ProgressSteps({ steps, testID, heading, collapsed }: ProgressSte
                 </View>
                 {showAction && step.action ? (
                   <View style={styles.action} testID={step.action.testID ?? `${markerID}-action`}>
-                    <Button label={step.action.label} onPress={step.action.onPress} />
+                    <Button
+                      label={step.action.label}
+                      onPress={step.action.onPress}
+                      loading={step.action.loading}
+                    />
                   </View>
                 ) : null}
               </View>
@@ -403,5 +407,8 @@ const makeStyles = (c: Palette) =>
       ...typography.label,
       color: c.textPrimary,
       textDecorationLine: 'underline',
+      // 44pt to tap, not the label's 18 (UI review, 2026-10-14).
+      minHeight: sizes.touchTarget,
+      textAlignVertical: 'center',
     },
   });

@@ -138,9 +138,13 @@ function setupView(input: PayoutViewInput): PayoutView {
       : { kind: 'nothing' };
   }
 
-  const askBank = needsBank && (status === 'unfinished' || status === 'verifying');
-  const askCheck = needsAction && !askBank && (status === 'unfinished' || status === 'verifying');
-  const detailsSent = status === 'verifying' && !askBank;
+  // ⚠️ THE SETTLE WINDOW OUTRANKS THE DERIVED STATE. Until the account's
+  // update lands, someone who just sent everything reads as `unfinished` —
+  // and asking them to "Continue setting up" blames them for our queue.
+  const askBank = !settling && needsBank && (status === 'unfinished' || status === 'verifying');
+  const askCheck =
+    !settling && needsAction && !askBank && (status === 'unfinished' || status === 'verifying');
+  const detailsSent = settling || (status === 'verifying' && !askBank);
   const sentAt = input.account?.detailsSubmittedAt ?? undefined;
 
   const details: PayoutStep = askBank
@@ -187,11 +191,11 @@ function setupView(input: PayoutViewInput): PayoutView {
           : COPY.status.addDetails;
 
   const chip =
-    status === 'notStarted'
-      ? { label: COPY.chip.notSetUp, tone: 'neutral' as const }
-      : askBank || askCheck || status === 'unfinished'
-        ? { label: COPY.chip.actionNeeded, tone: 'warning' as const }
-        : { label: COPY.chip.beingChecked, tone: 'warning' as const };
+    askBank || askCheck || (status === 'unfinished' && !detailsSent)
+      ? { label: COPY.chip.actionNeeded, tone: 'warning' as const }
+      : detailsSent
+        ? { label: COPY.chip.beingChecked, tone: 'neutral' as const }
+        : { label: COPY.chip.notSetUp, tone: 'neutral' as const };
 
   return {
     kind: 'journey',
@@ -274,12 +278,26 @@ function readyView(input: PayoutViewInput, now: Date): PayoutView {
     };
   }
 
-  return {
-    kind: 'ready',
-    chip: { label: COPY.chip.ready, tone: 'success' },
-    status: COPY.status.ready,
-    action: { label: COPY.action.updateBank, intent: 'bank' },
-  };
+  // No reward in view — but a bank that refused a payout still needs them,
+  // whether or not the reward it carried is still inside the sent window.
+  const bounced = account?.bankPayout?.status === 'failed';
+  const rebanked =
+    bounced &&
+    account?.bankReplacedAt != null &&
+    Date.parse(account.bankReplacedAt) > Date.parse(account.bankPayout?.createdAt ?? '');
+  return bounced && !rebanked
+    ? {
+        kind: 'ready',
+        chip: { label: COPY.chip.actionNeeded, tone: 'warning' },
+        status: COPY.status.bankRefused,
+        action: { label: COPY.action.updateBank, intent: 'bank' },
+      }
+    : {
+        kind: 'ready',
+        chip: { label: COPY.chip.ready, tone: 'success' },
+        status: COPY.status.ready,
+        action: { label: COPY.action.updateBank, intent: 'bank' },
+      };
 }
 
 /**
