@@ -406,11 +406,27 @@ describe('Sign in with Apple — Android takes the web flow (2026-10-15)', () =>
     expect(screen.getByLabelText('First name').props.value).toBe('Sam');
   });
 
-  it('⚠️ Android, not set up yet: no Apple button', async () => {
+  it('⚠️ Android, not set up yet: the button says "coming soon" — and signs nobody in', async () => {
+    // Owner, 2026-10-15: show it now, with a sheet saying it's on its way.
     jest.replaceProperty(Platform, 'OS', 'android');
     mockAppleWebConfigured.mockReturnValue(false);
     const screen = await openSheet();
-    expect(screen.queryByText('Continue with Apple')).toBeNull();
+    expect(screen.queryByTestId('apple-coming-soon')).toBeNull(); // not mounted until asked
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Continue with Apple'));
+    });
+    expect(screen.getByTestId('apple-coming-soon')).toBeTruthy();
+    expect(screen.getByText('Coming soon')).toBeTruthy();
+    expect(mockSignInWithAppleWeb).not.toHaveBeenCalled();
+
+    // "Got it" closes it, and the sign-in sheet is still there to use.
+    await act(async () => {
+      fireEvent.press(screen.getByText('Got it'));
+    });
+    await waitFor(() => expect(screen.queryByTestId('apple-coming-soon')).toBeNull());
+    expect(screen.getByLabelText('Email')).toBeTruthy();
+    expect(consumePendingIntent()).not.toBeNull(); // the gate was not cancelled
   });
 
   it('iOS: never the web button — the native one is Apple’s own', async () => {
