@@ -54,8 +54,10 @@ import {
   type ReactNode,
   type Ref,
 } from 'react';
+import { X } from 'lucide-react-native';
 import {
   BackHandler,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -66,7 +68,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAndroidKeyboardHeight } from '../hooks';
-import { radii, sizes, spacing, typography, useThemedStyles, type Palette } from '../theme';
+import {
+  radii,
+  sizes,
+  spacing,
+  typography,
+  usePalette,
+  useThemedStyles,
+  type Palette,
+} from '../theme';
 import { easeOut } from '@/shared/theme/motionEasing';
 import { TextInputHostContext } from './TextInputHost';
 
@@ -166,12 +176,18 @@ export interface BottomSheetProps {
   title?: string;
   /** Sheet body. Scrolls inside the sheet when taller than the height cap. */
   children: ReactNode;
-  /** Fires after the sheet closes — swipe, scrim tap, or close(). */
+  /** Fires after the sheet closes — swipe, scrim tap, the X, or close(). */
   onDismiss?: () => void;
+  /**
+   * Hide the close (X) button — for a sheet that must not be closed that
+   * way. None does today; every sheet shows one (2026-10-15).
+   */
+  hideClose?: boolean;
 }
 
-export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProps) {
+export function BottomSheet({ ref, title, children, onDismiss, hideClose = false }: BottomSheetProps) {
   const styles = useThemedStyles(makeStyles);
+  const palette = usePalette();
   const modalRef = useRef<BottomSheetModal>(null);
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -283,16 +299,20 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
     onDismiss?.();
   }, [onDismiss]);
 
+  // One way to close, whoever asks — close(), and the X. Never dismiss a
+  // modal that isn't presented (it wedges the library; see presentedRef).
+  const closeSheet = useCallback(() => {
+    if (presentedRef.current) {
+      modalRef.current?.dismiss();
+    }
+  }, []);
+
   useImperativeHandle(ref, () => ({
     open: () => {
       presentedRef.current = true;
       modalRef.current?.present();
     },
-    close: () => {
-      if (presentedRef.current) {
-        modalRef.current?.dismiss();
-      }
-    },
+    close: closeSheet,
   }));
 
   const animationConfigs = useBottomSheetTimingConfigs({
@@ -367,10 +387,31 @@ export function BottomSheet({ ref, title, children, onDismiss }: BottomSheetProp
         {/* collapsable={false}: a real native view, so an input can measure
             itself against it. */}
         <View ref={contentRef} collapsable={false}>
-          {title ? (
-            <Text accessibilityRole="header" style={styles.title}>
-              {title}
-            </Text>
+          {/* ⚠️ A VISIBLE WAY OUT (2026-10-15, NN/g): swipe-down, the scrim
+              and Back all close a sheet, but none of them can be seen — so
+              every sheet gets an X, on the same close path as the rest. */}
+          {title || !hideClose ? (
+            <View style={styles.headerRow}>
+              {title ? (
+                <Text accessibilityRole="header" style={styles.title}>
+                  {title}
+                </Text>
+              ) : (
+                <View style={styles.titleSpacer} />
+              )}
+              {hideClose ? null : (
+                <Pressable
+                  onPress={closeSheet}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  hitSlop={spacing.xs}
+                  style={({ pressed }) => [styles.close, pressed && styles.closePressed]}
+                  testID="sheet-close"
+                >
+                  <X size={sizes.icon} color={palette.textPrimary} />
+                </Pressable>
+              )}
+            </View>
           ) : null}
           {/* Any TextField in the body renders gorhom's sheet-aware input
               (via SheetTextInput), which is what makes the sheet rise with
@@ -407,9 +448,33 @@ const makeStyles = (c: Palette) =>
       paddingHorizontal: SHEET_GUTTER,
       paddingTop: CONTENT_PADDING_TOP,
     },
+    // The title and the X share one row; the X sits optically flush with the
+    // gutter (its icon edge, not its 44pt touch box).
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+      marginBottom: spacing.lg,
+    },
     title: {
       ...typography.heading,
       color: c.textPrimary,
-      marginBottom: spacing.lg,
+      flex: 1,
+      // Centred on the X's first line.
+      paddingTop: (sizes.touchTarget - typography.heading.lineHeight) / 2,
+    },
+    titleSpacer: {
+      flex: 1,
+    },
+    close: {
+      width: sizes.touchTarget,
+      height: sizes.touchTarget,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: -(sizes.touchTarget - sizes.icon) / 2,
+      borderRadius: radii.full,
+    },
+    closePressed: {
+      backgroundColor: c.surfaceSubtle,
     },
   });
