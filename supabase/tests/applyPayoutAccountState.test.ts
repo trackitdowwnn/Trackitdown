@@ -100,6 +100,35 @@ describe('applyPayoutAccountState', () => {
     expect(order).toEqual(['record', 'release']);
   });
 
+  it('records the bank’s last four as Stripe reports it — "account ending 5678" (PR7)', async () => {
+    const { admin, rpc } = fakeAdmin();
+    await applyPayoutAccountState(admin, recorded(), fresh({ bankLast4: '5678' }), jest.fn());
+    expect(rpc).toHaveBeenCalledWith('record_bank_last4', {
+      p_stripe_account_id: 'acct_1',
+      p_last4: '5678',
+    });
+  });
+
+  it('⚠️ a failed last-four write never fails the apply, nor holds up a release', async () => {
+    const { admin, rpc } = fakeAdmin();
+    rpc.mockImplementation(async (name: string) =>
+      name === 'record_bank_last4' ? { error: { message: 'boom' } } : { error: null },
+    );
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const release = jest.fn(async () => {});
+
+    const result = await applyPayoutAccountState(
+      admin,
+      recorded(),
+      fresh({ payoutsEnabled: true, bankLast4: '5678' }),
+      release,
+    );
+    expect(result).toEqual({ ok: true, changed: true, becamePayable: true });
+    expect(release).toHaveBeenCalled();
+    // …and the digits never reach a log line.
+    expect(JSON.stringify((console.warn as jest.Mock).mock.calls)).not.toContain('5678');
+  });
+
   it('still pending: nothing recorded, nothing released', async () => {
     const { admin, rpc } = fakeAdmin();
     const release = jest.fn(async () => {});

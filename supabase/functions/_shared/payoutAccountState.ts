@@ -74,6 +74,31 @@ export interface PayoutAccountState {
    * screen must say "we need one more thing from you", never "being checked".
    */
   needsAction: boolean;
+  /**
+   * The last four digits of the bank Stripe pays into — its default bank
+   * account, as Stripe reports it (2026-10-15, PR7: "Paid into account ending
+   * 5678"). Null when there is none or v1 couldn't be read. Optional so older
+   * fixtures still type-check. Never logged.
+   */
+  bankLast4?: string | null;
+}
+
+/** The parts of a v1 external account this reads. */
+type ExternalAccount = { object?: string; default_for_currency?: boolean | null; last4?: string | null };
+
+/**
+ * The default bank's last four, from a v1 account's external accounts — or
+ * null. The DEFAULT, because that is where Stripe pays: a second bank added
+ * without `default_for_currency` receives nothing (create-payout-account's
+ * MONEY note). A single bank is the default whatever its flag says.
+ */
+export function defaultBankLast4(account: {
+  external_accounts?: { data?: ExternalAccount[] } | null;
+}): string | null {
+  const banks = (account.external_accounts?.data ?? []).filter((e) => e.object === 'bank_account');
+  const chosen = banks.find((bank) => bank.default_for_currency) ?? (banks.length === 1 ? banks[0] : undefined);
+  const last4 = chosen?.last4 ?? '';
+  return /^\d{4}$/.test(last4) ? last4 : null;
 }
 
 /** The parts of a v2 requirement entry this reads (older API answers may lack them). */
@@ -127,10 +152,11 @@ export async function readPayoutAccountState(
       payoutsEnabled: v2Payouts !== undefined ? v2Payouts === 'active' : Boolean(v1.payouts_enabled),
       detailsSubmitted: Boolean(v1.details_submitted),
       ...needs,
+      bankLast4: defaultBankLast4(v1),
     };
   } catch {
     if (v2Payouts !== undefined) {
-      return { payoutsEnabled: v2Payouts === 'active', detailsSubmitted: false, ...needs };
+      return { payoutsEnabled: v2Payouts === 'active', detailsSubmitted: false, ...needs, bankLast4: null };
     }
     return null;
   }

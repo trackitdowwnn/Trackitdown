@@ -41,6 +41,7 @@ const account = (over: Partial<NonNullable<PayoutViewInput['account']>> = {}) =>
   bankReplacedAt: null,
   payoutsEnabledAt: '2026-10-13T09:00:00Z',
   detailsSubmittedAt: '2026-10-13T08:00:00Z',
+  bankLast4: null,
   ...over,
 });
 
@@ -276,6 +277,50 @@ describe('payoutView — payouts on: the money leads', () => {
     expect(states(view)).toEqual(['details:done', 'check:current', 'sent:upcoming', 'bank:upcoming']);
   });
 
+  describe('"account ending 5678" (PR7)', () => {
+    it('paid: says WHICH account, as a statement does', () => {
+      const view = sent(payout('paid'), { bankLast4: '5678' });
+      expect(view.hero.status).toBe('Paid into account ending 5678 on 16 October');
+    });
+
+    it('on its way: to which account', () => {
+      const view = sent(payout('in_transit'), { bankLast4: '5678' });
+      expect(view.steps[3]?.detail).toBe('On its way to account ending 5678.');
+    });
+
+    it('⚠️ the bank changed since that payout: never names the new one for it', () => {
+      const view = sent(payout('paid'), {
+        bankLast4: '9999',
+        bankReplacedAt: '2026-10-15T09:00:00Z',
+      });
+      expect(view.hero.status).toBe('Paid into your bank on 16 October');
+    });
+
+    it('no last four known: the words as before', () => {
+      expect(sent(payout('paid')).hero.status).toBe('Paid into your bank on 16 October');
+    });
+
+    it('payouts on, nothing in flight: where rewards go', () => {
+      const view = payoutView(
+        base({ status: 'ready', credit: null, account: account({ bankLast4: '5678' }) }),
+        NOW,
+      );
+      expect(view).toMatchObject({ kind: 'ready', detail: 'Rewards go to account ending 5678.' });
+    });
+
+    it('⚠️ …but never "rewards go to" the account that just refused one', () => {
+      const view = payoutView(
+        base({
+          status: 'ready',
+          credit: null,
+          account: account({ bankLast4: '5678', bankPayout: payout('failed') }),
+        }),
+        NOW,
+      );
+      expect(view).toMatchObject({ kind: 'ready', detail: null });
+    });
+  });
+
   it('⚠️ a bank payout from BEFORE this reward was sent cannot be carrying it', () => {
     const view = sent(payout('paid', { createdAt: '2026-10-01T06:00:00Z' }));
     expect(view.steps[3]).toMatchObject({ state: 'current', detail: COPY.detail.bankMayTakeDays });
@@ -295,15 +340,17 @@ describe('the copy budget (owner: "too much text")', () => {
     payoutView(base({ status: 'verifying', needsBank: true }), NOW),
     payoutView(base({ status: 'ready' }), NOW),
     payoutView(base({ status: 'ready', credit: { ...CREDIT, underReview: true } }), NOW),
-    ...(['pending', 'in_transit', 'paid', 'failed'] as const).map((s) =>
-      payoutView(
-        base({
-          status: 'ready',
-          credit: null,
-          latestPayout: SENT,
-          account: account({ bankPayout: payout(s) }),
-        }),
-        NOW,
+    ...(['pending', 'in_transit', 'paid', 'failed'] as const).flatMap((s) =>
+      [null, '5678'].map((bankLast4) =>
+        payoutView(
+          base({
+            status: 'ready',
+            credit: null,
+            latestPayout: SENT,
+            account: account({ bankPayout: payout(s), bankLast4 }),
+          }),
+          NOW,
+        ),
       ),
     ),
   ];

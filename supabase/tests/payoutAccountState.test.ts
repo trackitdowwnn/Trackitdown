@@ -13,6 +13,7 @@ import type Stripe from 'stripe';
 
 import {
   PRODUCT_DESCRIPTION,
+  defaultBankLast4,
   ensureProfile,
   readPayoutAccountState,
 } from '../functions/_shared/payoutAccountState';
@@ -30,6 +31,50 @@ const fakeStripe = ({ v2, v1 }: Fake) =>
 
 const v2Account = (status: string | undefined) => ({
   configuration: { recipient: status ? { capabilities: { stripe_balance: { payouts: { status } } } } : undefined },
+});
+
+describe('defaultBankLast4 (PR7)', () => {
+  const bank = (last4: string, isDefault?: boolean) => ({
+    object: 'bank_account',
+    last4,
+    default_for_currency: isDefault,
+  });
+
+  it('the DEFAULT bank — where Stripe actually pays — not merely the first', () => {
+    expect(
+      defaultBankLast4({ external_accounts: { data: [bank('1111', false), bank('5678', true)] } }),
+    ).toBe('5678');
+  });
+
+  it('a single bank is the default whatever its flag says', () => {
+    expect(defaultBankLast4({ external_accounts: { data: [bank('5678')] } })).toBe('5678');
+  });
+
+  it('several banks and none marked default: no guess', () => {
+    expect(defaultBankLast4({ external_accounts: { data: [bank('1111'), bank('2222')] } })).toBeNull();
+  });
+
+  it('a card is not a bank, and anything but four digits is nothing', () => {
+    expect(
+      defaultBankLast4({ external_accounts: { data: [{ object: 'card', last4: '4242' }] } }),
+    ).toBeNull();
+    expect(defaultBankLast4({ external_accounts: { data: [bank('12345')] } })).toBeNull();
+    expect(defaultBankLast4({})).toBeNull();
+  });
+
+  it('rides along on the account read', async () => {
+    const stripe = fakeStripe({
+      v2: async () => v2Account('active'),
+      v1: async () => ({
+        payouts_enabled: true,
+        details_submitted: true,
+        external_accounts: { data: [bank('5678', true)] },
+      }),
+    });
+    await expect(readPayoutAccountState(stripe, 'acct_1')).resolves.toMatchObject({
+      bankLast4: '5678',
+    });
+  });
 });
 
 describe('readPayoutAccountState', () => {
@@ -109,6 +154,8 @@ describe('the requirements we can meet ourselves (2026-10-13)', () => {
       needsProfile: true,
       // Both are ours to meet — neither is "one more thing from you".
       needsAction: false,
+      // No bank attached, so no last four.
+      bankLast4: null,
     });
   });
 

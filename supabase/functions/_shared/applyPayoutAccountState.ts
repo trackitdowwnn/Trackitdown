@@ -76,6 +76,22 @@ export async function applyPayoutAccountState(
     });
   }
 
+  // "Paid into account ending 5678" (2026-10-15, PR7): Stripe's default bank,
+  // kept current wherever it was changed. Best effort — a label must never
+  // fail the record above or hold up a release below — and the RPC writes
+  // only when it differs. The digits are never logged.
+  if (fresh.bankLast4) {
+    try {
+      const { error } = await admin.rpc('record_bank_last4', {
+        p_stripe_account_id: recorded.accountId,
+        p_last4: fresh.bankLast4,
+      });
+      if (error) throw new Error(error.message);
+    } catch {
+      console.warn('[payments] bank last4 record failed', { accountId: recorded.accountId });
+    }
+  }
+
   const becamePayable = fresh.payoutsEnabled && !recorded.payoutsEnabled;
   if (becamePayable) {
     await release(recorded.profileId);

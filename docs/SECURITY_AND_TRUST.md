@@ -499,6 +499,14 @@ commenting standards.
   `btok_` may only be attached where `controller.requirement_collection` is
   `application`, and ours are Express. **This is financial PII in transit and
   must appear in the privacy policy and the Art. 30 record.**
+- **The one bank detail we DO hold (2026-10-15, PR7): the last four digits**
+  of the account Stripe pays into — `stripe_connected_accounts.bank_last4` —
+  so the tracker can say "Paid into account ending 5678". Stripe's own
+  answer (never what was typed), exactly four digits (a column CHECK), read
+  only by the account's owner (select-own RLS), written only by the
+  service-role `record_bank_last4`, never logged, and gone with the profile.
+  The sort code and full number are still never stored. **Add it to the
+  privacy policy and the Art. 30 record** alongside the in-transit details.
 - **Two pricing modes since 2026-08-20 (ADR-0014), and the amount is
   server-authoritative in both.** A post is PRICED as either a bounty (escrowed)
   or a fixed £5 listing fee. *(Since 2026-10-05 a live fee listing can ADD a

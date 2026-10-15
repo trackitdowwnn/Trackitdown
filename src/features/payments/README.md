@@ -233,6 +233,12 @@ rule underneath every change is **say who is waiting on whom**.
   (`record_payout_event`, forward-only); the tracker says "due Friday" / "paid
   into your bank", and a refused payout asks for new bank details (our form),
   with one `payout_failed` push.
+- **Which bank (PR7, 2026-10-15).** `stripe_connected_accounts.bank_last4` —
+  Stripe's answer, never what was typed: recorded on every bank attach
+  (`create-payout-account`) and refreshed from the default bank on every sync
+  (`applyPayoutAccountState`). The tracker says "Paid into account ending
+  5678" — but ⚠️ only when no bank change came after that payout, or it would
+  name the wrong account. Four digits or nothing, enforced in the column.
 - **The owner's side.** `sync-post-payment` lets the confirmation screens ask
   Stripe instead of waiting only for the webhook; `_shared/afterCapture.ts` is
   what follows a capture on either path, including a once-per-listing
