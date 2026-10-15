@@ -10,6 +10,7 @@
  *        supabase/functions/connect-onboarding/index.ts; docs/TESTING.md.
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 import { PaymentError } from '@/shared/lib/functionError';
@@ -19,6 +20,12 @@ import { PayoutsScreen } from './PayoutsScreen';
 jest.mock('react-native-safe-area-context', () =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
   require('react-native-safe-area-context/jest/mock').default,
+);
+
+// The paid moment's seen-flag (paidMomentStorage).
+jest.mock('@react-native-async-storage/async-storage', () =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factories cannot use ESM imports
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
 const mockOpenAuth = jest.fn();
@@ -138,8 +145,18 @@ const refocus = async () => {
   });
 };
 
-beforeEach(() => {
+/** A credited reward, as my_pending_credit returns it. */
+const CREDIT = {
+  postId: 'post-1',
+  transferPence: 19000,
+  underReview: false,
+  creditedAt: '2026-10-12T10:00:00Z',
+  car: { make: 'BMW', colour: 'Blue' },
+};
+
+beforeEach(async () => {
   jest.clearAllMocks();
+  await AsyncStorage.clear();
   // Nothing left over from a previous test's wizard.
   takePayoutSetupOutcome(null);
   mockFocus = null;
@@ -151,28 +168,28 @@ beforeEach(() => {
   // The default spotter here has a bounty waiting — under credit-time setup
   // that is the ONLY person the setup card exists for. The nothing-waiting
   // case gets its own tests.
-  mockPendingCredit.mockResolvedValue({ postId: 'post-1', transferPence: 19000 });
+  mockPendingCredit.mockResolvedValue(CREDIT);
   mockLatestPayout.mockResolvedValue(null);
   mockIdentityToken.mockResolvedValue('accttok_test_1');
   mockBankToken.mockResolvedValue('btok_test_1');
   mockSubmitTokens.mockResolvedValue('submitted');
 });
 
-describe('⚠️ the status chip and the trust line (Airbnb pass, 2026-08-26)', () => {
+describe('⚠️ the chip, the road and the trust line (redesign, 2026-10-14)', () => {
   it.each([
-    ['notStarted', 'details'],
-    ['unfinished', 'check'],
-    ['verifying', 'check'],
-    ['ready', 'reward'],
-  ])('⚠️ %s: the tracker marks the state, in place of the chip', async (status, current) => {
-    // The state must be legible before a word is read. Since the tracker
-    // (2026-10-13) its current marker does that; a chip beside it was the
-    // same fact twice (UI review).
+    ['notStarted', 'details', 'Not set up'],
+    ['unfinished', 'details', 'Action needed'],
+    ['verifying', 'check', 'Being checked'],
+    ['ready', 'sent', 'On its way'],
+  ])('⚠️ %s: the hero’s chip says the state, the road marks the step', async (status, current, chip) => {
+    // The state is legible before a word is read: the chip in the hero, and
+    // the road's current marker — never a third telling of it in a title.
     mockAccountState = { status, settling: false };
-    const { getByTestId, queryByTestId } = await act(async () => render(<PayoutsScreen />));
+    const { getByTestId, getByText } = await act(async () => render(<PayoutsScreen />));
 
     expect(getByTestId(`payouts-steps-current-${current}`)).toBeTruthy();
-    expect(queryByTestId(`payouts-pill-${status}`)).toBeNull();
+    expect(getByTestId('payouts-chip')).toBeTruthy();
+    expect(getByText(chip)).toBeTruthy();
   });
 
   it('marks ready as "Ready" with the chip when there is no road left to show', async () => {
@@ -199,12 +216,16 @@ describe('⚠️ the status chip and the trust line (Airbnb pass, 2026-08-26)', 
     // the server-side route this app used to take saw the details in transit, so
     // "never see" is the sentence a regulator would quote back. This footnote
     // reintroduced it once already, within a minute of being written.
-    mockAccountState = { status: 'verifying', settling: false };
     const { getByTestId } = await act(async () => render(<PayoutsScreen />));
 
-    expect(getByTestId('payouts-trust')).toBeTruthy();
-    expect(getByTestId('payouts-trust').props.children).toMatch(/never store them/i);
+    expect(getByTestId('payouts-trust').props.children).toMatch(/never store/i);
     expect(getByTestId('payouts-trust').props.children).not.toMatch(/never see/i);
+  });
+
+  it('the trust line sits beside the step that takes the details — not once they’re sent', async () => {
+    mockAccountState = { status: 'verifying', settling: false };
+    const { queryByTestId } = await act(async () => render(<PayoutsScreen />));
+    expect(queryByTestId('payouts-trust')).toBeNull();
   });
 });
 
@@ -219,23 +240,24 @@ describe('what each state says', () => {
     expect(mockRequireAuth).toHaveBeenCalledWith({ context: 'payouts' });
   });
 
-  it('offers setup when a bounty is waiting for somewhere to land', async () => {
+  it('offers setup when a reward is waiting — the amount is the hero', async () => {
     const { getByTestId, getByText, getByLabelText } = await act(async () => render(<PayoutsScreen />));
-    expect(getByTestId('payouts-notStarted')).toBeTruthy();
-    // The earn moment: the same sentence the push used, with the same
-    // server-derived number. Generic setup copy here would break the thread
-    // that brought them.
-    expect(getByTestId('payouts-earned')).toBeTruthy();
-    // ⚠️ THE SENTENCE IS NOW TWO TEXTS, AND THE ACCESSIBLE LABEL IS WHAT PINS
-    // IT. The Airbnb pass (2026-08-26) split "You've earned £190" into a quiet
-    // label and the amount at display scale, so the figure is the first thing
-    // with weight. That is TYPOGRAPHY ONLY: the card is one accessible node
-    // whose label still reads the whole sentence, because three separate stops
-    // would deliver the number without the words that give it meaning.
-    // Asserting the label rather than the visible runs is what keeps this test
-    // about the promise instead of about the layout.
+    expect(getByTestId('payouts-journey')).toBeTruthy();
+    expect(getByTestId('payouts-hero')).toBeTruthy();
     expect(getByText('£190')).toBeTruthy();
-    expect(getByLabelText(/You’ve earned £190\. Your sighting led to a recovery/)).toBeTruthy();
+    // ⚠️ ONE accessible stop for the hero: three separate stops would deliver
+    // the number without the words that give it meaning. The label pins the
+    // promise rather than the layout.
+    expect(
+      getByLabelText(
+        'You’ve earned £190, for helping find a blue BMW. Add your details to get paid. Not set up.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('⚠️ names the car by colour and make — never the plate', async () => {
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    expect(getByText('for helping find a blue BMW')).toBeTruthy();
   });
 
   it('says NOTHING to set up when nothing is waiting — because there isn’t', async () => {
@@ -245,36 +267,37 @@ describe('what each state says', () => {
     mockPendingCredit.mockResolvedValue(null);
     const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
     expect(getByText('Nothing to set up')).toBeTruthy();
-    expect(queryByTestId('payouts-notStarted')).toBeNull();
-    expect(queryByTestId('payouts-earned')).toBeNull();
+    expect(queryByTestId('payouts-journey')).toBeNull();
+    expect(queryByTestId('payouts-hero')).toBeNull();
   });
 
   it('tells someone mid-way that their progress is saved', async () => {
     mockAccountState = { status: 'unfinished', settling: false };
     const { getByText } = await act(async () => render(<PayoutsScreen />));
-    expect(getByText('Pick up where you left off')).toBeTruthy();
+    expect(getByText('Finish your details to get paid')).toBeTruthy();
     expect(getByText(/progress is saved/i)).toBeTruthy();
   });
 
-  it('puts the waiting on STRIPE, never on the spotter', async () => {
+  it('puts the waiting on our partner, never on the spotter', async () => {
     // The distinction the feature turns on: nothing is being asked of them.
     mockAccountState = { status: 'verifying', settling: false };
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
     expect(getByText('Your details are being checked')).toBeTruthy();
-    expect(queryByText('Pick up where you left off')).toBeNull();
+    expect(queryByText(/Finish your details/)).toBeNull();
     // On arrival the app is checking with Stripe itself, and says so
-    // (2026-10-14); the "few minutes" line follows once the checks stop.
+    // (2026-10-14); the "minutes, sometimes a day" line follows once it stops.
     expect(getByText(/Checking with our payment partner now/)).toBeTruthy();
   });
 
-  it('only asks "tell us where" while nobody has', async () => {
-    // Under a tracker reading "Your details — done", it would contradict it.
-    mockAccountState = { status: 'verifying', settling: false };
-    const { getByLabelText, queryByText } = await act(async () => render(<PayoutsScreen />));
-    expect(getByLabelText('You’ve earned £190. Your sighting led to a recovery.')).toBeTruthy();
-    expect(queryByText(/Tell us where to send it/)).toBeNull();
+  it('⚠️ the amount stays the hero while the money moves (it used to vanish on ready)', async () => {
+    mockAccountState = { status: 'ready', settling: false };
+    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    expect(getByText('£190')).toBeTruthy();
+    expect(getByText('Sending your reward')).toBeTruthy();
   });
+
   it('confirms when money can actually reach them', async () => {
+    mockPendingCredit.mockResolvedValue(null);
     mockAccountState = { status: 'ready', settling: false };
     const { getByText } = await act(async () => render(<PayoutsScreen />));
     expect(getByText('Payouts are on')).toBeTruthy();
@@ -282,12 +305,13 @@ describe('what each state says', () => {
     expect(getByText('Update bank details')).toBeTruthy();
   });
 
-  it('says "nearly there" while settling, never guessing at the outcome', async () => {
+  it('⚠️ settling outranks the derived state — waiting for confirmation, never "continue"', async () => {
     mockAccountState = { status: 'unfinished', settling: true };
-    const { getByTestId, queryByText } = await act(async () => render(<PayoutsScreen />));
-    expect(getByTestId('payouts-settling')).toBeTruthy();
+    const { getByText, getByTestId, queryByText } = await act(async () => render(<PayoutsScreen />));
+    expect(getByText(/Waiting for confirmation/)).toBeTruthy();
+    expect(getByTestId('payouts-steps-current-check-working')).toBeTruthy();
     // The derived state would have blamed them for stopping half way.
-    expect(queryByText('Pick up where you left off')).toBeNull();
+    expect(queryByText('Continue setting up')).toBeNull();
   });
 });
 
@@ -371,7 +395,7 @@ describe('our own steps come first (the setup wizard, 2026-10-13)', () => {
     await refocus();
 
     expect(queryByTestId('payouts-details-rejected')).toBeNull();
-    expect(getByTestId('payouts-verifying')).toBeTruthy();
+    expect(getByTestId('payouts-journey')).toBeTruthy();
   });
 
   it('…or lets them try our steps again', async () => {
@@ -422,9 +446,7 @@ describe('setting up — inside the app', () => {
   });
 
   it('"Not now" on the heads-up goes back to where they were, with nothing opened', async () => {
-    const { getByText, getByTestId, queryByTestId } = await act(async () =>
-      render(<PayoutsScreen />),
-    );
+    const { getByText, queryByTestId } = await act(async () => render(<PayoutsScreen />));
     await act(async () => {
       fireEvent.press(getByText('Add your details'));
     });
@@ -434,7 +456,7 @@ describe('setting up — inside the app', () => {
 
     expect(queryByTestId('payouts-stripe-intro')).toBeNull();
     expect(queryByTestId('connect-onboarding')).toBeNull();
-    expect(getByTestId('payouts-notStarted')).toBeTruthy();
+    expect(getByText('Add your details')).toBeTruthy();
   });
 
   it('no heads-up for someone who just chose "Set up another way" — that was the yes', async () => {
@@ -546,6 +568,8 @@ describe('changing bank details — in the app, no browser', () => {
 
   beforeEach(() => {
     mockAccountState = { status: 'ready', settling: false };
+    // Nothing in flight: "Payouts are on" and its one button.
+    mockPendingCredit.mockResolvedValue(null);
   });
 
   it('opens the three-field form, not a browser', async () => {
@@ -661,7 +685,15 @@ describe('the progress tracker (2026-10-13)', () => {
     expect(getByTestId('payouts-steps')).toBeTruthy();
     expect(getByTestId('payouts-steps-current-details')).toBeTruthy();
     expect(getByTestId('payouts-steps-upcoming-check')).toBeTruthy();
-    expect(getByTestId('payouts-steps-upcoming-reward')).toBeTruthy();
+    expect(getByTestId('payouts-steps-upcoming-sent')).toBeTruthy();
+    expect(getByTestId('payouts-steps-upcoming-bank')).toBeTruthy();
+  });
+
+  it('the button lives ON the step that needs it — one, not a card of its own', async () => {
+    mockStart.mockResolvedValue({ status: 'details_required' });
+    const { getByTestId, getAllByText } = await act(async () => render(<PayoutsScreen />));
+    expect(getByTestId('payouts-steps-current-details-action')).toBeTruthy();
+    expect(getAllByText('Add your details')).toHaveLength(1);
   });
 
   it('puts the wait on Stripe while it checks', async () => {
@@ -707,14 +739,57 @@ describe('the end of the road — a reward sent (PR2b)', () => {
       transferPence: 19000,
       sentAt: '2026-10-13T11:00:00Z',
     });
+    const { getByTestId, getByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByTestId('payouts-steps-done-sent')).toBeTruthy();
+    expect(getByTestId('payouts-steps-current-bank')).toBeTruthy();
+    expect(getByText('Sent on 13 October')).toBeTruthy();
+    expect(getByText('£190')).toBeTruthy();
+  });
+});
+
+describe('⚠️ the paid moment — once, then a folded road (redesign, 2026-10-14)', () => {
+  const paidAccount = {
+    stripeAccountId: 'acct_1',
+    onboardingComplete: true,
+    payoutsEnabled: true,
+    bankPayout: { status: 'paid', arrivalDate: '2026-10-16', createdAt: '2026-10-14T06:00:00Z' },
+    bankReplacedAt: null,
+  };
+
+  beforeEach(() => {
+    mockAccountState = { status: 'ready', settling: false, account: paidAccount };
+    mockPendingCredit.mockResolvedValue(null);
+    mockLatestPayout.mockResolvedValue({ transferPence: 19000, sentAt: '2026-10-13T11:00:00Z' });
+  });
+
+  it('first visit: a tick, "Thanks for helping", and the whole road — done', async () => {
     const { getByTestId, getByText, queryByTestId } = await act(async () =>
       render(<PayoutsScreen />),
     );
+    expect(getByTestId('payouts-paid-moment')).toBeTruthy();
+    expect(getByText('Thanks for helping')).toBeTruthy();
+    expect(getByText('Paid into your bank on 16 October')).toBeTruthy();
+    expect(getByTestId('payouts-steps-done-bank')).toBeTruthy();
+    expect(queryByTestId('payouts-steps-expand')).toBeNull();
+  });
 
-    expect(getByTestId('payouts-steps-done-reward')).toBeTruthy();
-    expect(getByText(/^Sent 13 October/)).toBeTruthy();
-    // The tracker stands in for the chip here too.
-    expect(queryByTestId('payouts-pill-ready')).toBeNull();
+  it('every later visit: no celebration — the road folded to one line, openable', async () => {
+    const first = await act(async () => render(<PayoutsScreen />));
+    await act(async () => {
+      first.unmount();
+    });
+
+    const { getByTestId, getByText, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
+    expect(queryByTestId('payouts-paid-moment')).toBeNull();
+    expect(getByText('Paid')).toBeTruthy();
+    expect(getByText('Paid 16 October · £190')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByTestId('payouts-steps-expand'));
+    });
+    expect(getByTestId('payouts-steps-done-bank')).toBeTruthy();
   });
 });
 
@@ -771,12 +846,14 @@ describe('⚠️ checks with Stripe instead of only waiting for the webhook (202
     expect(mockSyncAccount).toHaveBeenCalledTimes(2);
   });
 
-  it('"Check again" checks with Stripe, not just our row', async () => {
+  it('pull to refresh checks with Stripe, not just our row', async () => {
+    // The way past any wait — so no "Check again" button competes with the
+    // road's one action (redesign, 2026-10-14).
     mockAccountState = { status: 'unfinished', settling: true };
-    const { getByText } = await act(async () => render(<PayoutsScreen />));
+    const { getByTestId } = await act(async () => render(<PayoutsScreen />));
     mockSyncAccount.mockClear();
     await act(async () => {
-      fireEvent.press(getByText('Check again'));
+      getByTestId('screen-scroll').props.refreshControl.props.onRefresh();
     });
     expect(mockSyncAccount).toHaveBeenCalledTimes(1);
   });
@@ -792,7 +869,7 @@ describe('⚠️ a missing bank is asked for in our own form, not Stripe’s scr
     mockAccountState = { status: 'unfinished', settling: false };
     const { getByText, getByTestId, queryByText } = await act(async () => render(<PayoutsScreen />));
 
-    expect(getByText('One more thing: your bank account')).toBeTruthy();
+    expect(getByText('Add your bank account to get paid')).toBeTruthy();
     expect(queryByText('Continue setting up')).toBeNull();
     await act(async () => {
       fireEvent.press(getByText('Add your bank account'));
@@ -805,7 +882,7 @@ describe('⚠️ a missing bank is asked for in our own form, not Stripe’s scr
     mockSyncAccount.mockResolvedValue({ needsBank: false });
     mockAccountState = { status: 'unfinished', settling: false };
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
-    expect(queryByText('One more thing: your bank account')).toBeNull();
+    expect(queryByText('Add your bank account to get paid')).toBeNull();
     expect(getByText('Continue setting up')).toBeTruthy();
   });
 });
@@ -851,18 +928,35 @@ describe('⚠️ a payout the bank refused asks for new details (2026-10-14)', (
     bankReplacedAt,
   });
 
-  it('says so, and "Add your bank details again" opens our bank form', async () => {
+  it('on the road: the bank step needs them — "!" and "Update bank details" opens our form', async () => {
     mockPendingCredit.mockResolvedValue(null);
+    mockLatestPayout.mockResolvedValue({ transferPence: 19000, sentAt: '2026-10-13T11:00:00Z' });
     mockAccountState = { status: 'ready', settling: false, account: bounced(null) };
-    const { getByText, getByTestId } = await act(async () => render(<PayoutsScreen />));
+    const { getByText, getByTestId, getByLabelText } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
 
-    expect(getByText('Your bank couldn’t accept your reward')).toBeTruthy();
-    expect(getByText(/safe, and waiting for you/)).toBeTruthy();
+    expect(getByTestId('payouts-steps-attention-bank')).toBeTruthy();
+    expect(getByLabelText(/In your bank, needs you\. .*safe and waiting for you/)).toBeTruthy();
+    expect(getByText('Action needed')).toBeTruthy();
     await act(async () => {
-      fireEvent.press(getByText('Add your bank details again'));
+      fireEvent.press(getByText('Update bank details'));
     });
     expect(getByTestId('bank-details-form')).toBeTruthy();
     // Our own form — never a session at Stripe.
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ no reward in view any more: still says so — never "Payouts are on"', async () => {
+    mockPendingCredit.mockResolvedValue(null);
+    mockAccountState = { status: 'ready', settling: false, account: bounced(null) };
+    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+
+    expect(getByText('Your bank couldn’t accept it')).toBeTruthy();
+    expect(queryByText('Payouts are on')).toBeNull();
+    await act(async () => {
+      fireEvent.press(getByText('Update bank details'));
+    });
     expect(mockStart).not.toHaveBeenCalled();
   });
 
@@ -875,23 +969,28 @@ describe('⚠️ a payout the bank refused asks for new details (2026-10-14)', (
     };
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
 
-    expect(queryByText('Your bank couldn’t accept your reward')).toBeNull();
+    expect(queryByText('Your bank couldn’t accept it')).toBeNull();
     expect(getByText('Payouts are on')).toBeTruthy();
   });
 });
 
 describe('⚠️ a payout held for a check says so, never "on its way" (2026-10-14)', () => {
   it('payouts on, reward held for review: the tracker says a check, not that it moved', async () => {
-    mockPendingCredit.mockResolvedValue({ postId: 'post-1', transferPence: 19000, underReview: true });
+    mockPendingCredit.mockResolvedValue({ ...CREDIT, underReview: true });
     mockAccountState = { status: 'ready', settling: false };
-    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+    const { getByText, queryByText, queryByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
 
-    expect(getByText(/A quick check before we send it/)).toBeTruthy();
+    expect(getByText('A quick check before we send it')).toBeTruthy();
     expect(queryByText(/On its way/)).toBeNull();
+    // Nothing for them to do: no button, and the marker doesn't pretend to work.
+    expect(queryByTestId('payouts-steps-current-sent-action')).toBeNull();
+    expect(queryByTestId('payouts-steps-current-sent-working')).toBeNull();
   });
 
   it('no check: "on its way", as before', async () => {
-    mockPendingCredit.mockResolvedValue({ postId: 'post-1', transferPence: 19000, underReview: false });
+    mockPendingCredit.mockResolvedValue(CREDIT);
     mockAccountState = { status: 'ready', settling: false };
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
 
@@ -908,11 +1007,15 @@ describe('⚠️ waiting on THEM is said plainly, never "being checked" (2026-10
   it('Stripe wants a photo ID: the card says so, and the tracker says who it waits on', async () => {
     mockSyncAccount.mockResolvedValue({ needsBank: false, needsAction: true } as never);
     mockAccountState = { status: 'verifying', settling: false };
-    const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
+    const { getByText, queryByText, getByLabelText, getByTestId } = await act(async () =>
+      render(<PayoutsScreen />),
+    );
 
     expect(getByText('We need one more thing from you')).toBeTruthy();
     expect(queryByText('Your details are being checked')).toBeNull();
-    expect(getByText(/Waiting on you/)).toBeTruthy();
+    // "!" on the check, spoken "needs you" — shape, not colour.
+    expect(getByTestId('payouts-steps-attention-check')).toBeTruthy();
+    expect(getByLabelText(/ID check, needs you/)).toBeTruthy();
     // The old line told them to wait for a check that was waiting on them.
     expect(queryByText(/Usually a few minutes/)).toBeNull();
   });
@@ -954,7 +1057,7 @@ describe('⚠️ waiting on THEM is said plainly, never "being checked" (2026-10
     mockAccountState = { status: 'verifying', settling: false };
     const { getByText, queryByText } = await act(async () => render(<PayoutsScreen />));
 
-    expect(getByText('One more thing: your bank account')).toBeTruthy();
+    expect(getByText('Add your bank account to get paid')).toBeTruthy();
     expect(queryByText('We need one more thing from you')).toBeNull();
   });
 

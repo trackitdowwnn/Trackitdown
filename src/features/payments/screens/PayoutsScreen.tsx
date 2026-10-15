@@ -29,7 +29,14 @@
  *        Stripe", which spends the prefill window deliberately rather than
  *        leaving someone permanently unpayable behind steps that can never
  *        satisfy Stripe — but only while nothing has reached Stripe yet.
- * WHY:   `release-payout` refuses to transfer until Stripe says a spotter is
+ *
+ *        WHAT IT SAYS IS NOT DECIDED HERE (redesign, 2026-10-14). This file
+ *        owns the flows and the reads; `payoutView` turns them into the hero
+ *        (the amount, the car, one status line, the chip) and the road (each
+ *        step, its date, its one action as an intent), and PayoutsHero /
+ *        PayoutsBody draw that. A state worded here as well would be the
+ *        three-places drift the redesign removed.
+ * WHY:  `release-payout` refuses to transfer until Stripe says a spotter is
  *        payable, and nothing in the app could create that account. Every
  *        credited bounty sat on the platform balance while both parties were
  *        told it was on its way. This is the missing screen.
@@ -84,10 +91,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useRequireAuth, useSession } from '@/features/auth';
 import { createLogger } from '@/shared/lib/logger';
-import { formatPounds } from '@/shared/lib/money';
 import {
-  cardSurface,
-  radii,
   sizes,
   spacing,
   typography,
@@ -95,16 +99,7 @@ import {
   useThemedStyles,
   type Palette,
 } from '@/shared/theme';
-import {
-  Button,
-  EmptyState,
-  ErrorState,
-  ProgressSteps,
-  Screen,
-  StatusPill,
-  useToast,
-  type BadgeTone,
-} from '@/shared/ui';
+import { EmptyState, ErrorState, Screen, useToast } from '@/shared/ui';
 
 import { PaymentError } from '@/shared/lib/functionError';
 import {
@@ -116,10 +111,20 @@ import {
 } from '../api/payoutsApi';
 import { createBankToken } from '../api/stripeTokens';
 import { BankDetailsForm } from '../components/BankDetailsForm';
+import {
+  BankRejectedCard,
+  DetailsRejectedCard,
+  IdCheckIntroCard,
+  PayoutsJourneyCard,
+  PayoutsReadyCard,
+  PayoutsSkeleton,
+} from '../components/PayoutsBody';
+import { PayoutsHero } from '../components/PayoutsHero';
 import { usePollWhileChecking } from '../hooks/usePollWhileChecking';
 import { usePayoutAccount, type PayoutAccountStatus } from '../hooks/usePayoutAccount';
-import { payoutProgress } from '../lib/payoutProgress';
+import { hasCelebratedPayout, markPayoutCelebrated } from '../lib/paidMomentStorage';
 import { takePayoutSetupOutcome } from '../lib/payoutSetupOutcome';
+import { payoutView, type PayoutIntent, type PendingCreditInput } from '../lib/payoutView';
 import { ensureStripeReady } from '../lib/stripeReady';
 
 const log = createLogger('payments');
@@ -135,67 +140,6 @@ const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '';
  *  POLL_LIMIT times per visit — two minutes, then pull-to-refresh is there. */
 const POLL_MS = 10_000;
 const POLL_LIMIT = 12;
-
-/** What each state says. Calm, and never blaming someone for Stripe's queue. */
-const COPY: Record<
-  Exclude<PayoutAccountStatus, 'loading' | 'guest' | 'error'>,
-  { title: string; body: string; action: string }
-> = {
-  notStarted: {
-    // Only ever shown WITH a credited bounty above it now — a spotter with
-    // nothing waiting gets the nothing-to-set-up state instead (see
-    // renderBody). The title asks; the button answers. Repeating the button's
-    // words as the heading reads as a form with a stutter.
-    title: 'Where should your rewards go?',
-    // "Straight to Stripe" became literally true with client-side tokenisation
-    // (ADR-0010): the details never touch our server. And not "you only do it
-    // once": this screen itself models Stripe coming back for more.
-    body: 'Your details go straight to our payment partner, and we never store your bank details. It takes about a minute.',
-    action: 'Add your details',
-  },
-  unfinished: {
-    title: 'Pick up where you left off',
-    body: 'A few more details are needed before a reward can reach you. Your progress is saved.',
-    action: 'Continue setting up',
-  },
-  verifying: {
-    title: 'Your details are being checked',
-    body: 'This usually takes a few minutes — sometimes a day if they need a closer look. You don’t need to wait here; we’ll switch payouts on the moment they’re done.',
-    action: 'Add or update details',
-  },
-  ready: {
-    title: 'Payouts are on',
-    // "Automatically" became true on 2026-08-04: the release runs the moment a
-    // sighting is credited (or the moment this account becomes payable, if the
-    // credit came first). Before that, this line carefully said "once the
-    // owner releases them" — and now saying that would be the stale claim.
-    body: 'Rewards you earn are sent to your account automatically. Nothing to do here unless your bank details change.',
-    action: 'Update bank details',
-  },
-};
-
-/**
- * The chip beside each state (Airbnb pass, 2026-08-26).
- *
- * ⚠️ TONE IS NOT SEVERITY, it is what the spotter should DO. `unfinished` and
- * `verifying` both sit at `warning`, but for opposite reasons: unfinished is
- * warning because it is waiting on THEM, verifying because it is waiting on
- * Stripe and saying "all good" would be a promise we cannot keep — Stripe can
- * still come back for more. `notStarted` is neutral rather than warning
- * because nothing has gone wrong: credit-time setup means not-set-up is the
- * expected state, not a lapse.
- *
- * ⚠️ NO TONE READS AS AN ERROR. `danger` is deliberately unused here even for
- * the rejected paths, which render their own cards above this one. A red chip
- * on a screen about money someone is owed says "your money is in trouble" when
- * what is true is "Stripe needs a different form".
- */
-const STATUS_PILL: Record<keyof typeof COPY, { label: string; tone: BadgeTone }> = {
-  notStarted: { label: 'Not set up', tone: 'neutral' },
-  unfinished: { label: 'Action needed', tone: 'warning' },
-  verifying: { label: 'Being checked', tone: 'warning' },
-  ready: { label: 'Ready', tone: 'success' },
-};
 
 export function PayoutsScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -216,39 +160,38 @@ export function PayoutsScreen() {
   // Stripe refused what the setup steps can describe. Offers the way past.
   const [detailsRejected, setDetailsRejected] = useState(false);
   const [bankRejected, setBankRejected] = useState(false);
-  // The earn moment's context: "You've earned £X". Server-derived via
-  // payout_split, so the push and this line can never disagree on the number.
+  // The reward waiting: the amount, the car it was for, whether a check holds
+  // it. Server-derived via payout_split, so the push and this screen can never
+  // disagree on the number.
   //
   // TRI-STATE, and the third state is load-bearing: `undefined` means "still
-  // asking", `null` means "asked — nothing waiting". notStarted branches on
-  // that difference (setup card vs nothing-to-set-up), and collapsing them
-  // would flash the wrong screen at everyone for the length of one fetch.
-  const [pendingCreditPence, setPendingCreditPence] = useState<number | null | undefined>(
-    undefined,
-  );
-  // The reward most recently SENT, within the window — the tracker's end.
+  // asking", `null` means "asked — nothing waiting". payoutView draws no road
+  // until it knows, so nobody sees "Nothing to set up" flash for one fetch.
+  const [credit, setCredit] = useState<PendingCreditInput | null | undefined>(undefined);
+  // The reward most recently SENT, within the window — the road's end.
   const [latestPayout, setLatestPayout] = useState<Awaited<
     ReturnType<typeof fetchMyLatestPayout>
   >>(null);
-  // A check holds the waiting reward's payout (2026-10-14) — the tracker says
-  // so rather than "on its way".
-  const [creditUnderReview, setCreditUnderReview] = useState(false);
   // ⚠️ "COULDN'T CHECK" IS NOT "NOTHING OWED" (2026-10-14). A failed read
   // used to land as null — "Nothing to set up" to someone owed £190 on a bad
   // connection. It is remembered separately, and the one state that would
   // otherwise say "nothing" says "couldn't check" with a retry instead.
   const [creditCheckFailed, setCreditCheckFailed] = useState(false);
   const [creditAttempt, setCreditAttempt] = useState(0);
+  // ⚠️ "NOW" IS STATE, NEVER A RENDER-TIME `new Date()`: the React Compiler
+  // memoises that on device, and "expected by" would go stale. Taken when the
+  // reads land and each time the screen comes back into view.
+  const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     if (status === 'guest' || status === 'loading') {
       return;
     }
     let cancelled = false;
-    // Together, so the tracker never draws "nothing waiting" for a moment
-    // before the sent reward arrives to end the road.
+    // Together, so the road never draws "nothing waiting" for a moment
+    // before the sent reward arrives to end it.
     void Promise.all([
       fetchMyPendingCredit().then(
-        (credit) => ({ ok: true as const, credit }),
+        (read) => ({ ok: true as const, credit: read }),
         () => ({ ok: false as const, credit: null }),
       ),
       fetchMyLatestPayout(),
@@ -256,8 +199,8 @@ export function PayoutsScreen() {
       if (!cancelled) {
         setLatestPayout(sent);
         setCreditCheckFailed(!read.ok);
-        setPendingCreditPence(read.credit?.transferPence ?? null);
-        setCreditUnderReview(read.credit?.underReview === true);
+        setCredit(read.credit);
+        setNow(new Date());
       }
     });
     return () => {
@@ -265,7 +208,7 @@ export function PayoutsScreen() {
     };
   }, [status, creditAttempt]);
   const retryCreditCheck = useCallback(() => {
-    setPendingCreditPence(undefined);
+    setCredit(undefined);
     setCreditAttempt((attempt) => attempt + 1);
   }, []);
   const [browserSaidExpired, setBrowserSaidExpired] = useState(false);
@@ -377,6 +320,7 @@ export function PayoutsScreen() {
         setDetailsRejected(true);
       }
       // A new visit: check with Stripe again if it's still waiting.
+      setNow(new Date());
       checkedThisVisit.current = false;
       checkIfWaiting(statusNow.current);
     }, [checkIfWaiting, settleReturn, userId]),
@@ -605,58 +549,63 @@ export function PayoutsScreen() {
   // ready) the refusal card would offer a button with no purpose and one
   // irreversible effect, so the account's own state wins.
   const showRejected = detailsRejected && (status === 'notStarted' || status === 'unfinished');
-  // Not ready, and what Stripe is waiting for is a bank: ask for it ourselves.
-  const askBank = needsBank && (status === 'unfinished' || status === 'verifying');
-  // Not ready, and Stripe is waiting on THEM for its own check (a bank, if
-  // missing too, comes first: it is ours, and quicker).
-  const askCheck = needsAction && !askBank && (status === 'unfinished' || status === 'verifying');
-  // The app is asking Stripe right now: the bounded re-checks are running for
-  // an account Stripe is reviewing (not one waiting on the spotter).
-  const checkingNow = status === 'verifying' && !askBank && !askCheck && !pollSpent;
-  // A bank refused their payout and they haven't given new details since
-  // (2026-10-14): the money is back in their balance and the bank disabled,
-  // so nothing reaches them until they act. Our bank form is the fix.
-  const bankPayout = account?.bankPayout ?? null;
-  const payoutBounced =
-    status === 'ready' &&
-    bankPayout?.status === 'failed' &&
-    !(
-      account?.bankReplacedAt &&
-      Date.parse(account.bankReplacedAt) > Date.parse(bankPayout.createdAt)
-    );
-  // The earn moment's second sentence: "tell us where" only while nobody has.
-  // Under a tracker reading "Your details — done" it would contradict it.
-  const earnedLine =
-    status === 'notStarted'
-      ? 'Your sighting led to a recovery. Tell us where to send it.'
-      : 'Your sighting led to a recovery.';
+  // "Something is happening" (owner, 2026-10-14) — and only while it is: the
+  // bounded re-checks are running for an account Stripe is reviewing, not one
+  // waiting on the spotter.
+  const checkingNow = status === 'verifying' && !needsBank && !needsAction && !pollSpent;
 
-  // WHERE THEY ARE ON THE ROAD (2026-10-13, owner: "not much if any progress
-  // indicators"). ⚠️ INSIDE the card that holds the button, IN PLACE OF the
-  // pill and the paragraph — not a card of its own above it. As a separate
-  // card it said the state four or five times over (pill, title, body, step,
-  // detail), near-verbatim (UI review): the current step's detail now says
-  // who is waiting and how long, the title says what this is, the button
-  // what to do. With no tracker (ready, nothing waiting) the pill returns.
-  const progress = payoutProgress({
-    status,
-    settling,
-    pendingCreditPence,
-    latestPayout,
-    needsAction: askCheck,
-    underReview: creditUnderReview,
-    // "Something is happening" (owner, 2026-10-14) — and only while it is:
-    // being checked by Stripe, not waiting on them, and the re-checks running.
-    checkingNow,
-    bankPayout,
-    bankReplacedAt: account?.bankReplacedAt ?? null,
-  });
-  const tracker = progress ? (
-    <>
-      <ProgressSteps steps={progress} testID="payouts-steps" />
-      <View style={styles.divider} />
-    </>
-  ) : null;
+  // ONE decision about what this screen says (payoutView, 2026-10-14). The
+  // hero, the chip, the road and its one button all come from here; nothing
+  // below re-decides a state.
+  const view = payoutView(
+    {
+      // The settle window issues its own re-reads, and one transient failure
+      // among them must not flip "waiting for confirmation" into an error.
+      status: settling && status === 'error' ? 'verifying' : status,
+      settling,
+      checkingNow,
+      needsBank,
+      needsAction,
+      creditCheckFailed,
+      credit,
+      latestPayout,
+      account,
+    },
+    now,
+  );
+
+  // THE PAID MOMENT, once per payout: a tick, the amount, "Thanks for
+  // helping", and the road unfolded. Every later visit gets the folded line.
+  const celebrateKey = view.kind === 'journey' ? view.celebrateKey : null;
+  const [celebrated, setCelebrated] = useState<string | null>(null);
+  useEffect(() => {
+    if (!celebrateKey) return;
+    let cancelled = false;
+    void hasCelebratedPayout(celebrateKey).then((seen) => {
+      if (cancelled || seen) return;
+      setCelebrated(celebrateKey);
+      void markPayoutCelebrated(celebrateKey);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [celebrateKey]);
+  const celebrating = celebrateKey !== null && celebrated === celebrateKey;
+
+  /** The road's one button, by what it is for. */
+  const onIntent = (intent: PayoutIntent) => {
+    if (intent === 'bank') {
+      // Our own three fields, never a session at Stripe.
+      setShowBankForm(true);
+    } else if (intent === 'retry') {
+      retryCreditCheck();
+    } else if (intent === 'idCheck') {
+      // Straight to the check: the step has already said what it is.
+      void open({ skipIntro: true });
+    } else {
+      void open();
+    }
+  };
 
   // Stripe's own full-screen modal (a native UIKit sheet on iOS, an RN Modal on
   // Android), so it is rendered instead of the page rather than inside it.
@@ -687,26 +636,21 @@ export function PayoutsScreen() {
   return (
     <Screen
       scroll
-      // ⚠️ THE BOTTOM INSET, as on SettingsScreen and LegalDocumentScreen —
-      // this is the fourth pushed screen found with it and almost certainly not
-      // the last. `Screen` pads only the top by default, deliberately, because
-      // tab screens run under the tab bar; a pushed screen has no tab bar and
-      // nothing else pays it, so under SDK 57's edge-to-edge Android the last
-      // element sits beneath the navigation buttons. Here that element is a
-      // Button — the one that starts the flow — so it was not merely clipped
-      // but unreachable.
+      // ⚠️ THE BOTTOM INSET, as on SettingsScreen and LegalDocumentScreen.
+      // `Screen` pads only the top by default (tab screens run under the tab
+      // bar); a pushed screen has no tab bar, so under SDK 57's edge-to-edge
+      // Android the last button would sit beneath the navigation buttons.
       contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
       // The bank form's last field sits low; without this it hides under the
       // keyboard and the first tap on Save is spent dismissing it.
       keyboardAware
-      // The settling window stops after ~14s. Without a pull-to-refresh,
-      // "Stripe is checking your details" is a dead end until the screen is
-      // left and re-entered — which the hook's own comment already assumed
-      // existed.
-      // Pull to refresh asks Stripe too, not just our row.
+      // Pull to refresh asks Stripe too, not just our row — the way past any
+      // wait, so no "Check again" button needs to compete with the road.
       onRefresh={() => void checkWithStripe()}
       refreshing={status === 'loading'}
     >
+      {/* A plain back-and-title row, as BlockedAccountsScreen: AppHeader is
+          the scroll-fade bar for photo heroes, and there is no photo here. */}
       <View style={styles.headerRow}>
         <BackButton />
         <Text style={styles.title} accessibilityRole="header">
@@ -714,74 +658,15 @@ export function PayoutsScreen() {
         </Text>
       </View>
 
-      {/* The earn moment. The push said "You've earned £X — tell us where to
-          send it"; the screen must greet them with the same sentence, not with
-          generic setup copy. Rendered for every non-terminal state — the
-          amount is WHY they are here.
-
-          ⚠️ THE FIGURE IS THE HERO SINCE 2026-08-26 (Airbnb pass). It used to
-          be a sentence at title scale — "You've earned £250" — which made the
-          number compete with its own preamble at the same weight. Split into a
-          quiet label and the amount at `display`, so the thing they came to see
-          is the thing they see. Same words, different hierarchy. */}
-      {typeof pendingCreditPence === 'number' && status !== 'guest' && status !== 'ready' ? (
-        <View style={styles.earnedCard} testID="payouts-earned">
-          {/* ⚠️ ONE accessible node, not three. A screen reader reading
-              "You've earned" / "£250" / "Your sighting led to a recovery" as
-              separate stops turns one fact into three, and the amount arrives
-              without the sentence that gives it meaning. The visual split is
-              typographic only. */}
-          <View
-            accessible
-            accessibilityRole="header"
-            // The curly apostrophe, matching the visible text and the house
-            // style — a label that reads differently from the words on screen
-            // is the kind of drift nobody sees until someone compares them.
-            accessibilityLabel={`You’ve earned ${formatPounds(pendingCreditPence)}. ${earnedLine}`}
-          >
-            {/* ⚠️ NO `accessibilityElementsHidden` ON THE CHILDREN. It was
-                here first and was both redundant and harmful: `accessible` on
-                the wrapper already stops them being focused individually, and
-                the flag additionally removes them from the accessibility tree
-                — which took the visible amount out of RNTL's default queries
-                and would take it from any tooling that reads the same tree. */}
-            <Text style={styles.earnedLabel}>You’ve earned</Text>
-            <Text style={styles.earnedAmount}>{formatPounds(pendingCreditPence)}</Text>
-            <Text style={styles.earnedBody}>{earnedLine}</Text>
-          </View>
-        </View>
+      {/* THE AMOUNT IS THE HERO (owner, 2026-10-14) — from "add your details"
+          to "paid". It used to hide on `ready`, exactly when the money moved. */}
+      {view.kind === 'journey' && status !== 'guest' ? (
+        <PayoutsHero hero={view.hero} chip={view.chip} celebrating={celebrating} />
       ) : null}
 
-      {/* ONE body, chosen once. This was five independently-gated blocks whose
-          exclusivity was maintained by hand, and it did not hold: a refresh
-          error while the form was open stacked an EmptyState over the fields,
-          and a deep-link return while signed out rendered the guest state and
-          "Nearly there" together for the whole settling window. Priority
-          order, early returns, structurally impossible to show two. */}
+      {/* ONE body, chosen once, in priority order — structurally impossible
+          to show two (a refresh error once stacked over the bank form). */}
       {renderBody()}
-
-      {/* Every state in which details are being handed over or held. Absent for
-          a guest (nothing has been asked of them) and once `ready` (the claim
-          has been demonstrated rather than promised). */}
-      {/* ⚠️ "PASS STRAIGHT ON" AND "NEVER STORE", NEVER "NEVER SEE". This line
-          first read "we never see or store them" and a test caught it within
-          the minute. "Never store" holds on every path the details have ever
-          taken; "never see" is the claim a regulator would test hardest, and
-          it was false for the server-side route this app used to take. Worded
-          to match PayoutTermsNotice (payoutSetupSteps.tsx); two promises about
-          the same data in different words is how one of them drifts.
-
-          ⚠️ AND NOT WHILE THE BANK FORM IS OPEN, which a test caught by
-          finding the sentence twice on one screen: the form carries it beside
-          the fields, the better place for a promise about a sort code. (The
-          setup wizard carries its own, on its own screen.) This footnote is for
-          the states where no form is showing (unfinished, verifying), because
-          that is where the reassurance used to disappear entirely. */}
-      {status !== 'guest' && status !== 'loading' && status !== 'ready' && !showBankForm && !connectInstance ? (
-        <Text style={styles.trust} testID="payouts-trust">
-          We pass your bank details straight to our payment partner and never store them.
-        </Text>
-      ) : null}
     </Screen>
   );
 
@@ -798,67 +683,34 @@ export function PayoutsScreen() {
       );
     }
     if (stripeIntro) {
-      // The heads-up before Stripe's embedded step (see `open`). Says who is
-      // asking, why, and how long — the three things an unannounced Stripe
-      // screen left people guessing.
+      // The road stays in view as the check takes over: a step on it, not a
+      // detour. Without its button — the heads-up has the one.
       return (
-        <View style={styles.card} testID="payouts-stripe-intro">
-          {/* The road stays in view as Stripe takes over: this is a step on
-              it, not a detour. */}
-          {tracker}
-          {/* Not "last", not "first payout": `open` reaches this from any
-              not-yet-ready state, and Stripe can come back for more. */}
-          {/* No provider named (owner, 2026-10-13): what happens and how long
-              is what helps; whose screen it is helps nobody. */}
-          <Text style={styles.cardTitle} accessibilityRole="header">
-            A quick ID check
-          </Text>
-          <Text style={styles.cardBody}>
-            We need to confirm it’s really you. It takes about two minutes, and you may be
-            asked for a photo of your ID. You’ll come straight back here.
-          </Text>
-          <Button
-            label="Start the check"
-            onPress={() => void launchStripe()}
-            loading={launching}
-          />
-          <Button
-            label="Not now"
-            variant="ghost"
-            disabled={launching}
-            onPress={() => {
+        <>
+          {view.kind === 'journey' ? (
+            <PayoutsJourneyCard view={view} onIntent={onIntent} inert />
+          ) : null}
+          <IdCheckIntroCard
+            launching={launching}
+            onStart={() => void launchStripe()}
+            onNotNow={() => {
               setStripeIntro(false);
               primedSecret.current = null;
             }}
           />
-        </View>
+        </>
       );
     }
     if (showRejected) {
       return (
-        <View style={styles.card} testID="payouts-details-rejected">
-          <Text style={styles.cardTitle} accessibilityRole="header">
-            We need different details
-          </Text>
-          <Text style={styles.cardBody}>
-            Our steps cover a UK account in your own name. If that isn’t you — a company,
-            or an account elsewhere — you can set up payouts another way instead.
-          </Text>
-          <Button
-            label="Set up another way"
-            onPress={() => void onSkipPrefill()}
-            loading={opening}
-          />
-          <Button
-            label="Try our steps again"
-            variant="ghost"
-            onPress={() => {
-              setDetailsRejected(false);
-              router.push('/payout-setup');
-            }}
-            disabled={opening}
-          />
-        </View>
+        <DetailsRejectedCard
+          busy={opening}
+          onAnotherWay={() => void onSkipPrefill()}
+          onTryAgain={() => {
+            setDetailsRejected(false);
+            router.push('/payout-setup');
+          }}
+        />
       );
     }
     if (showBankForm) {
@@ -873,71 +725,23 @@ export function PayoutsScreen() {
             busy={opening}
           />
           {bankRejected ? (
-            <View style={styles.card} testID="payouts-bank-rejected">
-              <Text style={styles.cardTitle} accessibilityRole="header">
-                That account couldn’t be added here
-              </Text>
-              <Text style={styles.cardBody}>
-                You can update your bank details another way instead.
-              </Text>
-              <Button
-                label="Update another way"
-                variant="secondary"
-                onPress={() => void onBankViaStripe()}
-                loading={opening}
-              />
-            </View>
+            <BankRejectedCard busy={opening} onAnotherWay={() => void onBankViaStripe()} />
           ) : null}
         </>
       );
     }
-    if (settling) {
-      // ABOVE `error` on purpose: the settling window issues its own re-reads,
-      // and one transient failure among them must not flip "Nearly there" into
-      // an error that blames the spotter for Stripe's queue.
-      // Outranks the derived state, and this is the whole point: until the
-      // webhook lands, someone who just finished is indistinguishable from
-      // someone who gave up, and guessing wrong blames the wrong person.
-      return (
-        <View style={styles.card} testID="payouts-settling">
-          {tracker}
-          <Text style={styles.cardTitle} accessibilityRole="header">
-            Nearly there
-          </Text>
-          {/* The tracker's current step says this when it is drawn. */}
-          {tracker ? null : (
-            <Text style={styles.cardBody}>
-              We’re waiting for confirmation. This usually takes a moment.
-            </Text>
-          )}
-          {/* Skips the wait rather than escaping a dead end — the window ends
-              by itself, and once it does this card is gone. It is here so
-              somebody who knows they finished need not watch a spinner. */}
-          <Button label="Check again" variant="secondary" onPress={() => void checkWithStripe()} />
-        </View>
-      );
-    }
-    if (status === 'error') {
-      return (
-        <ErrorState
-          title="Couldn’t load your payout details"
-          body="Check your connection and try again."
-          onRetry={refresh}
-        />
-      );
-    }
-    if (status === 'loading') {
-      return <PayoutsSkeleton />;
-    }
-    if (status === 'notStarted') {
-      // Credit-time setup: with no account and no bounty waiting there is
-      // NOTHING to set up, and saying so beats a form about money that does
-      // not exist. The setup card renders only under a real credited amount.
-      if (pendingCreditPence === undefined) {
-        // Still asking which of those two this is — don't flash either.
+    switch (view.kind) {
+      case 'error':
+        return (
+          <ErrorState
+            title="Couldn’t load your payout details"
+            body="Check your connection and try again."
+            onRetry={refresh}
+          />
+        );
+      case 'loading':
         return <PayoutsSkeleton />;
-      }
-      if (pendingCreditPence === null && creditCheckFailed) {
+      case 'creditUnknown':
         // Never "nothing to set up" on a read we couldn't make.
         return (
           <ErrorState
@@ -946,104 +750,38 @@ export function PayoutsScreen() {
             onRetry={retryCreditCheck}
           />
         );
-      }
-      if (pendingCreditPence === null) {
+      case 'nothing':
+        // Credit-time setup: with no account and no reward waiting there is
+        // NOTHING to set up, and saying so beats a form about money that does
+        // not exist.
         return (
           <EmptyState
             title="Nothing to set up"
             body="When a sighting of yours leads to a recovery, we’ll let you know you’ve earned the reward — and ask where to send it. That’s the whole setup."
           />
         );
-      }
-    }
-    return (
-      <View style={styles.card} testID={`payouts-${status}`}>
-        {/* ⚠️ THE CHIP ARRIVES BEFORE THE PROSE, which is the point of it. The
-            reference marks a payout method's state with a badge — Pending,
-            Error, Default — so the state is legible before a word is read.
-            Ours said the same things only in a heading and a paragraph, which
-            is fine to read and slow to scan, and this is a screen people open
-            to check one thing.
-
-            ⚠️ IT DOES NOT REPLACE THE HEADING. "Being checked" is the state;
-            "Your details are being checked" says what is happening and so why
-            the app cannot hurry it. Dropping the heading for the chip would
-            trade an explanation for a label on the one screen where people are
-            most inclined to suspect they are being stalled. */}
-        {/* ⚠️ THE TRACKER TAKES THE PILL'S PLACE when there is one: its
-            current marker is the at-a-glance state now, and the pill beside it
-            was the same fact twice. Its detail replaces the paragraph too. */}
-        {tracker ?? (
-          <StatusPill
-            // Waiting on them reads as theirs to do, whatever our row says.
-            label={STATUS_PILL[askCheck || payoutBounced ? 'unfinished' : status].label}
-            tone={STATUS_PILL[askCheck || payoutBounced ? 'unfinished' : status].tone}
-            testID={`payouts-pill-${status}`}
+      case 'ready':
+        return (
+          <PayoutsReadyCard
+            view={view}
+            onIntent={onIntent}
+            busy={opening}
+            linkExpired={linkExpired}
           />
-        )}
-        <Text style={styles.cardTitle} accessibilityRole="header">
-          {askBank
-            ? 'One more thing: your bank account'
-            : askCheck
-              ? 'We need one more thing from you'
-              : payoutBounced
-                ? 'Your bank couldn’t accept your reward'
-                : COPY[status].title}
-        </Text>
-        {tracker ? null : (
-          <Text style={styles.cardBody}>
-            {askCheck
-              ? 'Our payment partner couldn’t confirm it’s you from the details you sent. A quick photo ID check sorts it — about two minutes.'
-              : payoutBounced
-                ? 'It’s safe, and waiting for you. Add your bank details again and we’ll send it.'
-                : COPY[status].body}
-          </Text>
-        )}
-        {linkExpired ? (
-          <Text style={styles.note}>
-            That link expired — they only last a few minutes. Start again for a fresh one.
-          </Text>
-        ) : null}
-        {/* ⚠️ NO BUTTON WHILE STRIPE IS CHECKING (2026-10-14). "Add or update
-            details" under "we'll switch payouts on the moment it's done" asked
-            them to act while telling them to wait — and the only thing it
-            could open was Stripe's screen for details they had just sent. */}
-        {status === 'verifying' && !askBank && !askCheck ? null : (
-        <Button
-          label={
-            askBank
-              ? 'Add your bank account'
-              : askCheck
-                ? 'Start the check'
-                : payoutBounced
-                  ? 'Add your bank details again'
-                  : COPY[status].action
-          }
-          loading={opening}
-          // Ready means "change where the money lands" — three fields, in the
-          // app, both account generations. So does a missing bank (askBank).
-          // Every other state still needs a Stripe surface of one kind or
-          // another, and `open` picks which. The check opens straight away:
-          // this card already said what it is.
-          onPress={() =>
-            status === 'ready' || askBank
-              ? setShowBankForm(true)
-              : void open(askCheck ? { skipIntro: true } : {})
-          }
-          // Primary only where the next move is THEIRS. Verifying waits on
-          // Stripe; a near-black button under "we'll switch payouts on the
-          // moment it's done" would contradict the sentence (UI review).
-          variant={
-            askBank || askCheck || payoutBounced
-              ? 'primary'
-              : status === 'ready' || status === 'verifying'
-                ? 'secondary'
-                : 'primary'
-          }
-        />
-        )}
-      </View>
-    );
+        );
+      case 'journey':
+        return (
+          <PayoutsJourneyCard
+            view={view}
+            onIntent={onIntent}
+            busy={opening}
+            linkExpired={linkExpired}
+            celebrating={celebrating}
+          />
+        );
+      default:
+        return null;
+    }
   }
 }
 
@@ -1066,22 +804,10 @@ function BackButton() {
   );
 }
 
-/** House skeleton idiom — surfaceSubtle blocks on a surface card, never a spinner. */
-function PayoutsSkeleton() {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.card} testID="payouts-skeleton">
-      <View style={[styles.skeletonLine, styles.skeletonTitle]} />
-      <View style={styles.skeletonLine} />
-      <View style={[styles.skeletonLine, styles.skeletonShort]} />
-    </View>
-  );
-}
-
 const makeStyles = (c: Palette) => StyleSheet.create({
   scroll: {
     padding: spacing.xl,
-    gap: spacing.lg,
+    gap: spacing.xl,
   },
   headerRow: {
     flexDirection: 'row',
@@ -1099,78 +825,5 @@ const makeStyles = (c: Palette) => StyleSheet.create({
     ...typography.title,
     color: c.textPrimary,
     flexShrink: 1,
-  },
-  // The house card: flat, with the hairline that is its only edge in dark mode
-  // (DESIGN_SYSTEM Card).
-  card: {
-    ...cardSurface(c),
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  // Between the tracker and the title under it.
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: c.border,
-  },
-  // surfaceInverse: this card is the page's one inverted block, so it flips
-  // with the theme and stays the thing that stands out against the page.
-  earnedCard: {
-    gap: spacing.xs,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: c.surfaceInverse,
-  },
-  // A quiet lead-in, so the amount below it is the first thing with weight.
-  earnedLabel: {
-    ...typography.caption,
-    color: c.textOnPrimary,
-  },
-  // ⚠️ `display`, the app's big-moment scale, used here for the one number a
-  // spotter opened this screen to see. DESIGN_SYSTEM reserves it for big
-  // moments and in-page hero values (MoneySlider's readout is the other), which
-  // is exactly what a credited bounty is.
-  earnedAmount: {
-    ...typography.display,
-    color: c.textOnPrimary,
-  },
-  earnedBody: {
-    ...typography.body,
-    // On the inverse surface, secondary-grey text would fail contrast.
-    color: c.textOnPrimary,
-    marginTop: spacing.xs,
-  },
-  // ⚠️ SAYS SOMETHING THE INTERFACE CANNOT SHOW, which is the test for whether
-  // a footnote earns its place. "We never see your bank details" was only ever
-  // in the `notStarted` copy, so the moment someone started the form it
-  // disappeared — leaving the reassurance absent from every state in which they
-  // are actually handing over a sort code. It is the claim this screen most
-  // needs to keep making, and no arrangement of cards and chips can imply it.
-  trust: {
-    ...typography.caption,
-    color: c.textSecondary,
-    paddingHorizontal: spacing.md,
-  },
-  cardTitle: {
-    ...typography.heading,
-    color: c.textPrimary,
-  },
-  cardBody: {
-    ...typography.body,
-    color: c.textSecondary,
-  },
-  note: {
-    ...typography.caption,
-    color: c.textSecondary,
-  },
-  skeletonLine: {
-    height: sizes.skeletonLine,
-    borderRadius: radii.sm,
-    backgroundColor: c.surfaceSubtle,
-  },
-  skeletonTitle: {
-    width: '55%',
-  },
-  skeletonShort: {
-    width: '70%',
   },
 });

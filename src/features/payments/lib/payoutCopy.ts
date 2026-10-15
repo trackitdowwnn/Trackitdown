@@ -92,6 +92,12 @@ export const COPY = {
     ready: 'Ready',
   },
 
+  // --- The hero ---
+  earned: 'You’ve earned',
+  // The paid moment's line, once (PR5) — "Thanks", never confetti.
+  thanks: 'Thanks for helping',
+  heading: 'Your reward',
+
   // --- Collapsed finished road ---
   collapsed: (iso: string, pence: number) => `Paid ${onDay(iso)} · ${formatPounds(pence)}`,
   expand: 'View details',
